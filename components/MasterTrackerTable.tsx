@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus } from "@/app/orders/actions";
+import { setOrderStatus, setExcludedItems } from "@/app/orders/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
@@ -25,6 +25,25 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
   const [progress, setProgress] = useState("");
   const [urgent, setUrgent] = useState("");
   const [status, setStatus] = useState("open"); // lifecycle: closed orders are hidden by default
+  const [openConfig, setOpenConfig] = useState<string | null>(null); // per-MO "required components" editor
+
+  function saveExcluded(mo: string, form: HTMLFormElement) {
+    const fd = new FormData(form);
+    const required = fd.getAll("req").map(String);
+    const excluded = ITEMS.filter((it) => !required.includes(it)).join(",");
+    const out = new FormData();
+    out.set("mo", mo);
+    out.set("excluded", excluded);
+    startTransition(async () => {
+      const r = await setExcludedItems(out);
+      if (r.ok) {
+        setOpenConfig(null);
+        router.refresh();
+      } else {
+        alert(r.error ?? "Failed");
+      }
+    });
+  }
 
   const closedCount = useMemo(() => rows.filter((r) => r.status === "closed").length, [rows]);
 
@@ -202,7 +221,8 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
     // frame: open groups get a clear border so their extent is obvious
     const frame = inGroup ? `bg-brand-light/10 border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
     return (
-              <tr key={r.mo} className={frame}>
+      <Fragment key={r.mo}>
+              <tr className={frame}>
                 <td className={`p-2 font-bold whitespace-nowrap text-xs ${inGroup ? "pl-6" : ""}`}>
                   {inGroup && <span className="text-muted mr-1">↳</span>}
                   <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline">{r.mo}</Link>
@@ -212,6 +232,11 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
                       OSP {it}×{r.items[it].osp}
                     </span>
                   ))}
+                  {ITEMS.filter((it) => r.items[it].excluded).map((it) => (
+                    <span key={`x${it}`} className="pill pill-muted ml-1" title={`${it} is not required for this project — it doesn't gate completion and never appears in the worklists`}>
+                      N/A {it}
+                    </span>
+                  ))}
                 </td>
                 <td className="p-2 font-bold whitespace-nowrap">
                   <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
@@ -219,7 +244,7 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
                 <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>
                 <td className="p-2 text-center font-bold"><Num v={r.required} /></td>
                 {ITEMS.map((it) => (
-                  <StageCells key={it} cut={r.items[it].cut} weld={r.items[it].weld} paint={r.items[it].paint} />
+                  <StageCells key={it} cut={r.items[it].cut} weld={r.items[it].weld} paint={r.items[it].paint} excluded={r.items[it].excluded} />
                 ))}
                 <td className="p-2 text-center font-extrabold border-r"><Num v={r.complete} /></td>
                 <td className="p-2 text-center font-bold" style={{ color: r.remaining > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>
@@ -241,8 +266,40 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
                   ) : (
                     <span className="pill pill-ok">Open</span>
                   )}
+                  <button
+                    onClick={() => setOpenConfig(openConfig === r.mo ? null : r.mo)}
+                    disabled={pending}
+                    className="text-muted text-xs px-1.5 hover:text-accent"
+                    title="Which components does this project actually need?"
+                  >
+                    ⚙
+                  </button>
                 </td>
               </tr>
+              {openConfig === r.mo && (
+                <tr className={inGroup ? "border-x-2 border-brand" : ""}>
+                  <td colSpan={20} className="p-3 bg-brand-light/30 border-y">
+                    <form
+                      onSubmit={(e) => { e.preventDefault(); saveExcluded(r.mo, e.currentTarget); }}
+                      className="flex flex-wrap items-center gap-4 text-sm max-w-2xl"
+                    >
+                      <span className="font-bold text-xs">Components {r.mo} actually needs:</span>
+                      {ITEMS.map((it) => (
+                        <label key={it} className="inline-flex items-center gap-1.5 font-semibold cursor-pointer">
+                          <input type="checkbox" name="req" value={it} defaultChecked={!r.items[it].excluded} className="accent-[var(--brand)]" />
+                          {it}
+                        </label>
+                      ))}
+                      <button type="submit" disabled={pending} className="rounded-md px-3 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50">
+                        Save
+                      </button>
+                      <button type="button" onClick={() => setOpenConfig(null)} className="text-muted text-xs hover:underline">Cancel</button>
+                      <span className="text-[11px] text-muted w-full">Unchecked components are N/A for this project: they leave the cut worklist and stop gating completion &amp; OTD.</span>
+                    </form>
+                  </td>
+                </tr>
+              )}
+      </Fragment>
     );
   }
 }
@@ -257,7 +314,16 @@ function StageHead() {
   );
 }
 
-function StageCells({ cut, weld, paint }: { cut: number; weld: number; paint: number }) {
+function StageCells({ cut, weld, paint, excluded = false }: { cut: number; weld: number; paint: number; excluded?: boolean }) {
+  if (excluded) {
+    return (
+      <>
+        <td className="p-2 text-center text-muted">—</td>
+        <td className="p-2 text-center text-muted">—</td>
+        <td className="p-2 text-center text-muted border-r">—</td>
+      </>
+    );
+  }
   return (
     <>
       <td className="p-2 text-center tabnum" style={{ background: "var(--cut-tint)" }}>{cut}</td>

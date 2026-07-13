@@ -58,13 +58,15 @@ export async function getCutSheet(): Promise<CutSheet> {
   const cascade = computeCascade({
     orders: masters.flatMap((m) => {
       const osp = { CF: m.ospCF, TC: m.ospTC, TN: m.ospTN, CB: m.ospCB } as const;
+      const excluded = new Set((m.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
       return (["CF", "TC", "TN", "CB"] as const).map((item) => ({
         bom: m.bom,
         mo: m.mo,
         description: [m.kva, m.rating].filter(Boolean).join(" · ") || null,
         item,
-        // the OSP share is made outside — it never reaches our worklists
-        targetQty: Math.max(0, m.planQty - osp[item]),
+        // OSP share is made outside; excluded components aren't needed at all —
+        // neither ever reaches our worklists
+        targetQty: excluded.has(item) ? 0 : Math.max(0, m.planQty - osp[item]),
       }));
     }),
     schedules: schedIn,

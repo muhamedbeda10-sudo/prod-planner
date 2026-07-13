@@ -383,11 +383,17 @@ export function computeDeptQueue(opts: {
 
   // WIP aging: when did the oldest STILL-WAITING piece arrive from upstream?
   // The line's dated upstream entries (direct MO match; BOM-level rows use the
-  // no-MO entries) are consumed FIFO by this dept's total output.
+  // no-MO entries) are consumed FIFO by this dept's total output. Negative
+  // ledger rows (returns) count as consumption — the piece left the queue.
   const upstreamDates = new Map<string, { d: number; qty: number }[]>();
+  const returnedQty = new Map<string, number>();
   for (const e of past) {
     if (e.dept !== fromDept) continue;
     const k = `${e.bom}|${(e.mo ?? "").trim()}|${e.item}`;
+    if (e.qty < 0) {
+      add(returnedQty, k, -e.qty);
+      continue;
+    }
     if (!upstreamDates.has(k)) upstreamDates.set(k, []);
     upstreamDates.get(k)!.push({ d: dayNumber(e.date), qty: e.qty });
   }
@@ -395,7 +401,7 @@ export function computeDeptQueue(opts: {
     const list = upstreamDates.get(key);
     if (!list) return null;
     list.sort((a, b) => a.d - b.d);
-    let credit = consumed;
+    let credit = consumed + num(returnedQty, key);
     for (const t of list) {
       const used = Math.min(credit, t.qty);
       credit -= used;

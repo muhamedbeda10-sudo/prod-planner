@@ -72,6 +72,18 @@ describe("computeOtd", () => {
     expect(stats.onTime).toBe(1);
   });
 
+  it("excluded components don't gate delivery", () => {
+    // this project needs no CB: the other 3 painted on time close the order
+    const logs = paintAll("MO-A", 2, utcDate(2026, 7, 9)).filter((l) => l.item !== "CB");
+    const stats = computeOtd(
+      [{ mo: "MO-A", planQty: 2, excluded: ["CB"] }],
+      schedules,
+      logs,
+      day
+    );
+    expect(stats.onTime).toBe(1);
+  });
+
   it("orders never scheduled in any plan are skipped entirely", () => {
     const stats = computeOtd([{ mo: "MO-X", planQty: 5 }], [], [], day);
     expect(stats.due + stats.upcoming).toBe(0);

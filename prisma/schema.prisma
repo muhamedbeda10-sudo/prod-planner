@@ -141,6 +141,9 @@ model MasterOrder {
   ospTC     Float    @default(0)
   ospTN     Float    @default(0)
   ospCB     Float    @default(0)
+  // Components this order does NOT need at all (CSV of CF/TC/TN/CB). The plan
+  // sheets can't express this — it is set manually on the tracker.
+  excludedItems String?
   closedAt  DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -156,6 +159,28 @@ model Holiday {
   date      DateTime @unique // day-only granularity
   name      String
   createdAt DateTime @default(now())
+}
+
+// A piece sent back UPSTREAM: e.g. Welding discovers a "finished" cut piece is
+// incomplete and returns it to Cut. The quantity is deducted from the upstream
+// department's ledger via a linked negative HandoverEntry (source "return"),
+// and the row stays in the upstream dept's Returns table until re-delivered.
+model ReturnEntry {
+  id         Int      @id @default(autoincrement())
+  date       DateTime
+  fromDept   String // who returned it (Welding | Painting)
+  toDept     String // who gets it back (Cut | Welding)
+  bom        String
+  mo         String?
+  item       String // CF | TC | TN | CB
+  qty        Float
+  reason     String
+  status     String   @default("open") // open | resolved (re-delivered)
+  handoverId Int? // the linked negative ledger entry
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([toDept, status])
 }
 
 // Shop-floor note on a queue line (welding/painting worklists): free text +

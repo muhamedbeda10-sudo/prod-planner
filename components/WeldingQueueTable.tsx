@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WeldQueueRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
-import { recordOutput, addQueueNote, setQueueNoteStatus } from "@/app/worklist/actions";
+import { recordOutput, addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote, returnToUpstream } from "@/app/worklist/actions";
 import { Num } from "@/components/ui";
 import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
 import { PrintButton } from "@/components/PrintButton";
@@ -37,6 +37,54 @@ export function WeldingQueueTable({
   const [item, setItem] = useState("");
   const [openNotes, setOpenNotes] = useState<string | null>(null); // note panel per line (bom|mo|item)
   const [noteMsg, setNoteMsg] = useState("");
+  const [editingNote, setEditingNote] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
+
+  function saveNoteEdit(id: number) {
+    const fd = new FormData();
+    fd.set("id", String(id));
+    fd.set("text", editText);
+    setNoteMsg("");
+    startTransition(async () => {
+      const res = await updateQueueNote(fd);
+      if (res.ok) {
+        setEditingNote(null);
+        router.refresh();
+      } else {
+        setNoteMsg(res.error ?? "Failed");
+      }
+    });
+  }
+
+  function removeNote(id: number) {
+    if (!confirm("Delete this note (and its photos) permanently?")) return;
+    const fd = new FormData();
+    fd.set("id", String(id));
+    startTransition(async () => {
+      const res = await deleteQueueNote(fd);
+      if (res.ok) router.refresh();
+      else setNoteMsg(res.error ?? "Failed");
+    });
+  }
+  const [openReturn, setOpenReturn] = useState<string | null>(null); // return panel per line
+  const [retMsg, setRetMsg] = useState("");
+
+  function submitReturn(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    setRetMsg("");
+    startTransition(async () => {
+      const res = await returnToUpstream(fd);
+      if (res.ok) {
+        form.reset();
+        setOpenReturn(null);
+        router.refresh();
+      } else {
+        setRetMsg(res.error ?? "Failed");
+      }
+    });
+  }
 
   function submitNote(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -202,6 +250,15 @@ export function WeldingQueueTable({
                 >
                   {savedFlash[k] ? "✓ Saved" : "Save"}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => { setOpenReturn(openReturn === noteKey ? null : noteKey); setRetMsg(""); }}
+                  disabled={pending}
+                  className="rounded-md px-1.5 py-1 text-xs font-bold border text-bad-fg hover:bg-bad-bg transition-colors"
+                  title={`Send back to ${upstream === "Welded" ? "Welding" : upstream} — the piece is not actually finished`}
+                >
+                  ↩
+                </button>
               </div>
             )}
             {msg[k] && <div className="text-[11px] text-bad-fg mt-0.5">{msg[k]}</div>}
@@ -217,67 +274,172 @@ export function WeldingQueueTable({
             </button>
           </td>
         </tr>
+        {openReturn === noteKey && (
+          <tr className={inGroup ? "border-x-2 border-brand" : ""}>
+            <td colSpan={cols} className="p-3 bg-bad-bg/30 border-y">
+              <form onSubmit={submitReturn} className="max-w-3xl bg-surface border rounded-lg p-2.5 space-y-2">
+                <p className="text-xs font-bold text-bad-fg">
+                  ↩ Return {r.mo || r.bom} {r.item} to {dept === "Welding" ? "Cut" : "Welding"} — the qty comes OFF their delivered total and lands in their Returns table until re-delivered.
+                </p>
+                <input type="hidden" name="fromDept" value={dept} />
+                <input type="hidden" name="bom" value={r.bom} />
+                <input type="hidden" name="mo" value={r.mo} />
+                <input type="hidden" name="item" value={r.item} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="number"
+                    name="qty"
+                    min={1}
+                    max={r.available}
+                    required
+                    placeholder="qty"
+                    className="w-20 border rounded-md px-1.5 py-1 text-center font-bold tabnum"
+                    disabled={pending}
+                  />
+                  <input
+                    type="text"
+                    name="reason"
+                    required
+                    placeholder="Why is it going back? (missing weld, wrong size, damaged…)"
+                    className="flex-1 min-w-52 border rounded-md px-2 py-1 text-sm bg-surface"
+                    disabled={pending}
+                  />
+                  <button
+                    type="submit"
+                    disabled={pending}
+                    className="rounded-md px-3 py-1.5 text-xs font-bold text-white bg-bad-fg hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    {pending ? "Returning…" : "↩ Return"}
+                  </button>
+                  <button type="button" onClick={() => setOpenReturn(null)} className="text-muted text-xs px-1 hover:underline">Cancel</button>
+                </div>
+                {retMsg && <div className="text-[11px] text-bad-fg">{retMsg}</div>}
+              </form>
+            </td>
+          </tr>
+        )}
         {openNotes === noteKey && (
           <tr className={inGroup ? "border-x-2 border-brand" : ""}>
-            <td colSpan={cols} className="p-3 bg-brand-light/30 border-y">
-              <div className="max-w-3xl space-y-2">
-                {lineNotes.length === 0 && (
-                  <p className="text-xs text-muted">No notes yet on {r.mo || r.bom} {r.item} — write the first one below.</p>
-                )}
-                {lineNotes.map((n) => (
-                  <div key={n.id} className={`bg-surface border rounded-lg p-2.5 ${n.status === "resolved" ? "opacity-60" : ""}`}>
-                    <div className="flex items-center gap-2 text-xs mb-1">
-                      <span className={`pill ${n.status === "open" ? "pill-warn" : "pill-ok"}`}>
-                        {n.status === "open" ? "⚠ open" : "✓ resolved"}
-                      </span>
-                      <span className="font-semibold">{n.dept}</span>
-                      <span className="text-muted tabnum">{n.createdISO}</span>
-                      <button
-                        type="button"
-                        onClick={() => toggleNoteStatus(n.id, n.status === "open" ? "resolved" : "open")}
-                        disabled={pending}
-                        className="text-accent hover:underline ml-auto"
+            <td colSpan={cols} className="p-4 bg-brand-light/20 border-y">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted">
+                  📝 Notes — {r.mo || r.bom} · {r.item}
+                  {lineNotes.length > 0 && <span className="pill pill-muted normal-case">{lineNotes.length}</span>}
+                </div>
+
+                {lineNotes.length > 0 && (
+                  <div className="grid gap-2.5 lg:grid-cols-2">
+                    {lineNotes.map((n) => (
+                      <div
+                        key={n.id}
+                        className={`bg-surface border rounded-xl p-3 shadow-sm ${n.status === "resolved" ? "opacity-60" : "border-l-4"} `}
+                        style={n.status === "open" ? { borderLeftColor: "var(--warn-fg)" } : undefined}
                       >
-                        {n.status === "open" ? "Mark resolved" : "Reopen"}
-                      </button>
-                    </div>
-                    <p className="text-sm whitespace-pre-wrap">{n.text}</p>
-                    {n.photos.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-1.5">
-                        {n.photos.map((p) => (
-                          <a key={p} href={p} target="_blank" rel="noreferrer">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={p} alt="note photo" className="h-16 w-16 object-cover rounded-md border hover:opacity-80" />
-                          </a>
-                        ))}
+                        <div className="flex flex-wrap items-center gap-2 text-xs mb-1.5">
+                          <span className={`pill ${n.status === "open" ? "pill-warn" : "pill-ok"}`}>
+                            {n.status === "open" ? "⚠ open" : "✓ resolved"}
+                          </span>
+                          <span className="font-bold">{n.dept}</span>
+                          <span className="text-muted tabnum">{n.createdISO}</span>
+                          <span className="ml-auto flex items-center gap-2.5">
+                            {editingNote !== n.id && (
+                              <button
+                                type="button"
+                                onClick={() => { setEditingNote(n.id); setEditText(n.text); setNoteMsg(""); }}
+                                disabled={pending}
+                                className="text-accent hover:underline"
+                              >
+                                ✏️ Edit
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => toggleNoteStatus(n.id, n.status === "open" ? "resolved" : "open")}
+                              disabled={pending}
+                              className="text-accent hover:underline"
+                            >
+                              {n.status === "open" ? "Mark resolved" : "Reopen"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeNote(n.id)}
+                              disabled={pending}
+                              className="text-bad-fg hover:underline"
+                            >
+                              🗑 Delete
+                            </button>
+                          </span>
+                        </div>
+
+                        {editingNote === n.id ? (
+                          <div className="space-y-1.5">
+                            <textarea
+                              value={editText}
+                              onChange={(e) => setEditText(e.target.value)}
+                              rows={2}
+                              autoFocus
+                              className="w-full border rounded-md px-2 py-1.5 text-sm bg-surface"
+                              disabled={pending}
+                            />
+                            <div className="flex items-center justify-end gap-2 text-xs">
+                              <button type="button" onClick={() => setEditingNote(null)} className="text-muted hover:underline">Cancel</button>
+                              <button
+                                type="button"
+                                onClick={() => saveNoteEdit(n.id)}
+                                disabled={pending}
+                                className="rounded-md px-3 py-1 font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+                              >
+                                {pending ? "Saving…" : "Save"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          n.text && <p className="text-sm whitespace-pre-wrap leading-relaxed">{n.text}</p>
+                        )}
+
+                        {n.photos.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {n.photos.map((p) => (
+                              <a key={p} href={p} target="_blank" rel="noreferrer" title="Open full size">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={p} alt="note photo" className="h-20 w-20 object-cover rounded-lg border shadow-sm hover:opacity-80 transition-opacity" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
-                ))}
-                <form onSubmit={submitNote} className="bg-surface border rounded-lg p-2.5 space-y-2">
+                )}
+
+                <form onSubmit={submitNote} className="bg-surface border rounded-xl p-3 shadow-sm">
                   <input type="hidden" name="bom" value={r.bom} />
                   <input type="hidden" name="mo" value={r.mo} />
                   <input type="hidden" name="item" value={r.item} />
                   <input type="hidden" name="dept" value={dept} />
-                  <textarea
-                    name="text"
-                    required
-                    rows={2}
-                    placeholder={`What's really going on with ${r.mo || r.bom} ${r.item}? (missing parts, defects, disputed done claim…)`}
-                    className="w-full border rounded-md px-2 py-1.5 text-sm bg-surface"
-                    disabled={pending}
-                  />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input type="file" name="photos" accept="image/*" multiple className="text-xs" disabled={pending} />
-                    <button
-                      type="submit"
+                  <div className="flex flex-col md:flex-row gap-2.5">
+                    <textarea
+                      name="text"
+                      rows={2}
+                      placeholder={`What's really going on with ${r.mo || r.bom} ${r.item}? (optional when attaching photos)`}
+                      className="flex-1 border rounded-md px-2 py-1.5 text-sm bg-surface"
                       disabled={pending}
-                      className="ml-auto rounded-md px-3 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50 transition-colors"
-                    >
-                      {pending ? "Saving…" : "Save note"}
-                    </button>
+                    />
+                    <div className="flex md:flex-col items-end justify-between gap-2 md:w-60">
+                      <label className="w-full text-xs text-muted border border-dashed rounded-md px-2 py-1.5 cursor-pointer hover:border-brand transition-colors">
+                        📷 Attach photos
+                        <input type="file" name="photos" accept="image/*" multiple className="block w-full text-xs mt-1" disabled={pending} />
+                      </label>
+                      <button
+                        type="submit"
+                        disabled={pending}
+                        className="rounded-md px-4 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50 transition-colors whitespace-nowrap"
+                      >
+                        {pending ? "Saving…" : "Save note"}
+                      </button>
+                    </div>
                   </div>
-                  {noteMsg && <div className="text-[11px] text-bad-fg">{noteMsg}</div>}
+                  {noteMsg && <div className="text-[11px] text-bad-fg mt-1.5">{noteMsg}</div>}
                 </form>
               </div>
             </td>

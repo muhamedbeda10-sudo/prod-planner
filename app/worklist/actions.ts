@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { isItem, isDept } from "@/lib/domain/constants";
 import { parseISODate } from "@/lib/domain/dates";
@@ -71,6 +71,65 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
   }
 }
 
+const RETURN_UPSTREAM: Record<string, string> = { Welding: "Cut", Painting: "Welding" };
+
+/** Send a piece BACK upstream: a "finished" piece turned out incomplete.
+ *  Deducts the qty from the upstream ledger (negative entry, source "return")
+ *  and opens a row in the upstream dept's Returns table until re-delivered. */
+export async function returnToUpstream(formData: FormData): Promise<RecordResult> {
+  try {
+    const fromDept = String(formData.get("fromDept") ?? "");
+    const bom = String(formData.get("bom") ?? "").trim();
+    const mo = String(formData.get("mo") ?? "").trim();
+    const item = String(formData.get("item") ?? "").trim().toUpperCase();
+    const qty = Number(formData.get("qty"));
+    const reason = String(formData.get("reason") ?? "").trim();
+
+    const toDept = RETURN_UPSTREAM[fromDept];
+    if (!toDept) return { ok: false, error: "Invalid department." };
+    if (!bom || !isItem(item)) return { ok: false, error: "Invalid line." };
+    if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a quantity greater than zero." };
+    if (!reason) return { ok: false, error: "Write the reason — the upstream dept needs to know what to fix." };
+
+    // can only return what is actually WAITING in this queue (upstream − consumed)
+    const scope = mo ? { mo, item } : { bom, item };
+    const sums = await prisma.handoverEntry.groupBy({ by: ["dept"], where: scope, _sum: { qty: true } });
+    const tot = (d: string) => sums.find((s) => s.dept === d)?._sum.qty ?? 0;
+    const available = tot(toDept) - tot(fromDept);
+    if (qty > available) {
+      return { ok: false, error: `Only ${Math.max(0, available)} pcs are waiting in this queue — cannot return ${qty}.` };
+    }
+
+    const date = new Date();
+    await prisma.plan.upsert({ where: { planNo: 0 }, create: { planNo: 0, startDate: date }, update: {} });
+    await prisma.$transaction(async (tx) => {
+      const ledger = await tx.handoverEntry.create({
+        data: { date, dept: toDept, bom, mo: mo || null, item, qty: -qty, planNo: 0, source: "return", note: reason },
+      });
+      await tx.returnEntry.create({
+        data: { date, fromDept, toDept, bom, mo: mo || null, item, qty, reason, handoverId: ledger.id },
+      });
+    });
+    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
+      revalidatePath(p);
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Failed to return: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** Close a return once the piece was fixed and re-delivered (or reopen it). */
+export async function setReturnStatus(formData: FormData): Promise<RecordResult> {
+  const id = Number(formData.get("id"));
+  const status = String(formData.get("status") ?? "");
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
+  if (status !== "open" && status !== "resolved") return { ok: false, error: "Invalid status." };
+  await prisma.returnEntry.update({ where: { id }, data: { status } });
+  for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
+  return { ok: true };
+}
+
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB per photo
 const MAX_PHOTOS = 6;
 
@@ -87,9 +146,9 @@ export async function addQueueNote(formData: FormData): Promise<RecordResult> {
     if (!bom) return { ok: false, error: "Missing BOM." };
     if (!isItem(item)) return { ok: false, error: "Invalid component." };
     if (dept !== "Welding" && dept !== "Painting") return { ok: false, error: "Invalid department." };
-    if (!text) return { ok: false, error: "Write the note first." };
 
     const files = formData.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
+    if (!text && files.length === 0) return { ok: false, error: "Write a note or attach a photo." };
     if (files.length > MAX_PHOTOS) return { ok: false, error: `Max ${MAX_PHOTOS} photos per note.` };
 
     const urls: string[] = [];
@@ -117,6 +176,40 @@ export async function addQueueNote(formData: FormData): Promise<RecordResult> {
   } catch (e) {
     return { ok: false, error: `Failed to save note: ${e instanceof Error ? e.message : String(e)}` };
   }
+}
+
+/** Edit a note's text (photos stay as they are). */
+export async function updateQueueNote(formData: FormData): Promise<RecordResult> {
+  const id = Number(formData.get("id"));
+  const text = String(formData.get("text") ?? "").trim();
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
+  const note = await prisma.queueNote.findUnique({ where: { id } });
+  if (!note) return { ok: false, error: "Note not found." };
+  const photos: string[] = note.photos ? JSON.parse(note.photos) : [];
+  if (!text && photos.length === 0) return { ok: false, error: "A note needs text or a photo." };
+  await prisma.queueNote.update({ where: { id }, data: { text } });
+  revalidatePath("/worklist/welding");
+  revalidatePath("/worklist/painting");
+  return { ok: true };
+}
+
+/** Delete a note permanently, including its photo files. */
+export async function deleteQueueNote(formData: FormData): Promise<RecordResult> {
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
+  const note = await prisma.queueNote.findUnique({ where: { id } });
+  if (!note) return { ok: false, error: "Note not found." };
+  for (const p of note.photos ? (JSON.parse(note.photos) as string[]) : []) {
+    try {
+      await rm(path.join(process.cwd(), p));
+    } catch {
+      /* photo file already gone — fine */
+    }
+  }
+  await prisma.queueNote.delete({ where: { id } });
+  revalidatePath("/worklist/welding");
+  revalidatePath("/worklist/painting");
+  return { ok: true };
 }
 
 /** Resolve / reopen a queue note once the issue is checked. */

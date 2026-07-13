@@ -19,6 +19,7 @@ export interface OtdOrder {
   mo: string;
   planQty: number;
   osp?: Partial<Record<(typeof ITEMS)[number], number>>; // outsourced share per component — satisfied without in-house painting
+  excluded?: string[]; // components this project doesn't need at all
 }
 export interface OtdSchedule {
   planNo: number;
@@ -103,6 +104,7 @@ export function computeOtd(
     let anyNeed = false;
     let unreached = false;
     for (const it of ITEMS) {
+      if (o.excluded?.includes(it)) continue; // project doesn't need this component
       const need = o.planQty - (o.osp?.[it] ?? 0);
       if (need <= 0) continue; // fully outsourced component — nothing to paint in-house
       anyNeed = true;

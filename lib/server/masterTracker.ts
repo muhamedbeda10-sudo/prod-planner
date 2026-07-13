@@ -16,9 +16,9 @@ export interface MasterTrackerRow {
   urgent: boolean;
   kva: string | null;
   required: number; // planQty
-  items: Record<Item, { cut: number; weld: number; paint: number; osp: number }>;
-  welded: number; // MIN (weld + osp)
-  complete: number; // MIN (paint + osp) — drives Left + Achievement
+  items: Record<Item, { cut: number; weld: number; paint: number; osp: number; excluded: boolean }>;
+  welded: number; // MIN (weld + osp) over the REQUIRED items
+  complete: number; // MIN (paint + osp) over the REQUIRED items — drives Left + Achievement
   remaining: number;
   achievement: number | null;
   status: string; // open | closed
@@ -43,6 +43,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
 
   return orders.map((o) => {
     const ospOf: Record<Item, number> = { CF: o.ospCF, TC: o.ospTC, TN: o.ospTN, CB: o.ospCB };
+    const excluded = new Set((o.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
     const items = {} as MasterTrackerRow["items"];
     let welded = Infinity;
     let complete = Infinity;
@@ -52,7 +53,9 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       const cut = cap(g(o.mo, "Cut", it));
       const weld = cap(g(o.mo, "Welding", it));
       const paint = cap(g(o.mo, "Painting", it));
-      items[it] = { cut, weld, paint, osp };
+      const isExcluded = excluded.has(it);
+      items[it] = { cut, weld, paint, osp, excluded: isExcluded };
+      if (isExcluded) continue; // this project doesn't need the component — it can't gate completion
       welded = Math.min(welded, cap(weld + osp));
       complete = Math.min(complete, cap(paint + osp));
     }

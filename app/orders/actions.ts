@@ -32,6 +32,26 @@ function monthLabel(value: string): string | null {
   return `${MONTHS[idx]} ${m[1]}`;
 }
 
+/** Mark which components an order does NOT need (e.g. no Cable Box for this
+ *  project). The plan sheets can't express this, so it is set on the tracker.
+ *  Excluded items leave the cut worklist and stop gating completion/OTD. */
+export async function setExcludedItems(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const mo = String(formData.get("mo") ?? "").trim();
+  const raw = String(formData.get("excluded") ?? "").trim(); // CSV of CF/TC/TN/CB
+  if (!mo) return { ok: false, error: "Missing MO." };
+  const items = raw ? raw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
+  if (items.some((i) => !["CF", "TC", "TN", "CB"].includes(i))) return { ok: false, error: "Invalid component." };
+  if (items.length === 4) return { ok: false, error: "An order cannot exclude all four components." };
+  const order = await prisma.masterOrder.findUnique({ where: { mo } });
+  if (!order) return { ok: false, error: `MO ${mo} not found.` };
+  await prisma.masterOrder.update({
+    where: { mo },
+    data: { excludedItems: items.length > 0 ? items.join(",") : null },
+  });
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/report", "/trace", "/"]) revalidatePath(p);
+  return { ok: true };
+}
+
 export async function importMonthlyAction(formData: FormData): Promise<MonthlyImportResult> {
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose an Excel file." };
