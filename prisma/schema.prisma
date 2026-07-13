@@ -1,0 +1,187 @@
+// Production Planning & Tracking — data model
+// Mirrors the Excel workbook sheets (Plans, Plan Orders, Daily Handover, Lists).
+// Business values (BOM, item, dept) are English; UI is Arabic RTL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Weekly plan header. startDate is ALWAYS entered by the user, never trusted
+// from the imported file (Planning copies stale dates between sheets).
+model Plan {
+  planNo    Int      @id
+  startDate DateTime // real oven-week start date (day 0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    PlanOrder[]
+  schedules PlanSchedule[]
+}
+
+// One row per MO x item (Plan Orders sheet, cols A:J).
+// requiredQty = full order size; targetQty = what to make THIS week
+// (balance carried in + this week's grid); plannerBalance = remark-declared balance.
+model PlanOrder {
+  id             Int     @id @default(autoincrement())
+  planNo         Int
+  bom            String
+  soi            String?
+  mo             String
+  description    String?
+  item           String // CF | TC | TN | CB
+  requiredQty    Float   @default(0)
+  plannerBalance Float? // parsed from REMARK "...BALANCE..."; null if no balance remark
+  targetQty      Float   @default(0)
+  remark         String?
+
+  plan Plan @relation(fields: [planNo], references: [planNo], onDelete: Cascade)
+
+  @@unique([planNo, mo, item])
+  @@index([planNo])
+  @@index([bom])
+}
+
+// Flat schedule (Plans sheet, cols A:H). One row per BOM/MO x item x oven date.
+// ovenDate is the OVEN loading date; process due date = ovenDate - lead days.
+model PlanSchedule {
+  id          Int      @id @default(autoincrement())
+  planNo      Int
+  bom         String
+  soi         String?
+  mo          String
+  description String?
+  item        String // CF | TC | TN | CB
+  ovenDate    DateTime
+  qty         Float    @default(0)
+
+  plan Plan @relation(fields: [planNo], references: [planNo], onDelete: Cascade)
+
+  @@index([planNo])
+  @@index([bom])
+  @@index([ovenDate])
+}
+
+// Shop-floor handover log (Daily Handover sheet, cols A:F).
+// "Done" everywhere = Welding output. Cut gates Welding.
+// Rows are IMMUTABLE once written for reallocation purposes; edits are audited.
+model HandoverEntry {
+  id        Int      @id @default(autoincrement())
+  date      DateTime // work date (day-only granularity)
+  dept      String // Cut | Welding
+  bom       String // raw as entered (may be auto-corrected at entry time)
+  bomRaw    String? // original text before normalization, if corrected
+  mo        String? // manufacturing order, when recorded per-MO (execution sheet)
+  item      String // CF | TC | TN | CB
+  qty       Float
+  planNo    Int
+
+  // audit
+  source    String   @default("manual") // manual | import | seed | reallocation
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  @@index([planNo])
+  @@index([date])
+  @@index([bom])
+  @@index([dept])
+}
+
+// Explicit, reviewable excess-reallocation transaction (replaces the VBA's
+// silent edit of the handover log). Raw HandoverEntry rows stay immutable;
+// approved moves are applied as a derived adjustment layer.
+model ReallocationMove {
+  id        Int      @id @default(autoincrement())
+  planNo    Int
+  fromBom   String
+  toBom     String
+  dept      String // Cut | Welding
+  item      String // CF | TC | TN | CB
+  qty       Float
+  date      DateTime
+  reason    String
+  status    String   @default("proposed") // proposed | approved | rejected
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  decidedBy String?
+  decidedAt DateTime?
+
+  @@index([planNo])
+  @@index([status])
+}
+
+// Master order registry — fed by the MONTHLY plan. Import upserts by MO:
+// existing MOs are left untouched, new MOs are added. This is the general
+// orders list; weekly plans only contribute delivery schedules.
+model MasterOrder {
+  id        Int      @id @default(autoincrement())
+  mo        String   @unique
+  soi       String?
+  urgent    Boolean  @default(false)
+  customer  String?
+  fgCode    String?
+  bom       String
+  kva       String?
+  rating    String?
+  secItem   String?
+  planQty   Float    @default(0)
+  colorRal  String?
+  remarks   String?
+  source    String? // which monthly plan (month label) added it
+  status    String   @default("open") // open | closed
+  // OSP — quantities outsourced per component (made outside, not by our depts).
+  // They never appear in the dept worklists and count as covered in the tracker.
+  ospCF     Float    @default(0)
+  ospTC     Float    @default(0)
+  ospTN     Float    @default(0)
+  ospCB     Float    @default(0)
+  closedAt  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bom])
+  @@index([status])
+}
+
+// Factory calendar — non-working days besides Fridays (public holidays,
+// planned shutdowns). These days carry no production target.
+model Holiday {
+  id        Int      @id @default(autoincrement())
+  date      DateTime @unique // day-only granularity
+  name      String
+  createdAt DateTime @default(now())
+}
+
+// Shop-floor note on a queue line (welding/painting worklists): free text +
+// photos documenting the real state of an order — missing parts, defects,
+// disputed "done" claims. Photos live under public/uploads/notes.
+model QueueNote {
+  id        Int      @id @default(autoincrement())
+  bom       String
+  mo        String? // null for BOM-level legacy lines
+  item      String // CF | TC | TN | CB
+  dept      String // Welding | Painting — where the note was raised
+  text      String
+  photos    String? // JSON array of public URL paths
+  status    String   @default("open") // open | resolved
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bom, mo, item])
+  @@index([status])
+}
+
+// Global settings (Lists!J2:J5). Single row (id = 1).
+model Settings {
+  id              Int   @id @default(1)
+  leadCut         Int   @default(2)
+  leadWeld        Int   @default(1)
+  capacityPerItem Int   @default(27)
+  dailyTarget     Int   @default(27)
+}

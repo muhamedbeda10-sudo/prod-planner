@@ -1,0 +1,337 @@
+import { describe, it, expect } from "vitest";
+import {
+  attributeToMos,
+  computeExecutionRows,
+  computeWeldingQueue,
+  computePaintingQueue,
+  computeCascade,
+  computeCutTranches,
+  type ExecScheduleRow,
+  type ExecEntry,
+} from "./execution";
+import { utcDate } from "./dates";
+
+const caps = new Map<string, number>([
+  ["B1|MO-A|CF", 5],
+  ["B1|MO-B|CF", 3],
+]);
+const moOrder = new Map<string, string[]>([["B1", ["MO-A", "MO-B"]]]);
+
+describe("attributeToMos", () => {
+  it("counts MO-tagged entries directly against their MO", () => {
+    const out = attributeToMos([{ bom: "B1", mo: "MO-B", item: "CF", qty: 2 }], caps, moOrder);
+    expect(out.get("B1|MO-B|CF")).toBe(2);
+    expect(out.get("B1|MO-A|CF")).toBeUndefined();
+  });
+
+  it("attributes no-MO entries FIFO in plan order, capped per MO", () => {
+    const out = attributeToMos([{ bom: "B1", mo: null, item: "CF", qty: 6 }], caps, moOrder);
+    expect(out.get("B1|MO-A|CF")).toBe(5); // cap 5
+    expect(out.get("B1|MO-B|CF")).toBe(1); // remainder
+  });
+
+  it("sends excess beyond all caps to the LAST MO (like AllocateMultiMO)", () => {
+    const out = attributeToMos([{ bom: "B1", mo: null, item: "CF", qty: 12 }], caps, moOrder);
+    expect(out.get("B1|MO-A|CF")).toBe(5);
+    expect(out.get("B1|MO-B|CF")).toBe(7); // 3 cap + 4 excess
+  });
+
+  it("mixes direct and FIFO: direct fills reduce the FIFO room", () => {
+    const out = attributeToMos(
+      [
+        { bom: "B1", mo: "MO-A", item: "CF", qty: 4 },
+        { bom: "B1", mo: null, item: "CF", qty: 3 },
+      ],
+      caps,
+      moOrder
+    );
+    expect(out.get("B1|MO-A|CF")).toBe(5); // 4 direct + 1 FIFO (room = 5-4)
+    expect(out.get("B1|MO-B|CF")).toBe(2);
+  });
+});
+
+describe("computeExecutionRows", () => {
+  const day = utcDate(2026, 7, 13);
+  const schedules: ExecScheduleRow[] = [
+    { bom: "B1", mo: "MO-A", description: "1000kva", item: "CF", ovenDate: utcDate(2026, 7, 14), qty: 5 }, // due for weld (lead 1)
+    { bom: "B1", mo: "MO-B", description: "1000kva", item: "CF", ovenDate: utcDate(2026, 7, 20), qty: 3 }, // not due yet
+  ];
+
+  it("lists only lines with work due, per MO, with plan totals", () => {
+    const rows = computeExecutionRows({ schedules, entries: [], day, lead: 1, dept: "Welding" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ bom: "B1", mo: "MO-A", item: "CF", dueToDate: 5, totalPlanned: 5, still: 5 });
+  });
+
+  it("welding rows expose per-MO cutReady = cut(≤yesterday) − welded", () => {
+    const entries: ExecEntry[] = [
+      { dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 4, date: utcDate(2026, 7, 12) },
+      { dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 1, date: utcDate(2026, 7, 13) },
+    ];
+    const rows = computeExecutionRows({ schedules, entries, day, lead: 1, dept: "Welding" });
+    expect(rows[0].doneToDate).toBe(1);
+    expect(rows[0].doneToday).toBe(1);
+    expect(rows[0].still).toBe(4);
+    expect(rows[0].cutReady).toBe(3); // 4 cut yesterday − 1 welded
+  });
+
+  it("legacy no-MO output reduces the right MO via FIFO", () => {
+    const entries: ExecEntry[] = [
+      { dept: "Cut", bom: "B1", mo: null, item: "CF", qty: 2, date: utcDate(2026, 7, 12) },
+    ];
+    const rows = computeExecutionRows({ schedules, entries, day, lead: 2, dept: "Cut" });
+    const a = rows.find((r) => r.mo === "MO-A")!;
+    expect(a.doneToDate).toBe(2);
+    expect(a.still).toBe(3);
+  });
+});
+
+describe("computeCascade — unscheduled backlog under the scheduled work", () => {
+  const day = utcDate(2026, 7, 13);
+  const orders = [
+    { bom: "B1", mo: "MO-A", description: "1000kva", item: "CF", targetQty: 10 },
+    { bom: "B1", mo: "MO-B", description: "1000kva", item: "CF", targetQty: 4 }, // never scheduled
+  ];
+  const schedules: ExecScheduleRow[] = [
+    { bom: "B1", mo: "MO-A", description: "1000kva", item: "CF", ovenDate: utcDate(2026, 7, 14), qty: 6 },
+  ];
+
+  it("pool = target − scheduled; pure-backlog MOs appear with scheduled 0", () => {
+    const rows = computeCascade({ orders, schedules, entries: [], day, dept: "Cut" });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ mo: "MO-A", target: 10, scheduled: 6, available: 4 });
+    expect(rows[1]).toMatchObject({ mo: "MO-B", target: 4, scheduled: 0, available: 4 });
+  });
+
+  it("output beyond the schedule eats the pool; fully-covered lines disappear", () => {
+    const entries: ExecEntry[] = [
+      { dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 8, date: day }, // 6 sched + 2 extra
+      { dept: "Cut", bom: "B1", mo: "MO-B", item: "CF", qty: 4, date: day }, // consumes all backlog
+    ];
+    const rows = computeCascade({ orders, schedules, entries, day, dept: "Cut" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ mo: "MO-A", done: 8, available: 2 }); // 10 − max(6,8)
+  });
+
+  it("keeps the OLD promised date on lines the new plan did not reschedule", () => {
+    const rows = computeCascade({
+      orders: [{ bom: "B9", mo: "MO-Z", item: "CF", targetQty: 10 }],
+      schedules: [], // not on this week's schedule at all
+      entries: [{ dept: "Cut", bom: "B9", mo: "MO-Z", item: "CF", qty: 3, date: utcDate(2026, 7, 6) }],
+      day,
+      dept: "Cut",
+      allSchedules: [
+        { planNo: 27, bom: "B9", mo: "MO-Z", item: "CF", ovenDate: utcDate(2026, 7, 5), qty: 2 }, // fully cut → closed
+        { planNo: 27, bom: "B9", mo: "MO-Z", item: "CF", ovenDate: utcDate(2026, 7, 7), qty: 8 }, // still open
+      ],
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].deliveryISO).toBe("2026-07-07"); // the old promise survives the new import
+  });
+
+  it("fully-scheduled lines never show in the cascade", () => {
+    const rows = computeCascade({
+      orders: [{ bom: "B2", mo: "MO-C", item: "TN", targetQty: 5 }],
+      schedules: [{ bom: "B2", mo: "MO-C", item: "TN", ovenDate: day, qty: 5 }],
+      entries: [],
+      day,
+      dept: "Cut",
+    });
+    expect(rows).toHaveLength(0);
+  });
+});
+
+describe("computeWeldingQueue — the welding screen is ONLY what was cut", () => {
+  const day = utcDate(2026, 7, 13);
+  const schedules = [
+    { planNo: 28, bom: "B1", mo: "MO-A", description: "1000kva", item: "CF", ovenDate: utcDate(2026, 7, 20), qty: 5 },
+  ];
+
+  it("a piece cut TODAY is available to weld today (no D-1 rule, no schedule gating)", () => {
+    // oven date is far in the future — schedule would say "not due"; the queue doesn't care
+    const entries = [
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 4, date: day }, // cut TODAY
+    ];
+    const rows = computeWeldingQueue({ schedules, entries, day });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ bom: "B1", mo: "MO-A", item: "CF", cutToDate: 4, weldedToDate: 0, available: 4 });
+  });
+
+  it("welding consumes the queue; fully-welded lines disappear (unless welded today)", () => {
+    const entries = [
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 4, date: utcDate(2026, 7, 12) },
+      { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 4, date: day },
+    ];
+    const rows = computeWeldingQueue({ schedules, entries, day });
+    expect(rows).toHaveLength(1); // still shown because welded today
+    expect(rows[0].available).toBe(0);
+    expect(rows[0].weldedToday).toBe(4);
+    // the next day it is gone
+    const tomorrow = computeWeldingQueue({ schedules, entries, day: utcDate(2026, 7, 14) });
+    expect(tomorrow).toHaveLength(0);
+  });
+
+  it("WIP from an OLD plan stays in the queue until welded (progress is global)", () => {
+    const entries = [
+      { planNo: 27, dept: "Cut", bom: "OLD1E11M11", mo: "MO-X", item: "TN", qty: 3, date: utcDate(2026, 7, 6) },
+    ];
+    const scheds = [
+      { planNo: 27, bom: "OLD1E11M11", mo: "MO-X", item: "TN", ovenDate: utcDate(2026, 7, 7), qty: 3 },
+      ...schedules,
+    ];
+    const rows = computeWeldingQueue({ schedules: scheds, entries, day });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ bom: "OLD1E11M11", available: 3 });
+  });
+
+  it("the SAME MO worked under different plans is ONE queue line (global per MO)", () => {
+    const entries = [
+      { planNo: 0, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 3, date: utcDate(2026, 7, 1) }, // setup
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 2, date: day }, // this week
+      { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 1, date: day },
+    ];
+    const rows = computeWeldingQueue({ schedules, entries, day });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ bom: "B1", mo: "MO-A", cutToDate: 5, weldedToDate: 1, available: 4 });
+  });
+
+  it("painting queue chains off WELDING output (Cut → Welding → Painting)", () => {
+    const entries = [
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 5, date: utcDate(2026, 7, 12) },
+      { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 3, date: day },
+      { planNo: 28, dept: "Painting", bom: "B1", mo: "MO-A", item: "CF", qty: 1, date: day },
+    ];
+    // welding queue: cut 5 − welded 3 = 2 available
+    const weldQ = computeWeldingQueue({ schedules, entries, day });
+    expect(weldQ[0].available).toBe(2);
+    // painting queue: welded 3 − painted 1 = 2 available (welded TODAY counts immediately)
+    const paintQ = computePaintingQueue({ schedules, entries, day });
+    expect(paintQ).toHaveLength(1);
+    expect(paintQ[0]).toMatchObject({ bom: "B1", mo: "MO-A", item: "CF", cutToDate: 3, weldedToDate: 1, available: 2 });
+  });
+
+  it("carries the next open delivery date; weld due = D−1, paint due = D", () => {
+    const entries = [
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 4, date: day },
+    ];
+    const weldQ = computeWeldingQueue({ schedules, entries, day }); // delivery 20/07
+    expect(weldQ[0].deliveryISO).toBe("2026-07-20");
+    expect(weldQ[0].dueISO).toBe("2026-07-19"); // one day before delivery
+    const paintQ = computePaintingQueue({
+      schedules,
+      entries: [...entries, { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 2, date: day }],
+      day,
+    });
+    expect(paintQ[0].deliveryISO).toBe("2026-07-20");
+    expect(paintQ[0].dueISO).toBe("2026-07-20"); // painting due the delivery day itself
+  });
+
+  it("this dept's own output consumes delivery tranches FIFO — the date advances", () => {
+    const scheds = [
+      { planNo: 28, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 15), qty: 2 },
+      { planNo: 28, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 22), qty: 3 },
+    ];
+    const entries = [
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 5, date: utcDate(2026, 7, 12) },
+      { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 2, date: day }, // first tranche fully welded
+    ];
+    const rows = computeWeldingQueue({ schedules: scheds, entries, day });
+    expect(rows[0].deliveryISO).toBe("2026-07-22"); // 15/07 tranche done → next open delivery
+  });
+
+  it("a NEWER plan's schedule supersedes the old dates for the same MO", () => {
+    const scheds = [
+      { planNo: 28, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 8), qty: 10 }, // old promise (missed)
+      { planNo: 29, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 16), qty: 6 }, // re-promised remainder
+    ];
+    const entries = [
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 10, date: utcDate(2026, 7, 6) },
+      { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 4, date: utcDate(2026, 7, 7) },
+    ];
+    const rows = computeWeldingQueue({ schedules: scheds, entries, day });
+    expect(rows[0].deliveryISO).toBe("2026-07-16"); // NOT the missed 08/07 — the new promise wins
+    expect(rows[0].dueISO).toBe("2026-07-15");
+    // output credited to the old promise (≤10) does not consume the new tranche:
+    // 12 welded = 10 old + 2 new → the 16/07 tranche is still open
+    const more = [...entries, { planNo: 29, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 8, date: day }];
+    const rows2 = computeWeldingQueue({
+      schedules: scheds,
+      entries: [...more, { planNo: 29, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 6, date: day }],
+      day,
+    });
+    expect(rows2[0].deliveryISO).toBe("2026-07-16");
+  });
+
+  it("the OSP share never reaches the dept queues (in-house cap)", () => {
+    const entries = [
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "TN", qty: 5, date: day },
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-B", item: "TN", qty: 5, date: day },
+    ];
+    const inhouseCap = new Map([
+      ["B1|MO-A|TN", 0], // fully outsourced — line disappears
+      ["B1|MO-B|TN", 3], // partial: 5 planned, 2 outsourced → only 3 in-house
+    ]);
+    const rows = computeWeldingQueue({ schedules, entries, day, inhouseCap });
+    expect(rows.find((r) => r.mo === "MO-A")).toBeUndefined();
+    expect(rows.find((r) => r.mo === "MO-B")!.available).toBe(3);
+  });
+
+  it("cut on unknown/legacy codes (no plan lines) still reaches the queue at BOM level", () => {
+    const entries = [
+      { planNo: 27, dept: "Cut", bom: "US05-134M12", mo: null, item: "CB", qty: 4, date: utcDate(2026, 7, 9) },
+    ];
+    const rows = computeWeldingQueue({ schedules, entries, day });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ bom: "US05-134M12", mo: "", item: "CB", available: 4 });
+  });
+});
+
+describe("computeCutTranches — due today / overdue-with-date / future hidden", () => {
+  const day = utcDate(2026, 7, 13); // today
+  const lead = 2;
+  const schedules: ExecScheduleRow[] = [
+    // delivery 13/07 -> cut-due 11/07 (PASSED) — overdue if not done
+    { bom: "B1", mo: "MO-A", description: "1000kva", item: "CF", ovenDate: utcDate(2026, 7, 13), qty: 3 },
+    // delivery 15/07 -> cut-due 13/07 (TODAY) — due now
+    { bom: "B1", mo: "MO-A", description: "1000kva", item: "CF", ovenDate: utcDate(2026, 7, 15), qty: 4 },
+    // delivery 18/07 -> cut-due 16/07 (future) — hidden until its day
+    { bom: "B1", mo: "MO-A", description: "1000kva", item: "CF", ovenDate: utcDate(2026, 7, 18), qty: 5 },
+  ];
+
+  it("splits: passed date -> overdue (with the original delivery date), today -> due now, future hidden", () => {
+    const { dueNow, overdue } = computeCutTranches({ schedules, entries: [], day, lead });
+    expect(overdue).toHaveLength(1);
+    expect(overdue[0]).toMatchObject({ deliveryISO: "2026-07-13", qty: 3, remaining: 3 });
+    expect(dueNow).toHaveLength(1);
+    expect(dueNow[0]).toMatchObject({ deliveryISO: "2026-07-15", qty: 4, remaining: 4 });
+  });
+
+  it("global done consumes the EARLIEST tranche first (overdue clears before due-now)", () => {
+    const entries: ExecEntry[] = [
+      { dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 5, date: utcDate(2026, 7, 12) },
+    ];
+    const { dueNow, overdue } = computeCutTranches({ schedules, entries, day, lead });
+    expect(overdue).toHaveLength(0); // 3 consumed the overdue tranche fully
+    expect(dueNow).toHaveLength(1);
+    expect(dueNow[0].remaining).toBe(2); // 4 − remaining 2 credit
+  });
+
+  it("setup/no-MO output counts too (FIFO attribution then FIFO by date)", () => {
+    const entries: ExecEntry[] = [
+      { dept: "Cut", bom: "B1", mo: null, item: "CF", qty: 12, date: utcDate(2026, 7, 1) },
+    ];
+    const { dueNow, overdue } = computeCutTranches({ schedules, entries, day, lead });
+    expect(overdue).toHaveLength(0);
+    expect(dueNow).toHaveLength(0); // 3+4 consumed; remaining 5 credit eats the future tranche
+  });
+
+  it("re-importing with NEW dates re-buckets everything (new schedule, same engine)", () => {
+    // the overdue 13/07 tranche got re-planned to 16/07 in the new weekly plan
+    const rescheduled: ExecScheduleRow[] = [
+      { bom: "B1", mo: "MO-A", description: "1000kva", item: "CF", ovenDate: utcDate(2026, 7, 16), qty: 3 },
+    ];
+    const { dueNow, overdue } = computeCutTranches({ schedules: rescheduled, entries: [], day, lead });
+    expect(overdue).toHaveLength(0); // no longer overdue — it has a fresh date
+    expect(dueNow).toHaveLength(0); // cut-due 14/07 is tomorrow
+  });
+});

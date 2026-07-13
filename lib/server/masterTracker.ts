@@ -1,0 +1,76 @@
+import "server-only";
+import { prisma } from "@/lib/db";
+import { ITEMS, type Item } from "@/lib/domain/constants";
+
+// Plan Tracker on the MONTHLY registry: one row per MO. Progress is GLOBAL —
+// setup balances plus every logged output, regardless of week — capped at the
+// order's plan qty. Complete = MIN painted across the four components (a
+// transformer only counts once it left Painting).
+// OSP quantities (outsourced components) count as covered: our depts never
+// make them, so they credit weld/paint when computing sets.
+
+export interface MasterTrackerRow {
+  mo: string;
+  bom: string;
+  soi: string | null;
+  urgent: boolean;
+  kva: string | null;
+  required: number; // planQty
+  items: Record<Item, { cut: number; weld: number; paint: number; osp: number }>;
+  welded: number; // MIN (weld + osp)
+  complete: number; // MIN (paint + osp) — drives Left + Achievement
+  remaining: number;
+  achievement: number | null;
+  status: string; // open | closed
+}
+
+export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
+  const [orders, sums] = await Promise.all([
+    prisma.masterOrder.findMany({ orderBy: [{ urgent: "desc" }, { mo: "asc" }] }),
+    prisma.handoverEntry.groupBy({
+      by: ["mo", "dept", "item"],
+      where: { mo: { not: null } },
+      _sum: { qty: true },
+    }),
+  ]);
+
+  const done = new Map<string, number>(); // mo|dept|item -> qty
+  for (const s of sums) {
+    if (!s.mo) continue;
+    done.set(`${s.mo}|${s.dept}|${s.item}`, s._sum.qty ?? 0);
+  }
+  const g = (mo: string, dept: string, item: string) => done.get(`${mo}|${dept}|${item}`) ?? 0;
+
+  return orders.map((o) => {
+    const ospOf: Record<Item, number> = { CF: o.ospCF, TC: o.ospTC, TN: o.ospTN, CB: o.ospCB };
+    const items = {} as MasterTrackerRow["items"];
+    let welded = Infinity;
+    let complete = Infinity;
+    for (const it of ITEMS) {
+      const cap = (v: number) => (o.planQty > 0 ? Math.min(v, o.planQty) : v);
+      const osp = ospOf[it];
+      const cut = cap(g(o.mo, "Cut", it));
+      const weld = cap(g(o.mo, "Welding", it));
+      const paint = cap(g(o.mo, "Painting", it));
+      items[it] = { cut, weld, paint, osp };
+      welded = Math.min(welded, cap(weld + osp));
+      complete = Math.min(complete, cap(paint + osp));
+    }
+    if (!Number.isFinite(welded)) welded = 0;
+    if (!Number.isFinite(complete)) complete = 0;
+    return {
+      mo: o.mo,
+      bom: o.bom,
+      soi: o.soi,
+      urgent: o.urgent,
+      kva: o.kva,
+      required: o.planQty,
+      items,
+      welded,
+      complete,
+      remaining: Math.max(0, o.planQty - complete),
+      achievement: o.planQty > 0 ? complete / o.planQty : null,
+      status: o.status,
+    };
+  });
+}

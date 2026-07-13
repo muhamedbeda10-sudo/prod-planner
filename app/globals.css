@@ -1,0 +1,240 @@
+@import "tailwindcss";
+
+/* Arabian Transformers Co. (ATC) brand palette
+   green #1a8150 · gray #717171 · clean white surfaces */
+:root {
+  --background: #f4f7f5;
+  --surface: #ffffff;
+  --foreground: #1d2521;
+  --muted: #6b7570;
+  --border: #dbe4de;
+  --brand: #1a8150; /* ATC green */
+  --brand-dark: #136041; /* hover / emphasis */
+  --brand-light: #e4f2ea; /* subtle green tint */
+  --accent: #1a8150;
+  --accent-gray: #717171; /* ATC secondary gray */
+
+  /* status semantics (kept from the legacy workbook, harmonized with brand) */
+  --ok-bg: #dcefe4;
+  --ok-fg: #136041;
+  --warn-bg: #fff2cc;
+  --warn-fg: #7f6000;
+  --bad-bg: #fbd9d3;
+  --bad-fg: #9c2006;
+
+  /* worklist column tints — Cut = brand green tint, Welding = steel blue tint
+     (functional colors carried over from the workbook) */
+  --cut-tint: #e0efe4;
+  --weld-tint: #dfeaf3;
+  --paint-tint: #f3ecdf;
+  --zebra: #f3f8f5;
+
+  color-scheme: light;
+}
+
+/* ============ dark mode ============ */
+html.dark {
+  --background: #101512;
+  --surface: #181f1b;
+  --foreground: #e6ece8;
+  --muted: #93a099;
+  --border: #2a352e;
+  --brand: #1f9660; /* slightly brighter green for dark surfaces */
+  --brand-dark: #17714a;
+  --brand-light: #1b2f25;
+  --accent: #3fb981;
+  --accent-gray: #9aa39d;
+
+  --ok-bg: #14352a;
+  --ok-fg: #7fd6a8;
+  --warn-bg: #3a3313;
+  --warn-fg: #e8c95c;
+  --bad-bg: #3d1f1a;
+  --bad-fg: #f0937e;
+
+  --cut-tint: #1c2f24;
+  --weld-tint: #1c2836;
+  --paint-tint: #302a1c;
+  --zebra: #151c18;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-light: var(--brand-light);
+  --color-accent: var(--accent);
+  --color-accent-gray: var(--accent-gray);
+  --color-ok-bg: var(--ok-bg);
+  --color-ok-fg: var(--ok-fg);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-fg: var(--warn-fg);
+  --color-bad-bg: var(--bad-bg);
+  --color-bad-fg: var(--bad-fg);
+  --color-cut-tint: var(--cut-tint);
+  --color-weld-tint: var(--weld-tint);
+  --color-paint-tint: var(--paint-tint);
+  --color-zebra: var(--zebra);
+  --font-sans: var(--font-sans-latin);
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans-latin), "Segoe UI", system-ui, sans-serif;
+}
+
+/* ============ unified design system ============ */
+
+/* every data table in the app: compact uppercase headers, calm row hover */
+:root { --row-hover: #e9f2ec; }
+html.dark { --row-hover: #1e2822; }
+
+main table thead th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+main table tbody tr {
+  transition: background-color 0.12s ease;
+}
+main table tbody tr:hover {
+  background-color: var(--row-hover);
+}
+main table tbody td {
+  border-bottom: 1px solid var(--border);
+}
+main table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* every section heading in the app: quiet uppercase label */
+main h2 {
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 800;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+/* consistent focus rings */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* calm scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* numbers / BOM codes read LTR even inside RTL layout */
+.ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.tabnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* status pills */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  padding: 0.075rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pill-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.pill-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.pill-bad { background: var(--bad-bg); color: var(--bad-fg); }
+.pill-muted { background: #eef1ef; color: var(--muted); }
+html.dark .pill-muted { background: #232d27; }
+
+/* ---- top navigation: centered tabs with motion ---- */
+.nav-tab {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+  padding: 7px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 9999px;
+  color: rgb(255 255 255 / 0.78);
+  transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.nav-tab:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 0.12);
+  transform: translateY(-1px);
+}
+.nav-tab:active {
+  transform: translateY(0) scale(0.98);
+}
+.nav-tab-active,
+.nav-tab-active:hover {
+  background: #fff;
+  color: var(--brand);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.22);
+}
+
+@keyframes navdrop {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.nav-drop { animation: navdrop 0.16s ease-out; transform-origin: top right; }
+
+/* recharts readability on dark surfaces */
+html.dark .recharts-cartesian-grid line { stroke: #2f3a33; }
+html.dark .recharts-text { fill: #aab5ae; }
+html.dark .recharts-default-tooltip {
+  background-color: #1f2823 !important;
+  border-color: #2f3a33 !important;
+}
+html.dark .recharts-tooltip-item, html.dark .recharts-tooltip-label { color: #e6ece8 !important; }
+html.dark .recharts-legend-item-text { color: #aab5ae !important; }
+
+.print-only { display: none; }
+
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  body { background: #fff; }
+  .print-break { break-after: page; }
+  main { padding: 0 !important; }
+  /* worklists print as clean read-only sheets: no inputs, no action buttons */
+  table input, table button, table textarea { display: none !important; }
+}
+
+/* ---- sticky table headers: long tables scroll inside their card and the
+   header row stays pinned at the top while scrolling ---- */
+div.overflow-x-auto:has(> table) {
+  max-height: 78vh;
+  overflow-y: auto;
+}
+div.overflow-x-auto > table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+@media print {
+  div.overflow-x-auto:has(> table) { max-height: none; overflow: visible; }
+}
