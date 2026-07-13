@@ -130,7 +130,7 @@ export function WeldingQueueTable({
     });
   }
 
-  const renderRow = (r: WeldQueueRow, inGroup = false) => {
+  const renderRow = (r: WeldQueueRow, inGroup = false, lastInGroup = false) => {
     const k = keyOf(r);
     const cleared = r.available === 0;
     const overdue = !!r.dueISO && r.dueISO < day;
@@ -138,9 +138,11 @@ export function WeldingQueueTable({
     const noteKey = `${r.bom}|${r.mo}|${r.item}`;
     const lineNotes = notes[noteKey] ?? [];
     const openCount = lineNotes.filter((n) => n.status === "open").length;
+    // frame: open groups get a clear border so their extent is obvious
+    const frame = inGroup ? `border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
     return (
       <Fragment key={k}>
-        <tr className={`${cleared ? "opacity-60" : ""} ${inGroup ? "bg-brand-light/10" : ""}`}>
+        <tr className={`${cleared ? "opacity-60" : ""} ${inGroup ? "bg-brand-light/10" : ""} ${frame}`}>
           <td className="p-2 whitespace-nowrap">
             {r.deliveryISO ? (
               <span className={`pill ${overdue ? "pill-bad" : dueToday ? "pill-warn" : "pill-ok"}`}>
@@ -216,7 +218,7 @@ export function WeldingQueueTable({
           </td>
         </tr>
         {openNotes === noteKey && (
-          <tr>
+          <tr className={inGroup ? "border-x-2 border-brand" : ""}>
             <td colSpan={cols} className="p-3 bg-brand-light/30 border-y">
               <div className="max-w-3xl space-y-2">
                 {lineNotes.length === 0 && (
@@ -348,7 +350,7 @@ export function WeldingQueueTable({
               return (
                 <Fragment key={`g|${gk}`}>
                   <tr
-                    className="cursor-pointer bg-brand-light/30 hover:bg-brand-light/60 transition-colors font-semibold"
+                    className={`cursor-pointer bg-brand-light/30 hover:bg-brand-light/60 transition-colors font-semibold ${open ? "border-x-2 border-t-2 border-brand" : ""}`}
                     onClick={() => toggleGroup(gk)}
                     title={open ? "Collapse MOs" : "Show the MOs inside this BOM"}
                   >
@@ -389,7 +391,7 @@ export function WeldingQueueTable({
                       {openNoteCount > 0 ? <span className="pill pill-bad">📝 {openNoteCount}</span> : <span className="text-muted text-xs">—</span>}
                     </td>
                   </tr>
-                  {open && members.map((m) => renderRow(m, true))}
+                  {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
                 </Fragment>
               );
             })}

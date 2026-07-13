@@ -84,8 +84,12 @@ html.dark {
   --font-sans: var(--font-sans-latin);
 }
 
-* {
-  border-color: var(--border);
+/* default border color lives in the base layer so utility classes
+   (e.g. border-brand on expanded group frames) can override it */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 body {

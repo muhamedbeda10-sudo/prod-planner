@@ -87,10 +87,12 @@ export function CutTrancheTable({
     });
   }
 
-  const renderRow = (r: CutTranche, inGroup = false) => {
+  const renderRow = (r: CutTranche, inGroup = false, lastInGroup = false) => {
     const k = keyOf(r);
+    // frame: open groups get a clear border so their extent is obvious
+    const frame = inGroup ? `bg-brand-light/10 border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
     return (
-      <tr key={k} className={inGroup ? "bg-brand-light/10" : ""}>
+      <tr key={k} className={frame}>
         <td className="p-2 whitespace-nowrap">
           <span className={`pill ${variant === "overdue" ? "pill-bad" : "pill-ok"}`}>
             📅 {ddmm(r.deliveryISO)}
@@ -181,7 +183,7 @@ export function CutTrancheTable({
               return (
                 <Fragment key={`g|${gk}`}>
                   <tr
-                    className="cursor-pointer bg-brand-light/30 hover:bg-brand-light/60 transition-colors font-semibold"
+                    className={`cursor-pointer bg-brand-light/30 hover:bg-brand-light/60 transition-colors font-semibold ${open ? "border-x-2 border-t-2 border-brand" : ""}`}
                     onClick={() => toggleGroup(gk)}
                     title={open ? "Collapse MOs" : "Show the MOs inside this BOM"}
                   >
@@ -201,7 +203,7 @@ export function CutTrancheTable({
                     </td>
                     <td className="p-2 text-center text-xs text-muted whitespace-nowrap">{open ? "▲ collapse" : "▼ open MOs"}</td>
                   </tr>
-                  {open && members.map((m) => renderRow(m, true))}
+                  {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
                 </Fragment>
               );
             })}

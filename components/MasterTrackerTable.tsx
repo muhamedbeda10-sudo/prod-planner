@@ -157,7 +157,7 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
               return (
                 <Fragment key={`g|${gBom}`}>
                   <tr
-                    className="cursor-pointer bg-brand-light/30 hover:bg-brand-light/60 transition-colors font-semibold"
+                    className={`cursor-pointer bg-brand-light/30 hover:bg-brand-light/60 transition-colors font-semibold ${open ? "border-x-2 border-t-2 border-brand" : ""}`}
                     onClick={() => toggleGroup(gBom)}
                     title={open ? "Collapse MOs" : "Show the MOs inside this BOM"}
                   >
@@ -188,7 +188,7 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
                     </td>
                     <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap">{open ? "▲ collapse" : "▼ open MOs"}</td>
                   </tr>
-                  {open && members.map((m) => renderRow(m, true))}
+                  {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
                 </Fragment>
               );
             })}
@@ -198,9 +198,11 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
     </>
   );
 
-  function renderRow(r: MasterTrackerRow, inGroup = false) {
+  function renderRow(r: MasterTrackerRow, inGroup = false, lastInGroup = false) {
+    // frame: open groups get a clear border so their extent is obvious
+    const frame = inGroup ? `bg-brand-light/10 border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
     return (
-              <tr key={r.mo} className={inGroup ? "bg-brand-light/10" : ""}>
+              <tr key={r.mo} className={frame}>
                 <td className={`p-2 font-bold whitespace-nowrap text-xs ${inGroup ? "pl-6" : ""}`}>
                   {inGroup && <span className="text-muted mr-1">↳</span>}
                   <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline">{r.mo}</Link>
