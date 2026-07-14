@@ -9,7 +9,7 @@ import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
 import type { ReturnRowDTO } from "@/lib/server/returns";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
-import { ITEMS } from "@/lib/domain/constants";
+import { ITEMS, DEFAULTS } from "@/lib/domain/constants";
 
 /** The cut page's three tables under ONE shared filter — typing once narrows
  *  due-today, overdue and the undated backlog together. */
@@ -21,6 +21,7 @@ export function CutWorklistView({
   planNo,
   returns = [],
   notes = {},
+  capacity = DEFAULTS.capacityPerItem,
 }: {
   dueNow: CutTranche[];
   overdue: CutTranche[];
@@ -29,6 +30,7 @@ export function CutWorklistView({
   planNo: number | null;
   returns?: ReturnRowDTO[];
   notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
+  capacity?: number; // pcs/item/working day — feeds the at-risk early warning
 }) {
   const [q, setQ] = useState("");
   const [item, setItem] = useState("");
@@ -105,7 +107,7 @@ export function CutWorklistView({
             No weekly plan covers today — import the new weekly schedule. The backlogs below still work.
           </p>
         ) : (
-          <CutTrancheTable rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} />
+          <CutTrancheTable rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} />
         )}
       </section>
 

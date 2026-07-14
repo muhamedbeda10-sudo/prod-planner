@@ -8,6 +8,8 @@ import { recordOutput } from "@/app/worklist/actions";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 import { Frac } from "@/components/Frac";
+import { DEFAULTS } from "@/lib/domain/constants";
+import { assessDeliveryRisk } from "@/lib/domain/insights";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -20,6 +22,7 @@ export function CutTrancheTable({
   variant, // "due" = due today · "overdue" = missed dates (red date badge)
   hideFilter = false, // the cut page has ONE shared filter above all tables
   notes = {},
+  capacity = DEFAULTS.capacityPerItem,
 }: {
   rows: CutTranche[];
   day: string;
@@ -27,6 +30,7 @@ export function CutTrancheTable({
   variant: "due" | "overdue";
   hideFilter?: boolean;
   notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
+  capacity?: number; // pcs/item/working day — feeds the at-risk early warning
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -100,6 +104,11 @@ export function CutTrancheTable({
     const k = keyOf(r);
     const noteKey = `${r.bom}|${r.mo}|${r.item}`;
     const lineNotes = notes[noteKey] ?? [];
+    // early warning (due lines only): more pieces remain than one day of
+    // capacity can cut — this line will join the overdue list unless split
+    const atRisk =
+      variant === "due" &&
+      assessDeliveryRisk({ dueISO: r.cutDueISO, dueQty: r.remaining }, day, capacity) === "at-risk";
     // frame: open groups get a clear border so their extent is obvious
     const frame = inGroup ? `bg-brand-light/10 border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
     return (
@@ -109,6 +118,14 @@ export function CutTrancheTable({
           <span className={`pill ${variant === "overdue" ? "pill-bad" : "pill-ok"}`}>
             📅 {ddmm(r.deliveryISO)}
           </span>
+          {atRisk && (
+            <span
+              className="pill pill-bad ml-1"
+              title={`Likely to slip: ${r.remaining} pcs remaining exceeds one day of capacity (${capacity}/item)`}
+            >
+              ⚠ at risk
+            </span>
+          )}
         </td>
         <td className={`p-2 text-xs font-semibold whitespace-nowrap ${inGroup ? "pl-6" : ""}`}>
           {inGroup && <span className="text-muted mr-1">↳</span>}

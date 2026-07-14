@@ -10,7 +10,8 @@ import { Frac } from "@/components/Frac";
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
 import type { ReturnRowDTO } from "@/lib/server/returns";
-import { ITEMS } from "@/lib/domain/constants";
+import { ITEMS, DEFAULTS } from "@/lib/domain/constants";
+import { assessDeliveryRisk } from "@/lib/domain/insights";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -23,6 +24,7 @@ export function WeldingQueueTable({
   upstream = "Cut",
   notes = {},
   returns = [],
+  capacity = DEFAULTS.capacityPerItem,
 }: {
   rows: WeldQueueRow[];
   day: string;
@@ -30,6 +32,7 @@ export function WeldingQueueTable({
   upstream?: string;
   notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
   returns?: ReturnRowDTO[]; // pieces sent back TO this dept (shown under the filter)
+  capacity?: number; // pcs/item/working day — feeds the at-risk early warning
 }) {
   const verb = dept === "Welding" ? "weld" : "paint";
   const router = useRouter();
@@ -198,6 +201,9 @@ export function WeldingQueueTable({
     const cleared = r.available === 0;
     const overdue = !!r.dueISO && r.dueISO < day;
     const dueToday = r.dueISO === day;
+    // early warning: still on time, but the open qty exceeds what full capacity
+    // can produce before the due date — it WILL slip unless output rises today
+    const atRisk = !cleared && !overdue && assessDeliveryRisk(r, day, capacity) === "at-risk";
     const noteKey = `${r.bom}|${r.mo}|${r.item}`;
     const lineNotes = notes[noteKey] ?? [];
     const openCount = lineNotes.filter((n) => n.status === "open").length;
@@ -213,6 +219,14 @@ export function WeldingQueueTable({
               </span>
             ) : (
               <span className="pill pill-muted">—</span>
+            )}
+            {atRisk && (
+              <span
+                className="pill pill-bad ml-1"
+                title={`Likely to slip: ${r.dueQty} pcs due ${r.dueISO ? ddmm(r.dueISO) : ""} exceeds the remaining capacity window (${capacity}/day)`}
+              >
+                ⚠ at risk
+              </span>
             )}
           </td>
           <td className={`p-2 text-xs font-semibold whitespace-nowrap ${inGroup ? "pl-6" : ""}`}>

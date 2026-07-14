@@ -1,4 +1,5 @@
 import { getWeldingQueue } from "@/lib/server/execution";
+import { getSettings } from "@/lib/server/data";
 import { getQueueNotes } from "@/lib/server/queueNotes";
 import { getReturnsFor } from "@/lib/server/returns";
 import { toISODate, toDisplayDate } from "@/lib/domain/dates";
@@ -12,16 +13,17 @@ export const dynamic = "force-dynamic";
 export default async function WeldWorklistPage() {
   const today = new Date();
   const dayISO = toISODate(today);
-  const [queue, notes, returns] = await Promise.all([
+  const [queue, notes, returns, settings] = await Promise.all([
     getWeldingQueue(today),
     getQueueNotes(),
     getReturnsFor("Welding"),
+    getSettings(),
   ]);
 
   return (
     <>
       <PrintHeader title="Welding Worklist" date={toDisplayDate(today)} />
-      <WeldingQueueTable rows={queue} day={dayISO} notes={notes} returns={returns} />
+      <WeldingQueueTable rows={queue} day={dayISO} notes={notes} returns={returns} capacity={settings.capacityPerItem} />
     </>
   );
 }
