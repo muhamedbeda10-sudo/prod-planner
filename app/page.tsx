@@ -55,7 +55,10 @@ export default async function Home({
             <Link href="/" className="text-sm font-bold text-accent hover:underline">Jump to current ↻</Link>
           )}
         </div>
-        <PeriodFilter from={d.fromISO} to={d.toISO} active={d.mode === "range"} />
+        <div className="flex flex-wrap items-center gap-3">
+          <SmartInsights data={ai} />
+          <PeriodFilter from={d.fromISO} to={d.toISO} active={d.mode === "range"} />
+        </div>
       </div>
 
       {d.clamped && (
@@ -63,9 +66,6 @@ export default async function Home({
           The range was longer than 31 days — showing {d.fromISO} → {d.toISO}.
         </p>
       )}
-
-      {/* ==== SMART INSIGHTS (always about the current week) ==== */}
-      <SmartInsights data={ai} />
 
       {/* ==== TODAY ==== */}
       {d.today && (
