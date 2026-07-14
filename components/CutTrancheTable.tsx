@@ -93,7 +93,10 @@ export function CutTrancheTable({
     });
   }
 
-  const renderRow = (r: CutTranche, inGroup = false, lastInGroup = false) => {
+  // showOrder: inside a group the same MO may have several tranche rows — its
+  // whole-order fraction is printed once (first row) so the group header's
+  // per-MO total visibly matches the sum of the rows.
+  const renderRow = (r: CutTranche, inGroup = false, lastInGroup = false, showOrder = true) => {
     const k = keyOf(r);
     const noteKey = `${r.bom}|${r.mo}|${r.item}`;
     const lineNotes = notes[noteKey] ?? [];
@@ -115,7 +118,11 @@ export function CutTrancheTable({
         <td className="p-2 text-xs text-muted whitespace-nowrap">{r.description}</td>
         <td className="p-2 text-center font-bold">{r.item}</td>
         <td className="p-2 text-center">
-          <Frac num={r.deptDone ?? 0} den={r.orderQty ?? null} />
+          {showOrder ? (
+            <Frac num={r.deptDone ?? 0} den={r.orderQty ?? null} />
+          ) : (
+            <span className="text-muted text-xs" title="Same MO as the row above — its order total is counted once">〃</span>
+          )}
         </td>
         <td className="p-2 text-center">
           <Frac num={r.remaining} den={r.qty} color={r.remaining <= 0 ? "var(--ok-fg)" : variant === "overdue" ? "var(--bad-fg)" : "var(--warn-fg)"} />
@@ -245,7 +252,7 @@ export function CutTrancheTable({
                       })()}
                     </td>
                   </tr>
-                  {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
+                  {open && members.map((m, i) => renderRow(m, true, i === members.length - 1, members.findIndex((x) => x.mo === m.mo) === i))}
                 </Fragment>
               );
             })}

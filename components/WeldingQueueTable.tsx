@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import type { WeldQueueRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { recordOutput, addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote, returnToUpstream } from "@/app/worklist/actions";
-import { Num } from "@/components/ui";
 import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
+import { Frac } from "@/components/Frac";
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
 import type { ReturnRowDTO } from "@/lib/server/returns";
@@ -139,7 +139,7 @@ export function WeldingQueueTable({
     return { it, avail, maxAge };
   });
   const plansShown = new Set(rows.map((r) => r.planNo));
-  const cols = plansShown.size > 1 ? 14 : 13;
+  const cols = plansShown.size > 1 ? 12 : 11;
 
   // shared BOMs: one summary row per BOM × item, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -223,9 +223,9 @@ export function WeldingQueueTable({
           <td className="p-2 text-xs text-muted whitespace-nowrap">{r.description}</td>
           {plansShown.size > 1 && <td className="p-2 text-center text-xs tabnum">{r.planNo}</td>}
           <td className="p-2 text-center font-bold">{r.item}</td>
-          <td className="p-2 text-center" style={{ background: "var(--cut-tint)" }}><Num v={r.cutToDate} /></td>
-          <td className="p-2 text-center" style={{ background: "var(--weld-tint)" }}><Num v={r.weldedToDate} /></td>
-          <td className="p-2 text-center"><Num v={r.weldedToday} /></td>
+          <td className="p-2 text-center">
+            <Frac num={r.cutToDate} den={r.orderQty ?? null} />
+          </td>
           <td className="p-2 text-center font-extrabold tabnum" style={{ color: r.available > 0 ? "var(--ok-fg)" : "var(--muted)" }}>
             {r.available}
           </td>
@@ -514,10 +514,8 @@ export function WeldingQueueTable({
               <th className="p-2">Description</th>
               {plansShown.size > 1 && <th className="p-2 text-center">Plan</th>}
               <th className="p-2 text-center">Item</th>
-              <th className="p-2 text-center">{upstream} (total)</th>
-              <th className="p-2 text-center">{dept === "Welding" ? "Welded" : "Painted"}</th>
-              <th className="p-2 text-center">Today</th>
-              <th className="p-2 text-center">Available</th>
+              <th className="p-2 text-center" title={`${upstream} output on the whole order / order qty`}>{upstream} / Order</th>
+              <th className="p-2 text-center" title={`Ready to ${verb} now (delivered by ${upstream})`}>Available</th>
               <th className="p-2 text-center">Waiting</th>
               <th className="p-2 text-center w-44">Record {dept === "Welding" ? "welded" : "painted"}</th>
               <th className="p-2 text-center">Notes</th>
@@ -572,9 +570,9 @@ export function WeldingQueueTable({
                     <td className="p-2 text-xs text-muted whitespace-nowrap">{gDesc}</td>
                     {plansShown.size > 1 && <td className="p-2 text-center text-xs">—</td>}
                     <td className="p-2 text-center font-bold">{gItem}</td>
-                    <td className="p-2 text-center font-bold" style={{ background: "var(--cut-tint)" }}><Num v={sum((r) => r.cutToDate)} /></td>
-                    <td className="p-2 text-center font-bold" style={{ background: "var(--weld-tint)" }}><Num v={sum((r) => r.weldedToDate)} /></td>
-                    <td className="p-2 text-center font-bold"><Num v={sum((r) => r.weldedToday)} /></td>
+                    <td className="p-2 text-center font-bold">
+                      <Frac num={sum((r) => r.cutToDate)} den={members.some((m) => m.orderQty != null) ? sum((r) => r.orderQty ?? 0) : null} />
+                    </td>
                     <td className="p-2 text-center font-extrabold tabnum" style={{ color: gAvailable > 0 ? "var(--ok-fg)" : "var(--muted)" }}>
                       {gAvailable}
                     </td>
