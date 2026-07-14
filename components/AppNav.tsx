@@ -47,20 +47,16 @@ export function AppNav() {
     <header className="no-print sticky top-0 z-30 bg-brand text-white shadow-md">
       <div className="max-w-[1600px] mx-auto px-4 md:px-6">
         <div className="flex items-center gap-4 h-16">
-          {/* brand — the ATC mark with a proper lockup: mark · divider · names */}
+          {/* brand — the OFFICIAL horizontal logo (white version for the green bar) */}
           <Link href="/" className="flex items-center shrink-0 group">
             <Image
-              src="/brand/atc_white.svg"
+              src="/brand/atc-logo-horizontal-white.svg"
               alt="ATC — Arabian Transformers Co."
-              width={62}
-              height={25}
+              width={266}
+              height={32}
               priority
-              className="transition-transform duration-300 group-hover:scale-105"
+              className="transition-transform duration-300 group-hover:scale-[1.03]"
             />
-            <span className="hidden md:block leading-tight border-l border-white/30 pl-3 ml-3">
-              <span className="block text-[13.5px] font-extrabold">الشركة العربية للمحولات</span>
-              <span className="block text-[8.5px] font-bold tracking-[0.18em] text-white/75 uppercase mt-[3px]">Arabian Transformers Co.</span>
-            </span>
           </Link>
 
           {/* primary nav — centered */}
