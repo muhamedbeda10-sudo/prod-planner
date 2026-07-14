@@ -136,6 +136,28 @@ export function DashboardFilters({
   );
 }
 
+/** Report table switcher: full plan (default) or one week's snapshot. */
+export function WeekSnapshotPicker({ plans, value }: { plans: number[]; value: string }) {
+  const set = useSetParam();
+  return (
+    <label className="inline-flex items-center gap-2 text-sm font-semibold">
+      Table:
+      <select
+        className="border rounded-md px-2 py-1.5 bg-surface font-bold"
+        value={value}
+        onChange={(e) => set("week", e.target.value)}
+      >
+        <option value="">Full plan (all orders)</option>
+        {[...plans].reverse().map((p) => (
+          <option key={p} value={String(p)}>
+            Week snapshot — Plan {p}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function DayPicker({ value, label = "Day:" }: { value: string; label?: string }) {
   const set = useSetParam();
   return (

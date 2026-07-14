@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, Cell,
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList, ReferenceLine,
 } from "recharts";
 import { ITEMS } from "@/lib/domain/constants";
 
@@ -11,59 +11,44 @@ const GREEN_DARK = "#136041";
 const GRAY = "#717171"; // brand gray
 const GRAY_LIGHT = "#b8c1bc";
 
+/** The report's single quantities chart: today's output per component and
+ *  stage, values printed ON the bars, dashed line = the daily target. */
 export function OutputByComponentChart({
-  cut, welding, painting,
+  cut, welding, painting, target,
 }: {
   cut: Record<string, number>;
   welding: Record<string, number>;
   painting: Record<string, number>;
+  target: number;
 }) {
   const data = ITEMS.map((it) => ({ item: it, Cut: cut[it] ?? 0, Welding: welding[it] ?? 0, Painting: painting[it] ?? 0 }));
+  const maxVal = Math.max(target, ...data.flatMap((d) => [d.Cut, d.Welding, d.Painting]));
+  const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
   return (
-    <div style={{ width: "100%", height: 240 }}>
+    <div style={{ width: "100%", height: 300 }}>
       <ResponsiveContainer>
-        <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 20, right: 16, left: 16, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="item" />
-          <YAxis allowDecimals={false} />
+          <XAxis dataKey="item" tick={{ fontSize: 13, fontWeight: 700 }} />
+          <YAxis hide domain={[0, Math.ceil(maxVal * 1.15)]} />
           <Tooltip />
           <Legend />
-          <Bar dataKey="Cut" fill={GREEN} radius={[3, 3, 0, 0]} />
-          <Bar dataKey="Welding" fill={GRAY} radius={[3, 3, 0, 0]} />
-          <Bar dataKey="Painting" fill={GREEN_DARK} radius={[3, 3, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-export function SetsVsTargetChart({
-  target, cutSets, weldSets, paintSets,
-}: {
-  target: number;
-  cutSets: number;
-  weldSets: number;
-  paintSets: number;
-}) {
-  const data = [
-    { name: "Cut", Complete: cutSets, Target: target },
-    { name: "Welding", Complete: weldSets, Target: target },
-    { name: "Painting", Complete: paintSets, Target: target },
-  ];
-  return (
-    <div style={{ width: "100%", height: 240 }}>
-      <ResponsiveContainer>
-        <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="name" />
-          <YAxis allowDecimals={false} />
-          <Tooltip />
-          <Legend />
-          <Bar dataKey="Target" fill={GRAY_LIGHT} radius={[3, 3, 0, 0]} />
-          <Bar dataKey="Complete" fill={GREEN} radius={[3, 3, 0, 0]}>
-            {data.map((d, i) => (
-              <Cell key={i} fill={d.Complete >= target ? GREEN_DARK : GREEN} />
-            ))}
+          <ReferenceLine
+            y={target}
+            stroke={GRAY}
+            strokeWidth={1.5}
+            strokeDasharray="7 5"
+            label={{ value: `Target ${target}/item`, position: "insideTopRight", fontSize: 12, fontWeight: 700, fill: GRAY }}
+          />
+          {/* no animation: the values must be on the bars immediately (print!) */}
+          <Bar dataKey="Cut" fill={GREEN} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+            <LabelList dataKey="Cut" position="top" fontSize={12} fontWeight={700} formatter={label} />
+          </Bar>
+          <Bar dataKey="Welding" fill={GRAY} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+            <LabelList dataKey="Welding" position="top" fontSize={12} fontWeight={700} formatter={label} />
+          </Bar>
+          <Bar dataKey="Painting" fill={GREEN_DARK} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+            <LabelList dataKey="Painting" position="top" fontSize={12} fontWeight={700} formatter={label} />
           </Bar>
         </BarChart>
       </ResponsiveContainer>

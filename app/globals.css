@@ -222,10 +222,26 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   .no-print { display: none !important; }
   .print-only { display: block !important; }
   body { background: #fff; }
-  .print-break { break-after: page; }
+  .print-break { break-before: page; } /* the plan table starts on a fresh page */
   main { padding: 0 !important; }
   /* worklists print as clean read-only sheets: no inputs, no action buttons */
   table input, table button, table textarea { display: none !important; }
+
+  /* keep highlights and stage tints in the PDF — browsers strip backgrounds
+     by default when printing */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* wide tables must FIT the page: smaller type, tight padding, wrapping
+     allowed — clipped columns are worse than small text */
+  table { font-size: 10px !important; }
+  th, td { padding: 3px 4px !important; white-space: normal !important; }
+  .print-fit table { font-size: 9px !important; }
+  .print-fit th, .print-fit td { padding: 2px 3px !important; }
+  .pill { font-size: 8px !important; padding: 1px 4px !important; }
+  div.overflow-x-auto:has(> table) { overflow: visible !important; }
 }
 
 /* ---- sticky table headers: long tables scroll inside their card and the

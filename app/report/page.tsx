@@ -1,8 +1,9 @@
 import Image from "next/image";
-import { getDailyReport } from "@/lib/server/report";
-import { PageHeader, StatusPill, pctStyle, Num } from "@/components/ui";
-import { DayPicker } from "@/components/controls";
-import { OutputByComponentChart, SetsVsTargetChart, PrintButton } from "@/components/ReportCharts";
+import { getDailyReport, getWorkedOn, getFullPlanGrouped, getWeekSnapshot, type ReportPlanRow } from "@/lib/server/report";
+import { getPlanNos } from "@/lib/server/data";
+import { PageHeader, pctStyle, Num } from "@/components/ui";
+import { DayPicker, WeekSnapshotPicker } from "@/components/controls";
+import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { ITEMS } from "@/lib/domain/constants";
 
@@ -15,62 +16,38 @@ function fmtPct(v: number | null) {
 export default async function ReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ day?: string }>;
+  searchParams: Promise<{ day?: string; week?: string }>;
 }) {
   const sp = await searchParams;
   const day = (sp.day && parseISODate(sp.day)) || new Date();
   const dayISO = toISODate(day);
-  const { deptOutputs, projects, target, tracker, planNo } = await getDailyReport(day);
+  const weekNo = Number(sp.week) || null; // null = the FULL plan (default)
+
+  const [{ deptOutputs, target }, worked, planNos, planRows] = await Promise.all([
+    getDailyReport(day),
+    getWorkedOn(day),
+    getPlanNos(),
+    weekNo ? getWeekSnapshot(weekNo) : getFullPlanGrouped(),
+  ]);
 
   const cut = deptOutputs.find((d) => d.dept === "Cut")!;
   const weld = deptOutputs.find((d) => d.dept === "Welding")!;
   const paint = deptOutputs.find((d) => d.dept === "Painting")!;
 
-  // merge the per-dept project rows into ONE row per BOM — Cut | Weld | Paint
-  // per component, the same layout as the tracker snapshot below
-  const stageOf: Record<string, "cut" | "weld" | "paint"> = { Cut: "cut", Welding: "weld", Painting: "paint" };
-  const merged = new Map<
-    string,
-    {
-      bom: string;
-      description: string;
-      items: Record<(typeof ITEMS)[number], { cut: number; weld: number; paint: number }>;
-      totalToday: number;
-      required: number | null;
-      completed: number | null;
-      progress: number | null;
-      status: (typeof projects)[number]["status"];
-    }
-  >();
-  for (const p of projects) {
-    const stage = stageOf[p.dept];
-    if (!stage) continue;
-    let e = merged.get(p.bom);
-    if (!e) {
-      e = {
-        bom: p.bom,
-        description: p.description,
-        items: { CF: { cut: 0, weld: 0, paint: 0 }, TC: { cut: 0, weld: 0, paint: 0 }, TN: { cut: 0, weld: 0, paint: 0 }, CB: { cut: 0, weld: 0, paint: 0 } },
-        totalToday: 0,
-        required: p.required,
-        completed: p.completed,
-        progress: p.progress,
-        status: p.status,
-      };
-      merged.set(p.bom, e);
-    }
-    for (const it of ITEMS) e.items[it][stage] += p.items[it];
-    e.totalToday += p.totalToday;
-  }
-  const workedToday = [...merged.values()];
+  // highlight = this BOM had output recorded ON the selected day
+  const workedMos = new Set(worked.mos);
+  const workedBoms = new Set(worked.bomsAll);
+  const hl = (r: ReportPlanRow) => workedBoms.has(r.bom) || r.mos.some((m) => workedMos.has(m));
+  const hlStyle = { background: "var(--warn-bg)" } as const;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Daily Report"
-        sub="Department output, projects worked today, and the plan snapshot — print-ready"
+        sub="Department output, the quantities chart, and the plan table with the day's work highlighted — print-ready"
       >
         <DayPicker value={dayISO} />
+        <WeekSnapshotPicker plans={planNos} value={sp.week ?? ""} />
         <PrintButton />
       </PageHeader>
 
@@ -115,85 +92,63 @@ export default async function ReportPage({
         </table>
       </div>
 
-      {/* Charts */}
-      <div className="grid md:grid-cols-2 gap-4 print-break">
-        <div className="bg-surface border rounded-xl p-3">
-          <h3 className="font-bold text-sm mb-2">Output by component</h3>
-          <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} />
-        </div>
-        <div className="bg-surface border rounded-xl p-3">
-          <h3 className="font-bold text-sm mb-2">Complete sets vs daily target</h3>
-          <SetsVsTargetChart target={target} cutSets={cut.sets} weldSets={weld.sets} paintSets={paint.sets} />
-        </div>
+      {/* The single quantities chart — values on the bars, dashed target line */}
+      <div className="bg-surface border rounded-xl p-3">
+        <h3 className="font-bold text-sm mb-2">Output by component — vs daily target</h3>
+        <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} target={target} />
       </div>
 
-      {/* Section 2: projects worked today */}
-      <div>
-        <h2 className="text-lg font-bold mb-2">Projects worked today</h2>
-        <div className="bg-surface border rounded-xl overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-brand text-white text-center">
-                <th rowSpan={2} className="p-2 text-left">BOM</th>
-                <th rowSpan={2} className="p-2 text-left">Description</th>
-                {ITEMS.map((it) => <th key={it} colSpan={3} className="p-2 border-l border-white/20">{it}</th>)}
-                <th rowSpan={2} className="p-2">Total today</th>
-                <th rowSpan={2} className="p-2">Required</th>
-                <th rowSpan={2} className="p-2">Completed</th>
-                <th rowSpan={2} className="p-2">Progress</th>
-                <th rowSpan={2} className="p-2">Status</th>
-              </tr>
-              <tr className="bg-brand-dark text-white text-[10px]">
-                {ITEMS.map((it) => <StageHead key={it} />)}
-              </tr>
-            </thead>
-            <tbody>
-              {workedToday.length === 0 && <tr><td colSpan={19} className="p-4 text-center text-muted">No work recorded on this day.</td></tr>}
-              {workedToday.map((p, i) => (
-                <tr key={p.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
-                  <td className="p-2 text-left font-bold whitespace-nowrap">{p.bom}</td>
-                  <td className="p-2 text-left text-xs text-muted">{p.description}</td>
-                  {ITEMS.map((it) => (
-                    <FragmentCW key={it} cut={p.items[it].cut} weld={p.items[it].weld} paint={p.items[it].paint} />
-                  ))}
-                  <td className="p-2 font-bold tabnum">{p.totalToday}</td>
-                  <td className="p-2 tabnum">{p.required ?? "—"}</td>
-                  <td className="p-2 tabnum">{p.completed ?? "—"}</td>
-                  <td className="p-2 font-bold tabnum" style={pctStyle(p.progress)}>{fmtPct(p.progress)}</td>
-                  <td className="p-2"><StatusPill status={p.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Section 3: all projects snapshot */}
+      {/* The plan table — one row per BOM ("cascade" closed): totals across the
+          BOM's MOs and the whole-BOM percentage. Default = the FULL plan with
+          LIVE numbers; the dropdown switches to one week's snapshot (same live
+          numbers, measured against that week's required). Rows worked on the
+          selected day are highlighted — on screen and in the printed PDF. */}
       <div className="print-break">
-        <h2 className="text-lg font-bold mb-2">All projects — tracker snapshot {planNo ? `(Plan ${planNo})` : ""}</h2>
-        <div className="bg-surface border rounded-xl overflow-x-auto">
+        <div className="flex flex-wrap items-center gap-3 mb-2">
+          <h2 className="text-lg font-bold">
+            {weekNo ? `Week snapshot — Plan ${weekNo}` : "Plan tracker — all orders (live totals)"}
+          </h2>
+          <span className="text-xs rounded-md px-2 py-1 font-semibold" style={hlStyle}>
+            highlighted = worked on {toDisplayDate(day)}
+          </span>
+        </div>
+
+        <div className="bg-surface border rounded-xl overflow-x-auto print-fit">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-brand text-white text-center">
                 <th rowSpan={2} className="p-2 text-left">BOM</th>
+                <th rowSpan={2} className="p-2">MOs</th>
                 <th rowSpan={2} className="p-2">Required</th>
                 {ITEMS.map((it) => <th key={it} colSpan={3} className="p-2 border-l border-white/20">{it}</th>)}
                 <th rowSpan={2} className="p-2">Complete</th>
-                <th rowSpan={2} className="p-2">Progress</th>
+                <th rowSpan={2} className="p-2">Left</th>
+                <th rowSpan={2} className="p-2">Achv.</th>
               </tr>
               <tr className="bg-brand-dark text-white text-[10px]">
                 {ITEMS.map((it) => <StageHead key={it} />)}
               </tr>
             </thead>
             <tbody>
-              {tracker.map((r, i) => (
-                <tr key={r.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
-                  <td className="p-2 text-left font-bold whitespace-nowrap">{r.bom}</td>
+              {planRows.length === 0 && (
+                <tr><td colSpan={19} className="p-4 text-center text-muted">No orders in this view.</td></tr>
+              )}
+              {planRows.map((r, i) => (
+                <tr key={r.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`} style={hl(r) ? hlStyle : undefined}>
+                  <td className="p-2 text-left font-bold whitespace-nowrap">
+                    {r.bom}
+                    {r.urgentCount > 0 && <span className="pill pill-bad ml-1">U×{r.urgentCount}</span>}
+                    {r.ospCount > 0 && (
+                      <span className="pill ml-1" style={{ background: "#ece3f7", color: "#6b45a8" }}>OSP</span>
+                    )}
+                  </td>
+                  <td className="p-2 text-center tabnum font-semibold">{r.moCount}</td>
                   <td className="p-2 font-bold tabnum">{r.required}</td>
                   {ITEMS.map((it) => (
-                    <FragmentCW key={it} cut={r.items[it].cutDone} weld={r.items[it].weldDone} paint={r.items[it].paintDone} />
+                    <FragmentCW key={it} cut={r.items[it].cut} weld={r.items[it].weld} paint={r.items[it].paint} />
                   ))}
                   <td className="p-2 font-extrabold tabnum">{r.complete}</td>
+                  <td className="p-2 font-bold tabnum" style={{ color: r.left > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>{r.left}</td>
                   <td className="p-2 font-bold tabnum" style={pctStyle(r.achievement)}>{fmtPct(r.achievement)}</td>
                 </tr>
               ))}
