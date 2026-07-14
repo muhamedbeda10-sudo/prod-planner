@@ -95,6 +95,8 @@ export interface CutTranche {
   deliveryISO: string; // the promised delivery (oven) date
   cutDueISO: string; // deliveryISO − leadCut
   qty: number; // this tranche's scheduled qty
+  deptDone?: number | null; // dept output on the WHOLE order (enriched by the server layer)
+  orderQty?: number | null; // whole order qty (planQty − OSP) — enriched by the server layer
   remaining: number; // qty − globally-done output allocated FIFO (earliest first)
 }
 
@@ -275,7 +277,7 @@ export function computeCascade(opts: {
     const available = Math.max(0, t - Math.max(sched, d));
     if (available <= 0) continue; // fully scheduled (shown above) or already consumed
     const [bom, mo, item] = key.split("|");
-    const ovenD = lines ? nextOpenDelivery(lines, key, d) : null;
+    const nd = lines ? nextOpenDelivery(lines, key, d) : null;
     rows.push({
       bom,
       mo,
@@ -285,7 +287,7 @@ export function computeCascade(opts: {
       scheduled: sched,
       done: d,
       available,
-      deliveryISO: ovenD === null ? null : toISODate(dateFromDayNumber(ovenD)),
+      deliveryISO: nd === null ? null : toISODate(dateFromDayNumber(nd.d)),
     });
   }
   return rows;
@@ -317,21 +319,22 @@ export function supersededTranches(schedules: (ExecScheduleRow & { planNo: numbe
   return byLine;
 }
 
-/** The next promised delivery still open for a line (day number, null = none):
- *  the newest plan's tranches consumed FIFO by `done` beyond the superseded
- *  plans' quantity. */
+/** The next promised delivery still open for a line (null = none): the newest
+ *  plan's tranches consumed FIFO by `done` beyond the superseded plans'
+ *  quantity. Returns the day number AND how many pieces of that tranche are
+ *  still open (the "due on that date" quantity). */
 export function nextOpenDelivery(
   lines: ReturnType<typeof supersededTranches>,
   key: string,
   done: number
-): number | null {
+): { d: number; open: number; qty: number } | null {
   const e = lines.get(key);
   if (!e) return null;
   let credit = Math.max(0, done - e.oldQty);
   for (const t of e.tranches) {
     const used = Math.min(credit, t.qty);
     credit -= used;
-    if (t.qty - used > 0) return t.ovenD;
+    if (t.qty - used > 0) return { d: t.ovenD, open: t.qty - used, qty: t.qty };
   }
   return null; // everything on the current promise is already done
 }
@@ -348,8 +351,11 @@ export interface WeldQueueRow {
   available: number; // cut − welded (never negative)
   deliveryISO: string | null; // next promised delivery still open for this line (null = no scheduled line)
   dueISO: string | null; // deliveryISO − lead: when THIS dept must finish (weld = D−1, paint = D)
+  dueQty: number | null; // still-open pieces of that delivery (counts down as output is recorded)
+  dueTotal: number | null; // that delivery's full planned qty (the fraction's denominator)
   waitingSinceISO: string | null; // when the oldest still-waiting piece arrived from upstream
   ageDays: number | null; // day − waitingSince (WIP aging)
+  orderQty?: number | null; // whole order qty (planQty − OSP) — enriched by the server layer
 }
 
 /**
@@ -441,7 +447,7 @@ export function computeDeptQueue(opts: {
     const available = Math.max(0, (cap === undefined ? cut : Math.min(cut, cap)) - welded);
     const today = num(weldToday, key);
     if (available <= 0 && today <= 0) continue;
-    const ovenD = nextDelivery(key);
+    const nd = nextDelivery(key);
     const since = available > 0 ? waitingSince(key, welded) : null;
     rows.push({
       planNo: 0, // recording bucket — global progress
@@ -453,8 +459,10 @@ export function computeDeptQueue(opts: {
       weldedToDate: welded,
       weldedToday: today,
       available,
-      deliveryISO: ovenD === null ? null : toISODate(dateFromDayNumber(ovenD)),
-      dueISO: ovenD === null ? null : toISODate(dateFromDayNumber(ovenD - lead)),
+      deliveryISO: nd === null ? null : toISODate(dateFromDayNumber(nd.d)),
+      dueISO: nd === null ? null : toISODate(dateFromDayNumber(nd.d - lead)),
+      dueQty: nd === null ? null : nd.open,
+      dueTotal: nd === null ? null : nd.qty,
       waitingSinceISO: since === null ? null : toISODate(dateFromDayNumber(since)),
       ageDays: since === null ? null : Math.max(0, dt - since),
     });
@@ -482,7 +490,7 @@ export function computeDeptQueue(opts: {
     const since = available > 0 ? waitingSince(`${bom}||${item}`, v.weld) : null;
     rows.push({
       planNo: 0, bom, mo: "", description: "", item, cutToDate: v.cut, weldedToDate: v.weld, weldedToday: v.today, available,
-      deliveryISO: null, dueISO: null,
+      deliveryISO: null, dueISO: null, dueQty: null, dueTotal: null,
       waitingSinceISO: since === null ? null : toISODate(dateFromDayNumber(since)),
       ageDays: since === null ? null : Math.max(0, dt - since),
     });

@@ -599,9 +599,6 @@ export function WeldingQueueTable({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-muted mt-2">
-        This queue is driven purely by {upstream} output — a piece finished upstream today is available immediately, and WIP from previous weeks stays until consumed. You cannot {verb} more than what {upstream} delivered. Shared BOMs show as one row — click it to open the MOs inside.
-      </p>
     </>
   );
 }

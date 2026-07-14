@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import type { CascadeRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { recordOutput } from "@/app/worklist/actions";
-import { Num } from "@/components/ui";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
+import { Frac } from "@/components/Frac";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -111,17 +111,15 @@ export function CascadeTable({
               <th className="p-2">BOM</th>
               <th className="p-2">Description</th>
               <th className="p-2 text-center">Item</th>
-              <th className="p-2 text-center">Week target</th>
-              <th className="p-2 text-center">Scheduled</th>
-              <th className="p-2 text-center">Done</th>
-              <th className="p-2 text-center">Pool</th>
+              <th className="p-2 text-center" title="Whole order: cut so far / order qty">Done / Order</th>
+              <th className="p-2 text-center" title="Unscheduled pool you can pull from">Pool</th>
               <th className="p-2 text-center w-44">Pull &amp; record</th>
               <th className="p-2 text-center">Notes</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={11} className="p-4 text-center text-muted">
+              <tr><td colSpan={9} className="p-4 text-center text-muted">
                 {rows.length === 0 ? "No unscheduled backlog — everything is on the schedule." : "No lines match the search."}
               </td></tr>
             )}
@@ -153,9 +151,9 @@ export function CascadeTable({
                     <td className="p-2 font-bold whitespace-nowrap">{gBom}</td>
                     <td className="p-2 text-xs text-muted whitespace-nowrap">{gDesc}</td>
                     <td className="p-2 text-center font-bold">{gItem}</td>
-                    <td className="p-2 text-center font-bold"><Num v={sum((r) => r.target)} /></td>
-                    <td className="p-2 text-center font-bold"><Num v={sum((r) => r.scheduled)} /></td>
-                    <td className="p-2 text-center font-bold"><Num v={sum((r) => r.done)} /></td>
+                    <td className="p-2 text-center font-bold">
+                      <Frac num={sum((r) => r.done)} den={sum((r) => r.target)} />
+                    </td>
                     <td className="p-2 text-center font-extrabold tabnum" style={{ color: "var(--warn-fg)" }}>{sum((r) => r.available)}</td>
                     <td className="p-2 text-center text-xs text-muted whitespace-nowrap">{open ? "▲ collapse" : "▼ open MOs"}</td>
                     <td className="p-2 text-center whitespace-nowrap">
@@ -175,9 +173,6 @@ export function CascadeTable({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-muted mt-2">
-        Backlog not on this week&apos;s schedule — pull from it any time; recorded output shrinks the pool and flows to the welding queue like any cut. Shared BOMs show as one row — click it to open the MOs inside.
-      </p>
     </>
   );
 
@@ -205,9 +200,9 @@ export function CascadeTable({
                   <td className="p-2 font-bold whitespace-nowrap">{r.bom}</td>
                   <td className="p-2 text-xs text-muted whitespace-nowrap">{r.description}</td>
                   <td className="p-2 text-center font-bold">{r.item}</td>
-                  <td className="p-2 text-center"><Num v={r.target} /></td>
-                  <td className="p-2 text-center"><Num v={r.scheduled} /></td>
-                  <td className="p-2 text-center"><Num v={r.done} /></td>
+                  <td className="p-2 text-center">
+                    <Frac num={r.done} den={r.target} />
+                  </td>
                   <td className="p-2 text-center font-extrabold tabnum" style={{ color: "var(--warn-fg)" }}>{r.available}</td>
                   <td className="p-2">
                     <div className="flex items-center gap-1.5">
@@ -243,7 +238,7 @@ export function CascadeTable({
                     item={r.item}
                     dept="Cut"
                     lineNotes={lineNotes}
-                    colSpan={11}
+                    colSpan={9}
                     className={inGroup ? "border-x-2 border-brand" : ""}
                   />
                 )}

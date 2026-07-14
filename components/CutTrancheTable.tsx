@@ -7,6 +7,7 @@ import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { recordOutput } from "@/app/worklist/actions";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
+import { Frac } from "@/components/Frac";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -113,9 +114,11 @@ export function CutTrancheTable({
         <td className="p-2 font-bold whitespace-nowrap">{r.bom}</td>
         <td className="p-2 text-xs text-muted whitespace-nowrap">{r.description}</td>
         <td className="p-2 text-center font-bold">{r.item}</td>
-        <td className="p-2 text-center tabnum">{r.qty}</td>
-        <td className="p-2 text-center font-extrabold tabnum" style={{ color: variant === "overdue" ? "var(--bad-fg)" : "var(--warn-fg)" }}>
-          {r.remaining}
+        <td className="p-2 text-center">
+          <Frac num={r.deptDone ?? 0} den={r.orderQty ?? null} />
+        </td>
+        <td className="p-2 text-center">
+          <Frac num={r.remaining} den={r.qty} color={r.remaining <= 0 ? "var(--ok-fg)" : variant === "overdue" ? "var(--bad-fg)" : "var(--warn-fg)"} />
         </td>
         <td className="p-2">
           <div className="flex items-center gap-1.5">
@@ -179,8 +182,8 @@ export function CutTrancheTable({
               <th className="p-2">BOM</th>
               <th className="p-2">Description</th>
               <th className="p-2 text-center">Item</th>
-              <th className="p-2 text-center">Planned</th>
-              <th className="p-2 text-center">Remaining</th>
+              <th className="p-2 text-center" title="Whole order: cut so far / order qty">Done / Order</th>
+              <th className="p-2 text-center" title="This date: still to cut / planned for the day">Left / Day plan</th>
               <th className="p-2 text-center w-44">Record cut</th>
               <th className="p-2 text-center">Notes</th>
             </tr>
@@ -204,6 +207,10 @@ export function CutTrancheTable({
               const gDesc = members.find((m) => m.description)?.description ?? "";
               const sumQty = members.reduce((s, r) => s + r.qty, 0);
               const sumRem = members.reduce((s, r) => s + r.remaining, 0);
+              // whole-order fraction: count each MO once (an MO may have several tranches here)
+              const perMo = new Map(members.map((m) => [m.mo, m]));
+              const gDone = [...perMo.values()].reduce((s, m) => s + (m.deptDone ?? 0), 0);
+              const gOrder = [...perMo.values()].reduce((s, m) => s + (m.orderQty ?? 0), 0);
               return (
                 <Fragment key={`g|${gk}`}>
                   <tr
@@ -221,9 +228,11 @@ export function CutTrancheTable({
                     <td className="p-2 font-bold whitespace-nowrap">{gBom}</td>
                     <td className="p-2 text-xs text-muted whitespace-nowrap">{gDesc}</td>
                     <td className="p-2 text-center font-bold">{gItem}</td>
-                    <td className="p-2 text-center font-bold tabnum">{sumQty}</td>
-                    <td className="p-2 text-center font-extrabold tabnum" style={{ color: variant === "overdue" ? "var(--bad-fg)" : "var(--warn-fg)" }}>
-                      {sumRem}
+                    <td className="p-2 text-center">
+                      <Frac num={gDone} den={gOrder > 0 ? gOrder : null} />
+                    </td>
+                    <td className="p-2 text-center">
+                      <Frac num={sumRem} den={sumQty} color={sumRem <= 0 ? "var(--ok-fg)" : variant === "overdue" ? "var(--bad-fg)" : "var(--warn-fg)"} />
                     </td>
                     <td className="p-2 text-center text-xs text-muted whitespace-nowrap">{open ? "▲ collapse" : "▼ open MOs"}</td>
                     <td className="p-2 text-center whitespace-nowrap">

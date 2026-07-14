@@ -74,9 +74,6 @@ export function ReturnsTable({ rows, dept }: { rows: ReturnRowDTO[]; dept: strin
         </table>
       </div>
       {err && <p className="text-xs text-bad-fg mt-1 font-semibold">{err}</p>}
-      <p className="text-xs text-muted mt-2">
-        The returned qty was deducted from {dept}&apos;s totals. Fix the pieces and hit the button — the qty goes straight back and the line reappears downstream. No need to record it again.
-      </p>
     </section>
   );
 }

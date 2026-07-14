@@ -56,10 +56,33 @@ export async function getCutSheet(): Promise<CutSheet> {
 
   // date-stamped view: due today vs overdue-with-its-date (new weekly imports
   // rebuild these buckets from the fresh schedule automatically)
-  const { dueNow, overdue } =
+  const { dueNow: dueRaw, overdue: overdueRaw } =
     planNo === null
       ? { dueNow: [], overdue: [] }
       : computeCutTranches({ schedules: schedIn, entries: entryIn, day: today, lead: settings.leadCut });
+
+  // enrich tranche rows with whole-order context: dept done / order qty (the
+  // "finished of total" fraction shown next to the day's plan)
+  const orderQtyOf = new Map<string, number>(); // mo|item -> planQty − OSP
+  for (const m of masters) {
+    const osp = { CF: m.ospCF, TC: m.ospTC, TN: m.ospTN, CB: m.ospCB } as const;
+    for (const it of ["CF", "TC", "TN", "CB"] as const) {
+      orderQtyOf.set(`${m.mo}|${it}`, Math.max(0, m.planQty - osp[it]));
+    }
+  }
+  const cutDoneOf = new Map<string, number>(); // mo|item -> global cut output
+  for (const e of entries) {
+    if (e.dept !== "Cut" || !(e.mo ?? "").trim()) continue;
+    const k = `${e.mo}|${e.item}`;
+    cutDoneOf.set(k, (cutDoneOf.get(k) ?? 0) + e.qty);
+  }
+  const enrich = (r: CutTranche): CutTranche => ({
+    ...r,
+    deptDone: cutDoneOf.get(`${r.mo}|${r.item}`) ?? 0,
+    orderQty: orderQtyOf.get(`${r.mo}|${r.item}`) ?? null,
+  });
+  const dueNow = dueRaw.map(enrich);
+  const overdue = overdueRaw.map(enrich);
 
   // cascade from the master registry: every component of every order not yet
   // fully covered by the schedule or already-cut quantity
@@ -121,28 +144,35 @@ async function loadQueueInputs() {
   // in-house share per MO×item where a part is outsourced: planQty − OSP.
   // The OSP share never reaches the welding/painting queues.
   const inhouseCap = new Map<string, number>();
+  const orderQtyOf = new Map<string, number>(); // mo|item -> planQty − OSP (whole-order fraction denominator)
   for (const m of masters) {
     const osp = { CF: m.ospCF, TC: m.ospTC, TN: m.ospTN, CB: m.ospCB } as const;
     for (const it of ["CF", "TC", "TN", "CB"] as const) {
       if (osp[it] > 0) inhouseCap.set(`${m.bom}|${m.mo}|${it}`, Math.max(0, m.planQty - osp[it]));
+      orderQtyOf.set(`${m.mo}|${it}`, Math.max(0, m.planQty - osp[it]));
     }
   }
   return {
     schedules: schedules.map((s) => ({ planNo: s.planNo, bom: s.bom, mo: s.mo, description: s.description, item: s.item, ovenDate: s.ovenDate, qty: s.qty })),
     entries: entries.map((e) => ({ planNo: e.planNo, dept: e.dept, bom: e.bom, mo: e.mo, item: e.item, qty: e.qty, date: e.date })),
     inhouseCap,
+    orderQtyOf,
   };
 }
+
+const withOrderQty = (rows: WeldQueueRow[], orderQtyOf: Map<string, number>): WeldQueueRow[] =>
+  rows.map((r) => ({ ...r, orderQty: r.mo ? orderQtyOf.get(`${r.mo}|${r.item}`) ?? null : null }));
 
 /** The welding queue: everything Cut produced (any plan, any day ≤ selected day)
  *  that Welding hasn't consumed yet. */
 export async function getWeldingQueue(day: Date): Promise<WeldQueueRow[]> {
   const [inputs, settings] = await Promise.all([loadQueueInputs(), getSettings()]);
-  return computeWeldingQueue({ ...inputs, day, lead: settings.leadWeld });
+  const { orderQtyOf, ...rest } = inputs;
+  return withOrderQty(computeWeldingQueue({ ...rest, day, lead: settings.leadWeld }), orderQtyOf);
 }
 
 /** The painting queue: everything Welding produced that Painting hasn't consumed yet. */
 export async function getPaintingQueue(day: Date): Promise<WeldQueueRow[]> {
-  const inputs = await loadQueueInputs();
-  return computePaintingQueue({ ...inputs, day });
+  const { orderQtyOf, ...rest } = await loadQueueInputs();
+  return withOrderQty(computePaintingQueue({ ...rest, day }), orderQtyOf);
 }
