@@ -6,6 +6,7 @@ import {
   computePaintingQueue,
   computeCascade,
   computeCutTranches,
+  untouchedWeeklyMos,
   type ExecRow,
   type WeldQueueRow,
   type CascadeRow,
@@ -32,14 +33,21 @@ export async function getCutSheet(): Promise<CutSheet> {
   const settings = await getSettings();
   const planNo = findPlanForDate(await getPlanWindows(), today, settings.leadCut);
 
-  const [allSchedules, masters, entries] = await Promise.all([
+  const [allSchedules, masters, entries, weekOrders] = await Promise.all([
     prisma.planSchedule.findMany({ orderBy: { id: "asc" } }), // ALL plans — old promises feed the cascade dates
     prisma.masterOrder.findMany({ where: { status: "open" }, orderBy: { id: "asc" } }), // closed orders leave the daily screens
     prisma.handoverEntry.findMany(), // ALL entries — progress is global
+    planNo === null
+      ? Promise.resolve([])
+      : prisma.planOrder.findMany({ where: { planNo }, select: { mo: true, remark: true } }),
   ]);
   const allSchedIn = allSchedules.map((s) => ({ planNo: s.planNo, bom: s.bom, mo: s.mo, description: s.description, item: s.item, ovenDate: s.ovenDate, qty: s.qty }));
   const schedIn = allSchedIn.filter((s) => s.planNo === planNo);
   const entryIn = entries.map((e) => ({ dept: e.dept, bom: e.bom, mo: e.mo, item: e.item, qty: e.qty, date: e.date }));
+
+  // planner convention: an MO carried in the weekly plan with NO schedule and
+  // NO remark is "not this week" — keep it out of the backlog entirely
+  const untouched = untouchedWeeklyMos(weekOrders, schedIn);
 
   const scheduled =
     planNo === null
@@ -56,7 +64,7 @@ export async function getCutSheet(): Promise<CutSheet> {
   // cascade from the master registry: every component of every order not yet
   // fully covered by the schedule or already-cut quantity
   const cascade = computeCascade({
-    orders: masters.flatMap((m) => {
+    orders: masters.filter((m) => !untouched.has(m.mo)).flatMap((m) => {
       const osp = { CF: m.ospCF, TC: m.ospTC, TN: m.ospTN, CB: m.ospCB } as const;
       const excluded = new Set((m.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
       return (["CF", "TC", "TN", "CB"] as const).map((item) => ({

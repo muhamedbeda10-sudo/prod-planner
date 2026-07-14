@@ -182,6 +182,26 @@ export function computeCutTranches(opts: {
   return { dueNow, overdue };
 }
 
+/** MOs the weekly plan carries but the planner left UNTOUCHED — present in the
+ *  plan orders, yet with NO scheduled dates and NO remark on any of their rows.
+ *  Convention: these are "not this week" — they must not appear in the backlog
+ *  and must not be offered for scheduling. A schedule row OR a remark on any
+ *  item row keeps the MO in play. */
+export function untouchedWeeklyMos(
+  planOrders: { mo: string; remark?: string | null }[],
+  schedules: { mo: string }[]
+): Set<string> {
+  const scheduled = new Set(schedules.map((s) => s.mo));
+  const remarked = new Set(
+    planOrders.filter((o) => (o.remark ?? "").trim() !== "").map((o) => o.mo)
+  );
+  const out = new Set<string>();
+  for (const o of planOrders) {
+    if (!scheduled.has(o.mo) && !remarked.has(o.mo)) out.add(o.mo);
+  }
+  return out;
+}
+
 export interface CascadeRow {
   bom: string;
   mo: string;

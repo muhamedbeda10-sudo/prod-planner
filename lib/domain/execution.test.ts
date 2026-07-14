@@ -6,6 +6,7 @@ import {
   computePaintingQueue,
   computeCascade,
   computeCutTranches,
+  untouchedWeeklyMos,
   type ExecScheduleRow,
   type ExecEntry,
 } from "./execution";
@@ -138,6 +139,28 @@ describe("computeCascade — unscheduled backlog under the scheduled work", () =
       dept: "Cut",
     });
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe("untouchedWeeklyMos — unscheduled + no remark = not this week", () => {
+  const planOrders = [
+    { mo: "MO-A", remark: null }, // scheduled below — stays
+    { mo: "MO-B", remark: "BALANCE 5" }, // remark keeps it in play
+    { mo: "MO-C", remark: null }, // untouched — excluded
+    { mo: "MO-C", remark: "" }, // second item row, still blank
+    { mo: "MO-D", remark: null }, // one row blank…
+    { mo: "MO-D", remark: "urgent" }, // …but another row has a remark — stays
+  ];
+  const schedules = [{ mo: "MO-A" }];
+
+  it("excludes ONLY MOs with no schedule and no remark on any row", () => {
+    const out = untouchedWeeklyMos(planOrders, schedules);
+    expect([...out]).toEqual(["MO-C"]);
+  });
+
+  it("whitespace-only remarks count as blank", () => {
+    const out = untouchedWeeklyMos([{ mo: "MO-X", remark: "   " }], []);
+    expect(out.has("MO-X")).toBe(true);
   });
 });
 
