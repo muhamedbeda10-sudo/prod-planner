@@ -89,6 +89,21 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
     });
   }
 
+  // per-component plan progress — the WHOLE registry (display only, no filtering):
+  // need = required − OSP (excluded items don't count), done = painted, % = execution
+  const itemStats = ITEMS.map((it) => {
+    let need = 0;
+    let done = 0;
+    for (const r of rows) {
+      const c = r.items[it];
+      if (c.excluded) continue;
+      const n = Math.max(0, r.required - c.osp);
+      need += n;
+      done += Math.min(c.paint, n);
+    }
+    return { it, need, done, remaining: Math.max(0, need - done), pct: need > 0 ? done / need : null };
+  });
+
   const exportRows = filtered.map((r) => ({
     MO: r.mo,
     BOM: r.bom,
@@ -110,6 +125,30 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
 
   return (
     <>
+      {/* per-component plan progress — remaining / of total / execution % (display only) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        {itemStats.map(({ it, need, done, remaining, pct }) => (
+          <div key={it} className="bg-surface border rounded-xl px-4 py-2.5">
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs font-extrabold text-muted">{it}</span>
+              <span className="text-[11px] font-bold tabnum rounded px-1.5 py-0.5" style={pctStyle(pct)}>
+                {pct === null ? "—" : `${Math.round(pct * 100)}%`}
+              </span>
+            </div>
+            <div className="text-2xl font-extrabold tabnum" style={{ color: remaining > 0 ? "var(--warn-fg)" : "var(--ok-fg)" }}>
+              {remaining}
+            </div>
+            <div className="text-[11px] text-muted tabnum">left of <b className="text-foreground">{need}</b> · painted {done}</div>
+            <div className="mt-1 h-1.5 rounded bg-border overflow-hidden">
+              <div
+                className="h-full transition-all"
+                style={{ width: `${Math.min(100, (pct ?? 0) * 100)}%`, background: (pct ?? 0) >= 1 ? "var(--ok-fg)" : "var(--brand)" }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
       <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus("open"); }} hasActive={hasActive}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / KVA…" />
         <SelectFilter
