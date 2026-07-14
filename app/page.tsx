@@ -1,5 +1,7 @@
 ﻿import Link from "next/link";
 import { getTargetDashboard, type DeptDay } from "@/lib/server/dashboard";
+import { getSmartInsights } from "@/lib/server/insights";
+import { SmartInsights } from "@/components/SmartInsights";
 import { pctStyle } from "@/components/ui";
 import { PeriodFilter } from "@/components/controls";
 import { WeekTrendChart, WeekItemChart, HistoryChart } from "@/components/DashboardCharts";
@@ -17,11 +19,14 @@ export default async function Home({
   searchParams: Promise<{ w?: string; from?: string; to?: string }>;
 }) {
   const sp = await searchParams;
-  const d = await getTargetDashboard({
-    weekOf: sp.w ? parseISODate(sp.w) : null,
-    from: sp.from ? parseISODate(sp.from) : null,
-    to: sp.to ? parseISODate(sp.to) : null,
-  });
+  const [d, ai] = await Promise.all([
+    getTargetDashboard({
+      weekOf: sp.w ? parseISODate(sp.w) : null,
+      from: sp.from ? parseISODate(sp.from) : null,
+      to: sp.to ? parseISODate(sp.to) : null,
+    }),
+    getSmartInsights(),
+  ]);
 
   const periodTitle =
     d.mode === "week"
@@ -58,6 +63,9 @@ export default async function Home({
           The range was longer than 31 days — showing {d.fromISO} → {d.toISO}.
         </p>
       )}
+
+      {/* ==== SMART INSIGHTS (always about the current week) ==== */}
+      <SmartInsights data={ai} />
 
       {/* ==== TODAY ==== */}
       {d.today && (
