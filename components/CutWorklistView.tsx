@@ -6,6 +6,9 @@ import { CutTrancheTable } from "@/components/CutTrancheTable";
 import { CascadeTable } from "@/components/CascadeTable";
 import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
 import { PrintButton } from "@/components/PrintButton";
+import { ReturnsTable } from "@/components/ReturnsTable";
+import type { ReturnRowDTO } from "@/lib/server/returns";
+import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { ITEMS } from "@/lib/domain/constants";
 
 /** The cut page's three tables under ONE shared filter — typing once narrows
@@ -16,12 +19,16 @@ export function CutWorklistView({
   cascade,
   day,
   planNo,
+  returns = [],
+  notes = {},
 }: {
   dueNow: CutTranche[];
   overdue: CutTranche[];
   cascade: CascadeRow[];
   day: string;
   planNo: number | null;
+  returns?: ReturnRowDTO[];
+  notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
 }) {
   const [q, setQ] = useState("");
   const [item, setItem] = useState("");
@@ -59,6 +66,9 @@ export function CutWorklistView({
         <PrintButton />
       </FilterBar>
 
+      {/* 0 — pieces sent back by Welding: fix first, they re-enter the flow */}
+      <ReturnsTable rows={returns} dept="Cut" />
+
       {/* 1 — due today (delivery in 2 days) */}
       <section>
         <h2>Due today — deliver in 2 days ({totalDue} pcs)</h2>
@@ -67,7 +77,7 @@ export function CutWorklistView({
             No weekly plan covers today — import the new weekly schedule. The backlogs below still work.
           </p>
         ) : (
-          <CutTrancheTable rows={dueF} day={day} planNo={planNo} variant="due" hideFilter />
+          <CutTrancheTable rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} />
         )}
       </section>
 
@@ -77,13 +87,13 @@ export function CutWorklistView({
           Overdue backlog — missed delivery dates ({totalOverdue} pcs)
           {totalOverdue > 0 && <span className="pill pill-bad ml-2 normal-case">catch up first</span>}
         </h2>
-        <CutTrancheTable rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter />
+        <CutTrancheTable rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} />
       </section>
 
       {/* 3 — undated backlog from the monthly registry */}
       <section className="mt-8">
         <h2>Backlog without dates — monthly registry ({totalPool} pcs)</h2>
-        <CascadeTable rows={cascadeF} day={day} planNo={planNo ?? 0} hideFilter />
+        <CascadeTable rows={cascadeF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} />
       </section>
     </>
   );

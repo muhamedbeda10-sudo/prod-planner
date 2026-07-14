@@ -3,9 +3,11 @@
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { CascadeRow } from "@/lib/domain/execution";
+import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { recordOutput } from "@/app/worklist/actions";
 import { Num } from "@/components/ui";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
+import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -16,11 +18,13 @@ export function CascadeTable({
   day,
   planNo,
   hideFilter = false, // the cut page has ONE shared filter above all tables
+  notes = {}, // keyed by bom|mo|item
 }: {
   rows: CascadeRow[];
   day: string; // ISO (today — computed by the app)
   planNo: number;
   hideFilter?: boolean;
+  notes?: Record<string, QueueNoteDTO[]>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -28,6 +32,7 @@ export function CascadeTable({
   const [msg, setMsg] = useState<Record<string, string>>({});
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
+  const [openNotes, setOpenNotes] = useState<string | null>(null); // per row key (bom|mo|item)
 
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
@@ -111,11 +116,12 @@ export function CascadeTable({
               <th className="p-2 text-center">Done</th>
               <th className="p-2 text-center">Pool</th>
               <th className="p-2 text-center w-44">Pull &amp; record</th>
+              <th className="p-2 text-center">Notes</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={10} className="p-4 text-center text-muted">
+              <tr><td colSpan={11} className="p-4 text-center text-muted">
                 {rows.length === 0 ? "No unscheduled backlog — everything is on the schedule." : "No lines match the search."}
               </td></tr>
             )}
@@ -152,6 +158,15 @@ export function CascadeTable({
                     <td className="p-2 text-center font-bold"><Num v={sum((r) => r.done)} /></td>
                     <td className="p-2 text-center font-extrabold tabnum" style={{ color: "var(--warn-fg)" }}>{sum((r) => r.available)}</td>
                     <td className="p-2 text-center text-xs text-muted whitespace-nowrap">{open ? "▲ collapse" : "▼ open MOs"}</td>
+                    <td className="p-2 text-center whitespace-nowrap">
+                      {(() => {
+                        const openNoteCount = members.reduce(
+                          (s, m) => s + (notes[`${m.bom}|${m.mo}|${m.item}`] ?? []).filter((n) => n.status === "open").length,
+                          0
+                        );
+                        return openNoteCount > 0 ? <span className="pill pill-bad">📝 {openNoteCount}</span> : <span className="text-muted text-xs">—</span>;
+                      })()}
+                    </td>
                   </tr>
                   {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
                 </Fragment>
@@ -168,10 +183,12 @@ export function CascadeTable({
 
   function renderRow(r: CascadeRow, inGroup = false, lastInGroup = false) {
     const k = keyOf(r);
+    const lineNotes = notes[k] ?? []; // cascade key IS bom|mo|item
     // frame: open groups get a clear border so their extent is obvious
     const frame = inGroup ? `bg-brand-light/10 border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
     return (
-                <tr key={k} className={frame}>
+              <Fragment key={k}>
+                <tr className={frame}>
                   <td className="p-2 whitespace-nowrap">
                     {r.deliveryISO ? (
                       <span className={`pill ${r.deliveryISO < day ? "pill-bad" : r.deliveryISO === day ? "pill-warn" : "pill-ok"}`}>
@@ -215,7 +232,22 @@ export function CascadeTable({
                     </div>
                     {msg[k] && <div className="text-[11px] text-bad-fg mt-0.5">{msg[k]}</div>}
                   </td>
+                  <td className="p-2 text-center whitespace-nowrap">
+                    <NotesButton lineNotes={lineNotes} onClick={() => setOpenNotes(openNotes === k ? null : k)} />
+                  </td>
                 </tr>
+                {openNotes === k && (
+                  <NotesPanelRow
+                    bom={r.bom}
+                    mo={r.mo}
+                    item={r.item}
+                    dept="Cut"
+                    lineNotes={lineNotes}
+                    colSpan={11}
+                    className={inGroup ? "border-x-2 border-brand" : ""}
+                  />
+                )}
+              </Fragment>
     );
   }
 }

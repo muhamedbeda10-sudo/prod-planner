@@ -8,6 +8,8 @@ import { recordOutput, addQueueNote, setQueueNoteStatus, updateQueueNote, delete
 import { Num } from "@/components/ui";
 import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
 import { PrintButton } from "@/components/PrintButton";
+import { ReturnsTable } from "@/components/ReturnsTable";
+import type { ReturnRowDTO } from "@/lib/server/returns";
 import { ITEMS } from "@/lib/domain/constants";
 
 function ddmm(iso: string) {
@@ -20,12 +22,14 @@ export function WeldingQueueTable({
   dept = "Welding",
   upstream = "Cut",
   notes = {},
+  returns = [],
 }: {
   rows: WeldQueueRow[];
   day: string;
   dept?: "Welding" | "Painting";
   upstream?: string;
   notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
+  returns?: ReturnRowDTO[]; // pieces sent back TO this dept (shown under the filter)
 }) {
   const verb = dept === "Welding" ? "weld" : "paint";
   const router = useRouter();
@@ -464,6 +468,9 @@ export function WeldingQueueTable({
         </span>
         <PrintButton />
       </FilterBar>
+
+      {/* pieces sent back TO this dept: fix first, they re-enter the flow */}
+      <ReturnsTable rows={returns} dept={dept} />
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">

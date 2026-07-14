@@ -3,8 +3,10 @@
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { CutTranche } from "@/lib/domain/execution";
+import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { recordOutput } from "@/app/worklist/actions";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
+import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -16,12 +18,14 @@ export function CutTrancheTable({
   planNo,
   variant, // "due" = due today · "overdue" = missed dates (red date badge)
   hideFilter = false, // the cut page has ONE shared filter above all tables
+  notes = {},
 }: {
   rows: CutTranche[];
   day: string;
   planNo: number;
   variant: "due" | "overdue";
   hideFilter?: boolean;
+  notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -29,6 +33,7 @@ export function CutTrancheTable({
   const [msg, setMsg] = useState<Record<string, string>>({});
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
+  const [openNotes, setOpenNotes] = useState<string | null>(null); // per tranche row key
 
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
@@ -89,10 +94,13 @@ export function CutTrancheTable({
 
   const renderRow = (r: CutTranche, inGroup = false, lastInGroup = false) => {
     const k = keyOf(r);
+    const noteKey = `${r.bom}|${r.mo}|${r.item}`;
+    const lineNotes = notes[noteKey] ?? [];
     // frame: open groups get a clear border so their extent is obvious
     const frame = inGroup ? `bg-brand-light/10 border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
     return (
-      <tr key={k} className={frame}>
+      <Fragment key={k}>
+      <tr className={frame}>
         <td className="p-2 whitespace-nowrap">
           <span className={`pill ${variant === "overdue" ? "pill-bad" : "pill-ok"}`}>
             📅 {ddmm(r.deliveryISO)}
@@ -132,7 +140,22 @@ export function CutTrancheTable({
           </div>
           {msg[k] && <div className="text-[11px] text-bad-fg mt-0.5">{msg[k]}</div>}
         </td>
+        <td className="p-2 text-center whitespace-nowrap">
+          <NotesButton lineNotes={lineNotes} onClick={() => setOpenNotes(openNotes === k ? null : k)} />
+        </td>
       </tr>
+      {openNotes === k && (
+        <NotesPanelRow
+          bom={r.bom}
+          mo={r.mo}
+          item={r.item}
+          dept="Cut"
+          lineNotes={lineNotes}
+          colSpan={9}
+          className={inGroup ? "border-x-2 border-brand" : ""}
+        />
+      )}
+      </Fragment>
     );
   };
 
@@ -159,11 +182,12 @@ export function CutTrancheTable({
               <th className="p-2 text-center">Planned</th>
               <th className="p-2 text-center">Remaining</th>
               <th className="p-2 text-center w-44">Record cut</th>
+              <th className="p-2 text-center">Notes</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="p-4 text-center text-muted">
+              <tr><td colSpan={9} className="p-4 text-center text-muted">
                 {rows.length === 0
                   ? variant === "overdue"
                     ? "No overdue backlog — nothing slipped 🎉"
@@ -202,6 +226,15 @@ export function CutTrancheTable({
                       {sumRem}
                     </td>
                     <td className="p-2 text-center text-xs text-muted whitespace-nowrap">{open ? "▲ collapse" : "▼ open MOs"}</td>
+                    <td className="p-2 text-center whitespace-nowrap">
+                      {(() => {
+                        const openNoteCount = members.reduce(
+                          (s, m) => s + (notes[`${m.bom}|${m.mo}|${m.item}`] ?? []).filter((n) => n.status === "open").length,
+                          0
+                        );
+                        return openNoteCount > 0 ? <span className="pill pill-bad">📝 {openNoteCount}</span> : <span className="text-muted text-xs">—</span>;
+                      })()}
+                    </td>
                   </tr>
                   {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
                 </Fragment>

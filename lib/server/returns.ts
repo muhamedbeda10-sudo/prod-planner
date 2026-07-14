@@ -14,11 +14,12 @@ export interface ReturnRowDTO {
   status: string;
 }
 
-/** Returns addressed TO this dept — open ones first, newest first. */
+/** OPEN returns addressed TO this dept, newest first. Resolved ones vanish
+ *  from the screen — their audit trail lives in the daily logs. */
 export async function getReturnsFor(toDept: "Cut" | "Welding"): Promise<ReturnRowDTO[]> {
   const rows = await prisma.returnEntry.findMany({
-    where: { toDept },
-    orderBy: [{ status: "asc" }, { id: "desc" }], // "open" < "resolved"
+    where: { toDept, status: "open" },
+    orderBy: { id: "desc" },
     take: 100,
   });
   return rows.map((r) => ({

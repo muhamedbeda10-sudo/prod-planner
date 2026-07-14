@@ -1,24 +1,28 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ReturnRowDTO } from "@/lib/server/returns";
-import { setReturnStatus } from "@/app/worklist/actions";
+import { redeliverReturn } from "@/app/worklist/actions";
 
-/** Pieces sent BACK to this department — fix them, record the output again
- *  (normal worklist entry), then mark the return re-delivered. */
+/** Pieces sent BACK to this department. Fix them, then hit "Fixed &
+ *  re-delivered" — the qty goes straight back on this dept's ledger, the line
+ *  reappears downstream, and the row leaves this screen (audit stays in the
+ *  daily logs). */
 export function ReturnsTable({ rows, dept }: { rows: ReturnRowDTO[]; dept: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const open = rows.filter((r) => r.status === "open");
+  const [err, setErr] = useState("");
 
-  function setStatus(id: number, status: "open" | "resolved") {
+  function redeliver(r: ReturnRowDTO) {
+    if (!confirm(`${r.mo || r.bom} ${r.item} ×${r.qty} is fixed and handed over again? It goes straight back to the ${r.fromDept} queue.`)) return;
     const fd = new FormData();
-    fd.set("id", String(id));
-    fd.set("status", status);
+    fd.set("id", String(r.id));
+    setErr("");
     startTransition(async () => {
-      await setReturnStatus(fd);
-      router.refresh();
+      const res = await redeliverReturn(fd);
+      if (res.ok) router.refresh();
+      else setErr(res.error ?? "Failed");
     });
   }
 
@@ -27,8 +31,8 @@ export function ReturnsTable({ rows, dept }: { rows: ReturnRowDTO[]; dept: strin
   return (
     <section className="mb-6">
       <h2>
-        ↩ Returned to {dept} — fix &amp; re-deliver ({open.reduce((s, r) => s + r.qty, 0)} pcs open)
-        {open.length > 0 && <span className="pill pill-bad ml-2 normal-case">action needed</span>}
+        ↩ Returned to {dept} — fix &amp; re-deliver ({rows.reduce((s, r) => s + r.qty, 0)} pcs)
+        <span className="pill pill-bad ml-2 normal-case">action needed</span>
       </h2>
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
@@ -41,12 +45,12 @@ export function ReturnsTable({ rows, dept }: { rows: ReturnRowDTO[]; dept: strin
               <th className="p-2 text-center">Item</th>
               <th className="p-2 text-center">Qty</th>
               <th className="p-2">Reason</th>
-              <th className="p-2 text-center no-print">Status</th>
+              <th className="p-2 text-center no-print w-44"></th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className={r.status === "resolved" ? "opacity-55" : ""}>
+              <tr key={r.id}>
                 <td className="p-2 whitespace-nowrap tabnum">{r.dateISO}</td>
                 <td className="p-2 whitespace-nowrap text-xs font-semibold">{r.fromDept}</td>
                 <td className="p-2 text-xs font-semibold whitespace-nowrap">{r.mo || "—"}</td>
@@ -55,29 +59,23 @@ export function ReturnsTable({ rows, dept }: { rows: ReturnRowDTO[]; dept: strin
                 <td className="p-2 text-center font-extrabold tabnum text-bad-fg">{r.qty}</td>
                 <td className="p-2 text-xs">{r.reason}</td>
                 <td className="p-2 text-center whitespace-nowrap no-print">
-                  {r.status === "open" ? (
-                    <button
-                      onClick={() => setStatus(r.id, "resolved")}
-                      disabled={pending}
-                      className="rounded-md px-2 py-0.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
-                      title="The piece was fixed and its output recorded again"
-                    >
-                      ✓ Re-delivered
-                    </button>
-                  ) : (
-                    <>
-                      <span className="pill pill-ok">✓ done</span>
-                      <button onClick={() => setStatus(r.id, "open")} disabled={pending} className="text-accent text-xs px-1.5 hover:underline">Reopen</button>
-                    </>
-                  )}
+                  <button
+                    onClick={() => redeliver(r)}
+                    disabled={pending}
+                    className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50 transition-colors"
+                    title={`Adds ${r.qty} back to ${dept}'s total — it reappears in the ${r.fromDept} queue immediately`}
+                  >
+                    ✓ Fixed &amp; re-delivered
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {err && <p className="text-xs text-bad-fg mt-1 font-semibold">{err}</p>}
       <p className="text-xs text-muted mt-2">
-        The returned qty was already deducted from {dept}&apos;s delivered totals — fix the pieces, record them again in the worklist as usual, then mark the row re-delivered.
+        The returned qty was deducted from {dept}&apos;s totals. Fix the pieces and hit the button — the qty goes straight back and the line reappears downstream. No need to record it again.
       </p>
     </section>
   );

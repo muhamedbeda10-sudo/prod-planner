@@ -119,15 +119,33 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
   }
 }
 
-/** Close a return once the piece was fixed and re-delivered (or reopen it). */
-export async function setReturnStatus(formData: FormData): Promise<RecordResult> {
-  const id = Number(formData.get("id"));
-  const status = String(formData.get("status") ?? "");
-  if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
-  if (status !== "open" && status !== "resolved") return { ok: false, error: "Invalid status." };
-  await prisma.returnEntry.update({ where: { id }, data: { status } });
-  for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
-  return { ok: true };
+/** The return was fixed: put the qty BACK on this dept's ledger (positive
+ *  entry) so it reappears downstream immediately, and close the return. */
+export async function redeliverReturn(formData: FormData): Promise<RecordResult> {
+  try {
+    const id = Number(formData.get("id"));
+    if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
+    const ret = await prisma.returnEntry.findUnique({ where: { id } });
+    if (!ret) return { ok: false, error: "Return not found." };
+    if (ret.status !== "open") return { ok: false, error: "Already re-delivered." };
+
+    const date = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.handoverEntry.create({
+        data: {
+          date, dept: ret.toDept, bom: ret.bom, mo: ret.mo, item: ret.item,
+          qty: ret.qty, planNo: 0, source: "return", note: `re-delivered (was: ${ret.reason})`,
+        },
+      });
+      await tx.returnEntry.update({ where: { id }, data: { status: "resolved" } });
+    });
+    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
+      revalidatePath(p);
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
 }
 
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB per photo
@@ -145,7 +163,7 @@ export async function addQueueNote(formData: FormData): Promise<RecordResult> {
 
     if (!bom) return { ok: false, error: "Missing BOM." };
     if (!isItem(item)) return { ok: false, error: "Invalid component." };
-    if (dept !== "Welding" && dept !== "Painting") return { ok: false, error: "Invalid department." };
+    if (!isDept(dept)) return { ok: false, error: "Invalid department." };
 
     const files = formData.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
     if (!text && files.length === 0) return { ok: false, error: "Write a note or attach a photo." };
@@ -170,7 +188,8 @@ export async function addQueueNote(formData: FormData): Promise<RecordResult> {
     await prisma.queueNote.create({
       data: { bom, mo: mo || null, item, dept, text, photos: urls.length > 0 ? JSON.stringify(urls) : null },
     });
-    revalidatePath("/worklist/welding");
+    revalidatePath("/worklist/cut");
+  revalidatePath("/worklist/welding");
     revalidatePath("/worklist/painting");
     return { ok: true };
   } catch (e) {
@@ -188,6 +207,7 @@ export async function updateQueueNote(formData: FormData): Promise<RecordResult>
   const photos: string[] = note.photos ? JSON.parse(note.photos) : [];
   if (!text && photos.length === 0) return { ok: false, error: "A note needs text or a photo." };
   await prisma.queueNote.update({ where: { id }, data: { text } });
+  revalidatePath("/worklist/cut");
   revalidatePath("/worklist/welding");
   revalidatePath("/worklist/painting");
   return { ok: true };
@@ -207,6 +227,7 @@ export async function deleteQueueNote(formData: FormData): Promise<RecordResult>
     }
   }
   await prisma.queueNote.delete({ where: { id } });
+  revalidatePath("/worklist/cut");
   revalidatePath("/worklist/welding");
   revalidatePath("/worklist/painting");
   return { ok: true };
@@ -219,6 +240,7 @@ export async function setQueueNoteStatus(formData: FormData): Promise<RecordResu
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
   if (status !== "open" && status !== "resolved") return { ok: false, error: "Invalid status." };
   await prisma.queueNote.update({ where: { id }, data: { status } });
+  revalidatePath("/worklist/cut");
   revalidatePath("/worklist/welding");
   revalidatePath("/worklist/painting");
   return { ok: true };

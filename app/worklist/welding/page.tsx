@@ -3,7 +3,6 @@ import { getQueueNotes } from "@/lib/server/queueNotes";
 import { getReturnsFor } from "@/lib/server/returns";
 import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
-import { ReturnsTable } from "@/components/ReturnsTable";
 import { PrintHeader } from "@/components/PrintHeader";
 
 export const dynamic = "force-dynamic";
@@ -22,8 +21,7 @@ export default async function WeldWorklistPage() {
   return (
     <>
       <PrintHeader title="Welding Worklist" date={toDisplayDate(today)} />
-      <ReturnsTable rows={returns} dept="Welding" />
-      <WeldingQueueTable rows={queue} day={dayISO} notes={notes} />
+      <WeldingQueueTable rows={queue} day={dayISO} notes={notes} returns={returns} />
     </>
   );
 }
