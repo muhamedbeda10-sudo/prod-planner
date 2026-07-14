@@ -48,8 +48,36 @@ export function CutWorklistView({
   const totalOverdue = overdueF.reduce((s, r) => s + r.remaining, 0);
   const totalPool = cascadeF.reduce((s, r) => s + r.available, 0);
 
+  // per-item workload — the WHOLE dept load (unfiltered): what must still be cut
+  const perItem = ITEMS.map((it) => {
+    const due = dueNow.filter((r) => r.item === it).reduce((s, r) => s + r.remaining, 0);
+    const late = overdue.filter((r) => r.item === it).reduce((s, r) => s + r.remaining, 0);
+    const pool = cascade.filter((r) => r.item === it).reduce((s, r) => s + r.available, 0);
+    return { it, due, late, pool, total: due + late + pool };
+  });
+
   return (
     <>
+      {/* what's left per component — click a card to filter every table to it */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        {perItem.map(({ it, due, late, pool, total: t }) => (
+          <button
+            key={it}
+            type="button"
+            onClick={() => setItem(item === it ? "" : it)}
+            className={`text-left bg-surface border rounded-xl px-4 py-2.5 transition-all hover:shadow-md ${item === it ? "border-2 border-brand shadow-md" : ""}`}
+            title={item === it ? "Click to clear the filter" : `Show only ${it} in every table`}
+          >
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs font-extrabold text-muted">{it}</span>
+              <span className="text-2xl font-extrabold tabnum" style={{ color: late > 0 ? "var(--bad-fg)" : "var(--brand)" }}>{t}</span>
+            </div>
+            <div className="text-[11px] text-muted mt-0.5 tabnum">
+              due <b className="text-foreground">{due}</b> · late <b style={{ color: late > 0 ? "var(--bad-fg)" : undefined }}>{late}</b> · pool <b className="text-foreground">{pool}</b>
+            </div>
+          </button>
+        ))}
+      </div>
       <FilterBar count={shown} total={total} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / description — filters all tables…" />
         <SelectFilter

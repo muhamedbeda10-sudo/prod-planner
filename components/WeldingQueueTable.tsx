@@ -127,6 +127,17 @@ export function WeldingQueueTable({
 
   const keyOf = (r: WeldQueueRow) => `${r.planNo}|${r.bom}|${r.mo}|${r.item}`;
   const totalAvailable = filtered.reduce((s, r) => s + r.available, 0);
+
+  // per-item workload — the WHOLE queue (unfiltered): what's waiting per component
+  const perItem = ITEMS.map((it) => {
+    const lines = rows.filter((r) => r.item === it);
+    const avail = lines.reduce((s, r) => s + r.available, 0);
+    const maxAge = lines.reduce<number | null>(
+      (m, r) => (r.available > 0 && r.ageDays !== null && (m === null || r.ageDays > m) ? r.ageDays : m),
+      null
+    );
+    return { it, avail, maxAge };
+  });
   const plansShown = new Set(rows.map((r) => r.planNo));
   const cols = plansShown.size > 1 ? 14 : 13;
 
@@ -455,6 +466,27 @@ export function WeldingQueueTable({
 
   return (
     <>
+      {/* what's waiting per component — click a card to filter the queue to it */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        {perItem.map(({ it, avail, maxAge }) => (
+          <button
+            key={it}
+            type="button"
+            onClick={() => setItem(item === it ? "" : it)}
+            className={`text-left bg-surface border rounded-xl px-4 py-2.5 transition-all hover:shadow-md ${item === it ? "border-2 border-brand shadow-md" : ""}`}
+            title={item === it ? "Click to clear the filter" : `Show only ${it}`}
+          >
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs font-extrabold text-muted">{it}</span>
+              <span className="text-2xl font-extrabold tabnum" style={{ color: avail > 0 ? "var(--brand)" : "var(--muted)" }}>{avail}</span>
+            </div>
+            <div className="text-[11px] text-muted mt-0.5 tabnum">
+              to {verb}{maxAge !== null ? <> · oldest <b style={{ color: maxAge > 6 ? "var(--bad-fg)" : undefined }}>⏳ {maxAge === 0 ? "today" : `${maxAge}d`}</b></> : <> · queue clear</>}
+            </div>
+          </button>
+        ))}
+      </div>
+
       <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM…" />
         <SelectFilter
