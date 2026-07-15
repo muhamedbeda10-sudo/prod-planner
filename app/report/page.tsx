@@ -51,7 +51,18 @@ export default async function ReportPage({
         <PrintButton />
       </PageHeader>
 
-      <div className="flex items-center justify-between gap-4">
+      {/* Print masthead — logo + title + day, only on paper */}
+      <div className="print-only mb-3">
+        <div className="flex items-center justify-between border-b-2 border-foreground pb-2">
+          <Image src="/brand/atc-logo-horizontal.svg" alt="Arabian Transformers Co." width={230} height={28} priority />
+          <div className="text-right">
+            <div className="text-xl font-extrabold">Daily Production Report</div>
+            <div className="text-sm tabnum">📅 {toDisplayDate(day)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 no-print">
         <h2 className="text-lg font-bold">Department output — {toDisplayDate(day)}</h2>
         <Image
           src="/brand/atc-logo-horizontal.svg"
@@ -61,6 +72,7 @@ export default async function ReportPage({
           className="opacity-90"
         />
       </div>
+      <h2 className="text-lg font-bold print-only">Department output — {toDisplayDate(day)}</h2>
 
       {/* Section 1: department output */}
       <div className="bg-surface border rounded-xl overflow-x-auto">
@@ -118,7 +130,6 @@ export default async function ReportPage({
             <thead>
               <tr className="bg-brand text-white text-center">
                 <th rowSpan={2} className="p-2 text-left">BOM</th>
-                <th rowSpan={2} className="p-2">MOs</th>
                 <th rowSpan={2} className="p-2">Required</th>
                 {ITEMS.map((it) => <th key={it} colSpan={3} className="p-2 border-l border-white/20">{it}</th>)}
                 <th rowSpan={2} className="p-2">Complete</th>
@@ -131,7 +142,7 @@ export default async function ReportPage({
             </thead>
             <tbody>
               {planRows.length === 0 && (
-                <tr><td colSpan={19} className="p-4 text-center text-muted">No orders in this view.</td></tr>
+                <tr><td colSpan={17} className="p-4 text-center text-muted">No orders in this view.</td></tr>
               )}
               {planRows.map((r, i) => (
                 <tr key={r.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`} style={hl(r) ? hlStyle : undefined}>
@@ -142,7 +153,6 @@ export default async function ReportPage({
                       <span className="pill ml-1" style={{ background: "#ece3f7", color: "#6b45a8" }}>OSP</span>
                     )}
                   </td>
-                  <td className="p-2 text-center tabnum font-semibold">{r.moCount}</td>
                   <td className="p-2 font-bold tabnum">{r.required}</td>
                   {ITEMS.map((it) => (
                     <FragmentCW key={it} cut={r.items[it].cut} weld={r.items[it].weld} paint={r.items[it].paint} />

@@ -218,12 +218,22 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
 
 .print-only { display: none; }
 
+/* A4 landscape with tidy margins — wide plan/worklist tables need the width,
+   and a fixed page size stops the browser from shrink-to-fit (the cause of the
+   blurry, pixelated look on zoom). Everything is native text + SVG = crisp. */
+@page {
+  size: A4 landscape;
+  margin: 10mm 12mm;
+}
+
 @media print {
   .no-print { display: none !important; }
   .print-only { display: block !important; }
   body { background: #fff; }
   .print-break { break-before: page; } /* the plan table starts on a fresh page */
   main { padding: 0 !important; }
+  /* the app frame never belongs on paper */
+  header.no-print, .no-print { display: none !important; }
   /* worklists print as clean read-only sheets: no inputs, no action buttons */
   table input, table button, table textarea { display: none !important; }
 
@@ -234,14 +244,24 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
     print-color-adjust: exact !important;
   }
 
-  /* wide tables must FIT the page: smaller type, tight padding, wrapping
-     allowed — clipped columns are worse than small text */
-  table { font-size: 10px !important; }
-  th, td { padding: 3px 4px !important; white-space: normal !important; }
-  .print-fit table { font-size: 9px !important; }
-  .print-fit th, .print-fit td { padding: 2px 3px !important; }
+  /* readable print tables: the page is wide enough now, so keep a comfortable
+     size rather than shrinking to unreadable */
+  table { font-size: 10.5px !important; border-collapse: collapse !important; }
+  th, td { padding: 3px 5px !important; white-space: nowrap !important; }
+  .print-fit table { font-size: 9.5px !important; }
+  .print-fit th, .print-fit td { padding: 2px 4px !important; }
   .pill { font-size: 8px !important; padding: 1px 4px !important; }
-  div.overflow-x-auto:has(> table) { overflow: visible !important; }
+
+  /* rows stay whole; the column headers repeat at the top of every page */
+  thead { display: table-header-group !important; }
+  tr { break-inside: avoid !important; }
+  .bg-surface, section { break-inside: avoid; } /* keep a card/section together */
+
+  /* scroll containers must fully expand on paper */
+  div.overflow-x-auto:has(> table) { overflow: visible !important; max-height: none !important; }
+
+  /* crisp borders on white paper */
+  main table tbody td { border-bottom: 1px solid #cbd5cf !important; }
 }
 
 /* ---- sticky table headers: long tables scroll inside their card and the
