@@ -75,7 +75,7 @@ export default async function ReportPage({
       <h2 className="text-lg font-bold print-only">Department output — {toDisplayDate(day)}</h2>
 
       {/* Section 1: department output */}
-      <div className="bg-surface border rounded-xl overflow-x-auto">
+      <div className="bg-surface border rounded-xl overflow-x-auto print-lg">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand text-white text-center">

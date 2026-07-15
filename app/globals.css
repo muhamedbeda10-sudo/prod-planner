@@ -218,12 +218,13 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
 
 .print-only { display: none; }
 
-/* A4 landscape with tidy margins — wide plan/worklist tables need the width,
-   and a fixed page size stops the browser from shrink-to-fit (the cause of the
-   blurry, pixelated look on zoom). Everything is native text + SVG = crisp. */
+/* A4 landscape, ZERO page margin — margin: 0 removes the browser's own
+   date / URL / page-number strips. Our own breathing room comes from the
+   main padding below. A fixed page size stops shrink-to-fit (the cause of the
+   blurry, pixelated look on zoom); everything is native text + SVG = crisp. */
 @page {
   size: A4 landscape;
-  margin: 10mm 12mm;
+  margin: 0;
 }
 
 @media print {
@@ -231,7 +232,8 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   .print-only { display: block !important; }
   body { background: #fff; }
   .print-break { break-before: page; } /* the plan table starts on a fresh page */
-  main { padding: 0 !important; }
+  /* our own inner margin (the @page margin is 0 to kill browser header/footer) */
+  main { padding: 7mm 9mm !important; }
   /* the app frame never belongs on paper */
   header.no-print, .no-print { display: none !important; }
   /* worklists print as clean read-only sheets: no inputs, no action buttons */
@@ -246,11 +248,22 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
 
   /* readable print tables: the page is wide enough now, so keep a comfortable
      size rather than shrinking to unreadable */
-  table { font-size: 10.5px !important; border-collapse: collapse !important; }
-  th, td { padding: 3px 5px !important; white-space: nowrap !important; }
-  .print-fit table { font-size: 9.5px !important; }
-  .print-fit th, .print-fit td { padding: 2px 4px !important; }
+  table { font-size: 11px !important; border-collapse: collapse !important; }
+  th, td { padding: 4px 6px !important; white-space: nowrap !important; }
+  /* the wide plan table: keep horizontal padding tight so all columns fit the
+     width, but grow the rows vertically to fill the page and stay legible */
+  .print-fit table { font-size: 12.5px !important; }
+  .print-fit th, .print-fit td { padding: 6px 8px !important; }
+  .print-fit .text-xs { font-size: 12.5px !important; }
   .pill { font-size: 8px !important; padding: 1px 4px !important; }
+
+  /* the department-output summary has only a few rows and the whole landscape
+     page to breathe — print it big and clear */
+  .print-lg table { font-size: 15px !important; }
+  .print-lg th, .print-lg td { padding: 9px 12px !important; }
+
+  /* section headings read as report subtitles on paper */
+  main h2 { font-size: 15px !important; color: var(--foreground) !important; margin-bottom: 8px !important; }
 
   /* rows stay whole; the column headers repeat at the top of every page */
   thead { display: table-header-group !important; }

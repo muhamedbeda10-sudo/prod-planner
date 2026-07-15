@@ -25,30 +25,30 @@ export function OutputByComponentChart({
   const maxVal = Math.max(target, ...data.flatMap((d) => [d.Cut, d.Welding, d.Painting]));
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
   return (
-    <div style={{ width: "100%", height: 300 }}>
+    <div style={{ width: "100%", height: 380 }}>
       <ResponsiveContainer>
-        <BarChart data={data} margin={{ top: 20, right: 16, left: 16, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 28, right: 20, left: 20, bottom: 6 }} barCategoryGap="22%">
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="item" tick={{ fontSize: 13, fontWeight: 700 }} />
+          <XAxis dataKey="item" tick={{ fontSize: 16, fontWeight: 800 }} tickMargin={8} />
           <YAxis hide domain={[0, Math.ceil(maxVal * 1.15)]} />
           <Tooltip />
-          <Legend />
+          <Legend wrapperStyle={{ fontSize: 14, fontWeight: 700, paddingTop: 8 }} iconSize={16} />
           <ReferenceLine
             y={target}
             stroke={GRAY}
             strokeWidth={1.5}
             strokeDasharray="7 5"
-            label={{ value: `Target ${target}/item`, position: "insideTopRight", fontSize: 12, fontWeight: 700, fill: GRAY }}
+            label={{ value: `Target ${target}/item`, position: "insideTopRight", fontSize: 13, fontWeight: 700, fill: GRAY }}
           />
           {/* no animation: the values must be on the bars immediately (print!) */}
           <Bar dataKey="Cut" fill={GREEN} radius={[3, 3, 0, 0]} isAnimationActive={false}>
-            <LabelList dataKey="Cut" position="top" fontSize={12} fontWeight={700} formatter={label} />
+            <LabelList dataKey="Cut" position="top" fontSize={15} fontWeight={800} formatter={label} />
           </Bar>
           <Bar dataKey="Welding" fill={GRAY} radius={[3, 3, 0, 0]} isAnimationActive={false}>
-            <LabelList dataKey="Welding" position="top" fontSize={12} fontWeight={700} formatter={label} />
+            <LabelList dataKey="Welding" position="top" fontSize={15} fontWeight={800} formatter={label} />
           </Bar>
           <Bar dataKey="Painting" fill={GREEN_DARK} radius={[3, 3, 0, 0]} isAnimationActive={false}>
-            <LabelList dataKey="Painting" position="top" fontSize={12} fontWeight={700} formatter={label} />
+            <LabelList dataKey="Painting" position="top" fontSize={15} fontWeight={800} formatter={label} />
           </Bar>
         </BarChart>
       </ResponsiveContainer>
