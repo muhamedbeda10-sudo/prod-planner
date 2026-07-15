@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { getDailyReport, getWorkedOn, getFullPlanGrouped, getWeekSnapshot, type ReportPlanRow } from "@/lib/server/report";
 import { getPlanNos } from "@/lib/server/data";
-import { PageHeader, pctStyle, Num } from "@/components/ui";
+import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, WeekSnapshotPicker } from "@/components/controls";
 import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
@@ -42,14 +42,12 @@ export default async function ReportPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Daily Report"
-        sub="Department output, the quantities chart, and the plan table with the day's work highlighted — print-ready"
-      >
+      {/* controls only — no on-screen title (the print masthead carries the name) */}
+      <div className="no-print flex flex-wrap items-center gap-2">
         <DayPicker value={dayISO} />
         <WeekSnapshotPicker plans={planNos} value={sp.week ?? ""} />
         <PrintButton />
-      </PageHeader>
+      </div>
 
       {/* Print masthead — logo + title + day, only on paper */}
       <div className="print-only mb-3">

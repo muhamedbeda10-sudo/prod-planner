@@ -265,10 +265,13 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   /* section headings read as report subtitles on paper */
   main h2 { font-size: 15px !important; color: var(--foreground) !important; margin-bottom: 8px !important; }
 
-  /* rows stay whole; the column headers repeat at the top of every page */
+  /* rows stay whole and the column headers repeat at the top of every page,
+     but long tables MUST be allowed to flow across pages — forcing a whole
+     table/card onto one page is what left blank pages and pushed tables to
+     page 2. So only ROWS avoid breaking; cards/sections flow freely. */
   thead { display: table-header-group !important; }
   tr { break-inside: avoid !important; }
-  .bg-surface, section { break-inside: avoid; } /* keep a card/section together */
+  .bg-surface, section, div.overflow-x-auto:has(> table) { break-inside: auto !important; }
 
   /* scroll containers must fully expand on paper */
   div.overflow-x-auto:has(> table) { overflow: visible !important; max-height: none !important; }
