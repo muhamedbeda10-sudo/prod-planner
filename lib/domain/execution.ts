@@ -10,6 +10,7 @@
 //     raw entries are never modified).
 
 import { dayNumber, dateFromDayNumber, toISODate } from "./dates";
+import { isPaintExempt } from "./constants";
 
 export interface ExecScheduleRow {
   bom: string;
@@ -372,8 +373,10 @@ export function computeDeptQueue(opts: {
   toDept: string; // this dept (consumer), e.g. "Welding"
   lead?: number; // days before delivery THIS dept must finish (weld 1, paint 0)
   inhouseCap?: Map<string, number>; // bom|mo|item -> planQty − OSP; the outsourced share never reaches our queues
+  skipItems?: (item: string) => boolean; // components this dept never handles (e.g. painting skips the core CF)
 }): WeldQueueRow[] {
   const { schedules, entries, day, fromDept, toDept, inhouseCap } = opts;
+  const skipItems = opts.skipItems ?? (() => false);
   const lead = opts.lead ?? 0;
   const dt = dayNumber(day);
   const rows: WeldQueueRow[] = [];
@@ -439,6 +442,7 @@ export function computeDeptQueue(opts: {
   const keys = new Set([...cutAttr.keys(), ...weldToday.keys()]);
   for (const key of keys) {
     const [bom, mo, item] = key.split("|");
+    if (skipItems(item)) continue; // this dept doesn't handle this component (e.g. paint skips CF)
     const cut = num(cutAttr, key);
     const welded = num(weldAttr, key);
     // OSP: only the in-house share needs this dept — upstream credit beyond it
@@ -487,6 +491,7 @@ export function computeDeptQueue(opts: {
     const available = Math.max(0, v.cut - v.weld);
     if (available <= 0 && v.today <= 0) continue;
     const [bom, item] = k.split("|");
+    if (skipItems(item)) continue; // this dept doesn't handle this component
     const since = available > 0 ? waitingSince(`${bom}||${item}`, v.weld) : null;
     rows.push({
       planNo: 0, bom, mo: "", description: "", item, cutToDate: v.cut, weldedToDate: v.weld, weldedToday: v.today, available,
@@ -525,7 +530,8 @@ export function computePaintingQueue(opts: {
   day: Date;
   inhouseCap?: Map<string, number>;
 }): WeldQueueRow[] {
-  return computeDeptQueue({ ...opts, fromDept: "Welding", toDept: "Painting", lead: 0 });
+  // the core (CF) is never painted — it must not show up in the painting queue
+  return computeDeptQueue({ ...opts, fromDept: "Welding", toDept: "Painting", lead: 0, skipItems: isPaintExempt });
 }
 
 export function computeExecutionRows(opts: {

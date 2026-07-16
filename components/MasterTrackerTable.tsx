@@ -8,7 +8,7 @@ import { setOrderStatus, setExcludedItems } from "@/app/orders/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
-import { ITEMS } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt } from "@/lib/domain/constants";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -235,6 +235,7 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
                         cut={sum((r) => r.items[it].cut)}
                         weld={sum((r) => r.items[it].weld)}
                         paint={sum((r) => r.items[it].paint)}
+                        noPaint={isPaintExempt(it)}
                       />
                     ))}
                     <td className="p-2 text-center font-extrabold border-r"><Num v={gComplete} /></td>
@@ -283,7 +284,7 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
                 <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>
                 <td className="p-2 text-center font-bold"><Num v={r.required} /></td>
                 {ITEMS.map((it) => (
-                  <StageCells key={it} cut={r.items[it].cut} weld={r.items[it].weld} paint={r.items[it].paint} excluded={r.items[it].excluded} />
+                  <StageCells key={it} cut={r.items[it].cut} weld={r.items[it].weld} paint={r.items[it].paint} excluded={r.items[it].excluded} noPaint={isPaintExempt(it)} />
                 ))}
                 <td className="p-2 text-center font-extrabold border-r"><Num v={r.complete} /></td>
                 <td className="p-2 text-center font-bold" style={{ color: r.remaining > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>
@@ -353,7 +354,7 @@ function StageHead() {
   );
 }
 
-function StageCells({ cut, weld, paint, excluded = false }: { cut: number; weld: number; paint: number; excluded?: boolean }) {
+function StageCells({ cut, weld, paint, excluded = false, noPaint = false }: { cut: number; weld: number; paint: number; excluded?: boolean; noPaint?: boolean }) {
   if (excluded) {
     return (
       <>
@@ -367,7 +368,12 @@ function StageCells({ cut, weld, paint, excluded = false }: { cut: number; weld:
     <>
       <td className="p-2 text-center tabnum" style={{ background: "var(--cut-tint)" }}>{cut}</td>
       <td className="p-2 text-center tabnum" style={{ background: "var(--weld-tint)" }}>{weld}</td>
-      <td className="p-2 text-center tabnum border-r" style={{ background: "var(--paint-tint)" }}>{paint}</td>
+      {/* the core (CF) has no paint stage — welding is its final step */}
+      {noPaint ? (
+        <td className="p-2 text-center text-muted border-r" title="not painted — core ships after welding">—</td>
+      ) : (
+        <td className="p-2 text-center tabnum border-r" style={{ background: "var(--paint-tint)" }}>{paint}</td>
+      )}
     </>
   );
 }

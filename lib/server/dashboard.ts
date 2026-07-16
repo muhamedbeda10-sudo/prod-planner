@@ -1,6 +1,6 @@
 ﻿import "server-only";
 import { prisma } from "@/lib/db";
-import { ITEMS, type Item } from "@/lib/domain/constants";
+import { ITEMS, PAINTED_ITEMS, type Item } from "@/lib/domain/constants";
 import { getSettings } from "./data";
 import { dayNumber, dateFromDayNumber, toISODate } from "@/lib/domain/dates";
 
@@ -68,11 +68,14 @@ const emptyItems = (): Record<Item, number> => ({ CF: 0, TC: 0, TN: 0, CB: 0 });
 const minOf = (vals: number[]) => vals.reduce((m, v) => (v < m ? v : m), vals[0] ?? 0);
 const isItem = (x: string): x is Item => (ITEMS as readonly string[]).includes(x);
 
-function mkDeptDay(items: Record<Item, number>): DeptDay {
+// Painting only handles the painted components, so a painting "set" is the MIN
+// over those items (the core CF is never painted — it can't gate a set).
+function mkDeptDay(items: Record<Item, number>, painted = false): DeptDay {
+  const setItems = painted ? PAINTED_ITEMS : ITEMS;
   return {
     items,
     total: ITEMS.reduce((s, it) => s + items[it], 0),
-    sets: minOf(ITEMS.map((it) => items[it])),
+    sets: minOf(setItems.map((it) => items[it])),
   };
 }
 
@@ -177,7 +180,7 @@ export async function getTargetDashboard(opts?: {
       holidayName: holidayName.get(d) ?? null,
       cut: mkDeptDay(cutI),
       weld: mkDeptDay(weldI),
-      paint: mkDeptDay(paintI),
+      paint: mkDeptDay(paintI, true),
     });
   }
 
@@ -195,7 +198,7 @@ export async function getTargetDashboard(opts?: {
       paintTotal += ITEMS.reduce((s, it) => s + paintI[it], 0);
       cutSets += minOf(ITEMS.map((it) => cutI[it]));
       weldSets += minOf(ITEMS.map((it) => weldI[it]));
-      paintSets += minOf(ITEMS.map((it) => paintI[it]));
+      paintSets += minOf(PAINTED_ITEMS.map((it) => paintI[it]));
     }
     const startISO = toISODate(dateFromDayNumber(ws));
     const endISO = toISODate(dateFromDayNumber(ws + 5));
@@ -221,9 +224,9 @@ export async function getTargetDashboard(opts?: {
     paceWorkingDays,
     clamped,
     today: todayInPeriod
-      ? { cut: mkDeptDay(dayItems(todayD, "cut")), weld: mkDeptDay(dayItems(todayD, "weld")), paint: mkDeptDay(dayItems(todayD, "paint")) }
+      ? { cut: mkDeptDay(dayItems(todayD, "cut")), weld: mkDeptDay(dayItems(todayD, "weld")), paint: mkDeptDay(dayItems(todayD, "paint"), true) }
       : null,
-    period: { cut: mkDeptDay(periodCut), weld: mkDeptDay(periodWeld), paint: mkDeptDay(periodPaint) },
+    period: { cut: mkDeptDay(periodCut), weld: mkDeptDay(periodWeld), paint: mkDeptDay(periodPaint, true) },
     days,
     history,
   };

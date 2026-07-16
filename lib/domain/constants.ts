@@ -12,6 +12,19 @@ export function isItem(x: string): x is Item {
   return (ITEMS as readonly string[]).includes(x);
 }
 
+/** Components that SKIP the Painting stage — the core (CF) is welded, then it's
+ *  finished. For a paint-exempt component the FINAL stage is Welding, so:
+ *   • completion counts its WELDED qty (not painted),
+ *   • it never enters the Painting worklist,
+ *   • Painting targets / sets / balance ignore it.
+ *  Everything upstream (Cut, Welding) is unaffected. */
+export const PAINT_EXEMPT = ["CF"] as const;
+export function isPaintExempt(x: string): boolean {
+  return (PAINT_EXEMPT as readonly string[]).includes(x);
+}
+/** The components that DO go through Painting (all items minus the exempt ones). */
+export const PAINTED_ITEMS: readonly Item[] = ITEMS.filter((i) => !isPaintExempt(i));
+
 export function isDept(x: string): x is Dept {
   return (DEPTS as readonly string[]).includes(x);
 }

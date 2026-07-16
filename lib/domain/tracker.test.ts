@@ -30,17 +30,30 @@ describe("computeTracker", () => {
     expect(row.achievement).toBeCloseTo(2 / 6, 9);
   });
 
-  it("complete follows PAINT, not weld", () => {
+  it("complete follows PAINT for TC/TN/CB but WELD for the paint-exempt core CF", () => {
     const orders = moRows("X3E11M11", "MO1", 5, { CF: 5, TC: 5, TN: 5, CB: 5 }); // pre 0
     const logs: TrackerLogRow[] = (["CF", "TC", "TN", "CB"] as const).flatMap((item) => [
       { dept: "Welding", bom: "X3E11M11", item, qty: 5 },
       { dept: "Painting", bom: "X3E11M11", item, qty: 2 },
     ]);
     const [row] = computeTracker(orders, logs);
-    expect(row.items.CF.weldDone).toBe(5);
-    expect(row.items.CF.paintDone).toBe(2);
-    expect(row.complete).toBe(2); // painted, not welded
+    // CF's final stage is welding (it's never painted) → counts 5
+    // TC/TN/CB counts their paint (2) → MIN(5,2,2,2) = 2
+    expect(row.complete).toBe(2);
     expect(row.remaining).toBe(3);
+  });
+
+  it("CF welded but not painted does not block completion (painted trio decides it)", () => {
+    const orders = moRows("X4E11M11", "MO1", 5, { CF: 5, TC: 5, TN: 5, CB: 5 });
+    const logs: TrackerLogRow[] = [
+      { dept: "Welding", bom: "X4E11M11", item: "CF", qty: 5 }, // core finished at welding
+      { dept: "Painting", bom: "X4E11M11", item: "TC", qty: 5 },
+      { dept: "Painting", bom: "X4E11M11", item: "TN", qty: 5 },
+      { dept: "Painting", bom: "X4E11M11", item: "CB", qty: 5 },
+    ];
+    const [row] = computeTracker(orders, logs);
+    expect(row.complete).toBe(5); // 100% even though CF paint = 0
+    expect(row.remaining).toBe(0);
   });
 
   it("logged Cut/Welding stacks on top of previous-week progress and caps at Required", () => {
@@ -53,7 +66,7 @@ describe("computeTracker", () => {
     const [row] = computeTracker(orders, logs);
     expect(row.items.CF.cutDone).toBe(4);
     expect(row.items.CF.weldDone).toBe(3);
-    expect(row.complete).toBe(0); // nothing painted yet
+    expect(row.complete).toBe(0); // TC/TN/CB have no paint yet
   });
 
   it("caps done at Required even when pre + logged exceeds it", () => {

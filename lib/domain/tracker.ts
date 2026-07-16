@@ -7,11 +7,12 @@
 //   CutDone    = min(pre + logged Cut,      Required)
 //   WeldDone   = min(pre + logged Welding,  Required)
 //   PaintDone  = min(pre + logged Painting, Required)
-//   Complete   = MIN(PaintDone across the 4 items) — counts once it left Painting
+//   Complete   = MIN of each component's FINAL stage — Painting for TC/TN/CB,
+//                Welding for the paint-exempt core (CF is never painted)
 //   Remaining  = Required - Complete
 //   Achievement = Complete / Required
 
-import { ITEMS, type Item } from "./constants";
+import { ITEMS, isPaintExempt, type Item } from "./constants";
 
 export interface TrackerOrderRow {
   bom: string;
@@ -132,11 +133,13 @@ export function computeTracker(
       let paintDone = pre + get(logged.Painting, `${rec.bom}|${it}`);
       if (paintDone > req) paintDone = req;
       items[it] = { cutDone, weldDone, paintDone };
+      // final stage = Welding for the paint-exempt core (CF), Painting otherwise
+      const finalDone = isPaintExempt(it) ? weldDone : paintDone;
       if (first) {
-        complete = paintDone;
+        complete = finalDone;
         first = false;
-      } else if (paintDone < complete) {
-        complete = paintDone;
+      } else if (finalDone < complete) {
+        complete = finalDone;
       }
     }
     let remaining = req - complete;

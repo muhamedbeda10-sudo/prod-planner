@@ -5,7 +5,7 @@ import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, WeekSnapshotPicker } from "@/components/controls";
 import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt } from "@/lib/domain/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +103,7 @@ export default async function ReportPage({
       </div>
 
       {/* The single quantities chart — values on the bars, dashed target line */}
-      <div className="bg-surface border rounded-xl p-3">
+      <div className="bg-surface border rounded-xl p-3 print-keep">
         <h3 className="font-bold text-sm mb-2">Output by component — vs daily target</h3>
         <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} target={target} />
       </div>
@@ -153,7 +153,7 @@ export default async function ReportPage({
                   </td>
                   <td className="p-2 font-bold tabnum">{r.required}</td>
                   {ITEMS.map((it) => (
-                    <FragmentCW key={it} cut={r.items[it].cut} weld={r.items[it].weld} paint={r.items[it].paint} />
+                    <FragmentCW key={it} cut={r.items[it].cut} weld={r.items[it].weld} paint={r.items[it].paint} noPaint={isPaintExempt(it)} />
                   ))}
                   <td className="p-2 font-extrabold tabnum">{r.complete}</td>
                   <td className="p-2 font-bold tabnum" style={{ color: r.left > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>{r.left}</td>
@@ -178,12 +178,16 @@ function StageHead() {
   );
 }
 
-function FragmentCW({ cut, weld, paint }: { cut: number; weld: number; paint: number }) {
+function FragmentCW({ cut, weld, paint, noPaint = false }: { cut: number; weld: number; paint: number; noPaint?: boolean }) {
   return (
     <>
       <td className="p-1 text-center tabnum text-xs border-l" style={{ background: "var(--cut-tint)" }}>{cut}</td>
       <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--weld-tint)" }}>{weld}</td>
-      <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--paint-tint)" }}>{paint}</td>
+      {noPaint ? (
+        <td className="p-1 text-center text-muted text-xs" title="not painted — core ships after welding">—</td>
+      ) : (
+        <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--paint-tint)" }}>{paint}</td>
+      )}
     </>
   );
 }

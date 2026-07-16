@@ -4,7 +4,7 @@
 //   2) Projects worked today    (per BOM+dept; completion = MIN painted — a
 //      transformer only counts once it left Painting)
 
-import { ITEMS, DEPTS, type Item, type Dept } from "./constants";
+import { ITEMS, DEPTS, PAINTED_ITEMS, isPaintExempt, type Item, type Dept } from "./constants";
 import type { BomGrouper } from "./bom";
 import { dayNumber } from "./dates";
 
@@ -69,6 +69,7 @@ export function computeDailyReport(
   // ---- read log (up to and including the day) ----
   const deptItem = new Map<string, number>(); // dept|item today
   const paintCum = new Map<string, number>(); // bg|item painting cumulative <= day
+  const weldCum = new Map<string, number>(); // bg|item welding cumulative <= day (final stage for CF)
   const bomDept = new Map<string, Map<string, number>>(); // bg|dept -> item -> qty today
   const bomWeek = new Map<string, number>(); // bg -> planNo (first today entry)
 
@@ -81,6 +82,7 @@ export function computeDailyReport(
     const q = l.qty || 0;
     if (!bg || !itm || q <= 0) continue;
     if (dp === "Painting") inc(paintCum, `${bg}|${itm}`, q);
+    if (dp === "Welding") inc(weldCum, `${bg}|${itm}`, q);
     if (dtl === dt) {
       inc(deptItem, `${dp}|${itm}`, q);
       const bk = `${bg}|${dp}`;
@@ -119,15 +121,19 @@ export function computeDailyReport(
       items[it] = g(deptItem, `${dept}|${it}`);
       total += items[it];
     }
-    const sets = minOf(ITEMS.map((it) => items[it]));
+    // Painting only handles the painted components (the core CF is never painted),
+    // so its sets / efficiency / balance are measured over those items only.
+    const setItems = dept === "Painting" ? PAINTED_ITEMS : ITEMS;
+    const n = setItems.length;
+    const sets = minOf(setItems.map((it) => items[it]));
     return {
       dept,
       items,
       total,
       target,
       sets,
-      efficiency: total / (4 * target),
-      balance: total > 0 ? (sets * 4) / total : null,
+      efficiency: total / (n * target),
+      balance: total > 0 ? (sets * n) / total : null,
     };
   });
 
@@ -157,7 +163,9 @@ export function computeDailyReport(
       const TT = g(tgtD, `${wkB}|${bg}|${it}`);
       let pre = RQ - TT;
       if (pre < 0) pre = 0;
-      let eff = pre + g(paintCum, `${bg}|${it}`);
+      // final stage = Welding for the paint-exempt core (CF), Painting otherwise
+      const cum = isPaintExempt(it) ? g(weldCum, `${bg}|${it}`) : g(paintCum, `${bg}|${it}`);
+      let eff = pre + cum;
       if (eff > RQ) eff = RQ;
       if (first) { completed = eff; first = false; }
       else if (eff < completed) completed = eff;

@@ -272,6 +272,8 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   thead { display: table-header-group !important; }
   tr { break-inside: avoid !important; }
   .bg-surface, section, div.overflow-x-auto:has(> table) { break-inside: auto !important; }
+  /* a chart must never be sliced across a page boundary — keep it whole */
+  .print-keep { break-inside: avoid !important; }
 
   /* scroll containers must fully expand on paper */
   div.overflow-x-auto:has(> table) { overflow: visible !important; max-height: none !important; }

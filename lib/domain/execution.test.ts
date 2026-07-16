@@ -219,30 +219,45 @@ describe("computeWeldingQueue — the welding screen is ONLY what was cut", () =
   });
 
   it("painting queue chains off WELDING output (Cut → Welding → Painting)", () => {
+    // TN is a painted component (CF is paint-exempt, so it never reaches paint)
+    const scheds = [{ planNo: 28, bom: "B1", mo: "MO-A", description: "1000kva", item: "TN", ovenDate: utcDate(2026, 7, 20), qty: 5 }];
     const entries = [
-      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 5, date: utcDate(2026, 7, 12) },
-      { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 3, date: day },
-      { planNo: 28, dept: "Painting", bom: "B1", mo: "MO-A", item: "CF", qty: 1, date: day },
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "TN", qty: 5, date: utcDate(2026, 7, 12) },
+      { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "TN", qty: 3, date: day },
+      { planNo: 28, dept: "Painting", bom: "B1", mo: "MO-A", item: "TN", qty: 1, date: day },
     ];
     // welding queue: cut 5 − welded 3 = 2 available
-    const weldQ = computeWeldingQueue({ schedules, entries, day });
+    const weldQ = computeWeldingQueue({ schedules: scheds, entries, day });
     expect(weldQ[0].available).toBe(2);
     // painting queue: welded 3 − painted 1 = 2 available (welded TODAY counts immediately)
-    const paintQ = computePaintingQueue({ schedules, entries, day });
+    const paintQ = computePaintingQueue({ schedules: scheds, entries, day });
     expect(paintQ).toHaveLength(1);
-    expect(paintQ[0]).toMatchObject({ bom: "B1", mo: "MO-A", item: "CF", cutToDate: 3, weldedToDate: 1, available: 2 });
+    expect(paintQ[0]).toMatchObject({ bom: "B1", mo: "MO-A", item: "TN", cutToDate: 3, weldedToDate: 1, available: 2 });
+  });
+
+  it("the paint-exempt core (CF) NEVER enters the painting queue", () => {
+    const entries = [
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 5, date: utcDate(2026, 7, 12) },
+      { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 5, date: day },
+    ];
+    expect(computePaintingQueue({ schedules, entries, day })).toHaveLength(0);
   });
 
   it("carries the next open delivery date; weld due = D−1, paint due = D", () => {
-    const entries = [
+    const weldEntries = [
       { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 4, date: day },
     ];
-    const weldQ = computeWeldingQueue({ schedules, entries, day }); // delivery 20/07
+    const weldQ = computeWeldingQueue({ schedules, entries: weldEntries, day }); // delivery 20/07
     expect(weldQ[0].deliveryISO).toBe("2026-07-20");
     expect(weldQ[0].dueISO).toBe("2026-07-19"); // one day before delivery
+    // painting: use a painted item (TN)
+    const paintScheds = [{ planNo: 28, bom: "B1", mo: "MO-A", description: "1000kva", item: "TN", ovenDate: utcDate(2026, 7, 20), qty: 5 }];
     const paintQ = computePaintingQueue({
-      schedules,
-      entries: [...entries, { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 2, date: day }],
+      schedules: paintScheds,
+      entries: [
+        { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "TN", qty: 4, date: day },
+        { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "TN", qty: 2, date: day },
+      ],
       day,
     });
     expect(paintQ[0].deliveryISO).toBe("2026-07-20");

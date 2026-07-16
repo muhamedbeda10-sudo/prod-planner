@@ -25,7 +25,7 @@ export function OutputByComponentChart({
   const maxVal = Math.max(target, ...data.flatMap((d) => [d.Cut, d.Welding, d.Painting]));
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
   return (
-    <div style={{ width: "100%", height: 380 }}>
+    <div style={{ width: "100%", height: 340 }}>
       <ResponsiveContainer>
         <BarChart data={data} margin={{ top: 28, right: 20, left: 20, bottom: 6 }} barCategoryGap="22%">
           <CartesianGrid strokeDasharray="3 3" vertical={false} />

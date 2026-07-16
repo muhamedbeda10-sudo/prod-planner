@@ -1,13 +1,13 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { ITEMS, type Item } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, type Item } from "@/lib/domain/constants";
 
 // Plan Tracker on the MONTHLY registry: one row per MO. Progress is GLOBAL —
 // setup balances plus every logged output, regardless of week — capped at the
-// order's plan qty. Complete = MIN painted across the four components (a
-// transformer only counts once it left Painting).
+// order's plan qty. Complete = MIN of each component's FINAL stage: Painting
+// for TC/TN/CB, Welding for the paint-exempt core (CF is never painted).
 // OSP quantities (outsourced components) count as covered: our depts never
-// make them, so they credit weld/paint when computing sets.
+// make them, so they credit the final stage when computing sets.
 
 export interface MasterTrackerRow {
   mo: string;
@@ -57,7 +57,8 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       items[it] = { cut, weld, paint, osp, excluded: isExcluded };
       if (isExcluded) continue; // this project doesn't need the component — it can't gate completion
       welded = Math.min(welded, cap(weld + osp));
-      complete = Math.min(complete, cap(paint + osp));
+      // final stage = Welding for the paint-exempt core (CF), Painting otherwise
+      complete = Math.min(complete, cap((isPaintExempt(it) ? weld : paint) + osp));
     }
     if (!Number.isFinite(welded)) welded = 0;
     if (!Number.isFinite(complete)) complete = 0;
