@@ -65,7 +65,7 @@ export function PeriodFilter({ from, to, active }: { from: string; to: string; a
       <input name="from" type="date" defaultValue={active ? from : ""} className="border rounded-md px-2 py-1.5 text-sm bg-surface font-semibold" required />
       <span className="text-muted text-xs">→</span>
       <input name="to" type="date" defaultValue={active ? to : ""} className="border rounded-md px-2 py-1.5 text-sm bg-surface font-semibold" required />
-      <button type="submit" className="bg-brand hover:bg-brand-dark text-white rounded-md px-3 py-1.5 text-sm font-bold transition-colors">
+      <button type="submit" className="btn btn-primary btn-sm">
         Apply
       </button>
       {active && (

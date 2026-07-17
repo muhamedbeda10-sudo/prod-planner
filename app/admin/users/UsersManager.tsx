@@ -14,8 +14,8 @@ interface Row {
   createdAt: Date;
 }
 
-const inputCls = "border rounded-md px-2.5 py-1.5 text-sm bg-surface font-semibold w-full";
-const btnCls = "bg-brand hover:bg-brand-dark text-white rounded-md px-3 py-1.5 text-sm font-bold transition-colors disabled:opacity-60";
+const inputCls = "px-2.5 py-1.5 text-sm font-semibold w-full";
+const btnCls = "btn btn-primary btn-sm";
 
 function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: boolean }) {
   return (
@@ -83,7 +83,7 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
           </button>
           <button
             type="button"
-            className="border rounded-md px-3 py-1.5 text-sm font-bold hover:bg-brand-light/60 transition-colors"
+            className="btn btn-secondary btn-sm"
             onClick={() => setShowReset((v) => !v)}
           >
             Reset password
@@ -100,9 +100,7 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
               <button
                 type="submit"
                 disabled={act.pending}
-                className={`rounded-md px-3 py-1.5 text-sm font-bold transition-colors ${
-                  user.active ? "text-bad-fg border hover:bg-red-50 dark:hover:bg-red-950/40" : btnCls
-                }`}
+                className={user.active ? "btn btn-secondary btn-sm text-bad-fg" : btnCls}
               >
                 {user.active ? "Deactivate" : "Reactivate"}
               </button>

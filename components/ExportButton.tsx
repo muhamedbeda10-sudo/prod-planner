@@ -1,12 +1,13 @@
 "use client";
 
 import * as XLSX from "xlsx";
+import { FileSpreadsheet } from "lucide-react";
 
 export function ExportButton({
   rows,
   filename,
   sheetName = "Sheet1",
-  label = "📊 Export Excel",
+  label = "Export Excel",
 }: {
   rows: Record<string, unknown>[];
   filename: string;
@@ -20,8 +21,9 @@ export function ExportButton({
     XLSX.writeFile(wb, filename);
   }
   return (
-    <button onClick={exportXlsx} disabled={rows.length === 0} className="no-print bg-ok-fg text-white font-bold rounded-md px-4 py-1.5 text-sm disabled:opacity-40">
-      {label}
+    <button onClick={exportXlsx} disabled={rows.length === 0} className="no-print btn btn-secondary btn-sm">
+      <FileSpreadsheet size={14} className="text-ok-fg" />
+      {label.replace(/^📊\s*/, "")}
     </button>
   );
 }

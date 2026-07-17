@@ -130,14 +130,14 @@ export default async function Home({
             <thead>
               <tr className="bg-brand text-white text-center">
                 <th className="p-2 text-left" rowSpan={2}>Day</th>
-                <th className="p-2 border-l border-white/20" colSpan={5}>✂️ Cut</th>
-                <th className="p-2 border-l border-white/20" colSpan={5}>🔧 Welding</th>
-                <th className="p-2 border-l border-white/20" colSpan={5}>🎨 Painting</th>
+                <th className="p-2 border-l border-border-strong" colSpan={5}>✂️ Cut</th>
+                <th className="p-2 border-l border-border-strong" colSpan={5}>🔧 Welding</th>
+                <th className="p-2 border-l border-border-strong" colSpan={5}>🎨 Painting</th>
               </tr>
               <tr className="bg-brand-dark text-white text-center text-[10px]">
                 {[0, 1, 2].flatMap((i) =>
                   [...ITEMS, "Total"].map((h) => (
-                    <th key={`${i}-${h}`} className={`p-1 ${h === "CF" ? "border-l border-white/20" : ""}`}>{h}</th>
+                    <th key={`${i}-${h}`} className={`p-1 ${h === "CF" ? "border-l border-border-strong" : ""}`}>{h}</th>
                   ))
                 )}
               </tr>

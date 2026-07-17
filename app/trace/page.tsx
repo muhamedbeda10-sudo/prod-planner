@@ -123,7 +123,7 @@ export default async function TracePage({
               <thead>
                 <tr className="bg-brand text-white text-center">
                   <th className="p-2 text-left">Plan</th>
-                  {ITEMS.map((it) => <th key={it} colSpan={3} className="p-2 border-l border-white/20">{it}</th>)}
+                  {ITEMS.map((it) => <th key={it} colSpan={3} className="p-2 border-l border-border-strong">{it}</th>)}
                 </tr>
                 <tr className="bg-brand-dark text-white text-[10px]">
                   <th className="p-1"></th>
@@ -240,7 +240,7 @@ export default async function TracePage({
 function FragmentCW() {
   return (
     <>
-      <th className="p-1 font-medium border-l border-white/20">Cut</th>
+      <th className="p-1 font-medium border-l border-border-strong">Cut</th>
       <th className="p-1 font-medium">Weld</th>
       <th className="p-1 font-medium">Paint</th>
     </>

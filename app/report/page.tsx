@@ -129,7 +129,7 @@ export default async function ReportPage({
               <tr className="bg-brand text-white text-center">
                 <th rowSpan={2} className="p-2 text-left">BOM</th>
                 <th rowSpan={2} className="p-2">Required</th>
-                {ITEMS.map((it) => <th key={it} colSpan={3} className="p-2 border-l border-white/20">{it}</th>)}
+                {ITEMS.map((it) => <th key={it} colSpan={3} className="p-2 border-l border-border-strong">{it}</th>)}
                 <th rowSpan={2} className="p-2">Complete</th>
                 <th rowSpan={2} className="p-2">Left</th>
                 <th rowSpan={2} className="p-2">Achv.</th>
@@ -171,7 +171,7 @@ export default async function ReportPage({
 function StageHead() {
   return (
     <>
-      <th className="p-1 font-medium border-l border-white/20">Cut</th>
+      <th className="p-1 font-medium border-l border-border-strong">Cut</th>
       <th className="p-1 font-medium">Weld</th>
       <th className="p-1 font-medium">Paint</th>
     </>

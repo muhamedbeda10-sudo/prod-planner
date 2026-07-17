@@ -9,8 +9,8 @@ export default async function LoginPage() {
   const user = await getCurrentUser();
   if (user) redirect("/");
   return (
-    <div className="min-h-[70vh] flex items-center justify-center">
-      <div className="w-full max-w-sm bg-surface border rounded-xl p-8 shadow-sm">
+    <div className="min-h-[78vh] flex items-center justify-center">
+      <div className="w-full max-w-sm bg-surface border rounded-2xl p-8" style={{ boxShadow: "var(--shadow-lg)" }}>
         <div className="flex justify-center mb-6">
           <Image
             src="/brand/atc-logo-horizontal.svg"

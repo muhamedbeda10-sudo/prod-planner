@@ -1,5 +1,7 @@
 "use client";
 
+import { Moon, Sun } from "lucide-react";
+
 /** Light/dark toggle. The initial class is applied pre-paint by the inline
  *  script in the root layout; this button just flips and persists it. The
  *  icon is chosen by CSS (dark:) so no state or effect is needed. */
@@ -17,11 +19,11 @@ export function ThemeToggle() {
       type="button"
       onClick={toggle}
       title="Toggle dark mode"
-      className="shrink-0 rounded-md px-2.5 py-1.5 text-lg leading-none hover:bg-white/15 transition-colors"
+      className="shrink-0 rounded-md p-2 hover:bg-white/15 transition-colors"
       aria-label="Toggle dark mode"
     >
-      <span className="dark:hidden">🌙</span>
-      <span className="hidden dark:inline">☀️</span>
+      <span className="dark:hidden"><Moon size={16} /></span>
+      <span className="hidden dark:inline"><Sun size={16} /></span>
     </button>
   );
 }

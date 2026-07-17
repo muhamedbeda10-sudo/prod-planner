@@ -3,6 +3,7 @@
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList, ReferenceLine,
 } from "recharts";
+import { Printer } from "lucide-react";
 import { ITEMS } from "@/lib/domain/constants";
 
 /* ATC brand chart palette */
@@ -80,8 +81,9 @@ export function PlannedVsWeldedChart({
 
 export function PrintButton() {
   return (
-    <button onClick={() => window.print()} className="no-print bg-brand hover:bg-brand-dark text-white font-bold rounded-md px-4 py-1.5 text-sm transition-colors">
-      🖨️ Print / Save PDF
+    <button onClick={() => window.print()} className="no-print btn btn-primary btn-sm">
+      <Printer size={14} />
+      Print / Save PDF
     </button>
   );
 }
