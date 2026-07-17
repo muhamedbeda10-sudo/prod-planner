@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
+import { put, del } from "@vercel/blob";
 import { isItem, isDept } from "@/lib/domain/constants";
 import { parseISODate } from "@/lib/domain/dates";
 import { checkOutputChain } from "@/lib/server/outputGuard";
@@ -183,24 +184,33 @@ export async function addQueueNote(formData: FormData): Promise<RecordResult> {
     if (files.length > MAX_PHOTOS) return { ok: false, error: `Max ${MAX_PHOTOS} photos per note.` };
 
     const urls: string[] = [];
-    // Vercel's filesystem is ephemeral — photos would vanish on the next deploy.
-    // Until blob storage is wired up, the cloud version takes text-only notes.
-    if (files.length > 0 && process.env.VERCEL) {
-      return { ok: false, error: "Photo attachments are not available on the online version yet — write a text note instead." };
+    const useBlob = !!process.env.BLOB_READ_WRITE_TOKEN; // Vercel Blob (cloud + any machine with the token)
+    if (files.length > 0 && !useBlob && process.env.VERCEL) {
+      // ephemeral filesystem and no blob token — refuse clearly instead of losing files
+      return { ok: false, error: "Photo storage is not configured — ask the admin." };
     }
     if (files.length > 0) {
-      // outside public/ — production only serves public assets snapshotted at
-      // build time, so runtime uploads go through the /uploads/notes route
       const dir = path.join(process.cwd(), "uploads", "notes");
-      await mkdir(dir, { recursive: true });
+      if (!useBlob) await mkdir(dir, { recursive: true });
       for (const f of files) {
         if (!f.type.startsWith("image/")) return { ok: false, error: `"${f.name}" is not an image.` };
         if (f.size > MAX_PHOTO_BYTES) return { ok: false, error: `"${f.name}" is larger than 10 MB.` };
         const rawExt = path.extname(f.name).toLowerCase();
         const ext = IMAGE_EXTENSIONS.has(rawExt) ? rawExt : ".jpg";
         const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
-        await writeFile(path.join(dir, name), Buffer.from(await f.arrayBuffer()));
-        urls.push(`/uploads/notes/${name}`);
+        if (useBlob) {
+          const blob = await put(`notes/${name}`, Buffer.from(await f.arrayBuffer()), {
+            access: "public",
+            contentType: f.type,
+            addRandomSuffix: true, // unguessable URL — the app itself stays behind login
+          });
+          urls.push(blob.url);
+        } else {
+          // local fallback: outside public/ — production only serves public assets
+          // snapshotted at build time, so these go through the /uploads/notes route
+          await writeFile(path.join(dir, name), Buffer.from(await f.arrayBuffer()));
+          urls.push(`/uploads/notes/${name}`);
+        }
       }
     }
 
@@ -244,7 +254,11 @@ export async function deleteQueueNote(formData: FormData): Promise<RecordResult>
   if (guard.error) return { ok: false, error: guard.error };
   for (const p of note.photos ? (JSON.parse(note.photos) as string[]) : []) {
     try {
-      await rm(path.join(process.cwd(), p));
+      if (p.startsWith("http")) {
+        await del(p); // Vercel Blob photo
+      } else {
+        await rm(path.join(process.cwd(), p)); // legacy local-disk photo
+      }
     } catch {
       /* photo file already gone — fine */
     }
