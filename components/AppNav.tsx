@@ -90,8 +90,10 @@ export function AppNav({ user }: { user: NavUser }) {
             </ul>
           </nav>
 
+          {/* right-side cluster: admin tools + user + theme, one unit so it never wraps alone */}
+          <div className="ml-auto md:ml-0 flex items-center gap-1 md:gap-2 shrink-0">
           {/* admin tools dropdown */}
-          <div className="relative shrink-0 ml-auto md:ml-0" ref={menuRef}>
+          <div className="relative shrink-0" ref={menuRef}>
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
@@ -99,7 +101,7 @@ export function AppNav({ user }: { user: NavUser }) {
               aria-haspopup="menu"
               aria-expanded={open}
             >
-              ⚙️ Admin Tools
+              ⚙️<span className="hidden sm:inline"> Admin Tools</span>
               <svg width="10" height="10" viewBox="0 0 10 10" className={`transition-transform ${open ? "rotate-180" : ""}`}>
                 <path d="M1 3l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -146,7 +148,7 @@ export function AppNav({ user }: { user: NavUser }) {
           </div>
 
           {/* user + logout */}
-          <div className="shrink-0 flex items-center gap-2 border-l border-white/20 pl-3">
+          <div className="shrink-0 flex items-center gap-1 md:gap-2 border-l border-white/20 pl-2 md:pl-3">
             <span className="hidden md:block text-sm font-semibold max-w-[140px] truncate" title={user.name}>
               {user.name}
             </span>
@@ -161,6 +163,7 @@ export function AppNav({ user }: { user: NavUser }) {
               </button>
             </form>
             <ThemeToggle />
+          </div>
           </div>
         </div>
       </div>
