@@ -62,8 +62,9 @@ export function AppNav({ user }: { user: NavUser }) {
 
   return (
     <header className="no-print sticky top-0 z-30 bg-brand text-white shadow-md">
-      <div className="max-w-[1600px] mx-auto px-4 md:px-6">
-        <div className="flex items-center gap-4 h-16">
+      <div className="max-w-[1600px] mx-auto px-3 md:px-6">
+        {/* mobile: two rows (logo + controls / scrollable tabs) — desktop: one 64px row */}
+        <div className="flex flex-wrap items-center gap-x-3 md:gap-x-4 py-2 md:py-0 md:h-16">
           {/* brand — the OFFICIAL horizontal logo (white version for the green bar) */}
           <Link href="/" className="flex items-center shrink-0 group">
             <Image
@@ -72,13 +73,13 @@ export function AppNav({ user }: { user: NavUser }) {
               width={266}
               height={32}
               priority
-              className="transition-transform duration-300 group-hover:scale-[1.03]"
+              className="h-6 w-auto md:h-8 transition-transform duration-300 group-hover:scale-[1.03]"
             />
           </Link>
 
-          {/* primary nav — centered */}
-          <nav className="flex-1 overflow-x-auto overflow-y-hidden">
-            <ul className="flex items-center justify-center gap-1 w-max min-w-full">
+          {/* primary nav — its own scrollable row on mobile, centered inline on desktop */}
+          <nav className="order-last basis-full md:order-none md:basis-auto md:flex-1 overflow-x-auto overflow-y-hidden mt-1.5 md:mt-0 -mx-3 px-3 md:mx-0 md:px-0">
+            <ul className="flex items-center justify-start md:justify-center gap-1 w-max min-w-full">
               {PRIMARY.map((l) => (
                 <li key={l.href}>
                   <Link href={l.href} className={`nav-tab ${isActive(l.href) ? "nav-tab-active" : ""}`}>
@@ -90,7 +91,7 @@ export function AppNav({ user }: { user: NavUser }) {
           </nav>
 
           {/* admin tools dropdown */}
-          <div className="relative shrink-0" ref={menuRef}>
+          <div className="relative shrink-0 ml-auto md:ml-0" ref={menuRef}>
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}

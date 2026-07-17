@@ -206,6 +206,7 @@ export default async function Home({
           <HistoryChart history={d.history} targetPerDeptWeek={d.targetPerItem * 24} />
         </ChartCard>
         <ChartCard title="Weekly attainment" sub="output and complete sets per week (sets = MIN across the 4 items, summed daily)">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="text-left text-xs text-muted border-b">
@@ -242,6 +243,7 @@ export default async function Home({
               ))}
             </tbody>
           </table>
+          </div>
         </ChartCard>
       </div>
     </div>
