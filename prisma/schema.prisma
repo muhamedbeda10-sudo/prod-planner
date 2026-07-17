@@ -202,6 +202,33 @@ model QueueNote {
   @@index([status])
 }
 
+// Application account. Admin manages accounts and assigns granular permission
+// keys (see lib/domain/permissions.ts) from the in-app Users page.
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique // login identifier (their Gmail)
+  name         String
+  passwordHash String // scrypt: salt:hash hex
+  isAdmin      Boolean   @default(false) // full access + user management
+  perms        String    @default("") // CSV of permission keys
+  active       Boolean   @default(true) // deactivated users cannot log in
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+}
+
+// DB-backed session: id is the sha256 of the cookie token, so a DB leak never
+// exposes usable tokens, and the admin can revoke access instantly.
+model Session {
+  id        String   @id
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 // Global settings (Lists!J2:J5). Single row (id = 1).
 model Settings {
   id              Int   @id @default(1)

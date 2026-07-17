@@ -7,6 +7,7 @@ import path from "node:path";
 import { isItem, isDept } from "@/lib/domain/constants";
 import { parseISODate } from "@/lib/domain/dates";
 import { checkOutputChain } from "@/lib/server/outputGuard";
+import { requireDeptEdit } from "@/lib/server/auth";
 
 export interface RecordResult {
   ok: boolean;
@@ -28,6 +29,8 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     const date = parseISODate(dateStr);
     if (!date) return { ok: false, error: "Invalid date." };
     if (!isDept(dept)) return { ok: false, error: "Invalid department." };
+    const guard = await requireDeptEdit(dept);
+    if (guard.error) return { ok: false, error: guard.error };
     if (!bom) return { ok: false, error: "Missing BOM." };
     if (!isItem(item)) return { ok: false, error: "Invalid component." };
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a quantity greater than zero." };
@@ -87,6 +90,8 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
 
     const toDept = RETURN_UPSTREAM[fromDept];
     if (!toDept) return { ok: false, error: "Invalid department." };
+    const guard = await requireDeptEdit(fromDept);
+    if (guard.error) return { ok: false, error: guard.error };
     if (!bom || !isItem(item)) return { ok: false, error: "Invalid line." };
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a quantity greater than zero." };
     if (!reason) return { ok: false, error: "Write the reason — the upstream dept needs to know what to fix." };
@@ -128,6 +133,9 @@ export async function redeliverReturn(formData: FormData): Promise<RecordResult>
     const ret = await prisma.returnEntry.findUnique({ where: { id } });
     if (!ret) return { ok: false, error: "Return not found." };
     if (ret.status !== "open") return { ok: false, error: "Already re-delivered." };
+    // re-delivering writes to the UPSTREAM dept's ledger — that dept's permission
+    const guard = await requireDeptEdit(ret.toDept);
+    if (guard.error) return { ok: false, error: guard.error };
 
     const date = new Date();
     await prisma.$transaction(async (tx) => {
@@ -167,6 +175,8 @@ export async function addQueueNote(formData: FormData): Promise<RecordResult> {
     if (!bom) return { ok: false, error: "Missing BOM." };
     if (!isItem(item)) return { ok: false, error: "Invalid component." };
     if (!isDept(dept)) return { ok: false, error: "Invalid department." };
+    const guard = await requireDeptEdit(dept);
+    if (guard.error) return { ok: false, error: guard.error };
 
     const files = formData.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
     if (!text && files.length === 0) return { ok: false, error: "Write a note or attach a photo." };
@@ -208,6 +218,8 @@ export async function updateQueueNote(formData: FormData): Promise<RecordResult>
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
   const note = await prisma.queueNote.findUnique({ where: { id } });
   if (!note) return { ok: false, error: "Note not found." };
+  const guard = await requireDeptEdit(note.dept);
+  if (guard.error) return { ok: false, error: guard.error };
   const photos: string[] = note.photos ? JSON.parse(note.photos) : [];
   if (!text && photos.length === 0) return { ok: false, error: "A note needs text or a photo." };
   await prisma.queueNote.update({ where: { id }, data: { text } });
@@ -223,6 +235,8 @@ export async function deleteQueueNote(formData: FormData): Promise<RecordResult>
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
   const note = await prisma.queueNote.findUnique({ where: { id } });
   if (!note) return { ok: false, error: "Note not found." };
+  const guard = await requireDeptEdit(note.dept);
+  if (guard.error) return { ok: false, error: guard.error };
   for (const p of note.photos ? (JSON.parse(note.photos) as string[]) : []) {
     try {
       await rm(path.join(process.cwd(), p));
@@ -245,6 +259,8 @@ export async function setQueueNoteStatus(formData: FormData): Promise<RecordResu
   if (status !== "open" && status !== "resolved") return { ok: false, error: "Invalid status." };
   const note = await prisma.queueNote.findUnique({ where: { id } });
   if (!note) return { ok: false, error: "Note not found." };
+  const guard = await requireDeptEdit(note.dept);
+  if (guard.error) return { ok: false, error: guard.error };
   await prisma.queueNote.update({ where: { id }, data: { status } });
   revalidatePath("/worklist/cut");
   revalidatePath("/worklist/welding");

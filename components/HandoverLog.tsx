@@ -20,7 +20,8 @@ export interface LogRow {
   source: string;
 }
 
-export function HandoverLog({ rows }: { rows: LogRow[] }) {
+export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; editableDepts?: string[] }) {
+  const canEditRow = (r: LogRow) => editableDepts.includes(r.dept);
   const router = useRouter();
   const [editing, setEditing] = useState<number | null>(null);
   const [qty, setQty] = useState("");
@@ -162,12 +163,12 @@ export function HandoverLog({ rows }: { rows: LogRow[] }) {
                         <button onClick={() => save(r.id)} disabled={pending} className="text-ok-fg font-bold text-xs px-2">Save</button>
                         <button onClick={() => { setEditing(null); setRowErr((s) => ({ ...s, [r.id]: "" })); }} className="text-muted text-xs px-2">Cancel</button>
                       </>
-                    ) : (
+                    ) : canEditRow(r) ? (
                       <>
                         <button onClick={() => { setEditing(r.id); setQty(String(r.qty)); setDate(r.date); }} className="text-accent text-xs px-2">Edit</button>
                         <button onClick={() => remove(r.id)} disabled={pending} className="text-bad-fg text-xs px-2">Delete</button>
                       </>
-                    )}
+                    ) : null}
                   </span>
                   {rowErr[r.id] && <div className="text-[11px] text-bad-fg mt-0.5 max-w-72 whitespace-normal text-left">{rowErr[r.id]}</div>}
                 </td>

@@ -3,10 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
+import { requirePerm } from "@/lib/server/auth";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
 export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const guard = await requirePerm("tracker.edit");
+  if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
   const status = String(formData.get("status") ?? "");
   if (!mo) return { ok: false, error: "Missing MO." };
@@ -36,6 +39,8 @@ function monthLabel(value: string): string | null {
  *  project). The plan sheets can't express this, so it is set on the tracker.
  *  Excluded items leave the cut worklist and stop gating completion/OTD. */
 export async function setExcludedItems(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const guard = await requirePerm("tracker.edit");
+  if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
   const raw = String(formData.get("excluded") ?? "").trim(); // CSV of CF/TC/TN/CB
   if (!mo) return { ok: false, error: "Missing MO." };
@@ -53,6 +58,8 @@ export async function setExcludedItems(formData: FormData): Promise<{ ok: boolea
 }
 
 export async function importMonthlyAction(formData: FormData): Promise<MonthlyImportResult> {
+  const guard = await requirePerm("plans.import");
+  if (guard.error) return { ok: false, error: guard.error };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose an Excel file." };
   const label = monthLabel(String(formData.get("month") ?? ""));

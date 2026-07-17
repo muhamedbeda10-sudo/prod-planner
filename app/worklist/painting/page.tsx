@@ -4,6 +4,7 @@ import { getQueueNotes } from "@/lib/server/queueNotes";
 import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
 import { PrintHeader } from "@/components/PrintHeader";
+import { getCurrentUser, canEditDept } from "@/lib/server/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +13,12 @@ export const dynamic = "force-dynamic";
 export default async function PaintingWorklistPage() {
   const today = new Date();
   const dayISO = toISODate(today);
-  const [queue, notes, settings] = await Promise.all([getPaintingQueue(today), getQueueNotes(), getSettings()]);
+  const [queue, notes, settings, user] = await Promise.all([getPaintingQueue(today), getQueueNotes(), getSettings(), getCurrentUser()]);
 
   return (
     <>
       <PrintHeader title="Painting Worklist" date={toDisplayDate(today)} />
-      <WeldingQueueTable rows={queue} day={dayISO} dept="Painting" upstream="Welded" notes={notes} capacity={settings.capacityPerItem} />
+      <WeldingQueueTable rows={queue} day={dayISO} dept="Painting" upstream="Welded" notes={notes} capacity={settings.capacityPerItem} canEdit={!!user && canEditDept(user, "Painting")} />
     </>
   );
 }

@@ -22,6 +22,7 @@ export function CutWorklistView({
   returns = [],
   notes = {},
   capacity = DEFAULTS.capacityPerItem,
+  canEdit = false,
 }: {
   dueNow: CutTranche[];
   overdue: CutTranche[];
@@ -31,6 +32,7 @@ export function CutWorklistView({
   returns?: ReturnRowDTO[];
   notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
+  canEdit?: boolean; // user holds cut.edit — otherwise view-only
 }) {
   const [q, setQ] = useState("");
   const [item, setItem] = useState("");
@@ -97,7 +99,7 @@ export function CutWorklistView({
       </FilterBar>
 
       {/* 0 — pieces sent back by Welding: fix first, they re-enter the flow */}
-      <ReturnsTable rows={returns} dept="Cut" />
+      <ReturnsTable rows={returns} dept="Cut" canEdit={canEdit} />
 
       {/* 1 — due today (delivery in 2 days) */}
       <section>
@@ -107,7 +109,7 @@ export function CutWorklistView({
             No weekly plan covers today — import the new weekly schedule. The backlogs below still work.
           </p>
         ) : (
-          <CutTrancheTable rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} />
+          <CutTrancheTable rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} canEdit={canEdit} />
         )}
       </section>
 
@@ -117,13 +119,13 @@ export function CutWorklistView({
           Overdue backlog — missed delivery dates ({totalOverdue} pcs)
           {totalOverdue > 0 && <span className="pill pill-bad ml-2 normal-case">catch up first</span>}
         </h2>
-        <CutTrancheTable rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} />
+        <CutTrancheTable rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} />
       </section>
 
       {/* 3 — undated backlog from the monthly registry */}
       <section className="mt-8">
         <h2>Backlog without dates — monthly registry ({totalPool} pcs)</h2>
-        <CascadeTable rows={cascadeF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} />
+        <CascadeTable rows={cascadeF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} />
       </section>
     </>
   );

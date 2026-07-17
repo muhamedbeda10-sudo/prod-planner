@@ -25,6 +25,7 @@ export function WeldingQueueTable({
   notes = {},
   returns = [],
   capacity = DEFAULTS.capacityPerItem,
+  canEdit = false,
 }: {
   rows: WeldQueueRow[];
   day: string;
@@ -33,6 +34,7 @@ export function WeldingQueueTable({
   notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
   returns?: ReturnRowDTO[]; // pieces sent back TO this dept (shown under the filter)
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
+  canEdit?: boolean; // user holds this dept's edit permission — otherwise view-only
 }) {
   const verb = dept === "Welding" ? "weld" : "paint";
   const router = useRouter();
@@ -258,6 +260,8 @@ export function WeldingQueueTable({
           <td className="p-2">
             {cleared ? (
               <span className="pill pill-ok">✓ Cleared</span>
+            ) : !canEdit ? (
+              <span className="text-muted text-xs" title="View only — you don't have this department's edit permission">—</span>
             ) : (
               <div className="flex items-center gap-1.5">
                 <input
@@ -370,34 +374,36 @@ export function WeldingQueueTable({
                           </span>
                           <span className="font-bold">{n.dept}</span>
                           <span className="text-muted tabnum">{n.createdISO}</span>
-                          <span className="ml-auto flex items-center gap-2.5">
-                            {editingNote !== n.id && (
+                          {canEdit && (
+                            <span className="ml-auto flex items-center gap-2.5">
+                              {editingNote !== n.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditingNote(n.id); setEditText(n.text); setNoteMsg(""); }}
+                                  disabled={pending}
+                                  className="text-accent hover:underline"
+                                >
+                                  ✏️ Edit
+                                </button>
+                              )}
                               <button
                                 type="button"
-                                onClick={() => { setEditingNote(n.id); setEditText(n.text); setNoteMsg(""); }}
+                                onClick={() => toggleNoteStatus(n.id, n.status === "open" ? "resolved" : "open")}
                                 disabled={pending}
                                 className="text-accent hover:underline"
                               >
-                                ✏️ Edit
+                                {n.status === "open" ? "Mark resolved" : "Reopen"}
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => toggleNoteStatus(n.id, n.status === "open" ? "resolved" : "open")}
-                              disabled={pending}
-                              className="text-accent hover:underline"
-                            >
-                              {n.status === "open" ? "Mark resolved" : "Reopen"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeNote(n.id)}
-                              disabled={pending}
-                              className="text-bad-fg hover:underline"
-                            >
-                              🗑 Delete
-                            </button>
-                          </span>
+                              <button
+                                type="button"
+                                onClick={() => removeNote(n.id)}
+                                disabled={pending}
+                                className="text-bad-fg hover:underline"
+                              >
+                                🗑 Delete
+                              </button>
+                            </span>
+                          )}
                         </div>
 
                         {editingNote === n.id ? (
@@ -441,6 +447,7 @@ export function WeldingQueueTable({
                   </div>
                 )}
 
+                {canEdit && (
                 <form onSubmit={submitNote} className="bg-surface border rounded-xl p-3 shadow-sm">
                   <input type="hidden" name="bom" value={r.bom} />
                   <input type="hidden" name="mo" value={r.mo} />
@@ -470,6 +477,7 @@ export function WeldingQueueTable({
                   </div>
                   {noteMsg && <div className="text-[11px] text-bad-fg mt-1.5">{noteMsg}</div>}
                 </form>
+                )}
               </div>
             </td>
           </tr>
@@ -516,7 +524,7 @@ export function WeldingQueueTable({
       </FilterBar>
 
       {/* pieces sent back TO this dept: fix first, they re-enter the flow */}
-      <ReturnsTable rows={returns} dept={dept} />
+      <ReturnsTable rows={returns} dept={dept} canEdit={canEdit} />
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">

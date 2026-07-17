@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { parseISODate } from "@/lib/domain/dates";
+import { requirePerm } from "@/lib/server/auth";
 
 export interface ActionResult {
   ok: boolean;
@@ -14,6 +15,8 @@ function revalidate() {
 }
 
 export async function addHoliday(formData: FormData): Promise<ActionResult> {
+  const guard = await requirePerm("calendar.manage");
+  if (guard.error) return { ok: false, error: guard.error };
   const date = parseISODate(String(formData.get("date") ?? ""));
   const name = String(formData.get("name") ?? "").trim();
   if (!date) return { ok: false, error: "Pick a date." };
@@ -28,6 +31,8 @@ export async function addHoliday(formData: FormData): Promise<ActionResult> {
 }
 
 export async function deleteHoliday(formData: FormData): Promise<ActionResult> {
+  const guard = await requirePerm("calendar.manage");
+  if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
   const holiday = await prisma.holiday.findUnique({ where: { id } });

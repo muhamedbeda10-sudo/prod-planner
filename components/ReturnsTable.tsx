@@ -9,7 +9,7 @@ import { redeliverReturn } from "@/app/worklist/actions";
  *  re-delivered" — the qty goes straight back on this dept's ledger, the line
  *  reappears downstream, and the row leaves this screen (audit stays in the
  *  daily logs). */
-export function ReturnsTable({ rows, dept }: { rows: ReturnRowDTO[]; dept: string }) {
+export function ReturnsTable({ rows, dept, canEdit = false }: { rows: ReturnRowDTO[]; dept: string; canEdit?: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState("");
@@ -59,14 +59,18 @@ export function ReturnsTable({ rows, dept }: { rows: ReturnRowDTO[]; dept: strin
                 <td className="p-2 text-center font-extrabold tabnum text-bad-fg">{r.qty}</td>
                 <td className="p-2 text-xs">{r.reason}</td>
                 <td className="p-2 text-center whitespace-nowrap no-print">
-                  <button
-                    onClick={() => redeliver(r)}
-                    disabled={pending}
-                    className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50 transition-colors"
-                    title={`Adds ${r.qty} back to ${dept}'s total — it reappears in the ${r.fromDept} queue immediately`}
-                  >
-                    ✓ Fixed &amp; re-delivered
-                  </button>
+                  {canEdit ? (
+                    <button
+                      onClick={() => redeliver(r)}
+                      disabled={pending}
+                      className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50 transition-colors"
+                      title={`Adds ${r.qty} back to ${dept}'s total — it reappears in the ${r.fromDept} queue immediately`}
+                    >
+                      ✓ Fixed &amp; re-delivered
+                    </button>
+                  ) : (
+                    <span className="text-muted text-xs" title="View only — you don't have this department's edit permission">—</span>
+                  )}
                 </td>
               </tr>
             ))}

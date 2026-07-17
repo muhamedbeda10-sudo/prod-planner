@@ -19,12 +19,14 @@ export function CascadeTable({
   planNo,
   hideFilter = false, // the cut page has ONE shared filter above all tables
   notes = {}, // keyed by bom|mo|item
+  canEdit = false,
 }: {
   rows: CascadeRow[];
   day: string; // ISO (today — computed by the app)
   planNo: number;
   hideFilter?: boolean;
   notes?: Record<string, QueueNoteDTO[]>;
+  canEdit?: boolean; // user holds cut.edit — otherwise view-only
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -205,6 +207,9 @@ export function CascadeTable({
                   </td>
                   <td className="p-2 text-center font-extrabold tabnum" style={{ color: "var(--warn-fg)" }}>{r.available}</td>
                   <td className="p-2">
+                    {!canEdit ? (
+                      <span className="text-muted text-xs" title="View only — you don't have the Cut edit permission">—</span>
+                    ) : (
                     <div className="flex items-center gap-1.5">
                       <input
                         type="number"
@@ -225,6 +230,7 @@ export function CascadeTable({
                         {savedFlash[k] ? "✓ Saved" : "Save"}
                       </button>
                     </div>
+                    )}
                     {msg[k] && <div className="text-[11px] text-bad-fg mt-0.5">{msg[k]}</div>}
                   </td>
                   <td className="p-2 text-center whitespace-nowrap">
@@ -239,6 +245,7 @@ export function CascadeTable({
                     dept="Cut"
                     lineNotes={lineNotes}
                     colSpan={9}
+                    canEdit={canEdit}
                     className={inGroup ? "border-x-2 border-brand" : ""}
                   />
                 )}

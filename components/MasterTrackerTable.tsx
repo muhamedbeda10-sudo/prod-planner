@@ -18,7 +18,7 @@ function progressOf(r: MasterTrackerRow): Progress {
   return "notstarted";
 }
 
-export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
+export function MasterTrackerTable({ rows, canEdit = false }: { rows: MasterTrackerRow[]; canEdit?: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [q, setQ] = useState("");
@@ -297,23 +297,27 @@ export function MasterTrackerTable({ rows }: { rows: MasterTrackerRow[] }) {
                   {r.status === "closed" ? (
                     <>
                       <span className="pill pill-muted">Closed</span>
-                      <button onClick={() => changeStatus(r.mo, "open")} disabled={pending} className="text-accent text-xs px-1.5 hover:underline">Reopen</button>
+                      {canEdit && (
+                        <button onClick={() => changeStatus(r.mo, "open")} disabled={pending} className="text-accent text-xs px-1.5 hover:underline">Reopen</button>
+                      )}
                     </>
-                  ) : r.required > 0 && r.complete >= r.required ? (
+                  ) : canEdit && r.required > 0 && r.complete >= r.required ? (
                     <button onClick={() => changeStatus(r.mo, "closed")} disabled={pending} className="rounded-md px-2 py-0.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50">
                       ✓ Close
                     </button>
                   ) : (
                     <span className="pill pill-ok">Open</span>
                   )}
-                  <button
-                    onClick={() => setOpenConfig(openConfig === r.mo ? null : r.mo)}
-                    disabled={pending}
-                    className="text-muted text-xs px-1.5 hover:text-accent"
-                    title="Which components does this project actually need?"
-                  >
-                    ⚙
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => setOpenConfig(openConfig === r.mo ? null : r.mo)}
+                      disabled={pending}
+                      className="text-muted text-xs px-1.5 hover:text-accent"
+                      title="Which components does this project actually need?"
+                    >
+                      ⚙
+                    </button>
+                  )}
                 </td>
               </tr>
               {openConfig === r.mo && (

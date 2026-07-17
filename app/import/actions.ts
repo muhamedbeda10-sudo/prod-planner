@@ -3,8 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { importWeeklyPlan, type ImportResult } from "@/lib/server/import";
 import { parseISODate } from "@/lib/domain/dates";
+import { requirePerm } from "@/lib/server/auth";
 
 export async function importPlanAction(formData: FormData): Promise<ImportResult> {
+  const guard = await requirePerm("plans.import");
+  if (guard.error) return { ok: false, error: guard.error };
   const file = formData.get("file");
   const planNo = Number(formData.get("planNo"));
   const startStr = String(formData.get("startDate") ?? "");

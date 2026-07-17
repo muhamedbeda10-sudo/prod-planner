@@ -31,6 +31,7 @@ export function NotesPanelRow({
   lineNotes,
   colSpan,
   className = "",
+  canEdit = false,
 }: {
   bom: string;
   mo: string;
@@ -39,6 +40,7 @@ export function NotesPanelRow({
   lineNotes: QueueNoteDTO[];
   colSpan: number;
   className?: string;
+  canEdit?: boolean; // user holds this dept's edit permission — otherwise view-only
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -122,34 +124,36 @@ export function NotesPanelRow({
                     </span>
                     <span className="font-bold">{n.dept}</span>
                     <span className="text-muted tabnum">{n.createdISO}</span>
-                    <span className="ml-auto flex items-center gap-2.5">
-                      {editingNote !== n.id && (
+                    {canEdit && (
+                      <span className="ml-auto flex items-center gap-2.5">
+                        {editingNote !== n.id && (
+                          <button
+                            type="button"
+                            onClick={() => { setEditingNote(n.id); setEditText(n.text); setNoteMsg(""); }}
+                            disabled={pending}
+                            className="text-accent hover:underline"
+                          >
+                            ✏️ Edit
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => { setEditingNote(n.id); setEditText(n.text); setNoteMsg(""); }}
+                          onClick={() => toggleNoteStatus(n.id, n.status === "open" ? "resolved" : "open")}
                           disabled={pending}
                           className="text-accent hover:underline"
                         >
-                          ✏️ Edit
+                          {n.status === "open" ? "Mark resolved" : "Reopen"}
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => toggleNoteStatus(n.id, n.status === "open" ? "resolved" : "open")}
-                        disabled={pending}
-                        className="text-accent hover:underline"
-                      >
-                        {n.status === "open" ? "Mark resolved" : "Reopen"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeNote(n.id)}
-                        disabled={pending}
-                        className="text-bad-fg hover:underline"
-                      >
-                        🗑 Delete
-                      </button>
-                    </span>
+                        <button
+                          type="button"
+                          onClick={() => removeNote(n.id)}
+                          disabled={pending}
+                          className="text-bad-fg hover:underline"
+                        >
+                          🗑 Delete
+                        </button>
+                      </span>
+                    )}
                   </div>
 
                   {editingNote === n.id ? (
@@ -193,6 +197,7 @@ export function NotesPanelRow({
             </div>
           )}
 
+          {canEdit && (
           <form onSubmit={submitNote} className="bg-surface border rounded-xl p-3 shadow-sm">
             <input type="hidden" name="bom" value={bom} />
             <input type="hidden" name="mo" value={mo} />
@@ -222,6 +227,7 @@ export function NotesPanelRow({
             </div>
             {noteMsg && <div className="text-[11px] text-bad-fg mt-1.5">{noteMsg}</div>}
           </form>
+          )}
         </div>
       </td>
     </tr>

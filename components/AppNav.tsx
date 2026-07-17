@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { logoutAction } from "@/app/login/actions";
 
 const PRIMARY: { href: string; label: string }[] = [
   { href: "/", label: "Dashboard" },
@@ -16,15 +17,21 @@ const PRIMARY: { href: string; label: string }[] = [
   { href: "/report", label: "Daily Report" },
 ];
 
-const ADMIN: { href: string; label: string; desc: string; icon: string }[] = [
-  { href: "/orders", label: "Orders Registry", desc: "Master MO list — import monthly plans", icon: "📋" },
-  { href: "/import", label: "Import Weekly Plan", desc: "Delivery schedule from Excel", icon: "📥" },
-  { href: "/reconciliation", label: "Reconciliation", desc: "Compare plan vs previous plan", icon: "🔍" },
-  { href: "/boms", label: "BOM Review", desc: "Fix codes & reallocate excess", icon: "🧩" },
-  { href: "/calendar", label: "Factory Calendar", desc: "Holidays & shutdown days off", icon: "📆" },
+const ADMIN: { href: string; label: string; desc: string; icon: string; perm: string | null }[] = [
+  { href: "/orders", label: "Orders Registry", desc: "Master MO list — import monthly plans", icon: "📋", perm: "plans.import" },
+  { href: "/import", label: "Import Weekly Plan", desc: "Delivery schedule from Excel", icon: "📥", perm: "plans.import" },
+  { href: "/reconciliation", label: "Reconciliation", desc: "Compare plan vs previous plan", icon: "🔍", perm: null },
+  { href: "/boms", label: "BOM Review", desc: "Fix codes & reallocate excess", icon: "🧩", perm: "boms.manage" },
+  { href: "/calendar", label: "Factory Calendar", desc: "Holidays & shutdown days off", icon: "📆", perm: "calendar.manage" },
 ];
 
-export function AppNav() {
+export interface NavUser {
+  name: string;
+  isAdmin: boolean;
+  perms: string[];
+}
+
+export function AppNav({ user }: { user: NavUser }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -47,7 +54,11 @@ export function AppNav() {
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
-  const adminActive = ADMIN.some((l) => isActive(l.href));
+
+  // admin tools the user may open: viewing is free, so show pages the user can
+  // at least see; entries with a perm are highlighted only if usable
+  const adminItems = ADMIN;
+  const adminActive = adminItems.some((l) => isActive(l.href)) || isActive("/admin/users");
 
   return (
     <header className="no-print sticky top-0 z-30 bg-brand text-white shadow-md">
@@ -98,7 +109,7 @@ export function AppNav() {
                 role="menu"
                 className="nav-drop absolute right-0 top-[calc(100%+10px)] w-72 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
               >
-                {ADMIN.map((l) => (
+                {adminItems.map((l) => (
                   <Link
                     key={l.href}
                     href={l.href}
@@ -114,11 +125,40 @@ export function AppNav() {
                     </span>
                   </Link>
                 ))}
+                {user.isAdmin && (
+                  <Link
+                    href="/admin/users"
+                    role="menuitem"
+                    className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors border-t mt-1 pt-2.5 ${
+                      isActive("/admin/users") ? "bg-brand-light" : "hover:bg-brand-light/60"
+                    }`}
+                  >
+                    <span className="text-lg leading-none mt-0.5">👥</span>
+                    <span>
+                      <span className={`block text-sm font-bold ${isActive("/admin/users") ? "text-brand" : ""}`}>Users & Permissions</span>
+                      <span className="block text-xs text-muted mt-0.5">Accounts, passwords & what each can edit</span>
+                    </span>
+                  </Link>
+                )}
               </div>
             )}
           </div>
 
-          <div className="shrink-0 border-l border-white/20 pl-2">
+          {/* user + logout */}
+          <div className="shrink-0 flex items-center gap-2 border-l border-white/20 pl-3">
+            <span className="hidden md:block text-sm font-semibold max-w-[140px] truncate" title={user.name}>
+              {user.name}
+            </span>
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                title="Sign out"
+                aria-label="Sign out"
+                className="rounded-md px-2 py-1.5 text-sm hover:bg-white/15 transition-colors"
+              >
+                ⎋
+              </button>
+            </form>
             <ThemeToggle />
           </div>
         </div>

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { computePlanReallocations } from "@/lib/server/boms";
+import { requirePerm } from "@/lib/server/auth";
 
 export interface ActionResult {
   ok: boolean;
@@ -13,6 +14,8 @@ export interface ActionResult {
 /** Apply a BOM correction to all handover rows carrying the old code. Originals
  *  preserved in bomRaw; this is an explicit, audited change (not silent). */
 export async function applyBomCorrection(formData: FormData): Promise<ActionResult> {
+  const guard = await requirePerm("boms.manage");
+  if (guard.error) return { ok: false, error: guard.error };
   const from = String(formData.get("from") ?? "").trim();
   const to = String(formData.get("to") ?? "").trim();
   if (!from || !to) return { ok: false, error: "Invalid codes." };
@@ -34,6 +37,8 @@ export async function applyBomCorrection(formData: FormData): Promise<ActionResu
 
 /** Compute fresh reallocation proposals and store them as 'proposed' moves. */
 export async function proposeReallocations(formData: FormData): Promise<ActionResult> {
+  const guard = await requirePerm("boms.manage");
+  if (guard.error) return { ok: false, error: guard.error };
   const planNo = Number(formData.get("planNo"));
   if (!Number.isInteger(planNo)) return { ok: false, error: "Invalid plan." };
   const proposals = await computePlanReallocations(planNo);
@@ -59,6 +64,8 @@ export async function proposeReallocations(formData: FormData): Promise<ActionRe
 }
 
 export async function decideMove(formData: FormData): Promise<ActionResult> {
+  const guard = await requirePerm("boms.manage");
+  if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   const decision = String(formData.get("decision") ?? "");
   if (!Number.isInteger(id) || (decision !== "approved" && decision !== "rejected"))

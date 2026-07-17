@@ -8,6 +8,7 @@ import { parseISODate } from "@/lib/domain/dates";
 import { getKnownBoms } from "@/lib/server/handover";
 import { importHandoverFile, type HandoverImportResult } from "@/lib/server/importHandover";
 import { checkOutputChain } from "@/lib/server/outputGuard";
+import { requireDeptEdit, requirePerm } from "@/lib/server/auth";
 
 export interface ActionResult {
   ok: boolean;
@@ -23,6 +24,8 @@ function revalidateEverywhere() {
 }
 
 export async function importHandoverAction(formData: FormData): Promise<HandoverImportResult> {
+  const guard = await requirePerm("logs.import");
+  if (guard.error) return { ok: false, error: guard.error };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose an Excel file." };
   const buffer = await file.arrayBuffer();
@@ -61,6 +64,8 @@ export async function addHandover(formData: FormData): Promise<ActionResult> {
   const date = parseISODate(dateStr);
   if (!date) return { ok: false, error: "Invalid date." };
   if (!isDept(dept)) return { ok: false, error: "Choose a department (Cut/Welding)." };
+  const guard = await requireDeptEdit(dept);
+  if (guard.error) return { ok: false, error: guard.error };
   if (!item || !isItem(item)) return { ok: false, error: "Choose a valid component (CF/TC/TN/CB)." };
   if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a positive quantity." };
   if (!Number.isInteger(planNo) || planNo <= 0) return { ok: false, error: "Invalid plan number." };
@@ -98,6 +103,8 @@ export async function updateHandover(formData: FormData): Promise<ActionResult> 
 
   const entry = await prisma.handoverEntry.findUnique({ where: { id } });
   if (!entry) return { ok: false, error: "Record not found." };
+  const guard = await requireDeptEdit(entry.dept);
+  if (guard.error) return { ok: false, error: guard.error };
 
   // physical chain guard: painted ≤ welded ≤ cut ≤ order qty (edit included)
   const chainError = await checkOutputChain({
@@ -116,6 +123,8 @@ export async function deleteHandover(formData: FormData): Promise<ActionResult> 
 
   const entry = await prisma.handoverEntry.findUnique({ where: { id } });
   if (!entry) return { ok: false, error: "Record not found." };
+  const guard = await requireDeptEdit(entry.dept);
+  if (guard.error) return { ok: false, error: guard.error };
 
   // deleting upstream output must not leave downstream hanging (weld > cut …)
   const chainError = await checkOutputChain({

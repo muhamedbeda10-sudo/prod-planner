@@ -23,6 +23,7 @@ export function CutTrancheTable({
   hideFilter = false, // the cut page has ONE shared filter above all tables
   notes = {},
   capacity = DEFAULTS.capacityPerItem,
+  canEdit = false,
 }: {
   rows: CutTranche[];
   day: string;
@@ -31,6 +32,7 @@ export function CutTrancheTable({
   hideFilter?: boolean;
   notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
+  canEdit?: boolean; // user holds cut.edit — otherwise view-only
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -145,6 +147,9 @@ export function CutTrancheTable({
           <Frac num={r.remaining} den={r.qty} color={r.remaining <= 0 ? "var(--ok-fg)" : variant === "overdue" ? "var(--bad-fg)" : "var(--warn-fg)"} />
         </td>
         <td className="p-2">
+          {!canEdit ? (
+            <span className="text-muted text-xs" title="View only — you don't have the Cut edit permission">—</span>
+          ) : (
           <div className="flex items-center gap-1.5">
             <input
               type="number"
@@ -165,6 +170,7 @@ export function CutTrancheTable({
               {savedFlash[k] ? "✓ Saved" : "Save"}
             </button>
           </div>
+          )}
           {msg[k] && <div className="text-[11px] text-bad-fg mt-0.5">{msg[k]}</div>}
         </td>
         <td className="p-2 text-center whitespace-nowrap">
@@ -180,6 +186,7 @@ export function CutTrancheTable({
           lineNotes={lineNotes}
           colSpan={9}
           className={inGroup ? "border-x-2 border-brand" : ""}
+          canEdit={canEdit}
         />
       )}
       </Fragment>
