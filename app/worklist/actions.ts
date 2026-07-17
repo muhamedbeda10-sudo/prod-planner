@@ -183,6 +183,11 @@ export async function addQueueNote(formData: FormData): Promise<RecordResult> {
     if (files.length > MAX_PHOTOS) return { ok: false, error: `Max ${MAX_PHOTOS} photos per note.` };
 
     const urls: string[] = [];
+    // Vercel's filesystem is ephemeral — photos would vanish on the next deploy.
+    // Until blob storage is wired up, the cloud version takes text-only notes.
+    if (files.length > 0 && process.env.VERCEL) {
+      return { ok: false, error: "Photo attachments are not available on the online version yet — write a text note instead." };
+    }
     if (files.length > 0) {
       // outside public/ — production only serves public assets snapshotted at
       // build time, so runtime uploads go through the /uploads/notes route
