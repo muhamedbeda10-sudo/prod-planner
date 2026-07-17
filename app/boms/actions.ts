@@ -63,6 +63,8 @@ export async function decideMove(formData: FormData): Promise<ActionResult> {
   const decision = String(formData.get("decision") ?? "");
   if (!Number.isInteger(id) || (decision !== "approved" && decision !== "rejected"))
     return { ok: false, error: "Invalid decision." };
+  const move = await prisma.reallocationMove.findUnique({ where: { id } });
+  if (!move) return { ok: false, error: "Move not found." };
   await prisma.reallocationMove.update({
     where: { id },
     data: { status: decision, decidedAt: new Date() },

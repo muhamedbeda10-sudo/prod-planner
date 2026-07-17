@@ -150,6 +150,9 @@ export async function redeliverReturn(formData: FormData): Promise<RecordResult>
 
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB per photo
 const MAX_PHOTOS = 6;
+// extensions the /uploads/notes route can serve with a real image MIME —
+// anything else is stored as .jpg so no foreign extension ever hits disk
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
 
 /** Attach a note (text + optional photos) to a queue line — documents the real
  *  state of an order: missing parts, defects, disputed "done" claims. */
@@ -178,7 +181,8 @@ export async function addQueueNote(formData: FormData): Promise<RecordResult> {
       for (const f of files) {
         if (!f.type.startsWith("image/")) return { ok: false, error: `"${f.name}" is not an image.` };
         if (f.size > MAX_PHOTO_BYTES) return { ok: false, error: `"${f.name}" is larger than 10 MB.` };
-        const ext = path.extname(f.name) || ".jpg";
+        const rawExt = path.extname(f.name).toLowerCase();
+        const ext = IMAGE_EXTENSIONS.has(rawExt) ? rawExt : ".jpg";
         const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
         await writeFile(path.join(dir, name), Buffer.from(await f.arrayBuffer()));
         urls.push(`/uploads/notes/${name}`);
@@ -239,6 +243,8 @@ export async function setQueueNoteStatus(formData: FormData): Promise<RecordResu
   const status = String(formData.get("status") ?? "");
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
   if (status !== "open" && status !== "resolved") return { ok: false, error: "Invalid status." };
+  const note = await prisma.queueNote.findUnique({ where: { id } });
+  if (!note) return { ok: false, error: "Note not found." };
   await prisma.queueNote.update({ where: { id }, data: { status } });
   revalidatePath("/worklist/cut");
   revalidatePath("/worklist/welding");

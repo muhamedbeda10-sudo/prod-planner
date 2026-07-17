@@ -30,6 +30,8 @@ export async function addHoliday(formData: FormData): Promise<ActionResult> {
 export async function deleteHoliday(formData: FormData): Promise<ActionResult> {
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
+  const holiday = await prisma.holiday.findUnique({ where: { id } });
+  if (!holiday) return { ok: false, error: "Holiday not found." };
   await prisma.holiday.delete({ where: { id } });
   revalidate();
   return { ok: true };

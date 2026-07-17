@@ -11,7 +11,7 @@
  */
 import * as XLSX from "xlsx";
 import { readFileSync } from "node:fs";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import { excelSerialToDate } from "../lib/domain/dates";
 import { isItem, isDept } from "../lib/domain/constants";
 
@@ -105,7 +105,7 @@ async function main() {
   const validPlan = new Set(planHeaders.map((p) => p.planNo));
 
   // ---- Build rows ----
-  const scheduleRows: any[] = [];
+  const scheduleRows: Prisma.PlanScheduleCreateManyInput[] = [];
   let scheduleSkipped = 0;
   for (let i = 1; i < plans.length; i++) {
     const r = plans[i];
@@ -129,7 +129,7 @@ async function main() {
     });
   }
 
-  const orderRows: any[] = [];
+  const orderRows: Prisma.PlanOrderCreateManyInput[] = [];
   for (let i = 1; i < orders.length; i++) {
     const r = orders[i];
     if (!r) continue;
@@ -153,7 +153,7 @@ async function main() {
     });
   }
 
-  const handoverRows: any[] = [];
+  const handoverRows: Prisma.HandoverEntryCreateManyInput[] = [];
   let handoverSkipped = 0;
   for (let i = 1; i < handover.length; i++) {
     const r = handover[i];

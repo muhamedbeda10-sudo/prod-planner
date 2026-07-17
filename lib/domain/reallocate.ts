@@ -98,7 +98,7 @@ export function computeReallocations(
             const rk = `${dept}|${rcv}|${item}`;
             const deficit = get(capD, `${rcv}|${item}`) - get(tot, rk);
             if (deficit <= 0) continue;
-            let mv = Math.min(excess, deficit);
+            const mv = Math.min(excess, deficit);
             let remaining = mv;
             const donorRows = rowsOf.get(dk);
             if (donorRows) {
