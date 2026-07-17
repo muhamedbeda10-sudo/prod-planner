@@ -61,13 +61,13 @@ export default async function ReportPage({
       </div>
 
       <div className="flex items-center justify-between gap-4 no-print">
-        <h2 className="text-lg font-bold">Department output — {toDisplayDate(day)}</h2>
+        <h2 className="text-lg font-bold min-w-0">Department output — {toDisplayDate(day)}</h2>
         <Image
           src="/brand/atc-logo-horizontal.svg"
           alt="Arabian Transformers Co."
           width={250}
           height={30}
-          className="opacity-90"
+          className="opacity-90 hidden md:block shrink-0"
         />
       </div>
       <h2 className="text-lg font-bold print-only">Department output — {toDisplayDate(day)}</h2>

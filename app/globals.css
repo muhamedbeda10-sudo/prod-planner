@@ -98,6 +98,13 @@ body {
   font-family: var(--font-sans-latin), "Segoe UI", system-ui, sans-serif;
 }
 
+/* mobile guarantee: the PAGE never scrolls sideways — wide tables scroll
+   inside their own overflow-x-auto cards instead. clip (not hidden) keeps
+   the sticky header working. */
+html, body {
+  overflow-x: clip;
+}
+
 /* ============ unified design system ============ */
 
 /* every data table in the app: compact uppercase headers, calm row hover */
