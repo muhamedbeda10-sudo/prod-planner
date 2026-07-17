@@ -50,3 +50,6 @@ prisma/dev.db-shm
 
 # local tooling state
 .claude/settings.local.json
+
+# migration artifacts — runtime data, never in the repo
+/scripts/migration-data/
