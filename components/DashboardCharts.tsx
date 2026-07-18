@@ -14,11 +14,10 @@ const GRAY = "#717171";
 const PAINT = "#c59a3f";
 
 /** Charts keep a readable minimum width and scroll sideways inside their card
- *  on narrow phones instead of being squeezed off-screen. chart-scroll makes
- *  the SVG rescale to the full page width when printing (paper can't scroll). */
+ *  on narrow phones instead of being squeezed off-screen. */
 function ChartScroller({ minWidth, height, children }: { minWidth: number; height: number; children: React.ReactElement }) {
   return (
-    <div className="overflow-x-auto chart-scroll">
+    <div className="overflow-x-auto">
       <div style={{ minWidth, height }}>
         <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>
       </div>
@@ -47,7 +46,7 @@ export function WeekTrendChart({ days, targetPerDeptDay }: { days: DayRow[]; tar
             stroke="var(--bad-fg)"
             strokeDasharray="6 4"
             strokeWidth={2}
-            label={{ value: `Target ${targetPerDeptDay}/day`, position: "insideTopRight", dy: -9, fontSize: 11, fill: "var(--bad-fg)" }}
+            label={{ value: `Target ${targetPerDeptDay}/day`, position: "insideTopRight", dy: -16, fontSize: 11, fill: "var(--bad-fg)" }}
           />
           <Bar dataKey="Cut" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Cut" position="top" fontSize={10} />
@@ -86,7 +85,7 @@ export function WeekItemChart({
             stroke="var(--bad-fg)"
             strokeDasharray="6 4"
             strokeWidth={2}
-            label={{ value: `Week target ${targetPerItemWeek}/item`, position: "insideTopRight", dy: -9, fontSize: 11, fill: "var(--bad-fg)" }}
+            label={{ value: `Week target ${targetPerItemWeek}/item`, position: "insideTopRight", dy: -16, fontSize: 11, fill: "var(--bad-fg)" }}
           />
           <Bar dataKey="Cut" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Cut" position="top" fontSize={10} />
@@ -122,7 +121,7 @@ export function HistoryChart({
             y={targetPerDeptWeek}
             stroke={GRAY}
             strokeDasharray="6 4"
-            label={{ value: `${targetPerDeptWeek}/week`, position: "insideTopRight", dy: -9, fontSize: 10, fill: GRAY }}
+            label={{ value: `${targetPerDeptWeek}/week`, position: "insideTopRight", dy: -15, fontSize: 10, fill: GRAY }}
           />
           <Bar dataKey="Cut" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]} />
           <Bar dataKey="Welding" fill={GREEN} radius={[3, 3, 0, 0]} />
