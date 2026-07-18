@@ -41,13 +41,9 @@ export function WeekTrendChart({ days, targetPerDeptDay }: { days: DayRow[]; tar
           <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <ReferenceLine
-            y={targetPerDeptDay}
-            stroke="var(--bad-fg)"
-            strokeDasharray="6 4"
-            strokeWidth={2}
-            label={{ value: `Target ${targetPerDeptDay}/day`, position: "insideTopRight", dy: -16, fontSize: 11, fill: "var(--bad-fg)" }}
-          />
+          {/* no in-chart label — the card subtitle states the target, a fixed
+              spot that can never collide with a bar */}
+          <ReferenceLine y={targetPerDeptDay} stroke="var(--bad-fg)" strokeDasharray="6 4" strokeWidth={2} />
           <Bar dataKey="Cut" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Cut" position="top" fontSize={10} />
           </Bar>
@@ -80,13 +76,7 @@ export function WeekItemChart({
           <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <ReferenceLine
-            y={targetPerItemWeek}
-            stroke="var(--bad-fg)"
-            strokeDasharray="6 4"
-            strokeWidth={2}
-            label={{ value: `Week target ${targetPerItemWeek}/item`, position: "insideTopRight", dy: -16, fontSize: 11, fill: "var(--bad-fg)" }}
-          />
+          <ReferenceLine y={targetPerItemWeek} stroke="var(--bad-fg)" strokeDasharray="6 4" strokeWidth={2} />
           <Bar dataKey="Cut" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Cut" position="top" fontSize={10} />
           </Bar>
@@ -117,12 +107,7 @@ export function HistoryChart({
           <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <ReferenceLine
-            y={targetPerDeptWeek}
-            stroke={GRAY}
-            strokeDasharray="6 4"
-            label={{ value: `${targetPerDeptWeek}/week`, position: "insideTopRight", dy: -15, fontSize: 10, fill: GRAY }}
-          />
+          <ReferenceLine y={targetPerDeptWeek} stroke={GRAY} strokeDasharray="6 4" />
           <Bar dataKey="Cut" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]} />
           <Bar dataKey="Welding" fill={GREEN} radius={[3, 3, 0, 0]} />
           <Bar dataKey="Painting" fill={PAINT} radius={[3, 3, 0, 0]} />

@@ -28,23 +28,19 @@ export function OutputByComponentChart({
 
   // one chart definition, two sizes: the screen one is responsive (and
   // scrolls on phones), the paper one is rendered at a FIXED width matching
-  // the A4-landscape printable area — no CSS scaling tricks that break SVGs
-  const chart = (size?: { width: number; height: number }) => (
+  // the A4-landscape printable area — no CSS scaling tricks that break SVGs.
+  // The target line carries NO in-chart label (the card header shows it — a
+  // fixed spot that can never collide with a bar), and the print copy skips
+  // recharts' auto-measured Legend, which measures 0 in a hidden container
+  // and then prints on top of the item names.
+  const chart = (size?: { width: number; height: number }, withLegend = true) => (
     <BarChart {...(size ?? {})} data={data} margin={{ top: 28, right: 20, left: 20, bottom: 6 }} barCategoryGap="22%">
       <CartesianGrid strokeDasharray="3 3" vertical={false} />
       <XAxis dataKey="item" tick={{ fontSize: 16, fontWeight: 800 }} tickMargin={8} />
       <YAxis hide domain={[0, Math.ceil(maxVal * 1.15)]} />
       <Tooltip />
-      <Legend wrapperStyle={{ fontSize: 14, fontWeight: 700, paddingTop: 8 }} iconSize={16} />
-      <ReferenceLine
-        y={target}
-        stroke={GRAY}
-        strokeWidth={1.5}
-        strokeDasharray="7 5"
-        // dy lifts the label fully ABOVE the dashed line so neither the line
-        // nor the bars ever cover the number and the word
-        label={{ value: `Target ${target}/item`, position: "insideTopRight", dy: -20, fontSize: 13, fontWeight: 700, fill: GRAY }}
-      />
+      {withLegend && <Legend wrapperStyle={{ fontSize: 14, fontWeight: 700, paddingTop: 8 }} iconSize={16} />}
+      <ReferenceLine y={target} stroke={GRAY} strokeWidth={1.5} strokeDasharray="7 5" />
       {/* no animation: the values must be on the bars immediately (print!) */}
       <Bar dataKey="Cut" fill={GREEN} radius={[3, 3, 0, 0]} isAnimationActive={false}>
         <LabelList dataKey="Cut" position="top" fontSize={15} fontWeight={800} formatter={label} />
@@ -58,6 +54,8 @@ export function OutputByComponentChart({
     </BarChart>
   );
 
+  const SERIES: [string, string][] = [["Cut", GREEN], ["Welding", GRAY], ["Painting", GREEN_DARK]];
+
   return (
     <>
       {/* screen: responsive, scrolls sideways inside the card on phones */}
@@ -66,9 +64,20 @@ export function OutputByComponentChart({
           <ResponsiveContainer width="100%" height="100%">{chart()}</ResponsiveContainer>
         </div>
       </div>
-      {/* paper: fixed 1000px ≈ the full A4-landscape content width, so the
-          whole chart always lands on the PDF regardless of screen size */}
-      <div className="print-only">{chart({ width: 1000, height: 330 })}</div>
+      {/* paper: fixed 1000px ≈ the full A4-landscape content width, with a
+          static hand-made legend ABOVE the plot — deterministic, never
+          overlapping the item names */}
+      <div className="print-only">
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 18, fontSize: 13, fontWeight: 700, marginBottom: 2 }}>
+          {SERIES.map(([name, color]) => (
+            <span key={name} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 12, height: 12, background: color, display: "inline-block", borderRadius: 2 }} />
+              {name}
+            </span>
+          ))}
+        </div>
+        {chart({ width: 1000, height: 300 }, false)}
+      </div>
     </>
   );
 }
