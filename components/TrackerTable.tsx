@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import type { TrackerRow } from "@/lib/domain/tracker";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
-import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
+import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { ITEMS } from "@/lib/domain/constants";
 
 type Progress = "complete" | "inprogress" | "notstarted";
@@ -17,8 +17,9 @@ function progressOf(r: TrackerRow): Progress {
 }
 
 export function TrackerTable({ rows, planNo }: { rows: TrackerRow[]; planNo: number }) {
-  const [q, setQ] = useState("");
-  const [progress, setProgress] = useState("");
+  // filters survive navigating away and back (sessionStorage per tab)
+  const [q, setQ] = useSavedFilter("plantracker.q");
+  const [progress, setProgress] = useSavedFilter("plantracker.progress");
 
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();

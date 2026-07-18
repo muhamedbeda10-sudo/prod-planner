@@ -7,7 +7,7 @@ import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { setOrderStatus, setExcludedItems } from "@/app/orders/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
-import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
+import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { ITEMS, isPaintExempt } from "@/lib/domain/constants";
 
 type Progress = "complete" | "inprogress" | "notstarted";
@@ -21,10 +21,11 @@ function progressOf(r: MasterTrackerRow): Progress {
 export function MasterTrackerTable({ rows, canEdit = false }: { rows: MasterTrackerRow[]; canEdit?: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [q, setQ] = useState("");
-  const [progress, setProgress] = useState("");
-  const [urgent, setUrgent] = useState("");
-  const [status, setStatus] = useState("open"); // lifecycle: closed orders are hidden by default
+  // filters survive navigating away and back (sessionStorage per tab)
+  const [q, setQ] = useSavedFilter("tracker.q");
+  const [progress, setProgress] = useSavedFilter("tracker.progress");
+  const [urgent, setUrgent] = useSavedFilter("tracker.urgent");
+  const [status, setStatus] = useSavedFilter("tracker.status", "open"); // lifecycle: closed orders are hidden by default
   const [openConfig, setOpenConfig] = useState<string | null>(null); // per-MO "required components" editor
 
   function saveExcluded(mo: string, form: HTMLFormElement) {

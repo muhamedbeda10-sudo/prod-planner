@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { ExportButton } from "@/components/ExportButton";
-import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
+import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 
 export interface OrderRow {
   id: number;
@@ -23,9 +23,10 @@ export interface OrderRow {
 }
 
 export function OrdersTable({ rows }: { rows: OrderRow[] }) {
-  const [q, setQ] = useState("");
-  const [urgent, setUrgent] = useState("");
-  const [source, setSource] = useState("");
+  // filters survive navigating away and back (sessionStorage per tab)
+  const [q, setQ] = useSavedFilter("orders.q");
+  const [urgent, setUrgent] = useSavedFilter("orders.urgent");
+  const [source, setSource] = useSavedFilter("orders.source");
 
   const sources = useMemo(() => [...new Set(rows.map((r) => r.source ?? ""))].filter(Boolean).sort(), [rows]);
 

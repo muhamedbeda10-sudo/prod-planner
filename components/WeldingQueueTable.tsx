@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { WeldQueueRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { recordOutput, addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote, returnToUpstream } from "@/app/worklist/actions";
-import { SearchBox, FilterBar } from "@/components/FilterControls";
+import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Frac } from "@/components/Frac";
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
@@ -42,8 +42,9 @@ export function WeldingQueueTable({
   const [qty, setQty] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<Record<string, string>>({});
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({});
-  const [q, setQ] = useState("");
-  const [item, setItem] = useState("");
+  // search + item card filter survive navigating away and back
+  const [q, setQ] = useSavedFilter(`queue.${dept}.q`);
+  const [item, setItem] = useSavedFilter(`queue.${dept}.item`);
   const [openNotes, setOpenNotes] = useState<string | null>(null); // note panel per line (bom|mo|item)
   const [noteMsg, setNoteMsg] = useState("");
   const [editingNote, setEditingNote] = useState<number | null>(null);

@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { CutTranche, CascadeRow } from "@/lib/domain/execution";
 import { CutTrancheTable } from "@/components/CutTrancheTable";
 import { CascadeTable } from "@/components/CascadeTable";
-import { SearchBox, FilterBar } from "@/components/FilterControls";
+import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
 import type { ReturnRowDTO } from "@/lib/server/returns";
@@ -34,8 +34,9 @@ export function CutWorklistView({
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
   canEdit?: boolean; // user holds cut.edit — otherwise view-only
 }) {
-  const [q, setQ] = useState("");
-  const [item, setItem] = useState("");
+  // search + item card filter survive navigating away and back
+  const [q, setQ] = useSavedFilter("queue.Cut.q");
+  const [item, setItem] = useSavedFilter("queue.Cut.item");
 
   const needle = q.trim().toUpperCase();
   const match = (r: { bom: string; mo: string; description: string; item: string }) =>
