@@ -386,14 +386,6 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   /* a chart must never be sliced across a page boundary — keep it whole */
   .print-keep { break-inside: avoid !important; }
 
-  /* charts live in horizontal scroll boxes on screen — paper can't scroll,
-     so expand the box and rescale the SVG to the full page width (recharts
-     sets a viewBox, so proportions and labels shrink together) */
-  .chart-scroll { overflow: visible !important; }
-  .chart-scroll > div { min-width: 0 !important; width: 100% !important; height: auto !important; }
-  .chart-scroll .recharts-wrapper { width: 100% !important; height: auto !important; }
-  .chart-scroll .recharts-wrapper svg { width: 100% !important; height: auto !important; }
-
   /* scroll containers must fully expand on paper */
   div.overflow-x-auto:has(> table) { overflow: visible !important; max-height: none !important; }
 
