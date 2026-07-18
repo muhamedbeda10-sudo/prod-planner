@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { updateHandover, deleteHandover } from "@/app/handover/actions";
 import { toISODate } from "@/lib/domain/dates";
 import { ExportButton } from "@/components/ExportButton";
-import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
+import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { ITEMS, DEPTS } from "@/lib/domain/constants";
 
 export interface LogRow {
@@ -29,12 +29,12 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
   const [rowErr, setRowErr] = useState<Record<number, string>>({});
   const [pending, startTransition] = useTransition();
 
-  // filters
-  const [q, setQ] = useState("");
-  const [dept, setDept] = useState("");
-  const [item, setItem] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  // filters — survive navigating away and back (sessionStorage per tab)
+  const [q, setQ] = useSavedFilter("log.q");
+  const [dept, setDept] = useSavedFilter("log.dept");
+  const [item, setItem] = useSavedFilter("log.item");
+  const [from, setFrom] = useSavedFilter("log.from");
+  const [to, setTo] = useSavedFilter("log.to");
 
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();

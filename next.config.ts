@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // client router cache: hopping between tabs and coming back within a
+    // minute reuses the page you had (with its data) instead of a full
+    // refetch — the next visit after that refreshes as usual
+    staleTimes: {
+      dynamic: 60,
+      static: 300,
+    },
+  },
   async headers() {
     return [
       {

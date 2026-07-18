@@ -1,8 +1,47 @@
 "use client";
 
+import { useCallback, useSyncExternalStore } from "react";
 import { Search, X, FilterX } from "lucide-react";
 
 /** Small consistent filter controls used by the filterable tables. */
+
+// tiny store over sessionStorage so filter state survives navigation
+const filterListeners = new Set<() => void>();
+const subscribeFilters = (cb: () => void) => {
+  filterListeners.add(cb);
+  return () => {
+    filterListeners.delete(cb);
+  };
+};
+
+/** useState that survives navigation: the value is mirrored to
+ *  sessionStorage, so leaving a page and coming back restores the search /
+ *  filters exactly as they were (per browser tab; a new tab starts clean).
+ *  useSyncExternalStore keeps hydration safe — the server snapshot is the
+ *  default, and the stored value applies right after hydration. */
+export function useSavedFilter(key: string, initial = "") {
+  const value = useSyncExternalStore(
+    subscribeFilters,
+    () => {
+      try {
+        return sessionStorage.getItem(`flt:${key}`) ?? initial;
+      } catch {
+        return initial;
+      }
+    },
+    () => initial
+  );
+  const set = useCallback(
+    (next: string) => {
+      try {
+        sessionStorage.setItem(`flt:${key}`, next);
+      } catch {}
+      filterListeners.forEach((l) => l());
+    },
+    [key]
+  );
+  return [value, set] as const;
+}
 
 export function SearchBox({
   value,
