@@ -35,13 +35,14 @@ export default async function Home({
 
   return (
     <div className="space-y-6">
-      {/* period controls */}
+      {/* period controls — phones get a pager row (prev · title · next), then
+          Insights and the period filter as tidy full-width rows */}
       <div className="no-print flex flex-wrap items-center justify-between gap-3 bg-surface border rounded-xl px-3 py-2.5">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
           {d.mode === "week" && (
-            <Link href={`/?w=${d.prevWeekISO}`} className="rounded-md border px-3 py-1.5 text-sm font-bold hover:bg-brand-light">← Prev week</Link>
+            <Link href={`/?w=${d.prevWeekISO}`} className="btn btn-secondary btn-sm whitespace-nowrap">← Prev</Link>
           )}
-          <span className="font-extrabold tabnum">
+          <span className="font-extrabold tabnum flex-1 text-center text-sm sm:text-base xl:flex-none xl:text-left">
             {periodTitle}
             {d.isCurrentWeek && <span className="pill pill-ok ml-2">current</span>}
             {d.mode === "range" && (
@@ -49,13 +50,13 @@ export default async function Home({
             )}
           </span>
           {d.nextWeekISO && (
-            <Link href={`/?w=${d.nextWeekISO}`} className="rounded-md border px-3 py-1.5 text-sm font-bold hover:bg-brand-light">Next week →</Link>
+            <Link href={`/?w=${d.nextWeekISO}`} className="btn btn-secondary btn-sm whitespace-nowrap">Next →</Link>
           )}
           {d.mode === "week" && !d.isCurrentWeek && (
-            <Link href="/" className="text-sm font-bold text-accent hover:underline">Jump to current ↻</Link>
+            <Link href="/" className="text-sm font-bold text-accent hover:underline whitespace-nowrap">Jump to current ↻</Link>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
           <SmartInsights data={ai} />
           <PeriodFilter from={d.fromISO} to={d.toISO} active={d.mode === "range"} />
         </div>
@@ -308,7 +309,10 @@ function DeptScoreboard({
 
 function ChartCard({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
   return (
-    <div className="bg-surface border rounded-xl p-4">
+    // min-w-0: as a grid item the card must be allowed to shrink below its
+    // content's min width, otherwise wide charts/tables push it past the
+    // viewport on phones instead of scrolling inside their own box
+    <div className="bg-surface border rounded-xl p-4 min-w-0">
       <div className="mb-2">
         <h3 className="font-bold text-sm">{title}</h3>
         {sub && <p className="text-xs text-muted">{sub}</p>}

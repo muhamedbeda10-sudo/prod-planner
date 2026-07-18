@@ -53,23 +53,25 @@ export function PeriodFilter({ from, to, active }: { from: string; to: string; a
   }
 
   return (
+    // phones: label on its own line, then from → to · Apply in ONE aligned row
+    // (equal-width date fields); ≥sm it flows inline as before
     <form
-      className="flex flex-wrap items-center gap-2"
+      className="grid w-full grid-cols-[1fr_auto_1fr_auto] items-center gap-2 sm:flex sm:w-auto sm:flex-wrap"
       onSubmit={(e) => {
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
         apply(String(fd.get("from") ?? ""), String(fd.get("to") ?? ""));
       }}
     >
-      <span className="text-muted text-xs font-semibold uppercase tracking-wide">Period</span>
-      <input name="from" type="date" defaultValue={active ? from : ""} className="border rounded-md px-2 py-1.5 text-sm bg-surface font-semibold" required />
+      <span className="col-span-4 sm:col-span-1 text-muted text-[10px] sm:text-xs font-bold sm:font-semibold uppercase tracking-wide">Period</span>
+      <input name="from" type="date" defaultValue={active ? from : ""} className="w-full min-w-0 border rounded-md px-2 py-1.5 text-sm bg-surface font-semibold sm:w-auto" required />
       <span className="text-muted text-xs">→</span>
-      <input name="to" type="date" defaultValue={active ? to : ""} className="border rounded-md px-2 py-1.5 text-sm bg-surface font-semibold" required />
+      <input name="to" type="date" defaultValue={active ? to : ""} className="w-full min-w-0 border rounded-md px-2 py-1.5 text-sm bg-surface font-semibold sm:w-auto" required />
       <button type="submit" className="btn btn-primary btn-sm">
         Apply
       </button>
       {active && (
-        <button type="button" onClick={() => apply("", "")} className="text-xs font-bold text-bad-fg hover:underline">
+        <button type="button" onClick={() => apply("", "")} className="col-span-4 sm:col-span-1 justify-self-start text-xs font-bold text-bad-fg hover:underline">
           Back to weekly ✕
         </button>
       )}
