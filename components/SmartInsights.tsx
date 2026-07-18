@@ -45,7 +45,7 @@ export function SmartInsights({ data }: { data: SmartInsightsData }) {
         aria-haspopup="dialog"
         aria-expanded={open}
         title="Open Smart Insights — automatic analysis of your production data"
-        className="no-print relative inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 bg-gradient-to-l from-brand-light/60 to-transparent hover:from-brand-light transition-colors font-bold text-sm"
+        className="no-print relative inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3.5 py-2 bg-gradient-to-l from-brand-light/60 to-transparent hover:from-brand-light transition-colors font-bold text-sm sm:w-auto"
         style={{ borderColor: "color-mix(in srgb, var(--brand) 45%, transparent)" }}
       >
         <span className="text-lg leading-none">✨</span>
