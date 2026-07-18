@@ -3,7 +3,7 @@ import { getTargetDashboard, type DeptDay } from "@/lib/server/dashboard";
 import { getSmartInsights } from "@/lib/server/insights";
 import { SmartInsights } from "@/components/SmartInsights";
 import { pctStyle } from "@/components/ui";
-import { PeriodFilter } from "@/components/controls";
+import { PeriodFilter, DashboardPeriodMemory } from "@/components/controls";
 import { WeekTrendChart, WeekItemChart, HistoryChart } from "@/components/DashboardCharts";
 import { parseISODate, toDisplayDate } from "@/lib/domain/dates";
 import { ITEMS } from "@/lib/domain/constants";
@@ -35,6 +35,8 @@ export default async function Home({
 
   return (
     <div className="space-y-6">
+      {/* the chosen From→To range survives even a full browser restart */}
+      <DashboardPeriodMemory />
       {/* period controls — phones get a pager row (prev · title · next), then
           Insights and the period filter as tidy full-width rows */}
       <div className="no-print flex flex-wrap items-center justify-between gap-3 bg-surface border rounded-xl px-3 py-2.5">
