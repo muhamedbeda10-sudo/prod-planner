@@ -75,6 +75,21 @@ export async function setUserActive(formData: FormData): Promise<UserActionResul
   return { ok: true };
 }
 
+export async function deleteUser(formData: FormData): Promise<UserActionResult> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid user." };
+  const target = await prisma.user.findUnique({ where: { id } });
+  if (!target) return { ok: false, error: "User not found." };
+  if (target.id === guard.user!.id) return { ok: false, error: "You cannot delete your own account." };
+
+  await prisma.user.delete({ where: { id } }); // sessions go with it (cascade)
+  revalidatePath("/admin/users");
+  return { ok: true };
+}
+
 export async function resetUserPassword(formData: FormData): Promise<UserActionResult> {
   const guard = await requireAdmin();
   if (guard.error) return { ok: false, error: guard.error };
