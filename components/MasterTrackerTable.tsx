@@ -183,9 +183,9 @@ export function MasterTrackerTable({ rows, canEdit = false }: { rows: MasterTrac
               <th rowSpan={2} className="p-2">KVA</th>
               <th rowSpan={2} className="p-2">Required</th>
               {ITEMS.map((it) => (
-                <th key={it} colSpan={3} className="p-2 border-r border-white/25">{it}</th>
+                <th key={it} colSpan={3} className="p-2 border-r border-border-strong">{it}</th>
               ))}
-              <th rowSpan={2} className="p-2 border-r border-white/25">Complete</th>
+              <th rowSpan={2} className="p-2 border-r border-border-strong">Complete</th>
               <th rowSpan={2} className="p-2">Left</th>
               <th rowSpan={2} className="p-2">Achv.</th>
               <th rowSpan={2} className="p-2 no-print">Status</th>
@@ -348,12 +348,14 @@ export function MasterTrackerTable({ rows, canEdit = false }: { rows: MasterTrac
   }
 }
 
+// stage sub-headers sit on the same tints as their data columns — readable
+// in both themes (the old dark-green fill swallowed the muted header text)
 function StageHead() {
   return (
     <>
-      <th className="p-1 font-medium bg-brand-dark">Cut</th>
-      <th className="p-1 font-medium bg-brand-dark">Weld</th>
-      <th className="p-1 font-medium bg-brand-dark border-r border-white/25">Paint</th>
+      <th className="p-1 font-medium" style={{ background: "var(--cut-tint)" }}>Cut</th>
+      <th className="p-1 font-medium" style={{ background: "var(--weld-tint)" }}>Weld</th>
+      <th className="p-1 font-medium border-r" style={{ background: "var(--paint-tint)" }}>Paint</th>
     </>
   );
 }

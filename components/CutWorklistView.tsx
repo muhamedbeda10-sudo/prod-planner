@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { CutTranche, CascadeRow } from "@/lib/domain/execution";
 import { CutTrancheTable } from "@/components/CutTrancheTable";
 import { CascadeTable } from "@/components/CascadeTable";
-import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
+import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
 import type { ReturnRowDTO } from "@/lib/server/returns";
@@ -62,39 +62,27 @@ export function CutWorklistView({
 
   return (
     <>
-      {/* what's left per component — click a card to filter every table to it */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        {perItem.map(({ it, due, late, pool, total: t }) => (
-          <button
-            key={it}
-            type="button"
-            onClick={() => setItem(item === it ? "" : it)}
-            className={`text-left bg-surface border rounded-xl px-4 py-2.5 transition-all hover:shadow-md ${item === it ? "border-2 border-brand shadow-md" : ""}`}
-            title={item === it ? "Click to clear the filter" : `Show only ${it} in every table`}
-          >
-            <div className="flex items-baseline justify-between">
-              <span className="text-xs font-extrabold text-muted">{it}</span>
-              <span className="text-2xl font-extrabold tabnum" style={{ color: late > 0 ? "var(--bad-fg)" : "var(--brand)" }}>{t}</span>
-            </div>
-            <div className="text-[11px] text-muted mt-0.5 tabnum">
-              due <b className="text-foreground">{due}</b> · late <b style={{ color: late > 0 ? "var(--bad-fg)" : undefined }}>{late}</b> · pool <b className="text-foreground">{pool}</b>
-            </div>
-          </button>
-        ))}
-      </div>
-      <FilterBar count={shown} total={total} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
+      <FilterBar count={shown} total={total} showCount={false} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / description — filters all tables…" />
-        <SelectFilter
-          label="Item"
-          value={item}
-          onChange={setItem}
-          options={ITEMS.map((it) => ({ value: it, label: it }))}
-        />
-        <span className="text-xs text-muted">
-          Due <b className="text-foreground tabnum">{totalDue}</b> · overdue{" "}
-          <b className="text-foreground tabnum">{totalOverdue}</b> · backlog pool{" "}
-          <b className="text-foreground tabnum">{totalPool}</b> pcs
-        </span>
+        {/* what's left per component — tap a card to filter every table to it */}
+        <div className="col-span-2 flex flex-wrap items-center gap-1.5">
+          {perItem.map(({ it, due, late, pool, total: t }) => (
+            <button
+              key={it}
+              type="button"
+              onClick={() => setItem(item === it ? "" : it)}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all hover:border-brand hover:shadow-sm ${item === it ? "border-brand bg-brand-light shadow-sm" : "bg-surface"}`}
+              title={
+                item === it
+                  ? "Click to clear the filter"
+                  : `${it}: due ${due} · late ${late} · pool ${pool} — show only ${it} in every table`
+              }
+            >
+              <span className="text-muted">{it}</span>
+              <b className="text-sm tabnum" style={{ color: late > 0 ? "var(--bad-fg)" : "var(--brand)" }}>{t}</b>
+            </button>
+          ))}
+        </div>
         <PrintButton />
       </FilterBar>
 

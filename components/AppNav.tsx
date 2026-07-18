@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
-  Menu, X, LogOut, Settings, ChevronDown, LayoutDashboard, ClipboardList,
+  Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Scissors, Flame, Paintbrush, Table2, FileBarChart2, BookOpenCheck,
   FileDown, GitCompareArrows, Puzzle, CalendarDays, Users,
 } from "lucide-react";
@@ -122,13 +122,13 @@ export function AppNav({ user }: { user: NavUser }) {
               <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className={`nav-tab flex items-center gap-1.5 ${adminActive || open ? "nav-tab-active" : ""}`}
+                className={`nav-tab flex items-center ${adminActive || open ? "nav-tab-active" : ""}`}
                 aria-haspopup="menu"
                 aria-expanded={open}
+                aria-label="Admin Tools"
+                title="Admin Tools"
               >
-                <Settings size={15} />
-                Admin Tools
-                <ChevronDown size={13} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+                <Settings size={18} />
               </button>
 
               {open && (

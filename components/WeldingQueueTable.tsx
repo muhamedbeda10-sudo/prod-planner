@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { WeldQueueRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { recordOutput, addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote, returnToUpstream } from "@/app/worklist/actions";
-import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
+import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { Frac } from "@/components/Frac";
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
@@ -131,7 +131,6 @@ export function WeldingQueueTable({
   }, [rows, q, item]);
 
   const keyOf = (r: WeldQueueRow) => `${r.planNo}|${r.bom}|${r.mo}|${r.item}`;
-  const totalAvailable = filtered.reduce((s, r) => s + r.available, 0);
 
   // per-item workload — the WHOLE queue (unfiltered): what's waiting per component
   const perItem = ITEMS.map((it) => {
@@ -488,38 +487,32 @@ export function WeldingQueueTable({
 
   return (
     <>
-      {/* what's waiting per component — click a card to filter the queue to it */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        {perItem.map(({ it, avail, maxAge }) => (
-          <button
-            key={it}
-            type="button"
-            onClick={() => setItem(item === it ? "" : it)}
-            className={`text-left bg-surface border rounded-xl px-4 py-2.5 transition-all hover:shadow-md ${item === it ? "border-2 border-brand shadow-md" : ""}`}
-            title={item === it ? "Click to clear the filter" : `Show only ${it}`}
-          >
-            <div className="flex items-baseline justify-between">
-              <span className="text-xs font-extrabold text-muted">{it}</span>
-              <span className="text-2xl font-extrabold tabnum" style={{ color: avail > 0 ? "var(--brand)" : "var(--muted)" }}>{avail}</span>
-            </div>
-            <div className="text-[11px] text-muted mt-0.5 tabnum">
-              to {verb}{maxAge !== null ? <> · oldest <b style={{ color: maxAge > 6 ? "var(--bad-fg)" : undefined }}>⏳ {maxAge === 0 ? "today" : `${maxAge}d`}</b></> : <> · queue clear</>}
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
+      <FilterBar count={filtered.length} total={rows.length} showCount={false} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM…" />
-        <SelectFilter
-          label="Item"
-          value={item}
-          onChange={setItem}
-          options={ITEMS.map((it) => ({ value: it, label: it }))}
-        />
-        <span className="text-xs text-muted">
-          Available to {verb} (shown): <b className="text-foreground tabnum">{totalAvailable}</b> pcs
-        </span>
+        {/* per-component workload — tap a card to filter the queue to it */}
+        <div className="col-span-2 flex flex-wrap items-center gap-1.5">
+          {perItem.map(({ it, avail, maxAge }) => (
+            <button
+              key={it}
+              type="button"
+              onClick={() => setItem(item === it ? "" : it)}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all hover:border-brand hover:shadow-sm ${item === it ? "border-brand bg-brand-light shadow-sm" : "bg-surface"}`}
+              title={
+                item === it
+                  ? "Click to clear the filter"
+                  : `${it}: ${avail} to ${verb}${maxAge !== null ? ` · oldest waiting ${maxAge === 0 ? "today" : `${maxAge}d`}` : " · queue clear"}`
+              }
+            >
+              <span className="text-muted">{it}</span>
+              <b className="text-sm tabnum" style={{ color: avail > 0 ? "var(--brand)" : "var(--muted)" }}>{avail}</b>
+              {maxAge !== null && (
+                <span className="tabnum font-semibold" style={{ color: maxAge > 6 ? "var(--bad-fg)" : "var(--muted)" }}>
+                  ⏳{maxAge === 0 ? "0d" : `${maxAge}d`}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
         <PrintButton />
       </FilterBar>
 
