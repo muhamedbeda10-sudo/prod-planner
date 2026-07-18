@@ -10,6 +10,25 @@ export default async function LoginPage() {
   if (user) redirect("/");
   return (
     <div className="min-h-[78vh] flex items-center justify-center">
+      {/* full-bleed ATC-branded backdrop — login page only: brand-green
+          gradient with the company logo repeating as a subtle watermark */}
+      <div
+        aria-hidden
+        className="fixed inset-0 -z-10"
+        style={{ background: "linear-gradient(160deg, #1f9660 0%, #1a8150 35%, #136041 75%, #0d4530 100%)" }}
+      />
+      {/* the tile is taller than the logo needs, so the SVG letterboxes and
+          the rows get breathing room; the second offset layer staggers them */}
+      <div
+        aria-hidden
+        className="fixed -inset-[30%] -z-10 opacity-[0.07] -rotate-6"
+        style={{
+          backgroundImage: "url(/brand/atc-logo-horizontal-white.svg), url(/brand/atc-logo-horizontal-white.svg)",
+          backgroundSize: "250px 190px, 250px 190px",
+          backgroundRepeat: "repeat, repeat",
+          backgroundPosition: "0 0, 125px 95px",
+        }}
+      />
       <div className="w-full max-w-sm bg-surface border rounded-2xl p-8" style={{ boxShadow: "var(--shadow-lg)" }}>
         <div className="flex justify-center mb-6">
           <Image
