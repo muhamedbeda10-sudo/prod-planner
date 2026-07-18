@@ -11,9 +11,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ATC — Production Planning & Tracking",
-  description:
-    "Arabian Transformers Co. — transformer production planning & tracking",
+  title: "ATC — Steel Fabrication",
+  description: "Arabian Transformers Co. — steel fabrication",
 };
 
 // Applied before paint so there is no light/dark flash on load.
