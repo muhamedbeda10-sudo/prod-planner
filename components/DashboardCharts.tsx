@@ -13,6 +13,18 @@ const GREEN_LIGHT = "#8fc9ab";
 const GRAY = "#717171";
 const PAINT = "#c59a3f";
 
+/** Charts keep a readable minimum width and scroll sideways inside their card
+ *  on narrow phones instead of being squeezed off-screen. */
+function ChartScroller({ minWidth, height, children }: { minWidth: number; height: number; children: React.ReactElement }) {
+  return (
+    <div className="overflow-x-auto">
+      <div style={{ minWidth, height }}>
+        <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 /** Daily totals per dept across the week, with the fixed daily target line. */
 export function WeekTrendChart({ days, targetPerDeptDay }: { days: DayRow[]; targetPerDeptDay: number }) {
   const data = days.map((d) => ({
@@ -22,8 +34,7 @@ export function WeekTrendChart({ days, targetPerDeptDay }: { days: DayRow[]; tar
     Painting: d.paint.total,
   }));
   return (
-    <div style={{ width: "100%", height: 260 }}>
-      <ResponsiveContainer>
+    <ChartScroller minWidth={520} height={260}>
         <BarChart data={data} margin={{ top: 16, right: 10, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="day" tick={{ fontSize: 11 }} />
@@ -47,8 +58,7 @@ export function WeekTrendChart({ days, targetPerDeptDay }: { days: DayRow[]; tar
             <LabelList dataKey="Painting" position="top" fontSize={10} />
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+    </ChartScroller>
   );
 }
 
@@ -63,8 +73,7 @@ export function WeekItemChart({
 }) {
   const data = ITEMS.map((it) => ({ item: it, Cut: cut[it] ?? 0, Welding: weld[it] ?? 0, Painting: paint[it] ?? 0 }));
   return (
-    <div style={{ width: "100%", height: 260 }}>
-      <ResponsiveContainer>
+    <ChartScroller minWidth={420} height={260}>
         <BarChart data={data} margin={{ top: 16, right: 10, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="item" />
@@ -88,8 +97,7 @@ export function WeekItemChart({
             <LabelList dataKey="Painting" position="top" fontSize={10} />
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+    </ChartScroller>
   );
 }
 
@@ -102,8 +110,7 @@ export function HistoryChart({
 }) {
   const data = [...history].reverse().map((h) => ({ week: h.label, Cut: h.cutTotal, Welding: h.weldTotal, Painting: h.paintTotal }));
   return (
-    <div style={{ width: "100%", height: 240 }}>
-      <ResponsiveContainer>
+    <ChartScroller minWidth={560} height={240}>
         <BarChart data={data} margin={{ top: 16, right: 10, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="week" tick={{ fontSize: 10 }} />
@@ -120,7 +127,6 @@ export function HistoryChart({
           <Bar dataKey="Welding" fill={GREEN} radius={[3, 3, 0, 0]} />
           <Bar dataKey="Painting" fill={PAINT} radius={[3, 3, 0, 0]} />
         </BarChart>
-      </ResponsiveContainer>
-    </div>
+    </ChartScroller>
   );
 }
