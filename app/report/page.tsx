@@ -102,9 +102,17 @@ export default async function ReportPage({
         </table>
       </div>
 
-      {/* The single quantities chart — values on the bars, dashed target line */}
+      {/* The single quantities chart — values on the bars, dashed target line.
+          The target value lives HERE in the header, never inside the plot, so
+          no bar or label can ever cover it. */}
       <div className="bg-surface border rounded-xl p-3 print-keep">
-        <h3 className="font-bold text-sm mb-2">Output by component — vs daily target</h3>
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <h3 className="font-bold text-sm">Output by component — vs daily target</h3>
+          <span className="pill pill-muted tabnum">
+            <span aria-hidden style={{ width: 18, borderTop: "2px dashed var(--muted)", display: "inline-block" }} />
+            Target {target}/item
+          </span>
+        </div>
         <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} target={target} />
       </div>
 
