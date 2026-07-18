@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { PERMISSIONS } from "@/lib/domain/permissions";
-import { createUser, updateUserPerms, setUserActive, resetUserPassword } from "./actions";
+import { createUser, updateUserPerms, setUserActive, resetUserPassword, deleteUser } from "./actions";
 
 interface Row {
   id: number;
@@ -64,6 +64,7 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
   const perms = useAction();
   const pw = useAction();
   const act = useAction();
+  const del = useAction();
 
   return (
     <div className={`border rounded-xl p-4 ${user.active ? "" : "opacity-60"}`}>
@@ -77,7 +78,7 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
           </div>
           <div className="text-sm text-muted ltr">{user.email}</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button type="button" className={btnCls} onClick={() => setExpanded((v) => !v)}>
             {expanded ? "Close" : "Permissions"}
           </button>
@@ -106,9 +107,24 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
               </button>
             </form>
           )}
+          {user.id !== myId && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!confirm(`Delete ${user.name} (${user.email}) permanently? They are signed out immediately and the account cannot be recovered.`)) return;
+                del.run(deleteUser, new FormData(e.currentTarget), "Account deleted.");
+              }}
+            >
+              <input type="hidden" name="id" value={user.id} />
+              <button type="submit" disabled={del.pending} className="btn btn-danger btn-sm">
+                🗑 Delete
+              </button>
+            </form>
+          )}
         </div>
       </div>
       <Msg msg={act.msg} />
+      <Msg msg={del.msg} />
 
       {showReset && (
         <form
@@ -155,8 +171,8 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted flex-1 min-w-52">
           Every active account can <b>view</b> all screens. Permissions control who can <b>edit</b> what.
         </p>
         <button type="button" className={btnCls} onClick={() => setShowCreate((v) => !v)}>
