@@ -27,8 +27,9 @@ export function OutputByComponentChart({
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
   return (
     // keeps a readable minimum width and scrolls sideways inside its card on
-    // narrow phones instead of being squeezed off-screen
-    <div className="overflow-x-auto">
+    // narrow phones; chart-scroll makes the SVG rescale to the full page
+    // width when printing (paper can't scroll)
+    <div className="overflow-x-auto chart-scroll">
     <div style={{ minWidth: 460, height: 340 }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 28, right: 20, left: 20, bottom: 6 }} barCategoryGap="22%">
@@ -42,7 +43,9 @@ export function OutputByComponentChart({
             stroke={GRAY}
             strokeWidth={1.5}
             strokeDasharray="7 5"
-            label={{ value: `Target ${target}/item`, position: "insideTopRight", fontSize: 13, fontWeight: 700, fill: GRAY }}
+            // dy lifts the label ABOVE the dashed line so it never covers the
+            // bars or their values below it
+            label={{ value: `Target ${target}/item`, position: "insideTopRight", dy: -11, fontSize: 13, fontWeight: 700, fill: GRAY }}
           />
           {/* no animation: the values must be on the bars immediately (print!) */}
           <Bar dataKey="Cut" fill={GREEN} radius={[3, 3, 0, 0]} isAnimationActive={false}>
