@@ -35,6 +35,28 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
   const [item, setItem] = useSavedFilter("log.item");
   const [from, setFrom] = useSavedFilter("log.from");
   const [to, setTo] = useSavedFilter("log.to");
+  // default window: the log opens on the LAST 3 recorded days, not everything —
+  // presets and the custom range below widen it
+  const [period, setPeriod] = useSavedFilter("log.period", "3");
+
+  // picking a preset clears the custom range; typing a date takes over from
+  // the preset — one always clearly wins
+  const pickPeriod = (v: string) => { setPeriod(v); setFrom(""); setTo(""); };
+  const pickFrom = (v: string) => { setFrom(v); if (v || to) setPeriod(""); };
+  const pickTo = (v: string) => { setTo(v); if (from || v) setPeriod(""); };
+
+  // preset window anchored to the newest recorded day (not "today", so the
+  // log never looks empty after a day off)
+  const newestISO = useMemo(
+    () => (rows.length ? rows.reduce((m, r) => (r.date > m ? r.date : m), rows[0].date) : ""),
+    [rows]
+  );
+  const cutoffISO = useMemo(() => {
+    if (from || to || !period || !newestISO) return "";
+    const d = new Date(`${newestISO}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - (Number(period) - 1));
+    return d.toISOString().slice(0, 10);
+  }, [from, to, period, newestISO]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
@@ -42,14 +64,15 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
       if (needle && !r.bom.toUpperCase().includes(needle)) return false;
       if (dept && r.dept !== dept) return false;
       if (item && r.item !== item) return false;
+      if (cutoffISO && r.date < cutoffISO) return false;
       if (from && r.date < from) return false;
       if (to && r.date > to) return false;
       return true;
     });
-  }, [rows, q, dept, item, from, to]);
+  }, [rows, q, dept, item, from, to, cutoffISO]);
 
-  const hasActive = !!(q || dept || item || from || to);
-  const reset = () => { setQ(""); setDept(""); setItem(""); setFrom(""); setTo(""); };
+  const hasActive = !!(q || dept || item || from || to || period !== "3");
+  const reset = () => { setQ(""); setDept(""); setItem(""); setFrom(""); setTo(""); setPeriod("3"); };
 
   const exportRows = filtered.map((r) => ({
     Date: r.date,
@@ -97,16 +120,25 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
     <>
       <FilterBar count={filtered.length} total={rows.length} onReset={reset} hasActive={hasActive}>
         <SearchBox value={q} onChange={setQ} placeholder="Search BOM…" />
+        <SelectFilter
+          label="Show"
+          value={period}
+          onChange={pickPeriod}
+          options={[
+            { value: "3", label: "Last 3 days" },
+            { value: "7", label: "Last 7 days" },
+            { value: "30", label: "Last 30 days" },
+          ]}
+        />
         <SelectFilter label="Dept" value={dept} onChange={setDept} options={DEPTS.map((d) => ({ value: d, label: d }))} />
         <SelectFilter label="Item" value={item} onChange={setItem} options={ITEMS.map((i) => ({ value: i, label: i }))} />
-        <label className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-1.5">
-          <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">From</span>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full min-w-0 sm:w-auto border rounded-md px-2 py-1.5 text-sm bg-surface" />
-        </label>
-        <label className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-1.5">
-          <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">To</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full min-w-0 sm:w-auto border rounded-md px-2 py-1.5 text-sm bg-surface" />
-        </label>
+        {/* custom range (or one exact day: same date in both) — one tidy row */}
+        <div className="col-span-2 flex items-center gap-1.5 text-sm">
+          <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Range</span>
+          <input type="date" value={from} onChange={(e) => pickFrom(e.target.value)} className="min-w-0 flex-1 sm:flex-none sm:w-auto border rounded-md px-2 py-1.5 text-sm bg-surface" />
+          <span className="text-muted text-xs shrink-0">→</span>
+          <input type="date" value={to} onChange={(e) => pickTo(e.target.value)} className="min-w-0 flex-1 sm:flex-none sm:w-auto border rounded-md px-2 py-1.5 text-sm bg-surface" />
+        </div>
         <ExportButton rows={exportRows} filename={`daily-handover.xlsx`} sheetName="Daily HandOver" />
       </FilterBar>
 
