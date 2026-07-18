@@ -26,8 +26,11 @@ export function OutputByComponentChart({
   const maxVal = Math.max(target, ...data.flatMap((d) => [d.Cut, d.Welding, d.Painting]));
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
   return (
-    <div style={{ width: "100%", height: 340 }}>
-      <ResponsiveContainer>
+    // keeps a readable minimum width and scrolls sideways inside its card on
+    // narrow phones instead of being squeezed off-screen
+    <div className="overflow-x-auto">
+    <div style={{ minWidth: 460, height: 340 }}>
+      <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 28, right: 20, left: 20, bottom: 6 }} barCategoryGap="22%">
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="item" tick={{ fontSize: 16, fontWeight: 800 }} tickMargin={8} />
@@ -53,6 +56,7 @@ export function OutputByComponentChart({
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+    </div>
     </div>
   );
 }

@@ -32,7 +32,7 @@ export function MonthlyImport() {
       </summary>
       <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-3">
         <input ref={inputRef} name="file" type="file" accept=".xlsx,.xlsm,.xls" required
-          className="border rounded-md px-2 py-2 bg-surface text-sm" />
+          className="border rounded-md px-2 py-2 bg-surface text-sm w-full max-w-full sm:w-auto" />
         <label className="inline-flex items-center gap-1.5 text-sm">
           <span className="text-muted text-xs font-semibold">Plan month</span>
           <input

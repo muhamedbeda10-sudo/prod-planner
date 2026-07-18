@@ -99,13 +99,13 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
         <SearchBox value={q} onChange={setQ} placeholder="Search BOM…" />
         <SelectFilter label="Dept" value={dept} onChange={setDept} options={DEPTS.map((d) => ({ value: d, label: d }))} />
         <SelectFilter label="Item" value={item} onChange={setItem} options={ITEMS.map((i) => ({ value: i, label: i }))} />
-        <label className="inline-flex items-center gap-1.5 text-sm">
-          <span className="text-muted text-xs font-semibold">From</span>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="border rounded-md px-2 py-1 text-sm bg-surface" />
+        <label className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-1.5">
+          <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">From</span>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-full min-w-0 sm:w-auto border rounded-md px-2 py-1.5 text-sm bg-surface" />
         </label>
-        <label className="inline-flex items-center gap-1.5 text-sm">
-          <span className="text-muted text-xs font-semibold">To</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="border rounded-md px-2 py-1 text-sm bg-surface" />
+        <label className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-1.5">
+          <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">To</span>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-full min-w-0 sm:w-auto border rounded-md px-2 py-1.5 text-sm bg-surface" />
         </label>
         <ExportButton rows={exportRows} filename={`daily-handover.xlsx`} sheetName="Daily HandOver" />
       </FilterBar>

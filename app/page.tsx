@@ -274,7 +274,7 @@ function DeptScoreboard({
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         {ITEMS.map((it) => {
           const v = data.items[it];
           const f = pct(v, target);
