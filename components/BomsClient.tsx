@@ -113,8 +113,8 @@ export function ReallocPanel({ planNo, moves }: { planNo: number; moves: MoveVie
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <button onClick={propose} disabled={pending} className="bg-brand text-white rounded-md px-4 py-1.5 text-sm font-bold">
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={propose} disabled={pending} className="btn btn-primary btn-sm">
           Compute excess-reallocation proposals
         </button>
         {info && <span className="text-sm text-muted">{info}</span>}
