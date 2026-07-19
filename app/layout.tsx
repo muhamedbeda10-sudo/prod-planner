@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { AppNav } from "@/components/AppNav";
 import { getCurrentUser, userPerms } from "@/lib/server/auth";
@@ -34,6 +35,7 @@ export default async function RootLayout({
         <main className="flex-1 px-4 py-5 md:px-6 md:py-6 max-w-[1600px] w-full mx-auto">
           {children}
         </main>
+        <SpeedInsights />
       </body>
     </html>
   );
