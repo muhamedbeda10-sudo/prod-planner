@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { setOrderStatus, setExcludedItems } from "@/app/orders/actions";
+import { recordTrackerTotal } from "@/app/worklist/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
-import { ITEMS, isPaintExempt } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, deptLabel, type Item } from "@/lib/domain/constants";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -18,9 +19,23 @@ function progressOf(r: MasterTrackerRow): Progress {
   return "notstarted";
 }
 
-export function MasterTrackerTable({ rows, canEdit = false }: { rows: MasterTrackerRow[]; canEdit?: boolean }) {
+export function MasterTrackerTable({
+  rows,
+  canEdit = false,
+  editableDepts = [],
+}: {
+  rows: MasterTrackerRow[];
+  canEdit?: boolean;
+  /** Depts this user may record output for — same permission as each dept's
+   *  worklist. Their stage cells become editable (type the NEW total). */
+  editableDepts?: string[];
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // inline stage-cell editor: one cell at a time (mo|item|dept)
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState("");
+  const [cellErr, setCellErr] = useState("");
   // filters survive navigating away and back (sessionStorage per tab)
   const [q, setQ] = useSavedFilter("tracker.q");
   const [progress, setProgress] = useSavedFilter("tracker.progress");
@@ -258,6 +273,80 @@ export function MasterTrackerTable({ rows, canEdit = false }: { rows: MasterTrac
     </>
   );
 
+  /** One stage cell on a single-MO row. For depts the user can edit, clicking
+   *  the number opens an inline editor: type the NEW cumulative total, the
+   *  difference is recorded in the Daily Log dated today (and flows to the
+   *  dept's worklist). Totals only go up — corrections live in Daily Logs. */
+  function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, tint: string, borderR = false) {
+    const k = `${r.mo}|${it}|${dept}`;
+    const editing = editKey === k;
+    const editable = editableDepts.includes(dept);
+    const added = editing ? Number(editVal) - value : 0;
+
+    function save() {
+      const fd = new FormData();
+      fd.set("dept", dept);
+      fd.set("bom", r.bom);
+      fd.set("mo", r.mo);
+      fd.set("item", it);
+      fd.set("total", editVal);
+      setCellErr("");
+      startTransition(async () => {
+        const res = await recordTrackerTotal(fd);
+        if (res.ok) {
+          setEditKey(null);
+          router.refresh();
+        } else {
+          setCellErr(res.error ?? "Failed");
+        }
+      });
+    }
+
+    return (
+      <td className={`p-1 text-center tabnum ${borderR ? "border-r" : ""}`} style={{ background: tint }}>
+        {editing ? (
+          <span className="inline-flex flex-col items-center gap-0.5">
+            <span className="inline-flex items-center gap-1">
+              <input
+                type="number"
+                min={value}
+                value={editVal}
+                autoFocus
+                onChange={(e) => { setEditVal(e.target.value); setCellErr(""); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") save();
+                  if (e.key === "Escape") setEditKey(null);
+                }}
+                className="w-16 border rounded-md px-1 py-0.5 text-center font-bold tabnum bg-surface"
+                disabled={pending}
+              />
+              <button type="button" onClick={save} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save — the difference lands in today's Daily Log">
+                ✓
+              </button>
+              <button type="button" onClick={() => setEditKey(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">
+                ✕
+              </button>
+            </span>
+            {added > 0 && !cellErr && <span className="text-[10px] font-bold text-ok-fg whitespace-nowrap">+{added} today</span>}
+            {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{cellErr}</span>}
+          </span>
+        ) : editable ? (
+          <button
+            type="button"
+            onClick={() => { setEditKey(k); setEditVal(String(value)); setCellErr(""); }}
+            disabled={pending}
+            className="w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
+            title={`${deptLabel(dept)} · ${r.mo} · ${it} — click to record (type the new total)`}
+          >
+            {value}
+          </button>
+        ) : (
+          value
+        )}
+      </td>
+    );
+  }
+
   function renderRow(r: MasterTrackerRow, inGroup = false, lastInGroup = false) {
     // frame: open groups get a clear border so their extent is obvious
     const frame = inGroup ? `bg-brand-light/10 border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
@@ -284,9 +373,29 @@ export function MasterTrackerTable({ rows, canEdit = false }: { rows: MasterTrac
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>
                 <td className="p-2 text-center font-bold"><Num v={r.required} /></td>
-                {ITEMS.map((it) => (
-                  <StageCells key={it} cut={r.items[it].cut} weld={r.items[it].weld} paint={r.items[it].paint} excluded={r.items[it].excluded} noPaint={isPaintExempt(it)} />
-                ))}
+                {ITEMS.map((it) => {
+                  const c = r.items[it];
+                  if (c.excluded) {
+                    return (
+                      <Fragment key={it}>
+                        <td className="p-2 text-center text-muted">—</td>
+                        <td className="p-2 text-center text-muted">—</td>
+                        <td className="p-2 text-center text-muted border-r">—</td>
+                      </Fragment>
+                    );
+                  }
+                  return (
+                    <Fragment key={it}>
+                      {stageCell(r, it, "Cut", c.cut, "var(--cut-tint)")}
+                      {stageCell(r, it, "Welding", c.weld, "var(--weld-tint)")}
+                      {isPaintExempt(it) ? (
+                        <td className="p-2 text-center text-muted border-r" title="not painted — core ships after welding">—</td>
+                      ) : (
+                        stageCell(r, it, "Painting", c.paint, "var(--paint-tint)", true)
+                      )}
+                    </Fragment>
+                  );
+                })}
                 <td className="p-2 text-center font-extrabold border-r"><Num v={r.complete} /></td>
                 <td className="p-2 text-center font-bold" style={{ color: r.remaining > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>
                   <Num v={r.remaining} />

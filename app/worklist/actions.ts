@@ -6,7 +6,9 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { put, del } from "@vercel/blob";
 import { isItem, isDept } from "@/lib/domain/constants";
-import { parseISODate } from "@/lib/domain/dates";
+import { parseISODate, toISODate } from "@/lib/domain/dates";
+import { findPlanForDate } from "@/lib/domain/findPlan";
+import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { checkOutputChain } from "@/lib/server/outputGuard";
 import { requireDeptEdit } from "@/lib/server/auth";
 
@@ -65,6 +67,63 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
 
     await prisma.handoverEntry.create({
       data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist" },
+    });
+    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
+      revalidatePath(p);
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** Plan-tracker inline edit: the user types the NEW cumulative total for one
+ *  MO × item × their own dept — the DIFFERENCE is recorded as a daily-log
+ *  entry dated today, so it shows up in Daily Logs and the dept's worklist
+ *  immediately. Lets departments log work done AHEAD of the weekly plan.
+ *  The total can only go UP from here; corrections happen in Daily Logs. */
+export async function recordTrackerTotal(formData: FormData): Promise<RecordResult> {
+  try {
+    const dept = String(formData.get("dept") ?? "");
+    const bom = String(formData.get("bom") ?? "").trim();
+    const mo = String(formData.get("mo") ?? "").trim();
+    const item = String(formData.get("item") ?? "").trim().toUpperCase();
+    const newTotal = Number(formData.get("total"));
+
+    if (!isDept(dept)) return { ok: false, error: "Invalid department." };
+    const guard = await requireDeptEdit(dept); // same permission as the dept's worklist
+    if (guard.error) return { ok: false, error: guard.error };
+    if (!bom || !mo) return { ok: false, error: "Missing MO / BOM." };
+    if (!isItem(item)) return { ok: false, error: "Invalid component." };
+    if (!Number.isInteger(newTotal) || newTotal < 0) return { ok: false, error: "Enter a whole number ≥ 0." };
+
+    const agg = await prisma.handoverEntry.aggregate({ where: { mo, item, dept }, _sum: { qty: true } });
+    const current = agg._sum.qty ?? 0;
+    const delta = newTotal - current;
+    if (delta === 0) return { ok: false, error: "Nothing changed — the total is already " + current + "." };
+    if (delta < 0) {
+      return { ok: false, error: `The total can only go UP here (currently ${current}). To correct a mistake, edit or delete the wrong entry in Daily Logs.` };
+    }
+
+    // physical chain guard: painted ≤ welded ≤ cut ≤ order qty
+    const chainError = await checkOutputChain({ dept, bom, mo, item, qty: delta });
+    if (chainError) return { ok: false, error: chainError };
+
+    // date = today; plan = whichever plan covers today (ahead-of-plan work
+    // falls back to the newest plan, then the setup bucket 0)
+    const today = parseISODate(toISODate(new Date()))!;
+    const [windows, settings] = await Promise.all([getPlanWindows(), getSettings()]);
+    const planNo =
+      findPlanForDate(windows, today, settings.leadCut) ??
+      (windows.length ? Math.max(...windows.map((w) => w.planNo)) : 0);
+    await prisma.plan.upsert({
+      where: { planNo },
+      create: { planNo, startDate: today },
+      update: {},
+    });
+
+    await prisma.handoverEntry.create({
+      data: { date: today, dept, bom, mo, item, qty: delta, planNo, source: "tracker", createdBy: guard.user?.name ?? null },
     });
     for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
       revalidatePath(p);
