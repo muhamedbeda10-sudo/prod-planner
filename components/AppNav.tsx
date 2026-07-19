@@ -118,7 +118,8 @@ export function AppNav({ user }: { user: NavUser }) {
 
           {/* right cluster */}
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
-            {/* desktop: admin tools dropdown */}
+            {/* desktop: admin tools dropdown — admins only, invisible to everyone else */}
+            {user.isAdmin && (
             <div className="relative shrink-0 hidden md:block" ref={menuRef}>
               <button
                 type="button"
@@ -171,6 +172,8 @@ export function AppNav({ user }: { user: NavUser }) {
                 </div>
               )}
             </div>
+
+            )}
 
             {/* user + logout (desktop shows the name; mobile keeps it in the drawer) */}
             <div className="shrink-0 flex items-center gap-1 md:gap-2 md:border-l md:border-white/20 md:pl-3">
@@ -249,8 +252,10 @@ export function AppNav({ user }: { user: NavUser }) {
                 </Link>
               ))}
 
-              <p className="px-4 pt-4 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">Admin tools</p>
-              {ADMIN.map((l) => (
+              {user.isAdmin && (
+                <p className="px-4 pt-4 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">Admin tools</p>
+              )}
+              {user.isAdmin && ADMIN.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}
