@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateHandover, deleteHandover } from "@/app/handover/actions";
+import { updateHandover, deleteHandover, bulkSetHandoverDate } from "@/app/handover/actions";
 import { toISODate } from "@/lib/domain/dates";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
@@ -28,6 +28,11 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
   const [date, setDate] = useState("");
   const [rowErr, setRowErr] = useState<Record<number, string>>({});
   const [pending, startTransition] = useTransition();
+
+  // bulk re-date: tick rows, pick one new date, apply to all of them at once
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkDate, setBulkDate] = useState("");
+  const [bulkMsg, setBulkMsg] = useState("");
 
   // filters — survive navigating away and back (sessionStorage per tab)
   const [q, setQ] = useSavedFilter("log.q");
@@ -73,6 +78,41 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
 
   const hasActive = !!(q || dept || item || from || to || period !== "3");
   const reset = () => { setQ(""); setDept(""); setItem(""); setFrom(""); setTo(""); setPeriod("3"); };
+
+  // only VISIBLE selected rows count (hiding a row by filtering un-selects it
+  // effectively — nothing off-screen ever gets re-dated by surprise)
+  const editableVisible = useMemo(() => filtered.filter((r) => canEditRow(r)), [filtered, editableDepts]); // eslint-disable-line react-hooks/exhaustive-deps
+  const selectedVisible = useMemo(() => editableVisible.filter((r) => selected.has(r.id)).map((r) => r.id), [editableVisible, selected]);
+  const allVisibleSelected = editableVisible.length > 0 && selectedVisible.length === editableVisible.length;
+
+  const toggleRow = (id: number) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const toggleAll = () =>
+    setSelected(allVisibleSelected ? new Set() : new Set(editableVisible.map((r) => r.id)));
+
+  function applyBulkDate() {
+    if (!bulkDate || selectedVisible.length === 0) return;
+    if (!confirm(`Change the date of ${selectedVisible.length} record(s) to ${bulkDate}?`)) return;
+    const fd = new FormData();
+    fd.set("ids", selectedVisible.join(","));
+    fd.set("date", bulkDate);
+    setBulkMsg("");
+    startTransition(async () => {
+      const r = await bulkSetHandoverDate(fd);
+      if (r.ok) {
+        setSelected(new Set());
+        setBulkDate("");
+        router.refresh();
+      } else {
+        setBulkMsg(r.error ?? "Failed");
+      }
+    });
+  }
 
   const exportRows = filtered.map((r) => ({
     Date: r.date,
@@ -142,10 +182,39 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
         <ExportButton rows={exportRows} filename={`daily-handover.xlsx`} sheetName="Daily HandOver" />
       </FilterBar>
 
+      {/* bulk re-date bar — appears once rows are ticked */}
+      {selectedVisible.length > 0 && (
+        <div className="no-print flex flex-wrap items-center gap-2.5 bg-brand-light/70 border rounded-xl px-3.5 py-2.5 mb-3 text-sm" style={{ borderColor: "color-mix(in srgb, var(--brand) 40%, transparent)" }}>
+          <b className="tabnum">{selectedVisible.length}</b> record{selectedVisible.length === 1 ? "" : "s"} selected
+          <label className="inline-flex items-center gap-1.5">
+            <span className="text-muted text-[11px] font-bold uppercase tracking-wide">New date</span>
+            <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm bg-surface" disabled={pending} />
+          </label>
+          <button type="button" onClick={applyBulkDate} disabled={pending || !bulkDate} className="btn btn-primary btn-sm">
+            {pending ? "Applying…" : "Apply to all"}
+          </button>
+          <button type="button" onClick={() => { setSelected(new Set()); setBulkMsg(""); }} className="btn btn-ghost btn-sm">
+            Clear selection
+          </button>
+          {bulkMsg && <span className="text-xs font-semibold text-bad-fg w-full sm:w-auto">{bulkMsg}</span>}
+        </div>
+      )}
+
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand text-white text-left">
+              <th className="p-2 no-print w-8 text-center">
+                {editableVisible.length > 0 && (
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleAll}
+                    title="Select all visible rows you can edit"
+                    className="accent-[var(--brand)] cursor-pointer"
+                  />
+                )}
+              </th>
               <th className="p-2">Date</th>
               <th className="p-2">Dept</th>
               <th className="p-2">BOM</th>
@@ -158,12 +227,22 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="p-4 text-center text-muted">
+              <tr><td colSpan={9} className="p-4 text-center text-muted">
                 {rows.length === 0 ? "No records." : "No rows match the filters."}
               </td></tr>
             )}
             {filtered.map((r, i) => (
-              <tr key={r.id} className={i % 2 ? "bg-zebra" : ""}>
+              <tr key={r.id} className={`${i % 2 ? "bg-zebra" : ""} ${selected.has(r.id) ? "!bg-brand-light/50" : ""}`}>
+                <td className="p-2 no-print text-center">
+                  {canEditRow(r) && (
+                    <input
+                      type="checkbox"
+                      checked={selected.has(r.id)}
+                      onChange={() => toggleRow(r.id)}
+                      className="accent-[var(--brand)] cursor-pointer"
+                    />
+                  )}
+                </td>
                 <td className="p-2 whitespace-nowrap">
                   {editing === r.id ? (
                     <input type="date" defaultValue={r.date} onChange={(e) => setDate(e.target.value)} className="border rounded px-1 py-0.5 text-xs" />
