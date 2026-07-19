@@ -117,6 +117,36 @@ export async function updateHandover(formData: FormData): Promise<ActionResult> 
   return { ok: true };
 }
 
+/** Bulk re-date: move MANY selected log rows to a new date in one go.
+ *  Permission is checked per department present in the selection (same dept
+ *  rules as single-row edits). A date-only change can never break the
+ *  physical chain — totals are all-time — so no chain re-check is needed. */
+export async function bulkSetHandoverDate(formData: FormData): Promise<ActionResult & { updated?: number }> {
+  const dateStr = String(formData.get("date") ?? "").trim();
+  const ids = String(formData.get("ids") ?? "")
+    .split(",")
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0);
+  const date = parseISODate(dateStr);
+  if (!date) return { ok: false, error: "Choose a valid date." };
+  if (ids.length === 0) return { ok: false, error: "No rows selected." };
+  if (ids.length > 500) return { ok: false, error: "Too many rows at once — max 500." };
+
+  const entries = await prisma.handoverEntry.findMany({ where: { id: { in: ids } }, select: { id: true, dept: true } });
+  if (entries.length === 0) return { ok: false, error: "Records not found." };
+  for (const d of [...new Set(entries.map((e) => e.dept))]) {
+    const guard = await requireDeptEdit(d);
+    if (guard.error) return { ok: false, error: guard.error };
+  }
+
+  const res = await prisma.handoverEntry.updateMany({
+    where: { id: { in: entries.map((e) => e.id) } },
+    data: { date, note: "edited" },
+  });
+  revalidateEverywhere();
+  return { ok: true, updated: res.count };
+}
+
 export async function deleteHandover(formData: FormData): Promise<ActionResult> {
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
