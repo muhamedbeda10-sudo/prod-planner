@@ -10,7 +10,7 @@ import { Frac } from "@/components/Frac";
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
 import type { ReturnRowDTO } from "@/lib/server/returns";
-import { ITEMS, DEFAULTS } from "@/lib/domain/constants";
+import { ITEMS, DEFAULTS, deptLabel } from "@/lib/domain/constants";
 import { assessDeliveryRisk } from "@/lib/domain/insights";
 
 function ddmm(iso: string) {
@@ -37,6 +37,8 @@ export function WeldingQueueTable({
   canEdit?: boolean; // user holds this dept's edit permission — otherwise view-only
 }) {
   const verb = dept === "Welding" ? "weld" : "paint";
+  // display name for the upstream dept ("Cut" shows as "Fabrication")
+  const upLabel = upstream === "Welded" ? "Welding" : deptLabel(upstream);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [qty, setQty] = useState<Record<string, string>>({});
@@ -173,7 +175,7 @@ export function WeldingQueueTable({
       return;
     }
     if (n > r.available) {
-      setMsg((s) => ({ ...s, [k]: `Only ${r.available} available from ${upstream}` }));
+      setMsg((s) => ({ ...s, [k]: `Only ${r.available} available from ${upLabel}` }));
       return;
     }
     const fd = new FormData();
@@ -288,7 +290,7 @@ export function WeldingQueueTable({
                   onClick={() => { setOpenReturn(openReturn === noteKey ? null : noteKey); setRetMsg(""); }}
                   disabled={pending}
                   className="rounded-md px-1.5 py-1 text-xs font-bold border text-bad-fg hover:bg-bad-bg transition-colors"
-                  title={`Send back to ${upstream === "Welded" ? "Welding" : upstream} — the piece is not actually finished`}
+                  title={`Send back to ${upLabel} — the piece is not actually finished`}
                 >
                   ↩
                 </button>
@@ -312,7 +314,7 @@ export function WeldingQueueTable({
             <td colSpan={cols} className="p-3 bg-bad-bg/30 border-y">
               <form onSubmit={submitReturn} className="max-w-3xl bg-surface border rounded-lg p-2.5 space-y-2">
                 <p className="text-xs font-bold text-bad-fg">
-                  ↩ Return {r.mo || r.bom} {r.item} to {dept === "Welding" ? "Cut" : "Welding"} — the qty comes OFF their delivered total and lands in their Returns table until re-delivered.
+                  ↩ Return {r.mo || r.bom} {r.item} to {dept === "Welding" ? deptLabel("Cut") : "Welding"} — the qty comes OFF their delivered total and lands in their Returns table until re-delivered.
                 </p>
                 <input type="hidden" name="fromDept" value={dept} />
                 <input type="hidden" name="bom" value={r.bom} />
@@ -530,8 +532,8 @@ export function WeldingQueueTable({
               <th className="p-2">Description</th>
               {plansShown.size > 1 && <th className="p-2 text-center">Plan</th>}
               <th className="p-2 text-center">Item</th>
-              <th className="p-2 text-center" title={`${upstream} output on the whole order / order qty`}>{upstream} / Order</th>
-              <th className="p-2 text-center" title={`Ready to ${verb} now (delivered by ${upstream})`}>Available</th>
+              <th className="p-2 text-center" title={`${upLabel} output on the whole order / order qty`}>{upstream === "Welded" ? "Welded" : "Fab"} / Order</th>
+              <th className="p-2 text-center" title={`Ready to ${verb} now (delivered by ${upLabel})`}>Available</th>
               <th className="p-2 text-center">Waiting</th>
               <th className="p-2 text-center w-44">Record {dept === "Welding" ? "welded" : "painted"}</th>
               <th className="p-2 text-center">Notes</th>
@@ -540,7 +542,7 @@ export function WeldingQueueTable({
           <tbody>
             {filtered.length === 0 && (
               <tr><td colSpan={cols} className="p-4 text-center text-muted">
-                {rows.length === 0 ? "Nothing cut is waiting for welding — the queue is clear." : "No lines match the search."}
+                {rows.length === 0 ? "Nothing fabricated is waiting for welding — the queue is clear." : "No lines match the search."}
               </td></tr>
             )}
             {groups.map(([gk, members]) => {

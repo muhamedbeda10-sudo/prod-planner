@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/server/auth";
 import { LoginForm } from "./LoginForm";
 
-export const metadata = { title: "Sign in — ATC Steel Fabrication" };
+export const metadata = { title: "Sign in — ATC Steel Fabrication (ERP System)" };
 
 export default async function LoginPage() {
   const user = await getCurrentUser();
@@ -39,7 +39,7 @@ export default async function LoginPage() {
             priority
           />
         </div>
-        <h1 className="text-lg font-bold text-center mb-1">Steel Fabrication</h1>
+        <h1 className="text-lg font-bold text-center mb-1">Steel Fabrication <span className="text-muted font-semibold">(ERP System)</span></h1>
         <p className="text-sm text-muted text-center mb-6">Sign in with your account</p>
         <LoginForm />
       </div>

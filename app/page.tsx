@@ -5,6 +5,7 @@ import { SmartInsights } from "@/components/SmartInsights";
 import { pctStyle } from "@/components/ui";
 import { PeriodFilter, DashboardPeriodMemory } from "@/components/controls";
 import { WeekTrendChart, WeekItemChart, HistoryChart } from "@/components/DashboardCharts";
+import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { parseISODate, toDisplayDate } from "@/lib/domain/dates";
 import { ITEMS } from "@/lib/domain/constants";
 
@@ -75,9 +76,9 @@ export default async function Home({
         <section>
           <h2>Today — {toDisplayDate(parseISODate(d.todayISO)!)} · target {d.targetPerItem}/item</h2>
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <DeptScoreboard title="✂️ Cut" data={d.today.cut} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
-            <DeptScoreboard title="🔧 Welding" data={d.today.weld} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
-            <DeptScoreboard title="🎨 Painting" data={d.today.paint} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
+            <DeptScoreboard title={<DeptTitle icon={<LaserCutterIcon size={16} />} name="Fabrication" />} data={d.today.cut} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
+            <DeptScoreboard title={<DeptTitle icon={<WeldingIcon size={16} />} name="Welding" />} data={d.today.weld} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
+            <DeptScoreboard title={<DeptTitle icon={<PowderCoatIcon size={16} />} name="Painting" />} data={d.today.paint} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
           </div>
         </section>
       )}
@@ -92,21 +93,21 @@ export default async function Home({
         </h2>
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
           <DeptScoreboard
-            title="✂️ Cut"
+            title={<DeptTitle icon={<LaserCutterIcon size={16} />} name="Fabrication" />}
             data={d.period.cut}
             target={d.targetPerItemPeriod}
             targetTotal={d.targetPerDeptPeriod}
             paceTarget={d.todayInPeriod && d.paceWorkingDays < d.workingDays ? d.targetPerItem * d.paceWorkingDays : undefined}
           />
           <DeptScoreboard
-            title="🔧 Welding"
+            title={<DeptTitle icon={<WeldingIcon size={16} />} name="Welding" />}
             data={d.period.weld}
             target={d.targetPerItemPeriod}
             targetTotal={d.targetPerDeptPeriod}
             paceTarget={d.todayInPeriod && d.paceWorkingDays < d.workingDays ? d.targetPerItem * d.paceWorkingDays : undefined}
           />
           <DeptScoreboard
-            title="🎨 Painting"
+            title={<DeptTitle icon={<PowderCoatIcon size={16} />} name="Painting" />}
             data={d.period.paint}
             target={d.targetPerItemPeriod}
             targetTotal={d.targetPerDeptPeriod}
@@ -120,7 +121,7 @@ export default async function Home({
         <ChartCard title="Daily output vs target" sub={`dept totals per day · dashed line = ${d.targetPerDeptDay} pcs/dept/working day`}>
           <WeekTrendChart days={d.days} targetPerDeptDay={d.targetPerDeptDay} />
         </ChartCard>
-        <ChartCard title={`${d.mode === "week" ? "Week" : "Period"} attainment by item`} sub={`cut vs welded vs painted per component · dashed line = ${d.targetPerItemPeriod} pcs/item`}>
+        <ChartCard title={`${d.mode === "week" ? "Week" : "Period"} attainment by item`} sub={`fabricated vs welded vs painted per component · dashed line = ${d.targetPerItemPeriod} pcs/item`}>
           <WeekItemChart cut={d.period.cut.items} weld={d.period.weld.items} paint={d.period.paint.items} targetPerItemWeek={d.targetPerItemPeriod} />
         </ChartCard>
       </div>
@@ -133,9 +134,15 @@ export default async function Home({
             <thead>
               <tr className="bg-brand text-white text-center">
                 <th className="p-2 text-left" rowSpan={2}>Day</th>
-                <th className="p-2 border-l border-border-strong" colSpan={5}>✂️ Cut</th>
-                <th className="p-2 border-l border-border-strong" colSpan={5}>🔧 Welding</th>
-                <th className="p-2 border-l border-border-strong" colSpan={5}>🎨 Painting</th>
+                <th className="p-2 border-l border-border-strong" colSpan={5}>
+                  <span className="inline-flex items-center gap-1.5"><LaserCutterIcon size={13} />Fabrication</span>
+                </th>
+                <th className="p-2 border-l border-border-strong" colSpan={5}>
+                  <span className="inline-flex items-center gap-1.5"><WeldingIcon size={13} />Welding</span>
+                </th>
+                <th className="p-2 border-l border-border-strong" colSpan={5}>
+                  <span className="inline-flex items-center gap-1.5"><PowderCoatIcon size={13} />Painting</span>
+                </th>
               </tr>
               <tr className="bg-brand-dark text-white text-center text-[10px]">
                 {[0, 1, 2].flatMap((i) =>
@@ -214,8 +221,8 @@ export default async function Home({
             <thead>
               <tr className="text-left text-xs text-muted border-b">
                 <th className="py-1.5">Week</th>
-                <th className="py-1.5 text-center">Cut</th>
-                <th className="py-1.5 text-center">Cut %</th>
+                <th className="py-1.5 text-center">Fab</th>
+                <th className="py-1.5 text-center">Fab %</th>
                 <th className="py-1.5 text-center">Welded</th>
                 <th className="py-1.5 text-center">Weld %</th>
                 <th className="py-1.5 text-center">Painted</th>
@@ -255,10 +262,14 @@ export default async function Home({
 
 /* ---------- building blocks ---------- */
 
+function DeptTitle({ icon, name }: { icon: React.ReactNode; name: string }) {
+  return <span className="inline-flex items-center gap-1.5">{icon}{name}</span>;
+}
+
 function DeptScoreboard({
   title, data, target, targetTotal, paceTarget,
 }: {
-  title: string;
+  title: React.ReactNode;
   data: DeptDay;
   target: number;
   targetTotal: number;

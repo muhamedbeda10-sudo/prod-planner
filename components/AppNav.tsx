@@ -6,9 +6,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
-  Scissors, Flame, Paintbrush, Table2, FileBarChart2, BookOpenCheck,
+  Table2, FileBarChart2, BookOpenCheck,
   FileDown, GitCompareArrows, Puzzle, CalendarDays, Users,
 } from "lucide-react";
+import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { logoutAction } from "@/app/login/actions";
 
@@ -17,9 +18,9 @@ type Item = { href: string; label: string; icon: React.ComponentType<{ size?: nu
 const PRIMARY: Item[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/handover", label: "Daily Logs", icon: BookOpenCheck },
-  { href: "/worklist/cut", label: "Cut Worklist", icon: Scissors },
-  { href: "/worklist/welding", label: "Welding Worklist", icon: Flame },
-  { href: "/worklist/painting", label: "Painting Worklist", icon: Paintbrush },
+  { href: "/worklist/cut", label: "Fabrication Worklist", icon: LaserCutterIcon },
+  { href: "/worklist/welding", label: "Welding Worklist", icon: WeldingIcon },
+  { href: "/worklist/painting", label: "Painting Worklist", icon: PowderCoatIcon },
   { href: "/tracker", label: "Plan Tracker", icon: Table2 },
   { href: "/report", label: "Daily Report", icon: FileBarChart2 },
 ];

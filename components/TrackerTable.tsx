@@ -38,10 +38,10 @@ export function TrackerTable({ rows, planNo }: { rows: TrackerRow[]; planNo: num
     MO: r.moLabel,
     KVA: r.kva,
     Required: r.required,
-    "CF Cut": r.items.CF.cutDone, "CF Weld": r.items.CF.weldDone, "CF Paint": r.items.CF.paintDone,
-    "TC Cut": r.items.TC.cutDone, "TC Weld": r.items.TC.weldDone, "TC Paint": r.items.TC.paintDone,
-    "TN Cut": r.items.TN.cutDone, "TN Weld": r.items.TN.weldDone, "TN Paint": r.items.TN.paintDone,
-    "CB Cut": r.items.CB.cutDone, "CB Weld": r.items.CB.weldDone, "CB Paint": r.items.CB.paintDone,
+    "CF Fab": r.items.CF.cutDone, "CF Weld": r.items.CF.weldDone, "CF Paint": r.items.CF.paintDone,
+    "TC Fab": r.items.TC.cutDone, "TC Weld": r.items.TC.weldDone, "TC Paint": r.items.TC.paintDone,
+    "TN Fab": r.items.TN.cutDone, "TN Weld": r.items.TN.weldDone, "TN Paint": r.items.TN.paintDone,
+    "CB Fab": r.items.CB.cutDone, "CB Weld": r.items.CB.weldDone, "CB Paint": r.items.CB.paintDone,
     Complete: r.complete,
     Left: r.remaining,
     "Achievement %": r.achievement === null ? "" : Math.round(r.achievement * 100),
@@ -123,7 +123,7 @@ export function TrackerTable({ rows, planNo }: { rows: TrackerRow[]; planNo: num
 function CutWeldHead() {
   return (
     <>
-      <th className="p-1 font-medium" style={{ background: "var(--cut-tint)" }}>Cut</th>
+      <th className="p-1 font-medium" style={{ background: "var(--cut-tint)" }}>Fab</th>
       <th className="p-1 font-medium" style={{ background: "var(--weld-tint)" }}>Weld</th>
       <th className="p-1 font-medium border-r" style={{ background: "var(--paint-tint)" }}>Paint</th>
     </>

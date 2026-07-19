@@ -5,7 +5,7 @@ import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, WeekSnapshotPicker } from "@/components/controls";
 import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS, isPaintExempt } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, deptLabel } from "@/lib/domain/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +89,7 @@ export default async function ReportPage({
           <tbody>
             {deptOutputs.map((d) => (
               <tr key={d.dept} className="text-center">
-                <td className="p-2 text-left font-bold">{d.dept}</td>
+                <td className="p-2 text-left font-bold">{deptLabel(d.dept)}</td>
                 {ITEMS.map((it) => <td key={it} className="p-2 tabnum"><Num v={d.items[it]} /></td>)}
                 <td className="p-2 font-bold tabnum">{d.total}</td>
                 <td className="p-2 tabnum">{d.target}</td>
@@ -179,7 +179,7 @@ export default async function ReportPage({
 function StageHead() {
   return (
     <>
-      <th className="p-1 font-medium border-l border-border-strong">Cut</th>
+      <th className="p-1 font-medium border-l border-border-strong">Fab</th>
       <th className="p-1 font-medium">Weld</th>
       <th className="p-1 font-medium">Paint</th>
     </>

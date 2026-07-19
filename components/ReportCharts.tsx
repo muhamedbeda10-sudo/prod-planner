@@ -22,8 +22,8 @@ export function OutputByComponentChart({
   painting: Record<string, number>;
   target: number;
 }) {
-  const data = ITEMS.map((it) => ({ item: it, Cut: cut[it] ?? 0, Welding: welding[it] ?? 0, Painting: painting[it] ?? 0 }));
-  const maxVal = Math.max(target, ...data.flatMap((d) => [d.Cut, d.Welding, d.Painting]));
+  const data = ITEMS.map((it) => ({ item: it, Fabrication: cut[it] ?? 0, Welding: welding[it] ?? 0, Painting: painting[it] ?? 0 }));
+  const maxVal = Math.max(target, ...data.flatMap((d) => [d.Fabrication, d.Welding, d.Painting]));
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
 
   // one chart definition, two sizes: the screen one is responsive (and
@@ -42,8 +42,8 @@ export function OutputByComponentChart({
       {withLegend && <Legend wrapperStyle={{ fontSize: 14, fontWeight: 700, paddingTop: 8 }} iconSize={16} />}
       <ReferenceLine y={target} stroke={GRAY} strokeWidth={1.5} strokeDasharray="7 5" />
       {/* no animation: the values must be on the bars immediately (print!) */}
-      <Bar dataKey="Cut" fill={GREEN} radius={[3, 3, 0, 0]} isAnimationActive={false}>
-        <LabelList dataKey="Cut" position="top" fontSize={15} fontWeight={800} formatter={label} />
+      <Bar dataKey="Fabrication" fill={GREEN} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+        <LabelList dataKey="Fabrication" position="top" fontSize={15} fontWeight={800} formatter={label} />
       </Bar>
       <Bar dataKey="Welding" fill={GRAY} radius={[3, 3, 0, 0]} isAnimationActive={false}>
         <LabelList dataKey="Welding" position="top" fontSize={15} fontWeight={800} formatter={label} />
@@ -54,7 +54,7 @@ export function OutputByComponentChart({
     </BarChart>
   );
 
-  const SERIES: [string, string][] = [["Cut", GREEN], ["Welding", GRAY], ["Painting", GREEN_DARK]];
+  const SERIES: [string, string][] = [["Fabrication", GREEN], ["Welding", GRAY], ["Painting", GREEN_DARK]];
 
   return (
     <>

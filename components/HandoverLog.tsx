@@ -6,7 +6,7 @@ import { updateHandover, deleteHandover } from "@/app/handover/actions";
 import { toISODate } from "@/lib/domain/dates";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
-import { ITEMS, DEPTS } from "@/lib/domain/constants";
+import { ITEMS, DEPTS, deptLabel } from "@/lib/domain/constants";
 
 export interface LogRow {
   id: number;
@@ -76,7 +76,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
 
   const exportRows = filtered.map((r) => ({
     Date: r.date,
-    DEPT: r.dept,
+    DEPT: deptLabel(r.dept),
     BOM: r.bom,
     MO: r.mo ?? "",
     Item: r.item,
@@ -130,7 +130,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
             { value: "30", label: "Last 30 days" },
           ]}
         />
-        <SelectFilter label="Dept" value={dept} onChange={setDept} options={DEPTS.map((d) => ({ value: d, label: d }))} />
+        <SelectFilter label="Dept" value={dept} onChange={setDept} options={DEPTS.map((d) => ({ value: d, label: deptLabel(d) }))} />
         <SelectFilter label="Item" value={item} onChange={setItem} options={ITEMS.map((i) => ({ value: i, label: i }))} />
         {/* custom range (or one exact day: same date in both) — one tidy row */}
         <div className="col-span-2 flex items-center gap-1.5 text-sm">
@@ -171,7 +171,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
                     r.date
                   )}
                 </td>
-                <td className="p-2">{r.dept}</td>
+                <td className="p-2">{deptLabel(r.dept)}</td>
                 <td className="p-2 font-bold whitespace-nowrap">
                   {r.bom}
                   {r.bomRaw && r.bomRaw !== r.bom && (

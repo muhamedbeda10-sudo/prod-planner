@@ -112,10 +112,10 @@ export function MasterTrackerTable({ rows, canEdit = false }: { rows: MasterTrac
     Urgent: r.urgent ? "Yes" : "",
     KVA: r.kva ?? "",
     Required: r.required,
-    "CF Cut": r.items.CF.cut, "CF Weld": r.items.CF.weld, "CF Paint": r.items.CF.paint,
-    "TC Cut": r.items.TC.cut, "TC Weld": r.items.TC.weld, "TC Paint": r.items.TC.paint,
-    "TN Cut": r.items.TN.cut, "TN Weld": r.items.TN.weld, "TN Paint": r.items.TN.paint,
-    "CB Cut": r.items.CB.cut, "CB Weld": r.items.CB.weld, "CB Paint": r.items.CB.paint,
+    "CF Fab": r.items.CF.cut, "CF Weld": r.items.CF.weld, "CF Paint": r.items.CF.paint,
+    "TC Fab": r.items.TC.cut, "TC Weld": r.items.TC.weld, "TC Paint": r.items.TC.paint,
+    "TN Fab": r.items.TN.cut, "TN Weld": r.items.TN.weld, "TN Paint": r.items.TN.paint,
+    "CB Fab": r.items.CB.cut, "CB Weld": r.items.CB.weld, "CB Paint": r.items.CB.paint,
     OSP: ITEMS.filter((it) => r.items[it].osp > 0).map((it) => `${it}×${r.items[it].osp}`).join(" "),
     Welded: r.welded,
     "Complete (painted)": r.complete,
@@ -354,7 +354,7 @@ export function MasterTrackerTable({ rows, canEdit = false }: { rows: MasterTrac
 function StageHead() {
   return (
     <>
-      <th className="p-1 font-medium" style={{ background: "var(--cut-tint)" }}>Cut</th>
+      <th className="p-1 font-medium" style={{ background: "var(--cut-tint)" }}>Fab</th>
       <th className="p-1 font-medium" style={{ background: "var(--weld-tint)" }}>Weld</th>
       <th className="p-1 font-medium border-r" style={{ background: "var(--paint-tint)" }}>Paint</th>
     </>

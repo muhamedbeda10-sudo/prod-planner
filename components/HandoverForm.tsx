@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { buildBomClassifier } from "@/lib/domain/normalizeBoms";
-import { ITEMS, DEPTS } from "@/lib/domain/constants";
+import { ITEMS, DEPTS, deptLabel } from "@/lib/domain/constants";
 import { addHandover, type ActionResult } from "@/app/handover/actions";
 
 export function HandoverForm({
@@ -64,7 +64,7 @@ export function HandoverForm({
           {DEPTS.map((d) => (
             <button type="button" key={d} onClick={() => setDept(d)}
               className={`flex-1 rounded-md px-3 py-2 font-bold text-sm border ${dept === d ? "bg-brand text-white border-brand" : "bg-surface"}`}>
-              {d}
+              {deptLabel(d)}
             </button>
           ))}
         </div>

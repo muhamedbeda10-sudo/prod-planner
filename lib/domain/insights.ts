@@ -224,7 +224,7 @@ export function overdueInsight(opts: { lines: number; qty: number; oldestISO: st
     severity: "critical",
     icon: "🔥",
     title: `${Math.round(qty)} pcs are past their promised delivery date`,
-    detail: `${lines} line${lines === 1 ? "" : "s"} in the Cut backlog missed their dates${oldestISO ? ` — the oldest promise was ${ddmm(oldestISO)}` : ""}. These should be prioritized before new scheduled work.`,
+    detail: `${lines} line${lines === 1 ? "" : "s"} in the Fabrication backlog missed their dates${oldestISO ? ` — the oldest promise was ${ddmm(oldestISO)}` : ""}. These should be prioritized before new scheduled work.`,
     href: "/worklist/cut",
   };
 }

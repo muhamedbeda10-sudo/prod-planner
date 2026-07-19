@@ -22,6 +22,7 @@ export function CutWorklistView({
   returns = [],
   notes = {},
   capacity = DEFAULTS.capacityPerItem,
+  leadDays = DEFAULTS.leadCut,
   canEdit = false,
 }: {
   dueNow: CutTranche[];
@@ -32,6 +33,7 @@ export function CutWorklistView({
   returns?: ReturnRowDTO[];
   notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
+  leadDays?: number; // fabrication lead: the plan lands this many days ahead of delivery
   canEdit?: boolean; // user holds cut.edit — otherwise view-only
 }) {
   // search + item card filter survive navigating away and back
@@ -90,9 +92,9 @@ export function CutWorklistView({
       {/* 0 — pieces sent back by Welding: fix first, they re-enter the flow */}
       <ReturnsTable rows={returns} dept="Cut" canEdit={canEdit} />
 
-      {/* 1 — due today (delivery in 2 days) */}
+      {/* 1 — due today (delivery in leadDays days) */}
       <section>
-        <h2>Due today — deliver in 2 days ({totalDue} pcs)</h2>
+        <h2>Due today — deliver in {leadDays} days ({totalDue} pcs)</h2>
         {planNo === null ? (
           <p className="text-warn-fg bg-warn-bg rounded-lg p-3 inline-block text-sm">
             No weekly plan covers today — import the new weekly schedule. The backlogs below still work.

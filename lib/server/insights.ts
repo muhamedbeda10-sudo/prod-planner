@@ -33,7 +33,7 @@ const isFridayD = (d: number) => dowOf(d) === 1;
 const weekStartOf = (d: number) => d - ((dowOf(d) - 2 + 7) % 7); // most recent Saturday
 
 const DEPTS = [
-  { key: "Cut", label: "Cut" },
+  { key: "Cut", label: "Fabrication" },
   { key: "Welding", label: "Welding" },
   { key: "Painting", label: "Painting" },
 ] as const;
