@@ -106,8 +106,10 @@ export function MasterTrackerTable({
   }
 
   // per-component plan progress — the WHOLE registry (display only, no filtering):
-  // need = required − OSP (excluded items don't count), done = painted, % = execution
+  // need = required − OSP (excluded items don't count), done = the FINAL stage
+  // (welding for the paint-exempt core CF, painting otherwise), % = execution
   const itemStats = ITEMS.map((it) => {
+    const finalIsWeld = isPaintExempt(it);
     let need = 0;
     let done = 0;
     for (const r of rows) {
@@ -115,9 +117,9 @@ export function MasterTrackerTable({
       if (c.excluded) continue;
       const n = Math.max(0, r.required - c.osp);
       need += n;
-      done += Math.min(c.paint, n);
+      done += Math.min(finalIsWeld ? c.weld : c.paint, n);
     }
-    return { it, need, done, remaining: Math.max(0, need - done), pct: need > 0 ? done / need : null };
+    return { it, finalIsWeld, need, done, remaining: Math.max(0, need - done), pct: need > 0 ? done / need : null };
   });
 
   const exportRows = filtered.map((r) => ({
@@ -143,7 +145,7 @@ export function MasterTrackerTable({
     <>
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        {itemStats.map(({ it, need, done, remaining, pct }) => (
+        {itemStats.map(({ it, finalIsWeld, need, done, remaining, pct }) => (
           <div key={it} className="bg-surface border rounded-xl px-4 py-2.5">
             <div className="flex items-baseline justify-between">
               <span className="text-xs font-extrabold text-muted">{it}</span>
@@ -154,7 +156,9 @@ export function MasterTrackerTable({
             <div className="text-2xl font-extrabold tabnum" style={{ color: remaining > 0 ? "var(--warn-fg)" : "var(--ok-fg)" }}>
               {remaining}
             </div>
-            <div className="text-[11px] text-muted tabnum">left of <b className="text-foreground">{need}</b> · painted {done}</div>
+            <div className="text-[11px] text-muted tabnum">
+              left of <b className="text-foreground">{need}</b> · {finalIsWeld ? "welded" : "painted"} {done}
+            </div>
             <div className="mt-1 h-1.5 rounded bg-border overflow-hidden">
               <div
                 className="h-full transition-all"
