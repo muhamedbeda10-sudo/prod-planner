@@ -143,6 +143,41 @@ export async function getWeekSnapshot(planNo: number): Promise<ReportPlanRow[]> 
 /** Who was worked on a given day — for highlighting tracker rows.
  *  mos: MOs with any entry that day; bomsNoMo: BOM-level entries without an MO;
  *  bomsAll: every BOM touched (for BOM-level tables). */
+export interface DayProjectRow {
+  bom: string;
+  mos: string[]; // MOs touched that day ("—" rows aggregate BOM-level entries)
+  items: Record<string, { cut: number; weld: number; paint: number }>;
+  total: number; // all pcs recorded that day on this BOM
+}
+
+/** The day's output grouped by project (BOM): only projects with entries ON
+ *  that day, with the quantities recorded THAT DAY per component and stage. */
+export async function getDayOutputByProject(day: Date): Promise<DayProjectRow[]> {
+  const start = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  const entries = await prisma.handoverEntry.findMany({
+    where: { date: { gte: start, lt: end } },
+    select: { bom: true, mo: true, dept: true, item: true, qty: true },
+  });
+
+  const rows = new Map<string, DayProjectRow>();
+  const stageOf: Record<string, "cut" | "weld" | "paint"> = { Cut: "cut", Welding: "weld", Painting: "paint" };
+  for (const e of entries) {
+    const stage = stageOf[e.dept];
+    if (!stage) continue;
+    let row = rows.get(e.bom);
+    if (!row) {
+      row = { bom: e.bom, mos: [], items: {}, total: 0 };
+      rows.set(e.bom, row);
+    }
+    if (e.mo && !row.mos.includes(e.mo)) row.mos.push(e.mo);
+    if (!row.items[e.item]) row.items[e.item] = { cut: 0, weld: 0, paint: 0 };
+    row.items[e.item][stage] += e.qty;
+    row.total += e.qty;
+  }
+  return [...rows.values()].sort((a, b) => b.total - a.total);
+}
+
 export async function getWorkedOn(day: Date): Promise<{ mos: string[]; bomsNoMo: string[]; bomsAll: string[] }> {
   const start = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
