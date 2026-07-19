@@ -1,6 +1,7 @@
 import { getMasterTracker } from "@/lib/server/masterTracker";
 import { MasterTrackerTable } from "@/components/MasterTrackerTable";
-import { getCurrentUser, hasPerm } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, canEditDept } from "@/lib/server/auth";
+import { DEPTS } from "@/lib/domain/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -8,5 +9,12 @@ export const dynamic = "force-dynamic";
 // Dashboard, and the title lives in the nav tab.
 export default async function TrackerPage() {
   const [rows, user] = await Promise.all([getMasterTracker(), getCurrentUser()]);
-  return <MasterTrackerTable rows={rows} canEdit={!!user && hasPerm(user, "tracker.edit")} />;
+  return (
+    <MasterTrackerTable
+      rows={rows}
+      canEdit={!!user && hasPerm(user, "tracker.edit")}
+      // each dept edits its OWN stage cells with the same permission as its worklist
+      editableDepts={user ? DEPTS.filter((d) => canEditDept(user, d)) : []}
+    />
+  );
 }
