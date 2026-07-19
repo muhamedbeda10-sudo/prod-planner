@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/server/auth";
 import { getReconciliation } from "@/lib/server/reconcile";
 import { getPlanNos, getLatestPlanNo } from "@/lib/server/data";
 import { PageHeader } from "@/components/ui";
@@ -25,6 +27,10 @@ export default async function ReconciliationPage({
 }: {
   searchParams: Promise<{ plan?: string }>;
 }) {
+  // admin-only page: invisible in the nav for others, and a direct URL bounces
+  const me = await getCurrentUser();
+  if (!me?.isAdmin) redirect("/");
+
   const sp = await searchParams;
   const plans = await getPlanNos();
   const planNo = Number(sp.plan) || (await getLatestPlanNo()) || 0;
