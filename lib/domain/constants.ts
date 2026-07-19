@@ -8,6 +8,23 @@ export type Item = (typeof ITEMS)[number];
 export const DEPTS = ["Cut", "Welding", "Painting"] as const;
 export type Dept = (typeof DEPTS)[number];
 
+/** DISPLAY names only — the stored dept value stays "Cut" so every existing
+ *  handover row, permission key and plan keeps working untouched. */
+export const DEPT_LABELS: Record<Dept, string> = {
+  Cut: "Fabrication",
+  Welding: "Welding",
+  Painting: "Painting",
+};
+export function deptLabel(dept: string): string {
+  return DEPT_LABELS[dept as Dept] ?? dept;
+}
+/** Compact form for tight table headers (stage columns). */
+export const DEPT_SHORT: Record<Dept, string> = {
+  Cut: "Fab",
+  Welding: "Weld",
+  Painting: "Paint",
+};
+
 export function isItem(x: string): x is Item {
   return (ITEMS as readonly string[]).includes(x);
 }
@@ -31,7 +48,7 @@ export function isDept(x: string): x is Dept {
 
 /** Defaults matching Lists!J2:J5. */
 export const DEFAULTS = {
-  leadCut: 2,
+  leadCut: 4, // fabrication gets the plan 4 days ahead of delivery
   leadWeld: 1,
   capacityPerItem: 27,
   dailyTarget: 27,

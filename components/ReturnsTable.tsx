@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ReturnRowDTO } from "@/lib/server/returns";
 import { redeliverReturn } from "@/app/worklist/actions";
+import { deptLabel } from "@/lib/domain/constants";
 
 /** Pieces sent BACK to this department. Fix them, then hit "Fixed &
  *  re-delivered" — the qty goes straight back on this dept's ledger, the line
@@ -15,7 +16,7 @@ export function ReturnsTable({ rows, dept, canEdit = false }: { rows: ReturnRowD
   const [err, setErr] = useState("");
 
   function redeliver(r: ReturnRowDTO) {
-    if (!confirm(`${r.mo || r.bom} ${r.item} ×${r.qty} is fixed and handed over again? It goes straight back to the ${r.fromDept} queue.`)) return;
+    if (!confirm(`${r.mo || r.bom} ${r.item} ×${r.qty} is fixed and handed over again? It goes straight back to the ${deptLabel(r.fromDept)} queue.`)) return;
     const fd = new FormData();
     fd.set("id", String(r.id));
     setErr("");
@@ -31,7 +32,7 @@ export function ReturnsTable({ rows, dept, canEdit = false }: { rows: ReturnRowD
   return (
     <section className="mb-6">
       <h2>
-        ↩ Returned to {dept} — fix &amp; re-deliver ({rows.reduce((s, r) => s + r.qty, 0)} pcs)
+        ↩ Returned to {deptLabel(dept)} — fix &amp; re-deliver ({rows.reduce((s, r) => s + r.qty, 0)} pcs)
         <span className="pill pill-bad ml-2 normal-case">action needed</span>
       </h2>
       <div className="bg-surface border rounded-xl overflow-x-auto">
@@ -52,7 +53,7 @@ export function ReturnsTable({ rows, dept, canEdit = false }: { rows: ReturnRowD
             {rows.map((r) => (
               <tr key={r.id}>
                 <td className="p-2 whitespace-nowrap tabnum">{r.dateISO}</td>
-                <td className="p-2 whitespace-nowrap text-xs font-semibold">{r.fromDept}</td>
+                <td className="p-2 whitespace-nowrap text-xs font-semibold">{deptLabel(r.fromDept)}</td>
                 <td className="p-2 text-xs font-semibold whitespace-nowrap">{r.mo || "—"}</td>
                 <td className="p-2 font-bold whitespace-nowrap">{r.bom}</td>
                 <td className="p-2 text-center font-bold">{r.item}</td>
@@ -64,7 +65,7 @@ export function ReturnsTable({ rows, dept, canEdit = false }: { rows: ReturnRowD
                       onClick={() => redeliver(r)}
                       disabled={pending}
                       className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50 transition-colors"
-                      title={`Adds ${r.qty} back to ${dept}'s total — it reappears in the ${r.fromDept} queue immediately`}
+                      title={`Adds ${r.qty} back to ${deptLabel(dept)}'s total — it reappears in the ${deptLabel(r.fromDept)} queue immediately`}
                     >
                       ✓ Fixed &amp; re-delivered
                     </button>

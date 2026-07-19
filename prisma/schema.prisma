@@ -233,7 +233,7 @@ model Session {
 // Global settings (Lists!J2:J5). Single row (id = 1).
 model Settings {
   id              Int   @id @default(1)
-  leadCut         Int   @default(2)
+  leadCut         Int   @default(4)
   leadWeld        Int   @default(1)
   capacityPerItem Int   @default(27)
   dailyTarget     Int   @default(27)

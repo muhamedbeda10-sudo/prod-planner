@@ -107,7 +107,7 @@ export default async function TracePage({
             <div key={it} className="bg-surface border rounded-lg px-4 py-2">
               <div className="font-bold">{it}</div>
               <div className="text-xs text-muted">
-                Cut: <b className="text-foreground">{total.Cut[it] ?? 0}</b> · Welded: <b className="text-foreground">{total.Welding[it] ?? 0}</b> · Painted: <b className="text-foreground">{total.Painting[it] ?? 0}</b>
+                Fab: <b className="text-foreground">{total.Cut[it] ?? 0}</b> · Welded: <b className="text-foreground">{total.Welding[it] ?? 0}</b> · Painted: <b className="text-foreground">{total.Painting[it] ?? 0}</b>
               </div>
             </div>
           ))}
@@ -240,7 +240,7 @@ export default async function TracePage({
 function FragmentCW() {
   return (
     <>
-      <th className="p-1 font-medium border-l border-border-strong">Cut</th>
+      <th className="p-1 font-medium border-l border-border-strong">Fab</th>
       <th className="p-1 font-medium">Weld</th>
       <th className="p-1 font-medium">Paint</th>
     </>

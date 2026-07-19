@@ -24,8 +24,8 @@ export default async function CutWorklistPage() {
 
   return (
     <>
-      <PrintHeader title="Cut Worklist" date={toDisplayDate(today)} />
-      <CutWorklistView dueNow={dueNow} overdue={overdue} cascade={cascade} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} canEdit={canEdit} />
+      <PrintHeader title="Fabrication Worklist" date={toDisplayDate(today)} />
+      <CutWorklistView dueNow={dueNow} overdue={overdue} cascade={cascade} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} />
     </>
   );
 }

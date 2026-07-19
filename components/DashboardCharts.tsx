@@ -29,7 +29,7 @@ function ChartScroller({ minWidth, height, children }: { minWidth: number; heigh
 export function WeekTrendChart({ days, targetPerDeptDay }: { days: DayRow[]; targetPerDeptDay: number }) {
   const data = days.map((d) => ({
     day: d.label,
-    Cut: d.cut.total,
+    Fabrication: d.cut.total,
     Welding: d.weld.total,
     Painting: d.paint.total,
   }));
@@ -44,8 +44,8 @@ export function WeekTrendChart({ days, targetPerDeptDay }: { days: DayRow[]; tar
           {/* no in-chart label — the card subtitle states the target, a fixed
               spot that can never collide with a bar */}
           <ReferenceLine y={targetPerDeptDay} stroke="var(--bad-fg)" strokeDasharray="6 4" strokeWidth={2} />
-          <Bar dataKey="Cut" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
-            <LabelList dataKey="Cut" position="top" fontSize={10} />
+          <Bar dataKey="Fabrication" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
+            <LabelList dataKey="Fabrication" position="top" fontSize={10} />
           </Bar>
           <Bar dataKey="Welding" fill={GREEN} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Welding" position="top" fontSize={10} />
@@ -67,7 +67,7 @@ export function WeekItemChart({
   paint: Record<string, number>;
   targetPerItemWeek: number;
 }) {
-  const data = ITEMS.map((it) => ({ item: it, Cut: cut[it] ?? 0, Welding: weld[it] ?? 0, Painting: paint[it] ?? 0 }));
+  const data = ITEMS.map((it) => ({ item: it, Fabrication: cut[it] ?? 0, Welding: weld[it] ?? 0, Painting: paint[it] ?? 0 }));
   return (
     <ChartScroller minWidth={420} height={260}>
         <BarChart data={data} margin={{ top: 16, right: 10, left: -10, bottom: 0 }}>
@@ -77,8 +77,8 @@ export function WeekItemChart({
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <ReferenceLine y={targetPerItemWeek} stroke="var(--bad-fg)" strokeDasharray="6 4" strokeWidth={2} />
-          <Bar dataKey="Cut" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
-            <LabelList dataKey="Cut" position="top" fontSize={10} />
+          <Bar dataKey="Fabrication" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
+            <LabelList dataKey="Fabrication" position="top" fontSize={10} />
           </Bar>
           <Bar dataKey="Welding" fill={GREEN} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Welding" position="top" fontSize={10} />
@@ -98,7 +98,7 @@ export function HistoryChart({
   history: { label: string; cutTotal: number; weldTotal: number; paintTotal: number }[];
   targetPerDeptWeek: number;
 }) {
-  const data = [...history].reverse().map((h) => ({ week: h.label, Cut: h.cutTotal, Welding: h.weldTotal, Painting: h.paintTotal }));
+  const data = [...history].reverse().map((h) => ({ week: h.label, Fabrication: h.cutTotal, Welding: h.weldTotal, Painting: h.paintTotal }));
   return (
     <ChartScroller minWidth={560} height={240}>
         <BarChart data={data} margin={{ top: 16, right: 10, left: -10, bottom: 0 }}>
@@ -108,7 +108,7 @@ export function HistoryChart({
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <ReferenceLine y={targetPerDeptWeek} stroke={GRAY} strokeDasharray="6 4" />
-          <Bar dataKey="Cut" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]} />
+          <Bar dataKey="Fabrication" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]} />
           <Bar dataKey="Welding" fill={GREEN} radius={[3, 3, 0, 0]} />
           <Bar dataKey="Painting" fill={PAINT} radius={[3, 3, 0, 0]} />
         </BarChart>
