@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { getDailyReport, getWorkedOn, getFullPlanGrouped, getWeekSnapshot, type ReportPlanRow } from "@/lib/server/report";
+import { getDailyReport, getWorkedOn, getDayOutputByProject, getFullPlanGrouped, getWeekSnapshot, type ReportPlanRow } from "@/lib/server/report";
 import { getPlanNos } from "@/lib/server/data";
 import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, WeekSnapshotPicker } from "@/components/controls";
@@ -23,9 +23,10 @@ export default async function ReportPage({
   const dayISO = toISODate(day);
   const weekNo = Number(sp.week) || null; // null = the FULL plan (default)
 
-  const [{ deptOutputs, target }, worked, planNos, planRows] = await Promise.all([
+  const [{ deptOutputs, target }, worked, dayProjects, planNos, planRows] = await Promise.all([
     getDailyReport(day),
     getWorkedOn(day),
+    getDayOutputByProject(day),
     getPlanNos(),
     weekNo ? getWeekSnapshot(weekNo) : getFullPlanGrouped(),
   ]);
@@ -115,6 +116,47 @@ export default async function ReportPage({
         </div>
         <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} target={target} />
       </div>
+
+      {/* Worked-on-today table: ONLY the projects with output recorded on the
+          selected day, showing THAT DAY's quantities per component and stage.
+          The full plan table below keeps its yellow worked-on highlight. */}
+      <section className="print-keep">
+        <div className="flex flex-wrap items-center gap-3 mb-2">
+          <h2 className="text-lg font-bold">Worked on — {toDisplayDate(day)}</h2>
+          <span className="pill pill-ok normal-case">{dayProjects.length} project{dayProjects.length === 1 ? "" : "s"}</span>
+        </div>
+        <div className="bg-surface border rounded-xl overflow-x-auto print-fit">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="bg-brand text-white text-center">
+                <th rowSpan={2} className="p-2 text-left">BOM</th>
+                <th rowSpan={2} className="p-2 text-left">MOs</th>
+                {ITEMS.map((it) => <th key={it} colSpan={3} className="p-2 border-l border-border-strong">{it}</th>)}
+                <th rowSpan={2} className="p-2">Day total</th>
+              </tr>
+              <tr className="bg-brand-dark text-white text-[10px]">
+                {ITEMS.map((it) => <StageHead key={it} />)}
+              </tr>
+            </thead>
+            <tbody>
+              {dayProjects.length === 0 && (
+                <tr><td colSpan={15} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
+              )}
+              {dayProjects.map((p, i) => (
+                <tr key={p.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
+                  <td className="p-2 text-left font-bold whitespace-nowrap">{p.bom}</td>
+                  <td className="p-2 text-left text-xs text-muted whitespace-nowrap">{p.mos.length > 0 ? p.mos.join(", ") : "—"}</td>
+                  {ITEMS.map((it) => {
+                    const c = p.items[it] ?? { cut: 0, weld: 0, paint: 0 };
+                    return <FragmentCW key={it} cut={c.cut} weld={c.weld} paint={c.paint} noPaint={isPaintExempt(it)} />;
+                  })}
+                  <td className="p-2 font-extrabold tabnum">{p.total}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* The plan table — one row per BOM ("cascade" closed): totals across the
           BOM's MOs and the whole-BOM percentage. Default = the FULL plan with
