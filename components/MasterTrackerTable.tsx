@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus, setExcludedItems } from "@/app/orders/actions";
+import { setOrderStatus, setExcludedItems, setOrderQty } from "@/app/orders/actions";
 import { recordTrackerTotal } from "@/app/worklist/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
@@ -36,6 +36,27 @@ export function MasterTrackerTable({
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
   const [cellErr, setCellErr] = useState("");
+  // inline Required-qty editor (manual order-qty change, e.g. after a revision
+  // lowered a quantity — the import never lowers it automatically)
+  const [qtyEditMo, setQtyEditMo] = useState<string | null>(null);
+  const [qtyVal, setQtyVal] = useState("");
+  const [qtyErr, setQtyErr] = useState("");
+
+  function saveQty(mo: string) {
+    const fd = new FormData();
+    fd.set("mo", mo);
+    fd.set("qty", qtyVal);
+    setQtyErr("");
+    startTransition(async () => {
+      const res = await setOrderQty(fd);
+      if (res.ok) {
+        setQtyEditMo(null);
+        router.refresh();
+      } else {
+        setQtyErr(res.error ?? "Failed");
+      }
+    });
+  }
   // filters survive navigating away and back (sessionStorage per tab)
   const [q, setQ] = useSavedFilter("tracker.q");
   const [progress, setProgress] = useSavedFilter("tracker.progress");
@@ -376,7 +397,46 @@ export function MasterTrackerTable({
                   <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>
-                <td className="p-2 text-center font-bold"><Num v={r.required} /></td>
+                <td className="p-2 text-center font-bold">
+                  {qtyEditMo === r.mo ? (
+                    <span className="inline-flex flex-col items-center gap-0.5">
+                      <span className="inline-flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={1}
+                          value={qtyVal}
+                          autoFocus
+                          onChange={(e) => { setQtyVal(e.target.value); setQtyErr(""); }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveQty(r.mo);
+                            if (e.key === "Escape") setQtyEditMo(null);
+                          }}
+                          className="w-16 border rounded-md px-1 py-0.5 text-center font-bold tabnum bg-surface"
+                          disabled={pending}
+                        />
+                        <button type="button" onClick={() => saveQty(r.mo)} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save the new order quantity">
+                          ✓
+                        </button>
+                        <button type="button" onClick={() => setQtyEditMo(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">
+                          ✕
+                        </button>
+                      </span>
+                      {qtyErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 leading-tight">{qtyErr}</span>}
+                    </span>
+                  ) : canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => { setQtyEditMo(r.mo); setQtyVal(String(r.required)); setQtyErr(""); }}
+                      disabled={pending}
+                      className="w-full min-w-10 rounded px-1 py-1 tabnum font-bold hover:ring-2 hover:ring-brand/60 transition-all cursor-text"
+                      title={`${r.mo} — click to change the required quantity (revisions that LOWER a qty are applied here manually)`}
+                    >
+                      <Num v={r.required} />
+                    </button>
+                  ) : (
+                    <Num v={r.required} />
+                  )}
+                </td>
                 {ITEMS.map((it) => {
                   const c = r.items[it];
                   if (c.excluded) {

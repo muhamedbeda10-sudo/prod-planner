@@ -107,13 +107,17 @@ export interface CutSchedule {
 }
 
 /**
- * Split the active weekly schedule into date-stamped tranches and consume them
+ * Split the weekly schedules into date-stamped tranches and consume them
  * FIFO (earliest delivery first) with the GLOBAL done quantity per MO×item.
  * Whatever remains is either due today or overdue backlog carrying the original
- * delivery date. Re-importing a plan with new dates rebuilds all of this.
+ * delivery date — FROM ANY WEEK: pass every plan's schedule and a line scheduled
+ * weeks ago stays on the worklist under its promised date until it is done or a
+ * NEWER plan reschedules it (newest plan supersedes, output credited to the
+ * superseded promises never consumes the new tranches — same convention as the
+ * dept queues).
  */
 export function computeCutTranches(opts: {
-  schedules: ExecScheduleRow[]; // the ACTIVE plan's schedule (carries ovenDate)
+  schedules: (ExecScheduleRow & { planNo?: number })[]; // ALL plans' schedules (carries ovenDate)
   entries: ExecEntry[]; // ALL entries — progress is global
   day: Date;
   lead: number; // leadCut
@@ -140,21 +144,16 @@ export function computeCutTranches(opts: {
     moOrder
   );
 
-  // tranches per line, earliest delivery first
-  const byLine = new Map<string, { ovenD: number; qty: number }[]>();
-  for (const s of schedules) {
-    const key = `${s.bom}|${s.mo}|${s.item}`;
-    if (!byLine.has(key)) byLine.set(key, []);
-    byLine.get(key)!.push({ ovenD: dayNumber(s.ovenDate), qty: s.qty });
-  }
+  // per-line tranches with supersession: only the NEWEST plan's dates count
+  const byLine = supersededTranches(schedules.map((s) => ({ ...s, planNo: s.planNo ?? 0 })));
 
   const dueNow: CutTranche[] = [];
   const overdue: CutTranche[] = [];
-  for (const [key, tranches] of byLine) {
-    tranches.sort((a, b) => a.ovenD - b.ovenD);
+  for (const [key, line] of byLine) {
     const [bom, mo, item] = key.split("|");
-    let credit = num(done, key); // global output consumes earliest tranches first
-    for (const t of tranches) {
+    // output credited to superseded promises must not consume the new tranches
+    let credit = Math.max(0, num(done, key) - line.oldQty);
+    for (const t of line.tranches) {
       const used = Math.min(credit, t.qty);
       credit -= used;
       const remaining = t.qty - used;
@@ -215,6 +214,7 @@ export interface CascadeRow {
   done: number; // attributed cut output ≤ day
   available: number; // unscheduled pool still open = max(0, target − max(scheduled, done))
   deliveryISO: string | null; // last promised delivery still open (from ANY plan, newest wins) — null = never scheduled
+  remark?: string | null; // the weekly plan's remark that keeps a date-less line on the worklist
 }
 
 /**

@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import type { CutTranche } from "@/lib/domain/execution";
+import type { CutTranche, CascadeRow } from "@/lib/domain/execution";
 import { CutTrancheTable } from "@/components/CutTrancheTable";
+import { CascadeTable } from "@/components/CascadeTable";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
@@ -10,12 +11,15 @@ import type { ReturnRowDTO } from "@/lib/server/returns";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { ITEMS, DEFAULTS } from "@/lib/domain/constants";
 
-/** The fabrication page shows SCHEDULED work only (due today + overdue).
- *  Unscheduled registry orders live in the Plan Tracker — a line appears here
- *  the moment a weekly plan schedules it. */
+/** The fabrication page shows work that is either DATED (scheduled in ANY
+ *  weekly plan — due today + overdue under its promised date) or REMARKED in
+ *  the current weekly plan with no known date (the date-less bucket). Lines
+ *  the weekly plan carries unscheduled and unremarked live in the Plan Tracker
+ *  and appear here the moment a plan schedules or remarks them. */
 export function CutWorklistView({
   dueNow,
   overdue,
+  remarked = [],
   day,
   planNo,
   returns = [],
@@ -26,6 +30,7 @@ export function CutWorklistView({
 }: {
   dueNow: CutTranche[];
   overdue: CutTranche[];
+  remarked?: CascadeRow[]; // this week's remarked lines with no known date
   day: string;
   planNo: number | null;
   returns?: ReturnRowDTO[];
@@ -39,17 +44,19 @@ export function CutWorklistView({
   const [item, setItem] = useSavedFilter("queue.Cut.item");
 
   const needle = q.trim().toUpperCase();
-  const match = (r: { bom: string; mo: string; description: string; item: string }) =>
-    (!needle || `${r.bom} ${r.mo} ${r.description}`.toUpperCase().includes(needle)) &&
+  const match = (r: { bom: string; mo: string; description: string; item: string; remark?: string | null }) =>
+    (!needle || `${r.bom} ${r.mo} ${r.description} ${r.remark ?? ""}`.toUpperCase().includes(needle)) &&
     (!item || r.item === item);
 
   const dueF = useMemo(() => dueNow.filter(match), [dueNow, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
   const overdueF = useMemo(() => overdue.filter(match), [overdue, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
+  const remarkedF = useMemo(() => remarked.filter(match), [remarked, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const total = dueNow.length + overdue.length;
-  const shown = dueF.length + overdueF.length;
+  const total = dueNow.length + overdue.length + remarked.length;
+  const shown = dueF.length + overdueF.length + remarkedF.length;
   const totalDue = dueF.reduce((s, r) => s + r.remaining, 0);
   const totalOverdue = overdueF.reduce((s, r) => s + r.remaining, 0);
+  const totalRemarked = remarkedF.reduce((s, r) => s + r.available, 0);
 
   // per-item workload — the WHOLE dept load (unfiltered): what must still be cut
   const perItem = ITEMS.map((it) => {
@@ -99,7 +106,7 @@ export function CutWorklistView({
         )}
       </section>
 
-      {/* 2 — overdue backlog, each line stamped with its original delivery date */}
+      {/* 2 — overdue backlog from ANY week, each line stamped with its original delivery date */}
       <section className="mt-8">
         <h2>
           Overdue backlog — missed delivery dates ({totalOverdue} pcs)
@@ -108,9 +115,21 @@ export function CutWorklistView({
         <CutTrancheTable rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} />
       </section>
 
-      {/* unscheduled registry orders are NOT shown here — they live in the
+      {/* 3 — this week's REMARKED lines with no known date: the weekly plan
+          flags them (remark column) without scheduling, and no earlier plan
+          holds an open date — they work date-less until a plan dates them */}
+      {remarked.length > 0 && (
+        <section className="mt-8">
+          <h2>
+            Remarked in this week&apos;s plan — no date yet ({totalRemarked} pcs)
+          </h2>
+          <CascadeTable rows={remarkedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} />
+        </section>
+      )}
+
+      {/* unscheduled + unremarked lines are NOT shown here — they live in the
           Plan Tracker (where ahead-of-plan output can be recorded) and appear
-          on this screen the moment a weekly plan schedules them */}
+          on this screen the moment a weekly plan schedules or remarks them */}
     </>
   );
 }

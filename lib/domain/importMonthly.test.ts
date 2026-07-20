@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseMonthlyPlan, applyCascade, type DoneMatrix } from "./importMonthly";
+import { parseMonthlyPlan, applyCascade, diffRevisionRow, type DoneMatrix, type MonthlyOrderRow } from "./importMonthly";
 
 // Mirrors the real "Monthly plan.xlsx": title row, header row 2, sub-header row 3
 // (component names, no MO), data from row 4, "Total" footer.
@@ -117,5 +117,71 @@ describe("applyCascade — later stages imply earlier ones (setup sheet only)", 
     expect(eff.cut.CF).toBe(20);
     expect(eff.weld.CF).toBe(20);
     expect(eff.paint.CF).toBe(20);
+  });
+});
+
+describe("diffRevisionRow — qty rises auto-apply, qty drops stay manual", () => {
+  const base = {
+    soi: "S01",
+    urgent: false,
+    customer: "SEC",
+    fgCode: "FG-1",
+    bom: "B1",
+    kva: "100",
+    rating: "33/0.4",
+    secItem: "9085",
+    planQty: 10,
+    colorRal: "RAL-7035",
+    remarks: null,
+    ospCF: 0,
+    ospTC: 0,
+    ospTN: 0,
+    ospCB: 0,
+  };
+  const row = (over: Partial<MonthlyOrderRow>): MonthlyOrderRow => ({
+    rowNum: 4,
+    mo: "MO-1",
+    soi: "S01",
+    urgent: false,
+    customer: "SEC",
+    fgCode: "FG-1",
+    bom: "B1",
+    kva: "100",
+    rating: "33/0.4",
+    secItem: "9085",
+    planQty: 10,
+    colorRal: "RAL-7035",
+    remarks: null,
+    done: { cut: { CF: 0, TC: 0, TN: 0, CB: 0 }, weld: { CF: 0, TC: 0, TN: 0, CB: 0 }, paint: { CF: 0, TC: 0, TN: 0, CB: 0 } },
+    osp: { CF: 0, TC: 0, TN: 0, CB: 0 },
+    ...over,
+  });
+
+  it("an unchanged row produces no diff", () => {
+    const d = diffRevisionRow(row({}), base);
+    expect(d.changes).toHaveLength(0);
+    expect(d.qtyReduction).toBeNull();
+    expect(d.planQty).toBe(10);
+  });
+
+  it("a RAISED qty is applied like any other change", () => {
+    const d = diffRevisionRow(row({ planQty: 14 }), base);
+    expect(d.changes).toEqual([{ mo: "MO-1", field: "Qty", from: "10", to: "14" }]);
+    expect(d.qtyReduction).toBeNull();
+    expect(d.planQty).toBe(14);
+  });
+
+  it("a LOWERED qty is reported but NEVER applied — the registry value stays", () => {
+    const d = diffRevisionRow(row({ planQty: 6 }), base);
+    expect(d.changes).toHaveLength(0); // nothing to write for this row
+    expect(d.qtyReduction).toEqual({ mo: "MO-1", from: 10, to: 6 });
+    expect(d.planQty).toBe(10); // keep the registry's quantity
+  });
+
+  it("other field changes still apply alongside a skipped qty drop", () => {
+    const d = diffRevisionRow(row({ planQty: 6, urgent: true }), base);
+    expect(d.changes).toEqual([{ mo: "MO-1", field: "Urgent", from: "No", to: "Yes" }]);
+    expect(d.qtyReduction).toEqual({ mo: "MO-1", from: 10, to: 6 });
+    expect(d.planQty).toBe(10);
   });
 });

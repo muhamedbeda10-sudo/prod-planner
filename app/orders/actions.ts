@@ -24,6 +24,23 @@ export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean;
   return { ok: true };
 }
 
+/** Manually set an order's required quantity. The monthly import only RAISES
+ *  quantities automatically — a revision that lowers one is just reported, and
+ *  the planner confirms it here (a lowered qty may cancel produced work). */
+export async function setOrderQty(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const guard = await requirePerm("tracker.edit");
+  if (guard.error) return { ok: false, error: guard.error };
+  const mo = String(formData.get("mo") ?? "").trim();
+  const qty = Number(formData.get("qty"));
+  if (!mo) return { ok: false, error: "Missing MO." };
+  if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Quantity must be a number > 0." };
+  const order = await prisma.masterOrder.findUnique({ where: { mo } });
+  if (!order) return { ok: false, error: `MO ${mo} not found.` };
+  await prisma.masterOrder.update({ where: { mo }, data: { planQty: qty } });
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
+  return { ok: true };
+}
+
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 /** "2026-07" (from <input type="month">) → "July 2026". */
