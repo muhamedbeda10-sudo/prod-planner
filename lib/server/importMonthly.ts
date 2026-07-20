@@ -1,17 +1,7 @@
 import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
-import { parseMonthlyPlan, applyCascade } from "@/lib/domain/importMonthly";
-
-export interface ComparisonRow {
-  mo: string;
-  bom: string;
-  item: string;
-  stage: "Cut" | "Welding" | "Painting";
-  sheet: number; // cascaded sheet value
-  system: number; // our logs (setup + daily)
-  diff: number; // sheet − system
-}
+import { parseMonthlyPlan } from "@/lib/domain/importMonthly";
 
 /** One field change detected on an existing MO in a plan REVISION. */
 export interface RevisionChange {
@@ -36,9 +26,6 @@ export interface MonthlyImportResult {
   /** Open MOs previously imported from this same month but ABSENT from this
    *  sheet — reported only, never auto-closed. */
   missingFromSheet?: string[];
-  /** REPORT ONLY — the sheet's done quantities vs our system. Never applied. */
-  comparison?: ComparisonRow[];
-  comparedCells?: number; // how many MO×item×stage cells were compared
 }
 
 export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string, preview = false): Promise<MonthlyImportResult> {
@@ -163,7 +150,9 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     .filter((o) => o.source === sourceLabel && o.status === "open" && !inSheet.has(o.mo))
     .map((o) => o.mo);
 
-  // ---- comparison report (display only — our data is NEVER changed by it) ----
+  // the ONLY quantity check on import: does a revised order qty drop below
+  // what our departments already produced? (progress columns in the sheet are
+  // ignored entirely — the daily logs are the single source of truth)
   const sums = await prisma.handoverEntry.groupBy({
     by: ["mo", "dept", "item"],
     where: { mo: { not: null } },
@@ -171,26 +160,6 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
   });
   const system = new Map<string, number>();
   for (const s of sums) if (s.mo) system.set(`${s.mo}|${s.dept}|${s.item}`, s._sum.qty ?? 0);
-
-  const STAGE: { key: "cut" | "weld" | "paint"; dept: ComparisonRow["stage"] }[] = [
-    { key: "cut", dept: "Cut" },
-    { key: "weld", dept: "Welding" },
-    { key: "paint", dept: "Painting" },
-  ];
-  const comparison: ComparisonRow[] = [];
-  let comparedCells = 0;
-  for (const r of rows) {
-    const eff = applyCascade(r.done, r.planQty);
-    for (const it of ["CF", "TC", "TN", "CB"] as const) {
-      for (const { key, dept } of STAGE) {
-        comparedCells++;
-        const sheet = eff[key][it];
-        const sys = system.get(`${r.mo}|${dept}|${it}`) ?? 0;
-        if (sheet !== sys) comparison.push({ mo: r.mo, bom: r.bom, item: it, stage: dept, sheet, system: sys, diff: sheet - sys });
-      }
-    }
-  }
-  comparison.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
 
   // warn when a revision cuts an order below what we already produced
   for (const r of changedRows) {
@@ -215,11 +184,9 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     updatedMos: changedRows.length,
     totalOrders: await prisma.masterOrder.count(),
     addedMos: toAdd.slice(0, 30).map((r) => r.mo),
-    issues,
+    issues: issues.filter((m) => !m.startsWith("Progress sections")),
     preview,
     changes: changes.slice(0, 300),
     missingFromSheet,
-    comparison: comparison.slice(0, 200),
-    comparedCells,
   };
 }

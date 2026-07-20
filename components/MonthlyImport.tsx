@@ -28,7 +28,7 @@ export function MonthlyImport() {
   return (
     <details className="bg-surface border rounded-xl p-4" open>
       <summary className="font-bold cursor-pointer select-none">
-        📥 Import monthly plan <span className="text-xs text-muted font-normal">(existing MOs are left untouched — only new MOs are added)</span>
+        📥 Import monthly plan <span className="text-xs text-muted font-normal">(order data only: new MOs are added, existing MOs get the revision&apos;s changes — progress quantities are never read)</span>
       </summary>
       <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-3">
         <input ref={inputRef} name="file" type="file" accept=".xlsx,.xlsm,.xls" required
@@ -122,56 +122,6 @@ export function MonthlyImport() {
             </div>
           )}
 
-          {/* comparison report — display only */}
-          {res.comparison && (
-            <div className="border rounded-lg p-3">
-              <div className="text-sm font-bold mb-1">
-                Comparison report — sheet vs system{" "}
-                <span className="pill pill-muted ml-1">report only, nothing was changed</span>
-              </div>
-              {res.comparison.length === 0 ? (
-                <p className="text-ok-fg text-sm font-semibold">
-                  ✓ All {res.comparedCells} cells match — the sheet agrees with our logs.
-                </p>
-              ) : (
-                <>
-                  <p className="text-xs text-muted mb-2">
-                    {res.comparison.length} of {res.comparedCells} cells differ (sheet − system). Positive = the sheet claims MORE done than our logs; negative = we logged more than the sheet.
-                  </p>
-                  <div className="overflow-x-auto max-h-80 overflow-y-auto">
-                    <table className="w-full text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-brand text-white text-left sticky top-0">
-                          <th className="p-1.5">MO</th>
-                          <th className="p-1.5">BOM</th>
-                          <th className="p-1.5 text-center">Item</th>
-                          <th className="p-1.5">Stage</th>
-                          <th className="p-1.5 text-center">Sheet</th>
-                          <th className="p-1.5 text-center">System</th>
-                          <th className="p-1.5 text-center">Diff</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {res.comparison.map((c, i) => (
-                          <tr key={i}>
-                            <td className="p-1.5 whitespace-nowrap font-semibold">{c.mo}</td>
-                            <td className="p-1.5 whitespace-nowrap">{c.bom}</td>
-                            <td className="p-1.5 text-center font-bold">{c.item}</td>
-                            <td className="p-1.5">{c.stage}</td>
-                            <td className="p-1.5 text-center tabnum">{c.sheet}</td>
-                            <td className="p-1.5 text-center tabnum">{c.system}</td>
-                            <td className="p-1.5 text-center tabnum font-bold" style={{ color: c.diff > 0 ? "var(--warn-fg)" : "var(--bad-fg)" }}>
-                              {c.diff > 0 ? `+${c.diff}` : c.diff}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
       )}
     </details>
