@@ -14,6 +14,8 @@ import {
   type CutTranche,
 } from "@/lib/domain/execution";
 import { toISODate } from "@/lib/domain/dates";
+import { ITEMS } from "@/lib/domain/constants";
+import type { HiddenLineDTO, PriorityLineDTO } from "@/lib/server/worklistExtras";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getSettings, getPlanWindows } from "./data";
 
@@ -26,6 +28,9 @@ export interface CutSheet {
   postponed: CutTranche[]; // admin re-dated to the FUTURE — visible so the date can be reverted
   remarked: CascadeRow[]; // this week's REMARKED lines with no known date — shown date-less
   unscheduled: CascadeRow[]; // open orders with NO date and NO remark — its own section
+  pushed: CascadeRow[]; // sent down from the Plan Tracker (chosen qty) — to be scheduled here
+  priority: PriorityLineDTO[]; // ⭐ orders the admin flagged — dedicated table on top
+  hidden: HiddenLineDTO[]; // lines the admin removed from this worklist (restorable)
 }
 
 /** The Cut screen: TODAY is computed by the app (no day picking).
@@ -43,7 +48,7 @@ export async function getCutSheet(): Promise<CutSheet> {
   const settings = await getSettings();
   const planNo = findPlanForDate(await getPlanWindows(), today, settings.leadCut);
 
-  const [allSchedules, masters, closedMos, entries, weekOrders, overrideRows] = await Promise.all([
+  const [allSchedules, masters, closedMos, entries, weekOrders, overrideRows, pushRows, hideRows] = await Promise.all([
     prisma.planSchedule.findMany({ orderBy: { id: "asc" } }), // ALL plans — every week's promises feed the worklist
     prisma.masterOrder.findMany({ where: { status: "open" }, orderBy: { id: "asc" } }), // closed orders leave the daily screens
     prisma.masterOrder.findMany({ where: { status: "closed" }, select: { mo: true } }),
@@ -52,6 +57,8 @@ export async function getCutSheet(): Promise<CutSheet> {
       ? Promise.resolve([])
       : prisma.planOrder.findMany({ where: { planNo }, select: { mo: true, remark: true } }),
     prisma.worklistDateOverride.findMany(),
+    prisma.worklistPush.findMany({ where: { dept: "Cut" }, orderBy: { id: "asc" } }),
+    prisma.worklistLineHide.findMany({ where: { dept: "Cut" }, orderBy: { id: "asc" } }),
   ]);
   const allSchedIn = allSchedules.map((s) => ({ planNo: s.planNo, bom: s.bom, mo: s.mo, description: s.description, item: s.item, ovenDate: s.ovenDate, qty: s.qty }));
   const schedIn = allSchedIn.filter((s) => s.planNo === planNo);
@@ -134,16 +141,25 @@ export async function getCutSheet(): Promise<CutSheet> {
     allSchedules: allSchedIn,
   });
 
-  // date-less backlog (no open date in ANY plan), split by this week's remarks:
-  // remarked lines carry their remark; the rest go to the unscheduled section.
+  // date-less backlog (no open date in ANY plan), split three ways: lines the
+  // admin PUSHED from the tracker (clamped to the pushed qty), this week's
+  // REMARKED lines, and the rest (open orders). Push wins over remark.
   const remarkOf = new Map<string, string>(); // mo -> first non-empty remark this week
   for (const o of weekOrders) {
     const r = (o.remark ?? "").trim();
     if (r && !remarkOf.has(o.mo)) remarkOf.set(o.mo, r);
   }
+  const pushQtyOf = new Map(pushRows.map((p) => [`${p.mo}|${p.item}`, p.qty]));
   const undatedAll = cascade
     .filter((r) => r.deliveryISO === null)
-    .map((r) => (remarkOf.has(r.mo) ? { ...r, remark: remarkOf.get(r.mo) } : r));
+    .map((r) => {
+      const pushQty = pushQtyOf.get(`${r.mo}|${r.item}`);
+      const row = remarkOf.has(r.mo) ? { ...r, remark: remarkOf.get(r.mo) } : { ...r };
+      // pushed lines show the CHOSEN quantity (never more than the open pool)
+      if (pushQty !== undefined) row.available = Math.min(row.available, pushQty);
+      return row;
+    })
+    .filter((r) => r.available > 0);
 
   // admin date overrides: re-date lines (future → postponed), date the date-less
   const { dueNow, overdue, postponed, undated } = applyWorklistDateOverrides({
@@ -154,10 +170,45 @@ export async function getCutSheet(): Promise<CutSheet> {
     day: today,
     lead: settings.leadCut,
   });
-  const remarked = undated.filter((r) => (r.remark ?? "").trim() !== "");
-  const unscheduled = undated.filter((r) => (r.remark ?? "").trim() === "");
+  const isPushed = (r: CascadeRow) => pushQtyOf.has(`${r.mo}|${r.item}`);
+  const pushed = undated.filter(isPushed);
+  const remarked = undated.filter((r) => !isPushed(r) && (r.remark ?? "").trim() !== "");
+  const unscheduled = undated.filter((r) => !isPushed(r) && (r.remark ?? "").trim() === "");
 
-  return { planNo, today, scheduled, dueNow, overdue, postponed, remarked, unscheduled };
+  // ⭐ priority orders — what fabrication still owes on each flagged order
+  const priority: PriorityLineDTO[] = [];
+  for (const m of masters) {
+    if (!m.priority) continue;
+    const osp = { CF: m.ospCF, TC: m.ospTC, TN: m.ospTN, CB: m.ospCB } as const;
+    const excluded = new Set((m.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+    for (const item of ITEMS) {
+      if (excluded.has(item)) continue;
+      const need = Math.max(0, m.planQty - osp[item]);
+      const done = cutDoneOf.get(`${m.mo}|${item}`) ?? 0;
+      const remaining = Math.max(0, need - done);
+      if (remaining <= 0) continue;
+      priority.push({ bom: m.bom, mo: m.mo, description: [m.kva, m.rating].filter(Boolean).join(" · "), item, need, done, remaining });
+    }
+  }
+
+  // admin-hidden lines leave every section (restorable from the page footer)
+  const hiddenKeys = new Set(hideRows.map((h) => `${h.bom}|${h.mo}|${h.item}`));
+  const notHidden = <T extends { bom: string; mo: string; item: string }>(rows: T[]) =>
+    rows.filter((r) => !hiddenKeys.has(`${r.bom}|${r.mo}|${r.item}`));
+
+  return {
+    planNo,
+    today,
+    scheduled,
+    dueNow: notHidden(dueNow),
+    overdue: notHidden(overdue),
+    postponed: notHidden(postponed),
+    remarked: notHidden(remarked),
+    unscheduled: notHidden(unscheduled),
+    pushed: notHidden(pushed),
+    priority: notHidden(priority),
+    hidden: hideRows.map((h) => ({ dept: h.dept, bom: h.bom, mo: h.mo, item: h.item })),
+  };
 }
 
 export interface ExecutionResult {
@@ -214,16 +265,24 @@ async function loadQueueInputs() {
 const withOrderQty = (rows: WeldQueueRow[], orderQtyOf: Map<string, number>): WeldQueueRow[] =>
   rows.map((r) => ({ ...r, orderQty: r.mo ? orderQtyOf.get(`${r.mo}|${r.item}`) ?? null : null }));
 
+/** Admin-hidden lines leave the dept's queue (restorable from the page). */
+async function dropHidden(dept: string, rows: WeldQueueRow[]): Promise<WeldQueueRow[]> {
+  const hides = await prisma.worklistLineHide.findMany({ where: { dept } });
+  if (hides.length === 0) return rows;
+  const keys = new Set(hides.map((h) => `${h.bom}|${h.mo}|${h.item}`));
+  return rows.filter((r) => !keys.has(`${r.bom}|${r.mo}|${r.item}`));
+}
+
 /** The welding queue: everything Cut produced (any plan, any day ≤ selected day)
  *  that Welding hasn't consumed yet. */
 export async function getWeldingQueue(day: Date): Promise<WeldQueueRow[]> {
   const [inputs, settings] = await Promise.all([loadQueueInputs(), getSettings()]);
   const { orderQtyOf, ...rest } = inputs;
-  return withOrderQty(computeWeldingQueue({ ...rest, day, lead: settings.leadWeld }), orderQtyOf);
+  return dropHidden("Welding", withOrderQty(computeWeldingQueue({ ...rest, day, lead: settings.leadWeld }), orderQtyOf));
 }
 
 /** The painting queue: everything Welding produced that Painting hasn't consumed yet. */
 export async function getPaintingQueue(day: Date): Promise<WeldQueueRow[]> {
   const { orderQtyOf, ...rest } = await loadQueueInputs();
-  return withOrderQty(computePaintingQueue({ ...rest, day }), orderQtyOf);
+  return dropHidden("Painting", withOrderQty(computePaintingQueue({ ...rest, day }), orderQtyOf));
 }

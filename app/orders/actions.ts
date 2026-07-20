@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
-import { requirePerm } from "@/lib/server/auth";
+import { requirePerm, requireAdmin } from "@/lib/server/auth";
+import { ITEMS, isDept, isPaintExempt, deptLabel } from "@/lib/domain/constants";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
@@ -39,6 +40,75 @@ export async function setOrderQty(formData: FormData): Promise<{ ok: boolean; er
   await prisma.masterOrder.update({ where: { mo }, data: { planQty: qty } });
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
   return { ok: true };
+}
+
+/** ADMIN ONLY — flag/unflag an order as PRIORITY: it shows in a dedicated
+ *  table on top of every dept worklist until its work is done. */
+export async function setOrderPriority(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const mo = String(formData.get("mo") ?? "").trim();
+  const priority = String(formData.get("priority") ?? "") === "true";
+  if (!mo) return { ok: false, error: "Missing MO." };
+  const order = await prisma.masterOrder.findUnique({ where: { mo } });
+  if (!order) return { ok: false, error: `MO ${mo} not found.` };
+  await prisma.masterOrder.update({ where: { mo }, data: { priority } });
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
+  return { ok: true };
+}
+
+/** ADMIN ONLY — send an order DOWN from the Plan Tracker to a dept's worklist:
+ *  chosen quantity per item, each capped at the order's UNFINISHED remainder
+ *  for that dept (in-house qty − dept output). Replaces any previous push of
+ *  this MO to the same dept; all-zero quantities just clear it. */
+export async function pushOrderToWorklist(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const mo = String(formData.get("mo") ?? "").trim();
+  const dept = String(formData.get("dept") ?? "");
+  if (!mo) return { ok: false, error: "Missing MO." };
+  if (!isDept(dept)) return { ok: false, error: "Invalid department." };
+  const order = await prisma.masterOrder.findUnique({ where: { mo } });
+  if (!order) return { ok: false, error: `MO ${mo} not found.` };
+  if (order.status !== "open") return { ok: false, error: `MO ${mo} is closed.` };
+
+  const sums = await prisma.handoverEntry.groupBy({
+    by: ["item"],
+    where: { mo, dept },
+    _sum: { qty: true },
+  });
+  const done = new Map(sums.map((s) => [s.item, s._sum.qty ?? 0]));
+  const osp = { CF: order.ospCF, TC: order.ospTC, TN: order.ospTN, CB: order.ospCB } as const;
+  const excluded = new Set((order.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+
+  const lines: { item: string; qty: number }[] = [];
+  for (const item of ITEMS) {
+    const raw = String(formData.get(`qty${item}`) ?? "").trim();
+    if (!raw) continue;
+    const qty = Number(raw);
+    if (!Number.isFinite(qty) || qty < 0) return { ok: false, error: `${item}: quantity must be a number ≥ 0.` };
+    if (qty === 0) continue;
+    if (excluded.has(item)) return { ok: false, error: `${item} is N/A for this order.` };
+    if (dept === "Painting" && isPaintExempt(item)) return { ok: false, error: `${item} is never painted — it cannot go to the Painting worklist.` };
+    const remaining = Math.max(0, order.planQty - osp[item] - (done.get(item) ?? 0));
+    if (qty > remaining) {
+      return { ok: false, error: `${item}: only ${remaining} pcs remain un-${dept === "Cut" ? "cut" : dept === "Welding" ? "welded" : "painted"} — cannot send ${qty}.` };
+    }
+    lines.push({ item, qty });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.worklistPush.deleteMany({ where: { dept, mo } });
+    if (lines.length > 0) {
+      await tx.worklistPush.createMany({
+        data: lines.map((l) => ({ dept, bom: order.bom, mo, item: l.item, qty: l.qty, createdBy: guard.user?.name ?? null })),
+      });
+    }
+  });
+  for (const p of ["/tracker", "/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
+  return lines.length > 0
+    ? { ok: true }
+    : { ok: false, error: `Nothing sent — enter a quantity for at least one item (the ${deptLabel(dept)} push was cleared).` };
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];

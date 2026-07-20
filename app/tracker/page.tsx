@@ -13,6 +13,7 @@ export default async function TrackerPage() {
     <MasterTrackerTable
       rows={rows}
       canEdit={!!user && hasPerm(user, "tracker.edit")}
+      isAdmin={!!user?.isAdmin}
       // each dept edits its OWN stage cells with the same permission as its worklist
       editableDepts={user ? DEPTS.filter((d) => canEditDept(user, d)) : []}
     />

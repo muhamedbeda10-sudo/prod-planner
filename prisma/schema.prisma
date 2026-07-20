@@ -145,6 +145,9 @@ model MasterOrder {
   // Components this order does NOT need at all (CSV of CF/TC/TN/CB). The plan
   // sheets can't express this — it is set manually on the tracker.
   excludedItems String?
+  // Marked IMPORTANT by the admin: shows in a dedicated priority table on top
+  // of every dept worklist until its work is done.
+  priority  Boolean  @default(false)
   closedAt  DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -171,6 +174,37 @@ model WorklistDateOverride {
   updatedAt DateTime @updatedAt
 
   @@unique([bom, mo, item, origISO])
+}
+
+// A worklist line the ADMIN removed from view (any dept's worklist). The line
+// itself (plans, logs, registry) is untouched — restoring = deleting this row.
+model WorklistLineHide {
+  id        Int      @id @default(autoincrement())
+  dept      String // Cut | Welding | Painting
+  bom       String
+  mo        String // "" for BOM-level queue lines
+  item      String // CF | TC | TN | CB
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@unique([dept, bom, mo, item])
+}
+
+// An order sent DOWN from the Plan Tracker to a dept's worklist with a chosen
+// quantity per item (≤ the order's unfinished remainder), to be scheduled and
+// worked there. Admin-managed; removing the row takes the line off the list.
+model WorklistPush {
+  id        Int      @id @default(autoincrement())
+  dept      String // Cut | Welding | Painting
+  bom       String
+  mo        String
+  item      String // CF | TC | TN | CB
+  qty       Float
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dept, mo, item])
 }
 
 // Factory calendar — non-working days besides Fridays (public holidays,

@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { CascadeRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
-import { recordOutput, setWorklistDate } from "@/app/worklist/actions";
+import { recordOutput, setWorklistDate, hideWorklistLine } from "@/app/worklist/actions";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 import { Frac } from "@/components/Frac";
@@ -21,14 +21,18 @@ export function CascadeTable({
   notes = {}, // keyed by bom|mo|item
   canEdit = false,
   isAdmin = false,
+  dept = "Cut", // which dept records output on these rows (Cut | Welding | Painting)
+  allowDate = true, // admins may give a date-less line a delivery date (cut page only)
 }: {
   rows: CascadeRow[];
   day: string; // ISO (today — computed by the app)
   planNo: number;
   hideFilter?: boolean;
   notes?: Record<string, QueueNoteDTO[]>;
-  canEdit?: boolean; // user holds cut.edit — otherwise view-only
-  isAdmin?: boolean; // admins may give a date-less line a delivery date
+  canEdit?: boolean; // user holds the dept's edit permission — otherwise view-only
+  isAdmin?: boolean; // admins may date / remove lines
+  dept?: string;
+  allowDate?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -48,6 +52,21 @@ export function CascadeTable({
 
   const keyOf = (r: CascadeRow) => `${r.bom}|${r.mo}|${r.item}`;
   const totalPool = filtered.reduce((s, r) => s + r.available, 0);
+
+  // admin: remove this line from the worklist (restorable from the page footer)
+  function hideLine(r: CascadeRow) {
+    if (!confirm(`Remove ${r.mo} · ${r.item} from this worklist? Plans and logs stay untouched — you can restore it from "Hidden lines" at the bottom of the page.`)) return;
+    const fd = new FormData();
+    fd.set("dept", dept);
+    fd.set("bom", r.bom);
+    fd.set("mo", r.mo);
+    fd.set("item", r.item);
+    startTransition(async () => {
+      const res = await hideWorklistLine(fd);
+      if (res.ok) router.refresh();
+      else setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
+    });
+  }
 
   // admin: give this date-less line a delivery date (origISO "" — reverting
   // from the dated tables brings it back here)
@@ -97,7 +116,7 @@ export function CascadeTable({
     }
     const fd = new FormData();
     fd.set("date", day);
-    fd.set("dept", "Cut");
+    fd.set("dept", dept);
     fd.set("bom", r.bom);
     fd.set("mo", r.mo);
     fd.set("item", r.item);
@@ -237,7 +256,7 @@ export function CascadeTable({
                         ) : (
                           <span className="pill pill-muted">—</span>
                         )}
-                        {isAdmin && !r.deliveryISO && (
+                        {isAdmin && allowDate && !r.deliveryISO && (
                           <button
                             type="button"
                             onClick={() => { setDateEdit(k); setDateVal(day); }}
@@ -246,6 +265,17 @@ export function CascadeTable({
                             title="Give this line a delivery date (admin) — reverting from the dated tables brings it back here"
                           >
                             📅✎
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => hideLine(r)}
+                            disabled={pending}
+                            className="text-muted text-xs px-1 hover:text-bad-fg align-middle"
+                            title="Remove this line from the worklist (admin) — restorable from the bottom of the page"
+                          >
+                            🗑
                           </button>
                         )}
                       </>
@@ -305,7 +335,7 @@ export function CascadeTable({
                     bom={r.bom}
                     mo={r.mo}
                     item={r.item}
-                    dept="Cut"
+                    dept={dept}
                     lineNotes={lineNotes}
                     colSpan={9}
                     canEdit={canEdit}

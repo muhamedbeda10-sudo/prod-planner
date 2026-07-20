@@ -22,6 +22,7 @@ export interface MasterTrackerRow {
   remaining: number;
   achievement: number | null;
   status: string; // open | closed
+  priority: boolean; // ⭐ flagged by the admin — shows on every dept worklist
 }
 
 export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
@@ -75,6 +76,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       remaining: Math.max(0, o.planQty - complete),
       achievement: o.planQty > 0 ? complete / o.planQty : null,
       status: o.status,
+      priority: o.priority,
     };
   });
 }

@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WeldQueueRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
-import { recordOutput, addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote, returnToUpstream } from "@/app/worklist/actions";
+import { recordOutput, addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote, returnToUpstream, hideWorklistLine } from "@/app/worklist/actions";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Frac } from "@/components/Frac";
 import { PrintButton } from "@/components/PrintButton";
@@ -26,6 +26,7 @@ export function WeldingQueueTable({
   returns = [],
   capacity = DEFAULTS.capacityPerItem,
   canEdit = false,
+  isAdmin = false,
 }: {
   rows: WeldQueueRow[];
   day: string;
@@ -35,6 +36,7 @@ export function WeldingQueueTable({
   returns?: ReturnRowDTO[]; // pieces sent back TO this dept (shown under the filter)
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
   canEdit?: boolean; // user holds this dept's edit permission — otherwise view-only
+  isAdmin?: boolean; // admins may remove a line from the worklist (restorable)
 }) {
   const verb = dept === "Welding" ? "weld" : "paint";
   // display name for the upstream dept ("Cut" shows as "Fabrication")
@@ -200,6 +202,21 @@ export function WeldingQueueTable({
     });
   }
 
+  // admin: remove this line from the worklist (restorable from the page footer)
+  function hideLine(r: WeldQueueRow) {
+    if (!confirm(`Remove ${r.mo || r.bom} · ${r.item} from this worklist? Plans and logs stay untouched — you can restore it from "Hidden lines" at the bottom of the page.`)) return;
+    const fd = new FormData();
+    fd.set("dept", dept);
+    fd.set("bom", r.bom);
+    fd.set("mo", r.mo);
+    fd.set("item", r.item);
+    startTransition(async () => {
+      const res = await hideWorklistLine(fd);
+      if (res.ok) router.refresh();
+      else setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
+    });
+  }
+
   const renderRow = (r: WeldQueueRow, inGroup = false, lastInGroup = false) => {
     const k = keyOf(r);
     const cleared = r.available === 0;
@@ -231,6 +248,17 @@ export function WeldingQueueTable({
               >
                 ⚠ at risk
               </span>
+            )}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => hideLine(r)}
+                disabled={pending}
+                className="text-muted text-xs px-1 hover:text-bad-fg align-middle"
+                title="Remove this line from the worklist (admin) — restorable from the bottom of the page"
+              >
+                🗑
+              </button>
             )}
           </td>
           <td className={`p-2 text-xs font-semibold whitespace-nowrap ${inGroup ? "pl-6" : ""}`}>
