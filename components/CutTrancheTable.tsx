@@ -47,13 +47,15 @@ export function CutTrancheTable({
   const [dateVal, setDateVal] = useState("");
 
   // admin: move this row's promise to a new delivery date (override on top of
-  // the plan — the plan itself is untouched, so revert always works)
+  // the plan — the plan itself is untouched, so revert always works). For an
+  // admin-scheduled PART (origin "") the part moves with its quantity.
   function saveDate(r: CutTranche) {
     const fd = new FormData();
     fd.set("bom", r.bom);
     fd.set("mo", r.mo);
     fd.set("item", r.item);
     fd.set("origISO", r.overrideOrigISO ?? r.deliveryISO); // keep the TRUE original as the key
+    if (r.overrideOrigISO === "") fd.set("fromISO", r.deliveryISO); // which part is moving
     fd.set("date", dateVal);
     startTransition(async () => {
       const res = await setWorklistDate(fd);
@@ -81,7 +83,8 @@ export function CutTrancheTable({
     });
   }
 
-  // admin: back to the original plan date — or back to date-less ("" origin)
+  // admin: back to the original plan date — or back into the date-less pool
+  // for an admin-scheduled part ("" origin; only THIS part returns)
   function revertDate(r: CutTranche) {
     if (r.overrideOrigISO === undefined) return;
     const fd = new FormData();
@@ -89,6 +92,7 @@ export function CutTrancheTable({
     fd.set("mo", r.mo);
     fd.set("item", r.item);
     fd.set("origISO", r.overrideOrigISO);
+    if (r.overrideOrigISO === "") fd.set("date", r.deliveryISO); // which part returns to the pool
     startTransition(async () => {
       const res = await clearWorklistDate(fd);
       if (res.ok) router.refresh();
@@ -218,7 +222,7 @@ export function CutTrancheTable({
                   onClick={() => revertDate(r)}
                   disabled={pending}
                   className="text-muted text-xs px-1 hover:text-accent align-middle"
-                  title={r.overrideOrigISO ? `Back to the original date (${ddmm(r.overrideOrigISO)})` : "Back to date-less (this line had no date)"}
+                  title={r.overrideOrigISO ? `Back to the original date (${ddmm(r.overrideOrigISO)})` : "Un-schedule this part — its quantity returns to the date-less pool"}
                 >
                   ↩
                 </button>

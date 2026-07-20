@@ -140,9 +140,12 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
   }
 }
 
-/** ADMIN ONLY — re-date a fabrication-worklist line (or give a date to a
- *  date-less one, origISO ""). Stored as an override on top of the plan; the
- *  plan itself is never touched, so reverting restores the original state. */
+/** ADMIN ONLY — re-date a fabrication-worklist line, or schedule a PART of a
+ *  date-less one (origISO ""): pick the date AND a quantity from the open
+ *  pool; several parts on different dates are fine — the rest stays in the
+ *  pool. Stored as overrides on top of the plan; the plan itself is never
+ *  touched, so reverting always restores the original state.
+ *  `fromISO` moves an already-scheduled part to another date (same qty). */
 export async function setWorklistDate(formData: FormData): Promise<RecordResult> {
   try {
     const guard = await requireAdmin();
@@ -156,11 +159,73 @@ export async function setWorklistDate(formData: FormData): Promise<RecordResult>
     if (!isItem(item)) return { ok: false, error: "Invalid component." };
     if (origISO && !parseISODate(origISO)) return { ok: false, error: "Invalid original date." };
     if (!newDate) return { ok: false, error: "Pick the new date." };
+    const by = guard.user?.name ?? null;
+
+    // a real plan tranche moves WHOLESALE — one override per original date
+    if (origISO !== "") {
+      await prisma.$transaction(async (tx) => {
+        await tx.worklistDateOverride.deleteMany({ where: { bom, mo, item, origISO } });
+        await tx.worklistDateOverride.create({ data: { bom, mo, item, origISO, newDate, createdBy: by } });
+      });
+      revalidatePath("/worklist/cut");
+      return { ok: true };
+    }
+
+    // date-less line: schedule a PART (qty) of the pool on the chosen date,
+    // or move an existing part (fromISO) keeping its quantity
+    const fromISO = String(formData.get("fromISO") ?? "").trim();
+    const parts = await prisma.worklistDateOverride.findMany({ where: { bom, mo, item, origISO: "" } });
+
+    if (fromISO) {
+      const src = parts.find((p) => toISODate(p.newDate) === fromISO);
+      if (!src) return { ok: false, error: "That scheduled part no longer exists — refresh the page." };
+      await prisma.$transaction(async (tx) => {
+        await tx.worklistDateOverride.deleteMany({ where: { id: src.id } });
+        await tx.worklistDateOverride.upsert({
+          where: { bom_mo_item_origISO_newDate: { bom, mo, item, origISO: "", newDate } },
+          // moving onto a date that already has a part merges the quantities
+          create: { bom, mo, item, origISO: "", newDate, qty: src.qty, baseDone: src.baseDone, createdBy: by },
+          update: { qty: { increment: src.qty ?? 0 }, createdBy: by },
+        });
+      });
+      revalidatePath("/worklist/cut");
+      return { ok: true };
+    }
+
+    const qty = Number(formData.get("qty"));
+    if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter the quantity to schedule (> 0)." };
+
+    // the pool = what the order still needs minus what other parts already
+    // claimed — mirrors exactly what the worklist shows as available
+    const [order, agg] = await Promise.all([
+      prisma.masterOrder.findUnique({ where: { mo } }),
+      prisma.handoverEntry.aggregate({ where: { mo, item, dept: "Cut" }, _sum: { qty: true } }),
+    ]);
+    const done = agg._sum.qty ?? 0;
+    if (order) {
+      const osp = { CF: order.ospCF, TC: order.ospTC, TN: order.ospTN, CB: order.ospCB } as const;
+      const open = Math.max(0, order.planQty - (osp[item as keyof typeof osp] ?? 0) - done);
+      // other parts' still-open share (same FIFO math the worklist displays)
+      const others = parts.filter((p) => p.qty != null).sort((a, b) => (a.newDate < b.newDate ? -1 : 1));
+      const base = others.length > 0 ? Math.min(...others.map((p) => p.baseDone)) : done;
+      let consumed = Math.max(0, done - base);
+      let claimed = 0;
+      for (const p of others) {
+        const used = Math.min(consumed, p.qty!);
+        consumed -= used;
+        claimed += Math.max(0, p.qty! - used);
+      }
+      const free = Math.max(0, open - claimed);
+      if (qty > free) {
+        return { ok: false, error: `Only ${free} pcs are still unscheduled on this line (${open} open − ${claimed} already scheduled).` };
+      }
+    }
 
     await prisma.worklistDateOverride.upsert({
-      where: { bom_mo_item_origISO: { bom, mo, item, origISO } },
-      create: { bom, mo, item, origISO, newDate, createdBy: guard.user?.name ?? null },
-      update: { newDate, createdBy: guard.user?.name ?? null },
+      where: { bom_mo_item_origISO_newDate: { bom, mo, item, origISO: "", newDate } },
+      create: { bom, mo, item, origISO: "", newDate, qty, baseDone: done, createdBy: by },
+      // scheduling the same date again REPLACES that day's quantity
+      update: { qty, createdBy: by },
     });
     revalidatePath("/worklist/cut");
     return { ok: true };
@@ -170,7 +235,8 @@ export async function setWorklistDate(formData: FormData): Promise<RecordResult>
 }
 
 /** ADMIN ONLY — revert a re-dated line: back to its original plan date, or
- *  back to date-less if it never had one (origISO ""). */
+ *  back into the date-less pool for an admin-scheduled part (origISO "" —
+ *  `date` picks WHICH part when the line was scheduled in several parts). */
 export async function clearWorklistDate(formData: FormData): Promise<RecordResult> {
   try {
     const guard = await requireAdmin();
@@ -179,8 +245,12 @@ export async function clearWorklistDate(formData: FormData): Promise<RecordResul
     const mo = String(formData.get("mo") ?? "").trim();
     const item = String(formData.get("item") ?? "").trim().toUpperCase();
     const origISO = String(formData.get("origISO") ?? "").trim();
+    const dateISO = String(formData.get("date") ?? "").trim(); // the part's current date ("" = all)
     if (!bom || !mo || !isItem(item)) return { ok: false, error: "Invalid line." };
-    await prisma.worklistDateOverride.deleteMany({ where: { bom, mo, item, origISO } });
+    const date = dateISO ? parseISODate(dateISO) : null;
+    await prisma.worklistDateOverride.deleteMany({
+      where: { bom, mo, item, origISO, ...(origISO === "" && date ? { newDate: date } : {}) },
+    });
     revalidatePath("/worklist/cut");
     return { ok: true };
   } catch (e) {

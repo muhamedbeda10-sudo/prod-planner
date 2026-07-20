@@ -43,6 +43,7 @@ export function CascadeTable({
   const [openNotes, setOpenNotes] = useState<string | null>(null); // per row key (bom|mo|item)
   const [dateEdit, setDateEdit] = useState<string | null>(null); // row key being dated (admin)
   const [dateVal, setDateVal] = useState("");
+  const [dateQty, setDateQty] = useState(""); // how many pieces get that date
 
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
@@ -68,19 +69,27 @@ export function CascadeTable({
     });
   }
 
-  // admin: give this date-less line a delivery date (origISO "" — reverting
-  // from the dated tables brings it back here)
+  // admin: schedule a PART of this date-less line — pick the date AND how many
+  // pieces (≤ the pool); the rest stays here. Reverting from the dated tables
+  // returns the part to the pool.
   function saveDate(r: CascadeRow) {
+    const n = Number(dateQty);
+    if (!dateQty || !Number.isFinite(n) || n <= 0 || n > r.available) {
+      setMsg((s) => ({ ...s, [keyOf(r)]: `Quantity must be 1–${r.available}` }));
+      return;
+    }
     const fd = new FormData();
     fd.set("bom", r.bom);
     fd.set("mo", r.mo);
     fd.set("item", r.item);
     fd.set("origISO", "");
     fd.set("date", dateVal);
+    fd.set("qty", dateQty);
     startTransition(async () => {
       const res = await setWorklistDate(fd);
       if (res.ok) {
         setDateEdit(null);
+        setMsg((s) => ({ ...s, [keyOf(r)]: "" }));
         router.refresh();
       } else {
         setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
@@ -244,7 +253,22 @@ export function CascadeTable({
                           className="border rounded-md px-1 py-0.5 text-xs bg-surface"
                           disabled={pending}
                         />
-                        <button type="button" onClick={() => saveDate(r)} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save — the line moves to the dated tables">✓</button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={r.available}
+                          value={dateQty}
+                          onChange={(e) => setDateQty(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveDate(r);
+                            if (e.key === "Escape") setDateEdit(null);
+                          }}
+                          className="w-14 border rounded-md px-1 py-0.5 text-center text-xs font-bold tabnum bg-surface"
+                          disabled={pending}
+                          title={`How many pieces get this date (up to ${r.available}) — the rest stays here`}
+                        />
+                        <span className="text-[10px] text-muted tabnum">/{r.available}</span>
+                        <button type="button" onClick={() => saveDate(r)} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save — that quantity moves to the dated tables, the rest stays here">✓</button>
                         <button type="button" onClick={() => setDateEdit(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">✕</button>
                       </span>
                     ) : (
@@ -259,10 +283,10 @@ export function CascadeTable({
                         {isAdmin && allowDate && !r.deliveryISO && (
                           <button
                             type="button"
-                            onClick={() => { setDateEdit(k); setDateVal(day); }}
+                            onClick={() => { setDateEdit(k); setDateVal(day); setDateQty(String(r.available)); }}
                             disabled={pending}
                             className="text-muted text-xs px-1 hover:text-accent align-middle"
-                            title="Give this line a delivery date (admin) — reverting from the dated tables brings it back here"
+                            title="Schedule (part of) this line: pick a date and a quantity — repeat for more dates; the rest stays here"
                           >
                             📅✎
                           </button>

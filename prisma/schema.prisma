@@ -158,8 +158,12 @@ model MasterOrder {
 
 // Admin date override on a fabrication-worklist line (BOM × MO × item).
 // origISO is the line's ORIGINAL promised delivery date ("" = the line had no
-// date at all — a remarked/unscheduled row given a date by the admin).
-// Reverting = deleting the row: the plan's own date (or date-lessness)
+// date — a date-less row scheduled by the admin). A date-less line may carry
+// SEVERAL rows (one per chosen date), each with a QTY taken from the open
+// pool; qty null = the whole line (legacy / dated-row moves). baseDone
+// snapshots the dept output at scheduling time so LATER output consumes the
+// admin's tranches earliest-first without double-counting what was already
+// done. Reverting = deleting the row: the plan's own date (or the pool)
 // resurfaces. If a weekly re-import changes the line's dates, the override no
 // longer matches its origISO and silently stops applying.
 model WorklistDateOverride {
@@ -169,11 +173,15 @@ model WorklistDateOverride {
   item      String // CF | TC | TN | CB
   origISO   String   @default("") // original delivery ISO date; "" = was date-less
   newDate   DateTime // admin-chosen delivery (oven) date
+  qty       Float? // pieces scheduled on that date (null = the whole line)
+  baseDone  Float    @default(0) // dept output when scheduled — consumption baseline
   createdBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([bom, mo, item, origISO])
+  // one row per (line, original date, chosen date); dated-row moves keep a
+  // single row per original tranche via delete-then-create in the action
+  @@unique([bom, mo, item, origISO, newDate])
 }
 
 // A worklist line the ADMIN removed from view (any dept's worklist). The line
