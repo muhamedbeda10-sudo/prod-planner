@@ -517,3 +517,58 @@ describe("applyWorklistDateOverrides — admin re-dates, revert restores", () =>
     expect(out.overdue[0].overrideOrigISO).toBeUndefined();
   });
 });
+
+describe("applyWorklistDateOverrides — scheduling a date-less line in PARTS", () => {
+  const day = utcDate(2026, 7, 13);
+  const lead = 2;
+  const line = {
+    bom: "B3", mo: "MO-C", description: "", item: "TC" as const,
+    target: 100, scheduled: 0, done: 47, available: 53, deliveryISO: null,
+  };
+  const parts = [
+    { bom: "B3", mo: "MO-C", item: "TC", origISO: "", newISO: "2026-07-20", qty: 15, baseDone: 47 },
+    { bom: "B3", mo: "MO-C", item: "TC", origISO: "", newISO: "2026-07-25", qty: 20, baseDone: 47 },
+  ];
+
+  it("each part becomes its own dated tranche; the rest stays in the pool", () => {
+    const out = applyWorklistDateOverrides({
+      dueNow: [], overdue: [], undated: [line], overrides: parts, day, lead,
+    });
+    expect(out.postponed).toHaveLength(2); // both cut-due dates are still ahead
+    expect(out.postponed[0]).toMatchObject({ deliveryISO: "2026-07-20", qty: 15, remaining: 15, overrideOrigISO: "" });
+    expect(out.postponed[1]).toMatchObject({ deliveryISO: "2026-07-25", qty: 20, remaining: 20 });
+    expect(out.undated).toHaveLength(1);
+    expect(out.undated[0].available).toBe(18); // 53 − 15 − 20
+  });
+
+  it("output recorded AFTER scheduling consumes the earliest part first", () => {
+    const out = applyWorklistDateOverrides({
+      dueNow: [], overdue: [],
+      undated: [{ ...line, done: 52, available: 48 }], // +5 cut since scheduling
+      overrides: parts, day, lead,
+    });
+    expect(out.postponed[0].remaining).toBe(10); // 15 − 5
+    expect(out.postponed[1].remaining).toBe(20); // untouched
+    expect(out.undated[0].available).toBe(18); // the unscheduled pool is unchanged
+  });
+
+  it("finished parts disappear; heavy output starts eating the next part", () => {
+    const out = applyWorklistDateOverrides({
+      dueNow: [], overdue: [],
+      undated: [{ ...line, done: 70, available: 30 }], // +23 since scheduling
+      overrides: parts, day, lead,
+    });
+    expect(out.postponed).toHaveLength(1); // the 15-part is fully consumed
+    expect(out.postponed[0]).toMatchObject({ deliveryISO: "2026-07-25", remaining: 12 }); // 20 − 8
+    expect(out.undated[0].available).toBe(18);
+  });
+
+  it("reverting one part (override removed) returns ONLY its qty to the pool", () => {
+    const out = applyWorklistDateOverrides({
+      dueNow: [], overdue: [], undated: [line], overrides: [parts[1]], day, lead,
+    });
+    expect(out.postponed).toHaveLength(1);
+    expect(out.postponed[0].deliveryISO).toBe("2026-07-25");
+    expect(out.undated[0].available).toBe(33); // 53 − 20
+  });
+});

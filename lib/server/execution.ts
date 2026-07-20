@@ -166,7 +166,7 @@ export async function getCutSheet(): Promise<CutSheet> {
     dueNow: dueCapped,
     overdue: overdueCapped,
     undated: undatedAll,
-    overrides: overrideRows.map((o) => ({ bom: o.bom, mo: o.mo, item: o.item, origISO: o.origISO, newISO: toISODate(o.newDate) })),
+    overrides: overrideRows.map((o) => ({ bom: o.bom, mo: o.mo, item: o.item, origISO: o.origISO, newISO: toISODate(o.newDate), qty: o.qty, baseDone: o.baseDone })),
     day: today,
     lead: settings.leadCut,
   });

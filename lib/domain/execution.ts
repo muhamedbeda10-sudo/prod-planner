@@ -221,21 +221,28 @@ export function capTranchesToOrder(sched: CutSchedule): CutSchedule {
   return { dueNow: rebuild(sched.dueNow), overdue: rebuild(sched.overdue) };
 }
 
-/** One admin date override, as stored: origISO "" = the line was date-less. */
+/** One admin date override, as stored: origISO "" = the line was date-less.
+ *  qty/baseDone matter only for "" rows: qty = pieces scheduled on that date
+ *  (null = the whole pool), baseDone = dept output at scheduling time. */
 export interface WorklistDateOverrideRow {
   bom: string;
   mo: string;
   item: string;
   origISO: string;
   newISO: string;
+  qty?: number | null;
+  baseDone?: number;
 }
 
 /**
  * Apply the admin's date overrides on top of the computed worklist:
  *  - a DATED row whose (line, original date) matches an override is re-dated
  *    and re-bucketed (a future date moves it to `postponed`);
- *  - a DATE-LESS row (remarked/unscheduled backlog) matching an origISO=""
- *    override becomes a dated tranche of its open pool;
+ *  - a DATE-LESS row (remarked/unscheduled/pushed) may be scheduled in PARTS:
+ *    each origISO="" override becomes a dated tranche of its qty, allocated
+ *    earliest-date-first; output recorded since scheduling (done − baseDone)
+ *    consumes those tranches earliest-first, and whatever pool is left stays
+ *    date-less. A qty-less override takes the whole pool (legacy behaviour);
  *  - every touched row carries overrideOrigISO so the UI can offer "revert".
  * Overrides that match nothing (stale after a re-import) are simply ignored.
  */
@@ -248,7 +255,19 @@ export function applyWorklistDateOverrides(opts: {
   lead: number;
 }): { dueNow: CutTranche[]; overdue: CutTranche[]; postponed: CutTranche[]; undated: CascadeRow[] } {
   const dt = dayNumber(opts.day);
-  const ovr = new Map(opts.overrides.map((o) => [`${o.bom}|${o.mo}|${o.item}|${o.origISO}`, o.newISO]));
+  // dated-row moves: one override per (line, original date) — last one wins
+  const moveOvr = new Map(
+    opts.overrides.filter((o) => o.origISO !== "").map((o) => [`${o.bom}|${o.mo}|${o.item}|${o.origISO}`, o.newISO])
+  );
+  // date-less scheduling: SEVERAL per line, applied in date order
+  const partOvr = new Map<string, WorklistDateOverrideRow[]>();
+  for (const o of opts.overrides) {
+    if (o.origISO !== "") continue;
+    const key = `${o.bom}|${o.mo}|${o.item}`;
+    if (!partOvr.has(key)) partOvr.set(key, []);
+    partOvr.get(key)!.push(o);
+  }
+  for (const list of partOvr.values()) list.sort((a, b) => (a.newISO < b.newISO ? -1 : 1));
 
   const dueNow: CutTranche[] = [];
   const overdue: CutTranche[] = [];
@@ -269,35 +288,52 @@ export function applyWorklistDateOverrides(opts: {
   for (const r of [...opts.overdue, ...opts.dueNow]) {
     // an already-overridden row keeps its ORIGINAL date as the override key
     const orig = r.overrideOrigISO ?? r.deliveryISO;
-    const newISO = ovr.get(`${r.bom}|${r.mo}|${r.item}|${orig}`);
+    const newISO = moveOvr.get(`${r.bom}|${r.mo}|${r.item}|${orig}`);
     place(newISO === undefined ? r : redate(r, newISO, orig));
   }
 
   const undated: CascadeRow[] = [];
   for (const r of opts.undated) {
-    const newISO = ovr.get(`${r.bom}|${r.mo}|${r.item}|`);
-    if (newISO === undefined || r.available <= 0) {
+    const tranches = partOvr.get(`${r.bom}|${r.mo}|${r.item}`);
+    if (!tranches || r.available <= 0) {
       undated.push(r);
       continue;
     }
-    place(
-      redate(
-        {
-          bom: r.bom,
-          mo: r.mo,
-          description: r.description,
-          item: r.item,
-          deliveryISO: newISO,
-          cutDueISO: newISO, // overwritten by redate
-          qty: r.available,
-          remaining: r.available,
-          deptDone: r.done,
-          orderQty: r.target,
-        },
-        newISO,
-        "" // was date-less — revert restores "no date"
-      )
-    );
+    // output recorded SINCE the first scheduling consumes tranches
+    // earliest-first (the same FIFO rule as the weekly promises)
+    const withQty = tranches.filter((t) => t.qty != null);
+    const base = withQty.length > 0 ? Math.min(...withQty.map((t) => t.baseDone ?? 0)) : 0;
+    let consumed = Math.max(0, r.done - base);
+    let poolLeft = r.available;
+    for (const t of tranches) {
+      const q = t.qty ?? poolLeft; // qty-less override = the whole remaining pool
+      // qty-less rows never consume: their pool is already done-adjusted
+      const used = t.qty == null ? 0 : Math.min(consumed, q);
+      consumed -= used;
+      const remaining = Math.min(q - used, poolLeft);
+      if (remaining <= 0) continue;
+      poolLeft -= remaining;
+      place(
+        redate(
+          {
+            bom: r.bom,
+            mo: r.mo,
+            description: r.description,
+            item: r.item,
+            deliveryISO: t.newISO,
+            cutDueISO: t.newISO, // overwritten by redate
+            qty: q,
+            remaining,
+            deptDone: r.done,
+            orderQty: r.target,
+          },
+          t.newISO,
+          "" // was date-less — revert restores the pool
+        )
+      );
+    }
+    // whatever wasn't scheduled stays in the date-less bucket
+    if (poolLeft > 0) undated.push({ ...r, available: poolLeft });
   }
 
   const cmp = (a: CutTranche, b: CutTranche) =>
