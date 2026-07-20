@@ -200,7 +200,14 @@ export function CascadeTable({
                     {r.mo}
                   </td>
                   <td className="p-2 font-bold whitespace-nowrap">{r.bom}</td>
-                  <td className="p-2 text-xs text-muted whitespace-nowrap">{r.description}</td>
+                  <td className="p-2 text-xs text-muted whitespace-nowrap">
+                    {r.description}
+                    {r.remark && (
+                      <div className="text-[11px] font-semibold text-warn-fg whitespace-normal max-w-64" title="Weekly plan remark — the reason this date-less line is on the worklist">
+                        📝 {r.remark}
+                      </div>
+                    )}
+                  </td>
                   <td className="p-2 text-center font-bold">{r.item}</td>
                   <td className="p-2 text-center">
                     <Frac num={r.done} den={r.target} />

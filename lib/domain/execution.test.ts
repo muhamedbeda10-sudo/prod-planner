@@ -372,4 +372,45 @@ describe("computeCutTranches — due today / overdue-with-date / future hidden",
     expect(overdue).toHaveLength(0); // no longer overdue — it has a fresh date
     expect(dueNow).toHaveLength(0); // cut-due 14/07 is tomorrow
   });
+
+  it("a line scheduled in an OLD week stays on the worklist under its promised date", () => {
+    // plan 27 promised 08/07 — the current plan (28) never rescheduled the line
+    const scheds = [
+      { planNo: 27, bom: "OLD1", mo: "MO-Z", item: "TN", ovenDate: utcDate(2026, 7, 8), qty: 4 },
+      { planNo: 28, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 15), qty: 2 },
+    ];
+    const { dueNow, overdue } = computeCutTranches({ schedules: scheds, entries: [], day, lead });
+    expect(overdue).toHaveLength(1);
+    expect(overdue[0]).toMatchObject({ bom: "OLD1", mo: "MO-Z", deliveryISO: "2026-07-08", remaining: 4 });
+    expect(dueNow).toHaveLength(1); // the current week's own line is unaffected
+    expect(dueNow[0]).toMatchObject({ bom: "B1", deliveryISO: "2026-07-15" });
+  });
+
+  it("a NEWER plan's dates supersede the old promise for the same line", () => {
+    const scheds = [
+      { planNo: 27, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 8), qty: 10 }, // missed promise
+      { planNo: 28, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 15), qty: 6 }, // re-promised remainder
+    ];
+    const entries: ExecEntry[] = [
+      { dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 4, date: utcDate(2026, 7, 7) },
+    ];
+    const { dueNow, overdue } = computeCutTranches({ schedules: scheds, entries, day, lead });
+    expect(overdue).toHaveLength(0); // the missed 08/07 promise is superseded
+    // output credited to the old promise (≤10) does not consume the new tranche
+    expect(dueNow).toHaveLength(1);
+    expect(dueNow[0]).toMatchObject({ deliveryISO: "2026-07-15", remaining: 6 });
+  });
+
+  it("output beyond the superseded promise consumes the new tranches FIFO", () => {
+    const scheds = [
+      { planNo: 27, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 8), qty: 5 },
+      { planNo: 28, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 15), qty: 6 },
+    ];
+    const entries: ExecEntry[] = [
+      { dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 9, date: utcDate(2026, 7, 12) }, // 5 old + 4 new
+    ];
+    const { dueNow } = computeCutTranches({ schedules: scheds, entries, day, lead });
+    expect(dueNow).toHaveLength(1);
+    expect(dueNow[0].remaining).toBe(2); // 6 − (9 − 5 superseded)
+  });
 });

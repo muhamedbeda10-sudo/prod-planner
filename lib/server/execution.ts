@@ -22,20 +22,25 @@ export interface CutSheet {
   dueNow: CutTranche[]; // cut-due exactly today, delivery date shown
   overdue: CutTranche[]; // missed dates — backlog carrying the original delivery date
   cascade: CascadeRow[]; // undated backlog from the monthly registry
+  remarked: CascadeRow[]; // this week's REMARKED lines with no known date — shown date-less
 }
 
 /** The Cut screen: TODAY is computed by the app (no day picking).
- *  - Scheduled lines = the WEEKLY plan's delivery dates (oven − leadCut ≤ today).
+ *  - Scheduled lines come from EVERY weekly plan's delivery dates — a line
+ *    scheduled in ANY week stays here under its promised date until done or
+ *    rescheduled (the newest plan's dates supersede older ones per line).
  *  - Progress ("done") is GLOBAL per MO — setup balances and any week's logs count.
- *  - The cascade = MASTER-ORDER backlog: planQty − max(scheduled, globally cut). */
+ *  - Remarked lines of the CURRENT weekly plan with no date anywhere appear in
+ *    the date-less bucket; unscheduled + unremarked lines stay off this screen. */
 export async function getCutSheet(): Promise<CutSheet> {
   const today = new Date();
   const settings = await getSettings();
   const planNo = findPlanForDate(await getPlanWindows(), today, settings.leadCut);
 
-  const [allSchedules, masters, entries, weekOrders] = await Promise.all([
-    prisma.planSchedule.findMany({ orderBy: { id: "asc" } }), // ALL plans — old promises feed the cascade dates
+  const [allSchedules, masters, closedMos, entries, weekOrders] = await Promise.all([
+    prisma.planSchedule.findMany({ orderBy: { id: "asc" } }), // ALL plans — every week's promises feed the worklist
     prisma.masterOrder.findMany({ where: { status: "open" }, orderBy: { id: "asc" } }), // closed orders leave the daily screens
+    prisma.masterOrder.findMany({ where: { status: "closed" }, select: { mo: true } }),
     prisma.handoverEntry.findMany(), // ALL entries — progress is global
     planNo === null
       ? Promise.resolve([])
@@ -54,12 +59,18 @@ export async function getCutSheet(): Promise<CutSheet> {
       ? []
       : computeExecutionRows({ schedules: schedIn, entries: entryIn, day: today, lead: settings.leadCut, dept: "Cut" });
 
-  // date-stamped view: due today vs overdue-with-its-date (new weekly imports
-  // rebuild these buckets from the fresh schedule automatically)
-  const { dueNow: dueRaw, overdue: overdueRaw } =
-    planNo === null
-      ? { dueNow: [], overdue: [] }
-      : computeCutTranches({ schedules: schedIn, entries: entryIn, day: today, lead: settings.leadCut });
+  // date-stamped view over EVERY plan: due today vs overdue-with-its-date.
+  // Closed orders and N/A components never reach the worklist; a weekly
+  // re-import supersedes the line's old dates automatically.
+  const closed = new Set(closedMos.map((o) => o.mo));
+  const excludedOf = new Map(masters.map((m) => [m.mo, new Set((m.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean))]));
+  const trancheSched = allSchedIn.filter((s) => !closed.has(s.mo) && !excludedOf.get(s.mo)?.has(s.item));
+  const { dueNow: dueRaw, overdue: overdueRaw } = computeCutTranches({
+    schedules: trancheSched,
+    entries: entryIn,
+    day: today,
+    lead: settings.leadCut,
+  });
 
   // enrich tranche rows with whole-order context: dept done / order qty (the
   // "finished of total" fraction shown next to the day's plan)
@@ -106,7 +117,20 @@ export async function getCutSheet(): Promise<CutSheet> {
     dept: "Cut",
     allSchedules: allSchedIn,
   });
-  return { planNo, today, scheduled, dueNow, overdue, cascade };
+
+  // date-less bucket: lines the CURRENT weekly plan flags with a remark but no
+  // schedule — and no plan (this week or earlier) holds an open date for them.
+  // Lines with a known open date already sit in the dated tables above.
+  const remarkOf = new Map<string, string>(); // mo -> first non-empty remark this week
+  for (const o of weekOrders) {
+    const r = (o.remark ?? "").trim();
+    if (r && !remarkOf.has(o.mo)) remarkOf.set(o.mo, r);
+  }
+  const remarked = cascade
+    .filter((r) => r.deliveryISO === null && remarkOf.has(r.mo))
+    .map((r) => ({ ...r, remark: remarkOf.get(r.mo) }));
+
+  return { planNo, today, scheduled, dueNow, overdue, cascade, remarked };
 }
 
 export interface ExecutionResult {
