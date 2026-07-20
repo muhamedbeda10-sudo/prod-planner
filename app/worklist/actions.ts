@@ -182,6 +182,67 @@ export async function clearWorklistDate(formData: FormData): Promise<RecordResul
   }
 }
 
+const ALL_WORKLIST_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/tracker", "/"];
+
+/** ADMIN ONLY — remove a line from a dept's worklist view. Plans, logs and the
+ *  registry are untouched; the hidden line can be restored from the same page. */
+export async function hideWorklistLine(formData: FormData): Promise<RecordResult> {
+  try {
+    const guard = await requireAdmin();
+    if (guard.error) return { ok: false, error: guard.error };
+    const dept = String(formData.get("dept") ?? "");
+    const bom = String(formData.get("bom") ?? "").trim();
+    const mo = String(formData.get("mo") ?? "").trim(); // "" for BOM-level queue lines
+    const item = String(formData.get("item") ?? "").trim().toUpperCase();
+    if (!isDept(dept)) return { ok: false, error: "Invalid department." };
+    if (!bom || !isItem(item)) return { ok: false, error: "Invalid line." };
+    await prisma.worklistLineHide.upsert({
+      where: { dept_bom_mo_item: { dept, bom, mo, item } },
+      create: { dept, bom, mo, item, createdBy: guard.user?.name ?? null },
+      update: {},
+    });
+    for (const p of ALL_WORKLIST_PATHS) revalidatePath(p);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** ADMIN ONLY — bring a hidden line back to the dept's worklist. */
+export async function unhideWorklistLine(formData: FormData): Promise<RecordResult> {
+  try {
+    const guard = await requireAdmin();
+    if (guard.error) return { ok: false, error: guard.error };
+    const dept = String(formData.get("dept") ?? "");
+    const bom = String(formData.get("bom") ?? "").trim();
+    const mo = String(formData.get("mo") ?? "").trim();
+    const item = String(formData.get("item") ?? "").trim().toUpperCase();
+    if (!isDept(dept) || !bom || !isItem(item)) return { ok: false, error: "Invalid line." };
+    await prisma.worklistLineHide.deleteMany({ where: { dept, bom, mo, item } });
+    for (const p of ALL_WORKLIST_PATHS) revalidatePath(p);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** ADMIN ONLY — take a tracker-pushed line off a dept's worklist. */
+export async function removeWorklistPush(formData: FormData): Promise<RecordResult> {
+  try {
+    const guard = await requireAdmin();
+    if (guard.error) return { ok: false, error: guard.error };
+    const dept = String(formData.get("dept") ?? "");
+    const mo = String(formData.get("mo") ?? "").trim();
+    const item = String(formData.get("item") ?? "").trim().toUpperCase();
+    if (!isDept(dept) || !mo || !isItem(item)) return { ok: false, error: "Invalid line." };
+    await prisma.worklistPush.deleteMany({ where: { dept, mo, item } });
+    for (const p of ALL_WORKLIST_PATHS) revalidatePath(p);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
 const RETURN_UPSTREAM: Record<string, string> = { Welding: "Cut", Painting: "Welding" };
 
 /** Send a piece BACK upstream: a "finished" piece turned out incomplete.

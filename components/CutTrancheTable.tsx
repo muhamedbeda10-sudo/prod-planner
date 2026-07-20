@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { CutTranche } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
-import { recordOutput, setWorklistDate, clearWorklistDate } from "@/app/worklist/actions";
+import { recordOutput, setWorklistDate, clearWorklistDate, hideWorklistLine } from "@/app/worklist/actions";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 import { Frac } from "@/components/Frac";
@@ -63,6 +63,21 @@ export function CutTrancheTable({
       } else {
         setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
       }
+    });
+  }
+
+  // admin: remove this line from the worklist (restorable from the page footer)
+  function hideLine(r: CutTranche) {
+    if (!confirm(`Remove ${r.mo} · ${r.item} from this worklist? Plans and logs stay untouched — you can restore it from "Hidden lines" at the bottom of the page.`)) return;
+    const fd = new FormData();
+    fd.set("dept", "Cut");
+    fd.set("bom", r.bom);
+    fd.set("mo", r.mo);
+    fd.set("item", r.item);
+    startTransition(async () => {
+      const res = await hideWorklistLine(fd);
+      if (res.ok) router.refresh();
+      else setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
     });
   }
 
@@ -206,6 +221,17 @@ export function CutTrancheTable({
                   title={r.overrideOrigISO ? `Back to the original date (${ddmm(r.overrideOrigISO)})` : "Back to date-less (this line had no date)"}
                 >
                   ↩
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => hideLine(r)}
+                  disabled={pending}
+                  className="text-muted text-xs px-1 hover:text-bad-fg align-middle"
+                  title="Remove this line from the worklist (admin) — restorable from the bottom of the page"
+                >
+                  🗑
                 </button>
               )}
             </>

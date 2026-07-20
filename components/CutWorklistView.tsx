@@ -7,8 +7,11 @@ import { CascadeTable } from "@/components/CascadeTable";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
+import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
+import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import type { ReturnRowDTO } from "@/lib/server/returns";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
+import type { PriorityLineDTO, HiddenLineDTO } from "@/lib/server/worklistExtras";
 import { ITEMS, DEFAULTS } from "@/lib/domain/constants";
 
 /** The fabrication page, top to bottom: DATED work (due today + overdue from
@@ -21,6 +24,9 @@ export function CutWorklistView({
   postponed = [],
   remarked = [],
   unscheduled = [],
+  pushed = [],
+  priority = [],
+  hidden = [],
   day,
   planNo,
   returns = [],
@@ -34,7 +40,10 @@ export function CutWorklistView({
   overdue: CutTranche[];
   postponed?: CutTranche[]; // admin re-dated to the future — kept visible for revert
   remarked?: CascadeRow[]; // this week's remarked lines with no known date
-  unscheduled?: CascadeRow[]; // open backlog with no date and no remark
+  unscheduled?: CascadeRow[]; // open orders with no date and no remark
+  pushed?: CascadeRow[]; // sent down from the Plan Tracker — schedule these
+  priority?: PriorityLineDTO[]; // ⭐ flagged orders — dedicated table on top
+  hidden?: HiddenLineDTO[]; // admin-hidden lines (restore panel)
   day: string;
   planNo: number | null;
   returns?: ReturnRowDTO[];
@@ -58,14 +67,16 @@ export function CutWorklistView({
   const postponedF = useMemo(() => postponed.filter(match), [postponed, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
   const remarkedF = useMemo(() => remarked.filter(match), [remarked, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
   const unscheduledF = useMemo(() => unscheduled.filter(match), [unscheduled, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pushedF = useMemo(() => pushed.filter(match), [pushed, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const total = dueNow.length + overdue.length + postponed.length + remarked.length + unscheduled.length;
-  const shown = dueF.length + overdueF.length + postponedF.length + remarkedF.length + unscheduledF.length;
+  const total = dueNow.length + overdue.length + postponed.length + remarked.length + unscheduled.length + pushed.length;
+  const shown = dueF.length + overdueF.length + postponedF.length + remarkedF.length + unscheduledF.length + pushedF.length;
   const totalDue = dueF.reduce((s, r) => s + r.remaining, 0);
   const totalOverdue = overdueF.reduce((s, r) => s + r.remaining, 0);
   const totalPostponed = postponedF.reduce((s, r) => s + r.remaining, 0);
   const totalRemarked = remarkedF.reduce((s, r) => s + r.available, 0);
   const totalUnscheduled = unscheduledF.reduce((s, r) => s + r.available, 0);
+  const totalPushed = pushedF.reduce((s, r) => s + r.available, 0);
 
   // per-item workload — the WHOLE dept load (unfiltered): what must still be cut
   const perItem = ITEMS.map((it) => {
@@ -99,6 +110,9 @@ export function CutWorklistView({
         </div>
         <PrintButton />
       </FilterBar>
+
+      {/* ⭐ the admin's priority orders — a focus list above everything */}
+      <PriorityOrdersTable rows={priority} deptWord="cut" />
 
       {/* 0 — pieces sent back by Welding: fix first, they re-enter the flow */}
       <ReturnsTable rows={returns} dept="Cut" canEdit={canEdit} />
@@ -135,6 +149,17 @@ export function CutWorklistView({
         </section>
       )}
 
+      {/* 3.5 — orders the admin sent DOWN from the Plan Tracker with a chosen
+          quantity: waiting to be scheduled here (📅✎ gives them a date) */}
+      {pushed.length > 0 && (
+        <section className="mt-8">
+          <h2>
+            📥 Sent from the Plan Tracker — to be scheduled ({totalPushed} pcs)
+          </h2>
+          <CascadeTable rows={pushedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
+        </section>
+      )}
+
       {/* 4 — this week's REMARKED lines with no known date: the weekly plan
           flags them (remark column) without scheduling, and no earlier plan
           holds an open date — they work date-less until a plan dates them */}
@@ -155,6 +180,9 @@ export function CutWorklistView({
         </h2>
         <CascadeTable rows={unscheduledF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
       </section>
+
+      {/* admin-hidden lines — collapsed restore panel */}
+      {isAdmin && <HiddenLinesPanel rows={hidden} />}
     </>
   );
 }

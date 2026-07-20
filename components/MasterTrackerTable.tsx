@@ -4,12 +4,12 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus, setExcludedItems, setOrderQty } from "@/app/orders/actions";
+import { setOrderStatus, setExcludedItems, setOrderQty, setOrderPriority, pushOrderToWorklist } from "@/app/orders/actions";
 import { recordTrackerTotal } from "@/app/worklist/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
-import { ITEMS, isPaintExempt, deptLabel, type Item } from "@/lib/domain/constants";
+import { ITEMS, DEPTS, isPaintExempt, deptLabel, type Item, type Dept } from "@/lib/domain/constants";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -22,10 +22,12 @@ function progressOf(r: MasterTrackerRow): Progress {
 export function MasterTrackerTable({
   rows,
   canEdit = false,
+  isAdmin = false,
   editableDepts = [],
 }: {
   rows: MasterTrackerRow[];
   canEdit?: boolean;
+  isAdmin?: boolean; // ⭐ priority flag + 📤 send-to-worklist are admin-only
   /** Depts this user may record output for — same permission as each dept's
    *  worklist. Their stage cells become editable (type the NEW total). */
   editableDepts?: string[];
@@ -114,6 +116,58 @@ export function MasterTrackerTable({
     }
     return [...map.entries()];
   }, [filtered]);
+
+  // ⭐ priority toggle — the order shows in the priority table on every worklist
+  function togglePriority(r: MasterTrackerRow) {
+    const fd = new FormData();
+    fd.set("mo", r.mo);
+    fd.set("priority", String(!r.priority));
+    startTransition(async () => {
+      const res = await setOrderPriority(fd);
+      if (res.ok) router.refresh();
+      else alert(res.error ?? "Failed");
+    });
+  }
+
+  // 📤 send-to-worklist panel: one MO at a time, dept + qty per item
+  const [openPush, setOpenPush] = useState<string | null>(null);
+  const [pushDept, setPushDept] = useState<Dept>("Cut");
+  const [pushQty, setPushQty] = useState<Record<string, string>>({}); // item -> qty
+  const [pushErr, setPushErr] = useState("");
+
+  // what each dept still owes on an item — the push panel's ceiling
+  function remainingFor(r: MasterTrackerRow, it: Item, dept: Dept): number {
+    const c = r.items[it];
+    if (c.excluded) return 0;
+    if (dept === "Painting" && isPaintExempt(it)) return 0; // the core is never painted
+    const need = Math.max(0, r.required - c.osp);
+    const done = dept === "Cut" ? c.cut : dept === "Welding" ? c.weld : c.paint;
+    return Math.max(0, need - done);
+  }
+
+  function openPushPanel(r: MasterTrackerRow) {
+    setOpenPush(openPush === r.mo ? null : r.mo);
+    setPushDept("Cut");
+    setPushQty(Object.fromEntries(ITEMS.map((it) => [it, String(remainingFor(r, it, "Cut"))])));
+    setPushErr("");
+  }
+
+  function submitPush(r: MasterTrackerRow) {
+    const fd = new FormData();
+    fd.set("mo", r.mo);
+    fd.set("dept", pushDept);
+    for (const it of ITEMS) fd.set(`qty${it}`, pushQty[it] ?? "");
+    setPushErr("");
+    startTransition(async () => {
+      const res = await pushOrderToWorklist(fd);
+      if (res.ok) {
+        setOpenPush(null);
+        router.refresh();
+      } else {
+        setPushErr(res.error ?? "Failed");
+      }
+    });
+  }
 
   function changeStatus(mo: string, next: "open" | "closed") {
     if (next === "closed" && !confirm(`Close order ${mo}? It will drop out of the daily screens (you can reopen it any time).`)) return;
@@ -381,6 +435,7 @@ export function MasterTrackerTable({
                 <td className={`p-2 font-bold whitespace-nowrap text-xs ${inGroup ? "pl-6" : ""}`}>
                   {inGroup && <span className="text-muted mr-1">↳</span>}
                   <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline">{r.mo}</Link>
+                  {r.priority && <span className="ml-1" title="Priority order — shown on top of every dept worklist">⭐</span>}
                   {r.urgent && <span className="pill pill-bad ml-1">U</span>}
                   {ITEMS.filter((it) => r.items[it].osp > 0).map((it) => (
                     <span key={it} className="pill ml-1" style={{ background: "#ece3f7", color: "#6b45a8" }} title={`${it}: ${r.items[it].osp} pcs outsourced (OSP) — not made by our departments`}>
@@ -492,8 +547,82 @@ export function MasterTrackerTable({
                       ⚙
                     </button>
                   )}
+                  {isAdmin && r.status === "open" && (
+                    <>
+                      <button
+                        onClick={() => togglePriority(r)}
+                        disabled={pending}
+                        className={`text-xs px-1 ${r.priority ? "" : "grayscale opacity-50 hover:opacity-100"}`}
+                        title={r.priority ? "Remove the priority flag" : "Flag as PRIORITY — shows in a dedicated table on top of every dept worklist"}
+                      >
+                        ⭐
+                      </button>
+                      <button
+                        onClick={() => openPushPanel(r)}
+                        disabled={pending}
+                        className="text-muted text-xs px-1 hover:text-accent"
+                        title="Send this order down to a worklist — pick the dept, items and quantities"
+                      >
+                        📤
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
+              {openPush === r.mo && (
+                <tr className={inGroup ? "border-x-2 border-brand" : ""}>
+                  <td colSpan={20} className="p-3 bg-brand-light/30 border-y">
+                    <form
+                      onSubmit={(e) => { e.preventDefault(); submitPush(r); }}
+                      className="flex flex-wrap items-center gap-3 text-sm"
+                    >
+                      <span className="font-bold text-xs">📤 Send {r.mo} to:</span>
+                      <select
+                        value={pushDept}
+                        onChange={(e) => {
+                          const d = e.target.value as Dept;
+                          setPushDept(d);
+                          setPushQty(Object.fromEntries(ITEMS.map((it) => [it, String(remainingFor(r, it, d))])));
+                          setPushErr("");
+                        }}
+                        className="border rounded-md px-2 py-1 bg-surface text-sm font-semibold"
+                        disabled={pending}
+                      >
+                        {DEPTS.map((d) => (
+                          <option key={d} value={d}>{deptLabel(d)} worklist</option>
+                        ))}
+                      </select>
+                      {ITEMS.map((it) => {
+                        const max = remainingFor(r, it, pushDept);
+                        return (
+                          <label key={it} className={`inline-flex items-center gap-1 font-semibold ${max === 0 ? "opacity-40" : ""}`}>
+                            {it}
+                            <input
+                              type="number"
+                              min={0}
+                              max={max}
+                              value={pushQty[it] ?? ""}
+                              onChange={(e) => { setPushQty((s) => ({ ...s, [it]: e.target.value })); setPushErr(""); }}
+                              className="w-16 border rounded-md px-1 py-0.5 text-center tabnum bg-surface"
+                              disabled={pending || max === 0}
+                              title={max === 0 ? `${it}: nothing left for ${deptLabel(pushDept)}` : `${it}: up to ${max} pcs still open`}
+                            />
+                            <span className="text-[10px] text-muted tabnum">/{max}</span>
+                          </label>
+                        );
+                      })}
+                      <button type="submit" disabled={pending} className="rounded-md px-3 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50">
+                        Send
+                      </button>
+                      <button type="button" onClick={() => setOpenPush(null)} className="text-muted text-xs hover:underline">Cancel</button>
+                      {pushErr && <span className="text-xs text-bad-fg font-semibold w-full">{pushErr}</span>}
+                      <span className="text-[11px] text-muted w-full">
+                        Quantities are capped at what the department still owes on this order. The line lands date-less on the chosen worklist — schedule it there (📅✎). Sending again replaces the previous push; all-zero clears it.
+                      </span>
+                    </form>
+                  </td>
+                </tr>
+              )}
               {openConfig === r.mo && (
                 <tr className={inGroup ? "border-x-2 border-brand" : ""}>
                   <td colSpan={20} className="p-3 bg-brand-light/30 border-y">
