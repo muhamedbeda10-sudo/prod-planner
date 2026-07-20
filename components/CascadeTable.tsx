@@ -123,7 +123,7 @@ export function CascadeTable({
         <FilterBar count={filtered.length} total={rows.length} onReset={() => setQ("")} hasActive={!!q}>
           <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM…" />
           <span className="text-xs text-muted">
-            Open backlog pool (shown): <b className="text-foreground tabnum">{totalPool}</b> pcs
+            Open pool (shown): <b className="text-foreground tabnum">{totalPool}</b> pcs
           </span>
         </FilterBar>
       )}
@@ -146,7 +146,7 @@ export function CascadeTable({
           <tbody>
             {filtered.length === 0 && (
               <tr><td colSpan={9} className="p-4 text-center text-muted">
-                {rows.length === 0 ? "No unscheduled backlog — everything is on the schedule." : "No lines match the search."}
+                {rows.length === 0 ? "Nothing here — every open order is scheduled or remarked." : "No lines match the search."}
               </td></tr>
             )}
             {groups.map(([gk, members]) => {

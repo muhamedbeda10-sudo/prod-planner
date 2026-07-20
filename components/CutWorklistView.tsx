@@ -147,11 +147,11 @@ export function CutWorklistView({
         </section>
       )}
 
-      {/* 5 — everything else still open: no date in any plan, no remark this
-          week. Its own section so the scheduled work above stays the focus. */}
+      {/* 5 — every other OPEN ORDER: no date in any plan, no remark this week.
+          Its own section so the scheduled work above stays the focus. */}
       <section className="mt-8">
         <h2 className="text-muted">
-          Unscheduled backlog — no date, no remarks ({totalUnscheduled} pcs)
+          Open orders — not scheduled, no remarks ({totalUnscheduled} pcs)
         </h2>
         <CascadeTable rows={unscheduledF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
       </section>
