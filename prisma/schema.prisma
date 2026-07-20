@@ -153,6 +153,26 @@ model MasterOrder {
   @@index([status])
 }
 
+// Admin date override on a fabrication-worklist line (BOM × MO × item).
+// origISO is the line's ORIGINAL promised delivery date ("" = the line had no
+// date at all — a remarked/unscheduled row given a date by the admin).
+// Reverting = deleting the row: the plan's own date (or date-lessness)
+// resurfaces. If a weekly re-import changes the line's dates, the override no
+// longer matches its origISO and silently stops applying.
+model WorklistDateOverride {
+  id        Int      @id @default(autoincrement())
+  bom       String
+  mo        String
+  item      String // CF | TC | TN | CB
+  origISO   String   @default("") // original delivery ISO date; "" = was date-less
+  newDate   DateTime // admin-chosen delivery (oven) date
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([bom, mo, item, origISO])
+}
+
 // Factory calendar — non-working days besides Fridays (public holidays,
 // planned shutdowns). These days carry no production target.
 model Holiday {

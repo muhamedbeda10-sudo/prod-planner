@@ -142,7 +142,7 @@ export async function getSmartInsights(): Promise<SmartInsightsData> {
     todayISO,
     insights: sortInsights(insights),
     analyzedEntries: entries.length,
-    analyzedLines: weldQueue.length + paintQueue.length + cutSheet.overdue.length + cutSheet.cascade.length,
+    analyzedLines: weldQueue.length + paintQueue.length + cutSheet.overdue.length + cutSheet.remarked.length + cutSheet.unscheduled.length,
   };
 }
 

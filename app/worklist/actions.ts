@@ -10,7 +10,7 @@ import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { checkOutputChain } from "@/lib/server/outputGuard";
-import { requireDeptEdit } from "@/lib/server/auth";
+import { requireDeptEdit, requireAdmin } from "@/lib/server/auth";
 
 export interface RecordResult {
   ok: boolean;
@@ -131,6 +131,54 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     return { ok: true };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** ADMIN ONLY — re-date a fabrication-worklist line (or give a date to a
+ *  date-less one, origISO ""). Stored as an override on top of the plan; the
+ *  plan itself is never touched, so reverting restores the original state. */
+export async function setWorklistDate(formData: FormData): Promise<RecordResult> {
+  try {
+    const guard = await requireAdmin();
+    if (guard.error) return { ok: false, error: guard.error };
+    const bom = String(formData.get("bom") ?? "").trim();
+    const mo = String(formData.get("mo") ?? "").trim();
+    const item = String(formData.get("item") ?? "").trim().toUpperCase();
+    const origISO = String(formData.get("origISO") ?? "").trim(); // "" = the line had no date
+    const newDate = parseISODate(String(formData.get("date") ?? ""));
+    if (!bom || !mo) return { ok: false, error: "Missing MO / BOM." };
+    if (!isItem(item)) return { ok: false, error: "Invalid component." };
+    if (origISO && !parseISODate(origISO)) return { ok: false, error: "Invalid original date." };
+    if (!newDate) return { ok: false, error: "Pick the new date." };
+
+    await prisma.worklistDateOverride.upsert({
+      where: { bom_mo_item_origISO: { bom, mo, item, origISO } },
+      create: { bom, mo, item, origISO, newDate, createdBy: guard.user?.name ?? null },
+      update: { newDate, createdBy: guard.user?.name ?? null },
+    });
+    revalidatePath("/worklist/cut");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** ADMIN ONLY — revert a re-dated line: back to its original plan date, or
+ *  back to date-less if it never had one (origISO ""). */
+export async function clearWorklistDate(formData: FormData): Promise<RecordResult> {
+  try {
+    const guard = await requireAdmin();
+    if (guard.error) return { ok: false, error: guard.error };
+    const bom = String(formData.get("bom") ?? "").trim();
+    const mo = String(formData.get("mo") ?? "").trim();
+    const item = String(formData.get("item") ?? "").trim().toUpperCase();
+    const origISO = String(formData.get("origISO") ?? "").trim();
+    if (!bom || !mo || !isItem(item)) return { ok: false, error: "Invalid line." };
+    await prisma.worklistDateOverride.deleteMany({ where: { bom, mo, item, origISO } });
+    revalidatePath("/worklist/cut");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 

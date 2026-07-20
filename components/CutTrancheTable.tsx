@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { CutTranche } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
-import { recordOutput } from "@/app/worklist/actions";
+import { recordOutput, setWorklistDate, clearWorklistDate } from "@/app/worklist/actions";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 import { Frac } from "@/components/Frac";
@@ -24,6 +24,7 @@ export function CutTrancheTable({
   notes = {},
   capacity = DEFAULTS.capacityPerItem,
   canEdit = false,
+  isAdmin = false,
 }: {
   rows: CutTranche[];
   day: string;
@@ -33,6 +34,7 @@ export function CutTrancheTable({
   notes?: Record<string, QueueNoteDTO[]>; // keyed by bom|mo|item
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
   canEdit?: boolean; // user holds cut.edit — otherwise view-only
+  isAdmin?: boolean; // admins may re-date a line / revert their override
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -41,6 +43,43 @@ export function CutTrancheTable({
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
   const [openNotes, setOpenNotes] = useState<string | null>(null); // per tranche row key
+  const [dateEdit, setDateEdit] = useState<string | null>(null); // row key being re-dated (admin)
+  const [dateVal, setDateVal] = useState("");
+
+  // admin: move this row's promise to a new delivery date (override on top of
+  // the plan — the plan itself is untouched, so revert always works)
+  function saveDate(r: CutTranche) {
+    const fd = new FormData();
+    fd.set("bom", r.bom);
+    fd.set("mo", r.mo);
+    fd.set("item", r.item);
+    fd.set("origISO", r.overrideOrigISO ?? r.deliveryISO); // keep the TRUE original as the key
+    fd.set("date", dateVal);
+    startTransition(async () => {
+      const res = await setWorklistDate(fd);
+      if (res.ok) {
+        setDateEdit(null);
+        router.refresh();
+      } else {
+        setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
+      }
+    });
+  }
+
+  // admin: back to the original plan date — or back to date-less ("" origin)
+  function revertDate(r: CutTranche) {
+    if (r.overrideOrigISO === undefined) return;
+    const fd = new FormData();
+    fd.set("bom", r.bom);
+    fd.set("mo", r.mo);
+    fd.set("item", r.item);
+    fd.set("origISO", r.overrideOrigISO);
+    startTransition(async () => {
+      const res = await clearWorklistDate(fd);
+      if (res.ok) router.refresh();
+      else setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
+    });
+  }
 
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
@@ -117,9 +156,60 @@ export function CutTrancheTable({
       <Fragment key={k}>
       <tr className={frame}>
         <td className="p-2 whitespace-nowrap">
-          <span className={`pill ${variant === "overdue" ? "pill-bad" : "pill-ok"}`}>
-            📅 {ddmm(r.deliveryISO)}
-          </span>
+          {dateEdit === k ? (
+            <span className="inline-flex items-center gap-1">
+              <input
+                type="date"
+                value={dateVal}
+                autoFocus
+                onChange={(e) => setDateVal(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveDate(r);
+                  if (e.key === "Escape") setDateEdit(null);
+                }}
+                className="border rounded-md px-1 py-0.5 text-xs bg-surface"
+                disabled={pending}
+              />
+              <button type="button" onClick={() => saveDate(r)} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save the new delivery date">✓</button>
+              <button type="button" onClick={() => setDateEdit(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">✕</button>
+            </span>
+          ) : (
+            <>
+              <span className={`pill ${variant === "overdue" ? "pill-bad" : "pill-ok"}`}>
+                📅 {ddmm(r.deliveryISO)}
+              </span>
+              {r.overrideOrigISO !== undefined && (
+                <span
+                  className="pill pill-warn ml-1"
+                  title={r.overrideOrigISO ? `Re-dated by admin — original date ${ddmm(r.overrideOrigISO)}` : "Dated by admin — this line had no date"}
+                >
+                  ✎
+                </span>
+              )}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => { setDateEdit(k); setDateVal(r.deliveryISO); }}
+                  disabled={pending}
+                  className="text-muted text-xs px-1 hover:text-accent align-middle"
+                  title="Change this line's delivery date (admin)"
+                >
+                  📅✎
+                </button>
+              )}
+              {isAdmin && r.overrideOrigISO !== undefined && (
+                <button
+                  type="button"
+                  onClick={() => revertDate(r)}
+                  disabled={pending}
+                  className="text-muted text-xs px-1 hover:text-accent align-middle"
+                  title={r.overrideOrigISO ? `Back to the original date (${ddmm(r.overrideOrigISO)})` : "Back to date-less (this line had no date)"}
+                >
+                  ↩
+                </button>
+              )}
+            </>
+          )}
           {atRisk && (
             <span
               className="pill pill-bad ml-1"

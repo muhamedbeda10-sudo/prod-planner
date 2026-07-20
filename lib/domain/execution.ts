@@ -9,7 +9,7 @@
 //     (the same idea as the VBA AllocateMultiMO — display attribution only, the
 //     raw entries are never modified).
 
-import { dayNumber, dateFromDayNumber, toISODate } from "./dates";
+import { dayNumber, dateFromDayNumber, toISODate, parseISODate } from "./dates";
 import { isPaintExempt } from "./constants";
 
 export interface ExecScheduleRow {
@@ -99,6 +99,9 @@ export interface CutTranche {
   deptDone?: number | null; // dept output on the WHOLE order (enriched by the server layer)
   orderQty?: number | null; // whole order qty (planQty − OSP) — enriched by the server layer
   remaining: number; // qty − globally-done output allocated FIFO (earliest first)
+  /** Present = an admin re-dated this row. Holds the ORIGINAL delivery ISO
+   *  ("" = the line was date-less) — reverting restores exactly that. */
+  overrideOrigISO?: string;
 }
 
 export interface CutSchedule {
@@ -182,6 +185,129 @@ export function computeCutTranches(opts: {
   dueNow.sort(cmp);
   overdue.sort(cmp);
   return { dueNow, overdue };
+}
+
+/**
+ * SILENT CAP: a weekly promise can exceed the order's real quantity (e.g. a
+ * shared BOM's total written on one MO row). The worklist must never ask for
+ * more than the order still needs — per line (BOM×MO×item), the shown
+ * remaining is capped at orderQty − deptDone (earliest promises keep their
+ * share first) and rows left with nothing are dropped without a trace.
+ * Lines with an unknown order (not in the registry) are left as promised.
+ */
+export function capTranchesToOrder(sched: CutSchedule): CutSchedule {
+  const all = [...sched.overdue, ...sched.dueNow];
+  const byLine = new Map<string, CutTranche[]>();
+  for (const r of all) {
+    const key = `${r.bom}|${r.mo}|${r.item}`;
+    if (!byLine.has(key)) byLine.set(key, []);
+    byLine.get(key)!.push(r);
+  }
+  const capped = new Map<CutTranche, number>(); // row -> capped remaining
+  for (const rows of byLine.values()) {
+    if (rows[0].orderQty == null) {
+      for (const r of rows) capped.set(r, r.remaining);
+      continue;
+    }
+    let room = Math.max(0, rows[0].orderQty - (rows[0].deptDone ?? 0));
+    for (const r of [...rows].sort((a, b) => (a.deliveryISO < b.deliveryISO ? -1 : 1))) {
+      const take = Math.min(r.remaining, room);
+      room -= take;
+      capped.set(r, take);
+    }
+  }
+  const rebuild = (rows: CutTranche[]) =>
+    rows.map((r) => ({ ...r, remaining: capped.get(r) ?? r.remaining })).filter((r) => r.remaining > 0);
+  return { dueNow: rebuild(sched.dueNow), overdue: rebuild(sched.overdue) };
+}
+
+/** One admin date override, as stored: origISO "" = the line was date-less. */
+export interface WorklistDateOverrideRow {
+  bom: string;
+  mo: string;
+  item: string;
+  origISO: string;
+  newISO: string;
+}
+
+/**
+ * Apply the admin's date overrides on top of the computed worklist:
+ *  - a DATED row whose (line, original date) matches an override is re-dated
+ *    and re-bucketed (a future date moves it to `postponed`);
+ *  - a DATE-LESS row (remarked/unscheduled backlog) matching an origISO=""
+ *    override becomes a dated tranche of its open pool;
+ *  - every touched row carries overrideOrigISO so the UI can offer "revert".
+ * Overrides that match nothing (stale after a re-import) are simply ignored.
+ */
+export function applyWorklistDateOverrides(opts: {
+  dueNow: CutTranche[];
+  overdue: CutTranche[];
+  undated: CascadeRow[]; // rows with deliveryISO null (remarked + unscheduled)
+  overrides: WorklistDateOverrideRow[];
+  day: Date;
+  lead: number;
+}): { dueNow: CutTranche[]; overdue: CutTranche[]; postponed: CutTranche[]; undated: CascadeRow[] } {
+  const dt = dayNumber(opts.day);
+  const ovr = new Map(opts.overrides.map((o) => [`${o.bom}|${o.mo}|${o.item}|${o.origISO}`, o.newISO]));
+
+  const dueNow: CutTranche[] = [];
+  const overdue: CutTranche[] = [];
+  const postponed: CutTranche[] = [];
+  const place = (row: CutTranche) => {
+    const cutDueD = dayNumber(parseISODate(row.deliveryISO)!) - opts.lead;
+    if (cutDueD > dt) postponed.push(row);
+    else if (cutDueD === dt) dueNow.push(row);
+    else overdue.push(row);
+  };
+  const redate = (row: CutTranche, newISO: string, origISO: string): CutTranche => ({
+    ...row,
+    deliveryISO: newISO,
+    cutDueISO: toISODate(dateFromDayNumber(dayNumber(parseISODate(newISO)!) - opts.lead)),
+    overrideOrigISO: origISO,
+  });
+
+  for (const r of [...opts.overdue, ...opts.dueNow]) {
+    // an already-overridden row keeps its ORIGINAL date as the override key
+    const orig = r.overrideOrigISO ?? r.deliveryISO;
+    const newISO = ovr.get(`${r.bom}|${r.mo}|${r.item}|${orig}`);
+    place(newISO === undefined ? r : redate(r, newISO, orig));
+  }
+
+  const undated: CascadeRow[] = [];
+  for (const r of opts.undated) {
+    const newISO = ovr.get(`${r.bom}|${r.mo}|${r.item}|`);
+    if (newISO === undefined || r.available <= 0) {
+      undated.push(r);
+      continue;
+    }
+    place(
+      redate(
+        {
+          bom: r.bom,
+          mo: r.mo,
+          description: r.description,
+          item: r.item,
+          deliveryISO: newISO,
+          cutDueISO: newISO, // overwritten by redate
+          qty: r.available,
+          remaining: r.available,
+          deptDone: r.done,
+          orderQty: r.target,
+        },
+        newISO,
+        "" // was date-less — revert restores "no date"
+      )
+    );
+  }
+
+  const cmp = (a: CutTranche, b: CutTranche) =>
+    a.deliveryISO < b.deliveryISO ? -1 : a.deliveryISO > b.deliveryISO ? 1 :
+    a.bom < b.bom ? -1 : a.bom > b.bom ? 1 : a.mo < b.mo ? -1 : a.mo > b.mo ? 1 :
+    a.item < b.item ? -1 : a.item > b.item ? 1 : 0;
+  dueNow.sort(cmp);
+  overdue.sort(cmp);
+  postponed.sort(cmp);
+  return { dueNow, overdue, postponed, undated };
 }
 
 /** MOs the weekly plan carries but the planner left UNTOUCHED — present in the
