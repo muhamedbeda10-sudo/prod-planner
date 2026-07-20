@@ -88,6 +88,8 @@ const HEADERS: Record<string, string> = {
   RATING: "rating",
   SECITEM: "secItem",
   PLANQTY: "planQty",
+  QTY: "planQty", // Rev 5.0 monthly sheets shortened the header to "QTY"
+  KV: "rating", // and label the rating column just "KV"
   COLORRAL: "colorRal",
   REVREMARKS: "remarks",
   REMARKS: "remarks",

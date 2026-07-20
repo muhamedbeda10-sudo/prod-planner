@@ -66,8 +66,9 @@ export async function importMonthlyAction(formData: FormData): Promise<MonthlyIm
   if (!label) return { ok: false, error: "Pick the plan month." };
   try {
     const buffer = await file.arrayBuffer();
-    const res = await importMonthlyPlan(buffer, label);
-    if (res.ok) revalidatePath("/orders");
+    const preview = formData.get("preview") === "on"; // dry-run: report only, write nothing
+    const res = await importMonthlyPlan(buffer, label, preview);
+    if (res.ok && !preview) revalidatePath("/orders");
     return res;
   } catch (e) {
     return { ok: false, error: `Import failed: ${e instanceof Error ? e.message : String(e)}` };
