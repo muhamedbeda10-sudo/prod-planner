@@ -1,14 +1,16 @@
 import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
-import { parseMonthlyPlan } from "@/lib/domain/importMonthly";
+import { parseMonthlyPlan, diffRevisionRow, type RevisionChange } from "@/lib/domain/importMonthly";
 
-/** One field change detected on an existing MO in a plan REVISION. */
-export interface RevisionChange {
+export type { RevisionChange };
+
+/** A qty DECREASE found in a revision — never applied automatically. */
+export interface QtyReduction {
   mo: string;
-  field: string;
-  from: string;
-  to: string;
+  from: number;
+  to: number;
+  produced: number; // max quantity any dept already produced on this MO
 }
 
 export interface MonthlyImportResult {
@@ -21,8 +23,12 @@ export interface MonthlyImportResult {
   addedMos?: string[]; // first N new MOs for the confirmation view
   issues?: string[];
   preview?: boolean; // true = nothing was written, this is a dry-run report
-  /** Revision diff: every field change on existing MOs (applied unless preview). */
+  /** Revision diff: every field change on existing MOs (applied unless preview).
+   *  Qty changes appear here only when the qty GREW — decreases are never
+   *  applied automatically and are listed in qtyReductions instead. */
   changes?: RevisionChange[];
+  /** Qty decreases in the sheet — reported for MANUAL action on the tracker. */
+  qtyReductions?: QtyReduction[];
   /** Open MOs previously imported from this same month but ABSENT from this
    *  sheet — reported only, never auto-closed. */
   missingFromSheet?: string[];
@@ -82,43 +88,23 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
   // ---- REVISION handling: mid-month the planner re-sends the same plan with
   // edits. Existing MOs are diffed field by field; every difference is applied
   // (unless preview) and reported as old → new so nothing changes silently.
-  const S = (v: string | null | undefined) => (v ?? "").trim();
-  const FIELDS: { field: string; get: (r: (typeof rows)[number]) => string; cur: (o: (typeof registry)[number]) => string }[] = [
-    { field: "Qty", get: (r) => String(r.planQty), cur: (o) => String(o.planQty) },
-    { field: "Urgent", get: (r) => (r.urgent ? "Yes" : "No"), cur: (o) => (o.urgent ? "Yes" : "No") },
-    { field: "BOM", get: (r) => S(r.bom), cur: (o) => S(o.bom) },
-    { field: "SOI", get: (r) => S(r.soi), cur: (o) => S(o.soi) },
-    { field: "Customer", get: (r) => S(r.customer), cur: (o) => S(o.customer) },
-    { field: "FG Code", get: (r) => S(r.fgCode), cur: (o) => S(o.fgCode) },
-    { field: "KVA", get: (r) => S(r.kva), cur: (o) => S(o.kva) },
-    { field: "Rating", get: (r) => S(r.rating), cur: (o) => S(o.rating) },
-    { field: "SEC Item", get: (r) => S(r.secItem), cur: (o) => S(o.secItem) },
-    { field: "Color RAL", get: (r) => S(r.colorRal), cur: (o) => S(o.colorRal) },
-    { field: "Remarks", get: (r) => S(r.remarks), cur: (o) => S(o.remarks) },
-    { field: "OSP CF", get: (r) => String(r.osp.CF), cur: (o) => String(o.ospCF) },
-    { field: "OSP TC", get: (r) => String(r.osp.TC), cur: (o) => String(o.ospTC) },
-    { field: "OSP TN", get: (r) => String(r.osp.TN), cur: (o) => String(o.ospTN) },
-    { field: "OSP CB", get: (r) => String(r.osp.CB), cur: (o) => String(o.ospCB) },
-  ];
-
+  // EXCEPTION — plan qty: an INCREASE is applied like any other change, but a
+  // DECREASE is only reported; the planner confirms and lowers it manually
+  // (a lowered qty may cancel work the departments already produced).
   const changes: RevisionChange[] = [];
-  const changedRows = rows.filter((r) => {
+  const reductions: { mo: string; from: number; to: number }[] = [];
+  const changedRows: { r: (typeof rows)[number]; planQty: number }[] = [];
+  for (const r of rows) {
     const cur = byMo.get(r.mo);
-    if (!cur) return false;
-    let changed = false;
-    for (const f of FIELDS) {
-      const from = f.cur(cur);
-      const to = f.get(r);
-      if (from !== to) {
-        changes.push({ mo: r.mo, field: f.field, from: from || "—", to: to || "—" });
-        changed = true;
-      }
-    }
-    return changed;
-  });
+    if (!cur) continue;
+    const diff = diffRevisionRow(r, cur);
+    changes.push(...diff.changes);
+    if (diff.qtyReduction) reductions.push(diff.qtyReduction);
+    if (diff.changes.length > 0) changedRows.push({ r, planQty: diff.planQty });
+  }
   if (changedRows.length > 0 && !preview) {
     await prisma.$transaction(
-      changedRows.map((r) =>
+      changedRows.map(({ r, planQty }) =>
         prisma.masterOrder.update({
           where: { mo: r.mo },
           data: {
@@ -130,7 +116,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
             kva: r.kva,
             rating: r.rating,
             secItem: r.secItem,
-            planQty: r.planQty,
+            planQty, // never lowered here — decreases stay manual
             colorRal: r.colorRal,
             remarks: r.remarks,
             ospCF: r.osp.CF,
@@ -150,31 +136,21 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     .filter((o) => o.source === sourceLabel && o.status === "open" && !inSheet.has(o.mo))
     .map((o) => o.mo);
 
-  // the ONLY quantity check on import: does a revised order qty drop below
-  // what our departments already produced? (progress columns in the sheet are
-  // ignored entirely — the daily logs are the single source of truth)
-  const sums = await prisma.handoverEntry.groupBy({
-    by: ["mo", "dept", "item"],
-    where: { mo: { not: null } },
-    _sum: { qty: true },
-  });
-  const system = new Map<string, number>();
-  for (const s of sums) if (s.mo) system.set(`${s.mo}|${s.dept}|${s.item}`, s._sum.qty ?? 0);
-
-  // warn when a revision cuts an order below what we already produced
-  for (const r of changedRows) {
-    const cur = byMo.get(r.mo)!;
-    if (r.planQty < cur.planQty) {
-      let maxDone = 0;
-      for (const it of ["CF", "TC", "TN", "CB"] as const) {
-        for (const dept of ["Cut", "Welding", "Painting"]) {
-          maxDone = Math.max(maxDone, system.get(`${r.mo}|${dept}|${it}`) ?? 0);
-        }
-      }
-      if (maxDone > r.planQty) {
-        issues.push(`${r.mo}: revised qty ${r.planQty} is BELOW what is already produced (${maxDone}) — check with planning.`);
-      }
+  // qty decreases are never applied — enrich each with what the departments
+  // already produced so the planner can judge the manual change (progress
+  // columns in the sheet are ignored entirely — the daily logs are the truth)
+  let qtyReductions: QtyReduction[] = [];
+  if (reductions.length > 0) {
+    const sums = await prisma.handoverEntry.groupBy({
+      by: ["mo", "dept", "item"],
+      where: { mo: { in: reductions.map((d) => d.mo) } },
+      _sum: { qty: true },
+    });
+    const produced = new Map<string, number>();
+    for (const s of sums) {
+      if (s.mo) produced.set(s.mo, Math.max(produced.get(s.mo) ?? 0, s._sum.qty ?? 0));
     }
+    qtyReductions = reductions.map((d) => ({ ...d, produced: produced.get(d.mo) ?? 0 }));
   }
 
   return {
@@ -187,6 +163,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     issues: issues.filter((m) => !m.startsWith("Progress sections")),
     preview,
     changes: changes.slice(0, 300),
+    qtyReductions,
     missingFromSheet,
   };
 }

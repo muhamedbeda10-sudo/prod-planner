@@ -56,7 +56,7 @@ export function MonthlyImport() {
           {pending ? "Importing…" : "Import orders"}
         </button>
         <span className="text-xs text-muted">
-          New MOs are added; re-importing the SAME month applies the revision: changed quantities, urgency, BOMs… are updated and every change is listed below. Columns are read by header name — any sheet layout month to month.
+          New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. A LOWERED quantity is never applied automatically — it is flagged and you change it manually on the tracker. Columns are read by header name — any sheet layout month to month.
         </span>
       </form>
 
@@ -102,6 +102,41 @@ export function MonthlyImport() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* qty DECREASES — never applied automatically, the planner confirms
+              them on the tracker (Required cell) */}
+          {res.qtyReductions && res.qtyReductions.length > 0 && (
+            <div className="border border-warn-fg/40 rounded-lg p-3">
+              <div className="text-sm font-bold mb-1 text-warn-fg">
+                ⚠ Quantity DECREASED in the sheet ({res.qtyReductions.length}) — NOT applied
+              </div>
+              <table className="w-full text-xs border-collapse max-w-xl">
+                <thead>
+                  <tr className="text-left text-muted">
+                    <th className="p-1">MO</th>
+                    <th className="p-1 text-center">Registry qty</th>
+                    <th className="p-1 text-center">Sheet qty</th>
+                    <th className="p-1 text-center">Already produced</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {res.qtyReductions.map((d) => (
+                    <tr key={d.mo}>
+                      <td className="p-1 font-semibold whitespace-nowrap">{d.mo}</td>
+                      <td className="p-1 text-center tabnum">{d.from}</td>
+                      <td className="p-1 text-center tabnum font-bold text-warn-fg">{d.to}</td>
+                      <td className="p-1 text-center tabnum" style={{ color: d.produced > d.to ? "var(--bad-fg)" : "inherit" }}>
+                        {d.produced}{d.produced > d.to ? " — above the new qty!" : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="text-[11px] text-muted mt-1">
+                Confirm with planning, then change the Required quantity manually on the Plan Tracker (click the number).
               </div>
             </div>
           )}

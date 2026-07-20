@@ -67,6 +67,85 @@ export interface ParsedMonthly {
   headerRow: number; // 1-based, for diagnostics
 }
 
+// ---- revision diff (re-importing the same month with edits) ----
+
+/** One field change detected on an existing MO in a plan REVISION. */
+export interface RevisionChange {
+  mo: string;
+  field: string;
+  from: string;
+  to: string;
+}
+
+/** The registry fields a revision may touch (matches MasterOrder). */
+export interface ExistingOrderFields {
+  soi: string | null;
+  urgent: boolean;
+  customer: string | null;
+  fgCode: string | null;
+  bom: string;
+  kva: string | null;
+  rating: string | null;
+  secItem: string | null;
+  planQty: number;
+  colorRal: string | null;
+  remarks: string | null;
+  ospCF: number;
+  ospTC: number;
+  ospTN: number;
+  ospCB: number;
+}
+
+export interface RevisionRowDiff {
+  /** Changes that WILL be applied (includes a qty INCREASE, never a decrease). */
+  changes: RevisionChange[];
+  /** A qty DECREASE in the sheet — reported only, applied manually by the planner. */
+  qtyReduction: { mo: string; from: number; to: number } | null;
+  /** The plan qty to write: the sheet's when it grew, the registry's when it shrank. */
+  planQty: number;
+}
+
+const T = (v: string | null | undefined) => (v ?? "").trim();
+
+/**
+ * Diff one revision row against its existing registry order.
+ * Every difference is applied EXCEPT a plan-qty DECREASE: a raised qty is a
+ * correction we take automatically, but a lowered one may cancel work already
+ * produced — it is only reported, and the planner applies it manually.
+ */
+export function diffRevisionRow(row: MonthlyOrderRow, cur: ExistingOrderFields): RevisionRowDiff {
+  const changes: RevisionChange[] = [];
+  const push = (field: string, from: string, to: string) => {
+    if (from !== to) changes.push({ mo: row.mo, field, from: from || "—", to: to || "—" });
+  };
+
+  let qtyReduction: RevisionRowDiff["qtyReduction"] = null;
+  let planQty = cur.planQty;
+  if (row.planQty > cur.planQty) {
+    push("Qty", String(cur.planQty), String(row.planQty));
+    planQty = row.planQty;
+  } else if (row.planQty < cur.planQty) {
+    qtyReduction = { mo: row.mo, from: cur.planQty, to: row.planQty };
+  }
+
+  push("Urgent", cur.urgent ? "Yes" : "No", row.urgent ? "Yes" : "No");
+  push("BOM", T(cur.bom), T(row.bom));
+  push("SOI", T(cur.soi), T(row.soi));
+  push("Customer", T(cur.customer), T(row.customer));
+  push("FG Code", T(cur.fgCode), T(row.fgCode));
+  push("KVA", T(cur.kva), T(row.kva));
+  push("Rating", T(cur.rating), T(row.rating));
+  push("SEC Item", T(cur.secItem), T(row.secItem));
+  push("Color RAL", T(cur.colorRal), T(row.colorRal));
+  push("Remarks", T(cur.remarks), T(row.remarks));
+  push("OSP CF", String(cur.ospCF), String(row.osp.CF));
+  push("OSP TC", String(cur.ospTC), String(row.osp.TC));
+  push("OSP TN", String(cur.ospTN), String(row.osp.TN));
+  push("OSP CB", String(cur.ospCB), String(row.osp.CB));
+
+  return { changes, qtyReduction, planQty };
+}
+
 const S = (v: unknown): string => (v == null ? "" : String(v).replace(/\r?\n/g, " ").trim());
 const N = (v: unknown): number => {
   const n = typeof v === "number" ? v : parseFloat(S(v));
