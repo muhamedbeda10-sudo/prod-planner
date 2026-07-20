@@ -355,7 +355,8 @@ export function MasterTrackerTable({
   /** One stage cell on a single-MO row. For depts the user can edit, clicking
    *  the number opens an inline editor: type the NEW cumulative total, the
    *  difference is recorded in the Daily Log dated today (and flows to the
-   *  dept's worklist). Totals only go up — corrections live in Daily Logs. */
+   *  dept's worklist). A LOWER total records a NEGATIVE correction entry —
+   *  the chain guard (painted ≤ welded ≤ cut ≤ order) blocks contradictions. */
   function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, tint: string, borderR = false) {
     const k = `${r.mo}|${it}|${dept}`;
     const editing = editKey === k;
@@ -388,7 +389,7 @@ export function MasterTrackerTable({
             <span className="inline-flex items-center gap-1">
               <input
                 type="number"
-                min={value}
+                min={0}
                 value={editVal}
                 autoFocus
                 onChange={(e) => { setEditVal(e.target.value); setCellErr(""); }}
@@ -399,7 +400,7 @@ export function MasterTrackerTable({
                 className="w-16 border rounded-md px-1 py-0.5 text-center font-bold tabnum bg-surface"
                 disabled={pending}
               />
-              <button type="button" onClick={save} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save — the difference lands in today's Daily Log">
+              <button type="button" onClick={save} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save — the difference lands in today's Daily Log (a lower total records a negative correction)">
                 ✓
               </button>
               <button type="button" onClick={() => setEditKey(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">
@@ -407,6 +408,11 @@ export function MasterTrackerTable({
               </button>
             </span>
             {added > 0 && !cellErr && <span className="text-[10px] font-bold text-ok-fg whitespace-nowrap">+{added} today</span>}
+            {added < 0 && !cellErr && (
+              <span className="text-[10px] font-bold text-bad-fg whitespace-nowrap" title="Recorded as a negative correction entry in today's Daily Log">
+                −{-added} correction
+              </span>
+            )}
             {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{cellErr}</span>}
           </span>
         ) : editable ? (
@@ -415,7 +421,7 @@ export function MasterTrackerTable({
             onClick={() => { setEditKey(k); setEditVal(String(value)); setCellErr(""); }}
             disabled={pending}
             className="w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
-            title={`${deptLabel(dept)} · ${r.mo} · ${it} — click to record (type the new total)`}
+            title={`${deptLabel(dept)} · ${r.mo} · ${it} — click to record: type the NEW total (lower = negative correction in today's Daily Log)`}
           >
             {value}
           </button>

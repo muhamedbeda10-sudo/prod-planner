@@ -80,8 +80,10 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
 /** Plan-tracker inline edit: the user types the NEW cumulative total for one
  *  MO × item × their own dept — the DIFFERENCE is recorded as a daily-log
  *  entry dated today, so it shows up in Daily Logs and the dept's worklist
- *  immediately. Lets departments log work done AHEAD of the weekly plan.
- *  The total can only go UP from here; corrections happen in Daily Logs. */
+ *  immediately. A HIGHER total logs work done ahead of the plan; a LOWER
+ *  total records a NEGATIVE correction entry. Either way the physical chain
+ *  (painted ≤ welded ≤ cut ≤ order qty) is re-checked as a whole, so the
+ *  numbers can never end up contradicting each other. */
 export async function recordTrackerTotal(formData: FormData): Promise<RecordResult> {
   try {
     const dept = String(formData.get("dept") ?? "");
@@ -101,11 +103,10 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     const current = agg._sum.qty ?? 0;
     const delta = newTotal - current;
     if (delta === 0) return { ok: false, error: "Nothing changed — the total is already " + current + "." };
-    if (delta < 0) {
-      return { ok: false, error: `The total can only go UP here (currently ${current}). To correct a mistake, edit or delete the wrong entry in Daily Logs.` };
-    }
 
-    // physical chain guard: painted ≤ welded ≤ cut ≤ order qty
+    // physical chain guard, checked AFTER the proposed change in BOTH
+    // directions: an increase can't out-run upstream/order qty, and a
+    // decrease can't leave downstream output hanging (e.g. cut below welded)
     const chainError = await checkOutputChain({ dept, bom, mo, item, qty: delta });
     if (chainError) return { ok: false, error: chainError };
 
@@ -123,7 +124,12 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     });
 
     await prisma.handoverEntry.create({
-      data: { date: today, dept, bom, mo, item, qty: delta, planNo, source: "tracker", createdBy: guard.user?.name ?? null },
+      data: {
+        date: today, dept, bom, mo, item, qty: delta, planNo, source: "tracker",
+        // negative corrections say exactly what happened for the audit trail
+        note: delta < 0 ? `tracker correction: total ${current} → ${newTotal}` : null,
+        createdBy: guard.user?.name ?? null,
+      },
     });
     for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
       revalidatePath(p);
