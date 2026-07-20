@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import type { CutTranche, CascadeRow } from "@/lib/domain/execution";
+import type { CutTranche } from "@/lib/domain/execution";
 import { CutTrancheTable } from "@/components/CutTrancheTable";
-import { CascadeTable } from "@/components/CascadeTable";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
@@ -11,12 +10,12 @@ import type { ReturnRowDTO } from "@/lib/server/returns";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { ITEMS, DEFAULTS } from "@/lib/domain/constants";
 
-/** The cut page's three tables under ONE shared filter — typing once narrows
- *  due-today, overdue and the undated backlog together. */
+/** The fabrication page shows SCHEDULED work only (due today + overdue).
+ *  Unscheduled registry orders live in the Plan Tracker — a line appears here
+ *  the moment a weekly plan schedules it. */
 export function CutWorklistView({
   dueNow,
   overdue,
-  cascade,
   day,
   planNo,
   returns = [],
@@ -27,7 +26,6 @@ export function CutWorklistView({
 }: {
   dueNow: CutTranche[];
   overdue: CutTranche[];
-  cascade: CascadeRow[];
   day: string;
   planNo: number | null;
   returns?: ReturnRowDTO[];
@@ -47,20 +45,17 @@ export function CutWorklistView({
 
   const dueF = useMemo(() => dueNow.filter(match), [dueNow, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
   const overdueF = useMemo(() => overdue.filter(match), [overdue, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
-  const cascadeF = useMemo(() => cascade.filter(match), [cascade, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const total = dueNow.length + overdue.length + cascade.length;
-  const shown = dueF.length + overdueF.length + cascadeF.length;
+  const total = dueNow.length + overdue.length;
+  const shown = dueF.length + overdueF.length;
   const totalDue = dueF.reduce((s, r) => s + r.remaining, 0);
   const totalOverdue = overdueF.reduce((s, r) => s + r.remaining, 0);
-  const totalPool = cascadeF.reduce((s, r) => s + r.available, 0);
 
   // per-item workload — the WHOLE dept load (unfiltered): what must still be cut
   const perItem = ITEMS.map((it) => {
     const due = dueNow.filter((r) => r.item === it).reduce((s, r) => s + r.remaining, 0);
     const late = overdue.filter((r) => r.item === it).reduce((s, r) => s + r.remaining, 0);
-    const pool = cascade.filter((r) => r.item === it).reduce((s, r) => s + r.available, 0);
-    return { it, due, late, pool, total: due + late + pool };
+    return { it, due, late, total: due + late };
   });
 
   return (
@@ -69,7 +64,7 @@ export function CutWorklistView({
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / description — filters all tables…" />
         {/* what's left per component — tap a card to filter every table to it */}
         <div className="col-span-2 flex flex-wrap items-center gap-1.5">
-          {perItem.map(({ it, due, late, pool, total: t }) => (
+          {perItem.map(({ it, due, late, total: t }) => (
             <button
               key={it}
               type="button"
@@ -78,7 +73,7 @@ export function CutWorklistView({
               title={
                 item === it
                   ? "Click to clear the filter"
-                  : `${it}: due ${due} · late ${late} · pool ${pool} — show only ${it} in every table`
+                  : `${it}: due ${due} · late ${late} — show only ${it} in every table`
               }
             >
               <span className="text-muted">{it}</span>
@@ -113,11 +108,9 @@ export function CutWorklistView({
         <CutTrancheTable rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} />
       </section>
 
-      {/* 3 — undated backlog from the monthly registry */}
-      <section className="mt-8">
-        <h2>Backlog without dates — monthly registry ({totalPool} pcs)</h2>
-        <CascadeTable rows={cascadeF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} />
-      </section>
+      {/* unscheduled registry orders are NOT shown here — they live in the
+          Plan Tracker (where ahead-of-plan output can be recorded) and appear
+          on this screen the moment a weekly plan schedules them */}
     </>
   );
 }
