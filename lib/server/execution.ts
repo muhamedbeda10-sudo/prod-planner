@@ -25,7 +25,7 @@ export interface CutSheet {
   overdue: CutTranche[]; // missed dates — backlog carrying the original delivery date
   postponed: CutTranche[]; // admin re-dated to the FUTURE — visible so the date can be reverted
   remarked: CascadeRow[]; // this week's REMARKED lines with no known date — shown date-less
-  unscheduled: CascadeRow[]; // open backlog with NO date and NO remark — its own section
+  unscheduled: CascadeRow[]; // open orders with NO date and NO remark — its own section
 }
 
 /** The Cut screen: TODAY is computed by the app (no day picking).
@@ -65,9 +65,19 @@ export async function getCutSheet(): Promise<CutSheet> {
   // date-stamped view over EVERY plan: due today vs overdue-with-its-date.
   // Closed orders and N/A components never reach the worklist; a weekly
   // re-import supersedes the line's old dates automatically.
+  // OLD promises only survive for orders the MASTER REGISTRY knows — weekly
+  // plans from months never imported (e.g. before the app was adopted) must
+  // not resurrect unknown orders. The CURRENT week's plan always shows, even
+  // if its month's registry hasn't been imported yet.
   const closed = new Set(closedMos.map((o) => o.mo));
+  const openMos = new Set(masters.map((m) => m.mo));
   const excludedOf = new Map(masters.map((m) => [m.mo, new Set((m.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean))]));
-  const trancheSched = allSchedIn.filter((s) => !closed.has(s.mo) && !excludedOf.get(s.mo)?.has(s.item));
+  const trancheSched = allSchedIn.filter(
+    (s) =>
+      (openMos.has(s.mo) || s.planNo === planNo) &&
+      !closed.has(s.mo) &&
+      !excludedOf.get(s.mo)?.has(s.item)
+  );
   const { dueNow: dueRaw, overdue: overdueRaw } = computeCutTranches({
     schedules: trancheSched,
     entries: entryIn,
