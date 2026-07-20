@@ -11,15 +11,16 @@ import type { ReturnRowDTO } from "@/lib/server/returns";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { ITEMS, DEFAULTS } from "@/lib/domain/constants";
 
-/** The fabrication page shows work that is either DATED (scheduled in ANY
- *  weekly plan — due today + overdue under its promised date) or REMARKED in
- *  the current weekly plan with no known date (the date-less bucket). Lines
- *  the weekly plan carries unscheduled and unremarked live in the Plan Tracker
- *  and appear here the moment a plan schedules or remarks them. */
+/** The fabrication page, top to bottom: DATED work (due today + overdue from
+ *  ANY weekly plan, under its promised date), admin-postponed lines, this
+ *  week's REMARKED date-less lines, and the unscheduled+unremarked backlog in
+ *  its own section. Admins can re-date any line (and revert). */
 export function CutWorklistView({
   dueNow,
   overdue,
+  postponed = [],
   remarked = [],
+  unscheduled = [],
   day,
   planNo,
   returns = [],
@@ -27,10 +28,13 @@ export function CutWorklistView({
   capacity = DEFAULTS.capacityPerItem,
   leadDays = DEFAULTS.leadCut,
   canEdit = false,
+  isAdmin = false,
 }: {
   dueNow: CutTranche[];
   overdue: CutTranche[];
+  postponed?: CutTranche[]; // admin re-dated to the future — kept visible for revert
   remarked?: CascadeRow[]; // this week's remarked lines with no known date
+  unscheduled?: CascadeRow[]; // open backlog with no date and no remark
   day: string;
   planNo: number | null;
   returns?: ReturnRowDTO[];
@@ -38,6 +42,7 @@ export function CutWorklistView({
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
   leadDays?: number; // fabrication lead: the plan lands this many days ahead of delivery
   canEdit?: boolean; // user holds cut.edit — otherwise view-only
+  isAdmin?: boolean; // admins may re-date lines / revert their overrides
 }) {
   // search + item card filter survive navigating away and back
   const [q, setQ] = useSavedFilter("queue.Cut.q");
@@ -50,13 +55,17 @@ export function CutWorklistView({
 
   const dueF = useMemo(() => dueNow.filter(match), [dueNow, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
   const overdueF = useMemo(() => overdue.filter(match), [overdue, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
+  const postponedF = useMemo(() => postponed.filter(match), [postponed, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
   const remarkedF = useMemo(() => remarked.filter(match), [remarked, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
+  const unscheduledF = useMemo(() => unscheduled.filter(match), [unscheduled, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const total = dueNow.length + overdue.length + remarked.length;
-  const shown = dueF.length + overdueF.length + remarkedF.length;
+  const total = dueNow.length + overdue.length + postponed.length + remarked.length + unscheduled.length;
+  const shown = dueF.length + overdueF.length + postponedF.length + remarkedF.length + unscheduledF.length;
   const totalDue = dueF.reduce((s, r) => s + r.remaining, 0);
   const totalOverdue = overdueF.reduce((s, r) => s + r.remaining, 0);
+  const totalPostponed = postponedF.reduce((s, r) => s + r.remaining, 0);
   const totalRemarked = remarkedF.reduce((s, r) => s + r.available, 0);
+  const totalUnscheduled = unscheduledF.reduce((s, r) => s + r.available, 0);
 
   // per-item workload — the WHOLE dept load (unfiltered): what must still be cut
   const perItem = ITEMS.map((it) => {
@@ -102,7 +111,7 @@ export function CutWorklistView({
             No weekly plan covers today — import the new weekly schedule. The backlogs below still work.
           </p>
         ) : (
-          <CutTrancheTable rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} canEdit={canEdit} />
+          <CutTrancheTable rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} canEdit={canEdit} isAdmin={isAdmin} />
         )}
       </section>
 
@@ -112,10 +121,21 @@ export function CutWorklistView({
           Overdue backlog — missed delivery dates ({totalOverdue} pcs)
           {totalOverdue > 0 && <span className="pill pill-bad ml-2 normal-case">catch up first</span>}
         </h2>
-        <CutTrancheTable rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} />
+        <CutTrancheTable rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
       </section>
 
-      {/* 3 — this week's REMARKED lines with no known date: the weekly plan
+      {/* 3 — lines an admin re-dated into the FUTURE: they left today's list
+          but stay visible here so the date can be changed back any time */}
+      {postponed.length > 0 && (
+        <section className="mt-8">
+          <h2>
+            Re-dated by admin — leaves this list on its new day ({totalPostponed} pcs)
+          </h2>
+          <CutTrancheTable rows={postponedF} day={day} planNo={planNo ?? 0} variant="due" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
+        </section>
+      )}
+
+      {/* 4 — this week's REMARKED lines with no known date: the weekly plan
           flags them (remark column) without scheduling, and no earlier plan
           holds an open date — they work date-less until a plan dates them */}
       {remarked.length > 0 && (
@@ -123,13 +143,18 @@ export function CutWorklistView({
           <h2>
             Remarked in this week&apos;s plan — no date yet ({totalRemarked} pcs)
           </h2>
-          <CascadeTable rows={remarkedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} />
+          <CascadeTable rows={remarkedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
         </section>
       )}
 
-      {/* unscheduled + unremarked lines are NOT shown here — they live in the
-          Plan Tracker (where ahead-of-plan output can be recorded) and appear
-          on this screen the moment a weekly plan schedules or remarks them */}
+      {/* 5 — everything else still open: no date in any plan, no remark this
+          week. Its own section so the scheduled work above stays the focus. */}
+      <section className="mt-8">
+        <h2 className="text-muted">
+          Unscheduled backlog — no date, no remarks ({totalUnscheduled} pcs)
+        </h2>
+        <CascadeTable rows={unscheduledF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
+      </section>
     </>
   );
 }

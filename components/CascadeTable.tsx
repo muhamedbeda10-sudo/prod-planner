@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { CascadeRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
-import { recordOutput } from "@/app/worklist/actions";
+import { recordOutput, setWorklistDate } from "@/app/worklist/actions";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 import { Frac } from "@/components/Frac";
@@ -20,6 +20,7 @@ export function CascadeTable({
   hideFilter = false, // the cut page has ONE shared filter above all tables
   notes = {}, // keyed by bom|mo|item
   canEdit = false,
+  isAdmin = false,
 }: {
   rows: CascadeRow[];
   day: string; // ISO (today — computed by the app)
@@ -27,6 +28,7 @@ export function CascadeTable({
   hideFilter?: boolean;
   notes?: Record<string, QueueNoteDTO[]>;
   canEdit?: boolean; // user holds cut.edit — otherwise view-only
+  isAdmin?: boolean; // admins may give a date-less line a delivery date
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -35,6 +37,8 @@ export function CascadeTable({
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({});
   const [q, setQ] = useState("");
   const [openNotes, setOpenNotes] = useState<string | null>(null); // per row key (bom|mo|item)
+  const [dateEdit, setDateEdit] = useState<string | null>(null); // row key being dated (admin)
+  const [dateVal, setDateVal] = useState("");
 
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
@@ -44,6 +48,26 @@ export function CascadeTable({
 
   const keyOf = (r: CascadeRow) => `${r.bom}|${r.mo}|${r.item}`;
   const totalPool = filtered.reduce((s, r) => s + r.available, 0);
+
+  // admin: give this date-less line a delivery date (origISO "" — reverting
+  // from the dated tables brings it back here)
+  function saveDate(r: CascadeRow) {
+    const fd = new FormData();
+    fd.set("bom", r.bom);
+    fd.set("mo", r.mo);
+    fd.set("item", r.item);
+    fd.set("origISO", "");
+    fd.set("date", dateVal);
+    startTransition(async () => {
+      const res = await setWorklistDate(fd);
+      if (res.ok) {
+        setDateEdit(null);
+        router.refresh();
+      } else {
+        setMsg((s) => ({ ...s, [keyOf(r)]: res.error ?? "Failed" }));
+      }
+    });
+  }
 
   // shared BOMs: one summary row per BOM × item, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -187,12 +211,44 @@ export function CascadeTable({
               <Fragment key={k}>
                 <tr className={frame}>
                   <td className="p-2 whitespace-nowrap">
-                    {r.deliveryISO ? (
-                      <span className={`pill ${r.deliveryISO < day ? "pill-bad" : r.deliveryISO === day ? "pill-warn" : "pill-ok"}`}>
-                        📅 {ddmm(r.deliveryISO)}
+                    {dateEdit === k ? (
+                      <span className="inline-flex items-center gap-1">
+                        <input
+                          type="date"
+                          value={dateVal}
+                          autoFocus
+                          onChange={(e) => setDateVal(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveDate(r);
+                            if (e.key === "Escape") setDateEdit(null);
+                          }}
+                          className="border rounded-md px-1 py-0.5 text-xs bg-surface"
+                          disabled={pending}
+                        />
+                        <button type="button" onClick={() => saveDate(r)} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save — the line moves to the dated tables">✓</button>
+                        <button type="button" onClick={() => setDateEdit(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">✕</button>
                       </span>
                     ) : (
-                      <span className="pill pill-muted">—</span>
+                      <>
+                        {r.deliveryISO ? (
+                          <span className={`pill ${r.deliveryISO < day ? "pill-bad" : r.deliveryISO === day ? "pill-warn" : "pill-ok"}`}>
+                            📅 {ddmm(r.deliveryISO)}
+                          </span>
+                        ) : (
+                          <span className="pill pill-muted">—</span>
+                        )}
+                        {isAdmin && !r.deliveryISO && (
+                          <button
+                            type="button"
+                            onClick={() => { setDateEdit(k); setDateVal(day); }}
+                            disabled={pending}
+                            className="text-muted text-xs px-1 hover:text-accent align-middle"
+                            title="Give this line a delivery date (admin) — reverting from the dated tables brings it back here"
+                          >
+                            📅✎
+                          </button>
+                        )}
+                      </>
                     )}
                   </td>
                   <td className={`p-2 text-xs font-semibold whitespace-nowrap ${inGroup ? "pl-6" : ""}`}>

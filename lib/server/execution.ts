@@ -6,12 +6,14 @@ import {
   computePaintingQueue,
   computeCascade,
   computeCutTranches,
-  untouchedWeeklyMos,
+  capTranchesToOrder,
+  applyWorklistDateOverrides,
   type ExecRow,
   type WeldQueueRow,
   type CascadeRow,
   type CutTranche,
 } from "@/lib/domain/execution";
+import { toISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getSettings, getPlanWindows } from "./data";
 
@@ -21,8 +23,9 @@ export interface CutSheet {
   scheduled: ExecRow[]; // legacy aggregate (kept for compatibility)
   dueNow: CutTranche[]; // cut-due exactly today, delivery date shown
   overdue: CutTranche[]; // missed dates — backlog carrying the original delivery date
-  cascade: CascadeRow[]; // undated backlog from the monthly registry
+  postponed: CutTranche[]; // admin re-dated to the FUTURE — visible so the date can be reverted
   remarked: CascadeRow[]; // this week's REMARKED lines with no known date — shown date-less
+  unscheduled: CascadeRow[]; // open backlog with NO date and NO remark — its own section
 }
 
 /** The Cut screen: TODAY is computed by the app (no day picking).
@@ -30,14 +33,17 @@ export interface CutSheet {
  *    scheduled in ANY week stays here under its promised date until done or
  *    rescheduled (the newest plan's dates supersede older ones per line).
  *  - Progress ("done") is GLOBAL per MO — setup balances and any week's logs count.
- *  - Remarked lines of the CURRENT weekly plan with no date anywhere appear in
- *    the date-less bucket; unscheduled + unremarked lines stay off this screen. */
+ *  - A line's shown remaining is silently capped at the ORDER's open quantity,
+ *    so a weekly promise larger than the order never creates phantom work.
+ *  - Date-less backlog splits by this week's remarks: remarked lines in one
+ *    bucket, unscheduled+unremarked lines in their own section.
+ *  - Admin date overrides re-date any line; reverting restores the plan date. */
 export async function getCutSheet(): Promise<CutSheet> {
   const today = new Date();
   const settings = await getSettings();
   const planNo = findPlanForDate(await getPlanWindows(), today, settings.leadCut);
 
-  const [allSchedules, masters, closedMos, entries, weekOrders] = await Promise.all([
+  const [allSchedules, masters, closedMos, entries, weekOrders, overrideRows] = await Promise.all([
     prisma.planSchedule.findMany({ orderBy: { id: "asc" } }), // ALL plans — every week's promises feed the worklist
     prisma.masterOrder.findMany({ where: { status: "open" }, orderBy: { id: "asc" } }), // closed orders leave the daily screens
     prisma.masterOrder.findMany({ where: { status: "closed" }, select: { mo: true } }),
@@ -45,14 +51,11 @@ export async function getCutSheet(): Promise<CutSheet> {
     planNo === null
       ? Promise.resolve([])
       : prisma.planOrder.findMany({ where: { planNo }, select: { mo: true, remark: true } }),
+    prisma.worklistDateOverride.findMany(),
   ]);
   const allSchedIn = allSchedules.map((s) => ({ planNo: s.planNo, bom: s.bom, mo: s.mo, description: s.description, item: s.item, ovenDate: s.ovenDate, qty: s.qty }));
   const schedIn = allSchedIn.filter((s) => s.planNo === planNo);
   const entryIn = entries.map((e) => ({ dept: e.dept, bom: e.bom, mo: e.mo, item: e.item, qty: e.qty, date: e.date }));
-
-  // planner convention: an MO carried in the weekly plan with NO schedule and
-  // NO remark is "not this week" — keep it out of the backlog entirely
-  const untouched = untouchedWeeklyMos(weekOrders, schedIn);
 
   const scheduled =
     planNo === null
@@ -92,13 +95,16 @@ export async function getCutSheet(): Promise<CutSheet> {
     deptDone: cutDoneOf.get(`${r.mo}|${r.item}`) ?? 0,
     orderQty: orderQtyOf.get(`${r.mo}|${r.item}`) ?? null,
   });
-  const dueNow = dueRaw.map(enrich);
-  const overdue = overdueRaw.map(enrich);
+  // silent cap: a promise never asks for more than the order still needs
+  const { dueNow: dueCapped, overdue: overdueCapped } = capTranchesToOrder({
+    dueNow: dueRaw.map(enrich),
+    overdue: overdueRaw.map(enrich),
+  });
 
   // cascade from the master registry: every component of every order not yet
   // fully covered by the schedule or already-cut quantity
   const cascade = computeCascade({
-    orders: masters.filter((m) => !untouched.has(m.mo)).flatMap((m) => {
+    orders: masters.flatMap((m) => {
       const osp = { CF: m.ospCF, TC: m.ospTC, TN: m.ospTN, CB: m.ospCB } as const;
       const excluded = new Set((m.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
       return (["CF", "TC", "TN", "CB"] as const).map((item) => ({
@@ -118,19 +124,30 @@ export async function getCutSheet(): Promise<CutSheet> {
     allSchedules: allSchedIn,
   });
 
-  // date-less bucket: lines the CURRENT weekly plan flags with a remark but no
-  // schedule — and no plan (this week or earlier) holds an open date for them.
-  // Lines with a known open date already sit in the dated tables above.
+  // date-less backlog (no open date in ANY plan), split by this week's remarks:
+  // remarked lines carry their remark; the rest go to the unscheduled section.
   const remarkOf = new Map<string, string>(); // mo -> first non-empty remark this week
   for (const o of weekOrders) {
     const r = (o.remark ?? "").trim();
     if (r && !remarkOf.has(o.mo)) remarkOf.set(o.mo, r);
   }
-  const remarked = cascade
-    .filter((r) => r.deliveryISO === null && remarkOf.has(r.mo))
-    .map((r) => ({ ...r, remark: remarkOf.get(r.mo) }));
+  const undatedAll = cascade
+    .filter((r) => r.deliveryISO === null)
+    .map((r) => (remarkOf.has(r.mo) ? { ...r, remark: remarkOf.get(r.mo) } : r));
 
-  return { planNo, today, scheduled, dueNow, overdue, cascade, remarked };
+  // admin date overrides: re-date lines (future → postponed), date the date-less
+  const { dueNow, overdue, postponed, undated } = applyWorklistDateOverrides({
+    dueNow: dueCapped,
+    overdue: overdueCapped,
+    undated: undatedAll,
+    overrides: overrideRows.map((o) => ({ bom: o.bom, mo: o.mo, item: o.item, origISO: o.origISO, newISO: toISODate(o.newDate) })),
+    day: today,
+    lead: settings.leadCut,
+  });
+  const remarked = undated.filter((r) => (r.remark ?? "").trim() !== "");
+  const unscheduled = undated.filter((r) => (r.remark ?? "").trim() === "");
+
+  return { planNo, today, scheduled, dueNow, overdue, postponed, remarked, unscheduled };
 }
 
 export interface ExecutionResult {

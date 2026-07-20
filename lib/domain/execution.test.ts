@@ -6,9 +6,12 @@ import {
   computePaintingQueue,
   computeCascade,
   computeCutTranches,
+  capTranchesToOrder,
+  applyWorklistDateOverrides,
   untouchedWeeklyMos,
   type ExecScheduleRow,
   type ExecEntry,
+  type CutTranche,
 } from "./execution";
 import { utcDate } from "./dates";
 
@@ -412,5 +415,105 @@ describe("computeCutTranches — due today / overdue-with-date / future hidden",
     const { dueNow } = computeCutTranches({ schedules: scheds, entries, day, lead });
     expect(dueNow).toHaveLength(1);
     expect(dueNow[0].remaining).toBe(2); // 6 − (9 − 5 superseded)
+  });
+});
+
+describe("capTranchesToOrder — a promise never exceeds the order's open qty", () => {
+  const t = (over: Partial<CutTranche>): CutTranche => ({
+    bom: "B1", mo: "MO-A", description: "", item: "CF",
+    deliveryISO: "2026-07-05", cutDueISO: "2026-07-01",
+    qty: 3, remaining: 3, deptDone: 0, orderQty: null,
+    ...over,
+  });
+
+  it("silently drops phantom work: order 1 fully cut, promise of 3 disappears", () => {
+    // the reported real-world case: weekly plan promised 3, registry order is 1 (done)
+    const { dueNow, overdue } = capTranchesToOrder({
+      dueNow: [],
+      overdue: [t({ qty: 3, remaining: 2, deptDone: 1, orderQty: 1 })],
+    });
+    expect(overdue).toHaveLength(0);
+    expect(dueNow).toHaveLength(0);
+  });
+
+  it("allocates the order's open qty to the EARLIEST promises first", () => {
+    const rows = capTranchesToOrder({
+      overdue: [t({ deliveryISO: "2026-07-05", remaining: 3, deptDone: 1, orderQty: 5 })],
+      dueNow: [t({ deliveryISO: "2026-07-15", remaining: 3, deptDone: 1, orderQty: 5 })],
+    });
+    // open = 5 − 1 = 4 → earliest keeps its 3, the later one is trimmed to 1
+    expect(rows.overdue[0].remaining).toBe(3);
+    expect(rows.dueNow[0].remaining).toBe(1);
+  });
+
+  it("lines with an unknown order (not in the registry) are left as promised", () => {
+    const rows = capTranchesToOrder({ dueNow: [t({ remaining: 3, orderQty: null })], overdue: [] });
+    expect(rows.dueNow[0].remaining).toBe(3);
+  });
+});
+
+describe("applyWorklistDateOverrides — admin re-dates, revert restores", () => {
+  const day = utcDate(2026, 7, 13);
+  const lead = 2;
+  const t = (over: Partial<CutTranche>): CutTranche => ({
+    bom: "B1", mo: "MO-A", description: "", item: "CF",
+    deliveryISO: "2026-07-10", cutDueISO: "2026-07-08",
+    qty: 3, remaining: 3, deptDone: 0, orderQty: 3,
+    ...over,
+  });
+  const undatedRow = {
+    bom: "B2", mo: "MO-B", description: "", item: "TN" as const,
+    target: 5, scheduled: 0, done: 1, available: 4, deliveryISO: null,
+  };
+
+  it("no overrides → everything stays where it was", () => {
+    const out = applyWorklistDateOverrides({
+      dueNow: [], overdue: [t({})], undated: [undatedRow], overrides: [], day, lead,
+    });
+    expect(out.overdue).toHaveLength(1);
+    expect(out.overdue[0].overrideOrigISO).toBeUndefined();
+    expect(out.undated).toHaveLength(1);
+    expect(out.postponed).toHaveLength(0);
+  });
+
+  it("re-dates a dated row to the future → postponed, carrying the original", () => {
+    const out = applyWorklistDateOverrides({
+      dueNow: [], overdue: [t({})], undated: [], day, lead,
+      overrides: [{ bom: "B1", mo: "MO-A", item: "CF", origISO: "2026-07-10", newISO: "2026-07-20" }],
+    });
+    expect(out.overdue).toHaveLength(0);
+    expect(out.postponed).toHaveLength(1);
+    expect(out.postponed[0]).toMatchObject({
+      deliveryISO: "2026-07-20", cutDueISO: "2026-07-18", overrideOrigISO: "2026-07-10",
+    });
+  });
+
+  it("re-dating to today's cut-due lands in dueNow; to a passed date lands in overdue", () => {
+    const out = applyWorklistDateOverrides({
+      dueNow: [], overdue: [t({})], undated: [], day, lead,
+      overrides: [{ bom: "B1", mo: "MO-A", item: "CF", origISO: "2026-07-10", newISO: "2026-07-15" }],
+    });
+    expect(out.dueNow).toHaveLength(1); // 15/07 − 2 = 13/07 = today
+  });
+
+  it("gives a DATE-LESS line a date (origISO '') — revert key says 'was date-less'", () => {
+    const out = applyWorklistDateOverrides({
+      dueNow: [], overdue: [], undated: [undatedRow], day, lead,
+      overrides: [{ bom: "B2", mo: "MO-B", item: "TN", origISO: "", newISO: "2026-07-15" }],
+    });
+    expect(out.undated).toHaveLength(0);
+    expect(out.dueNow).toHaveLength(1);
+    expect(out.dueNow[0]).toMatchObject({
+      qty: 4, remaining: 4, deptDone: 1, orderQty: 5, overrideOrigISO: "",
+    });
+  });
+
+  it("stale overrides (date no longer in the plan) are ignored", () => {
+    const out = applyWorklistDateOverrides({
+      dueNow: [], overdue: [t({})], undated: [], day, lead,
+      overrides: [{ bom: "B1", mo: "MO-A", item: "CF", origISO: "2026-07-01", newISO: "2026-07-20" }],
+    });
+    expect(out.overdue).toHaveLength(1);
+    expect(out.overdue[0].overrideOrigISO).toBeUndefined();
   });
 });
