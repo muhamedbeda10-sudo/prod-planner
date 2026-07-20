@@ -18,7 +18,9 @@ export function MonthlyImport() {
     startTransition(async () => {
       const r = await importMonthlyAction(fd);
       setRes(r);
-      if (r.ok) {
+      // after a real APPLY refresh and clear the form; after a PREVIEW keep
+      // the chosen file and month so "untick → import again" applies it
+      if (r.ok && !r.preview) {
         router.refresh();
         inputRef.current?.form?.reset();
       }
@@ -43,10 +45,12 @@ export function MonthlyImport() {
             className="border rounded-md px-2 py-1.5 bg-surface text-sm"
           />
         </label>
+        {/* SAFE BY DEFAULT: preview is pre-ticked — nothing is ever written
+            until the user unticks it and imports again */}
         <label className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer">
-          <input type="checkbox" name="preview" className="accent-[var(--brand)]" />
+          <input type="checkbox" name="preview" defaultChecked className="accent-[var(--brand)]" />
           Preview only
-          <span className="text-xs text-muted font-normal">(see the changes without applying anything)</span>
+          <span className="text-xs text-muted font-normal">(review first — untick to actually apply)</span>
         </label>
         <button type="submit" disabled={pending} className="bg-brand hover:bg-brand-dark text-white font-bold rounded-md px-5 py-2 disabled:opacity-50 transition-colors">
           {pending ? "Importing…" : "Import orders"}
