@@ -65,6 +65,7 @@ export function MasterTrackerTable({
   const [progress, setProgress] = useSavedFilter("tracker.progress");
   const [urgent, setUrgent] = useSavedFilter("tracker.urgent");
   const [status, setStatus] = useSavedFilter("tracker.status", "open"); // lifecycle: closed orders are hidden by default
+  const [month, setMonth] = useSavedFilter("tracker.month"); // monthly plan (import source), "" = all months
   const [openConfig, setOpenConfig] = useState<string | null>(null); // per-MO "required components" editor
 
   function saveExcluded(mo: string, form: HTMLFormElement) {
@@ -87,18 +88,39 @@ export function MasterTrackerTable({
 
   const closedCount = useMemo(() => rows.filter((r) => r.status === "closed").length, [rows]);
 
+  // the monthly plans present in the registry, newest first ("July 2026" labels)
+  const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const monthKey = (label: string) => {
+    const m = /^(\w+)\s+(\d{4})$/.exec(label.trim());
+    const idx = m ? MONTH_NAMES.indexOf(m[1]) : -1;
+    return m && idx >= 0 ? Number(m[2]) * 12 + idx : -1; // unparseable labels sort last
+  };
+  const months = useMemo(() => {
+    const seen = new Set<string>();
+    for (const r of rows) if (r.source) seen.add(r.source);
+    return [...seen].sort((a, b) => monthKey(b) - monthKey(a));
+  }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hasNoMonth = useMemo(() => rows.some((r) => !r.source), [rows]);
+
+  // month scope — the summary cards follow THIS filter (each month's plan
+  // progress on its own), while search/progress/urgent only narrow the table
+  const monthRows = useMemo(
+    () => (month ? rows.filter((r) => (r.source ?? "") === (month === "—" ? "" : month)) : rows),
+    [rows, month]
+  );
+
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
-    return rows.filter((r) => {
+    return monthRows.filter((r) => {
       if (status && r.status !== status) return false;
       if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.kva ?? ""}`.toUpperCase().includes(needle))) return false;
       if (progress && progressOf(r) !== progress) return false;
       if (urgent === "yes" && !r.urgent) return false;
       return true;
     });
-  }, [rows, q, progress, urgent, status]);
+  }, [monthRows, q, progress, urgent, status]);
 
-  const hasActive = !!(q || progress || urgent || status !== "open");
+  const hasActive = !!(q || progress || urgent || month || status !== "open");
 
   // shared BOMs: one summary row per BOM, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -181,15 +203,15 @@ export function MasterTrackerTable({
     });
   }
 
-  // per-component plan progress — the WHOLE registry (display only, no filtering):
+  // per-component plan progress — follows the MONTH filter (each month's plan
+  // progress on its own; all months when no month is picked):
   // need = required − OSP (excluded items don't count), done = the FINAL stage
-  // (welding for the paint-exempt core CF, painting otherwise), % = execution
   const itemStats = ITEMS.map((it) => {
     // final stage = SHOT BLAST for the paint-exempt core (CF), Painting otherwise
     const finalIsShp = isPaintExempt(it);
     let need = 0;
     let done = 0;
-    for (const r of rows) {
+    for (const r of monthRows) {
       const c = r.items[it];
       if (c.excluded) continue;
       const n = Math.max(0, r.required - c.osp);
@@ -202,6 +224,7 @@ export function MasterTrackerTable({
   const exportRows = filtered.map((r) => ({
     MO: r.mo,
     BOM: r.bom,
+    "Plan month": r.source ?? "",
     SOI: r.soi ?? "",
     Urgent: r.urgent ? "Yes" : "",
     KVA: r.kva ?? "",
@@ -246,8 +269,17 @@ export function MasterTrackerTable({
         ))}
       </div>
 
-      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus("open"); }} hasActive={hasActive}>
+      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus("open"); setMonth(""); }} hasActive={hasActive}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / KVA…" />
+        <SelectFilter
+          label="Plan month"
+          value={month}
+          onChange={setMonth}
+          options={[
+            ...months.map((m) => ({ value: m, label: m })),
+            ...(hasNoMonth ? [{ value: "—", label: "No month" }] : []),
+          ]}
+        />
         <SelectFilter
           label="Status"
           value={status}
