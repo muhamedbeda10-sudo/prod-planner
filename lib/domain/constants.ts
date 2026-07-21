@@ -14,9 +14,9 @@ export type Dept = (typeof DEPTS)[number];
 export const DELIVERED_STAGE = "Delivered" as const;
 
 /** Extra ledger stage for PAINT-EXEMPT items only: the core (CF) is never
- *  painted — after welding it goes through SHOT BLAST (SHP), its real final
- *  stage. Recorded on the Plan Tracker's SHP cells (shown in place of the
- *  Paint cell), stored in the same ledger; chain: delivered ≤ SHP ≤ welded. */
+ *  painted — after welding it goes through SHOT BLAST (SHB), its real final
+ *  stage. Recorded on the Plan Tracker's SHB cells (shown in place of the
+ *  Paint cell), stored in the same ledger; chain: delivered ≤ SHB ≤ welded. */
 export const SHOTBLAST_STAGE = "ShotBlast" as const;
 
 /** DISPLAY names only — the stored dept value stays "Cut" so every existing
