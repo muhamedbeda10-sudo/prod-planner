@@ -37,6 +37,7 @@
   --weld-tint: #dfeaf3;
   --paint-tint: #f3ecdf;
   --dlvd-tint: #ece3f7;
+  --shp-tint: #e3ecf0;
   --zebra: #f6f8f7;
 
   color-scheme: light;
@@ -72,6 +73,7 @@ html.dark {
   --weld-tint: #1c2836;
   --paint-tint: #302a1c;
   --dlvd-tint: #2a2136;
+  --shp-tint: #1e2c33;
   --zebra: #151c18;
 
   color-scheme: dark;
@@ -100,6 +102,7 @@ html.dark {
   --color-weld-tint: var(--weld-tint);
   --color-paint-tint: var(--paint-tint);
   --color-dlvd-tint: var(--dlvd-tint);
+  --color-shp-tint: var(--shp-tint);
   --color-zebra: var(--zebra);
   --font-sans: var(--font-sans-latin);
 }

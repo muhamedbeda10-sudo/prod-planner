@@ -13,6 +13,12 @@ export type Dept = (typeof DEPTS)[number];
  *  ledger, capped at the finished quantity. Never enters worklists/queues. */
 export const DELIVERED_STAGE = "Delivered" as const;
 
+/** Extra ledger stage for PAINT-EXEMPT items only: the core (CF) is never
+ *  painted — after welding it goes through SHOT BLAST (SHP), its real final
+ *  stage. Recorded on the Plan Tracker's SHP cells (shown in place of the
+ *  Paint cell), stored in the same ledger; chain: delivered ≤ SHP ≤ welded. */
+export const SHOTBLAST_STAGE = "ShotBlast" as const;
+
 /** DISPLAY names only — the stored dept value stays "Cut" so every existing
  *  handover row, permission key and plan keeps working untouched. */
 export const DEPT_LABELS: Record<Dept, string> = {
@@ -21,6 +27,7 @@ export const DEPT_LABELS: Record<Dept, string> = {
   Painting: "Painting",
 };
 export function deptLabel(dept: string): string {
+  if (dept === "ShotBlast") return "Shot Blast";
   return DEPT_LABELS[dept as Dept] ?? dept;
 }
 /** Compact form for tight table headers (stage columns). */

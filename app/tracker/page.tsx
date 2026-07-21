@@ -1,7 +1,7 @@
 import { getMasterTracker } from "@/lib/server/masterTracker";
 import { MasterTrackerTable } from "@/components/MasterTrackerTable";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
-import { DEPTS, DELIVERED_STAGE } from "@/lib/domain/constants";
+import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
 
 export const dynamic = "force-dynamic";
@@ -19,8 +19,8 @@ export default async function TrackerPage() {
     <MasterTrackerTable
       rows={rows}
       features={user ? FEATURE_KEYS.filter((k) => hasPerm(user, k)) : []}
-      // stage columns (Fab/Weld/Paint/Dlvd) each need their own tracker permission
-      editableDepts={user ? [...DEPTS, DELIVERED_STAGE].filter((d) => hasPerm(user, trackerPermKey(d))) : []}
+      // stage columns (Fab/Weld/Paint/SHP/Dlvd) each need their own tracker permission
+      editableDepts={user ? [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE].filter((d) => hasPerm(user, trackerPermKey(d))) : []}
     />
   );
 }

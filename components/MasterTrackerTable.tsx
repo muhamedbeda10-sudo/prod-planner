@@ -185,7 +185,8 @@ export function MasterTrackerTable({
   // need = required − OSP (excluded items don't count), done = the FINAL stage
   // (welding for the paint-exempt core CF, painting otherwise), % = execution
   const itemStats = ITEMS.map((it) => {
-    const finalIsWeld = isPaintExempt(it);
+    // final stage = SHOT BLAST for the paint-exempt core (CF), Painting otherwise
+    const finalIsShp = isPaintExempt(it);
     let need = 0;
     let done = 0;
     for (const r of rows) {
@@ -193,9 +194,9 @@ export function MasterTrackerTable({
       if (c.excluded) continue;
       const n = Math.max(0, r.required - c.osp);
       need += n;
-      done += Math.min(finalIsWeld ? c.weld : c.paint, n);
+      done += Math.min(finalIsShp ? c.shp : c.paint, n);
     }
-    return { it, finalIsWeld, need, done, remaining: Math.max(0, need - done), pct: need > 0 ? done / need : null };
+    return { it, finalIsShp, need, done, remaining: Math.max(0, need - done), pct: need > 0 ? done / need : null };
   });
 
   const exportRows = filtered.map((r) => ({
@@ -205,7 +206,7 @@ export function MasterTrackerTable({
     Urgent: r.urgent ? "Yes" : "",
     KVA: r.kva ?? "",
     Required: r.required,
-    "CF Fab": r.items.CF.cut, "CF Weld": r.items.CF.weld, "CF Paint": r.items.CF.paint, "CF Dlvd": r.items.CF.delivered,
+    "CF Fab": r.items.CF.cut, "CF Weld": r.items.CF.weld, "CF SHP": r.items.CF.shp, "CF Dlvd": r.items.CF.delivered,
     "TC Fab": r.items.TC.cut, "TC Weld": r.items.TC.weld, "TC Paint": r.items.TC.paint, "TC Dlvd": r.items.TC.delivered,
     "TN Fab": r.items.TN.cut, "TN Weld": r.items.TN.weld, "TN Paint": r.items.TN.paint, "TN Dlvd": r.items.TN.delivered,
     "CB Fab": r.items.CB.cut, "CB Weld": r.items.CB.weld, "CB Paint": r.items.CB.paint, "CB Dlvd": r.items.CB.delivered,
@@ -221,7 +222,7 @@ export function MasterTrackerTable({
     <>
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        {itemStats.map(({ it, finalIsWeld, need, done, remaining, pct }) => (
+        {itemStats.map(({ it, finalIsShp, need, done, remaining, pct }) => (
           <div key={it} className="bg-surface border rounded-xl px-4 py-2.5">
             <div className="flex items-baseline justify-between">
               <span className="text-xs font-extrabold text-muted">{it}</span>
@@ -233,7 +234,7 @@ export function MasterTrackerTable({
               {remaining}
             </div>
             <div className="text-[11px] text-muted tabnum">
-              left of <b className="text-foreground">{need}</b> · {finalIsWeld ? "welded" : "painted"} {done}
+              left of <b className="text-foreground">{need}</b> · {finalIsShp ? "shot blasted" : "painted"} {done}
             </div>
             <div className="mt-1 h-1.5 rounded bg-border overflow-hidden">
               <div
@@ -288,7 +289,7 @@ export function MasterTrackerTable({
             </tr>
             <tr className="bg-brand text-white text-xs">
               {ITEMS.map((it) => (
-                <StageHead key={it} />
+                <StageHead key={it} shp={isPaintExempt(it)} />
               ))}
             </tr>
           </thead>
@@ -331,6 +332,7 @@ export function MasterTrackerTable({
                         cut={sum((r) => r.items[it].cut)}
                         weld={sum((r) => r.items[it].weld)}
                         paint={sum((r) => r.items[it].paint)}
+                        shp={sum((r) => r.items[it].shp)}
                         delivered={sum((r) => r.items[it].delivered)}
                         noPaint={isPaintExempt(it)}
                       />
@@ -517,7 +519,7 @@ export function MasterTrackerTable({
                       {stageCell(r, it, "Cut", c.cut, "var(--cut-tint)")}
                       {stageCell(r, it, "Welding", c.weld, "var(--weld-tint)")}
                       {isPaintExempt(it) ? (
-                        <td className="p-2 text-center text-muted" title="not painted — core ships after welding">—</td>
+                        stageCell(r, it, "ShotBlast", c.shp, "var(--shp-tint)")
                       ) : (
                         stageCell(r, it, "Painting", c.paint, "var(--paint-tint)")
                       )}
@@ -667,18 +669,23 @@ export function MasterTrackerTable({
 
 // stage sub-headers sit on the same tints as their data columns — readable
 // in both themes (the old dark-green fill swallowed the muted header text)
-function StageHead() {
+function StageHead({ shp = false }: { shp?: boolean }) {
   return (
     <>
       <th className="p-1 font-medium" style={{ background: "var(--cut-tint)" }}>Fab</th>
       <th className="p-1 font-medium" style={{ background: "var(--weld-tint)" }}>Weld</th>
-      <th className="p-1 font-medium" style={{ background: "var(--paint-tint)" }}>Paint</th>
+      {/* the core (CF) is never painted — its final stage is SHOT BLAST */}
+      {shp ? (
+        <th className="p-1 font-medium" style={{ background: "var(--shp-tint)" }} title="Shot Blast — the core's final stage after welding">SHP</th>
+      ) : (
+        <th className="p-1 font-medium" style={{ background: "var(--paint-tint)" }}>Paint</th>
+      )}
       <th className="p-1 font-medium border-r" style={{ background: "var(--dlvd-tint)" }} title="Delivered — received by the customer">Dlvd</th>
     </>
   );
 }
 
-function StageCells({ cut, weld, paint, delivered, excluded = false, noPaint = false }: { cut: number; weld: number; paint: number; delivered: number; excluded?: boolean; noPaint?: boolean }) {
+function StageCells({ cut, weld, paint, shp, delivered, excluded = false, noPaint = false }: { cut: number; weld: number; paint: number; shp: number; delivered: number; excluded?: boolean; noPaint?: boolean }) {
   if (excluded) {
     return (
       <>
@@ -693,9 +700,9 @@ function StageCells({ cut, weld, paint, delivered, excluded = false, noPaint = f
     <>
       <td className="p-2 text-center tabnum" style={{ background: "var(--cut-tint)" }}>{cut}</td>
       <td className="p-2 text-center tabnum" style={{ background: "var(--weld-tint)" }}>{weld}</td>
-      {/* the core (CF) has no paint stage — welding is its final step */}
+      {/* the core (CF) has no paint stage — SHOT BLAST is its final step */}
       {noPaint ? (
-        <td className="p-2 text-center text-muted" title="not painted — core ships after welding">—</td>
+        <td className="p-2 text-center tabnum" style={{ background: "var(--shp-tint)" }}>{shp}</td>
       ) : (
         <td className="p-2 text-center tabnum" style={{ background: "var(--paint-tint)" }}>{paint}</td>
       )}
