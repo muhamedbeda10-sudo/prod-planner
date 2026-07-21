@@ -134,7 +134,10 @@ model MasterOrder {
   planQty   Float    @default(0)
   colorRal  String?
   remarks   String?
-  source    String? // which monthly plan (month label) added it
+  source    String? // which monthly plan (month label) FIRST added it
+  // EVERY monthly plan the MO appeared in (CSV of month labels) — a carried-over
+  // order shows under each of its months in the tracker filter, with a badge
+  months    String   @default("")
   status    String   @default("open") // open | closed
   // OSP — quantities outsourced per component (made outside, not by our depts).
   // They never appear in the dept worklists and count as covered in the tracker.

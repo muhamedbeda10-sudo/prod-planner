@@ -97,15 +97,16 @@ export function MasterTrackerTable({
   };
   const months = useMemo(() => {
     const seen = new Set<string>();
-    for (const r of rows) if (r.source) seen.add(r.source);
+    for (const r of rows) for (const m of r.months) seen.add(m);
     return [...seen].sort((a, b) => monthKey(b) - monthKey(a));
   }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
-  const hasNoMonth = useMemo(() => rows.some((r) => !r.source), [rows]);
+  const hasNoMonth = useMemo(() => rows.some((r) => r.months.length === 0), [rows]);
 
-  // month scope — the summary cards follow THIS filter (each month's plan
+  // month scope — an order carried across plans belongs to EVERY month it
+  // appeared in. The summary cards follow THIS filter (each month's plan
   // progress on its own), while search/progress/urgent only narrow the table
   const monthRows = useMemo(
-    () => (month ? rows.filter((r) => (r.source ?? "") === (month === "—" ? "" : month)) : rows),
+    () => (month ? rows.filter((r) => (month === "—" ? r.months.length === 0 : r.months.includes(month))) : rows),
     [rows, month]
   );
 
@@ -224,7 +225,7 @@ export function MasterTrackerTable({
   const exportRows = filtered.map((r) => ({
     MO: r.mo,
     BOM: r.bom,
-    "Plan month": r.source ?? "",
+    "Plan months": r.months.join(", "),
     SOI: r.soi ?? "",
     Urgent: r.urgent ? "Yes" : "",
     KVA: r.kva ?? "",
@@ -478,6 +479,14 @@ export function MasterTrackerTable({
                   {inGroup && <span className="text-muted mr-1">↳</span>}
                   <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline">{r.mo}</Link>
                   {r.priority && <span className="ml-1" title="Priority order — shown on top of every dept worklist">⭐</span>}
+                  {r.months.length > 1 && (
+                    <span
+                      className="pill pill-warn ml-1"
+                      title={`Carried across ${r.months.length} monthly plans: ${r.months.join(" · ")}`}
+                    >
+                      🔁 ×{r.months.length}
+                    </span>
+                  )}
                   {r.urgent && <span className="pill pill-bad ml-1">U</span>}
                   {ITEMS.filter((it) => r.items[it].osp > 0).map((it) => (
                     <span key={it} className="pill ml-1" style={{ background: "#ece3f7", color: "#6b45a8" }} title={`${it}: ${r.items[it].osp} pcs outsourced (OSP) — not made by our departments`}>
