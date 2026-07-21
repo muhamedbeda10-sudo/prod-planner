@@ -206,7 +206,7 @@ export function MasterTrackerTable({
     Urgent: r.urgent ? "Yes" : "",
     KVA: r.kva ?? "",
     Required: r.required,
-    "CF Fab": r.items.CF.cut, "CF Weld": r.items.CF.weld, "CF SHP": r.items.CF.shp, "CF Dlvd": r.items.CF.delivered,
+    "CF Fab": r.items.CF.cut, "CF Weld": r.items.CF.weld, "CF SHB": r.items.CF.shp, "CF Dlvd": r.items.CF.delivered,
     "TC Fab": r.items.TC.cut, "TC Weld": r.items.TC.weld, "TC Paint": r.items.TC.paint, "TC Dlvd": r.items.TC.delivered,
     "TN Fab": r.items.TN.cut, "TN Weld": r.items.TN.weld, "TN Paint": r.items.TN.paint, "TN Dlvd": r.items.TN.delivered,
     "CB Fab": r.items.CB.cut, "CB Weld": r.items.CB.weld, "CB Paint": r.items.CB.paint, "CB Dlvd": r.items.CB.delivered,
@@ -676,7 +676,7 @@ function StageHead({ shp = false }: { shp?: boolean }) {
       <th className="p-1 font-medium" style={{ background: "var(--weld-tint)" }}>Weld</th>
       {/* the core (CF) is never painted — its final stage is SHOT BLAST */}
       {shp ? (
-        <th className="p-1 font-medium" style={{ background: "var(--shp-tint)" }} title="Shot Blast — the core's final stage after welding">SHP</th>
+        <th className="p-1 font-medium" style={{ background: "var(--shp-tint)" }} title="Shot Blast — the core's final stage after welding">SHB</th>
       ) : (
         <th className="p-1 font-medium" style={{ background: "var(--paint-tint)" }}>Paint</th>
       )}

@@ -102,7 +102,7 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     if (!bom || !mo) return { ok: false, error: "Missing MO / BOM." };
     if (!isItem(item)) return { ok: false, error: "Invalid component." };
     if (dept === SHOTBLAST_STAGE && !isPaintExempt(item)) {
-      return { ok: false, error: `${item} is painted, not shot blasted — SHP applies to the core (CF) only.` };
+      return { ok: false, error: `${item} is painted, not shot blasted — SHB applies to the core (CF) only.` };
     }
     if (!Number.isInteger(newTotal) || newTotal < 0) return { ok: false, error: "Enter a whole number ≥ 0." };
 

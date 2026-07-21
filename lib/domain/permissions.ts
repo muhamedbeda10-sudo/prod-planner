@@ -32,7 +32,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "tracker.cut", label: "Fabrication column — record", desc: "Edit the Fab stage cells on the Plan Tracker (separate from the Fabrication worklist permission)" },
       { key: "tracker.weld", label: "Welding column — record", desc: "Edit the Weld stage cells on the Plan Tracker (separate from the Welding worklist permission)" },
       { key: "tracker.paint", label: "Painting column — record", desc: "Edit the Paint stage cells on the Plan Tracker (separate from the Painting worklist permission)" },
-      { key: "tracker.shp", label: "Shot Blast column — record (SHP)", desc: "Edit the SHP cells — the core frame's real final stage after welding (shown in place of Paint for CF)" },
+      { key: "tracker.shp", label: "Shot Blast column — record (SHB)", desc: "Edit the SHB cells — the core frame's real final stage after welding (shown in place of Paint for CF)" },
       { key: "tracker.delivered", label: "Delivered column — record", desc: "Record how many pieces the customer has received (Dlvd cells) — capped at the finished quantity" },
       { key: "tracker.status", label: "Close / reopen orders", desc: "Close finished orders (they leave the daily screens) and reopen them" },
       { key: "tracker.components", label: "Required components (N/A)", desc: "Mark which components an order does not need — they leave the worklists and stop gating completion" },
