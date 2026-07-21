@@ -91,7 +91,12 @@ export default async function ReportPage({
             {deptOutputs.map((d) => (
               <tr key={d.dept} className="text-center">
                 <td className="p-2 text-left font-bold">{deptLabel(d.dept)}</td>
-                {ITEMS.map((it) => <td key={it} className="p-2 tabnum"><Num v={d.items[it]} /></td>)}
+                {ITEMS.map((it) => (
+                  <td key={it} className="p-2 tabnum">
+                    {/* the core (CF) is never painted */}
+                    {d.dept === "Painting" && isPaintExempt(it) ? <span className="text-muted">—</span> : <Num v={d.items[it]} />}
+                  </td>
+                ))}
                 <td className="p-2 font-bold tabnum">{d.total}</td>
                 <td className="p-2 tabnum">{d.target}</td>
                 <td className="p-2 font-extrabold tabnum">{d.sets}</td>
