@@ -6,7 +6,10 @@ import { updateHandover, deleteHandover, bulkSetHandoverDate } from "@/app/hando
 import { toISODate } from "@/lib/domain/dates";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
-import { ITEMS, DEPTS, deptLabel } from "@/lib/domain/constants";
+import { ITEMS, DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE, deptLabel } from "@/lib/domain/constants";
+
+// every ledger stage the log can carry — production depts + tracker-only stages
+const LOG_DEPTS = [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE];
 
 export interface LogRow {
   id: number;
@@ -170,7 +173,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
             { value: "30", label: "Last 30 days" },
           ]}
         />
-        <SelectFilter label="Dept" value={dept} onChange={setDept} options={DEPTS.map((d) => ({ value: d, label: deptLabel(d) }))} />
+        <SelectFilter label="Dept" value={dept} onChange={setDept} options={LOG_DEPTS.map((d) => ({ value: d, label: deptLabel(d) }))} />
         <SelectFilter label="Item" value={item} onChange={setItem} options={ITEMS.map((i) => ({ value: i, label: i }))} />
         {/* custom range (or one exact day: same date in both) — one tidy row */}
         <div className="col-span-2 flex items-center gap-1.5 text-sm">
