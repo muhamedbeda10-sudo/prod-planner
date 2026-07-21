@@ -23,6 +23,7 @@ export interface MasterTrackerRow {
   achievement: number | null;
   status: string; // open | closed
   priority: boolean; // ⭐ flagged by the admin — shows on every dept worklist
+  source: string | null; // which monthly plan imported it (e.g. "July 2026")
 }
 
 export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
@@ -79,6 +80,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       achievement: o.planQty > 0 ? complete / o.planQty : null,
       status: o.status,
       priority: o.priority,
+      source: o.source,
     };
   });
 }
