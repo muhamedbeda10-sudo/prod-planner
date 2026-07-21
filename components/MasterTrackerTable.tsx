@@ -21,17 +21,18 @@ function progressOf(r: MasterTrackerRow): Progress {
 
 export function MasterTrackerTable({
   rows,
-  canEdit = false,
-  isAdmin = false,
+  features = [],
   editableDepts = [],
 }: {
   rows: MasterTrackerRow[];
-  canEdit?: boolean;
-  isAdmin?: boolean; // ⭐ priority flag + 📤 send-to-worklist are admin-only
-  /** Depts this user may record output for — same permission as each dept's
-   *  worklist. Their stage cells become editable (type the NEW total). */
+  /** The tracker feature-permission keys this user holds (admin = all):
+   *  tracker.status / tracker.components / tracker.qty / tracker.priority / tracker.push */
+  features?: string[];
+  /** Stage columns this user may record on (their OWN tracker permissions —
+   *  separate from the worklist ones): Cut | Welding | Painting | Delivered. */
   editableDepts?: string[];
 }) {
+  const can = (k: string) => features.includes(k);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   // inline stage-cell editor: one cell at a time (mo|item|dept)
@@ -204,10 +205,10 @@ export function MasterTrackerTable({
     Urgent: r.urgent ? "Yes" : "",
     KVA: r.kva ?? "",
     Required: r.required,
-    "CF Fab": r.items.CF.cut, "CF Weld": r.items.CF.weld, "CF Paint": r.items.CF.paint,
-    "TC Fab": r.items.TC.cut, "TC Weld": r.items.TC.weld, "TC Paint": r.items.TC.paint,
-    "TN Fab": r.items.TN.cut, "TN Weld": r.items.TN.weld, "TN Paint": r.items.TN.paint,
-    "CB Fab": r.items.CB.cut, "CB Weld": r.items.CB.weld, "CB Paint": r.items.CB.paint,
+    "CF Fab": r.items.CF.cut, "CF Weld": r.items.CF.weld, "CF Paint": r.items.CF.paint, "CF Dlvd": r.items.CF.delivered,
+    "TC Fab": r.items.TC.cut, "TC Weld": r.items.TC.weld, "TC Paint": r.items.TC.paint, "TC Dlvd": r.items.TC.delivered,
+    "TN Fab": r.items.TN.cut, "TN Weld": r.items.TN.weld, "TN Paint": r.items.TN.paint, "TN Dlvd": r.items.TN.delivered,
+    "CB Fab": r.items.CB.cut, "CB Weld": r.items.CB.weld, "CB Paint": r.items.CB.paint, "CB Dlvd": r.items.CB.delivered,
     OSP: ITEMS.filter((it) => r.items[it].osp > 0).map((it) => `${it}×${r.items[it].osp}`).join(" "),
     Welded: r.welded,
     "Complete (painted)": r.complete,
@@ -278,7 +279,7 @@ export function MasterTrackerTable({
               <th rowSpan={2} className="p-2">KVA</th>
               <th rowSpan={2} className="p-2">Required</th>
               {ITEMS.map((it) => (
-                <th key={it} colSpan={3} className="p-2 border-r border-border-strong">{it}</th>
+                <th key={it} colSpan={4} className="p-2 border-r border-border-strong">{it}</th>
               ))}
               <th rowSpan={2} className="p-2 border-r border-border-strong">Complete</th>
               <th rowSpan={2} className="p-2">Left</th>
@@ -293,7 +294,7 @@ export function MasterTrackerTable({
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={20} className="p-4 text-center text-muted">
+              <tr><td colSpan={24} className="p-4 text-center text-muted">
                 {rows.length === 0 ? "No orders yet — import a monthly plan." : "No rows match the filters."}
               </td></tr>
             )}
@@ -330,6 +331,7 @@ export function MasterTrackerTable({
                         cut={sum((r) => r.items[it].cut)}
                         weld={sum((r) => r.items[it].weld)}
                         paint={sum((r) => r.items[it].paint)}
+                        delivered={sum((r) => r.items[it].delivered)}
                         noPaint={isPaintExempt(it)}
                       />
                     ))}
@@ -484,7 +486,7 @@ export function MasterTrackerTable({
                       </span>
                       {qtyErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 leading-tight">{qtyErr}</span>}
                     </span>
-                  ) : canEdit ? (
+                  ) : can("tracker.qty") ? (
                     <button
                       type="button"
                       onClick={() => { setQtyEditMo(r.mo); setQtyVal(String(r.required)); setQtyErr(""); }}
@@ -505,6 +507,7 @@ export function MasterTrackerTable({
                       <Fragment key={it}>
                         <td className="p-2 text-center text-muted">—</td>
                         <td className="p-2 text-center text-muted">—</td>
+                        <td className="p-2 text-center text-muted">—</td>
                         <td className="p-2 text-center text-muted border-r">—</td>
                       </Fragment>
                     );
@@ -514,10 +517,11 @@ export function MasterTrackerTable({
                       {stageCell(r, it, "Cut", c.cut, "var(--cut-tint)")}
                       {stageCell(r, it, "Welding", c.weld, "var(--weld-tint)")}
                       {isPaintExempt(it) ? (
-                        <td className="p-2 text-center text-muted border-r" title="not painted — core ships after welding">—</td>
+                        <td className="p-2 text-center text-muted" title="not painted — core ships after welding">—</td>
                       ) : (
-                        stageCell(r, it, "Painting", c.paint, "var(--paint-tint)", true)
+                        stageCell(r, it, "Painting", c.paint, "var(--paint-tint)")
                       )}
+                      {stageCell(r, it, "Delivered", c.delivered, "var(--dlvd-tint)", true)}
                     </Fragment>
                   );
                 })}
@@ -532,18 +536,18 @@ export function MasterTrackerTable({
                   {r.status === "closed" ? (
                     <>
                       <span className="pill pill-muted">Closed</span>
-                      {canEdit && (
+                      {can("tracker.status") && (
                         <button onClick={() => changeStatus(r.mo, "open")} disabled={pending} className="text-accent text-xs px-1.5 hover:underline">Reopen</button>
                       )}
                     </>
-                  ) : canEdit && r.required > 0 && r.complete >= r.required ? (
+                  ) : can("tracker.status") && r.required > 0 && r.complete >= r.required ? (
                     <button onClick={() => changeStatus(r.mo, "closed")} disabled={pending} className="rounded-md px-2 py-0.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50">
                       ✓ Close
                     </button>
                   ) : (
                     <span className="pill pill-ok">Open</span>
                   )}
-                  {canEdit && (
+                  {can("tracker.components") && (
                     <button
                       onClick={() => setOpenConfig(openConfig === r.mo ? null : r.mo)}
                       disabled={pending}
@@ -553,31 +557,35 @@ export function MasterTrackerTable({
                       ⚙
                     </button>
                   )}
-                  {isAdmin && r.status === "open" && (
+                  {r.status === "open" && (
                     <>
-                      <button
-                        onClick={() => togglePriority(r)}
-                        disabled={pending}
-                        className={`text-xs px-1 ${r.priority ? "" : "grayscale opacity-50 hover:opacity-100"}`}
-                        title={r.priority ? "Remove the priority flag" : "Flag as PRIORITY — shows in a dedicated table on top of every dept worklist"}
-                      >
-                        ⭐
-                      </button>
-                      <button
-                        onClick={() => openPushPanel(r)}
-                        disabled={pending}
-                        className="text-muted text-xs px-1 hover:text-accent"
-                        title="Send this order down to a worklist — pick the dept, items and quantities"
-                      >
-                        📤
-                      </button>
+                      {can("tracker.priority") && (
+                        <button
+                          onClick={() => togglePriority(r)}
+                          disabled={pending}
+                          className={`text-xs px-1 ${r.priority ? "" : "grayscale opacity-50 hover:opacity-100"}`}
+                          title={r.priority ? "Remove the priority flag" : "Flag as PRIORITY — shows in a dedicated table on top of every dept worklist"}
+                        >
+                          ⭐
+                        </button>
+                      )}
+                      {can("tracker.push") && (
+                        <button
+                          onClick={() => openPushPanel(r)}
+                          disabled={pending}
+                          className="text-muted text-xs px-1 hover:text-accent"
+                          title="Send this order down to a worklist — pick the dept, items and quantities"
+                        >
+                          📤
+                        </button>
+                      )}
                     </>
                   )}
                 </td>
               </tr>
               {openPush === r.mo && (
                 <tr className={inGroup ? "border-x-2 border-brand" : ""}>
-                  <td colSpan={20} className="p-3 bg-brand-light/30 border-y">
+                  <td colSpan={24} className="p-3 bg-brand-light/30 border-y">
                     <form
                       onSubmit={(e) => { e.preventDefault(); submitPush(r); }}
                       className="flex flex-wrap items-center gap-3 text-sm"
@@ -631,7 +639,7 @@ export function MasterTrackerTable({
               )}
               {openConfig === r.mo && (
                 <tr className={inGroup ? "border-x-2 border-brand" : ""}>
-                  <td colSpan={20} className="p-3 bg-brand-light/30 border-y">
+                  <td colSpan={24} className="p-3 bg-brand-light/30 border-y">
                     <form
                       onSubmit={(e) => { e.preventDefault(); saveExcluded(r.mo, e.currentTarget); }}
                       className="flex flex-wrap items-center gap-4 text-sm max-w-2xl"
@@ -664,15 +672,17 @@ function StageHead() {
     <>
       <th className="p-1 font-medium" style={{ background: "var(--cut-tint)" }}>Fab</th>
       <th className="p-1 font-medium" style={{ background: "var(--weld-tint)" }}>Weld</th>
-      <th className="p-1 font-medium border-r" style={{ background: "var(--paint-tint)" }}>Paint</th>
+      <th className="p-1 font-medium" style={{ background: "var(--paint-tint)" }}>Paint</th>
+      <th className="p-1 font-medium border-r" style={{ background: "var(--dlvd-tint)" }} title="Delivered — received by the customer">Dlvd</th>
     </>
   );
 }
 
-function StageCells({ cut, weld, paint, excluded = false, noPaint = false }: { cut: number; weld: number; paint: number; excluded?: boolean; noPaint?: boolean }) {
+function StageCells({ cut, weld, paint, delivered, excluded = false, noPaint = false }: { cut: number; weld: number; paint: number; delivered: number; excluded?: boolean; noPaint?: boolean }) {
   if (excluded) {
     return (
       <>
+        <td className="p-2 text-center text-muted">—</td>
         <td className="p-2 text-center text-muted">—</td>
         <td className="p-2 text-center text-muted">—</td>
         <td className="p-2 text-center text-muted border-r">—</td>
@@ -685,10 +695,11 @@ function StageCells({ cut, weld, paint, excluded = false, noPaint = false }: { c
       <td className="p-2 text-center tabnum" style={{ background: "var(--weld-tint)" }}>{weld}</td>
       {/* the core (CF) has no paint stage — welding is its final step */}
       {noPaint ? (
-        <td className="p-2 text-center text-muted border-r" title="not painted — core ships after welding">—</td>
+        <td className="p-2 text-center text-muted" title="not painted — core ships after welding">—</td>
       ) : (
-        <td className="p-2 text-center tabnum border-r" style={{ background: "var(--paint-tint)" }}>{paint}</td>
+        <td className="p-2 text-center tabnum" style={{ background: "var(--paint-tint)" }}>{paint}</td>
       )}
+      <td className="p-2 text-center tabnum border-r" style={{ background: "var(--dlvd-tint)" }}>{delivered}</td>
     </>
   );
 }

@@ -8,6 +8,11 @@ export type Item = (typeof ITEMS)[number];
 export const DEPTS = ["Cut", "Welding", "Painting"] as const;
 export type Dept = (typeof DEPTS)[number];
 
+/** Extra ledger stage (not a production dept): pieces the CUSTOMER received.
+ *  Recorded on the Plan Tracker's Dlvd cells, stored in the same daily-log
+ *  ledger, capped at the finished quantity. Never enters worklists/queues. */
+export const DELIVERED_STAGE = "Delivered" as const;
+
 /** DISPLAY names only — the stored dept value stays "Cut" so every existing
  *  handover row, permission key and plan keeps working untouched. */
 export const DEPT_LABELS: Record<Dept, string> = {

@@ -10,7 +10,9 @@ import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { checkOutputChain } from "@/lib/server/outputGuard";
-import { requireDeptEdit, requireAdmin } from "@/lib/server/auth";
+import { requireDeptEdit, requireAdmin, requirePerm } from "@/lib/server/auth";
+import { trackerPermKey } from "@/lib/domain/permissions";
+import { DELIVERED_STAGE } from "@/lib/domain/constants";
 
 export interface RecordResult {
   ok: boolean;
@@ -92,8 +94,10 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     const item = String(formData.get("item") ?? "").trim().toUpperCase();
     const newTotal = Number(formData.get("total"));
 
-    if (!isDept(dept)) return { ok: false, error: "Invalid department." };
-    const guard = await requireDeptEdit(dept); // same permission as the dept's worklist
+    if (!isDept(dept) && dept !== DELIVERED_STAGE) return { ok: false, error: "Invalid department." };
+    // each tracker column has ITS OWN permission — deliberately separate from
+    // the dept's worklist permission (tracker.cut / .weld / .paint / .delivered)
+    const guard = await requirePerm(trackerPermKey(dept));
     if (guard.error) return { ok: false, error: guard.error };
     if (!bom || !mo) return { ok: false, error: "Missing MO / BOM." };
     if (!isItem(item)) return { ok: false, error: "Invalid component." };

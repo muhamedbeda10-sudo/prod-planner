@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { PERMISSIONS } from "@/lib/domain/permissions";
+import { PERM_CATEGORIES } from "@/lib/domain/permissions";
 import { createUser, updateUserPerms, setUserActive, resetUserPassword, deleteUser } from "./actions";
 
 interface Row {
@@ -19,22 +19,29 @@ const btnCls = "btn btn-primary btn-sm";
 
 function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: boolean }) {
   return (
-    <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
-      {PERMISSIONS.map((p) => (
-        <label key={p.key} className="flex items-start gap-2 text-sm cursor-pointer" title={p.desc}>
-          <input
-            type="checkbox"
-            name="perms"
-            value={p.key}
-            defaultChecked={defaults.has(p.key)}
-            disabled={disabled}
-            className="mt-0.5 accent-[var(--brand,#1b7a43)]"
-          />
-          <span>
-            <span className="font-semibold">{p.label}</span>
-            <span className="block text-xs text-muted">{p.desc}</span>
-          </span>
-        </label>
+    <div className="space-y-3">
+      {PERM_CATEGORIES.map((cat) => (
+        <fieldset key={cat.name} className="border rounded-lg p-3">
+          <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">{cat.name}</legend>
+          <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
+            {cat.perms.map((p) => (
+              <label key={p.key} className="flex items-start gap-2 text-sm cursor-pointer" title={p.desc}>
+                <input
+                  type="checkbox"
+                  name="perms"
+                  value={p.key}
+                  defaultChecked={defaults.has(p.key)}
+                  disabled={disabled}
+                  className="mt-0.5 accent-[var(--brand,#1b7a43)]"
+                />
+                <span>
+                  <span className="font-semibold">{p.label}</span>
+                  <span className="block text-xs text-muted">{p.desc}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
       ))}
     </div>
   );
