@@ -16,7 +16,7 @@ export interface MasterTrackerRow {
   urgent: boolean;
   kva: string | null;
   required: number; // planQty
-  items: Record<Item, { cut: number; weld: number; paint: number; delivered: number; osp: number; excluded: boolean }>;
+  items: Record<Item, { cut: number; weld: number; paint: number; shp: number; delivered: number; osp: number; excluded: boolean }>;
   welded: number; // MIN (weld + osp) over the REQUIRED items
   complete: number; // MIN (paint + osp) over the REQUIRED items — drives Left + Achievement
   remaining: number;
@@ -54,13 +54,14 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       const cut = cap(g(o.mo, "Cut", it));
       const weld = cap(g(o.mo, "Welding", it));
       const paint = cap(g(o.mo, "Painting", it));
+      const shp = cap(g(o.mo, "ShotBlast", it)); // the core's real final stage after welding
       const delivered = cap(g(o.mo, "Delivered", it)); // what the customer received
       const isExcluded = excluded.has(it);
-      items[it] = { cut, weld, paint, delivered, osp, excluded: isExcluded };
+      items[it] = { cut, weld, paint, shp, delivered, osp, excluded: isExcluded };
       if (isExcluded) continue; // this project doesn't need the component — it can't gate completion
       welded = Math.min(welded, cap(weld + osp));
-      // final stage = Welding for the paint-exempt core (CF), Painting otherwise
-      complete = Math.min(complete, cap((isPaintExempt(it) ? weld : paint) + osp));
+      // final stage = SHOT BLAST for the paint-exempt core (CF), Painting otherwise
+      complete = Math.min(complete, cap((isPaintExempt(it) ? shp : paint) + osp));
     }
     if (!Number.isFinite(welded)) welded = 0;
     if (!Number.isFinite(complete)) complete = 0;

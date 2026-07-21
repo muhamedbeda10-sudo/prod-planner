@@ -12,7 +12,7 @@ import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { checkOutputChain } from "@/lib/server/outputGuard";
 import { requireDeptEdit, requireAdmin, requirePerm } from "@/lib/server/auth";
 import { trackerPermKey } from "@/lib/domain/permissions";
-import { DELIVERED_STAGE } from "@/lib/domain/constants";
+import { DELIVERED_STAGE, SHOTBLAST_STAGE, isPaintExempt } from "@/lib/domain/constants";
 
 export interface RecordResult {
   ok: boolean;
@@ -94,13 +94,16 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     const item = String(formData.get("item") ?? "").trim().toUpperCase();
     const newTotal = Number(formData.get("total"));
 
-    if (!isDept(dept) && dept !== DELIVERED_STAGE) return { ok: false, error: "Invalid department." };
+    if (!isDept(dept) && dept !== DELIVERED_STAGE && dept !== SHOTBLAST_STAGE) return { ok: false, error: "Invalid department." };
     // each tracker column has ITS OWN permission — deliberately separate from
-    // the dept's worklist permission (tracker.cut / .weld / .paint / .delivered)
+    // the dept's worklist permission (tracker.cut / .weld / .paint / .shp / .delivered)
     const guard = await requirePerm(trackerPermKey(dept));
     if (guard.error) return { ok: false, error: guard.error };
     if (!bom || !mo) return { ok: false, error: "Missing MO / BOM." };
     if (!isItem(item)) return { ok: false, error: "Invalid component." };
+    if (dept === SHOTBLAST_STAGE && !isPaintExempt(item)) {
+      return { ok: false, error: `${item} is painted, not shot blasted — SHP applies to the core (CF) only.` };
+    }
     if (!Number.isInteger(newTotal) || newTotal < 0) return { ok: false, error: "Enter a whole number ≥ 0." };
 
     const agg = await prisma.handoverEntry.aggregate({ where: { mo, item, dept }, _sum: { qty: true } });
