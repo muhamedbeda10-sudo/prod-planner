@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
   ReferenceLine, LabelList,
 } from "recharts";
-import { ITEMS } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt } from "@/lib/domain/constants";
 import type { DayRow } from "@/lib/server/dashboard";
 
 /* ATC brand chart palette */
@@ -67,7 +67,8 @@ export function WeekItemChart({
   paint: Record<string, number>;
   targetPerItemWeek: number;
 }) {
-  const data = ITEMS.map((it) => ({ item: it, Fabrication: cut[it] ?? 0, Welding: weld[it] ?? 0, Painting: paint[it] ?? 0 }));
+  // the core (CF) is never painted — no Painting bar for it at all
+  const data = ITEMS.map((it) => ({ item: it, Fabrication: cut[it] ?? 0, Welding: weld[it] ?? 0, Painting: isPaintExempt(it) ? undefined : paint[it] ?? 0 }));
   return (
     <ChartScroller minWidth={420} height={260}>
         <BarChart data={data} margin={{ top: 16, right: 10, left: -10, bottom: 0 }}>

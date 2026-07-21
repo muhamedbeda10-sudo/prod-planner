@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList, ReferenceLine,
 } from "recharts";
 import { Printer } from "lucide-react";
-import { ITEMS } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt } from "@/lib/domain/constants";
 
 /* ATC brand chart palette */
 const GREEN = "#1a8150"; // brand green
@@ -22,8 +22,9 @@ export function OutputByComponentChart({
   painting: Record<string, number>;
   target: number;
 }) {
-  const data = ITEMS.map((it) => ({ item: it, Fabrication: cut[it] ?? 0, Welding: welding[it] ?? 0, Painting: painting[it] ?? 0 }));
-  const maxVal = Math.max(target, ...data.flatMap((d) => [d.Fabrication, d.Welding, d.Painting]));
+  // the core (CF) is never painted — no Painting bar for it at all
+  const data = ITEMS.map((it) => ({ item: it, Fabrication: cut[it] ?? 0, Welding: welding[it] ?? 0, Painting: isPaintExempt(it) ? undefined : painting[it] ?? 0 }));
+  const maxVal = Math.max(target, ...data.flatMap((d) => [d.Fabrication, d.Welding, d.Painting ?? 0]));
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
 
   // one chart definition, two sizes: the screen one is responsive (and

@@ -7,7 +7,7 @@ import { PeriodFilter, DashboardPeriodMemory } from "@/components/controls";
 import { WeekTrendChart, WeekItemChart, HistoryChart } from "@/components/DashboardCharts";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { parseISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS } from "@/lib/domain/constants";
+import { ITEMS, PAINTED_ITEMS, type Item } from "@/lib/domain/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +78,8 @@ export default async function Home({
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
             <DeptScoreboard title={<DeptTitle icon={<LaserCutterIcon size={16} />} name="Fabrication" />} data={d.today.cut} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
             <DeptScoreboard title={<DeptTitle icon={<WeldingIcon size={16} />} name="Welding" />} data={d.today.weld} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
-            <DeptScoreboard title={<DeptTitle icon={<PowderCoatIcon size={16} />} name="Painting" />} data={d.today.paint} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
+            {/* the core (CF) is never painted — the Painting card shows the 3 painted items and targets ×3 */}
+            <DeptScoreboard title={<DeptTitle icon={<PowderCoatIcon size={16} />} name="Painting" />} data={d.today.paint} target={d.targetPerItem} targetTotal={d.targetPerItem * PAINTED_ITEMS.length} items={PAINTED_ITEMS} />
           </div>
         </section>
       )}
@@ -110,7 +111,8 @@ export default async function Home({
             title={<DeptTitle icon={<PowderCoatIcon size={16} />} name="Painting" />}
             data={d.period.paint}
             target={d.targetPerItemPeriod}
-            targetTotal={d.targetPerDeptPeriod}
+            targetTotal={d.targetPerItemPeriod * PAINTED_ITEMS.length}
+            items={PAINTED_ITEMS}
             paceTarget={d.todayInPeriod && d.paceWorkingDays < d.workingDays ? d.targetPerItem * d.paceWorkingDays : undefined}
           />
         </div>
@@ -140,14 +142,14 @@ export default async function Home({
                 <th className="p-2 border-l border-border-strong" colSpan={5}>
                   <span className="inline-flex items-center gap-1.5"><WeldingIcon size={13} />Welding</span>
                 </th>
-                <th className="p-2 border-l border-border-strong" colSpan={5}>
+                <th className="p-2 border-l border-border-strong" colSpan={4}>
                   <span className="inline-flex items-center gap-1.5"><PowderCoatIcon size={13} />Painting</span>
                 </th>
               </tr>
               <tr className="bg-brand-dark text-white text-center text-[10px]">
-                {[0, 1, 2].flatMap((i) =>
-                  [...ITEMS, "Total"].map((h) => (
-                    <th key={`${i}-${h}`} className={`p-1 ${h === "CF" ? "border-l border-border-strong" : ""}`}>{h}</th>
+                {([ITEMS, ITEMS, PAINTED_ITEMS] as const).flatMap((list, i) =>
+                  [...list, "Total"].map((h, j) => (
+                    <th key={`${i}-${h}`} className={`p-1 ${j === 0 ? "border-l border-border-strong" : ""}`}>{h}</th>
                   ))
                 )}
               </tr>
@@ -166,11 +168,12 @@ export default async function Home({
                   </td>
                   {(["cut", "weld", "paint"] as const).flatMap((dept) => {
                     const dd = row[dept];
+                    const list = dept === "paint" ? PAINTED_ITEMS : ITEMS; // the core is never painted
                     return [
-                      ...ITEMS.map((it) => (
+                      ...list.map((it, j) => (
                         <td
                           key={`${dept}-${it}`}
-                          className={`p-1.5 tabnum font-semibold ${it === "CF" ? "border-l" : ""}`}
+                          className={`p-1.5 tabnum font-semibold ${j === 0 ? "border-l" : ""}`}
                           style={row.isFuture || row.isFriday || row.isHoliday ? undefined : pctStyle(pct(dd.items[it], d.targetPerItem))}
                         >
                           {dd.items[it]}
@@ -191,9 +194,10 @@ export default async function Home({
                 <td className="p-2 text-left">{d.mode === "week" ? "Week total" : "Period total"}</td>
                 {(["cut", "weld", "paint"] as const).flatMap((dept) => {
                   const dd = d.period[dept];
+                  const list = dept === "paint" ? PAINTED_ITEMS : ITEMS;
                   return [
-                    ...ITEMS.map((it) => (
-                      <td key={`t-${dept}-${it}`} className={`p-1.5 tabnum ${it === "CF" ? "border-l" : ""}`}
+                    ...list.map((it, j) => (
+                      <td key={`t-${dept}-${it}`} className={`p-1.5 tabnum ${j === 0 ? "border-l" : ""}`}
                         style={pctStyle(pct(dd.items[it], d.targetPerItemPeriod))}>
                         {dd.items[it]}
                       </td>
@@ -267,13 +271,14 @@ function DeptTitle({ icon, name }: { icon: React.ReactNode; name: string }) {
 }
 
 function DeptScoreboard({
-  title, data, target, targetTotal, paceTarget,
+  title, data, target, targetTotal, paceTarget, items = ITEMS,
 }: {
   title: React.ReactNode;
   data: DeptDay;
   target: number;
   targetTotal: number;
   paceTarget?: number;
+  items?: readonly Item[]; // Painting shows the 3 painted items (the core is never painted)
 }) {
   return (
     <div className="bg-surface border rounded-xl p-4">
@@ -288,8 +293,8 @@ function DeptScoreboard({
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        {ITEMS.map((it) => {
+      <div className={`grid grid-cols-2 ${items.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-4"} gap-2.5`}>
+        {items.map((it) => {
           const v = data.items[it];
           const f = pct(v, target);
           return (
