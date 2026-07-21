@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus, setExcludedItems, setOrderQty, setOrderPriority, pushOrderToWorklist } from "@/app/orders/actions";
+import { setOrderStatus, setExcludedItems, setOrderQty, setOrderPriority, pushOrderToWorklist, removeOrderMonth } from "@/app/orders/actions";
 import { recordTrackerTotal } from "@/app/worklist/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
@@ -140,6 +140,25 @@ export function MasterTrackerTable({
     }
     return [...map.entries()];
   }, [filtered]);
+
+  // 🔁 months editor: fix a wrongly-tagged plan month (admin)
+  const [openMonths, setOpenMonths] = useState<string | null>(null);
+
+  function dropMonth(r: MasterTrackerRow, m: string) {
+    if (!confirm(`Remove "${m}" from ${r.mo}? It will stop showing under that month's filter.`)) return;
+    const fd = new FormData();
+    fd.set("mo", r.mo);
+    fd.set("month", m);
+    startTransition(async () => {
+      const res = await removeOrderMonth(fd);
+      if (res.ok) {
+        setOpenMonths(null);
+        router.refresh();
+      } else {
+        alert(res.error ?? "Failed");
+      }
+    });
+  }
 
   // ⭐ priority toggle — the order shows in the priority table on every worklist
   function togglePriority(r: MasterTrackerRow) {
@@ -480,12 +499,24 @@ export function MasterTrackerTable({
                   <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline">{r.mo}</Link>
                   {r.priority && <span className="ml-1" title="Priority order — shown on top of every dept worklist">⭐</span>}
                   {r.months.length > 1 && (
-                    <span
-                      className="pill pill-warn ml-1"
-                      title={`Carried across ${r.months.length} monthly plans: ${r.months.join(" · ")}`}
-                    >
-                      🔁 ×{r.months.length}
-                    </span>
+                    can("admin") ? (
+                      <button
+                        type="button"
+                        onClick={() => setOpenMonths(openMonths === r.mo ? null : r.mo)}
+                        disabled={pending}
+                        className="pill pill-warn ml-1 cursor-pointer hover:ring-2 hover:ring-brand/60 transition-all"
+                        title={`Carried across ${r.months.length} monthly plans: ${r.months.join(" · ")} — click to fix a wrong tag`}
+                      >
+                        🔁 ×{r.months.length}
+                      </button>
+                    ) : (
+                      <span
+                        className="pill pill-warn ml-1"
+                        title={`Carried across ${r.months.length} monthly plans: ${r.months.join(" · ")}`}
+                      >
+                        🔁 ×{r.months.length}
+                      </span>
+                    )
                   )}
                   {r.urgent && <span className="pill pill-bad ml-1">U</span>}
                   {ITEMS.filter((it) => r.items[it].osp > 0).map((it) => (
@@ -626,6 +657,33 @@ export function MasterTrackerTable({
                   )}
                 </td>
               </tr>
+              {openMonths === r.mo && (
+                <tr className={inGroup ? "border-x-2 border-brand" : ""}>
+                  <td colSpan={24} className="p-3 bg-brand-light/30 border-y">
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="font-bold text-xs">🔁 {r.mo} appears under:</span>
+                      {r.months.map((m) => (
+                        <span key={m} className="pill pill-muted inline-flex items-center gap-1">
+                          {m}
+                          <button
+                            type="button"
+                            onClick={() => dropMonth(r, m)}
+                            disabled={pending || r.months.length <= 1}
+                            className="text-bad-fg font-extrabold px-0.5 disabled:opacity-30"
+                            title={r.months.length <= 1 ? "An order must keep at least one plan month" : `Remove "${m}" — wrong tag`}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                      <button type="button" onClick={() => setOpenMonths(null)} className="text-muted text-xs hover:underline">Close</button>
+                      <span className="text-[11px] text-muted w-full">
+                        A month is tagged automatically when the MO appears as a row in that month&apos;s imported sheet. Remove a wrong tag here — re-importing that month&apos;s file would tag it again only if the MO is still in the file.
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              )}
               {openPush === r.mo && (
                 <tr className={inGroup ? "border-x-2 border-brand" : ""}>
                   <td colSpan={24} className="p-3 bg-brand-light/30 border-y">

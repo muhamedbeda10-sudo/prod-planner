@@ -18,7 +18,7 @@ export default async function TrackerPage() {
   return (
     <MasterTrackerTable
       rows={rows}
-      features={user ? FEATURE_KEYS.filter((k) => hasPerm(user, k)) : []}
+      features={user ? [...FEATURE_KEYS.filter((k) => hasPerm(user, k)), ...(user.isAdmin ? ["admin"] : [])] : []}
       // stage columns (Fab/Weld/Paint/SHB/Dlvd) each need their own tracker permission
       editableDepts={user ? [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE].filter((d) => hasPerm(user, trackerPermKey(d))) : []}
     />

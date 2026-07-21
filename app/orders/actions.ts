@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
-import { requirePerm } from "@/lib/server/auth";
+import { requirePerm, requireAdmin } from "@/lib/server/auth";
 import { ITEMS, isDept, isPaintExempt, deptLabel } from "@/lib/domain/constants";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
@@ -111,6 +111,27 @@ export async function pushOrderToWorklist(formData: FormData): Promise<{ ok: boo
   return lines.length > 0
     ? { ok: true }
     : { ok: false, error: `Nothing sent — enter a quantity for at least one item (the ${deptLabel(dept)} push was cleared).` };
+}
+
+/** ADMIN ONLY — remove a wrongly-tagged plan month from an order (the 🔁
+ *  badge editor on the tracker). At least one month must remain. */
+export async function removeOrderMonth(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const mo = String(formData.get("mo") ?? "").trim();
+  const monthLabel = String(formData.get("month") ?? "").trim();
+  if (!mo || !monthLabel) return { ok: false, error: "Missing MO / month." };
+  const order = await prisma.masterOrder.findUnique({ where: { mo } });
+  if (!order) return { ok: false, error: `MO ${mo} not found.` };
+  const months = (order.months || order.source || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!months.includes(monthLabel)) return { ok: false, error: `${mo} is not tagged with ${monthLabel}.` };
+  if (months.length <= 1) return { ok: false, error: "An order must keep at least one plan month." };
+  await prisma.masterOrder.update({
+    where: { mo },
+    data: { months: months.filter((m) => m !== monthLabel).join(",") },
+  });
+  for (const p of ["/tracker", "/orders"]) revalidatePath(p);
+  return { ok: true };
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
