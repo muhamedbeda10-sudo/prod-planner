@@ -3,13 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
-import { requirePerm, requireAdmin } from "@/lib/server/auth";
+import { requirePerm } from "@/lib/server/auth";
 import { ITEMS, isDept, isPaintExempt, deptLabel } from "@/lib/domain/constants";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
 export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  const guard = await requirePerm("tracker.edit");
+  const guard = await requirePerm("tracker.status");
   if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
   const status = String(formData.get("status") ?? "");
@@ -29,7 +29,7 @@ export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean;
  *  quantities automatically — a revision that lowers one is just reported, and
  *  the planner confirms it here (a lowered qty may cancel produced work). */
 export async function setOrderQty(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  const guard = await requirePerm("tracker.edit");
+  const guard = await requirePerm("tracker.qty");
   if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
   const qty = Number(formData.get("qty"));
@@ -42,10 +42,10 @@ export async function setOrderQty(formData: FormData): Promise<{ ok: boolean; er
   return { ok: true };
 }
 
-/** ADMIN ONLY — flag/unflag an order as PRIORITY: it shows in a dedicated
+/** tracker.priority — flag/unflag an order as PRIORITY: it shows in a dedicated
  *  table on top of every dept worklist until its work is done. */
 export async function setOrderPriority(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  const guard = await requireAdmin();
+  const guard = await requirePerm("tracker.priority");
   if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
   const priority = String(formData.get("priority") ?? "") === "true";
@@ -57,12 +57,12 @@ export async function setOrderPriority(formData: FormData): Promise<{ ok: boolea
   return { ok: true };
 }
 
-/** ADMIN ONLY — send an order DOWN from the Plan Tracker to a dept's worklist:
+/** tracker.push — send an order DOWN from the Plan Tracker to a dept's worklist:
  *  chosen quantity per item, each capped at the order's UNFINISHED remainder
  *  for that dept (in-house qty − dept output). Replaces any previous push of
  *  this MO to the same dept; all-zero quantities just clear it. */
 export async function pushOrderToWorklist(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  const guard = await requireAdmin();
+  const guard = await requirePerm("tracker.push");
   if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
   const dept = String(formData.get("dept") ?? "");
@@ -126,7 +126,7 @@ function monthLabel(value: string): string | null {
  *  project). The plan sheets can't express this, so it is set on the tracker.
  *  Excluded items leave the cut worklist and stop gating completion/OTD. */
 export async function setExcludedItems(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  const guard = await requirePerm("tracker.edit");
+  const guard = await requirePerm("tracker.components");
   if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
   const raw = String(formData.get("excluded") ?? "").trim(); // CSV of CF/TC/TN/CB

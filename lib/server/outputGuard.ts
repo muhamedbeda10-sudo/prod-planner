@@ -1,10 +1,13 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { isPaintExempt } from "@/lib/domain/constants";
 
 // The physical chain — one rule enforced everywhere the log is written:
-//   painted ≤ welded ≤ cut ≤ order qty   (per MO × item)
-// Entries carrying an MO are checked against that MO's totals; entries without
-// one are checked at BOM level (the chain holds for the aggregate too).
+//   delivered ≤ finished ≤ … ≤ welded ≤ cut ≤ order qty   (per MO × item)
+// where "finished" is the item's FINAL production stage (welding for the
+// paint-exempt core CF, painting otherwise). Entries carrying an MO are
+// checked against that MO's totals; entries without one are checked at BOM
+// level (the chain holds for the aggregate too).
 // The WHOLE chain is re-checked after the proposed change, so reducing or
 // deleting an upstream entry can't leave downstream output hanging.
 // Totals are all-time, so date edits can never break the chain by themselves.
@@ -34,7 +37,11 @@ export async function checkOutputChain(opts: {
   const cut = tot("Cut");
   const weld = tot("Welding");
   const paint = tot("Painting");
+  const delivered = tot("Delivered");
 
+  const finished = isPaintExempt(opts.item) ? weld : paint;
+  if (delivered > finished)
+    return `Chain check: ${label} would have ${delivered} delivered but only ${finished} finished — delivered must stay ≤ ${isPaintExempt(opts.item) ? "welded" : "painted"}.`;
   if (paint > weld)
     return `Chain check: ${label} would have ${paint} painted but only ${weld} welded — painted must stay ≤ welded.`;
   if (weld > cut)
