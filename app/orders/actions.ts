@@ -101,7 +101,9 @@ export async function pushOrderToWorklist(formData: FormData): Promise<{ ok: boo
     await tx.worklistPush.deleteMany({ where: { dept, mo } });
     if (lines.length > 0) {
       await tx.worklistPush.createMany({
-        data: lines.map((l) => ({ dept, bom: order.bom, mo, item: l.item, qty: l.qty, createdBy: guard.user?.name ?? null })),
+        // baseDone = the dept total NOW: only output recorded AFTER the push
+        // consumes the pushed quantity (work done before is never re-counted)
+        data: lines.map((l) => ({ dept, bom: order.bom, mo, item: l.item, qty: l.qty, baseDone: done.get(l.item) ?? 0, createdBy: guard.user?.name ?? null })),
       });
     }
   });

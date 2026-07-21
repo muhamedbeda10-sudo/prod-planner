@@ -149,7 +149,14 @@ export async function getCutSheet(): Promise<CutSheet> {
     const r = (o.remark ?? "").trim();
     if (r && !remarkOf.has(o.mo)) remarkOf.set(o.mo, r);
   }
-  const pushQtyOf = new Map(pushRows.map((p) => [`${p.mo}|${p.item}`, p.qty]));
+  // output recorded since the push consumes the pushed quantity automatically;
+  // an exhausted push retires and its line returns to the normal sections
+  const pushQtyOf = new Map<string, number>();
+  for (const p of pushRows) {
+    const d = cutDoneOf.get(`${p.mo}|${p.item}`) ?? 0;
+    const open = p.qty - Math.max(0, d - p.baseDone);
+    if (open > 0) pushQtyOf.set(`${p.mo}|${p.item}`, open);
+  }
   const undatedAll = cascade
     .filter((r) => r.deliveryISO === null)
     .map((r) => {

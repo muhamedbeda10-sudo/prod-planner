@@ -208,6 +208,7 @@ model WorklistPush {
   mo        String
   item      String // CF | TC | TN | CB
   qty       Float
+  baseDone  Float    @default(0) // dept output when pushed — output recorded after consumes the push
   createdBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
