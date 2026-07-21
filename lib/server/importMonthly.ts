@@ -65,6 +65,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     await prisma.masterOrder.createMany({
       data: toAdd.map((r) => ({
         mo: r.mo,
+        months: sourceLabel,
         soi: r.soi,
         urgent: r.urgent,
         customer: r.customer,
@@ -129,11 +130,29 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     );
   }
 
-  // MOs previously imported from THIS month's plan but missing from the new
+  // an EXISTING MO appearing in another month's plan gets that month appended
+  // to its list — it shows under every month it belonged to (carried-over
+  // orders get a badge on the tracker). Change data stays untouched.
+  const monthsOf = (csv: string) => csv.split(",").map((s) => s.trim()).filter(Boolean);
+  const carried = rows
+    .map((r) => byMo.get(r.mo))
+    .filter((o): o is NonNullable<typeof o> => !!o && !monthsOf(o.months || o.source || "").includes(sourceLabel));
+  if (carried.length > 0 && !preview) {
+    await prisma.$transaction(
+      carried.map((o) =>
+        prisma.masterOrder.update({
+          where: { mo: o.mo },
+          data: { months: [...monthsOf(o.months || o.source || ""), sourceLabel].join(",") },
+        })
+      )
+    );
+  }
+
+  // MOs previously listed under THIS month's plan but missing from the new
   // revision — the planner may have cancelled them. Reported, never touched.
   const inSheet = new Set(rows.map((r) => r.mo));
   const missingFromSheet = registry
-    .filter((o) => o.source === sourceLabel && o.status === "open" && !inSheet.has(o.mo))
+    .filter((o) => o.status === "open" && !inSheet.has(o.mo) && monthsOf(o.months || o.source || "").includes(sourceLabel))
     .map((o) => o.mo);
 
   // qty decreases are never applied — enrich each with what the departments

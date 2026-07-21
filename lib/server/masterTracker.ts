@@ -23,7 +23,7 @@ export interface MasterTrackerRow {
   achievement: number | null;
   status: string; // open | closed
   priority: boolean; // ⭐ flagged by the admin — shows on every dept worklist
-  source: string | null; // which monthly plan imported it (e.g. "July 2026")
+  months: string[]; // every monthly plan the MO appeared in (e.g. ["July 2026", "August 2026"])
 }
 
 export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
@@ -80,7 +80,9 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       achievement: o.planQty > 0 ? complete / o.planQty : null,
       status: o.status,
       priority: o.priority,
-      source: o.source,
+      // months CSV is backfilled from source by the migration; keep the
+      // fallback for rows created before either existed
+      months: (o.months || o.source || "").split(",").map((s) => s.trim()).filter(Boolean),
     };
   });
 }

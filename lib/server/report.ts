@@ -128,7 +128,7 @@ export async function getWeekSnapshot(planNo: number): Promise<ReportPlanRow[]> 
           TN: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false },
           CB: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false },
         },
-        welded: 0, complete: 0, remaining: requiredOf.get(mo) ?? 0, achievement: 0, status: "open", priority: false, source: null,
+        welded: 0, complete: 0, remaining: requiredOf.get(mo) ?? 0, achievement: 0, status: "open", priority: false, months: [],
       });
     }
   }
