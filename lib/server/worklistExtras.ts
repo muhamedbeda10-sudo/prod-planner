@@ -73,7 +73,10 @@ export async function getWorklistExtras(dept: Dept): Promise<WorklistExtras> {
     if (hiddenKeys.has(`${p.bom}|${p.mo}|${p.item}`)) continue;
     const inhouse = Math.max(0, o.planQty - (o[OSP[p.item as keyof typeof OSP]] ?? 0));
     const d = done.get(`${p.mo}|${p.item}`) ?? 0;
-    const qty = Math.min(p.qty, Math.max(0, inhouse - d));
+    // output recorded SINCE the push (from any screen — tracker cells included)
+    // consumes the pushed quantity automatically
+    const open = p.qty - Math.max(0, d - p.baseDone);
+    const qty = Math.min(open, Math.max(0, inhouse - d));
     if (qty <= 0) continue; // the pushed work is finished — the line retires itself
     pushed.push({ bom: p.bom, mo: p.mo, description: descOf(o), item: p.item, qty, done: d, orderQty: inhouse });
   }

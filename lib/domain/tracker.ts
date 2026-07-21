@@ -8,7 +8,7 @@
 //   WeldDone   = min(pre + logged Welding,  Required)
 //   PaintDone  = min(pre + logged Painting, Required)
 //   Complete   = MIN of each component's FINAL stage — Painting for TC/TN/CB,
-//                Welding for the paint-exempt core (CF is never painted)
+//                SHOT BLAST for the paint-exempt core (CF is never painted)
 //   Remaining  = Required - Complete
 //   Achievement = Complete / Required
 
@@ -100,13 +100,14 @@ export function computeTracker(
   }
 
   // ---- logged production per dept|bom|item (RAW bom) ----
-  const logged: Record<"Cut" | "Welding" | "Painting", Map<string, number>> = {
+  const logged: Record<"Cut" | "Welding" | "Painting" | "ShotBlast", Map<string, number>> = {
     Cut: new Map(),
     Welding: new Map(),
     Painting: new Map(),
+    ShotBlast: new Map(), // the paint-exempt core's real final stage
   };
   for (const l of logs) {
-    const dept = l.dept === "Cut" || l.dept === "Welding" || l.dept === "Painting" ? l.dept : null;
+    const dept = l.dept === "Cut" || l.dept === "Welding" || l.dept === "Painting" || l.dept === "ShotBlast" ? l.dept : null;
     if (!dept) continue;
     const key = `${(l.bom ?? "").trim()}|${l.item}`;
     logged[dept].set(key, (logged[dept].get(key) ?? 0) + (l.qty || 0));
@@ -132,9 +133,11 @@ export function computeTracker(
       if (weldDone > req) weldDone = req;
       let paintDone = pre + get(logged.Painting, `${rec.bom}|${it}`);
       if (paintDone > req) paintDone = req;
+      let shpDone = pre + get(logged.ShotBlast, `${rec.bom}|${it}`);
+      if (shpDone > req) shpDone = req;
       items[it] = { cutDone, weldDone, paintDone };
-      // final stage = Welding for the paint-exempt core (CF), Painting otherwise
-      const finalDone = isPaintExempt(it) ? weldDone : paintDone;
+      // final stage = SHOT BLAST for the paint-exempt core (CF), Painting otherwise
+      const finalDone = isPaintExempt(it) ? shpDone : paintDone;
       if (first) {
         complete = finalDone;
         first = false;

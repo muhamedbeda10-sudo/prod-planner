@@ -30,23 +30,27 @@ describe("computeTracker", () => {
     expect(row.achievement).toBeCloseTo(2 / 6, 9);
   });
 
-  it("complete follows PAINT for TC/TN/CB but WELD for the paint-exempt core CF", () => {
+  it("complete follows PAINT for TC/TN/CB but SHOT BLAST for the paint-exempt core CF", () => {
     const orders = moRows("X3E11M11", "MO1", 5, { CF: 5, TC: 5, TN: 5, CB: 5 }); // pre 0
-    const logs: TrackerLogRow[] = (["CF", "TC", "TN", "CB"] as const).flatMap((item) => [
-      { dept: "Welding", bom: "X3E11M11", item, qty: 5 },
-      { dept: "Painting", bom: "X3E11M11", item, qty: 2 },
-    ]);
+    const logs: TrackerLogRow[] = [
+      ...(["CF", "TC", "TN", "CB"] as const).flatMap((item): TrackerLogRow[] => [
+        { dept: "Welding", bom: "X3E11M11", item, qty: 5 },
+        { dept: "Painting", bom: "X3E11M11", item, qty: 2 },
+      ]),
+      { dept: "ShotBlast", bom: "X3E11M11", item: "CF", qty: 5 },
+    ];
     const [row] = computeTracker(orders, logs);
-    // CF's final stage is welding (it's never painted) → counts 5
+    // CF's final stage is SHOT BLAST (it's never painted) → counts 5
     // TC/TN/CB counts their paint (2) → MIN(5,2,2,2) = 2
     expect(row.complete).toBe(2);
     expect(row.remaining).toBe(3);
   });
 
-  it("CF welded but not painted does not block completion (painted trio decides it)", () => {
+  it("CF never painted does not block completion — SHOT BLAST closes the core", () => {
     const orders = moRows("X4E11M11", "MO1", 5, { CF: 5, TC: 5, TN: 5, CB: 5 });
     const logs: TrackerLogRow[] = [
-      { dept: "Welding", bom: "X4E11M11", item: "CF", qty: 5 }, // core finished at welding
+      { dept: "Welding", bom: "X4E11M11", item: "CF", qty: 5 },
+      { dept: "ShotBlast", bom: "X4E11M11", item: "CF", qty: 5 }, // core finished at shot blast
       { dept: "Painting", bom: "X4E11M11", item: "TC", qty: 5 },
       { dept: "Painting", bom: "X4E11M11", item: "TN", qty: 5 },
       { dept: "Painting", bom: "X4E11M11", item: "CB", qty: 5 },
@@ -54,6 +58,10 @@ describe("computeTracker", () => {
     const [row] = computeTracker(orders, logs);
     expect(row.complete).toBe(5); // 100% even though CF paint = 0
     expect(row.remaining).toBe(0);
+
+    // welding alone is NOT enough for the core any more
+    const [row2] = computeTracker(orders, logs.filter((l) => l.dept !== "ShotBlast"));
+    expect(row2.complete).toBe(0);
   });
 
   it("logged Cut/Welding stacks on top of previous-week progress and caps at Required", () => {

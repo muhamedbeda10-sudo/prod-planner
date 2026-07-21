@@ -36,12 +36,13 @@ describe("computeDailyReport — department output", () => {
     expect(rep.projects[0].required).toBeNull();
   });
 
-  it("completion cumulates each item's FINAL stage: paint for TC/TN/CB, weld for the core CF", () => {
+  it("completion cumulates each item's FINAL stage: paint for TC/TN/CB, SHOT BLAST for the core CF", () => {
     const orders: ReportOrderRow[] = (["CF", "TC", "TN", "CB"] as const).map((item) => ({
       planNo: 27, bom: "A11E11M11", mo: "MO1", description: "1000kva", item, requiredQty: 5, targetQty: 5,
     }));
     const logs: ReportLogRow[] = [
-      { date: utcDate(2026, 7, 7), dept: "Welding", bom: "A11E11M11", item: "CF", qty: 5, planNo: 27 }, // core done at welding
+      { date: utcDate(2026, 7, 7), dept: "Welding", bom: "A11E11M11", item: "CF", qty: 5, planNo: 27 },
+      { date: utcDate(2026, 7, 7), dept: "ShotBlast", bom: "A11E11M11", item: "CF", qty: 5, planNo: 27 }, // core done at shot blast
       { date: utcDate(2026, 7, 7), dept: "Painting", bom: "A11E11M11", item: "TC", qty: 5, planNo: 27 },
       { date: utcDate(2026, 7, 7), dept: "Painting", bom: "A11E11M11", item: "TN", qty: 5, planNo: 27 },
       { date: day, dept: "Painting", bom: "A11E11M11", item: "CB", qty: 5, planNo: 27 }, // today closes it
@@ -49,7 +50,7 @@ describe("computeDailyReport — department output", () => {
     const rep = computeDailyReport(orders, logs, day, 27, grouper);
     const proj = rep.projects.find((p) => p.dept === "Painting")!;
     expect(proj.required).toBe(5);
-    expect(proj.completed).toBe(5); // CF welded + TC/TN/CB painted
+    expect(proj.completed).toBe(5); // CF shot blasted + TC/TN/CB painted
     expect(proj.status).toBe("Closed");
   });
 
@@ -60,6 +61,7 @@ describe("computeDailyReport — department output", () => {
     // CF only welded (never painted); the other three fully painted
     const logs: ReportLogRow[] = [
       { date: day, dept: "Welding", bom: "A11E11M11", item: "CF", qty: 5, planNo: 27 },
+      { date: day, dept: "ShotBlast", bom: "A11E11M11", item: "CF", qty: 5, planNo: 27 },
       { date: day, dept: "Painting", bom: "A11E11M11", item: "TC", qty: 5, planNo: 27 },
       { date: day, dept: "Painting", bom: "A11E11M11", item: "TN", qty: 5, planNo: 27 },
       { date: day, dept: "Painting", bom: "A11E11M11", item: "CB", qty: 5, planNo: 27 },

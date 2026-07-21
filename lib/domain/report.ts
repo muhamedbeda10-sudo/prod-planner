@@ -69,7 +69,8 @@ export function computeDailyReport(
   // ---- read log (up to and including the day) ----
   const deptItem = new Map<string, number>(); // dept|item today
   const paintCum = new Map<string, number>(); // bg|item painting cumulative <= day
-  const weldCum = new Map<string, number>(); // bg|item welding cumulative <= day (final stage for CF)
+  const weldCum = new Map<string, number>(); // bg|item welding cumulative <= day
+  const shpCum = new Map<string, number>(); // bg|item shot-blast cumulative <= day (final stage for CF)
   const bomDept = new Map<string, Map<string, number>>(); // bg|dept -> item -> qty today
   const bomWeek = new Map<string, number>(); // bg -> planNo (first today entry)
 
@@ -83,6 +84,7 @@ export function computeDailyReport(
     if (!bg || !itm || q <= 0) continue;
     if (dp === "Painting") inc(paintCum, `${bg}|${itm}`, q);
     if (dp === "Welding") inc(weldCum, `${bg}|${itm}`, q);
+    if (dp === "ShotBlast") inc(shpCum, `${bg}|${itm}`, q);
     if (dtl === dt) {
       inc(deptItem, `${dp}|${itm}`, q);
       const bk = `${bg}|${dp}`;
@@ -163,8 +165,8 @@ export function computeDailyReport(
       const TT = g(tgtD, `${wkB}|${bg}|${it}`);
       let pre = RQ - TT;
       if (pre < 0) pre = 0;
-      // final stage = Welding for the paint-exempt core (CF), Painting otherwise
-      const cum = isPaintExempt(it) ? g(weldCum, `${bg}|${it}`) : g(paintCum, `${bg}|${it}`);
+      // final stage = SHOT BLAST for the paint-exempt core (CF), Painting otherwise
+      const cum = isPaintExempt(it) ? g(shpCum, `${bg}|${it}`) : g(paintCum, `${bg}|${it}`);
       let eff = pre + cum;
       if (eff > RQ) eff = RQ;
       if (first) { completed = eff; first = false; }
