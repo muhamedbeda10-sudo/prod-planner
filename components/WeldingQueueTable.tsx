@@ -518,6 +518,9 @@ export function WeldingQueueTable({
 
   return (
     <>
+      {/* search + per-component chips stay pinned below the nav on desktop
+          while the queue tables scroll under them */}
+      <div className="md:sticky md:top-16 md:z-20 bg-background">
       <FilterBar count={filtered.length} total={rows.length} showCount={false} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM…" />
         {/* per-component workload — tap a card to filter the queue to it */}
@@ -546,6 +549,7 @@ export function WeldingQueueTable({
         </div>
         <PrintButton />
       </FilterBar>
+      </div>
 
       {/* pieces sent back TO this dept: fix first, they re-enter the flow */}
       <ReturnsTable rows={returns} dept={dept} canEdit={canEdit} />

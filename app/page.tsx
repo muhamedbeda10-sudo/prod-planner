@@ -39,8 +39,10 @@ export default async function Home({
       {/* the chosen From→To range survives even a full browser restart */}
       <DashboardPeriodMemory />
       {/* period controls — phones get a pager row (prev · title · next), then
-          Insights and the period filter as tidy full-width rows */}
-      <div className="no-print flex flex-wrap items-center justify-between gap-3 bg-surface border rounded-xl px-3 py-2.5">
+          Insights and the period filter as tidy full-width rows. Sticks below
+          the nav on desktop so the filters + Smart Insights stay in view while
+          the cards and matrix scroll underneath. */}
+      <div className="no-print flex flex-wrap items-center justify-between gap-3 bg-surface border rounded-xl px-3 py-2.5 md:sticky md:top-16 md:z-20">
         <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
           {d.mode === "week" && (
             <Link href={`/?w=${d.prevWeekISO}`} className="btn btn-secondary btn-sm whitespace-nowrap">← Prev</Link>

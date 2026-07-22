@@ -267,6 +267,9 @@ export function MasterTrackerTable({
 
   return (
     <>
+      {/* the summary cards + filters stay pinned below the nav on desktop so
+          only the table scrolls under them */}
+      <div className="md:sticky md:top-16 md:z-20 bg-background">
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
         {itemStats.map(({ it, finalIsShp, need, done, remaining, pct }) => (
@@ -326,6 +329,7 @@ export function MasterTrackerTable({
         <SelectFilter label="Urgent" value={urgent} onChange={setUrgent} options={[{ value: "yes", label: "Urgent only" }]} />
         <ExportButton rows={exportRows} filename="plan-tracker.xlsx" sheetName="Tracker" />
       </FilterBar>
+      </div>
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
