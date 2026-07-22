@@ -87,6 +87,9 @@ export function CutWorklistView({
 
   return (
     <>
+      {/* search + per-component chips stay pinned below the nav on desktop
+          while the worklist tables scroll under them */}
+      <div className="md:sticky md:top-16 md:z-20 bg-background">
       <FilterBar count={shown} total={total} showCount={false} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / description — filters all tables…" />
         {/* what's left per component — tap a card to filter every table to it */}
@@ -110,6 +113,7 @@ export function CutWorklistView({
         </div>
         <PrintButton />
       </FilterBar>
+      </div>
 
       {/* ⭐ the admin's priority orders — a focus list above everything */}
       <PriorityOrdersTable rows={priority} deptWord="cut" />
