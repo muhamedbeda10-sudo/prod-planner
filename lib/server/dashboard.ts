@@ -1,6 +1,6 @@
 ﻿import "server-only";
 import { prisma } from "@/lib/db";
-import { ITEMS, PAINTED_ITEMS, type Item } from "@/lib/domain/constants";
+import { ITEMS, PAINTED_ITEMS, SHEET_ITEMS, PAINTED_SHEET_ITEMS, sumItemTargets, type Item } from "@/lib/domain/constants";
 import { getSettings } from "./data";
 import { dayNumber, dateFromDayNumber, toISODate } from "@/lib/domain/dates";
 
@@ -43,11 +43,13 @@ export interface WeekSummary {
 
 export interface TargetDashboard {
   mode: "week" | "range";
-  targetPerItem: number; // per working day (27)
-  targetPerDeptDay: number; // × 4 items
+  targetPerItem: number; // base component per working day (27); AR/MB run at 20
+  targetPerDeptDay: number; // Cut/Weld dept-day line = Σ item targets (base ×27 + AR 20 + MB 20)
+  paintTargetDay: number; // Painting dept-day line = Σ painted item targets (base painted ×27 + AR 20 + MB 20)
   workingDays: number; // working days in the shown period
   targetPerItemPeriod: number; // targetPerItem × workingDays
-  targetPerDeptPeriod: number; // × 4
+  targetPerDeptPeriod: number; // targetPerDeptDay × workingDays
+  paintTargetPeriod: number; // paintTargetDay × workingDays
   fromISO: string;
   toISO: string;
   prevWeekISO: string; // week mode only
@@ -64,14 +66,16 @@ export interface TargetDashboard {
   history: WeekSummary[]; // 6 work weeks anchored at the period end
 }
 
-const emptyItems = (): Record<Item, number> => ({ CF: 0, TC: 0, TN: 0, CB: 0 });
+const emptyItems = (): Record<Item, number> => ({ CF: 0, TC: 0, TN: 0, CB: 0, AR: 0, MB: 0 });
 const minOf = (vals: number[]) => vals.reduce((m, v) => (v < m ? v : m), vals[0] ?? 0);
 const isItem = (x: string): x is Item => (ITEMS as readonly string[]).includes(x);
 
-// Painting only handles the painted components, so a painting "set" is the MIN
-// over those items (the core CF is never painted — it can't gate a set).
+// A "set" is a complete transformer, so it is the MIN across the components EVERY
+// transformer carries (the base sheet items). The conditional AR/MB are present
+// only on some orders, so they must not drag the min. `total` still sums ALL
+// items (AR/MB output counts). Painting excludes the paint-exempt core.
 function mkDeptDay(items: Record<Item, number>, painted = false): DeptDay {
-  const setItems = painted ? PAINTED_ITEMS : ITEMS;
+  const setItems = painted ? PAINTED_SHEET_ITEMS : SHEET_ITEMS;
   return {
     items,
     total: ITEMS.reduce((s, it) => s + items[it], 0),
@@ -196,9 +200,9 @@ export async function getTargetDashboard(opts?: {
       cutTotal += ITEMS.reduce((s, it) => s + cutI[it], 0);
       weldTotal += ITEMS.reduce((s, it) => s + weldI[it], 0);
       paintTotal += ITEMS.reduce((s, it) => s + paintI[it], 0);
-      cutSets += minOf(ITEMS.map((it) => cutI[it]));
-      weldSets += minOf(ITEMS.map((it) => weldI[it]));
-      paintSets += minOf(PAINTED_ITEMS.map((it) => paintI[it]));
+      cutSets += minOf(SHEET_ITEMS.map((it) => cutI[it]));
+      weldSets += minOf(SHEET_ITEMS.map((it) => weldI[it]));
+      paintSets += minOf(PAINTED_SHEET_ITEMS.map((it) => paintI[it]));
     }
     const startISO = toISODate(dateFromDayNumber(ws));
     const endISO = toISODate(dateFromDayNumber(ws + 5));
@@ -210,10 +214,12 @@ export async function getTargetDashboard(opts?: {
   return {
     mode,
     targetPerItem: target,
-    targetPerDeptDay: target * 4,
+    targetPerDeptDay: sumItemTargets(ITEMS, target),
+    paintTargetDay: sumItemTargets(PAINTED_ITEMS, target),
     workingDays,
     targetPerItemPeriod: target * workingDays,
-    targetPerDeptPeriod: target * workingDays * 4,
+    targetPerDeptPeriod: sumItemTargets(ITEMS, target) * workingDays,
+    paintTargetPeriod: sumItemTargets(PAINTED_ITEMS, target) * workingDays,
     fromISO: toISODate(dateFromDayNumber(fromD)),
     toISO: toISODate(dateFromDayNumber(toD)),
     prevWeekISO: toISODate(dateFromDayNumber(fromD - 7)),

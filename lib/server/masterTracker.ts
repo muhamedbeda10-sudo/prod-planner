@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { ITEMS, isPaintExempt, type Item } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, itemApplies, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 
 // Plan Tracker on the MONTHLY registry: one row per MO. Progress is GLOBAL —
 // setup balances plus every logged output, regardless of week — capped at the
@@ -15,8 +15,12 @@ export interface MasterTrackerRow {
   soi: string | null;
   urgent: boolean;
   kva: string | null;
+  rating: string | null;
   required: number; // planQty
-  items: Record<Item, { cut: number; weld: number; paint: number; shp: number; delivered: number; osp: number; excluded: boolean }>;
+  // eligible = the order needs this component by rule (base four always; AR/MB
+  // only when KVA/rating match). excluded = admin marked it N/A. A component
+  // gates completion only when eligible && !excluded.
+  items: Record<Item, { cut: number; weld: number; paint: number; shp: number; delivered: number; osp: number; excluded: boolean; eligible: boolean }>;
   welded: number; // MIN (weld + osp) over the REQUIRED items
   complete: number; // MIN (paint + osp) over the REQUIRED items — drives Left + Achievement
   remaining: number;
@@ -44,22 +48,23 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
   const g = (mo: string, dept: string, item: string) => done.get(`${mo}|${dept}|${item}`) ?? 0;
 
   return orders.map((o) => {
-    const ospOf: Record<Item, number> = { CF: o.ospCF, TC: o.ospTC, TN: o.ospTN, CB: o.ospCB };
-    const excluded = new Set((o.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+    const excluded = parseExcludedItems(o.excludedItems);
     const items = {} as MasterTrackerRow["items"];
     let welded = Infinity;
     let complete = Infinity;
     for (const it of ITEMS) {
       const cap = (v: number) => (o.planQty > 0 ? Math.min(v, o.planQty) : v);
-      const osp = ospOf[it];
+      const osp = ospOf(o, it);
       const cut = cap(g(o.mo, "Cut", it));
       const weld = cap(g(o.mo, "Welding", it));
       const paint = cap(g(o.mo, "Painting", it));
       const shp = cap(g(o.mo, "ShotBlast", it)); // the core's real final stage after welding
       const delivered = cap(g(o.mo, "Delivered", it)); // what the customer received
+      const eligible = itemApplies(it, o); // AR/MB only when the KVA/rating rule matches
       const isExcluded = excluded.has(it);
-      items[it] = { cut, weld, paint, shp, delivered, osp, excluded: isExcluded };
-      if (isExcluded) continue; // this project doesn't need the component — it can't gate completion
+      items[it] = { cut, weld, paint, shp, delivered, osp, excluded: isExcluded, eligible };
+      // a component gates completion only when the order needs it and it isn't N/A
+      if (!eligible || isExcluded) continue;
       welded = Math.min(welded, cap(weld + osp));
       // final stage = SHOT BLAST for the paint-exempt core (CF), Painting otherwise
       complete = Math.min(complete, cap((isPaintExempt(it) ? shp : paint) + osp));
@@ -72,6 +77,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       soi: o.soi,
       urgent: o.urgent,
       kva: o.kva,
+      rating: o.rating,
       required: o.planQty,
       items,
       welded,

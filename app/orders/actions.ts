@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
 import { requirePerm, requireAdmin } from "@/lib/server/auth";
-import { ITEMS, isDept, isPaintExempt, deptLabel } from "@/lib/domain/constants";
+import { applicableItems, ospOf, eligibleItems, isDept, isPaintExempt, deptLabel, type Item } from "@/lib/domain/constants";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
@@ -78,19 +78,18 @@ export async function pushOrderToWorklist(formData: FormData): Promise<{ ok: boo
     _sum: { qty: true },
   });
   const done = new Map(sums.map((s) => [s.item, s._sum.qty ?? 0]));
-  const osp = { CF: order.ospCF, TC: order.ospTC, TN: order.ospTN, CB: order.ospCB } as const;
-  const excluded = new Set((order.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 
+  // applicableItems already drops N/A components and AR/MB the order's rule
+  // doesn't match — only the order's real components can be pushed.
   const lines: { item: string; qty: number }[] = [];
-  for (const item of ITEMS) {
+  for (const item of applicableItems(order)) {
     const raw = String(formData.get(`qty${item}`) ?? "").trim();
     if (!raw) continue;
     const qty = Number(raw);
     if (!Number.isFinite(qty) || qty < 0) return { ok: false, error: `${item}: quantity must be a number ≥ 0.` };
     if (qty === 0) continue;
-    if (excluded.has(item)) return { ok: false, error: `${item} is N/A for this order.` };
     if (dept === "Painting" && isPaintExempt(item)) return { ok: false, error: `${item} is never painted — it cannot go to the Painting worklist.` };
-    const remaining = Math.max(0, order.planQty - osp[item] - (done.get(item) ?? 0));
+    const remaining = Math.max(0, order.planQty - ospOf(order, item) - (done.get(item) ?? 0));
     if (qty > remaining) {
       return { ok: false, error: `${item}: only ${remaining} pcs remain un-${dept === "Cut" ? "cut" : dept === "Welding" ? "welded" : "painted"} — cannot send ${qty}.` };
     }
@@ -152,13 +151,16 @@ export async function setExcludedItems(formData: FormData): Promise<{ ok: boolea
   const guard = await requirePerm("tracker.components");
   if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
-  const raw = String(formData.get("excluded") ?? "").trim(); // CSV of CF/TC/TN/CB
+  const raw = String(formData.get("excluded") ?? "").trim(); // CSV of the order's components
   if (!mo) return { ok: false, error: "Missing MO." };
   const items = raw ? raw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
-  if (items.some((i) => !["CF", "TC", "TN", "CB"].includes(i))) return { ok: false, error: "Invalid component." };
-  if (items.length === 4) return { ok: false, error: "An order cannot exclude all four components." };
   const order = await prisma.masterOrder.findUnique({ where: { mo } });
   if (!order) return { ok: false, error: `MO ${mo} not found.` };
+  // only the order's own components (base four + AR/MB when its KVA/rating match)
+  // can be marked N/A, and it must keep at least one
+  const eligible = eligibleItems(order);
+  if (items.some((i) => !eligible.includes(i as Item))) return { ok: false, error: "Invalid component." };
+  if (eligible.every((i) => items.includes(i))) return { ok: false, error: "An order cannot exclude all its components." };
   await prisma.masterOrder.update({
     where: { mo },
     data: { excludedItems: items.length > 0 ? items.join(",") : null },

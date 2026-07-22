@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { ITEMS, isPaintExempt, type Dept } from "@/lib/domain/constants";
+import { applicableItems, ospOf, isPaintExempt, type Dept, type Item } from "@/lib/domain/constants";
 
 /** A tracker-pushed line as shown on a dept worklist (qty clamped to the
  *  order's live remainder — recorded output shrinks it automatically). */
@@ -39,8 +39,6 @@ export interface WorklistExtras {
   priority: PriorityLineDTO[];
 }
 
-const OSP = { CF: "ospCF", TC: "ospTC", TN: "ospTN", CB: "ospCB" } as const;
-
 /** The admin layers of a dept's worklist: tracker pushes, hidden lines and
  *  the priority-orders table. Hidden keys also filter the other two. */
 export async function getWorklistExtras(dept: Dept): Promise<WorklistExtras> {
@@ -71,7 +69,7 @@ export async function getWorklistExtras(dept: Dept): Promise<WorklistExtras> {
     const o = byMo.get(p.mo);
     if (!o || o.status !== "open") continue; // closed orders leave the daily screens
     if (hiddenKeys.has(`${p.bom}|${p.mo}|${p.item}`)) continue;
-    const inhouse = Math.max(0, o.planQty - (o[OSP[p.item as keyof typeof OSP]] ?? 0));
+    const inhouse = Math.max(0, o.planQty - ospOf(o, p.item as Item));
     const d = done.get(`${p.mo}|${p.item}`) ?? 0;
     // output recorded SINCE the push (from any screen — tracker cells included)
     // consumes the pushed quantity automatically
@@ -83,12 +81,10 @@ export async function getWorklistExtras(dept: Dept): Promise<WorklistExtras> {
 
   const priority: PriorityLineDTO[] = [];
   for (const o of priorityOrders) {
-    const excluded = new Set((o.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
-    for (const item of ITEMS) {
-      if (excluded.has(item)) continue;
+    for (const item of applicableItems(o)) {
       if (dept === "Painting" && isPaintExempt(item)) continue; // the core is never painted
       if (hiddenKeys.has(`${o.bom}|${o.mo}|${item}`)) continue;
-      const need = Math.max(0, o.planQty - o[OSP[item]]);
+      const need = Math.max(0, o.planQty - ospOf(o, item));
       const d = done.get(`${o.mo}|${item}`) ?? 0;
       const remaining = Math.max(0, need - d);
       if (remaining <= 0) continue;

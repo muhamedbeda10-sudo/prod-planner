@@ -4,7 +4,7 @@
 //   2) Projects worked today    (per BOM+dept; completion = MIN painted — a
 //      transformer only counts once it left Painting)
 
-import { ITEMS, DEPTS, PAINTED_ITEMS, isPaintExempt, type Item, type Dept } from "./constants";
+import { ITEMS, DEPTS, PAINTED_ITEMS, SHEET_ITEMS, PAINTED_SHEET_ITEMS, sumItemTargets, isPaintExempt, type Item, type Dept } from "./constants";
 import type { BomGrouper } from "./bom";
 import { dayNumber } from "./dates";
 
@@ -31,9 +31,9 @@ export interface DeptOutput {
   items: Record<Item, number>;
   total: number;
   target: number;
-  sets: number; // MIN across items
-  efficiency: number; // total / (4 * target)
-  balance: number | null; // (sets*4)/total, null when total = 0
+  sets: number; // MIN across the base components on every transformer
+  efficiency: number; // total / (Σ per-item daily targets: base 27, AR/MB 20)
+  balance: number | null; // (sets × base-item count) / base total, null when 0
 }
 
 export interface ProjectRow {
@@ -123,19 +123,23 @@ export function computeDailyReport(
       items[it] = g(deptItem, `${dept}|${it}`);
       total += items[it];
     }
-    // Painting only handles the painted components (the core CF is never painted),
-    // so its sets / efficiency / balance are measured over those items only.
-    const setItems = dept === "Painting" ? PAINTED_ITEMS : ITEMS;
-    const n = setItems.length;
-    const sets = minOf(setItems.map((it) => items[it]));
+    // Efficiency counts every component the dept handles at its OWN daily target
+    // (base 27, AR/MB 20). "Sets" and balance use only the components on EVERY
+    // transformer (base sheet items) so the conditional AR/MB don't skew them.
+    // Painting excludes the paint-exempt core (CF is never painted).
+    const deptItems = dept === "Painting" ? PAINTED_ITEMS : ITEMS;
+    const baseItems = dept === "Painting" ? PAINTED_SHEET_ITEMS : SHEET_ITEMS;
+    const targetSum = sumItemTargets(deptItems, target);
+    const sets = minOf(baseItems.map((it) => items[it]));
+    const baseTotal = baseItems.reduce((s, it) => s + items[it], 0);
     return {
       dept,
       items,
       total,
       target,
       sets,
-      efficiency: total / (n * target),
-      balance: total > 0 ? (sets * n) / total : null,
+      efficiency: targetSum > 0 ? total / targetSum : 0,
+      balance: baseTotal > 0 ? (sets * baseItems.length) / baseTotal : null,
     };
   });
 

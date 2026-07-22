@@ -12,7 +12,7 @@
 //
 // OTD% = on time / (on time + late + open-late)
 
-import { ITEMS } from "./constants";
+import { ITEMS, SHEET_ITEMS } from "./constants";
 import { dayNumber, dateFromDayNumber, toISODate } from "./dates";
 
 export interface OtdOrder {
@@ -20,6 +20,10 @@ export interface OtdOrder {
   planQty: number;
   osp?: Partial<Record<(typeof ITEMS)[number], number>>; // outsourced share per component — satisfied without in-house painting
   excluded?: string[]; // components this project doesn't need at all
+  /** The components this order actually needs. Defaults to the four base
+   *  components; the server passes the order's applicable set (base + AR/MB when
+   *  its KVA/rating rule matches, minus N/A). */
+  items?: readonly string[];
 }
 export interface OtdSchedule {
   planNo: number;
@@ -103,9 +107,9 @@ export function computeOtd(
     let completed: number | null = null;
     let anyNeed = false;
     let unreached = false;
-    for (const it of ITEMS) {
+    for (const it of o.items ?? SHEET_ITEMS) {
       if (o.excluded?.includes(it)) continue; // project doesn't need this component
-      const need = o.planQty - (o.osp?.[it] ?? 0);
+      const need = o.planQty - (o.osp?.[it as (typeof ITEMS)[number]] ?? 0);
       if (need <= 0) continue; // fully outsourced component — nothing to paint in-house
       anyNeed = true;
       const r = reachedOn(o.mo, it, need);

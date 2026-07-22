@@ -93,13 +93,13 @@ export interface DeptWeekInput {
 export function forecastDept(opts: {
   dept: string;
   weekTotal: number;
-  targetPerItem: number; // per working day
+  deptTargetDay: number; // dept capacity per working day (Σ per-item targets)
   workingDays: number; // in the shown week
   paceDays: number; // elapsed working days (incl. today)
 }): Insight | null {
-  const { dept, weekTotal, targetPerItem, workingDays, paceDays } = opts;
+  const { dept, weekTotal, deptTargetDay, workingDays, paceDays } = opts;
   if (paceDays <= 0 || workingDays <= 0) return null;
-  const weekTarget = targetPerItem * ITEMS.length * workingDays;
+  const weekTarget = deptTargetDay * workingDays;
   const rate = weekTotal / paceDays;
   const remaining = Math.max(0, workingDays - paceDays);
   const projected = Math.round(weekTotal + rate * remaining);
@@ -262,8 +262,8 @@ export function atRiskInsight(
 /* Set balance — the limiting component        */
 /* ------------------------------------------ */
 
-export function setBalanceInsight(dept: string, weekItems: Record<Item, number>): Insight | null {
-  const values = ITEMS.map((it) => ({ it, v: weekItems[it] }));
+export function setBalanceInsight(dept: string, weekItems: Record<Item, number>, considerItems: readonly Item[] = ITEMS): Insight | null {
+  const values = considerItems.map((it) => ({ it, v: weekItems[it] }));
   const min = values.reduce((m, x) => (x.v < m.v ? x : m), values[0]);
   const others = values.filter((x) => x.it !== min.it);
   const avgOthers = others.reduce((s, x) => s + x.v, 0) / others.length;

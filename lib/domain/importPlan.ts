@@ -13,7 +13,7 @@
 // Plan dates are OVEN dates: day g -> startDate + g.
 // targetQty(item) = sum of the item's day cells (the scheduled total).
 
-import { ITEMS, type Item } from "./constants";
+import { SHEET_ITEMS, type Item } from "./constants";
 
 const GRID_FIRST_ROW = 6; // 1-based
 const DAYS = 6;
@@ -110,7 +110,9 @@ export function parseWeeklyPlan(grid: unknown[][]): ParsedPlan {
       }
     }
 
-    ITEMS.forEach((item, k) => {
+    // The weekly grid has exactly 4 component columns per day (F..AC); AR/MB are
+    // derived per order from KVA/rating and never appear as grid columns.
+    SHEET_ITEMS.forEach((item, k) => {
       let gridSum = 0;
       for (let g = 0; g < DAYS; g++) {
         const cell = N(row[COL.GRID_FIRST + 4 * g + k]);

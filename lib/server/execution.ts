@@ -14,7 +14,7 @@ import {
   type CutTranche,
 } from "@/lib/domain/execution";
 import { toISODate } from "@/lib/domain/dates";
-import { ITEMS } from "@/lib/domain/constants";
+import { applicableItems, ospOf } from "@/lib/domain/constants";
 import type { HiddenLineDTO, PriorityLineDTO } from "@/lib/server/worklistExtras";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getSettings, getPlanWindows } from "./data";
@@ -96,9 +96,8 @@ export async function getCutSheet(): Promise<CutSheet> {
   // "finished of total" fraction shown next to the day's plan)
   const orderQtyOf = new Map<string, number>(); // mo|item -> planQty − OSP
   for (const m of masters) {
-    const osp = { CF: m.ospCF, TC: m.ospTC, TN: m.ospTN, CB: m.ospCB } as const;
-    for (const it of ["CF", "TC", "TN", "CB"] as const) {
-      orderQtyOf.set(`${m.mo}|${it}`, Math.max(0, m.planQty - osp[it]));
+    for (const it of applicableItems(m)) {
+      orderQtyOf.set(`${m.mo}|${it}`, Math.max(0, m.planQty - ospOf(m, it)));
     }
   }
   const cutDoneOf = new Map<string, number>(); // mo|item -> global cut output
@@ -121,19 +120,18 @@ export async function getCutSheet(): Promise<CutSheet> {
   // cascade from the master registry: every component of every order not yet
   // fully covered by the schedule or already-cut quantity
   const cascade = computeCascade({
-    orders: masters.flatMap((m) => {
-      const osp = { CF: m.ospCF, TC: m.ospTC, TN: m.ospTN, CB: m.ospCB } as const;
-      const excluded = new Set((m.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
-      return (["CF", "TC", "TN", "CB"] as const).map((item) => ({
+    // applicableItems already drops N/A components and AR/MB that the order's
+    // KVA/rating rule doesn't match — neither ever reaches our worklists. The
+    // OSP share is made outside, so the target is planQty − OSP.
+    orders: masters.flatMap((m) =>
+      applicableItems(m).map((item) => ({
         bom: m.bom,
         mo: m.mo,
         description: [m.kva, m.rating].filter(Boolean).join(" · ") || null,
         item,
-        // OSP share is made outside; excluded components aren't needed at all —
-        // neither ever reaches our worklists
-        targetQty: excluded.has(item) ? 0 : Math.max(0, m.planQty - osp[item]),
-      }));
-    }),
+        targetQty: Math.max(0, m.planQty - ospOf(m, item)),
+      })),
+    ),
     schedules: schedIn,
     entries: entryIn,
     day: today,
@@ -186,11 +184,8 @@ export async function getCutSheet(): Promise<CutSheet> {
   const priority: PriorityLineDTO[] = [];
   for (const m of masters) {
     if (!m.priority) continue;
-    const osp = { CF: m.ospCF, TC: m.ospTC, TN: m.ospTN, CB: m.ospCB } as const;
-    const excluded = new Set((m.excludedItems ?? "").split(",").map((s) => s.trim()).filter(Boolean));
-    for (const item of ITEMS) {
-      if (excluded.has(item)) continue;
-      const need = Math.max(0, m.planQty - osp[item]);
+    for (const item of applicableItems(m)) {
+      const need = Math.max(0, m.planQty - ospOf(m, item));
       const done = cutDoneOf.get(`${m.mo}|${item}`) ?? 0;
       const remaining = Math.max(0, need - done);
       if (remaining <= 0) continue;
@@ -248,17 +243,17 @@ async function loadQueueInputs() {
   const [schedules, entries, masters] = await Promise.all([
     prisma.planSchedule.findMany({ orderBy: { id: "asc" } }),
     prisma.handoverEntry.findMany(),
-    prisma.masterOrder.findMany({ select: { mo: true, bom: true, planQty: true, ospCF: true, ospTC: true, ospTN: true, ospCB: true } }),
+    prisma.masterOrder.findMany({ select: { mo: true, bom: true, planQty: true, kva: true, rating: true, excludedItems: true, ospCF: true, ospTC: true, ospTN: true, ospCB: true } }),
   ]);
   // in-house share per MO×item where a part is outsourced: planQty − OSP.
   // The OSP share never reaches the welding/painting queues.
   const inhouseCap = new Map<string, number>();
   const orderQtyOf = new Map<string, number>(); // mo|item -> planQty − OSP (whole-order fraction denominator)
   for (const m of masters) {
-    const osp = { CF: m.ospCF, TC: m.ospTC, TN: m.ospTN, CB: m.ospCB } as const;
-    for (const it of ["CF", "TC", "TN", "CB"] as const) {
-      if (osp[it] > 0) inhouseCap.set(`${m.bom}|${m.mo}|${it}`, Math.max(0, m.planQty - osp[it]));
-      orderQtyOf.set(`${m.mo}|${it}`, Math.max(0, m.planQty - osp[it]));
+    for (const it of applicableItems(m)) {
+      const osp = ospOf(m, it);
+      if (osp > 0) inhouseCap.set(`${m.bom}|${m.mo}|${it}`, Math.max(0, m.planQty - osp));
+      orderQtyOf.set(`${m.mo}|${it}`, Math.max(0, m.planQty - osp));
     }
   }
   return {

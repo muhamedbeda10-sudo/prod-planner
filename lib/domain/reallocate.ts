@@ -9,7 +9,7 @@
 // Donor rows are consumed LAST-to-first (matching the VBA), so each move carries
 // the donor row's own date and id for a full audit trail.
 
-import { ITEMS, DEPTS, type Item, type Dept } from "./constants";
+import { SHEET_ITEMS, DEPTS, type Item, type Dept } from "./constants";
 import type { BomGrouper } from "./bom";
 
 export interface ReallocOrderRow {
@@ -86,7 +86,7 @@ export function computeReallocations(
   for (const [, boms] of fam) {
     if (boms.length < 2) continue;
     for (const dept of DEPTS) {
-      for (const item of ITEMS) {
+      for (const item of SHEET_ITEMS) {
         for (let d = 0; d < boms.length; d++) {
           const donor = boms[d];
           const dk = `${dept}|${donor}|${item}`;

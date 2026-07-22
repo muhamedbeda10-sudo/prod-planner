@@ -145,7 +145,7 @@ export default async function ReportPage({
             </thead>
             <tbody>
               {dayProjects.length === 0 && (
-                <tr><td colSpan={15} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
+                <tr><td colSpan={21} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
               )}
               {dayProjects.map((p, i) => (
                 <tr key={p.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
@@ -195,7 +195,7 @@ export default async function ReportPage({
             </thead>
             <tbody>
               {planRows.length === 0 && (
-                <tr><td colSpan={17} className="p-4 text-center text-muted">No orders in this view.</td></tr>
+                <tr><td colSpan={23} className="p-4 text-center text-muted">No orders in this view.</td></tr>
               )}
               {planRows.map((r, i) => (
                 <tr key={r.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`} style={hl(r) ? hlStyle : undefined}>

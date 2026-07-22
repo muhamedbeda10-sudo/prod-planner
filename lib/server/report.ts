@@ -60,7 +60,7 @@ export interface ReportPlanRow {
 }
 
 function emptyItems(): ReportPlanRow["items"] {
-  return { CF: { cut: 0, weld: 0, paint: 0 }, TC: { cut: 0, weld: 0, paint: 0 }, TN: { cut: 0, weld: 0, paint: 0 }, CB: { cut: 0, weld: 0, paint: 0 } };
+  return { CF: { cut: 0, weld: 0, paint: 0 }, TC: { cut: 0, weld: 0, paint: 0 }, TN: { cut: 0, weld: 0, paint: 0 }, CB: { cut: 0, weld: 0, paint: 0 }, AR: { cut: 0, weld: 0, paint: 0 }, MB: { cut: 0, weld: 0, paint: 0 } };
 }
 
 function groupByBom(members: MasterTrackerRow[], requiredOf?: Map<string, number>): ReportPlanRow[] {
@@ -121,12 +121,14 @@ export async function getWeekSnapshot(planNo: number): Promise<ReportPlanRow[]> 
       // MO planned this week but missing from the registry — show it with zeros
       const o = orders.find((x) => x.mo === mo)!;
       members.push({
-        mo, bom: o.bom, soi: o.soi, urgent: false, kva: null, required: requiredOf.get(mo) ?? 0,
+        mo, bom: o.bom, soi: o.soi, urgent: false, kva: null, rating: null, required: requiredOf.get(mo) ?? 0,
         items: {
-          CF: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false },
-          TC: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false },
-          TN: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false },
-          CB: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false },
+          CF: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true },
+          TC: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true },
+          TN: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true },
+          CB: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true },
+          AR: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: false },
+          MB: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: false },
         },
         welded: 0, complete: 0, remaining: requiredOf.get(mo) ?? 0, achievement: 0, status: "open", priority: false, months: [],
       });

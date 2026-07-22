@@ -68,20 +68,22 @@ export function MasterTrackerTable({
   const [month, setMonth] = useSavedFilter("tracker.month"); // monthly plan (import source), "" = all months
   const [openConfig, setOpenConfig] = useState<string | null>(null); // per-MO "required components" editor
 
-  function saveExcluded(mo: string, form: HTMLFormElement) {
+  function saveExcluded(r: MasterTrackerRow, form: HTMLFormElement) {
     const fd = new FormData(form);
     const required = fd.getAll("req").map(String);
-    const excluded = ITEMS.filter((it) => !required.includes(it)).join(",");
+    // only the order's own components can be toggled; excluded = eligible − checked
+    const eligible = ITEMS.filter((it) => r.items[it].eligible);
+    const excluded = eligible.filter((it) => !required.includes(it)).join(",");
     const out = new FormData();
-    out.set("mo", mo);
+    out.set("mo", r.mo);
     out.set("excluded", excluded);
     startTransition(async () => {
-      const r = await setExcludedItems(out);
-      if (r.ok) {
+      const res = await setExcludedItems(out);
+      if (res.ok) {
         setOpenConfig(null);
         router.refresh();
       } else {
-        alert(r.error ?? "Failed");
+        alert(res.error ?? "Failed");
       }
     });
   }
@@ -181,7 +183,7 @@ export function MasterTrackerTable({
   // what each dept still owes on an item — the push panel's ceiling
   function remainingFor(r: MasterTrackerRow, it: Item, dept: Dept): number {
     const c = r.items[it];
-    if (c.excluded) return 0;
+    if (!c.eligible || c.excluded) return 0; // AR/MB the order doesn't need, or N/A
     if (dept === "Painting" && isPaintExempt(it)) return 0; // the core is never painted
     const need = Math.max(0, r.required - c.osp);
     const done = dept === "Cut" ? c.cut : dept === "Welding" ? c.weld : c.paint;
@@ -233,7 +235,7 @@ export function MasterTrackerTable({
     let done = 0;
     for (const r of monthRows) {
       const c = r.items[it];
-      if (c.excluded) continue;
+      if (!c.eligible || c.excluded) continue; // AR/MB only count on orders that need them
       const n = Math.max(0, r.required - c.osp);
       need += n;
       done += Math.min(finalIsShp ? c.shp : c.paint, n);
@@ -253,6 +255,8 @@ export function MasterTrackerTable({
     "TC Fab": r.items.TC.cut, "TC Weld": r.items.TC.weld, "TC Paint": r.items.TC.paint, "TC Dlvd": r.items.TC.delivered,
     "TN Fab": r.items.TN.cut, "TN Weld": r.items.TN.weld, "TN Paint": r.items.TN.paint, "TN Dlvd": r.items.TN.delivered,
     "CB Fab": r.items.CB.cut, "CB Weld": r.items.CB.weld, "CB Paint": r.items.CB.paint, "CB Dlvd": r.items.CB.delivered,
+    "AR Fab": r.items.AR.cut, "AR Weld": r.items.AR.weld, "AR Paint": r.items.AR.paint, "AR Dlvd": r.items.AR.delivered,
+    "MB Fab": r.items.MB.cut, "MB Weld": r.items.MB.weld, "MB Paint": r.items.MB.paint, "MB Dlvd": r.items.MB.delivered,
     OSP: ITEMS.filter((it) => r.items[it].osp > 0).map((it) => `${it}×${r.items[it].osp}`).join(" "),
     Welded: r.welded,
     "Complete (painted)": r.complete,
@@ -264,7 +268,7 @@ export function MasterTrackerTable({
   return (
     <>
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
         {itemStats.map(({ it, finalIsShp, need, done, remaining, pct }) => (
           <div key={it} className="bg-surface border rounded-xl px-4 py-2.5">
             <div className="flex items-baseline justify-between">
@@ -347,7 +351,7 @@ export function MasterTrackerTable({
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={24} className="p-4 text-center text-muted">
+              <tr><td colSpan={32} className="p-4 text-center text-muted">
                 {rows.length === 0 ? "No orders yet — import a monthly plan." : "No rows match the filters."}
               </td></tr>
             )}
@@ -576,7 +580,9 @@ export function MasterTrackerTable({
                 </td>
                 {ITEMS.map((it) => {
                   const c = r.items[it];
-                  if (c.excluded) {
+                  // AR/MB the order's KVA/rating rule doesn't match, or a manual
+                  // N/A, show as blank dashes and don't gate completion
+                  if (!c.eligible || c.excluded) {
                     return (
                       <Fragment key={it}>
                         <td className="p-2 text-center text-muted">—</td>
@@ -659,7 +665,7 @@ export function MasterTrackerTable({
               </tr>
               {openMonths === r.mo && (
                 <tr className={inGroup ? "border-x-2 border-brand" : ""}>
-                  <td colSpan={24} className="p-3 bg-brand-light/30 border-y">
+                  <td colSpan={32} className="p-3 bg-brand-light/30 border-y">
                     <div className="flex flex-wrap items-center gap-2 text-sm">
                       <span className="font-bold text-xs">🔁 {r.mo} appears under:</span>
                       {r.months.map((m) => (
@@ -686,7 +692,7 @@ export function MasterTrackerTable({
               )}
               {openPush === r.mo && (
                 <tr className={inGroup ? "border-x-2 border-brand" : ""}>
-                  <td colSpan={24} className="p-3 bg-brand-light/30 border-y">
+                  <td colSpan={32} className="p-3 bg-brand-light/30 border-y">
                     <form
                       onSubmit={(e) => { e.preventDefault(); submitPush(r); }}
                       className="flex flex-wrap items-center gap-3 text-sm"
@@ -707,7 +713,7 @@ export function MasterTrackerTable({
                           <option key={d} value={d}>{deptLabel(d)} worklist</option>
                         ))}
                       </select>
-                      {ITEMS.map((it) => {
+                      {ITEMS.filter((it) => r.items[it].eligible).map((it) => {
                         const max = remainingFor(r, it, pushDept);
                         return (
                           <label key={it} className={`inline-flex items-center gap-1 font-semibold ${max === 0 ? "opacity-40" : ""}`}>
@@ -740,13 +746,13 @@ export function MasterTrackerTable({
               )}
               {openConfig === r.mo && (
                 <tr className={inGroup ? "border-x-2 border-brand" : ""}>
-                  <td colSpan={24} className="p-3 bg-brand-light/30 border-y">
+                  <td colSpan={32} className="p-3 bg-brand-light/30 border-y">
                     <form
-                      onSubmit={(e) => { e.preventDefault(); saveExcluded(r.mo, e.currentTarget); }}
+                      onSubmit={(e) => { e.preventDefault(); saveExcluded(r, e.currentTarget); }}
                       className="flex flex-wrap items-center gap-4 text-sm max-w-2xl"
                     >
                       <span className="font-bold text-xs">Components {r.mo} actually needs:</span>
-                      {ITEMS.map((it) => (
+                      {ITEMS.filter((it) => r.items[it].eligible).map((it) => (
                         <label key={it} className="inline-flex items-center gap-1.5 font-semibold cursor-pointer">
                           <input type="checkbox" name="req" value={it} defaultChecked={!r.items[it].excluded} className="accent-[var(--brand)]" />
                           {it}

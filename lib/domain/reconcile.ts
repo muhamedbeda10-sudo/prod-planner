@@ -12,7 +12,7 @@
 // (bom,item) in plan N disagrees with the actual remaining from the handover log
 // (required - welded all-time).
 
-import { ITEMS, type Item } from "./constants";
+import { ITEMS, SHEET_ITEMS, type Item } from "./constants";
 import { groupKey } from "./bom";
 
 export interface ReconOrder {
@@ -102,7 +102,7 @@ export function computeReconciliation(
     const newMOs = [...curMOs].filter((m) => !prevMOs.has(m));
     const droppedMOs = [...prevMOs].filter((m) => !curMOs.has(m));
 
-    for (const item of ITEMS) {
+    for (const item of SHEET_ITEMS) {
       const ki = `${bom}|${item}`;
       const oldTarget = prev.target.get(ki) ?? 0;
       const newTarget = cur.target.get(ki) ?? 0;

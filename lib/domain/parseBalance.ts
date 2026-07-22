@@ -10,15 +10,16 @@
 //   * Typo map: RC -> TC.
 //   * If any item was mentioned, unmentioned items = 0 and the result is valid.
 
-import { ITEMS, type Item } from "./constants";
+import { SHEET_ITEMS, type SheetItem } from "./constants";
 
 export interface BalanceResult {
   hasBalance: boolean;
-  /** Per-item balance; meaningful only when hasBalance is true. */
-  balance: Record<Item, number>;
+  /** Per-item balance over the four base components; meaningful only when
+   *  hasBalance is true. AR/MB never appear in a balance remark. */
+  balance: Record<SheetItem, number>;
 }
 
-const ITEM_INDEX: Record<string, Item> = {
+const ITEM_INDEX: Record<string, SheetItem> = {
   CF: "CF",
   TC: "TC",
   TN: "TN",
@@ -53,13 +54,13 @@ export function tokenizeRemark(remark: string): string[] {
 }
 
 export function parseBalance(remark: string, defaultQty: number): BalanceResult {
-  const empty: Record<Item, number> = { CF: 0, TC: 0, TN: 0, CB: 0 };
+  const empty: Record<SheetItem, number> = { CF: 0, TC: 0, TN: 0, CB: 0 };
   if (!remark || !/BALANCE/i.test(remark)) {
     return { hasBalance: false, balance: { ...empty } };
   }
 
   const tokens = tokenizeRemark(remark);
-  const bal: Partial<Record<Item, number>> = {};
+  const bal: Partial<Record<SheetItem, number>> = {};
   let cur: number | undefined;
   let found = false;
 
@@ -77,7 +78,7 @@ export function parseBalance(remark: string, defaultQty: number): BalanceResult 
 
   if (!found) return { hasBalance: false, balance: { ...empty } };
 
-  const balance: Record<Item, number> = { ...empty };
-  for (const it of ITEMS) balance[it] = bal[it] ?? 0;
+  const balance: Record<SheetItem, number> = { ...empty };
+  for (const it of SHEET_ITEMS) balance[it] = bal[it] ?? 0;
   return { hasBalance: true, balance };
 }
