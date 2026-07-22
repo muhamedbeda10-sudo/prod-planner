@@ -32,7 +32,7 @@ export default async function RootLayout({
         {user && (
           <AppNav user={{ name: user.name, isAdmin: user.isAdmin, perms: [...userPerms(user)] }} />
         )}
-        <main className="flex-1 px-4 py-5 md:px-6 md:py-6 max-w-[1600px] w-full mx-auto">
+        <main className="flex-1 w-full px-4 py-5 md:px-6 md:py-6">
           {children}
         </main>
         <SpeedInsights />

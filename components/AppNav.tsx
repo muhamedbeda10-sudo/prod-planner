@@ -78,7 +78,7 @@ export function AppNav({ user }: { user: NavUser }) {
 
   return (
     <header className="no-print sticky top-0 z-30 bg-brand text-white shadow-md">
-      <div className="max-w-[1600px] mx-auto px-3 md:px-6">
+      <div className="w-full px-4 md:px-6">
         <div className="flex items-center gap-2 md:gap-4 h-14 md:h-16">
           {/* mobile: drawer trigger */}
           <button
