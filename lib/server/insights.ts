@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { ITEMS, type Item } from "@/lib/domain/constants";
+import { ITEMS, PAINTED_ITEMS, PAINTED_SHEET_ITEMS, sumItemTargets, type Item } from "@/lib/domain/constants";
 import { dayNumber, dateFromDayNumber, toISODate } from "@/lib/domain/dates";
 import {
   sortInsights,
@@ -24,7 +24,7 @@ export interface SmartInsightsData {
   analyzedLines: number; // queue lines assessed for risk/aging
 }
 
-const emptyItems = (): Record<Item, number> => ({ CF: 0, TC: 0, TN: 0, CB: 0 });
+const emptyItems = (): Record<Item, number> => ({ CF: 0, TC: 0, TN: 0, CB: 0, AR: 0, MB: 0 });
 const isItem = (x: string): x is Item => (ITEMS as readonly string[]).includes(x);
 
 // dayNumber 0 = 1970-01-01 (Thursday): 0=Thu, 1=Fri, 2=Sat, ...
@@ -96,8 +96,11 @@ export async function getSmartInsights(): Promise<SmartInsightsData> {
   for (const { key, label } of DEPTS) {
     const items = weekItems[key];
     const weekTotal = ITEMS.reduce((s, it) => s + items[it], 0);
+    // dept capacity/day at each component's own target (base 27, AR/MB 20);
+    // Painting only handles the painted components (CF is never painted).
+    const deptTargetDay = sumItemTargets(key === "Painting" ? PAINTED_ITEMS : ITEMS, target);
 
-    insights.push(...compact(forecastDept({ dept: label, weekTotal, targetPerItem: target, workingDays, paceDays })));
+    insights.push(...compact(forecastDept({ dept: label, weekTotal, deptTargetDay, workingDays, paceDays })));
 
     // momentum: last 3 elapsed working days (excluding today — it's incomplete)
     // vs the 3 before them
@@ -117,7 +120,7 @@ export async function getSmartInsights(): Promise<SmartInsightsData> {
   // pipeline bottleneck
   const weldWaiting = weldQueue.reduce((s, r) => s + r.available, 0);
   const paintWaiting = paintQueue.reduce((s, r) => s + r.available, 0);
-  insights.push(...compact(bottleneckInsight({ weldWaiting, paintWaiting, targetPerDeptDay: target * ITEMS.length })));
+  insights.push(...compact(bottleneckInsight({ weldWaiting, paintWaiting, targetPerDeptDay: sumItemTargets(ITEMS, target) })));
 
   // overdue cut commitments
   const overdueQty = cutSheet.overdue.reduce((s, r) => s + r.remaining, 0);
@@ -136,7 +139,7 @@ export async function getSmartInsights(): Promise<SmartInsightsData> {
   insights.push(...compact(agingInsight("Painting", "/worklist/painting", paintQueue)));
 
   // component starving complete sets (painting = finished transformers)
-  insights.push(...compact(setBalanceInsight("Painting", weekItems.Painting)));
+  insights.push(...compact(setBalanceInsight("Painting", weekItems.Painting, PAINTED_SHEET_ITEMS)));
 
   return {
     todayISO,

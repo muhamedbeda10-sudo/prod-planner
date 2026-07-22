@@ -10,6 +10,7 @@ import {
   setBalanceInsight,
   sortInsights,
 } from "./insights";
+import { PAINTED_SHEET_ITEMS } from "./constants";
 
 describe("workingDaysInclusive", () => {
   // 2026-07-13 is a Monday; Friday 2026-07-17 is the off day
@@ -48,8 +49,8 @@ describe("assessDeliveryRisk", () => {
 });
 
 describe("forecastDept", () => {
-  const base = { dept: "Cut", targetPerItem: 27, workingDays: 6 };
-  // week target = 27 × 4 items × 6 days = 648
+  const base = { dept: "Cut", deptTargetDay: 108, workingDays: 6 };
+  // week target = 108/day (dept capacity) × 6 days = 648
 
   it("projects on-track output as good", () => {
     // 3 days elapsed at 110/day → projected 660 ≥ 648
@@ -127,12 +128,12 @@ describe("atRiskInsight", () => {
 
 describe("setBalanceInsight", () => {
   it("names the component starving complete sets", () => {
-    const ins = setBalanceInsight("Painting", { CF: 100, TC: 95, TN: 40, CB: 105 });
+    const ins = setBalanceInsight("Painting", { CF: 100, TC: 95, TN: 40, CB: 105, AR: 0, MB: 0 }, PAINTED_SHEET_ITEMS);
     expect(ins?.title).toContain("TN");
   });
 
   it("stays silent when items are balanced", () => {
-    expect(setBalanceInsight("Painting", { CF: 100, TC: 95, TN: 90, CB: 105 })).toBeNull();
+    expect(setBalanceInsight("Painting", { CF: 100, TC: 95, TN: 90, CB: 105, AR: 0, MB: 0 }, PAINTED_SHEET_ITEMS)).toBeNull();
   });
 });
 

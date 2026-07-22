@@ -7,7 +7,7 @@ import { PeriodFilter, DashboardPeriodMemory } from "@/components/controls";
 import { WeekTrendChart, WeekItemChart, HistoryChart } from "@/components/DashboardCharts";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { parseISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS, PAINTED_ITEMS, type Item } from "@/lib/domain/constants";
+import { ITEMS, PAINTED_ITEMS, itemDailyTarget, type Item } from "@/lib/domain/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -76,10 +76,10 @@ export default async function Home({
         <section>
           <h2>Today — {toDisplayDate(parseISODate(d.todayISO)!)} · target {d.targetPerItem}/item</h2>
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <DeptScoreboard title={<DeptTitle icon={<LaserCutterIcon size={16} />} name="Fabrication" />} data={d.today.cut} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
-            <DeptScoreboard title={<DeptTitle icon={<WeldingIcon size={16} />} name="Welding" />} data={d.today.weld} target={d.targetPerItem} targetTotal={d.targetPerDeptDay} />
-            {/* the core (CF) is never painted — the Painting card shows the 3 painted items and targets ×3 */}
-            <DeptScoreboard title={<DeptTitle icon={<PowderCoatIcon size={16} />} name="Painting" />} data={d.today.paint} target={d.targetPerItem} targetTotal={d.targetPerItem * PAINTED_ITEMS.length} items={PAINTED_ITEMS} />
+            <DeptScoreboard title={<DeptTitle icon={<LaserCutterIcon size={16} />} name="Fabrication" />} data={d.today.cut} baseTarget={d.targetPerItem} days={1} targetTotal={d.targetPerDeptDay} />
+            <DeptScoreboard title={<DeptTitle icon={<WeldingIcon size={16} />} name="Welding" />} data={d.today.weld} baseTarget={d.targetPerItem} days={1} targetTotal={d.targetPerDeptDay} />
+            {/* the core (CF) is never painted — the Painting card shows the painted items (base 27 + AR/MB 20 each) */}
+            <DeptScoreboard title={<DeptTitle icon={<PowderCoatIcon size={16} />} name="Painting" />} data={d.today.paint} baseTarget={d.targetPerItem} days={1} targetTotal={d.paintTargetDay} items={PAINTED_ITEMS} />
           </div>
         </section>
       )}
@@ -96,24 +96,27 @@ export default async function Home({
           <DeptScoreboard
             title={<DeptTitle icon={<LaserCutterIcon size={16} />} name="Fabrication" />}
             data={d.period.cut}
-            target={d.targetPerItemPeriod}
+            baseTarget={d.targetPerItem}
+            days={d.workingDays}
+            paceDays={d.todayInPeriod && d.paceWorkingDays < d.workingDays ? d.paceWorkingDays : undefined}
             targetTotal={d.targetPerDeptPeriod}
-            paceTarget={d.todayInPeriod && d.paceWorkingDays < d.workingDays ? d.targetPerItem * d.paceWorkingDays : undefined}
           />
           <DeptScoreboard
             title={<DeptTitle icon={<WeldingIcon size={16} />} name="Welding" />}
             data={d.period.weld}
-            target={d.targetPerItemPeriod}
+            baseTarget={d.targetPerItem}
+            days={d.workingDays}
+            paceDays={d.todayInPeriod && d.paceWorkingDays < d.workingDays ? d.paceWorkingDays : undefined}
             targetTotal={d.targetPerDeptPeriod}
-            paceTarget={d.todayInPeriod && d.paceWorkingDays < d.workingDays ? d.targetPerItem * d.paceWorkingDays : undefined}
           />
           <DeptScoreboard
             title={<DeptTitle icon={<PowderCoatIcon size={16} />} name="Painting" />}
             data={d.period.paint}
-            target={d.targetPerItemPeriod}
-            targetTotal={d.targetPerItemPeriod * PAINTED_ITEMS.length}
+            baseTarget={d.targetPerItem}
+            days={d.workingDays}
+            paceDays={d.todayInPeriod && d.paceWorkingDays < d.workingDays ? d.paceWorkingDays : undefined}
+            targetTotal={d.paintTargetPeriod}
             items={PAINTED_ITEMS}
-            paceTarget={d.todayInPeriod && d.paceWorkingDays < d.workingDays ? d.targetPerItem * d.paceWorkingDays : undefined}
           />
         </div>
       </section>
@@ -136,13 +139,13 @@ export default async function Home({
             <thead>
               <tr className="bg-brand text-white text-center">
                 <th className="p-2 text-left" rowSpan={2}>Day</th>
-                <th className="p-2 border-l border-border-strong" colSpan={5}>
+                <th className="p-2 border-l border-border-strong" colSpan={ITEMS.length + 1}>
                   <span className="inline-flex items-center gap-1.5"><LaserCutterIcon size={13} />Fabrication</span>
                 </th>
-                <th className="p-2 border-l border-border-strong" colSpan={5}>
+                <th className="p-2 border-l border-border-strong" colSpan={ITEMS.length + 1}>
                   <span className="inline-flex items-center gap-1.5"><WeldingIcon size={13} />Welding</span>
                 </th>
-                <th className="p-2 border-l border-border-strong" colSpan={4}>
+                <th className="p-2 border-l border-border-strong" colSpan={PAINTED_ITEMS.length + 1}>
                   <span className="inline-flex items-center gap-1.5"><PowderCoatIcon size={13} />Painting</span>
                 </th>
               </tr>
@@ -174,7 +177,7 @@ export default async function Home({
                         <td
                           key={`${dept}-${it}`}
                           className={`p-1.5 tabnum font-semibold ${j === 0 ? "border-l" : ""}`}
-                          style={row.isFuture || row.isFriday || row.isHoliday ? undefined : pctStyle(pct(dd.items[it], d.targetPerItem))}
+                          style={row.isFuture || row.isFriday || row.isHoliday ? undefined : pctStyle(pct(dd.items[it], itemDailyTarget(it, d.targetPerItem)))}
                         >
                           {dd.items[it]}
                         </td>
@@ -198,7 +201,7 @@ export default async function Home({
                   return [
                     ...list.map((it, j) => (
                       <td key={`t-${dept}-${it}`} className={`p-1.5 tabnum ${j === 0 ? "border-l" : ""}`}
-                        style={pctStyle(pct(dd.items[it], d.targetPerItemPeriod))}>
+                        style={pctStyle(pct(dd.items[it], itemDailyTarget(it, d.targetPerItem) * d.workingDays))}>
                         {dd.items[it]}
                       </td>
                     )),
@@ -216,8 +219,8 @@ export default async function Home({
 
       {/* ==== history ==== */}
       <div className="grid lg:grid-cols-2 gap-4">
-        <ChartCard title="Last 6 weeks" sub={`dept totals per work week · line = ${d.targetPerItem * 24} pcs/dept/week`}>
-          <HistoryChart history={d.history} targetPerDeptWeek={d.targetPerItem * 24} />
+        <ChartCard title="Last 6 weeks" sub={`dept totals per work week · line = ${d.targetPerDeptDay * 6} pcs/dept/week`}>
+          <HistoryChart history={d.history} targetPerDeptWeek={d.targetPerDeptDay * 6} />
         </ChartCard>
         <ChartCard title="Weekly attainment" sub="output and complete sets per week (sets = MIN across the 4 items, summed daily)">
           <div className="overflow-x-auto">
@@ -241,16 +244,16 @@ export default async function Home({
                     <Link href={`/?w=${h.startISO}`} className="text-accent hover:underline">{h.label}</Link>
                   </td>
                   <td className="py-1.5 text-center tabnum">{h.cutTotal}</td>
-                  <td className="py-1.5 text-center tabnum font-bold" style={pctStyle(pct(h.cutTotal, d.targetPerItem * 24))}>
-                    {fmtPct(h.cutTotal, d.targetPerItem * 24)}
+                  <td className="py-1.5 text-center tabnum font-bold" style={pctStyle(pct(h.cutTotal, d.targetPerDeptDay * 6))}>
+                    {fmtPct(h.cutTotal, d.targetPerDeptDay * 6)}
                   </td>
                   <td className="py-1.5 text-center tabnum">{h.weldTotal}</td>
-                  <td className="py-1.5 text-center tabnum font-bold" style={pctStyle(pct(h.weldTotal, d.targetPerItem * 24))}>
-                    {fmtPct(h.weldTotal, d.targetPerItem * 24)}
+                  <td className="py-1.5 text-center tabnum font-bold" style={pctStyle(pct(h.weldTotal, d.targetPerDeptDay * 6))}>
+                    {fmtPct(h.weldTotal, d.targetPerDeptDay * 6)}
                   </td>
                   <td className="py-1.5 text-center tabnum">{h.paintTotal}</td>
-                  <td className="py-1.5 text-center tabnum font-bold" style={pctStyle(pct(h.paintTotal, d.targetPerItem * 24))}>
-                    {fmtPct(h.paintTotal, d.targetPerItem * 24)}
+                  <td className="py-1.5 text-center tabnum font-bold" style={pctStyle(pct(h.paintTotal, d.paintTargetDay * 6))}>
+                    {fmtPct(h.paintTotal, d.paintTargetDay * 6)}
                   </td>
                   <td className="py-1.5 text-center tabnum font-bold">{h.paintSets}</td>
                 </tr>
@@ -271,15 +274,20 @@ function DeptTitle({ icon, name }: { icon: React.ReactNode; name: string }) {
 }
 
 function DeptScoreboard({
-  title, data, target, targetTotal, paceTarget, items = ITEMS,
+  title, data, baseTarget, days, paceDays, targetTotal, items = ITEMS,
 }: {
   title: React.ReactNode;
   data: DeptDay;
-  target: number;
-  targetTotal: number;
-  paceTarget?: number;
-  items?: readonly Item[]; // Painting shows the 3 painted items (the core is never painted)
+  baseTarget: number; // base per-item DAILY target (27); AR/MB run at 20
+  days: number; // working days this card spans (1 for the "today" cards)
+  paceDays?: number; // elapsed working days for the pace line (undefined = no pace)
+  targetTotal: number; // dept total target across the whole period
+  items?: readonly Item[]; // Painting shows the painted items (the core is never painted)
 }) {
+  // each component carries its own daily target (base 27, AR/MB 20), scaled by
+  // the number of days this card spans
+  const targetOf = (it: Item) => itemDailyTarget(it, baseTarget) * days;
+  const paceOf = (it: Item) => (paceDays !== undefined ? itemDailyTarget(it, baseTarget) * paceDays : undefined);
   return (
     <div className="bg-surface border rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
@@ -293,10 +301,12 @@ function DeptScoreboard({
           </div>
         </div>
       </div>
-      <div className={`grid grid-cols-2 ${items.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-4"} gap-2.5`}>
+      <div className={`grid grid-cols-2 ${items.length >= 5 ? "sm:grid-cols-3" : items.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-4"} gap-2.5`}>
         {items.map((it) => {
           const v = data.items[it];
-          const f = pct(v, target);
+          const t = targetOf(it);
+          const f = pct(v, t);
+          const paceT = paceOf(it);
           return (
             <div key={it} className="rounded-lg border px-2 py-1.5">
               <div className="flex items-baseline justify-between">
@@ -304,7 +314,7 @@ function DeptScoreboard({
                 <span className="text-[10px] tabnum text-muted">{Math.round(f * 100)}%</span>
               </div>
               <div className="text-lg font-extrabold tabnum leading-tight">
-                {v}<span className="text-[11px] font-semibold text-muted">/{target}</span>
+                {v}<span className="text-[11px] font-semibold text-muted">/{t}</span>
               </div>
               <div className="mt-1 h-1.5 rounded bg-border overflow-hidden">
                 <div
@@ -312,9 +322,9 @@ function DeptScoreboard({
                   style={{ width: `${Math.min(100, f * 100)}%`, background: f >= 1 ? "var(--ok-fg)" : f >= 0.5 ? "var(--brand)" : "var(--bad-fg)" }}
                 />
               </div>
-              {paceTarget !== undefined && paceTarget > 0 && (
-                <div className="text-[10px] mt-0.5" style={{ color: v >= paceTarget ? "var(--ok-fg)" : "var(--bad-fg)" }}>
-                  {v >= paceTarget ? "on pace" : `−${paceTarget - v} vs pace`}
+              {paceT !== undefined && paceT > 0 && (
+                <div className="text-[10px] mt-0.5" style={{ color: v >= paceT ? "var(--ok-fg)" : "var(--bad-fg)" }}>
+                  {v >= paceT ? "on pace" : `−${paceT - v} vs pace`}
                 </div>
               )}
             </div>

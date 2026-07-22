@@ -17,9 +17,10 @@ describe("computeDailyReport — department output", () => {
     const rep = computeDailyReport([], logs, day, 27, grouper);
     const cut = rep.deptOutputs.find((d) => d.dept === "Cut")!;
     expect(cut.total).toBe(50);
-    expect(cut.sets).toBe(9); // MIN(13,13,15,9)
-    expect(cut.efficiency).toBeCloseTo(50 / (4 * 27), 6);
-    expect(cut.balance).toBeCloseTo((9 * 4) / 50, 6); // 0.72
+    expect(cut.sets).toBe(9); // MIN(13,13,15,9) over the base components
+    // Cut/Weld capacity = base ×27 + AR 20 + MB 20 per working day
+    expect(cut.efficiency).toBeCloseTo(50 / (4 * 27 + 2 * 20), 6);
+    expect(cut.balance).toBeCloseTo((9 * 4) / 50, 6); // 0.72 — over the 4 base items
   });
 
   it("balance is null when a department produced nothing", () => {

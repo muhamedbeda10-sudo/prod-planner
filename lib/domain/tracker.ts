@@ -12,7 +12,7 @@
 //   Remaining  = Required - Complete
 //   Achievement = Complete / Required
 
-import { ITEMS, isPaintExempt, type Item } from "./constants";
+import { ITEMS, SHEET_ITEMS, isPaintExempt, type Item } from "./constants";
 
 export interface TrackerOrderRow {
   bom: string;
@@ -76,7 +76,7 @@ export function computeTracker(
         bom,
         kva: (o.description ?? "").toString(),
         required: 0,
-        target: { CF: 0, TC: 0, TN: 0, CB: 0 },
+        target: { CF: 0, TC: 0, TN: 0, CB: 0, AR: 0, MB: 0 },
         targetSeen: new Set(),
         mos: [],
         moSet: new Set(),
@@ -119,9 +119,14 @@ export function computeTracker(
   for (const rec of order.values()) {
     const req = rec.required;
     const items = {} as Record<Item, TrackerItemCell>;
+    // This BOM/plan reconciliation view covers the four base sheet components
+    // only; AR/MB are conditional, order-level parts (tracked on the master
+    // tracker), so they stay empty here and never gate BOM completion.
+    items.AR = { cutDone: 0, weldDone: 0, paintDone: 0 };
+    items.MB = { cutDone: 0, weldDone: 0, paintDone: 0 };
     let complete = 0;
     let first = true;
-    for (const it of ITEMS) {
+    for (const it of SHEET_ITEMS) {
       // Target defaults to Required only if the item never appeared in Plan Orders.
       let tg = rec.targetSeen.has(it) ? rec.target[it] : req;
       if (tg > req) tg = req;

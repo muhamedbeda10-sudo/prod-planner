@@ -5,7 +5,7 @@
 // forward because "due" subtracts only what was done BEFORE today, not the plan
 // for today alone.
 
-import { ITEMS, type Item } from "./constants";
+import { SHEET_ITEMS, type Item } from "./constants";
 import type { BomGrouper } from "./bom";
 import { dayNumber } from "./dates";
 
@@ -180,7 +180,7 @@ export function computeCutWorklist(inp: WorklistInput): CutRow[] {
   }
 
   // fill-up from unscheduled backlog
-  for (const item of ITEMS) {
+  for (const item of SHEET_ITEMS) {
     let need = capacity - num(capUsed, item);
     for (const bg of g.bomOrder) {
       if (need <= 0) break;
