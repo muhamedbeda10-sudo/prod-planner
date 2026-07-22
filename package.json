@@ -7,10 +7,12 @@
     "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
     "seed": "tsx scripts/seed.ts",
-    "db:reset": "prisma migrate reset --force"
+    "db:reset": "prisma migrate reset --force",
+    "prepare": "husky"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -32,11 +34,16 @@
     "@vitejs/plugin-react": "^6.0.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.1.1",
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
     "tsx": "^4.23.0",
     "typescript": "^5",
     "vitest": "^4.1.10"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,mjs,mts}": "eslint --fix"
   },
   "allowScripts": {
     "prisma@7.8.0": true,
