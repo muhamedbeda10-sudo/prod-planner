@@ -57,10 +57,13 @@ export default async function TracePage({
     .filter((b) => b !== bom && groupKey(b.toUpperCase()) === fam)
     .sort();
 
-  // all-time totals + per-week breakdown
+  // all-time totals + per-week breakdown. Only the three production stages are
+  // summarised here; ShotBlast / Delivered rows live in the full log below —
+  // indexing total[dept] for them would be undefined (and used to crash).
   const total: Record<string, Record<string, number>> = { Cut: {}, Welding: {}, Painting: {} };
   const perWeek = new Map<number, Record<string, Record<string, number>>>();
   for (const h of handover) {
+    if (!total[h.dept]) continue; // skip ShotBlast / Delivered — not shown in these Fab/Weld/Paint tables
     total[h.dept][h.item] = (total[h.dept][h.item] ?? 0) + h.qty;
     if (!perWeek.has(h.planNo)) perWeek.set(h.planNo, { Cut: {}, Welding: {}, Painting: {} });
     const w = perWeek.get(h.planNo)!;
