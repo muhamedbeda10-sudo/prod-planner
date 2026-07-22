@@ -266,21 +266,20 @@ export function MasterTrackerTable({
   }));
 
   return (
-    <>
-      {/* the summary cards + filters stay pinned below the nav on desktop so
-          only the table scrolls under them */}
-      <div className="md:sticky md:top-16 md:z-20 bg-background">
+    // On desktop the page fills the viewport below the nav so the cards +
+    // filters stay put and ONLY the table scrolls (with its header pinned).
+    <div className="md:flex md:flex-col md:h-[calc(100vh-7rem)]">
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-3">
         {itemStats.map(({ it, finalIsShp, need, done, remaining, pct }) => (
-          <div key={it} className="bg-surface border rounded-xl px-4 py-2.5">
+          <div key={it} className="bg-surface border rounded-xl px-3 py-1.5">
             <div className="flex items-baseline justify-between">
               <span className="text-xs font-extrabold text-muted">{it}</span>
               <span className="text-[11px] font-bold tabnum rounded px-1.5 py-0.5" style={pctStyle(pct)}>
                 {pct === null ? "—" : `${Math.round(pct * 100)}%`}
               </span>
             </div>
-            <div className="text-2xl font-extrabold tabnum" style={{ color: remaining > 0 ? "var(--warn-fg)" : "var(--ok-fg)" }}>
+            <div className="text-xl font-extrabold tabnum leading-tight" style={{ color: remaining > 0 ? "var(--warn-fg)" : "var(--ok-fg)" }}>
               {remaining}
             </div>
             <div className="text-[11px] text-muted tabnum">
@@ -329,11 +328,10 @@ export function MasterTrackerTable({
         <SelectFilter label="Urgent" value={urgent} onChange={setUrgent} options={[{ value: "yes", label: "Urgent only" }]} />
         <ExportButton rows={exportRows} filename="plan-tracker.xlsx" sheetName="Tracker" />
       </FilterBar>
-      </div>
 
-      <div className="bg-surface border rounded-xl overflow-x-auto">
+      <div className="bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0">
         <table className="w-full text-sm border-collapse">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr className="bg-brand text-white">
               <th rowSpan={2} className="p-2 text-left">MO</th>
               <th rowSpan={2} className="p-2 text-left">BOM</th>
@@ -413,7 +411,7 @@ export function MasterTrackerTable({
           </tbody>
         </table>
       </div>
-    </>
+    </div>
   );
 
   /** One stage cell on a single-MO row. For depts the user can edit, clicking
