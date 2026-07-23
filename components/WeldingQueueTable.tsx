@@ -27,6 +27,8 @@ export function WeldingQueueTable({
   capacity = DEFAULTS.capacityPerItem,
   canEdit = false,
   isAdmin = false,
+  before,
+  after,
 }: {
   rows: WeldQueueRow[];
   day: string;
@@ -37,6 +39,8 @@ export function WeldingQueueTable({
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
   canEdit?: boolean; // user holds this dept's edit permission — otherwise view-only
   isAdmin?: boolean; // admins may remove a line from the worklist (restorable)
+  before?: React.ReactNode; // page sections rendered inside the scroll area, above the queue (priority / pushed)
+  after?: React.ReactNode; // page sections at the bottom of the scroll area (hidden-lines panel)
 }) {
   const verb = dept === "Welding" ? "weld" : "paint";
   // display name for the upstream dept ("Cut" shows as "Fabrication")
@@ -517,10 +521,11 @@ export function WeldingQueueTable({
   };
 
   return (
-    <>
-      {/* search + per-component chips stay pinned below the nav on desktop
-          while the queue tables scroll under them */}
-      <div className="md:sticky md:top-16 md:z-20 bg-background">
+    // On desktop the page fills the viewport below the nav and does not
+    // scroll itself: the filter bar stays put and everything else (priority /
+    // pushed / returns + the queue) scrolls inside its own box, with the
+    // queue's header row pinned — same pattern as the Plan Tracker.
+    <div className="md:flex md:flex-col md:h-[calc(100vh-7rem)]">
       <FilterBar count={filtered.length} total={rows.length} showCount={false} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM…" />
         {/* per-component workload — tap a card to filter the queue to it */}
@@ -549,14 +554,18 @@ export function WeldingQueueTable({
         </div>
         <PrintButton />
       </FilterBar>
-      </div>
+
+      <div className="md:flex-1 md:min-h-0 md:overflow-auto">
+      {before}
 
       {/* pieces sent back TO this dept: fix first, they re-enter the flow */}
       <ReturnsTable rows={returns} dept={dept} canEdit={canEdit} />
 
-      <div className="bg-surface border rounded-xl overflow-x-auto">
+      {/* overflow-x only below md — on desktop the wrapper must stay visible so
+          the sticky header pins against the outer scroll box */}
+      <div className="bg-surface border rounded-xl overflow-x-auto md:overflow-x-visible">
         <table className="w-full text-sm border-collapse">
-          <thead>
+          <thead className="md:sticky md:top-0 md:z-10">
             <tr className="bg-brand text-white text-left">
               <th className="p-2">Deliver on</th>
               <th className="p-2">MO</th>
@@ -647,6 +656,9 @@ export function WeldingQueueTable({
           </tbody>
         </table>
       </div>
-    </>
+
+      {after}
+      </div>
+    </div>
   );
 }

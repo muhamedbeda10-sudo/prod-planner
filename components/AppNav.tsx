@@ -6,13 +6,39 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
-  Table2, FileBarChart2, BookOpenCheck, ListChecks,
+  Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   FileDown, GitCompareArrows, Puzzle, CalendarDays, Users,
 } from "lucide-react";
+import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { logoutAction } from "@/app/login/actions";
 
 type Item = { href: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }>; match?: string };
+
+// The three department worklists live under ONE "Worklist" tab — clicking it
+// expands them inline in the bar; picking one navigates and collapses again.
+const WORKLIST_DEPTS = [
+  { href: "/worklist/cut", label: "Fabrication", icon: LaserCutterIcon, perm: "cut.edit" },
+  { href: "/worklist/welding", label: "Welding", icon: WeldingIcon, perm: "welding.edit" },
+  { href: "/worklist/painting", label: "Painting", icon: PowderCoatIcon, perm: "painting.edit" },
+] as const;
+
+// Tabs after Worklist, ordered by shop-floor flow: work → log → track →
+// review → the overview dashboard sits last (right side).
+const REST: Item[] = [
+  { href: "/handover", label: "Logs", icon: BookOpenCheck },
+  { href: "/tracker", label: "Plan Tracker", icon: Table2 },
+  { href: "/report", label: "Report", icon: FileBarChart2 },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+];
+
+// The mobile drawer has vertical room — it lists the three worklists directly.
+const DRAWER: Item[] = [
+  { href: "/worklist/cut", label: "Fabrication Worklist", icon: LaserCutterIcon },
+  { href: "/worklist/welding", label: "Welding Worklist", icon: WeldingIcon },
+  { href: "/worklist/painting", label: "Painting Worklist", icon: PowderCoatIcon },
+  ...REST,
+];
 
 const ADMIN: (Item & { desc: string })[] = [
   { href: "/orders", label: "Orders Registry", desc: "Master MO list — import monthly plans", icon: ClipboardList },
@@ -31,45 +57,37 @@ export interface NavUser {
 export function AppNav({ user }: { user: NavUser }) {
   const pathname = usePathname();
 
-  // The three worklists share ONE "Worklist" tab (the in-page switcher moves
-  // between Fabrication / Welding / Painting). The tab opens the department the
-  // user actually works in. Ordered by shop-floor flow: work → track → log →
-  // review → the overview dashboard sits last (right side).
-  const worklistHref = user.perms.includes("cut.edit")
-    ? "/worklist/cut"
-    : user.perms.includes("welding.edit")
-      ? "/worklist/welding"
-      : user.perms.includes("painting.edit")
-        ? "/worklist/painting"
-        : "/worklist/cut";
-  const PRIMARY: Item[] = [
-    { href: worklistHref, label: "Worklist", icon: ListChecks, match: "/worklist" },
-    { href: "/tracker", label: "Plan Tracker", icon: Table2 },
-    { href: "/handover", label: "Logs", icon: BookOpenCheck },
-    { href: "/report", label: "Report", icon: FileBarChart2 },
-    { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  ];
+  // A user who can edit exactly ONE department jumps straight to it from the
+  // Worklist tab; everyone else (admins, multi-dept, view-only) expands the
+  // tab into the three departments inline.
+  const deptEdits = WORKLIST_DEPTS.filter((d) => user.perms.includes(d.perm));
+  const singleDeptHref = !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;
 
   const [open, setOpen] = useState(false); // desktop admin dropdown
+  const [worklistOpen, setWorklistOpen] = useState(false); // inline worklist dept expansion
   const [drawer, setDrawer] = useState(false); // mobile navigation drawer
   const menuRef = useRef<HTMLDivElement>(null);
+  const wlRef = useRef<HTMLLIElement>(null);
 
   // close menus on navigation — state adjusted during render, not in an effect
   const [prevPath, setPrevPath] = useState(pathname);
   if (prevPath !== pathname) {
     setPrevPath(pathname);
     setOpen(false);
+    setWorklistOpen(false); // picking a dept collapses the expansion again
     setDrawer(false);
   }
 
-  // close the dropdown on outside click; close everything on Escape
+  // close the dropdowns on outside click; close everything on Escape
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
+      if (wlRef.current && !wlRef.current.contains(e.target as Node)) setWorklistOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setOpen(false);
+        setWorklistOpen(false);
         setDrawer(false);
       }
     }
@@ -117,7 +135,45 @@ export function AppNav({ user }: { user: NavUser }) {
           {/* desktop: centered tabs */}
           <nav className="hidden md:block flex-1 overflow-x-auto overflow-y-hidden">
             <ul className="flex items-center justify-center gap-1 w-max min-w-full">
-              {PRIMARY.map((l) => (
+              {/* Worklist — expands the three departments inline in the bar */}
+              <li ref={wlRef} className="flex items-center">
+                {singleDeptHref ? (
+                  <Link href={singleDeptHref} className={`nav-tab ${isActive("/worklist") ? "nav-tab-active" : ""}`}>
+                    <ListChecks size={15} className="shrink-0" />
+                    Worklist
+                  </Link>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setWorklistOpen((v) => !v)}
+                      aria-expanded={worklistOpen}
+                      className={`nav-tab ${isActive("/worklist") || worklistOpen ? "nav-tab-active" : ""}`}
+                    >
+                      <ListChecks size={15} className="shrink-0" />
+                      Worklist
+                      <ChevronDown size={13} className={`shrink-0 transition-transform duration-150 ${worklistOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {worklistOpen && (
+                      <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-white/12 p-0.5 animate-[navdrop_0.16s_ease-out]">
+                        {WORKLIST_DEPTS.map((d) => (
+                          <Link
+                            key={d.href}
+                            href={d.href}
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap transition-colors ${
+                              isActive(d.href) ? "bg-white text-brand shadow-sm" : "text-white/85 hover:bg-white/15 hover:text-white"
+                            }`}
+                          >
+                            <d.icon size={13} className="shrink-0" />
+                            {d.label}
+                          </Link>
+                        ))}
+                      </span>
+                    )}
+                  </>
+                )}
+              </li>
+              {REST.map((l) => (
                 <li key={l.href}>
                   <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match) ? "nav-tab-active" : ""}`}>
                     <l.icon size={15} className="shrink-0" />
@@ -251,7 +307,7 @@ export function AppNav({ user }: { user: NavUser }) {
             {/* links */}
             <nav className="flex-1 overflow-y-auto py-2">
               <p className="px-4 pt-2 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">Production</p>
-              {PRIMARY.map((l) => (
+              {DRAWER.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}
