@@ -1,14 +1,14 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Package, CheckCircle2, Truck, Hourglass, Gauge, AlertTriangle, RotateCw,
-  ChevronRight, ChevronDown, PanelRightClose, PanelRightOpen, LayoutGrid, Rows3,
-  StickyNote, Undo2, ArrowLeftRight, User as UserIcon,
+  ChevronRight, PanelRightClose, PanelRightOpen, LayoutGrid, Rows3,
+  StickyNote, Undo2,
 } from "lucide-react";
-import type { TraceResult, TraceEvent, TraceEventKind, TracePipelineRow } from "@/lib/server/trace";
+import type { TraceResult, TracePipelineRow } from "@/lib/server/trace";
 import { deptLabel, FINISHING_LABEL } from "@/lib/domain/constants";
 import { TraceSearch } from "@/components/TraceSearch";
 import { ExportButton } from "@/components/ExportButton";
@@ -108,7 +108,7 @@ export function TraceView({ t, planNo }: { t: TraceResult; planNo: number }) {
         <div className="min-w-0 space-y-6">
           <StagePipeline stages={stages} totalReq={totalReq} pipeline={t.pipeline} />
           <ComponentProgress pipeline={t.pipeline} />
-          <ActivityFeed events={t.timeline} showMo={t.scope === "bom"} />
+          <Records t={t} />
         </div>
 
         {sidebar && (
@@ -207,9 +207,6 @@ export function TraceView({ t, planNo }: { t: TraceResult; planNo: number }) {
           </aside>
         )}
       </div>
-
-      {/* ================= raw records ================= */}
-      <RawRecords t={t} />
     </div>
   );
 }
@@ -406,219 +403,107 @@ function ComponentProgress({ pipeline }: { pipeline: TracePipelineRow[] }) {
   );
 }
 
-/* ============================= activity feed ============================= */
+/* ============================== records (tabbed) ============================== */
 
-const KIND_LABEL: Record<TraceEventKind, string> = {
-  output: "Output", correction: "Corrections", return: "Returns", note: "Notes", realloc: "Moves",
-};
-type Range = "today" | "yesterday" | "week" | "all";
-
-function ActivityFeed({ events, showMo }: { events: TraceEvent[]; showMo: boolean }) {
-  const [now] = useState(() => Date.now());
-  const [range, setRange] = useState<Range>("all");
-  const [kinds, setKinds] = useState<Set<TraceEventKind>>(new Set());
-  const [item, setItem] = useState("");
-
-  const dayMs = 24 * 60 * 60 * 1000;
-  const startToday = new Date(now).setUTCHours(0, 0, 0, 0);
-  const inRange = (ts: number) =>
-    range === "all" ? true
-    : range === "today" ? ts >= startToday
-    : range === "yesterday" ? ts >= startToday - dayMs && ts < startToday
-    : ts >= startToday - 6 * dayMs;
-
-  const kindsPresent = useMemo(() => {
-    const s = new Set(events.map((e) => e.kind));
-    return (["output", "correction", "return", "note", "realloc"] as TraceEventKind[]).filter((k) => s.has(k));
-  }, [events]);
-  const itemsPresent = useMemo(() => [...new Set(events.map((e) => e.item).filter(Boolean))] as string[], [events]);
-
-  const shown = events.filter((e) => inRange(e.ts) && (kinds.size === 0 || kinds.has(e.kind)) && (!item || e.item === item));
-  const toggle = (k: TraceEventKind) => setKinds((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+function Records({ t }: { t: TraceResult }) {
+  const [tab, setTab] = useState<"ledger" | "orders">("ledger");
+  const exportLedger = t.ledger.map((l) => ({
+    Date: l.dateISO, Plan: l.planLabel, Dept: deptLabel(l.dept), Item: l.item, Qty: l.qty,
+    Source: l.source, By: l.by ?? "", "Corrected from": l.corrected ?? "",
+  }));
+  const TABS = [
+    { key: "ledger", label: "Full ledger", count: t.ledgerCount },
+    { key: "orders", label: "Plan orders", count: t.orders.length },
+  ] as const;
 
   return (
     <Card
-      title="Activity"
-      sub="newest first — every movement, correction, return, note & move"
+      title="Records"
+      sub="the full handover ledger and the underlying plan lines"
       actions={
-        <div className="inline-flex rounded-lg border border-border/60 overflow-hidden text-[11px] font-bold">
-          {(["today", "yesterday", "week", "all"] as Range[]).map((r) => (
-            <button key={r} type="button" onClick={() => setRange(r)}
-              className={`px-2 py-1 transition-colors capitalize ${range === r ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}>
-              {r === "week" ? "7 days" : r}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          {tab === "ledger" && <ExportButton rows={exportLedger} filename={`trace-${t.key}.xlsx`} sheetName="Trace" />}
+          <div className="inline-flex rounded-lg border border-border/60 overflow-hidden text-xs font-bold">
+            {TABS.map((tb) => (
+              <button key={tb.key} type="button" onClick={() => setTab(tb.key)}
+                className={`px-3 py-1.5 transition-colors ${tab === tb.key ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}>
+                {tb.label}<span className="ml-1.5 tabnum opacity-70">{tb.count}</span>
+              </button>
+            ))}
+          </div>
         </div>
       }
     >
-      <div className="px-4 pt-3 flex flex-wrap items-center gap-1.5">
-        {kindsPresent.map((k) => {
-          const on = kinds.has(k);
-          return (
-            <button key={k} type="button" onClick={() => toggle(k)}
-              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold transition-colors ${on ? "bg-brand text-white border-brand" : "bg-surface border-border/60 text-muted hover:text-foreground"}`}>
-              {KIND_LABEL[k]}
-            </button>
-          );
-        })}
-        {itemsPresent.length > 1 && (
-          <select value={item} onChange={(e) => setItem(e.target.value)} className="ml-auto border border-border/60 rounded-lg px-2 py-1 text-xs font-semibold bg-surface">
-            <option value="">All items</option>
-            {itemsPresent.map((it) => <option key={it} value={it}>{it}</option>)}
-          </select>
-        )}
-      </div>
-
-      {shown.length === 0 ? (
-        <div className="p-8 text-center">
-          <div className="text-3xl mb-2">🗓️</div>
-          <p className="text-sm text-muted">No activity {range !== "all" ? "in this period" : "recorded yet"}.</p>
-        </div>
-      ) : (
-        <ul className="px-4 py-3 divide-y divide-border/40">
-          {shown.map((e, i) => <FeedRow key={i} e={e} showMo={showMo} />)}
-        </ul>
-      )}
-    </Card>
-  );
-}
-
-function FeedRow({ e, showMo }: { e: TraceEvent; showMo: boolean }) {
-  const neg = (e.qty ?? 0) < 0;
-  return (
-    <li className="flex gap-3 py-2.5">
-      {e.kind === "output" || e.kind === "correction" ? (
-        e.by ? <Avatar name={e.by} /> : <IconAvatar tint="var(--brand)"><UserIcon size={13} /></IconAvatar>
-      ) : e.kind === "return" ? (
-        <IconAvatar tint="var(--bad-fg)"><Undo2 size={13} /></IconAvatar>
-      ) : e.kind === "note" ? (
-        <IconAvatar tint="var(--warn-fg)"><StickyNote size={13} /></IconAvatar>
-      ) : (
-        <IconAvatar tint="#6b45a8"><ArrowLeftRight size={13} /></IconAvatar>
-      )}
-      <div className="min-w-0 flex-1">
-        {(e.kind === "output" || e.kind === "correction") && (
-          <p className="text-sm leading-snug">
-            <b>{e.by ?? "—"}</b> recorded{" "}
-            <b className="tabnum" style={{ color: neg ? "var(--bad-fg)" : "var(--ok-fg)" }}>{neg ? e.qty : `+${e.qty}`}</b>{" "}
-            <b>{e.item}</b> in {deptLabel(e.dept ?? "")}
-            {neg && <Chip tone="bad" className="ml-1.5">correction</Chip>}
-            {e.corrected && <Chip tone="ok" className="ml-1.5">fixed from {e.corrected}</Chip>}
-          </p>
-        )}
-        {e.kind === "return" && (
-          <p className="text-sm leading-snug">
-            <b className="text-bad-fg tabnum">{e.qty} {e.item}</b> returned {deptLabel(e.fromDept ?? "")} → {deptLabel(e.toDept ?? "")}
-            {e.status === "open" ? <Chip tone="warn" className="ml-1.5">open</Chip> : <Chip tone="ok" className="ml-1.5">re-delivered</Chip>}
-            <span className="block text-muted">“{e.reason}”</span>
-          </p>
-        )}
-        {e.kind === "note" && (
-          <div className="text-sm leading-snug">
-            <p>
-              Note on <b>{e.item}</b> · {deptLabel(e.dept ?? "")}
-              {e.status === "open" ? <Chip tone="warn" className="ml-1.5">open</Chip> : <Chip tone="ok" className="ml-1.5">resolved</Chip>}
-            </p>
-            {e.text && <p className="text-muted whitespace-pre-wrap">{e.text}</p>}
-            {e.photos && e.photos.length > 0 && (
-              <span className="flex flex-wrap gap-1.5 mt-1.5">
-                {e.photos.map((p) => (
-                  <a key={p} href={p} target="_blank" rel="noreferrer" title="Open full size">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p} alt="note" className="h-14 w-14 object-cover rounded-lg border border-border/60" />
-                  </a>
-                ))}
-              </span>
-            )}
-          </div>
-        )}
-        {e.kind === "realloc" && (
-          <p className="text-sm leading-snug">
-            <b className="tabnum" style={{ color: "#6b45a8" }}>{e.qty} {e.item}</b> moved {e.fromBom} → {e.toBom} · {deptLabel(e.dept ?? "")}
-            <Chip tone={e.status === "approved" ? "ok" : e.status === "rejected" ? "bad" : "muted"} className="ml-1.5">{e.status}</Chip>
-            {e.reason && <span className="block text-muted">“{e.reason}”</span>}
-          </p>
-        )}
-        <p className="mt-0.5 text-[11px] text-muted tabnum">
-          {e.dateISO}
-          {showMo && e.mo ? <> · {e.mo}</> : null}
-          {e.source && e.source !== "worklist" && e.source !== "tracker" ? <> · {e.source}</> : null}
-        </p>
-      </div>
-    </li>
-  );
-}
-
-/* ============================== raw records ============================== */
-
-function RawRecords({ t }: { t: TraceResult }) {
-  const [open, setOpen] = useState<"orders" | "ledger" | null>(null);
-  return (
-    <Card title="Records" sub="the underlying plan lines and the full ledger">
-      <div className="p-4 flex flex-wrap gap-2">
-        {([["orders", `Plan orders (${t.orders.length})`], ["ledger", `Full ledger (${t.ledgerCount})`]] as const).map(([k, label]) => (
-          <button key={k} type="button" onClick={() => setOpen(open === k ? null : k)}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-bold transition-colors ${open === k ? "bg-brand text-white border-brand" : "bg-surface border-border/60 text-muted hover:text-foreground"}`}>
-            {open === k ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{label}
-          </button>
-        ))}
-      </div>
-
-      {open === "orders" && (
-        <div className="overflow-x-auto border-t border-border/60">
+      {tab === "ledger" ? (
+        <div className="overflow-x-auto max-h-[34rem] overflow-y-auto">
           <table className="w-full text-sm border-collapse">
-            <thead className="sticky top-0 bg-surface">
-              <tr className="text-left text-[11px] uppercase tracking-wide text-muted border-b border-border/60">
-                <th className="px-4 py-2.5 font-bold">Plan</th><th className="px-3 py-2.5 font-bold">MO</th>
-                <th className="px-3 py-2.5 font-bold">Description</th><th className="px-3 py-2.5 font-bold text-center">Item</th>
-                <th className="px-3 py-2.5 font-bold text-center">Required</th><th className="px-3 py-2.5 font-bold text-center">Planner balance</th>
-                <th className="px-3 py-2.5 font-bold text-center">Target</th><th className="px-3 py-2.5 font-bold">Remark</th>
+            <thead className="sticky top-0 z-10">
+              <tr className="text-left text-[11px] uppercase tracking-wide text-muted bg-surface/95 backdrop-blur border-b border-border/60">
+                <th className="px-4 py-2.5 font-bold">Date</th><th className="px-3 py-2.5 font-bold">Plan</th>
+                <th className="px-3 py-2.5 font-bold">Stage</th><th className="px-3 py-2.5 font-bold text-center">Item</th>
+                <th className="px-3 py-2.5 font-bold text-center">Qty</th><th className="px-3 py-2.5 font-bold">Source</th>
+                <th className="px-3 py-2.5 font-bold pr-4">By</th>
               </tr>
             </thead>
             <tbody>
-              {t.orders.length === 0 && <tr><td colSpan={8} className="p-6 text-center text-muted">Not in any imported plan.</td></tr>}
-              {t.orders.map((o, i) => (
-                <tr key={o.id} className={`border-b border-border/40 last:border-0 hover:bg-brand-light/20 transition-colors ${i % 2 ? "bg-zebra/50" : ""}`}>
-                  <td className="px-4 py-2 font-bold text-xs whitespace-nowrap">{o.planLabel}</td>
-                  <td className="px-3 py-2 text-xs">{o.mo}</td>
-                  <td className="px-3 py-2 text-xs text-muted">{o.description}</td>
-                  <td className="px-3 py-2 text-center font-bold">{o.item}</td>
-                  <td className="px-3 py-2 text-center tabnum">{o.requiredQty}</td>
-                  <td className="px-3 py-2 text-center tabnum">{o.plannerBalance ?? "—"}</td>
-                  <td className="px-3 py-2 text-center tabnum">{o.targetQty}</td>
-                  <td className="px-3 py-2 text-xs">{o.remark || "—"}</td>
+              {t.ledger.length === 0 && (
+                <tr><td colSpan={7} className="p-10 text-center text-muted">
+                  <div className="text-2xl mb-1">📭</div>No handover records yet.
+                </td></tr>
+              )}
+              {t.ledger.map((l, i) => (
+                <tr key={l.id} className={`border-b border-border/30 last:border-0 hover:bg-brand-light/25 transition-colors ${i % 2 ? "bg-brand-light/[0.06]" : ""}`}>
+                  <td className="px-4 py-2 whitespace-nowrap tabnum text-muted">{l.dateISO}</td>
+                  <td className="px-3 py-2 font-bold text-xs whitespace-nowrap">{l.planLabel}</td>
+                  <td className="px-3 py-2">{deptLabel(l.dept)}</td>
+                  <td className="px-3 py-2 text-center font-bold">{l.item}</td>
+                  <td className="px-3 py-2 text-center">
+                    <span className="inline-block min-w-9 rounded-md px-1.5 py-0.5 font-bold tabnum text-xs"
+                      style={l.qty < 0
+                        ? { background: "var(--bad-bg)", color: "var(--bad-fg)" }
+                        : { background: "var(--brand-light)", color: "var(--brand)" }}>
+                      {l.qty > 0 ? `+${l.qty}` : l.qty}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted">
+                    {l.source}
+                    {l.corrected && <Chip tone="ok" className="ml-1">fixed</Chip>}
+                  </td>
+                  <td className="px-3 py-2 pr-4 text-xs whitespace-nowrap">
+                    {l.by ? <span className="inline-flex items-center gap-1.5"><Avatar name={l.by} />{l.by}</span> : <span className="text-muted">—</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      )}
-
-      {open === "ledger" && (
-        <div className="overflow-x-auto border-t border-border/60 max-h-[32rem] overflow-y-auto">
+      ) : (
+        <div className="overflow-x-auto max-h-[34rem] overflow-y-auto">
           <table className="w-full text-sm border-collapse">
-            <thead className="sticky top-0 bg-surface z-10">
-              <tr className="text-left text-[11px] uppercase tracking-wide text-muted border-b border-border/60">
-                <th className="px-4 py-2.5 font-bold">Date</th><th className="px-3 py-2.5 font-bold">Plan</th>
-                <th className="px-3 py-2.5 font-bold">Dept</th><th className="px-3 py-2.5 font-bold text-center">Item</th>
-                <th className="px-3 py-2.5 font-bold text-center">Qty</th><th className="px-3 py-2.5 font-bold">Source</th>
-                <th className="px-3 py-2.5 font-bold">By</th>
+            <thead className="sticky top-0 z-10">
+              <tr className="text-left text-[11px] uppercase tracking-wide text-muted bg-surface/95 backdrop-blur border-b border-border/60">
+                <th className="px-4 py-2.5 font-bold">Plan</th><th className="px-3 py-2.5 font-bold">MO</th>
+                <th className="px-3 py-2.5 font-bold">Description</th><th className="px-3 py-2.5 font-bold text-center">Item</th>
+                <th className="px-3 py-2.5 font-bold text-center">Required</th><th className="px-3 py-2.5 font-bold text-center">Planner balance</th>
+                <th className="px-3 py-2.5 font-bold text-center">Target</th><th className="px-3 py-2.5 font-bold pr-4">Remark</th>
               </tr>
             </thead>
             <tbody>
-              {t.ledger.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-muted">No handover records yet.</td></tr>}
-              {t.ledger.map((l, i) => (
-                <tr key={l.id} className={`border-b border-border/40 last:border-0 hover:bg-brand-light/20 transition-colors ${i % 2 ? "bg-zebra/50" : ""}`}>
-                  <td className="px-4 py-2 whitespace-nowrap tabnum">{l.dateISO}</td>
-                  <td className="px-3 py-2 font-bold text-xs whitespace-nowrap">{l.planLabel}</td>
-                  <td className="px-3 py-2">{deptLabel(l.dept)}</td>
-                  <td className="px-3 py-2 text-center font-bold">{l.item}</td>
-                  <td className="px-3 py-2 text-center font-bold tabnum" style={{ color: l.qty < 0 ? "var(--bad-fg)" : undefined }}>{l.qty}</td>
-                  <td className="px-3 py-2 text-xs text-muted">
-                    {l.source}
-                    {l.corrected && <Chip tone="ok" className="ml-1">fixed</Chip>}
-                  </td>
-                  <td className="px-3 py-2 text-xs whitespace-nowrap">{l.by ?? "—"}</td>
+              {t.orders.length === 0 && (
+                <tr><td colSpan={8} className="p-10 text-center text-muted">
+                  <div className="text-2xl mb-1">📄</div>Not in any imported plan.
+                </td></tr>
+              )}
+              {t.orders.map((o, i) => (
+                <tr key={o.id} className={`border-b border-border/30 last:border-0 hover:bg-brand-light/25 transition-colors ${i % 2 ? "bg-brand-light/[0.06]" : ""}`}>
+                  <td className="px-4 py-2 font-bold text-xs whitespace-nowrap">{o.planLabel}</td>
+                  <td className="px-3 py-2 text-xs">{o.mo}</td>
+                  <td className="px-3 py-2 text-xs text-muted max-w-56 truncate" title={o.description ?? ""}>{o.description}</td>
+                  <td className="px-3 py-2 text-center font-bold">{o.item}</td>
+                  <td className="px-3 py-2 text-center tabnum font-bold">{o.requiredQty}</td>
+                  <td className="px-3 py-2 text-center tabnum text-muted">{o.plannerBalance ?? "—"}</td>
+                  <td className="px-3 py-2 text-center tabnum text-muted">{o.targetQty}</td>
+                  <td className="px-3 py-2 pr-4 text-xs text-muted">{o.remark || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -730,13 +615,6 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-function IconAvatar({ tint, children }: { tint: string; children: React.ReactNode }) {
-  return (
-    <span className="grid place-items-center w-7 h-7 rounded-full shrink-0" style={{ background: `color-mix(in srgb, ${tint} 15%, transparent)`, color: tint }}>
-      {children}
-    </span>
-  );
-}
 
 function Prop({ k, children }: { k: string; children: React.ReactNode }) {
   return (
