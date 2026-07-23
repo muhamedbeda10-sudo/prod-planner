@@ -4,27 +4,13 @@
 //   2) Projects worked today    (per BOM+dept; completion = MIN painted — a
 //      transformer only counts once it left Painting)
 
-import { ITEMS, DEPTS, PAINTED_ITEMS, SHEET_ITEMS, PAINTED_SHEET_ITEMS, SHOTBLAST_STAGE, DELIVERED_STAGE, sumItemTargets, isPaintExempt, type Item } from "./constants";
+import { ITEMS, DEPTS, SHEET_ITEMS, DELIVERED_STAGE, sumItemTargets, isPaintExempt, type Item } from "./constants";
 
-// The report's Section-1 output table now covers the production departments
-// PLUS the two tracker-only ledger stages the user records on the Plan Tracker
-// (Shot Blast — the core's final stage — and Delivered — the customer receipt).
-export const REPORT_STAGES = [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE] as const;
-
-// which components a stage actually handles (the rest print as "—"): Painting
-// skips the paint-exempt core, Shot Blast is ONLY that core, everything else
-// (Fabrication / Welding / Delivered) covers every component.
-function stageItemsFor(stage: string): readonly Item[] {
-  if (stage === "Painting") return PAINTED_ITEMS;
-  if (stage === SHOTBLAST_STAGE) return ITEMS.filter(isPaintExempt);
-  return ITEMS;
-}
-// base components (present on every transformer) a stage uses for sets/balance
-function stageBaseItemsFor(stage: string): readonly Item[] {
-  if (stage === "Painting") return PAINTED_SHEET_ITEMS;
-  if (stage === SHOTBLAST_STAGE) return SHEET_ITEMS.filter(isPaintExempt);
-  return SHEET_ITEMS;
-}
+// The report's Section-1 output table covers the production departments PLUS
+// the customer-receipt Delivered stage. Painting is the whole FINISHING stage:
+// painted items are painted, the core (CF) is shot-blasted — both count here,
+// so Shot Blast has no separate row (it lives inside Painting).
+export const REPORT_STAGES = [...DEPTS, DELIVERED_STAGE] as const;
 import type { BomGrouper } from "./bom";
 import { dayNumber } from "./dates";
 
@@ -143,15 +129,17 @@ export function computeDailyReport(
     const items = {} as Record<Item, number>;
     let total = 0;
     for (const it of ITEMS) {
-      items[it] = g(deptItem, `${dept}|${it}`);
+      // Painting is the finishing stage: the core (CF) is SHOT-BLASTED, every
+      // other component is painted — so CF reads from the ShotBlast ledger
+      const src = dept === "Painting" && isPaintExempt(it) ? "ShotBlast" : dept;
+      items[it] = g(deptItem, `${src}|${it}`);
       total += items[it];
     }
     // Efficiency counts every component the stage handles at its OWN daily target
     // (base 27, AR/MB 20). "Sets" and balance use only the components on EVERY
     // transformer (base sheet items) so the conditional AR/MB don't skew them.
-    // Painting excludes the paint-exempt core; Shot Blast is that core only.
-    const deptItems = stageItemsFor(dept);
-    const baseItems = stageBaseItemsFor(dept);
+    const deptItems = ITEMS;
+    const baseItems = SHEET_ITEMS;
     const targetSum = sumItemTargets(deptItems, target);
     const sets = minOf(baseItems.map((it) => items[it]));
     const baseTotal = baseItems.reduce((s, it) => s + items[it], 0);

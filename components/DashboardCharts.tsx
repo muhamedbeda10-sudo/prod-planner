@@ -4,14 +4,15 @@ import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
   ReferenceLine, LabelList,
 } from "recharts";
-import { ITEMS, isPaintExempt, itemDailyTarget } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, itemDailyTarget, STAGE_COLOR } from "@/lib/domain/constants";
 import type { DayRow } from "@/lib/server/dashboard";
 
-/* ATC brand chart palette */
-const GREEN = "#1a8150";
-const GREEN_LIGHT = "#8fc9ab";
-const GRAY = "#717171";
-const PAINT = "#c59a3f";
+/* Canonical per-stage colours — shared with every other chart & the tracker:
+   Fabrication green · Welding blue · Painting orange · Delivered purple. */
+const FAB = STAGE_COLOR.Cut;
+const WELD = STAGE_COLOR.Welding;
+const PAINT = STAGE_COLOR.Painting;
+const GRAY = "#717171"; // neutral reference lines only
 
 /** Charts keep a readable minimum width and scroll sideways inside their card
  *  on narrow phones instead of being squeezed off-screen. */
@@ -44,10 +45,10 @@ export function WeekTrendChart({ days, targetPerDeptDay }: { days: DayRow[]; tar
           {/* no in-chart label — the card subtitle states the target, a fixed
               spot that can never collide with a bar */}
           <ReferenceLine y={targetPerDeptDay} stroke="var(--bad-fg)" strokeDasharray="6 4" strokeWidth={2} />
-          <Bar dataKey="Fabrication" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
+          <Bar dataKey="Fabrication" fill={FAB} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Fabrication" position="top" fontSize={10} />
           </Bar>
-          <Bar dataKey="Welding" fill={GREEN} radius={[3, 3, 0, 0]}>
+          <Bar dataKey="Welding" fill={WELD} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Welding" position="top" fontSize={10} />
           </Bar>
           <Bar dataKey="Painting" fill={PAINT} radius={[3, 3, 0, 0]}>
@@ -89,10 +90,10 @@ export function WeekItemChart({
           {/* mid-point step: the drop lands between CB and AR so AR & MB sit
               fully under their own lower target line */}
           <Line type="step" dataKey="Target" stroke="var(--bad-fg)" strokeDasharray="6 4" strokeWidth={2} dot={false} activeDot={false} legendType="none" isAnimationActive={false} />
-          <Bar dataKey="Fabrication" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
+          <Bar dataKey="Fabrication" fill={FAB} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Fabrication" position="top" fontSize={10} />
           </Bar>
-          <Bar dataKey="Welding" fill={GREEN} radius={[3, 3, 0, 0]}>
+          <Bar dataKey="Welding" fill={WELD} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Welding" position="top" fontSize={10} />
           </Bar>
           <Bar dataKey="Painting" fill={PAINT} radius={[3, 3, 0, 0]}>
@@ -120,8 +121,8 @@ export function HistoryChart({
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <ReferenceLine y={targetPerDeptWeek} stroke={GRAY} strokeDasharray="6 4" />
-          <Bar dataKey="Fabrication" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]} />
-          <Bar dataKey="Welding" fill={GREEN} radius={[3, 3, 0, 0]} />
+          <Bar dataKey="Fabrication" fill={FAB} radius={[3, 3, 0, 0]} />
+          <Bar dataKey="Welding" fill={WELD} radius={[3, 3, 0, 0]} />
           <Bar dataKey="Painting" fill={PAINT} radius={[3, 3, 0, 0]} />
         </BarChart>
     </ChartScroller>
