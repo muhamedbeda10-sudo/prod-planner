@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { put, del } from "@vercel/blob";
-import { isItem, isDept } from "@/lib/domain/constants";
+import { isItem, isDept, itemApplies, parseExcludedItems, ospOf, type Item } from "@/lib/domain/constants";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
@@ -137,6 +137,176 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
         note: delta < 0 ? `tracker correction: total ${current} → ${newTotal}` : null,
         createdBy: guard.user?.name ?? null,
       },
+    });
+    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
+      revalidatePath(p);
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** Record output on a BOM group row (the "cascade" summary) and DISTRIBUTE it
+ *  across the member MOs in the order they are listed: each MO absorbs up to
+ *  its own chain headroom (upstream − done, and the order qty for Cut), the
+ *  rest flows to the next MO. All-or-nothing: if the quantity doesn't fit the
+ *  whole group, nothing is saved and the error says how much fits.
+ *  Two callers:
+ *  - worklists (source "worklist"): `qty` = pieces to ADD (> 0);
+ *  - tracker (source "tracker"): `total` = the NEW cumulative group total —
+ *    the delta may be negative (correction), which is taken back from the
+ *    LAST MOs first, never below what downstream already consumed. */
+export async function recordGroupOutput(formData: FormData): Promise<RecordResult> {
+  try {
+    const source = String(formData.get("source") ?? "worklist");
+    const dept = String(formData.get("dept") ?? "");
+    const bom = String(formData.get("bom") ?? "").trim();
+    const item = String(formData.get("item") ?? "").trim().toUpperCase();
+    const mos = [...new Set(String(formData.get("mos") ?? "").split(",").map((s) => s.trim()).filter(Boolean))];
+
+    // permissions mirror the single-row actions exactly: worklist recording
+    // uses the dept edit permission, tracker cells use the tracker permissions
+    let by: string | null = null;
+    if (source === "tracker") {
+      if (!isDept(dept) && dept !== DELIVERED_STAGE && dept !== SHOTBLAST_STAGE) return { ok: false, error: "Invalid department." };
+      const guard = await requirePerm(trackerPermKey(dept));
+      if (guard.error) return { ok: false, error: guard.error };
+      by = guard.user?.name ?? null;
+    } else {
+      if (!isDept(dept)) return { ok: false, error: "Invalid department." };
+      const guard = await requireDeptEdit(dept);
+      if (guard.error) return { ok: false, error: guard.error };
+      by = guard.user?.name ?? null;
+    }
+    if (!bom) return { ok: false, error: "Missing BOM." };
+    if (!isItem(item)) return { ok: false, error: "Invalid component." };
+    if (dept === SHOTBLAST_STAGE && !isPaintExempt(item)) {
+      return { ok: false, error: `${item} is painted, not shot blasted — SHB applies to the core (CF) only.` };
+    }
+    if (mos.length === 0) return { ok: false, error: "The group has no MOs to distribute over." };
+
+    // the member orders + their per-dept ledger totals for this component
+    const [orders, sums] = await Promise.all([
+      prisma.masterOrder.findMany({ where: { mo: { in: mos } } }),
+      prisma.handoverEntry.groupBy({ by: ["mo", "dept"], where: { mo: { in: mos }, item }, _sum: { qty: true } }),
+    ]);
+    const orderOf = new Map(orders.map((o) => [o.mo, o]));
+    const sumOf = (mo: string, d: string) => sums.find((s) => s.mo === mo && s.dept === d)?._sum.qty ?? 0;
+
+    // per-MO state in the GIVEN order (the order shown on screen)
+    const members = mos.map((mo) => {
+      const o = orderOf.get(mo);
+      if (o && o.bom !== bom) return null; // belongs to another BOM — reject below
+      // AR/MB the order doesn't need (rule or manual N/A) can't receive output
+      const eligible = o ? itemApplies(item as Item, o) && !parseExcludedItems(o.excludedItems).has(item) : !["AR", "MB"].includes(item);
+      return {
+        mo,
+        o,
+        eligible,
+        cut: sumOf(mo, "Cut"),
+        weld: sumOf(mo, "Welding"),
+        paint: sumOf(mo, "Painting"),
+        shp: sumOf(mo, SHOTBLAST_STAGE),
+        delivered: sumOf(mo, DELIVERED_STAGE),
+      };
+    });
+    if (members.some((m) => m === null)) return { ok: false, error: "An MO in the group belongs to a different BOM — refresh the page." };
+    const list = members as NonNullable<(typeof members)[number]>[];
+
+    const finishedOf = (m: (typeof list)[number]) => (isPaintExempt(item) ? m.shp : m.paint);
+    const current = list.reduce((s, m) => {
+      switch (dept) {
+        case "Cut": return s + m.cut;
+        case "Welding": return s + m.weld;
+        case "Painting": return s + m.paint;
+        case SHOTBLAST_STAGE: return s + m.shp;
+        default: return s + m.delivered;
+      }
+    }, 0);
+
+    // the requested change
+    let delta: number;
+    let newTotal: number | null = null;
+    if (source === "tracker") {
+      newTotal = Number(formData.get("total"));
+      if (!Number.isInteger(newTotal) || newTotal < 0) return { ok: false, error: "Enter a whole number ≥ 0." };
+      delta = newTotal - current;
+      if (delta === 0) return { ok: false, error: "Nothing changed — the group total is already " + current + "." };
+    } else {
+      delta = Number(formData.get("qty"));
+      if (!Number.isInteger(delta) || delta <= 0) return { ok: false, error: "Enter a whole quantity greater than zero." };
+    }
+
+    // per-MO headroom, mirroring the chain guard (painted ≤ welded ≤ cut ≤
+    // order qty; the core's SHB ≤ welded; delivered ≤ finished). Cut also
+    // respects OSP — outsourced pieces are never made in-house.
+    const capAdd = (m: (typeof list)[number]): number => {
+      if (!m.eligible) return 0;
+      switch (dept) {
+        case "Cut": {
+          const qty = m.o?.planQty ?? 0;
+          return qty > 0 ? Math.max(0, qty - ospOf(m.o ?? {}, item as Item) - m.cut) : Number.POSITIVE_INFINITY;
+        }
+        case "Welding": return Math.max(0, m.cut - m.weld);
+        case "Painting": return Math.max(0, m.weld - m.paint);
+        case SHOTBLAST_STAGE: return Math.max(0, m.weld - m.shp);
+        default: return Math.max(0, finishedOf(m) - m.delivered);
+      }
+    };
+    const capSub = (m: (typeof list)[number]): number => {
+      switch (dept) {
+        case "Cut": return Math.max(0, m.cut - m.weld);
+        case "Welding": return Math.max(0, m.weld - Math.max(m.paint, isPaintExempt(item) ? m.shp : 0));
+        case "Painting": return Math.max(0, m.paint - m.delivered);
+        case SHOTBLAST_STAGE: return Math.max(0, m.shp - m.delivered);
+        default: return m.delivered;
+      }
+    };
+
+    // distribute: additions fill the MOs top-down; corrections come back off
+    // the LAST MOs first — all-or-nothing so the group never half-saves
+    const alloc = new Map<string, number>();
+    let left = Math.abs(delta);
+    const order = delta > 0 ? list : [...list].reverse();
+    for (const m of order) {
+      if (left === 0) break;
+      const cap = delta > 0 ? capAdd(m) : capSub(m);
+      const take = Math.min(left, cap);
+      if (take > 0) {
+        alloc.set(m.mo, (alloc.get(m.mo) ?? 0) + (delta > 0 ? take : -take));
+        left -= take;
+      }
+    }
+    if (left > 0) {
+      const fits = Math.abs(delta) - left;
+      return {
+        ok: false,
+        error: delta > 0
+          ? `Only ${fits} pcs fit across this group (chain limits: upstream done / order quantities) — nothing was saved.`
+          : `Only ${fits} pcs can be deducted (downstream already consumed the rest) — nothing was saved.`,
+      };
+    }
+
+    // date = today; plan = whichever plan covers today (same as tracker cells)
+    const today = parseISODate(toISODate(new Date()))!;
+    const [windows, settings] = await Promise.all([getPlanWindows(), getSettings()]);
+    const planNo =
+      findPlanForDate(windows, today, settings.leadCut) ??
+      (windows.length ? Math.max(...windows.map((w) => w.planNo)) : 0);
+    await prisma.plan.upsert({ where: { planNo }, create: { planNo, startDate: today }, update: {} });
+
+    await prisma.$transaction(async (tx) => {
+      for (const [mo, q] of alloc) {
+        await tx.handoverEntry.create({
+          data: {
+            date: today, dept, bom, mo, item, qty: q, planNo,
+            source: source === "tracker" ? "tracker" : "worklist",
+            note: q < 0 ? `group correction: ${bom} ${item} total ${current} → ${newTotal}` : alloc.size > 1 ? `group record on ${bom}` : null,
+            createdBy: by,
+          },
+        });
+      }
     });
     for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
       revalidatePath(p);

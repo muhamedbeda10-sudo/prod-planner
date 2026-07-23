@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WeldQueueRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
-import { recordOutput, addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote, returnToUpstream, hideWorklistLine } from "@/app/worklist/actions";
+import { recordOutput, recordGroupOutput, addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote, returnToUpstream, hideWorklistLine } from "@/app/worklist/actions";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Frac } from "@/components/Frac";
 import { PrintButton } from "@/components/PrintButton";
@@ -194,6 +194,41 @@ export function WeldingQueueTable({
     fd.set("planNo", String(r.planNo));
     startTransition(async () => {
       const res = await recordOutput(fd);
+      if (res.ok) {
+        setQty((s) => ({ ...s, [k]: "" }));
+        setMsg((s) => ({ ...s, [k]: "" }));
+        setSavedFlash((s) => ({ ...s, [k]: true }));
+        setTimeout(() => setSavedFlash((s) => ({ ...s, [k]: false })), 1800);
+        router.refresh();
+      } else {
+        setMsg((s) => ({ ...s, [k]: res.error ?? "Failed" }));
+      }
+    });
+  }
+
+  // record on the WHOLE BOM group: the qty is distributed over the member MOs
+  // in the order shown — each fills up to its available, the rest flows on
+  function saveGroup(gk: string, gBom: string, gItem: string, members: WeldQueueRow[], gAvailable: number) {
+    const k = `g|${gk}`;
+    const n = Number(qty[k]);
+    if (!qty[k] || !Number.isFinite(n) || n <= 0) {
+      setMsg((s) => ({ ...s, [k]: "Enter a quantity > 0" }));
+      return;
+    }
+    if (n > gAvailable) {
+      setMsg((s) => ({ ...s, [k]: `Only ${gAvailable} available from ${upLabel}` }));
+      return;
+    }
+    const fd = new FormData();
+    fd.set("source", "worklist");
+    fd.set("dept", dept);
+    fd.set("bom", gBom);
+    fd.set("item", gItem);
+    fd.set("qty", String(n));
+    // BOM-level lines (no MO) can't take part in the split — real MOs only
+    fd.set("mos", [...new Set(members.map((m) => m.mo).filter(Boolean))].join(","));
+    startTransition(async () => {
+      const res = await recordGroupOutput(fd);
       if (res.ok) {
         setQty((s) => ({ ...s, [k]: "" }));
         setMsg((s) => ({ ...s, [k]: "" }));
@@ -644,7 +679,40 @@ export function WeldingQueueTable({
                         </span>
                       )}
                     </td>
-                    <td className="p-2 text-center text-xs text-muted whitespace-nowrap">{open ? "▲ collapse" : "▼ open MOs"}</td>
+                    <td className="p-2 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      {canEdit && gAvailable > 0 && members.some((m) => m.mo) ? (
+                        <>
+                          <div className="flex items-center gap-1.5 justify-center">
+                            <input
+                              type="number"
+                              min={1}
+                              max={gAvailable}
+                              placeholder="qty"
+                              value={qty[`g|${gk}`] ?? ""}
+                              onChange={(e) => setQty((s) => ({ ...s, [`g|${gk}`]: e.target.value }))}
+                              onKeyDown={(e) => e.key === "Enter" && saveGroup(gk, gBom, gItem, members, gAvailable)}
+                              className="w-16 border rounded-md px-1.5 py-1 text-center font-bold tabnum"
+                              disabled={pending}
+                              title="Record on the WHOLE BOM — the quantity is distributed over its MOs in order"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => saveGroup(gk, gBom, gItem, members, gAvailable)}
+                              disabled={pending}
+                              className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[`g|${gk}`] ? "bg-ok-fg" : "bg-brand hover:bg-brand-dark"} disabled:opacity-50`}
+                              title={`Distributes over the MOs in order — each fills up to its available, the rest flows to the next`}
+                            >
+                              {savedFlash[`g|${gk}`] ? "✓ Saved" : "Save all"}
+                            </button>
+                          </div>
+                          {msg[`g|${gk}`] && <div className="text-[11px] text-bad-fg mt-0.5 whitespace-normal max-w-48">{msg[`g|${gk}`]}</div>}
+                        </>
+                      ) : gAvailable === 0 ? (
+                        <span className="pill pill-ok">✓ Cleared</span>
+                      ) : (
+                        <span className="text-xs text-muted">{open ? "▲ collapse" : "▼ open MOs"}</span>
+                      )}
+                    </td>
                     <td className="p-2 text-center whitespace-nowrap">
                       {openNoteCount > 0 ? <span className="pill pill-bad">📝 {openNoteCount}</span> : <span className="text-muted text-xs">—</span>}
                     </td>

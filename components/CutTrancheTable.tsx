@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { CutTranche } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
-import { recordOutput, setWorklistDate, clearWorklistDate, hideWorklistLine } from "@/app/worklist/actions";
+import { recordOutput, recordGroupOutput, setWorklistDate, clearWorklistDate, hideWorklistLine } from "@/app/worklist/actions";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 import { Frac } from "@/components/Frac";
@@ -127,6 +127,36 @@ export function CutTrancheTable({
     }
     return [...map.entries()];
   }, [filtered]);
+
+  // record on the WHOLE BOM group: the qty is distributed over the member MOs
+  // in the order shown — each fills up to its own headroom, the rest flows on
+  function saveGroup(gk: string, gBom: string, gItem: string, members: CutTranche[]) {
+    const k = `g|${gk}`;
+    const n = Number(qty[k]);
+    if (!qty[k] || !Number.isFinite(n) || n <= 0) {
+      setMsg((s) => ({ ...s, [k]: "Enter a quantity > 0" }));
+      return;
+    }
+    const fd = new FormData();
+    fd.set("source", "worklist");
+    fd.set("dept", "Cut");
+    fd.set("bom", gBom);
+    fd.set("item", gItem);
+    fd.set("qty", String(n));
+    fd.set("mos", [...new Set(members.map((m) => m.mo).filter(Boolean))].join(","));
+    startTransition(async () => {
+      const res = await recordGroupOutput(fd);
+      if (res.ok) {
+        setQty((s) => ({ ...s, [k]: "" }));
+        setMsg((s) => ({ ...s, [k]: "" }));
+        setSavedFlash((s) => ({ ...s, [k]: true }));
+        setTimeout(() => setSavedFlash((s) => ({ ...s, [k]: false })), 1800);
+        router.refresh();
+      } else {
+        setMsg((s) => ({ ...s, [k]: res.error ?? "Failed" }));
+      }
+    });
+  }
 
   function save(r: CutTranche) {
     const k = keyOf(r);
@@ -385,7 +415,37 @@ export function CutTrancheTable({
                     <td className="p-2 text-center">
                       <Frac num={sumRem} den={sumQty} color={sumRem <= 0 ? "var(--ok-fg)" : variant === "overdue" ? "var(--bad-fg)" : "var(--warn-fg)"} />
                     </td>
-                    <td className="p-2 text-center text-xs text-muted whitespace-nowrap">{open ? "▲ collapse" : "▼ open MOs"}</td>
+                    <td className="p-2 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      {canEdit ? (
+                        <>
+                          <div className="flex items-center gap-1.5 justify-center">
+                            <input
+                              type="number"
+                              min={1}
+                              placeholder="qty"
+                              value={qty[`g|${gk}`] ?? ""}
+                              onChange={(e) => setQty((s) => ({ ...s, [`g|${gk}`]: e.target.value }))}
+                              onKeyDown={(e) => e.key === "Enter" && saveGroup(gk, gBom, gItem, members)}
+                              className="w-16 border rounded-md px-1.5 py-1 text-center font-bold tabnum"
+                              disabled={pending}
+                              title="Record on the WHOLE BOM — the quantity is distributed over its MOs in order"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => saveGroup(gk, gBom, gItem, members)}
+                              disabled={pending}
+                              className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[`g|${gk}`] ? "bg-ok-fg" : "bg-brand hover:bg-brand-dark"} disabled:opacity-50`}
+                              title={`Distributes over the ${moCount} MOs in order — each fills up to its own limit, the rest flows to the next`}
+                            >
+                              {savedFlash[`g|${gk}`] ? "✓ Saved" : "Save all"}
+                            </button>
+                          </div>
+                          {msg[`g|${gk}`] && <div className="text-[11px] text-bad-fg mt-0.5 whitespace-normal max-w-48">{msg[`g|${gk}`]}</div>}
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted">{open ? "▲ collapse" : "▼ open MOs"}</span>
+                      )}
+                    </td>
                     <td className="p-2 text-center whitespace-nowrap">
                       {(() => {
                         const openNoteCount = members.reduce(

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { setOrderStatus, setExcludedItems, setOrderQty, setOrderPriority, pushOrderToWorklist, removeOrderMonth } from "@/app/orders/actions";
-import { recordTrackerTotal } from "@/app/worklist/actions";
+import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
@@ -466,29 +466,16 @@ export function MasterTrackerTable({
                       scoped ? (
                         <Fragment key={it}>
                           {stages.map((s, si) => (
-                            <StageCells
-                              key={s}
-                              cut={sum((r) => r.items[it].cut)}
-                              weld={sum((r) => r.items[it].weld)}
-                              paint={sum((r) => r.items[it].paint)}
-                              shp={sum((r) => r.items[it].shp)}
-                              delivered={sum((r) => r.items[it].delivered)}
-                              noPaint={isPaintExempt(it)}
-                              only={s}
-                              borderR={si === stages.length - 1}
-                            />
+                            <Fragment key={s}>{groupCell(gBom, members, it, s, si === stages.length - 1)}</Fragment>
                           ))}
                         </Fragment>
                       ) : (
-                        <StageCells
-                          key={it}
-                          cut={sum((r) => r.items[it].cut)}
-                          weld={sum((r) => r.items[it].weld)}
-                          paint={sum((r) => r.items[it].paint)}
-                          shp={sum((r) => r.items[it].shp)}
-                          delivered={sum((r) => r.items[it].delivered)}
-                          noPaint={isPaintExempt(it)}
-                        />
+                        <Fragment key={it}>
+                          {groupCell(gBom, members, it, "Cut", false)}
+                          {groupCell(gBom, members, it, "Welding", false)}
+                          {groupCell(gBom, members, it, "Painting", false)}
+                          {groupCell(gBom, members, it, "Delivered", true)}
+                        </Fragment>
                       )
                     )}
                     {!scoped && (
@@ -584,6 +571,96 @@ export function MasterTrackerTable({
             disabled={pending}
             className="w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
             title={`${deptLabel(dept)} · ${r.mo} · ${it} — click to record: type the NEW total (lower = negative correction in today's Daily Log)`}
+          >
+            {value}
+          </button>
+        ) : (
+          value
+        )}
+      </td>
+    );
+  }
+
+  /** One stage cell on a BOM GROUP row: shows the members' sum, and (with the
+   *  stage's tracker permission) records directly on the whole BOM — type the
+   *  NEW group total and the difference is DISTRIBUTED over the member MOs in
+   *  the order shown: each absorbs up to its chain headroom, the rest flows
+   *  to the next; corrections come back off the last MOs first. */
+  function groupCell(gBom: string, members: MasterTrackerRow[], it: Item, stage: string, borderR: boolean) {
+    // the core's Painting column is its SHOT BLAST — same as the MO rows
+    const dept = stage === "Painting" && isPaintExempt(it) ? "ShotBlast" : stage;
+    const [value, tint] =
+      dept === "Cut" ? [members.reduce((s, r) => s + r.items[it].cut, 0), "var(--cut-tint)"]
+      : dept === "Welding" ? [members.reduce((s, r) => s + r.items[it].weld, 0), "var(--weld-tint)"]
+      : dept === "ShotBlast" ? [members.reduce((s, r) => s + r.items[it].shp, 0), "var(--shp-tint)"]
+      : dept === "Delivered" ? [members.reduce((s, r) => s + r.items[it].delivered, 0), "var(--dlvd-tint)"]
+      : [members.reduce((s, r) => s + r.items[it].paint, 0), "var(--paint-tint)"];
+    const eligibleMos = members.filter((m) => m.items[it].eligible && !m.items[it].excluded).map((m) => m.mo);
+    const k = `g|${gBom}|${it}|${dept}`;
+    const editing = editKey === k;
+    const editable = editableDepts.includes(dept) && eligibleMos.length > 0;
+    const added = editing ? Number(editVal) - value : 0;
+
+    function save() {
+      const fd = new FormData();
+      fd.set("source", "tracker");
+      fd.set("dept", dept);
+      fd.set("bom", gBom);
+      fd.set("item", it);
+      fd.set("total", editVal);
+      fd.set("mos", eligibleMos.join(","));
+      setCellErr("");
+      startTransition(async () => {
+        const res = await recordGroupOutput(fd);
+        if (res.ok) {
+          setEditKey(null);
+          router.refresh();
+        } else {
+          setCellErr(res.error ?? "Failed");
+        }
+      });
+    }
+
+    return (
+      <td className={`p-1 text-center tabnum ${borderR ? "border-r" : ""}`} style={{ background: tint }} onClick={(e) => e.stopPropagation()}>
+        {editing ? (
+          <span className="inline-flex flex-col items-center gap-0.5">
+            <span className="inline-flex items-center gap-1">
+              <input
+                type="number"
+                min={0}
+                value={editVal}
+                autoFocus
+                onChange={(e) => { setEditVal(e.target.value); setCellErr(""); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") save();
+                  if (e.key === "Escape") setEditKey(null);
+                }}
+                className="w-16 border rounded-md px-1 py-0.5 text-center font-bold tabnum bg-surface"
+                disabled={pending}
+              />
+              <button type="button" onClick={save} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title={`Save — the difference is split over the ${eligibleMos.length} MOs in order and lands in today's Daily Log`}>
+                ✓
+              </button>
+              <button type="button" onClick={() => setEditKey(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">
+                ✕
+              </button>
+            </span>
+            {added > 0 && !cellErr && <span className="text-[10px] font-bold text-ok-fg whitespace-nowrap">+{added} · split over MOs</span>}
+            {added < 0 && !cellErr && (
+              <span className="text-[10px] font-bold text-bad-fg whitespace-nowrap" title="Taken back off the last MOs first — recorded as negative correction entries in today's Daily Log">
+                −{-added} correction
+              </span>
+            )}
+            {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{cellErr}</span>}
+          </span>
+        ) : editable ? (
+          <button
+            type="button"
+            onClick={() => { setEditKey(k); setEditVal(String(value)); setCellErr(""); }}
+            disabled={pending}
+            className="w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
+            title={`${deptLabel(dept)} · ${gBom} · ${it} — record on the WHOLE BOM: type the new group total, the difference is distributed over its ${eligibleMos.length} MOs in order`}
           >
             {value}
           </button>
@@ -938,40 +1015,3 @@ function StageHead({ shp = false, only, borderR = true }: { shp?: boolean; only?
   );
 }
 
-function StageCells({ cut, weld, paint, shp, delivered, excluded = false, noPaint = false, only, borderR = true }: { cut: number; weld: number; paint: number; shp: number; delivered: number; excluded?: boolean; noPaint?: boolean; only?: string; borderR?: boolean }) {
-  if (excluded) {
-    if (only) return <td className={`p-2 text-center text-muted ${borderR ? "border-r" : ""}`}>—</td>;
-    return (
-      <>
-        <td className="p-2 text-center text-muted">—</td>
-        <td className="p-2 text-center text-muted">—</td>
-        <td className="p-2 text-center text-muted">—</td>
-        <td className="p-2 text-center text-muted border-r">—</td>
-      </>
-    );
-  }
-  // dept-filtered view: one cell per PICKED stage; the item group's right
-  // border sits on the last picked column
-  if (only) {
-    const [v, tint] =
-      only === "Cut" ? [cut, "var(--cut-tint)"]
-      : only === "Welding" ? [weld, "var(--weld-tint)"]
-      : only === "Delivered" ? [delivered, "var(--dlvd-tint)"]
-      : noPaint ? [shp, "var(--shp-tint)"]
-      : [paint, "var(--paint-tint)"];
-    return <td className={`p-2 text-center tabnum ${borderR ? "border-r" : ""}`} style={{ background: tint }}>{v}</td>;
-  }
-  return (
-    <>
-      <td className="p-2 text-center tabnum" style={{ background: "var(--cut-tint)" }}>{cut}</td>
-      <td className="p-2 text-center tabnum" style={{ background: "var(--weld-tint)" }}>{weld}</td>
-      {/* the core (CF) has no paint stage — SHOT BLAST is its final step */}
-      {noPaint ? (
-        <td className="p-2 text-center tabnum" style={{ background: "var(--shp-tint)" }}>{shp}</td>
-      ) : (
-        <td className="p-2 text-center tabnum" style={{ background: "var(--paint-tint)" }}>{paint}</td>
-      )}
-      <td className="p-2 text-center tabnum border-r" style={{ background: "var(--dlvd-tint)" }}>{delivered}</td>
-    </>
-  );
-}
