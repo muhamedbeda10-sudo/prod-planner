@@ -4,7 +4,6 @@ import { getReturnsFor } from "@/lib/server/returns";
 import { getQueueNotes } from "@/lib/server/queueNotes";
 import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { CutWorklistView } from "@/components/CutWorklistView";
-import { WorklistDeptTabs } from "@/components/WorklistDeptTabs";
 import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, canEditDept } from "@/lib/server/auth";
 
@@ -26,7 +25,6 @@ export default async function CutWorklistPage() {
   return (
     <>
       <PrintHeader title="Fabrication Worklist" date={toDisplayDate(today)} />
-      <WorklistDeptTabs current="cut" />
       <CutWorklistView dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} unscheduled={unscheduled} pushed={pushed} priority={priority} hidden={hidden} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} />
     </>
   );
