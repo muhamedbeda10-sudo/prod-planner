@@ -21,6 +21,7 @@ export interface LogRow {
   item: string;
   qty: number;
   source: string;
+  createdBy: string | null; // who recorded the change (worklist / tracker / manual)
 }
 
 export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; editableDepts?: string[] }) {
@@ -125,6 +126,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
     Item: r.item,
     QTY: r.qty,
     Source: r.source,
+    By: r.createdBy ?? "",
     "Corrected From": r.bomRaw && r.bomRaw !== r.bom ? r.bomRaw : "",
   }));
 
@@ -225,12 +227,13 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
               <th className="p-2 text-center">Item</th>
               <th className="p-2 text-center">Qty</th>
               <th className="p-2">Source</th>
+              <th className="p-2">By</th>
               <th className="p-2 no-print"></th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={9} className="p-4 text-center text-muted">
+              <tr><td colSpan={10} className="p-4 text-center text-muted">
                 {rows.length === 0 ? "No records." : "No rows match the filters."}
               </td></tr>
             )}
@@ -270,6 +273,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
                   )}
                 </td>
                 <td className="p-2 text-xs text-muted">{r.source}</td>
+                <td className="p-2 text-xs whitespace-nowrap">{r.createdBy ?? <span className="text-muted">—</span>}</td>
                 <td className="p-2 no-print text-right">
                   <span className="whitespace-nowrap">
                     {editing === r.id ? (

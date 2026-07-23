@@ -68,7 +68,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     });
 
     await prisma.handoverEntry.create({
-      data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist" },
+      data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist", createdBy: guard.user?.name ?? null },
     });
     for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
       revalidatePath(p);
@@ -361,7 +361,7 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
     await prisma.plan.upsert({ where: { planNo: 0 }, create: { planNo: 0, startDate: date }, update: {} });
     await prisma.$transaction(async (tx) => {
       const ledger = await tx.handoverEntry.create({
-        data: { date, dept: toDept, bom, mo: mo || null, item, qty: -qty, planNo: 0, source: "return", note: reason },
+        data: { date, dept: toDept, bom, mo: mo || null, item, qty: -qty, planNo: 0, source: "return", note: reason, createdBy: guard.user?.name ?? null },
       });
       await tx.returnEntry.create({
         data: { date, fromDept, toDept, bom, mo: mo || null, item, qty, reason, handoverId: ledger.id },
@@ -395,6 +395,7 @@ export async function redeliverReturn(formData: FormData): Promise<RecordResult>
         data: {
           date, dept: ret.toDept, bom: ret.bom, mo: ret.mo, item: ret.item,
           qty: ret.qty, planNo: 0, source: "return", note: `re-delivered (was: ${ret.reason})`,
+          createdBy: guard.user?.name ?? null,
         },
       });
       await tx.returnEntry.update({ where: { id }, data: { status: "resolved" } });
