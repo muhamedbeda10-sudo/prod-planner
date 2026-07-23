@@ -15,14 +15,16 @@ import { logoutAction } from "@/app/login/actions";
 
 type Item = { href: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }> };
 
+// Ordered to follow the shop-floor flow: do the work (worklists) → track it →
+// log it → review it → the overview dashboard sits last (right side).
 const PRIMARY: Item[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/handover", label: "Daily Logs", icon: BookOpenCheck },
   { href: "/worklist/cut", label: "Fabrication Worklist", icon: LaserCutterIcon },
   { href: "/worklist/welding", label: "Welding Worklist", icon: WeldingIcon },
   { href: "/worklist/painting", label: "Painting Worklist", icon: PowderCoatIcon },
   { href: "/tracker", label: "Plan Tracker", icon: Table2 },
+  { href: "/handover", label: "Daily Logs", icon: BookOpenCheck },
   { href: "/report", label: "Daily Report", icon: FileBarChart2 },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
 ];
 
 const ADMIN: (Item & { desc: string })[] = [
