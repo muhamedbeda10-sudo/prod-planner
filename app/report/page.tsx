@@ -204,18 +204,16 @@ export default async function ReportPage({
               <tr className="bg-brand text-white text-center">
                 <th rowSpan={2} className="p-2 text-left">BOM</th>
                 <th rowSpan={2} className="p-2">Required</th>
-                {ITEMS.map((it) => <th key={it} colSpan={3} className="p-2 border-l border-border-strong">{it}</th>)}
-                <th rowSpan={2} className="p-2">Complete</th>
-                <th rowSpan={2} className="p-2">Left</th>
-                <th rowSpan={2} className="p-2">Achv.</th>
+                {/* tracker-style stage columns: Fab | Weld | SHB-or-Paint | Dlvd */}
+                {ITEMS.map((it) => <th key={it} colSpan={4} className="p-2 border-l border-border-strong">{it}</th>)}
               </tr>
               <tr className="bg-brand-dark text-white text-[10px]">
-                {ITEMS.map((it) => <StageHead key={it} />)}
+                {ITEMS.map((it) => <StageHead key={it} shb={isPaintExempt(it)} dlvd />)}
               </tr>
             </thead>
             <tbody>
               {planRows.length === 0 && (
-                <tr><td colSpan={23} className="p-4 text-center text-muted">No orders in this view.</td></tr>
+                <tr><td colSpan={2 + ITEMS.length * 4} className="p-4 text-center text-muted">No orders in this view.</td></tr>
               )}
               {planRows.map((r, i) => (
                 <tr key={r.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`} style={hl(r) ? hlStyle : undefined}>
@@ -228,11 +226,17 @@ export default async function ReportPage({
                   </td>
                   <td className="p-2 font-bold tabnum">{r.required}</td>
                   {ITEMS.map((it) => (
-                    <FragmentCW key={it} cut={r.items[it].cut} weld={r.items[it].weld} paint={r.items[it].paint} noPaint={isPaintExempt(it)} />
+                    <FragmentCW
+                      key={it}
+                      cut={r.items[it].cut}
+                      weld={r.items[it].weld}
+                      paint={r.items[it].paint}
+                      noPaint={isPaintExempt(it)}
+                      shp={r.items[it].shp}
+                      delivered={r.items[it].delivered}
+                      dlvd
+                    />
                   ))}
-                  <td className="p-2 font-extrabold tabnum">{r.complete}</td>
-                  <td className="p-2 font-bold tabnum" style={{ color: r.left > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>{r.left}</td>
-                  <td className="p-2 font-bold tabnum" style={pctStyle(r.achievement)}>{fmtPct(r.achievement)}</td>
                 </tr>
               ))}
             </tbody>
@@ -243,22 +247,36 @@ export default async function ReportPage({
   );
 }
 
-function StageHead({ only }: { only?: Dept }) {
+function StageHead({ only, shb = false, dlvd = false }: { only?: Dept; shb?: boolean; dlvd?: boolean }) {
   if (only) return <th className="p-1 font-medium border-l border-border-strong">{DEPT_SHORT[only]}</th>;
   return (
     <>
       <th className="p-1 font-medium border-l border-border-strong">Fab</th>
       <th className="p-1 font-medium">Weld</th>
-      <th className="p-1 font-medium">Paint</th>
+      {/* the core (CF) is never painted — its final stage is SHOT BLAST */}
+      <th className="p-1 font-medium">{shb ? "SHB" : "Paint"}</th>
+      {dlvd && <th className="p-1 font-medium" title="Delivered — received by the customer">Dlvd</th>}
     </>
   );
 }
 
-function FragmentCW({ cut, weld, paint, noPaint = false, only }: { cut: number; weld: number; paint: number; noPaint?: boolean; only?: Dept }) {
+function FragmentCW({
+  cut, weld, paint, noPaint = false, only, shp, delivered, dlvd = false,
+}: {
+  cut: number; weld: number; paint: number; noPaint?: boolean; only?: Dept;
+  /** the core's SHOT BLAST total — shown in place of Paint when provided */
+  shp?: number;
+  delivered?: number;
+  dlvd?: boolean; // append the Delivered cell (tracker-style tables)
+}) {
   const cutCell = <td className="p-1 text-center tabnum text-xs border-l" style={{ background: "var(--cut-tint)" }}>{cut}</td>;
   const weldCell = <td className={`p-1 text-center tabnum text-xs ${only ? "border-l" : ""}`} style={{ background: "var(--weld-tint)" }}>{weld}</td>;
   const paintCell = noPaint ? (
-    <td className={`p-1 text-center text-muted text-xs ${only ? "border-l" : ""}`} title="not painted — core ships after welding">—</td>
+    shp !== undefined ? (
+      <td className={`p-1 text-center tabnum text-xs ${only ? "border-l" : ""}`} style={{ background: "var(--shp-tint)" }}>{shp}</td>
+    ) : (
+      <td className={`p-1 text-center text-muted text-xs ${only ? "border-l" : ""}`} title="not painted — core ships after welding">—</td>
+    )
   ) : (
     <td className={`p-1 text-center tabnum text-xs ${only ? "border-l" : ""}`} style={{ background: "var(--paint-tint)" }}>{paint}</td>
   );
@@ -270,6 +288,9 @@ function FragmentCW({ cut, weld, paint, noPaint = false, only }: { cut: number; 
       {cutCell}
       {weldCell}
       {paintCell}
+      {dlvd && (
+        <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--dlvd-tint)" }}>{delivered ?? 0}</td>
+      )}
     </>
   );
 }

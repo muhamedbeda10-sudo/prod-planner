@@ -52,7 +52,9 @@ export interface ReportPlanRow {
   urgentCount: number;
   ospCount: number; // MOs with any outsourced component
   required: number;
-  items: Record<Item, { cut: number; weld: number; paint: number }>;
+  // shp = the core's real final stage (shown in place of Paint for CF);
+  // delivered = what the customer received
+  items: Record<Item, { cut: number; weld: number; paint: number; shp: number; delivered: number }>;
   complete: number; // Σ member completes (paint-based, OSP-credited, capped)
   left: number;
   achievement: number | null;
@@ -60,7 +62,8 @@ export interface ReportPlanRow {
 }
 
 function emptyItems(): ReportPlanRow["items"] {
-  return { CF: { cut: 0, weld: 0, paint: 0 }, TC: { cut: 0, weld: 0, paint: 0 }, TN: { cut: 0, weld: 0, paint: 0 }, CB: { cut: 0, weld: 0, paint: 0 }, AR: { cut: 0, weld: 0, paint: 0 }, MB: { cut: 0, weld: 0, paint: 0 } };
+  const cell = () => ({ cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0 });
+  return { CF: cell(), TC: cell(), TN: cell(), CB: cell(), AR: cell(), MB: cell() };
 }
 
 function groupByBom(members: MasterTrackerRow[], requiredOf?: Map<string, number>): ReportPlanRow[] {
@@ -80,6 +83,8 @@ function groupByBom(members: MasterTrackerRow[], requiredOf?: Map<string, number
       g.items[it].cut += m.items[it].cut;
       g.items[it].weld += m.items[it].weld;
       g.items[it].paint += m.items[it].paint;
+      g.items[it].shp += m.items[it].shp;
+      g.items[it].delivered += m.items[it].delivered;
     }
     g.complete += m.complete;
     g.left += m.remaining;
