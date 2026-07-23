@@ -28,6 +28,17 @@ describe("computeDailyReport — department output", () => {
     expect(rep.deptOutputs.every((d) => d.balance === null && d.total === 0)).toBe(true);
   });
 
+  it("negative corrections reduce the day's totals — the report agrees with the ledger", () => {
+    const logs: ReportLogRow[] = [
+      { date: day, dept: "Cut", bom: "A11E11M11", item: "CF", qty: 14, planNo: 27 },
+      { date: day, dept: "Cut", bom: "A11E11M11", item: "CF", qty: -1, planNo: 27 }, // tracker correction
+    ];
+    const rep = computeDailyReport([], logs, day, 27, grouper);
+    const cut = rep.deptOutputs.find((d) => d.dept === "Cut")!;
+    expect(cut.items.CF).toBe(13);
+    expect(cut.total).toBe(13);
+  });
+
   it("project worked today with no plan data is flagged No plan data", () => {
     const logs: ReportLogRow[] = [
       { date: day, dept: "Cut", bom: "ZZZE11M11", item: "CF", qty: 4, planNo: 27 },
