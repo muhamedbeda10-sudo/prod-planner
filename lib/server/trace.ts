@@ -59,6 +59,7 @@ export interface TraceResult {
     priority: boolean;
     status: string;
     planQty: number;
+    complete: number; // finished sets (from the master tracker)
     remarks: string;
     months: string[];
   }[];
@@ -123,6 +124,7 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
   const resolvedBom = masters[0]?.bom ?? orders[0]?.bom ?? handover[0]?.bom ?? bom;
 
   // ---- identity: the master order(s) in scope ----
+  const completeOf = new Map(masterRows.map((r) => [r.mo, r.complete]));
   const members = masters
     .map((m) => ({
       mo: m.mo,
@@ -132,6 +134,7 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
       priority: m.priority,
       status: m.status,
       planQty: m.planQty,
+      complete: completeOf.get(m.mo) ?? 0,
       remarks: (m.remarks ?? "").trim(),
       months: (m.months || m.source || "").split(",").map((s) => s.trim()).filter(Boolean),
     }))
