@@ -186,6 +186,8 @@ export function DeptPicker({ value }: { value: string }) {
         <option value="Cut">Fabrication</option>
         <option value="Welding">Welding</option>
         <option value="Painting">Painting</option>
+        <option value="ShotBlast">Shot Blast</option>
+        <option value="Delivered">Delivered</option>
       </select>
     </label>
   );

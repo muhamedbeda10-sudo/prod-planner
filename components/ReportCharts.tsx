@@ -11,31 +11,38 @@ const GREEN = "#1a8150"; // brand green
 const GREEN_DARK = "#136041";
 const GRAY = "#717171"; // brand gray
 const GRAY_LIGHT = "#b8c1bc";
+const SHB = "#a9772e"; // shot blast — bronze
+const DLVD = "#3b6f9c"; // delivered — blue
 
 /** The report's single quantities chart: today's output per component and
  *  stage, values printed ON the bars, dashed line = the daily target. */
 export function OutputByComponentChart({
-  cut, welding, painting, target, only,
+  cut, welding, painting, shotblast, delivered, target, only,
 }: {
   cut: Record<string, number>;
   welding: Record<string, number>;
   painting: Record<string, number>;
+  shotblast?: Record<string, number>; // the core's shot-blast day totals (filter only)
+  delivered?: Record<string, number>; // day deliveries per component (filter only)
   target: number;
-  /** dept filter: render only this department's bars ("" / undefined = all) */
-  only?: "Cut" | "Welding" | "Painting";
+  /** dept filter: render only this stage's bars ("" / undefined = all) */
+  only?: "Cut" | "Welding" | "Painting" | "ShotBlast" | "Delivered";
 }) {
   const show = (d: "Cut" | "Welding" | "Painting") => !only || only === d;
   // the core (CF) is never painted — no Painting bar for it at all.
   // Target is PER ITEM (base 27, AR/MB 20) drawn as a stepped dashed line that
   // drops at the AR/MB group instead of one flat line for everything.
+  // Shot Blast / Delivered only render when the report is filtered to them.
   const data = ITEMS.map((it) => ({
     item: it,
     Fabrication: show("Cut") ? cut[it] ?? 0 : undefined,
     Welding: show("Welding") ? welding[it] ?? 0 : undefined,
     Painting: show("Painting") && !isPaintExempt(it) ? painting[it] ?? 0 : undefined,
+    ShotBlast: only === "ShotBlast" && isPaintExempt(it) ? shotblast?.[it] ?? 0 : undefined,
+    Delivered: only === "Delivered" ? delivered?.[it] ?? 0 : undefined,
     Target: itemDailyTarget(it, target),
   }));
-  const maxVal = Math.max(target, ...data.flatMap((d) => [d.Fabrication ?? 0, d.Welding ?? 0, d.Painting ?? 0]));
+  const maxVal = Math.max(target, ...data.flatMap((d) => [d.Fabrication ?? 0, d.Welding ?? 0, d.Painting ?? 0, d.ShotBlast ?? 0, d.Delivered ?? 0]));
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
 
   // one chart definition, two sizes: the screen one is responsive (and
@@ -82,10 +89,28 @@ export function OutputByComponentChart({
           <LabelList dataKey="Painting" position="top" fontSize={15} fontWeight={800} formatter={label} />
         </Bar>
       )}
+      {only === "ShotBlast" && (
+        <Bar dataKey="ShotBlast" fill={SHB} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+          <LabelList dataKey="ShotBlast" position="top" fontSize={15} fontWeight={800} formatter={label} />
+        </Bar>
+      )}
+      {only === "Delivered" && (
+        <Bar dataKey="Delivered" fill={DLVD} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+          <LabelList dataKey="Delivered" position="top" fontSize={15} fontWeight={800} formatter={label} />
+        </Bar>
+      )}
     </ComposedChart>
   );
 
-  const SERIES: [string, string][] = [["Fabrication", GREEN], ["Welding", GRAY], ["Painting", GREEN_DARK]];
+  // print legend reflects exactly which bars are drawn (the filtered stage, or
+  // all three production stages when unfiltered)
+  const SERIES: [string, string][] =
+    only === "ShotBlast" ? [["Shot Blast", SHB]]
+    : only === "Delivered" ? [["Delivered", DLVD]]
+    : only === "Cut" ? [["Fabrication", GREEN]]
+    : only === "Welding" ? [["Welding", GRAY]]
+    : only === "Painting" ? [["Painting", GREEN_DARK]]
+    : [["Fabrication", GREEN], ["Welding", GRAY], ["Painting", GREEN_DARK]];
 
   return (
     <>

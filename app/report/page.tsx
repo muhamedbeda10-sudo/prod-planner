@@ -5,7 +5,16 @@ import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, WeekSnapshotPicker, DeptPicker } from "@/components/controls";
 import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS, isPaintExempt, isDept, deptLabel, DEPT_SHORT, itemDailyTarget, type Dept } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, type Item } from "@/lib/domain/constants";
+
+// the report can be scoped to any single ledger stage — the production depts
+// plus the tracker-only Shot Blast / Delivered stages
+const REPORT_STAGES = ["Cut", "Welding", "Painting", "ShotBlast", "Delivered"] as const;
+type ReportStage = (typeof REPORT_STAGES)[number];
+// compact stage label for the single-column (filtered) headers
+const STAGE_SHORT: Record<ReportStage, string> = {
+  Cut: "Fab", Welding: "Weld", Painting: "Paint", ShotBlast: "SHB", Delivered: "Dlvd",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +41,9 @@ export default async function ReportPage({
   const dayISO = toISODate(day);
   const weekNo = Number(sp.week) || null; // null = the FULL plan (default)
   // dept filter — scopes the output table, chart, worked-on projects AND the
-  // tracker highlight to that department's work only
-  const deptF: Dept | null = sp.dept && isDept(sp.dept) ? sp.dept : null;
+  // tracker highlight to that stage's work only
+  const deptF: ReportStage | null =
+    sp.dept && (REPORT_STAGES as readonly string[]).includes(sp.dept) ? (sp.dept as ReportStage) : null;
 
   const [{ deptOutputs, target }, worked, dayProjects, planNos, planRows] = await Promise.all([
     getDailyReport(day),
@@ -46,6 +56,8 @@ export default async function ReportPage({
   const cut = deptOutputs.find((d) => d.dept === "Cut")!;
   const weld = deptOutputs.find((d) => d.dept === "Welding")!;
   const paint = deptOutputs.find((d) => d.dept === "Painting")!;
+  const shotblast = deptOutputs.find((d) => d.dept === "ShotBlast")!;
+  const delivered = deptOutputs.find((d) => d.dept === "Delivered")!;
 
   // highlight = this BOM had output recorded ON the selected day
   const workedMos = new Set(worked.mos);
@@ -111,8 +123,8 @@ export default async function ReportPage({
                 <td className="p-2 text-left font-bold">{deptLabel(d.dept)}</td>
                 {ITEMS.map((it) => (
                   <td key={it} className="p-2 tabnum">
-                    {/* the core (CF) is never painted */}
-                    {d.dept === "Painting" && isPaintExempt(it) ? <span className="text-muted">—</span> : <Num v={d.items[it]} />}
+                    {/* Painting skips the core (CF); Shot Blast is the core only */}
+                    {stageHasItem(d.dept, it) ? <Num v={d.items[it]} /> : <span className="text-muted">—</span>}
                   </td>
                 ))}
                 <td className="p-2 font-bold tabnum">{d.total}</td>
@@ -136,7 +148,7 @@ export default async function ReportPage({
             Target {target}/item · AR & MB {itemDailyTarget("AR", target)}
           </span>
         </div>
-        <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} target={target} only={deptF ?? undefined} />
+        <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} shotblast={shotblast.items} delivered={delivered.items} target={target} only={deptF ?? undefined} />
       </div>
 
       {/* Worked-on-today table: ONLY the projects with output recorded on the
@@ -156,24 +168,24 @@ export default async function ReportPage({
               <tr className="bg-brand text-white text-center">
                 <th rowSpan={2} className="p-2 text-left">BOM</th>
                 <th rowSpan={2} className="p-2 text-left">MOs</th>
-                {ITEMS.map((it) => <th key={it} colSpan={deptF ? 1 : 3} className="p-2 border-l border-border-strong">{it}</th>)}
+                {ITEMS.map((it) => <th key={it} colSpan={deptF ? 1 : 4} className="p-2 border-l border-border-strong">{it}</th>)}
                 <th rowSpan={2} className="p-2">Day total</th>
               </tr>
               <tr className="bg-brand-dark text-white text-[10px]">
-                {ITEMS.map((it) => <StageHead key={it} only={deptF ?? undefined} />)}
+                {ITEMS.map((it) => <StageHead key={it} only={deptF ?? undefined} shb={isPaintExempt(it)} dlvd />)}
               </tr>
             </thead>
             <tbody>
               {dayProjects.length === 0 && (
-                <tr><td colSpan={3 + ITEMS.length * (deptF ? 1 : 3)} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
+                <tr><td colSpan={3 + ITEMS.length * (deptF ? 1 : 4)} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
               )}
               {dayProjects.map((p, i) => (
                 <tr key={p.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
                   <td className="p-2 text-left font-bold whitespace-nowrap">{p.bom}</td>
                   <td className="p-2 text-left text-xs text-muted whitespace-nowrap">{p.mos.length > 0 ? p.mos.join(", ") : "—"}</td>
                   {ITEMS.map((it) => {
-                    const c = p.items[it] ?? { cut: 0, weld: 0, paint: 0 };
-                    return <FragmentCW key={it} cut={c.cut} weld={c.weld} paint={c.paint} noPaint={isPaintExempt(it)} only={deptF ?? undefined} />;
+                    const c = p.items[it] ?? { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0 };
+                    return <FragmentCW key={it} cut={c.cut} weld={c.weld} paint={c.paint} shp={c.shp} delivered={c.delivered} noPaint={isPaintExempt(it)} only={deptF ?? undefined} dlvd />;
                   })}
                   <td className="p-2 font-extrabold tabnum">{p.total}</td>
                 </tr>
@@ -247,8 +259,14 @@ export default async function ReportPage({
   );
 }
 
-function StageHead({ only, shb = false, dlvd = false }: { only?: Dept; shb?: boolean; dlvd?: boolean }) {
-  if (only) return <th className="p-1 font-medium border-l border-border-strong">{DEPT_SHORT[only]}</th>;
+function stageHasItem(dept: string, it: Item): boolean {
+  if (dept === "Painting") return !isPaintExempt(it); // the core is never painted
+  if (dept === "ShotBlast") return isPaintExempt(it); // shot blast is the core only
+  return true;
+}
+
+function StageHead({ only, shb = false, dlvd = false }: { only?: ReportStage; shb?: boolean; dlvd?: boolean }) {
+  if (only) return <th className="p-1 font-medium border-l border-border-strong">{STAGE_SHORT[only]}</th>;
   return (
     <>
       <th className="p-1 font-medium border-l border-border-strong">Fab</th>
@@ -263,7 +281,7 @@ function StageHead({ only, shb = false, dlvd = false }: { only?: Dept; shb?: boo
 function FragmentCW({
   cut, weld, paint, noPaint = false, only, shp, delivered, dlvd = false,
 }: {
-  cut: number; weld: number; paint: number; noPaint?: boolean; only?: Dept;
+  cut: number; weld: number; paint: number; noPaint?: boolean; only?: ReportStage;
   /** the core's SHOT BLAST total — shown in place of Paint when provided */
   shp?: number;
   delivered?: number;
@@ -280,9 +298,18 @@ function FragmentCW({
   ) : (
     <td className={`p-1 text-center tabnum text-xs ${only ? "border-l" : ""}`} style={{ background: "var(--paint-tint)" }}>{paint}</td>
   );
+  // Shot Blast column (filtered): the core only — the rest never shot-blast
+  const shpCell = noPaint ? (
+    <td className="p-1 text-center tabnum text-xs border-l" style={{ background: "var(--shp-tint)" }}>{shp ?? 0}</td>
+  ) : (
+    <td className="p-1 text-center text-muted text-xs border-l" title="not shot blasted — only the core (CF) is">—</td>
+  );
+  const dlvdCell = <td className="p-1 text-center tabnum text-xs border-l" style={{ background: "var(--dlvd-tint)" }}>{delivered ?? 0}</td>;
   if (only === "Cut") return cutCell;
   if (only === "Welding") return weldCell;
   if (only === "Painting") return paintCell;
+  if (only === "ShotBlast") return shpCell;
+  if (only === "Delivered") return dlvdCell;
   return (
     <>
       {cutCell}
