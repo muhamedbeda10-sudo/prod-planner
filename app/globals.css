@@ -281,30 +281,44 @@ main textarea:focus {
 }
 
 /* ---- top navigation: centered tabs with motion ---- */
+/* Underline tabs — clean, enterprise look: text only, an accent bar under the
+   active tab (and a faint one on hover). No pill, no lift. */
 .nav-tab {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   white-space: nowrap;
-  padding: 7px 14px;
+  padding: 8px 13px;
   font-size: 13.5px;
   font-weight: 600;
-  border-radius: 9999px;
-  color: rgb(255 255 255 / 0.78);
-  transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  letter-spacing: 0.01em;
+  color: rgb(255 255 255 / 0.68);
+  transition: color 0.18s ease;
+}
+.nav-tab::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background-color 0.18s ease;
 }
 .nav-tab:hover {
   color: #fff;
-  background: rgb(255 255 255 / 0.12);
-  transform: translateY(-1px);
 }
-.nav-tab:active {
-  transform: translateY(0) scale(0.98);
+.nav-tab:hover::after {
+  background: rgb(255 255 255 / 0.32);
 }
 .nav-tab-active,
 .nav-tab-active:hover {
+  color: #fff;
+}
+.nav-tab-active::after,
+.nav-tab-active:hover::after {
   background: #fff;
-  color: var(--brand);
-  box-shadow: 0 2px 10px rgb(0 0 0 / 0.22);
 }
 
 @keyframes navdrop {
