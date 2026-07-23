@@ -33,6 +33,27 @@ describe("computeOtd", () => {
     expect(stats.otdPct).toBe(0);
   });
 
+  it("a negative correction that drops the net below the need cancels delivery", () => {
+    const logs: OtdPaintLog[] = [
+      ...paintAll("MO-A", 2, utcDate(2026, 7, 9)), // reached the need on the 9th…
+      { mo: "MO-A", item: "CB", qty: -1, date: utcDate(2026, 7, 11) }, // …then CB corrected down
+    ];
+    const stats = computeOtd(orders, schedules, logs, day);
+    expect(stats.onTime).toBe(0);
+    expect(stats.openLate).toBe(1); // net CB = 1 < 2 — no longer delivered
+  });
+
+  it("a correction followed by re-painting moves the completion date", () => {
+    const logs: OtdPaintLog[] = [
+      ...paintAll("MO-A", 2, utcDate(2026, 7, 9)),
+      { mo: "MO-A", item: "CB", qty: -1, date: utcDate(2026, 7, 10) },
+      { mo: "MO-A", item: "CB", qty: 1, date: utcDate(2026, 7, 12) }, // re-reached on the 12th
+    ];
+    const stats = computeOtd(orders, schedules, logs, day);
+    expect(stats.late).toBe(1); // judged at 12/07 vs the 10/07 promise
+    expect(stats.worst[0].latenessDays).toBe(2);
+  });
+
   it("future promises are upcoming and not counted in OTD%", () => {
     const stats = computeOtd(orders, [{ planNo: 28, mo: "MO-A", ovenDate: utcDate(2026, 7, 20) }], [], day);
     expect(stats.upcoming).toBe(1);
