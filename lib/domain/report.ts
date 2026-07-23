@@ -4,7 +4,27 @@
 //   2) Projects worked today    (per BOM+dept; completion = MIN painted — a
 //      transformer only counts once it left Painting)
 
-import { ITEMS, DEPTS, PAINTED_ITEMS, SHEET_ITEMS, PAINTED_SHEET_ITEMS, sumItemTargets, isPaintExempt, type Item, type Dept } from "./constants";
+import { ITEMS, DEPTS, PAINTED_ITEMS, SHEET_ITEMS, PAINTED_SHEET_ITEMS, SHOTBLAST_STAGE, DELIVERED_STAGE, sumItemTargets, isPaintExempt, type Item } from "./constants";
+
+// The report's Section-1 output table now covers the production departments
+// PLUS the two tracker-only ledger stages the user records on the Plan Tracker
+// (Shot Blast — the core's final stage — and Delivered — the customer receipt).
+export const REPORT_STAGES = [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE] as const;
+
+// which components a stage actually handles (the rest print as "—"): Painting
+// skips the paint-exempt core, Shot Blast is ONLY that core, everything else
+// (Fabrication / Welding / Delivered) covers every component.
+function stageItemsFor(stage: string): readonly Item[] {
+  if (stage === "Painting") return PAINTED_ITEMS;
+  if (stage === SHOTBLAST_STAGE) return ITEMS.filter(isPaintExempt);
+  return ITEMS;
+}
+// base components (present on every transformer) a stage uses for sets/balance
+function stageBaseItemsFor(stage: string): readonly Item[] {
+  if (stage === "Painting") return PAINTED_SHEET_ITEMS;
+  if (stage === SHOTBLAST_STAGE) return SHEET_ITEMS.filter(isPaintExempt);
+  return SHEET_ITEMS;
+}
 import type { BomGrouper } from "./bom";
 import { dayNumber } from "./dates";
 
@@ -27,7 +47,7 @@ export interface ReportLogRow {
 }
 
 export interface DeptOutput {
-  dept: Dept;
+  dept: string; // Cut | Welding | Painting | ShotBlast | Delivered
   items: Record<Item, number>;
   total: number;
   target: number;
@@ -39,7 +59,7 @@ export interface DeptOutput {
 export interface ProjectRow {
   bom: string;
   description: string;
-  dept: Dept;
+  dept: string;
   items: Record<Item, number>;
   totalToday: number;
   required: number | null;
@@ -119,19 +139,19 @@ export function computeDailyReport(
   }
 
   // ---- section 1: department output ----
-  const deptOutputs: DeptOutput[] = DEPTS.map((dept) => {
+  const deptOutputs: DeptOutput[] = REPORT_STAGES.map((dept) => {
     const items = {} as Record<Item, number>;
     let total = 0;
     for (const it of ITEMS) {
       items[it] = g(deptItem, `${dept}|${it}`);
       total += items[it];
     }
-    // Efficiency counts every component the dept handles at its OWN daily target
+    // Efficiency counts every component the stage handles at its OWN daily target
     // (base 27, AR/MB 20). "Sets" and balance use only the components on EVERY
     // transformer (base sheet items) so the conditional AR/MB don't skew them.
-    // Painting excludes the paint-exempt core (CF is never painted).
-    const deptItems = dept === "Painting" ? PAINTED_ITEMS : ITEMS;
-    const baseItems = dept === "Painting" ? PAINTED_SHEET_ITEMS : SHEET_ITEMS;
+    // Painting excludes the paint-exempt core; Shot Blast is that core only.
+    const deptItems = stageItemsFor(dept);
+    const baseItems = stageBaseItemsFor(dept);
     const targetSum = sumItemTargets(deptItems, target);
     const sets = minOf(baseItems.map((it) => items[it]));
     const baseTotal = baseItems.reduce((s, it) => s + items[it], 0);
@@ -150,7 +170,7 @@ export function computeDailyReport(
   const keys = [...bomDept.keys()].sort();
   const projects: ProjectRow[] = [];
   for (const key of keys) {
-    const [bg, dep] = key.split("|") as [string, Dept];
+    const [bg, dep] = key.split("|") as [string, string];
     const m = bomDept.get(key)!;
     const items = {} as Record<Item, number>;
     let totalToday = 0;

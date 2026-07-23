@@ -153,8 +153,8 @@ export async function getWeekSnapshot(planNo: number): Promise<ReportPlanRow[]> 
 export interface DayProjectRow {
   bom: string;
   mos: string[]; // MOs touched that day ("—" rows aggregate BOM-level entries)
-  items: Record<string, { cut: number; weld: number; paint: number }>;
-  total: number; // all pcs recorded that day on this BOM
+  items: Record<string, { cut: number; weld: number; paint: number; shp: number; delivered: number }>;
+  total: number; // all pcs recorded that day on this BOM (every stage)
 }
 
 /** The day's output grouped by project (BOM): only projects with entries ON
@@ -169,7 +169,9 @@ export async function getDayOutputByProject(day: Date, dept?: string): Promise<D
   });
 
   const rows = new Map<string, DayProjectRow>();
-  const stageOf: Record<string, "cut" | "weld" | "paint"> = { Cut: "cut", Welding: "weld", Painting: "paint" };
+  const stageOf: Record<string, "cut" | "weld" | "paint" | "shp" | "delivered"> = {
+    Cut: "cut", Welding: "weld", Painting: "paint", ShotBlast: "shp", Delivered: "delivered",
+  };
   for (const e of entries) {
     const stage = stageOf[e.dept];
     if (!stage) continue;
@@ -179,7 +181,7 @@ export async function getDayOutputByProject(day: Date, dept?: string): Promise<D
       rows.set(e.bom, row);
     }
     if (e.mo && !row.mos.includes(e.mo)) row.mos.push(e.mo);
-    if (!row.items[e.item]) row.items[e.item] = { cut: 0, weld: 0, paint: 0 };
+    if (!row.items[e.item]) row.items[e.item] = { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0 };
     row.items[e.item][stage] += e.qty;
     row.total += e.qty;
   }
