@@ -78,25 +78,33 @@ export function computeOtd(
     if (cur === undefined || d > cur) promise.set(s.mo, d);
   }
 
-  // painting log per MO × item, date-ordered
+  // painting log per MO × item, date-ordered — NEGATIVE rows (corrections /
+  // returns) count too, so the net total here always matches the tracker
   const paintByLine = new Map<string, { d: number; qty: number }[]>();
   for (const p of paintings) {
     const mo = (p.mo ?? "").trim();
-    if (!mo || !(p.qty > 0)) continue;
+    if (!mo || !p.qty) continue;
     const k = `${mo}|${p.item}`;
     if (!paintByLine.has(k)) paintByLine.set(k, []);
     paintByLine.get(k)!.push({ d: dayNumber(p.date), qty: p.qty });
   }
   for (const list of paintByLine.values()) list.sort((a, b) => a.d - b.d);
 
-  /** day the item's cumulative painted reached `need` (null = not yet) */
+  /** day the item's cumulative NET painted reached `need` and STAYED there
+   *  (null = not yet). A later negative correction that drops the net back
+   *  below the need cancels the completion date. */
   const reachedOn = (mo: string, item: string, need: number): number | null => {
     let cum = 0;
+    let reached: number | null = null;
     for (const e of paintByLine.get(`${mo}|${item}`) ?? []) {
       cum += e.qty;
-      if (cum >= need) return e.d;
+      if (cum >= need) {
+        if (reached === null) reached = e.d;
+      } else {
+        reached = null; // fell back below the need — not delivered after all
+      }
     }
-    return null;
+    return reached;
   };
 
   const rows: OtdRow[] = [];
