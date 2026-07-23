@@ -118,8 +118,11 @@ export default async function Home({
         <ChartCard title="Daily output vs target" sub={`dept totals per day · dashed line = ${d.targetPerDeptDay} pcs/dept/working day`}>
           <WeekTrendChart days={d.days} targetPerDeptDay={d.targetPerDeptDay} />
         </ChartCard>
-        <ChartCard title={`${d.mode === "week" ? "Week" : "Period"} attainment by item`} sub={`fabricated vs welded vs painted per component · dashed line = ${d.targetPerItemPeriod} pcs/item`}>
-          <WeekItemChart cut={d.period.cut.items} weld={d.period.weld.items} paint={d.period.paint.items} targetPerItemWeek={d.targetPerItemPeriod} />
+        <ChartCard
+          title={`${d.mode === "week" ? "Week" : "Period"} attainment by item`}
+          sub={`fabricated vs welded vs painted per component · dashed line = ${d.targetPerItemPeriod} pcs/item · AR & MB ${itemDailyTarget("AR", d.targetPerItem) * d.workingDays}`}
+        >
+          <WeekItemChart cut={d.period.cut.items} weld={d.period.weld.items} paint={d.period.paint.items} baseTargetDay={d.targetPerItem} workingDays={d.workingDays} />
         </ChartCard>
       </div>
 

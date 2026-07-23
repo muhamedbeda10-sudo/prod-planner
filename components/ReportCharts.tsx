@@ -53,9 +53,10 @@ export function OutputByComponentChart({
       <Tooltip />
       {withLegend && <Legend wrapperStyle={{ fontSize: 14, fontWeight: 700, paddingTop: 8 }} iconSize={16} />}
       {/* per-item capacity: 27 across the base components, stepping down to 20
-          over AR/MB — one flat line would overstate the AR/MB target */}
+          over AR/MB — "step" drops at the MIDPOINT before AR so both AR and MB
+          sit fully under the 20 line */}
       <Line
-        type="stepAfter"
+        type="step"
         dataKey="Target"
         stroke={GRAY}
         strokeWidth={1.5}

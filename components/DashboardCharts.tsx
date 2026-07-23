@@ -1,10 +1,10 @@
 ﻿"use client";
 
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
+  BarChart, Bar, ComposedChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
   ReferenceLine, LabelList,
 } from "recharts";
-import { ITEMS, isPaintExempt } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, itemDailyTarget } from "@/lib/domain/constants";
 import type { DayRow } from "@/lib/server/dashboard";
 
 /* ATC brand chart palette */
@@ -58,26 +58,37 @@ export function WeekTrendChart({ days, targetPerDeptDay }: { days: DayRow[]; tar
   );
 }
 
-/** Week totals per item, per dept, against the weekly per-item target. */
+/** Week totals per item, per dept, against the weekly PER-ITEM target — a
+ *  stepped dashed line: base ×days across CF/TC/TN/CB, dropping to the AR/MB
+ *  target (20 ×days) over the last two items. */
 export function WeekItemChart({
-  cut, weld, paint, targetPerItemWeek,
+  cut, weld, paint, baseTargetDay, workingDays,
 }: {
   cut: Record<string, number>;
   weld: Record<string, number>;
   paint: Record<string, number>;
-  targetPerItemWeek: number;
+  baseTargetDay: number; // per-item daily target for the base components (27)
+  workingDays: number; // working days in the shown period
 }) {
   // the core (CF) is never painted — no Painting bar for it at all
-  const data = ITEMS.map((it) => ({ item: it, Fabrication: cut[it] ?? 0, Welding: weld[it] ?? 0, Painting: isPaintExempt(it) ? undefined : paint[it] ?? 0 }));
+  const data = ITEMS.map((it) => ({
+    item: it,
+    Fabrication: cut[it] ?? 0,
+    Welding: weld[it] ?? 0,
+    Painting: isPaintExempt(it) ? undefined : paint[it] ?? 0,
+    Target: itemDailyTarget(it, baseTargetDay) * workingDays,
+  }));
   return (
     <ChartScroller minWidth={420} height={260}>
-        <BarChart data={data} margin={{ top: 16, right: 10, left: -10, bottom: 0 }}>
+        <ComposedChart data={data} margin={{ top: 16, right: 10, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="item" />
           <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <ReferenceLine y={targetPerItemWeek} stroke="var(--bad-fg)" strokeDasharray="6 4" strokeWidth={2} />
+          {/* mid-point step: the drop lands between CB and AR so AR & MB sit
+              fully under their own lower target line */}
+          <Line type="step" dataKey="Target" stroke="var(--bad-fg)" strokeDasharray="6 4" strokeWidth={2} dot={false} activeDot={false} legendType="none" isAnimationActive={false} />
           <Bar dataKey="Fabrication" fill={GREEN_LIGHT} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Fabrication" position="top" fontSize={10} />
           </Bar>
@@ -87,7 +98,7 @@ export function WeekItemChart({
           <Bar dataKey="Painting" fill={PAINT} radius={[3, 3, 0, 0]}>
             <LabelList dataKey="Painting" position="top" fontSize={10} />
           </Bar>
-        </BarChart>
+        </ComposedChart>
     </ChartScroller>
   );
 }
