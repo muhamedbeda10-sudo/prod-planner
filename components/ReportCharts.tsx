@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList, ReferenceLine,
+  BarChart, Bar, ComposedChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts";
 import { Printer } from "lucide-react";
-import { ITEMS, isPaintExempt } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, itemDailyTarget } from "@/lib/domain/constants";
 
 /* ATC brand chart palette */
 const GREEN = "#1a8150"; // brand green
@@ -25,12 +25,15 @@ export function OutputByComponentChart({
   only?: "Cut" | "Welding" | "Painting";
 }) {
   const show = (d: "Cut" | "Welding" | "Painting") => !only || only === d;
-  // the core (CF) is never painted — no Painting bar for it at all
+  // the core (CF) is never painted — no Painting bar for it at all.
+  // Target is PER ITEM (base 27, AR/MB 20) drawn as a stepped dashed line that
+  // drops at the AR/MB group instead of one flat line for everything.
   const data = ITEMS.map((it) => ({
     item: it,
     Fabrication: show("Cut") ? cut[it] ?? 0 : undefined,
     Welding: show("Welding") ? welding[it] ?? 0 : undefined,
     Painting: show("Painting") && !isPaintExempt(it) ? painting[it] ?? 0 : undefined,
+    Target: itemDailyTarget(it, target),
   }));
   const maxVal = Math.max(target, ...data.flatMap((d) => [d.Fabrication ?? 0, d.Welding ?? 0, d.Painting ?? 0]));
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
@@ -43,13 +46,25 @@ export function OutputByComponentChart({
   // recharts' auto-measured Legend, which measures 0 in a hidden container
   // and then prints on top of the item names.
   const chart = (size?: { width: number; height: number }, withLegend = true) => (
-    <BarChart {...(size ?? {})} data={data} margin={{ top: 28, right: 20, left: 20, bottom: 6 }} barCategoryGap="22%">
+    <ComposedChart {...(size ?? {})} data={data} margin={{ top: 28, right: 20, left: 20, bottom: 6 }} barCategoryGap="22%">
       <CartesianGrid strokeDasharray="3 3" vertical={false} />
       <XAxis dataKey="item" tick={{ fontSize: 16, fontWeight: 800 }} tickMargin={8} />
       <YAxis hide domain={[0, Math.ceil(maxVal * 1.15)]} />
       <Tooltip />
       {withLegend && <Legend wrapperStyle={{ fontSize: 14, fontWeight: 700, paddingTop: 8 }} iconSize={16} />}
-      <ReferenceLine y={target} stroke={GRAY} strokeWidth={1.5} strokeDasharray="7 5" />
+      {/* per-item capacity: 27 across the base components, stepping down to 20
+          over AR/MB — one flat line would overstate the AR/MB target */}
+      <Line
+        type="stepAfter"
+        dataKey="Target"
+        stroke={GRAY}
+        strokeWidth={1.5}
+        strokeDasharray="7 5"
+        dot={false}
+        activeDot={false}
+        legendType="none"
+        isAnimationActive={false}
+      />
       {/* no animation: the values must be on the bars immediately (print!) */}
       {show("Cut") && (
         <Bar dataKey="Fabrication" fill={GREEN} radius={[3, 3, 0, 0]} isAnimationActive={false}>
@@ -66,7 +81,7 @@ export function OutputByComponentChart({
           <LabelList dataKey="Painting" position="top" fontSize={15} fontWeight={800} formatter={label} />
         </Bar>
       )}
-    </BarChart>
+    </ComposedChart>
   );
 
   const SERIES: [string, string][] = [["Fabrication", GREEN], ["Welding", GRAY], ["Painting", GREEN_DARK]];
