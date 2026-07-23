@@ -4,6 +4,7 @@ import { getQueueNotes } from "@/lib/server/queueNotes";
 import { getWorklistExtras } from "@/lib/server/worklistExtras";
 import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
+import { WorklistDeptTabs } from "@/components/WorklistDeptTabs";
 import { CascadeTable } from "@/components/CascadeTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
@@ -35,6 +36,7 @@ export default async function PaintingWorklistPage() {
   return (
     <>
       <PrintHeader title="Painting Worklist" date={toDisplayDate(today)} />
+      <WorklistDeptTabs current="painting" />
       <PriorityOrdersTable rows={extras.priority} deptWord="painted" />
       {pushedRows.length > 0 && (
         <section className="mb-6">

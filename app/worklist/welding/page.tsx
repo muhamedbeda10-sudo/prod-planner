@@ -5,6 +5,7 @@ import { getReturnsFor } from "@/lib/server/returns";
 import { getWorklistExtras } from "@/lib/server/worklistExtras";
 import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
+import { WorklistDeptTabs } from "@/components/WorklistDeptTabs";
 import { CascadeTable } from "@/components/CascadeTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
@@ -37,6 +38,7 @@ export default async function WeldWorklistPage() {
   return (
     <>
       <PrintHeader title="Welding Worklist" date={toDisplayDate(today)} />
+      <WorklistDeptTabs current="welding" />
       <PriorityOrdersTable rows={extras.priority} deptWord="welded" />
       {pushedRows.length > 0 && (
         <section className="mb-6">

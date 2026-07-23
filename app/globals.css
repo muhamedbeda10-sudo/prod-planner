@@ -287,6 +287,7 @@ main textarea:focus {
   position: relative;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   white-space: nowrap;
   padding: 8px 13px;
   font-size: 13.5px;

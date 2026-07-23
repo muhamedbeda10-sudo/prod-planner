@@ -6,26 +6,13 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
-  Table2, FileBarChart2, BookOpenCheck,
+  Table2, FileBarChart2, BookOpenCheck, ListChecks,
   FileDown, GitCompareArrows, Puzzle, CalendarDays, Users,
 } from "lucide-react";
-import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { logoutAction } from "@/app/login/actions";
 
-type Item = { href: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }> };
-
-// Ordered to follow the shop-floor flow: do the work (worklists) → track it →
-// log it → review it → the overview dashboard sits last (right side).
-const PRIMARY: Item[] = [
-  { href: "/worklist/cut", label: "Fabrication Worklist", icon: LaserCutterIcon },
-  { href: "/worklist/welding", label: "Welding Worklist", icon: WeldingIcon },
-  { href: "/worklist/painting", label: "Painting Worklist", icon: PowderCoatIcon },
-  { href: "/tracker", label: "Plan Tracker", icon: Table2 },
-  { href: "/handover", label: "Daily Logs", icon: BookOpenCheck },
-  { href: "/report", label: "Daily Report", icon: FileBarChart2 },
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-];
+type Item = { href: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }>; match?: string };
 
 const ADMIN: (Item & { desc: string })[] = [
   { href: "/orders", label: "Orders Registry", desc: "Master MO list — import monthly plans", icon: ClipboardList },
@@ -43,6 +30,26 @@ export interface NavUser {
 
 export function AppNav({ user }: { user: NavUser }) {
   const pathname = usePathname();
+
+  // The three worklists share ONE "Worklist" tab (the in-page switcher moves
+  // between Fabrication / Welding / Painting). The tab opens the department the
+  // user actually works in. Ordered by shop-floor flow: work → track → log →
+  // review → the overview dashboard sits last (right side).
+  const worklistHref = user.perms.includes("cut.edit")
+    ? "/worklist/cut"
+    : user.perms.includes("welding.edit")
+      ? "/worklist/welding"
+      : user.perms.includes("painting.edit")
+        ? "/worklist/painting"
+        : "/worklist/cut";
+  const PRIMARY: Item[] = [
+    { href: worklistHref, label: "Worklist", icon: ListChecks, match: "/worklist" },
+    { href: "/tracker", label: "Plan Tracker", icon: Table2 },
+    { href: "/handover", label: "Logs", icon: BookOpenCheck },
+    { href: "/report", label: "Report", icon: FileBarChart2 },
+    { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  ];
+
   const [open, setOpen] = useState(false); // desktop admin dropdown
   const [drawer, setDrawer] = useState(false); // mobile navigation drawer
   const menuRef = useRef<HTMLDivElement>(null);
@@ -74,8 +81,10 @@ export function AppNav({ user }: { user: NavUser }) {
     };
   }, []);
 
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+  const isActive = (href: string, match?: string) => {
+    const base = match ?? href;
+    return base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");
+  };
   const adminActive = ADMIN.some((l) => isActive(l.href)) || isActive("/admin/users");
 
   return (
@@ -110,7 +119,8 @@ export function AppNav({ user }: { user: NavUser }) {
             <ul className="flex items-center justify-center gap-1 w-max min-w-full">
               {PRIMARY.map((l) => (
                 <li key={l.href}>
-                  <Link href={l.href} className={`nav-tab ${isActive(l.href) ? "nav-tab-active" : ""}`}>
+                  <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match) ? "nav-tab-active" : ""}`}>
+                    <l.icon size={15} className="shrink-0" />
                     {l.label}
                   </Link>
                 </li>
@@ -246,10 +256,10 @@ export function AppNav({ user }: { user: NavUser }) {
                   key={l.href}
                   href={l.href}
                   className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
-                    isActive(l.href) ? "bg-brand-light text-brand" : "hover:bg-surface-2"
+                    isActive(l.href, l.match) ? "bg-brand-light text-brand" : "hover:bg-surface-2"
                   }`}
                 >
-                  <l.icon size={19} className={isActive(l.href) ? "text-brand" : "text-muted"} />
+                  <l.icon size={19} className={isActive(l.href, l.match) ? "text-brand" : "text-muted"} />
                   {l.label}
                 </Link>
               ))}
