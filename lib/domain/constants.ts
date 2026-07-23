@@ -48,6 +48,18 @@ export const DEPT_SHORT: Record<Dept, string> = {
   Painting: "Paint",
 };
 
+/** ONE canonical colour per stage — identical on EVERY chart and page so a
+ *  department always reads as the same colour. Fabrication green · Welding
+ *  blue · Painting (and the core's Shot Blast) orange · Delivered purple.
+ *  These are the solid versions of the Plan Tracker's cell tints. */
+export const STAGE_COLOR: Record<string, string> = {
+  Cut: "#1a8150", // Fabrication — green (brand)
+  Welding: "#2b6cb0", // Welding — blue
+  Painting: "#d97706", // Painting — orange
+  ShotBlast: "#d97706", // Shot Blast — the same orange (it IS the core's finishing)
+  Delivered: "#7c3aed", // Delivered — purple
+};
+
 export function isItem(x: string): x is Item {
   return (ITEMS as readonly string[]).includes(x);
 }

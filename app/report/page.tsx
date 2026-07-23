@@ -5,15 +5,37 @@ import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, WeekSnapshotPicker, DeptPicker } from "@/components/controls";
 import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, type Item } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, STAGE_COLOR, type Item } from "@/lib/domain/constants";
 
-// the report can be scoped to any single ledger stage — the production depts
-// plus the tracker-only Shot Blast / Delivered stages
-const REPORT_STAGES = ["Cut", "Welding", "Painting", "ShotBlast", "Delivered"] as const;
+// the report can be scoped to any COMBINATION of these stages. Painting is the
+// whole finishing stage (painted items + the core's Shot Blast), so there is no
+// separate Shot Blast filter — it lives inside Painting.
+const REPORT_STAGES = ["Cut", "Welding", "Painting", "Delivered"] as const;
 type ReportStage = (typeof REPORT_STAGES)[number];
-// compact stage label for the single-column (filtered) headers
-const STAGE_SHORT: Record<ReportStage, string> = {
-  Cut: "Fab", Welding: "Weld", Painting: "Paint", ShotBlast: "SHB", Delivered: "Dlvd",
+// compact stage label for the per-stage column headers
+const STAGE_SHORT: Record<string, string> = {
+  Cut: "Fab", Welding: "Weld", Painting: "Paint", Delivered: "Dlvd",
+};
+// a filter stage → the ledger dept(s) it covers: Painting also pulls the core's
+// Shot Blast entries (the core's finishing step)
+function ledgerDepts(stages: string[]): string[] {
+  const out = new Set<string>();
+  for (const s of stages) {
+    out.add(s);
+    if (s === "Painting") out.add("ShotBlast");
+  }
+  return [...out];
+}
+// one worked-on day value for a stage × component: the core's Painting column
+// is its Shot Blast (the rest are painted)
+function stageDayValue(stage: string, it: Item, c: { cut: number; weld: number; paint: number; shp: number; delivered: number }): number {
+  if (stage === "Cut") return c.cut;
+  if (stage === "Welding") return c.weld;
+  if (stage === "Delivered") return c.delivered;
+  return isPaintExempt(it) ? c.shp : c.paint; // Painting / finishing
+}
+const STAGE_TINT: Record<string, string> = {
+  Cut: "var(--cut-tint)", Welding: "var(--weld-tint)", Painting: "var(--paint-tint)", Delivered: "var(--dlvd-tint)",
 };
 
 export const dynamic = "force-dynamic";
@@ -40,23 +62,28 @@ export default async function ReportPage({
   const day = (sp.day && parseISODate(sp.day)) || lastFinishedDay();
   const dayISO = toISODate(day);
   const weekNo = Number(sp.week) || null; // null = the FULL plan (default)
-  // dept filter — scopes the output table, chart, worked-on projects AND the
-  // tracker highlight to that stage's work only
-  const deptF: ReportStage | null =
-    sp.dept && (REPORT_STAGES as readonly string[]).includes(sp.dept) ? (sp.dept as ReportStage) : null;
+  // dept filter — MULTI-select: any combination of stages scopes the output
+  // table rows, the chart series, the worked-on columns AND the plan highlight.
+  // Empty = all stages. Kept in pipeline order whatever the click order was.
+  const picked = new Set((sp.dept ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+  const deptsF = REPORT_STAGES.filter((s) => picked.has(s)) as ReportStage[];
+  const scoped = deptsF.length > 0;
+  // the stage columns actually shown (all four when nothing is picked)
+  const shownStages: readonly ReportStage[] = scoped ? deptsF : REPORT_STAGES;
 
   const [{ deptOutputs, target }, worked, dayProjects, planNos, planRows] = await Promise.all([
     getDailyReport(day),
-    getWorkedOn(day, deptF ?? undefined),
-    getDayOutputByProject(day, deptF ?? undefined),
+    getWorkedOn(day, scoped ? ledgerDepts(deptsF) : undefined),
+    getDayOutputByProject(day, scoped ? ledgerDepts(deptsF) : undefined),
     getPlanNos(),
     weekNo ? getWeekSnapshot(weekNo) : getFullPlanGrouped(),
   ]);
 
   const cut = deptOutputs.find((d) => d.dept === "Cut")!;
   const weld = deptOutputs.find((d) => d.dept === "Welding")!;
+  // Painting is the finishing stage — its per-item totals already fold in the
+  // core's Shot Blast (done in computeDailyReport)
   const paint = deptOutputs.find((d) => d.dept === "Painting")!;
-  const shotblast = deptOutputs.find((d) => d.dept === "ShotBlast")!;
   const delivered = deptOutputs.find((d) => d.dept === "Delivered")!;
 
   // highlight = this BOM had output recorded ON the selected day
@@ -118,13 +145,15 @@ export default async function ReportPage({
             </tr>
           </thead>
           <tbody>
-            {deptOutputs.filter((d) => !deptF || d.dept === deptF).map((d) => (
+            {deptOutputs.filter((d) => !scoped || picked.has(d.dept)).map((d) => (
               <tr key={d.dept} className="text-center">
-                <td className="p-2 text-left font-bold">{deptLabel(d.dept)}</td>
+                <td className="p-2 text-left font-bold">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm mr-1.5 align-middle" style={{ background: STAGE_COLOR[d.dept] }} />
+                  {deptLabel(d.dept)}
+                </td>
                 {ITEMS.map((it) => (
                   <td key={it} className="p-2 tabnum">
-                    {/* Painting skips the core (CF); Shot Blast is the core only */}
-                    {stageHasItem(d.dept, it) ? <Num v={d.items[it]} /> : <span className="text-muted">—</span>}
+                    <Num v={d.items[it]} />
                   </td>
                 ))}
                 <td className="p-2 font-bold tabnum">{d.total}</td>
@@ -148,7 +177,7 @@ export default async function ReportPage({
             Target {target}/item · AR & MB {itemDailyTarget("AR", target)}
           </span>
         </div>
-        <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} shotblast={shotblast.items} delivered={delivered.items} target={target} only={deptF ?? undefined} />
+        <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} delivered={delivered.items} target={target} stages={shownStages} />
       </div>
 
       {/* Worked-on-today table: ONLY the projects with output recorded on the
@@ -158,7 +187,7 @@ export default async function ReportPage({
         <div className="flex flex-wrap items-center gap-3 mb-2">
           <h2 className="text-lg font-bold">
             Worked on — {toDisplayDate(day)}
-            {deptF && <span className="text-brand"> · {deptLabel(deptF)} only</span>}
+            {scoped && <span className="text-brand"> · {deptsF.map((d) => deptLabel(d)).join(" + ")} only</span>}
           </h2>
           <span className="pill pill-ok normal-case">{dayProjects.length} project{dayProjects.length === 1 ? "" : "s"}</span>
         </div>
@@ -168,16 +197,21 @@ export default async function ReportPage({
               <tr className="bg-brand text-white text-center">
                 <th rowSpan={2} className="p-2 text-left">BOM</th>
                 <th rowSpan={2} className="p-2 text-left">MOs</th>
-                {ITEMS.map((it) => <th key={it} colSpan={deptF ? 1 : 4} className="p-2 border-l border-border-strong">{it}</th>)}
+                {ITEMS.map((it) => <th key={it} colSpan={shownStages.length} className="p-2 border-l border-border-strong">{it}</th>)}
                 <th rowSpan={2} className="p-2">Day total</th>
               </tr>
               <tr className="bg-brand-dark text-white text-[10px]">
-                {ITEMS.map((it) => <StageHead key={it} only={deptF ?? undefined} shb={isPaintExempt(it)} dlvd />)}
+                {ITEMS.map((it) => shownStages.map((s, si) => (
+                  <th key={`${it}|${s}`} className={`p-1 font-medium ${si === 0 ? "border-l border-border-strong" : ""}`}>
+                    {/* the core's finishing column reads as SHB, everything else Paint */}
+                    {s === "Painting" && isPaintExempt(it) ? "SHB" : STAGE_SHORT[s]}
+                  </th>
+                )))}
               </tr>
             </thead>
             <tbody>
               {dayProjects.length === 0 && (
-                <tr><td colSpan={3 + ITEMS.length * (deptF ? 1 : 4)} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
+                <tr><td colSpan={3 + ITEMS.length * shownStages.length} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
               )}
               {dayProjects.map((p, i) => (
                 <tr key={p.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
@@ -185,7 +219,15 @@ export default async function ReportPage({
                   <td className="p-2 text-left text-xs text-muted whitespace-nowrap">{p.mos.length > 0 ? p.mos.join(", ") : "—"}</td>
                   {ITEMS.map((it) => {
                     const c = p.items[it] ?? { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0 };
-                    return <FragmentCW key={it} cut={c.cut} weld={c.weld} paint={c.paint} shp={c.shp} delivered={c.delivered} noPaint={isPaintExempt(it)} only={deptF ?? undefined} dlvd />;
+                    return shownStages.map((s, si) => {
+                      // the core's finishing tint is the same orange as Painting
+                      const tint = s === "Painting" && isPaintExempt(it) ? "var(--shp-tint)" : STAGE_TINT[s];
+                      return (
+                        <td key={`${it}|${s}`} className={`p-1 text-center tabnum text-xs ${si === 0 ? "border-l" : ""}`} style={{ background: tint }}>
+                          {stageDayValue(s, it, c)}
+                        </td>
+                      );
+                    });
                   })}
                   <td className="p-2 font-extrabold tabnum">{p.total}</td>
                 </tr>
@@ -206,7 +248,7 @@ export default async function ReportPage({
             {weekNo ? `Week snapshot — Plan ${weekNo}` : "Plan tracker — all orders (live totals)"}
           </h2>
           <span className="text-xs rounded-md px-2 py-1 font-semibold" style={hlStyle}>
-            highlighted = worked on {toDisplayDate(day)}{deptF ? ` by ${deptLabel(deptF)}` : ""}
+            highlighted = worked on {toDisplayDate(day)}{scoped ? ` by ${deptsF.map((d) => deptLabel(d)).join(" + ")}` : ""}
           </span>
         </div>
 
@@ -220,7 +262,7 @@ export default async function ReportPage({
                 {ITEMS.map((it) => <th key={it} colSpan={4} className="p-2 border-l border-border-strong">{it}</th>)}
               </tr>
               <tr className="bg-brand-dark text-white text-[10px]">
-                {ITEMS.map((it) => <StageHead key={it} shb={isPaintExempt(it)} dlvd />)}
+                {ITEMS.map((it) => <StageHead key={it} shb={isPaintExempt(it)} />)}
               </tr>
             </thead>
             <tbody>
@@ -246,7 +288,6 @@ export default async function ReportPage({
                       noPaint={isPaintExempt(it)}
                       shp={r.items[it].shp}
                       delivered={r.items[it].delivered}
-                      dlvd
                     />
                   ))}
                 </tr>
@@ -259,65 +300,37 @@ export default async function ReportPage({
   );
 }
 
-function stageHasItem(dept: string, it: Item): boolean {
-  if (dept === "Painting") return !isPaintExempt(it); // the core is never painted
-  if (dept === "ShotBlast") return isPaintExempt(it); // shot blast is the core only
-  return true;
-}
-
-function StageHead({ only, shb = false, dlvd = false }: { only?: ReportStage; shb?: boolean; dlvd?: boolean }) {
-  if (only) return <th className="p-1 font-medium border-l border-border-strong">{STAGE_SHORT[only]}</th>;
+// The plan-tracker table's four stage columns per component: Fab | Weld |
+// (SHB for the core, Paint otherwise) | Dlvd — matching the Plan Tracker page.
+function StageHead({ shb = false }: { shb?: boolean }) {
   return (
     <>
       <th className="p-1 font-medium border-l border-border-strong">Fab</th>
       <th className="p-1 font-medium">Weld</th>
-      {/* the core (CF) is never painted — its final stage is SHOT BLAST */}
       <th className="p-1 font-medium">{shb ? "SHB" : "Paint"}</th>
-      {dlvd && <th className="p-1 font-medium" title="Delivered — received by the customer">Dlvd</th>}
+      <th className="p-1 font-medium" title="Delivered — received by the customer">Dlvd</th>
     </>
   );
 }
 
 function FragmentCW({
-  cut, weld, paint, noPaint = false, only, shp, delivered, dlvd = false,
+  cut, weld, paint, noPaint = false, shp, delivered,
 }: {
-  cut: number; weld: number; paint: number; noPaint?: boolean; only?: ReportStage;
-  /** the core's SHOT BLAST total — shown in place of Paint when provided */
-  shp?: number;
-  delivered?: number;
-  dlvd?: boolean; // append the Delivered cell (tracker-style tables)
+  cut: number; weld: number; paint: number; noPaint?: boolean;
+  shp: number; // the core's SHOT BLAST total — shown in place of Paint for CF
+  delivered: number;
 }) {
-  const cutCell = <td className="p-1 text-center tabnum text-xs border-l" style={{ background: "var(--cut-tint)" }}>{cut}</td>;
-  const weldCell = <td className={`p-1 text-center tabnum text-xs ${only ? "border-l" : ""}`} style={{ background: "var(--weld-tint)" }}>{weld}</td>;
-  const paintCell = noPaint ? (
-    shp !== undefined ? (
-      <td className={`p-1 text-center tabnum text-xs ${only ? "border-l" : ""}`} style={{ background: "var(--shp-tint)" }}>{shp}</td>
-    ) : (
-      <td className={`p-1 text-center text-muted text-xs ${only ? "border-l" : ""}`} title="not painted — core ships after welding">—</td>
-    )
-  ) : (
-    <td className={`p-1 text-center tabnum text-xs ${only ? "border-l" : ""}`} style={{ background: "var(--paint-tint)" }}>{paint}</td>
-  );
-  // Shot Blast column (filtered): the core only — the rest never shot-blast
-  const shpCell = noPaint ? (
-    <td className="p-1 text-center tabnum text-xs border-l" style={{ background: "var(--shp-tint)" }}>{shp ?? 0}</td>
-  ) : (
-    <td className="p-1 text-center text-muted text-xs border-l" title="not shot blasted — only the core (CF) is">—</td>
-  );
-  const dlvdCell = <td className="p-1 text-center tabnum text-xs border-l" style={{ background: "var(--dlvd-tint)" }}>{delivered ?? 0}</td>;
-  if (only === "Cut") return cutCell;
-  if (only === "Welding") return weldCell;
-  if (only === "Painting") return paintCell;
-  if (only === "ShotBlast") return shpCell;
-  if (only === "Delivered") return dlvdCell;
   return (
     <>
-      {cutCell}
-      {weldCell}
-      {paintCell}
-      {dlvd && (
-        <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--dlvd-tint)" }}>{delivered ?? 0}</td>
+      <td className="p-1 text-center tabnum text-xs border-l" style={{ background: "var(--cut-tint)" }}>{cut}</td>
+      <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--weld-tint)" }}>{weld}</td>
+      {/* the core (CF) is never painted — its finishing is SHOT BLAST */}
+      {noPaint ? (
+        <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--shp-tint)" }}>{shp}</td>
+      ) : (
+        <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--paint-tint)" }}>{paint}</td>
       )}
+      <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--dlvd-tint)" }}>{delivered}</td>
     </>
   );
 }
