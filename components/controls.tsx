@@ -171,6 +171,26 @@ export function DashboardFilters({
   );
 }
 
+/** Report department filter: scope every report section to ONE department. */
+export function DeptPicker({ value }: { value: string }) {
+  const set = useSetParam();
+  return (
+    <label className="inline-flex items-center gap-2 text-sm font-semibold">
+      Dept:
+      <select
+        className="border rounded-md px-2 py-1.5 bg-surface font-bold"
+        value={value}
+        onChange={(e) => set("dept", e.target.value)}
+      >
+        <option value="">All departments</option>
+        <option value="Cut">Fabrication</option>
+        <option value="Welding">Welding</option>
+        <option value="Painting">Painting</option>
+      </select>
+    </label>
+  );
+}
+
 /** Report table switcher: full plan (default) or one week's snapshot. */
 export function WeekSnapshotPicker({ plans, value }: { plans: number[]; value: string }) {
   const set = useSetParam();

@@ -15,16 +15,24 @@ const GRAY_LIGHT = "#b8c1bc";
 /** The report's single quantities chart: today's output per component and
  *  stage, values printed ON the bars, dashed line = the daily target. */
 export function OutputByComponentChart({
-  cut, welding, painting, target,
+  cut, welding, painting, target, only,
 }: {
   cut: Record<string, number>;
   welding: Record<string, number>;
   painting: Record<string, number>;
   target: number;
+  /** dept filter: render only this department's bars ("" / undefined = all) */
+  only?: "Cut" | "Welding" | "Painting";
 }) {
+  const show = (d: "Cut" | "Welding" | "Painting") => !only || only === d;
   // the core (CF) is never painted — no Painting bar for it at all
-  const data = ITEMS.map((it) => ({ item: it, Fabrication: cut[it] ?? 0, Welding: welding[it] ?? 0, Painting: isPaintExempt(it) ? undefined : painting[it] ?? 0 }));
-  const maxVal = Math.max(target, ...data.flatMap((d) => [d.Fabrication, d.Welding, d.Painting ?? 0]));
+  const data = ITEMS.map((it) => ({
+    item: it,
+    Fabrication: show("Cut") ? cut[it] ?? 0 : undefined,
+    Welding: show("Welding") ? welding[it] ?? 0 : undefined,
+    Painting: show("Painting") && !isPaintExempt(it) ? painting[it] ?? 0 : undefined,
+  }));
+  const maxVal = Math.max(target, ...data.flatMap((d) => [d.Fabrication ?? 0, d.Welding ?? 0, d.Painting ?? 0]));
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
 
   // one chart definition, two sizes: the screen one is responsive (and
@@ -43,15 +51,21 @@ export function OutputByComponentChart({
       {withLegend && <Legend wrapperStyle={{ fontSize: 14, fontWeight: 700, paddingTop: 8 }} iconSize={16} />}
       <ReferenceLine y={target} stroke={GRAY} strokeWidth={1.5} strokeDasharray="7 5" />
       {/* no animation: the values must be on the bars immediately (print!) */}
-      <Bar dataKey="Fabrication" fill={GREEN} radius={[3, 3, 0, 0]} isAnimationActive={false}>
-        <LabelList dataKey="Fabrication" position="top" fontSize={15} fontWeight={800} formatter={label} />
-      </Bar>
-      <Bar dataKey="Welding" fill={GRAY} radius={[3, 3, 0, 0]} isAnimationActive={false}>
-        <LabelList dataKey="Welding" position="top" fontSize={15} fontWeight={800} formatter={label} />
-      </Bar>
-      <Bar dataKey="Painting" fill={GREEN_DARK} radius={[3, 3, 0, 0]} isAnimationActive={false}>
-        <LabelList dataKey="Painting" position="top" fontSize={15} fontWeight={800} formatter={label} />
-      </Bar>
+      {show("Cut") && (
+        <Bar dataKey="Fabrication" fill={GREEN} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+          <LabelList dataKey="Fabrication" position="top" fontSize={15} fontWeight={800} formatter={label} />
+        </Bar>
+      )}
+      {show("Welding") && (
+        <Bar dataKey="Welding" fill={GRAY} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+          <LabelList dataKey="Welding" position="top" fontSize={15} fontWeight={800} formatter={label} />
+        </Bar>
+      )}
+      {show("Painting") && (
+        <Bar dataKey="Painting" fill={GREEN_DARK} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+          <LabelList dataKey="Painting" position="top" fontSize={15} fontWeight={800} formatter={label} />
+        </Bar>
+      )}
     </BarChart>
   );
 
