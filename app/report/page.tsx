@@ -2,10 +2,10 @@ import Image from "next/image";
 import { getDailyReport, getWorkedOn, getDayOutputByProject, getFullPlanGrouped, getWeekSnapshot, type ReportPlanRow } from "@/lib/server/report";
 import { getPlanNos } from "@/lib/server/data";
 import { pctStyle, Num } from "@/components/ui";
-import { DayPicker, WeekSnapshotPicker } from "@/components/controls";
+import { DayPicker, WeekSnapshotPicker, DeptPicker } from "@/components/controls";
 import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, isDept, deptLabel, DEPT_SHORT, itemDailyTarget, type Dept } from "@/lib/domain/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -13,22 +13,32 @@ function fmtPct(v: number | null) {
   return v === null ? "—" : `${(v * 100).toFixed(0)}%`;
 }
 
+/** The report's default day: YESTERDAY — it is reviewed the morning after. */
+function lastFinishedDay(): Date {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d;
+}
+
 export default async function ReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ day?: string; week?: string }>;
+  searchParams: Promise<{ day?: string; week?: string; dept?: string }>;
 }) {
   const sp = await searchParams;
   // default = YESTERDAY: the daily report is reviewed the morning after the
   // day it covers, so it opens on the last finished day (picker overrides)
-  const day = (sp.day && parseISODate(sp.day)) || new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const day = (sp.day && parseISODate(sp.day)) || lastFinishedDay();
   const dayISO = toISODate(day);
   const weekNo = Number(sp.week) || null; // null = the FULL plan (default)
+  // dept filter — scopes the output table, chart, worked-on projects AND the
+  // tracker highlight to that department's work only
+  const deptF: Dept | null = sp.dept && isDept(sp.dept) ? sp.dept : null;
 
   const [{ deptOutputs, target }, worked, dayProjects, planNos, planRows] = await Promise.all([
     getDailyReport(day),
-    getWorkedOn(day),
-    getDayOutputByProject(day),
+    getWorkedOn(day, deptF ?? undefined),
+    getDayOutputByProject(day, deptF ?? undefined),
     getPlanNos(),
     weekNo ? getWeekSnapshot(weekNo) : getFullPlanGrouped(),
   ]);
@@ -48,6 +58,7 @@ export default async function ReportPage({
       {/* controls only — no on-screen title (the print masthead carries the name) */}
       <div className="no-print flex flex-wrap items-center gap-2">
         <DayPicker value={dayISO} />
+        <DeptPicker value={sp.dept ?? ""} />
         <WeekSnapshotPicker plans={planNos} value={sp.week ?? ""} />
         <PrintButton />
       </div>
@@ -95,7 +106,7 @@ export default async function ReportPage({
             </tr>
           </thead>
           <tbody>
-            {deptOutputs.map((d) => (
+            {deptOutputs.filter((d) => !deptF || d.dept === deptF).map((d) => (
               <tr key={d.dept} className="text-center">
                 <td className="p-2 text-left font-bold">{deptLabel(d.dept)}</td>
                 {ITEMS.map((it) => (
@@ -125,7 +136,7 @@ export default async function ReportPage({
             Target {target}/item · AR & MB {itemDailyTarget("AR", target)}
           </span>
         </div>
-        <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} target={target} />
+        <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} target={target} only={deptF ?? undefined} />
       </div>
 
       {/* Worked-on-today table: ONLY the projects with output recorded on the
@@ -133,7 +144,10 @@ export default async function ReportPage({
           The full plan table below keeps its yellow worked-on highlight. */}
       <section className="print-keep">
         <div className="flex flex-wrap items-center gap-3 mb-2">
-          <h2 className="text-lg font-bold">Worked on — {toDisplayDate(day)}</h2>
+          <h2 className="text-lg font-bold">
+            Worked on — {toDisplayDate(day)}
+            {deptF && <span className="text-brand"> · {deptLabel(deptF)} only</span>}
+          </h2>
           <span className="pill pill-ok normal-case">{dayProjects.length} project{dayProjects.length === 1 ? "" : "s"}</span>
         </div>
         <div className="bg-surface border rounded-xl overflow-x-auto print-fit">
@@ -142,16 +156,16 @@ export default async function ReportPage({
               <tr className="bg-brand text-white text-center">
                 <th rowSpan={2} className="p-2 text-left">BOM</th>
                 <th rowSpan={2} className="p-2 text-left">MOs</th>
-                {ITEMS.map((it) => <th key={it} colSpan={3} className="p-2 border-l border-border-strong">{it}</th>)}
+                {ITEMS.map((it) => <th key={it} colSpan={deptF ? 1 : 3} className="p-2 border-l border-border-strong">{it}</th>)}
                 <th rowSpan={2} className="p-2">Day total</th>
               </tr>
               <tr className="bg-brand-dark text-white text-[10px]">
-                {ITEMS.map((it) => <StageHead key={it} />)}
+                {ITEMS.map((it) => <StageHead key={it} only={deptF ?? undefined} />)}
               </tr>
             </thead>
             <tbody>
               {dayProjects.length === 0 && (
-                <tr><td colSpan={21} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
+                <tr><td colSpan={3 + ITEMS.length * (deptF ? 1 : 3)} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
               )}
               {dayProjects.map((p, i) => (
                 <tr key={p.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
@@ -159,7 +173,7 @@ export default async function ReportPage({
                   <td className="p-2 text-left text-xs text-muted whitespace-nowrap">{p.mos.length > 0 ? p.mos.join(", ") : "—"}</td>
                   {ITEMS.map((it) => {
                     const c = p.items[it] ?? { cut: 0, weld: 0, paint: 0 };
-                    return <FragmentCW key={it} cut={c.cut} weld={c.weld} paint={c.paint} noPaint={isPaintExempt(it)} />;
+                    return <FragmentCW key={it} cut={c.cut} weld={c.weld} paint={c.paint} noPaint={isPaintExempt(it)} only={deptF ?? undefined} />;
                   })}
                   <td className="p-2 font-extrabold tabnum">{p.total}</td>
                 </tr>
@@ -180,7 +194,7 @@ export default async function ReportPage({
             {weekNo ? `Week snapshot — Plan ${weekNo}` : "Plan tracker — all orders (live totals)"}
           </h2>
           <span className="text-xs rounded-md px-2 py-1 font-semibold" style={hlStyle}>
-            highlighted = worked on {toDisplayDate(day)}
+            highlighted = worked on {toDisplayDate(day)}{deptF ? ` by ${deptLabel(deptF)}` : ""}
           </span>
         </div>
 
@@ -229,7 +243,8 @@ export default async function ReportPage({
   );
 }
 
-function StageHead() {
+function StageHead({ only }: { only?: Dept }) {
+  if (only) return <th className="p-1 font-medium border-l border-border-strong">{DEPT_SHORT[only]}</th>;
   return (
     <>
       <th className="p-1 font-medium border-l border-border-strong">Fab</th>
@@ -239,16 +254,22 @@ function StageHead() {
   );
 }
 
-function FragmentCW({ cut, weld, paint, noPaint = false }: { cut: number; weld: number; paint: number; noPaint?: boolean }) {
+function FragmentCW({ cut, weld, paint, noPaint = false, only }: { cut: number; weld: number; paint: number; noPaint?: boolean; only?: Dept }) {
+  const cutCell = <td className="p-1 text-center tabnum text-xs border-l" style={{ background: "var(--cut-tint)" }}>{cut}</td>;
+  const weldCell = <td className={`p-1 text-center tabnum text-xs ${only ? "border-l" : ""}`} style={{ background: "var(--weld-tint)" }}>{weld}</td>;
+  const paintCell = noPaint ? (
+    <td className={`p-1 text-center text-muted text-xs ${only ? "border-l" : ""}`} title="not painted — core ships after welding">—</td>
+  ) : (
+    <td className={`p-1 text-center tabnum text-xs ${only ? "border-l" : ""}`} style={{ background: "var(--paint-tint)" }}>{paint}</td>
+  );
+  if (only === "Cut") return cutCell;
+  if (only === "Welding") return weldCell;
+  if (only === "Painting") return paintCell;
   return (
     <>
-      <td className="p-1 text-center tabnum text-xs border-l" style={{ background: "var(--cut-tint)" }}>{cut}</td>
-      <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--weld-tint)" }}>{weld}</td>
-      {noPaint ? (
-        <td className="p-1 text-center text-muted text-xs" title="not painted — core ships after welding">—</td>
-      ) : (
-        <td className="p-1 text-center tabnum text-xs" style={{ background: "var(--paint-tint)" }}>{paint}</td>
-      )}
+      {cutCell}
+      {weldCell}
+      {paintCell}
     </>
   );
 }

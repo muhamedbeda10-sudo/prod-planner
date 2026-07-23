@@ -153,12 +153,13 @@ export interface DayProjectRow {
 }
 
 /** The day's output grouped by project (BOM): only projects with entries ON
- *  that day, with the quantities recorded THAT DAY per component and stage. */
-export async function getDayOutputByProject(day: Date): Promise<DayProjectRow[]> {
+ *  that day, with the quantities recorded THAT DAY per component and stage.
+ *  Pass a dept to scope everything to that department's work only. */
+export async function getDayOutputByProject(day: Date, dept?: string): Promise<DayProjectRow[]> {
   const start = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   const entries = await prisma.handoverEntry.findMany({
-    where: { date: { gte: start, lt: end } },
+    where: { date: { gte: start, lt: end }, ...(dept ? { dept } : {}) },
     select: { bom: true, mo: true, dept: true, item: true, qty: true },
   });
 
@@ -180,11 +181,11 @@ export async function getDayOutputByProject(day: Date): Promise<DayProjectRow[]>
   return [...rows.values()].sort((a, b) => b.total - a.total);
 }
 
-export async function getWorkedOn(day: Date): Promise<{ mos: string[]; bomsNoMo: string[]; bomsAll: string[] }> {
+export async function getWorkedOn(day: Date, dept?: string): Promise<{ mos: string[]; bomsNoMo: string[]; bomsAll: string[] }> {
   const start = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   const entries = await prisma.handoverEntry.findMany({
-    where: { date: { gte: start, lt: end } },
+    where: { date: { gte: start, lt: end }, ...(dept ? { dept } : {}) },
     select: { mo: true, bom: true },
   });
   const mos = new Set<string>();
