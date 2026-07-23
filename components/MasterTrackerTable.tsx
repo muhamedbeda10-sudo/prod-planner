@@ -13,6 +13,15 @@ import { ITEMS, DEPTS, isPaintExempt, deptLabel, type Item, type Dept } from "@/
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
+// the tracker's stage columns, in pipeline order — the Dept filter picks any
+// subset of these (the core's Painting column is its SHOT BLAST)
+const STAGE_OPTS = [
+  { value: "Cut", label: "Fabrication" },
+  { value: "Welding", label: "Welding" },
+  { value: "Painting", label: "Painting / SHB" },
+  { value: "Delivered", label: "Delivered" },
+] as const;
+
 function progressOf(r: MasterTrackerRow): Progress {
   if (r.required > 0 && r.complete >= r.required) return "complete";
   if (r.complete > 0 || ITEMS.some((it) => r.items[it].cut > 0 || r.items[it].weld > 0)) return "inprogress";
@@ -66,9 +75,23 @@ export function MasterTrackerTable({
   const [urgent, setUrgent] = useSavedFilter("tracker.urgent");
   const [status, setStatus] = useSavedFilter("tracker.status", "open"); // lifecycle: closed orders are hidden by default
   const [month, setMonth] = useSavedFilter("tracker.month"); // monthly plan (import source), "" = all months
-  // stage scope: one column per item instead of four, and the summary cards
-  // report THAT stage's progress — the wide table becomes readable per dept
-  const [stage, setStage] = useSavedFilter("tracker.deptStage"); // "" | Cut | Welding | Painting | Delivered
+  // stage scope: only the picked depts' columns per item (one or SEVERAL), and
+  // the summary cards report the furthest picked stage — the wide table
+  // becomes readable per department. Stored as a comma-separated list.
+  const [stage, setStage] = useSavedFilter("tracker.deptStage"); // e.g. "" | "Cut" | "Cut,Welding"
+  const stages = useMemo(() => {
+    const sel = new Set(stage.split(",").filter(Boolean));
+    return STAGE_OPTS.map((o) => o.value).filter((v) => sel.has(v)); // pipeline order, whatever the click order was
+  }, [stage]);
+  const scoped = stages.length > 0;
+  const toggleStage = (v: string) => {
+    const sel = new Set(stage.split(",").filter(Boolean));
+    if (sel.has(v)) sel.delete(v);
+    else sel.add(v);
+    setStage(STAGE_OPTS.map((o) => o.value).filter((x) => sel.has(x)).join(","));
+  };
+  // the cards talk about ONE stage: the furthest (most downstream) picked one
+  const cardStage = scoped ? stages[stages.length - 1] : "";
   const [openConfig, setOpenConfig] = useState<string | null>(null); // per-MO "required components" editor
 
   function saveExcluded(r: MasterTrackerRow, form: HTMLFormElement) {
@@ -126,10 +149,11 @@ export function MasterTrackerTable({
     });
   }, [monthRows, q, progress, urgent, status]);
 
-  const hasActive = !!(q || progress || urgent || month || stage || status !== "open");
+  const hasActive = !!(q || progress || urgent || month || scoped || status !== "open");
 
-  // table shape under the stage filter: 1 column per item, no Complete/Left/Achv
-  const tableCols = stage ? 4 + ITEMS.length + 1 : 4 + ITEMS.length * 4 + 4;
+  // table shape under the stage filter: only the picked columns per item, no
+  // Complete/Left/Achv
+  const tableCols = scoped ? 4 + ITEMS.length * stages.length + 1 : 4 + ITEMS.length * 4 + 4;
 
   // shared BOMs: one summary row per BOM, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -240,7 +264,7 @@ export function MasterTrackerTable({
     // final stage = SHOT BLAST for the paint-exempt core (CF), Painting otherwise
     const finalIsShp = isPaintExempt(it);
     const doneOf = (c: MasterTrackerRow["items"][Item]) => {
-      switch (stage) {
+      switch (cardStage) {
         case "Cut": return c.cut;
         case "Welding": return c.weld;
         case "Painting": return finalIsShp ? c.shp : c.paint;
@@ -249,9 +273,9 @@ export function MasterTrackerTable({
       }
     };
     const doneWord =
-      stage === "Cut" ? "fabricated"
-      : stage === "Welding" ? "welded"
-      : stage === "Delivered" ? "delivered"
+      cardStage === "Cut" ? "fabricated"
+      : cardStage === "Welding" ? "welded"
+      : cardStage === "Delivered" ? "delivered"
       : finalIsShp ? "shot blasted" : "painted";
     let need = 0;
     let done = 0;
@@ -328,17 +352,26 @@ export function MasterTrackerTable({
             ...(hasNoMonth ? [{ value: "—", label: "No month" }] : []),
           ]}
         />
-        <SelectFilter
-          label="Dept"
-          value={stage}
-          onChange={setStage}
-          options={[
-            { value: "Cut", label: "Fabrication" },
-            { value: "Welding", label: "Welding" },
-            { value: "Painting", label: "Painting / SHB" },
-            { value: "Delivered", label: "Delivered" },
-          ]}
-        />
+        {/* multi-pick dept toggle: show only the ticked stages' columns */}
+        <div className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
+          <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Dept</span>
+          <div className="flex flex-wrap gap-1">
+            {STAGE_OPTS.map((o) => {
+              const on = stages.includes(o.value);
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => toggleStage(o.value)}
+                  className={`rounded-md border px-2 py-1 text-xs font-bold transition-colors ${on ? "bg-brand text-white border-brand" : "bg-surface text-muted hover:text-foreground hover:border-brand/60"}`}
+                  title={`${o.label} — pick one or more departments; the table and the cards scope to them`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <SelectFilter
           label="Status"
           value={status}
@@ -371,9 +404,9 @@ export function MasterTrackerTable({
               <th rowSpan={2} className="p-2">KVA</th>
               <th rowSpan={2} className="p-2">Required</th>
               {ITEMS.map((it) => (
-                <th key={it} colSpan={stage ? 1 : 4} className="p-2 border-r border-border-strong">{it}</th>
+                <th key={it} colSpan={scoped ? stages.length : 4} className="p-2 border-r border-border-strong">{it}</th>
               ))}
-              {!stage && (
+              {!scoped && (
                 <>
                   <th rowSpan={2} className="p-2 border-r border-border-strong">Complete</th>
                   <th rowSpan={2} className="p-2">Left</th>
@@ -383,9 +416,17 @@ export function MasterTrackerTable({
               <th rowSpan={2} className="p-2 no-print">Status</th>
             </tr>
             <tr className="bg-brand text-white text-xs">
-              {ITEMS.map((it) => (
-                <StageHead key={it} shp={isPaintExempt(it)} only={stage || undefined} />
-              ))}
+              {ITEMS.map((it) =>
+                scoped ? (
+                  <Fragment key={it}>
+                    {stages.map((s, si) => (
+                      <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={si === stages.length - 1} />
+                    ))}
+                  </Fragment>
+                ) : (
+                  <StageHead key={it} shp={isPaintExempt(it)} />
+                )
+              )}
             </tr>
           </thead>
           <tbody>
@@ -421,19 +462,36 @@ export function MasterTrackerTable({
                     </td>
                     <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{gKva}</td>
                     <td className="p-2 text-center font-bold"><Num v={gReq} /></td>
-                    {ITEMS.map((it) => (
-                      <StageCells
-                        key={it}
-                        cut={sum((r) => r.items[it].cut)}
-                        weld={sum((r) => r.items[it].weld)}
-                        paint={sum((r) => r.items[it].paint)}
-                        shp={sum((r) => r.items[it].shp)}
-                        delivered={sum((r) => r.items[it].delivered)}
-                        noPaint={isPaintExempt(it)}
-                        only={stage || undefined}
-                      />
-                    ))}
-                    {!stage && (
+                    {ITEMS.map((it) =>
+                      scoped ? (
+                        <Fragment key={it}>
+                          {stages.map((s, si) => (
+                            <StageCells
+                              key={s}
+                              cut={sum((r) => r.items[it].cut)}
+                              weld={sum((r) => r.items[it].weld)}
+                              paint={sum((r) => r.items[it].paint)}
+                              shp={sum((r) => r.items[it].shp)}
+                              delivered={sum((r) => r.items[it].delivered)}
+                              noPaint={isPaintExempt(it)}
+                              only={s}
+                              borderR={si === stages.length - 1}
+                            />
+                          ))}
+                        </Fragment>
+                      ) : (
+                        <StageCells
+                          key={it}
+                          cut={sum((r) => r.items[it].cut)}
+                          weld={sum((r) => r.items[it].weld)}
+                          paint={sum((r) => r.items[it].paint)}
+                          shp={sum((r) => r.items[it].shp)}
+                          delivered={sum((r) => r.items[it].delivered)}
+                          noPaint={isPaintExempt(it)}
+                        />
+                      )
+                    )}
+                    {!scoped && (
                       <>
                         <td className="p-2 text-center font-extrabold border-r"><Num v={gComplete} /></td>
                         <td className="p-2 text-center font-bold" style={{ color: gLeft > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>
@@ -627,26 +685,42 @@ export function MasterTrackerTable({
                   // AR/MB the order's KVA/rating rule doesn't match, or a manual
                   // N/A, show as blank dashes and don't gate completion
                   if (!c.eligible || c.excluded) {
+                    if (scoped) {
+                      return (
+                        <Fragment key={it}>
+                          {stages.map((s, si) => (
+                            <td key={s} className={`p-2 text-center text-muted ${si === stages.length - 1 ? "border-r" : ""}`}>—</td>
+                          ))}
+                        </Fragment>
+                      );
+                    }
                     return (
                       <Fragment key={it}>
-                        {!stage && <td className="p-2 text-center text-muted">—</td>}
-                        {!stage && <td className="p-2 text-center text-muted">—</td>}
-                        {!stage && <td className="p-2 text-center text-muted">—</td>}
+                        <td className="p-2 text-center text-muted">—</td>
+                        <td className="p-2 text-center text-muted">—</td>
+                        <td className="p-2 text-center text-muted">—</td>
                         <td className="p-2 text-center text-muted border-r">—</td>
                       </Fragment>
                     );
                   }
-                  // stage scope: only the filtered dept's column (the core's
+                  // stage scope: only the picked depts' columns (the core's
                   // Painting column is its SHOT BLAST — same as unfiltered)
-                  if (stage) {
+                  if (scoped) {
                     return (
                       <Fragment key={it}>
-                        {stage === "Cut" && stageCell(r, it, "Cut", c.cut, "var(--cut-tint)", true)}
-                        {stage === "Welding" && stageCell(r, it, "Welding", c.weld, "var(--weld-tint)", true)}
-                        {stage === "Painting" && (isPaintExempt(it)
-                          ? stageCell(r, it, "ShotBlast", c.shp, "var(--shp-tint)", true)
-                          : stageCell(r, it, "Painting", c.paint, "var(--paint-tint)", true))}
-                        {stage === "Delivered" && stageCell(r, it, "Delivered", c.delivered, "var(--dlvd-tint)", true)}
+                        {stages.map((s, si) => {
+                          const last = si === stages.length - 1;
+                          return (
+                            <Fragment key={s}>
+                              {s === "Cut" && stageCell(r, it, "Cut", c.cut, "var(--cut-tint)", last)}
+                              {s === "Welding" && stageCell(r, it, "Welding", c.weld, "var(--weld-tint)", last)}
+                              {s === "Painting" && (isPaintExempt(it)
+                                ? stageCell(r, it, "ShotBlast", c.shp, "var(--shp-tint)", last)
+                                : stageCell(r, it, "Painting", c.paint, "var(--paint-tint)", last))}
+                              {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, "var(--dlvd-tint)", last)}
+                            </Fragment>
+                          );
+                        })}
                       </Fragment>
                     );
                   }
@@ -663,7 +737,7 @@ export function MasterTrackerTable({
                     </Fragment>
                   );
                 })}
-                {!stage && (
+                {!scoped && (
                   <>
                     <td className="p-2 text-center font-extrabold border-r"><Num v={r.complete} /></td>
                     <td className="p-2 text-center font-bold" style={{ color: r.remaining > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>
@@ -836,9 +910,10 @@ export function MasterTrackerTable({
 
 // stage sub-headers sit on the same tints as their data columns — readable
 // in both themes (the old dark-green fill swallowed the muted header text)
-function StageHead({ shp = false, only }: { shp?: boolean; only?: string }) {
-  // dept-filtered view: ONE column per item — the picked stage (the core's
-  // Painting column is its SHOT BLAST, exactly like the unfiltered table)
+function StageHead({ shp = false, only, borderR = true }: { shp?: boolean; only?: string; borderR?: boolean }) {
+  // dept-filtered view: one sub-header per PICKED stage (the core's Painting
+  // column is its SHOT BLAST, exactly like the unfiltered table); the item
+  // group's right border sits on the last picked column
   if (only) {
     const [label, tint, title] =
       only === "Cut" ? ["Fab", "var(--cut-tint)", undefined]
@@ -846,7 +921,7 @@ function StageHead({ shp = false, only }: { shp?: boolean; only?: string }) {
       : only === "Delivered" ? ["Dlvd", "var(--dlvd-tint)", "Delivered — received by the customer"]
       : shp ? ["SHB", "var(--shp-tint)", "Shot Blast — the core's final stage after welding"]
       : ["Paint", "var(--paint-tint)", undefined];
-    return <th className="p-1 font-medium border-r" style={{ background: tint }} title={title}>{label}</th>;
+    return <th className={`p-1 font-medium ${borderR ? "border-r" : ""}`} style={{ background: tint }} title={title}>{label}</th>;
   }
   return (
     <>
@@ -863,9 +938,9 @@ function StageHead({ shp = false, only }: { shp?: boolean; only?: string }) {
   );
 }
 
-function StageCells({ cut, weld, paint, shp, delivered, excluded = false, noPaint = false, only }: { cut: number; weld: number; paint: number; shp: number; delivered: number; excluded?: boolean; noPaint?: boolean; only?: string }) {
+function StageCells({ cut, weld, paint, shp, delivered, excluded = false, noPaint = false, only, borderR = true }: { cut: number; weld: number; paint: number; shp: number; delivered: number; excluded?: boolean; noPaint?: boolean; only?: string; borderR?: boolean }) {
   if (excluded) {
-    if (only) return <td className="p-2 text-center text-muted border-r">—</td>;
+    if (only) return <td className={`p-2 text-center text-muted ${borderR ? "border-r" : ""}`}>—</td>;
     return (
       <>
         <td className="p-2 text-center text-muted">—</td>
@@ -875,7 +950,8 @@ function StageCells({ cut, weld, paint, shp, delivered, excluded = false, noPain
       </>
     );
   }
-  // dept-filtered view: one cell — the picked stage's total
+  // dept-filtered view: one cell per PICKED stage; the item group's right
+  // border sits on the last picked column
   if (only) {
     const [v, tint] =
       only === "Cut" ? [cut, "var(--cut-tint)"]
@@ -883,7 +959,7 @@ function StageCells({ cut, weld, paint, shp, delivered, excluded = false, noPain
       : only === "Delivered" ? [delivered, "var(--dlvd-tint)"]
       : noPaint ? [shp, "var(--shp-tint)"]
       : [paint, "var(--paint-tint)"];
-    return <td className="p-2 text-center tabnum border-r" style={{ background: tint }}>{v}</td>;
+    return <td className={`p-2 text-center tabnum ${borderR ? "border-r" : ""}`} style={{ background: tint }}>{v}</td>;
   }
   return (
     <>
