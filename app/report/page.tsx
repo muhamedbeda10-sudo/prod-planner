@@ -19,7 +19,9 @@ export default async function ReportPage({
   searchParams: Promise<{ day?: string; week?: string }>;
 }) {
   const sp = await searchParams;
-  const day = (sp.day && parseISODate(sp.day)) || new Date();
+  // default = YESTERDAY: the daily report is reviewed the morning after the
+  // day it covers, so it opens on the last finished day (picker overrides)
+  const day = (sp.day && parseISODate(sp.day)) || new Date(Date.now() - 24 * 60 * 60 * 1000);
   const dayISO = toISODate(day);
   const weekNo = Number(sp.week) || null; // null = the FULL plan (default)
 
