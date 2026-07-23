@@ -1,10 +1,16 @@
 "use client";
 
+import { type ComponentProps } from "react";
 import {
   BarChart, Bar, ComposedChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts";
 import { Printer } from "lucide-react";
-import { ITEMS, itemDailyTarget, STAGE_COLOR } from "@/lib/domain/constants";
+import { ITEMS, itemDailyTarget, STAGE_COLOR, FINISHING_LABEL } from "@/lib/domain/constants";
+
+type LegendItem = { value: string; type: "square"; id: string; color: string };
+// recharts renders Legend items in the given payload order; its public prop
+// types omit `payload`, so bridge through unknown (supported at runtime)
+const orderedLegend = (payload: LegendItem[]) => ({ payload } as unknown as ComponentProps<typeof Legend>);
 
 /* Canonical per-stage colours — shared with every other chart & the tracker:
    Fabrication green · Welding blue · Painting (finishing) orange · Delivered
@@ -45,6 +51,17 @@ export function OutputByComponentChart({
   const maxVal = Math.max(target, ...data.flatMap((d) => [d.Fabrication ?? 0, d.Welding ?? 0, d.Painting ?? 0, d.Delivered ?? 0]));
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
 
+  // one ordered source of truth for the legend/series — pipeline order, with
+  // the finishing stage shown as "Painting & Shot Blast"
+  const ALL_SERIES: [string, string, string][] = [
+    ["Cut", "Fabrication", FAB],
+    ["Welding", "Welding", WELD],
+    ["Painting", FINISHING_LABEL, PAINT],
+    ["Delivered", "Delivered", DLVD],
+  ];
+  const shownSeries = ALL_SERIES.filter(([s]) => show(s));
+  const legendPayload = shownSeries.map(([s, name, color]) => ({ value: name, type: "square" as const, id: s, color }));
+
   // one chart definition, two sizes: the screen one is responsive (and
   // scrolls on phones), the paper one is rendered at a FIXED width matching
   // the A4-landscape printable area — no CSS scaling tricks that break SVGs.
@@ -58,7 +75,7 @@ export function OutputByComponentChart({
       <XAxis dataKey="item" tick={{ fontSize: 16, fontWeight: 800 }} tickMargin={8} />
       <YAxis hide domain={[0, Math.ceil(maxVal * 1.15)]} />
       <Tooltip />
-      {withLegend && <Legend wrapperStyle={{ fontSize: 14, fontWeight: 700, paddingTop: 8 }} iconSize={16} />}
+      {withLegend && <Legend wrapperStyle={{ fontSize: 14, fontWeight: 700, paddingTop: 8 }} iconSize={16} {...orderedLegend(legendPayload)} />}
       {/* per-item capacity: 27 across the base components, stepping down to 20
           over AR/MB — "step" drops at the MIDPOINT before AR so both AR and MB
           sit fully under the 20 line */}
@@ -75,22 +92,22 @@ export function OutputByComponentChart({
       />
       {/* no animation: the values must be on the bars immediately (print!) */}
       {show("Cut") && (
-        <Bar dataKey="Fabrication" fill={FAB} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="Fabrication" name="Fabrication" fill={FAB} radius={[3, 3, 0, 0]} isAnimationActive={false}>
           <LabelList dataKey="Fabrication" position="top" fontSize={15} fontWeight={800} formatter={label} />
         </Bar>
       )}
       {show("Welding") && (
-        <Bar dataKey="Welding" fill={WELD} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="Welding" name="Welding" fill={WELD} radius={[3, 3, 0, 0]} isAnimationActive={false}>
           <LabelList dataKey="Welding" position="top" fontSize={15} fontWeight={800} formatter={label} />
         </Bar>
       )}
       {show("Painting") && (
-        <Bar dataKey="Painting" fill={PAINT} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="Painting" name={FINISHING_LABEL} fill={PAINT} radius={[3, 3, 0, 0]} isAnimationActive={false}>
           <LabelList dataKey="Painting" position="top" fontSize={15} fontWeight={800} formatter={label} />
         </Bar>
       )}
       {show("Delivered") && (
-        <Bar dataKey="Delivered" fill={DLVD} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="Delivered" name="Delivered" fill={DLVD} radius={[3, 3, 0, 0]} isAnimationActive={false}>
           <LabelList dataKey="Delivered" position="top" fontSize={15} fontWeight={800} formatter={label} />
         </Bar>
       )}
@@ -98,13 +115,7 @@ export function OutputByComponentChart({
   );
 
   // print legend reflects exactly which bars are drawn, in stage order
-  const ALL_SERIES: [string, string, string][] = [
-    ["Cut", "Fabrication", FAB],
-    ["Welding", "Welding", WELD],
-    ["Painting", "Painting", PAINT],
-    ["Delivered", "Delivered", DLVD],
-  ];
-  const SERIES: [string, string][] = ALL_SERIES.filter(([s]) => show(s)).map(([, name, color]) => [name, color]);
+  const SERIES: [string, string][] = shownSeries.map(([, name, color]) => [name, color]);
 
   return (
     <>

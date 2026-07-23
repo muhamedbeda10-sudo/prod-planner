@@ -9,7 +9,7 @@ import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
-import { ITEMS, DEPTS, isPaintExempt, deptLabel, type Item, type Dept } from "@/lib/domain/constants";
+import { ITEMS, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -18,7 +18,7 @@ type Progress = "complete" | "inprogress" | "notstarted";
 const STAGE_OPTS = [
   { value: "Cut", label: "Fabrication" },
   { value: "Welding", label: "Welding" },
-  { value: "Painting", label: "Painting / SHB" },
+  { value: "Painting", label: FINISHING_LABEL },
   { value: "Delivered", label: "Delivered" },
 ] as const;
 

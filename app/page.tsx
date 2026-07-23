@@ -7,7 +7,7 @@ import { PeriodFilter, DashboardPeriodMemory } from "@/components/controls";
 import { WeekTrendChart, WeekItemChart, HistoryChart } from "@/components/DashboardCharts";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { parseISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS, PAINTED_ITEMS, itemDailyTarget, type Item } from "@/lib/domain/constants";
+import { ITEMS, itemDailyTarget, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -102,13 +102,12 @@ export default async function Home({
             targetTotal={d.targetPerDeptPeriod}
           />
           <DeptScoreboard
-            title={<DeptTitle icon={<PowderCoatIcon size={16} />} name="Painting" />}
+            title={<DeptTitle icon={<PowderCoatIcon size={16} />} name={FINISHING_LABEL} />}
             data={d.period.paint}
             baseTarget={d.targetPerItem}
             days={d.workingDays}
             paceDays={d.todayInPeriod && d.paceWorkingDays < d.workingDays ? d.paceWorkingDays : undefined}
             targetTotal={d.paintTargetPeriod}
-            items={PAINTED_ITEMS}
           />
         </div>
       </section>
@@ -120,7 +119,7 @@ export default async function Home({
         </ChartCard>
         <ChartCard
           title={`${d.mode === "week" ? "Week" : "Period"} attainment by item`}
-          sub={`fabricated vs welded vs painted per component · dashed line = ${d.targetPerItemPeriod} pcs/item · AR & MB ${itemDailyTarget("AR", d.targetPerItem) * d.workingDays}`}
+          sub={`fabricated vs welded vs finished (paint / shot blast) per component · dashed line = ${d.targetPerItemPeriod} pcs/item · AR & MB ${itemDailyTarget("AR", d.targetPerItem) * d.workingDays}`}
         >
           <WeekItemChart cut={d.period.cut.items} weld={d.period.weld.items} paint={d.period.paint.items} baseTargetDay={d.targetPerItem} workingDays={d.workingDays} />
         </ChartCard>
@@ -140,12 +139,12 @@ export default async function Home({
                 <th className="p-2 border-l border-border-strong" colSpan={ITEMS.length + 1}>
                   <span className="inline-flex items-center gap-1.5"><WeldingIcon size={13} />Welding</span>
                 </th>
-                <th className="p-2 border-l border-border-strong" colSpan={PAINTED_ITEMS.length + 1}>
-                  <span className="inline-flex items-center gap-1.5"><PowderCoatIcon size={13} />Painting</span>
+                <th className="p-2 border-l border-border-strong" colSpan={ITEMS.length + 1}>
+                  <span className="inline-flex items-center gap-1.5"><PowderCoatIcon size={13} />{FINISHING_LABEL}</span>
                 </th>
               </tr>
               <tr className="bg-brand-dark text-white text-center text-[10px]">
-                {([ITEMS, ITEMS, PAINTED_ITEMS] as const).flatMap((list, i) =>
+                {([ITEMS, ITEMS, ITEMS] as const).flatMap((list, i) =>
                   [...list, "Total"].map((h, j) => (
                     <th key={`${i}-${h}`} className={`p-1 ${j === 0 ? "border-l border-border-strong" : ""}`}>{h}</th>
                   ))
@@ -166,7 +165,7 @@ export default async function Home({
                   </td>
                   {(["cut", "weld", "paint"] as const).flatMap((dept) => {
                     const dd = row[dept];
-                    const list = dept === "paint" ? PAINTED_ITEMS : ITEMS; // the core is never painted
+                    const list = ITEMS; // finishing (paint) now spans all items — the core via shot blast
                     return [
                       ...list.map((it, j) => (
                         <td
@@ -192,7 +191,7 @@ export default async function Home({
                 <td className="p-2 text-left">{d.mode === "week" ? "Week total" : "Period total"}</td>
                 {(["cut", "weld", "paint"] as const).flatMap((dept) => {
                   const dd = d.period[dept];
-                  const list = dept === "paint" ? PAINTED_ITEMS : ITEMS;
+                  const list = ITEMS;
                   return [
                     ...list.map((it, j) => (
                       <td key={`t-${dept}-${it}`} className={`p-1.5 tabnum ${j === 0 ? "border-l" : ""}`}
@@ -227,9 +226,9 @@ export default async function Home({
                 <th className="py-1.5 text-center">Fab %</th>
                 <th className="py-1.5 text-center">Welded</th>
                 <th className="py-1.5 text-center">Weld %</th>
-                <th className="py-1.5 text-center">Painted</th>
-                <th className="py-1.5 text-center">Paint %</th>
-                <th className="py-1.5 text-center">Sets (paint)</th>
+                <th className="py-1.5 text-center" title="Painting & Shot Blast">Finished</th>
+                <th className="py-1.5 text-center">Fin %</th>
+                <th className="py-1.5 text-center">Sets</th>
               </tr>
             </thead>
             <tbody>
