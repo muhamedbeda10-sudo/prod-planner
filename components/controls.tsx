@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
+import { FINISHING_LABEL } from "@/lib/domain/constants";
 
 /** Remembers the dashboard's From→To range across sessions (localStorage, so
  *  it survives closing the browser). Opening the dashboard bare restores the
@@ -178,7 +179,7 @@ export function DashboardFilters({
 const DEPT_OPTS = [
   { value: "Cut", label: "Fabrication" },
   { value: "Welding", label: "Welding" },
-  { value: "Painting", label: "Painting" },
+  { value: "Painting", label: FINISHING_LABEL },
   { value: "Delivered", label: "Delivered" },
 ] as const;
 
@@ -203,7 +204,7 @@ export function DeptPicker({ value }: { value: string }) {
               type="button"
               onClick={() => toggle(o.value)}
               className={`rounded-md border px-2.5 py-1.5 text-xs font-bold transition-colors ${on ? "bg-brand text-white border-brand" : "bg-surface text-muted hover:text-foreground hover:border-brand/60"}`}
-              title={`${o.label}${o.value === "Painting" ? " (includes Shot Blast)" : ""} — pick one or more; the whole report scopes to them`}
+              title={`${o.label} — pick one or more; the whole report scopes to them`}
             >
               {o.label}
             </button>

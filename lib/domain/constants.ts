@@ -48,6 +48,12 @@ export const DEPT_SHORT: Record<Dept, string> = {
   Painting: "Paint",
 };
 
+/** Display name for the finishing stage on the dashboard / report / tracker:
+ *  Painting handles the painted components AND the core's Shot Blast, so those
+ *  screens label it together. (The nav tab and the Painting worklist keep the
+ *  plain "Painting" from deptLabel — shot blast is recorded on the tracker.) */
+export const FINISHING_LABEL = "Painting & Shot Blast";
+
 /** ONE canonical colour per stage — identical on EVERY chart and page so a
  *  department always reads as the same colour. Fabrication green · Welding
  *  blue · Painting (and the core's Shot Blast) orange · Delivered purple.

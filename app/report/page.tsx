@@ -5,7 +5,10 @@ import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, WeekSnapshotPicker, DeptPicker } from "@/components/controls";
 import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, STAGE_COLOR, type Item } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, STAGE_COLOR, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
+
+// display label for a report stage: Painting reads as "Painting & Shot Blast"
+const stageLabel = (dept: string) => (dept === "Painting" ? FINISHING_LABEL : deptLabel(dept));
 
 // the report can be scoped to any COMBINATION of these stages. Painting is the
 // whole finishing stage (painted items + the core's Shot Blast), so there is no
@@ -149,7 +152,7 @@ export default async function ReportPage({
               <tr key={d.dept} className="text-center">
                 <td className="p-2 text-left font-bold">
                   <span className="inline-block w-2.5 h-2.5 rounded-sm mr-1.5 align-middle" style={{ background: STAGE_COLOR[d.dept] }} />
-                  {deptLabel(d.dept)}
+                  {stageLabel(d.dept)}
                 </td>
                 {ITEMS.map((it) => (
                   <td key={it} className="p-2 tabnum">
@@ -187,7 +190,7 @@ export default async function ReportPage({
         <div className="flex flex-wrap items-center gap-3 mb-2">
           <h2 className="text-lg font-bold">
             Worked on — {toDisplayDate(day)}
-            {scoped && <span className="text-brand"> · {deptsF.map((d) => deptLabel(d)).join(" + ")} only</span>}
+            {scoped && <span className="text-brand"> · {deptsF.map((d) => stageLabel(d)).join(" + ")} only</span>}
           </h2>
           <span className="pill pill-ok normal-case">{dayProjects.length} project{dayProjects.length === 1 ? "" : "s"}</span>
         </div>
@@ -248,7 +251,7 @@ export default async function ReportPage({
             {weekNo ? `Week snapshot — Plan ${weekNo}` : "Plan tracker — all orders (live totals)"}
           </h2>
           <span className="text-xs rounded-md px-2 py-1 font-semibold" style={hlStyle}>
-            highlighted = worked on {toDisplayDate(day)}{scoped ? ` by ${deptsF.map((d) => deptLabel(d)).join(" + ")}` : ""}
+            highlighted = worked on {toDisplayDate(day)}{scoped ? ` by ${deptsF.map((d) => stageLabel(d)).join(" + ")}` : ""}
           </span>
         </div>
 

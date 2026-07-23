@@ -1,6 +1,6 @@
 ﻿import "server-only";
 import { prisma } from "@/lib/db";
-import { ITEMS, PAINTED_ITEMS, SHEET_ITEMS, PAINTED_SHEET_ITEMS, sumItemTargets, type Item } from "@/lib/domain/constants";
+import { ITEMS, SHEET_ITEMS, sumItemTargets, type Item } from "@/lib/domain/constants";
 import { getSettings } from "./data";
 import { dayNumber, dateFromDayNumber, toISODate } from "@/lib/domain/dates";
 
@@ -45,7 +45,7 @@ export interface TargetDashboard {
   mode: "week" | "range";
   targetPerItem: number; // base component per working day (27); AR/MB run at 20
   targetPerDeptDay: number; // Cut/Weld dept-day line = Σ item targets (base ×27 + AR 20 + MB 20)
-  paintTargetDay: number; // Painting dept-day line = Σ painted item targets (base painted ×27 + AR 20 + MB 20)
+  paintTargetDay: number; // Finishing (Painting + Shot Blast) dept-day line = Σ ALL item targets (core via shot blast)
   workingDays: number; // working days in the shown period
   targetPerItemPeriod: number; // targetPerItem × workingDays
   targetPerDeptPeriod: number; // targetPerDeptDay × workingDays
@@ -73,13 +73,13 @@ const isItem = (x: string): x is Item => (ITEMS as readonly string[]).includes(x
 // A "set" is a complete transformer, so it is the MIN across the components EVERY
 // transformer carries (the base sheet items). The conditional AR/MB are present
 // only on some orders, so they must not drag the min. `total` still sums ALL
-// items (AR/MB output counts). Painting excludes the paint-exempt core.
-function mkDeptDay(items: Record<Item, number>, painted = false): DeptDay {
-  const setItems = painted ? PAINTED_SHEET_ITEMS : SHEET_ITEMS;
+// items (AR/MB output counts). Painting is the finishing stage — the core's
+// finishing is its Shot Blast — so it too spans all base sheet items.
+function mkDeptDay(items: Record<Item, number>): DeptDay {
   return {
     items,
     total: ITEMS.reduce((s, it) => s + items[it], 0),
-    sets: minOf(setItems.map((it) => items[it])),
+    sets: minOf(SHEET_ITEMS.map((it) => items[it])),
   };
 }
 
@@ -147,7 +147,9 @@ export async function getTargetDashboard(opts?: {
     const bucket = byDay.get(d)!;
     if (e.dept === "Cut") bucket.cut[e.item] += e.qty;
     else if (e.dept === "Welding") bucket.weld[e.item] += e.qty;
-    else if (e.dept === "Painting") bucket.paint[e.item] += e.qty;
+    // Painting is the whole FINISHING stage: painted components + the core's
+    // Shot Blast (the core is never painted — shot blast IS its finishing)
+    else if (e.dept === "Painting" || e.dept === "ShotBlast") bucket.paint[e.item] += e.qty;
   }
   const dayItems = (d: number, dept: "cut" | "weld" | "paint") => byDay.get(d)?.[dept] ?? emptyItems();
 
@@ -184,7 +186,7 @@ export async function getTargetDashboard(opts?: {
       holidayName: holidayName.get(d) ?? null,
       cut: mkDeptDay(cutI),
       weld: mkDeptDay(weldI),
-      paint: mkDeptDay(paintI, true),
+      paint: mkDeptDay(paintI),
     });
   }
 
@@ -202,7 +204,7 @@ export async function getTargetDashboard(opts?: {
       paintTotal += ITEMS.reduce((s, it) => s + paintI[it], 0);
       cutSets += minOf(SHEET_ITEMS.map((it) => cutI[it]));
       weldSets += minOf(SHEET_ITEMS.map((it) => weldI[it]));
-      paintSets += minOf(PAINTED_SHEET_ITEMS.map((it) => paintI[it]));
+      paintSets += minOf(SHEET_ITEMS.map((it) => paintI[it]));
     }
     const startISO = toISODate(dateFromDayNumber(ws));
     const endISO = toISODate(dateFromDayNumber(ws + 5));
@@ -215,11 +217,11 @@ export async function getTargetDashboard(opts?: {
     mode,
     targetPerItem: target,
     targetPerDeptDay: sumItemTargets(ITEMS, target),
-    paintTargetDay: sumItemTargets(PAINTED_ITEMS, target),
+    paintTargetDay: sumItemTargets(ITEMS, target),
     workingDays,
     targetPerItemPeriod: target * workingDays,
     targetPerDeptPeriod: sumItemTargets(ITEMS, target) * workingDays,
-    paintTargetPeriod: sumItemTargets(PAINTED_ITEMS, target) * workingDays,
+    paintTargetPeriod: sumItemTargets(ITEMS, target) * workingDays,
     fromISO: toISODate(dateFromDayNumber(fromD)),
     toISO: toISODate(dateFromDayNumber(toD)),
     prevWeekISO: toISODate(dateFromDayNumber(fromD - 7)),
@@ -230,9 +232,9 @@ export async function getTargetDashboard(opts?: {
     paceWorkingDays,
     clamped,
     today: todayInPeriod
-      ? { cut: mkDeptDay(dayItems(todayD, "cut")), weld: mkDeptDay(dayItems(todayD, "weld")), paint: mkDeptDay(dayItems(todayD, "paint"), true) }
+      ? { cut: mkDeptDay(dayItems(todayD, "cut")), weld: mkDeptDay(dayItems(todayD, "weld")), paint: mkDeptDay(dayItems(todayD, "paint")) }
       : null,
-    period: { cut: mkDeptDay(periodCut), weld: mkDeptDay(periodWeld), paint: mkDeptDay(periodPaint, true) },
+    period: { cut: mkDeptDay(periodCut), weld: mkDeptDay(periodWeld), paint: mkDeptDay(periodPaint) },
     days,
     history,
   };
