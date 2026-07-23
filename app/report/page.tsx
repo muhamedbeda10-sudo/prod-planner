@@ -5,7 +5,7 @@ import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, WeekSnapshotPicker } from "@/components/controls";
 import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS, isPaintExempt, deptLabel } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget } from "@/lib/domain/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -79,9 +79,14 @@ export default async function ReportPage({
           <thead>
             <tr className="bg-brand text-white text-center">
               <th className="p-2 text-left">Dept</th>
-              {ITEMS.map((it) => <th key={it} className="p-2">{it}</th>)}
+              {/* each component carries its OWN daily target (base 27, AR/MB 20) */}
+              {ITEMS.map((it) => (
+                <th key={it} className="p-2">
+                  {it}
+                  <span className="block text-[10px] font-normal opacity-75 tabnum">/{itemDailyTarget(it, target)}</span>
+                </th>
+              ))}
               <th className="p-2">Total</th>
-              <th className="p-2">Target/item</th>
               <th className="p-2">Complete Sets</th>
               <th className="p-2">Efficiency %</th>
               <th className="p-2">Balance %</th>
@@ -98,7 +103,6 @@ export default async function ReportPage({
                   </td>
                 ))}
                 <td className="p-2 font-bold tabnum">{d.total}</td>
-                <td className="p-2 tabnum">{d.target}</td>
                 <td className="p-2 font-extrabold tabnum">{d.sets}</td>
                 <td className="p-2 font-bold tabnum" style={pctStyle(d.efficiency)}>{fmtPct(d.efficiency)}</td>
                 <td className="p-2 font-bold tabnum" style={pctStyle(d.balance)}>{fmtPct(d.balance)}</td>
@@ -116,7 +120,7 @@ export default async function ReportPage({
           <h3 className="font-bold text-sm">Output by component — vs daily target</h3>
           <span className="pill pill-muted tabnum">
             <span aria-hidden style={{ width: 18, borderTop: "2px dashed var(--muted)", display: "inline-block" }} />
-            Target {target}/item
+            Target {target}/item · AR & MB {itemDailyTarget("AR", target)}
           </span>
         </div>
         <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} target={target} />
