@@ -73,20 +73,10 @@ export default async function Home({
         </p>
       )}
 
-      {/* ==== TODAY ==== */}
-      {d.today && (
-        <section>
-          <h2>Today — {toDisplayDate(parseISODate(d.todayISO)!)} · target {d.targetPerItem}/item</h2>
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <DeptScoreboard title={<DeptTitle icon={<LaserCutterIcon size={16} />} name="Fabrication" />} data={d.today.cut} baseTarget={d.targetPerItem} days={1} targetTotal={d.targetPerDeptDay} />
-            <DeptScoreboard title={<DeptTitle icon={<WeldingIcon size={16} />} name="Welding" />} data={d.today.weld} baseTarget={d.targetPerItem} days={1} targetTotal={d.targetPerDeptDay} />
-            {/* the core (CF) is never painted — the Painting card shows the painted items (base 27 + AR/MB 20 each) */}
-            <DeptScoreboard title={<DeptTitle icon={<PowderCoatIcon size={16} />} name="Painting" />} data={d.today.paint} baseTarget={d.targetPerItem} days={1} targetTotal={d.paintTargetDay} items={PAINTED_ITEMS} />
-          </div>
-        </section>
-      )}
-
       {/* ==== PERIOD CUMULATIVE ==== */}
+      {/* No separate "Today" cards — the period cards cover any range,
+          including a single day picked in the From→To filter; today's own
+          numbers stay visible in the daily matrix below. */}
       <section>
         <h2>
           {d.mode === "week" ? "Week to date" : "Period total"} · target {d.targetPerItemPeriod}/item ({d.targetPerItem} × {d.workingDays} working days)
