@@ -383,10 +383,11 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   table { font-size: 11px !important; border-collapse: collapse !important; }
   th, td { padding: 4px 6px !important; white-space: nowrap !important; }
   /* the wide plan table: keep horizontal padding tight so all columns fit the
-     width, but grow the rows vertically to fill the page and stay legible */
-  .print-fit table { font-size: 12.5px !important; }
-  .print-fit th, .print-fit td { padding: 6px 8px !important; }
-  .print-fit .text-xs { font-size: 12.5px !important; }
+     width, but grow the rows vertically to fill the page and stay legible.
+     Sized for SIX component groups (CF/TC/TN/CB + AR/MB) on A4 landscape. */
+  .print-fit table { font-size: 10.5px !important; table-layout: auto; width: 100% !important; }
+  .print-fit th, .print-fit td { padding: 4px 5px !important; }
+  .print-fit .text-xs { font-size: 10.5px !important; }
   .pill { font-size: 8px !important; padding: 1px 4px !important; }
 
   /* the department-output summary has only a few rows and the whole landscape
