@@ -1,0 +1,748 @@
+"use client";
+
+import { Fragment, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  Package, CheckCircle2, Truck, Hourglass, Gauge, AlertTriangle, RotateCw,
+  ChevronRight, ChevronDown, PanelRightClose, PanelRightOpen, LayoutGrid, Rows3,
+  StickyNote, Undo2, ArrowLeftRight, User as UserIcon,
+} from "lucide-react";
+import type { TraceResult, TraceEvent, TraceEventKind, TracePipelineRow } from "@/lib/server/trace";
+import { deptLabel, FINISHING_LABEL } from "@/lib/domain/constants";
+import { TraceSearch } from "@/components/TraceSearch";
+import { ExportButton } from "@/components/ExportButton";
+import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
+
+/* ============================================================================
+   Trace — premium ERP record view.
+   Layout: sticky header band → KPI row → stage pipeline → component progress
+   (grid/table) → activity feed | collapsible properties sidebar → raw records.
+   Neutral surfaces, colour only for status; all figures come straight from
+   lib/server/trace (master-tracker netted numbers — nothing is re-derived).
+   ========================================================================== */
+
+const pctOf = (v: number, req: number) => (req > 0 ? Math.round((v / req) * 100) : 0);
+
+export function TraceView({ t, planNo }: { t: TraceResult; planNo: number }) {
+  const router = useRouter();
+  const [sidebar, setSidebar] = useState(true);
+
+  const remaining = Math.max(0, t.requiredSets - t.completeSets);
+  const completion = t.requiredSets > 0 ? pctOf(t.completeSets, t.requiredSets) : null;
+  const openIssues = t.openReturns + t.openNotes;
+  const openOrders = t.members.filter((m) => m.status === "open").length;
+  const monthsAll = [...new Set(t.members.flatMap((m) => m.months))];
+  const active = t.pipeline.filter((p) => p.active);
+
+  // stage totals — capped per component at its required so a stage can never
+  // read over 100% (OSP-covered pieces are outside "required")
+  const sum = (f: (p: TracePipelineRow) => number) => active.reduce((s, p) => s + Math.min(f(p), p.required), 0);
+  const totalReq = active.reduce((s, p) => s + p.required, 0);
+  const stages = [
+    { key: "Cut", name: "Fabrication", icon: <LaserCutterIcon size={17} />, done: sum((p) => p.cut) },
+    { key: "Welding", name: "Welding", icon: <WeldingIcon size={17} />, done: sum((p) => p.weld) },
+    { key: "Painting", name: FINISHING_LABEL, icon: <PowderCoatIcon size={17} />, done: sum((p) => p.finished) },
+    { key: "Delivered", name: "Delivery", icon: <Truck size={17} />, done: sum((p) => p.delivered) },
+  ].map((s) => ({ ...s, pct: pctOf(s.done, totalReq), left: Math.max(0, totalReq - s.done) }));
+
+  const exportLedger = t.ledger.map((l) => ({
+    Date: l.dateISO, Plan: l.planLabel, Dept: deptLabel(l.dept), Item: l.item, Qty: l.qty,
+    Source: l.source, By: l.by ?? "", "Corrected from": l.corrected ?? "",
+  }));
+
+  return (
+    <div className="space-y-6">
+      {/* ================= sticky header ================= */}
+      <div className="md:sticky md:top-16 z-20 -mx-4 px-4 py-3 bg-background/85 backdrop-blur border-b border-border/60">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
+              Trace · {t.scope === "mo" ? "Manufacturing order" : "Code"}
+            </div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl md:text-2xl font-extrabold leading-tight tracking-tight">{t.key}</h1>
+              {t.members.length > 0 && (openOrders > 0
+                ? <Chip tone="ok">Open</Chip>
+                : <Chip tone="muted">Closed</Chip>)}
+              {t.anyUrgent && <Chip tone="bad">Urgent</Chip>}
+              {t.members.some((m) => m.priority) && <Chip tone="warn">⭐ Priority</Chip>}
+            </div>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <TraceSearch initialMode={t.scope} />
+            <button type="button" onClick={() => router.refresh()} className="btn btn-ghost btn-sm" title="Refresh the data">
+              <RotateCw size={14} />
+            </button>
+            <ExportButton rows={exportLedger} filename={`trace-${t.key}.xlsx`} sheetName="Trace" />
+            <Link href={planNo ? `/tracker?plan=${planNo}` : "/tracker"} className="btn btn-ghost btn-sm whitespace-nowrap">← Tracker</Link>
+            <button
+              type="button"
+              onClick={() => setSidebar((s) => !s)}
+              className="btn btn-ghost btn-sm hidden lg:inline-flex"
+              title={sidebar ? "Hide the details panel" : "Show the details panel"}
+            >
+              {sidebar ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ================= KPI row ================= */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <Kpi icon={<Package size={16} />} label="Order quantity" value={t.requiredSets}
+          sub={t.scope === "bom" ? `${t.members.length} order${t.members.length === 1 ? "" : "s"}` : "transformers"} />
+        <Kpi icon={<CheckCircle2 size={16} />} label="Finished" value={t.completeSets} pct={completion} tone={completion !== null && completion >= 100 ? "ok" : undefined} />
+        <Kpi icon={<Truck size={16} />} label="Delivered" value={t.deliveredSets}
+          pct={t.requiredSets > 0 ? pctOf(t.deliveredSets, t.requiredSets) : null}
+          tone={t.requiredSets > 0 && t.deliveredSets >= t.requiredSets ? "ok" : undefined} />
+        <Kpi icon={<Hourglass size={16} />} label="Remaining" value={remaining} tone={remaining > 0 ? "warn" : "ok"} />
+        <Kpi icon={<Gauge size={16} />} label="Completion" value={completion ?? 0} suffix="%" bar={completion ?? 0} />
+        <Kpi icon={<AlertTriangle size={16} />} label="Open issues" value={openIssues}
+          sub={openIssues > 0 ? `${t.openReturns} returns · ${t.openNotes} notes` : "all clear"}
+          tone={openIssues > 0 ? "bad" : "ok"} />
+      </div>
+
+      {/* ================= body: main | sidebar ================= */}
+      <div className={`grid gap-6 items-start ${sidebar ? "lg:grid-cols-[minmax(0,1fr)_320px]" : ""}`}>
+        <div className="min-w-0 space-y-6">
+          <StagePipeline stages={stages} totalReq={totalReq} pipeline={t.pipeline} />
+          <ComponentProgress pipeline={t.pipeline} />
+          <ActivityFeed events={t.timeline} showMo={t.scope === "bom"} />
+        </div>
+
+        {sidebar && (
+          <aside className="space-y-4 lg:sticky lg:top-36">
+            <SideCard title="Order details">
+              <dl className="divide-y divide-border/60">
+                {t.scope === "mo" ? (
+                  <Prop k="BOM">
+                    <Link href={`/trace?plan=${planNo}&bom=${encodeURIComponent(t.bom)}`} className="text-accent font-bold hover:underline">{t.bom}</Link>
+                  </Prop>
+                ) : (
+                  <Prop k="Orders">{t.members.length || "—"}{t.members.length > 0 && openOrders < t.members.length ? ` · ${openOrders} open` : ""}</Prop>
+                )}
+                {t.kva && <Prop k="KVA">{t.kva}</Prop>}
+                {t.rating && <Prop k="Rating">{t.rating}</Prop>}
+                {monthsAll.length > 0 && <Prop k="Plan months">{monthsAll.join(" · ")}</Prop>}
+                <Prop k="Planned in">{t.orderPlans.join(" · ") || "—"}</Prop>
+                <Prop k="Ledger records">{t.ledgerCount}</Prop>
+                {t.siblings.length > 0 && (
+                  <Prop k="Family">
+                    <span className="flex flex-wrap justify-end gap-x-2">
+                      {t.siblings.map((s) => (
+                        <Link key={s} href={`/trace?plan=${planNo}&bom=${encodeURIComponent(s)}`} className="text-accent font-semibold hover:underline">{s}</Link>
+                      ))}
+                    </span>
+                  </Prop>
+                )}
+              </dl>
+            </SideCard>
+
+            {t.scope === "bom" && t.members.length > 0 && (
+              <SideCard title="Linked orders">
+                <ul className="divide-y divide-border/60">
+                  {t.members.map((m) => {
+                    const p = m.planQty > 0 ? pctOf(m.complete, m.planQty) : 0;
+                    return (
+                      <li key={m.mo} className="px-4 py-2.5 hover:bg-brand-light/20 transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <Link href={`/trace?plan=${planNo}&mo=${encodeURIComponent(m.mo)}`} className="font-bold text-accent hover:underline text-xs">{m.mo}</Link>
+                          <span className="flex items-center gap-1.5">
+                            {m.urgent && <Chip tone="bad">U</Chip>}
+                            {m.priority && <span title="Priority">⭐</span>}
+                            {m.status === "closed"
+                              ? <Chip tone="muted">closed</Chip>
+                              : <span className="text-xs tabnum text-muted">{m.complete}/{m.planQty}</span>}
+                          </span>
+                        </div>
+                        {m.status !== "closed" && <MiniBar pct={p} className="mt-1.5" />}
+                        {m.remarks && <div className="mt-1 text-[11px] text-muted line-clamp-2">📝 {m.remarks}</div>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </SideCard>
+            )}
+
+            {(openIssues > 0 || t.timeline.some((e) => e.kind === "note" || e.kind === "return")) && (
+              <SideCard title="Issues & notes">
+                <div className="px-4 py-3 space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 text-muted"><Undo2 size={13} /> Open returns</span>
+                    <b className={`tabnum ${t.openReturns > 0 ? "text-bad-fg" : ""}`}>{t.openReturns}</b>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 text-muted"><StickyNote size={13} /> Open notes</span>
+                    <b className={`tabnum ${t.openNotes > 0 ? "text-warn-fg" : ""}`}>{t.openNotes}</b>
+                  </div>
+                  {t.timeline.filter((e) => e.kind === "note").slice(0, 2).map((n, i) => (
+                    <div key={i} className="rounded-lg bg-brand-light/25 px-2.5 py-1.5 text-[11px] leading-snug">
+                      <span className="font-bold">{n.item}</span> · {n.text ? (n.text.length > 90 ? n.text.slice(0, 90) + "…" : n.text) : "photo note"}
+                    </div>
+                  ))}
+                </div>
+              </SideCard>
+            )}
+
+            {t.scope === "mo" && t.members[0]?.remarks && (
+              <SideCard title="Remarks">
+                <p className="px-4 py-3 text-sm whitespace-pre-wrap leading-relaxed">{t.members[0].remarks}</p>
+              </SideCard>
+            )}
+
+            {t.contributors.length > 0 && (
+              <SideCard title="Recorded by">
+                <ul className="divide-y divide-border/60">
+                  {t.contributors.map((c) => (
+                    <li key={c.name} className="px-4 py-2 flex items-center gap-2.5">
+                      <Avatar name={c.name} />
+                      <span className="text-sm flex-1 truncate">{c.name}</span>
+                      <span className="tabnum text-sm font-bold">{c.qty}<span className="text-muted font-normal text-xs ml-0.5">pcs</span></span>
+                    </li>
+                  ))}
+                </ul>
+              </SideCard>
+            )}
+          </aside>
+        )}
+      </div>
+
+      {/* ================= raw records ================= */}
+      <RawRecords t={t} />
+    </div>
+  );
+}
+
+/* ============================ stage pipeline ============================ */
+
+function StagePipeline({ stages, totalReq, pipeline }: {
+  stages: { key: string; name: string; icon: React.ReactNode; done: number; pct: number; left: number }[];
+  totalReq: number;
+  pipeline: TracePipelineRow[];
+}) {
+  const [open, setOpen] = useState<string | null>(null);
+  const active = pipeline.filter((p) => p.active);
+  const valOf = (p: TracePipelineRow, key: string) =>
+    key === "Cut" ? p.cut : key === "Welding" ? p.weld : key === "Painting" ? p.finished : p.delivered;
+
+  return (
+    <Card title="Production pipeline" sub={`${totalReq} pcs per stage across the required components`}>
+      <div className="p-4">
+        <div className="flex flex-col md:flex-row md:items-stretch gap-2">
+          {stages.map((s, i) => {
+            const status = totalReq === 0 ? "muted" : s.pct >= 100 ? "ok" : s.done > 0 ? "brand" : "muted";
+            const isOpen = open === s.key;
+            return (
+              <Fragment key={s.key}>
+                {i > 0 && (
+                  <div className="self-center text-muted/60 rotate-90 md:rotate-0 shrink-0">
+                    <ChevronRight size={16} />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setOpen(isOpen ? null : s.key)}
+                  className={`flex-1 min-w-0 text-left rounded-2xl border p-3.5 transition-all hover:shadow-md hover:-translate-y-px ${isOpen ? "border-brand ring-1 ring-brand/40 shadow-md" : "border-border/60 shadow-sm"} bg-surface`}
+                  title="Click for the per-component breakdown"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+                      {s.icon}<span className="truncate">{s.name}</span>
+                    </span>
+                    {status === "ok" ? <Chip tone="ok">Done</Chip>
+                      : status === "brand" ? <Chip tone="brand">In progress</Chip>
+                      : <Chip tone="muted">Not started</Chip>}
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-2xl font-extrabold tabnum leading-none">{s.done}</span>
+                    <span className="text-xs text-muted tabnum">/ {totalReq}</span>
+                    <span className="ml-auto text-xs font-bold tabnum">{s.pct}%</span>
+                  </div>
+                  <MiniBar pct={s.pct} className="mt-2" />
+                  <div className="mt-1.5 text-[11px] text-muted tabnum">{s.left > 0 ? `${s.left} remaining` : "stage clear"}</div>
+                </button>
+              </Fragment>
+            );
+          })}
+        </div>
+
+        {open && (
+          <div className="mt-3 rounded-xl bg-brand-light/25 p-3">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-muted mb-2">
+              {stages.find((s) => s.key === open)?.name} — per component
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              {active.map((p) => {
+                const v = valOf(p, open);
+                const pc = pctOf(Math.min(v, p.required), p.required);
+                return (
+                  <div key={p.item} className="rounded-lg bg-surface border border-border/60 px-2.5 py-2">
+                    <div className="flex items-baseline justify-between text-xs">
+                      <b>{p.item}</b>
+                      <span className="tabnum text-muted">{pc}%</span>
+                    </div>
+                    <div className="tabnum font-extrabold">{v}<span className="text-[10px] text-muted font-normal">/{p.required}</span></div>
+                    <MiniBar pct={pc} className="mt-1" />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ========================== component progress ========================== */
+
+function componentStatus(p: TracePipelineRow): { label: string; tone: "ok" | "brand" | "warn" | "muted" } {
+  if (!p.active) return { label: "N/A", tone: "muted" };
+  if (p.required > 0 && p.delivered >= p.required) return { label: "Delivered", tone: "ok" };
+  if (p.required > 0 && p.finished >= p.required) return { label: "Awaiting delivery", tone: "brand" };
+  if (p.finished > 0 || p.weld > 0) return { label: p.weld >= p.required ? `In ${p.finishLabel === "SHB" ? "Shot Blast" : "Painting"}` : "In Welding", tone: "brand" };
+  if (p.cut > 0) return { label: p.cut >= p.required ? "In Welding" : "In Fabrication", tone: "brand" };
+  return { label: "Not started", tone: "muted" };
+}
+
+function ComponentProgress({ pipeline }: { pipeline: TracePipelineRow[] }) {
+  const [view, setView] = useState<"grid" | "table">("grid");
+  return (
+    <Card
+      title="Component progress"
+      sub="net totals vs order quantity — OSP counts as covered"
+      actions={
+        <div className="inline-flex rounded-lg border border-border/60 overflow-hidden">
+          {(["grid", "table"] as const).map((v) => (
+            <button key={v} type="button" onClick={() => setView(v)}
+              className={`px-2 py-1 transition-colors ${view === v ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}
+              title={v === "grid" ? "Card view" : "Table view"}>
+              {v === "grid" ? <LayoutGrid size={14} /> : <Rows3 size={14} />}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {view === "grid" ? (
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {pipeline.map((p) => {
+            const st = componentStatus(p);
+            const fin = pctOf(Math.min(p.finished, p.required), p.required);
+            return (
+              <div key={p.item} className={`rounded-2xl border border-border/60 bg-surface shadow-sm p-4 transition-all hover:shadow-md ${!p.active ? "opacity-50" : ""}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-extrabold text-lg leading-none">{p.item}</div>
+                    <div className="mt-1"><Chip tone={st.tone}>{st.label}</Chip></div>
+                  </div>
+                  {p.active && <Ring pct={fin} />}
+                </div>
+                {p.active && (
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <MiniStat label="Required" value={p.required} />
+                    <MiniStat label="Finished" value={p.finished} />
+                    <MiniStat label="Remaining" value={Math.max(0, p.required - p.finished)} warn={p.required - p.finished > 0} />
+                  </div>
+                )}
+                {p.active && p.osp > 0 && (
+                  <div className="mt-2 text-[11px] text-muted">OSP {p.osp} pcs — outsourced, counts as covered</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-wide text-muted border-b border-border/60">
+                <th className="px-4 py-2.5 font-bold">Component</th>
+                <th className="px-3 py-2.5 font-bold text-center">Required</th>
+                <th className="px-3 py-2.5 font-bold text-center">Fab</th>
+                <th className="px-3 py-2.5 font-bold text-center">Weld</th>
+                <th className="px-3 py-2.5 font-bold text-center">Paint / SHB</th>
+                <th className="px-3 py-2.5 font-bold text-center">Dlvd</th>
+                <th className="px-3 py-2.5 font-bold w-44">Finish</th>
+                <th className="px-3 py-2.5 font-bold text-right pr-4">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pipeline.map((p) => {
+                const st = componentStatus(p);
+                const fin = pctOf(Math.min(p.finished, p.required), p.required);
+                return (
+                  <tr key={p.item} className={`border-b border-border/40 last:border-0 hover:bg-brand-light/20 transition-colors ${!p.active ? "opacity-45" : ""}`}>
+                    <td className="px-4 py-2.5 font-extrabold">
+                      {p.item}
+                      {p.osp > 0 && <span className="ml-1.5 text-[10px] font-semibold text-muted" title="outsourced — counts as covered">OSP {p.osp}</span>}
+                    </td>
+                    {p.active ? (
+                      <>
+                        <td className="px-3 py-2.5 text-center font-bold tabnum">{p.required}</td>
+                        <td className="px-3 py-2.5 text-center tabnum">{p.cut}</td>
+                        <td className="px-3 py-2.5 text-center tabnum">{p.weld}</td>
+                        <td className="px-3 py-2.5 text-center tabnum">{p.finished}<span className="block text-[9px] text-muted leading-none">{p.finishLabel}</span></td>
+                        <td className="px-3 py-2.5 text-center tabnum">{p.delivered}</td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <MiniBar pct={fin} className="flex-1" />
+                            <span className="text-xs font-bold tabnum w-9 text-right">{fin}%</span>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <td colSpan={6} className="px-3 py-2.5 text-center text-muted text-xs">— not required for this project —</td>
+                    )}
+                    <td className="px-3 py-2.5 text-right pr-4"><Chip tone={st.tone}>{st.label}</Chip></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ============================= activity feed ============================= */
+
+const KIND_LABEL: Record<TraceEventKind, string> = {
+  output: "Output", correction: "Corrections", return: "Returns", note: "Notes", realloc: "Moves",
+};
+type Range = "today" | "yesterday" | "week" | "all";
+
+function ActivityFeed({ events, showMo }: { events: TraceEvent[]; showMo: boolean }) {
+  const [now] = useState(() => Date.now());
+  const [range, setRange] = useState<Range>("all");
+  const [kinds, setKinds] = useState<Set<TraceEventKind>>(new Set());
+  const [item, setItem] = useState("");
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const startToday = new Date(now).setUTCHours(0, 0, 0, 0);
+  const inRange = (ts: number) =>
+    range === "all" ? true
+    : range === "today" ? ts >= startToday
+    : range === "yesterday" ? ts >= startToday - dayMs && ts < startToday
+    : ts >= startToday - 6 * dayMs;
+
+  const kindsPresent = useMemo(() => {
+    const s = new Set(events.map((e) => e.kind));
+    return (["output", "correction", "return", "note", "realloc"] as TraceEventKind[]).filter((k) => s.has(k));
+  }, [events]);
+  const itemsPresent = useMemo(() => [...new Set(events.map((e) => e.item).filter(Boolean))] as string[], [events]);
+
+  const shown = events.filter((e) => inRange(e.ts) && (kinds.size === 0 || kinds.has(e.kind)) && (!item || e.item === item));
+  const toggle = (k: TraceEventKind) => setKinds((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+
+  return (
+    <Card
+      title="Activity"
+      sub="newest first — every movement, correction, return, note & move"
+      actions={
+        <div className="inline-flex rounded-lg border border-border/60 overflow-hidden text-[11px] font-bold">
+          {(["today", "yesterday", "week", "all"] as Range[]).map((r) => (
+            <button key={r} type="button" onClick={() => setRange(r)}
+              className={`px-2 py-1 transition-colors capitalize ${range === r ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}>
+              {r === "week" ? "7 days" : r}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      <div className="px-4 pt-3 flex flex-wrap items-center gap-1.5">
+        {kindsPresent.map((k) => {
+          const on = kinds.has(k);
+          return (
+            <button key={k} type="button" onClick={() => toggle(k)}
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold transition-colors ${on ? "bg-brand text-white border-brand" : "bg-surface border-border/60 text-muted hover:text-foreground"}`}>
+              {KIND_LABEL[k]}
+            </button>
+          );
+        })}
+        {itemsPresent.length > 1 && (
+          <select value={item} onChange={(e) => setItem(e.target.value)} className="ml-auto border border-border/60 rounded-lg px-2 py-1 text-xs font-semibold bg-surface">
+            <option value="">All items</option>
+            {itemsPresent.map((it) => <option key={it} value={it}>{it}</option>)}
+          </select>
+        )}
+      </div>
+
+      {shown.length === 0 ? (
+        <div className="p-8 text-center">
+          <div className="text-3xl mb-2">🗓️</div>
+          <p className="text-sm text-muted">No activity {range !== "all" ? "in this period" : "recorded yet"}.</p>
+        </div>
+      ) : (
+        <ul className="px-4 py-3 divide-y divide-border/40">
+          {shown.map((e, i) => <FeedRow key={i} e={e} showMo={showMo} />)}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function FeedRow({ e, showMo }: { e: TraceEvent; showMo: boolean }) {
+  const neg = (e.qty ?? 0) < 0;
+  return (
+    <li className="flex gap-3 py-2.5">
+      {e.kind === "output" || e.kind === "correction" ? (
+        e.by ? <Avatar name={e.by} /> : <IconAvatar tint="var(--brand)"><UserIcon size={13} /></IconAvatar>
+      ) : e.kind === "return" ? (
+        <IconAvatar tint="var(--bad-fg)"><Undo2 size={13} /></IconAvatar>
+      ) : e.kind === "note" ? (
+        <IconAvatar tint="var(--warn-fg)"><StickyNote size={13} /></IconAvatar>
+      ) : (
+        <IconAvatar tint="#6b45a8"><ArrowLeftRight size={13} /></IconAvatar>
+      )}
+      <div className="min-w-0 flex-1">
+        {(e.kind === "output" || e.kind === "correction") && (
+          <p className="text-sm leading-snug">
+            <b>{e.by ?? "—"}</b> recorded{" "}
+            <b className="tabnum" style={{ color: neg ? "var(--bad-fg)" : "var(--ok-fg)" }}>{neg ? e.qty : `+${e.qty}`}</b>{" "}
+            <b>{e.item}</b> in {deptLabel(e.dept ?? "")}
+            {neg && <Chip tone="bad" className="ml-1.5">correction</Chip>}
+            {e.corrected && <Chip tone="ok" className="ml-1.5">fixed from {e.corrected}</Chip>}
+          </p>
+        )}
+        {e.kind === "return" && (
+          <p className="text-sm leading-snug">
+            <b className="text-bad-fg tabnum">{e.qty} {e.item}</b> returned {deptLabel(e.fromDept ?? "")} → {deptLabel(e.toDept ?? "")}
+            {e.status === "open" ? <Chip tone="warn" className="ml-1.5">open</Chip> : <Chip tone="ok" className="ml-1.5">re-delivered</Chip>}
+            <span className="block text-muted">“{e.reason}”</span>
+          </p>
+        )}
+        {e.kind === "note" && (
+          <div className="text-sm leading-snug">
+            <p>
+              Note on <b>{e.item}</b> · {deptLabel(e.dept ?? "")}
+              {e.status === "open" ? <Chip tone="warn" className="ml-1.5">open</Chip> : <Chip tone="ok" className="ml-1.5">resolved</Chip>}
+            </p>
+            {e.text && <p className="text-muted whitespace-pre-wrap">{e.text}</p>}
+            {e.photos && e.photos.length > 0 && (
+              <span className="flex flex-wrap gap-1.5 mt-1.5">
+                {e.photos.map((p) => (
+                  <a key={p} href={p} target="_blank" rel="noreferrer" title="Open full size">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p} alt="note" className="h-14 w-14 object-cover rounded-lg border border-border/60" />
+                  </a>
+                ))}
+              </span>
+            )}
+          </div>
+        )}
+        {e.kind === "realloc" && (
+          <p className="text-sm leading-snug">
+            <b className="tabnum" style={{ color: "#6b45a8" }}>{e.qty} {e.item}</b> moved {e.fromBom} → {e.toBom} · {deptLabel(e.dept ?? "")}
+            <Chip tone={e.status === "approved" ? "ok" : e.status === "rejected" ? "bad" : "muted"} className="ml-1.5">{e.status}</Chip>
+            {e.reason && <span className="block text-muted">“{e.reason}”</span>}
+          </p>
+        )}
+        <p className="mt-0.5 text-[11px] text-muted tabnum">
+          {e.dateISO}
+          {showMo && e.mo ? <> · {e.mo}</> : null}
+          {e.source && e.source !== "worklist" && e.source !== "tracker" ? <> · {e.source}</> : null}
+        </p>
+      </div>
+    </li>
+  );
+}
+
+/* ============================== raw records ============================== */
+
+function RawRecords({ t }: { t: TraceResult }) {
+  const [open, setOpen] = useState<"orders" | "ledger" | null>(null);
+  return (
+    <Card title="Records" sub="the underlying plan lines and the full ledger">
+      <div className="p-4 flex flex-wrap gap-2">
+        {([["orders", `Plan orders (${t.orders.length})`], ["ledger", `Full ledger (${t.ledgerCount})`]] as const).map(([k, label]) => (
+          <button key={k} type="button" onClick={() => setOpen(open === k ? null : k)}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-bold transition-colors ${open === k ? "bg-brand text-white border-brand" : "bg-surface border-border/60 text-muted hover:text-foreground"}`}>
+            {open === k ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{label}
+          </button>
+        ))}
+      </div>
+
+      {open === "orders" && (
+        <div className="overflow-x-auto border-t border-border/60">
+          <table className="w-full text-sm border-collapse">
+            <thead className="sticky top-0 bg-surface">
+              <tr className="text-left text-[11px] uppercase tracking-wide text-muted border-b border-border/60">
+                <th className="px-4 py-2.5 font-bold">Plan</th><th className="px-3 py-2.5 font-bold">MO</th>
+                <th className="px-3 py-2.5 font-bold">Description</th><th className="px-3 py-2.5 font-bold text-center">Item</th>
+                <th className="px-3 py-2.5 font-bold text-center">Required</th><th className="px-3 py-2.5 font-bold text-center">Planner balance</th>
+                <th className="px-3 py-2.5 font-bold text-center">Target</th><th className="px-3 py-2.5 font-bold">Remark</th>
+              </tr>
+            </thead>
+            <tbody>
+              {t.orders.length === 0 && <tr><td colSpan={8} className="p-6 text-center text-muted">Not in any imported plan.</td></tr>}
+              {t.orders.map((o, i) => (
+                <tr key={o.id} className={`border-b border-border/40 last:border-0 hover:bg-brand-light/20 transition-colors ${i % 2 ? "bg-zebra/50" : ""}`}>
+                  <td className="px-4 py-2 font-bold text-xs whitespace-nowrap">{o.planLabel}</td>
+                  <td className="px-3 py-2 text-xs">{o.mo}</td>
+                  <td className="px-3 py-2 text-xs text-muted">{o.description}</td>
+                  <td className="px-3 py-2 text-center font-bold">{o.item}</td>
+                  <td className="px-3 py-2 text-center tabnum">{o.requiredQty}</td>
+                  <td className="px-3 py-2 text-center tabnum">{o.plannerBalance ?? "—"}</td>
+                  <td className="px-3 py-2 text-center tabnum">{o.targetQty}</td>
+                  <td className="px-3 py-2 text-xs">{o.remark || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {open === "ledger" && (
+        <div className="overflow-x-auto border-t border-border/60 max-h-[32rem] overflow-y-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead className="sticky top-0 bg-surface z-10">
+              <tr className="text-left text-[11px] uppercase tracking-wide text-muted border-b border-border/60">
+                <th className="px-4 py-2.5 font-bold">Date</th><th className="px-3 py-2.5 font-bold">Plan</th>
+                <th className="px-3 py-2.5 font-bold">Dept</th><th className="px-3 py-2.5 font-bold text-center">Item</th>
+                <th className="px-3 py-2.5 font-bold text-center">Qty</th><th className="px-3 py-2.5 font-bold">Source</th>
+                <th className="px-3 py-2.5 font-bold">By</th>
+              </tr>
+            </thead>
+            <tbody>
+              {t.ledger.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-muted">No handover records yet.</td></tr>}
+              {t.ledger.map((l, i) => (
+                <tr key={l.id} className={`border-b border-border/40 last:border-0 hover:bg-brand-light/20 transition-colors ${i % 2 ? "bg-zebra/50" : ""}`}>
+                  <td className="px-4 py-2 whitespace-nowrap tabnum">{l.dateISO}</td>
+                  <td className="px-3 py-2 font-bold text-xs whitespace-nowrap">{l.planLabel}</td>
+                  <td className="px-3 py-2">{deptLabel(l.dept)}</td>
+                  <td className="px-3 py-2 text-center font-bold">{l.item}</td>
+                  <td className="px-3 py-2 text-center font-bold tabnum" style={{ color: l.qty < 0 ? "var(--bad-fg)" : undefined }}>{l.qty}</td>
+                  <td className="px-3 py-2 text-xs text-muted">
+                    {l.source}
+                    {l.corrected && <Chip tone="ok" className="ml-1">fixed</Chip>}
+                  </td>
+                  <td className="px-3 py-2 text-xs whitespace-nowrap">{l.by ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ============================ building blocks ============================ */
+
+function Card({ title, sub, actions, children }: { title: string; sub?: string; actions?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl bg-surface border border-border/60 shadow-sm overflow-hidden">
+      <div className="px-4 pt-3.5 pb-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/40">
+        <div className="min-w-0">
+          <h2 className="text-sm font-extrabold tracking-tight">{title}</h2>
+          {sub && <p className="text-[11px] text-muted mt-0.5">{sub}</p>}
+        </div>
+        {actions && <div className="ml-auto">{actions}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SideCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl bg-surface border border-border/60 shadow-sm overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-border/40">
+        <h3 className="text-[11px] font-extrabold uppercase tracking-wide text-muted">{title}</h3>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Kpi({ icon, label, value, suffix, sub, pct, bar, tone }: {
+  icon: React.ReactNode; label: string; value: number; suffix?: string; sub?: string;
+  pct?: number | null; bar?: number; tone?: "ok" | "warn" | "bad";
+}) {
+  const color = tone === "ok" ? "var(--ok-fg)" : tone === "warn" ? "var(--warn-fg)" : tone === "bad" ? "var(--bad-fg)" : undefined;
+  return (
+    <div className="rounded-2xl bg-surface border border-border/60 shadow-sm px-4 py-3.5 transition-all hover:shadow-md">
+      <div className="flex items-center gap-1.5 text-muted">
+        <span className="grid place-items-center w-6 h-6 rounded-lg bg-brand-light/60 text-brand">{icon}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wide">{label}</span>
+      </div>
+      <div className="mt-2 flex items-baseline gap-1.5">
+        <span className="text-[26px] font-extrabold tabnum leading-none tracking-tight" style={{ color }}>{value}{suffix}</span>
+        {pct !== undefined && pct !== null && <span className="text-[11px] font-bold tabnum text-muted">{pct}%</span>}
+      </div>
+      {bar !== undefined && <MiniBar pct={bar} className="mt-2" />}
+      {sub && <div className="mt-1.5 text-[11px] text-muted truncate">{sub}</div>}
+    </div>
+  );
+}
+
+function Chip({ tone, className = "", children }: { tone: "ok" | "bad" | "warn" | "muted" | "brand"; className?: string; children: React.ReactNode }) {
+  if (tone === "brand") {
+    return <span className={`pill ${className}`} style={{ background: "var(--brand-light)", color: "var(--brand)" }}>{children}</span>;
+  }
+  return <span className={`pill pill-${tone} ${className}`}>{children}</span>;
+}
+
+function MiniBar({ pct, className = "" }: { pct: number; className?: string }) {
+  return (
+    <div className={`h-1.5 rounded-full bg-border/70 overflow-hidden ${className}`}>
+      <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, pct)}%`, background: pct >= 100 ? "var(--ok-fg)" : "var(--brand)" }} />
+    </div>
+  );
+}
+
+function MiniStat({ label, value, warn = false }: { label: string; value: number; warn?: boolean }) {
+  return (
+    <div className="rounded-xl bg-brand-light/25 px-2 py-1.5">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-muted">{label}</div>
+      <div className="text-base font-extrabold tabnum" style={{ color: warn ? "var(--warn-fg)" : undefined }}>{value}</div>
+    </div>
+  );
+}
+
+function Ring({ pct, size = 56 }: { pct: number; size?: number }) {
+  const r = (size - 8) / 2;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} strokeWidth={5.5} fill="none" stroke="var(--border)" />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} strokeWidth={5.5} fill="none" strokeLinecap="round"
+          stroke={pct >= 100 ? "var(--ok-fg)" : "var(--brand)"}
+          strokeDasharray={c} strokeDashoffset={c * (1 - Math.min(100, pct) / 100)}
+          className="transition-all"
+        />
+      </svg>
+      <span className="absolute inset-0 grid place-items-center text-[11px] font-extrabold tabnum">{pct}%</span>
+    </div>
+  );
+}
+
+function Avatar({ name }: { name: string }) {
+  const initials = name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+  return (
+    <span className="grid place-items-center w-7 h-7 rounded-full bg-brand text-white text-[10px] font-extrabold shrink-0" title={name}>
+      {initials || "?"}
+    </span>
+  );
+}
+
+function IconAvatar({ tint, children }: { tint: string; children: React.ReactNode }) {
+  return (
+    <span className="grid place-items-center w-7 h-7 rounded-full shrink-0" style={{ background: `color-mix(in srgb, ${tint} 15%, transparent)`, color: tint }}>
+      {children}
+    </span>
+  );
+}
+
+function Prop({ k, children }: { k: string; children: React.ReactNode }) {
+  return (
+    <div className="px-4 py-2 flex items-start justify-between gap-3 text-sm">
+      <dt className="text-[11px] font-bold uppercase tracking-wide text-muted pt-0.5 shrink-0">{k}</dt>
+      <dd className="text-right min-w-0">{children}</dd>
+    </div>
+  );
+}
