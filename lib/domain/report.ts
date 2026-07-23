@@ -81,7 +81,10 @@ export function computeDailyReport(
     const bg = grouper(l.bom);
     const itm = l.item;
     const q = l.qty || 0;
-    if (!bg || !itm || q <= 0) continue;
+    // NEGATIVE rows (corrections / returns) count too — every other screen sums
+    // the full ledger, so skipping them here made the report's totals disagree
+    // with the daily log and the worked-on table
+    if (!bg || !itm || q === 0) continue;
     if (dp === "Painting") inc(paintCum, `${bg}|${itm}`, q);
     if (dp === "Welding") inc(weldCum, `${bg}|${itm}`, q);
     if (dp === "ShotBlast") inc(shpCum, `${bg}|${itm}`, q);
