@@ -289,27 +289,46 @@ export function MasterTrackerTable({
     return { it, doneWord, need, done, remaining: Math.max(0, need - done), pct: need > 0 ? done / need : null };
   });
 
-  const exportRows = filtered.map((r) => ({
-    MO: r.mo,
-    BOM: r.bom,
-    "Plan months": r.months.join(", "),
-    SOI: r.soi ?? "",
-    Urgent: r.urgent ? "Yes" : "",
-    KVA: r.kva ?? "",
-    Required: r.required,
-    "CF Fab": r.items.CF.cut, "CF Weld": r.items.CF.weld, "CF SHB": r.items.CF.shp, "CF Dlvd": r.items.CF.delivered,
-    "TC Fab": r.items.TC.cut, "TC Weld": r.items.TC.weld, "TC Paint": r.items.TC.paint, "TC Dlvd": r.items.TC.delivered,
-    "TN Fab": r.items.TN.cut, "TN Weld": r.items.TN.weld, "TN Paint": r.items.TN.paint, "TN Dlvd": r.items.TN.delivered,
-    "CB Fab": r.items.CB.cut, "CB Weld": r.items.CB.weld, "CB Paint": r.items.CB.paint, "CB Dlvd": r.items.CB.delivered,
-    "AR Fab": r.items.AR.cut, "AR Weld": r.items.AR.weld, "AR Paint": r.items.AR.paint, "AR Dlvd": r.items.AR.delivered,
-    "MB Fab": r.items.MB.cut, "MB Weld": r.items.MB.weld, "MB Paint": r.items.MB.paint, "MB Dlvd": r.items.MB.delivered,
-    OSP: ITEMS.filter((it) => r.items[it].osp > 0).map((it) => `${it}×${r.items[it].osp}`).join(" "),
-    Welded: r.welded,
-    "Complete (painted)": r.complete,
-    Left: r.remaining,
-    "Achievement %": r.achievement === null ? "" : Math.round(r.achievement * 100),
-    Status: r.status,
-  }));
+  // The export mirrors the CURRENT view: the rows already follow the search /
+  // month / status / progress / urgent filters, and the columns now follow the
+  // Dept (stage) filter too — only the picked stages per component, and the
+  // summary columns (Welded / Complete / Left / Achievement) only in the full,
+  // unfiltered view (the table hides them under a stage filter).
+  const exportStages = scoped ? stages : ["Cut", "Welding", "Painting", "Delivered"];
+  const stageColLabel = (s: string, it: Item) =>
+    s === "Cut" ? "Fab" : s === "Welding" ? "Weld" : s === "Delivered" ? "Dlvd" : isPaintExempt(it) ? "SHB" : "Paint";
+  const stageColValue = (c: MasterTrackerRow["items"][Item], s: string, it: Item) =>
+    s === "Cut" ? c.cut : s === "Welding" ? c.weld : s === "Delivered" ? c.delivered : isPaintExempt(it) ? c.shp : c.paint;
+
+  const exportRows = filtered.map((r) => {
+    const row: Record<string, string | number> = {
+      MO: r.mo,
+      BOM: r.bom,
+      "Plan months": r.months.join(", "),
+      SOI: r.soi ?? "",
+      Urgent: r.urgent ? "Yes" : "",
+      KVA: r.kva ?? "",
+      Required: r.required,
+    };
+    for (const it of ITEMS) {
+      const c = r.items[it];
+      for (const s of exportStages) {
+        // N/A components (rule or manual) export blank, like the table's dashes
+        row[`${it} ${stageColLabel(s, it)}`] = !c.eligible || c.excluded ? "" : stageColValue(c, s, it);
+      }
+    }
+    row.OSP = ITEMS.filter((it) => r.items[it].osp > 0).map((it) => `${it}×${r.items[it].osp}`).join(" ");
+    if (!scoped) {
+      row.Welded = r.welded;
+      row["Complete (painted)"] = r.complete;
+      row.Left = r.remaining;
+      row["Achievement %"] = r.achievement === null ? "" : Math.round(r.achievement * 100);
+    }
+    row.Status = r.status;
+    return row;
+  });
+  // filename hints at the active stage scope, so exports don't get confused
+  const exportName = `plan-tracker${scoped ? "-" + stages.join("-").toLowerCase() : ""}.xlsx`;
 
   return (
     // On desktop the page fills the viewport below the nav so the cards +
@@ -392,7 +411,7 @@ export function MasterTrackerTable({
           ]}
         />
         <SelectFilter label="Urgent" value={urgent} onChange={setUrgent} options={[{ value: "yes", label: "Urgent only" }]} />
-        <ExportButton rows={exportRows} filename="plan-tracker.xlsx" sheetName="Tracker" />
+        <ExportButton rows={exportRows} filename={exportName} sheetName="Tracker" />
       </FilterBar>
 
       <div className="bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0">
