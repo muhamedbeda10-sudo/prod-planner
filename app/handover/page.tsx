@@ -28,6 +28,7 @@ export default async function HandoverPage() {
     item: r.item,
     qty: r.qty,
     source: r.source,
+    createdBy: r.createdBy,
   }));
 
   // No page header — every pixel goes to the log (title lives in the nav tab).

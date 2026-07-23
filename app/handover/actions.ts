@@ -82,7 +82,7 @@ export async function addHandover(formData: FormData): Promise<ActionResult> {
   if (chainError) return { ok: false, error: chainError };
 
   await prisma.handoverEntry.create({
-    data: { date, dept, bom: resolved.bom, bomRaw: resolved.bomRaw, item, qty, planNo, source: "manual" },
+    data: { date, dept, bom: resolved.bom, bomRaw: resolved.bomRaw, item, qty, planNo, source: "manual", createdBy: guard.user?.name ?? null },
   });
   revalidateEverywhere();
   return { ok: true };
@@ -94,17 +94,22 @@ export async function updateHandover(formData: FormData): Promise<ActionResult> 
   const dateStr = String(formData.get("date") ?? "").trim();
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
   if (!Number.isFinite(qty) || qty < 0) return { ok: false, error: "Invalid quantity." };
-  const data: { qty: number; note: string; date?: Date } = { qty, note: "edited" };
-  if (dateStr) {
-    const date = parseISODate(dateStr);
-    if (!date) return { ok: false, error: "Invalid date." };
-    data.date = date;
-  }
 
   const entry = await prisma.handoverEntry.findUnique({ where: { id } });
   if (!entry) return { ok: false, error: "Record not found." };
   const guard = await requireDeptEdit(entry.dept);
   if (guard.error) return { ok: false, error: guard.error };
+
+  // the note keeps the audit trail of WHO changed the row
+  const data: { qty: number; note: string; date?: Date } = {
+    qty,
+    note: guard.user?.name ? `edited by ${guard.user.name}` : "edited",
+  };
+  if (dateStr) {
+    const date = parseISODate(dateStr);
+    if (!date) return { ok: false, error: "Invalid date." };
+    data.date = date;
+  }
 
   // physical chain guard: painted ≤ welded ≤ cut ≤ order qty (edit included)
   const chainError = await checkOutputChain({
@@ -134,14 +139,16 @@ export async function bulkSetHandoverDate(formData: FormData): Promise<ActionRes
 
   const entries = await prisma.handoverEntry.findMany({ where: { id: { in: ids } }, select: { id: true, dept: true } });
   if (entries.length === 0) return { ok: false, error: "Records not found." };
+  let by: string | null = null;
   for (const d of [...new Set(entries.map((e) => e.dept))]) {
     const guard = await requireDeptEdit(d);
     if (guard.error) return { ok: false, error: guard.error };
+    by = guard.user?.name ?? null;
   }
 
   const res = await prisma.handoverEntry.updateMany({
     where: { id: { in: entries.map((e) => e.id) } },
-    data: { date, note: "edited" },
+    data: { date, note: by ? `edited by ${by}` : "edited" },
   });
   revalidateEverywhere();
   return { ok: true, updated: res.count };
