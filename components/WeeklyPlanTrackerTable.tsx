@@ -1,65 +1,45 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo } from "react";
 import Link from "next/link";
 import { pctStyle } from "@/components/ui";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle, WeekPlanPicker } from "@/components/PlanViewToggle";
 import { ExportButton } from "@/components/ExportButton";
-import { ITEMS, isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
-import type { WeeklyPlanTracker, WeeklyPlanRow, WeeklyPlanCell } from "@/lib/server/weeklyPlanTracker";
+import { isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
+import type { WeeklyPlanTracker, WeeklyPlanRow, WeeklyPlanCell, WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
 
-/* One weekly plan, day by day. Each day lists the orders it promises and how
-   far every department has got with them — CUMULATIVE and raw, so the figures
-   are the order's whole life, not just this week's output. That is why a cell
-   can read higher than the day's Req: the work was already done. */
+/* One weekly plan by DELIVERY DAY. The date runs down the left edge as a rail
+   so it never breaks the grid, and every day repeats its own column headers —
+   each day asks for different components, so each day gets its own columns. */
 
 const STAGE_OPTS = [
-  { value: "Cut", label: "Fabrication", short: "Fab" },
-  { value: "Welding", label: "Welding", short: "Weld" },
-  { value: "Painting", label: FINISHING_LABEL, short: "Paint" },
-  { value: "Delivered", label: "Delivered", short: "Dlvd" },
+  { value: "cut", label: "Fabrication", short: "Fab" },
+  { value: "weld", label: "Welding", short: "Weld" },
+  { value: "finish", label: FINISHING_LABEL, short: "Paint" },
+  { value: "delivered", label: "Delivered", short: "Dlvd" },
 ] as const;
 type Stage = (typeof STAGE_OPTS)[number]["value"];
 
 const TINT: Record<Stage, string> = {
-  Cut: "var(--cut-tint)", Welding: "var(--weld-tint)", Painting: "var(--paint-tint)", Delivered: "var(--dlvd-tint)",
+  cut: "var(--cut-tint)", weld: "var(--weld-tint)", finish: "var(--paint-tint)", delivered: "var(--dlvd-tint)",
 };
 
-/** A stage's cumulative figure for one component. The core's finishing IS its
- *  shot blast, and an outsourced component counts as covered — our departments
- *  never make it. */
-function stageValue(stage: Stage, item: Item, c: WeeklyPlanCell): number {
-  if (stage === "Cut") return c.cut;
-  if (stage === "Welding") return c.weld + c.osp;
-  if (stage === "Delivered") return c.delivered;
-  return (isPaintExempt(item) ? c.shp : c.paint) + c.osp;
-}
-
-/** How much of a day's promise its final stage has covered — the row's headline
- *  number. Capped at 100% for the bar's sake even though the figures are raw. */
-function coverage(r: WeeklyPlanRow): number | null {
-  let req = 0;
-  let got = 0;
-  for (const it of ITEMS) {
-    const c = r.items[it];
-    if (!c.req || !c.eligible || c.excluded) continue;
-    req += c.req;
-    got += Math.min(stageValue("Painting", it, c), c.req); // credit only what this day asked for
-  }
-  return req > 0 ? got / req : null;
-}
+const coverage = (r: WeeklyPlanRow): number | null => {
+  const cells = Object.values(r.items) as WeeklyPlanCell[];
+  const req = cells.reduce((s, c) => s + c.req, 0);
+  return req > 0 ? cells.reduce((s, c) => s + c.finish, 0) / req : null;
+};
 
 export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
   const [q, setQ] = useSavedFilter("wtracker.q");
   const [stage, setStage] = useSavedFilter("wtracker.stage");
   const [hideDone, setHideDone] = useSavedFilter("wtracker.hideDone");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const stages = useMemo(() => {
     const sel = new Set(stage.split(",").filter(Boolean));
     const picked = STAGE_OPTS.filter((o) => sel.has(o.value));
-    return (picked.length > 0 ? picked : STAGE_OPTS).map((o) => o.value);
+    return (picked.length > 0 ? picked : [...STAGE_OPTS]).map((o) => o.value);
   }, [stage]);
   const toggleStage = (v: Stage) => {
     const sel = new Set(stage.split(",").filter(Boolean));
@@ -67,58 +47,50 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
     setStage(STAGE_OPTS.map((o) => o.value).filter((x) => sel.has(x)).join(","));
   };
 
-  // only the components this plan actually promises — an empty column is noise
-  const items = useMemo(
-    () => ITEMS.filter((it) => data.days.some((d) => d.rows.some((r) => r.items[it].req > 0))),
-    [data]
-  );
-
   const days = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return data.days
-      .map((d) => ({
-        ...d,
-        rows: d.rows.filter((r) => {
+      .map((d) => {
+        const rows = d.rows.filter((r) => {
           if (hideDone === "1" && (coverage(r) ?? 0) >= 1) return false;
           if (!needle) return true;
-          return [r.mo, r.bom, r.soi, r.description, r.kva].some((v) => v?.toLowerCase().includes(needle));
-        }),
-      }))
+          return [r.bom, r.soi, r.description].some((v) => v?.toLowerCase().includes(needle));
+        });
+        // a day's columns follow the rows that survived the filters
+        return { ...d, rows, items: d.items.filter((it) => rows.some((r) => r.items[it])) };
+      })
       .filter((d) => d.rows.length > 0);
   }, [data, q, hideDone]);
 
-  const shownRows = days.reduce((s, d) => s + d.rows.length, 0);
-  const totalRows = data.days.reduce((s, d) => s + d.rows.length, 0);
+  const shown = days.reduce((s, d) => s + d.rows.length, 0);
+  const total = data.days.reduce((s, d) => s + d.rows.length, 0);
   const hasActive = !!q || !!stage || hideDone === "1";
-  const cols = 3 + items.length * (1 + stages.length);
 
   const exportRows = useMemo(
     () =>
       days.flatMap((d) =>
-        d.rows.map((r) => ({
-          Day: d.label, MO: r.mo, BOM: r.bom, SOI: r.soi ?? "", Required: r.req,
-          ...Object.fromEntries(
-            items.flatMap((it) => [
-              [`${it} Req`, r.items[it].req],
-              ...stages.map((s) => [`${it} ${STAGE_OPTS.find((o) => o.value === s)!.short}`, stageValue(s, it, r.items[it])] as const),
-            ])
-          ),
-        }))
+        d.rows.flatMap((r) =>
+          (Object.keys(r.items) as Item[]).map((it) => ({
+            "Delivery date": d.iso, Project: r.bom, SOI: r.soi ?? "", Component: it,
+            Required: r.items[it]!.req,
+            ...Object.fromEntries(stages.map((s) => [STAGE_OPTS.find((o) => o.value === s)!.short, r.items[it]![s]])),
+          }))
+        )
       ),
-    [days, items, stages]
+    [days, stages]
   );
 
   return (
     <div className="space-y-3">
       <FilterBar
-        count={shownRows}
-        total={totalRows}
+        count={shown}
+        total={total}
         hasActive={hasActive}
         onReset={() => { setQ(""); setStage(""); setHideDone(""); }}
       >
         <PlanViewToggle value="weekly" />
         <WeekPlanPicker plans={data.planNos} value={data.planNo} />
-        <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / KVA…" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search project / SOI…" />
         <div className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
           <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Dept</span>
           <div className="flex flex-wrap gap-1">
@@ -140,116 +112,112 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
         </div>
         <label className="col-span-2 flex items-center gap-1.5 text-sm sm:col-span-1">
           <input type="checkbox" checked={hideDone === "1"} onChange={(e) => setHideDone(e.target.checked ? "1" : "")} />
-          <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Hide covered</span>
+          <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Hide finished</span>
         </label>
         <div className="col-span-2 flex items-center sm:col-span-1">
           <ExportButton rows={exportRows} filename={`weekly-plan-${data.planNo ?? "none"}.csv`} />
         </div>
       </FilterBar>
 
-      <p className="text-[11px] text-muted">
-        Every figure is <b>cumulative and uncapped</b> — all the pieces ever logged for that order, whatever week they were made in. So a
-        cell can read higher than the day&apos;s <b>Req</b>: the work was already done. <b>Req</b> is what this plan promises for that day.
-        Switch to the <b>Monthly</b> view for whole-order progress capped at the order quantity.
-      </p>
-
       {data.planNo === null ? (
         <div className="bg-surface border rounded-xl p-8 text-center text-muted">
           No weekly plans have been imported yet. Import one from the <Link href="/import" className="text-brand font-bold underline">Import</Link> page.
         </div>
+      ) : days.length === 0 ? (
+        <div className="bg-surface border rounded-xl p-8 text-center text-muted">Nothing matches these filters.</div>
       ) : (
         <div className="bg-surface border rounded-xl overflow-x-auto">
           <table className="w-full text-sm border-collapse">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-brand text-white text-center">
-                <th className="p-2 text-left">MO / Project</th>
-                <th className="p-2" title="pcs this day's promise asks for">Req</th>
-                <th className="p-2" title="how much of the day's promise its final stage has covered">Covered</th>
-                {items.map((it) => (
-                  <th key={it} colSpan={1 + stages.length} className="p-2 border-l border-border-strong">{it}</th>
-                ))}
-              </tr>
-              <tr className="bg-brand-dark text-white text-[10px]">
-                <th className="p-1" />
-                <th className="p-1" />
-                <th className="p-1" />
-                {items.map((it) => (
-                  <Fragment key={it}>
-                    <th className="p-1 font-medium border-l border-border-strong">Req</th>
-                    {stages.map((s) => (
-                      <th key={s} className="p-1 font-medium">
-                        {/* the core's finishing column reads as SHB — it is never painted */}
-                        {s === "Painting" && isPaintExempt(it) ? "SHB" : STAGE_OPTS.find((o) => o.value === s)!.short}
-                      </th>
-                    ))}
-                  </Fragment>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {days.length === 0 && (
-                <tr><td colSpan={cols} className="p-6 text-center text-muted">Nothing matches these filters.</td></tr>
-              )}
-              {days.map((d) => {
-                const isOpen = !collapsed.has(d.iso);
-                return (
-                  <Fragment key={d.iso}>
-                    <tr
-                      className={`cursor-pointer transition-colors ${d.isToday ? "bg-brand text-white" : d.isPast ? "bg-zebra" : "bg-brand-light/40"}`}
-                      onClick={() => setCollapsed((s) => { const n = new Set(s); if (n.has(d.iso)) n.delete(d.iso); else n.add(d.iso); return n; })}
-                    >
-                      <td colSpan={cols} className="p-2 font-bold">
-                        <span className={`inline-block mr-1 text-[10px] transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}>▶</span>
-                        {d.label}
-                        {d.isToday && <span className="pill bg-white/20 text-white ml-2">today</span>}
-                        <span className={`ml-2 text-xs font-medium ${d.isToday ? "opacity-90" : "text-muted"}`}>
-                          {d.rows.length} order{d.rows.length === 1 ? "" : "s"} · {d.req} pcs due
-                        </span>
-                      </td>
-                    </tr>
-                    {isOpen && d.rows.map((r) => {
-                      const cov = coverage(r);
-                      return (
-                        <tr key={`${d.iso}|${r.mo}`} className="text-center border-t hover:bg-brand-light/20 transition-colors">
-                          <td className="p-2 text-left whitespace-nowrap">
-                            {r.urgent && <span className="text-danger mr-1" title="Urgent">★</span>}
-                            <Link href={`/trace?q=${encodeURIComponent(r.mo)}`} className="font-bold hover:underline">{r.mo}</Link>
-                            <span className="block text-[11px] text-muted">
-                              {r.bom}
-                              {r.soi && ` · ${r.soi}`}
-                              {!r.known && <span className="pill pill-warn ml-1" title="This MO is not in the order registry">unknown MO</span>}
-                            </span>
-                          </td>
-                          <td className="p-2 tabnum font-bold">{r.req}</td>
-                          <td className="p-2 tabnum font-bold" style={cov === null ? undefined : pctStyle(cov)}>
-                            {cov === null ? <span className="text-muted opacity-40">—</span> : `${Math.round(cov * 100)}%`}
-                          </td>
-                          {items.map((it) => {
-                            const c = r.items[it];
-                            const off = !c.eligible || c.excluded; // N/A for this order
-                            return (
-                              <Fragment key={it}>
-                                <td className="p-1 tabnum text-xs font-bold border-l">
-                                  {off ? <span className="text-muted opacity-40" title={c.excluded ? "Marked N/A" : "Not required for this order"}>N/A</span> : c.req || <span className="text-muted opacity-40">—</span>}
-                                </td>
-                                {stages.map((s) => (
-                                  <td key={s} className="p-1 tabnum text-xs" style={{ background: off ? undefined : TINT[s] }}>
-                                    {off ? "" : stageValue(s, it, c) || <span className="text-muted opacity-40">—</span>}
-                                  </td>
-                                ))}
-                              </Fragment>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </Fragment>
-                );
-              })}
-            </tbody>
+            {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} />)}
           </table>
         </div>
       )}
     </div>
+  );
+}
+
+/** One delivery day: its date as a vertical rail down the left, its own header
+ *  row, then a row per project. Each day is its own <tbody> so the rail can
+ *  span exactly that day's rows. */
+function DayBlock({ day, stages }: { day: WeeklyPlanDay; stages: readonly Stage[] }) {
+  const pct = day.req > 0 ? day.covered / day.req : null;
+  const late = day.isPast && (pct ?? 1) < 1; // the delivery date passed unfinished
+
+  return (
+    <tbody className="border-t-4 border-border-strong">
+      <tr>
+        {/* the date rail — spans the header row plus every project row */}
+        <th
+          rowSpan={day.rows.length + 1}
+          className={`p-2 align-middle border-r-2 border-border-strong ${
+            day.isToday ? "bg-brand text-white" : late ? "bg-danger/15" : "bg-brand-light/40"
+          }`}
+        >
+          <div
+            className="mx-auto flex items-center gap-2 whitespace-nowrap font-bold"
+            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+          >
+            <span>{day.label}</span>
+            <span className={`text-[10px] font-medium tabnum ${day.isToday ? "opacity-90" : "text-muted"}`}>
+              {day.covered}/{day.req}
+            </span>
+            {day.isToday && <span className="text-[10px] font-bold uppercase tracking-wide">today</span>}
+            {late && !day.isToday && <span className="text-[10px] font-bold uppercase tracking-wide text-danger">late</span>}
+          </div>
+        </th>
+        {/* headers repeat for every day — each day asks for different components */}
+        <th className="p-2 text-left bg-brand text-white">Project (BOM)</th>
+        <th className="p-2 bg-brand text-white" title="how much of this day's promise is finished">Done</th>
+        {day.items.map((it) => (
+          <th key={it} colSpan={1 + stages.length} className="p-2 bg-brand text-white border-l border-border-strong">
+            {it}
+            <span className="block text-[9px] font-normal opacity-75">
+              Req · {stages.map((s) => (s === "finish" && isPaintExempt(it) ? "SHB" : STAGE_OPTS.find((o) => o.value === s)!.short)).join(" · ")}
+            </span>
+          </th>
+        ))}
+      </tr>
+
+      {day.rows.map((r) => {
+        const cov = coverage(r);
+        return (
+          <tr key={r.bom} className="text-center border-t hover:bg-brand-light/20 transition-colors">
+            <td className="p-2 text-left whitespace-nowrap">
+              {r.urgent && <span className="text-danger mr-1" title="Urgent">★</span>}
+              <Link href={`/trace?q=${encodeURIComponent(r.bom)}`} className="font-bold hover:underline">{r.bom}</Link>
+              {r.soi && <span className="block text-[11px] text-muted">{r.soi}</span>}
+            </td>
+            <td className="p-2 tabnum font-bold" style={cov === null ? undefined : pctStyle(cov)}>
+              {cov === null ? <span className="text-muted opacity-40">—</span> : `${Math.round(cov * 100)}%`}
+            </td>
+            {day.items.map((it) => {
+              const c = r.items[it];
+              if (!c) {
+                // this project owes nothing of this component today — say so once
+                return (
+                  <td key={it} colSpan={1 + stages.length} className="p-1 border-l text-[10px] text-muted opacity-30">
+                    not due
+                  </td>
+                );
+              }
+              return (
+                <Fragment key={it}>
+                  <td className="p-1 tabnum text-xs font-bold border-l">{c.req}</td>
+                  {stages.map((s) => (
+                    <td
+                      key={s}
+                      className={`p-1 tabnum text-xs ${c[s] >= c.req ? "font-bold" : ""}`}
+                      style={{ background: TINT[s] }}
+                    >
+                      {c[s] || <span className="text-muted opacity-40">—</span>}
+                    </td>
+                  ))}
+                </Fragment>
+              );
+            })}
+          </tr>
+        );
+      })}
+    </tbody>
   );
 }
