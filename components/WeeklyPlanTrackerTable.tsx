@@ -128,6 +128,14 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
 
   return (
     <div className="space-y-3">
+      {itemStats.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-2">
+          {itemStats.map(({ it, need, done }) => (
+            <RingCard key={it} label={it} note={doneWord(metric, it)} done={done} need={need} />
+          ))}
+        </div>
+      )}
+
       <FilterBar
         count={shown}
         total={total}
@@ -164,14 +172,6 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
           <ExportButton rows={exportRows} filename={`weekly-plan-${data.planNo ?? "none"}.csv`} />
         </div>
       </FilterBar>
-
-      {itemStats.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
-          {itemStats.map(({ it, need, done }) => (
-            <RingCard key={it} label={it} note={doneWord(metric, it)} done={done} need={need} />
-          ))}
-        </div>
-      )}
 
       {data.planNo === null ? (
         <div className="bg-surface border rounded-xl p-8 text-center text-muted">
