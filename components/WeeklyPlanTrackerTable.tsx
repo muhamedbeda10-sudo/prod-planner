@@ -25,10 +25,18 @@ const TINT: Record<Stage, string> = {
   cut: "var(--cut-tint)", weld: "var(--weld-tint)", finish: "var(--paint-tint)", delivered: "var(--dlvd-tint)",
 };
 
-const coverage = (r: WeeklyPlanRow): number | null => {
+/** Achievement is measured at ONE stage — the last one still in view. Filter to
+ *  Fabrication and the percentage becomes "how much of this day is fabricated";
+ *  pick several and the LAST in pipeline order wins, since a later stage can't
+ *  run ahead of an earlier one. Unfiltered it stays at finishing, the final
+ *  production stage — delivery lags production and would read as a false zero. */
+const metricOf = (stages: readonly Stage[], filtered: boolean): Stage =>
+  filtered ? stages[stages.length - 1] : "finish";
+
+const coverage = (r: WeeklyPlanRow, metric: Stage): number | null => {
   const cells = Object.values(r.items) as WeeklyPlanCell[];
   const req = cells.reduce((s, c) => s + c.req, 0);
-  return req > 0 ? cells.reduce((s, c) => s + c.finish, 0) / req : null;
+  return req > 0 ? cells.reduce((s, c) => s + c[metric], 0) / req : null;
 };
 
 export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
@@ -47,20 +55,32 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
     setStage(STAGE_OPTS.map((o) => o.value).filter((x) => sel.has(x)).join(","));
   };
 
+  const metric = metricOf(stages, !!stage);
+
   const days = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return data.days
       .map((d) => {
         const rows = d.rows.filter((r) => {
-          if (hideDone === "1" && (coverage(r) ?? 0) >= 1) return false;
+          if (hideDone === "1" && (coverage(r, metric) ?? 0) >= 1) return false;
           if (!needle) return true;
           return [r.bom, r.soi, r.description].some((v) => v?.toLowerCase().includes(needle));
         });
+        // the rail totals follow the SAME stage and the SAME rows as the table,
+        // so the day header can never disagree with the rows under it
+        let req = 0;
+        let covered = 0;
+        for (const r of rows) {
+          for (const c of Object.values(r.items) as WeeklyPlanCell[]) {
+            req += c.req;
+            covered += c[metric];
+          }
+        }
         // a day's columns follow the rows that survived the filters
-        return { ...d, rows, items: d.items.filter((it) => rows.some((r) => r.items[it])) };
+        return { ...d, rows, req, covered, items: d.items.filter((it) => rows.some((r) => r.items[it])) };
       })
       .filter((d) => d.rows.length > 0);
-  }, [data, q, hideDone]);
+  }, [data, q, hideDone, metric]);
 
   const shown = days.reduce((s, d) => s + d.rows.length, 0);
   const total = data.days.reduce((s, d) => s + d.rows.length, 0);
@@ -128,7 +148,7 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
       ) : (
         <div className="bg-surface border rounded-xl overflow-x-auto">
           <table className="w-full text-sm border-collapse">
-            {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} />)}
+            {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} />)}
           </table>
         </div>
       )}
@@ -139,7 +159,8 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
 /** One delivery day: its date as a vertical rail down the left, its own header
  *  row, then a row per project. Each day is its own <tbody> so the rail can
  *  span exactly that day's rows. */
-function DayBlock({ day, stages }: { day: WeeklyPlanDay; stages: readonly Stage[] }) {
+function DayBlock({ day, stages, metric }: { day: WeeklyPlanDay; stages: readonly Stage[]; metric: Stage }) {
+  const metricLabel = STAGE_OPTS.find((o) => o.value === metric)!;
   const pct = day.req > 0 ? day.covered / day.req : null;
   const late = day.isPast && (pct ?? 1) < 1; // the delivery date passed unfinished
 
@@ -167,7 +188,10 @@ function DayBlock({ day, stages }: { day: WeeklyPlanDay; stages: readonly Stage[
         </th>
         {/* headers repeat for every day — each day asks for different components */}
         <th className="p-2 text-left bg-brand text-white">Project (BOM)</th>
-        <th className="p-2 bg-brand text-white" title="how much of this day's promise is finished">Done</th>
+        <th className="p-2 bg-brand text-white" title={`How much of this day's promise ${metricLabel.label} has covered`}>
+          Done
+          <span className="block text-[9px] font-normal opacity-75">{metricLabel.short}</span>
+        </th>
         {day.items.map((it) => (
           <th key={it} colSpan={1 + stages.length} className="p-2 bg-brand text-white border-l border-border-strong">
             {it}
@@ -179,7 +203,7 @@ function DayBlock({ day, stages }: { day: WeeklyPlanDay; stages: readonly Stage[
       </tr>
 
       {day.rows.map((r) => {
-        const cov = coverage(r);
+        const cov = coverage(r, metric);
         return (
           <tr key={r.bom} className="text-center border-t hover:bg-brand-light/20 transition-colors">
             <td className="p-2 text-left whitespace-nowrap">
