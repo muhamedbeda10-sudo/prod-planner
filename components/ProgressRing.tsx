@@ -19,7 +19,7 @@ export function Ring({ pct, size = 40 }: { pct: number | null; size?: number }) 
   const color = ringColor(pct);
   return (
     <svg viewBox="0 0 40 40" width={size} height={size} className="shrink-0" role="img" aria-label={pct === null ? "no data" : `${Math.round(f * 100)} percent`}>
-      <circle cx="20" cy="20" r={R} fill="none" stroke="var(--border)" strokeWidth="4.5" />
+      <circle cx="20" cy="20" r={R} fill="none" stroke="var(--border)" strokeWidth="4" />
       {pct !== null && (
         <circle
           cx="20"
@@ -27,7 +27,7 @@ export function Ring({ pct, size = 40 }: { pct: number | null; size?: number }) 
           r={R}
           fill="none"
           stroke={color}
-          strokeWidth="4.5"
+          strokeWidth="4"
           strokeLinecap="round"
           strokeDasharray={`${f * 100} 100`}
           transform="rotate(-90 20 20)"
@@ -40,7 +40,9 @@ export function Ring({ pct, size = 40 }: { pct: number | null; size?: number }) 
         textAnchor="middle"
         dominantBaseline="central"
         className="tabnum font-extrabold"
-        style={{ fontSize: 12, fill: pct === null ? "var(--muted)" : color }}
+        // sized in viewBox units against the ring's inner hole (~27 wide), so the
+        // widest value "100%" still clears the stroke at any rendered size
+        style={{ fontSize: 9.5, fill: pct === null ? "var(--muted)" : color }}
       >
         {pct === null ? "—" : `${Math.round(f * 100)}%`}
       </text>

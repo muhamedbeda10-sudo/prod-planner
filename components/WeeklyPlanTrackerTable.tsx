@@ -127,7 +127,9 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
   );
 
   return (
-    <div className="space-y-3">
+    // the cards and filters stay put and ONLY the table scrolls — the page
+    // itself never does, so the headline is always on screen
+    <div className="space-y-3 md:flex md:flex-col md:space-y-0 md:gap-3 md:h-[calc(100vh-7rem)]">
       {itemStats.length > 0 && (
         <div className="flex flex-wrap justify-center gap-2">
           {itemStats.map(({ it, need, done }) => (
@@ -180,7 +182,7 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
       ) : days.length === 0 ? (
         <div className="bg-surface border rounded-xl p-8 text-center text-muted">Nothing matches these filters.</div>
       ) : (
-        <div className="bg-surface border rounded-xl overflow-x-auto">
+        <div className="bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0">
           <table className="w-full text-sm border-collapse">
             {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} />)}
           </table>
