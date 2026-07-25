@@ -337,7 +337,7 @@ export function MasterTrackerTable({
     // filters stay put and ONLY the table scrolls (with its header pinned).
     <div className="md:flex md:flex-col md:h-[calc(100vh-7rem)]">
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-3">
+      <div className="flex flex-wrap justify-center gap-2 mb-3">
         {itemStats.map(({ it, doneWord, need, done }) => (
           <RingCard key={it} label={it} note={doneWord} done={done} need={need} />
         ))}

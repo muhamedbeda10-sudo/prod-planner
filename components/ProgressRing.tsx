@@ -14,7 +14,7 @@ function ringColor(pct: number | null): string {
   return "var(--bad-fg)";
 }
 
-export function Ring({ pct, size = 52 }: { pct: number | null; size?: number }) {
+export function Ring({ pct, size = 40 }: { pct: number | null; size?: number }) {
   const f = pct === null ? 0 : Math.max(0, Math.min(1, pct));
   const color = ringColor(pct);
   return (
@@ -40,7 +40,7 @@ export function Ring({ pct, size = 52 }: { pct: number | null; size?: number }) 
         textAnchor="middle"
         dominantBaseline="central"
         className="tabnum font-extrabold"
-        style={{ fontSize: 11, fill: pct === null ? "var(--muted)" : color }}
+        style={{ fontSize: 12, fill: pct === null ? "var(--muted)" : color }}
       >
         {pct === null ? "—" : `${Math.round(f * 100)}%`}
       </text>
@@ -65,19 +65,18 @@ export function RingCard({
   const pct = need > 0 ? done / need : null;
   const left = Math.max(0, need - done);
   return (
-    <div className="bg-surface border rounded-xl px-3 py-2 flex items-center gap-3">
+    // a fixed width so the cards tile evenly however many there are — the row
+    // centres them rather than stretching them to fill
+    <div className="bg-surface border rounded-xl px-2.5 py-1.5 flex items-center gap-2 w-[9.5rem]">
       <Ring pct={pct} />
       <div className="min-w-0 leading-tight">
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-sm font-extrabold">{label}</span>
-          <span className="text-[10px] text-muted truncate">{note}</span>
-        </div>
-        <div className="text-lg font-extrabold tabnum">
+        <div className="text-xs font-extrabold">{label}</div>
+        <div className="text-sm font-extrabold tabnum">
           {done}
-          <span className="text-muted font-bold text-sm"> / {need}</span>
+          <span className="text-muted font-bold text-xs"> / {need}</span>
         </div>
-        <div className="text-[11px] tabnum" style={{ color: left > 0 ? "var(--warn-fg)" : "var(--ok-fg)" }}>
-          {need === 0 ? "nothing required" : left > 0 ? `${left} left` : "complete"}
+        <div className="text-[10px] tabnum truncate" style={{ color: left > 0 ? "var(--warn-fg)" : "var(--ok-fg)" }} title={note}>
+          {need === 0 ? "none required" : left > 0 ? `${left} left` : "complete"}
         </div>
       </div>
     </div>
