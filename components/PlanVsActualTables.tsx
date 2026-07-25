@@ -37,10 +37,9 @@ function Head({ first, stages }: { first: React.ReactNode; stages: readonly stri
         {stages.map((s) => (
           <th key={s} colSpan={3} className="p-2 border-l border-border-strong">{stageLabel(s)}</th>
         ))}
-        <th colSpan={3} className="p-2 border-l border-border-strong">All stages</th>
       </tr>
       <tr className="bg-brand-dark text-white text-[10px]">
-        {[...stages, "total"].map((s) => (
+        {stages.map((s) => (
           <Fragment key={s}>
             <th className="p-1 font-medium border-l border-border-strong" title="what the weekly plan promised">Plan</th>
             <th className="p-1 font-medium" title="what was actually recorded">Done</th>
@@ -53,11 +52,11 @@ function Head({ first, stages }: { first: React.ReactNode; stages: readonly stri
 }
 
 /** The per-component sub-rows under an expanded day / project. */
-function ItemRows({ items, stages, indentCols }: { items: PvaItem[]; stages: readonly string[]; indentCols: number }) {
+function ItemRows({ items, stages }: { items: PvaItem[]; stages: readonly string[] }) {
   if (items.length === 0) {
     return (
       <tr className="bg-brand-light/10">
-        <td colSpan={indentCols + stages.length * 3 + 3} className="p-2 text-center text-xs text-muted">
+        <td colSpan={1 + stages.length * 3} className="p-2 text-center text-xs text-muted">
           No component activity.
         </td>
       </tr>
@@ -67,13 +66,12 @@ function ItemRows({ items, stages, indentCols }: { items: PvaItem[]; stages: rea
     <>
       {items.map((it) => (
         <tr key={it.item} className="bg-brand-light/10 text-center">
-          <td className="p-1.5 text-left font-bold text-xs pl-7" colSpan={indentCols}>
+          <td className="p-1.5 text-left font-bold text-xs pl-7">
             <span className="text-muted mr-1">↳</span>{it.item}
           </td>
           {stages.map((s) => (
             <Cells key={s} c={it.perStage[s]} planned={PVA_PLANNED.includes(s as never)} />
           ))}
-          <Cells c={{ scheduled: it.scheduled, done: it.done }} planned />
         </tr>
       ))}
     </>
@@ -97,7 +95,7 @@ export function PlanVsActualTables({ pva, stages }: { pva: PlanVsActual; stages:
   const dayOpen = (iso: string) => expandAll || openDays.has(iso);
   const bomOpen = (bom: string) => expandAll || openBoms.has(bom);
 
-  const cols = 1 + stages.length * 3 + 3;
+  const cols = 1 + stages.length * 3;
   const projects = pva.projects.filter((p) => p.scheduled > 0 || p.done > 0);
 
   return (
@@ -137,9 +135,8 @@ export function PlanVsActualTables({ pva, stages }: { pva: PlanVsActual; stages:
                     {stages.map((s) => (
                       <Cells key={s} c={d.perStage[s]} planned={PVA_PLANNED.includes(s as never)} />
                     ))}
-                    <Cells c={{ scheduled: d.scheduled, done: d.done }} planned />
                   </tr>
-                  {open && <ItemRows items={d.items} stages={stages} indentCols={1} />}
+                  {open && <ItemRows items={d.items} stages={stages} />}
                 </Fragment>
               );
             })}
@@ -148,7 +145,6 @@ export function PlanVsActualTables({ pva, stages }: { pva: PlanVsActual; stages:
               {stages.map((s) => (
                 <Cells key={s} c={pva.totals[s]} planned={PVA_PLANNED.includes(s as never)} />
               ))}
-              <Cells c={{ scheduled: pva.scheduled, done: pva.done }} planned />
             </tr>
           </tbody>
         </table>
@@ -160,18 +156,10 @@ export function PlanVsActualTables({ pva, stages }: { pva: PlanVsActual; stages:
       </div>
       <div className="bg-surface border rounded-xl overflow-x-auto print-fit">
         <table className="w-full text-sm border-collapse">
-          <Head
-            first={
-              <>
-                <th rowSpan={2} className="p-2 text-left">BOM</th>
-                <th rowSpan={2} className="p-2 text-left">MOs</th>
-              </>
-            }
-            stages={stages}
-          />
+          <Head first={<th rowSpan={2} className="p-2 text-left">BOM</th>} stages={stages} />
           <tbody>
             {projects.length === 0 && (
-              <tr><td colSpan={cols + 1} className="p-4 text-center text-muted">Nothing planned or recorded in this period.</td></tr>
+              <tr><td colSpan={cols} className="p-4 text-center text-muted">Nothing planned or recorded in this period.</td></tr>
             )}
             {projects.map((p, i) => {
               const open = bomOpen(p.bom);
@@ -186,13 +174,11 @@ export function PlanVsActualTables({ pva, stages }: { pva: PlanVsActual; stages:
                       <Expander open={open} />
                       {p.bom}
                     </td>
-                    <td className="p-2 text-left text-xs text-muted whitespace-nowrap">{p.mos.length > 0 ? p.mos.join(", ") : "—"}</td>
                     {stages.map((s) => (
                       <Cells key={s} c={p.perStage[s]} planned={PVA_PLANNED.includes(s as never)} />
                     ))}
-                    <Cells c={{ scheduled: p.scheduled, done: p.done }} planned />
                   </tr>
-                  {open && <ItemRows items={p.items} stages={stages} indentCols={2} />}
+                  {open && <ItemRows items={p.items} stages={stages} />}
                 </Fragment>
               );
             })}

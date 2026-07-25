@@ -92,8 +92,11 @@ export default async function ReportPage({
     getDayOutputByProject(day, scoped ? ledgerDepts(deptsF) : undefined, from ?? undefined),
     getPlanNos(),
     weekNo ? getWeekSnapshot(weekNo) : getFullPlanGrouped(),
-    getPlanVsActual(from ?? day, day, shownStages),
+    // Delivery carries no plan date — comparing it to a plan is meaningless, so
+    // the plan-vs-actual section covers the plan-dated stages only
+    getPlanVsActual(from ?? day, day, shownStages.filter((s) => s !== "Delivered")),
   ]);
+  const pvaStages = shownStages.filter((s) => s !== "Delivered");
 
   const cut = deptOutputs.find((d) => d.dept === "Cut")!;
   const weld = deptOutputs.find((d) => d.dept === "Welding")!;
@@ -102,11 +105,12 @@ export default async function ReportPage({
   const paint = deptOutputs.find((d) => d.dept === "Painting")!;
   const delivered = deptOutputs.find((d) => d.dept === "Delivered")!;
 
-  // highlight = this BOM had output recorded ON the selected day
+  // the plan table lists ONLY the projects touched in the period (in the picked
+  // departments) — the rest of the registry isn't part of this report
   const workedMos = new Set(worked.mos);
   const workedBoms = new Set(worked.bomsAll);
   const hl = (r: ReportPlanRow) => workedBoms.has(r.bom) || r.mos.some((m) => workedMos.has(m));
-  const hlStyle = { background: "var(--warn-bg)" } as const;
+  const workedPlanRows = planRows.filter(hl);
 
   return (
     <div className="space-y-6">
@@ -211,7 +215,11 @@ export default async function ReportPage({
             {pva.leadWeld === 1 ? "" : "s"} before the oven date, finishing on it
           </span>
         </div>
-        <PlanVsActualTables pva={pva} stages={shownStages} />
+        {pvaStages.length === 0 ? (
+          <p className="text-sm text-muted">Delivery carries no plan date — pick a production stage to compare against the plan.</p>
+        ) : (
+          <PlanVsActualTables pva={pva} stages={pvaStages} />
+        )}
       </section>
 
       {/* Worked-on-today table: ONLY the projects with output recorded on the
@@ -232,7 +240,6 @@ export default async function ReportPage({
                 <th rowSpan={2} className="p-2 text-left">BOM</th>
                 <th rowSpan={2} className="p-2 text-left">MOs</th>
                 {ITEMS.map((it) => <th key={it} colSpan={shownStages.length} className="p-2 border-l border-border-strong">{it}</th>)}
-                <th rowSpan={2} className="p-2">Day total</th>
               </tr>
               <tr className="bg-brand-dark text-white text-[10px]">
                 {ITEMS.map((it) => shownStages.map((s, si) => (
@@ -245,7 +252,7 @@ export default async function ReportPage({
             </thead>
             <tbody>
               {dayProjects.length === 0 && (
-                <tr><td colSpan={3 + ITEMS.length * shownStages.length} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
+                <tr><td colSpan={2 + ITEMS.length * shownStages.length} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
               )}
               {dayProjects.map((p, i) => (
                 <tr key={p.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
@@ -263,7 +270,6 @@ export default async function ReportPage({
                       );
                     });
                   })}
-                  <td className="p-2 font-extrabold tabnum">{p.total}</td>
                 </tr>
               ))}
             </tbody>
@@ -271,18 +277,18 @@ export default async function ReportPage({
         </div>
       </section>
 
-      {/* The plan table — one row per BOM ("cascade" closed): totals across the
-          BOM's MOs and the whole-BOM percentage. Default = the FULL plan with
-          LIVE numbers; the dropdown switches to one week's snapshot (same live
-          numbers, measured against that week's required). Rows worked on the
-          selected day are highlighted — on screen and in the printed PDF. */}
+      {/* The plan table — one row per BOM ("cascade" closed): LIVE whole-order
+          totals for the projects TOUCHED in the period (the rest of the
+          registry is not part of this report). The dropdown switches to one
+          week's snapshot, measured against that week's required. */}
       <div className="print-break">
         <div className="flex flex-wrap items-center gap-3 mb-2">
           <h2 className="text-lg font-bold">
-            {weekNo ? `Week snapshot — Plan ${weekNo}` : "Plan tracker — all orders (live totals)"}
+            {weekNo ? `Week snapshot — Plan ${weekNo}` : "Plan tracker — projects worked on (live totals)"}
           </h2>
-          <span className="text-xs rounded-md px-2 py-1 font-semibold" style={hlStyle}>
-            highlighted = worked on {periodLabel}{scoped ? ` by ${deptsF.map((d) => stageLabel(d)).join(" + ")}` : ""}
+          <span className="pill pill-ok normal-case">
+            {workedPlanRows.length} project{workedPlanRows.length === 1 ? "" : "s"} · {periodLabel}
+            {scoped ? ` · ${deptsF.map((d) => stageLabel(d)).join(" + ")}` : ""}
           </span>
         </div>
 
@@ -300,11 +306,11 @@ export default async function ReportPage({
               </tr>
             </thead>
             <tbody>
-              {planRows.length === 0 && (
-                <tr><td colSpan={2 + ITEMS.length * 4} className="p-4 text-center text-muted">No orders in this view.</td></tr>
+              {workedPlanRows.length === 0 && (
+                <tr><td colSpan={2 + ITEMS.length * 4} className="p-4 text-center text-muted">No project was worked on in this period.</td></tr>
               )}
-              {planRows.map((r, i) => (
-                <tr key={r.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`} style={hl(r) ? hlStyle : undefined}>
+              {workedPlanRows.map((r, i) => (
+                <tr key={r.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
                   <td className="p-2 text-left font-bold whitespace-nowrap">
                     {r.bom}
                     {r.urgentCount > 0 && <span className="pill pill-bad ml-1">U×{r.urgentCount}</span>}
