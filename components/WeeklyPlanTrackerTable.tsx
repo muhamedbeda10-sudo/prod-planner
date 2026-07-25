@@ -6,7 +6,8 @@ import { pctStyle } from "@/components/ui";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle, WeekPlanPicker } from "@/components/PlanViewToggle";
 import { ExportButton } from "@/components/ExportButton";
-import { isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
+import { RingCard } from "@/components/ProgressRing";
+import { ITEMS, isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 import type { WeeklyPlanTracker, WeeklyPlanRow, WeeklyPlanCell, WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
 
 /* One weekly plan by DELIVERY DAY. The date runs down the left edge as a rail
@@ -32,6 +33,14 @@ const TINT: Record<Stage, string> = {
  *  production stage — delivery lags production and would read as a false zero. */
 const metricOf = (stages: readonly Stage[], filtered: boolean): Stage =>
   filtered ? stages[stages.length - 1] : "finish";
+
+/** What the measured stage DID to a component — the core is shot blasted, not
+ *  painted, so its finishing card has to say so. */
+const doneWord = (metric: Stage, it: Item): string =>
+  metric === "cut" ? "fabricated"
+  : metric === "weld" ? "welded"
+  : metric === "delivered" ? "delivered"
+  : isPaintExempt(it) ? "shot blasted" : "painted";
 
 const coverage = (r: WeeklyPlanRow, metric: Stage): number | null => {
   const cells = Object.values(r.items) as WeeklyPlanCell[];
@@ -81,6 +90,23 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
       })
       .filter((d) => d.rows.length > 0);
   }, [data, q, hideDone, metric]);
+
+  // one card per component the plan asks for, measured at the SAME stage as the
+  // table — required across every day in view against how much is covered
+  const itemStats = useMemo(() => {
+    const stats = ITEMS.map((it) => ({ it, need: 0, done: 0 }));
+    for (const d of days) {
+      for (const r of d.rows) {
+        for (const st of stats) {
+          const c = r.items[st.it];
+          if (!c) continue;
+          st.need += c.req;
+          st.done += c[metric];
+        }
+      }
+    }
+    return stats.filter((s) => s.need > 0);
+  }, [days, metric]);
 
   const shown = days.reduce((s, d) => s + d.rows.length, 0);
   const total = data.days.reduce((s, d) => s + d.rows.length, 0);
@@ -138,6 +164,14 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
           <ExportButton rows={exportRows} filename={`weekly-plan-${data.planNo ?? "none"}.csv`} />
         </div>
       </FilterBar>
+
+      {itemStats.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          {itemStats.map(({ it, need, done }) => (
+            <RingCard key={it} label={it} note={doneWord(metric, it)} done={done} need={need} />
+          ))}
+        </div>
+      )}
 
       {data.planNo === null ? (
         <div className="bg-surface border rounded-xl p-8 text-center text-muted">

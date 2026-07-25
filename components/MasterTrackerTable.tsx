@@ -7,6 +7,7 @@ import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { setOrderStatus, setExcludedItems, setOrderQty, setOrderPriority, pushOrderToWorklist, removeOrderMonth } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num } from "@/components/ui";
+import { RingCard } from "@/components/ProgressRing";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle } from "@/components/PlanViewToggle";
@@ -337,27 +338,8 @@ export function MasterTrackerTable({
     <div className="md:flex md:flex-col md:h-[calc(100vh-7rem)]">
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-3">
-        {itemStats.map(({ it, doneWord, need, done, remaining, pct }) => (
-          <div key={it} className="bg-surface border rounded-xl px-3 py-1.5">
-            <div className="flex items-baseline justify-between">
-              <span className="text-xs font-extrabold text-muted">{it}</span>
-              <span className="text-[11px] font-bold tabnum rounded px-1.5 py-0.5" style={pctStyle(pct)}>
-                {pct === null ? "—" : `${Math.round(pct * 100)}%`}
-              </span>
-            </div>
-            <div className="text-xl font-extrabold tabnum leading-tight" style={{ color: remaining > 0 ? "var(--warn-fg)" : "var(--ok-fg)" }}>
-              {remaining}
-            </div>
-            <div className="text-[11px] text-muted tabnum">
-              left of <b className="text-foreground">{need}</b> · {doneWord} {done}
-            </div>
-            <div className="mt-1 h-1.5 rounded bg-border overflow-hidden">
-              <div
-                className="h-full transition-all"
-                style={{ width: `${Math.min(100, (pct ?? 0) * 100)}%`, background: (pct ?? 0) >= 1 ? "var(--ok-fg)" : "var(--brand)" }}
-              />
-            </div>
-          </div>
+        {itemStats.map(({ it, doneWord, need, done }) => (
+          <RingCard key={it} label={it} note={doneWord} done={done} need={need} />
         ))}
       </div>
 
