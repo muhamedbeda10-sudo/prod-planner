@@ -251,3 +251,74 @@ export function DayPicker({ value, label = "Day:" }: { value: string; label?: st
     </label>
   );
 }
+
+/** Report period: ONE day (the default) or any range. `day` is always the last
+ *  day covered; `from` appears only in range mode, so a plain ?day= URL keeps
+ *  behaving exactly as before. */
+export function ReportPeriodPicker({ from, to }: { from: string; to: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const ranged = !!from && from !== to;
+
+  const apply = (nextFrom: string, nextTo: string) => {
+    const p = new URLSearchParams(params.toString());
+    p.set("day", nextTo);
+    if (nextFrom && nextFrom !== nextTo) p.set("from", nextFrom);
+    else p.delete("from");
+    router.push(`${pathname}?${p.toString()}`);
+  };
+
+  // presets end on the currently selected day so "last 7 days" reads back from it
+  const shift = (days: number) => {
+    const d = new Date(`${to}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - (days - 1));
+    return d.toISOString().slice(0, 10);
+  };
+
+  return (
+    <div className="inline-flex flex-wrap items-center gap-1.5 text-sm font-semibold">
+      <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Period</span>
+      {ranged && (
+        <>
+          <input
+            type="date"
+            aria-label="From"
+            className="border rounded-md px-2 py-1.5 bg-surface font-bold"
+            value={from}
+            onChange={(e) => apply(e.target.value, to)}
+          />
+          <span className="text-muted text-xs">→</span>
+        </>
+      )}
+      <input
+        type="date"
+        aria-label={ranged ? "To" : "Day"}
+        className="border rounded-md px-2 py-1.5 bg-surface font-bold"
+        value={to}
+        onChange={(e) => apply(ranged ? from : e.target.value, e.target.value)}
+      />
+      <div className="inline-flex rounded-md border overflow-hidden text-xs font-bold">
+        <button
+          type="button"
+          onClick={() => apply(to, to)}
+          className={`px-2.5 py-1.5 transition-colors ${!ranged ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}
+          title="Report on a single day"
+        >
+          1 day
+        </button>
+        {[7, 30].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => apply(shift(n), to)}
+            className={`px-2.5 py-1.5 border-l transition-colors ${ranged && from === shift(n) ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}
+            title={`The ${n} days ending on the selected date`}
+          >
+            {n}d
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}

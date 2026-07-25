@@ -6,6 +6,7 @@ import { getSettings, getPlanWindows, getGlobalGrouper, getLatestPlanNo } from "
 import { getTracker } from "./tracker";
 import { getMasterTracker, type MasterTrackerRow } from "./masterTracker";
 import type { TrackerRow } from "@/lib/domain/tracker";
+import { toISODate } from "@/lib/domain/dates";
 import { ITEMS, type Item } from "@/lib/domain/constants";
 
 export interface DailyReportResult extends DailyReport {
@@ -14,7 +15,26 @@ export interface DailyReportResult extends DailyReport {
   tracker: TrackerRow[];
 }
 
-export async function getDailyReport(day: Date): Promise<DailyReportResult> {
+/** Working days (Sat–Thu, minus factory-calendar days off) inside an inclusive
+ *  range — the multiplier the range report measures capacity against. */
+export async function countWorkingDays(from: Date, to: Date): Promise<number> {
+  const holidays = await prisma.holiday.findMany();
+  const off = new Set(holidays.map((h) => toISODate(h.date)));
+  let n = 0;
+  const d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+  const end = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
+  while (d.getTime() <= end) {
+    // getUTCDay: 5 = Friday — the one weekly day off
+    if (d.getUTCDay() !== 5 && !off.has(toISODate(d))) n++;
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return Math.max(1, n); // never divide by zero if a range is all days off
+}
+
+/** The report over ONE day, or over a range when `from` is given (the range
+ *  ends on `day`). `days` scales the capacity the efficiency % is measured
+ *  against — pass the working days the range spans. */
+export async function getDailyReport(day: Date, from?: Date, days = 1): Promise<DailyReportResult> {
   const settings = await getSettings();
   const target = settings.dailyTarget || settings.capacityPerItem || 27;
   const [orders, handover, grouper, windows] = await Promise.all([
@@ -32,7 +52,9 @@ export async function getDailyReport(day: Date): Promise<DailyReportResult> {
     handover.map((h) => ({ date: h.date, dept: h.dept, bom: h.bom, item: h.item, qty: h.qty, planNo: h.planNo })),
     day,
     target,
-    grouper
+    grouper,
+    from,
+    days
   );
 
   const planNo = findPlanForDate(windows, day, settings.leadCut) ?? (await getLatestPlanNo());
@@ -160,9 +182,10 @@ export interface DayProjectRow {
 /** The day's output grouped by project (BOM): only projects with entries ON
  *  that day, with the quantities recorded THAT DAY per component and stage.
  *  Pass a dept to scope everything to that department's work only. */
-export async function getDayOutputByProject(day: Date, depts?: string[]): Promise<DayProjectRow[]> {
-  const start = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+export async function getDayOutputByProject(day: Date, depts?: string[], from?: Date): Promise<DayProjectRow[]> {
+  const startDay = from ?? day;
+  const start = new Date(Date.UTC(startDay.getUTCFullYear(), startDay.getUTCMonth(), startDay.getUTCDate()));
+  const end = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + 24 * 60 * 60 * 1000);
   const entries = await prisma.handoverEntry.findMany({
     where: { date: { gte: start, lt: end }, ...(depts && depts.length ? { dept: { in: depts } } : {}) },
     select: { bom: true, mo: true, dept: true, item: true, qty: true },
@@ -188,9 +211,10 @@ export async function getDayOutputByProject(day: Date, depts?: string[]): Promis
   return [...rows.values()].sort((a, b) => b.total - a.total);
 }
 
-export async function getWorkedOn(day: Date, depts?: string[]): Promise<{ mos: string[]; bomsNoMo: string[]; bomsAll: string[] }> {
-  const start = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+export async function getWorkedOn(day: Date, depts?: string[], from?: Date): Promise<{ mos: string[]; bomsNoMo: string[]; bomsAll: string[] }> {
+  const startDay = from ?? day;
+  const start = new Date(Date.UTC(startDay.getUTCFullYear(), startDay.getUTCMonth(), startDay.getUTCDate()));
+  const end = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + 24 * 60 * 60 * 1000);
   const entries = await prisma.handoverEntry.findMany({
     where: { date: { gte: start, lt: end }, ...(depts && depts.length ? { dept: { in: depts } } : {}) },
     select: { mo: true, bom: true },

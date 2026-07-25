@@ -27,7 +27,7 @@ const GRAY_LIGHT = "#b8c1bc";
  *  bar per SELECTED stage (Painting is the finishing stage — its data already
  *  folds the core's shot blast in). */
 export function OutputByComponentChart({
-  cut, welding, painting, delivered, target, stages,
+  cut, welding, painting, delivered, target, stages, days = 1,
 }: {
   cut: Record<string, number>;
   welding: Record<string, number>;
@@ -36,6 +36,8 @@ export function OutputByComponentChart({
   target: number;
   /** which stage bars to draw — all four when nothing is filtered */
   stages: readonly string[];
+  /** working days the report covers — scales the per-item target line */
+  days?: number;
 }) {
   const show = (s: string) => stages.includes(s);
   // Target is PER ITEM (base 27, AR/MB 20) drawn as a stepped dashed line that
@@ -46,9 +48,9 @@ export function OutputByComponentChart({
     Welding: show("Welding") ? welding[it] ?? 0 : undefined,
     Painting: show("Painting") ? painting[it] ?? 0 : undefined,
     Delivered: show("Delivered") ? delivered?.[it] ?? 0 : undefined,
-    Target: itemDailyTarget(it, target),
+    Target: itemDailyTarget(it, target) * days,
   }));
-  const maxVal = Math.max(target, ...data.flatMap((d) => [d.Fabrication ?? 0, d.Welding ?? 0, d.Painting ?? 0, d.Delivered ?? 0]));
+  const maxVal = Math.max(target * days, ...data.flatMap((d) => [d.Fabrication ?? 0, d.Welding ?? 0, d.Painting ?? 0, d.Delivered ?? 0]));
   const label = (v: unknown) => (typeof v === "number" && v > 0 ? v : "");
 
   // one ordered source of truth for the legend/series — pipeline order, with
