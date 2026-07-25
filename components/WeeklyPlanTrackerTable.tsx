@@ -127,7 +127,9 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
   );
 
   return (
-    <div className="space-y-3">
+    // the cards and filters stay put and ONLY the table scrolls — the page
+    // itself never does, so the headline is always on screen
+    <div className="space-y-3 md:flex md:flex-col md:space-y-0 md:gap-3 md:h-[calc(100vh-7rem)]">
       {itemStats.length > 0 && (
         <div className="flex flex-wrap justify-center gap-2">
           {itemStats.map(({ it, need, done }) => (
@@ -180,7 +182,7 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
       ) : days.length === 0 ? (
         <div className="bg-surface border rounded-xl p-8 text-center text-muted">Nothing matches these filters.</div>
       ) : (
-        <div className="bg-surface border rounded-xl overflow-x-auto">
+        <div className="bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0">
           <table className="w-full text-sm border-collapse">
             {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} />)}
           </table>
@@ -201,38 +203,40 @@ function DayBlock({ day, stages, metric }: { day: WeeklyPlanDay; stages: readonl
   return (
     <tbody className="border-t-4 border-border-strong">
       <tr>
-        {/* the date rail — spans the header row plus every project row */}
+        {/* the date rail — spans BOTH header rows plus every project row. It
+            carries the date and nothing else; today and late read as colour. */}
         <th
-          rowSpan={day.rows.length + 1}
-          className={`p-2 align-middle border-r-2 border-border-strong ${
-            day.isToday ? "bg-brand text-white" : late ? "bg-danger/15" : "bg-brand-light/40"
-          }`}
+          rowSpan={day.rows.length + 2}
+          className={`p-2 align-middle border-r-2 border-border-strong ${day.isToday ? "bg-brand text-white" : "bg-brand-light/40"}`}
+          // a delivery date that passed unfinished reads red — colour alone, no extra text
+          style={late && !day.isToday ? { background: "var(--bad-bg)", color: "var(--bad-fg)" } : undefined}
         >
-          <div
-            className="mx-auto flex items-center gap-2 whitespace-nowrap font-bold"
-            style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-          >
-            <span>{day.label}</span>
-            <span className={`text-[10px] font-medium tabnum ${day.isToday ? "opacity-90" : "text-muted"}`}>
-              {day.covered}/{day.req}
-            </span>
-            {day.isToday && <span className="text-[10px] font-bold uppercase tracking-wide">today</span>}
-            {late && !day.isToday && <span className="text-[10px] font-bold uppercase tracking-wide text-danger">late</span>}
+          <div className="mx-auto font-bold whitespace-nowrap" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+            {day.label}
           </div>
         </th>
-        {/* headers repeat for every day — each day asks for different components */}
-        <th className="p-2 text-left bg-brand text-white">Project (BOM)</th>
-        <th className="p-2 bg-brand text-white" title={`How much of this day's promise ${metricLabel.label} has covered`}>
+        <th rowSpan={2} className="p-2 text-left bg-brand text-white align-middle">Project (BOM)</th>
+        <th rowSpan={2} className="p-2 bg-brand text-white align-middle" title={`How much of this day's promise ${metricLabel.label} has covered`}>
           Done
           <span className="block text-[9px] font-normal opacity-75">{metricLabel.short}</span>
         </th>
         {day.items.map((it) => (
-          <th key={it} colSpan={1 + stages.length} className="p-2 bg-brand text-white border-l border-border-strong">
-            {it}
-            <span className="block text-[9px] font-normal opacity-75">
-              Req · {stages.map((s) => (s === "finish" && isPaintExempt(it) ? "SHB" : STAGE_OPTS.find((o) => o.value === s)!.short)).join(" · ")}
-            </span>
-          </th>
+          <th key={it} colSpan={1 + stages.length} className="p-2 bg-brand text-white border-l border-border-strong">{it}</th>
+        ))}
+      </tr>
+      {/* each sub-header sits over the column it labels — one <th> each, never a
+          joined-up string that only looks aligned */}
+      <tr className="bg-brand-dark text-white text-[10px]">
+        {day.items.map((it) => (
+          <Fragment key={it}>
+            <th className="p-1 font-medium border-l border-border-strong">Req</th>
+            {stages.map((s) => (
+              <th key={s} className="p-1 font-medium">
+                {/* the core's finishing column reads as SHB — it is never painted */}
+                {s === "finish" && isPaintExempt(it) ? "SHB" : STAGE_OPTS.find((o) => o.value === s)!.short}
+              </th>
+            ))}
+          </Fragment>
         ))}
       </tr>
 
@@ -240,10 +244,9 @@ function DayBlock({ day, stages, metric }: { day: WeeklyPlanDay; stages: readonl
         const cov = coverage(r, metric);
         return (
           <tr key={r.bom} className="text-center border-t hover:bg-brand-light/20 transition-colors">
-            <td className="p-2 text-left whitespace-nowrap">
+            <td className="p-2 text-left whitespace-nowrap font-bold">
               {r.urgent && <span className="text-danger mr-1" title="Urgent">★</span>}
-              <Link href={`/trace?q=${encodeURIComponent(r.bom)}`} className="font-bold hover:underline">{r.bom}</Link>
-              {r.soi && <span className="block text-[11px] text-muted">{r.soi}</span>}
+              <Link href={`/trace?q=${encodeURIComponent(r.bom)}`} className="hover:underline" title={r.soi ?? undefined}>{r.bom}</Link>
             </td>
             <td className="p-2 tabnum font-bold" style={cov === null ? undefined : pctStyle(cov)}>
               {cov === null ? <span className="text-muted opacity-40">—</span> : `${Math.round(cov * 100)}%`}
@@ -262,11 +265,7 @@ function DayBlock({ day, stages, metric }: { day: WeeklyPlanDay; stages: readonl
                 <Fragment key={it}>
                   <td className="p-1 tabnum text-xs font-bold border-l">{c.req}</td>
                   {stages.map((s) => (
-                    <td
-                      key={s}
-                      className={`p-1 tabnum text-xs ${c[s] >= c.req ? "font-bold" : ""}`}
-                      style={{ background: TINT[s] }}
-                    >
+                    <td key={s} className={`p-1 tabnum text-xs ${c[s] >= c.req ? "font-bold" : ""}`} style={{ background: TINT[s] }}>
                       {c[s] || <span className="text-muted opacity-40">—</span>}
                     </td>
                   ))}
