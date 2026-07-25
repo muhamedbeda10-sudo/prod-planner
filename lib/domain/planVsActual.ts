@@ -12,7 +12,7 @@
 // rule the Fabrication worklist applies).
 
 import { dayNumber } from "./dates";
-import { isPaintExempt } from "./constants";
+import { ITEMS, isPaintExempt } from "./constants";
 
 /** Stages the comparison covers, in pipeline order. */
 export const PVA_STAGES = ["Cut", "Welding", "Painting", "Delivered"] as const;
@@ -41,12 +41,21 @@ export interface PvaCell {
   scheduled: number; // pcs the weekly plan promised for that stage on that day
   done: number; // pcs actually recorded that day (net of corrections)
 }
+/** One component's plan/actual inside a day or a project — the breakdown that
+ *  answers "how many of THIS item were due, and how many did we make". */
+export interface PvaItem {
+  item: string;
+  perStage: Record<string, PvaCell>;
+  scheduled: number;
+  done: number;
+}
 export interface PvaDay {
   iso: string;
   label: string; // "Sat 11/07"
   isOff: boolean; // Friday or a factory-calendar day off
   offName: string | null;
   perStage: Record<string, PvaCell>;
+  items: PvaItem[]; // only the components with a promise or output that day
   scheduled: number;
   done: number;
 }
@@ -54,6 +63,7 @@ export interface PvaProject {
   bom: string;
   mos: string[];
   perStage: Record<string, PvaCell>;
+  items: PvaItem[]; // per component inside this project
   scheduled: number;
   done: number;
 }
@@ -116,6 +126,7 @@ export function computePlanVsActual(opts: {
       isOff: dowOf(d) === 1 || holiday !== undefined, // dowOf 1 = Friday
       offName: holiday ?? null,
       perStage: Object.fromEntries(shown.map((s) => [s, cell()])),
+      items: [],
       scheduled: 0,
       done: 0,
     });
@@ -125,13 +136,43 @@ export function computePlanVsActual(opts: {
   const projectOf = (bom: string, mo: string | null) => {
     let p = projects.get(bom);
     if (!p) {
-      p = { bom, mos: [], perStage: Object.fromEntries(shown.map((s) => [s, cell()])), scheduled: 0, done: 0 };
+      p = { bom, mos: [], perStage: Object.fromEntries(shown.map((s) => [s, cell()])), items: [], scheduled: 0, done: 0 };
       projects.set(bom, p);
     }
     if (mo && !p.mos.includes(mo)) p.mos.push(mo);
     return p;
   };
   const totals: Record<string, PvaCell> = Object.fromEntries(shown.map((s) => [s, cell()]));
+
+  // per-component breakdown, accumulated alongside the roll-ups:
+  // "<dayNumber>|<item>" and "<bom>|<item>" → stage cells
+  const dayItems = new Map<string, Record<string, PvaCell>>();
+  const projItems = new Map<string, Record<string, PvaCell>>();
+  const bucket = (m: Map<string, Record<string, PvaCell>>, key: string) => {
+    let b = m.get(key);
+    if (!b) {
+      b = Object.fromEntries(shown.map((s) => [s, cell()]));
+      m.set(key, b);
+    }
+    return b;
+  };
+  /** Components in pipeline order, then anything unexpected the ledger holds. */
+  const itemOrder = (a: string, b: string) => {
+    const ia = (ITEMS as readonly string[]).indexOf(a);
+    const ib = (ITEMS as readonly string[]).indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || (a < b ? -1 : 1);
+  };
+  const collect = (m: Map<string, Record<string, PvaCell>>, prefix: string): PvaItem[] =>
+    [...m.entries()]
+      .filter(([k]) => k.startsWith(`${prefix}|`))
+      .map(([k, perStage]) => {
+        const item = k.slice(prefix.length + 1);
+        const scheduled = shown.reduce((s, st) => s + perStage[st].scheduled, 0);
+        const done = shown.reduce((s, st) => s + perStage[st].done, 0);
+        return { item, perStage, scheduled, done };
+      })
+      .filter((r) => r.scheduled !== 0 || r.done !== 0)
+      .sort((a, b) => itemOrder(a.item, b.item));
 
   // ---- scheduled: each stage's own due day, derived from the oven date ----
   for (const s of schedules) {
@@ -140,7 +181,8 @@ export function computePlanVsActual(opts: {
     const ovenD = dayNumber(s.ovenDate);
     for (const stage of shown) {
       if (!PVA_PLANNED.includes(stage)) continue; // delivery has no plan date
-      const row = days.get(ovenD - leadOf(stage));
+      const d = ovenD - leadOf(stage);
+      const row = days.get(d);
       if (!row) continue;
       row.perStage[stage].scheduled += s.qty;
       row.scheduled += s.qty;
@@ -148,6 +190,8 @@ export function computePlanVsActual(opts: {
       p.perStage[stage].scheduled += s.qty;
       p.scheduled += s.qty;
       totals[stage].scheduled += s.qty;
+      bucket(dayItems, `${d}|${s.item}`)[stage].scheduled += s.qty;
+      bucket(projItems, `${s.bom}|${s.item}`)[stage].scheduled += s.qty;
     }
   }
 
@@ -155,7 +199,8 @@ export function computePlanVsActual(opts: {
   for (const e of entries) {
     const stage = stageOfEntry(e.dept, e.item);
     if (!stage || !shown.includes(stage) || !e.qty) continue;
-    const row = days.get(dayNumber(e.date));
+    const d = dayNumber(e.date);
+    const row = days.get(d);
     if (!row) continue;
     row.perStage[stage].done += e.qty;
     row.done += e.qty;
@@ -163,7 +208,13 @@ export function computePlanVsActual(opts: {
     p.perStage[stage].done += e.qty;
     p.done += e.qty;
     totals[stage].done += e.qty;
+    bucket(dayItems, `${d}|${e.item}`)[stage].done += e.qty;
+    bucket(projItems, `${e.bom}|${e.item}`)[stage].done += e.qty;
   }
+
+  // attach each row's per-component breakdown
+  for (const [d, row] of days) row.items = collect(dayItems, String(d));
+  for (const p of projects.values()) p.items = collect(projItems, p.bom);
 
   return {
     days: [...days.values()],

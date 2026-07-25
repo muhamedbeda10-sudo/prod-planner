@@ -252,73 +252,54 @@ export function DayPicker({ value, label = "Day:" }: { value: string; label?: st
   );
 }
 
-/** Report period: ONE day (the default) or any range. `day` is always the last
- *  day covered; `from` appears only in range mode, so a plain ?day= URL keeps
- *  behaving exactly as before. */
+/** Report period: pick any From → To dates. Both default to the same day (a
+ *  single-day report); `from` only enters the URL when it differs, so a plain
+ *  ?day= link keeps behaving exactly as before. */
 export function ReportPeriodPicker({ from, to }: { from: string; to: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const ranged = !!from && from !== to;
 
   const apply = (nextFrom: string, nextTo: string) => {
+    // an inverted pick is read the sensible way round rather than rejected
+    const [f, t] = nextFrom && nextTo && nextFrom > nextTo ? [nextTo, nextFrom] : [nextFrom, nextTo];
     const p = new URLSearchParams(params.toString());
-    p.set("day", nextTo);
-    if (nextFrom && nextFrom !== nextTo) p.set("from", nextFrom);
+    p.set("day", t || f);
+    if (f && f !== t) p.set("from", f);
     else p.delete("from");
     router.push(`${pathname}?${p.toString()}`);
   };
 
-  // presets end on the currently selected day so "last 7 days" reads back from it
-  const shift = (days: number) => {
-    const d = new Date(`${to}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - (days - 1));
-    return d.toISOString().slice(0, 10);
-  };
-
   return (
     <div className="inline-flex flex-wrap items-center gap-1.5 text-sm font-semibold">
-      <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Period</span>
-      {ranged && (
-        <>
-          <input
-            type="date"
-            aria-label="From"
-            className="border rounded-md px-2 py-1.5 bg-surface font-bold"
-            value={from}
-            onChange={(e) => apply(e.target.value, to)}
-          />
-          <span className="text-muted text-xs">→</span>
-        </>
-      )}
+      <span className="text-muted text-[11px] font-bold uppercase tracking-wide">From</span>
       <input
         type="date"
-        aria-label={ranged ? "To" : "Day"}
+        aria-label="From"
+        className="border rounded-md px-2 py-1.5 bg-surface font-bold"
+        value={from}
+        max={to || undefined}
+        onChange={(e) => apply(e.target.value, to)}
+      />
+      <span className="text-muted text-[11px] font-bold uppercase tracking-wide">To</span>
+      <input
+        type="date"
+        aria-label="To"
         className="border rounded-md px-2 py-1.5 bg-surface font-bold"
         value={to}
-        onChange={(e) => apply(ranged ? from : e.target.value, e.target.value)}
+        min={from || undefined}
+        onChange={(e) => apply(from, e.target.value)}
       />
-      <div className="inline-flex rounded-md border overflow-hidden text-xs font-bold">
+      {from !== to && (
         <button
           type="button"
           onClick={() => apply(to, to)}
-          className={`px-2.5 py-1.5 transition-colors ${!ranged ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}
-          title="Report on a single day"
+          className="text-xs font-bold text-bad-fg hover:underline"
+          title="Back to a single-day report"
         >
-          1 day
+          Single day ✕
         </button>
-        {[7, 30].map((n) => (
-          <button
-            key={n}
-            type="button"
-            onClick={() => apply(shift(n), to)}
-            className={`px-2.5 py-1.5 border-l transition-colors ${ranged && from === shift(n) ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}
-            title={`The ${n} days ending on the selected date`}
-          >
-            {n}d
-          </button>
-        ))}
-      </div>
+      )}
     </div>
   );
 }

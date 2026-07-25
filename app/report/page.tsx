@@ -2,7 +2,7 @@ import Image from "next/image";
 import { Fragment } from "react";
 import { getDailyReport, getWorkedOn, getDayOutputByProject, getFullPlanGrouped, getWeekSnapshot, countWorkingDays, type ReportPlanRow } from "@/lib/server/report";
 import { getPlanVsActual } from "@/lib/server/planVsActual";
-import { PVA_PLANNED, type PlanVsActual } from "@/lib/domain/planVsActual";
+import { PlanVsActualTables } from "@/components/PlanVsActualTables";
 import { getPlanNos } from "@/lib/server/data";
 import { pctStyle, Num } from "@/components/ui";
 import { ReportPeriodPicker, WeekSnapshotPicker, DeptPicker } from "@/components/controls";
@@ -198,8 +198,21 @@ export default async function ReportPage({
       </div>
 
       {/* Plan vs actual — what the weekly plan promised each day against what
-          each department really recorded, day by day. */}
-      <PlanVsActualSection pva={pva} stages={shownStages} periodLabel={periodLabel} ranged={ranged} />
+          each department really recorded, day by day and per component. */}
+      <section className="print-keep print-break">
+        <div className="flex flex-wrap items-center gap-3 mb-2">
+          <h2 className="text-lg font-bold">Weekly plan vs actual — {periodLabel}</h2>
+          <span className="pill pill-muted tabnum">
+            Planned {pva.scheduled} · Done {pva.done}
+            {pva.scheduled > 0 && <> · {Math.round((pva.done / pva.scheduled) * 100)}%</>}
+          </span>
+          <span className="text-[11px] text-muted">
+            each stage is due on its own day: Fabrication {pva.leadCut} day{pva.leadCut === 1 ? "" : "s"} and Welding {pva.leadWeld} day
+            {pva.leadWeld === 1 ? "" : "s"} before the oven date, finishing on it
+          </span>
+        </div>
+        <PlanVsActualTables pva={pva} stages={shownStages} />
+      </section>
 
       {/* Worked-on-today table: ONLY the projects with output recorded on the
           selected day, showing THAT DAY's quantities per component and stage.
@@ -318,147 +331,6 @@ export default async function ReportPage({
         </div>
       </div>
     </div>
-  );
-}
-
-/* ---------- Plan vs actual ---------- */
-
-/** Attainment tint: a stage that met its promise reads green, a shortfall
- *  amber/red — the same language as the rest of the report. */
-function pvaPct(c: { scheduled: number; done: number }): number | null {
-  return c.scheduled > 0 ? c.done / c.scheduled : null;
-}
-
-function PvaCellView({ c, planned }: { c: { scheduled: number; done: number }; planned: boolean }) {
-  const pct = pvaPct(c);
-  return (
-    <>
-      <td className="p-1.5 text-center tabnum text-xs text-muted">
-        {planned ? (c.scheduled || <span className="opacity-40">—</span>) : <span className="opacity-40" title="delivery carries no plan date">—</span>}
-      </td>
-      <td className="p-1.5 text-center tabnum text-xs font-bold">{c.done || <span className="text-muted opacity-40">—</span>}</td>
-      <td className="p-1.5 text-center tabnum text-xs font-bold" style={pct === null ? undefined : pctStyle(pct)}>
-        {pct === null ? <span className="text-muted opacity-40">—</span> : `${Math.round(pct * 100)}%`}
-      </td>
-    </>
-  );
-}
-
-function PlanVsActualSection({ pva, stages, periodLabel, ranged }: {
-  pva: PlanVsActual;
-  stages: readonly ReportStage[];
-  periodLabel: string;
-  ranged: boolean;
-}) {
-  const cols = 1 + stages.length * 3 + 3;
-  const totalPct = pvaPct({ scheduled: pva.scheduled, done: pva.done });
-  // only the projects the plan promised something for, or that were worked on
-  const projects = pva.projects.filter((p) => p.scheduled > 0 || p.done > 0);
-
-  return (
-    <section className="print-keep print-break">
-      <div className="flex flex-wrap items-center gap-3 mb-2">
-        <h2 className="text-lg font-bold">Weekly plan vs actual — {periodLabel}</h2>
-        <span className="pill pill-muted tabnum">
-          Planned {pva.scheduled} · Done {pva.done}
-          {totalPct !== null && <> · {Math.round(totalPct * 100)}%</>}
-        </span>
-        <span className="text-[11px] text-muted">
-          each stage is due on its own day: Fabrication {pva.leadCut} day{pva.leadCut === 1 ? "" : "s"} and Welding {pva.leadWeld} day
-          {pva.leadWeld === 1 ? "" : "s"} before the oven date, finishing on it
-        </span>
-      </div>
-
-      {/* day by day */}
-      <div className="bg-surface border rounded-xl overflow-x-auto print-fit mb-4">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-brand text-white text-center">
-              <th rowSpan={2} className="p-2 text-left">Day</th>
-              {stages.map((s) => (
-                <th key={s} colSpan={3} className="p-2 border-l border-border-strong">{stageLabel(s)}</th>
-              ))}
-              <th colSpan={3} className="p-2 border-l border-border-strong">All stages</th>
-            </tr>
-            <tr className="bg-brand-dark text-white text-[10px]">
-              {[...stages, "total"].map((s) => (
-                <Fragment key={s}>
-                  <th className="p-1 font-medium border-l border-border-strong" title="what the weekly plan promised for this day">Plan</th>
-                  <th className="p-1 font-medium" title="what the department actually recorded">Done</th>
-                  <th className="p-1 font-medium">%</th>
-                </Fragment>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {pva.days.length === 0 && <tr><td colSpan={cols} className="p-4 text-center text-muted">No days in this period.</td></tr>}
-            {pva.days.map((d, i) => (
-              <tr key={d.iso} className={`text-center ${i % 2 ? "bg-zebra" : ""} ${d.isOff ? "opacity-70" : ""}`}>
-                <td className="p-2 text-left font-bold whitespace-nowrap">
-                  {d.label}
-                  {d.isOff && <span className="pill pill-muted ml-1">{d.offName ?? "off"}</span>}
-                </td>
-                {stages.map((s) => (
-                  <PvaCellView key={s} c={d.perStage[s]} planned={PVA_PLANNED.includes(s)} />
-                ))}
-                <PvaCellView c={{ scheduled: d.scheduled, done: d.done }} planned />
-              </tr>
-            ))}
-            <tr className="text-center font-extrabold border-t-2">
-              <td className="p-2 text-left">{ranged ? "Period total" : "Total"}</td>
-              {stages.map((s) => (
-                <PvaCellView key={s} c={pva.totals[s]} planned={PVA_PLANNED.includes(s)} />
-              ))}
-              <PvaCellView c={{ scheduled: pva.scheduled, done: pva.done }} planned />
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* project by project */}
-      <div className="flex flex-wrap items-center gap-3 mb-2">
-        <h3 className="font-bold text-sm">By project</h3>
-        <span className="pill pill-ok normal-case">{projects.length} project{projects.length === 1 ? "" : "s"}</span>
-      </div>
-      <div className="bg-surface border rounded-xl overflow-x-auto print-fit">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-brand text-white text-center">
-              <th rowSpan={2} className="p-2 text-left">BOM</th>
-              <th rowSpan={2} className="p-2 text-left">MOs</th>
-              {stages.map((s) => (
-                <th key={s} colSpan={3} className="p-2 border-l border-border-strong">{stageLabel(s)}</th>
-              ))}
-              <th colSpan={3} className="p-2 border-l border-border-strong">All stages</th>
-            </tr>
-            <tr className="bg-brand-dark text-white text-[10px]">
-              {[...stages, "total"].map((s) => (
-                <Fragment key={s}>
-                  <th className="p-1 font-medium border-l border-border-strong">Plan</th>
-                  <th className="p-1 font-medium">Done</th>
-                  <th className="p-1 font-medium">%</th>
-                </Fragment>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {projects.length === 0 && (
-              <tr><td colSpan={cols + 1} className="p-4 text-center text-muted">Nothing planned or recorded in this period.</td></tr>
-            )}
-            {projects.map((p, i) => (
-              <tr key={p.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
-                <td className="p-2 text-left font-bold whitespace-nowrap">{p.bom}</td>
-                <td className="p-2 text-left text-xs text-muted whitespace-nowrap">{p.mos.length > 0 ? p.mos.join(", ") : "—"}</td>
-                {stages.map((s) => (
-                  <PvaCellView key={s} c={p.perStage[s]} planned={PVA_PLANNED.includes(s)} />
-                ))}
-                <PvaCellView c={{ scheduled: p.scheduled, done: p.done }} planned />
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
   );
 }
 

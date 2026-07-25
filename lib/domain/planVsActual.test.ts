@@ -85,6 +85,31 @@ describe("computePlanVsActual — the plan's promise per day", () => {
     expect(r.done).toBe(3); // painting output is out of scope
   });
 
+  it("breaks each day AND each project down per component", () => {
+    const r = computePlanVsActual({
+      ...base,
+      schedules: [sched({ item: "TC", qty: 10 }), sched({ item: "CB", qty: 6 })],
+      entries: [
+        entry({ item: "TC", qty: 4 }), // finishing, on the oven day
+        entry({ item: "CB", qty: 6 }),
+        entry({ item: "AR", qty: 2 }), // never in the weekly grid — actual only
+      ],
+    });
+    const d = dayOf(r, ovenD);
+    expect(d.items.map((i) => i.item)).toEqual(["TC", "CB", "AR"]); // pipeline order
+    const tc = d.items.find((i) => i.item === "TC")!;
+    expect(tc.perStage.Painting.scheduled).toBe(10);
+    expect(tc.perStage.Painting.done).toBe(4);
+    expect(d.items.find((i) => i.item === "AR")!.scheduled).toBe(0); // no promise, output only
+    // the same split inside the project row
+    const p = r.projects[0];
+    expect(p.items.find((i) => i.item === "CB")!.done).toBe(6);
+    // the components add up to the row totals — no number can disagree
+    expect(p.items.reduce((s, i) => s + i.scheduled, 0)).toBe(p.scheduled);
+    expect(p.items.reduce((s, i) => s + i.done, 0)).toBe(p.done);
+    expect(d.items.reduce((s, i) => s + i.done, 0)).toBe(d.done);
+  });
+
   it("rolls up per project and marks Fridays as days off", () => {
     const r = computePlanVsActual({
       ...base,
