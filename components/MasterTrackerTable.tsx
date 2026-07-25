@@ -9,6 +9,7 @@ import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
+import { PlanViewToggle } from "@/components/PlanViewToggle";
 import { ITEMS, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
 
 type Progress = "complete" | "inprogress" | "notstarted";
@@ -361,6 +362,7 @@ export function MasterTrackerTable({
       </div>
 
       <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus("open"); setMonth(""); setStage(""); }} hasActive={hasActive}>
+        <PlanViewToggle value="monthly" />
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / KVA…" />
         <SelectFilter
           label="Plan month"
