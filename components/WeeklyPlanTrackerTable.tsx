@@ -207,21 +207,22 @@ function DayBlock({ day, stages, metric }: { day: WeeklyPlanDay; stages: readonl
             carries the date and nothing else; today and late read as colour. */}
         <th
           rowSpan={day.rows.length + 2}
-          className={`p-2 align-middle border-r-2 border-border-strong ${day.isToday ? "bg-brand text-white" : "bg-brand-light/40"}`}
+          // vertical text needs no width — a narrow rail buys the table columns
+          className={`p-0 w-7 align-middle border-r-2 border-border-strong ${day.isToday ? "bg-brand text-white" : "bg-brand-light/40"}`}
           // a delivery date that passed unfinished reads red — colour alone, no extra text
           style={late && !day.isToday ? { background: "var(--bad-bg)", color: "var(--bad-fg)" } : undefined}
         >
-          <div className="mx-auto font-bold whitespace-nowrap" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+          <div className="mx-auto py-2 text-xs font-bold whitespace-nowrap" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
             {day.label}
           </div>
         </th>
-        <th rowSpan={2} className="p-2 text-left bg-brand text-white align-middle">Project (BOM)</th>
-        <th rowSpan={2} className="p-2 bg-brand text-white align-middle" title={`How much of this day's promise ${metricLabel.label} has covered`}>
+        <th rowSpan={2} className="px-2 py-1 text-left bg-brand text-white align-middle">Project (BOM)</th>
+        <th rowSpan={2} className="px-2 py-1 bg-brand text-white align-middle" title={`How much of this day's promise ${metricLabel.label} has covered`}>
           Done
           <span className="block text-[9px] font-normal opacity-75">{metricLabel.short}</span>
         </th>
         {day.items.map((it) => (
-          <th key={it} colSpan={1 + stages.length} className="p-2 bg-brand text-white border-l border-border-strong">{it}</th>
+          <th key={it} colSpan={1 + stages.length} className="px-2 py-1 bg-brand text-white border-l border-border-strong">{it}</th>
         ))}
       </tr>
       {/* each sub-header sits over the column it labels — one <th> each, never a
@@ -229,9 +230,9 @@ function DayBlock({ day, stages, metric }: { day: WeeklyPlanDay; stages: readonl
       <tr className="bg-brand-dark text-white text-[10px]">
         {day.items.map((it) => (
           <Fragment key={it}>
-            <th className="p-1 font-medium border-l border-border-strong">Req</th>
+            <th className="px-1 py-0.5 font-medium border-l border-border-strong">Req</th>
             {stages.map((s) => (
-              <th key={s} className="p-1 font-medium">
+              <th key={s} className="px-1 py-0.5 font-medium">
                 {/* the core's finishing column reads as SHB — it is never painted */}
                 {s === "finish" && isPaintExempt(it) ? "SHB" : STAGE_OPTS.find((o) => o.value === s)!.short}
               </th>
@@ -244,11 +245,11 @@ function DayBlock({ day, stages, metric }: { day: WeeklyPlanDay; stages: readonl
         const cov = coverage(r, metric);
         return (
           <tr key={r.bom} className="text-center border-t hover:bg-brand-light/20 transition-colors">
-            <td className="p-2 text-left whitespace-nowrap font-bold">
+            <td className="px-2 py-1 text-left whitespace-nowrap font-bold">
               {r.urgent && <span className="text-danger mr-1" title="Urgent">★</span>}
               <Link href={`/trace?q=${encodeURIComponent(r.bom)}`} className="hover:underline" title={r.soi ?? undefined}>{r.bom}</Link>
             </td>
-            <td className="p-2 tabnum font-bold" style={cov === null ? undefined : pctStyle(cov)}>
+            <td className="px-2 py-1 tabnum font-bold" style={cov === null ? undefined : pctStyle(cov)}>
               {cov === null ? <span className="text-muted opacity-40">—</span> : `${Math.round(cov * 100)}%`}
             </td>
             {day.items.map((it) => {
@@ -256,16 +257,16 @@ function DayBlock({ day, stages, metric }: { day: WeeklyPlanDay; stages: readonl
               if (!c) {
                 // this project owes nothing of this component today — say so once
                 return (
-                  <td key={it} colSpan={1 + stages.length} className="p-1 border-l text-[10px] text-muted opacity-30">
+                  <td key={it} colSpan={1 + stages.length} className="px-1 py-1 border-l text-[10px] text-muted opacity-30">
                     not due
                   </td>
                 );
               }
               return (
                 <Fragment key={it}>
-                  <td className="p-1 tabnum text-xs font-bold border-l">{c.req}</td>
+                  <td className="px-1 py-1 tabnum text-xs font-bold border-l">{c.req}</td>
                   {stages.map((s) => (
-                    <td key={s} className={`p-1 tabnum text-xs ${c[s] >= c.req ? "font-bold" : ""}`} style={{ background: TINT[s] }}>
+                    <td key={s} className={`px-1 py-1 tabnum text-xs ${c[s] >= c.req ? "font-bold" : ""}`} style={{ background: TINT[s] }}>
                       {c[s] || <span className="text-muted opacity-40">—</span>}
                     </td>
                   ))}
