@@ -1,14 +1,14 @@
 import Image from "next/image";
 import { Fragment } from "react";
-import { getDailyReport, getWorkedOn, getDayOutputByProject, getFullPlanGrouped, getWeekSnapshot, countWorkingDays, type ReportPlanRow } from "@/lib/server/report";
+import { getDailyReport, getWorkedOn, getFullPlanGrouped, getWeekSnapshot, countWorkingDays, type ReportPlanRow } from "@/lib/server/report";
 import { getPlanVsActual } from "@/lib/server/planVsActual";
-import { PlanVsActualTables } from "@/components/PlanVsActualTables";
+import { PlanVsActualProjects, PlanVsActualDays } from "@/components/PlanVsActualTables";
 import { getPlanNos } from "@/lib/server/data";
 import { pctStyle, Num } from "@/components/ui";
 import { ReportPeriodPicker, WeekSnapshotPicker, DeptPicker } from "@/components/controls";
 import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
-import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, STAGE_COLOR, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, STAGE_COLOR, FINISHING_LABEL } from "@/lib/domain/constants";
 
 // display label for a report stage: Painting reads as "Painting & Shot Blast"
 const stageLabel = (dept: string) => (dept === "Painting" ? FINISHING_LABEL : deptLabel(dept));
@@ -18,10 +18,6 @@ const stageLabel = (dept: string) => (dept === "Painting" ? FINISHING_LABEL : de
 // separate Shot Blast filter — it lives inside Painting.
 const REPORT_STAGES = ["Cut", "Welding", "Painting", "Delivered"] as const;
 type ReportStage = (typeof REPORT_STAGES)[number];
-// compact stage label for the per-stage column headers
-const STAGE_SHORT: Record<string, string> = {
-  Cut: "Fab", Welding: "Weld", Painting: "Paint", Delivered: "Dlvd",
-};
 // a filter stage → the ledger dept(s) it covers: Painting also pulls the core's
 // Shot Blast entries (the core's finishing step)
 function ledgerDepts(stages: string[]): string[] {
@@ -32,17 +28,6 @@ function ledgerDepts(stages: string[]): string[] {
   }
   return [...out];
 }
-// one worked-on day value for a stage × component: the core's Painting column
-// is its Shot Blast (the rest are painted)
-function stageDayValue(stage: string, it: Item, c: { cut: number; weld: number; paint: number; shp: number; delivered: number }): number {
-  if (stage === "Cut") return c.cut;
-  if (stage === "Welding") return c.weld;
-  if (stage === "Delivered") return c.delivered;
-  return isPaintExempt(it) ? c.shp : c.paint; // Painting / finishing
-}
-const STAGE_TINT: Record<string, string> = {
-  Cut: "var(--cut-tint)", Welding: "var(--weld-tint)", Painting: "var(--paint-tint)", Delivered: "var(--dlvd-tint)",
-};
 
 export const dynamic = "force-dynamic";
 
@@ -86,10 +71,9 @@ export default async function ReportPage({
   // the stage columns actually shown (all four when nothing is picked)
   const shownStages: readonly ReportStage[] = scoped ? deptsF : REPORT_STAGES;
 
-  const [{ deptOutputs, target }, worked, dayProjects, planNos, planRows, pva] = await Promise.all([
+  const [{ deptOutputs, target }, worked, planNos, planRows, pva] = await Promise.all([
     getDailyReport(day, from ?? undefined, workingDays),
     getWorkedOn(day, scoped ? ledgerDepts(deptsF) : undefined, from ?? undefined),
-    getDayOutputByProject(day, scoped ? ledgerDepts(deptsF) : undefined, from ?? undefined),
     getPlanNos(),
     weekNo ? getWeekSnapshot(weekNo) : getFullPlanGrouped(),
     // Delivery carries no plan date — comparing it to a plan is meaningless, so
@@ -132,6 +116,27 @@ export default async function ReportPage({
           </div>
         </div>
       </div>
+
+      {/* Headline: the whole period in four numbers, read left to right. */}
+      <section className="print-keep">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Kpi label="Due in this period" value={pva.due} sub={`what the plan asked for${pvaStages.length < 3 ? " (picked stages)" : ""}`} />
+          <Kpi label="Done of it" value={pva.done} sub={pva.due > 0 ? `${Math.round((pva.done / pva.due) * 100)}% of the promise` : "nothing was due"} />
+          <Kpi
+            label="Still open"
+            value={Math.max(0, pva.due - pva.done)}
+            sub={pva.due - pva.done > 0 ? "of this period's promise" : "the period is fully covered"}
+            tone={pva.due - pva.done > 0 ? "warn" : "ok"}
+          />
+          <Kpi label="Total recorded" value={pva.output} sub="every piece logged in the period" />
+        </div>
+        <p className="text-[11px] text-muted mt-2">
+          <b>Due</b> = what the weekly plan asked each department to finish{ranged ? " in this period" : " on this day"} · <b>Done</b> = how much of
+          that promise is actually covered · <b>Recorded</b> = everything logged, promised or not. Each stage has its own due date:
+          Fabrication {pva.leadCut} day{pva.leadCut === 1 ? "" : "s"} and Welding {pva.leadWeld} day{pva.leadWeld === 1 ? "" : "s"} before the oven
+          date, finishing on it. Delivery carries no plan date, so it is reported as output only.
+        </p>
+      </section>
 
       <div className="flex items-center justify-between gap-4 no-print">
         <h2 className="text-lg font-bold min-w-0">Department output — {periodLabel}</h2>
@@ -201,96 +206,40 @@ export default async function ReportPage({
         <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} delivered={delivered.items} target={target} days={workingDays} stages={shownStages} />
       </div>
 
-      {/* Plan vs actual — what the weekly plan promised each day against what
-          each department really recorded, day by day and per component. */}
+      {/* Projects — for the work DUE in the period, how much of each component
+          is done. Replaces the old separate plan-vs-actual + worked-on tables. */}
       <section className="print-keep print-break">
-        <div className="flex flex-wrap items-center gap-3 mb-2">
-          <h2 className="text-lg font-bold">Weekly plan vs actual — {periodLabel}</h2>
-          <span className="pill pill-muted tabnum">
-            Planned {pva.scheduled} · Done {pva.done}
-            {pva.scheduled > 0 && <> · {Math.round((pva.done / pva.scheduled) * 100)}%</>}
-          </span>
-          <span className="text-[11px] text-muted">
-            each stage is due on its own day: Fabrication {pva.leadCut} day{pva.leadCut === 1 ? "" : "s"} and Welding {pva.leadWeld} day
-            {pva.leadWeld === 1 ? "" : "s"} before the oven date, finishing on it
-          </span>
-        </div>
         {pvaStages.length === 0 ? (
           <p className="text-sm text-muted">Delivery carries no plan date — pick a production stage to compare against the plan.</p>
         ) : (
-          <PlanVsActualTables pva={pva} stages={pvaStages} />
+          <PlanVsActualProjects pva={pva} stages={pvaStages} />
         )}
       </section>
 
-      {/* Worked-on-today table: ONLY the projects with output recorded on the
-          selected day, showing THAT DAY's quantities per component and stage.
-          The full plan table below keeps its yellow worked-on highlight. */}
-      <section className="print-keep">
-        <div className="flex flex-wrap items-center gap-3 mb-2">
-          <h2 className="text-lg font-bold">
-            Worked on — {periodLabel}
-            {scoped && <span className="text-brand"> · {deptsF.map((d) => stageLabel(d)).join(" + ")} only</span>}
-          </h2>
-          <span className="pill pill-ok normal-case">{dayProjects.length} project{dayProjects.length === 1 ? "" : "s"}</span>
-        </div>
-        <div className="bg-surface border rounded-xl overflow-x-auto print-fit">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-brand text-white text-center">
-                <th rowSpan={2} className="p-2 text-left">BOM</th>
-                <th rowSpan={2} className="p-2 text-left">MOs</th>
-                {ITEMS.map((it) => <th key={it} colSpan={shownStages.length} className="p-2 border-l border-border-strong">{it}</th>)}
-              </tr>
-              <tr className="bg-brand-dark text-white text-[10px]">
-                {ITEMS.map((it) => shownStages.map((s, si) => (
-                  <th key={`${it}|${s}`} className={`p-1 font-medium ${si === 0 ? "border-l border-border-strong" : ""}`}>
-                    {/* the core's finishing column reads as SHB, everything else Paint */}
-                    {s === "Painting" && isPaintExempt(it) ? "SHB" : STAGE_SHORT[s]}
-                  </th>
-                )))}
-              </tr>
-            </thead>
-            <tbody>
-              {dayProjects.length === 0 && (
-                <tr><td colSpan={2 + ITEMS.length * shownStages.length} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
-              )}
-              {dayProjects.map((p, i) => (
-                <tr key={p.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
-                  <td className="p-2 text-left font-bold whitespace-nowrap">{p.bom}</td>
-                  <td className="p-2 text-left text-xs text-muted whitespace-nowrap">{p.mos.length > 0 ? p.mos.join(", ") : "—"}</td>
-                  {ITEMS.map((it) => {
-                    const c = p.items[it] ?? { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0 };
-                    return shownStages.map((s, si) => {
-                      // the core's finishing tint is the same orange as Painting
-                      const tint = s === "Painting" && isPaintExempt(it) ? "var(--shp-tint)" : STAGE_TINT[s];
-                      return (
-                        <td key={`${it}|${s}`} className={`p-1 text-center tabnum text-xs ${si === 0 ? "border-l" : ""}`} style={{ background: tint }}>
-                          {stageDayValue(s, it, c)}
-                        </td>
-                      );
-                    });
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* Day by day — only meaningful over a multi-day period; a single day is
+          already the whole report. */}
+      {ranged && pvaStages.length > 0 && (
+        <section className="print-keep print-break">
+          <PlanVsActualDays pva={pva} stages={pvaStages} />
+        </section>
+      )}
+
 
       {/* The plan table — one row per BOM ("cascade" closed): LIVE whole-order
           totals for the projects TOUCHED in the period (the rest of the
           registry is not part of this report). The dropdown switches to one
           week's snapshot, measured against that week's required. */}
-      <div className="print-break">
-        <div className="flex flex-wrap items-center gap-3 mb-2">
-          <h2 className="text-lg font-bold">
-            {weekNo ? `Week snapshot — Plan ${weekNo}` : "Plan tracker — projects worked on (live totals)"}
+      <details className="print-break" open={false}>
+        <summary className="cursor-pointer select-none flex flex-wrap items-center gap-3 mb-2">
+          <h2 className="text-lg font-bold inline">
+            {weekNo ? `Week snapshot — Plan ${weekNo}` : "Whole-order progress (reference)"}
           </h2>
           <span className="pill pill-ok normal-case">
             {workedPlanRows.length} project{workedPlanRows.length === 1 ? "" : "s"} · {periodLabel}
             {scoped ? ` · ${deptsF.map((d) => stageLabel(d)).join(" + ")}` : ""}
           </span>
-        </div>
+          <span className="text-[11px] text-muted">all-time totals for the projects worked on — not this period&apos;s work</span>
+        </summary>
 
         <div className="bg-surface border rounded-xl overflow-x-auto print-fit">
           <table className="w-full text-sm border-collapse">
@@ -335,7 +284,19 @@ export default async function ReportPage({
             </tbody>
           </table>
         </div>
-      </div>
+      </details>
+    </div>
+  );
+}
+
+/** One headline number with its plain-language caption. */
+function Kpi({ label, value, sub, tone }: { label: string; value: number; sub: string; tone?: "ok" | "warn" }) {
+  const color = tone === "ok" ? "var(--ok-fg)" : tone === "warn" ? "var(--warn-fg)" : undefined;
+  return (
+    <div className="bg-surface border rounded-xl px-4 py-3">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-muted">{label}</div>
+      <div className="text-2xl font-extrabold tabnum leading-none mt-1" style={{ color }}>{value}</div>
+      <div className="text-[11px] text-muted mt-1">{sub}</div>
     </div>
   );
 }
