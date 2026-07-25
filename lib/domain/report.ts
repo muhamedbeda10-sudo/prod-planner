@@ -68,12 +68,20 @@ export function computeDailyReport(
   handover: ReportLogRow[],
   day: Date,
   target: number,
-  grouper: BomGrouper
+  grouper: BomGrouper,
+  /** Range mode: the FIRST day counted (defaults to `day` — a single day).
+   *  Cumulative stage totals still run up to `day`, the range END. */
+  from?: Date,
+  /** Working days the range spans — scales the capacity used for efficiency
+   *  (1 for a single day). AR/MB carry their own daily target, so the whole
+   *  capacity sum is scaled here rather than the per-item base. */
+  days = 1
 ): DailyReport {
   const dt = dayNumber(day);
+  const dFrom = from ? dayNumber(from) : dt;
 
-  // ---- read log (up to and including the day) ----
-  const deptItem = new Map<string, number>(); // dept|item today
+  // ---- read log (up to and including the range END) ----
+  const deptItem = new Map<string, number>(); // dept|item within the range
   const paintCum = new Map<string, number>(); // bg|item painting cumulative <= day
   const weldCum = new Map<string, number>(); // bg|item welding cumulative <= day
   const shpCum = new Map<string, number>(); // bg|item shot-blast cumulative <= day (final stage for CF)
@@ -94,7 +102,7 @@ export function computeDailyReport(
     if (dp === "Painting") inc(paintCum, `${bg}|${itm}`, q);
     if (dp === "Welding") inc(weldCum, `${bg}|${itm}`, q);
     if (dp === "ShotBlast") inc(shpCum, `${bg}|${itm}`, q);
-    if (dtl === dt) {
+    if (dtl >= dFrom && dtl <= dt) {
       inc(deptItem, `${dp}|${itm}`, q);
       const bk = `${bg}|${dp}`;
       if (!bomDept.has(bk)) bomDept.set(bk, new Map());
@@ -140,7 +148,7 @@ export function computeDailyReport(
     // transformer (base sheet items) so the conditional AR/MB don't skew them.
     const deptItems = ITEMS;
     const baseItems = SHEET_ITEMS;
-    const targetSum = sumItemTargets(deptItems, target);
+    const targetSum = sumItemTargets(deptItems, target) * days;
     const sets = minOf(baseItems.map((it) => items[it]));
     const baseTotal = baseItems.reduce((s, it) => s + items[it], 0);
     return {
