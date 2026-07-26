@@ -9,6 +9,8 @@ import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num } from "@/components/ui";
 import { RingCard } from "@/components/ProgressRing";
 import { ExportButton } from "@/components/ExportButton";
+import { PrintButton } from "@/components/PrintButton";
+import { PrintScope } from "@/components/PrintHeader";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle } from "@/components/PlanViewToggle";
 import { ITEMS, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
@@ -332,12 +334,32 @@ export function MasterTrackerTable({
   // filename hints at the active stage scope, so exports don't get confused
   const exportName = `plan-tracker${scoped ? "-" + stages.join("-").toLowerCase() : ""}.xlsx`;
 
+  // the printed sheet is very wide unfiltered (six components × four stages);
+  // it only fits A4 landscape at the tighter `print-tight` step. A dept-scoped
+  // view has far fewer columns and keeps the roomier size.
+  const stageCols = ITEMS.length * (scoped ? stages.length : 4);
+
   return (
     // On desktop the page fills the viewport below the nav so the cards +
     // filters stay put and ONLY the table scrolls (with its header pinned).
-    <div className="md:flex md:flex-col md:h-[calc(100vh-7rem)]">
+    // `print-flow` hands the height back to the paper: a fixed-height scroller
+    // would print one page and clip everything under it.
+    <div className="print-flow md:flex md:flex-col md:h-[calc(100vh-7rem)]">
+      {/* what the sheet is showing — filters don't survive onto paper otherwise */}
+      <PrintScope
+        parts={[
+          scoped && `Departments: ${STAGE_OPTS.filter((o) => stages.includes(o.value)).map((o) => o.label).join(", ")}`,
+          !!month && `Plan month: ${month}`,
+          `Status: ${status === "closed" ? "Closed" : status === "open" ? "Open" : "All"}`,
+          !!progress && `Progress: ${progress === "complete" ? "Complete" : progress === "inprogress" ? "In progress" : "Not started"}`,
+          urgent === "yes" && "Urgent only",
+          !!q && `Search: "${q}"`,
+          `${filtered.length} of ${rows.length} rows`,
+        ]}
+      />
+
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
-      <div className="flex flex-wrap justify-center gap-2 mb-3">
+      <div className="print-keep flex flex-wrap justify-center gap-2 mb-3">
         {itemStats.map(({ it, doneWord, need, done }) => (
           <RingCard key={it} label={it} note={doneWord} done={done} need={need} />
         ))}
@@ -396,9 +418,10 @@ export function MasterTrackerTable({
         />
         <SelectFilter label="Urgent" value={urgent} onChange={setUrgent} options={[{ value: "yes", label: "Urgent only" }]} />
         <ExportButton rows={exportRows} filename={exportName} sheetName="Tracker" />
+        <PrintButton />
       </FilterBar>
 
-      <div className="bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0">
+      <div className={`print-flow print-fit print-tracker ${stageCols > 12 ? "print-tight" : ""} bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0`}>
         <table className="w-full text-sm border-collapse">
           <thead className="sticky top-0 z-10">
             <tr className="bg-brand text-white">
@@ -566,13 +589,18 @@ export function MasterTrackerTable({
               </span>
             )}
             {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{cellErr}</span>}
+            {/* the editor itself never prints — the sheet still shows the
+                figure on record, not a blank cell mid-edit */}
+            <span className="print-only tabnum">{value}</span>
           </span>
         ) : editable ? (
           <button
             type="button"
             onClick={() => { setEditKey(k); setEditVal(String(value)); setCellErr(""); }}
             disabled={pending}
-            className="w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
+            // print-as-text: the figure IS the cell — print CSS blanks buttons
+            // inside tables, which would empty every editable stage cell
+            className="print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
             title={`${deptLabel(dept)} · ${r.mo} · ${it} — click to record: type the NEW total (lower = negative correction in today's Daily Log)`}
           >
             {value}
@@ -656,13 +684,14 @@ export function MasterTrackerTable({
               </span>
             )}
             {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{cellErr}</span>}
+            <span className="print-only tabnum">{value}</span>
           </span>
         ) : editable ? (
           <button
             type="button"
             onClick={() => { setEditKey(k); setEditVal(String(value)); setCellErr(""); }}
             disabled={pending}
-            className="w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
+            className="print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
             title={`${deptLabel(dept)} · ${gBom} · ${it} — record on the WHOLE BOM: type the new group total, the difference is distributed over its ${eligibleMos.length} MOs in order`}
           >
             {value}
@@ -690,7 +719,9 @@ export function MasterTrackerTable({
                         type="button"
                         onClick={() => setOpenMonths(openMonths === r.mo ? null : r.mo)}
                         disabled={pending}
-                        className="pill pill-warn ml-1 cursor-pointer hover:ring-2 hover:ring-brand/60 transition-all"
+                        // prints like the read-only span a non-admin sees, so
+                        // the same MO reads the same on paper for everyone
+                        className="print-as-text pill pill-warn ml-1 cursor-pointer hover:ring-2 hover:ring-brand/60 transition-all"
                         title={`Carried across ${r.months.length} monthly plans: ${r.months.join(" · ")} — click to fix a wrong tag`}
                       >
                         🔁 ×{r.months.length}
@@ -745,13 +776,14 @@ export function MasterTrackerTable({
                         </button>
                       </span>
                       {qtyErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 leading-tight">{qtyErr}</span>}
+                      <span className="print-only tabnum"><Num v={r.required} /></span>
                     </span>
                   ) : can("tracker.qty") ? (
                     <button
                       type="button"
                       onClick={() => { setQtyEditMo(r.mo); setQtyVal(String(r.required)); setQtyErr(""); }}
                       disabled={pending}
-                      className="w-full min-w-10 rounded px-1 py-1 tabnum font-bold hover:ring-2 hover:ring-brand/60 transition-all cursor-text"
+                      className="print-as-text w-full min-w-10 rounded px-1 py-1 tabnum font-bold hover:ring-2 hover:ring-brand/60 transition-all cursor-text"
                       title={`${r.mo} — click to change the required quantity (revisions that LOWER a qty are applied here manually)`}
                     >
                       <Num v={r.required} />
@@ -879,8 +911,9 @@ export function MasterTrackerTable({
                   )}
                 </td>
               </tr>
+              {/* the inline editor panels are controls, not data — off the paper */}
               {openMonths === r.mo && (
-                <tr className={inGroup ? "border-x-2 border-brand" : ""}>
+                <tr className={`no-print ${inGroup ? "border-x-2 border-brand" : ""}`}>
                   <td colSpan={tableCols} className="p-3 bg-brand-light/30 border-y">
                     <div className="flex flex-wrap items-center gap-2 text-sm">
                       <span className="font-bold text-xs">🔁 {r.mo} appears under:</span>
@@ -907,7 +940,7 @@ export function MasterTrackerTable({
                 </tr>
               )}
               {openPush === r.mo && (
-                <tr className={inGroup ? "border-x-2 border-brand" : ""}>
+                <tr className={`no-print ${inGroup ? "border-x-2 border-brand" : ""}`}>
                   <td colSpan={tableCols} className="p-3 bg-brand-light/30 border-y">
                     <form
                       onSubmit={(e) => { e.preventDefault(); submitPush(r); }}
@@ -961,7 +994,7 @@ export function MasterTrackerTable({
                 </tr>
               )}
               {openConfig === r.mo && (
-                <tr className={inGroup ? "border-x-2 border-brand" : ""}>
+                <tr className={`no-print ${inGroup ? "border-x-2 border-brand" : ""}`}>
                   <td colSpan={tableCols} className="p-3 bg-brand-light/30 border-y">
                     <form
                       onSubmit={(e) => { e.preventDefault(); saveExcluded(r, e.currentTarget); }}

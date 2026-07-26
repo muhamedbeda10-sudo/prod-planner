@@ -2,9 +2,11 @@ import { getMasterTracker } from "@/lib/server/masterTracker";
 import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
 import { MasterTrackerTable } from "@/components/MasterTrackerTable";
 import { WeeklyPlanTrackerTable } from "@/components/WeeklyPlanTrackerTable";
+import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
+import { toDisplayDate } from "@/lib/domain/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -24,20 +26,36 @@ export default async function TrackerPage({
   searchParams: Promise<{ view?: string; plan?: string }>;
 }) {
   const sp = await searchParams;
+  // the paper header is rendered here (a server component) so the issue date is
+  // fixed at render time — a `new Date()` inside the client tables would put a
+  // different day in the client HTML than the server's and trip hydration
+  const issued = toDisplayDate(new Date());
 
   if (sp.view === "weekly") {
     // an unknown ?plan= falls back to the newest plan inside the loader
     const data = await getWeeklyPlanTracker(Number(sp.plan) || null);
-    return <WeeklyPlanTrackerTable data={data} />;
+    return (
+      <>
+        <PrintHeader
+          title="Plan Tracker — Weekly"
+          subtitle={data.planNo === null ? undefined : `Weekly plan ${data.planNo}`}
+          date={issued}
+        />
+        <WeeklyPlanTrackerTable data={data} />
+      </>
+    );
   }
 
   const [rows, user] = await Promise.all([getMasterTracker(), getCurrentUser()]);
   return (
-    <MasterTrackerTable
-      rows={rows}
-      features={user ? [...FEATURE_KEYS.filter((k) => hasPerm(user, k)), ...(user.isAdmin ? ["admin"] : [])] : []}
-      // stage columns (Fab/Weld/Paint/SHB/Dlvd) each need their own tracker permission
-      editableDepts={user ? [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE].filter((d) => hasPerm(user, trackerPermKey(d))) : []}
-    />
+    <>
+      <PrintHeader title="Plan Tracker — Monthly" date={issued} />
+      <MasterTrackerTable
+        rows={rows}
+        features={user ? [...FEATURE_KEYS.filter((k) => hasPerm(user, k)), ...(user.isAdmin ? ["admin"] : [])] : []}
+        // stage columns (Fab/Weld/Paint/SHB/Dlvd) each need their own tracker permission
+        editableDepts={user ? [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE].filter((d) => hasPerm(user, trackerPermKey(d))) : []}
+      />
+    </>
   );
 }
