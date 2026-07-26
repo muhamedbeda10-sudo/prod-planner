@@ -6,6 +6,8 @@ import { pctStyle } from "@/components/ui";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle, WeekPlanPicker } from "@/components/PlanViewToggle";
 import { ExportButton } from "@/components/ExportButton";
+import { PrintButton } from "@/components/PrintButton";
+import { PrintScope } from "@/components/PrintHeader";
 import { RingCard } from "@/components/ProgressRing";
 import { ITEMS, isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 import type { WeeklyPlanTracker, WeeklyPlanRow, WeeklyPlanCell, WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
@@ -126,12 +128,27 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
     [days, stages]
   );
 
+  const metricLabel = STAGE_OPTS.find((o) => o.value === metric)!.label;
+
   return (
     // the cards and filters stay put and ONLY the table scrolls — the page
-    // itself never does, so the headline is always on screen
-    <div className="space-y-3 md:flex md:flex-col md:space-y-0 md:gap-3 md:h-[calc(100vh-7rem)]">
+    // itself never does, so the headline is always on screen. `print-flow`
+    // hands the height back to the paper: a fixed-height scroller would print
+    // one page and clip everything under it.
+    <div className="print-flow space-y-3 md:flex md:flex-col md:space-y-0 md:gap-3 md:h-[calc(100vh-7rem)]">
+      {/* what the sheet is showing — filters don't survive onto paper otherwise */}
+      <PrintScope
+        parts={[
+          `Measured at: ${metricLabel}`,
+          !!stage && `Departments: ${STAGE_OPTS.filter((o) => stages.includes(o.value)).map((o) => o.short).join(", ")}`,
+          !!q && `Search: "${q}"`,
+          hideDone === "1" && "Finished rows hidden",
+          `${shown} of ${total} rows`,
+        ]}
+      />
+
       {itemStats.length > 0 && (
-        <div className="flex flex-wrap justify-center gap-2">
+        <div className="print-keep flex flex-wrap justify-center gap-2">
           {itemStats.map(({ it, need, done }) => (
             <RingCard key={it} label={it} note={doneWord(metric, it)} done={done} need={need} />
           ))}
@@ -170,8 +187,9 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
           <input type="checkbox" checked={hideDone === "1"} onChange={(e) => setHideDone(e.target.checked ? "1" : "")} />
           <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Hide finished</span>
         </label>
-        <div className="col-span-2 flex items-center sm:col-span-1">
+        <div className="col-span-2 flex items-center gap-2 sm:col-span-1">
           <ExportButton rows={exportRows} filename={`weekly-plan-${data.planNo ?? "none"}.csv`} />
+          <PrintButton />
         </div>
       </FilterBar>
 
@@ -182,7 +200,7 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
       ) : days.length === 0 ? (
         <div className="bg-surface border rounded-xl p-8 text-center text-muted">Nothing matches these filters.</div>
       ) : (
-        <div className="bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0">
+        <div className="print-flow print-fit print-tracker bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0">
           <table className="w-full text-sm border-collapse">
             {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} />)}
           </table>

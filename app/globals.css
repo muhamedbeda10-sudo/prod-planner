@@ -360,6 +360,41 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
 }
 
 @media print {
+  /* Paper is always LIGHT. Without this a dark-theme user prints white text on
+     white paper (and, since we force print-color-adjust: exact below, floods
+     every surface with ink). Same values as :root — restated here because
+     html.dark outranks :root and there is no way to "unset" a custom property
+     back to a lower-specificity rule. */
+  html.dark {
+    --background: #f6f7f7;
+    --surface: #ffffff;
+    --surface-2: #f2f4f3;
+    --foreground: #1a2420;
+    --muted: #64716b;
+    --border: #e4e8e6;
+    --border-strong: #cdd5d1;
+    --brand: #1a8150;
+    --brand-dark: #136041;
+    --brand-light: #e4f2ea;
+    --accent: #1a8150;
+    --accent-gray: #717171;
+    --ok-bg: #dcefe4;
+    --ok-fg: #136041;
+    --warn-bg: #fff2cc;
+    --warn-fg: #7f6000;
+    --bad-bg: #fbd9d3;
+    --bad-fg: #9c2006;
+    --cut-tint: #e0efe4;
+    --weld-tint: #dfeaf3;
+    --paint-tint: #f3ecdf;
+    --dlvd-tint: #ece3f7;
+    --shp-tint: #f3ecdf;
+    --zebra: #f6f8f7;
+    color-scheme: light;
+  }
+  html.dark .recharts-cartesian-grid line { stroke: #cdd5d1; }
+  html.dark .recharts-text { fill: #1a2420; }
+
   .no-print { display: none !important; }
   .print-only { display: block !important; }
   body { background: #fff; }
@@ -368,8 +403,17 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   main { padding: 7mm 9mm !important; }
   /* the app frame never belongs on paper */
   header.no-print, .no-print { display: none !important; }
-  /* worklists print as clean read-only sheets: no inputs, no action buttons */
-  table input, table button, table textarea { display: none !important; }
+  /* worklists print as clean read-only sheets: no inputs, no action buttons —
+     EXCEPT where the button IS the value. The Plan Tracker records progress by
+     clicking the figure itself, so blanking those would empty every editable
+     stage cell on the sheet; `.print-as-text` opts them back in and they print
+     exactly as they look on screen (Tailwind's preflight already strips the
+     browser's button chrome). */
+  table input, table textarea, table button:not(.print-as-text) { display: none !important; }
+  /* those buttons carry screen-sized hit targets (min-w-8, px-1) that would set
+     the width of all two dozen stage columns on paper — on the sheet they are
+     text, so they take exactly the width of their figure */
+  table button.print-as-text { min-width: 0 !important; width: auto !important; padding: 0 !important; }
 
   /* keep highlights and stage tints in the PDF — browsers strip backgrounds
      by default when printing */
@@ -392,6 +436,46 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   .print-fit th, .print-fit td { padding: 4px 5px !important; white-space: normal !important; word-break: break-word; }
   .print-fit .text-xs { font-size: 10.5px !important; }
   .pill { font-size: 8px !important; padding: 1px 4px !important; }
+
+  /* .print-fit's word-break:break-word drops a cell's min-content width to one
+     CHARACTER, which is what lets a very wide table squeeze onto the page — but
+     on the Plan Tracker it also shredded short values ("Required" → "REQ UIRE
+     D", "1600" → "160 0"). The tracker fits without that, so it wraps between
+     words only: overflow-wrap breaks a word solely when it still overflows,
+     and headers never break at all. */
+  .print-tracker th, .print-tracker td { word-break: normal !important; overflow-wrap: break-word !important; }
+  .print-tracker th { white-space: nowrap !important; }
+  /* the app's screen header style (`main table thead th`) pins 11px + letter
+     spacing ON THE CELL, so it survives the table's print font-size. Unwinding
+     the tracking is worth ~5px per header and keeps the row on the page. */
+  .print-tracker table thead th { letter-spacing: 0 !important; }
+
+  /* the monthly sheet unfiltered is the widest table in the app — six
+     components × four stage columns each, plus the summary columns. It only
+     fits A4 landscape a step below .print-fit, so the component applies this
+     ONLY while the columns are actually that wide (a dept-filtered view keeps
+     the roomier size). */
+  .print-tight table { font-size: 8.5px !important; }
+  .print-tight table thead th { font-size: 8.5px !important; }
+  .print-tight th, .print-tight td { padding: 2px 3px !important; }
+  .print-tight .text-xs, .print-tight .text-sm { font-size: 8.5px !important; }
+  .print-tight .pill { font-size: 7px !important; padding: 0 3px !important; }
+
+  /* Screen layout pins the tracker to the viewport (h-[calc(100vh-7rem)]) and
+     scrolls the table inside its card. On paper that clips everything past the
+     first page, so `print-flow` hands the height back to the document and lets
+     the table run over as many pages as it needs. */
+  .print-flow {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    flex: none !important;
+  }
+  /* a sticky header inside a print flow lands in the wrong place — the repeated
+     thead (below) is what pins it on paper */
+  main thead { position: static !important; }
 
   /* the department-output summary has only a few rows and the whole landscape
      page to breathe — print it big and clear */
@@ -416,6 +500,10 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
 
   /* crisp borders on white paper */
   main table tbody td { border-bottom: 1px solid #cbd5cf !important; }
+
+  /* whichever row the pointer happens to rest on when Print is pressed must not
+     come out tinted — in dark mode that row printed as a black band */
+  main table tbody tr:hover { background-color: transparent !important; }
 }
 
 /* ---- sticky table headers: long tables scroll inside their card and the
