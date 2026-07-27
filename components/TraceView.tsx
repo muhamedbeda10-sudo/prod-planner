@@ -9,6 +9,7 @@ import {
   StickyNote, Undo2,
 } from "lucide-react";
 import type { TraceResult, TracePipelineRow } from "@/lib/server/trace";
+import { trackerHref, traceHref } from "@/lib/domain/links";
 import { deptLabel, FINISHING_LABEL } from "@/lib/domain/constants";
 import { TraceSearch } from "@/components/TraceSearch";
 import { ExportButton } from "@/components/ExportButton";
@@ -24,9 +25,13 @@ import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons
 
 const pctOf = (v: number, req: number) => (req > 0 ? Math.round((v / req) * 100) : 0);
 
-export function TraceView({ t, planNo }: { t: TraceResult; planNo: number }) {
+export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: number; view?: string }) {
   const router = useRouter();
   const [sidebar, setSidebar] = useState(true);
+
+  // every link out of here keeps the origin, so hopping BOM → sibling → MO and
+  // then back still lands on the tracker table the reader started from
+  const trace = (target: { mo?: string | null; bom?: string | null }) => traceHref(target, planNo, view);
 
   const remaining = Math.max(0, t.requiredSets - t.completeSets);
   const completion = t.requiredSets > 0 ? pctOf(t.completeSets, t.requiredSets) : null;
@@ -75,7 +80,7 @@ export function TraceView({ t, planNo }: { t: TraceResult; planNo: number }) {
               <RotateCw size={14} />
             </button>
             <ExportButton rows={exportLedger} filename={`trace-${t.key}.xlsx`} sheetName="Trace" />
-            <Link href={planNo ? `/tracker?plan=${planNo}` : "/tracker"} className="btn btn-ghost btn-sm whitespace-nowrap">← Tracker</Link>
+            <Link href={trackerHref(planNo, view)} className="btn btn-ghost btn-sm whitespace-nowrap">← Tracker</Link>
             <button
               type="button"
               onClick={() => setSidebar((s) => !s)}
@@ -117,7 +122,7 @@ export function TraceView({ t, planNo }: { t: TraceResult; planNo: number }) {
               <dl className="divide-y divide-border/60">
                 {t.scope === "mo" ? (
                   <Prop k="BOM">
-                    <Link href={`/trace?plan=${planNo}&bom=${encodeURIComponent(t.bom)}`} className="text-accent font-bold hover:underline">{t.bom}</Link>
+                    <Link href={trace({ bom: t.bom })} className="text-accent font-bold hover:underline">{t.bom}</Link>
                   </Prop>
                 ) : (
                   <Prop k="Orders">{t.members.length || "—"}{t.members.length > 0 && openOrders < t.members.length ? ` · ${openOrders} open` : ""}</Prop>
@@ -131,7 +136,7 @@ export function TraceView({ t, planNo }: { t: TraceResult; planNo: number }) {
                   <Prop k="Family">
                     <span className="flex flex-wrap justify-end gap-x-2">
                       {t.siblings.map((s) => (
-                        <Link key={s} href={`/trace?plan=${planNo}&bom=${encodeURIComponent(s)}`} className="text-accent font-semibold hover:underline">{s}</Link>
+                        <Link key={s} href={trace({ bom: s })} className="text-accent font-semibold hover:underline">{s}</Link>
                       ))}
                     </span>
                   </Prop>
@@ -147,7 +152,7 @@ export function TraceView({ t, planNo }: { t: TraceResult; planNo: number }) {
                     return (
                       <li key={m.mo} className="px-4 py-2.5 hover:bg-brand-light/20 transition-colors">
                         <div className="flex items-center justify-between gap-2">
-                          <Link href={`/trace?plan=${planNo}&mo=${encodeURIComponent(m.mo)}`} className="font-bold text-accent hover:underline text-xs">{m.mo}</Link>
+                          <Link href={trace({ mo: m.mo })} className="font-bold text-accent hover:underline text-xs">{m.mo}</Link>
                           <span className="flex items-center gap-1.5">
                             {m.urgent && <Chip tone="bad">U</Chip>}
                             {m.priority && <span title="Priority">⭐</span>}

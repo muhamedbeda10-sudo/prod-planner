@@ -10,6 +10,7 @@ import { PrintButton } from "@/components/PrintButton";
 import { PrintScope } from "@/components/PrintHeader";
 import { RingCard } from "@/components/ProgressRing";
 import { ITEMS, isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
+import { traceHref } from "@/lib/domain/links";
 import type { WeeklyPlanTracker, WeeklyPlanRow, WeeklyPlanCell, WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
 
 /* One weekly plan by DELIVERY DAY. The date runs down the left edge as a rail
@@ -202,7 +203,7 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
       ) : (
         <div className="print-flow print-fit print-tracker bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0">
           <table className="w-full text-sm border-collapse">
-            {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} />)}
+            {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} planNo={data.planNo ?? 0} />)}
           </table>
         </div>
       )}
@@ -213,7 +214,7 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
 /** One delivery day: its date as a vertical rail down the left, its own header
  *  row, then a row per project. Each day is its own <tbody> so the rail can
  *  span exactly that day's rows. */
-function DayBlock({ day, stages, metric }: { day: WeeklyPlanDay; stages: readonly Stage[]; metric: Stage }) {
+function DayBlock({ day, stages, metric, planNo }: { day: WeeklyPlanDay; stages: readonly Stage[]; metric: Stage; planNo: number }) {
   const metricLabel = STAGE_OPTS.find((o) => o.value === metric)!;
   const pct = day.req > 0 ? day.covered / day.req : null;
   const late = day.isPast && (pct ?? 1) < 1; // the delivery date passed unfinished
@@ -265,7 +266,15 @@ function DayBlock({ day, stages, metric }: { day: WeeklyPlanDay; stages: readonl
           <tr key={r.bom} className="text-center border-t hover:bg-brand-light/20 transition-colors">
             <td className="px-2 py-1 text-left whitespace-nowrap font-bold">
               {r.urgent && <span className="text-danger mr-1" title="Urgent">★</span>}
-              <Link href={`/trace?q=${encodeURIComponent(r.bom)}`} className="hover:underline" title={r.soi ?? undefined}>{r.bom}</Link>
+              {/* the code opens its full Trace — the same all-plan history the
+                  monthly view opens, and the trip back returns to THIS week */}
+              <Link
+                href={traceHref({ bom: r.bom }, planNo, "weekly")}
+                className="text-accent hover:underline"
+                title={`${r.soi ? r.soi + " · " : ""}Open the full trace for ${r.bom}`}
+              >
+                {r.bom}
+              </Link>
             </td>
             <td className="px-2 py-1 tabnum font-bold" style={cov === null ? undefined : pctStyle(cov)}>
               {cov === null ? <span className="text-muted opacity-40">—</span> : `${Math.round(cov * 100)}%`}
