@@ -1,0 +1,49 @@
+name: CI
+
+# The safety net for changes made straight on GitHub. Vercel already refuses to
+# deploy code that does not compile, but it never runs the unit suite — so a
+# change that quietly breaks a CALCULATION (tracker completion, OTD, the Excel
+# import, delivery dates) would deploy happily and be wrong on screen. This job
+# runs that suite on every change instead.
+#
+# No database needed: the domain tests are pure functions.
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# a newer push to the same branch makes the running check pointless
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, types and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` (not install) so the check runs against the locked versions,
+      # exactly like a fresh machine would get
+      - name: Install dependencies
+        run: npm ci
+
+      # lib/server/* is typed against the generated Prisma client, so the types
+      # have to exist before anything type-checks
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:run
