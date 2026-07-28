@@ -11,11 +11,12 @@ import { ITEMS, DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE, deptLabel } from "@/lib
 // every ledger stage the log can carry — production depts + tracker-only stages
 const LOG_DEPTS = [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE];
 
-// yesterday (UTC) — the log's quick "just the previous day" preset; the same
-// day the Daily Report opens on by default, so both screens agree
-function yesterdayISO(): string {
+// A calendar day (UTC) offset from today — the log's exact-day presets.
+// 0 = today (what has been recorded so far), -1 = yesterday (the day the Daily
+// Report opens on by default, so both screens agree).
+function dayISO(offset: number): string {
   const d = new Date();
-  d.setUTCDate(d.getUTCDate() - 1);
+  d.setUTCDate(d.getUTCDate() + offset);
   return d.toISOString().slice(0, 10);
 }
 
@@ -55,9 +56,12 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
   // default window: the log opens on the LAST 3 recorded days, not everything —
   // presets and the custom range below widen it
   const [period, setPeriod] = useSavedFilter("log.period", "3");
-  // "yesterday" is a fixed calendar day, computed once (impure Date only in the
-  // lazy initializer, never during render)
-  const [yISO] = useState(yesterdayISO);
+  // the exact-day presets are fixed calendar days, computed once (impure Date
+  // only in the lazy initializer, never during render)
+  const [tISO] = useState(() => dayISO(0));
+  const [yISO] = useState(() => dayISO(-1));
+  // "t" and "y" pin ONE day; the numeric presets are rolling windows instead
+  const exactISO = period === "t" ? tISO : period === "y" ? yISO : "";
 
   // picking a preset clears the custom range; typing a date takes over from
   // the preset — one always clearly wins
@@ -72,12 +76,12 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
     [rows]
   );
   const cutoffISO = useMemo(() => {
-    // "y" (yesterday) is an exact single day, handled directly in the filter
-    if (from || to || !period || period === "y" || !newestISO) return "";
+    // the exact-day presets are handled directly in the filter, not as a window
+    if (from || to || !period || exactISO || !newestISO) return "";
     const d = new Date(`${newestISO}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() - (Number(period) - 1));
     return d.toISOString().slice(0, 10);
-  }, [from, to, period, newestISO]);
+  }, [from, to, period, exactISO, newestISO]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
@@ -85,13 +89,13 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
       if (needle && !r.bom.toUpperCase().includes(needle)) return false;
       if (dept && r.dept !== dept) return false;
       if (item && r.item !== item) return false;
-      if (period === "y" && !from && !to && r.date !== yISO) return false;
+      if (exactISO && !from && !to && r.date !== exactISO) return false;
       if (cutoffISO && r.date < cutoffISO) return false;
       if (from && r.date < from) return false;
       if (to && r.date > to) return false;
       return true;
     });
-  }, [rows, q, dept, item, from, to, period, yISO, cutoffISO]);
+  }, [rows, q, dept, item, from, to, exactISO, cutoffISO]);
 
   const hasActive = !!(q || dept || item || from || to || period !== "3");
   const reset = () => { setQ(""); setDept(""); setItem(""); setFrom(""); setTo(""); setPeriod("3"); };
@@ -183,6 +187,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
           value={period}
           onChange={pickPeriod}
           options={[
+            { value: "t", label: "Today" },
             { value: "y", label: "Yesterday" },
             { value: "3", label: "Last 3 days" },
             { value: "7", label: "Last 7 days" },
