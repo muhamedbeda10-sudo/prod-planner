@@ -187,9 +187,10 @@ export default async function ReportPage({
             <thead>
               <tr className="bg-brand text-white text-center">
                 <th rowSpan={2} className="p-2 text-left">BOM</th>
-                <th rowSpan={2} className="p-2 text-left">MOs</th>
+                {/* the MO list and the day total are deliberately not columns:
+                    the sheet is read per project per component. The total still
+                    drives the row ORDER (biggest day first) — see report.ts. */}
                 {ITEMS.map((it) => <th key={it} colSpan={shownStages.length} className="p-2 border-l border-border-strong">{it}</th>)}
-                <th rowSpan={2} className="p-2">Day total</th>
               </tr>
               <tr className="bg-brand-dark text-white text-[10px]">
                 {ITEMS.map((it) => shownStages.map((s, si) => (
@@ -202,12 +203,11 @@ export default async function ReportPage({
             </thead>
             <tbody>
               {dayProjects.length === 0 && (
-                <tr><td colSpan={3 + ITEMS.length * shownStages.length} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
+                <tr><td colSpan={1 + ITEMS.length * shownStages.length} className="p-4 text-center text-muted">No output recorded on this day.</td></tr>
               )}
               {dayProjects.map((p, i) => (
                 <tr key={p.bom} className={`text-center ${i % 2 ? "bg-zebra" : ""}`}>
                   <td className="p-2 text-left font-bold whitespace-nowrap">{p.bom}</td>
-                  <td className="p-2 text-left text-xs text-muted whitespace-nowrap">{p.mos.length > 0 ? p.mos.join(", ") : "—"}</td>
                   {ITEMS.map((it) => {
                     const c = p.items[it] ?? { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0 };
                     return shownStages.map((s, si) => {
@@ -220,7 +220,6 @@ export default async function ReportPage({
                       );
                     });
                   })}
-                  <td className="p-2 font-extrabold tabnum">{p.total}</td>
                 </tr>
               ))}
             </tbody>
