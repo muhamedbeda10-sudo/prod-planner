@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { getDailyReport, getDayOutputByProject } from "@/lib/server/report";
+import { getDailyReport, getDayOutputByProject, getEarnedHours } from "@/lib/server/report";
 import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, DeptPicker } from "@/components/controls";
 import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
@@ -72,10 +72,18 @@ export default async function ReportPage({
   // the stage columns actually shown (all four when nothing is picked)
   const shownStages: readonly ReportStage[] = scoped ? deptsF : REPORT_STAGES;
 
-  const [{ deptOutputs, target }, dayProjects] = await Promise.all([
+  const [{ deptOutputs, target }, dayProjects, earned] = await Promise.all([
     getDailyReport(day),
     getDayOutputByProject(day, scoped ? ledgerDepts(deptsF) : undefined),
+    getEarnedHours(day, scoped ? ledgerDepts(deptsF) : undefined),
   ]);
+  // which earned-hours cards the stage filter leaves in view (Finishing =
+  // Painting + the core's Shot Blast, same grouping as everywhere else)
+  const earnedStages = (["Cut", "Welding", "Finishing"] as const).filter(
+    (s) => !scoped || deptsF.includes(s === "Finishing" ? "Painting" : s)
+  );
+  const uncoveredPcs = earned.totalPcs - earned.coveredPcs;
+  const fmtHrs = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-US");
 
   const cut = deptOutputs.find((d) => d.dept === "Cut")!;
   const weld = deptOutputs.find((d) => d.dept === "Welding")!;
@@ -156,6 +164,41 @@ export default async function ReportPage({
           </tbody>
         </table>
       </div>
+
+      {/* Standard hours earned — the day's output weighted by the engineering
+          timings (per KVA class), so big tanks count as the work they are. A
+          piece with no matching standard time earns 0 and is called out. */}
+      {earned.totalPcs > 0 && (
+        <div className="bg-surface border rounded-xl px-4 py-3 print-keep">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-muted">
+              Standard hours earned
+              <span className="block normal-case font-normal text-[10px]">from the engineering timings, by KVA</span>
+            </div>
+            {earnedStages.map((s) => (
+              <div key={s} className="flex items-baseline gap-1.5">
+                <span
+                  className="inline-block w-2.5 h-2.5 rounded-sm self-center"
+                  style={{ background: STAGE_COLOR[s === "Finishing" ? "Painting" : s] }}
+                />
+                <span className="text-sm font-semibold text-muted">{s === "Finishing" ? FINISHING_LABEL : stageLabel(s)}</span>
+                <span className="text-lg font-extrabold tabnum">{fmtHrs(earned.byStage[s])}</span>
+                <span className="text-[10px] text-muted">hrs</span>
+              </div>
+            ))}
+            <div className="flex items-baseline gap-1.5 sm:ml-auto">
+              <span className="text-sm font-semibold text-muted">Total</span>
+              <span className="text-xl font-extrabold tabnum text-brand">{fmtHrs(earned.total)}</span>
+              <span className="text-[10px] text-muted">hrs</span>
+            </div>
+          </div>
+          {uncoveredPcs > 0 && (
+            <p className="mt-1.5 text-[11px] text-warn-fg">
+              ⚠ {uncoveredPcs} of {earned.totalPcs} pcs earned no hours — their orders have no FG code or KVA to match a standard time, so the totals above UNDERCOUNT the day.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* The single quantities chart — values on the bars, dashed target line.
           The target value lives HERE in the header, never inside the plot, so

@@ -8,6 +8,7 @@ import { getMasterTracker, type MasterTrackerRow } from "./masterTracker";
 import type { TrackerRow } from "@/lib/domain/tracker";
 import { toISODate } from "@/lib/domain/dates";
 import { ITEMS, type Item } from "@/lib/domain/constants";
+import { tierForOrder, stdHoursFor } from "@/lib/domain/standardTimes";
 
 export interface DailyReportResult extends DailyReport {
   target: number;
@@ -209,6 +210,66 @@ export async function getDayOutputByProject(day: Date, depts?: string[], from?: 
     row.total += e.qty;
   }
   return [...rows.values()].sort((a, b) => b.total - a.total);
+}
+
+/** The day's output weighted by STANDARD MAN-HOURS (the engineering timings
+ *  sheet): a 3000 KVA tank counts ~2.6× a 100 KVA one instead of "1 piece".
+ *  Resolution per order: the sheet's own FG map first, the numeric KVA as
+ *  fallback. `coveredPcs`/`totalPcs` says how much of the day's output had a
+ *  matching standard time — hours are UNDERcounted when orders lack both an FG
+ *  code and a KVA, and the page says so instead of showing a false total. */
+export interface EarnedHours {
+  byStage: Record<string, number>; // Cut | Welding | Finishing (Paint + SHB)
+  total: number;
+  coveredPcs: number; // pcs that resolved to a KVA class (AR/MB excluded)
+  totalPcs: number; // every production-stage pc recorded in the window
+}
+
+export async function getEarnedHours(day: Date, depts?: string[], from?: Date): Promise<EarnedHours> {
+  const startDay = from ?? day;
+  const start = new Date(Date.UTC(startDay.getUTCFullYear(), startDay.getUTCMonth(), startDay.getUTCDate()));
+  const end = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + 24 * 60 * 60 * 1000);
+  const [entries, orders] = await Promise.all([
+    prisma.handoverEntry.findMany({
+      where: { date: { gte: start, lt: end }, ...(depts && depts.length ? { dept: { in: depts } } : {}) },
+      select: { bom: true, mo: true, dept: true, item: true, qty: true },
+    }),
+    prisma.masterOrder.findMany({ select: { mo: true, bom: true, fgCode: true, kva: true } }),
+  ]);
+
+  // resolve a KVA class per MO — and per BOM for the ledger's MO-less rows
+  // (BOM-level entries predate per-MO recording); a BOM whose orders disagree
+  // on the class resolves to none rather than guessing
+  const moTier = new Map<string, number | null>();
+  const bomTier = new Map<string, number | null>();
+  for (const o of orders) {
+    const tier = tierForOrder(o);
+    moTier.set(o.mo, tier);
+    if (!bomTier.has(o.bom)) bomTier.set(o.bom, tier);
+    else if (bomTier.get(o.bom) !== tier) bomTier.set(o.bom, null);
+  }
+
+  const byStage: Record<string, number> = { Cut: 0, Welding: 0, Finishing: 0 };
+  let total = 0;
+  let coveredPcs = 0;
+  let totalPcs = 0;
+  for (const e of entries) {
+    if (e.dept === "Delivered") continue; // not a production stage
+    // AR/MB carry no standard times — keep them out of the coverage figure so
+    // "uncovered" always means "order not resolved", never "component unpriced"
+    const gated = e.item === "AR" || e.item === "MB";
+    const tier = (e.mo ? moTier.get(e.mo) : bomTier.get(e.bom)) ?? null;
+    if (!gated) {
+      totalPcs += e.qty;
+      if (tier !== null) coveredPcs += e.qty;
+    }
+    const hrs = stdHoursFor(e.dept, e.item, tier) * e.qty;
+    if (hrs <= 0) continue;
+    const stage = e.dept === "Cut" ? "Cut" : e.dept === "Welding" ? "Welding" : "Finishing";
+    byStage[stage] += hrs;
+    total += hrs;
+  }
+  return { byStage, total, coveredPcs, totalPcs };
 }
 
 export async function getWorkedOn(day: Date, depts?: string[], from?: Date): Promise<{ mos: string[]; bomsNoMo: string[]; bomsAll: string[] }> {
