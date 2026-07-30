@@ -71,15 +71,15 @@ model PlanSchedule {
 // "Done" everywhere = Welding output. Cut gates Welding.
 // Rows are IMMUTABLE once written for reallocation purposes; edits are audited.
 model HandoverEntry {
-  id        Int      @id @default(autoincrement())
-  date      DateTime // work date (day-only granularity)
-  dept      String // Cut | Welding
-  bom       String // raw as entered (may be auto-corrected at entry time)
-  bomRaw    String? // original text before normalization, if corrected
-  mo        String? // manufacturing order, when recorded per-MO (execution sheet)
-  item      String // CF | TC | TN | CB
-  qty       Float
-  planNo    Int
+  id     Int      @id @default(autoincrement())
+  date   DateTime // work date (day-only granularity)
+  dept   String // Cut | Welding
+  bom    String // raw as entered (may be auto-corrected at entry time)
+  bomRaw String? // original text before normalization, if corrected
+  mo     String? // manufacturing order, when recorded per-MO (execution sheet)
+  item   String // CF | TC | TN | CB
+  qty    Float
+  planNo Int
 
   // audit
   source    String   @default("manual") // manual | import | seed | reallocation
@@ -98,7 +98,7 @@ model HandoverEntry {
 // silent edit of the handover log). Raw HandoverEntry rows stay immutable;
 // approved moves are applied as a derived adjustment layer.
 model ReallocationMove {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   planNo    Int
   fromBom   String
   toBom     String
@@ -107,9 +107,9 @@ model ReallocationMove {
   qty       Float
   date      DateTime
   reason    String
-  status    String   @default("proposed") // proposed | approved | rejected
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status    String    @default("proposed") // proposed | approved | rejected
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   decidedBy String?
   decidedAt DateTime?
 
@@ -121,39 +121,39 @@ model ReallocationMove {
 // existing MOs are left untouched, new MOs are added. This is the general
 // orders list; weekly plans only contribute delivery schedules.
 model MasterOrder {
-  id        Int      @id @default(autoincrement())
-  mo        String   @unique
-  soi       String?
-  urgent    Boolean  @default(false)
-  customer  String?
-  fgCode    String?
-  bom       String
-  kva       String?
-  rating    String?
-  secItem   String?
-  planQty   Float    @default(0)
-  colorRal  String?
-  remarks   String?
-  source    String? // which monthly plan (month label) FIRST added it
+  id            Int       @id @default(autoincrement())
+  mo            String    @unique
+  soi           String?
+  urgent        Boolean   @default(false)
+  customer      String?
+  fgCode        String?
+  bom           String
+  kva           String?
+  rating        String?
+  secItem       String?
+  planQty       Float     @default(0)
+  colorRal      String?
+  remarks       String?
+  source        String? // which monthly plan (month label) FIRST added it
   // EVERY monthly plan the MO appeared in (CSV of month labels) — a carried-over
   // order shows under each of its months in the tracker filter, with a badge
-  months    String   @default("")
-  status    String   @default("open") // open | closed
+  months        String    @default("")
+  status        String    @default("open") // open | closed
   // OSP — quantities outsourced per component (made outside, not by our depts).
   // They never appear in the dept worklists and count as covered in the tracker.
-  ospCF     Float    @default(0)
-  ospTC     Float    @default(0)
-  ospTN     Float    @default(0)
-  ospCB     Float    @default(0)
+  ospCF         Float     @default(0)
+  ospTC         Float     @default(0)
+  ospTN         Float     @default(0)
+  ospCB         Float     @default(0)
   // Components this order does NOT need at all (CSV of CF/TC/TN/CB). The plan
   // sheets can't express this — it is set manually on the tracker.
   excludedItems String?
   // Marked IMPORTANT by the admin: shows in a dedicated priority table on top
   // of every dept worklist until its work is done.
-  priority  Boolean  @default(false)
-  closedAt  DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  priority      Boolean   @default(false)
+  closedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([bom])
   @@index([status])
@@ -298,9 +298,41 @@ model Session {
 
 // Global settings (Lists!J2:J5). Single row (id = 1).
 model Settings {
-  id              Int   @id @default(1)
-  leadCut         Int   @default(4)
-  leadWeld        Int   @default(1)
-  capacityPerItem Int   @default(27)
-  dailyTarget     Int   @default(27)
+  id              Int @id @default(1)
+  leadCut         Int @default(4)
+  leadWeld        Int @default(1)
+  capacityPerItem Int @default(27)
+  dailyTarget     Int @default(27)
+}
+
+// ---- Standard man-hours (the engineering timings sheet, editable in Admin →
+// Standard Times; seeded by migration from "Final Timings 3rd industrial") ----
+
+// Hours ONE tank of a KVA class costs each stage. The per-component split is
+// derived from the sheet's engineering shares at read time (lib/domain/stdEngine).
+model StdTime {
+  id        Int      @id @default(autoincrement())
+  kva       Int      @unique // KVA class: 100, 200, ... (admin can add classes)
+  cutMh     Float // laser + bending + fin folding
+  weldMh    Float
+  shbMh     Float
+  paintMh   Float
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+// FG code → KVA class (the sheet's product table). The FG map outranks the
+// order's numeric KVA — the sheet files in-between sizes inconsistently.
+model StdFgMap {
+  id  Int    @id @default(autoincrement())
+  fg  String @unique // normalized: uppercase alphanumerics only
+  kva Int
+}
+
+// Available capacity per production stage, in man-hours per WORKING DAY —
+// what the plan's required hours are measured against.
+model StageCapacity {
+  id        Int      @id @default(autoincrement())
+  dept      String   @unique // Cut | Welding | ShotBlast | Painting
+  mhPerDay  Float
+  updatedAt DateTime @default(now()) @updatedAt
 }

@@ -3,6 +3,8 @@ import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
 import { MasterTrackerTable } from "@/components/MasterTrackerTable";
 import { WeeklyPlanTrackerTable } from "@/components/WeeklyPlanTrackerTable";
 import { PrintHeader } from "@/components/PrintHeader";
+import { PlanCapacityCard } from "@/components/PlanCapacityCard";
+import { getPlanCapacity } from "@/lib/server/planCapacity";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
@@ -34,6 +36,7 @@ export default async function TrackerPage({
   if (sp.view === "weekly") {
     // an unknown ?plan= falls back to the newest plan inside the loader
     const data = await getWeeklyPlanTracker(Number(sp.plan) || null);
+    const capacity = await getPlanCapacity(data.planNo);
     return (
       <>
         <PrintHeader
@@ -41,7 +44,10 @@ export default async function TrackerPage({
           subtitle={data.planNo === null ? undefined : `Weekly plan ${data.planNo}`}
           date={issued}
         />
-        <WeeklyPlanTrackerTable data={data} />
+        <div className="space-y-3">
+          <PlanCapacityCard check={capacity} />
+          <WeeklyPlanTrackerTable data={data} />
+        </div>
       </>
     );
   }
