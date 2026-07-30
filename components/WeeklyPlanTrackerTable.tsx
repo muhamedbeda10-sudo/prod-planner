@@ -51,7 +51,7 @@ const coverage = (r: WeeklyPlanRow, metric: Stage): number | null => {
   return req > 0 ? cells.reduce((s, c) => s + c[metric], 0) / req : null;
 };
 
-export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
+export function WeeklyPlanTrackerTable({ data, capacityCard }: { data: WeeklyPlanTracker; capacityCard?: React.ReactNode }) {
   const [q, setQ] = useSavedFilter("wtracker.q");
   const [stage, setStage] = useSavedFilter("wtracker.stage");
   const [hideDone, setHideDone] = useSavedFilter("wtracker.hideDone");
@@ -148,11 +148,20 @@ export function WeeklyPlanTrackerTable({ data }: { data: WeeklyPlanTracker }) {
         ]}
       />
 
-      {itemStats.length > 0 && (
-        <div className="print-keep flex flex-wrap justify-center gap-2">
-          {itemStats.map(({ it, need, done }) => (
-            <RingCard key={it} label={it} note={doneWord(metric, it)} done={done} need={need} />
-          ))}
+      {/* one shared row: the capacity check and the component rings side by
+          side, wrapping on narrow screens — neither owns a whole line */}
+      {(capacityCard || itemStats.length > 0) && (
+        <div className="print-keep flex flex-wrap items-center justify-center gap-2">
+          {capacityCard}
+          {/* the rings travel as ONE group, so on a narrower screen the whole
+              group drops below the capacity card instead of splitting */}
+          {itemStats.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-2">
+              {itemStats.map(({ it, need, done }) => (
+                <RingCard key={it} label={it} note={doneWord(metric, it)} done={done} need={need} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
