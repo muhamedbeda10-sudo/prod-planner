@@ -20,8 +20,8 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
   const overloaded = check.stages.filter((s) => (s.load ?? 0) > 1);
 
   return (
-    <div className="print-keep bg-surface border rounded-xl px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+    <div className="print-keep bg-surface border rounded-xl px-3.5 py-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
         <div className="text-[11px] font-bold uppercase tracking-wide text-muted">
           Capacity check
           <span className="block normal-case font-normal text-[10px]">

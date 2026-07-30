@@ -44,10 +44,7 @@ export default async function TrackerPage({
           subtitle={data.planNo === null ? undefined : `Weekly plan ${data.planNo}`}
           date={issued}
         />
-        <div className="space-y-3">
-          <PlanCapacityCard check={capacity} />
-          <WeeklyPlanTrackerTable data={data} />
-        </div>
+        <WeeklyPlanTrackerTable data={data} capacityCard={<PlanCapacityCard check={capacity} />} />
       </>
     );
   }
