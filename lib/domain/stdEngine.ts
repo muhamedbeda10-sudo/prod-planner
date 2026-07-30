@@ -8,7 +8,12 @@
 // rather than asking anyone to maintain a 4×3 matrix per class by hand.
 
 import { isPaintExempt, type Item } from "./constants";
-import { KVA_TIERS, TIER_ITEM_HOURS, type TierStageHours, type ItemStdHours } from "./standardTimes";
+import { KVA_TIERS, TIER_ITEM_HOURS, type TierStageHours } from "./standardTimes";
+
+/** Per-piece hours of ONE component across the chain. EVERY component passes
+ *  Shot Blast before its finish — the paint-exempt core ends there (paint = 0),
+ *  the painted components (TC/TN/CB) continue to the paint line. */
+export interface ItemStageHours { cut: number; weld: number; shb: number; paint: number }
 
 export interface StdData {
   tiers: Record<number, TierStageHours>; // KVA class -> stage hours per tank
@@ -46,8 +51,14 @@ export function tierForOrder(data: StdData, order: { fgCode?: string | null; kva
 
 /** Per-piece hours for each base component of a class: the class's (possibly
  *  admin-edited) stage totals, split by the engineering shares of the nearest
- *  SEED class. Row/column sums always return the class's own totals. */
-export function itemHoursFor(data: StdData, tier: number): Record<string, ItemStdHours> {
+ *  SEED class. Row/column sums always return the class's own totals.
+ *
+ *  Finishing splits across BOTH finishing work centres, because every
+ *  component passes Shot Blast before paint: the core's whole finishing IS its
+ *  shot blast, and the class's remaining SHB hours spread over the painted
+ *  components in proportion to their finishing shares — so Σshb = the class's
+ *  shb total and Σpaint = its paint total. */
+export function itemHoursFor(data: StdData, tier: number): Record<string, ItemStageHours> {
   const t = data.tiers[tier];
   if (!t) return {};
   // shares come from the seed matrix — nearest seed class when the admin
@@ -56,31 +67,51 @@ export function itemHoursFor(data: StdData, tier: number): Record<string, ItemSt
   const seed = TIER_ITEM_HOURS[shareTier];
   const seedFab = Object.values(seed).reduce((s, p) => s + p.cut + p.weld, 0);
   const seedFin = Object.values(seed).reduce((s, p) => s + p.finish, 0);
-  const out: Record<string, ItemStdHours> = {};
+
+  // first pass: fab split + each item's total finishing
+  const finish: Record<string, number> = {};
+  const out: Record<string, ItemStageHours> = {};
   for (const [it, p] of Object.entries(seed)) {
     const fabShare = (p.cut + p.weld) / seedFab;
-    const finShare = p.finish / seedFin;
-    out[it] = {
-      cut: fabShare * t.cut,
-      weld: fabShare * t.weld,
-      finish: finShare * (t.shb + t.paint),
-    };
+    finish[it] = (p.finish / seedFin) * (t.shb + t.paint);
+    out[it] = { cut: fabShare * t.cut, weld: fabShare * t.weld, shb: 0, paint: 0 };
+  }
+
+  // second pass: the finishing → shb/paint split. The core takes its whole
+  // finishing as shot blast; what remains of the class's SHB hours spreads
+  // over the painted components, and their paint is the rest of their finishing.
+  const coreShb = Object.keys(seed)
+    .filter((it) => isPaintExempt(it as Item))
+    .reduce((s, it) => s + finish[it], 0);
+  const paintedFin = Object.keys(seed)
+    .filter((it) => !isPaintExempt(it as Item))
+    .reduce((s, it) => s + finish[it], 0);
+  const shbLeft = Math.max(0, t.shb - coreShb);
+  for (const it of Object.keys(seed)) {
+    if (isPaintExempt(it as Item)) {
+      out[it].shb = finish[it]; // the core is never painted
+    } else {
+      const shb = paintedFin > 0 ? (finish[it] / paintedFin) * shbLeft : 0;
+      out[it].shb = Math.min(shb, finish[it]);
+      out[it].paint = finish[it] - out[it].shb;
+    }
   }
   return out;
 }
 
 /** Standard hours ONE PIECE of `item` earns when `dept` records it — 0 when
- *  there is no figure (AR/MB, unresolved order, non-production stage). */
+ *  there is no figure (AR/MB, unresolved order, non-production stage).
+ *  A Painting entry earns shb + paint: the app records no separate shot-blast
+ *  step for painted components, so "painted" MEANS "shot blasted then painted"
+ *  and the entry carries both work centres' hours. */
 export function stdHoursFor(data: StdData, dept: string, item: string, tier: number | null): number {
   if (tier === null) return 0;
   const per = itemHoursFor(data, tier)[item];
   if (!per) return 0; // AR / MB — no standard times
   if (dept === "Cut") return per.cut;
   if (dept === "Welding") return per.weld;
-  // finishing: the paint-exempt core earns its hours at Shot Blast, everything
-  // else at Painting — the opposite pairing earns nothing
-  if (dept === "ShotBlast") return isPaintExempt(item as Item) ? per.finish : 0;
-  if (dept === "Painting") return isPaintExempt(item as Item) ? 0 : per.finish;
+  if (dept === "ShotBlast") return isPaintExempt(item as Item) ? per.shb : 0;
+  if (dept === "Painting") return isPaintExempt(item as Item) ? 0 : per.shb + per.paint;
   return 0; // Delivered and anything else — not a production stage
 }
 
@@ -106,8 +137,10 @@ export function requiredHoursForLines(
     if (!per) continue;
     byStage.Cut += per.cut * l.qty;
     byStage.Welding += per.weld * l.qty;
-    if (isPaintExempt(l.item as Item)) byStage.ShotBlast += per.finish * l.qty;
-    else byStage.Painting += per.finish * l.qty;
+    // EVERY component loads the shot-blast station before its finish — the
+    // painted ones then load the paint line with the rest of their finishing
+    byStage.ShotBlast += per.shb * l.qty;
+    byStage.Painting += per.paint * l.qty;
   }
   return { byStage, uncoveredPcs, totalPcs };
 }
