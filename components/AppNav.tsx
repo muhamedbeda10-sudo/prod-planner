@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
-  FileDown, GitCompareArrows, Puzzle, CalendarDays, Users,
+  FileDown, GitCompareArrows, Puzzle, CalendarDays, Users, Timer,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -103,7 +103,7 @@ export function AppNav({ user }: { user: NavUser }) {
     const base = match ?? href;
     return base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");
   };
-  const adminActive = ADMIN.some((l) => isActive(l.href)) || isActive("/admin/users");
+  const adminActive = ADMIN.some((l) => isActive(l.href)) || isActive("/admin/users") || isActive("/admin/standard-times");
 
   return (
     <header className="no-print sticky top-0 z-30 bg-brand text-white shadow-md">
@@ -224,9 +224,24 @@ export function AppNav({ user }: { user: NavUser }) {
                   ))}
                   {user.isAdmin && (
                     <Link
-                      href="/admin/users"
+                      href="/admin/standard-times"
                       role="menuitem"
                       className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors border-t mt-1 pt-2.5 ${
+                        isActive("/admin/standard-times") ? "bg-brand-light" : "hover:bg-surface-2"
+                      }`}
+                    >
+                      <Timer size={17} className={`mt-0.5 shrink-0 ${isActive("/admin/standard-times") ? "text-brand" : "text-muted"}`} />
+                      <span>
+                        <span className={`block text-sm font-bold ${isActive("/admin/standard-times") ? "text-brand" : ""}`}>Standard Times & Capacity</span>
+                        <span className="block text-xs text-muted mt-0.5">Man-hours per KVA class, stage capacity & FG map</span>
+                      </span>
+                    </Link>
+                  )}
+                  {user.isAdmin && (
+                    <Link
+                      href="/admin/users"
+                      role="menuitem"
+                      className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors ${
                         isActive("/admin/users") ? "bg-brand-light" : "hover:bg-surface-2"
                       }`}
                     >
@@ -335,6 +350,17 @@ export function AppNav({ user }: { user: NavUser }) {
                   {l.label}
                 </Link>
               ))}
+              {user.isAdmin && (
+                <Link
+                  href="/admin/standard-times"
+                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
+                    isActive("/admin/standard-times") ? "bg-brand-light text-brand" : "hover:bg-surface-2"
+                  }`}
+                >
+                  <Timer size={19} className={isActive("/admin/standard-times") ? "text-brand" : "text-muted"} />
+                  Standard Times & Capacity
+                </Link>
+              )}
               {user.isAdmin && (
                 <Link
                   href="/admin/users"

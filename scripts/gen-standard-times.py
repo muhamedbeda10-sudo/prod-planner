@@ -115,6 +115,11 @@ mat_lines = ",\n".join(
 ts = f"""// GENERATED from "Final Timings 3rd industrial" (TANK sheet) — do not edit by
 // hand; regenerate with scripts/gen-standard-times.py <timings.xlsx>.
 //
+// DATA ONLY. At runtime the app reads these figures from the DATABASE (they
+// are seeded there by migration, and edited in Admin → Standard Times); this
+// module remains the engineering source of the per-item SHARES, and the seed
+// for a fresh database. The functions live in lib/domain/stdEngine.ts.
+//
 // Standard MAN-HOURS for one transformer tank, by KVA class:
 //   • TIER_HOURS   — hours per STAGE per tank (Cut = laser + bending + fin
 //     folding, straight from the sheet's SUMMARY 2 work centres)
@@ -133,8 +138,6 @@ ts = f"""// GENERATED from "Final Timings 3rd industrial" (TANK sheet) — do no
 //     borrows the 3000 class's SHARES scaled to its own totals.
 //   • AR and MB have NO standard times in the sheet; entries for them weigh 0
 //     hours until engineering supplies figures.
-
-import {{ isPaintExempt, type Item }} from "./constants";
 
 export interface TierStageHours {{ cut: number; weld: number; shb: number; paint: number }}
 export interface ItemStdHours {{ cut: number; weld: number; finish: number }}
@@ -155,48 +158,6 @@ export const TIER_ITEM_HOURS: Record<number, Record<string, ItemStdHours>> = {{
 export const FG_TIER: Record<string, number> = {{
 {fg_lines},
 }};
-
-const normFg = (code: string): string => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
-
-/** Nearest KVA class for a numeric KVA (ties go DOWN — matches the sheet's
- *  bias for in-between sizes more often than rounding up would). */
-export function nearestTier(kva: number): number {{
-  let best: number = KVA_TIERS[0];
-  for (const t of KVA_TIERS) {{
-    if (Math.abs(t - kva) < Math.abs(best - kva)) best = t;
-  }}
-  return best;
-}}
-
-/** Resolve an order to its KVA class: the sheet's own FG map first (exact,
- *  then without a trailing M-revision), the numeric KVA as fallback. */
-export function tierForOrder(order: {{ fgCode?: string | null; kva?: string | null }}): number | null {{
-  if (order.fgCode) {{
-    const key = normFg(order.fgCode);
-    if (FG_TIER[key] !== undefined) return FG_TIER[key];
-    const base = key.replace(/M\\d+$/, "");
-    if (base !== key && FG_TIER[base] !== undefined) return FG_TIER[base];
-  }}
-  const kva = Number(String(order.kva ?? "").replace(/[^0-9.]/g, ""));
-  if (Number.isFinite(kva) && kva > 0) return nearestTier(kva);
-  return null;
-}}
-
-/** Standard hours ONE PIECE of `item` earns when `dept` records it — 0 when
- *  the sheet has no figure (AR/MB, or a dept outside the production chain). */
-export function stdHoursFor(dept: string, item: string, tier: number | null): number {{
-  if (tier === null) return 0;
-  const per = TIER_ITEM_HOURS[tier]?.[item];
-  if (!per) return 0; // AR / MB — no standard times in the sheet
-  if (dept === "Cut") return per.cut;
-  if (dept === "Welding") return per.weld;
-  // finishing: the paint-exempt core earns its hours at Shot Blast, everything
-  // else at Painting — the opposite pairing earns nothing (and the ledger
-  // never records it anyway)
-  if (dept === "ShotBlast") return isPaintExempt(item as Item) ? per.finish : 0;
-  if (dept === "Painting") return isPaintExempt(item as Item) ? 0 : per.finish;
-  return 0; // Delivered and anything else — not a production stage
-}}
 """
 open(OUT, "w").write(ts)
 print("wrote", OUT)

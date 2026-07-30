@@ -8,7 +8,8 @@ import { getMasterTracker, type MasterTrackerRow } from "./masterTracker";
 import type { TrackerRow } from "@/lib/domain/tracker";
 import { toISODate } from "@/lib/domain/dates";
 import { ITEMS, type Item } from "@/lib/domain/constants";
-import { tierForOrder, stdHoursFor } from "@/lib/domain/standardTimes";
+import { tierForOrder, stdHoursFor } from "@/lib/domain/stdEngine";
+import { getStdData } from "./standardTimes";
 
 export interface DailyReportResult extends DailyReport {
   target: number;
@@ -229,12 +230,13 @@ export async function getEarnedHours(day: Date, depts?: string[], from?: Date): 
   const startDay = from ?? day;
   const start = new Date(Date.UTC(startDay.getUTCFullYear(), startDay.getUTCMonth(), startDay.getUTCDate()));
   const end = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + 24 * 60 * 60 * 1000);
-  const [entries, orders] = await Promise.all([
+  const [entries, orders, std] = await Promise.all([
     prisma.handoverEntry.findMany({
       where: { date: { gte: start, lt: end }, ...(depts && depts.length ? { dept: { in: depts } } : {}) },
       select: { bom: true, mo: true, dept: true, item: true, qty: true },
     }),
     prisma.masterOrder.findMany({ select: { mo: true, bom: true, fgCode: true, kva: true } }),
+    getStdData(),
   ]);
 
   // resolve a KVA class per MO — and per BOM for the ledger's MO-less rows
@@ -243,7 +245,7 @@ export async function getEarnedHours(day: Date, depts?: string[], from?: Date): 
   const moTier = new Map<string, number | null>();
   const bomTier = new Map<string, number | null>();
   for (const o of orders) {
-    const tier = tierForOrder(o);
+    const tier = tierForOrder(std, o);
     moTier.set(o.mo, tier);
     if (!bomTier.has(o.bom)) bomTier.set(o.bom, tier);
     else if (bomTier.get(o.bom) !== tier) bomTier.set(o.bom, null);
@@ -263,7 +265,7 @@ export async function getEarnedHours(day: Date, depts?: string[], from?: Date): 
       totalPcs += e.qty;
       if (tier !== null) coveredPcs += e.qty;
     }
-    const hrs = stdHoursFor(e.dept, e.item, tier) * e.qty;
+    const hrs = stdHoursFor(std, e.dept, e.item, tier) * e.qty;
     if (hrs <= 0) continue;
     const stage = e.dept === "Cut" ? "Cut" : e.dept === "Welding" ? "Welding" : "Finishing";
     byStage[stage] += hrs;
