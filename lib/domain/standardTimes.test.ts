@@ -75,18 +75,30 @@ describe("tierForOrder", () => {
 });
 
 describe("stdHoursFor", () => {
-  it("splits an item's fab hours between Cut and Welding, finishing at ONE stage", () => {
+  it("a PAINTING entry carries shb + paint — painted means shot blasted first", () => {
     const tn = TIER_ITEM_HOURS[1500].TN;
     // the engine rebuilds from shares, the seed matrix is rounded to 4dp
     expect(stdHoursFor(SEED, "Cut", "TN", 1500)).toBeCloseTo(tn.cut, 3);
     expect(stdHoursFor(SEED, "Welding", "TN", 1500)).toBeCloseTo(tn.weld, 3);
-    expect(stdHoursFor(SEED, "Painting", "TN", 1500)).toBeCloseTo(tn.finish, 3); // TN is painted
+    // the app records no separate shot-blast step for TN, so its paint entry
+    // earns its WHOLE finishing (shb pass + paint line)
+    expect(stdHoursFor(SEED, "Painting", "TN", 1500)).toBeCloseTo(tn.finish, 3);
     expect(stdHoursFor(SEED, "ShotBlast", "TN", 1500)).toBe(0);
   });
   it("the paint-exempt core earns its finishing at Shot Blast, not Painting", () => {
     const cf = TIER_ITEM_HOURS[1500].CF;
     expect(stdHoursFor(SEED, "ShotBlast", "CF", 1500)).toBeCloseTo(cf.finish, 3);
     expect(stdHoursFor(SEED, "Painting", "CF", 1500)).toBe(0);
+  });
+  it("finishing splits across the two work centres and reconciles with the class", () => {
+    const per = itemHoursFor(SEED, 1500);
+    const t = TIER_HOURS[1500];
+    const sum = (k: "shb" | "paint") => Object.values(per).reduce((s, p) => s + p[k], 0);
+    expect(sum("shb")).toBeCloseTo(t.shb, 2); // 1.61 — the whole tank passes SHB
+    expect(sum("paint")).toBeCloseTo(t.paint, 2); // 8.17 — only the painted parts
+    // the core's paint is zero; the painted parts each carry a positive shb pass
+    expect(per.CF.paint).toBe(0);
+    for (const it of ["TC", "TN", "CB"] as const) expect(per[it].shb).toBeGreaterThan(0);
   });
   it("weighs 0 for AR/MB, Delivered, and unresolved orders", () => {
     expect(stdHoursFor(SEED, "Cut", "AR", 1500)).toBe(0);
@@ -108,10 +120,11 @@ describe("the engine under ADMIN-EDITED data (not the seed)", () => {
   it("an edited class's item hours follow the new totals, shares preserved", () => {
     const edited: StdData = { tiers: { ...TIER_HOURS, 1500: { cut: 10, weld: 30, shb: 2, paint: 8 } }, fgMap: FG_TIER };
     const per = itemHoursFor(edited, 1500);
-    const sum = (k: "cut" | "weld" | "finish") => Object.values(per).reduce((s, p) => s + p[k], 0);
+    const sum = (k: "cut" | "weld" | "shb" | "paint") => Object.values(per).reduce((s, p) => s + p[k], 0);
     expect(sum("cut")).toBeCloseTo(10, 6);
     expect(sum("weld")).toBeCloseTo(30, 6);
-    expect(sum("finish")).toBeCloseTo(10, 6); // shb + paint
+    expect(sum("shb")).toBeCloseTo(2, 6);
+    expect(sum("paint")).toBeCloseTo(8, 6);
   });
   it("a class the sheet never had borrows the nearest seed class's shares", () => {
     const withNew: StdData = { tiers: { ...TIER_HOURS, 5000: { cut: 16, weld: 40, shb: 2.5, paint: 9 } }, fgMap: FG_TIER };
@@ -138,8 +151,9 @@ describe("requiredHoursForLines (the plan capacity check)", () => {
     const per = itemHoursFor(SEED, 1500);
     expect(r.byStage.Cut).toBeCloseTo(2 * (per.TN.cut + per.CF.cut), 4);
     expect(r.byStage.Welding).toBeCloseTo(2 * (per.TN.weld + per.CF.weld), 4);
-    expect(r.byStage.Painting).toBeCloseTo(2 * per.TN.finish, 4); // TN painted
-    expect(r.byStage.ShotBlast).toBeCloseTo(2 * per.CF.finish, 4); // core → SHB
+    // BOTH items load the shot-blast station; only TN continues to paint
+    expect(r.byStage.ShotBlast).toBeCloseTo(2 * (per.TN.shb + per.CF.shb), 4);
+    expect(r.byStage.Painting).toBeCloseTo(2 * per.TN.paint, 4);
     expect(r.totalPcs).toBe(4);
     expect(r.uncoveredPcs).toBe(0);
   });
