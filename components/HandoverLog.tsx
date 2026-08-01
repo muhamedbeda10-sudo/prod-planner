@@ -31,6 +31,7 @@ export interface LogRow {
   qty: number;
   source: string;
   createdBy: string | null; // who recorded the change (worklist / tracker / manual)
+  flags?: string[] | null; // data-guard warnings — the row LOOKS wrong, check it
 }
 
 export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; editableDepts?: string[] }) {
@@ -56,6 +57,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
   // default window: the log opens on the LAST 3 recorded days, not everything —
   // presets and the custom range below widen it
   const [period, setPeriod] = useSavedFilter("log.period", "3");
+  const [flaggedOnly, setFlaggedOnly] = useSavedFilter("log.flagged");
   // the exact-day presets are fixed calendar days, computed once (impure Date
   // only in the lazy initializer, never during render)
   const [tISO] = useState(() => dayISO(0));
@@ -86,6 +88,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
     return rows.filter((r) => {
+      if (flaggedOnly && !r.flags?.length) return false;
       if (needle && !r.bom.toUpperCase().includes(needle)) return false;
       if (dept && r.dept !== dept) return false;
       if (item && r.item !== item) return false;
@@ -95,10 +98,17 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
       if (to && r.date > to) return false;
       return true;
     });
-  }, [rows, q, dept, item, from, to, exactISO, cutoffISO]);
+  }, [rows, q, dept, item, from, to, exactISO, cutoffISO, flaggedOnly]);
 
-  const hasActive = !!(q || dept || item || from || to || period !== "3");
-  const reset = () => { setQ(""); setDept(""); setItem(""); setFrom(""); setTo(""); setPeriod("3"); };
+  // the flag count ignores the flagged-only toggle itself (else clicking it
+  // could change its own label) but respects every other filter
+  const flaggedCount = useMemo(
+    () => rows.filter((r) => r.flags?.length && (!dept || r.dept === dept) && (!item || r.item === item)).length,
+    [rows, dept, item]
+  );
+
+  const hasActive = !!(q || dept || item || from || to || period !== "3" || flaggedOnly);
+  const reset = () => { setQ(""); setDept(""); setItem(""); setFrom(""); setTo(""); setPeriod("3"); setFlaggedOnly(""); };
 
   // only VISIBLE selected rows count (hiding a row by filtering un-selects it
   // effectively — nothing off-screen ever gets re-dated by surprise)
@@ -145,6 +155,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
     Source: r.source,
     By: r.createdBy ?? "",
     "Corrected From": r.bomRaw && r.bomRaw !== r.bom ? r.bomRaw : "",
+    "Check ⚠": r.flags?.join(" | ") ?? "",
   }));
 
   function save(id: number) {
@@ -196,6 +207,16 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
         />
         <SelectFilter label="Dept" value={dept} onChange={setDept} options={LOG_DEPTS.map((d) => ({ value: d, label: deptLabel(d) }))} />
         <SelectFilter label="Item" value={item} onChange={setItem} options={ITEMS.map((i) => ({ value: i, label: i }))} />
+        {flaggedCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setFlaggedOnly(flaggedOnly ? "" : "1")}
+            title="Rows the data guard wants a human to check — unusual quantity, exact duplicate, or recorded far from the work date"
+            className={`btn btn-sm justify-self-start ${flaggedOnly ? "btn-primary" : "btn-secondary"}`}
+          >
+            ⚠ <span className="tabnum">{flaggedCount}</span> to check
+          </button>
+        )}
         {/* custom range (or one exact day: same date in both) — one tidy row */}
         <div className="col-span-2 flex items-center gap-1.5 text-sm">
           <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Range</span>
@@ -280,6 +301,11 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
                   {r.bom}
                   {r.bomRaw && r.bomRaw !== r.bom && (
                     <span className="pill pill-ok ml-1" title={`corrected from ${r.bomRaw}`}>fixed</span>
+                  )}
+                  {!!r.flags?.length && (
+                    <span className="pill pill-warn ml-1 cursor-help" title={r.flags.join("\n")}>
+                      ⚠ check
+                    </span>
                   )}
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap text-muted">{r.mo ?? "—"}</td>
