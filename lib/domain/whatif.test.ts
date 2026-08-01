@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { simulate, defaultScenario, dateForOffsetISO, countWorkingDaysISO, type WhatIfInputs } from "./whatif";
+import { simulate, defaultScenario, dateForOffsetISO, offsetForDateISO, countWorkingDaysISO, type WhatIfInputs } from "./whatif";
 
 // Mon 2026-08-03 as "today"; Fridays 07/08 and 14/08 are the days off
 const INPUTS: WhatIfInputs = {
@@ -91,5 +91,34 @@ describe("what-if calendar helpers", () => {
     expect(dateForOffsetISO(5, "2026-08-03", new Set(), false)).toBe("2026-08-08");
     // with Fridays working, day 5 is Friday 07/08 itself
     expect(dateForOffsetISO(5, "2026-08-03", new Set(), true)).toBe("2026-08-07");
+  });
+
+  it("offsetForDateISO inverts the offset→date mapping", () => {
+    for (const off of [1, 3, 5, 8]) {
+      const iso = dateForOffsetISO(off, "2026-08-03", new Set(), false);
+      expect(offsetForDateISO(iso, "2026-08-03", new Set(), false)).toBe(off);
+    }
+    expect(offsetForDateISO("2026-07-30", "2026-08-03", new Set(), false)).toBe(0); // in the past
+    // the due marker for a Friday sits at the last working day before it
+    expect(offsetForDateISO("2026-08-07", "2026-08-03", new Set(), false)).toBe(4);
+  });
+});
+
+describe("simulate — timeline segments", () => {
+  it("emits per-station occupancy the Gantt can draw", () => {
+    const r = simulate(INPUTS, defaultScenario(INPUTS));
+    const a = r.orders.find((o) => o.id === "A")!;
+    // A: cut 0→1, weld 1→2, finish 2→3 at the baseline rates
+    expect(a.segments).toEqual([
+      { stage: "cut", start: 0, end: 1 },
+      { stage: "weld", start: 1, end: 2 },
+      { stage: "finish", start: 2, end: 3 },
+    ]);
+    const b = r.orders.find((o) => o.id === "B")!;
+    // B waits for A at every station
+    expect(b.segments[0]).toEqual({ stage: "cut", start: 1, end: 2 });
+    expect(r.makespan).toBe(b.segments[b.segments.length - 1].end);
+    // due markers land on the shared axis
+    expect(a.dueOffset).toBeGreaterThan(0);
   });
 });

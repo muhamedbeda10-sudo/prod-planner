@@ -17,10 +17,17 @@ export interface EtaOrder {
   hours: Record<EtaStage, number>; // REMAINING std-hours per stage
 }
 
+export interface EtaSegment {
+  stage: EtaStage;
+  start: number; // working-day offset the station picks the order up
+  end: number; // working-day offset it hands it on
+}
+
 export interface EtaResult {
   id: string;
   days: number | null; // working days from now until done (0 = nothing left); null = not computable
   blockedBy: EtaStage | null; // a needed stage whose rate is 0 — forecast impossible
+  segments: EtaSegment[]; // when each station holds the order (empty when blocked)
 }
 
 /** FIFO queue: soonest due first; undated orders after every dated one. */
@@ -52,6 +59,7 @@ export function forecastEtaQueued(queue: EtaOrder[], rates: Record<EtaStage, num
   for (const o of queue) {
     let ready = 0;
     let blockedBy: EtaStage | null = null;
+    const segments: EtaSegment[] = [];
     for (const s of ETA_STAGES) {
       const h = o.hours[s];
       if (h <= 0) continue; // nothing left at this stage — flows straight through
@@ -62,8 +70,14 @@ export function forecastEtaQueued(queue: EtaOrder[], rates: Record<EtaStage, num
       const start = Math.max(ready, stageFree[s]);
       ready = start + h / rates[s];
       stageFree[s] = ready;
+      segments.push({ stage: s, start, end: ready });
     }
-    out.set(o.id, blockedBy ? { id: o.id, days: null, blockedBy } : { id: o.id, days: ready, blockedBy: null });
+    out.set(
+      o.id,
+      blockedBy
+        ? { id: o.id, days: null, blockedBy, segments: [] }
+        : { id: o.id, days: ready, blockedBy: null, segments }
+    );
   }
   return queue.map((o) => out.get(o.id)!);
 }

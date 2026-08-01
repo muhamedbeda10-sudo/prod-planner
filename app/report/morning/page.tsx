@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-US");
 const dd = (iso: string) => toDisplayDate(parseISODate(iso)!);
 
-/* The same digest the 7am email carries, always available in-app — including
-   before SMTP is ever configured. */
+/* The morning digest — everything worth knowing before the first meeting,
+   one screen, always current. */
 export default async function MorningBriefPage() {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
@@ -22,7 +22,7 @@ export default async function MorningBriefPage() {
     <div className="max-w-3xl">
       <PageHeader title="🌅 Morning Brief" />
       <p className="text-xs text-muted -mt-2 mb-4">
-        Report for <b>{dd(d.dayISO)}</b> (the last working day) — the daily 7am email carries exactly this.{" "}
+        Report for <b>{dd(d.dayISO)}</b>, the last working day.{" "}
         <Link href="/report" className="text-accent hover:underline">Full daily report →</Link>
       </p>
 
