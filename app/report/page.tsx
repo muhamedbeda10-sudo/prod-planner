@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { getDailyReport, getDayOutputByProject, getEarnedHours } from "@/lib/server/report";
 import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, DeptPicker } from "@/components/controls";
@@ -99,6 +100,7 @@ export default async function ReportPage({
         <DayPicker value={dayISO} />
         <DeptPicker value={sp.dept ?? ""} />
         <PrintButton />
+        <Link href="/report/morning" className="btn btn-secondary btn-sm ml-auto">🌅 Morning Brief</Link>
       </div>
 
       {/* Print masthead — logo + title + day, only on paper */}
