@@ -5,8 +5,6 @@ import { NextResponse, type NextRequest } from "next/server";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (pathname === "/login") return NextResponse.next();
-  // the cron endpoints authenticate with CRON_SECRET, not a browser session
-  if (pathname.startsWith("/api/cron/")) return NextResponse.next();
   if (!request.cookies.get("atc_session")?.value) {
     const login = new URL("/login", request.url);
     return NextResponse.redirect(login);
