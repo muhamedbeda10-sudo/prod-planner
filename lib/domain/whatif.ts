@@ -12,7 +12,7 @@
  * re-runs scenarios instantly, no round trips.
  */
 
-import { forecastEtaQueued, ETA_STAGES, type EtaOrder, type EtaStage } from "./eta";
+import { forecastEtaQueued, ETA_STAGES, type EtaOrder, type EtaStage, type EtaSegment } from "./eta";
 
 export const WI_STAGES = ["Cut", "Welding", "ShotBlast", "Painting"] as const;
 export type WiStage = (typeof WI_STAGES)[number];
@@ -79,7 +79,10 @@ export interface WhatIfResult {
     late: boolean; // scenario ETA after due
     done: boolean;
     blockedBy: EtaStage | null;
+    segments: EtaSegment[]; // station-by-station occupancy, for the timeline
+    dueOffset: number | null; // the due date as a working-day offset on the same axis
   }[];
+  makespan: number; // working days until the LAST order clears (0 = all done)
 }
 
 const DAY = 86400000;
@@ -95,6 +98,22 @@ export function countWorkingDaysISO(fromISO: string, toISO: string, holidays: Se
   let n = 0;
   for (let t = parse(fromISO); t <= parse(toISO); t += DAY) if (isWorkday(t, holidays, fridaysWork)) n++;
   return n;
+}
+
+/** A calendar date → its working-day offset on the same axis dateForOffsetISO
+ *  uses (the offset whose ceil lands on that date). Dates in the past pin
+ *  to 0. */
+export function offsetForDateISO(iso: string, todayISO: string, holidays: Set<string>, fridaysWork: boolean): number {
+  const target = parse(iso);
+  let t = parse(todayISO);
+  while (!isWorkday(t, holidays, fridaysWork)) t += DAY;
+  if (target < t) return 0; // already past
+  let offset = 1; // the first working day carries offset 1
+  while (t < target) {
+    t += DAY;
+    if (isWorkday(t, holidays, fridaysWork)) offset++;
+  }
+  return offset;
 }
 
 /** Working-day offset from today → calendar date (day 1 ends on the first
@@ -178,8 +197,11 @@ export function simulate(inputs: WhatIfInputs, scenario: Scenario): WhatIfResult
       late: !!etaISO && !!o.dueISO && etaISO > o.dueISO,
       done,
       blockedBy: r.blockedBy,
+      segments: done ? [] : r.segments,
+      dueOffset: o.dueISO ? offsetForDateISO(o.dueISO, inputs.todayISO, holidays, scenario.workFridays) : null,
     };
   });
+  const makespan = orders.reduce((m, o) => Math.max(m, o.segments.length ? o.segments[o.segments.length - 1].end : 0), 0);
 
-  return { stages, planWorkingDays, orders };
+  return { stages, planWorkingDays, orders, makespan };
 }
