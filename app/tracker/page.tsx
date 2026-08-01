@@ -5,6 +5,7 @@ import { WeeklyPlanTrackerTable } from "@/components/WeeklyPlanTrackerTable";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PlanCapacityCard } from "@/components/PlanCapacityCard";
 import { getPlanCapacity } from "@/lib/server/planCapacity";
+import { getOrderEtas } from "@/lib/server/eta";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
@@ -49,12 +50,14 @@ export default async function TrackerPage({
     );
   }
 
-  const [rows, user] = await Promise.all([getMasterTracker(), getCurrentUser()]);
+  const [rows, user, { byMo, windowDays }] = await Promise.all([getMasterTracker(), getCurrentUser(), getOrderEtas()]);
   return (
     <>
       <PrintHeader title="Plan Tracker — Monthly" date={issued} />
       <MasterTrackerTable
         rows={rows}
+        etas={Object.fromEntries(byMo)}
+        etaWindowDays={windowDays}
         features={user ? [...FEATURE_KEYS.filter((k) => hasPerm(user, k)), ...(user.isAdmin ? ["admin"] : [])] : []}
         // stage columns (Fab/Weld/Paint/SHB/Dlvd) each need their own tracker permission
         editableDepts={user ? [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE].filter((d) => hasPerm(user, trackerPermKey(d))) : []}

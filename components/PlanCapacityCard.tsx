@@ -41,6 +41,18 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
           );
         })}
       </div>
+      {check.pace && (
+        <p
+          className="mt-1.5 text-[11px] font-semibold tabnum"
+          style={{ color: check.pace.projectedCoverage >= 1 ? "var(--ok-fg)" : check.pace.projectedCoverage >= 0.9 ? "var(--warn-fg)" : "var(--bad-fg)" }}
+          title="Projection: the plan's earned standard hours so far, extended over the remaining working days at the same daily rate"
+        >
+          ⏱ Pace after {check.pace.elapsedWd} of {check.workingDays} working days: at this rate the week closes at {Math.round(check.pace.projectedCoverage * 100)}%
+          {check.pace.worstStage && check.pace.worstStage.coverage < 1 && (
+            <> — {deptLabel(check.pace.worstStage.dept)} at {Math.round(check.pace.worstStage.coverage * 100)}%</>
+          )}
+        </p>
+      )}
       {overloaded.length > 0 && (
         <p className="mt-1.5 text-[11px] font-semibold text-bad-fg">
           ⚠ Over capacity: {overloaded.map((s) => `${deptLabel(s.dept)} needs ${fmt(s.required - (s.available ?? 0))} h more than the window holds`).join(" · ")}

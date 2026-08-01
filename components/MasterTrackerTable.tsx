@@ -32,12 +32,25 @@ function progressOf(r: MasterTrackerRow): Progress {
   return "notstarted";
 }
 
+export interface RowEta {
+  etaISO: string | null;
+  dueISO: string | null;
+  late: boolean;
+  done: boolean;
+  blockedBy: string | null;
+}
+
 export function MasterTrackerTable({
   rows,
   features = [],
   editableDepts = [],
+  etas = {},
+  etaWindowDays = 0,
 }: {
   rows: MasterTrackerRow[];
+  /** Completion forecast per MO (server-computed flow-shop ETA). */
+  etas?: Record<string, RowEta>;
+  etaWindowDays?: number;
   /** The tracker feature-permission keys this user holds (admin = all):
    *  tracker.status / tracker.components / tracker.qty / tracker.priority / tracker.push */
   features?: string[];
@@ -157,7 +170,8 @@ export function MasterTrackerTable({
 
   // table shape under the stage filter: only the picked columns per item, no
   // Complete/Left/Achv
-  const tableCols = scoped ? 4 + ITEMS.length * stages.length + 1 : 4 + ITEMS.length * 4 + 4;
+  // +1 for Status, +1 for the ETA forecast column
+  const tableCols = scoped ? 4 + ITEMS.length * stages.length + 2 : 4 + ITEMS.length * 4 + 5;
 
   // shared BOMs: one summary row per BOM, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -439,6 +453,13 @@ export function MasterTrackerTable({
                   <th rowSpan={2} className="p-2">Achv.</th>
                 </>
               )}
+              <th
+                rowSpan={2}
+                className="p-2"
+                title={`Forecast completion date: the order's remaining work through Fabrication → Welding → Finishing at the plant's actual pace over the last ${etaWindowDays || 14} working days, queued by delivery date. Red = lands after the scheduled delivery.`}
+              >
+                ETA
+              </th>
               <th rowSpan={2} className="p-2 no-print">Status</th>
             </tr>
             <tr className="bg-brand text-white text-xs">
@@ -515,6 +536,7 @@ export function MasterTrackerTable({
                         </td>
                       </>
                     )}
+                    {etaCell(groupEta(members))}
                     <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap">{open ? "▲ collapse" : "▼ open MOs"}</td>
                   </tr>
                   {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
@@ -703,6 +725,42 @@ export function MasterTrackerTable({
     );
   }
 
+  function etaCell(eta: RowEta | undefined) {
+    if (!eta) return <td className="p-2 text-center text-muted text-xs">—</td>;
+    if (eta.done) return <td className="p-2 text-center text-ok-fg font-bold" title="Nothing left to make">✓</td>;
+    if (!eta.etaISO) {
+      return (
+        <td className="p-2 text-center text-muted text-xs" title={`No recent output at ${eta.blockedBy ?? "a needed stage"} — nothing to base a forecast on`}>
+          ?
+        </td>
+      );
+    }
+    const [, m, d] = eta.etaISO.split("-");
+    return (
+      <td
+        className={`p-2 text-center tabnum text-xs whitespace-nowrap font-bold ${eta.late ? "" : "text-muted"}`}
+        style={eta.late ? { color: "var(--bad-fg)" } : undefined}
+        title={`Forecast ${eta.etaISO}${eta.dueISO ? ` · scheduled delivery ${eta.dueISO}` : " · never scheduled in a weekly plan"}${eta.late ? " — LATE" : ""}`}
+      >
+        {eta.late && "⚠ "}{d}/{m}
+      </td>
+    );
+  }
+
+  /** The group row shows the LATEST member forecast — the BOM is done when its
+   *  slowest MO is done. */
+  function groupEta(members: MasterTrackerRow[]): RowEta | undefined {
+    let worst: RowEta | undefined;
+    for (const m of members) {
+      const e = etas[m.mo];
+      if (!e) continue;
+      if (!worst) { worst = e; continue; }
+      // an unforecastable member outranks a date; a later date outranks an earlier one
+      if (worst.done || (e.etaISO && worst.etaISO && e.etaISO > worst.etaISO) || (!e.etaISO && !e.done)) worst = e;
+    }
+    return worst;
+  }
+
   function renderRow(r: MasterTrackerRow, inGroup = false, lastInGroup = false) {
     // frame: open groups get a clear border so their extent is obvious
     const frame = inGroup ? `bg-brand-light/10 border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
@@ -860,6 +918,7 @@ export function MasterTrackerTable({
                     </td>
                   </>
                 )}
+                {etaCell(etas[r.mo])}
                 <td className="p-2 text-center no-print whitespace-nowrap">
                   {r.status === "closed" ? (
                     <>
