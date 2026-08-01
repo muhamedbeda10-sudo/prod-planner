@@ -8,6 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   FileDown, GitCompareArrows, Puzzle, CalendarDays, Users, Timer,
+  FlaskConical,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -28,6 +29,7 @@ const WORKLIST_DEPTS = [
 const REST: Item[] = [
   { href: "/handover", label: "Logs", icon: BookOpenCheck },
   { href: "/tracker", label: "Plan Tracker", icon: Table2 },
+  { href: "/simulate", label: "Simulator", icon: FlaskConical },
   { href: "/report", label: "Report", icon: FileBarChart2 },
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
 ];

@@ -35,7 +35,15 @@ export function etaQueueOrder(a: EtaOrder, b: EtaOrder): number {
  *  day (trailing actuals). An order needing a stage whose rate is 0 gets
  *  `blockedBy` instead of a number — no history means no honest forecast. */
 export function forecastEta(orders: EtaOrder[], rates: Record<EtaStage, number>): EtaResult[] {
-  const queue = [...orders].sort(etaQueueOrder);
+  return forecastEtaQueued([...orders].sort(etaQueueOrder), rates).sort(
+    (a, b) => orders.findIndex((o) => o.id === a.id) - orders.findIndex((o) => o.id === b.id)
+  );
+}
+
+/** The station arithmetic itself, taking the queue EXACTLY as given — the
+ *  what-if simulator feeds it hand-reordered queues. Results follow queue
+ *  order. */
+export function forecastEtaQueued(queue: EtaOrder[], rates: Record<EtaStage, number>): EtaResult[] {
   // stageFree[s] = working-day time at which stage s has finished everything
   // queued ahead; orderReady = when this order left the previous stage
   const stageFree: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
@@ -57,7 +65,7 @@ export function forecastEta(orders: EtaOrder[], rates: Record<EtaStage, number>)
     }
     out.set(o.id, blockedBy ? { id: o.id, days: null, blockedBy } : { id: o.id, days: ready, blockedBy: null });
   }
-  return orders.map((o) => out.get(o.id)!);
+  return queue.map((o) => out.get(o.id)!);
 }
 
 /** Mid-window pace for the weekly plan: what the week will CLOSE at, if the
