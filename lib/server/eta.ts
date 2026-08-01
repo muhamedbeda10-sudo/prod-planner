@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { toISODate } from "@/lib/domain/dates";
 import { isPaintExempt, type Item, ITEMS } from "@/lib/domain/constants";
 import { tierForOrder, itemHoursFor } from "@/lib/domain/stdEngine";
-import { forecastEta, ETA_STAGES, type EtaOrder, type EtaStage } from "@/lib/domain/eta";
+import { forecastEta, ETA_STAGES, type EtaOrder, type EtaStage, type EtaResult } from "@/lib/domain/eta";
 import { getStdData } from "./standardTimes";
 import { getMasterTracker } from "./masterTracker";
 
@@ -61,17 +61,18 @@ export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, n
   return { rates, windowDays: wd };
 });
 
-export interface OrderEta {
-  etaISO: string | null; // forecast completion date; null when blocked or done
-  dueISO: string | null; // latest scheduled delivery date for the MO
-  late: boolean; // eta lands after the due date
-  done: boolean; // nothing left to make
-  blockedBy: EtaStage | null; // stage with no trailing rate — no honest forecast
+/** Everything the baseline forecast is made of — shared by the live ETA
+ *  column and the what-if simulator (which re-runs scenarios over it). */
+export interface EtaBase {
+  orders: (EtaOrder & { bom: string })[]; // open orders, remaining hours per stage
+  results: EtaResult[]; // baseline forecast, same order as `orders`
+  rates: Record<EtaStage, number>;
+  windowDays: number;
+  holidayISOs: string[];
+  todayISO: string;
 }
 
-/** ETA per OPEN order: remaining std-hours per stage through the Cut→Weld→
- *  Finish flow shop at the trailing rates, FIFO by delivery date. */
-export async function getOrderEtas(): Promise<{ byMo: Map<string, OrderEta>; windowDays: number }> {
+export const getEtaBase = cache(async (): Promise<EtaBase> => {
   const [tracker, std, { rates, windowDays }, schedules, holidayRows, masters] = await Promise.all([
     getMasterTracker(),
     getStdData(),
@@ -81,7 +82,6 @@ export async function getOrderEtas(): Promise<{ byMo: Map<string, OrderEta>; win
     prisma.masterOrder.findMany({ select: { mo: true, fgCode: true, kva: true } }),
   ]);
   const masterByMo = new Map(masters.map((m) => [m.mo, m]));
-  const holidays = new Set(holidayRows.map((h) => toISODate(h.date)));
 
   const dueByMo = new Map<string, string>();
   for (const s of schedules) {
@@ -91,7 +91,7 @@ export async function getOrderEtas(): Promise<{ byMo: Map<string, OrderEta>; win
   }
 
   const open = tracker.filter((r) => r.status === "open");
-  const orders: EtaOrder[] = open.map((r) => {
+  const orders = open.map((r) => {
     const hours: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
     // resolve through the registry row itself so the FG map gets its say
     const tier = tierForOrder(std, masterByMo.get(r.mo) ?? { fgCode: null, kva: r.kva });
@@ -109,13 +109,35 @@ export async function getOrderEtas(): Promise<{ byMo: Map<string, OrderEta>; win
         hours.finish += Math.max(0, reqInHouse - fin) * (p.shb + p.paint);
       }
     }
-    return { id: r.mo, dueISO: dueByMo.get(r.mo) ?? null, hours };
+    return { id: r.mo, bom: r.bom, dueISO: dueByMo.get(r.mo) ?? null, hours };
   });
 
-  const results = forecastEta(orders, rates);
+  return {
+    orders,
+    results: forecastEta(orders, rates),
+    rates,
+    windowDays,
+    holidayISOs: holidayRows.map((h) => toISODate(h.date)),
+    todayISO: toISODate(new Date(Math.floor(Date.now() / DAY) * DAY)),
+  };
+});
+
+export interface OrderEta {
+  etaISO: string | null; // forecast completion date; null when blocked or done
+  dueISO: string | null; // latest scheduled delivery date for the MO
+  late: boolean; // eta lands after the due date
+  done: boolean; // nothing left to make
+  blockedBy: EtaStage | null; // stage with no trailing rate — no honest forecast
+}
+
+/** ETA per OPEN order: remaining std-hours per stage through the Cut→Weld→
+ *  Finish flow shop at the trailing rates, FIFO by delivery date. */
+export async function getOrderEtas(): Promise<{ byMo: Map<string, OrderEta>; windowDays: number }> {
+  const { orders, results, windowDays, holidayISOs, todayISO } = await getEtaBase();
+  const holidays = new Set(holidayISOs);
 
   // working-day offset → calendar date: day 0 = the next working day from today
-  const today = new Date(Math.floor(Date.now() / DAY) * DAY);
+  const today = new Date(`${todayISO}T00:00:00.000Z`);
   const dateForOffset = (days: number): string => {
     let d = new Date(today);
     while (!isWorkday(d, holidays)) d = new Date(d.getTime() + DAY);
@@ -128,8 +150,9 @@ export async function getOrderEtas(): Promise<{ byMo: Map<string, OrderEta>; win
   };
 
   const byMo = new Map<string, OrderEta>();
-  for (const r of results) {
-    const dueISO = dueByMo.get(r.id) ?? null;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    const dueISO = orders[i].dueISO;
     if (r.blockedBy) {
       byMo.set(r.id, { etaISO: null, dueISO, late: false, done: false, blockedBy: r.blockedBy });
     } else if (r.days === 0) {
