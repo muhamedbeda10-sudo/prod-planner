@@ -336,3 +336,16 @@ model StageCapacity {
   mhPerDay  Float
   updatedAt DateTime @default(now()) @updatedAt
 }
+
+// Man-hours a stage ACTUALLY worked on one day (people who showed up × their
+// hours), entered by the admin. Compared against the std-hours the ledger says
+// that day EARNED, it calibrates the standard times to this plant's real pace.
+model DeptDayHours {
+  id        Int      @id @default(autoincrement())
+  date      DateTime // day-only granularity
+  dept      String // Cut | Welding | ShotBlast | Painting
+  hours     Float
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([date, dept])
+}
