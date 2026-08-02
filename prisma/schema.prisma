@@ -349,3 +349,30 @@ model DeptDayHours {
 
   @@unique([date, dept])
 }
+
+// A named what-if scenario, saved from the Simulator ("the emergency plan for
+// order X") — the knobs, the queue and the splits, as one JSON blob.
+model SimScenario {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  data      Json
+  savedBy   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+// The APPROVED run order — the simulator scenario the admin committed to.
+// Every dept worklist shows its slice of this sequence until it is replaced
+// or cleared. batchQty marks a rushed split ("first 10 of the TC").
+model RunOrderEntry {
+  id        Int      @id @default(autoincrement())
+  rank      Int
+  mo        String
+  item      String
+  batchQty  Float?
+  batchNo   Int?
+  appliedAt DateTime @default(now())
+  appliedBy String?
+
+  @@index([mo])
+}
