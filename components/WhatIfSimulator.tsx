@@ -475,7 +475,7 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
                   <Fragment key={`g-${row.moHeader}`}>
                     <tr className="bg-surface-2/60">
                       <td colSpan={pinned ? 9 : 8} className="px-3 py-1.5 text-xs">
-                        <b>{row.bom}</b> <span className="text-muted">{row.moHeader}</span>
+                        <b title={row.moHeader}>{row.bom}</b>
                         <span className="ml-3 text-muted">order clears</span>{" "}
                         <b className="tabnum" style={{ color: anyLate ? "var(--bad-fg)" : undefined }}>{anyLate && "⚠ "}{dd(worstIso)}</b>
                         <span className="ml-3 text-[10px] text-muted">({row.jobs.length} jobs — switch off grouping to reorder)</span>
@@ -528,11 +528,10 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
           )}
         </td>
         <td className="p-2 font-bold whitespace-nowrap">{o.bom}</td>
-        <td className="p-2 whitespace-nowrap">
+        <td className="p-2 whitespace-nowrap" title={o.mo}>
           <b style={{ color: "var(--accent)" }}>{o.item}</b>
           <span className="tabnum text-xs"> ×{o.qty}</span>
           {o.batch !== null && <span className="pill pill-muted ml-1 tabnum" title="batch of a split quantity">b{o.batch}</span>}
-          <span className="block text-[9px] text-muted">{o.mo}</span>
         </td>
         <td className="p-2 text-center tabnum whitespace-nowrap">{dd(o.dueISO)}</td>
         <td className="p-2 text-center tabnum whitespace-nowrap">
