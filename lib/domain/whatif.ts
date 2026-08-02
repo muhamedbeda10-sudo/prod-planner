@@ -19,7 +19,7 @@
  * re-runs scenarios instantly, no round trips.
  */
 
-import { forecastEtaQueued, ETA_STAGES, type EtaStage, type EtaSegment } from "./eta";
+import { forecastEtaQueued, ETA_STAGES, type EtaStage, type EtaSegment, type StageBlackout } from "./eta";
 
 export const WI_STAGES = ["Cut", "Welding", "ShotBlast", "Painting"] as const;
 export type WiStage = (typeof WI_STAGES)[number];
@@ -55,6 +55,7 @@ export interface WhatIfInputs {
   todayISO: string;
   holidayISOs: string[];
   rates: Record<EtaStage, number>; // trailing std-h/working day (today's crew)
+  rateSigma: Record<EtaStage, number>; // day-to-day scatter of those rates
   rateWindowDays: number;
   capacity: Partial<Record<WiStage, number>>; // mh per working day (Admin figure)
   jobs: WhatIfJob[]; // open jobs, queued FIFO by due date (the baseline queue)
@@ -66,6 +67,12 @@ export interface WhatIfInputs {
   } | null;
 }
 
+export interface Downtime {
+  stage: EtaStage; // which station stands still
+  fromISO: string; // first calendar day of the stoppage
+  toISO: string; // last calendar day (inclusive)
+}
+
 export interface Scenario {
   /** Extra (or fewer) WORKERS per stage; hours each adds per day comes from shiftHours. */
   workersDelta: Record<WiStage, number>;
@@ -73,6 +80,9 @@ export interface Scenario {
   workFridays: boolean;
   queue: string[]; // job ids (or split-batch ids) in the order they get worked
   splits: Record<string, number[]>; // base job id → batch sizes (sum = its finish-left)
+  /** base job id → the calendar day its material/parts arrive — it cannot start earlier. */
+  holds: Record<string, string>;
+  downtimes: Downtime[];
 }
 
 export const defaultScenario = (inputs: WhatIfInputs): Scenario => ({
@@ -81,6 +91,8 @@ export const defaultScenario = (inputs: WhatIfInputs): Scenario => ({
   workFridays: false,
   queue: inputs.jobs.map((j) => j.id),
   splits: {},
+  holds: {},
+  downtimes: [],
 });
 
 /** A job as it enters the queue after splits — a whole job, or one batch. */
@@ -227,6 +239,37 @@ const hoursOf = (j: DerivedJob): Record<EtaStage, number> => ({
   finish: j.left.finish * j.perPc.finish,
 });
 
+/** The scenario's downtimes as blackout windows on the working-day axis
+ *  (a downtime that falls entirely on days off vanishes by itself). */
+export function blackoutsOf(scenario: Scenario, todayISO: string, holidays: Set<string>): Partial<Record<EtaStage, StageBlackout[]>> {
+  const out: Partial<Record<EtaStage, StageBlackout[]>> = {};
+  for (const d of scenario.downtimes) {
+    if (!d.fromISO || !d.toISO || d.toISO < d.fromISO) continue;
+    const start = Math.max(0, offsetForDateISO(d.fromISO, todayISO, holidays, scenario.workFridays) - 1);
+    const end = offsetForDateISO(d.toISO, todayISO, holidays, scenario.workFridays);
+    if (end <= start) continue; // already past, or all days off
+    (out[d.stage] ??= []).push({ start, end });
+  }
+  for (const s of Object.keys(out) as EtaStage[]) {
+    const bls = out[s]!.sort((a, b) => a.start - b.start);
+    // merge overlaps so the station walker can assume disjoint windows
+    const merged: StageBlackout[] = [];
+    for (const b of bls) {
+      const last = merged[merged.length - 1];
+      if (last && b.start <= last.end) last.end = Math.max(last.end, b.end);
+      else merged.push({ ...b });
+    }
+    out[s] = merged;
+  }
+  return out;
+}
+
+/** A job's earliest start on the axis, from its material-hold date. */
+export function releaseOf(holdISO: string | undefined, todayISO: string, holidays: Set<string>, fridaysWork: boolean): number {
+  if (!holdISO) return 0;
+  return Math.max(0, offsetForDateISO(holdISO, todayISO, holidays, fridaysWork) - 1);
+}
+
 export function simulate(inputs: WhatIfInputs, scenario: Scenario): WhatIfResult {
   const holidays = new Set(inputs.holidayISOs);
   const { cap: scenarioCap, rates: scenarioRates } = scenarioPhysics(inputs, scenario);
@@ -259,9 +302,16 @@ export function simulate(inputs: WhatIfInputs, scenario: Scenario): WhatIfResult
   // anything the queue doesn't mention (fresh splits, new jobs) joins the back
   for (const j of derived) if (!queue.includes(j)) queue.push(j);
 
+  const blackouts = blackoutsOf(scenario, inputs.todayISO, holidays);
   const results = forecastEtaQueued(
-    queue.map((j) => ({ id: j.id, dueISO: j.dueISO, hours: hoursOf(j) })),
-    scenarioRates
+    queue.map((j) => ({
+      id: j.id,
+      dueISO: j.dueISO,
+      hours: hoursOf(j),
+      release: releaseOf(scenario.holds[j.baseId], inputs.todayISO, holidays, scenario.workFridays),
+    })),
+    scenarioRates,
+    blackouts
   );
   const jobs = results.map((r) => {
     const j = byId.get(r.id)!;
@@ -318,13 +368,20 @@ export function optimizeQueue(inputs: WhatIfInputs, scenario: Scenario): string[
     ])
   );
 
+  const blackouts = blackoutsOf(scenario, inputs.todayISO, holidays);
   const score = (ids: string[]): QueueScore => {
     const results = forecastEtaQueued(
       ids.map((id) => {
         const j = byId.get(id)!;
-        return { id: j.id, dueISO: j.dueISO, hours: hoursOf(j) };
+        return {
+          id: j.id,
+          dueISO: j.dueISO,
+          hours: hoursOf(j),
+          release: releaseOf(scenario.holds[j.baseId], inputs.todayISO, holidays, scenario.workFridays),
+        };
       }),
-      rates
+      rates,
+      blackouts
     );
     let late = 0, lateness = 0, makespan = 0;
     for (const r of results) {

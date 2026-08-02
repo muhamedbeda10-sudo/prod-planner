@@ -18,7 +18,7 @@ const isWorkday = (d: Date, off: Set<string>) => d.getUTCDay() !== 5 && !off.has
 
 /** The plant's ACTUAL std-hours per working day per ETA stage, over the last
  *  RATE_WINDOW_WD working days (ending yesterday). */
-export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, number>; windowDays: number }> => {
+export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, number>; sigma: Record<EtaStage, number>; windowDays: number }> => {
   const holidays = new Set((await prisma.holiday.findMany()).map((h) => toISODate(h.date)));
   // walk back from yesterday until the window holds RATE_WINDOW_WD working days
   const end = new Date(Math.floor(Date.now() / DAY) * DAY - DAY);
@@ -32,7 +32,7 @@ export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, n
   const [entries, orders, std] = await Promise.all([
     prisma.handoverEntry.findMany({
       where: { date: { gte: start, lt: new Date(end.getTime() + DAY) } },
-      select: { mo: true, bom: true, dept: true, item: true, qty: true },
+      select: { mo: true, bom: true, dept: true, item: true, qty: true, date: true },
     }),
     prisma.masterOrder.findMany({ select: { mo: true, bom: true, fgCode: true, kva: true } }),
     getStdData(),
@@ -45,20 +45,36 @@ export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, n
     else if (bomTier.get(o.bom) !== t) bomTier.set(o.bom, null);
   }
 
-  const rates: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
+  // per-DAY earned hours per stage — the day-to-day scatter is what the
+  // ETA confidence band is made of
+  const daily = new Map<string, Record<EtaStage, number>>();
   for (const e of entries) {
     const tier = (e.mo ? moTier.get(e.mo) : bomTier.get(e.bom)) ?? null;
     if (tier === null) continue;
     const per = itemHoursFor(std, tier)[e.item];
     if (!per) continue;
-    if (e.dept === "Cut") rates.cut += per.cut * e.qty;
-    else if (e.dept === "Welding") rates.weld += per.weld * e.qty;
+    const iso = toISODate(e.date);
+    if (!daily.has(iso)) daily.set(iso, { cut: 0, weld: 0, finish: 0 });
+    const day = daily.get(iso)!;
+    if (e.dept === "Cut") day.cut += per.cut * e.qty;
+    else if (e.dept === "Welding") day.weld += per.weld * e.qty;
     // painted = shot blasted first; both work centres flow through "finish"
-    else if (e.dept === "Painting") rates.finish += (per.shb + per.paint) * e.qty;
-    else if (e.dept === "ShotBlast") rates.finish += per.shb * e.qty;
+    else if (e.dept === "Painting") day.finish += (per.shb + per.paint) * e.qty;
+    else if (e.dept === "ShotBlast") day.finish += per.shb * e.qty;
   }
-  for (const s of ETA_STAGES) rates[s] /= wd;
-  return { rates, windowDays: wd };
+
+  const rates: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
+  const sigma: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
+  for (const s of ETA_STAGES) {
+    // every working day in the window counts — a day with no output is a
+    // real zero, not a missing sample
+    const values = [...daily.values()].map((d) => d[s]);
+    while (values.length < wd) values.push(0);
+    const mean = values.reduce((a, b) => a + b, 0) / wd;
+    rates[s] = mean;
+    sigma[s] = Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / wd);
+  }
+  return { rates, sigma, windowDays: wd };
 });
 
 /** One order-component as the forecast schedules it: its own remaining
@@ -78,13 +94,14 @@ export interface EtaBase {
   jobs: EtaJob[]; // open (MO × item) jobs, FIFO by due date
   results: EtaResult[]; // baseline forecast, same order as `jobs`
   rates: Record<EtaStage, number>;
+  sigma: Record<EtaStage, number>; // day-to-day scatter of the same rates
   windowDays: number;
   holidayISOs: string[];
   todayISO: string;
 }
 
 export const getEtaBase = cache(async (): Promise<EtaBase> => {
-  const [tracker, std, { rates, windowDays }, schedules, holidayRows, masters] = await Promise.all([
+  const [tracker, std, { rates, sigma, windowDays }, schedules, holidayRows, masters] = await Promise.all([
     getMasterTracker(),
     getStdData(),
     getStageRates(),
@@ -137,6 +154,7 @@ export const getEtaBase = cache(async (): Promise<EtaBase> => {
     jobs,
     results: forecastEta(jobs, rates),
     rates,
+    sigma,
     windowDays,
     holidayISOs: holidayRows.map((h) => toISODate(h.date)),
     todayISO: toISODate(new Date(Math.floor(Date.now() / DAY) * DAY)),

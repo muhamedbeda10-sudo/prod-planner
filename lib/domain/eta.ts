@@ -15,6 +15,16 @@ export interface EtaOrder {
   id: string; // MO
   dueISO: string | null; // latest scheduled delivery, null = never scheduled
   hours: Record<EtaStage, number>; // REMAINING std-hours per stage
+  /** Working-day offset before which the order cannot START (material /
+   *  outsourced parts not there yet). Default 0 = free to start now. */
+  release?: number;
+}
+
+/** A window in which a station does no work (maintenance), in working-day
+ *  offsets on the same axis as everything else. */
+export interface StageBlackout {
+  start: number;
+  end: number;
 }
 
 export interface EtaSegment {
@@ -47,17 +57,44 @@ export function forecastEta(orders: EtaOrder[], rates: Record<EtaStage, number>)
   );
 }
 
+/** Run `dur` working days of processing at a station from time `t`, stepping
+ *  over the station's blackout windows (the station sits idle inside them).
+ *  Returns [actualStart, end]. Blackouts must be sorted and disjoint. */
+function runThroughBlackouts(t: number, dur: number, bls: StageBlackout[] | undefined): [number, number] {
+  if (!bls || bls.length === 0) return [t, t + dur];
+  let rem = dur;
+  let start: number | null = null;
+  for (const b of bls) {
+    if (t >= b.end) continue; // this window is already behind us
+    if (t >= b.start) t = b.end; // we're standing inside it — wait it out
+    else {
+      const room = b.start - t;
+      if (start === null) start = t;
+      if (rem <= room) return [start, t + rem]; // done before the window
+      rem -= room;
+      t = b.end;
+    }
+  }
+  if (start === null) start = t;
+  return [start, t + rem];
+}
+
 /** The station arithmetic itself, taking the queue EXACTLY as given — the
  *  what-if simulator feeds it hand-reordered queues. Results follow queue
- *  order. */
-export function forecastEtaQueued(queue: EtaOrder[], rates: Record<EtaStage, number>): EtaResult[] {
+ *  order. Orders with a `release` cannot start before it; stations skip
+ *  their blackout windows. */
+export function forecastEtaQueued(
+  queue: EtaOrder[],
+  rates: Record<EtaStage, number>,
+  blackouts?: Partial<Record<EtaStage, StageBlackout[]>>
+): EtaResult[] {
   // stageFree[s] = working-day time at which stage s has finished everything
   // queued ahead; orderReady = when this order left the previous stage
   const stageFree: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
   const out = new Map<string, EtaResult>();
 
   for (const o of queue) {
-    let ready = 0;
+    let ready = o.release ?? 0;
     let blockedBy: EtaStage | null = null;
     const segments: EtaSegment[] = [];
     for (const s of ETA_STAGES) {
@@ -67,10 +104,10 @@ export function forecastEtaQueued(queue: EtaOrder[], rates: Record<EtaStage, num
         blockedBy = s;
         break;
       }
-      const start = Math.max(ready, stageFree[s]);
-      ready = start + h / rates[s];
-      stageFree[s] = ready;
-      segments.push({ stage: s, start, end: ready });
+      const [start, end] = runThroughBlackouts(Math.max(ready, stageFree[s]), h / rates[s], blackouts?.[s]);
+      ready = end;
+      stageFree[s] = end;
+      segments.push({ stage: s, start, end });
     }
     out.set(
       o.id,

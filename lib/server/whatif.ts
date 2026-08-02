@@ -65,6 +65,7 @@ export async function getWhatIfInputs(): Promise<WhatIfInputs> {
     todayISO: base.todayISO,
     holidayISOs: base.holidayISOs,
     rates: base.rates,
+    rateSigma: base.sigma,
     rateWindowDays: base.windowDays,
     capacity,
     jobs,
