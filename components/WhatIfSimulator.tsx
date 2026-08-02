@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   simulate, defaultScenario, optimizeQueue, dateForOffsetISO, WI_STAGES,
   type WhatIfInputs, type Scenario, type WiStage, type WhatIfResult,
@@ -9,10 +9,12 @@ import { deptLabel, STAGE_COLOR } from "@/lib/domain/constants";
 import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 
 /* The control room: turn the knobs — workers per stage, working Fridays, a
-   hand-reordered (drag & drop) queue, or one click of the optimizer — and the
-   KPIs, the station timeline and every ETA respond instantly, with the SAME
-   arithmetic the live pages use. Pin a scenario as "A" to keep its numbers on
-   screen while you build a second one against it. Nothing here is saved. */
+   hand-reordered (drag & drop) queue, split quantities, or one click of the
+   optimizer — and the KPIs, the station timeline and every ETA respond
+   instantly, with the SAME arithmetic the live pages use. The queue schedules
+   JOBS (one component of one order), so the TC of an order can jump ahead
+   while its TN waits, and a job can split into a rushed batch + the rest.
+   Pin a scenario as "A" to compare against it. Nothing here is saved. */
 
 const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-US");
 const dd = (iso: string | null) => (iso ? toDisplayDate(parseISODate(iso)!) : "—");
@@ -33,13 +35,24 @@ function loadTone(load: number | null): { bg: string; fg: string; label: string 
   return { bg: "var(--ok-bg)", fg: "var(--ok-fg)", label: pct };
 }
 
-/** The figures a scenario boils down to — computed identically for the live
- *  scenario, the pinned one, and reality, so every comparison is like for
- *  like. */
+type ResultJob = WhatIfResult["jobs"][number];
+
+/** MO-level readings: an ORDER is on time only when every job in it is. */
 function kpisOf(result: WhatIfResult) {
-  const active = result.orders.filter((o) => !o.done && !o.blockedBy);
-  const late = active.filter((o) => o.late).length;
-  const lastEta = active.reduce<string | null>((m, o) => (o.etaISO && (!m || o.etaISO > m) ? o.etaISO : m), null);
+  const byMo = new Map<string, { late: boolean; blocked: boolean; anyActive: boolean }>();
+  for (const j of result.jobs) {
+    const cur = byMo.get(j.mo) ?? { late: false, blocked: false, anyActive: false };
+    if (j.blockedBy) cur.blocked = true;
+    else if (!j.done) {
+      cur.anyActive = true;
+      if (j.late) cur.late = true;
+    }
+    byMo.set(j.mo, cur);
+  }
+  const active = [...byMo.values()].filter((m) => m.anyActive && !m.blocked);
+  const late = active.filter((m) => m.late).length;
+  const activeJobs = result.jobs.filter((j) => !j.done && !j.blockedBy);
+  const lastEta = activeJobs.reduce<string | null>((m, j) => (j.etaISO && (!m || j.etaISO > m) ? j.etaISO : m), null);
   const worst = result.stages
     .filter((s) => s.required > 0 && s.load !== null)
     .reduce<(typeof result.stages)[number] | null>((w, s) => (!w || s.load! > w.load! ? s : w), null);
@@ -48,13 +61,15 @@ function kpisOf(result: WhatIfResult) {
 
 const scenarioCost = (sc: Scenario) => WI_STAGES.reduce((a, s) => a + sc.workersDelta[s] * sc.shiftHours, 0);
 
-/** One line that names a scenario: "+2 Welding · +1 Painting · Fridays · queue edited". */
+/** One line that names a scenario: "+2 Welding · Fridays · queue edited · 1 split". */
 function describeScenario(sc: Scenario, inputs: WhatIfInputs): string {
   const parts: string[] = [];
   for (const s of WI_STAGES) if (sc.workersDelta[s] !== 0) parts.push(`${sc.workersDelta[s] > 0 ? "+" : ""}${sc.workersDelta[s]} ${deptLabel(s)}`);
   if (sc.shiftHours !== 11) parts.push(`${sc.shiftHours}h shifts`);
   if (sc.workFridays) parts.push("Fridays on");
-  if (sc.queue.some((id, i) => inputs.orders[i]?.id !== id)) parts.push("queue edited");
+  if (sc.queue.some((id, i) => inputs.jobs[i]?.id !== id)) parts.push("queue edited");
+  const splits = Object.keys(sc.splits).length;
+  if (splits) parts.push(`${splits} split${splits === 1 ? "" : "s"}`);
   return parts.length ? parts.join(" · ") : "reality as-is";
 }
 
@@ -64,7 +79,7 @@ function Kpi({ label, value, sub, pinned, tone }: {
   label: string;
   value: React.ReactNode;
   sub?: React.ReactNode;
-  pinned?: React.ReactNode; // the A-scenario reading, shown when comparing
+  pinned?: React.ReactNode;
   tone?: "ok" | "warn" | "bad";
 }) {
   const color = tone === "ok" ? "var(--ok-fg)" : tone === "warn" ? "var(--warn-fg)" : tone === "bad" ? "var(--bad-fg)" : undefined;
@@ -87,11 +102,10 @@ function Timeline({ result, baseline, inputs, workFridays }: {
   workFridays: boolean;
 }) {
   const holidays = useMemo(() => new Set(inputs.holidayISOs), [inputs.holidayISOs]);
-  const rows = result.orders.filter((o) => o.segments.length > 0);
-  const baseEnd = new Map(baseline.orders.map((o) => [o.id, o.segments.length ? o.segments[o.segments.length - 1].end : null]));
+  const rows = result.jobs.filter((o) => o.segments.length > 0);
+  const baseEnd = new Map(baseline.jobs.map((o) => [o.id, o.segments.length ? o.segments[o.segments.length - 1].end : null]));
 
-  // the axis stretches to whatever width the card actually has — a short
-  // horizon spreads out instead of huddling in a corner
+  // the axis stretches to whatever width the card actually has
   const scrollRef = useRef<HTMLDivElement>(null);
   const [avail, setAvail] = useState(1200);
   useEffect(() => {
@@ -105,17 +119,17 @@ function Timeline({ result, baseline, inputs, workFridays }: {
 
   if (rows.length === 0) return null;
 
-  const LABEL_W = 176; // the sticky name column (ml-44)
+  const LABEL_W = 176;
   const axisDays = Math.max(1, Math.ceil(Math.max(result.makespan, ...rows.map((o) => o.dueOffset ?? 0))) + 1);
-  const PX = Math.max(18, Math.floor((avail - LABEL_W - 90) / axisDays)); // 90 ≈ room for the date flag after the last bar
-  const tickEvery = Math.max(1, Math.ceil(56 / PX)); // keep tick labels ~56px apart
+  const PX = Math.max(18, Math.floor((avail - LABEL_W - 90) / axisDays));
+  const tickEvery = Math.max(1, Math.ceil(56 / PX));
   const width = axisDays * PX + 90;
 
   return (
     <section className="bg-surface border rounded-xl overflow-hidden">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-3 pb-1.5">
         <h2 className="text-sm">Station timeline</h2>
-        <span className="text-[10px] text-muted">each bar = one station holding the order · the axis counts WORKING days</span>
+        <span className="text-[10px] text-muted">one row per component job · each bar = one station holding it · the axis counts WORKING days</span>
         <span className="flex items-center gap-3 ml-auto text-[10px] text-muted">
           {Object.entries(SEG_LABEL).map(([k, label]) => (
             <span key={k} className="inline-flex items-center gap-1">
@@ -127,7 +141,6 @@ function Timeline({ result, baseline, inputs, workFridays }: {
       </div>
       <div ref={scrollRef} className="overflow-x-auto">
         <div className="relative ml-44" style={{ width, minHeight: rows.length * 30 + 34 }}>
-          {/* day grid + date ticks */}
           {Array.from({ length: axisDays + 1 }, (_, i) => (
             <div key={i} className="absolute top-0 bottom-0 border-l" style={{ left: i * PX, borderColor: "var(--border)", opacity: i % tickEvery ? 0.25 : 0.7 }}>
               {i % tickEvery === 0 && i < axisDays && (
@@ -137,19 +150,17 @@ function Timeline({ result, baseline, inputs, workFridays }: {
               )}
             </div>
           ))}
-          {/* order rows */}
           {rows.map((o, r) => {
             const top = 24 + r * 30;
             const end = o.segments[o.segments.length - 1].end;
-            const bEnd = baseEnd.get(o.id);
+            const bEnd = baseEnd.get(o.id) ?? baseEnd.get(o.baseId);
             return (
               <div key={o.id}>
-                {/* label (escapes the scroll area into the reserved left margin) */}
                 <div className="absolute -ml-44 w-40 pr-2 text-right whitespace-nowrap overflow-hidden text-ellipsis" style={{ top: top + 2 }}>
                   <span className="text-xs font-bold">{o.bom}</span>
-                  <span className="text-[9px] text-muted ml-1">{o.id}</span>
+                  <span className="text-[10px] font-bold ml-1" style={{ color: "var(--accent)" }}>{o.item}</span>
+                  <span className="text-[9px] text-muted tabnum ml-0.5">×{o.qty}{o.batch !== null && ` b${o.batch}`}</span>
                 </div>
-                {/* baseline ghost — where this order ends TODAY, before the knobs */}
                 {bEnd !== null && bEnd !== undefined && Math.abs(bEnd - end) > 0.05 && (
                   <div
                     className="absolute h-1 rounded-full opacity-40"
@@ -162,17 +173,15 @@ function Timeline({ result, baseline, inputs, workFridays }: {
                     key={i}
                     className="absolute h-4 rounded"
                     style={{ top: top + 3, left: s.start * PX, width: Math.max(2, (s.end - s.start) * PX), background: SEG_COLOR[s.stage] }}
-                    title={`${SEG_LABEL[s.stage]}: day ${fmt(s.start)} → ${fmt(s.end)} (${fmt(s.end - s.start)} wd)`}
+                    title={`${o.bom} ${o.item}: ${SEG_LABEL[s.stage]} day ${fmt(s.start)} → ${fmt(s.end)}`}
                   />
                 ))}
-                {/* the finish flag */}
                 <span
                   className="absolute text-[9px] font-bold tabnum whitespace-nowrap"
                   style={{ top: top + 4, left: end * PX + 4, color: o.late ? "var(--bad-fg)" : "var(--muted)" }}
                 >
                   {o.late && "⚠ "}{dd(o.etaISO)}
                 </span>
-                {/* due marker */}
                 {o.dueOffset !== null && o.dueOffset > 0 && (
                   <span className="absolute text-bad-fg font-bold text-[10px]" style={{ top: top - 1, left: o.dueOffset * PX - 4 }} title={`due ${dd(o.dueISO)}`}>
                     ▼
@@ -192,6 +201,7 @@ function Timeline({ result, baseline, inputs, workFridays }: {
 export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
   const [scenario, setScenario] = useState<Scenario>(() => defaultScenario(inputs));
   const [pinned, setPinned] = useState<Scenario | null>(null);
+  const [grouped, setGrouped] = useState(false);
   const result = useMemo(() => simulate(inputs, scenario), [inputs, scenario]);
   const baseline = useMemo(() => simulate(inputs, defaultScenario(inputs)), [inputs]);
   const pinnedResult = useMemo(() => (pinned ? simulate(inputs, pinned) : null), [inputs, pinned]);
@@ -199,13 +209,14 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
   const touched =
     scenario.workFridays ||
     scenario.shiftHours !== 11 ||
+    Object.keys(scenario.splits).length > 0 ||
     WI_STAGES.some((s) => scenario.workersDelta[s] !== 0) ||
-    scenario.queue.some((id, i) => inputs.orders[i]?.id !== id);
+    scenario.queue.some((id, i) => inputs.jobs[i]?.id !== id);
 
   const bumpWorkers = (s: WiStage, d: number) =>
     setScenario((sc) => ({ ...sc, workersDelta: { ...sc.workersDelta, [s]: sc.workersDelta[s] + d } }));
 
-  const moveOrder = (id: string, dir: -1 | 1) =>
+  const moveJob = (id: string, dir: -1 | 1) =>
     setScenario((sc) => {
       const q = [...sc.queue];
       const i = q.indexOf(id);
@@ -216,6 +227,31 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
     });
 
   const runOptimizer = () => setScenario((sc) => ({ ...sc, queue: optimizeQueue(inputs, sc) }));
+
+  // split an unsplit job: the FIRST batch takes the most-advanced pieces
+  const splitJob = (row: ResultJob) => {
+    const raw = prompt(`Rush how many of ${row.bom} ${row.item}'s ${row.qty} pcs ahead? (1–${row.qty - 1})`);
+    if (raw === null) return;
+    const q = Math.floor(Number(raw));
+    if (!Number.isFinite(q) || q < 1 || q >= row.qty) return alert(`Enter a number between 1 and ${row.qty - 1}.`);
+    setScenario((sc) => {
+      const queue = [...sc.queue];
+      const at = queue.indexOf(row.id);
+      if (at >= 0) queue.splice(at, 1, `${row.id}#1`, `${row.id}#2`);
+      return { ...sc, splits: { ...sc.splits, [row.id]: [q, row.qty - q] }, queue };
+    });
+  };
+
+  // remove a split: its batches collapse back to the base job where batch 1 sat
+  const unsplitJob = (baseId: string) =>
+    setScenario((sc) => {
+      const splits = { ...sc.splits };
+      const n = splits[baseId]?.length ?? 0;
+      delete splits[baseId];
+      const batchIds = Array.from({ length: n }, (_, i) => `${baseId}#${i + 1}`);
+      const queue = sc.queue.filter((id) => !batchIds.includes(id) || id === batchIds[0]);
+      return { ...sc, splits, queue: queue.map((id) => (id === batchIds[0] ? baseId : id)) };
+    });
 
   // ---- drag & drop on the queue ----
   const dragId = useRef<string | null>(null);
@@ -232,13 +268,24 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
     });
   };
 
-  // ---- KPIs (live vs baseline, plus the pinned A when present) ----
+  // ---- KPIs ----
   const k = kpisOf(result);
   const kBase = kpisOf(baseline);
   const kPin = pinnedResult ? kpisOf(pinnedResult) : null;
   const clearDelta = k.lastEta && kBase.lastEta ? Math.round((Date.parse(k.lastEta) - Date.parse(kBase.lastEta)) / 86400000) : 0;
   const addedMh = scenarioCost(scenario);
-  const pinById = pinnedResult ? new Map(pinnedResult.orders.map((o) => [o.id, o])) : null;
+  const pinById = pinnedResult ? new Map(pinnedResult.jobs.map((o) => [o.id, o])) : null;
+
+  // the table's rows: queue order, or grouped read-only by order
+  const tableRows: (ResultJob | { moHeader: string; bom: string; jobs: ResultJob[] })[] = useMemo(() => {
+    if (!grouped) return result.jobs;
+    const seen = new Map<string, ResultJob[]>();
+    for (const j of result.jobs) {
+      if (!seen.has(j.mo)) seen.set(j.mo, []);
+      seen.get(j.mo)!.push(j);
+    }
+    return [...seen.entries()].map(([mo, jobs]) => ({ moHeader: mo, bom: jobs[0].bom, jobs }));
+  }, [grouped, result.jobs]);
 
   return (
     <div className="space-y-4">
@@ -394,80 +441,51 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
 
       {/* ================= queue ================= */}
       <div className="bg-surface border rounded-xl overflow-x-auto">
+        <div className="flex items-center gap-3 px-4 pt-2.5 pb-1.5">
+          <h2 className="text-sm">Queue — one row per component job</h2>
+          <span className="text-[10px] text-muted">drag to reorder · ✂ rushes part of a quantity ahead</span>
+          <label className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer no-print">
+            <input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} className="accent-[var(--brand)]" />
+            Group by order
+          </label>
+        </div>
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand text-white text-center">
-              <th className="p-2 w-24 text-left" title="drag rows (or use the arrows) to change who gets worked first">Queue</th>
+              <th className="p-2 w-24 text-left">Queue</th>
               <th className="p-2 text-left">BOM</th>
-              <th className="p-2 text-left">MO</th>
+              <th className="p-2 text-left">Job</th>
               <th className="p-2">Due</th>
               <th className="p-2">ETA now</th>
               {pinned && <th className="p-2">ETA A 📌</th>}
               <th className="p-2">ETA if…</th>
               <th className="p-2">Shift</th>
+              <th className="p-2 w-16 no-print"></th>
             </tr>
           </thead>
           <tbody>
-            {result.orders.length === 0 && (
-              <tr><td colSpan={pinned ? 8 : 7} className="p-4 text-center text-muted">No open orders to simulate.</td></tr>
+            {result.jobs.length === 0 && (
+              <tr><td colSpan={pinned ? 9 : 8} className="p-4 text-center text-muted">No open jobs to simulate.</td></tr>
             )}
-            {result.orders.map((o, i) => {
-              const pin = pinById?.get(o.id);
-              return (
-                <tr
-                  key={o.id}
-                  draggable
-                  onDragStart={(e) => { dragId.current = o.id; e.dataTransfer.effectAllowed = "move"; }}
-                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOver !== o.id) setDragOver(o.id); }}
-                  onDragLeave={() => dragOver === o.id && setDragOver(null)}
-                  onDrop={(e) => { e.preventDefault(); dropOn(o.id); }}
-                  onDragEnd={() => { dragId.current = null; setDragOver(null); }}
-                  className={`${i % 2 ? "bg-zebra" : ""} cursor-grab active:cursor-grabbing`}
-                  style={dragOver === o.id ? { boxShadow: "inset 0 2px 0 var(--brand)" } : undefined}
-                >
-                  <td className="p-1.5 whitespace-nowrap">
-                    <span className="text-muted select-none mr-1" title="drag to reorder">⠿</span>
-                    <button onClick={() => moveOrder(o.id, -1)} disabled={i === 0} className="px-1 text-accent font-bold disabled:opacity-20" title="work it sooner">↑</button>
-                    <span className="tabnum text-xs text-muted">{i + 1}</span>
-                    <button onClick={() => moveOrder(o.id, +1)} disabled={i === result.orders.length - 1} className="px-1 text-accent font-bold disabled:opacity-20" title="work it later">↓</button>
-                  </td>
-                  <td className="p-2 font-bold whitespace-nowrap">{o.bom}</td>
-                  <td className="p-2 text-xs text-muted whitespace-nowrap">{o.id}</td>
-                  <td className="p-2 text-center tabnum whitespace-nowrap">{dd(o.dueISO)}</td>
-                  <td className="p-2 text-center tabnum whitespace-nowrap">
-                    {o.done ? <span className="text-ok-fg font-bold">✓ done</span> : o.baselineISO ? dd(o.baselineISO) : <span title="a stage this order needs has no recent history">?</span>}
-                  </td>
-                  {pinned && (
-                    <td className="p-2 text-center tabnum whitespace-nowrap">
-                      {!pin || pin.done ? (
-                        <span className="text-ok-fg">✓</span>
-                      ) : pin.blockedBy ? (
-                        "?"
-                      ) : (
-                        <span style={{ color: pin.late ? "var(--bad-fg)" : undefined }}>{pin.late && "⚠ "}{dd(pin.etaISO)}</span>
-                      )}
-                    </td>
-                  )}
-                  <td className="p-2 text-center tabnum whitespace-nowrap font-bold">
-                    {o.done ? (
-                      <span className="text-ok-fg">✓</span>
-                    ) : o.blockedBy ? (
-                      <span className="text-muted" title="a stage this order needs has no recent history">?</span>
-                    ) : (
-                      <span style={{ color: o.late ? "var(--bad-fg)" : o.deltaDays < 0 ? "var(--ok-fg)" : undefined }}>
-                        {o.late && "⚠ "}{dd(o.etaISO)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-2 text-center whitespace-nowrap">
-                    {!o.done && !o.blockedBy && o.deltaDays !== 0 && (
-                      <span className="pill tabnum" style={o.deltaDays < 0 ? { background: "var(--ok-bg)", color: "var(--ok-fg)" } : { background: "var(--bad-bg)", color: "var(--bad-fg)" }}>
-                        {o.deltaDays < 0 ? `${-o.deltaDays}d sooner` : `${o.deltaDays}d later`}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
+            {tableRows.map((row, i) => {
+              if ("moHeader" in row) {
+                const worstIso = row.jobs.reduce<string | null>((m, j) => (j.etaISO && (!m || j.etaISO > m) ? j.etaISO : m), null);
+                const anyLate = row.jobs.some((j) => j.late);
+                return (
+                  <Fragment key={`g-${row.moHeader}`}>
+                    <tr className="bg-surface-2/60">
+                      <td colSpan={pinned ? 9 : 8} className="px-3 py-1.5 text-xs">
+                        <b>{row.bom}</b> <span className="text-muted">{row.moHeader}</span>
+                        <span className="ml-3 text-muted">order clears</span>{" "}
+                        <b className="tabnum" style={{ color: anyLate ? "var(--bad-fg)" : undefined }}>{anyLate && "⚠ "}{dd(worstIso)}</b>
+                        <span className="ml-3 text-[10px] text-muted">({row.jobs.length} jobs — switch off grouping to reorder)</span>
+                      </td>
+                    </tr>
+                    {row.jobs.map((j) => jobRow(j, -1))}
+                  </Fragment>
+                );
+              }
+              return jobRow(row, i);
             })}
           </tbody>
         </table>
@@ -475,9 +493,89 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
 
       <p className="text-[11px] text-muted">
         A sandbox — nothing here is saved or promised. Rates come from what the plant actually produced over the last {inputs.rateWindowDays} working
-        days; adding workers scales a stage&apos;s speed in proportion to its capacity figure (Admin → Standard Times). ETAs assume the queue is worked
-        top-down. ⚡ Optimize reorders the queue to miss as few due dates as this scenario&apos;s speed allows (then least total delay, then earliest finish).
+        days; adding workers scales a stage&apos;s speed in proportion to its capacity figure (Admin → Standard Times). The queue schedules component
+        jobs top-down; ✂ splitting hands the rushed batch the pieces closest to done. ⚡ Optimize reorders to miss as few due dates as this scenario&apos;s
+        speed allows (then least total delay, then earliest finish).
       </p>
     </div>
   );
+
+  function jobRow(o: ResultJob, queueIndex: number) {
+    const pin = pinById ? pinById.get(o.id) ?? pinById.get(o.baseId) : null;
+    const draggable = queueIndex >= 0;
+    return (
+      <tr
+        key={o.id}
+        draggable={draggable}
+        onDragStart={(e) => { if (!draggable) return; dragId.current = o.id; e.dataTransfer.effectAllowed = "move"; }}
+        onDragOver={(e) => { if (!draggable) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOver !== o.id) setDragOver(o.id); }}
+        onDragLeave={() => dragOver === o.id && setDragOver(null)}
+        onDrop={(e) => { if (!draggable) return; e.preventDefault(); dropOn(o.id); }}
+        onDragEnd={() => { dragId.current = null; setDragOver(null); }}
+        className={`${queueIndex % 2 ? "bg-zebra" : ""} ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
+        style={dragOver === o.id ? { boxShadow: "inset 0 2px 0 var(--brand)" } : undefined}
+      >
+        <td className="p-1.5 whitespace-nowrap">
+          {draggable ? (
+            <>
+              <span className="text-muted select-none mr-1" title="drag to reorder">⠿</span>
+              <button onClick={() => moveJob(o.id, -1)} disabled={queueIndex === 0} className="px-1 text-accent font-bold disabled:opacity-20" title="work it sooner">↑</button>
+              <span className="tabnum text-xs text-muted">{queueIndex + 1}</span>
+              <button onClick={() => moveJob(o.id, +1)} disabled={queueIndex === result.jobs.length - 1} className="px-1 text-accent font-bold disabled:opacity-20" title="work it later">↓</button>
+            </>
+          ) : (
+            <span className="pl-4 text-[10px] text-muted tabnum">#{result.jobs.findIndex((x) => x.id === o.id) + 1}</span>
+          )}
+        </td>
+        <td className="p-2 font-bold whitespace-nowrap">{o.bom}</td>
+        <td className="p-2 whitespace-nowrap">
+          <b style={{ color: "var(--accent)" }}>{o.item}</b>
+          <span className="tabnum text-xs"> ×{o.qty}</span>
+          {o.batch !== null && <span className="pill pill-muted ml-1 tabnum" title="batch of a split quantity">b{o.batch}</span>}
+          <span className="block text-[9px] text-muted">{o.mo}</span>
+        </td>
+        <td className="p-2 text-center tabnum whitespace-nowrap">{dd(o.dueISO)}</td>
+        <td className="p-2 text-center tabnum whitespace-nowrap">
+          {o.done ? <span className="text-ok-fg font-bold">✓ done</span> : o.baselineISO ? dd(o.baselineISO) : <span title="a stage this job needs has no recent history">?</span>}
+        </td>
+        {pinned && (
+          <td className="p-2 text-center tabnum whitespace-nowrap">
+            {!pin || pin.done ? (
+              <span className="text-ok-fg">✓</span>
+            ) : pin.blockedBy ? (
+              "?"
+            ) : (
+              <span style={{ color: pin.late ? "var(--bad-fg)" : undefined }}>{pin.late && "⚠ "}{dd(pin.etaISO)}</span>
+            )}
+          </td>
+        )}
+        <td className="p-2 text-center tabnum whitespace-nowrap font-bold">
+          {o.done ? (
+            <span className="text-ok-fg">✓</span>
+          ) : o.blockedBy ? (
+            <span className="text-muted" title="a stage this job needs has no recent history">?</span>
+          ) : (
+            <span style={{ color: o.late ? "var(--bad-fg)" : o.deltaDays < 0 ? "var(--ok-fg)" : undefined }}>
+              {o.late && "⚠ "}{dd(o.etaISO)}
+            </span>
+          )}
+        </td>
+        <td className="p-2 text-center whitespace-nowrap">
+          {!o.done && !o.blockedBy && o.deltaDays !== 0 && (
+            <span className="pill tabnum" style={o.deltaDays < 0 ? { background: "var(--ok-bg)", color: "var(--ok-fg)" } : { background: "var(--bad-bg)", color: "var(--bad-fg)" }}>
+              {o.deltaDays < 0 ? `${-o.deltaDays}d sooner` : `${o.deltaDays}d later`}
+            </span>
+          )}
+        </td>
+        <td className="p-1.5 text-center no-print whitespace-nowrap">
+          {!o.done && o.batch === null && o.qty > 1 && (
+            <button onClick={() => splitJob(o)} className="text-accent text-xs font-semibold px-1 hover:underline" title="rush part of this quantity ahead">✂ split</button>
+          )}
+          {o.batch !== null && (
+            <button onClick={() => unsplitJob(o.baseId)} className="text-muted text-xs font-semibold px-1 hover:underline" title="merge the batches back into one job">merge</button>
+          )}
+        </td>
+      </tr>
+    );
+  }
 }

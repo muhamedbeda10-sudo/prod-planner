@@ -61,11 +61,22 @@ export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, n
   return { rates, windowDays: wd };
 });
 
+/** One order-component as the forecast schedules it: its own remaining
+ *  pieces per station. Pieces flow — the TC of an order can be welding while
+ *  its TN is still being cut. */
+export interface EtaJob extends EtaOrder {
+  mo: string;
+  bom: string;
+  item: string;
+  left: { cut: number; weld: number; finish: number }; // PIECES per stage
+  perPc: Record<EtaStage, number>; // std-hours one piece costs each station
+}
+
 /** Everything the baseline forecast is made of — shared by the live ETA
  *  column and the what-if simulator (which re-runs scenarios over it). */
 export interface EtaBase {
-  orders: (EtaOrder & { bom: string })[]; // open orders, remaining hours per stage
-  results: EtaResult[]; // baseline forecast, same order as `orders`
+  jobs: EtaJob[]; // open (MO × item) jobs, FIFO by due date
+  results: EtaResult[]; // baseline forecast, same order as `jobs`
   rates: Record<EtaStage, number>;
   windowDays: number;
   holidayISOs: string[];
@@ -91,30 +102,40 @@ export const getEtaBase = cache(async (): Promise<EtaBase> => {
   }
 
   const open = tracker.filter((r) => r.status === "open");
-  const orders = open.map((r) => {
-    const hours: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
+  const jobs: EtaJob[] = [];
+  for (const r of open) {
     // resolve through the registry row itself so the FG map gets its say
     const tier = tierForOrder(std, masterByMo.get(r.mo) ?? { fgCode: null, kva: r.kva });
     const per = tier !== null ? itemHoursFor(std, tier) : null;
-    if (per) {
-      for (const it of ITEMS) {
-        const c = r.items[it];
-        if (!c.eligible || c.excluded) continue;
-        const p = per[it];
-        if (!p) continue; // AR / MB — no standard times
-        const reqInHouse = Math.max(0, r.required - c.osp);
-        hours.cut += Math.max(0, reqInHouse - c.cut) * p.cut;
-        hours.weld += Math.max(0, reqInHouse - c.weld) * p.weld;
-        const fin = isPaintExempt(it as Item) ? c.shp : c.paint;
-        hours.finish += Math.max(0, reqInHouse - fin) * (p.shb + p.paint);
-      }
+    if (!per) continue; // no standard times — no honest forecast for this MO
+    for (const it of ITEMS) {
+      const c = r.items[it];
+      if (!c.eligible || c.excluded) continue;
+      const p = per[it];
+      if (!p) continue; // AR / MB — no standard times
+      const reqInHouse = Math.max(0, r.required - c.osp);
+      const left = {
+        cut: Math.max(0, reqInHouse - c.cut),
+        weld: Math.max(0, reqInHouse - c.weld),
+        finish: Math.max(0, reqInHouse - (isPaintExempt(it as Item) ? c.shp : c.paint)),
+      };
+      const perPc: Record<EtaStage, number> = { cut: p.cut, weld: p.weld, finish: p.shb + p.paint };
+      jobs.push({
+        id: `${r.mo}|${it}`,
+        mo: r.mo,
+        bom: r.bom,
+        item: it,
+        dueISO: dueByMo.get(r.mo) ?? null,
+        left,
+        perPc,
+        hours: { cut: left.cut * perPc.cut, weld: left.weld * perPc.weld, finish: left.finish * perPc.finish },
+      });
     }
-    return { id: r.mo, bom: r.bom, dueISO: dueByMo.get(r.mo) ?? null, hours };
-  });
+  }
 
   return {
-    orders,
-    results: forecastEta(orders, rates),
+    jobs,
+    results: forecastEta(jobs, rates),
     rates,
     windowDays,
     holidayISOs: holidayRows.map((h) => toISODate(h.date)),
@@ -130,10 +151,11 @@ export interface OrderEta {
   blockedBy: EtaStage | null; // stage with no trailing rate — no honest forecast
 }
 
-/** ETA per OPEN order: remaining std-hours per stage through the Cut→Weld→
- *  Finish flow shop at the trailing rates, FIFO by delivery date. */
+/** ETA per OPEN order: its item jobs flow through the Cut→Weld→Finish flow
+ *  shop at the trailing rates (FIFO by delivery date, pieces pipelining
+ *  between stations); the ORDER's ETA is when its LAST item clears. */
 export async function getOrderEtas(): Promise<{ byMo: Map<string, OrderEta>; windowDays: number }> {
-  const { orders, results, windowDays, holidayISOs, todayISO } = await getEtaBase();
+  const { jobs, results, windowDays, holidayISOs, todayISO } = await getEtaBase();
   const holidays = new Set(holidayISOs);
 
   // working-day offset → calendar date: day 0 = the next working day from today
@@ -149,17 +171,26 @@ export async function getOrderEtas(): Promise<{ byMo: Map<string, OrderEta>; win
     return toISODate(d);
   };
 
-  const byMo = new Map<string, OrderEta>();
+  // fold the item jobs up to their MO: worst days wins, any block blocks
+  const perMo = new Map<string, { dueISO: string | null; days: number; blockedBy: EtaStage | null }>();
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
-    const dueISO = orders[i].dueISO;
-    if (r.blockedBy) {
-      byMo.set(r.id, { etaISO: null, dueISO, late: false, done: false, blockedBy: r.blockedBy });
-    } else if (r.days === 0) {
-      byMo.set(r.id, { etaISO: null, dueISO, late: false, done: true, blockedBy: null });
+    const j = jobs[i];
+    const cur = perMo.get(j.mo) ?? { dueISO: j.dueISO, days: 0, blockedBy: null };
+    if (r.blockedBy) cur.blockedBy = cur.blockedBy ?? r.blockedBy;
+    else if (r.days !== null) cur.days = Math.max(cur.days, r.days);
+    perMo.set(j.mo, cur);
+  }
+
+  const byMo = new Map<string, OrderEta>();
+  for (const [mo, agg] of perMo) {
+    if (agg.blockedBy) {
+      byMo.set(mo, { etaISO: null, dueISO: agg.dueISO, late: false, done: false, blockedBy: agg.blockedBy });
+    } else if (agg.days === 0) {
+      byMo.set(mo, { etaISO: null, dueISO: agg.dueISO, late: false, done: true, blockedBy: null });
     } else {
-      const etaISO = dateForOffset(r.days!);
-      byMo.set(r.id, { etaISO, dueISO, late: !!dueISO && etaISO > dueISO, done: false, blockedBy: null });
+      const etaISO = dateForOffset(agg.days);
+      byMo.set(mo, { etaISO, dueISO: agg.dueISO, late: !!agg.dueISO && etaISO > agg.dueISO, done: false, blockedBy: null });
     }
   }
   return { byMo, windowDays };

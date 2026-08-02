@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { toISODate } from "@/lib/domain/dates";
 import { requiredHoursForLines } from "@/lib/domain/stdEngine";
 import { etaQueueOrder } from "@/lib/domain/eta";
-import type { WhatIfInputs, WhatIfOrder } from "@/lib/domain/whatif";
+import type { WhatIfInputs, WhatIfJob } from "@/lib/domain/whatif";
 import { getStdData, getStageCapacity } from "./standardTimes";
 import { getEtaBase } from "./eta";
 
@@ -43,12 +43,22 @@ export async function getWhatIfInputs(): Promise<WhatIfInputs> {
     }
   }
 
-  // orders in baseline queue order (FIFO by due) so the on-screen list IS the
+  // jobs in baseline queue order (FIFO by due) so the on-screen list IS the
   // queue the user then rearranges
   const resultById = new Map(base.results.map((r) => [r.id, r]));
-  const orders: WhatIfOrder[] = [...base.orders].sort(etaQueueOrder).map((o) => {
-    const r = resultById.get(o.id)!;
-    return { ...o, baselineDays: r.days, blockedBy: r.blockedBy };
+  const jobs: WhatIfJob[] = [...base.jobs].sort(etaQueueOrder).map((j) => {
+    const r = resultById.get(j.id)!;
+    return {
+      id: j.id,
+      mo: j.mo,
+      bom: j.bom,
+      item: j.item,
+      dueISO: j.dueISO,
+      left: j.left,
+      perPc: j.perPc,
+      baselineDays: r.days,
+      blockedBy: r.blockedBy,
+    };
   });
 
   return {
@@ -57,7 +67,7 @@ export async function getWhatIfInputs(): Promise<WhatIfInputs> {
     rates: base.rates,
     rateWindowDays: base.windowDays,
     capacity,
-    orders,
+    jobs,
     plan,
   };
 }
