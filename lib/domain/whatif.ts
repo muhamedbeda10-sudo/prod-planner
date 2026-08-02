@@ -6,7 +6,14 @@
  *             a day welds through)
  *   Fridays   the day off becomes a working day → the same daily rates land
  *             on more calendar days, and the plan window gains capacity days
- *   queue     hand-reorder the orders → who waits for whom at every station
+ *   queue     hand-reorder the JOBS → who waits for whom at every station
+ *   splits    carve a job's quantity into prioritized batches
+ *
+ * The unit of work is a JOB — one component of one order (MO × item) with its
+ * own remaining pieces per stage — so the TC of an order can jump the queue
+ * while its TN waits, exactly like pieces move on the real floor. Splitting a
+ * job hands the FIRST batch the most-advanced pieces (the ones closest to
+ * done), which is what a foreman rushing a partial delivery actually does.
  *
  * Pure on purpose: the server sends one snapshot of inputs and the browser
  * re-runs scenarios instantly, no round trips.
@@ -24,9 +31,23 @@ const ETA_FEED: Record<EtaStage, WiStage[]> = {
   finish: ["ShotBlast", "Painting"],
 };
 
-export interface WhatIfOrder extends EtaOrder {
+/** PIECES still to pass each station (physical chain: cut ≤ weld ≤ finish). */
+export interface StagePcs {
+  cut: number;
+  weld: number;
+  finish: number;
+}
+
+/** One order-component: what the queue actually schedules. */
+export interface WhatIfJob {
+  id: string; // "MO|ITEM"
+  mo: string;
   bom: string;
-  baselineDays: number | null; // ETA in working days under today's reality
+  item: string; // CF | TC | TN | CB
+  dueISO: string | null; // the MO's latest scheduled delivery
+  left: StagePcs; // pieces still owed per stage
+  perPc: Record<EtaStage, number>; // std-hours ONE piece costs each station
+  baselineDays: number | null; // job ETA in working days under today's reality
   blockedBy: EtaStage | null;
 }
 
@@ -36,7 +57,7 @@ export interface WhatIfInputs {
   rates: Record<EtaStage, number>; // trailing std-h/working day (today's crew)
   rateWindowDays: number;
   capacity: Partial<Record<WiStage, number>>; // mh per working day (Admin figure)
-  orders: WhatIfOrder[]; // open orders, queued FIFO by due date (the baseline queue)
+  jobs: WhatIfJob[]; // open jobs, queued FIFO by due date (the baseline queue)
   plan: {
     planNo: number;
     minISO: string;
@@ -50,15 +71,23 @@ export interface Scenario {
   workersDelta: Record<WiStage, number>;
   shiftHours: number; // man-hours one worker adds per working day
   workFridays: boolean;
-  queue: string[]; // MO ids in the order they should be worked
+  queue: string[]; // job ids (or split-batch ids) in the order they get worked
+  splits: Record<string, number[]>; // base job id → batch sizes (sum = its finish-left)
 }
 
 export const defaultScenario = (inputs: WhatIfInputs): Scenario => ({
   workersDelta: { Cut: 0, Welding: 0, ShotBlast: 0, Painting: 0 },
   shiftHours: 11,
   workFridays: false,
-  queue: inputs.orders.map((o) => o.id),
+  queue: inputs.jobs.map((j) => j.id),
+  splits: {},
 });
+
+/** A job as it enters the queue after splits — a whole job, or one batch. */
+export interface DerivedJob extends WhatIfJob {
+  baseId: string; // the unsplit job this came from (== id when unsplit)
+  batch: number | null; // 1-based batch number, null when unsplit
+}
 
 export interface WhatIfResult {
   stages: {
@@ -69,9 +98,14 @@ export interface WhatIfResult {
     load: number | null; // scenario required/available
   }[];
   planWorkingDays: number; // scenario (Fridays may count)
-  orders: {
+  jobs: {
     id: string;
+    baseId: string;
+    batch: number | null;
+    mo: string;
     bom: string;
+    item: string;
+    qty: number; // pieces this row delivers (its finish-left)
     dueISO: string | null;
     baselineISO: string | null; // null = done or blocked
     etaISO: string | null;
@@ -82,7 +116,7 @@ export interface WhatIfResult {
     segments: EtaSegment[]; // station-by-station occupancy, for the timeline
     dueOffset: number | null; // the due date as a working-day offset on the same axis
   }[];
-  makespan: number; // working days until the LAST order clears (0 = all done)
+  makespan: number; // working days until the LAST job clears (0 = all done)
 }
 
 const DAY = 86400000;
@@ -153,6 +187,46 @@ function scenarioPhysics(inputs: WhatIfInputs, scenario: Scenario): {
   return { cap, rates };
 }
 
+/** Apply the scenario's splits: each base job becomes its batches, the FIRST
+ *  batch taking the most-advanced pieces (fewest stations left to visit) —
+ *  rushing a partial delivery starts from what is closest to done. */
+export function deriveJobs(inputs: WhatIfInputs, scenario: Scenario): DerivedJob[] {
+  const out: DerivedJob[] = [];
+  for (const j of inputs.jobs) {
+    const sizes = scenario.splits[j.id];
+    if (!sizes || sizes.length < 2 || sizes.reduce((a, b) => a + b, 0) !== j.left.finish) {
+      out.push({ ...j, baseId: j.id, batch: null });
+      continue;
+    }
+    let { cut, weld, finish } = j.left;
+    for (let b = 0; b < sizes.length; b++) {
+      const q = sizes[b];
+      // the pieces NOT in this batch (still behind it) keep their arrears;
+      // this batch carries only what its own most-advanced q pieces still owe
+      const behind = finish - q;
+      const bWeld = Math.max(0, weld - behind);
+      const bCut = Math.max(0, cut - behind);
+      out.push({
+        ...j,
+        id: `${j.id}#${b + 1}`,
+        baseId: j.id,
+        batch: b + 1,
+        left: { cut: bCut, weld: bWeld, finish: q },
+      });
+      cut -= bCut;
+      weld -= bWeld;
+      finish -= q;
+    }
+  }
+  return out;
+}
+
+const hoursOf = (j: DerivedJob): Record<EtaStage, number> => ({
+  cut: j.left.cut * j.perPc.cut,
+  weld: j.left.weld * j.perPc.weld,
+  finish: j.left.finish * j.perPc.finish,
+});
+
 export function simulate(inputs: WhatIfInputs, scenario: Scenario): WhatIfResult {
   const holidays = new Set(inputs.holidayISOs);
   const { cap: scenarioCap, rates: scenarioRates } = scenarioPhysics(inputs, scenario);
@@ -179,62 +253,79 @@ export function simulate(inputs: WhatIfInputs, scenario: Scenario): WhatIfResult
   }
 
   // ---- ETAs under the scenario, in the hand-picked queue order ----
-  const byId = new Map(inputs.orders.map((o) => [o.id, o]));
-  const queue = scenario.queue.map((id) => byId.get(id)!).filter(Boolean);
-  // anything not mentioned keeps its baseline place at the back
-  for (const o of inputs.orders) if (!scenario.queue.includes(o.id)) queue.push(o);
+  const derived = deriveJobs(inputs, scenario);
+  const byId = new Map(derived.map((j) => [j.id, j]));
+  const queue: DerivedJob[] = scenario.queue.map((id) => byId.get(id)!).filter(Boolean);
+  // anything the queue doesn't mention (fresh splits, new jobs) joins the back
+  for (const j of derived) if (!queue.includes(j)) queue.push(j);
 
-  const results = forecastEtaQueued(queue, scenarioRates);
-  const orders = results.map((r) => {
-    const o = byId.get(r.id)!;
-    const done = ETA_STAGES.every((s) => o.hours[s] <= 0);
+  const results = forecastEtaQueued(
+    queue.map((j) => ({ id: j.id, dueISO: j.dueISO, hours: hoursOf(j) })),
+    scenarioRates
+  );
+  const jobs = results.map((r) => {
+    const j = byId.get(r.id)!;
+    const done = j.left.cut <= 0 && j.left.weld <= 0 && j.left.finish <= 0;
     const baselineISO =
-      done || o.baselineDays === null ? null : dateForOffsetISO(o.baselineDays, inputs.todayISO, holidays, false);
+      done || j.baselineDays === null ? null : dateForOffsetISO(j.baselineDays, inputs.todayISO, holidays, false);
     const etaISO =
       done || r.days === null ? null : dateForOffsetISO(r.days, inputs.todayISO, holidays, scenario.workFridays);
     return {
-      id: r.id,
-      bom: o.bom,
-      dueISO: o.dueISO,
+      id: j.id,
+      baseId: j.baseId,
+      batch: j.batch,
+      mo: j.mo,
+      bom: j.bom,
+      item: j.item,
+      qty: j.left.finish,
+      dueISO: j.dueISO,
       baselineISO,
       etaISO,
       deltaDays: etaISO && baselineISO ? Math.round((parse(etaISO) - parse(baselineISO)) / DAY) : 0,
-      late: !!etaISO && !!o.dueISO && etaISO > o.dueISO,
+      late: !!etaISO && !!j.dueISO && etaISO > j.dueISO,
       done,
       blockedBy: r.blockedBy,
       segments: done ? [] : r.segments,
-      dueOffset: o.dueISO ? offsetForDateISO(o.dueISO, inputs.todayISO, holidays, scenario.workFridays) : null,
+      dueOffset: j.dueISO ? offsetForDateISO(j.dueISO, inputs.todayISO, holidays, scenario.workFridays) : null,
     };
   });
-  const makespan = orders.reduce((m, o) => Math.max(m, o.segments.length ? o.segments[o.segments.length - 1].end : 0), 0);
+  const makespan = jobs.reduce((m, o) => Math.max(m, o.segments.length ? o.segments[o.segments.length - 1].end : 0), 0);
 
-  return { stages, planWorkingDays, orders, makespan };
+  return { stages, planWorkingDays, jobs, makespan };
 }
 
 /* ---------------------------- queue optimizer ---------------------------- */
 
-// what "best" means, in order: fewest late orders, then the least total
+// what "best" means, in order: fewest late jobs, then the least total
 // lateness (working days), then the earliest overall finish
 type QueueScore = [late: number, latenessWd: number, makespan: number];
 const better = (a: QueueScore, b: QueueScore) =>
   a[0] !== b[0] ? a[0] < b[0] : a[1] !== b[1] ? a[1] < b[1] - 1e-9 : a[2] < b[2] - 1e-9;
 
 /** The best queue this scenario's knobs allow: starts from the due-date order
- *  and moves one order at a time to wherever it helps, until nothing does.
- *  Deterministic, and never returns something worse than the due-date queue. */
+ *  and moves one job at a time to wherever it helps, until nothing does.
+ *  Deterministic, and never returns something worse than the due-date queue.
+ *  Splits are respected — batches are moved like any other job. */
 export function optimizeQueue(inputs: WhatIfInputs, scenario: Scenario): string[] {
   const { rates } = scenarioPhysics(inputs, scenario);
   const holidays = new Set(inputs.holidayISOs);
-  const byId = new Map(inputs.orders.map((o) => [o.id, o]));
+  const derived = deriveJobs(inputs, scenario);
+  const byId = new Map(derived.map((j) => [j.id, j]));
   const dueOff = new Map(
-    inputs.orders.map((o) => [
-      o.id,
-      o.dueISO ? offsetForDateISO(o.dueISO, inputs.todayISO, holidays, scenario.workFridays) : null,
+    derived.map((j) => [
+      j.id,
+      j.dueISO ? offsetForDateISO(j.dueISO, inputs.todayISO, holidays, scenario.workFridays) : null,
     ])
   );
 
   const score = (ids: string[]): QueueScore => {
-    const results = forecastEtaQueued(ids.map((id) => byId.get(id)!), rates);
+    const results = forecastEtaQueued(
+      ids.map((id) => {
+        const j = byId.get(id)!;
+        return { id: j.id, dueISO: j.dueISO, hours: hoursOf(j) };
+      }),
+      rates
+    );
     let late = 0, lateness = 0, makespan = 0;
     for (const r of results) {
       if (r.days === null || r.segments.length === 0) continue; // done or blocked — not schedulable
@@ -249,11 +340,11 @@ export function optimizeQueue(inputs: WhatIfInputs, scenario: Scenario): string[
     return [late, lateness, makespan];
   };
 
-  // start from the FIFO-by-due-date order (the baseline queue)
-  let queue = inputs.orders.map((o) => o.id);
+  // start from the FIFO-by-due-date order over the derived jobs
+  let queue = derived.map((j) => j.id);
   let best = score(queue);
 
-  // insertion local search: try every (order, position) move, keep the best
+  // insertion local search: try every (job, position) move, keep the best
   // improvement, repeat until a full pass finds nothing (capped for safety)
   for (let pass = 0; pass < 6; pass++) {
     let improved = false;
