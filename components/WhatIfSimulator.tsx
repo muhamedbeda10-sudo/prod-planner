@@ -1,18 +1,18 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  simulate, defaultScenario, dateForOffsetISO, WI_STAGES,
+  simulate, defaultScenario, optimizeQueue, dateForOffsetISO, WI_STAGES,
   type WhatIfInputs, type Scenario, type WiStage, type WhatIfResult,
 } from "@/lib/domain/whatif";
 import { deptLabel, STAGE_COLOR } from "@/lib/domain/constants";
 import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 
 /* The control room: turn the knobs — workers per stage, working Fridays, a
-   hand-reordered (drag & drop) queue — and the KPIs, the station timeline and
-   every ETA respond instantly, with the SAME arithmetic the live pages use.
-   Nothing here is saved; it answers "what should I do today?" before anyone
-   commits to anything. */
+   hand-reordered (drag & drop) queue, or one click of the optimizer — and the
+   KPIs, the station timeline and every ETA respond instantly, with the SAME
+   arithmetic the live pages use. Pin a scenario as "A" to keep its numbers on
+   screen while you build a second one against it. Nothing here is saved. */
 
 const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-US");
 const dd = (iso: string | null) => (iso ? toDisplayDate(parseISODate(iso)!) : "—");
@@ -33,14 +33,46 @@ function loadTone(load: number | null): { bg: string; fg: string; label: string 
   return { bg: "var(--ok-bg)", fg: "var(--ok-fg)", label: pct };
 }
 
+/** The figures a scenario boils down to — computed identically for the live
+ *  scenario, the pinned one, and reality, so every comparison is like for
+ *  like. */
+function kpisOf(result: WhatIfResult) {
+  const active = result.orders.filter((o) => !o.done && !o.blockedBy);
+  const late = active.filter((o) => o.late).length;
+  const lastEta = active.reduce<string | null>((m, o) => (o.etaISO && (!m || o.etaISO > m) ? o.etaISO : m), null);
+  const worst = result.stages
+    .filter((s) => s.required > 0 && s.load !== null)
+    .reduce<(typeof result.stages)[number] | null>((w, s) => (!w || s.load! > w.load! ? s : w), null);
+  return { active: active.length, late, onTime: active.length - late, lastEta, worst };
+}
+
+const scenarioCost = (sc: Scenario) => WI_STAGES.reduce((a, s) => a + sc.workersDelta[s] * sc.shiftHours, 0);
+
+/** One line that names a scenario: "+2 Welding · +1 Painting · Fridays · queue edited". */
+function describeScenario(sc: Scenario, inputs: WhatIfInputs): string {
+  const parts: string[] = [];
+  for (const s of WI_STAGES) if (sc.workersDelta[s] !== 0) parts.push(`${sc.workersDelta[s] > 0 ? "+" : ""}${sc.workersDelta[s]} ${deptLabel(s)}`);
+  if (sc.shiftHours !== 11) parts.push(`${sc.shiftHours}h shifts`);
+  if (sc.workFridays) parts.push("Fridays on");
+  if (sc.queue.some((id, i) => inputs.orders[i]?.id !== id)) parts.push("queue edited");
+  return parts.length ? parts.join(" · ") : "reality as-is";
+}
+
 /* ================================ KPI strip ================================ */
 
-function Kpi({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: "ok" | "warn" | "bad" }) {
+function Kpi({ label, value, sub, pinned, tone }: {
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+  pinned?: React.ReactNode; // the A-scenario reading, shown when comparing
+  tone?: "ok" | "warn" | "bad";
+}) {
   const color = tone === "ok" ? "var(--ok-fg)" : tone === "warn" ? "var(--warn-fg)" : tone === "bad" ? "var(--bad-fg)" : undefined;
   return (
     <div className="flex-1 min-w-40 bg-surface border rounded-xl px-4 py-3">
       <div className="text-[10px] font-bold uppercase tracking-wider text-muted">{label}</div>
       <div className="text-2xl font-extrabold tabnum leading-tight" style={{ color }}>{value}</div>
+      {pinned !== undefined && <div className="text-[11px] font-semibold tabnum" style={{ color: "var(--accent)" }}>📌 A: {pinned}</div>}
       {sub && <div className="text-[11px] text-muted mt-0.5">{sub}</div>}
     </div>
   );
@@ -57,12 +89,27 @@ function Timeline({ result, baseline, inputs, workFridays }: {
   const holidays = useMemo(() => new Set(inputs.holidayISOs), [inputs.holidayISOs]);
   const rows = result.orders.filter((o) => o.segments.length > 0);
   const baseEnd = new Map(baseline.orders.map((o) => [o.id, o.segments.length ? o.segments[o.segments.length - 1].end : null]));
+
+  // the axis stretches to whatever width the card actually has — a short
+  // horizon spreads out instead of huddling in a corner
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [avail, setAvail] = useState(1200);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setAvail(el.clientWidth));
+    ro.observe(el);
+    setAvail(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+
   if (rows.length === 0) return null;
 
-  const PX = 34; // px per working day
+  const LABEL_W = 176; // the sticky name column (ml-44)
   const axisDays = Math.max(1, Math.ceil(Math.max(result.makespan, ...rows.map((o) => o.dueOffset ?? 0))) + 1);
-  const tickEvery = axisDays <= 16 ? 1 : Math.ceil(axisDays / 14);
-  const width = axisDays * PX;
+  const PX = Math.max(18, Math.floor((avail - LABEL_W - 90) / axisDays)); // 90 ≈ room for the date flag after the last bar
+  const tickEvery = Math.max(1, Math.ceil(56 / PX)); // keep tick labels ~56px apart
+  const width = axisDays * PX + 90;
 
   return (
     <section className="bg-surface border rounded-xl overflow-hidden">
@@ -78,7 +125,7 @@ function Timeline({ result, baseline, inputs, workFridays }: {
           <span className="inline-flex items-center gap-1"><span className="text-bad-fg font-bold">▼</span>due</span>
         </span>
       </div>
-      <div className="overflow-x-auto">
+      <div ref={scrollRef} className="overflow-x-auto">
         <div className="relative ml-44" style={{ width, minHeight: rows.length * 30 + 34 }}>
           {/* day grid + date ticks */}
           {Array.from({ length: axisDays + 1 }, (_, i) => (
@@ -144,8 +191,10 @@ function Timeline({ result, baseline, inputs, workFridays }: {
 
 export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
   const [scenario, setScenario] = useState<Scenario>(() => defaultScenario(inputs));
+  const [pinned, setPinned] = useState<Scenario | null>(null);
   const result = useMemo(() => simulate(inputs, scenario), [inputs, scenario]);
   const baseline = useMemo(() => simulate(inputs, defaultScenario(inputs)), [inputs]);
+  const pinnedResult = useMemo(() => (pinned ? simulate(inputs, pinned) : null), [inputs, pinned]);
 
   const touched =
     scenario.workFridays ||
@@ -166,6 +215,8 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
       return { ...sc, queue: q };
     });
 
+  const runOptimizer = () => setScenario((sc) => ({ ...sc, queue: optimizeQueue(inputs, sc) }));
+
   // ---- drag & drop on the queue ----
   const dragId = useRef<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
@@ -181,44 +232,57 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
     });
   };
 
-  // ---- KPIs ----
-  const active = result.orders.filter((o) => !o.done && !o.blockedBy);
-  const lateNow = active.filter((o) => o.late).length;
-  const lateBase = baseline.orders.filter((o) => !o.done && !o.blockedBy && o.baselineISO && o.dueISO && o.baselineISO > o.dueISO).length;
-  const onTime = active.length - lateNow;
-  const lastEta = active.reduce<string | null>((m, o) => (o.etaISO && (!m || o.etaISO > m) ? o.etaISO : m), null);
-  const lastBase = baseline.orders.reduce<string | null>((m, o) => (o.baselineISO && (!m || o.baselineISO > m) ? o.baselineISO : m), null);
-  const clearDelta = lastEta && lastBase ? Math.round((Date.parse(lastEta) - Date.parse(lastBase)) / 86400000) : 0;
-  const worst = result.stages.filter((s) => s.required > 0 && s.load !== null).reduce<(typeof result.stages)[number] | null>(
-    (w, s) => (!w || s.load! > w.load! ? s : w), null);
-  const addedMh = WI_STAGES.reduce((a, s) => a + scenario.workersDelta[s] * scenario.shiftHours, 0);
+  // ---- KPIs (live vs baseline, plus the pinned A when present) ----
+  const k = kpisOf(result);
+  const kBase = kpisOf(baseline);
+  const kPin = pinnedResult ? kpisOf(pinnedResult) : null;
+  const clearDelta = k.lastEta && kBase.lastEta ? Math.round((Date.parse(k.lastEta) - Date.parse(kBase.lastEta)) / 86400000) : 0;
+  const addedMh = scenarioCost(scenario);
+  const pinById = pinnedResult ? new Map(pinnedResult.orders.map((o) => [o.id, o])) : null;
 
   return (
     <div className="space-y-4">
+      {/* ================= pinned banner ================= */}
+      {pinned && (
+        <div className="flex flex-wrap items-center gap-2 border rounded-xl px-3.5 py-2 text-sm" style={{ background: "var(--brand-light)", borderColor: "color-mix(in srgb, var(--brand) 35%, transparent)" }}>
+          <span className="font-bold">📌 Scenario A pinned:</span>
+          <span className="text-muted">{describeScenario(pinned, inputs)}</span>
+          <span className="text-[11px] text-muted">— the tiles and the ETA A column compare everything you do now against it</span>
+          <span className="ml-auto flex gap-1.5">
+            <button onClick={() => setScenario(pinned)} className="btn btn-ghost btn-sm" title="load A back into the knobs">Restore A</button>
+            <button onClick={() => setPinned(null)} className="btn btn-ghost btn-sm">✕ Unpin</button>
+          </span>
+        </div>
+      )}
+
       {/* ================= KPI strip ================= */}
       <div className="flex flex-wrap gap-3">
         <Kpi
           label="Orders on time"
-          value={`${onTime} / ${active.length}`}
-          tone={lateNow === 0 ? "ok" : lateNow > lateBase ? "bad" : lateNow < lateBase ? "ok" : "warn"}
-          sub={lateNow === lateBase ? `${lateNow} late — same as today` : lateNow < lateBase ? `▲ ${lateBase - lateNow} rescued vs today` : `▼ ${lateNow - lateBase} MORE late than today`}
+          value={`${k.onTime} / ${k.active}`}
+          tone={k.late === 0 ? "ok" : k.late > kBase.late ? "bad" : k.late < kBase.late ? "ok" : "warn"}
+          pinned={kPin ? `${kPin.onTime} / ${kPin.active}` : undefined}
+          sub={k.late === kBase.late ? `${k.late} late — same as today` : k.late < kBase.late ? `▲ ${kBase.late - k.late} rescued vs today` : `▼ ${k.late - kBase.late} MORE late than today`}
         />
         <Kpi
           label="All orders clear by"
-          value={lastEta ? dd(lastEta) : "—"}
+          value={k.lastEta ? dd(k.lastEta) : "—"}
           tone={clearDelta < 0 ? "ok" : clearDelta > 0 ? "bad" : undefined}
+          pinned={kPin ? dd(kPin.lastEta) : undefined}
           sub={clearDelta === 0 ? "same as today" : clearDelta < 0 ? `▲ ${-clearDelta} calendar days earlier` : `▼ ${clearDelta} calendar days later`}
         />
         <Kpi
           label="Worst station load"
-          value={worst?.load != null ? `${Math.round(worst.load * 100)}%` : "—"}
-          tone={worst?.load != null ? (worst.load > 1 ? "bad" : worst.load > 0.9 ? "warn" : "ok") : undefined}
-          sub={worst ? `${deptLabel(worst.dept)} · weekly plan ${inputs.plan?.planNo ?? ""}` : "no weekly plan"}
+          value={k.worst?.load != null ? `${Math.round(k.worst.load * 100)}%` : "—"}
+          tone={k.worst?.load != null ? (k.worst.load > 1 ? "bad" : k.worst.load > 0.9 ? "warn" : "ok") : undefined}
+          pinned={kPin?.worst?.load != null ? `${Math.round(kPin.worst.load * 100)}% (${deptLabel(kPin.worst.dept)})` : undefined}
+          sub={k.worst ? `${deptLabel(k.worst.dept)} · weekly plan ${inputs.plan?.planNo ?? ""}` : "no weekly plan"}
         />
         <Kpi
           label="Scenario cost"
           value={addedMh === 0 ? "±0" : `${addedMh > 0 ? "+" : ""}${fmt(addedMh)} mh/day`}
           tone={addedMh > 0 ? "warn" : undefined}
+          pinned={pinned ? (scenarioCost(pinned) === 0 ? "±0" : `${scenarioCost(pinned) > 0 ? "+" : ""}${fmt(scenarioCost(pinned))} mh/day`) : undefined}
           sub={touched ? "scenario active — nothing is saved" : "reality — no knobs turned"}
         />
       </div>
@@ -253,7 +317,7 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
             </div>
           );
         })}
-        {/* the settings card */}
+        {/* the settings & actions card */}
         <div className="bg-surface border rounded-xl overflow-hidden">
           <div className="h-1 bg-brand" />
           <div className="px-3.5 py-2.5 space-y-2">
@@ -275,13 +339,29 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
                 className="accent-[var(--brand)] w-4 h-4"
               />
             </label>
-            <button
-              onClick={() => setScenario(defaultScenario(inputs))}
-              disabled={!touched}
-              className="btn btn-secondary btn-sm w-full disabled:opacity-40"
-            >
-              ↺ Reset to reality
-            </button>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={runOptimizer}
+                className="btn btn-primary btn-sm"
+                title="reorder the queue to rescue as many due dates as this scenario's speed allows"
+              >
+                ⚡ Optimize queue
+              </button>
+              <button
+                onClick={() => setPinned(scenario)}
+                className="btn btn-secondary btn-sm"
+                title="freeze the current scenario as A and compare everything you try next against it"
+              >
+                📌 Pin as A
+              </button>
+              <button
+                onClick={() => setScenario(defaultScenario(inputs))}
+                disabled={!touched}
+                className="btn btn-secondary btn-sm col-span-2 disabled:opacity-40"
+              >
+                ↺ Reset to reality
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -322,58 +402,73 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
               <th className="p-2 text-left">MO</th>
               <th className="p-2">Due</th>
               <th className="p-2">ETA now</th>
+              {pinned && <th className="p-2">ETA A 📌</th>}
               <th className="p-2">ETA if…</th>
               <th className="p-2">Shift</th>
             </tr>
           </thead>
           <tbody>
             {result.orders.length === 0 && (
-              <tr><td colSpan={7} className="p-4 text-center text-muted">No open orders to simulate.</td></tr>
+              <tr><td colSpan={pinned ? 8 : 7} className="p-4 text-center text-muted">No open orders to simulate.</td></tr>
             )}
-            {result.orders.map((o, i) => (
-              <tr
-                key={o.id}
-                draggable
-                onDragStart={(e) => { dragId.current = o.id; e.dataTransfer.effectAllowed = "move"; }}
-                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOver !== o.id) setDragOver(o.id); }}
-                onDragLeave={() => dragOver === o.id && setDragOver(null)}
-                onDrop={(e) => { e.preventDefault(); dropOn(o.id); }}
-                onDragEnd={() => { dragId.current = null; setDragOver(null); }}
-                className={`${i % 2 ? "bg-zebra" : ""} cursor-grab active:cursor-grabbing`}
-                style={dragOver === o.id ? { boxShadow: "inset 0 2px 0 var(--brand)" } : undefined}
-              >
-                <td className="p-1.5 whitespace-nowrap">
-                  <span className="text-muted select-none mr-1" title="drag to reorder">⠿</span>
-                  <button onClick={() => moveOrder(o.id, -1)} disabled={i === 0} className="px-1 text-accent font-bold disabled:opacity-20" title="work it sooner">↑</button>
-                  <span className="tabnum text-xs text-muted">{i + 1}</span>
-                  <button onClick={() => moveOrder(o.id, +1)} disabled={i === result.orders.length - 1} className="px-1 text-accent font-bold disabled:opacity-20" title="work it later">↓</button>
-                </td>
-                <td className="p-2 font-bold whitespace-nowrap">{o.bom}</td>
-                <td className="p-2 text-xs text-muted whitespace-nowrap">{o.id}</td>
-                <td className="p-2 text-center tabnum whitespace-nowrap">{dd(o.dueISO)}</td>
-                <td className="p-2 text-center tabnum whitespace-nowrap">
-                  {o.done ? <span className="text-ok-fg font-bold">✓ done</span> : o.baselineISO ? dd(o.baselineISO) : <span title="a stage this order needs has no recent history">?</span>}
-                </td>
-                <td className="p-2 text-center tabnum whitespace-nowrap font-bold">
-                  {o.done ? (
-                    <span className="text-ok-fg">✓</span>
-                  ) : o.blockedBy ? (
-                    <span className="text-muted" title="a stage this order needs has no recent history">?</span>
-                  ) : (
-                    <span style={{ color: o.late ? "var(--bad-fg)" : o.deltaDays < 0 ? "var(--ok-fg)" : undefined }}>
-                      {o.late && "⚠ "}{dd(o.etaISO)}
-                    </span>
+            {result.orders.map((o, i) => {
+              const pin = pinById?.get(o.id);
+              return (
+                <tr
+                  key={o.id}
+                  draggable
+                  onDragStart={(e) => { dragId.current = o.id; e.dataTransfer.effectAllowed = "move"; }}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOver !== o.id) setDragOver(o.id); }}
+                  onDragLeave={() => dragOver === o.id && setDragOver(null)}
+                  onDrop={(e) => { e.preventDefault(); dropOn(o.id); }}
+                  onDragEnd={() => { dragId.current = null; setDragOver(null); }}
+                  className={`${i % 2 ? "bg-zebra" : ""} cursor-grab active:cursor-grabbing`}
+                  style={dragOver === o.id ? { boxShadow: "inset 0 2px 0 var(--brand)" } : undefined}
+                >
+                  <td className="p-1.5 whitespace-nowrap">
+                    <span className="text-muted select-none mr-1" title="drag to reorder">⠿</span>
+                    <button onClick={() => moveOrder(o.id, -1)} disabled={i === 0} className="px-1 text-accent font-bold disabled:opacity-20" title="work it sooner">↑</button>
+                    <span className="tabnum text-xs text-muted">{i + 1}</span>
+                    <button onClick={() => moveOrder(o.id, +1)} disabled={i === result.orders.length - 1} className="px-1 text-accent font-bold disabled:opacity-20" title="work it later">↓</button>
+                  </td>
+                  <td className="p-2 font-bold whitespace-nowrap">{o.bom}</td>
+                  <td className="p-2 text-xs text-muted whitespace-nowrap">{o.id}</td>
+                  <td className="p-2 text-center tabnum whitespace-nowrap">{dd(o.dueISO)}</td>
+                  <td className="p-2 text-center tabnum whitespace-nowrap">
+                    {o.done ? <span className="text-ok-fg font-bold">✓ done</span> : o.baselineISO ? dd(o.baselineISO) : <span title="a stage this order needs has no recent history">?</span>}
+                  </td>
+                  {pinned && (
+                    <td className="p-2 text-center tabnum whitespace-nowrap">
+                      {!pin || pin.done ? (
+                        <span className="text-ok-fg">✓</span>
+                      ) : pin.blockedBy ? (
+                        "?"
+                      ) : (
+                        <span style={{ color: pin.late ? "var(--bad-fg)" : undefined }}>{pin.late && "⚠ "}{dd(pin.etaISO)}</span>
+                      )}
+                    </td>
                   )}
-                </td>
-                <td className="p-2 text-center whitespace-nowrap">
-                  {!o.done && !o.blockedBy && o.deltaDays !== 0 && (
-                    <span className="pill tabnum" style={o.deltaDays < 0 ? { background: "var(--ok-bg)", color: "var(--ok-fg)" } : { background: "var(--bad-bg)", color: "var(--bad-fg)" }}>
-                      {o.deltaDays < 0 ? `${-o.deltaDays}d sooner` : `${o.deltaDays}d later`}
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
+                  <td className="p-2 text-center tabnum whitespace-nowrap font-bold">
+                    {o.done ? (
+                      <span className="text-ok-fg">✓</span>
+                    ) : o.blockedBy ? (
+                      <span className="text-muted" title="a stage this order needs has no recent history">?</span>
+                    ) : (
+                      <span style={{ color: o.late ? "var(--bad-fg)" : o.deltaDays < 0 ? "var(--ok-fg)" : undefined }}>
+                        {o.late && "⚠ "}{dd(o.etaISO)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-2 text-center whitespace-nowrap">
+                    {!o.done && !o.blockedBy && o.deltaDays !== 0 && (
+                      <span className="pill tabnum" style={o.deltaDays < 0 ? { background: "var(--ok-bg)", color: "var(--ok-fg)" } : { background: "var(--bad-bg)", color: "var(--bad-fg)" }}>
+                        {o.deltaDays < 0 ? `${-o.deltaDays}d sooner` : `${o.deltaDays}d later`}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -381,7 +476,7 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
       <p className="text-[11px] text-muted">
         A sandbox — nothing here is saved or promised. Rates come from what the plant actually produced over the last {inputs.rateWindowDays} working
         days; adding workers scales a stage&apos;s speed in proportion to its capacity figure (Admin → Standard Times). ETAs assume the queue is worked
-        top-down: moving an order up pushes everything it overtakes back.
+        top-down. ⚡ Optimize reorders the queue to miss as few due dates as this scenario&apos;s speed allows (then least total delay, then earliest finish).
       </p>
     </div>
   );

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { simulate, defaultScenario, dateForOffsetISO, offsetForDateISO, countWorkingDaysISO, type WhatIfInputs } from "./whatif";
+import { simulate, defaultScenario, optimizeQueue, dateForOffsetISO, offsetForDateISO, countWorkingDaysISO, type WhatIfInputs } from "./whatif";
 
 // Mon 2026-08-03 as "today"; Fridays 07/08 and 14/08 are the days off
 const INPUTS: WhatIfInputs = {
@@ -120,5 +120,66 @@ describe("simulate — timeline segments", () => {
     expect(r.makespan).toBe(b.segments[b.segments.length - 1].end);
     // due markers land on the shared axis
     expect(a.dueOffset).toBeGreaterThan(0);
+  });
+});
+
+describe("optimizeQueue", () => {
+  it("rescues a late order the due-date queue sacrifices", () => {
+    // EDD runs A (huge, due first) ahead of B (small, due later): A ends day 4
+    // on time, but B waits until 4.5 and misses its day-2 due... whereas B
+    // first ends day 0.5 on time AND A still lands inside day 5.
+    const inputs: WhatIfInputs = {
+      todayISO: "2026-08-03",
+      holidayISOs: [],
+      rates: { cut: 100, weld: 0, finish: 0 },
+      rateWindowDays: 14,
+      capacity: { Cut: 200 },
+      orders: [
+        { id: "A", bom: "B-A", dueISO: "2026-08-08", hours: { cut: 400, weld: 0, finish: 0 }, baselineDays: 4, blockedBy: null },
+        { id: "B", bom: "B-B", dueISO: "2026-08-13", hours: { cut: 50, weld: 0, finish: 0 }, baselineDays: 4.5, blockedBy: null },
+      ],
+      plan: null,
+    };
+    // hand the optimizer a scenario whose queue the user already mangled —
+    // it must return the best order regardless
+    const sc = { ...defaultScenario(inputs), queue: ["A", "B"] };
+    // due-date order IS [A, B]: A 0→4 (due offset 5, fine), B 4→4.5 (due 9, fine)
+    // — nothing late, so the optimizer keeps it (no worse than EDD)
+    expect(optimizeQueue(inputs, sc)).toEqual(["A", "B"]);
+
+    // tighten B's due date to day 2: EDD (A first) makes B late; B-first saves
+    // it and A still lands by its day-5 due
+    const tight: WhatIfInputs = {
+      ...inputs,
+      orders: [
+        inputs.orders[0],
+        { ...inputs.orders[1], dueISO: "2026-08-04" },
+      ],
+    };
+    expect(optimizeQueue(tight, { ...defaultScenario(tight), queue: ["A", "B"] })).toEqual(["B", "A"]);
+  });
+
+  it("breaks ties toward less total lateness", () => {
+    // both queues leave one order late either way; the optimizer picks the
+    // one that is less late in total
+    const inputs: WhatIfInputs = {
+      todayISO: "2026-08-03",
+      holidayISOs: [],
+      rates: { cut: 100, weld: 0, finish: 0 },
+      rateWindowDays: 14,
+      capacity: { Cut: 200 },
+      orders: [
+        { id: "big", bom: "B-1", dueISO: "2026-08-05", hours: { cut: 300, weld: 0, finish: 0 }, baselineDays: 3, blockedBy: null },
+        { id: "small", bom: "B-2", dueISO: "2026-08-05", hours: { cut: 100, weld: 0, finish: 0 }, baselineDays: 4, blockedBy: null },
+      ],
+      plan: null,
+    };
+    // big first: big ends 3 (due 3, ok), small ends 4 → late 1. small first:
+    // small ends 1 (ok), big ends 4 → late 1. Same late count, same total
+    // lateness (1) — then the makespan ties too; either is acceptable, but the
+    // result must be one of the two optima, deterministically
+    const q = optimizeQueue(inputs, defaultScenario(inputs));
+    expect([["big", "small"], ["small", "big"]]).toContainEqual(q);
+    expect(optimizeQueue(inputs, defaultScenario(inputs))).toEqual(q);
   });
 });

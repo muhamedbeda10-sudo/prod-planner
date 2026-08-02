@@ -129,28 +129,33 @@ export function dateForOffsetISO(days: number, todayISO: string, holidays: Set<s
   return new Date(t).toISOString().slice(0, 10);
 }
 
-export function simulate(inputs: WhatIfInputs, scenario: Scenario): WhatIfResult {
-  const holidays = new Set(inputs.holidayISOs);
-
-  // ---- capacity per stage under the scenario ----
-  const scenarioCap: Partial<Record<WiStage, number>> = {};
+/** Capacity per stage and station rates under a scenario's knobs — the rates
+ *  scale with the crew: what TODAY'S crew does per day, proportional to the
+ *  capacity figure it was achieved with. */
+function scenarioPhysics(inputs: WhatIfInputs, scenario: Scenario): {
+  cap: Partial<Record<WiStage, number>>;
+  rates: Record<EtaStage, number>;
+} {
+  const cap: Partial<Record<WiStage, number>> = {};
   for (const s of WI_STAGES) {
     const base = inputs.capacity[s];
     const delta = scenario.workersDelta[s] * scenario.shiftHours;
-    if (base !== undefined) scenarioCap[s] = Math.max(0, base + delta);
-    else if (delta > 0) scenarioCap[s] = delta;
+    if (base !== undefined) cap[s] = Math.max(0, base + delta);
+    else if (delta > 0) cap[s] = delta;
   }
-
-  // ---- rates scale with the crew ----
-  // the trailing rate is what TODAY'S crew does per day; changing the crew
-  // scales it proportionally against the capacity it was achieved with
-  const scenarioRates: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
+  const rates: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
   for (const es of ETA_STAGES) {
     const baseCap = ETA_FEED[es].reduce((a, s) => a + (inputs.capacity[s] ?? 0), 0);
-    const newCap = ETA_FEED[es].reduce((a, s) => a + (scenarioCap[s] ?? 0), 0);
+    const newCap = ETA_FEED[es].reduce((a, s) => a + (cap[s] ?? 0), 0);
     // no capacity figure to scale against → the rate stays what it is
-    scenarioRates[es] = baseCap > 0 ? inputs.rates[es] * (newCap / baseCap) : inputs.rates[es];
+    rates[es] = baseCap > 0 ? inputs.rates[es] * (newCap / baseCap) : inputs.rates[es];
   }
+  return { cap, rates };
+}
+
+export function simulate(inputs: WhatIfInputs, scenario: Scenario): WhatIfResult {
+  const holidays = new Set(inputs.holidayISOs);
+  const { cap: scenarioCap, rates: scenarioRates } = scenarioPhysics(inputs, scenario);
 
   // ---- the plan's week under the scenario ----
   let planWorkingDays = 0;
@@ -204,4 +209,69 @@ export function simulate(inputs: WhatIfInputs, scenario: Scenario): WhatIfResult
   const makespan = orders.reduce((m, o) => Math.max(m, o.segments.length ? o.segments[o.segments.length - 1].end : 0), 0);
 
   return { stages, planWorkingDays, orders, makespan };
+}
+
+/* ---------------------------- queue optimizer ---------------------------- */
+
+// what "best" means, in order: fewest late orders, then the least total
+// lateness (working days), then the earliest overall finish
+type QueueScore = [late: number, latenessWd: number, makespan: number];
+const better = (a: QueueScore, b: QueueScore) =>
+  a[0] !== b[0] ? a[0] < b[0] : a[1] !== b[1] ? a[1] < b[1] - 1e-9 : a[2] < b[2] - 1e-9;
+
+/** The best queue this scenario's knobs allow: starts from the due-date order
+ *  and moves one order at a time to wherever it helps, until nothing does.
+ *  Deterministic, and never returns something worse than the due-date queue. */
+export function optimizeQueue(inputs: WhatIfInputs, scenario: Scenario): string[] {
+  const { rates } = scenarioPhysics(inputs, scenario);
+  const holidays = new Set(inputs.holidayISOs);
+  const byId = new Map(inputs.orders.map((o) => [o.id, o]));
+  const dueOff = new Map(
+    inputs.orders.map((o) => [
+      o.id,
+      o.dueISO ? offsetForDateISO(o.dueISO, inputs.todayISO, holidays, scenario.workFridays) : null,
+    ])
+  );
+
+  const score = (ids: string[]): QueueScore => {
+    const results = forecastEtaQueued(ids.map((id) => byId.get(id)!), rates);
+    let late = 0, lateness = 0, makespan = 0;
+    for (const r of results) {
+      if (r.days === null || r.segments.length === 0) continue; // done or blocked — not schedulable
+      const end = r.segments[r.segments.length - 1].end;
+      makespan = Math.max(makespan, end);
+      const due = dueOff.get(r.id);
+      if (due !== null && due !== undefined && end > due) {
+        late++;
+        lateness += end - due;
+      }
+    }
+    return [late, lateness, makespan];
+  };
+
+  // start from the FIFO-by-due-date order (the baseline queue)
+  let queue = inputs.orders.map((o) => o.id);
+  let best = score(queue);
+
+  // insertion local search: try every (order, position) move, keep the best
+  // improvement, repeat until a full pass finds nothing (capped for safety)
+  for (let pass = 0; pass < 6; pass++) {
+    let improved = false;
+    for (let i = 0; i < queue.length; i++) {
+      for (let j = 0; j < queue.length; j++) {
+        if (i === j) continue;
+        const cand = [...queue];
+        const [moved] = cand.splice(i, 1);
+        cand.splice(j, 0, moved);
+        const s = score(cand);
+        if (better(s, best)) {
+          queue = cand;
+          best = s;
+          improved = true;
+        }
+      }
+    }
+    if (!improved) break;
+  }
+  return queue;
 }
