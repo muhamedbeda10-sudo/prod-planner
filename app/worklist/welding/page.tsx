@@ -2,11 +2,12 @@ import { getWeldingQueue } from "@/lib/server/execution";
 import { getSettings } from "@/lib/server/data";
 import { getQueueNotes } from "@/lib/server/queueNotes";
 import { getReturnsFor } from "@/lib/server/returns";
-import { getWorklistExtras } from "@/lib/server/worklistExtras";
+import { getWorklistExtras, getRunOrderLines } from "@/lib/server/worklistExtras";
 import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
 import { CascadeTable } from "@/components/CascadeTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
+import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, canEditDept } from "@/lib/server/auth";
@@ -18,13 +19,14 @@ export const dynamic = "force-dynamic";
 export default async function WeldWorklistPage() {
   const today = new Date();
   const dayISO = toISODate(today);
-  const [queue, notes, returns, settings, user, extras] = await Promise.all([
+  const [queue, notes, returns, settings, user, extras, runOrder] = await Promise.all([
     getWeldingQueue(today),
     getQueueNotes(),
     getReturnsFor("Welding"),
     getSettings(),
     getCurrentUser(),
     getWorklistExtras("Welding"),
+    getRunOrderLines("Welding"),
   ]);
   const canEdit = !!user && canEditDept(user, "Welding");
   const isAdmin = !!user?.isAdmin;
@@ -47,6 +49,7 @@ export default async function WeldWorklistPage() {
         isAdmin={isAdmin}
         before={
           <>
+            <RunOrderTable rows={runOrder} deptWord="weld" />
             <PriorityOrdersTable rows={extras.priority} deptWord="welded" />
             {pushedRows.length > 0 && (
               <section className="mb-6">

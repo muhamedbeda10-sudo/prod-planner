@@ -1,10 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   simulate, defaultScenario, optimizeQueue, dateForOffsetISO, WI_STAGES,
   type WhatIfInputs, type Scenario, type WiStage, type WhatIfResult,
 } from "@/lib/domain/whatif";
+import { saveScenario, deleteScenario, applyRunOrder, clearRunOrder } from "@/app/simulate/actions";
 import { deptLabel, STAGE_COLOR } from "@/lib/domain/constants";
 import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 
@@ -199,8 +201,51 @@ function Timeline({ result, baseline, inputs, workFridays, shownIds }: {
 
 /* ================================ the page ================================ */
 
-export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
-  const [scenario, setScenario] = useState<Scenario>(() => defaultScenario(inputs));
+const AUTOSAVE_KEY = "atc.sim.scenario";
+
+export interface SavedScenarioDTO {
+  name: string;
+  data: unknown;
+  savedBy: string | null;
+}
+
+export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], appliedRunOrder = null }: {
+  inputs: WhatIfInputs;
+  isAdmin?: boolean;
+  savedScenarios?: SavedScenarioDTO[];
+  appliedRunOrder?: { atISO: string; by: string | null } | null;
+}) {
+  // anything unknown in a restored/loaded scenario falls back to reality —
+  // simulate() itself is defensive about stale job ids
+  const sanitize = (raw: unknown): Scenario => {
+    const d = defaultScenario(inputs);
+    if (!raw || typeof raw !== "object") return d;
+    const r = raw as Partial<Scenario>;
+    return {
+      workersDelta: { ...d.workersDelta, ...(typeof r.workersDelta === "object" ? r.workersDelta : {}) },
+      shiftHours: typeof r.shiftHours === "number" && r.shiftHours >= 1 ? r.shiftHours : d.shiftHours,
+      workFridays: !!r.workFridays,
+      queue: Array.isArray(r.queue) && r.queue.length ? r.queue.filter((x): x is string => typeof x === "string") : d.queue,
+      splits: r.splits && typeof r.splits === "object" ? (r.splits as Scenario["splits"]) : {},
+    };
+  };
+
+  // the work in progress survives a refresh — restored from this browser
+  const [scenario, setScenario] = useState<Scenario>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(AUTOSAVE_KEY);
+        if (raw) return sanitize(JSON.parse(raw));
+      } catch { /* fall through to reality */ }
+    }
+    return defaultScenario(inputs);
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(scenario));
+    } catch { /* storage full/blocked — the sandbox still works */ }
+  }, [scenario]);
+
   const [pinned, setPinned] = useState<Scenario | null>(null);
   const [grouped, setGrouped] = useState(false);
   const result = useMemo(() => simulate(inputs, scenario), [inputs, scenario]);
@@ -228,6 +273,53 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
     });
 
   const runOptimizer = () => setScenario((sc) => ({ ...sc, queue: optimizeQueue(inputs, sc) }));
+
+  // ---- persistence & commit ----
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [actionMsg, setActionMsg] = useState("");
+  const runAction = (fn: () => Promise<{ ok: boolean; error?: string }>, okMsg: string) => {
+    setActionMsg("");
+    startTransition(async () => {
+      const res = await fn();
+      setActionMsg(res.ok ? `✓ ${okMsg}` : res.error ?? "Failed");
+      if (res.ok) router.refresh();
+    });
+  };
+
+  const saveCurrent = () => {
+    const name = prompt("Scenario name:", describeScenario(scenario, inputs).slice(0, 40));
+    if (!name?.trim()) return;
+    const fd = new FormData();
+    fd.set("name", name.trim());
+    fd.set("data", JSON.stringify(scenario));
+    runAction(() => saveScenario(fd), `saved "${name.trim()}"`);
+  };
+
+  const deleteSaved = () => {
+    const name = prompt(`Delete which scenario?\n${savedScenarios.map((s) => `· ${s.name}`).join("\n")}`);
+    if (!name?.trim()) return;
+    const fd = new FormData();
+    fd.set("name", name.trim());
+    runAction(() => deleteScenario(fd), `deleted "${name.trim()}"`);
+  };
+
+  // commit the CURRENT queue (as simulated) as the factory's run order
+  const applyCurrent = () => {
+    const entries = result.jobs
+      .filter((j) => !j.done)
+      .map((j) => ({ mo: j.mo, item: j.item, batchQty: j.batch !== null ? j.qty : null, batchNo: j.batch }));
+    if (entries.length === 0) return setActionMsg("Nothing open to commit.");
+    if (!confirm(`Commit this sequence of ${entries.length} jobs as THE run order? Every department worklist will show its slice of it, replacing any previous run order.`)) return;
+    const fd = new FormData();
+    fd.set("entries", JSON.stringify(entries));
+    runAction(() => applyRunOrder(fd), "run order is live on the worklists");
+  };
+
+  const clearApplied = () => {
+    if (!confirm("Remove the run order from all worklists?")) return;
+    runAction(() => clearRunOrder(), "run order cleared");
+  };
 
   // split an unsplit job: the FIRST batch takes the most-advanced pieces
   const splitJob = (row: ResultJob) => {
@@ -436,6 +528,50 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
                 ↺ Reset to reality
               </button>
             </div>
+          </div>
+        </div>
+        {/* scenarios & commit card */}
+        <div className="bg-surface border rounded-xl overflow-hidden">
+          <div className="h-1" style={{ background: "var(--accent)" }} />
+          <div className="px-3.5 py-2.5 space-y-2">
+            <div className="flex items-center gap-1.5">
+              <select
+                value=""
+                onChange={(e) => {
+                  const s = savedScenarios.find((x) => x.name === e.target.value);
+                  if (s) setScenario(sanitize(s.data));
+                }}
+                className="flex-1 min-w-0 border rounded-md px-2 py-1 text-sm bg-surface"
+                disabled={pending}
+              >
+                <option value="">{savedScenarios.length ? "Load a saved scenario…" : "No saved scenarios yet"}</option>
+                {savedScenarios.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+              </select>
+              <button onClick={saveCurrent} disabled={pending} className="btn btn-secondary btn-sm" title="save the current scenario under a name">💾</button>
+              {savedScenarios.length > 0 && (
+                <button onClick={deleteSaved} disabled={pending} className="btn btn-ghost btn-sm" title="delete a saved scenario">🗑</button>
+              )}
+            </div>
+            {isAdmin && (
+              <button
+                onClick={applyCurrent}
+                disabled={pending}
+                className="btn btn-primary btn-sm w-full"
+                title="commit this queue as THE run order — every department worklist will show its slice of it"
+              >
+                ✅ Apply as the run order
+              </button>
+            )}
+            {appliedRunOrder && (
+              <p className="text-[10px] text-muted leading-snug">
+                🎯 A run order is live on the worklists (set {dd(appliedRunOrder.atISO.slice(0, 10))}
+                {appliedRunOrder.by ? ` by ${appliedRunOrder.by}` : ""}).
+                {isAdmin && (
+                  <button onClick={clearApplied} disabled={pending} className="text-bad-fg font-semibold hover:underline ml-1">Clear it</button>
+                )}
+              </p>
+            )}
+            {actionMsg && <p className={`text-[11px] font-semibold ${actionMsg.startsWith("✓") ? "text-ok-fg" : "text-bad-fg"}`}>{actionMsg}</p>}
           </div>
         </div>
       </div>

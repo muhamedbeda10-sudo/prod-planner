@@ -8,10 +8,11 @@ import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControl
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
+import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import type { ReturnRowDTO } from "@/lib/server/returns";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
-import type { PriorityLineDTO, HiddenLineDTO } from "@/lib/server/worklistExtras";
+import type { PriorityLineDTO, HiddenLineDTO, RunOrderLineDTO } from "@/lib/server/worklistExtras";
 import { ITEMS, DEFAULTS } from "@/lib/domain/constants";
 
 /** The fabrication page, top to bottom: DATED work (due today + overdue from
@@ -26,6 +27,7 @@ export function CutWorklistView({
   unscheduled = [],
   pushed = [],
   priority = [],
+  runOrder = [],
   hidden = [],
   day,
   planNo,
@@ -43,6 +45,7 @@ export function CutWorklistView({
   unscheduled?: CascadeRow[]; // open orders with no date and no remark
   pushed?: CascadeRow[]; // sent down from the Plan Tracker — schedule these
   priority?: PriorityLineDTO[]; // ⭐ flagged orders — dedicated table on top
+  runOrder?: RunOrderLineDTO[]; // 🎯 the approved simulator sequence
   hidden?: HiddenLineDTO[]; // admin-hidden lines (restore panel)
   day: string;
   planNo: number | null;
@@ -116,6 +119,7 @@ export function CutWorklistView({
       </div>
 
       {/* ⭐ the admin's priority orders — a focus list above everything */}
+      <RunOrderTable rows={runOrder} deptWord="cut" />
       <PriorityOrdersTable rows={priority} deptWord="cut" />
 
       {/* 0 — pieces sent back by Welding: fix first, they re-enter the flow */}
