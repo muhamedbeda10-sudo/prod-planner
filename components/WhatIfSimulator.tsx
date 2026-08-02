@@ -95,14 +95,15 @@ function Kpi({ label, value, sub, pinned, tone }: {
 
 /* ================================ timeline ================================ */
 
-function Timeline({ result, baseline, inputs, workFridays }: {
+function Timeline({ result, baseline, inputs, workFridays, shownIds }: {
   result: WhatIfResult;
   baseline: WhatIfResult;
   inputs: WhatIfInputs;
   workFridays: boolean;
+  shownIds: Set<string>;
 }) {
   const holidays = useMemo(() => new Set(inputs.holidayISOs), [inputs.holidayISOs]);
-  const rows = result.jobs.filter((o) => o.segments.length > 0);
+  const rows = result.jobs.filter((o) => o.segments.length > 0 && shownIds.has(o.id));
   const baseEnd = new Map(baseline.jobs.map((o) => [o.id, o.segments.length ? o.segments[o.segments.length - 1].end : null]));
 
   // the axis stretches to whatever width the card actually has
@@ -276,16 +277,42 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
   const addedMh = scenarioCost(scenario);
   const pinById = pinnedResult ? new Map(pinnedResult.jobs.map((o) => [o.id, o])) : null;
 
+  // ---- view filters: they narrow what's SHOWN in the timeline and the
+  // queue, never what's computed — a hidden job still occupies its station,
+  // so every date on screen stays honest ----
+  const [fq, setFq] = useState("");
+  const [fItem, setFItem] = useState("");
+  const [fStage, setFStage] = useState(""); // a station the job still has to visit
+  const [fFrom, setFFrom] = useState(""); // due-date range
+  const [fTo, setFTo] = useState("");
+  const [fLate, setFLate] = useState(false);
+  const filterActive = !!(fq || fItem || fStage || fFrom || fTo || fLate);
+  const resetFilters = () => { setFq(""); setFItem(""); setFStage(""); setFFrom(""); setFTo(""); setFLate(false); };
+  const visible = (j: ResultJob): boolean => {
+    const needle = fq.trim().toUpperCase();
+    if (needle && !j.bom.toUpperCase().includes(needle)) return false;
+    if (fItem && j.item !== fItem) return false;
+    if (fStage && !j.segments.some((s) => s.stage === fStage)) return false;
+    if ((fFrom || fTo) && !j.dueISO) return false;
+    if (fFrom && j.dueISO! < fFrom) return false;
+    if (fTo && j.dueISO! > fTo) return false;
+    if (fLate && !j.late) return false;
+    return true;
+  };
+  const shownJobs = useMemo(() => result.jobs.filter(visible), [result.jobs, fq, fItem, fStage, fFrom, fTo, fLate]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shownIds = useMemo(() => new Set(shownJobs.map((j) => j.id)), [shownJobs]);
+  const queueIndexOf = useMemo(() => new Map(result.jobs.map((j, i) => [j.id, i])), [result.jobs]);
+
   // the table's rows: queue order, or grouped read-only by order
   const tableRows: (ResultJob | { moHeader: string; bom: string; jobs: ResultJob[] })[] = useMemo(() => {
-    if (!grouped) return result.jobs;
+    if (!grouped) return shownJobs;
     const seen = new Map<string, ResultJob[]>();
-    for (const j of result.jobs) {
+    for (const j of shownJobs) {
       if (!seen.has(j.mo)) seen.set(j.mo, []);
       seen.get(j.mo)!.push(j);
     }
     return [...seen.entries()].map(([mo, jobs]) => ({ moHeader: mo, bom: jobs[0].bom, jobs }));
-  }, [grouped, result.jobs]);
+  }, [grouped, shownJobs]);
 
   return (
     <div className="space-y-4">
@@ -436,8 +463,47 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
         </div>
       )}
 
+      {/* ================= view filters ================= */}
+      <div className="bg-surface border rounded-xl px-3.5 py-2 flex flex-wrap items-center gap-x-3 gap-y-2 no-print">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-muted">Filter view</span>
+        <input
+          value={fq}
+          onChange={(e) => setFq(e.target.value)}
+          placeholder="Search code…"
+          className="w-36 border rounded-md px-2.5 py-1.5 text-sm bg-surface"
+        />
+        <select value={fItem} onChange={(e) => setFItem(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm bg-surface">
+          <option value="">All items</option>
+          {[...new Set(inputs.jobs.map((j) => j.item))].map((it) => <option key={it} value={it}>{it}</option>)}
+        </select>
+        <select value={fStage} onChange={(e) => setFStage(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm bg-surface" title="show jobs that still have work at this station">
+          <option value="">All stations</option>
+          {Object.entries(SEG_LABEL).map(([k, label]) => <option key={k} value={k}>needs {label}</option>)}
+        </select>
+        <span className="inline-flex items-center gap-1.5 text-sm">
+          <span className="text-muted text-[10px] font-bold uppercase tracking-wide">Due</span>
+          <input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm bg-surface" />
+          <span className="text-muted text-xs">→</span>
+          <input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm bg-surface" />
+        </span>
+        <button
+          onClick={() => setFLate((v) => !v)}
+          className={`btn btn-sm ${fLate ? "btn-primary" : "btn-secondary"}`}
+          title="only jobs forecast to miss their due date"
+        >
+          ⚠ Late only
+        </button>
+        <span className="text-xs text-muted tabnum">{shownJobs.length} of {result.jobs.length} jobs</span>
+        {filterActive && (
+          <button onClick={resetFilters} className="btn btn-ghost btn-sm">✕ Clear</button>
+        )}
+        <span className="text-[10px] text-muted ml-auto">
+          filters change what&apos;s SHOWN — every job still holds its place in the queue, so the dates stay honest
+        </span>
+      </div>
+
       {/* ================= timeline ================= */}
-      <Timeline result={result} baseline={baseline} inputs={inputs} workFridays={scenario.workFridays} />
+      <Timeline result={result} baseline={baseline} inputs={inputs} workFridays={scenario.workFridays} shownIds={shownIds} />
 
       {/* ================= queue ================= */}
       <div className="bg-surface border rounded-xl overflow-x-auto">
@@ -467,7 +533,10 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
             {result.jobs.length === 0 && (
               <tr><td colSpan={pinned ? 9 : 8} className="p-4 text-center text-muted">No open jobs to simulate.</td></tr>
             )}
-            {tableRows.map((row, i) => {
+            {result.jobs.length > 0 && shownJobs.length === 0 && (
+              <tr><td colSpan={pinned ? 9 : 8} className="p-4 text-center text-muted">No jobs match the filters.</td></tr>
+            )}
+            {tableRows.map((row) => {
               if ("moHeader" in row) {
                 const worstIso = row.jobs.reduce<string | null>((m, j) => (j.etaISO && (!m || j.etaISO > m) ? j.etaISO : m), null);
                 const anyLate = row.jobs.some((j) => j.late);
@@ -485,7 +554,7 @@ export function WhatIfSimulator({ inputs }: { inputs: WhatIfInputs }) {
                   </Fragment>
                 );
               }
-              return jobRow(row, i);
+              return jobRow(row, queueIndexOf.get(row.id) ?? -1);
             })}
           </tbody>
         </table>

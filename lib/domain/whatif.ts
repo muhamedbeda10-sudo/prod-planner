@@ -19,7 +19,7 @@
  * re-runs scenarios instantly, no round trips.
  */
 
-import { forecastEtaQueued, ETA_STAGES, type EtaOrder, type EtaStage, type EtaSegment } from "./eta";
+import { forecastEtaQueued, ETA_STAGES, type EtaStage, type EtaSegment } from "./eta";
 
 export const WI_STAGES = ["Cut", "Welding", "ShotBlast", "Painting"] as const;
 export type WiStage = (typeof WI_STAGES)[number];
