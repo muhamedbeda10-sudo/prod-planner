@@ -22,6 +22,7 @@ const INPUTS: WhatIfInputs = {
   todayISO: "2026-08-03",
   holidayISOs: [],
   rates: { cut: 100, weld: 50, finish: 100 },
+  rateSigma: { cut: 0, weld: 0, finish: 0 },
   rateWindowDays: 14,
   capacity: { Cut: 200, Welding: 100, ShotBlast: 40, Painting: 160 },
   jobs: [
@@ -167,6 +168,7 @@ describe("optimizeQueue", () => {
       todayISO: "2026-08-03",
       holidayISOs: [],
       rates: { cut: 100, weld: 0, finish: 0 },
+      rateSigma: { cut: 0, weld: 0, finish: 0 },
       rateWindowDays: 14,
       capacity: { Cut: 200 },
       jobs: [
@@ -188,6 +190,7 @@ describe("optimizeQueue", () => {
       todayISO: "2026-08-03",
       holidayISOs: [],
       rates: { cut: 100, weld: 0, finish: 0 },
+      rateSigma: { cut: 0, weld: 0, finish: 0 },
       rateWindowDays: 14,
       capacity: { Cut: 200 },
       jobs: [
@@ -201,5 +204,67 @@ describe("optimizeQueue", () => {
     // day-1 due: only one cut-day fits — the optimizer front-loads at least
     // the first rush batch
     expect(q[0]).toBe("MO-RUSH|TC#1");
+  });
+});
+
+describe("material holds and station downtime", () => {
+  const inputs: WhatIfInputs = {
+    todayISO: "2026-08-03", // Monday
+    holidayISOs: [],
+    rates: { cut: 100, weld: 0, finish: 0 },
+    rateSigma: { cut: 0, weld: 0, finish: 0 },
+    rateWindowDays: 14,
+    capacity: { Cut: 200 },
+    jobs: [
+      job({ id: "MO-H|TC", dueISO: null, left: { cut: 2, weld: 0, finish: 0 }, perPc: { cut: 100, weld: 0, finish: 0 }, baselineDays: 2 }),
+    ],
+    plan: null,
+  };
+
+  it("a held job cannot start before its material arrives", () => {
+    // material lands Thursday 06/08 → the job runs days [3,5] instead of [0,2]
+    const r = simulate(inputs, { ...defaultScenario(inputs), holds: { "MO-H|TC": "2026-08-06" } });
+    expect(r.jobs[0].segments[0].start).toBe(3);
+    expect(r.jobs[0].segments[0].end).toBe(5);
+  });
+
+  it("a hold on a split applies to every batch", () => {
+    const withSplit: WhatIfInputs = {
+      ...inputs,
+      jobs: [job({ id: "MO-H|TC", dueISO: null, left: { cut: 2, weld: 0, finish: 2 }, perPc: { cut: 100, weld: 0, finish: 0 }, baselineDays: 2 })],
+    };
+    const r = simulate(withSplit, {
+      ...defaultScenario(withSplit),
+      splits: { "MO-H|TC": [1, 1] },
+      holds: { "MO-H|TC": "2026-08-06" },
+    });
+    for (const j of r.jobs) expect(j.segments[0]?.start ?? 3).toBeGreaterThanOrEqual(3);
+  });
+
+  it("a station stoppage pushes the work around it", () => {
+    // cut down Tue 04/08 (occupies axis [1,2]): a 2-day job runs day [0,1],
+    // waits the stoppage out, finishes [2,3]
+    const r = simulate(inputs, {
+      ...defaultScenario(inputs),
+      downtimes: [{ stage: "cut", fromISO: "2026-08-04", toISO: "2026-08-04" }],
+    });
+    const seg = r.jobs[0].segments[0];
+    expect(seg.start).toBe(0);
+    expect(seg.end).toBe(3); // 2 working days of cutting + 1 day stopped
+  });
+
+  it("a stoppage that falls on the day off changes nothing", () => {
+    // Friday 07/08 is already off — declaring it 'down' is a no-op
+    const r = simulate(inputs, {
+      ...defaultScenario(inputs),
+      downtimes: [{ stage: "cut", fromISO: "2026-08-07", toISO: "2026-08-07" }],
+    });
+    expect(r.jobs[0].segments[0].end).toBe(2);
+  });
+
+  it("slower rates (the pessimistic band) never land earlier", () => {
+    const base = simulate(inputs, defaultScenario(inputs));
+    const pess = simulate({ ...inputs, rates: { cut: 50, weld: 0, finish: 0 } }, defaultScenario(inputs));
+    expect(pess.jobs[0].segments[0].end).toBeGreaterThan(base.jobs[0].segments[0].end);
   });
 });

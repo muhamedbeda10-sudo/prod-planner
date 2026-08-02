@@ -3,9 +3,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  simulate, defaultScenario, optimizeQueue, dateForOffsetISO, WI_STAGES,
+  simulate, defaultScenario, optimizeQueue, dateForOffsetISO, blackoutsOf, WI_STAGES,
   type WhatIfInputs, type Scenario, type WiStage, type WhatIfResult,
 } from "@/lib/domain/whatif";
+import type { EtaStage, StageBlackout } from "@/lib/domain/eta";
 import { saveScenario, deleteScenario, applyRunOrder, clearRunOrder } from "@/app/simulate/actions";
 import { deptLabel, STAGE_COLOR } from "@/lib/domain/constants";
 import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
@@ -72,6 +73,9 @@ function describeScenario(sc: Scenario, inputs: WhatIfInputs): string {
   if (sc.queue.some((id, i) => inputs.jobs[i]?.id !== id)) parts.push("queue edited");
   const splits = Object.keys(sc.splits).length;
   if (splits) parts.push(`${splits} split${splits === 1 ? "" : "s"}`);
+  const holds = Object.keys(sc.holds).length;
+  if (holds) parts.push(`${holds} hold${holds === 1 ? "" : "s"}`);
+  if (sc.downtimes.length) parts.push(`${sc.downtimes.length} stoppage${sc.downtimes.length === 1 ? "" : "s"}`);
   return parts.length ? parts.join(" · ") : "reality as-is";
 }
 
@@ -97,12 +101,13 @@ function Kpi({ label, value, sub, pinned, tone }: {
 
 /* ================================ timeline ================================ */
 
-function Timeline({ result, baseline, inputs, workFridays, shownIds }: {
+function Timeline({ result, baseline, inputs, workFridays, shownIds, blackouts }: {
   result: WhatIfResult;
   baseline: WhatIfResult;
   inputs: WhatIfInputs;
   workFridays: boolean;
   shownIds: Set<string>;
+  blackouts: Partial<Record<EtaStage, StageBlackout[]>>;
 }) {
   const holidays = useMemo(() => new Set(inputs.holidayISOs), [inputs.holidayISOs]);
   const rows = result.jobs.filter((o) => o.segments.length > 0 && shownIds.has(o.id));
@@ -153,6 +158,17 @@ function Timeline({ result, baseline, inputs, workFridays, shownIds }: {
               )}
             </div>
           ))}
+          {/* station stoppages — the shaded strips nothing can run through */}
+          {(Object.entries(blackouts) as [EtaStage, StageBlackout[]][]).flatMap(([stage, bls]) =>
+            (bls ?? []).map((b, i) => (
+              <div
+                key={`bl-${stage}-${i}`}
+                className="absolute top-4 bottom-0 rounded"
+                style={{ left: b.start * PX, width: Math.max(2, (b.end - b.start) * PX), background: SEG_COLOR[stage], opacity: 0.13, border: `1px dashed ${SEG_COLOR[stage]}` }}
+                title={`${SEG_LABEL[stage]} stopped`}
+              />
+            ))
+          )}
           {rows.map((o, r) => {
             const top = 24 + r * 30;
             const end = o.segments[o.segments.length - 1].end;
@@ -227,6 +243,8 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
       workFridays: !!r.workFridays,
       queue: Array.isArray(r.queue) && r.queue.length ? r.queue.filter((x): x is string => typeof x === "string") : d.queue,
       splits: r.splits && typeof r.splits === "object" ? (r.splits as Scenario["splits"]) : {},
+      holds: r.holds && typeof r.holds === "object" ? (r.holds as Scenario["holds"]) : {},
+      downtimes: Array.isArray(r.downtimes) ? (r.downtimes as Scenario["downtimes"]) : [],
     };
   };
 
@@ -273,6 +291,65 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
     });
 
   const runOptimizer = () => setScenario((sc) => ({ ...sc, queue: optimizeQueue(inputs, sc) }));
+
+  // ---- confidence band: the same scenario at the plant's fast and slow days ----
+  // pessimistic rates are clamped away from zero so a volatile stage degrades
+  // the forecast instead of blocking it outright
+  const bandInputs = (dir: 1 | -1): WhatIfInputs => ({
+    ...inputs,
+    rates: {
+      cut: inputs.rates.cut > 0 ? Math.max(inputs.rates.cut * 0.25, inputs.rates.cut + dir * inputs.rateSigma.cut) : 0,
+      weld: inputs.rates.weld > 0 ? Math.max(inputs.rates.weld * 0.25, inputs.rates.weld + dir * inputs.rateSigma.weld) : 0,
+      finish: inputs.rates.finish > 0 ? Math.max(inputs.rates.finish * 0.25, inputs.rates.finish + dir * inputs.rateSigma.finish) : 0,
+    },
+  });
+  const fast = useMemo(() => simulate(bandInputs(1), scenario), [inputs, scenario]); // eslint-disable-line react-hooks/exhaustive-deps
+  const slow = useMemo(() => simulate(bandInputs(-1), scenario), [inputs, scenario]); // eslint-disable-line react-hooks/exhaustive-deps
+  const bandById = useMemo(() => {
+    const m = new Map<string, { early: string | null; late: string | null }>();
+    const fastById = new Map(fast.jobs.map((j) => [j.id, j.etaISO]));
+    for (const j of slow.jobs) m.set(j.id, { early: fastById.get(j.id) ?? null, late: j.etaISO });
+    return m;
+  }, [fast, slow]);
+  const blackouts = useMemo(
+    () => blackoutsOf(scenario, inputs.todayISO, new Set(inputs.holidayISOs)),
+    [scenario, inputs.todayISO, inputs.holidayISOs]
+  );
+
+  // ---- material holds & station stoppages ----
+  const setHold = (row: ResultJob) => {
+    const cur = scenario.holds[row.baseId];
+    const raw = prompt(
+      `${row.bom} ${row.item}: material/parts arrive on which day? (YYYY-MM-DD, empty removes the hold)`,
+      cur ?? ""
+    );
+    if (raw === null) return;
+    const iso = raw.trim();
+    setScenario((sc) => {
+      const holds = { ...sc.holds };
+      if (!iso) delete holds[row.baseId];
+      else {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) { alert("Use the YYYY-MM-DD format."); return sc; }
+        holds[row.baseId] = iso;
+      }
+      return { ...sc, holds };
+    });
+  };
+
+  const addDowntime = (stage: WiStage) => {
+    const es: EtaStage = stage === "Cut" ? "cut" : stage === "Welding" ? "weld" : "finish";
+    const from = prompt(`${deptLabel(stage)} stopped FROM which day? (YYYY-MM-DD)`);
+    if (!from?.trim()) return;
+    const to = prompt(`…until which day (inclusive)? (YYYY-MM-DD)`, from.trim());
+    if (!to?.trim()) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from.trim()) || !/^\d{4}-\d{2}-\d{2}$/.test(to.trim()) || to.trim() < from.trim()) {
+      return alert("Use YYYY-MM-DD dates, with the end not before the start.");
+    }
+    setScenario((sc) => ({ ...sc, downtimes: [...sc.downtimes, { stage: es, fromISO: from.trim(), toISO: to.trim() }] }));
+  };
+
+  const removeDowntime = (i: number) =>
+    setScenario((sc) => ({ ...sc, downtimes: sc.downtimes.filter((_, x) => x !== i) }));
 
   // ---- persistence & commit ----
   const router = useRouter();
@@ -435,7 +512,16 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
           value={k.lastEta ? dd(k.lastEta) : "—"}
           tone={clearDelta < 0 ? "ok" : clearDelta > 0 ? "bad" : undefined}
           pinned={kPin ? dd(kPin.lastEta) : undefined}
-          sub={clearDelta === 0 ? "same as today" : clearDelta < 0 ? `▲ ${-clearDelta} calendar days earlier` : `▼ ${clearDelta} calendar days later`}
+          sub={
+            <>
+              {clearDelta === 0 ? "same as today" : clearDelta < 0 ? `▲ ${-clearDelta} calendar days earlier` : `▼ ${clearDelta} calendar days later`}
+              {(() => {
+                const early = kpisOf(fast).lastEta;
+                const late = kpisOf(slow).lastEta;
+                return early && late && early !== late ? <> · likely {ddShort(early)}–{ddShort(late)}</> : null;
+              })()}
+            </>
+          }
         />
         <Kpi
           label="Worst station load"
@@ -470,7 +556,10 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
                   </span>
                 </div>
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted">Workers</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                    Workers
+                    <button onClick={() => addDowntime(s)} className="ml-1.5 opacity-60 hover:opacity-100" title="declare a stoppage (maintenance) at this station">🔧</button>
+                  </span>
                   <span className="inline-flex items-center border rounded-lg overflow-hidden">
                     <button onClick={() => bumpWorkers(s, -1)} className="px-3 py-1 text-sm font-bold hover:bg-surface-2 active:bg-surface-2" title="one worker fewer">−</button>
                     <span className={`px-1.5 py-1 text-sm font-extrabold tabnum min-w-10 text-center ${delta > 0 ? "text-ok-fg" : delta < 0 ? "text-bad-fg" : "text-muted"}`}>
@@ -576,6 +665,19 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
         </div>
       </div>
 
+      {/* ================= stoppage chips ================= */}
+      {scenario.downtimes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-muted">🔧 Stoppages</span>
+          {scenario.downtimes.map((dwn, i) => (
+            <span key={i} className="pill pill-warn tabnum">
+              {SEG_LABEL[dwn.stage]} {ddShort(dwn.fromISO)}{dwn.toISO !== dwn.fromISO && `–${ddShort(dwn.toISO)}`}
+              <button onClick={() => removeDowntime(i)} className="ml-1 font-bold hover:opacity-70" title="remove">✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* ================= weekly plan load ================= */}
       {inputs.plan && (
         <div className="bg-surface border rounded-xl px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
@@ -639,7 +741,7 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
       </div>
 
       {/* ================= timeline ================= */}
-      <Timeline result={result} baseline={baseline} inputs={inputs} workFridays={scenario.workFridays} shownIds={shownIds} />
+      <Timeline result={result} baseline={baseline} inputs={inputs} workFridays={scenario.workFridays} shownIds={shownIds} blackouts={blackouts} />
 
       {/* ================= queue ================= */}
       <div className="bg-surface border rounded-xl overflow-x-auto">
@@ -705,6 +807,12 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
     </div>
   );
 
+  function bandTitle(id: string): string | undefined {
+    const b = bandById.get(id);
+    if (!b?.early || !b.late || b.early === b.late) return undefined;
+    return `on the plant's fast/slow days: ${dd(b.early)} – ${dd(b.late)}`;
+  }
+
   function jobRow(o: ResultJob, queueIndex: number) {
     const pin = pinById ? pinById.get(o.id) ?? pinById.get(o.baseId) : null;
     const draggable = queueIndex >= 0;
@@ -759,7 +867,10 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
           ) : o.blockedBy ? (
             <span className="text-muted" title="a stage this job needs has no recent history">?</span>
           ) : (
-            <span style={{ color: o.late ? "var(--bad-fg)" : o.deltaDays < 0 ? "var(--ok-fg)" : undefined }}>
+            <span
+              style={{ color: o.late ? "var(--bad-fg)" : o.deltaDays < 0 ? "var(--ok-fg)" : undefined }}
+              title={bandTitle(o.id)}
+            >
               {o.late && "⚠ "}{dd(o.etaISO)}
             </span>
           )}
@@ -777,6 +888,15 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
           )}
           {o.batch !== null && (
             <button onClick={() => unsplitJob(o.baseId)} className="text-muted text-xs font-semibold px-1 hover:underline" title="merge the batches back into one job">merge</button>
+          )}
+          {!o.done && (
+            scenario.holds[o.baseId] ? (
+              <button onClick={() => setHold(o)} className="pill pill-warn tabnum ml-0.5" title="material hold — click to change or remove">
+                ⏳ {ddShort(scenario.holds[o.baseId])}
+              </button>
+            ) : (
+              <button onClick={() => setHold(o)} className="text-muted text-xs px-1 hover:underline opacity-60 hover:opacity-100" title="waiting for material/parts? set the day it arrives">⏳</button>
+            )
           )}
         </td>
       </tr>
