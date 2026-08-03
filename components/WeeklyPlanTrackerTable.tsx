@@ -45,10 +45,15 @@ const doneWord = (metric: Stage, it: Item): string =>
   : metric === "delivered" ? "delivered"
   : isPaintExempt(it) ? "shot blasted" : "painted";
 
+/** Work a cell actually OWES: the scheduled qty minus what the order marked
+ *  N/A. Every percentage and total reads against this — a promise we will not
+ *  manufacture can neither hurt nor help a day's score. */
+const owedOf = (c: WeeklyPlanCell): number => c.req - c.na;
+
 const coverage = (r: WeeklyPlanRow, metric: Stage): number | null => {
   const cells = Object.values(r.items) as WeeklyPlanCell[];
-  const req = cells.reduce((s, c) => s + c.req, 0);
-  return req > 0 ? cells.reduce((s, c) => s + c[metric], 0) / req : null;
+  const owed = cells.reduce((s, c) => s + owedOf(c), 0);
+  return owed > 0 ? cells.reduce((s, c) => s + c[metric], 0) / owed : null;
 };
 
 export function WeeklyPlanTrackerTable({ data, capacityCard }: { data: WeeklyPlanTracker; capacityCard?: React.ReactNode }) {
@@ -84,7 +89,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard }: { data: WeeklyPla
         let covered = 0;
         for (const r of rows) {
           for (const c of Object.values(r.items) as WeeklyPlanCell[]) {
-            req += c.req;
+            req += owedOf(c);
             covered += c[metric];
           }
         }
@@ -103,7 +108,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard }: { data: WeeklyPla
         for (const st of stats) {
           const c = r.items[st.it];
           if (!c) continue;
-          st.need += c.req;
+          st.need += owedOf(c);
           st.done += c[metric];
         }
       }
@@ -122,6 +127,10 @@ export function WeeklyPlanTrackerTable({ data, capacityCard }: { data: WeeklyPla
           (Object.keys(r.items) as Item[]).map((it) => ({
             "Delivery date": d.iso, Project: r.bom, SOI: r.soi ?? "", Component: it,
             Required: r.items[it]!.req,
+            // pcs scheduled but NOT to be manufactured (order marked N/A) and
+            // pcs covered by outsourcing — the sheet must read like the screen
+            "N/A (not manufactured)": r.items[it]!.na,
+            OSP: r.items[it]!.osp,
             ...Object.fromEntries(stages.map((s) => [STAGE_OPTS.find((o) => o.value === s)!.short, r.items[it]![s]])),
           }))
         )
@@ -298,11 +307,39 @@ function DayBlock({ day, stages, metric, planNo }: { day: WeeklyPlanDay; stages:
                   </td>
                 );
               }
+              const owed = c.req - c.na;
+              if (owed === 0) {
+                // the whole promise is N/A on the order — it stays on the sheet
+                // so the plan's ask is visible, but it is not work we will do
+                return (
+                  <Fragment key={it}>
+                    <td className="px-1 py-1 tabnum text-xs border-l text-muted line-through opacity-50" title="Scheduled by the plan, but marked N/A on the order">
+                      {c.req}
+                    </td>
+                    <td colSpan={stages.length} className="px-1 py-1 text-[10px] font-bold text-muted opacity-60" title="This component is marked N/A on the order — it will not be manufactured and does not count in any total">
+                      N/A — not manufactured
+                    </td>
+                  </Fragment>
+                );
+              }
               return (
                 <Fragment key={it}>
-                  <td className="px-1 py-1 tabnum text-xs font-bold border-l">{c.req}</td>
+                  <td className="px-1 py-1 tabnum text-xs font-bold border-l">
+                    {c.req}
+                    {c.na > 0 && (
+                      // part of the promise is N/A — the numbers run against the rest
+                      <span className="block text-[9px] font-normal text-muted" title={`${c.na} of ${c.req} pcs are marked N/A on the order — only ${owed} will be manufactured`}>
+                        N/A {c.na}
+                      </span>
+                    )}
+                    {c.osp > 0 && (
+                      <span className="block text-[9px] font-bold text-accent" title={`${c.osp} pcs of this day's promise are outsourced (OSP) — made outside, not by our departments`}>
+                        OSP {c.osp}
+                      </span>
+                    )}
+                  </td>
                   {stages.map((s) => (
-                    <td key={s} className={`px-1 py-1 tabnum text-xs ${c[s] >= c.req ? "font-bold" : ""}`} style={{ background: TINT[s] }}>
+                    <td key={s} className={`px-1 py-1 tabnum text-xs ${c[s] >= owed ? "font-bold" : ""}`} style={{ background: TINT[s] }}>
                       {c[s] || <span className="text-muted opacity-40">—</span>}
                     </td>
                   ))}

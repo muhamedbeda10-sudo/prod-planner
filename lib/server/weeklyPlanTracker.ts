@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { ITEMS, isPaintExempt, ospOf, type Item } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 import { dayNumber, toISODate } from "@/lib/domain/dates";
 
 // Plan Tracker on a WEEKLY plan, grouped BY DELIVERY DAY.
@@ -24,10 +24,19 @@ import { dayNumber, toISODate } from "@/lib/domain/dates";
 //     the earliest day's promise fills first and only the overflow reaches the
 //     next day. 11 welded against 15-then-13 promises reads 11 and 0 — never
 //     11 and 11, which would count the same pieces twice.
+//   • A promise the ORDER disowns stays on the sheet but out of the maths: a
+//     component marked N/A on the order (excludedItems) still shows with its
+//     scheduled qty, flagged "not manufactured", and counts in NO total or
+//     percentage. Outsourced (OSP) pieces DO count as covered — they arrive
+//     without our departments working — and the cell says how many were OSP.
 
 export interface WeeklyPlanCell {
-  req: number; // pcs this delivery day asks for
-  cut: number; // every figure below is capped at `req`
+  req: number; // pcs this delivery day asks for (as scheduled — N/A pcs included)
+  // pcs of `req` marked N/A on the order (excludedItems) — the plan asked for
+  // them but they will NOT be manufactured. Shown, never counted as work owed.
+  na: number;
+  osp: number; // pcs of this day's promise covered by outsourcing (made outside)
+  cut: number; // every figure below is capped at `req - na`
   weld: number;
   finish: number; // Painting, or SHOT BLAST for the core — plus outsourced qty
   delivered: number;
@@ -37,7 +46,7 @@ export interface WeeklyPlanRow {
   soi: string | null;
   description: string | null;
   urgent: boolean; // any of the day's orders for this project is flagged urgent
-  req: number; // the day's promise across every component it asks for
+  req: number; // the day's promise to MANUFACTURE across every component (N/A excluded)
   items: Partial<Record<Item, WeeklyPlanCell>>; // ONLY what the day asks for
 }
 export interface WeeklyPlanDay {
@@ -89,6 +98,10 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
   ]);
 
   const orderOf = new Map(orders.map((o) => [o.mo, o]));
+  // manual N/A per order: components the order does not need at all. The weekly
+  // sheet may still schedule them — those promises stay VISIBLE but are never
+  // counted as work owed (they will not be manufactured).
+  const excludedOf = new Map(orders.map((o) => [o.mo, parseExcludedItems(o.excludedItems)]));
   const done = new Map<string, number>(); // "mo|dept|item"
   for (const s of sums) if (s.mo) done.set(`${s.mo}|${s.dept}|${s.item}`, s._sum.qty ?? 0);
   const g = (mo: string, dept: string, item: string) => done.get(`${mo}|${dept}|${item}`) ?? 0;
@@ -107,8 +120,10 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
     if (line) line.qty += s.qty;
     else lines.push({ d, qty: s.qty });
   }
-  // alloc "mo|item|day" → the slice of the order's output this day may claim
-  type Slice = { cut: number; weld: number; fin: number; delivered: number };
+  // alloc "mo|item|day" → the slice of the order's output this day may claim.
+  // `osp` waterfalls exactly like the stage figures, so a cell can SAY how much
+  // of its coverage was made outside rather than by our departments.
+  type Slice = { cut: number; weld: number; fin: number; delivered: number; osp: number };
   const alloc = new Map<string, Slice>();
   for (const [k, lines] of moLines) {
     lines.sort((a, b) => a.d - b.d);
@@ -121,10 +136,11 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
       // the core's finishing IS its shot blast — it is never painted
       fin: (isPaintExempt(item as Item) ? g(mo, "ShotBlast", item) : g(mo, "Painting", item)) + osp,
       delivered: g(mo, "Delivered", item),
+      osp,
     };
     for (const line of lines) {
-      const slice: Slice = { cut: 0, weld: 0, fin: 0, delivered: 0 };
-      for (const f of ["cut", "weld", "fin", "delivered"] as const) {
+      const slice: Slice = { cut: 0, weld: 0, fin: 0, delivered: 0, osp: 0 };
+      for (const f of ["cut", "weld", "fin", "delivered", "osp"] as const) {
         slice[f] = Math.min(pool[f], line.qty);
         pool[f] -= slice[f];
       }
@@ -139,6 +155,7 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
     description: string | null;
     urgent: boolean;
     req: Partial<Record<Item, number>>;
+    na: Partial<Record<Item, number>>; // the slice of req scheduled from N/A orders
     mos: Set<string>; // the orders this project owes on this day — the progress to read
   };
   const todayD = dayNumber(new Date());
@@ -154,10 +171,13 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
     const key = `${d}|${s.bom}`;
     let draft = drafts.get(key);
     if (!draft) {
-      draft = { bom: s.bom, soi: s.soi ?? null, description: s.description ?? null, urgent: false, req: {}, mos: new Set() };
+      draft = { bom: s.bom, soi: s.soi ?? null, description: s.description ?? null, urgent: false, req: {}, na: {}, mos: new Set() };
       drafts.set(key, draft);
     }
     draft.req[item] = (draft.req[item] ?? 0) + s.qty;
+    // scheduled against an order that doesn't need this component — the promise
+    // stays visible, but it is not work we will do
+    if (excludedOf.get(s.mo)?.has(item)) draft.na[item] = (draft.na[item] ?? 0) + s.qty;
     draft.mos.add(s.mo);
     draft.soi ??= s.soi ?? orderOf.get(s.mo)?.soi ?? null;
     draft.description ??= s.description ?? null;
@@ -189,9 +209,13 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
     for (const it of ITEMS) {
       const req = draft.req[it] ?? 0;
       if (!req) continue; // not this day's business — leave it out entirely
+      // pcs the plan asked for but the order marked N/A — visible, never owed.
+      // Only what remains is a promise to manufacture; every figure caps there.
+      const na = Math.min(draft.na[it] ?? 0, req);
+      const owed = req - na;
       // each order contributes THIS day's waterfall slice — output already
       // claimed by an earlier promise never shows up again
-      let cut = 0, weld = 0, fin = 0, delivered = 0;
+      let cut = 0, weld = 0, fin = 0, delivered = 0, osp = 0;
       for (const mo of draft.mos) {
         const slice = alloc.get(`${mo}|${it}|${d}`);
         if (!slice) continue; // this order owes a different component today
@@ -199,13 +223,16 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
         weld += slice.weld;
         fin += slice.fin;
         delivered += slice.delivered;
+        osp += slice.osp;
       }
-      const cap = (v: number) => Math.min(v, req);
-      items[it] = { req, cut: cap(cut), weld: cap(weld), finish: cap(fin), delivered: cap(delivered) };
-      rowReq += req;
+      const cap = (v: number) => Math.min(v, owed);
+      items[it] = { req, na, osp: cap(osp), cut: cap(cut), weld: cap(weld), finish: cap(fin), delivered: cap(delivered) };
+      rowReq += owed;
       day.covered += cap(fin);
     }
-    if (rowReq === 0) continue; // nothing left to say about this project today
+    // a project whose every promise today is N/A still shows (so the plan's ask
+    // stays on the sheet) — it just carries no work and no percentage
+    if (Object.keys(items).length === 0) continue;
 
     day.req += rowReq;
     day.rows.push({ bom: draft.bom, soi: draft.soi, description: draft.description, urgent: draft.urgent, req: rowReq, items });
