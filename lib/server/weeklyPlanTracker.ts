@@ -20,6 +20,10 @@ import { dayNumber, toISODate } from "@/lib/domain/dates";
 //     number shown never exceeds the requirement: 10 owed with 25 made reads
 //     10/10, not 25. So a cell is always "how much of this day's promise is
 //     covered", and the percentage tops out at 100.
+//   • When ONE order is promised across SEVERAL days, its output WATERFALLS:
+//     the earliest day's promise fills first and only the overflow reaches the
+//     next day. 11 welded against 15-then-13 promises reads 11 and 0 — never
+//     11 and 11, which would count the same pieces twice.
 
 export interface WeeklyPlanCell {
   req: number; // pcs this delivery day asks for
@@ -89,6 +93,45 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
   for (const s of sums) if (s.mo) done.set(`${s.mo}|${s.dept}|${s.item}`, s._sum.qty ?? 0);
   const g = (mo: string, dept: string, item: string) => done.get(`${mo}|${dept}|${item}`) ?? 0;
 
+  // ---- the waterfall: one order promised across several days hands its
+  // output to the EARLIEST promise first; only the overflow flows on ----
+  // lines per (mo, item): the day-quantities in date order
+  const moLines = new Map<string, { d: number; qty: number }[]>();
+  for (const s of schedules) {
+    if (!ITEMS.includes(s.item as Item) || !s.qty) continue;
+    const k = `${s.mo}|${s.item}`;
+    if (!moLines.has(k)) moLines.set(k, []);
+    const lines = moLines.get(k)!;
+    const d = dayNumber(s.ovenDate);
+    const line = lines.find((l) => l.d === d);
+    if (line) line.qty += s.qty;
+    else lines.push({ d, qty: s.qty });
+  }
+  // alloc "mo|item|day" → the slice of the order's output this day may claim
+  type Slice = { cut: number; weld: number; fin: number; delivered: number };
+  const alloc = new Map<string, Slice>();
+  for (const [k, lines] of moLines) {
+    lines.sort((a, b) => a.d - b.d);
+    const [mo, item] = k.split("|");
+    const o = orderOf.get(mo);
+    const osp = o ? ospOf(o, item as Item) : 0; // outsourced pieces count as made
+    const pool: Slice = {
+      cut: g(mo, "Cut", item),
+      weld: g(mo, "Welding", item) + osp,
+      // the core's finishing IS its shot blast — it is never painted
+      fin: (isPaintExempt(item as Item) ? g(mo, "ShotBlast", item) : g(mo, "Painting", item)) + osp,
+      delivered: g(mo, "Delivered", item),
+    };
+    for (const line of lines) {
+      const slice: Slice = { cut: 0, weld: 0, fin: 0, delivered: 0 };
+      for (const f of ["cut", "weld", "fin", "delivered"] as const) {
+        slice[f] = Math.min(pool[f], line.qty);
+        pool[f] -= slice[f];
+      }
+      alloc.set(`${k}|${line.d}`, slice);
+    }
+  }
+
   // ---- gather the promises per delivery day × project, folding the MOs in ----
   type Draft = {
     bom: string;
@@ -146,21 +189,21 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
     for (const it of ITEMS) {
       const req = draft.req[it] ?? 0;
       if (!req) continue; // not this day's business — leave it out entirely
-      // sum only the orders this project owes TODAY, then cap at the promise
-      let cut = 0, weld = 0, fin = 0, delivered = 0, osp = 0;
+      // each order contributes THIS day's waterfall slice — output already
+      // claimed by an earlier promise never shows up again
+      let cut = 0, weld = 0, fin = 0, delivered = 0;
       for (const mo of draft.mos) {
-        const o = orderOf.get(mo);
-        cut += g(mo, "Cut", it);
-        weld += g(mo, "Welding", it);
-        // the core's finishing IS its shot blast — it is never painted
-        fin += isPaintExempt(it) ? g(mo, "ShotBlast", it) : g(mo, "Painting", it);
-        delivered += g(mo, "Delivered", it);
-        osp += o ? ospOf(o, it) : 0; // outsourced: our departments never make these
+        const slice = alloc.get(`${mo}|${it}|${d}`);
+        if (!slice) continue; // this order owes a different component today
+        cut += slice.cut;
+        weld += slice.weld;
+        fin += slice.fin;
+        delivered += slice.delivered;
       }
       const cap = (v: number) => Math.min(v, req);
-      items[it] = { req, cut: cap(cut), weld: cap(weld + osp), finish: cap(fin + osp), delivered: cap(delivered) };
+      items[it] = { req, cut: cap(cut), weld: cap(weld), finish: cap(fin), delivered: cap(delivered) };
       rowReq += req;
-      day.covered += cap(fin + osp);
+      day.covered += cap(fin);
     }
     if (rowReq === 0) continue; // nothing left to say about this project today
 
