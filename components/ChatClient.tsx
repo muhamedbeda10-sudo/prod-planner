@@ -145,9 +145,24 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
   const [moQuery, setMoQuery] = useState("");
   const [moResults, setMoResults] = useState<{ mo: string; bom: string; status: string }[]>([]);
 
-  // per-message menu: which message, and whether delete is armed
-  const [menuFor, setMenuFor] = useState<number | null>(null);
+  // per-message menu: which message + a FIXED on-screen position. Rendered as
+  // a floating layer (not inside the bubble) so the scroll container can never
+  // clip it; coordinates are clamped to the viewport and flip upward when the
+  // bubble sits near the bottom.
+  const [menuFor, setMenuFor] = useState<{ id: number; x: number; y: number } | null>(null);
   const [armedDelete, setArmedDelete] = useState<number | null>(null);
+
+  const MENU_W = 232;
+  const MENU_H = 226;
+  const openMenu = useCallback((e: React.MouseEvent, m: ChatMessageDTO, mine: boolean) => {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = Math.min(Math.max(8, mine ? r.right - MENU_W : r.left), window.innerWidth - MENU_W - 8);
+    let y = r.bottom + 6;
+    if (y + MENU_H > window.innerHeight - 8) y = Math.max(8, r.top - MENU_H - 6);
+    setArmedDelete(null);
+    setMenuFor((cur) => (cur?.id === m.id ? null : { id: m.id, x, y }));
+  }, []);
 
   // pinned bar + jump highlight
   const [pinsOpen, setPinsOpen] = useState(false);
@@ -674,6 +689,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                 setMenuFor(null);
                 setArmedDelete(null);
               }}
+              onScroll={() => setMenuFor(null)}
             >
               {messages.map((m, i) => {
                 const mine = m.fromId === me.id;
@@ -702,72 +718,16 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                           borderTopLeftRadius: mine ? undefined : 4,
                         }}
                       >
-                        {/* message menu — appears on hover / tap */}
+                        {/* message menu trigger — the menu itself floats above
+                            the page so the scroller can never clip it */}
                         <button
                           type="button"
                           aria-label="Message options"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setArmedDelete(null);
-                            setMenuFor(menuFor === m.id ? null : m.id);
-                          }}
+                          onClick={(e) => openMenu(e, m, mine)}
                           className={`absolute top-0.5 ${mine ? "left-0.5" : "right-0.5"} rounded p-0.5 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity`}
                         >
                           <ChevronDown size={14} />
                         </button>
-                        {menuFor === m.id && (
-                          <div
-                            className={`absolute z-10 top-6 ${mine ? "left-1" : "right-1"} bg-surface text-foreground border rounded-xl shadow-lg overflow-hidden`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {/* quick reactions */}
-                            <div className="flex items-center gap-0.5 px-2 pt-2 pb-1">
-                              {QUICK_REACTIONS.map((e) => (
-                                <button
-                                  key={e}
-                                  type="button"
-                                  onClick={() => void react(m, e)}
-                                  className={`grid place-items-center w-8 h-8 rounded-full text-base transition-transform hover:scale-125 ${
-                                    m.reactions.some((r) => r.mine && r.emoji === e) ? "bg-brand-light" : ""
-                                  }`}
-                                >
-                                  {e}
-                                </button>
-                              ))}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setReplyTarget(m);
-                                setMenuFor(null);
-                                draftRef.current?.focus();
-                              }}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors"
-                            >
-                              <Reply size={13} className="shrink-0" />
-                              Reply
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void togglePin(m)}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors"
-                            >
-                              {m.pinnedAt ? <PinOff size={13} className="shrink-0" /> : <Pin size={13} className="shrink-0" />}
-                              {m.pinnedAt ? "Unpin" : "Pin"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => (armedDelete === m.id ? void deleteForMe(m.id) : setArmedDelete(m.id))}
-                              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors text-danger"
-                            >
-                              <Trash2 size={13} className="shrink-0" />
-                              {armedDelete === m.id ? "Tap again to confirm" : "Delete for me"}
-                            </button>
-                            <p className="px-3 pb-2 text-[10px] text-muted max-w-[190px]">
-                              Delete removes it from YOUR view only — everyone else keeps it.
-                            </p>
-                          </div>
-                        )}
 
                         {showSender && (
                           <span className="block text-[11px] font-extrabold mb-0.5" style={{ color: avatarColor(m.fromId) }}>
@@ -1033,6 +993,77 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
           </>
         )}
       </section>
+
+      {/* ===== floating message menu — fixed layer, clipped by nothing ===== */}
+      {menuFor &&
+        (() => {
+          const m = messages.find((x) => x.id === menuFor.id);
+          if (!m) return null;
+          return (
+            <>
+              <button
+                type="button"
+                aria-label="Close menu"
+                onClick={() => {
+                  setMenuFor(null);
+                  setArmedDelete(null);
+                }}
+                className="fixed inset-0 z-40 cursor-default"
+              />
+              <div
+                className="fixed z-50 bg-surface text-foreground border rounded-xl shadow-lg overflow-hidden"
+                style={{ left: menuFor.x, top: menuFor.y, width: MENU_W }}
+              >
+                {/* quick reactions */}
+                <div className="flex items-center gap-0.5 px-2 pt-2 pb-1">
+                  {QUICK_REACTIONS.map((e) => (
+                    <button
+                      key={e}
+                      type="button"
+                      onClick={() => void react(m, e)}
+                      className={`grid place-items-center w-8 h-8 rounded-full text-base transition-transform hover:scale-125 ${
+                        m.reactions.some((r) => r.mine && r.emoji === e) ? "bg-brand-light" : ""
+                      }`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReplyTarget(m);
+                    setMenuFor(null);
+                    draftRef.current?.focus();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors"
+                >
+                  <Reply size={13} className="shrink-0" />
+                  Reply
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void togglePin(m)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors"
+                >
+                  {m.pinnedAt ? <PinOff size={13} className="shrink-0" /> : <Pin size={13} className="shrink-0" />}
+                  {m.pinnedAt ? "Unpin" : "Pin"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => (armedDelete === m.id ? void deleteForMe(m.id) : setArmedDelete(m.id))}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors text-danger"
+                >
+                  <Trash2 size={13} className="shrink-0" />
+                  {armedDelete === m.id ? "Tap again to confirm" : "Delete for me"}
+                </button>
+                <p className="px-3 pb-2 text-[10px] text-muted">
+                  Delete removes it from YOUR view only — everyone else keeps it.
+                </p>
+              </div>
+            </>
+          );
+        })()}
 
       {/* ===== group create / add-members modal ===== */}
       {groupModal && (
