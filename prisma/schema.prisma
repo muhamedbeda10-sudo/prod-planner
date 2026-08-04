@@ -282,6 +282,27 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   sessions     Session[]
+  sentMessages     ChatMessage[] @relation("sentMessages")
+  receivedMessages ChatMessage[] @relation("receivedMessages")
+}
+
+// Direct message between two users (the in-app chat). Delivery is DB-first:
+// the row is the source of truth, Supabase Realtime broadcast (when configured)
+// only makes it arrive without a refresh. readAt doubles as the unread flag.
+model ChatMessage {
+  id        Int       @id @default(autoincrement())
+  fromId    Int
+  toId      Int
+  body      String
+  readAt    DateTime? // null = the recipient hasn't opened the thread yet
+  createdAt DateTime  @default(now())
+
+  from User @relation("sentMessages", fields: [fromId], references: [id], onDelete: Cascade)
+  to   User @relation("receivedMessages", fields: [toId], references: [id], onDelete: Cascade)
+
+  // thread fetch (both directions) and the nav's unread count
+  @@index([fromId, toId, id])
+  @@index([toId, readAt])
 }
 
 // DB-backed session: id is the sha256 of the cookie token, so a DB leak never
