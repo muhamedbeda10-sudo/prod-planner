@@ -4,22 +4,32 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Send, ArrowLeft, MessagesSquare, Paperclip, Package, ChevronDown, X,
-  FileText, FileSpreadsheet, File as FileIcon, Trash2,
+  FileText, FileSpreadsheet, File as FileGlyph, Trash2, Users, Plus,
+  Pin, PinOff, Smile, LogOut, UserPlus,
 } from "lucide-react";
 import {
   sendChatMessage, openChatThread, markChatThreadRead, pollChat,
-  deleteChatMessageForMe, searchChatOrders,
+  deleteChatMessageForMe, searchChatOrders, togglePinChatMessage,
+  toggleChatReaction, createChatGroup, addChatGroupMembers, leaveChatGroup,
+  getChatGroupMembers,
 } from "@/app/chat/actions";
-import { subscribeChat, chatRealtimeConfigured, type ChatBroadcastPayload } from "@/lib/chatRealtime";
+import {
+  subscribeChat, chatRealtimeConfigured,
+  type ChatBroadcastPayload, type ChatSyncPayload,
+} from "@/lib/chatRealtime";
+import { compressImage } from "@/lib/imageCompress";
+import { EmojiPicker, QUICK_REACTIONS } from "@/components/EmojiPicker";
 import { traceHref } from "@/lib/domain/links";
-import type { ChatAttachment, ChatContact, ChatMessageDTO } from "@/lib/server/chat";
+import type { ChatAttachment, ChatContact, ChatMessageDTO, ThreadKind } from "@/lib/server/chat";
 
-/* WhatsApp-familiar two-pane chat on the ATC palette: contacts left, thread
-   right over a textured backdrop, my bubbles green-tinted. On mobile the panes
-   take turns. Delivery is DB-first: Realtime broadcast (when configured) makes
-   messages arrive live, and a poll covers everything else. A message can carry
-   an ORDER CHIP (opens the MO's trace) and image / PDF / Office attachments;
-   "delete" only hides a message from the deleting side. */
+/* WhatsApp-familiar chat on the ATC palette: DMs and GROUPS in one list,
+   pinned messages on a bar over the thread, emoji picker + reactions, order
+   chips, image/document attachments (photos are compressed in the browser
+   first). Delivery is DB-first: Realtime broadcast (when configured) makes
+   events arrive live, and a poll covers everything else. */
+
+type Thread = { kind: ThreadKind; id: number };
+const sameThread = (a: Thread | null, b: Thread | null) => !!a && !!b && a.kind === b.kind && a.id === b.id;
 
 // with realtime the poll is only a safety net; without it, it IS the transport
 const POLL_MS = chatRealtimeConfigured ? 30000 : 5000;
@@ -35,14 +45,16 @@ const sizeLabel = (bytes: number) =>
 
 const isImage = (a: ChatAttachment) => a.type.startsWith("image/");
 
+// a message that is ONLY 1-3 emojis renders big, WhatsApp-style
+const JUMBO_RE = /^(?:\p{Extended_Pictographic}(?:‍\p{Extended_Pictographic})*️?){1,3}$/u;
+const isJumbo = (body: string) => JUMBO_RE.test(body.trim());
+
 function docIcon(name: string) {
   const ext = name.toLowerCase().split(".").pop() ?? "";
-  if (["xls", "xlsx", "csv"].includes(ext)) return <FileSpreadsheetIcon />;
-  if (["pdf", "doc", "docx"].includes(ext)) return <FileTextIcon />;
-  return <FileIcon size={18} className="shrink-0" />;
+  if (["xls", "xlsx", "csv"].includes(ext)) return <FileSpreadsheet size={18} className="shrink-0 text-brand" />;
+  if (["pdf", "doc", "docx"].includes(ext)) return <FileText size={18} className="shrink-0 text-brand" />;
+  return <FileGlyph size={18} className="shrink-0" />;
 }
-const FileSpreadsheetIcon = () => <FileSpreadsheet size={18} className="shrink-0 text-brand" />;
-const FileTextIcon = () => <FileText size={18} className="shrink-0 text-brand" />;
 
 /** Contact-list preview when a message has no text. */
 const previewLabel = (m: ChatMessageDTO) =>
@@ -56,14 +68,14 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const AVATAR_COLORS = ["#1a8150", "#2b6cb0", "#d97706", "#7c3aed", "#c2410c", "#0e7490"];
 const avatarColor = (id: number) => AVATAR_COLORS[id % AVATAR_COLORS.length];
 
-function Avatar({ id, name, size = 9 }: { id: number; name: string; size?: 8 | 9 | 10 }) {
+function Avatar({ contact, size = 9 }: { contact: { kind: ThreadKind; id: number; name: string }; size?: 8 | 9 | 10 }) {
   const px = { 8: "w-8 h-8 text-xs", 9: "w-9 h-9 text-sm", 10: "w-10 h-10 text-sm" }[size];
   return (
     <span
       className={`${px} shrink-0 rounded-full text-white font-extrabold grid place-items-center shadow-sm`}
-      style={{ background: avatarColor(id) }}
+      style={{ background: avatarColor(contact.id + (contact.kind === "group" ? 3 : 0)) }}
     >
-      {name.trim().charAt(0).toUpperCase()}
+      {contact.kind === "group" ? <Users size={size * 2 - 2} /> : contact.name.trim().charAt(0).toUpperCase()}
     </span>
   );
 }
@@ -114,7 +126,7 @@ function AttachmentView({ a }: { a: ChatAttachment }) {
 
 export function ChatClient({ me, initialContacts }: { me: { id: number; name: string }; initialContacts: ChatContact[] }) {
   const [contacts, setContacts] = useState(initialContacts);
-  const [activeId, setActiveId] = useState<number | null>(null);
+  const [active, setActive] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<ChatMessageDTO[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -124,6 +136,8 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [pendingMo, setPendingMo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draftRef = useRef<HTMLTextAreaElement>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
 
   // MO picker popover
   const [moOpen, setMoOpen] = useState(false);
@@ -134,13 +148,25 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
   const [menuFor, setMenuFor] = useState<number | null>(null);
   const [armedDelete, setArmedDelete] = useState<number | null>(null);
 
+  // pinned bar + jump highlight
+  const [pinsOpen, setPinsOpen] = useState(false);
+  const [highlightId, setHighlightId] = useState<number | null>(null);
+
+  // groups
+  const [groupModal, setGroupModal] = useState<"create" | "add" | null>(null);
+  const [groupName, setGroupName] = useState("");
+  const [groupPicks, setGroupPicks] = useState<Set<number>>(new Set());
+  const [groupMembers, setGroupMembers] = useState<{ id: number; name: string }[]>([]);
+  const [groupCreatedBy, setGroupCreatedBy] = useState<number | null>(null);
+  const [leaveArmed, setLeaveArmed] = useState(false);
+
   // the handlers below live in effects/subscriptions — refs keep them reading
   // the CURRENT thread without resubscribing on every click
-  const activeRef = useRef(activeId);
+  const activeRef = useRef(active);
   const messagesRef = useRef(messages);
   useEffect(() => {
-    activeRef.current = activeId;
-  }, [activeId]);
+    activeRef.current = active;
+  }, [active]);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -148,7 +174,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages, activeId]);
+  }, [messages.length, active]);
 
   // debounce the MO picker search
   useEffect(() => {
@@ -168,20 +194,28 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     });
   }, []);
 
+  /** The thread a message belongs to, from MY point of view. */
+  const threadOf = useCallback(
+    (m: ChatMessageDTO): Thread =>
+      m.groupId ? { kind: "group", id: m.groupId } : { kind: "user", id: m.fromId === me.id ? (m.toId ?? 0) : m.fromId },
+    [me.id],
+  );
+
   /** Reflect one message onto the contact list (preview + unread). */
   const touchContact = useCallback(
     (m: ChatMessageDTO, opts: { countUnread: boolean }) => {
-      const partner = m.fromId === me.id ? m.toId : m.fromId;
+      const t = threadOf(m);
       setContacts((cur) =>
         cur
           .map((c) =>
-            c.id === partner
+            c.kind === t.kind && c.id === t.id
               ? {
                   ...c,
                   lastBody: previewLabel(m),
                   lastAt: m.createdAt,
                   lastFromMe: m.fromId === me.id,
-                  unread: c.unread + (opts.countUnread && m.fromId === partner ? 1 : 0),
+                  lastFromName: m.fromId === me.id ? null : m.fromName,
+                  unread: c.unread + (opts.countUnread && m.fromId !== me.id ? 1 : 0),
                 }
               : c,
           )
@@ -193,59 +227,83 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
           ),
       );
     },
-    [me.id],
+    [me.id, threadOf],
   );
 
-  const openThread = useCallback(async (otherId: number) => {
-    activeRef.current = otherId; // sync now — the stale-reply check below can't wait for the effect
-    setActiveId(otherId);
+  const openThread = useCallback(async (t: Thread) => {
+    activeRef.current = t; // sync now — the stale-reply check below can't wait for the effect
+    setActive(t);
     setMessages([]);
     setError(null);
     setMenuFor(null);
     setArmedDelete(null);
-    setContacts((cur) => cur.map((c) => (c.id === otherId ? { ...c, unread: 0 } : c)));
-    const res = await openChatThread(otherId);
+    setPinsOpen(false);
+    setLeaveArmed(false);
+    setGroupMembers([]);
+    setGroupCreatedBy(null);
+    setContacts((cur) => cur.map((c) => (c.kind === t.kind && c.id === t.id ? { ...c, unread: 0 } : c)));
+    const [res, members] = await Promise.all([
+      openChatThread(t.kind, t.id),
+      t.kind === "group" ? getChatGroupMembers(t.id) : Promise.resolve(null),
+    ]);
     // ignore a reply that lands after the user already switched threads
-    if (activeRef.current !== otherId) return;
+    if (!sameThread(activeRef.current, t)) return;
     if (!res.ok) setError(res.error ?? "Could not load the conversation.");
     else setMessages(res.messages ?? []);
+    if (members?.ok) {
+      setGroupMembers(members.members);
+      setGroupCreatedBy(members.createdBy);
+    }
+  }, []);
+
+  /** Silent full re-fetch of the open thread — pins/reactions changed. */
+  const resyncThread = useCallback(async () => {
+    const t = activeRef.current;
+    if (!t) return;
+    const res = await openChatThread(t.kind, t.id);
+    if (res.ok && sameThread(activeRef.current, t)) setMessages(res.messages ?? []);
   }, []);
 
   // one catch-up poll: new thread messages + fresh unread counts
   const catchUp = useCallback(async () => {
     const open = activeRef.current;
     const lastId = messagesRef.current.at(-1)?.id ?? 0;
-    const res = await pollChat(open, lastId);
+    const res = await pollChat(open?.kind ?? null, open?.id ?? 0, lastId);
     if (!res.ok) return;
     if (res.contacts) {
       // the open thread's unread stays 0 — reading it is this screen's job
-      setContacts(res.contacts.map((c) => (c.id === activeRef.current ? { ...c, unread: 0 } : c)));
+      setContacts(res.contacts.map((c) => (sameThread(activeRef.current, { kind: c.kind, id: c.id }) ? { ...c, unread: 0 } : c)));
     }
-    if (res.messages && res.messages.length > 0 && activeRef.current === open) {
+    if (res.messages && res.messages.length > 0 && sameThread(activeRef.current, open)) {
       appendUnique(res.messages);
-      if (open && res.messages.some((m) => m.fromId === open)) void markChatThreadRead(open);
+      if (open && res.messages.some((m) => m.fromId !== me.id)) void markChatThreadRead(open.kind, open.id);
     }
-  }, [appendUnique]);
+  }, [appendUnique, me.id]);
 
-  // live delivery — my own topic carries everything addressed to OR sent by me
+  // live delivery — my own topic carries every thread I'm part of
   useEffect(() => {
-    const unsubscribe = subscribeChat(
-      me.id,
-      (p: ChatBroadcastPayload) => {
+    const unsubscribe = subscribeChat(me.id, {
+      onMessage: (p: ChatBroadcastPayload) => {
         const m = p.message;
-        const partner = m.fromId === me.id ? m.toId : m.fromId;
-        if (partner === activeRef.current) {
+        const t = threadOf(m);
+        if (sameThread(t, activeRef.current)) {
           appendUnique([m]);
           touchContact(m, { countUnread: false });
-          if (m.toId === me.id) void markChatThreadRead(partner); // read as it arrives — the thread is on screen
+          if (m.fromId !== me.id) void markChatThreadRead(t.kind, t.id); // read as it arrives — the thread is on screen
         } else {
           touchContact(m, { countUnread: true });
         }
       },
-      () => void catchUp(), // socket dropped — anything broadcast meanwhile is only in the DB
-    );
+      onSync: (p: ChatSyncPayload) => {
+        // pins / reactions / membership changed — re-read what's on screen,
+        // and refresh the contact list (a new group may have appeared)
+        if (sameThread({ kind: p.kind, id: p.id }, activeRef.current)) void resyncThread();
+        else void catchUp();
+      },
+      onDrop: () => void catchUp(), // socket dropped — anything broadcast meanwhile is only in the DB
+    });
     return unsubscribe;
-  }, [me.id, appendUnique, touchContact, catchUp]);
+  }, [me.id, appendUnique, touchContact, catchUp, resyncThread, threadOf]);
 
   // the poll: transport without realtime, safety net with it
   useEffect(() => {
@@ -253,12 +311,15 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     return () => clearInterval(t);
   }, [catchUp]);
 
-  const addFiles = useCallback((incoming: FileList | null) => {
+  const addFiles = useCallback(async (incoming: FileList | null) => {
     if (!incoming) return;
     setError(null);
+    // photos shrink in the browser BEFORE they queue — a 10 MB phone shot
+    // becomes a light JPEG, which also keeps the no-Blob fallback possible
+    const prepared = await Promise.all(Array.from(incoming).map((f) => compressImage(f)));
     setPendingFiles((cur) => {
       const next = [...cur];
-      for (const f of Array.from(incoming)) {
+      for (const f of prepared) {
         if (next.length >= MAX_FILES) {
           setError(`Max ${MAX_FILES} files per message.`);
           break;
@@ -275,13 +336,14 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
 
   const send = useCallback(async () => {
     const text = draft.trim();
-    const to = activeRef.current;
-    if ((!text && pendingFiles.length === 0 && !pendingMo) || !to || sending) return;
+    const t = activeRef.current;
+    if ((!text && pendingFiles.length === 0 && !pendingMo) || !t || sending) return;
     setSending(true);
     setError(null);
 
     const fd = new FormData();
-    fd.set("to", String(to));
+    fd.set("kind", t.kind);
+    fd.set("to", String(t.id));
     fd.set("body", text);
     if (pendingMo) fd.set("mo", pendingMo);
     for (const f of pendingFiles) fd.append("files", f);
@@ -295,6 +357,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     setDraft("");
     setPendingFiles([]);
     setPendingMo(null);
+    setEmojiOpen(false);
     appendUnique([res.message]);
     touchContact(res.message, { countUnread: false });
   }, [draft, pendingFiles, pendingMo, sending, appendUnique, touchContact]);
@@ -306,21 +369,126 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     if (res.ok) setMessages((cur) => cur.filter((m) => m.id !== id));
   }, []);
 
-  const active = useMemo(() => contacts.find((c) => c.id === activeId) ?? null, [contacts, activeId]);
+  const togglePin = useCallback(async (m: ChatMessageDTO) => {
+    setMenuFor(null);
+    // optimistic — the sync broadcast will confirm for everyone else
+    setMessages((cur) =>
+      cur.map((x) => (x.id === m.id ? { ...x, pinnedAt: x.pinnedAt ? null : new Date().toISOString() } : x)),
+    );
+    await togglePinChatMessage(m.id);
+  }, []);
+
+  const react = useCallback(
+    async (m: ChatMessageDTO, emoji: string) => {
+      setMenuFor(null);
+      // optimistic toggle of MY reaction — one per user, same emoji removes
+      setMessages((cur) =>
+        cur.map((x) => {
+          if (x.id !== m.id) return x;
+          const mine = x.reactions.find((r) => r.mine);
+          let reactions = x.reactions
+            .map((r) => (r.mine ? { ...r, count: r.count - 1, mine: false } : r))
+            .filter((r) => r.count > 0);
+          if (mine?.emoji !== emoji) {
+            const hit = reactions.find((r) => r.emoji === emoji);
+            reactions = hit
+              ? reactions.map((r) => (r.emoji === emoji ? { ...r, count: r.count + 1, mine: true } : r))
+              : [...reactions, { emoji, count: 1, mine: true }];
+          }
+          return { ...x, reactions };
+        }),
+      );
+      await toggleChatReaction(m.id, emoji);
+    },
+    [],
+  );
+
+  const insertEmoji = useCallback((emoji: string) => {
+    const el = draftRef.current;
+    setDraft((cur) => {
+      if (!el) return cur + emoji;
+      const at = el.selectionStart ?? cur.length;
+      return cur.slice(0, at) + emoji + cur.slice(at);
+    });
+    el?.focus();
+  }, []);
+
+  const jumpToMessage = useCallback((id: number) => {
+    document.getElementById(`chat-msg-${id}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setHighlightId(id);
+    setTimeout(() => setHighlightId(null), 1600);
+    setPinsOpen(false);
+  }, []);
+
+  const submitGroup = useCallback(async () => {
+    if (groupModal === "create") {
+      const res = await createChatGroup(groupName, [...groupPicks]);
+      if (!res.ok || !res.groupId) {
+        setError(res.error ?? "Could not create the group.");
+        return;
+      }
+      setGroupModal(null);
+      setGroupName("");
+      setGroupPicks(new Set());
+      await catchUp();
+      void openThread({ kind: "group", id: res.groupId });
+    } else if (groupModal === "add" && activeRef.current?.kind === "group") {
+      const res = await addChatGroupMembers(activeRef.current.id, [...groupPicks]);
+      if (!res.ok) setError(res.error ?? "Could not add members.");
+      setGroupModal(null);
+      setGroupPicks(new Set());
+      const info = await getChatGroupMembers(activeRef.current.id);
+      if (info.ok) setGroupMembers(info.members);
+    }
+  }, [groupModal, groupName, groupPicks, catchUp, openThread]);
+
+  const leaveGroup = useCallback(async () => {
+    const t = activeRef.current;
+    if (!t || t.kind !== "group") return;
+    await leaveChatGroup(t.id);
+    setActive(null);
+    activeRef.current = null;
+    setLeaveArmed(false);
+    void catchUp();
+  }, [catchUp]);
+
+  const activeContact = useMemo(
+    () => (active ? (contacts.find((c) => c.kind === active.kind && c.id === active.id) ?? null) : null),
+    [contacts, active],
+  );
   const totalUnread = contacts.reduce((s, c) => s + c.unread, 0);
+  const pinned = useMemo(() => messages.filter((m) => m.pinnedAt), [messages]);
+  const users = useMemo(() => contacts.filter((c) => c.kind === "user"), [contacts]);
+  const pickableUsers = useMemo(
+    () => (groupModal === "add" ? users.filter((u) => !groupMembers.some((m) => m.id === u.id)) : users),
+    [groupModal, users, groupMembers],
+  );
 
   return (
     <div className="flex h-[calc(100vh-7rem)] overflow-hidden rounded-xl border bg-surface shadow-md">
       {/* ===== contacts ===== */}
-      <aside className={`${activeId !== null ? "hidden md:flex" : "flex"} w-full md:w-72 lg:w-80 shrink-0 flex-col border-r`}>
+      <aside className={`${active !== null ? "hidden md:flex" : "flex"} w-full md:w-72 lg:w-80 shrink-0 flex-col border-r`}>
         <div className="px-4 py-3 border-b flex items-center gap-2 bg-surface-2">
           <MessagesSquare size={17} className="text-brand shrink-0" />
           <span className="font-bold text-sm">Chat</span>
           {totalUnread > 0 && (
-            <span className="ml-auto grid place-items-center min-w-[20px] h-5 rounded-full bg-brand text-white text-[11px] font-extrabold px-1.5">
+            <span className="grid place-items-center min-w-[20px] h-5 rounded-full bg-brand text-white text-[11px] font-extrabold px-1.5">
               {totalUnread > 99 ? "99+" : totalUnread}
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              setGroupModal("create");
+              setGroupPicks(new Set());
+              setGroupName("");
+            }}
+            title="New group"
+            className="ml-auto inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold text-brand hover:bg-brand-light transition-colors"
+          >
+            <Plus size={13} />
+            Group
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {contacts.length === 0 && (
@@ -328,22 +496,29 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
           )}
           {contacts.map((c) => (
             <button
-              key={c.id}
+              key={`${c.kind}:${c.id}`}
               type="button"
-              onClick={() => void openThread(c.id)}
+              onClick={() => void openThread({ kind: c.kind, id: c.id })}
               className={`w-full text-left px-3.5 py-3 border-b flex items-center gap-3 transition-colors ${
-                c.id === activeId ? "bg-brand-light/60" : "hover:bg-surface-2"
+                sameThread(active, { kind: c.kind, id: c.id }) ? "bg-brand-light/60" : "hover:bg-surface-2"
               }`}
             >
-              <Avatar id={c.id} name={c.name} size={10} />
+              <Avatar contact={c} size={10} />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
                   <span className={`truncate text-sm ${c.unread > 0 ? "font-extrabold" : "font-semibold"}`}>{c.name}</span>
-                  {c.isAdmin && <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-brand bg-brand-light rounded px-1 py-0.5">Admin</span>}
+                  {c.kind === "group" && (
+                    <span className="shrink-0 text-[9px] font-bold text-muted">{c.memberCount} 👥</span>
+                  )}
+                  {c.kind === "user" && c.isAdmin && (
+                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-brand bg-brand-light rounded px-1 py-0.5">Admin</span>
+                  )}
                   {c.lastAt && <span className="ml-auto shrink-0 text-[10px] text-muted tabnum">{timeOf(c.lastAt)}</span>}
                 </span>
                 <span className={`block truncate text-xs mt-0.5 ${c.unread > 0 ? "text-foreground font-semibold" : "text-muted"}`} dir="auto">
-                  {c.lastBody ? `${c.lastFromMe ? "You: " : ""}${c.lastBody}` : "No messages yet"}
+                  {c.lastBody
+                    ? `${c.lastFromMe ? "You: " : c.kind === "group" && c.lastFromName ? `${c.lastFromName}: ` : ""}${c.lastBody}`
+                    : c.kind === "group" ? "Say hello 👋" : "No messages yet"}
                 </span>
               </span>
               {c.unread > 0 && (
@@ -357,13 +532,13 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
       </aside>
 
       {/* ===== thread ===== */}
-      <section className={`${activeId === null ? "hidden md:flex" : "flex"} flex-1 min-w-0 flex-col`}>
-        {active === null ? (
+      <section className={`${active === null ? "hidden md:flex" : "flex"} flex-1 min-w-0 flex-col`}>
+        {activeContact === null ? (
           <div className="flex-1 grid place-items-center text-center p-8" style={{ background: "var(--chat-bg)" }}>
             <div className="text-muted">
               <MessagesSquare size={40} className="mx-auto mb-3 opacity-40" />
-              <p className="font-semibold">Pick a person to start chatting</p>
-              <p className="text-xs mt-1">Messages are private between you and the person you send them to.</p>
+              <p className="font-semibold">Pick a person or a group to start chatting</p>
+              <p className="text-xs mt-1">Direct messages stay between the two of you; groups reach every member.</p>
             </div>
           </div>
         ) : (
@@ -371,20 +546,83 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
             <div className="px-4 py-2.5 border-b flex items-center gap-3 bg-surface-2">
               <button
                 type="button"
-                onClick={() => setActiveId(null)}
+                onClick={() => setActive(null)}
                 className="md:hidden -ml-1 rounded-lg p-1.5 hover:bg-surface transition-colors"
                 aria-label="Back to contacts"
               >
                 <ArrowLeft size={18} />
               </button>
-              <Avatar id={active.id} name={active.name} size={9} />
-              <span className="min-w-0">
-                <span className="block font-bold text-sm truncate">{active.name}</span>
-                <span className="block text-[10px] text-muted">
-                  {chatRealtimeConfigured ? "live" : "updates every few seconds"}
+              <Avatar contact={activeContact} size={9} />
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold text-sm truncate">{activeContact.name}</span>
+                <span className="block text-[10px] text-muted truncate">
+                  {activeContact.kind === "group"
+                    ? groupMembers.map((m) => (m.id === me.id ? "You" : m.name)).join(", ") || `${activeContact.memberCount} members`
+                    : chatRealtimeConfigured ? "live" : "updates every few seconds"}
                 </span>
               </span>
+              {activeContact.kind === "group" && (
+                <span className="flex items-center gap-1">
+                  {groupCreatedBy === me.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGroupModal("add");
+                        setGroupPicks(new Set());
+                      }}
+                      title="Add members"
+                      className="rounded-lg p-2 text-muted hover:text-brand hover:bg-surface transition-colors"
+                    >
+                      <UserPlus size={16} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => (leaveArmed ? void leaveGroup() : setLeaveArmed(true))}
+                    title={leaveArmed ? "Tap again to confirm leaving" : "Leave group"}
+                    className={`rounded-lg p-2 transition-colors ${leaveArmed ? "text-white bg-red-600" : "text-muted hover:text-danger hover:bg-surface"}`}
+                  >
+                    <LogOut size={16} />
+                  </button>
+                </span>
+              )}
             </div>
+
+            {/* pinned bar */}
+            {pinned.length > 0 && (
+              <div className="border-b bg-surface">
+                <button
+                  type="button"
+                  onClick={() => setPinsOpen((v) => !v)}
+                  className="w-full px-4 py-2 flex items-center gap-2 text-xs font-bold text-brand hover:bg-surface-2 transition-colors"
+                >
+                  <Pin size={13} className="shrink-0" />
+                  {pinned.length === 1 ? "1 pinned message" : `${pinned.length} pinned messages`}
+                  <ChevronDown size={13} className={`transition-transform ${pinsOpen ? "rotate-180" : ""}`} />
+                  {!pinsOpen && (
+                    <span className="ml-1 min-w-0 truncate font-normal text-muted" dir="auto">
+                      {previewLabel(pinned[pinned.length - 1])}
+                    </span>
+                  )}
+                </button>
+                {pinsOpen && (
+                  <div className="max-h-36 overflow-y-auto border-t divide-y">
+                    {pinned.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => jumpToMessage(p.id)}
+                        className="w-full text-left px-4 py-2 text-xs hover:bg-surface-2 transition-colors flex items-center gap-2"
+                      >
+                        <span className="font-bold shrink-0">{p.fromId === me.id ? "You" : p.fromName}:</span>
+                        <span className="truncate text-muted" dir="auto">{previewLabel(p)}</span>
+                        <span className="ml-auto shrink-0 text-[10px] text-muted tabnum">{timeOf(p.createdAt)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* messages over the textured backdrop */}
             <div
@@ -402,8 +640,10 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
               {messages.map((m, i) => {
                 const mine = m.fromId === me.id;
                 const newDay = i === 0 || dayOf(m.createdAt) !== dayOf(messages[i - 1].createdAt);
+                const showSender = activeContact.kind === "group" && !mine && (i === 0 || messages[i - 1].fromId !== m.fromId || newDay);
+                const jumbo = isJumbo(m.body) && m.attachments.length === 0 && !m.mo;
                 return (
-                  <div key={m.id}>
+                  <div key={m.id} id={`chat-msg-${m.id}`}>
                     {newDay && (
                       <div className="text-center my-3">
                         <span className="text-[10px] font-bold uppercase tracking-wide rounded-lg px-2.5 py-1 bg-surface text-muted shadow-sm">
@@ -413,15 +653,18 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                     )}
                     <div className={`group flex ${mine ? "justify-end" : "justify-start"} mb-1`}>
                       <div
-                        className="relative max-w-[80%] md:max-w-[65%] rounded-xl px-2.5 pt-1.5 pb-1 text-sm shadow-sm"
+                        className={`relative max-w-[80%] md:max-w-[65%] rounded-xl px-2.5 pt-1.5 pb-1 text-sm shadow-sm transition-shadow ${
+                          highlightId === m.id ? "ring-2 ring-brand" : ""
+                        }`}
                         style={{
-                          background: mine ? "var(--chat-mine)" : "var(--chat-theirs)",
+                          background: jumbo ? "transparent" : mine ? "var(--chat-mine)" : "var(--chat-theirs)",
                           color: mine ? "var(--chat-mine-fg)" : "var(--chat-theirs-fg)",
+                          boxShadow: jumbo ? "none" : undefined,
                           borderTopRightRadius: mine ? 4 : undefined,
                           borderTopLeftRadius: mine ? undefined : 4,
                         }}
                       >
-                        {/* message menu (delete for me) — appears on hover / tap */}
+                        {/* message menu — appears on hover / tap */}
                         <button
                           type="button"
                           aria-label="Message options"
@@ -436,23 +679,52 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                         </button>
                         {menuFor === m.id && (
                           <div
-                            className={`absolute z-10 top-6 ${mine ? "left-1" : "right-1"} bg-surface text-foreground border rounded-lg shadow-lg overflow-hidden`}
+                            className={`absolute z-10 top-6 ${mine ? "left-1" : "right-1"} bg-surface text-foreground border rounded-xl shadow-lg overflow-hidden`}
                             onClick={(e) => e.stopPropagation()}
                           >
+                            {/* quick reactions */}
+                            <div className="flex items-center gap-0.5 px-2 pt-2 pb-1">
+                              {QUICK_REACTIONS.map((e) => (
+                                <button
+                                  key={e}
+                                  type="button"
+                                  onClick={() => void react(m, e)}
+                                  className={`grid place-items-center w-8 h-8 rounded-full text-base transition-transform hover:scale-125 ${
+                                    m.reactions.some((r) => r.mine && r.emoji === e) ? "bg-brand-light" : ""
+                                  }`}
+                                >
+                                  {e}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void togglePin(m)}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors"
+                            >
+                              {m.pinnedAt ? <PinOff size={13} className="shrink-0" /> : <Pin size={13} className="shrink-0" />}
+                              {m.pinnedAt ? "Unpin" : "Pin"}
+                            </button>
                             <button
                               type="button"
                               onClick={() => (armedDelete === m.id ? void deleteForMe(m.id) : setArmedDelete(m.id))}
-                              className="flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors text-danger"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors text-danger"
                             >
                               <Trash2 size={13} className="shrink-0" />
                               {armedDelete === m.id ? "Tap again to confirm" : "Delete for me"}
                             </button>
-                            <p className="px-3 pb-2 text-[10px] text-muted max-w-[180px]">
-                              Removed from YOUR view only — {mine ? "the recipient" : "the sender"} keeps it.
+                            <p className="px-3 pb-2 text-[10px] text-muted max-w-[190px]">
+                              Delete removes it from YOUR view only — everyone else keeps it.
                             </p>
                           </div>
                         )}
 
+                        {showSender && (
+                          <span className="block text-[11px] font-extrabold mb-0.5" style={{ color: avatarColor(m.fromId) }}>
+                            {m.fromName}
+                          </span>
+                        )}
+                        {m.pinnedAt && <Pin size={11} className={`absolute -top-1.5 ${mine ? "right-2" : "left-2"} text-brand rotate-45`} />}
                         {m.mo && <MoChip mo={m.mo} mine={mine} />}
                         {m.attachments.length > 0 && (
                           <span className="flex flex-col gap-1.5 mb-1">
@@ -462,15 +734,38 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                           </span>
                         )}
                         {m.body && (
-                          <span className="whitespace-pre-wrap break-words" dir="auto">
+                          <span className={`whitespace-pre-wrap break-words ${jumbo ? "block text-5xl leading-tight py-1" : ""}`} dir="auto">
                             {m.body}
                           </span>
                         )}
                         <span className="float-right ml-2 mt-1.5 text-[10px] tabnum" style={{ color: "var(--chat-time)" }}>
                           {timeOf(m.createdAt)}
                         </span>
+                        {/* reactions */}
+                        {m.reactions.length > 0 && (
+                          <span className={`absolute -bottom-3 ${mine ? "right-1" : "left-1"} flex gap-0.5`}>
+                            {m.reactions.map((r) => (
+                              <button
+                                key={r.emoji}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void react(m, r.emoji);
+                                }}
+                                className={`inline-flex items-center gap-0.5 rounded-full border bg-surface px-1.5 py-0.5 text-[11px] shadow-sm transition-transform hover:scale-110 ${
+                                  r.mine ? "border-brand" : ""
+                                }`}
+                                title={r.mine ? "Tap to remove your reaction" : "React the same"}
+                              >
+                                {r.emoji}
+                                {r.count > 1 && <span className="tabnum font-bold text-[10px]">{r.count}</span>}
+                              </button>
+                            ))}
+                          </span>
+                        )}
                       </div>
                     </div>
+                    {m.reactions.length > 0 && <div className="h-3" />}
                   </div>
                 );
               })}
@@ -551,6 +846,13 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
               </div>
             )}
 
+            {/* emoji picker */}
+            {emojiOpen && (
+              <div className="border-t bg-surface">
+                <EmojiPicker onPick={insertEmoji} />
+              </div>
+            )}
+
             {/* composer */}
             <form
               className="border-t bg-surface-2 p-2.5 flex items-end gap-1.5"
@@ -566,10 +868,21 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                 multiple
                 hidden
                 onChange={(e) => {
-                  addFiles(e.target.files);
+                  void addFiles(e.target.files);
                   e.target.value = ""; // same file can be re-picked
                 }}
               />
+              <button
+                type="button"
+                onClick={() => setEmojiOpen((v) => !v)}
+                title="Emoji"
+                aria-label="Emoji"
+                className={`shrink-0 grid place-items-center w-10 h-10 rounded-full transition-colors ${
+                  emojiOpen ? "text-brand bg-brand-light" : "text-muted hover:text-brand hover:bg-surface"
+                }`}
+              >
+                <Smile size={19} />
+              </button>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -591,6 +904,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                 <Package size={19} />
               </button>
               <textarea
+                ref={draftRef}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -603,7 +917,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                 rows={1}
                 maxLength={2000}
                 dir="auto"
-                placeholder={`Message ${active.name}…`}
+                placeholder={`Message ${activeContact.name}…`}
                 className="flex-1 resize-none rounded-2xl border bg-surface px-3.5 py-2.5 text-sm outline-none focus:border-brand max-h-32"
               />
               <button
@@ -618,6 +932,67 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
           </>
         )}
       </section>
+
+      {/* ===== group create / add-members modal ===== */}
+      {groupModal && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setGroupModal(null)}
+            className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+          />
+          <div className="relative w-full max-w-sm bg-surface border rounded-xl shadow-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Users size={17} className="text-brand" />
+              <span className="font-bold text-sm">{groupModal === "create" ? "New group" : "Add members"}</span>
+              <button type="button" onClick={() => setGroupModal(null)} aria-label="Close" className="ml-auto text-muted hover:text-foreground">
+                <X size={17} />
+              </button>
+            </div>
+            {groupModal === "create" && (
+              <input
+                autoFocus
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                maxLength={60}
+                placeholder="Group name — e.g. Welding team 🔧"
+                className="w-full rounded-lg border bg-surface px-3 py-2 text-sm outline-none focus:border-brand mb-3"
+              />
+            )}
+            <p className="text-[11px] font-bold uppercase tracking-wide text-muted mb-1.5">Members</p>
+            <div className="max-h-52 overflow-y-auto rounded-lg border divide-y mb-3">
+              {pickableUsers.length === 0 && <p className="px-3 py-2 text-xs text-muted">Everyone is already in.</p>}
+              {pickableUsers.map((u) => (
+                <label key={u.id} className="flex items-center gap-2.5 px-3 py-2 text-sm cursor-pointer hover:bg-surface-2 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={groupPicks.has(u.id)}
+                    onChange={(e) =>
+                      setGroupPicks((cur) => {
+                        const next = new Set(cur);
+                        if (e.target.checked) next.add(u.id);
+                        else next.delete(u.id);
+                        return next;
+                      })
+                    }
+                  />
+                  <Avatar contact={u} size={8} />
+                  <span className="font-semibold truncate">{u.name}</span>
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => void submitGroup()}
+              disabled={groupPicks.size === 0 || (groupModal === "create" && !groupName.trim())}
+              className="w-full rounded-lg bg-brand text-white font-bold text-sm py-2.5 transition-opacity disabled:opacity-40"
+            >
+              {groupModal === "create" ? `Create group (${groupPicks.size + 1} members)` : `Add ${groupPicks.size} member${groupPicks.size === 1 ? "" : "s"}`}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -284,31 +284,98 @@ model User {
   sessions     Session[]
   sentMessages     ChatMessage[] @relation("sentMessages")
   receivedMessages ChatMessage[] @relation("receivedMessages")
+  chatGroups       ChatGroupMember[]
 }
 
-// Direct message between two users (the in-app chat). Delivery is DB-first:
-// the row is the source of truth, Supabase Realtime broadcast (when configured)
-// only makes it arrive without a refresh. readAt doubles as the unread flag.
+// Chat message (the in-app chat) — either a DIRECT message (toId set) or a
+// GROUP message (groupId set), never both. Delivery is DB-first: the row is
+// the source of truth, Supabase Realtime broadcast (when configured) only
+// makes it arrive without a refresh. readAt doubles as the DM unread flag;
+// group read state lives on ChatGroupMember.lastReadId.
 model ChatMessage {
   id          Int       @id @default(autoincrement())
   fromId      Int
-  toId        Int
+  toId        Int? // direct recipient — null for group messages
+  groupId     Int? // group — null for direct messages
   body        String
   mo          String? // attached order reference — renders as a chip opening /trace
   attachments String? // JSON array of {url,name,size,type} (images / PDF / Office)
-  // "delete for me": each end can hide a message from their OWN view; the row
-  // stays because the other end still sees it
+  // "delete for me" on a DIRECT message: each end can hide it from their OWN
+  // view; the row stays because the other end still sees it. Group messages
+  // use ChatMessageHide (one row per hiding member) instead.
   hiddenForFrom Boolean @default(false)
   hiddenForTo   Boolean @default(false)
-  readAt    DateTime? // null = the recipient hasn't opened the thread yet
+  // pinned to the top of its conversation (DM or group), by either side
+  pinnedAt DateTime?
+  pinnedBy Int?
+  readAt    DateTime? // null = the DM recipient hasn't opened the thread yet
   createdAt DateTime  @default(now())
 
-  from User @relation("sentMessages", fields: [fromId], references: [id], onDelete: Cascade)
-  to   User @relation("receivedMessages", fields: [toId], references: [id], onDelete: Cascade)
+  from  User       @relation("sentMessages", fields: [fromId], references: [id], onDelete: Cascade)
+  to    User?      @relation("receivedMessages", fields: [toId], references: [id], onDelete: Cascade)
+  group ChatGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
-  // thread fetch (both directions) and the nav's unread count
+  hides     ChatMessageHide[]
+  reactions ChatReaction[]
+
+  // thread fetch (both directions), the nav's unread count, group threads
   @@index([fromId, toId, id])
   @@index([toId, readAt])
+  @@index([groupId, id])
+}
+
+// A chat group: any user can create one and picks its members. The creator
+// manages membership; anyone can leave. Deleting the group cascades its
+// messages away.
+model ChatGroup {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdBy Int
+  createdAt DateTime @default(now())
+
+  members  ChatGroupMember[]
+  messages ChatMessage[]
+}
+
+// One user's seat in a group. lastReadId is their group read cursor — every
+// message with a higher id (from someone else) counts as unread.
+model ChatGroupMember {
+  id         Int      @id @default(autoincrement())
+  groupId    Int
+  userId     Int
+  lastReadId Int      @default(0)
+  joinedAt   DateTime @default(now())
+
+  group ChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+// "Delete for me" on a GROUP message — one row per member who hid it.
+model ChatMessageHide {
+  id        Int @id @default(autoincrement())
+  messageId Int
+  userId    Int
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+}
+
+// An emoji reaction on a message — one per user per message (tapping a
+// different emoji replaces it, tapping the same one removes it).
+model ChatReaction {
+  id        Int    @id @default(autoincrement())
+  messageId Int
+  userId    Int
+  emoji     String
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
 }
 
 // DB-backed session: id is the sha256 of the cookie token, so a DB leak never
