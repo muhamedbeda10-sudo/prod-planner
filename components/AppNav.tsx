@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   FileDown, GitCompareArrows, Puzzle, CalendarDays, Users, Timer,
-  FlaskConical,
+  FlaskConical, MessagesSquare,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -31,6 +31,7 @@ const REST: Item[] = [
   { href: "/tracker", label: "Plan Tracker", icon: Table2 },
   { href: "/simulate", label: "Simulator", icon: FlaskConical },
   { href: "/report", label: "Report", icon: FileBarChart2 },
+  { href: "/chat", label: "Chat", icon: MessagesSquare },
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
 ];
 
@@ -56,7 +57,17 @@ export interface NavUser {
   perms: string[];
 }
 
-export function AppNav({ user }: { user: NavUser }) {
+/** Unread chat badge, shared by the desktop tab and the drawer entry. */
+function UnreadBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="ml-0.5 grid place-items-center min-w-[18px] h-[18px] rounded-full bg-red-600 text-white text-[10px] font-extrabold px-1 leading-none">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+export function AppNav({ user, unreadChat = 0 }: { user: NavUser; unreadChat?: number }) {
   const pathname = usePathname();
 
   // A user who can edit exactly ONE department jumps straight to it from the
@@ -180,6 +191,7 @@ export function AppNav({ user }: { user: NavUser }) {
                   <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match) ? "nav-tab-active" : ""}`}>
                     <l.icon size={15} className="shrink-0" />
                     {l.label}
+                    {l.href === "/chat" && <UnreadBadge count={unreadChat} />}
                   </Link>
                 </li>
               ))}
@@ -334,6 +346,7 @@ export function AppNav({ user }: { user: NavUser }) {
                 >
                   <l.icon size={19} className={isActive(l.href, l.match) ? "text-brand" : "text-muted"} />
                   {l.label}
+                  {l.href === "/chat" && <UnreadBadge count={unreadChat} />}
                 </Link>
               ))}
 
