@@ -290,10 +290,16 @@ model User {
 // the row is the source of truth, Supabase Realtime broadcast (when configured)
 // only makes it arrive without a refresh. readAt doubles as the unread flag.
 model ChatMessage {
-  id        Int       @id @default(autoincrement())
-  fromId    Int
-  toId      Int
-  body      String
+  id          Int       @id @default(autoincrement())
+  fromId      Int
+  toId        Int
+  body        String
+  mo          String? // attached order reference — renders as a chip opening /trace
+  attachments String? // JSON array of {url,name,size,type} (images / PDF / Office)
+  // "delete for me": each end can hide a message from their OWN view; the row
+  // stays because the other end still sees it
+  hiddenForFrom Boolean @default(false)
+  hiddenForTo   Boolean @default(false)
   readAt    DateTime? // null = the recipient hasn't opened the thread yet
   createdAt DateTime  @default(now())
 
