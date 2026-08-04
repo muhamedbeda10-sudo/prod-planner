@@ -289,6 +289,52 @@ export async function getChatThread(
   return (messages as Row[]).map((m) => toDTO(m, meId));
 }
 
+/** The mutable face of a message — what can change AFTER it was sent. The
+ *  poll merges this onto messages already on screen instead of re-downloading
+ *  bodies and attachments (which may be inline images) every few seconds. */
+export interface ChatMessageState {
+  id: number;
+  pinnedAt: string | null;
+  readAt: string | null;
+  reactions: ChatReactionDTO[];
+}
+
+/** Lightweight state of the newest slice of a thread: ids + pins + reads +
+ *  reactions only — NO bodies, NO attachments. Same visibility scope as
+ *  getChatThread. Group access must be checked by the CALLER. */
+export async function getChatThreadState(
+  meId: number,
+  kind: ThreadKind,
+  otherId: number,
+): Promise<ChatMessageState[]> {
+  const scope =
+    kind === "group"
+      ? { groupId: otherId, hides: { none: { userId: meId } } }
+      : {
+          OR: [
+            { fromId: meId, toId: otherId, hiddenForFrom: false },
+            { fromId: otherId, toId: meId, hiddenForTo: false },
+          ],
+        };
+  const rows = await prisma.chatMessage.findMany({
+    where: scope,
+    orderBy: { id: "desc" },
+    take: 200, // matches the slice a fresh open shows
+    select: {
+      id: true,
+      pinnedAt: true,
+      readAt: true,
+      reactions: { select: { userId: true, emoji: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    pinnedAt: r.pinnedAt?.toISOString() ?? null,
+    readAt: r.readAt?.toISOString() ?? null,
+    reactions: packReactions(r.reactions, meId),
+  }));
+}
+
 /** Total unread for the caller (DMs + groups) — the nav badge. */
 export async function getChatUnreadCount(meId: number): Promise<number> {
   const [dm, memberships] = await Promise.all([

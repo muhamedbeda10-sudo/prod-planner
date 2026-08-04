@@ -15,7 +15,7 @@ import {
 } from "@/app/chat/actions";
 import {
   subscribeChat, chatRealtimeConfigured,
-  type ChatBroadcastPayload, type ChatSyncPayload,
+  type ChatBroadcastPayload,
 } from "@/lib/chatRealtime";
 import { compressImage } from "@/lib/imageCompress";
 import { EmojiPicker, QUICK_REACTIONS } from "@/components/EmojiPicker";
@@ -273,27 +273,10 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     }
   }, []);
 
-  /** Silent full re-fetch of the open thread — pins, reactions or read
-   *  state changed on EXISTING rows, which the incremental flow never
-   *  re-delivers. Group member cursors refresh too (they carry the ✓✓). */
-  const resyncThread = useCallback(async () => {
-    const t = activeRef.current;
-    if (!t) return;
-    const [res, members] = await Promise.all([
-      openChatThread(t.kind, t.id),
-      t.kind === "group" ? getChatGroupMembers(t.id) : Promise.resolve(null),
-    ]);
-    if (!sameThread(activeRef.current, t)) return;
-    if (res.ok) setMessages(res.messages ?? []);
-    if (members?.ok) {
-      setGroupMembers(members.members);
-      setGroupCreatedBy(members.createdBy);
-    }
-  }, []);
-
-  // one catch-up poll: new thread messages + fresh unread counts. WITHOUT
-  // realtime, the poll is the only transport — so it re-reads the whole open
-  // thread, or ticks/reactions/pins from others would sit stale until reopen.
+  // one catch-up poll: new thread messages, a LIGHT state merge for what's
+  // already on screen (pins / reads / reactions travel without bodies or
+  // images), group read cursors, and fresh unread counts. This single call is
+  // the whole transport when Realtime isn't configured.
   const catchUp = useCallback(async () => {
     const open = activeRef.current;
     const lastId = messagesRef.current.at(-1)?.id ?? 0;
@@ -303,15 +286,22 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
       // the open thread's unread stays 0 — reading it is this screen's job
       setContacts(res.contacts.map((c) => (sameThread(activeRef.current, { kind: c.kind, id: c.id }) ? { ...c, unread: 0 } : c)));
     }
-    if (!chatRealtimeConfigured && open) {
-      void resyncThread();
-      return;
-    }
-    if (res.messages && res.messages.length > 0 && sameThread(activeRef.current, open)) {
+    if (!sameThread(activeRef.current, open)) return;
+    if (res.messages && res.messages.length > 0) {
       appendUnique(res.messages);
       if (open && res.messages.some((m) => m.fromId !== me.id)) void markChatThreadRead(open.kind, open.id);
     }
-  }, [appendUnique, me.id, resyncThread]);
+    if (res.state && res.state.length > 0) {
+      const stateOf = new Map(res.state.map((s) => [s.id, s]));
+      setMessages((cur) =>
+        cur.map((m) => {
+          const s = stateOf.get(m.id);
+          return s ? { ...m, pinnedAt: s.pinnedAt, readAt: s.readAt, reactions: s.reactions } : m;
+        }),
+      );
+    }
+    if (open?.kind === "group" && res.members && res.members.length > 0) setGroupMembers(res.members);
+  }, [appendUnique, me.id]);
 
   // live delivery — my own topic carries every thread I'm part of
   useEffect(() => {
@@ -327,16 +317,13 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
           touchContact(m, { countUnread: true });
         }
       },
-      onSync: (p: ChatSyncPayload) => {
-        // pins / reactions / membership changed — re-read what's on screen,
-        // and refresh the contact list (a new group may have appeared)
-        if (sameThread({ kind: p.kind, id: p.id }, activeRef.current)) void resyncThread();
-        else void catchUp();
-      },
+      // pins / reads / reactions / membership changed — one light catch-up
+      // covers it all: state merge for the open thread + fresh contact list
+      onSync: () => void catchUp(),
       onDrop: () => void catchUp(), // socket dropped — anything broadcast meanwhile is only in the DB
     });
     return unsubscribe;
-  }, [me.id, appendUnique, touchContact, catchUp, resyncThread, threadOf]);
+  }, [me.id, appendUnique, touchContact, catchUp, threadOf]);
 
   // the poll: transport without realtime, safety net with it
   useEffect(() => {

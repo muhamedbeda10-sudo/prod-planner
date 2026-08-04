@@ -350,9 +350,10 @@ describe("openChatThread / pollChat", () => {
     expect(h.broadcast).not.toHaveBeenCalled();
   });
 
-  it("poll returns only messages after the cursor for the open thread", async () => {
+  it("poll returns new messages plus a LIGHT state snapshot (no bodies, no attachments)", async () => {
     h.prisma.chatMessage.findMany
       .mockResolvedValueOnce([row({ id: 12, body: "new" })]) // thread increment
+      .mockResolvedValueOnce([{ id: 11, pinnedAt: null, readAt: NOW, reactions: [{ userId: 2, emoji: "👍" }] }]) // state slice
       .mockResolvedValueOnce([]); // contacts preview slice
     h.prisma.user.findMany.mockResolvedValue([]);
 
@@ -361,6 +362,13 @@ describe("openChatThread / pollChat", () => {
     expect(res.ok).toBe(true);
     expect(res.messages?.map((m) => m.id)).toEqual([12]);
     expect(h.prisma.chatMessage.findMany.mock.calls[0][0].where).toMatchObject({ id: { gt: 11 } });
+    // the state query must stay light — ids/pins/reads/reactions ONLY
+    const stateSelect = h.prisma.chatMessage.findMany.mock.calls[1][0].select;
+    expect(stateSelect.body).toBeUndefined();
+    expect(stateSelect.attachments).toBeUndefined();
+    expect(res.state).toEqual([
+      { id: 11, pinnedAt: null, readAt: NOW.toISOString(), reactions: [{ emoji: "👍", count: 1, mine: false }] },
+    ]);
   });
 });
 
