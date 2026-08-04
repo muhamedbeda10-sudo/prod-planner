@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Send, ArrowLeft, MessagesSquare, Paperclip, Package, ChevronDown, X,
   FileText, FileSpreadsheet, File as FileGlyph, Trash2, Users, Plus,
-  Pin, PinOff, Smile, LogOut, UserPlus, Reply,
+  Pin, PinOff, Smile, LogOut, UserPlus, Reply, CheckCheck,
 } from "lucide-react";
 import {
   sendChatMessage, openChatThread, markChatThreadRead, pollChat,
@@ -157,7 +157,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
   const [groupModal, setGroupModal] = useState<"create" | "add" | null>(null);
   const [groupName, setGroupName] = useState("");
   const [groupPicks, setGroupPicks] = useState<Set<number>>(new Set());
-  const [groupMembers, setGroupMembers] = useState<{ id: number; name: string }[]>([]);
+  const [groupMembers, setGroupMembers] = useState<{ id: number; name: string; lastReadId: number }[]>([]);
   const [groupCreatedBy, setGroupCreatedBy] = useState<number | null>(null);
   const [leaveArmed, setLeaveArmed] = useState(false);
 
@@ -258,15 +258,27 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     }
   }, []);
 
-  /** Silent full re-fetch of the open thread — pins/reactions changed. */
+  /** Silent full re-fetch of the open thread — pins, reactions or read
+   *  state changed on EXISTING rows, which the incremental flow never
+   *  re-delivers. Group member cursors refresh too (they carry the ✓✓). */
   const resyncThread = useCallback(async () => {
     const t = activeRef.current;
     if (!t) return;
-    const res = await openChatThread(t.kind, t.id);
-    if (res.ok && sameThread(activeRef.current, t)) setMessages(res.messages ?? []);
+    const [res, members] = await Promise.all([
+      openChatThread(t.kind, t.id),
+      t.kind === "group" ? getChatGroupMembers(t.id) : Promise.resolve(null),
+    ]);
+    if (!sameThread(activeRef.current, t)) return;
+    if (res.ok) setMessages(res.messages ?? []);
+    if (members?.ok) {
+      setGroupMembers(members.members);
+      setGroupCreatedBy(members.createdBy);
+    }
   }, []);
 
-  // one catch-up poll: new thread messages + fresh unread counts
+  // one catch-up poll: new thread messages + fresh unread counts. WITHOUT
+  // realtime, the poll is the only transport — so it re-reads the whole open
+  // thread, or ticks/reactions/pins from others would sit stale until reopen.
   const catchUp = useCallback(async () => {
     const open = activeRef.current;
     const lastId = messagesRef.current.at(-1)?.id ?? 0;
@@ -276,11 +288,15 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
       // the open thread's unread stays 0 — reading it is this screen's job
       setContacts(res.contacts.map((c) => (sameThread(activeRef.current, { kind: c.kind, id: c.id }) ? { ...c, unread: 0 } : c)));
     }
+    if (!chatRealtimeConfigured && open) {
+      void resyncThread();
+      return;
+    }
     if (res.messages && res.messages.length > 0 && sameThread(activeRef.current, open)) {
       appendUnique(res.messages);
       if (open && res.messages.some((m) => m.fromId !== me.id)) void markChatThreadRead(open.kind, open.id);
     }
-  }, [appendUnique, me.id]);
+  }, [appendUnique, me.id, resyncThread]);
 
   // live delivery — my own topic carries every thread I'm part of
   useEffect(() => {
@@ -455,6 +471,24 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     setLeaveArmed(false);
     void catchUp();
   }, [catchUp]);
+
+  /** The ✓ / ✓✓ on MY messages: DM reads m.readAt; groups read every other
+   *  member's cursor — all caught up turns the ticks "seen". */
+  const ticksFor = useCallback(
+    (m: ChatMessageDTO): { seen: boolean; title: string } | null => {
+      if (m.fromId !== me.id) return null;
+      if (m.groupId) {
+        const others = groupMembers.filter((u) => u.id !== me.id);
+        if (others.length === 0) return null;
+        const seen = others.filter((u) => u.lastReadId >= m.id).length;
+        return { seen: seen === others.length, title: `Seen by ${seen} of ${others.length}` };
+      }
+      return m.readAt
+        ? { seen: true, title: `Seen at ${timeOf(m.readAt)}` }
+        : { seen: false, title: "Delivered — not seen yet" };
+    },
+    [me.id, groupMembers],
+  );
 
   const activeContact = useMemo(
     () => (active ? (contacts.find((c) => c.kind === active.kind && c.id === active.id) ?? null) : null),
@@ -773,8 +807,17 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                             {m.body}
                           </span>
                         )}
-                        <span className="float-right ml-2 mt-1.5 text-[10px] tabnum" style={{ color: "var(--chat-time)" }}>
+                        <span className="float-right ml-2 mt-1.5 inline-flex items-center gap-0.5 text-[10px] tabnum" style={{ color: "var(--chat-time)" }}>
                           {timeOf(m.createdAt)}
+                          {(() => {
+                            const t = ticksFor(m);
+                            if (!t) return null;
+                            return (
+                              <span title={t.title} aria-label={t.title} className="inline-flex">
+                                <CheckCheck size={14} className={`shrink-0 ${t.seen ? "text-sky-500" : "opacity-50"}`} />
+                              </span>
+                            );
+                          })()}
                         </span>
                         {/* reactions */}
                         {m.reactions.length > 0 && (

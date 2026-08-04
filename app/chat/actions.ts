@@ -173,6 +173,7 @@ export async function sendChatMessage(
     pinnedAt: null,
     replyTo: replyRef,
     reactions: [],
+    readAt: null,
     createdAt: row.createdAt.toISOString(),
   };
 
@@ -338,21 +339,26 @@ export async function leaveChatGroup(groupId: number): Promise<{ ok: boolean; er
   return { ok: true };
 }
 
-/** The group's member names — the thread header line. */
+/** The group's members — the thread header line, and each member's read
+ *  cursor so the sender's ticks can say who has seen how far. */
 export async function getChatGroupMembers(
   groupId: number,
-): Promise<{ ok: boolean; members: { id: number; name: string }[]; createdBy: number | null }> {
+): Promise<{ ok: boolean; members: { id: number; name: string; lastReadId: number }[]; createdBy: number | null }> {
   const me = await getCurrentUser();
   if (!me || !(await isGroupMember(me.id, groupId))) return { ok: false, members: [], createdBy: null };
   const [group, members] = await Promise.all([
     prisma.chatGroup.findUnique({ where: { id: groupId }, select: { createdBy: true } }),
     prisma.chatGroupMember.findMany({
       where: { groupId },
-      select: { user: { select: { id: true, name: true } } },
+      select: { lastReadId: true, user: { select: { id: true, name: true } } },
       orderBy: { joinedAt: "asc" },
     }),
   ]);
-  return { ok: true, members: members.map((m) => m.user), createdBy: group?.createdBy ?? null };
+  return {
+    ok: true,
+    members: members.map((m) => ({ ...m.user, lastReadId: m.lastReadId })),
+    createdBy: group?.createdBy ?? null,
+  };
 }
 
 /** Order picker search for the composer: match MO or BOM, a few best hits. */
@@ -379,24 +385,37 @@ export async function searchChatOrders(
   return { ok: true, orders: orders.slice(0, 10) };
 }
 
-/** Stamp a thread read for the caller (DM readAt / group read cursor). */
+/** Stamp a thread read for the caller (DM readAt / group read cursor). When
+ *  something ACTUALLY became read, the other side gets a sync so the sender's
+ *  ticks turn "seen" live. No change → no broadcast → no sync loops. */
 async function stampRead(meId: number, kind: ThreadKind, otherId: number): Promise<void> {
   if (kind === "user") {
-    await prisma.chatMessage.updateMany({
+    const res = await prisma.chatMessage.updateMany({
       where: { fromId: otherId, toId: meId, readAt: null },
       data: { readAt: new Date() },
     });
+    if (res.count > 0) {
+      // from the SENDER's point of view this thread is "user <meId>"
+      await broadcast(chatTopic(otherId), "sync", { kind: "user", id: meId });
+    }
   } else {
-    const latest = await prisma.chatMessage.findFirst({
-      where: { groupId: otherId },
-      orderBy: { id: "desc" },
-      select: { id: true },
-    });
-    if (latest) {
+    const [membership, latest] = await Promise.all([
+      prisma.chatGroupMember.findUnique({
+        where: { groupId_userId: { groupId: otherId, userId: meId } },
+        select: { lastReadId: true },
+      }),
+      prisma.chatMessage.findFirst({
+        where: { groupId: otherId },
+        orderBy: { id: "desc" },
+        select: { id: true },
+      }),
+    ]);
+    if (latest && latest.id > (membership?.lastReadId ?? 0)) {
       await prisma.chatGroupMember.updateMany({
         where: { groupId: otherId, userId: meId },
         data: { lastReadId: latest.id },
       });
+      await broadcastSync(meId, "group", otherId);
     }
   }
 }

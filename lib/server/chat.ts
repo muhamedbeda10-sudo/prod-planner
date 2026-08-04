@@ -43,6 +43,7 @@ export interface ChatMessageDTO {
   pinnedAt: string | null;
   replyTo: ChatReplyRef | null;
   reactions: ChatReactionDTO[];
+  readAt: string | null; // DM only: when the recipient saw it (the ✓✓)
   createdAt: string; // ISO — serializable across the server/client boundary
 }
 
@@ -88,6 +89,7 @@ type Row = {
   mo: string | null;
   attachments: string | null;
   pinnedAt: Date | null;
+  readAt: Date | null;
   createdAt: Date;
   from: { name: string };
   replyTo: ReplyRow | null;
@@ -139,6 +141,7 @@ const toDTO = (m: Row, meId: number): ChatMessageDTO => ({
   pinnedAt: m.pinnedAt?.toISOString() ?? null,
   replyTo: toReplyRef(m.replyTo),
   reactions: packReactions(m.reactions, meId),
+  readAt: m.readAt?.toISOString() ?? null,
   createdAt: m.createdAt.toISOString(),
 });
 

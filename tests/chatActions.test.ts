@@ -315,8 +315,21 @@ describe("openChatThread / pollChat", () => {
     });
   });
 
-  it("group open advances the member's read cursor to the latest id", async () => {
-    h.prisma.chatGroupMember.findUnique.mockResolvedValue({ id: 1 });
+  it("DM read stamps broadcast a sync to the sender so their ticks go blue", async () => {
+    h.prisma.chatMessage.updateMany.mockResolvedValue({ count: 2 }); // something became read
+    await openChatThread("user", 2);
+    expect(h.broadcast).toHaveBeenCalledWith("chat-user-2", "sync", { kind: "user", id: 1 });
+
+    // nothing new became read → no broadcast, no sync loop
+    h.broadcast.mockClear();
+    h.prisma.chatMessage.updateMany.mockResolvedValue({ count: 0 });
+    await openChatThread("user", 2);
+    expect(h.broadcast).not.toHaveBeenCalled();
+  });
+
+  it("group open advances the member's read cursor to the latest id and pings members", async () => {
+    h.prisma.chatGroupMember.findUnique.mockResolvedValue({ id: 1, lastReadId: 10 });
+    h.prisma.chatGroupMember.findMany.mockResolvedValue([{ userId: 1 }, { userId: 2 }]);
     h.prisma.chatMessage.findFirst.mockResolvedValue({ id: 42 });
 
     const res = await openChatThread("group", 5);
@@ -326,6 +339,15 @@ describe("openChatThread / pollChat", () => {
       where: { groupId: 5, userId: 1 },
       data: { lastReadId: 42 },
     });
+    expect(h.broadcast.mock.calls.filter((c) => c[1] === "sync")).toHaveLength(2);
+
+    // cursor already at the latest id → no write, no broadcast
+    h.prisma.chatGroupMember.updateMany.mockClear();
+    h.broadcast.mockClear();
+    h.prisma.chatGroupMember.findUnique.mockResolvedValue({ id: 1, lastReadId: 42 });
+    await openChatThread("group", 5);
+    expect(h.prisma.chatGroupMember.updateMany).not.toHaveBeenCalled();
+    expect(h.broadcast).not.toHaveBeenCalled();
   });
 
   it("poll returns only messages after the cursor for the open thread", async () => {
