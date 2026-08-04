@@ -6,8 +6,9 @@ import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
 import {
-  getChatContacts, getChatThread, isGroupMember, snippetOf,
-  type ChatAttachment, type ChatContact, type ChatMessageDTO, type ChatReplyRef, type ThreadKind,
+  getChatContacts, getChatThread, getChatThreadState, isGroupMember, snippetOf,
+  type ChatAttachment, type ChatContact, type ChatMessageDTO, type ChatMessageState,
+  type ChatReplyRef, type ThreadKind,
 } from "@/lib/server/chat";
 import { broadcast } from "@/lib/server/realtimeBroadcast";
 import { chatTopic } from "@/lib/domain/chatTopic";
@@ -449,12 +450,21 @@ export async function markChatThreadRead(kind: ThreadKind, otherId: number): Pro
 }
 
 /** The polling fallback (and reconnect catch-up): everything new in the open
- *  thread after `afterId`, plus a fresh contact list for the unread badges. */
+ *  thread after `afterId`, a LIGHT state snapshot of what's already on screen
+ *  (pins / reads / reactions — no bodies, no attachments), the group's read
+ *  cursors, and a fresh contact list for the unread badges. */
 export async function pollChat(
   openKind: ThreadKind | null,
   openId: number,
   afterId: number,
-): Promise<{ ok: boolean; error?: string; messages?: ChatMessageDTO[]; contacts?: ChatContact[] }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  messages?: ChatMessageDTO[];
+  state?: ChatMessageState[];
+  members?: { id: number; name: string; lastReadId: number }[];
+  contacts?: ChatContact[];
+}> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, error: NOT_LOGGED_IN };
 
@@ -463,9 +473,23 @@ export async function pollChat(
     openKind === "group" ? Number.isInteger(openId) && (await isGroupMember(me.id, openId)) :
     false;
 
-  const [messages, contacts] = await Promise.all([
+  const [messages, state, memberRows, contacts] = await Promise.all([
     canRead && openKind ? getChatThread(me.id, openKind, openId, afterId) : Promise.resolve([]),
+    canRead && openKind ? getChatThreadState(me.id, openKind, openId) : Promise.resolve([]),
+    canRead && openKind === "group"
+      ? prisma.chatGroupMember.findMany({
+          where: { groupId: openId },
+          select: { lastReadId: true, user: { select: { id: true, name: true } } },
+          orderBy: { joinedAt: "asc" },
+        })
+      : Promise.resolve([]),
     getChatContacts(me.id),
   ]);
-  return { ok: true, messages, contacts };
+  return {
+    ok: true,
+    messages,
+    state,
+    members: memberRows.map((m) => ({ ...m.user, lastReadId: m.lastReadId })),
+    contacts,
+  };
 }
