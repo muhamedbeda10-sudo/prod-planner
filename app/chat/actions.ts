@@ -6,8 +6,8 @@ import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
 import {
-  getChatContacts, getChatThread, isGroupMember,
-  type ChatAttachment, type ChatContact, type ChatMessageDTO, type ThreadKind,
+  getChatContacts, getChatThread, isGroupMember, snippetOf,
+  type ChatAttachment, type ChatContact, type ChatMessageDTO, type ChatReplyRef, type ThreadKind,
 } from "@/lib/server/chat";
 import { broadcast } from "@/lib/server/realtimeBroadcast";
 import { chatTopic } from "@/lib/domain/chatTopic";
@@ -59,6 +59,7 @@ export async function sendChatMessage(
   const targetId = Number(formData.get("to"));
   const text = String(formData.get("body") ?? "").trim();
   const moRaw = String(formData.get("mo") ?? "").trim();
+  const replyToId = Number(formData.get("replyTo")) || 0;
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
 
   if (text.length > MAX_BODY) return { ok: false, error: `Message is too long (max ${MAX_BODY} characters).` };
@@ -80,6 +81,27 @@ export async function sendChatMessage(
     const order = await prisma.masterOrder.findUnique({ where: { mo: moRaw }, select: { mo: true } });
     if (!order) return { ok: false, error: `MO "${moRaw}" is not in the orders registry.` };
     mo = order.mo;
+  }
+
+  // a reply must quote a message from THIS conversation — no cross-thread quotes
+  let replyRef: ChatReplyRef | null = null;
+  if (replyToId) {
+    const target = await prisma.chatMessage.findUnique({
+      where: { id: replyToId },
+      select: {
+        id: true, fromId: true, toId: true, groupId: true, body: true, mo: true, attachments: true,
+        from: { select: { name: true } },
+      },
+    });
+    const sameThread =
+      target &&
+      (kind === "group"
+        ? target.groupId === targetId
+        : target.groupId === null &&
+          ((target.fromId === me.id && target.toId === targetId) ||
+            (target.fromId === targetId && target.toId === me.id)));
+    if (!sameThread) return { ok: false, error: "The message you are replying to is not in this conversation." };
+    replyRef = { id: target.id, fromId: target.fromId, fromName: target.from.name, snippet: snippetOf(target) };
   }
 
   // ---- attachments: whitelist, cap, then store. Priority order: Vercel Blob →
@@ -134,6 +156,7 @@ export async function sendChatMessage(
       groupId: kind === "group" ? targetId : null,
       body: text,
       mo,
+      replyToId: replyRef?.id ?? null,
       attachments: attachments.length > 0 ? JSON.stringify(attachments) : null,
     },
     select: { id: true, fromId: true, toId: true, groupId: true, body: true, mo: true, createdAt: true },
@@ -148,6 +171,7 @@ export async function sendChatMessage(
     mo: row.mo,
     attachments,
     pinnedAt: null,
+    replyTo: replyRef,
     reactions: [],
     createdAt: row.createdAt.toISOString(),
   };

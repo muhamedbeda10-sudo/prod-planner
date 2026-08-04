@@ -41,7 +41,7 @@ const NOW = new Date("2026-08-04T10:00:00Z");
 // a stored row as the include-shaped loaders see it
 const row = (over: Partial<Record<string, unknown>>) => ({
   id: 1, fromId: 2, toId: 1, groupId: null, body: "hi", mo: null, attachments: null,
-  pinnedAt: null, createdAt: NOW, from: { name: "Aly" }, reactions: [],
+  pinnedAt: null, replyTo: null, createdAt: NOW, from: { name: "Aly" }, reactions: [],
   ...over,
 });
 
@@ -123,6 +123,33 @@ describe("sendChatMessage — direct", () => {
     expect((await sendChatMessage(form({ to: "2", body: "" }, [exe]))).ok).toBe(false);
     const big = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "big.pdf", { type: "application/pdf" });
     expect((await sendChatMessage(form({ to: "2", body: "" }, [big]))).ok).toBe(false);
+    expect(h.prisma.chatMessage.create).not.toHaveBeenCalled();
+  });
+
+  it("stores a reply to a message from the SAME conversation, with its quote", async () => {
+    h.prisma.chatMessage.findUnique.mockResolvedValue({
+      id: 40, fromId: 2, toId: 1, groupId: null, body: "original text", mo: null, attachments: null,
+      from: { name: "Aly" },
+    });
+    h.prisma.chatMessage.create.mockResolvedValue({ id: 41, fromId: 1, toId: 2, groupId: null, body: "reply", mo: null, createdAt: NOW });
+
+    const res = await sendChatMessage(form({ to: "2", body: "reply", replyTo: "40" }));
+
+    expect(res.ok).toBe(true);
+    expect(h.prisma.chatMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ replyToId: 40 }) }),
+    );
+    expect(res.message?.replyTo).toEqual({ id: 40, fromId: 2, fromName: "Aly", snippet: "original text" });
+  });
+
+  it("refuses a reply that quotes a message from ANOTHER conversation", async () => {
+    // the quoted message lives in a chat between users 2 and 3 — not ours
+    h.prisma.chatMessage.findUnique.mockResolvedValue({
+      id: 40, fromId: 2, toId: 3, groupId: null, body: "elsewhere", mo: null, attachments: null,
+      from: { name: "Aly" },
+    });
+    const res = await sendChatMessage(form({ to: "2", body: "reply", replyTo: "40" }));
+    expect(res.ok).toBe(false);
     expect(h.prisma.chatMessage.create).not.toHaveBeenCalled();
   });
 

@@ -308,12 +308,17 @@ model ChatMessage {
   // pinned to the top of its conversation (DM or group), by either side
   pinnedAt DateTime?
   pinnedBy Int?
+  // reply-to (quote): points at an earlier message in the SAME conversation
+  replyToId Int?
   readAt    DateTime? // null = the DM recipient hasn't opened the thread yet
   createdAt DateTime  @default(now())
 
   from  User       @relation("sentMessages", fields: [fromId], references: [id], onDelete: Cascade)
   to    User?      @relation("receivedMessages", fields: [toId], references: [id], onDelete: Cascade)
   group ChatGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  replyTo ChatMessage?  @relation("replies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies ChatMessage[] @relation("replies")
 
   hides     ChatMessageHide[]
   reactions ChatReaction[]
