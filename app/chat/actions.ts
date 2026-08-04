@@ -5,23 +5,49 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
-import { getChatContacts, getChatThread, type ChatAttachment, type ChatContact, type ChatMessageDTO } from "@/lib/server/chat";
+import {
+  getChatContacts, getChatThread, isGroupMember,
+  type ChatAttachment, type ChatContact, type ChatMessageDTO, type ThreadKind,
+} from "@/lib/server/chat";
 import { broadcast } from "@/lib/server/realtimeBroadcast";
 import { chatTopic } from "@/lib/domain/chatTopic";
 
-// Chat needs no permission key — every active account can message every other.
-// What it DOES need is scoping: every query here pins the caller's id from the
-// session, so nobody can read, hide, or mark a thread they aren't an end of.
+// Chat needs no permission key — every active account can message every other
+// and can open a group. What it DOES need is scoping: every query here pins
+// the caller's id from the session, so nobody can read, hide, pin or react in
+// a thread they aren't part of.
 
 const NOT_LOGGED_IN = "You are not logged in — refresh the page.";
 const MAX_BODY = 2000;
 const MAX_FILES = 6;
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB — same ceiling as note photos
+const MAX_DB_IMAGE_BYTES = 2 * 1024 * 1024; // DB fallback: compressed images only
+const MAX_GROUP_NAME = 60;
 
 // the allowed set, by extension (browser MIME strings are too inconsistent to
 // gate on): images render inline, the documents render as file cards
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
 const DOC_EXTENSIONS = new Set([".pdf", ".xls", ".xlsx", ".csv", ".doc", ".docx"]);
+
+const kindOf = (raw: unknown): ThreadKind => (raw === "group" ? "group" : "user");
+
+/** Every user topic a thread event should reach: both DM ends, or all group
+ *  members (the sender's own topic keeps their other tabs in sync). */
+async function threadTopics(meId: number, kind: ThreadKind, otherId: number): Promise<string[]> {
+  if (kind === "user") return [chatTopic(meId), chatTopic(otherId)];
+  const members = await prisma.chatGroupMember.findMany({
+    where: { groupId: otherId },
+    select: { userId: true },
+  });
+  return members.map((m) => chatTopic(m.userId));
+}
+
+/** Tell every participant "re-read this thread" — pins and reactions change
+ *  EXISTING rows, which the incremental poll never re-fetches. */
+async function broadcastSync(meId: number, kind: ThreadKind, otherId: number): Promise<void> {
+  const topics = await threadTopics(meId, kind, otherId);
+  await Promise.all(topics.map((t) => broadcast(t, "sync", { kind, id: otherId })));
+}
 
 export async function sendChatMessage(
   formData: FormData,
@@ -29,18 +55,24 @@ export async function sendChatMessage(
   const me = await getCurrentUser();
   if (!me) return { ok: false, error: NOT_LOGGED_IN };
 
-  const toId = Number(formData.get("to"));
+  const kind = kindOf(formData.get("kind"));
+  const targetId = Number(formData.get("to"));
   const text = String(formData.get("body") ?? "").trim();
   const moRaw = String(formData.get("mo") ?? "").trim();
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
 
   if (text.length > MAX_BODY) return { ok: false, error: `Message is too long (max ${MAX_BODY} characters).` };
-  if (!Number.isInteger(toId) || toId === me.id) return { ok: false, error: "Invalid recipient." };
+  if (!Number.isInteger(targetId)) return { ok: false, error: "Invalid conversation." };
   if (!text && files.length === 0 && !moRaw) return { ok: false, error: "Message is empty." };
   if (files.length > MAX_FILES) return { ok: false, error: `Max ${MAX_FILES} files per message.` };
 
-  const recipient = await prisma.user.findUnique({ where: { id: toId }, select: { active: true } });
-  if (!recipient?.active) return { ok: false, error: "Recipient not found." };
+  if (kind === "user") {
+    if (targetId === me.id) return { ok: false, error: "Invalid recipient." };
+    const recipient = await prisma.user.findUnique({ where: { id: targetId }, select: { active: true } });
+    if (!recipient?.active) return { ok: false, error: "Recipient not found." };
+  } else if (!(await isGroupMember(me.id, targetId))) {
+    return { ok: false, error: "You are not in this group." };
+  }
 
   // an attached order must be a REAL order — the chip links to its trace
   let mo: string | null = null;
@@ -50,7 +82,9 @@ export async function sendChatMessage(
     mo = order.mo;
   }
 
-  // ---- attachments: whitelist, cap, then store (Vercel Blob or local dev dir) ----
+  // ---- attachments: whitelist, cap, then store. Priority order: Vercel Blob →
+  // local dev dir → (images only) data URLs straight into the row, so photos
+  // keep working on Vercel even before Blob storage is configured ----
   for (const f of files) {
     const ext = path.extname(f.name).toLowerCase();
     if (!IMAGE_EXTENSIONS.has(ext) && !DOC_EXTENSIONS.has(ext)) {
@@ -59,65 +93,74 @@ export async function sendChatMessage(
     if (f.size > MAX_FILE_BYTES) return { ok: false, error: `"${f.name}" is larger than 10 MB.` };
   }
   const useBlob = !!process.env.BLOB_READ_WRITE_TOKEN; // cloud + any machine with the token
-  if (files.length > 0 && !useBlob && process.env.VERCEL) {
-    // ephemeral filesystem and no blob token — refuse clearly instead of losing files
-    return { ok: false, error: "File storage is not configured — ask the admin." };
-  }
+  const dbImagesOnly = !useBlob && !!process.env.VERCEL; // ephemeral filesystem — images inline, documents refused
   const attachments: ChatAttachment[] = [];
   if (files.length > 0) {
     const dir = path.join(process.cwd(), "uploads", "chat");
-    if (!useBlob) await mkdir(dir, { recursive: true });
+    if (!useBlob && !dbImagesOnly) await mkdir(dir, { recursive: true });
     for (const f of files) {
       const ext = path.extname(f.name).toLowerCase();
-      const stored = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+      const type = f.type || "application/octet-stream";
       let url: string;
       if (useBlob) {
+        const stored = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
         const blob = await put(`chat/${stored}`, Buffer.from(await f.arrayBuffer()), {
           access: "public",
-          contentType: f.type || "application/octet-stream",
+          contentType: type,
           addRandomSuffix: true, // unguessable URL — the app itself stays behind login
         });
         url = blob.url;
+      } else if (dbImagesOnly) {
+        if (!IMAGE_EXTENSIONS.has(ext)) {
+          return { ok: false, error: `"${f.name}" — document storage is not configured yet (Vercel Blob); photos still work.` };
+        }
+        if (f.size > MAX_DB_IMAGE_BYTES) {
+          return { ok: false, error: `"${f.name}" is too large to store without Blob storage — max 2 MB per photo.` };
+        }
+        url = `data:${type};base64,${Buffer.from(await f.arrayBuffer()).toString("base64")}`;
       } else {
+        const stored = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
         await writeFile(path.join(dir, stored), Buffer.from(await f.arrayBuffer()));
         url = `/uploads/chat/${stored}`;
       }
-      attachments.push({ url, name: f.name, size: f.size, type: f.type || "application/octet-stream" });
+      attachments.push({ url, name: f.name, size: f.size, type });
     }
   }
 
   const row = await prisma.chatMessage.create({
     data: {
       fromId: me.id,
-      toId,
+      toId: kind === "user" ? targetId : null,
+      groupId: kind === "group" ? targetId : null,
       body: text,
       mo,
       attachments: attachments.length > 0 ? JSON.stringify(attachments) : null,
     },
-    select: { id: true, fromId: true, toId: true, body: true, mo: true, createdAt: true },
+    select: { id: true, fromId: true, toId: true, groupId: true, body: true, mo: true, createdAt: true },
   });
   const message: ChatMessageDTO = {
     id: row.id,
     fromId: row.fromId,
+    fromName: me.name,
     toId: row.toId,
+    groupId: row.groupId,
     body: row.body,
     mo: row.mo,
     attachments,
+    pinnedAt: null,
+    reactions: [],
     createdAt: row.createdAt.toISOString(),
   };
 
-  // live delivery (best-effort): the recipient's tab, and the sender's OTHER
-  // tabs so a conversation never forks between two open windows
-  await Promise.all([
-    broadcast(chatTopic(toId), "message", { message, fromName: me.name }),
-    broadcast(chatTopic(me.id), "message", { message, fromName: me.name }),
-  ]);
+  // live delivery (best-effort) to every participant's own topic
+  const topics = await threadTopics(me.id, kind, targetId);
+  await Promise.all(topics.map((t) => broadcast(t, "message", { message, fromName: me.name })));
 
   return { ok: true, message };
 }
 
-/** "Delete for me": hide a message from the CALLER's view only — the other
- *  end keeps it. The row itself is never removed. */
+/** "Delete for me": hide a message from the CALLER's view only — everyone
+ *  else keeps it. The row itself is never removed. */
 export async function deleteChatMessageForMe(messageId: number): Promise<{ ok: boolean; error?: string }> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, error: NOT_LOGGED_IN };
@@ -125,15 +168,167 @@ export async function deleteChatMessageForMe(messageId: number): Promise<{ ok: b
 
   const m = await prisma.chatMessage.findUnique({
     where: { id: messageId },
-    select: { fromId: true, toId: true },
+    select: { fromId: true, toId: true, groupId: true },
   });
-  if (!m || (m.fromId !== me.id && m.toId !== me.id)) return { ok: false, error: "Message not found." };
+  if (!m) return { ok: false, error: "Message not found." };
 
+  if (m.groupId) {
+    if (m.fromId !== me.id && !(await isGroupMember(me.id, m.groupId))) {
+      return { ok: false, error: "Message not found." };
+    }
+    await prisma.chatMessageHide.upsert({
+      where: { messageId_userId: { messageId, userId: me.id } },
+      create: { messageId, userId: me.id },
+      update: {},
+    });
+    return { ok: true };
+  }
+
+  if (m.fromId !== me.id && m.toId !== me.id) return { ok: false, error: "Message not found." };
   await prisma.chatMessage.update({
     where: { id: messageId },
     data: m.fromId === me.id ? { hiddenForFrom: true } : { hiddenForTo: true },
   });
   return { ok: true };
+}
+
+/** Pin / unpin a message to the top of its conversation (either side can). */
+export async function togglePinChatMessage(messageId: number): Promise<{ ok: boolean; error?: string }> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: NOT_LOGGED_IN };
+  if (!Number.isInteger(messageId)) return { ok: false, error: "Invalid message." };
+
+  const m = await prisma.chatMessage.findUnique({
+    where: { id: messageId },
+    select: { fromId: true, toId: true, groupId: true, pinnedAt: true },
+  });
+  if (!m) return { ok: false, error: "Message not found." };
+  const allowed = m.groupId
+    ? await isGroupMember(me.id, m.groupId)
+    : m.fromId === me.id || m.toId === me.id;
+  if (!allowed) return { ok: false, error: "Message not found." };
+
+  await prisma.chatMessage.update({
+    where: { id: messageId },
+    data: m.pinnedAt ? { pinnedAt: null, pinnedBy: null } : { pinnedAt: new Date(), pinnedBy: me.id },
+  });
+  const kind: ThreadKind = m.groupId ? "group" : "user";
+  const threadId = m.groupId ?? (m.fromId === me.id ? m.toId! : m.fromId);
+  await broadcastSync(me.id, kind, threadId);
+  return { ok: true };
+}
+
+/** React to a message with an emoji — one reaction per user; the same emoji
+ *  again removes it, a different one replaces it. */
+export async function toggleChatReaction(messageId: number, emoji: string): Promise<{ ok: boolean; error?: string }> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: NOT_LOGGED_IN };
+  const clean = emoji.trim();
+  if (!Number.isInteger(messageId) || !clean || clean.length > 8) return { ok: false, error: "Invalid reaction." };
+
+  const m = await prisma.chatMessage.findUnique({
+    where: { id: messageId },
+    select: { fromId: true, toId: true, groupId: true },
+  });
+  if (!m) return { ok: false, error: "Message not found." };
+  const allowed = m.groupId
+    ? await isGroupMember(me.id, m.groupId)
+    : m.fromId === me.id || m.toId === me.id;
+  if (!allowed) return { ok: false, error: "Message not found." };
+
+  const existing = await prisma.chatReaction.findUnique({
+    where: { messageId_userId: { messageId, userId: me.id } },
+  });
+  if (existing?.emoji === clean) {
+    await prisma.chatReaction.delete({ where: { id: existing.id } });
+  } else {
+    await prisma.chatReaction.upsert({
+      where: { messageId_userId: { messageId, userId: me.id } },
+      create: { messageId, userId: me.id, emoji: clean },
+      update: { emoji: clean },
+    });
+  }
+  const kind: ThreadKind = m.groupId ? "group" : "user";
+  const threadId = m.groupId ?? (m.fromId === me.id ? m.toId! : m.fromId);
+  await broadcastSync(me.id, kind, threadId);
+  return { ok: true };
+}
+
+/** Create a group with a name and members (the caller is always in). */
+export async function createChatGroup(
+  name: string,
+  memberIds: number[],
+): Promise<{ ok: boolean; error?: string; groupId?: number }> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: NOT_LOGGED_IN };
+  const clean = name.trim();
+  if (!clean) return { ok: false, error: "Give the group a name." };
+  if (clean.length > MAX_GROUP_NAME) return { ok: false, error: `Group name is too long (max ${MAX_GROUP_NAME}).` };
+
+  const ids = [...new Set(memberIds.filter((n) => Number.isInteger(n) && n !== me.id))];
+  if (ids.length === 0) return { ok: false, error: "Pick at least one member." };
+  const valid = await prisma.user.findMany({ where: { id: { in: ids }, active: true }, select: { id: true } });
+  if (valid.length !== ids.length) return { ok: false, error: "Some picked users no longer exist." };
+
+  const group = await prisma.chatGroup.create({
+    data: {
+      name: clean,
+      createdBy: me.id,
+      members: { create: [me.id, ...ids].map((userId) => ({ userId })) },
+    },
+    select: { id: true },
+  });
+  // everyone's contact list should show the new group right away
+  await Promise.all([me.id, ...ids].map((uid) => broadcast(chatTopic(uid), "sync", { kind: "group", id: group.id })));
+  return { ok: true, groupId: group.id };
+}
+
+/** Add members — only the group's creator manages membership. */
+export async function addChatGroupMembers(
+  groupId: number,
+  memberIds: number[],
+): Promise<{ ok: boolean; error?: string }> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: NOT_LOGGED_IN };
+  const group = await prisma.chatGroup.findUnique({ where: { id: groupId }, select: { createdBy: true } });
+  if (!group) return { ok: false, error: "Group not found." };
+  if (group.createdBy !== me.id) return { ok: false, error: "Only the group's creator can add members." };
+
+  const ids = [...new Set(memberIds.filter((n) => Number.isInteger(n)))];
+  const valid = await prisma.user.findMany({ where: { id: { in: ids }, active: true }, select: { id: true } });
+  await prisma.chatGroupMember.createMany({
+    data: valid.map((u) => ({ groupId, userId: u.id })),
+    skipDuplicates: true,
+  });
+  await Promise.all(valid.map((u) => broadcast(chatTopic(u.id), "sync", { kind: "group", id: groupId })));
+  return { ok: true };
+}
+
+/** Leave a group. The last member out deletes the group (and its messages). */
+export async function leaveChatGroup(groupId: number): Promise<{ ok: boolean; error?: string }> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: NOT_LOGGED_IN };
+  await prisma.chatGroupMember.deleteMany({ where: { groupId, userId: me.id } });
+  const remaining = await prisma.chatGroupMember.count({ where: { groupId } });
+  if (remaining === 0) await prisma.chatGroup.delete({ where: { id: groupId } }).catch(() => {});
+  return { ok: true };
+}
+
+/** The group's member names — the thread header line. */
+export async function getChatGroupMembers(
+  groupId: number,
+): Promise<{ ok: boolean; members: { id: number; name: string }[]; createdBy: number | null }> {
+  const me = await getCurrentUser();
+  if (!me || !(await isGroupMember(me.id, groupId))) return { ok: false, members: [], createdBy: null };
+  const [group, members] = await Promise.all([
+    prisma.chatGroup.findUnique({ where: { id: groupId }, select: { createdBy: true } }),
+    prisma.chatGroupMember.findMany({
+      where: { groupId },
+      select: { user: { select: { id: true, name: true } } },
+      orderBy: { joinedAt: "asc" },
+    }),
+  ]);
+  return { ok: true, members: members.map((m) => m.user), createdBy: group?.createdBy ?? null };
 }
 
 /** Order picker search for the composer: match MO or BOM, a few best hits. */
@@ -160,49 +355,73 @@ export async function searchChatOrders(
   return { ok: true, orders: orders.slice(0, 10) };
 }
 
-/** Open (or refresh) a conversation: returns the thread and stamps everything
- *  the other user sent as read. */
+/** Stamp a thread read for the caller (DM readAt / group read cursor). */
+async function stampRead(meId: number, kind: ThreadKind, otherId: number): Promise<void> {
+  if (kind === "user") {
+    await prisma.chatMessage.updateMany({
+      where: { fromId: otherId, toId: meId, readAt: null },
+      data: { readAt: new Date() },
+    });
+  } else {
+    const latest = await prisma.chatMessage.findFirst({
+      where: { groupId: otherId },
+      orderBy: { id: "desc" },
+      select: { id: true },
+    });
+    if (latest) {
+      await prisma.chatGroupMember.updateMany({
+        where: { groupId: otherId, userId: meId },
+        data: { lastReadId: latest.id },
+      });
+    }
+  }
+}
+
+/** Open (or re-sync) a conversation: returns the thread and marks it read. */
 export async function openChatThread(
+  kind: ThreadKind,
   otherId: number,
 ): Promise<{ ok: boolean; error?: string; messages?: ChatMessageDTO[] }> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, error: NOT_LOGGED_IN };
-  if (!Number.isInteger(otherId)) return { ok: false, error: "Invalid user." };
+  if (!Number.isInteger(otherId)) return { ok: false, error: "Invalid conversation." };
+  if (kind === "group" && !(await isGroupMember(me.id, otherId))) {
+    return { ok: false, error: "You are not in this group." };
+  }
 
   const [messages] = await Promise.all([
-    getChatThread(me.id, otherId),
-    prisma.chatMessage.updateMany({
-      where: { fromId: otherId, toId: me.id, readAt: null },
-      data: { readAt: new Date() },
-    }),
+    getChatThread(me.id, kind, otherId),
+    stampRead(me.id, kind, otherId),
   ]);
   return { ok: true, messages };
 }
 
 /** Mark the open thread read (called when messages arrive while it's open). */
-export async function markChatThreadRead(otherId: number): Promise<{ ok: boolean }> {
+export async function markChatThreadRead(kind: ThreadKind, otherId: number): Promise<{ ok: boolean }> {
   const me = await getCurrentUser();
   if (!me || !Number.isInteger(otherId)) return { ok: false };
-  await prisma.chatMessage.updateMany({
-    where: { fromId: otherId, toId: me.id, readAt: null },
-    data: { readAt: new Date() },
-  });
+  if (kind === "group" && !(await isGroupMember(me.id, otherId))) return { ok: false };
+  await stampRead(me.id, kind, otherId);
   return { ok: true };
 }
 
 /** The polling fallback (and reconnect catch-up): everything new in the open
  *  thread after `afterId`, plus a fresh contact list for the unread badges. */
 export async function pollChat(
-  openThreadWith: number | null,
+  openKind: ThreadKind | null,
+  openId: number,
   afterId: number,
 ): Promise<{ ok: boolean; error?: string; messages?: ChatMessageDTO[]; contacts?: ChatContact[] }> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, error: NOT_LOGGED_IN };
 
+  const canRead =
+    openKind === "user" ? Number.isInteger(openId) :
+    openKind === "group" ? Number.isInteger(openId) && (await isGroupMember(me.id, openId)) :
+    false;
+
   const [messages, contacts] = await Promise.all([
-    openThreadWith && Number.isInteger(openThreadWith)
-      ? getChatThread(me.id, openThreadWith, afterId)
-      : Promise.resolve([]),
+    canRead && openKind ? getChatThread(me.id, openKind, openId, afterId) : Promise.resolve([]),
     getChatContacts(me.id),
   ]);
   return { ok: true, messages, contacts };

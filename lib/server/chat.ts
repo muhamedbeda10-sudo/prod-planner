@@ -1,52 +1,73 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 
-// In-app direct messages. Reads are always scoped to the CALLING user — a
-// thread can only be fetched by one of its two ends, unread counts only count
-// messages addressed to the caller, and a message the caller "deleted for me"
-// (hiddenForFrom/hiddenForTo) never comes back to them while the other end
-// keeps seeing it.
+// In-app chat: DIRECT messages (two users) and GROUP messages (a named group
+// of members). Reads are always scoped to the CALLING user — a DM thread can
+// only be fetched by one of its two ends, a group thread only by a member,
+// unread counts only count what's addressed to the caller, and a message the
+// caller "deleted for me" never comes back to them while everyone else keeps
+// seeing it.
+
+export type ThreadKind = "user" | "group";
 
 export interface ChatAttachment {
-  url: string;
+  url: string; // https URL (Vercel Blob) or a data: URL (DB fallback for images)
   name: string;
   size: number; // bytes
   type: string; // MIME as uploaded
 }
 
+export interface ChatReactionDTO {
+  emoji: string;
+  count: number;
+  mine: boolean; // the caller reacted with this emoji
+}
+
 export interface ChatMessageDTO {
   id: number;
   fromId: number;
-  toId: number;
+  fromName: string; // shown above group bubbles
+  toId: number | null;
+  groupId: number | null;
   body: string;
   mo: string | null; // attached order — the client renders a chip to /trace
   attachments: ChatAttachment[];
+  pinnedAt: string | null;
+  reactions: ChatReactionDTO[];
   createdAt: string; // ISO — serializable across the server/client boundary
 }
 
 export interface ChatContact {
-  id: number;
+  kind: ThreadKind;
+  id: number; // userId or groupId, disambiguated by kind
   name: string;
-  isAdmin: boolean;
-  unread: number; // messages from this user the caller hasn't read
-  lastBody: string | null; // latest message either way — the list preview
+  isAdmin: boolean; // users only
+  memberCount: number; // groups only
+  unread: number;
+  lastBody: string | null; // latest message — the list preview
   lastAt: string | null;
   lastFromMe: boolean;
+  lastFromName: string | null; // group previews say who spoke
 }
+
+const ROW_INCLUDE = {
+  from: { select: { name: true } },
+  reactions: { select: { userId: true, emoji: true } },
+} as const;
 
 type Row = {
   id: number;
   fromId: number;
-  toId: number;
+  toId: number | null;
+  groupId: number | null;
   body: string;
   mo: string | null;
   attachments: string | null;
+  pinnedAt: Date | null;
   createdAt: Date;
+  from: { name: string };
+  reactions: { userId: number; emoji: string }[];
 };
-
-const ROW_SELECT = {
-  id: true, fromId: true, toId: true, body: true, mo: true, attachments: true, createdAt: true,
-} as const;
 
 function parseAttachments(json: string | null): ChatAttachment[] {
   if (!json) return [];
@@ -58,13 +79,28 @@ function parseAttachments(json: string | null): ChatAttachment[] {
   }
 }
 
-const toDTO = (m: Row): ChatMessageDTO => ({
+function packReactions(rows: Row["reactions"], meId: number): ChatReactionDTO[] {
+  const byEmoji = new Map<string, { count: number; mine: boolean }>();
+  for (const r of rows) {
+    const e = byEmoji.get(r.emoji) ?? { count: 0, mine: false };
+    e.count += 1;
+    if (r.userId === meId) e.mine = true;
+    byEmoji.set(r.emoji, e);
+  }
+  return [...byEmoji.entries()].map(([emoji, e]) => ({ emoji, ...e }));
+}
+
+const toDTO = (m: Row, meId: number): ChatMessageDTO => ({
   id: m.id,
   fromId: m.fromId,
+  fromName: m.from.name,
   toId: m.toId,
+  groupId: m.groupId,
   body: m.body,
   mo: m.mo,
   attachments: parseAttachments(m.attachments),
+  pinnedAt: m.pinnedAt?.toISOString() ?? null,
+  reactions: packReactions(m.reactions, meId),
   createdAt: m.createdAt.toISOString(),
 });
 
@@ -77,89 +113,159 @@ function previewOf(m: Row): string {
   return "";
 }
 
-/** The caller's side of the visibility switch: which flag hides a message
- *  from THEM. Their own sends hide on hiddenForFrom, received on hiddenForTo. */
-const visibleTo = (meId: number) => ({
-  OR: [
-    { fromId: meId, hiddenForFrom: false },
-    { toId: meId, hiddenForTo: false },
-  ],
-});
-
-/** Everyone the caller can message (active users), each carrying the unread
- *  count and the latest exchanged message as a preview. Unread first, then
- *  most recent conversation, then by name. */
+/** Everything the caller can open: every active user (DMs) and every group
+ *  they belong to, each carrying its unread count and latest-message preview.
+ *  Unread first, then most recent conversation, then by name. */
 export async function getChatContacts(meId: number): Promise<ChatContact[]> {
-  const [users, unread, latest] = await Promise.all([
+  const [users, memberships, dmUnread, latest] = await Promise.all([
     prisma.user.findMany({
       where: { active: true, id: { not: meId } },
       select: { id: true, name: true, isAdmin: true },
       orderBy: { name: "asc" },
+    }),
+    prisma.chatGroupMember.findMany({
+      where: { userId: meId },
+      select: {
+        lastReadId: true,
+        group: { select: { id: true, name: true, _count: { select: { members: true } } } },
+      },
     }),
     prisma.chatMessage.groupBy({
       by: ["fromId"],
       where: { toId: meId, readAt: null, hiddenForTo: false },
       _count: { _all: true },
     }),
-    // newest slice of the caller's history — enough to preview every active
-    // conversation without a per-contact query
+    // newest slice of everything the caller can see — enough to preview every
+    // active conversation without a per-contact query
     prisma.chatMessage.findMany({
-      where: visibleTo(meId),
+      where: {
+        OR: [
+          { fromId: meId, groupId: null, hiddenForFrom: false },
+          { toId: meId, hiddenForTo: false },
+          { group: { members: { some: { userId: meId } } }, hides: { none: { userId: meId } } },
+        ],
+      },
       orderBy: { id: "desc" },
       take: 1000,
-      select: ROW_SELECT,
+      include: ROW_INCLUDE,
     }),
   ]);
 
-  const unreadOf = new Map(unread.map((u) => [u.fromId, u._count._all]));
-  const lastOf = new Map<number, Row>(); // partner id → newest visible message
-  for (const m of latest) {
-    const partner = m.fromId === meId ? m.toId : m.fromId;
-    if (!lastOf.has(partner)) lastOf.set(partner, m); // list is newest-first
+  // group unread: everything past the member's read cursor, by someone else
+  const groupUnread = new Map<number, number>();
+  if (memberships.length > 0) {
+    const counts = await prisma.chatMessage.groupBy({
+      by: ["groupId"],
+      where: {
+        fromId: { not: meId },
+        OR: memberships.map((m) => ({ groupId: m.group.id, id: { gt: m.lastReadId } })),
+      },
+      _count: { _all: true },
+    });
+    for (const c of counts) if (c.groupId) groupUnread.set(c.groupId, c._count._all);
   }
 
-  return users
-    .map((u) => {
-      const last = lastOf.get(u.id);
-      return {
-        id: u.id,
-        name: u.name,
-        isAdmin: u.isAdmin,
-        unread: unreadOf.get(u.id) ?? 0,
-        lastBody: last ? previewOf(last) : null,
-        lastAt: last?.createdAt.toISOString() ?? null,
-        lastFromMe: last ? last.fromId === meId : false,
-      };
-    })
-    .sort(
-      (a, b) =>
-        Number(!!b.unread) - Number(!!a.unread) ||
-        (b.lastAt ?? "").localeCompare(a.lastAt ?? "") ||
-        a.name.localeCompare(b.name),
-    );
+  const dmUnreadOf = new Map(dmUnread.map((u) => [u.fromId, u._count._all]));
+  const lastDm = new Map<number, Row>(); // partner userId → newest visible message
+  const lastGroup = new Map<number, Row>(); // groupId → newest visible message
+  for (const m of latest as Row[]) {
+    if (m.groupId) {
+      if (!lastGroup.has(m.groupId)) lastGroup.set(m.groupId, m); // list is newest-first
+    } else {
+      const partner = m.fromId === meId ? (m.toId ?? 0) : m.fromId;
+      if (!lastDm.has(partner)) lastDm.set(partner, m);
+    }
+  }
+
+  const contact = (
+    kind: ThreadKind,
+    id: number,
+    name: string,
+    extra: { isAdmin?: boolean; memberCount?: number; unread: number },
+    last: Row | undefined,
+  ): ChatContact => ({
+    kind,
+    id,
+    name,
+    isAdmin: extra.isAdmin ?? false,
+    memberCount: extra.memberCount ?? 0,
+    unread: extra.unread,
+    lastBody: last ? previewOf(last) : null,
+    lastAt: last?.createdAt.toISOString() ?? null,
+    lastFromMe: last ? last.fromId === meId : false,
+    lastFromName: last && last.fromId !== meId ? last.from.name : null,
+  });
+
+  return [
+    ...memberships.map((m) =>
+      contact(
+        "group",
+        m.group.id,
+        m.group.name,
+        { memberCount: m.group._count.members, unread: groupUnread.get(m.group.id) ?? 0 },
+        lastGroup.get(m.group.id),
+      ),
+    ),
+    ...users.map((u) =>
+      contact("user", u.id, u.name, { isAdmin: u.isAdmin, unread: dmUnreadOf.get(u.id) ?? 0 }, lastDm.get(u.id)),
+    ),
+  ].sort(
+    (a, b) =>
+      Number(!!b.unread) - Number(!!a.unread) ||
+      (b.lastAt ?? "").localeCompare(a.lastAt ?? "") ||
+      a.name.localeCompare(b.name),
+  );
 }
 
-/** The conversation between the caller and one other user, oldest first,
- *  minus anything the caller deleted for themselves. `afterId` fetches only
- *  what's new — the polling fallback's increment. */
-export async function getChatThread(meId: number, otherId: number, afterId?: number): Promise<ChatMessageDTO[]> {
+/** Whether the caller sits in a group — the gate on every group operation. */
+export async function isGroupMember(meId: number, groupId: number): Promise<boolean> {
+  const m = await prisma.chatGroupMember.findUnique({
+    where: { groupId_userId: { groupId, userId: meId } },
+    select: { id: true },
+  });
+  return !!m;
+}
+
+/** One conversation (DM or group), oldest first, minus anything the caller
+ *  deleted for themselves. `afterId` fetches only what's new — the polling
+ *  fallback's increment. Group access must be checked by the CALLER. */
+export async function getChatThread(
+  meId: number,
+  kind: ThreadKind,
+  otherId: number,
+  afterId?: number,
+): Promise<ChatMessageDTO[]> {
+  const scope =
+    kind === "group"
+      ? { groupId: otherId, hides: { none: { userId: meId } } }
+      : {
+          OR: [
+            { fromId: meId, toId: otherId, hiddenForFrom: false },
+            { fromId: otherId, toId: meId, hiddenForTo: false },
+          ],
+        };
   const messages = await prisma.chatMessage.findMany({
-    where: {
-      OR: [
-        { fromId: meId, toId: otherId, hiddenForFrom: false },
-        { fromId: otherId, toId: meId, hiddenForTo: false },
-      ],
-      ...(afterId ? { id: { gt: afterId } } : {}),
-    },
+    where: { ...scope, ...(afterId ? { id: { gt: afterId } } : {}) },
     orderBy: { id: afterId ? "asc" : "desc" },
     take: afterId ? undefined : 200, // a fresh open shows the latest 200
-    select: ROW_SELECT,
+    include: ROW_INCLUDE,
   });
   if (!afterId) messages.reverse(); // fetched newest-first to cap, shown oldest-first
-  return messages.map(toDTO);
+  return (messages as Row[]).map((m) => toDTO(m, meId));
 }
 
-/** Total unread messages for the caller — the nav badge. */
+/** Total unread for the caller (DMs + groups) — the nav badge. */
 export async function getChatUnreadCount(meId: number): Promise<number> {
-  return prisma.chatMessage.count({ where: { toId: meId, readAt: null, hiddenForTo: false } });
+  const [dm, memberships] = await Promise.all([
+    prisma.chatMessage.count({ where: { toId: meId, readAt: null, hiddenForTo: false } }),
+    prisma.chatGroupMember.findMany({ where: { userId: meId }, select: { groupId: true, lastReadId: true } }),
+  ]);
+  if (memberships.length === 0) return dm;
+  const group = await prisma.chatMessage.count({
+    where: {
+      fromId: { not: meId },
+      OR: memberships.map((m) => ({ groupId: m.groupId, id: { gt: m.lastReadId } })),
+    },
+  });
+  return dm + group;
 }
