@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Send, ArrowLeft, MessagesSquare, Paperclip, Package, ChevronDown, X,
   FileText, FileSpreadsheet, File as FileGlyph, Trash2, Users, Plus,
-  Pin, PinOff, Smile, LogOut, UserPlus,
+  Pin, PinOff, Smile, LogOut, UserPlus, Reply,
 } from "lucide-react";
 import {
   sendChatMessage, openChatThread, markChatThreadRead, pollChat,
@@ -135,6 +135,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
   // composer extras
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [pendingMo, setPendingMo] = useState<string | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ChatMessageDTO | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -239,6 +240,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     setArmedDelete(null);
     setPinsOpen(false);
     setLeaveArmed(false);
+    setReplyTarget(null);
     setGroupMembers([]);
     setGroupCreatedBy(null);
     setContacts((cur) => cur.map((c) => (c.kind === t.kind && c.id === t.id ? { ...c, unread: 0 } : c)));
@@ -346,6 +348,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     fd.set("to", String(t.id));
     fd.set("body", text);
     if (pendingMo) fd.set("mo", pendingMo);
+    if (replyTarget) fd.set("replyTo", String(replyTarget.id));
     for (const f of pendingFiles) fd.append("files", f);
 
     const res = await sendChatMessage(fd);
@@ -357,10 +360,11 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     setDraft("");
     setPendingFiles([]);
     setPendingMo(null);
+    setReplyTarget(null);
     setEmojiOpen(false);
     appendUnique([res.message]);
     touchContact(res.message, { countUnread: false });
-  }, [draft, pendingFiles, pendingMo, sending, appendUnique, touchContact]);
+  }, [draft, pendingFiles, pendingMo, replyTarget, sending, appendUnique, touchContact]);
 
   const deleteForMe = useCallback(async (id: number) => {
     setMenuFor(null);
@@ -699,6 +703,18 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                             </div>
                             <button
                               type="button"
+                              onClick={() => {
+                                setReplyTarget(m);
+                                setMenuFor(null);
+                                draftRef.current?.focus();
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors"
+                            >
+                              <Reply size={13} className="shrink-0" />
+                              Reply
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => void togglePin(m)}
                               className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors"
                             >
@@ -725,6 +741,25 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                           </span>
                         )}
                         {m.pinnedAt && <Pin size={11} className={`absolute -top-1.5 ${mine ? "right-2" : "left-2"} text-brand rotate-45`} />}
+                        {m.replyTo && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              jumpToMessage(m.replyTo!.id);
+                            }}
+                            className="block w-full text-left mb-1 rounded-lg px-2 py-1.5 bg-black/5 dark:bg-white/5 border-l-[3px] hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                            style={{ borderLeftColor: avatarColor(m.replyTo.fromId) }}
+                            title="Go to the quoted message"
+                          >
+                            <span className="block text-[10px] font-extrabold" style={{ color: avatarColor(m.replyTo.fromId) }}>
+                              {m.replyTo.fromId === me.id ? "You" : m.replyTo.fromName}
+                            </span>
+                            <span className="block truncate text-[11px] opacity-70" dir="auto">
+                              {m.replyTo.snippet}
+                            </span>
+                          </button>
+                        )}
                         {m.mo && <MoChip mo={m.mo} mine={mine} />}
                         {m.attachments.length > 0 && (
                           <span className="flex flex-col gap-1.5 mb-1">
@@ -773,6 +808,29 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
             </div>
 
             {error && <p className="px-4 py-2 text-xs font-semibold text-danger border-t bg-surface">{error}</p>}
+
+            {/* replying-to bar — what the next send will quote */}
+            {replyTarget && (
+              <div className="border-t bg-surface px-3 py-2 flex items-center gap-2.5">
+                <Reply size={15} className="shrink-0 text-brand" />
+                <button
+                  type="button"
+                  onClick={() => jumpToMessage(replyTarget.id)}
+                  className="min-w-0 flex-1 text-left rounded-lg px-2 py-1 bg-surface-2 border-l-[3px] hover:opacity-80 transition-opacity"
+                  style={{ borderLeftColor: avatarColor(replyTarget.fromId) }}
+                >
+                  <span className="block text-[10px] font-extrabold" style={{ color: avatarColor(replyTarget.fromId) }}>
+                    {replyTarget.fromId === me.id ? "You" : replyTarget.fromName}
+                  </span>
+                  <span className="block truncate text-[11px] text-muted" dir="auto">
+                    {previewLabel(replyTarget)}
+                  </span>
+                </button>
+                <button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply" className="shrink-0 text-muted hover:text-foreground">
+                  <X size={15} />
+                </button>
+              </div>
+            )}
 
             {/* pending attachments / order chip — visible before sending */}
             {(pendingFiles.length > 0 || pendingMo) && (

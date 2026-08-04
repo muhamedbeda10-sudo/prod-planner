@@ -23,6 +23,14 @@ export interface ChatReactionDTO {
   mine: boolean; // the caller reacted with this emoji
 }
 
+/** The quoted head of a reply — enough to render the quote and jump to it. */
+export interface ChatReplyRef {
+  id: number;
+  fromId: number;
+  fromName: string;
+  snippet: string; // short preview of the quoted message
+}
+
 export interface ChatMessageDTO {
   id: number;
   fromId: number;
@@ -33,6 +41,7 @@ export interface ChatMessageDTO {
   mo: string | null; // attached order — the client renders a chip to /trace
   attachments: ChatAttachment[];
   pinnedAt: string | null;
+  replyTo: ChatReplyRef | null;
   reactions: ChatReactionDTO[];
   createdAt: string; // ISO — serializable across the server/client boundary
 }
@@ -53,7 +62,22 @@ export interface ChatContact {
 const ROW_INCLUDE = {
   from: { select: { name: true } },
   reactions: { select: { userId: true, emoji: true } },
+  replyTo: {
+    select: {
+      id: true, fromId: true, body: true, mo: true, attachments: true,
+      from: { select: { name: true } },
+    },
+  },
 } as const;
+
+type ReplyRow = {
+  id: number;
+  fromId: number;
+  body: string;
+  mo: string | null;
+  attachments: string | null;
+  from: { name: string };
+};
 
 type Row = {
   id: number;
@@ -66,6 +90,7 @@ type Row = {
   pinnedAt: Date | null;
   createdAt: Date;
   from: { name: string };
+  replyTo: ReplyRow | null;
   reactions: { userId: number; emoji: string }[];
 };
 
@@ -90,6 +115,18 @@ function packReactions(rows: Row["reactions"], meId: number): ChatReactionDTO[] 
   return [...byEmoji.entries()].map(([emoji, e]) => ({ emoji, ...e }));
 }
 
+/** Short preview of a message for quotes and list rows. */
+export function snippetOf(m: { body: string; mo: string | null; attachments: string | null }): string {
+  if (m.body) return m.body.length > 90 ? m.body.slice(0, 90) + "…" : m.body;
+  const att = parseAttachments(m.attachments);
+  if (att.length > 0) return att[0].type.startsWith("image/") ? "📷 Photo" : `📎 ${att[0].name}`;
+  if (m.mo) return `📦 ${m.mo}`;
+  return "";
+}
+
+const toReplyRef = (r: ReplyRow | null): ChatReplyRef | null =>
+  r ? { id: r.id, fromId: r.fromId, fromName: r.from.name, snippet: snippetOf(r) } : null;
+
 const toDTO = (m: Row, meId: number): ChatMessageDTO => ({
   id: m.id,
   fromId: m.fromId,
@@ -100,18 +137,13 @@ const toDTO = (m: Row, meId: number): ChatMessageDTO => ({
   mo: m.mo,
   attachments: parseAttachments(m.attachments),
   pinnedAt: m.pinnedAt?.toISOString() ?? null,
+  replyTo: toReplyRef(m.replyTo),
   reactions: packReactions(m.reactions, meId),
   createdAt: m.createdAt.toISOString(),
 });
 
 /** What the contact list shows for a message with no text. */
-function previewOf(m: Row): string {
-  if (m.body) return m.body;
-  const att = parseAttachments(m.attachments);
-  if (att.length > 0) return att[0].type.startsWith("image/") ? "📷 Photo" : `📎 ${att[0].name}`;
-  if (m.mo) return `📦 ${m.mo}`;
-  return "";
-}
+const previewOf = (m: Row): string => snippetOf(m);
 
 /** Everything the caller can open: every active user (DMs) and every group
  *  they belong to, each carrying its unread count and latest-message preview.
