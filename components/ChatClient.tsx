@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Send, ArrowLeft, MessagesSquare, Paperclip, Package, ChevronDown, X,
   FileText, FileSpreadsheet, File as FileGlyph, Trash2, Users, Plus,
-  Pin, PinOff, Smile, LogOut, UserPlus, Reply, CheckCheck,
+  Pin, PinOff, LogOut, UserPlus, Reply, CheckCheck,
 } from "lucide-react";
 import {
   sendChatMessage, openChatThread, markChatThreadRead, pollChat,
@@ -18,7 +18,8 @@ import {
   type ChatBroadcastPayload,
 } from "@/lib/chatRealtime";
 import { compressImage } from "@/lib/imageCompress";
-import { EmojiPicker, QUICK_REACTIONS } from "@/components/EmojiPicker";
+/** The quick-reaction row shown on a message's menu. */
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 import { traceHref } from "@/lib/domain/links";
 import type { ChatAttachment, ChatContact, ChatMessageDTO, ThreadKind } from "@/lib/server/chat";
 
@@ -44,10 +45,6 @@ const sizeLabel = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 const isImage = (a: ChatAttachment) => a.type.startsWith("image/");
-
-// a message that is ONLY 1-3 emojis renders big, WhatsApp-style
-const JUMBO_RE = /^(?:\p{Extended_Pictographic}(?:‍\p{Extended_Pictographic})*️?){1,3}$/u;
-const isJumbo = (body: string) => JUMBO_RE.test(body.trim());
 
 function docIcon(name: string) {
   const ext = name.toLowerCase().split(".").pop() ?? "";
@@ -138,7 +135,6 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
   const [replyTarget, setReplyTarget] = useState<ChatMessageDTO | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
-  const [emojiOpen, setEmojiOpen] = useState(false);
 
   // MO picker popover
   const [moOpen, setMoOpen] = useState(false);
@@ -379,7 +375,6 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     setPendingFiles([]);
     setPendingMo(null);
     setReplyTarget(null);
-    setEmojiOpen(false);
     appendUnique([res.message]);
     touchContact(res.message, { countUnread: false });
   }, [draft, pendingFiles, pendingMo, replyTarget, sending, appendUnique, touchContact]);
@@ -424,16 +419,6 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
     },
     [],
   );
-
-  const insertEmoji = useCallback((emoji: string) => {
-    const el = draftRef.current;
-    setDraft((cur) => {
-      if (!el) return cur + emoji;
-      const at = el.selectionStart ?? cur.length;
-      return cur.slice(0, at) + emoji + cur.slice(at);
-    });
-    el?.focus();
-  }, []);
 
   const jumpToMessage = useCallback((id: number) => {
     document.getElementById(`chat-msg-${id}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -682,7 +667,6 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                 const mine = m.fromId === me.id;
                 const newDay = i === 0 || dayOf(m.createdAt) !== dayOf(messages[i - 1].createdAt);
                 const showSender = activeContact.kind === "group" && !mine && (i === 0 || messages[i - 1].fromId !== m.fromId || newDay);
-                const jumbo = isJumbo(m.body) && m.attachments.length === 0 && !m.mo;
                 return (
                   <div key={m.id} id={`chat-msg-${m.id}`}>
                     {newDay && (
@@ -698,9 +682,8 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                           highlightId === m.id ? "ring-2 ring-brand" : ""
                         }`}
                         style={{
-                          background: jumbo ? "transparent" : mine ? "var(--chat-mine)" : "var(--chat-theirs)",
+                          background: mine ? "var(--chat-mine)" : "var(--chat-theirs)",
                           color: mine ? "var(--chat-mine-fg)" : "var(--chat-theirs-fg)",
-                          boxShadow: jumbo ? "none" : undefined,
                           borderTopRightRadius: mine ? 4 : undefined,
                           borderTopLeftRadius: mine ? undefined : 4,
                         }}
@@ -750,7 +733,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                           </span>
                         )}
                         {m.body && (
-                          <span className={`whitespace-pre-wrap break-words ${jumbo ? "block text-5xl leading-tight py-1" : ""}`} dir="auto">
+                          <span className="whitespace-pre-wrap break-words" dir="auto">
                             {m.body}
                           </span>
                         )}
@@ -894,13 +877,6 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
               </div>
             )}
 
-            {/* emoji picker */}
-            {emojiOpen && (
-              <div className="border-t bg-surface">
-                <EmojiPicker onPick={insertEmoji} />
-              </div>
-            )}
-
             {/* composer */}
             <form
               className="border-t bg-surface-2 p-2.5 flex items-end gap-1.5"
@@ -920,17 +896,6 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
                   e.target.value = ""; // same file can be re-picked
                 }}
               />
-              <button
-                type="button"
-                onClick={() => setEmojiOpen((v) => !v)}
-                title="Emoji"
-                aria-label="Emoji"
-                className={`shrink-0 grid place-items-center w-10 h-10 rounded-full transition-colors ${
-                  emojiOpen ? "text-brand bg-brand-light" : "text-muted hover:text-brand hover:bg-surface"
-                }`}
-              >
-                <Smile size={19} />
-              </button>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
