@@ -1,6 +1,6 @@
 // Weekly plan import — DELIVERY SCHEDULE ONLY.
 //
-// Grid layout (1-based columns), data starts at row 6:
+// Typical layout (1-based columns), data starts at row 6:
 //   A  BOM (merged — carry the last value down)
 //   B  SOI
 //   C  MO   (a row is an ORDER row iff MO is non-empty)
@@ -10,6 +10,12 @@
 //   AD  REMARKS — stored for reference but NOT interpreted (no balance parsing):
 //       order quantities come from the MONTHLY registry, progress from the logs.
 //
+// The day grid is LOCATED FROM THE SHEET'S OWN HEADER (the CF/TC/TN/CB row),
+// not assumed at column F: planners hand out workbooks with an extra
+// description column, and reading the grid one column off silently turned the
+// total-qty column into "day 1 needs N core frames" and shifted every other
+// component one place — while looking perfectly plausible on screen.
+//
 // Plan dates are OVEN dates: day g -> startDate + g.
 // targetQty(item) = sum of the item's day cells (the scheduled total).
 
@@ -17,11 +23,62 @@ import { SHEET_ITEMS, type Item } from "./constants";
 
 const GRID_FIRST_ROW = 6; // 1-based
 const DAYS = 6;
-const COL = {
+const DEFAULT_COL = {
   BOM: 0, SOI: 1, MO: 2, DESC: 3, REQ: 4, GRID_FIRST: 5, REMARK: 29, // 0-based
 } as const;
-const GRID_LAST_COL = COL.GRID_FIRST + DAYS * 4 - 1; // index 28 (AC)
+const GRID_LAST_COL = DEFAULT_COL.GRID_FIRST + DAYS * 4 - 1; // index 28 (AC)
 const MAX_ORDER_ROWS = 100;
+
+export interface PlanLayout {
+  desc: number;
+  req: number;
+  gridFirst: number;
+  remark: number;
+  detected: boolean; // false = the header row was unreadable, defaults used
+}
+
+const norm = (v: unknown): string => (v == null ? "" : String(v).trim().toUpperCase());
+
+/** Find the day grid by its own header. The header row is the one whose cells
+ *  spell CF,TC,TN,CB over and over; the grid starts at the first CF of the
+ *  longest such run, Required-Qty sits just before it, and REMARKS just after
+ *  the 24th column. Falls back to the classic fixed layout. */
+export function detectLayout(grid: unknown[][]): PlanLayout {
+  const fallback: PlanLayout = {
+    desc: DEFAULT_COL.DESC,
+    req: DEFAULT_COL.REQ,
+    gridFirst: DEFAULT_COL.GRID_FIRST,
+    remark: DEFAULT_COL.REMARK,
+    detected: false,
+  };
+  const wanted = SHEET_ITEMS.map((i) => norm(i)); // CF, TC, TN, CB
+
+  for (let r = 0; r < Math.min(grid.length, GRID_FIRST_ROW - 1); r++) {
+    const row = grid[r] ?? [];
+    for (let c = 0; c < row.length; c++) {
+      if (norm(row[c]) !== wanted[0]) continue;
+      // count how many complete CF,TC,TN,CB blocks follow from here
+      let blocks = 0;
+      while (blocks < DAYS) {
+        const base = c + blocks * 4;
+        if (!wanted.every((w, k) => norm(row[base + k]) === w)) break;
+        blocks++;
+      }
+      // one stray "CF" somewhere is not a grid — require at least two days
+      if (blocks >= 2) {
+        const gridFirst = c;
+        return {
+          desc: Math.max(0, gridFirst - 2),
+          req: gridFirst - 1,
+          gridFirst,
+          remark: gridFirst + DAYS * 4,
+          detected: true,
+        };
+      }
+    }
+  }
+  return fallback;
+}
 
 export interface ImportOrderRow {
   bom: string;
@@ -44,7 +101,7 @@ export interface ImportScheduleRow {
   qty: number;
 }
 export interface ImportWarning {
-  kind: "oversize-grid" | "remark-column" | "double-count";
+  kind: "oversize-grid" | "remark-column" | "double-count" | "layout";
   row: number; // 1-based sheet row
   bom?: string;
   mo?: string;
@@ -56,7 +113,14 @@ export interface ParsedPlan {
   schedules: ImportScheduleRow[];
   warnings: ImportWarning[];
   orderRowCount: number;
+  layout: PlanLayout;
 }
+
+const colName = (i: number): string => {
+  let s = "";
+  for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s;
+  return s;
+};
 
 const S = (v: unknown): string => (v == null ? "" : String(v).trim());
 const N = (v: unknown): number => {
@@ -71,6 +135,18 @@ export function parseWeeklyPlan(grid: unknown[][]): ParsedPlan {
   const warnings: ImportWarning[] = [];
   let carryBom = "";
   let orderRowCount = 0;
+
+  const layout = detectLayout(grid);
+  const COL = { BOM: DEFAULT_COL.BOM, SOI: DEFAULT_COL.SOI, MO: DEFAULT_COL.MO, DESC: layout.desc, REQ: layout.req, GRID_FIRST: layout.gridFirst, REMARK: layout.remark };
+  if (layout.detected && layout.gridFirst !== DEFAULT_COL.GRID_FIRST) {
+    warnings.push({
+      kind: "layout",
+      row: 4,
+      message:
+        `This sheet's day grid starts at column ${colName(layout.gridFirst)} (not the usual ` +
+        `${colName(DEFAULT_COL.GRID_FIRST)}) — read from the CF/TC/TN/CB header, so the quantities line up.`,
+    });
+  }
 
   for (let r = GRID_FIRST_ROW - 1; r < grid.length; r++) {
     const row = grid[r] ?? [];
@@ -126,7 +202,7 @@ export function parseWeeklyPlan(grid: unknown[][]): ParsedPlan {
     });
   }
 
-  return { orders, schedules, warnings, orderRowCount };
+  return { orders, schedules, warnings, orderRowCount, layout };
 }
 
 export { GRID_LAST_COL };
