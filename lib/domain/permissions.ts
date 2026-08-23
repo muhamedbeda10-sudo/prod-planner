@@ -39,6 +39,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "tracker.qty", label: "Order quantity — edit", desc: "Change an order's Required quantity manually (e.g. apply a confirmed decrease from a monthly revision)" },
       { key: "tracker.priority", label: "Priority flag ⭐", desc: "Flag orders as priority — they show in the dedicated table on top of every dept worklist" },
       { key: "tracker.push", label: "Send to worklist 📤", desc: "Send an order down to a dept worklist with a chosen quantity per item" },
+      { key: "weekly.record", label: "Weekly plan — record quantities", desc: "Type quantities straight onto the WEEKLY plan's day cells (all stages). Separate from the monthly tracker's per-column permissions; every entry lands in the Daily Logs marked as coming from the weekly plan" },
     ],
   },
   {

@@ -1,7 +1,9 @@
 "use client";
 
-import { Fragment, useMemo } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle } from "@/components/ui";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle, WeekPlanPicker } from "@/components/PlanViewToggle";
@@ -50,13 +52,80 @@ const doneWord = (metric: Stage, it: Item): string =>
  *  manufacture can neither hurt nor help a day's score. */
 const owedOf = (c: WeeklyPlanCell): number => c.req - c.na;
 
+/** Which ledger department a visible stage column writes to. The core's
+ *  finishing column IS its shot blast — it is never painted. */
+const deptOfStage = (s: Stage, it: Item): string =>
+  s === "cut" ? "Cut" : s === "weld" ? "Welding" : s === "delivered" ? "Delivered" : isPaintExempt(it) ? "ShotBlast" : "Painting";
+
+/** Recording straight onto the weekly sheet, wired once in the table and used
+ *  by every day block. Cells ADD pieces (never "set a total"): a weekly cell
+ *  shows a day's SLICE of the order's output — capped at the day's promise and
+ *  waterfalled from the earliest promise — so a total would be ambiguous where
+ *  "add N pcs" never is. */
+interface RecCtl {
+  can: boolean;
+  editKey: string | null;
+  val: string;
+  err: string;
+  pending: boolean;
+  open: (key: string) => void;
+  setVal: (v: string) => void;
+  cancel: () => void;
+  save: (a: { dept: string; bom: string; item: Item; mos: string[]; dayISO: string }) => void;
+}
+
 const coverage = (r: WeeklyPlanRow, metric: Stage): number | null => {
   const cells = Object.values(r.items) as WeeklyPlanCell[];
   const owed = cells.reduce((s, c) => s + owedOf(c), 0);
   return owed > 0 ? cells.reduce((s, c) => s + c[metric], 0) / owed : null;
 };
 
-export function WeeklyPlanTrackerTable({ data, capacityCard }: { data: WeeklyPlanTracker; capacityCard?: React.ReactNode }) {
+export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }: {
+  data: WeeklyPlanTracker;
+  capacityCard?: React.ReactNode;
+  canRecord?: boolean; // "weekly.record" — one permission for the whole sheet
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState("");
+  const [cellErr, setCellErr] = useState("");
+
+  const rec: RecCtl = {
+    can: canRecord,
+    editKey,
+    val: editVal,
+    err: cellErr,
+    pending,
+    open: (key) => { setEditKey(key); setEditVal(""); setCellErr(""); },
+    setVal: (v) => { setEditVal(v); setCellErr(""); },
+    cancel: () => { setEditKey(null); setCellErr(""); },
+    save: ({ dept, bom, item, mos, dayISO }) => {
+      const qty = Number(editVal);
+      if (!Number.isInteger(qty) || qty <= 0) { setCellErr("Enter a whole quantity greater than zero."); return; }
+      const fd = new FormData();
+      fd.set("source", "weekly");
+      fd.set("dept", dept);
+      fd.set("bom", bom);
+      fd.set("item", item);
+      fd.set("qty", String(qty));
+      fd.set("mos", mos.join(","));
+      fd.set("dayISO", dayISO);
+      fd.set("planLabel", String(data.planNo ?? ""));
+      setCellErr("");
+      startTransition(async () => {
+        const res = await recordGroupOutput(fd);
+        if (res.ok) {
+          setEditKey(null);
+          setEditVal("");
+          router.refresh();
+        } else {
+          setCellErr(res.error ?? "Failed");
+        }
+      });
+    },
+  };
+
   const [q, setQ] = useSavedFilter("wtracker.q");
   const [stage, setStage] = useSavedFilter("wtracker.stage");
   const [hideDone, setHideDone] = useSavedFilter("wtracker.hideDone");
@@ -221,7 +290,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard }: { data: WeeklyPla
       ) : (
         <div className="print-flow print-fit print-tracker bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0">
           <table className="w-full text-sm border-collapse">
-            {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} planNo={data.planNo ?? 0} />)}
+            {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} planNo={data.planNo ?? 0} rec={rec} />)}
           </table>
         </div>
       )}
@@ -232,7 +301,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard }: { data: WeeklyPla
 /** One delivery day: its date as a vertical rail down the left, its own header
  *  row, then a row per project. Each day is its own <tbody> so the rail can
  *  span exactly that day's rows. */
-function DayBlock({ day, stages, metric, planNo }: { day: WeeklyPlanDay; stages: readonly Stage[]; metric: Stage; planNo: number }) {
+function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; stages: readonly Stage[]; metric: Stage; planNo: number; rec: RecCtl }) {
   const metricLabel = STAGE_OPTS.find((o) => o.value === metric)!;
   const pct = day.req > 0 ? day.covered / day.req : null;
   const late = day.isPast && (pct ?? 1) < 1; // the delivery date passed unfinished
@@ -338,11 +407,74 @@ function DayBlock({ day, stages, metric, planNo }: { day: WeeklyPlanDay; stages:
                       </span>
                     )}
                   </td>
-                  {stages.map((s) => (
-                    <td key={s} className={`px-1 py-1 tabnum text-xs ${c[s] >= owed ? "font-bold" : ""}`} style={{ background: TINT[s] }}>
-                      {c[s] || <span className="text-muted opacity-40">—</span>}
-                    </td>
-                  ))}
+                  {stages.map((s) => {
+                    const dept = deptOfStage(s, it);
+                    const k = `${day.iso}|${r.bom}|${it}|${dept}`;
+                    const editing = rec.editKey === k;
+                    // an all-outsourced promise has no order to record against
+                    const editable = rec.can && c.mos.length > 0;
+                    const add = editing ? Number(rec.val) : 0;
+                    const stageWord = STAGE_OPTS.find((o) => o.value === s)!.label;
+                    return (
+                      <td
+                        key={s}
+                        className={`px-1 py-1 tabnum text-xs ${c[s] >= owed ? "font-bold" : ""}`}
+                        style={{ background: TINT[s] }}
+                      >
+                        {editing ? (
+                          <span className="inline-flex flex-col items-center gap-0.5">
+                            <span className="inline-flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={1}
+                                value={rec.val}
+                                autoFocus
+                                placeholder="+ pcs"
+                                onChange={(e) => rec.setVal(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") rec.save({ dept, bom: r.bom, item: it, mos: c.mos, dayISO: day.iso });
+                                  if (e.key === "Escape") rec.cancel();
+                                }}
+                                className="w-14 border rounded-md px-1 py-0.5 text-center font-bold tabnum bg-surface"
+                                disabled={rec.pending}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => rec.save({ dept, bom: r.bom, item: it, mos: c.mos, dayISO: day.iso })}
+                                disabled={rec.pending}
+                                className="text-ok-fg font-extrabold px-0.5"
+                                title="Save — the pieces land in today's Daily Log, marked as recorded from the weekly plan"
+                              >
+                                ✓
+                              </button>
+                              <button type="button" onClick={rec.cancel} disabled={rec.pending} className="text-muted px-0.5" title="Cancel">
+                                ✕
+                              </button>
+                            </span>
+                            {add > 0 && !rec.err && (
+                              <span className="text-[10px] font-bold text-ok-fg whitespace-nowrap">
+                                +{add}{c.mos.length > 1 ? ` · split over ${c.mos.length} MOs` : ""}
+                              </span>
+                            )}
+                            {rec.err && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{rec.err}</span>}
+                            <span className="print-only tabnum">{c[s]}</span>
+                          </span>
+                        ) : editable ? (
+                          <button
+                            type="button"
+                            onClick={() => rec.open(k)}
+                            disabled={rec.pending}
+                            className="print-as-text w-full min-w-7 rounded px-1 py-0.5 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
+                            title={`${stageWord} · ${r.bom} · ${it} — type how many pieces to ADD. They join today's Daily Log (marked: from the weekly plan)${c.mos.length > 1 ? `, split over the ${c.mos.length} orders this day owes` : ""}, and fill this project's EARLIEST unfilled promise first.`}
+                          >
+                            {c[s] || <span className="text-muted opacity-40">—</span>}
+                          </button>
+                        ) : (
+                          c[s] || <span className="text-muted opacity-40">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
                 </Fragment>
               );
             })}

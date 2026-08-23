@@ -40,6 +40,9 @@ export interface WeeklyPlanCell {
   weld: number;
   finish: number; // Painting, or SHOT BLAST for the core — plus outsourced qty
   delivered: number;
+  // the orders that owe this component TODAY and can actually receive output
+  // (N/A ones left out) — recording a quantity on the cell distributes over them
+  mos: string[];
 }
 export interface WeeklyPlanRow {
   bom: string;
@@ -216,9 +219,12 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
       // each order contributes THIS day's waterfall slice — output already
       // claimed by an earlier promise never shows up again
       let cut = 0, weld = 0, fin = 0, delivered = 0, osp = 0;
+      const mos: string[] = [];
       for (const mo of draft.mos) {
         const slice = alloc.get(`${mo}|${it}|${d}`);
         if (!slice) continue; // this order owes a different component today
+        // an order that marked the component N/A cannot receive output
+        if (!excludedOf.get(mo)?.has(it)) mos.push(mo);
         cut += slice.cut;
         weld += slice.weld;
         fin += slice.fin;
@@ -226,7 +232,7 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
         osp += slice.osp;
       }
       const cap = (v: number) => Math.min(v, owed);
-      items[it] = { req, na, osp: cap(osp), cut: cap(cut), weld: cap(weld), finish: cap(fin), delivered: cap(delivered) };
+      items[it] = { req, na, osp: cap(osp), cut: cap(cut), weld: cap(weld), finish: cap(fin), delivered: cap(delivered), mos: mos.sort() };
       rowReq += owed;
       day.covered += cap(fin);
     }
