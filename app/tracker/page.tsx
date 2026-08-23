@@ -36,7 +36,7 @@ export default async function TrackerPage({
 
   if (sp.view === "weekly") {
     // an unknown ?plan= falls back to the newest plan inside the loader
-    const data = await getWeeklyPlanTracker(Number(sp.plan) || null);
+    const [data, weeklyUser] = await Promise.all([getWeeklyPlanTracker(Number(sp.plan) || null), getCurrentUser()]);
     const capacity = await getPlanCapacity(data.planNo);
     return (
       <>
@@ -45,7 +45,13 @@ export default async function TrackerPage({
           subtitle={data.planNo === null ? undefined : `Weekly plan ${data.planNo}`}
           date={issued}
         />
-        <WeeklyPlanTrackerTable data={data} capacityCard={<PlanCapacityCard check={capacity} />} />
+        <WeeklyPlanTrackerTable
+          data={data}
+          capacityCard={<PlanCapacityCard check={capacity} />}
+          // ONE permission for the whole weekly sheet — deliberately separate
+          // from the monthly tracker's per-column keys
+          canRecord={!!weeklyUser && hasPerm(weeklyUser, "weekly.record")}
+        />
       </>
     );
   }

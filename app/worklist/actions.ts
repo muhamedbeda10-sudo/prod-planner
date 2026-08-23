@@ -152,11 +152,17 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
  *  its own chain headroom (upstream − done, and the order qty for Cut), the
  *  rest flows to the next MO. All-or-nothing: if the quantity doesn't fit the
  *  whole group, nothing is saved and the error says how much fits.
- *  Two callers:
+ *  Three callers:
  *  - worklists (source "worklist"): `qty` = pieces to ADD (> 0);
  *  - tracker (source "tracker"): `total` = the NEW cumulative group total —
  *    the delta may be negative (correction), which is taken back from the
- *    LAST MOs first, never below what downstream already consumed. */
+ *    LAST MOs first, never below what downstream already consumed;
+ *  - weekly plan (source "weekly"): `qty` = pieces to ADD against ONE delivery
+ *    day's promise, over the orders that day owes. ADD, not a total: a weekly
+ *    cell shows a day's SLICE of the order's output (capped and waterfalled),
+ *    so "set it to N" would be ambiguous while "add N pcs" never is. Its own
+ *    permission (weekly.record), and the ledger row says it came from the
+ *    weekly plan. */
 export async function recordGroupOutput(formData: FormData): Promise<RecordResult> {
   try {
     const source = String(formData.get("source") ?? "worklist");
@@ -171,6 +177,13 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     if (source === "tracker") {
       if (!isDept(dept) && dept !== DELIVERED_STAGE && dept !== SHOTBLAST_STAGE) return { ok: false, error: "Invalid department." };
       const guard = await requirePerm(trackerPermKey(dept));
+      if (guard.error) return { ok: false, error: guard.error };
+      by = guard.user?.name ?? null;
+    } else if (source === "weekly") {
+      // ONE permission covers the whole weekly sheet — it is a single screen a
+      // planner either records on or does not, not five separate columns
+      if (!isDept(dept) && dept !== DELIVERED_STAGE && dept !== SHOTBLAST_STAGE) return { ok: false, error: "Invalid department." };
+      const guard = await requirePerm("weekly.record");
       if (guard.error) return { ok: false, error: guard.error };
       by = guard.user?.name ?? null;
     } else {
@@ -237,6 +250,9 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
       delta = Number(formData.get("qty"));
       if (!Number.isInteger(delta) || delta <= 0) return { ok: false, error: "Enter a whole quantity greater than zero." };
     }
+    // what the weekly cell says it was recorded against — for the ledger note
+    const dayISO = source === "weekly" ? String(formData.get("dayISO") ?? "").trim() : "";
+    const planLabel = source === "weekly" ? String(formData.get("planLabel") ?? "").trim() : "";
 
     // per-MO headroom, mirroring the chain guard (painted ≤ welded ≤ cut ≤
     // order qty; the core's SHB ≤ welded; delivered ≤ finished). Cut also
@@ -301,8 +317,12 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
         await tx.handoverEntry.create({
           data: {
             date: today, dept, bom, mo, item, qty: q, planNo,
-            source: source === "tracker" ? "tracker" : "worklist",
-            note: q < 0 ? `group correction: ${bom} ${item} total ${current} → ${newTotal}` : alloc.size > 1 ? `group record on ${bom}` : null,
+            source: source === "tracker" ? "tracker" : source === "weekly" ? "weekly" : "worklist",
+            note:
+              q < 0 ? `group correction: ${bom} ${item} total ${current} → ${newTotal}`
+              : source === "weekly"
+                ? `recorded on the weekly plan${planLabel ? ` ${planLabel}` : ""}${dayISO ? ` · ${dayISO} delivery` : ""}${alloc.size > 1 ? ` · split over ${alloc.size} MOs` : ""}`
+                : alloc.size > 1 ? `group record on ${bom}` : null,
             createdBy: by,
           },
         });

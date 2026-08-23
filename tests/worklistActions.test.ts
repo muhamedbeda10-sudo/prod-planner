@@ -9,11 +9,12 @@ const h = vi.hoisted(() => {
   const fn = () => vi.fn();
   return {
     prisma: {
-      masterOrder: { findFirst: fn(), findUnique: fn() },
+      masterOrder: { findFirst: fn(), findUnique: fn(), findMany: fn() },
       planSchedule: { findFirst: fn() },
       planOrder: { findFirst: fn() },
       handoverEntry: { findFirst: fn(), create: fn(), aggregate: fn(), groupBy: fn() },
       plan: { upsert: fn() },
+      $transaction: fn(),
     },
     revalidatePath: vi.fn(),
     checkOutputChain: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock("@/lib/server/auth", () => ({
   requirePerm: h.requirePerm,
 }));
 
-import { recordOutput, recordTrackerTotal, returnToUpstream } from "@/app/worklist/actions";
+import { recordOutput, recordTrackerTotal, recordGroupOutput, returnToUpstream } from "@/app/worklist/actions";
 
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -60,7 +61,17 @@ beforeEach(() => {
   h.prisma.plan.upsert.mockResolvedValue({});
   h.prisma.handoverEntry.create.mockResolvedValue({ id: 1 });
   h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 0 } });
+  h.prisma.masterOrder.findMany.mockResolvedValue([]);
+  h.prisma.handoverEntry.groupBy.mockResolvedValue([]);
+  // run the transaction body against a tx whose create() we can inspect
+  txWrites.length = 0;
+  h.prisma.$transaction.mockImplementation(async (body: (tx: unknown) => Promise<void>) =>
+    body({ handoverEntry: { create: async ({ data }: { data: Record<string, unknown> }) => { txWrites.push(data); } } })
+  );
 });
+
+/** Every ledger row written inside the last $transaction. */
+const txWrites: Record<string, unknown>[] = [];
 
 describe("recordOutput — validation guards run before any DB write", () => {
   it("rejects an invalid date", async () => {
@@ -188,5 +199,77 @@ describe("returnToUpstream — can only return what is waiting", () => {
     const res = await returnToUpstream(form({ fromDept: "Welding", bom: "B", mo: "MO-1", item: "CF", qty: "1", reason: "" }));
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/reason/);
+  });
+});
+
+/* Recording straight onto the WEEKLY plan. It reuses the group distribution
+   (a weekly cell aggregates the orders that delivery day owes), but with its
+   OWN permission and ADD semantics — a weekly cell shows a day's capped,
+   waterfalled slice, so "add N pcs" is the only unambiguous instruction. */
+describe("recordGroupOutput — recording from the weekly plan", () => {
+  const ORDER = { mo: "MO-1", bom: "B-1", planQty: 10, ospCF: 0, ospTC: 0, ospTN: 0, ospCB: 0, excludedItems: null, kva: "1000", rating: null };
+  const weeklyForm = (over: Record<string, string> = {}) =>
+    form({ source: "weekly", dept: "Welding", bom: "B-1", item: "CF", mos: "MO-1", qty: "3", dayISO: "2026-08-11", planLabel: "32", ...over });
+
+  beforeEach(() => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([ORDER]);
+    // 5 already cut, nothing welded — welding headroom is 5
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([{ mo: "MO-1", dept: "Cut", _sum: { qty: 5 } }]);
+  });
+
+  it("asks for the weekly permission — not a tracker column permission", async () => {
+    await recordGroupOutput(weeklyForm());
+    expect(h.requirePerm).toHaveBeenCalledWith("weekly.record");
+  });
+
+  it("refuses before any write when that permission is missing", async () => {
+    h.requirePerm.mockResolvedValue({ error: "You do not have permission for this action — ask the admin." });
+    const res = await recordGroupOutput(weeklyForm());
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/permission/);
+    expect(txWrites).toHaveLength(0);
+  });
+
+  it("writes the pieces marked as coming from the weekly plan", async () => {
+    const res = await recordGroupOutput(weeklyForm());
+    expect(res.ok).toBe(true);
+    expect(txWrites).toHaveLength(1);
+    expect(txWrites[0]).toMatchObject({ dept: "Welding", bom: "B-1", mo: "MO-1", item: "CF", qty: 3, source: "weekly" });
+    // the note names the plan and the delivery day it was recorded against
+    expect(String(txWrites[0].note)).toContain("weekly plan 32");
+    expect(String(txWrites[0].note)).toContain("2026-08-11");
+  });
+
+  it("ADDS pieces — it never reads a 'total' field", async () => {
+    // a total field must not be mistaken for the quantity
+    await recordGroupOutput(weeklyForm({ qty: "2", total: "99" }));
+    expect(txWrites[0]).toMatchObject({ qty: 2 });
+  });
+
+  it("rejects a zero or fractional quantity", async () => {
+    for (const qty of ["0", "-2", "1.5"]) {
+      txWrites.length = 0;
+      const res = await recordGroupOutput(weeklyForm({ qty }));
+      expect(res.ok).toBe(false);
+      expect(txWrites).toHaveLength(0);
+    }
+  });
+
+  it("splits over the orders the day owes, and never past the chain", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([ORDER, { ...ORDER, mo: "MO-2" }]);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      { mo: "MO-1", dept: "Cut", _sum: { qty: 2 } }, // welding headroom 2
+      { mo: "MO-2", dept: "Cut", _sum: { qty: 4 } }, // welding headroom 4
+    ]);
+    const res = await recordGroupOutput(weeklyForm({ mos: "MO-1,MO-2", qty: "5" }));
+    expect(res.ok).toBe(true);
+    expect(txWrites.map((w) => [w.mo, w.qty])).toEqual([["MO-1", 2], ["MO-2", 3]]);
+  });
+
+  it("saves nothing at all when the quantity does not fit the chain", async () => {
+    const res = await recordGroupOutput(weeklyForm({ qty: "9" })); // headroom is 5
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/Only 5 pcs fit/);
+    expect(txWrites).toHaveLength(0);
   });
 });
