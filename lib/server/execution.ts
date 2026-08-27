@@ -8,10 +8,12 @@ import {
   computeCutTranches,
   capTranchesToOrder,
   applyWorklistDateOverrides,
+  diagnosePlanLines,
   type ExecRow,
   type WeldQueueRow,
   type CascadeRow,
   type CutTranche,
+  type PlanLineIssue,
 } from "@/lib/domain/execution";
 import { toISODate } from "@/lib/domain/dates";
 import { applicableItems, ospOf } from "@/lib/domain/constants";
@@ -31,6 +33,9 @@ export interface CutSheet {
   pushed: CascadeRow[]; // sent down from the Plan Tracker (chosen qty) — to be scheduled here
   priority: PriorityLineDTO[]; // ⭐ orders the admin flagged — dedicated table on top
   hidden: HiddenLineDTO[]; // lines the admin removed from this worklist (restorable)
+  /** Lines the CURRENT plan schedules that produced NO row above, each with the
+   *  reason — so "it's in the plan but not on the list" always has an answer. */
+  planIssues: PlanLineIssue[];
 }
 
 /** The Cut screen: TODAY is computed by the app (no day picking).
@@ -198,7 +203,7 @@ export async function getCutSheet(): Promise<CutSheet> {
   const notHidden = <T extends { bom: string; mo: string; item: string }>(rows: T[]) =>
     rows.filter((r) => !hiddenKeys.has(`${r.bom}|${r.mo}|${r.item}`));
 
-  return {
+  const out = {
     planNo,
     today,
     scheduled,
@@ -211,6 +216,29 @@ export async function getCutSheet(): Promise<CutSheet> {
     priority: notHidden(priority),
     hidden: hideRows.map((h) => ({ dept: h.dept, bom: h.bom, mo: h.mo, item: h.item })),
   };
+
+  // …and explain every line of the CURRENT plan that none of the sections above
+  // ended up showing (its day hasn't come, already fabricated, N/A, closed…).
+  const visibleKeys = new Set<string>();
+  for (const rows of [out.dueNow, out.overdue, out.postponed] as { bom: string; mo: string; item: string }[][]) {
+    for (const r of rows) visibleKeys.add(`${r.bom}|${r.mo}|${r.item}`);
+  }
+  for (const rows of [out.remarked, out.unscheduled, out.pushed]) {
+    for (const r of rows) visibleKeys.add(`${r.bom}|${r.mo}|${r.item}`);
+  }
+  const planIssues = diagnosePlanLines({
+    schedules: schedIn,
+    visibleKeys,
+    registryQty: orderQtyOf,
+    deptDone: cutDoneOf,
+    openMos,
+    closedMos: closed,
+    hiddenKeys,
+    day: today,
+    lead: settings.leadCut,
+  });
+
+  return { ...out, planIssues };
 }
 
 export interface ExecutionResult {

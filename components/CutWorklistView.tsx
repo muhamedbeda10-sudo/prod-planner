@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { CutTranche, CascadeRow } from "@/lib/domain/execution";
+import type { CutTranche, CascadeRow, PlanLineIssue } from "@/lib/domain/execution";
 import { CutTrancheTable } from "@/components/CutTrancheTable";
 import { CascadeTable } from "@/components/CascadeTable";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
@@ -10,6 +10,7 @@ import { ReturnsTable } from "@/components/ReturnsTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
 import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
+import { PlanIssuesPanel } from "@/components/PlanIssuesPanel";
 import type { ReturnRowDTO } from "@/lib/server/returns";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import type { PriorityLineDTO, HiddenLineDTO, RunOrderLineDTO } from "@/lib/server/worklistExtras";
@@ -29,6 +30,7 @@ export function CutWorklistView({
   priority = [],
   runOrder = [],
   hidden = [],
+  planIssues = [],
   day,
   planNo,
   returns = [],
@@ -47,6 +49,7 @@ export function CutWorklistView({
   priority?: PriorityLineDTO[]; // ⭐ flagged orders — dedicated table on top
   runOrder?: RunOrderLineDTO[]; // 🎯 the approved simulator sequence
   hidden?: HiddenLineDTO[]; // admin-hidden lines (restore panel)
+  planIssues?: PlanLineIssue[]; // plan lines with no row on screen, each with its reason
   day: string;
   planNo: number | null;
   returns?: ReturnRowDTO[];
@@ -190,6 +193,7 @@ export function CutWorklistView({
       </section>
 
       {/* admin-hidden lines — collapsed restore panel */}
+      {isAdmin && <PlanIssuesPanel rows={planIssues} planNo={planNo} />}
       {isAdmin && <HiddenLinesPanel rows={hidden} />}
     </>
   );
