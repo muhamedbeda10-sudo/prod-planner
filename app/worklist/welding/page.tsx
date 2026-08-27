@@ -3,6 +3,9 @@ import { getSettings } from "@/lib/server/data";
 import { getQueueNotes } from "@/lib/server/queueNotes";
 import { getReturnsFor } from "@/lib/server/returns";
 import { getWorklistExtras, getRunOrderLines } from "@/lib/server/worklistExtras";
+import { getRepairQueue } from "@/lib/server/tanks";
+import { getWorkersFor } from "@/lib/server/workers";
+import { TankRepairPanel } from "@/components/TankRepairPanel";
 import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
 import { CascadeTable } from "@/components/CascadeTable";
@@ -19,7 +22,7 @@ export const dynamic = "force-dynamic";
 export default async function WeldWorklistPage() {
   const today = new Date();
   const dayISO = toISODate(today);
-  const [queue, notes, returns, settings, user, extras, runOrder] = await Promise.all([
+  const [queue, notes, returns, settings, user, extras, runOrder, repairs, welders] = await Promise.all([
     getWeldingQueue(today),
     getQueueNotes(),
     getReturnsFor("Welding"),
@@ -27,6 +30,8 @@ export default async function WeldWorklistPage() {
     getCurrentUser(),
     getWorklistExtras("Welding"),
     getRunOrderLines("Welding"),
+    getRepairQueue(),
+    getWorkersFor("Welding"),
   ]);
   const canEdit = !!user && canEditDept(user, "Welding");
   const isAdmin = !!user?.isAdmin;
@@ -47,8 +52,10 @@ export default async function WeldWorklistPage() {
         capacity={settings.capacityPerItem}
         canEdit={canEdit}
         isAdmin={isAdmin}
+        workers={welders}
         before={
           <>
+            {canEdit && <TankRepairPanel tanks={repairs} welders={welders} />}
             <RunOrderTable rows={runOrder} deptWord="weld" />
             <PriorityOrdersTable rows={extras.priority} deptWord="welded" />
             {pushedRows.length > 0 && (

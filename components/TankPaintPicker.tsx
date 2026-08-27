@@ -1,0 +1,183 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import type { TankDTO } from "@/lib/server/tanks";
+import type { WorkerDTO } from "@/lib/server/workers";
+import { paintTanks, sendTankBackToWelding } from "@/app/tanks/actions";
+import { TankWorkerSelect } from "@/components/TankWorkerSelect";
+
+// Painting a tank is a per-piece job now: pick the tanks, pick the painter,
+// save. Only tanks that PASSED the leak test are listed — that is the gate the
+// new stage exists for, and it is why the plain quantity box is gone for tanks.
+//
+// "Select all" is the answer to painting a whole batch under one name without
+// ticking twenty boxes; the individual ticks are there for the day two painters
+// split the batch.
+
+export function TankPaintPicker({
+  tanks,
+  painters,
+  day,
+  label,
+  onDone,
+}: {
+  tanks: TankDTO[];
+  painters: WorkerDTO[];
+  day: string;
+  /** What the panel is scoped to, e.g. "MO/35301-001 · TN". */
+  label: string;
+  onDone?: () => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [worker, setWorker] = useState("");
+  const [msg, setMsg] = useState("");
+  const [backFor, setBackFor] = useState<string | null>(null);
+
+  const toggle = (serial: string) =>
+    setPicked((s) => {
+      const n = new Set(s);
+      if (n.has(serial)) n.delete(serial);
+      else n.add(serial);
+      return n;
+    });
+
+  const allPicked = tanks.length > 0 && picked.size === tanks.length;
+  const toggleAll = () => setPicked(allPicked ? new Set() : new Set(tanks.map((t) => t.serial)));
+
+  function submit() {
+    if (picked.size === 0) {
+      setMsg("اختار التانكات اللى اتدهنت.");
+      return;
+    }
+    if (!worker) {
+      setMsg("اختار مين اللى دهنها.");
+      return;
+    }
+    const fd = new FormData();
+    fd.set("serials", [...picked].join(","));
+    fd.set("workerId", worker);
+    fd.set("date", day);
+    setMsg("");
+    startTransition(async () => {
+      const res = await paintTanks(fd);
+      if (res.ok) {
+        setPicked(new Set());
+        onDone?.();
+        router.refresh();
+      } else {
+        setMsg(res.error ?? "فشل الحفظ");
+      }
+    });
+  }
+
+  function sendBack(serial: string, reason: string) {
+    const fd = new FormData();
+    fd.set("serial", serial);
+    fd.set("reason", reason);
+    setMsg("");
+    startTransition(async () => {
+      const res = await sendTankBackToWelding(fd);
+      if (res.ok) {
+        setBackFor(null);
+        router.refresh();
+      } else {
+        setMsg(res.error ?? "فشل الحفظ");
+      }
+    });
+  }
+
+  if (tanks.length === 0) {
+    return (
+      <div className="bg-surface border rounded-xl p-3 text-sm text-muted">
+        مفيش تانكات عدّت اختبار التسريب ف {label} لسه. التانك مايتدهنش غير لما يعدّى الاختبار.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-surface border rounded-xl p-3 space-y-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-extrabold">🛢 تانكات جاهزة للدهان — {label}</span>
+        <button type="button" onClick={toggleAll} className="btn btn-sm" disabled={pending}>
+          {allPicked ? "إلغاء الاختيار" : `اختار الكل (${tanks.length})`}
+        </button>
+      </div>
+
+      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        {tanks.map((t) => (
+          <div key={t.serial} className="border rounded-lg px-2 py-1.5">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={picked.has(t.serial)}
+                onChange={() => toggle(t.serial)}
+                disabled={pending}
+                className="accent-[var(--brand,#1b7a43)]"
+              />
+              <code className="ltr font-bold tabnum text-sm">{t.serial}</code>
+              <button
+                type="button"
+                onClick={() => { setBackFor(backFor === t.serial ? null : t.serial); setMsg(""); }}
+                disabled={pending}
+                className="ml-auto text-[11px] text-bad-fg hover:underline whitespace-nowrap"
+                title="التانك ده مش سليم — رجّعه للّحام"
+              >
+                ↩ رجّع للّحام
+              </button>
+            </label>
+            <div className="text-[11px] text-muted mt-0.5">
+              عدّى الاختبار {t.testedISO ?? "—"}
+              {t.testedBy ? ` · ${t.testedBy}` : ""}
+            </div>
+            {backFor === t.serial && (
+              <form
+                className="mt-1.5 flex items-center gap-1.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const reason = String(new FormData(e.currentTarget).get("reason") ?? "").trim();
+                  if (!reason) { setMsg("اكتب السبب."); return; }
+                  sendBack(t.serial, reason);
+                }}
+              >
+                <input
+                  name="reason"
+                  required
+                  placeholder="السبب؟"
+                  className="flex-1 border rounded-md px-2 py-1 text-xs bg-surface"
+                  disabled={pending}
+                />
+                <button type="submit" className="btn btn-sm text-bad-fg" disabled={pending}>
+                  رجّع
+                </button>
+              </form>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t pt-2.5">
+        <TankWorkerSelect
+          workers={painters}
+          value={worker}
+          onChange={setWorker}
+          disabled={pending}
+          placeholder="مين اللى دهنها؟"
+          className="min-w-40"
+          emptyHint="مفيش دهّانين مسجلين — الأدمن يضيفهم من صفحة عمال الإنتاج."
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={pending || painters.length === 0}
+          className="rounded-md px-3 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+        >
+          {pending ? "بيحفظ…" : `سجّل دهان ${picked.size || ""}`}
+        </button>
+        {msg && <span className="text-[11px] text-bad-fg">{msg}</span>}
+      </div>
+    </div>
+  );
+}

@@ -23,7 +23,15 @@ export const PERM_CATEGORIES: PermCategory[] = [
     perms: [
       { key: "cut.edit", label: "Fabrication worklist — record & edit", desc: "Record output on the Fabrication worklist and add/edit/delete Fabrication rows in the Daily Logs" },
       { key: "welding.edit", label: "Welding worklist — record & edit", desc: "Record output, returns and notes on the Welding worklist and edit Welding rows in the Daily Logs" },
+      { key: "leaktest.edit", label: "Leak test — record", desc: "Record the tank leak test (pass / needs repair) and who carried it out, on the stage between Welding and Painting" },
       { key: "painting.edit", label: "Painting worklist — record & edit", desc: "Record output, returns and notes on the Painting worklist and edit Painting rows in the Daily Logs" },
+    ],
+  },
+  {
+    name: "Tanks",
+    perms: [
+      { key: "quality.qa", label: "Quality check — sign a tank off", desc: "Scan a tank's barcode and record the quality verdict (OK / not OK) with a note" },
+      { key: "workers.manage", label: "Workers list — manage", desc: "Add, edit and deactivate the shop-floor workers who appear in the welder / tester / painter dropdowns" },
     ],
   },
   {
@@ -70,6 +78,7 @@ const LEGACY: Record<string, string[]> = {
 export function deptPermKey(dept: string): string {
   if (dept === "Delivered") return "tracker.delivered";
   if (dept === "ShotBlast") return "tracker.shp";
+  if (dept === "LeakTest") return "leaktest.edit";
   return `${dept.toLowerCase()}.edit`;
 }
 

@@ -18,6 +18,9 @@ const h = vi.hoisted(() => {
     },
     revalidatePath: vi.fn(),
     checkOutputChain: vi.fn(),
+    mintTankSerials: vi.fn(),
+    unmintTankSerials: vi.fn(),
+    resolveWorker: vi.fn(),
     requireDeptEdit: vi.fn(),
     requireAdmin: vi.fn(),
     requirePerm: vi.fn(),
@@ -37,6 +40,11 @@ vi.mock("@/lib/server/auth", () => ({
   requireAdmin: h.requireAdmin,
   requirePerm: h.requirePerm,
 }));
+vi.mock("@/lib/server/tanks", () => ({
+  mintTankSerials: h.mintTankSerials,
+  unmintTankSerials: h.unmintTankSerials,
+}));
+vi.mock("@/lib/server/workers", () => ({ resolveWorker: h.resolveWorker }));
 
 import { recordOutput, recordTrackerTotal, recordGroupOutput, returnToUpstream } from "@/app/worklist/actions";
 
@@ -63,11 +71,22 @@ beforeEach(() => {
   h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 0 } });
   h.prisma.masterOrder.findMany.mockResolvedValue([]);
   h.prisma.handoverEntry.groupBy.mockResolvedValue([]);
+  // tanks: a named welder resolves, minting hands back the serials it made
+  h.resolveWorker.mockResolvedValue({ worker: { id: 7, name: "Sayed" } });
+  h.mintTankSerials.mockImplementation(async (_tx: unknown, o: { count: number }) =>
+    Array.from({ length: o.count }, (_, i) => ({ seq: i + 1, serial: `SF-B-000${i + 1}` }))
+  );
+  h.unmintTankSerials.mockResolvedValue({ removed: 0, short: 0 });
   // run the transaction body against a tx whose create() we can inspect
   txWrites.length = 0;
-  h.prisma.$transaction.mockImplementation(async (body: (tx: unknown) => Promise<void>) =>
-    body({ handoverEntry: { create: async ({ data }: { data: Record<string, unknown> }) => { txWrites.push(data); } } })
-  );
+  h.prisma.$transaction.mockImplementation((body: (tx: unknown) => Promise<unknown>) => {
+    const p = body({
+      handoverEntry: { create: async ({ data }: { data: Record<string, unknown> }) => { txWrites.push(data); return { id: 1 }; } },
+      returnEntry: { create: async () => ({ id: 1 }) },
+    });
+    // the real client returns a promise with .catch — the actions rely on it
+    return p;
+  });
 });
 
 /** Every ledger row written inside the last $transaction. */
@@ -127,12 +146,11 @@ describe("recordOutput — validation guards run before any DB write", () => {
     h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "MO-1" });
     const res = await recordOutput(form({ date: DATE, dept: "Cut", bom: "B", mo: "MO-1", item: "CF", qty: "3", planNo: "0" }));
     expect(res).toEqual({ ok: true });
-    expect(h.prisma.handoverEntry.create).toHaveBeenCalledTimes(1);
-    expect(h.prisma.handoverEntry.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ dept: "Cut", bom: "B", mo: "MO-1", item: "CF", qty: 3, planNo: 0, source: "worklist" }),
-      }),
-    );
+    expect(txWrites).toEqual([
+      expect.objectContaining({ dept: "Cut", bom: "B", mo: "MO-1", item: "CF", qty: 3, planNo: 0, source: "worklist" }),
+    ]);
+    // nothing but tanks is tracked per piece
+    expect(h.mintTankSerials).not.toHaveBeenCalled();
     expect(h.revalidatePath).toHaveBeenCalled();
   });
 
@@ -173,9 +191,107 @@ describe("recordTrackerTotal — delta accounting", () => {
     h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 2 } });
     const res = await recordTrackerTotal(form({ dept: "Cut", bom: "B", mo: "MO-1", item: "CF", total: "5" }));
     expect(res).toEqual({ ok: true });
-    expect(h.prisma.handoverEntry.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ qty: 3, source: "tracker" }) }),
+    expect(txWrites).toEqual([expect.objectContaining({ qty: 3, source: "tracker" })]);
+  });
+});
+
+describe("tanks (TN) — the ledger row and the serials move together", () => {
+  beforeEach(() => {
+    h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "MO-1" });
+  });
+
+  const weld = (extra: Record<string, string> = {}) =>
+    form({ date: DATE, dept: "Welding", bom: "B", mo: "MO-1", item: "TN", qty: "3", planNo: "0", workerId: "7", ...extra });
+
+  it("mints one serial per welded tank and hands them back to the technician", async () => {
+    const res = await recordOutput(weld());
+    expect(res.ok).toBe(true);
+    expect(res.serials).toEqual(["SF-B-0001", "SF-B-0002", "SF-B-0003"]);
+    expect(txWrites).toEqual([expect.objectContaining({ dept: "Welding", item: "TN", qty: 3 })]);
+    expect(h.mintTankSerials).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ bom: "B", mo: "MO-1", count: 3, workerId: 7, workerName: "Sayed" }),
     );
+  });
+
+  it("refuses a welded batch with nobody named on it", async () => {
+    const fd = weld();
+    fd.delete("workerId");
+    const res = await recordOutput(fd);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/لحم/);
+    expect(txWrites).toEqual([]);
+  });
+
+  it("refuses a fractional quantity — a tank is a piece, not a weight", async () => {
+    const res = await recordOutput(weld({ qty: "2.5" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/بالقطعة/);
+    expect(txWrites).toEqual([]);
+  });
+
+  it("refuses a tank with no MO — a serial belongs to an order", async () => {
+    const fd = weld();
+    fd.set("mo", "");
+    h.prisma.handoverEntry.findFirst.mockResolvedValue({ id: 1 });
+    const res = await recordOutput(fd);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/أمر تصنيع/);
+  });
+
+  it("passes a rejected welder straight through to the technician", async () => {
+    h.resolveWorker.mockResolvedValue({ error: "متوقف ف قايمة العمال" });
+    const res = await recordOutput(weld());
+    expect(res).toEqual({ ok: false, error: "متوقف ف قايمة العمال" });
+    expect(txWrites).toEqual([]);
+  });
+
+  it("mints from the tracker's Weld cell too, with no welder to name there", async () => {
+    h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 1 } });
+    const res = await recordTrackerTotal(form({ dept: "Welding", bom: "B", mo: "MO-1", item: "TN", total: "4" }));
+    expect(res).toEqual({ ok: true });
+    expect(h.mintTankSerials).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ count: 3, bom: "B", mo: "MO-1" }),
+    );
+  });
+
+  it("refuses to correct the weld total below tanks that already moved on", async () => {
+    h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 5 } });
+    h.unmintTankSerials.mockResolvedValue({ removed: 1, short: 2 });
+    const res = await recordTrackerTotal(form({ dept: "Welding", bom: "B", mo: "MO-1", item: "TN", total: "2" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/2 تانك/);
+  });
+
+  it("sends painting of tanks to the painting worklist, from every quantity box", async () => {
+    const tracker = await recordTrackerTotal(form({ dept: "Painting", bom: "B", mo: "MO-1", item: "TN", total: "3" }));
+    expect(tracker.ok).toBe(false);
+    expect(tracker.error).toMatch(/ورك ليست الدهان/);
+
+    const group = await recordGroupOutput(form({ source: "worklist", dept: "Painting", bom: "B", item: "TN", qty: "3", mos: "MO-1" }));
+    expect(group.ok).toBe(false);
+    expect(group.error).toMatch(/ورك ليست الدهان/);
+    expect(txWrites).toEqual([]);
+  });
+
+  it("sends a bad tank back to welding by serial, not as a quantity", async () => {
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      { dept: "Welding", _sum: { qty: 5 } },
+      { dept: "Painting", _sum: { qty: 0 } },
+    ]);
+    const res = await returnToUpstream(form({ fromDept: "Painting", bom: "B", mo: "MO-1", item: "TN", qty: "1", reason: "leak" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/السيريال/);
+  });
+
+  it("still returns a non-tank component from painting as a quantity", async () => {
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      { dept: "Welding", _sum: { qty: 5 } },
+      { dept: "Painting", _sum: { qty: 0 } },
+    ]);
+    const res = await returnToUpstream(form({ fromDept: "Painting", bom: "B", mo: "MO-1", item: "TC", qty: "1", reason: "chipped" }));
+    expect(res.ok).toBe(true);
   });
 });
 

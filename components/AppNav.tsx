@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   FileDown, GitCompareArrows, Puzzle, CalendarDays, Users, Timer,
-  FlaskConical, MessagesSquare,
+  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -18,15 +18,18 @@ type Item = { href: string; label: string; icon: React.ComponentType<{ size?: nu
 
 // The three department worklists live under ONE "Worklist" tab — clicking it
 // expands them inline in the bar; picking one navigates and collapses again.
+// Leak test sits where it does on the shop floor: between welding and painting.
 const WORKLIST_DEPTS = [
   { href: "/worklist/cut", label: "Fabrication", icon: LaserCutterIcon, perm: "cut.edit" },
   { href: "/worklist/welding", label: "Welding", icon: WeldingIcon, perm: "welding.edit" },
+  { href: "/worklist/leak-test", label: "Leak Test", icon: Droplets, perm: "leaktest.edit" },
   { href: "/worklist/painting", label: "Painting", icon: PowderCoatIcon, perm: "painting.edit" },
 ] as const;
 
 // Tabs after Worklist, ordered by shop-floor flow: work → log → track →
 // review → the overview dashboard sits last (right side).
 const REST: Item[] = [
+  { href: "/barcode", label: "Barcode", icon: QrCode, match: "/barcode" },
   { href: "/handover", label: "Logs", icon: BookOpenCheck },
   { href: "/tracker", label: "Plan Tracker", icon: Table2 },
   { href: "/simulate", label: "Simulator", icon: FlaskConical },
@@ -39,16 +42,20 @@ const REST: Item[] = [
 const DRAWER: Item[] = [
   { href: "/worklist/cut", label: "Fabrication Worklist", icon: LaserCutterIcon },
   { href: "/worklist/welding", label: "Welding Worklist", icon: WeldingIcon },
+  { href: "/worklist/leak-test", label: "Leak Test", icon: Droplets },
   { href: "/worklist/painting", label: "Painting Worklist", icon: PowderCoatIcon },
   ...REST,
 ];
 
-const ADMIN: (Item & { desc: string })[] = [
+// `perm` opens an entry to a non-admin holding that permission — the rest of
+// the list stays admin-only, exactly as it was.
+const ADMIN: (Item & { desc: string; perm?: string })[] = [
   { href: "/orders", label: "Orders Registry", desc: "Master MO list — import monthly plans", icon: ClipboardList },
   { href: "/import", label: "Import Weekly Plan", desc: "Delivery schedule from Excel", icon: FileDown },
   { href: "/reconciliation", label: "Reconciliation", desc: "Compare plan vs previous plan", icon: GitCompareArrows },
   { href: "/boms", label: "BOM Review", desc: "Fix codes & reallocate excess", icon: Puzzle },
   { href: "/calendar", label: "Factory Calendar", desc: "Holidays & shutdown days off", icon: CalendarDays },
+  { href: "/admin/workers", label: "Production Workers", desc: "Who can be credited with welding, testing & painting a tank", icon: HardHat, perm: "workers.manage" },
 ];
 
 export interface NavUser {
@@ -116,7 +123,10 @@ export function AppNav({ user, unreadChat = 0 }: { user: NavUser; unreadChat?: n
     const base = match ?? href;
     return base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");
   };
-  const adminActive = ADMIN.some((l) => isActive(l.href)) || isActive("/admin/users") || isActive("/admin/standard-times");
+  // what THIS account may open from the tools menu
+  const adminLinks = ADMIN.filter((l) => user.isAdmin || (l.perm && user.perms.includes(l.perm)));
+  const showTools = user.isAdmin || adminLinks.length > 0;
+  const adminActive = adminLinks.some((l) => isActive(l.href)) || isActive("/admin/users") || isActive("/admin/standard-times");
 
   return (
     <header className="no-print sticky top-0 z-30 bg-brand text-white shadow-md">
@@ -201,7 +211,7 @@ export function AppNav({ user, unreadChat = 0 }: { user: NavUser; unreadChat?: n
           {/* right cluster */}
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
             {/* desktop: admin tools dropdown — admins only, invisible to everyone else */}
-            {user.isAdmin && (
+            {showTools && (
             <div className="relative shrink-0 hidden md:block" ref={menuRef}>
               <button
                 type="button"
@@ -220,7 +230,7 @@ export function AppNav({ user, unreadChat = 0 }: { user: NavUser; unreadChat?: n
                   role="menu"
                   className="nav-drop absolute right-0 top-[calc(100%+10px)] w-80 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
                 >
-                  {ADMIN.map((l) => (
+                  {adminLinks.map((l) => (
                     <Link
                       key={l.href}
                       href={l.href}
@@ -350,10 +360,10 @@ export function AppNav({ user, unreadChat = 0 }: { user: NavUser; unreadChat?: n
                 </Link>
               ))}
 
-              {user.isAdmin && (
+              {showTools && (
                 <p className="px-4 pt-4 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">Admin tools</p>
               )}
-              {user.isAdmin && ADMIN.map((l) => (
+              {adminLinks.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}

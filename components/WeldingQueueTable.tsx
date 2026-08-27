@@ -12,6 +12,12 @@ import { ReturnsTable } from "@/components/ReturnsTable";
 import type { ReturnRowDTO } from "@/lib/server/returns";
 import { ITEMS, DEFAULTS, deptLabel } from "@/lib/domain/constants";
 import { assessDeliveryRisk } from "@/lib/domain/insights";
+import { TANK_ITEM } from "@/lib/domain/tanks";
+import type { TankDTO } from "@/lib/server/tanks";
+import type { WorkerDTO } from "@/lib/server/workers";
+import { TankWorkerSelect } from "@/components/TankWorkerSelect";
+import { TankSerialsPanel } from "@/components/TankSerialsPanel";
+import { TankPaintPicker } from "@/components/TankPaintPicker";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -27,6 +33,8 @@ export function WeldingQueueTable({
   capacity = DEFAULTS.capacityPerItem,
   canEdit = false,
   isAdmin = false,
+  workers = [],
+  paintableTanks = {},
   before,
   after,
 }: {
@@ -39,6 +47,12 @@ export function WeldingQueueTable({
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
   canEdit?: boolean; // user holds this dept's edit permission — otherwise view-only
   isAdmin?: boolean; // admins may remove a line from the worklist (restorable)
+  /** TANKS ONLY — the people this dept can credit (welders here, painters on
+   *  the painting worklist). Empty on every other component. */
+  workers?: WorkerDTO[];
+  /** PAINTING ONLY — tanks that passed the leak test, keyed by MO. The tank
+   *  rows are painted by picking from these instead of typing a quantity. */
+  paintableTanks?: Record<string, TankDTO[]>;
   before?: React.ReactNode; // page sections rendered inside the scroll area, above the queue (priority / pushed)
   after?: React.ReactNode; // page sections at the bottom of the scroll area (hidden-lines panel)
 }) {
@@ -53,6 +67,12 @@ export function WeldingQueueTable({
   // search + item card filter survive navigating away and back
   const [q, setQ] = useSavedFilter(`queue.${dept}.q`);
   const [item, setItem] = useSavedFilter(`queue.${dept}.item`);
+  // tanks: the welder picked for a line's batch, the serials the last save
+  // minted (shown so they can be written on the steel), and which line has its
+  // tank picker open on the painting worklist
+  const [worker, setWorker] = useState<Record<string, string>>({});
+  const [minted, setMinted] = useState<Record<string, string[]>>({});
+  const [openTanks, setOpenTanks] = useState<string | null>(null);
   const [openNotes, setOpenNotes] = useState<string | null>(null); // note panel per line (bom|mo|item)
   const [noteMsg, setNoteMsg] = useState("");
   const [editingNote, setEditingNote] = useState<number | null>(null);
@@ -141,6 +161,14 @@ export function WeldingQueueTable({
 
   const keyOf = (r: WeldQueueRow) => `${r.planNo}|${r.bom}|${r.mo}|${r.item}`;
 
+  // Tanks are the one component tracked piece by piece: welding them mints a
+  // serial each (so the line asks who welded them), and painting them means
+  // picking the individual tanks that passed the leak test — a plain quantity
+  // could say neither, so the tank rows get their own controls.
+  const mintsTanks = (r: { item: string; mo: string }) => dept === "Welding" && r.item === TANK_ITEM && !!r.mo;
+  const picksTanks = (r: { item: string; mo: string }) => dept === "Painting" && r.item === TANK_ITEM && !!r.mo;
+  const workerName = (k: string) => workers.find((w) => String(w.id) === worker[k])?.name ?? null;
+
   // per-item workload — the WHOLE queue (unfiltered): what's waiting per component
   const perItem = ITEMS.map((it) => {
     const lines = rows.filter((r) => r.item === it);
@@ -184,6 +212,11 @@ export function WeldingQueueTable({
       setMsg((s) => ({ ...s, [k]: `Only ${r.available} available from ${upLabel}` }));
       return;
     }
+    // tanks are minted one serial per piece — the batch needs a named welder
+    if (mintsTanks(r) && !worker[k]) {
+      setMsg((s) => ({ ...s, [k]: "اختار مين اللى لحم التانكات دى." }));
+      return;
+    }
     const fd = new FormData();
     fd.set("date", day);
     fd.set("dept", dept);
@@ -192,11 +225,13 @@ export function WeldingQueueTable({
     fd.set("item", r.item);
     fd.set("qty", String(n));
     fd.set("planNo", String(r.planNo));
+    if (worker[k]) fd.set("workerId", worker[k]);
     startTransition(async () => {
       const res = await recordOutput(fd);
       if (res.ok) {
         setQty((s) => ({ ...s, [k]: "" }));
         setMsg((s) => ({ ...s, [k]: "" }));
+        if (res.serials) setMinted((s) => ({ ...s, [k]: res.serials! }));
         setSavedFlash((s) => ({ ...s, [k]: true }));
         setTimeout(() => setSavedFlash((s) => ({ ...s, [k]: false })), 1800);
         router.refresh();
@@ -219,6 +254,10 @@ export function WeldingQueueTable({
       setMsg((s) => ({ ...s, [k]: `Only ${gAvailable} available from ${upLabel}` }));
       return;
     }
+    if (dept === "Welding" && gItem === TANK_ITEM && !worker[k]) {
+      setMsg((s) => ({ ...s, [k]: "اختار مين اللى لحم التانكات دى." }));
+      return;
+    }
     const fd = new FormData();
     fd.set("source", "worklist");
     fd.set("dept", dept);
@@ -227,11 +266,13 @@ export function WeldingQueueTable({
     fd.set("qty", String(n));
     // BOM-level lines (no MO) can't take part in the split — real MOs only
     fd.set("mos", [...new Set(members.map((m) => m.mo).filter(Boolean))].join(","));
+    if (worker[k]) fd.set("workerId", worker[k]);
     startTransition(async () => {
       const res = await recordGroupOutput(fd);
       if (res.ok) {
         setQty((s) => ({ ...s, [k]: "" }));
         setMsg((s) => ({ ...s, [k]: "" }));
+        if (res.serials) setMinted((s) => ({ ...s, [k]: res.serials! }));
         setSavedFlash((s) => ({ ...s, [k]: true }));
         setTimeout(() => setSavedFlash((s) => ({ ...s, [k]: false })), 1800);
         router.refresh();
@@ -331,12 +372,29 @@ export function WeldingQueueTable({
               <span className="pill pill-ok">✓ Cleared</span>
             ) : !canEdit ? (
               <span className="text-muted text-xs" title="View only — you don't have this department's edit permission">—</span>
+            ) : (dept === "Welding" || dept === "Painting") && r.item === TANK_ITEM && !r.mo ? (
+              // a serial carries its order — a BOM-level line has no MO to carry
+              <span className="text-[11px] text-muted whitespace-normal" title="التانك بياخد سيريال مربوط بأمر تصنيع">
+                التانكات بتتسجل تحت أمر تصنيع — السطر ده مالهوش MO.
+              </span>
+            ) : picksTanks(r) ? (
+              // painting a tank = picking the tanks that passed the leak test
+              <button
+                type="button"
+                onClick={() => setOpenTanks(openTanks === k ? null : k)}
+                disabled={pending}
+                className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+                title="التانكات بتتدهن بالسيريال — اختار التانكات ومين دهنها"
+              >
+                🛢 اختار التانكات ({(paintableTanks[r.mo] ?? []).length})
+              </button>
             ) : (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap justify-center">
                 <input
                   type="number"
                   min={1}
                   max={r.available}
+                  step={mintsTanks(r) ? 1 : undefined}
                   placeholder="qty"
                   value={qty[k] ?? ""}
                   onChange={(e) => setQty((s) => ({ ...s, [k]: e.target.value }))}
@@ -344,6 +402,16 @@ export function WeldingQueueTable({
                   className="w-16 border rounded-md px-1.5 py-1 text-center font-bold tabnum"
                   disabled={pending}
                 />
+                {mintsTanks(r) && (
+                  <TankWorkerSelect
+                    workers={workers}
+                    value={worker[k] ?? ""}
+                    onChange={(v) => setWorker((s) => ({ ...s, [k]: v }))}
+                    disabled={pending}
+                    placeholder="مين اللحّام؟"
+                    emptyHint="مفيش لحّامين مسجلين — الأدمن يضيفهم من صفحة عمال الإنتاج."
+                  />
+                )}
                 <button
                   type="button"
                   onClick={() => save(r)}
@@ -376,6 +444,31 @@ export function WeldingQueueTable({
             </button>
           </td>
         </tr>
+        {minted[k] && minted[k].length > 0 && (
+          <tr className={inGroup ? "border-x-2 border-brand" : ""}>
+            <td colSpan={cols} className="p-3 bg-brand-light/20 border-y">
+              <TankSerialsPanel
+                serials={minted[k]}
+                welders={workers}
+                batchWelder={workerName(k)}
+                onClose={() => setMinted((s) => ({ ...s, [k]: [] }))}
+              />
+            </td>
+          </tr>
+        )}
+        {openTanks === k && picksTanks(r) && (
+          <tr className={inGroup ? "border-x-2 border-brand" : ""}>
+            <td colSpan={cols} className="p-3 bg-brand-light/20 border-y">
+              <TankPaintPicker
+                tanks={paintableTanks[r.mo] ?? []}
+                painters={workers}
+                day={day}
+                label={`${r.mo} · ${r.bom}`}
+                onDone={() => setOpenTanks(null)}
+              />
+            </td>
+          </tr>
+        )}
         {openReturn === noteKey && (
           <tr className={inGroup ? "border-x-2 border-brand" : ""}>
             <td colSpan={cols} className="p-3 bg-bad-bg/30 border-y">
@@ -680,13 +773,18 @@ export function WeldingQueueTable({
                       )}
                     </td>
                     <td className="p-2 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      {canEdit && gAvailable > 0 && members.some((m) => m.mo) ? (
+                      {/* painting tanks happens per PIECE — the group row can
+                          only send the user into the MOs, where the picker is */}
+                      {dept === "Painting" && gItem === TANK_ITEM ? (
+                        <span className="text-xs text-muted">{open ? "▲ اقفل" : "▼ افتح الأوامر"}</span>
+                      ) : canEdit && gAvailable > 0 && members.some((m) => m.mo) ? (
                         <>
-                          <div className="flex items-center gap-1.5 justify-center">
+                          <div className="flex items-center gap-1.5 justify-center flex-wrap">
                             <input
                               type="number"
                               min={1}
                               max={gAvailable}
+                              step={gItem === TANK_ITEM ? 1 : undefined}
                               placeholder="qty"
                               value={qty[`g|${gk}`] ?? ""}
                               onChange={(e) => setQty((s) => ({ ...s, [`g|${gk}`]: e.target.value }))}
@@ -695,6 +793,16 @@ export function WeldingQueueTable({
                               disabled={pending}
                               title="Record on the WHOLE BOM — the quantity is distributed over its MOs in order"
                             />
+                            {dept === "Welding" && gItem === TANK_ITEM && (
+                              <TankWorkerSelect
+                                workers={workers}
+                                value={worker[`g|${gk}`] ?? ""}
+                                onChange={(v) => setWorker((s) => ({ ...s, [`g|${gk}`]: v }))}
+                                disabled={pending}
+                                placeholder="مين اللحّام؟"
+                                emptyHint="مفيش لحّامين مسجلين."
+                              />
+                            )}
                             <button
                               type="button"
                               onClick={() => saveGroup(gk, gBom, gItem, members, gAvailable)}
@@ -717,6 +825,18 @@ export function WeldingQueueTable({
                       {openNoteCount > 0 ? <span className="pill pill-bad">📝 {openNoteCount}</span> : <span className="text-muted text-xs">—</span>}
                     </td>
                   </tr>
+                  {minted[`g|${gk}`] && minted[`g|${gk}`].length > 0 && (
+                    <tr className="border-x-2 border-brand">
+                      <td colSpan={cols} className="p-3 bg-brand-light/20 border-y">
+                        <TankSerialsPanel
+                          serials={minted[`g|${gk}`]}
+                          welders={workers}
+                          batchWelder={workerName(`g|${gk}`)}
+                          onClose={() => setMinted((s) => ({ ...s, [`g|${gk}`]: [] }))}
+                        />
+                      </td>
+                    </tr>
+                  )}
                   {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
                 </Fragment>
               );
