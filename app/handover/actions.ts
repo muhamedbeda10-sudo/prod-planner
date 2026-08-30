@@ -9,6 +9,7 @@ import { getKnownBoms } from "@/lib/server/handover";
 import { importHandoverFile, type HandoverImportResult } from "@/lib/server/importHandover";
 import { checkOutputChain } from "@/lib/server/outputGuard";
 import { requireDeptEdit, requirePerm } from "@/lib/server/auth";
+import { syncTanksToLedgerQty } from "@/lib/server/tanks";
 
 export interface ActionResult {
   ok: boolean;
@@ -18,10 +19,14 @@ export interface ActionResult {
 /** The log is the single source of truth — any change to it must refresh every
  *  screen that derives balances from it (worklists, tracker, dashboard, trace). */
 function revalidateEverywhere() {
-  for (const p of ["/handover", "/", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/tracker", "/trace", "/report", "/boms"]) {
+  for (const p of ["/handover", "/", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/leak-test", "/barcode", "/tracker", "/trace", "/report", "/boms"]) {
     revalidatePath(p);
   }
 }
+
+/** Thrown inside a transaction to roll it back with a message the user can act
+ *  on, instead of a raw constraint error. */
+class LedgerSyncError extends Error {}
 
 export async function importHandoverAction(formData: FormData): Promise<HandoverImportResult> {
   const guard = await requirePerm("logs.import");
@@ -117,7 +122,20 @@ export async function updateHandover(formData: FormData): Promise<ActionResult> 
   });
   if (chainError) return { ok: false, error: chainError };
 
-  await prisma.handoverEntry.update({ where: { id }, data });
+  // TANKS are tracked per piece, so a smaller quantity has to give pieces back
+  // too — otherwise the barcode tab keeps listing tanks this row no longer
+  // accounts for.
+  const failure = await prisma
+    .$transaction(async (tx) => {
+      await tx.handoverEntry.update({ where: { id }, data });
+      const sync = await syncTanksToLedgerQty(tx, entry, qty);
+      if (sync.error) throw new LedgerSyncError(sync.error);
+    })
+    .catch((e) => {
+      if (e instanceof LedgerSyncError) return e.message;
+      throw e;
+    });
+  if (failure) return { ok: false, error: failure };
   revalidateEverywhere();
   return { ok: true };
 }
@@ -169,7 +187,20 @@ export async function deleteHandover(formData: FormData): Promise<ActionResult> 
   });
   if (chainError) return { ok: false, error: chainError };
 
-  await prisma.handoverEntry.delete({ where: { id } });
+  // deleting the row takes its tanks with it: a welding row's tanks stop
+  // existing, a painting row's tanks go back to "passed the leak test" and
+  // leave the barcode tab
+  const failure = await prisma
+    .$transaction(async (tx) => {
+      const sync = await syncTanksToLedgerQty(tx, entry, 0);
+      if (sync.error) throw new LedgerSyncError(sync.error);
+      await tx.handoverEntry.delete({ where: { id } });
+    })
+    .catch((e) => {
+      if (e instanceof LedgerSyncError) return e.message;
+      throw e;
+    });
+  if (failure) return { ok: false, error: failure };
   revalidateEverywhere();
   return { ok: true };
 }

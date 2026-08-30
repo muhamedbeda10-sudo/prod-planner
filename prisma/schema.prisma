@@ -525,6 +525,14 @@ model TankUnit {
 
   status String @default("welded") // welded | repair | tested | painted (lib/domain/tanks.ts)
 
+  // The daily-log rows this tank belongs to. Without them, deleting a log row
+  // would leave the tank behind — still sitting in the barcode tab claiming a
+  // stage the ledger no longer records. Nullable because a row can be deleted
+  // out from under a tank, and because tanks made before this link existed
+  // fall back to matching by MO and status.
+  weldLedgerId  Int?
+  paintLedgerId Int?
+
   weldedAt    DateTime
   weldedById  Int?
   weldedBy    String?
@@ -558,6 +566,8 @@ model TankUnit {
   events TankEvent[]
 
   @@unique([bom, seq])
+  @@index([weldLedgerId])
+  @@index([paintLedgerId])
   @@index([mo, status])
   @@index([status])
   @@index([bom])

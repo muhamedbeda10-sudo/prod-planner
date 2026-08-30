@@ -153,6 +153,8 @@ export async function mintTankSerials(
     planNo: number;
     count: number;
     date: Date;
+    /** The daily-log row these tanks were welded on. */
+    ledgerId?: number | null;
     workerId?: number | null;
     workerName?: string | null;
     workerStamp?: string | null;
@@ -187,6 +189,7 @@ export async function mintTankSerials(
         seq: m.seq,
         planNo: opts.planNo,
         status: "welded",
+        weldLedgerId: opts.ledgerId ?? null,
         weldedAt: opts.date,
         weldedById: opts.workerId ?? null,
         weldedBy: opts.workerName ?? null,
@@ -342,4 +345,139 @@ export async function getBaseUrl(): Promise<string> {
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
   return host ? `${proto}://${host}` : "";
+}
+
+
+// ---- keeping the tank layer in step with the daily log ----
+//
+// The ledger and the tanks are two views of the same work, so a change to one
+// has to reach the other. Editing or deleting a log row used to touch only the
+// quantity, which left tanks stranded: still painted, still listed in the
+// barcode tab, for a stage nothing recorded any more.
+
+/** The tanks a log row is responsible for, newest first.
+ *  Rows written before the link existed fall back to matching on the MO and the
+ *  stage's status, which is what the arithmetic already implied. */
+async function tanksOfLedgerRow(
+  tx: Prisma.TransactionClient,
+  entry: { id: number; dept: string; mo: string | null; item: string; qty: number }
+): Promise<{ id: number; serial: string; status: string }[]> {
+  const painting = entry.dept === "Painting";
+  const linked = await tx.tankUnit.findMany({
+    where: painting ? { paintLedgerId: entry.id } : { weldLedgerId: entry.id },
+    orderBy: { seq: "desc" },
+    select: { id: true, serial: true, status: true },
+  });
+  if (linked.length > 0 || !entry.mo) return linked;
+
+  return tx.tankUnit.findMany({
+    where: {
+      mo: entry.mo,
+      ...(painting ? { status: TANK_QUEUE_STATUS.finished } : { weldLedgerId: null }),
+    },
+    orderBy: { seq: "desc" },
+    take: Math.max(0, Math.trunc(entry.qty)),
+    select: { id: true, serial: true, status: true },
+  });
+}
+
+export interface TankSyncOutcome {
+  /** Set when the change cannot go through; the caller shows it and rolls back. */
+  error?: string;
+  removed?: number;
+  unpainted?: number;
+}
+
+/**
+ * Bring the tank layer down to `keep` tanks for one log row — 0 when the row is
+ * being deleted, or the new quantity when it is being edited down.
+ *
+ * A PAINTING row gives its extra tanks back to "passed the leak test": the tank
+ * still exists and is still sound, it simply is not painted any more, so it
+ * leaves the barcode tab and returns to the painting worklist.
+ *
+ * A WELDING row deletes its extra tanks outright — that is what un-welding a
+ * piece means. Tanks that have moved on stop it: their later stage is a fact
+ * this row cannot quietly erase, and the caller is told to undo that first.
+ */
+export async function syncTanksToLedgerQty(
+  tx: Prisma.TransactionClient,
+  entry: { id: number; dept: string; mo: string | null; item: string; qty: number },
+  keep: number
+): Promise<TankSyncOutcome> {
+  if (entry.item !== TANK_ITEM) return {};
+  if (entry.dept !== "Welding" && entry.dept !== "Painting") return {};
+
+  const tanks = await tanksOfLedgerRow(tx, entry);
+  const drop = tanks.slice(0, Math.max(0, tanks.length - Math.max(0, Math.trunc(keep))));
+  if (drop.length === 0) return {};
+
+  if (entry.dept === "Painting") {
+    await tx.tankUnit.updateMany({
+      where: { id: { in: drop.map((t) => t.id) } },
+      data: {
+        status: TANK_QUEUE_STATUS.paintable,
+        paintLedgerId: null,
+        paintedAt: null,
+        paintedById: null,
+        paintedBy: null,
+      },
+    });
+    for (const t of drop) {
+      await tx.tankEvent.create({
+        data: { tankId: t.id, kind: "unpainted", note: "the painting record was removed from the daily log" },
+      });
+    }
+    return { unpainted: drop.length };
+  }
+
+  const stuck = drop.filter((t) => t.status !== TANK_QUEUE_STATUS.leakTest);
+  if (stuck.length > 0) {
+    return {
+      error:
+        `${stuck.length} of these tanks have already moved past welding (${stuck.map((t) => t.serial).join(", ")}). ` +
+        "Undo the later stage first — the leak test or the painting — then remove this row.",
+    };
+  }
+  await tx.tankUnit.deleteMany({ where: { id: { in: drop.map((t) => t.id) } } });
+  return { removed: drop.length };
+}
+
+/**
+ * Remove tanks from the barcode tab and take their quantity back off the daily
+ * log in the same breath. A log row usually covers several tanks, so its
+ * quantity is decremented and the row is only deleted once nothing is left on
+ * it — removing one tank must not wipe a colleague's four.
+ */
+export async function deleteTanksWithRecords(
+  tx: Prisma.TransactionClient,
+  serials: string[]
+): Promise<{ deleted: number; ledgerRowsTouched: number }> {
+  const tanks = await tx.tankUnit.findMany({ where: { serial: { in: serials } } });
+  if (tanks.length === 0) return { deleted: 0, ledgerRowsTouched: 0 };
+
+  // how much each log row loses, counted before anything is removed
+  const debit = new Map<number, number>();
+  for (const t of tanks) {
+    for (const id of [t.weldLedgerId, t.paintLedgerId]) {
+      if (id != null) debit.set(id, (debit.get(id) ?? 0) + 1);
+    }
+  }
+
+  await tx.tankUnit.deleteMany({ where: { id: { in: tanks.map((t) => t.id) } } });
+
+  for (const [ledgerId, qty] of debit) {
+    const row = await tx.handoverEntry.findUnique({ where: { id: ledgerId } });
+    if (!row) continue; // already gone — nothing to take back
+    const left = row.qty - qty;
+    if (left > 0) {
+      await tx.handoverEntry.update({
+        where: { id: ledgerId },
+        data: { qty: left, note: `${row.note ? `${row.note} · ` : ""}${qty} tank(s) removed` },
+      });
+    } else {
+      await tx.handoverEntry.delete({ where: { id: ledgerId } });
+    }
+  }
+  return { deleted: tanks.length, ledgerRowsTouched: debit.size };
 }

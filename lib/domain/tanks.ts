@@ -44,6 +44,7 @@ export const TANK_EVENT_KINDS = {
   "leak-pass": { label: "Passed the leak test", tone: "pill-ok" },
   "leak-repair": { label: "Failed the leak test", tone: "pill-bad" },
   painted: { label: "Painted", tone: "pill-ok" },
+  unpainted: { label: "Painting record removed", tone: "pill-warn" },
   "qa-ok": { label: "Quality check — OK", tone: "pill-ok" },
   "qa-not-ok": { label: "Quality check — not OK", tone: "pill-bad" },
 } as const;

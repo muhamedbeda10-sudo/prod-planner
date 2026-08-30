@@ -114,12 +114,12 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     // the ledger row and the tanks' serials are ONE write: a serial must never
     // survive a welding record that failed to save, nor the other way round
     const serials = await prisma.$transaction(async (tx) => {
-      await tx.handoverEntry.create({
+      const ledger = await tx.handoverEntry.create({
         data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist", createdBy: guard.user?.name ?? null },
       });
       if (!mintsTanks) return [];
       const minted = await mintTankSerials(tx, {
-        bom, mo, planNo, count: qty, date,
+        bom, mo, planNo, count: qty, date, ledgerId: ledger.id,
         workerId: welder.worker?.id ?? null,
         workerName: welder.worker?.name ?? null,
         workerStamp: welder.worker?.stamp ?? null,
@@ -190,7 +190,7 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     // the ledger can never disagree about how many tanks exist
     const syncsTanks = item === TANK_ITEM && dept === "Welding";
     const failure = await prisma.$transaction(async (tx) => {
-      await tx.handoverEntry.create({
+      const ledger = await tx.handoverEntry.create({
         data: {
           date: today, dept, bom, mo, item, qty: delta, planNo, source: "tracker",
           // negative corrections say exactly what happened for the audit trail
@@ -202,7 +202,7 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
       if (delta > 0) {
         // the cell has no room to name a welder — the tank page and the
         // welding worklist can fill it in afterwards
-        await mintTankSerials(tx, { bom, mo, planNo, count: delta, date: today, byUser: guard.user?.name ?? null });
+        await mintTankSerials(tx, { bom, mo, planNo, count: delta, date: today, ledgerId: ledger.id, byUser: guard.user?.name ?? null });
         return null;
       }
       const { short } = await unmintTankSerials(tx, { bom, mo, count: -delta });
@@ -406,7 +406,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     const outcome = await prisma.$transaction(async (tx) => {
       const minted: string[] = [];
       for (const [mo, q] of alloc) {
-        await tx.handoverEntry.create({
+        const ledger = await tx.handoverEntry.create({
           data: {
             date: today, dept, bom, mo, item, qty: q, planNo,
             source: source === "tracker" ? "tracker" : source === "weekly" ? "weekly" : "worklist",
@@ -421,7 +421,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
         if (!syncsTanks) continue;
         if (q > 0) {
           const batch = await mintTankSerials(tx, {
-            bom, mo, planNo, count: q, date: today,
+            bom, mo, planNo, count: q, date: today, ledgerId: ledger.id,
             workerId: groupWelder.worker?.id ?? null,
             workerName: groupWelder.worker?.name ?? null,
             workerStamp: groupWelder.worker?.stamp ?? null,

@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { flushSync } from "react-dom";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { TankDTO } from "@/lib/server/tanks";
 import { QrSvg } from "@/components/QrSvg";
 import { SearchBox, SelectFilter, FilterBar } from "@/components/FilterControls";
 import { tankPath, tankQrPayload } from "@/lib/domain/tanks";
+import { deleteTanks } from "@/app/tanks/actions";
 
 // Every tank that finished all its stages, waiting for its sticker.
 //
@@ -40,7 +42,20 @@ function Sticker({ tank, baseUrl }: { tank: TankDTO; baseUrl: string }) {
   );
 }
 
-export function BarcodeSheet({ tanks, baseUrl }: { tanks: TankDTO[]; baseUrl: string }) {
+export function BarcodeSheet({
+  tanks,
+  baseUrl,
+  isAdmin = false,
+}: {
+  tanks: TankDTO[];
+  baseUrl: string;
+  /** Removing a tank takes quantity off two departments' ledgers and cannot be
+   *  undone, so only an admin is offered it. */
+  isAdmin?: boolean;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState("");
   const [q, setQ] = useState("");
   const [mo, setMo] = useState("");
   const [qa, setQa] = useState("");
@@ -88,6 +103,36 @@ export function BarcodeSheet({ tanks, baseUrl }: { tanks: TankDTO[]; baseUrl: st
     setPrinting(null);
   }
 
+  function remove(serials: string[], what: string) {
+    if (serials.length === 0) return;
+    if (
+      !window.confirm(
+        `Remove ${what} from the records?\n\n` +
+          "The tank, its whole history, and the quantity it added to the daily log all go. " +
+          "The welding and painting rows it belongs to lose that quantity, and any row left at zero is deleted.\n\n" +
+          "This cannot be undone."
+      )
+    ) {
+      return;
+    }
+    const fd = new FormData();
+    fd.set("serials", serials.join(","));
+    setMsg("");
+    startTransition(async () => {
+      const res = await deleteTanks(fd);
+      if (res.ok) {
+        setPicked((s) => {
+          const n = new Set(s);
+          for (const x of serials) n.delete(x);
+          return n;
+        });
+        router.refresh();
+      } else {
+        setMsg(res.error ?? "Failed to remove");
+      }
+    });
+  }
+
   return (
     <>
       <FilterBar
@@ -119,6 +164,18 @@ export function BarcodeSheet({ tanks, baseUrl }: { tanks: TankDTO[]; baseUrl: st
         >
           🖨 Print sheet ({picked.size})
         </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => remove([...picked], `${picked.size} tank(s)`)}
+            disabled={pending || picked.size === 0}
+            className="btn btn-sm text-bad-fg"
+            title="Remove the selected tanks and take their quantity back off the daily log"
+          >
+            🗑 Remove ({picked.size})
+          </button>
+        )}
+        {msg && <span className="text-[11px] text-bad-fg whitespace-normal">{msg}</span>}
       </FilterBar>
 
       {/* ---- the screen list ---- */}
@@ -135,12 +192,13 @@ export function BarcodeSheet({ tanks, baseUrl }: { tanks: TankDTO[]; baseUrl: st
               <th className="p-2">Painted on</th>
               <th className="p-2 text-center">Quality</th>
               <th className="p-2 text-center">Print</th>
+              {isAdmin && <th className="p-2 text-center">Remove</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-4 text-center text-muted">
+                <td colSpan={isAdmin ? 10 : 9} className="p-4 text-center text-muted">
                   {tanks.length === 0
                     ? "No tank has finished every stage yet — a tank arrives here after painting."
                     : "No tanks match the filters."}
@@ -184,6 +242,19 @@ export function BarcodeSheet({ tanks, baseUrl }: { tanks: TankDTO[]; baseUrl: st
                     🖨 Sticker
                   </button>
                 </td>
+                {isAdmin && (
+                  <td className="p-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => remove([t.serial], t.serial)}
+                      disabled={pending}
+                      className="btn btn-sm text-bad-fg"
+                      title="Remove this tank and take its quantity back off the daily log"
+                    >
+                      🗑
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
