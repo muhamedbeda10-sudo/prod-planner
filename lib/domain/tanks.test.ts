@@ -97,15 +97,15 @@ describe("blockedReason", () => {
   });
 
   it("explains an untested tank reaching painting", () => {
-    expect(blockedReason("paint", "welded")).toMatch(/اختبار/);
+    expect(blockedReason("paint", "welded")).toMatch(/leak test/);
   });
 
   it("explains a failed tank reaching painting", () => {
-    expect(blockedReason("paint", "repair")).toMatch(/إصلاح/);
+    expect(blockedReason("paint", "repair")).toMatch(/needs repair/);
   });
 
   it("refuses a re-test before the repair is confirmed", () => {
-    expect(blockedReason("leak-test", "repair")).toMatch(/إصلاح/);
+    expect(blockedReason("leak-test", "repair")).toMatch(/needs its repair first/);
   });
 
   it("refuses testing or painting a tank twice", () => {

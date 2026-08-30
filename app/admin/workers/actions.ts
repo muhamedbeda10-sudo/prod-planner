@@ -34,10 +34,10 @@ export async function createWorker(formData: FormData): Promise<WorkerActionResu
   if (guard.error) return { ok: false, error: guard.error };
 
   const { name, code, depts } = readForm(formData);
-  if (!name) return { ok: false, error: "اكتب اسم العامل." };
-  if (!depts) return { ok: false, error: "اختار القسم اللى بيشتغل فيه على الأقل." };
+  if (!name) return { ok: false, error: "Enter the worker's name." };
+  if (!depts) return { ok: false, error: "Pick at least one stage they work in." };
   if (await prisma.worker.findUnique({ where: { name } })) {
-    return { ok: false, error: "فيه عامل بنفس الاسم موجود بالفعل." };
+    return { ok: false, error: "A worker with this name already exists." };
   }
 
   await prisma.worker.create({ data: { name, code: code || null, depts } });
@@ -50,13 +50,13 @@ export async function updateWorker(formData: FormData): Promise<WorkerActionResu
   if (guard.error) return { ok: false, error: guard.error };
 
   const id = Number(formData.get("id"));
-  if (!Number.isInteger(id)) return { ok: false, error: "عامل غير صحيح." };
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid worker." };
   const { name, code, depts } = readForm(formData);
-  if (!name) return { ok: false, error: "اكتب اسم العامل." };
-  if (!depts) return { ok: false, error: "اختار القسم اللى بيشتغل فيه على الأقل." };
+  if (!name) return { ok: false, error: "Enter the worker's name." };
+  if (!depts) return { ok: false, error: "Pick at least one stage they work in." };
 
   const clash = await prisma.worker.findUnique({ where: { name } });
-  if (clash && clash.id !== id) return { ok: false, error: "فيه عامل تاني بنفس الاسم." };
+  if (clash && clash.id !== id) return { ok: false, error: "Another worker already has this name." };
 
   await prisma.worker.update({ where: { id }, data: { name, code: code || null, depts } });
   revalidateWorkers();
@@ -71,7 +71,7 @@ export async function setWorkerActive(formData: FormData): Promise<WorkerActionR
 
   const id = Number(formData.get("id"));
   const active = formData.get("active") === "on" || formData.get("active") === "true";
-  if (!Number.isInteger(id)) return { ok: false, error: "عامل غير صحيح." };
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid worker." };
 
   await prisma.worker.update({ where: { id }, data: { active } });
   revalidateWorkers();
@@ -85,7 +85,7 @@ export async function deleteWorker(formData: FormData): Promise<WorkerActionResu
   if (guard.error) return { ok: false, error: guard.error };
 
   const id = Number(formData.get("id"));
-  if (!Number.isInteger(id)) return { ok: false, error: "عامل غير صحيح." };
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid worker." };
 
   const [onTanks, onEvents] = await Promise.all([
     prisma.tankUnit.count({
@@ -96,7 +96,7 @@ export async function deleteWorker(formData: FormData): Promise<WorkerActionResu
   if (onTanks > 0 || onEvents > 0) {
     return {
       ok: false,
-      error: `اسمه متسجّل على ${onTanks} تانك و${onEvents} حركة ف سجل التانكات — اعمله «إيقاف» بدل ما تمسحه علشان السجل مايضيعش.`,
+      error: `Their name is on ${onTanks} tank(s) and ${onEvents} history entries — deactivate them instead of deleting, so the record survives.`,
     };
   }
 

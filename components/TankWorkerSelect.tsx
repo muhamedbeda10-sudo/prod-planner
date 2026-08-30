@@ -11,9 +11,9 @@ export function TankWorkerSelect({
   value,
   onChange,
   disabled,
-  placeholder = "مين اللى عملها؟",
+  placeholder = "Who did it?",
   className = "",
-  emptyHint = "مفيش أسامي مسجلة — الأدمن يضيفهم من صفحة عمال الإنتاج.",
+  emptyHint = "No names on file — the admin adds them under Production Workers.",
 }: {
   workers: WorkerDTO[];
   value: string;

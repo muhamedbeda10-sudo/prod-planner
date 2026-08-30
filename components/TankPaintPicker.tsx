@@ -49,11 +49,11 @@ export function TankPaintPicker({
 
   function submit() {
     if (picked.size === 0) {
-      setMsg("اختار التانكات اللى اتدهنت.");
+      setMsg("Pick the tanks that were painted.");
       return;
     }
     if (!worker) {
-      setMsg("اختار مين اللى دهنها.");
+      setMsg("Pick who painted them.");
       return;
     }
     const fd = new FormData();
@@ -68,7 +68,7 @@ export function TankPaintPicker({
         onDone?.();
         router.refresh();
       } else {
-        setMsg(res.error ?? "فشل الحفظ");
+        setMsg(res.error ?? "Failed to save");
       }
     });
   }
@@ -84,7 +84,7 @@ export function TankPaintPicker({
         setBackFor(null);
         router.refresh();
       } else {
-        setMsg(res.error ?? "فشل الحفظ");
+        setMsg(res.error ?? "Failed to save");
       }
     });
   }
@@ -92,7 +92,7 @@ export function TankPaintPicker({
   if (tanks.length === 0) {
     return (
       <div className="bg-surface border rounded-xl p-3 text-sm text-muted">
-        مفيش تانكات عدّت اختبار التسريب ف {label} لسه. التانك مايتدهنش غير لما يعدّى الاختبار.
+        No tank on {label} has passed the leak test yet. A tank cannot be painted until it does.
       </div>
     );
   }
@@ -100,9 +100,9 @@ export function TankPaintPicker({
   return (
     <div className="bg-surface border rounded-xl p-3 space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-extrabold">🛢 تانكات جاهزة للدهان — {label}</span>
+        <span className="text-sm font-extrabold">🛢 Tanks ready to paint — {label}</span>
         <button type="button" onClick={toggleAll} className="btn btn-sm" disabled={pending}>
-          {allPicked ? "إلغاء الاختيار" : `اختار الكل (${tanks.length})`}
+          {allPicked ? "Clear selection" : `Select all (${tanks.length})`}
         </button>
       </div>
 
@@ -123,13 +123,13 @@ export function TankPaintPicker({
                 onClick={() => { setBackFor(backFor === t.serial ? null : t.serial); setMsg(""); }}
                 disabled={pending}
                 className="ml-auto text-[11px] text-bad-fg hover:underline whitespace-nowrap"
-                title="التانك ده مش سليم — رجّعه للّحام"
+                title="This tank is not sound — send it back to welding"
               >
-                ↩ رجّع للّحام
+                ↩ Send back
               </button>
             </label>
             <div className="text-[11px] text-muted mt-0.5">
-              عدّى الاختبار {t.testedISO ?? "—"}
+              Passed {t.testedISO ?? "—"}
               {t.testedBy ? ` · ${t.testedBy}` : ""}
             </div>
             {backFor === t.serial && (
@@ -138,19 +138,19 @@ export function TankPaintPicker({
                 onSubmit={(e) => {
                   e.preventDefault();
                   const reason = String(new FormData(e.currentTarget).get("reason") ?? "").trim();
-                  if (!reason) { setMsg("اكتب السبب."); return; }
+                  if (!reason) { setMsg("Write the reason."); return; }
                   sendBack(t.serial, reason);
                 }}
               >
                 <input
                   name="reason"
                   required
-                  placeholder="السبب؟"
+                  placeholder="Why?"
                   className="flex-1 border rounded-md px-2 py-1 text-xs bg-surface"
                   disabled={pending}
                 />
                 <button type="submit" className="btn btn-sm text-bad-fg" disabled={pending}>
-                  رجّع
+                  Send back
                 </button>
               </form>
             )}
@@ -164,9 +164,9 @@ export function TankPaintPicker({
           value={worker}
           onChange={setWorker}
           disabled={pending}
-          placeholder="مين اللى دهنها؟"
+          placeholder="Who painted them?"
           className="min-w-40"
-          emptyHint="مفيش دهّانين مسجلين — الأدمن يضيفهم من صفحة عمال الإنتاج."
+          emptyHint="No painters on file — the admin adds them under Production Workers."
         />
         <button
           type="button"
@@ -174,7 +174,7 @@ export function TankPaintPicker({
           disabled={pending || painters.length === 0}
           className="rounded-md px-3 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
         >
-          {pending ? "بيحفظ…" : `سجّل دهان ${picked.size || ""}`}
+          {pending ? "Saving…" : picked.size ? `Record ${picked.size} painted` : "Record painted"}
         </button>
         {msg && <span className="text-[11px] text-bad-fg">{msg}</span>}
       </div>

@@ -16,7 +16,7 @@ export default async function WorkersPage() {
 
   return (
     <div>
-      <PageHeader title="🧑‍🏭 عمال الإنتاج" />
+      <PageHeader title="🧑‍🏭 Production Workers" />
       <Card className="p-5">
         <WorkersManager workers={workers} />
       </Card>

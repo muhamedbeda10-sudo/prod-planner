@@ -13,7 +13,7 @@ export default async function BarcodePage() {
 
   return (
     <div>
-      <PageHeader title="🏷 باركود التانكات" />
+      <PageHeader title="🏷 Tank Barcodes" />
       <BarcodeSheet tanks={tanks} baseUrl={baseUrl} />
     </div>
   );

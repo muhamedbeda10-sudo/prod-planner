@@ -37,15 +37,15 @@ export function isTankStatus(x: string): x is TankStatus {
 }
 
 /** What each stage writes into the tank's history (TankEvent.kind), with the
- *  Arabic label and pill tone the tank page shows it under. */
+ *  label and pill tone the tank page shows it under. */
 export const TANK_EVENT_KINDS = {
-  welded: { label: "لحام", tone: "pill-muted" },
-  repaired: { label: "تم الإصلاح", tone: "pill-warn" },
-  "leak-pass": { label: "عدّى اختبار التسريب", tone: "pill-ok" },
-  "leak-repair": { label: "رسب ف اختبار التسريب", tone: "pill-bad" },
-  painted: { label: "دهان", tone: "pill-ok" },
-  "qa-ok": { label: "فحص جودة — تمام", tone: "pill-ok" },
-  "qa-not-ok": { label: "فحص جودة — مش تمام", tone: "pill-bad" },
+  welded: { label: "Welded", tone: "pill-muted" },
+  repaired: { label: "Repaired", tone: "pill-warn" },
+  "leak-pass": { label: "Passed the leak test", tone: "pill-ok" },
+  "leak-repair": { label: "Failed the leak test", tone: "pill-bad" },
+  painted: { label: "Painted", tone: "pill-ok" },
+  "qa-ok": { label: "Quality check — OK", tone: "pill-ok" },
+  "qa-not-ok": { label: "Quality check — not OK", tone: "pill-bad" },
 } as const;
 export type TankEventKind = keyof typeof TANK_EVENT_KINDS;
 
@@ -63,12 +63,12 @@ export function isWorkerDept(x: string): x is WorkerDept {
   return (WORKER_DEPTS as readonly string[]).includes(x);
 }
 
-/** Arabic labels — the shop floor reads these, not the stored English values. */
+/** What each status means on the shop floor. */
 export const TANK_STATUS_LABEL: Record<TankStatus, string> = {
-  welded: "ملحوم — منتظر اختبار التسريب",
-  repair: "محتاج إصلاح — راجع للحام",
-  tested: "عدّى الاختبار — جاهز للدهان",
-  painted: "خلّص كل المراحل",
+  welded: "Welded — waiting for the leak test",
+  repair: "Needs repair — back to welding",
+  tested: "Passed the leak test — ready to paint",
+  painted: "All stages done",
 };
 
 /** Pill colour class per status (globals.css tones). */
@@ -86,10 +86,10 @@ export function tankStatusTone(status: string): string {
 }
 
 export const WORKER_DEPT_LABEL: Record<WorkerDept, string> = {
-  Welding: "لحام",
-  LeakTest: "اختبار تسريب",
-  Painting: "دهان",
-  Quality: "جودة",
+  Welding: "Welding",
+  LeakTest: "Leak test",
+  Painting: "Painting",
+  Quality: "Quality",
 };
 
 /** Normalize a BOM for use inside a serial: trimmed, upper-cased, no spaces.
@@ -168,17 +168,17 @@ export function statusAfterLeakTest(result: LeakTestResult): TankStatus {
 export function blockedReason(action: "leak-test" | "repair" | "paint", status: string): string | null {
   switch (action) {
     case "leak-test":
-      if (status === "repair") return "التانك ده محتاج إصلاح الأول — اللحام لازم يقول إنه اتصلح قبل ما يتعاد اختباره.";
-      if (status === "tested") return "التانك ده عدّى الاختبار بالفعل.";
-      if (status === "painted") return "التانك ده اتدهن خلاص.";
+      if (status === "repair") return "This tank needs its repair first — welding has to confirm the fix before it can be re-tested.";
+      if (status === "tested") return "This tank has already passed the leak test.";
+      if (status === "painted") return "This tank is already painted.";
       return null;
     case "repair":
-      if (status !== "repair") return "التانك ده مش مطلوب منه إصلاح.";
+      if (status !== "repair") return "Nobody sent this tank back for repair.";
       return null;
     case "paint":
-      if (status === "welded") return "التانك ده لسه ماعملش اختبار تسريب — الدهان مقفول لحد ما يعدّي.";
-      if (status === "repair") return "التانك ده رسب ف اختبار التسريب ومحتاج إصلاح — مينفعش يتدهن.";
-      if (status === "painted") return "التانك ده اتدهن خلاص.";
+      if (status === "welded") return "This tank has not had its leak test yet — painting stays closed until it passes.";
+      if (status === "repair") return "This tank failed the leak test and needs repair — it cannot be painted.";
+      if (status === "painted") return "This tank is already painted.";
       return null;
   }
 }

@@ -219,14 +219,14 @@ describe("tanks (TN) — the ledger row and the serials move together", () => {
     fd.delete("workerId");
     const res = await recordOutput(fd);
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/لحم/);
+    expect(res.error).toMatch(/who welded/);
     expect(txWrites).toEqual([]);
   });
 
   it("refuses a fractional quantity — a tank is a piece, not a weight", async () => {
     const res = await recordOutput(weld({ qty: "2.5" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/بالقطعة/);
+    expect(res.error).toMatch(/by the piece/);
     expect(txWrites).toEqual([]);
   });
 
@@ -236,13 +236,13 @@ describe("tanks (TN) — the ledger row and the serials move together", () => {
     h.prisma.handoverEntry.findFirst.mockResolvedValue({ id: 1 });
     const res = await recordOutput(fd);
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/أمر تصنيع/);
+    expect(res.error).toMatch(/needs an MO/);
   });
 
   it("passes a rejected welder straight through to the technician", async () => {
-    h.resolveWorker.mockResolvedValue({ error: "متوقف ف قايمة العمال" });
+    h.resolveWorker.mockResolvedValue({ error: "Sayed is deactivated on the workers list" });
     const res = await recordOutput(weld());
-    expect(res).toEqual({ ok: false, error: "متوقف ف قايمة العمال" });
+    expect(res).toEqual({ ok: false, error: "Sayed is deactivated on the workers list" });
     expect(txWrites).toEqual([]);
   });
 
@@ -261,17 +261,17 @@ describe("tanks (TN) — the ledger row and the serials move together", () => {
     h.unmintTankSerials.mockResolvedValue({ removed: 1, short: 2 });
     const res = await recordTrackerTotal(form({ dept: "Welding", bom: "B", mo: "MO-1", item: "TN", total: "2" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/2 تانك/);
+    expect(res.error).toMatch(/2 of those tanks/);
   });
 
   it("sends painting of tanks to the painting worklist, from every quantity box", async () => {
     const tracker = await recordTrackerTotal(form({ dept: "Painting", bom: "B", mo: "MO-1", item: "TN", total: "3" }));
     expect(tracker.ok).toBe(false);
-    expect(tracker.error).toMatch(/ورك ليست الدهان/);
+    expect(tracker.error).toMatch(/Painting worklist/);
 
     const group = await recordGroupOutput(form({ source: "worklist", dept: "Painting", bom: "B", item: "TN", qty: "3", mos: "MO-1" }));
     expect(group.ok).toBe(false);
-    expect(group.error).toMatch(/ورك ليست الدهان/);
+    expect(group.error).toMatch(/Painting worklist/);
     expect(txWrites).toEqual([]);
   });
 
@@ -282,7 +282,7 @@ describe("tanks (TN) — the ledger row and the serials move together", () => {
     ]);
     const res = await returnToUpstream(form({ fromDept: "Painting", bom: "B", mo: "MO-1", item: "TN", qty: "1", reason: "leak" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/السيريال/);
+    expect(res.error).toMatch(/by serial/);
   });
 
   it("still returns a non-tank component from painting as a quantity", async () => {

@@ -51,7 +51,7 @@ export default async function TankPage({ params }: { params: Promise<{ serial: s
     <div className="max-w-4xl mx-auto">
       <PageHeader title={`🛢 ${tank.serial}`}>
         <Link href="/barcode" className="btn btn-sm">
-          ← الباركود
+          ← Barcode
         </Link>
       </PageHeader>
 
@@ -61,34 +61,34 @@ export default async function TankPage({ params }: { params: Promise<{ serial: s
             <span className={`pill ${tankStatusTone(tank.status)}`}>{TANK_STATUS_LABEL[tank.status]}</span>
             {tank.qaResult && (
               <span className={`pill ${tank.qaResult === "ok" ? "pill-ok" : "pill-bad"}`}>
-                جودة: {tank.qaResult === "ok" ? "تمام" : "مش تمام"}
+                Quality: {tank.qaResult === "ok" ? "OK" : "Not OK"}
               </span>
             )}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <Field label="أمر التصنيع (MO)" value={<Link href={`/trace?q=${encodeURIComponent(tank.mo)}`} className="hover:underline">{tank.mo}</Link>} />
+            <Field label="MO" value={<Link href={`/trace?q=${encodeURIComponent(tank.mo)}`} className="hover:underline">{tank.mo}</Link>} />
             <Field label="SO" value={tank.so} />
             <Field label="BOM" value={tank.bom} />
-            <Field label="العميل" value={tank.customer} />
+            <Field label="Customer" value={tank.customer} />
             <Field label="KVA" value={tank.kva} />
-            <Field label="الجهد" value={tank.rating} />
-            <Field label="كود المنتج" value={tank.fgCode} />
+            <Field label="Rating" value={tank.rating} />
+            <Field label="FG code" value={tank.fgCode} />
           </div>
 
           <div className="border-t pt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <Field label="اللحام" value={tank.weldedISO ? `${tank.weldedISO}${tank.weldedBy ? ` · ${tank.weldedBy}` : ""}` : null} />
+            <Field label="Welding" value={tank.weldedISO ? `${tank.weldedISO}${tank.weldedBy ? ` · ${tank.weldedBy}` : ""}` : null} />
             <Field
-              label="اختبار التسريب"
+              label="Leak test"
               value={tank.testedISO ? `${tank.testedISO}${tank.testedBy ? ` · ${tank.testedBy}` : ""}` : null}
             />
-            <Field label="الدهان" value={tank.paintedISO ? `${tank.paintedISO}${tank.paintedBy ? ` · ${tank.paintedBy}` : ""}` : null} />
+            <Field label="Painting" value={tank.paintedISO ? `${tank.paintedISO}${tank.paintedBy ? ` · ${tank.paintedBy}` : ""}` : null} />
           </div>
 
           <div className="border-t pt-3">
-            <h2 className="text-sm font-extrabold mb-2">📜 تاريخ التانك</h2>
+            <h2 className="text-sm font-extrabold mb-2">📜 Tank history</h2>
             {events.length === 0 ? (
-              <p className="text-sm text-muted">مفيش أحداث مسجلة.</p>
+              <p className="text-sm text-muted">No events recorded.</p>
             ) : (
               <ol className="space-y-1.5">
                 {events.map((e) => (
@@ -97,7 +97,7 @@ export default async function TankPage({ params }: { params: Promise<{ serial: s
                     <span className="tabnum text-xs text-muted">{e.atISO}</span>
                     {e.workerName && <span className="font-semibold">{e.workerName}</span>}
                     {e.note && <span className="text-xs text-muted">— {e.note}</span>}
-                    {e.byUser && <span className="text-[11px] text-muted ml-auto">سجّلها {e.byUser}</span>}
+                    {e.byUser && <span className="text-[11px] text-muted ml-auto">recorded by {e.byUser}</span>}
                   </li>
                 ))}
               </ol>
@@ -118,7 +118,7 @@ export default async function TankPage({ params }: { params: Promise<{ serial: s
           lastQa && (
             <Card className="p-4">
               <div className={`pill ${lastQa.result === "ok" ? "pill-ok" : "pill-bad"}`}>
-                فحص الجودة: {lastQa.result === "ok" ? "تمام" : "مش تمام"} · {lastQa.dateISO}
+                Quality check: {lastQa.result === "ok" ? "OK" : "Not OK"} · {lastQa.dateISO}
                 {lastQa.by ? ` · ${lastQa.by}` : ""}
               </div>
               {lastQa.note && <p className="text-sm mt-2">{lastQa.note}</p>}

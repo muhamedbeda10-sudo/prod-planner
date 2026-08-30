@@ -21,7 +21,7 @@ function useAction() {
   ) {
     startTransition(async () => {
       const res = await fn(fd);
-      setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "فشلت العملية." });
+      setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
       if (res.ok) after?.();
     });
   }
@@ -66,15 +66,15 @@ function WorkerCard({ worker }: { worker: WorkerDTO }) {
         <div className="flex-1 min-w-[220px]">
           <div className="font-bold flex items-center gap-2">
             {worker.name}
-            {!worker.active && <span className="pill pill-muted">موقوف</span>}
+            {!worker.active && <span className="pill pill-muted">Deactivated</span>}
           </div>
           <div className="text-xs text-muted mt-0.5">
-            {worker.code ? `كود ${worker.code} · ` : ""}
-            {worker.depts.length > 0 ? worker.depts.map((d) => WORKER_DEPT_LABEL[d]).join(" · ") : "من غير قسم"}
+            {worker.code ? `Code ${worker.code} · ` : ""}
+            {worker.depts.length > 0 ? worker.depts.map((d) => WORKER_DEPT_LABEL[d]).join(" · ") : "No stage assigned"}
           </div>
         </div>
         <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)}>
-          {editing ? "إغلاق" : "تعديل"}
+          {editing ? "Close" : "Edit"}
         </button>
         <button
           type="button"
@@ -84,23 +84,23 @@ function WorkerCard({ worker }: { worker: WorkerDTO }) {
             const fd = new FormData();
             fd.set("id", String(worker.id));
             fd.set("active", worker.active ? "false" : "true");
-            act.run(setWorkerActive, fd, worker.active ? "اتوقف." : "رجع تاني.");
+            act.run(setWorkerActive, fd, worker.active ? "Deactivated." : "Back on the list.");
           }}
         >
-          {worker.active ? "إيقاف" : "تفعيل"}
+          {worker.active ? "Deactivate" : "Activate"}
         </button>
         <button
           type="button"
           className="btn btn-sm text-bad-fg"
           disabled={del.pending}
           onClick={() => {
-            if (!confirm(`مسح ${worker.name} نهائياً؟`)) return;
+            if (!confirm(`Delete ${worker.name} permanently?`)) return;
             const fd = new FormData();
             fd.set("id", String(worker.id));
-            del.run(deleteWorker, fd, "اتمسح.");
+            del.run(deleteWorker, fd, "Deleted.");
           }}
         >
-          مسح
+          Delete
         </button>
       </div>
 
@@ -114,23 +114,23 @@ function WorkerCard({ worker }: { worker: WorkerDTO }) {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
             fd.set("id", String(worker.id));
-            edit.run(updateWorker, fd, "اتحفظ.", () => setEditing(false));
+            edit.run(updateWorker, fd, "Saved.", () => setEditing(false));
           }}
         >
           <div className="grid sm:grid-cols-2 gap-2.5">
             <label className="block">
-              <span className="text-xs font-bold text-muted">الاسم</span>
+              <span className="text-xs font-bold text-muted">Name</span>
               <input name="name" defaultValue={worker.name} required className={inputCls} />
             </label>
             <label className="block">
-              <span className="text-xs font-bold text-muted">الكود (اختياري)</span>
+              <span className="text-xs font-bold text-muted">Code (optional)</span>
               <input name="code" defaultValue={worker.code ?? ""} className={inputCls} />
             </label>
           </div>
           <DeptChecks defaults={depts} disabled={edit.pending} />
           <div className="flex items-center gap-3">
             <button type="submit" className="btn btn-primary btn-sm" disabled={edit.pending}>
-              حفظ
+              Save
             </button>
             <Msg msg={edit.msg} />
           </div>
@@ -148,7 +148,7 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
     <div className="space-y-5">
       <div className="border rounded-xl p-4">
         <button type="button" className="btn btn-sm" onClick={() => setOpen((v) => !v)}>
-          {open ? "إغلاق" : "➕ إضافة عامل"}
+          {open ? "Close" : "➕ Add a worker"}
         </button>
         {open && (
           <form
@@ -156,23 +156,23 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
             onSubmit={(e) => {
               e.preventDefault();
               const form = e.currentTarget;
-              add.run(createWorker, new FormData(form), "اتضاف.", () => form.reset());
+              add.run(createWorker, new FormData(form), "Added.", () => form.reset());
             }}
           >
             <div className="grid sm:grid-cols-2 gap-2.5">
               <label className="block">
-                <span className="text-xs font-bold text-muted">الاسم</span>
-                <input name="name" required placeholder="اسم العامل" className={inputCls} />
+                <span className="text-xs font-bold text-muted">Name</span>
+                <input name="name" required placeholder="Worker's name" className={inputCls} />
               </label>
               <label className="block">
-                <span className="text-xs font-bold text-muted">الكود (اختياري)</span>
-                <input name="code" placeholder="رقم البادچ" className={inputCls} />
+                <span className="text-xs font-bold text-muted">Code (optional)</span>
+                <input name="code" placeholder="Badge number" className={inputCls} />
               </label>
             </div>
             <DeptChecks defaults={new Set()} disabled={add.pending} />
             <div className="flex items-center gap-3">
               <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending}>
-                إضافة
+                Add
               </button>
               <Msg msg={add.msg} />
             </div>
@@ -182,7 +182,7 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
 
       {workers.length === 0 ? (
         <p className="text-sm text-muted">
-          مفيش عمال مسجلين لسه. من غير الأسامي دى، الفني مش هيقدر يسجل مين لحم أو اختبر أو دهن التانك.
+          No workers on the list yet. Without these names, the shop floor cannot record who welded, tested or painted a tank.
         </p>
       ) : (
         <div className="space-y-3">

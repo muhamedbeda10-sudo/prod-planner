@@ -25,7 +25,7 @@ export function TankRepairPanel({ tanks, welders }: { tanks: TankDTO[]; welders:
   function confirm(serial: string) {
     const w = worker[serial];
     if (!w) {
-      setMsg((s) => ({ ...s, [serial]: "اختار مين اللى صلّحه." }));
+      setMsg((s) => ({ ...s, [serial]: "Pick who repaired it." }));
       return;
     }
     const fd = new FormData();
@@ -35,22 +35,22 @@ export function TankRepairPanel({ tanks, welders }: { tanks: TankDTO[]; welders:
     startTransition(async () => {
       const res = await markTankRepaired(fd);
       if (res.ok) router.refresh();
-      else setMsg((s) => ({ ...s, [serial]: res.error ?? "فشل الحفظ" }));
+      else setMsg((s) => ({ ...s, [serial]: res.error ?? "Failed to save" }));
     });
   }
 
   return (
     <section className="mb-6">
-      <h2>🔧 تانكات راجعة من اختبار التسريب ({tanks.length})</h2>
+      <h2>🔧 Tanks sent back by the leak test ({tanks.length})</h2>
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-bad-fg text-white text-left">
-              <th className="p-2">السيريال</th>
-              <th className="p-2">أمر التصنيع</th>
-              <th className="p-2">المشكلة</th>
-              <th className="p-2">رسب يوم</th>
-              <th className="p-2 text-center w-64">تم الإصلاح</th>
+              <th className="p-2">Serial</th>
+              <th className="p-2">MO</th>
+              <th className="p-2">What is wrong</th>
+              <th className="p-2">Failed on</th>
+              <th className="p-2 text-center w-64">Mark repaired</th>
             </tr>
           </thead>
           <tbody>
@@ -74,8 +74,8 @@ export function TankRepairPanel({ tanks, welders }: { tanks: TankDTO[]; welders:
                       value={worker[t.serial] ?? ""}
                       onChange={(v) => setWorker((s) => ({ ...s, [t.serial]: v }))}
                       disabled={pending}
-                      placeholder="مين صلّحه؟"
-                      emptyHint="مفيش لحّامين مسجلين."
+                      placeholder="Who repaired it?"
+                      emptyHint="No welders on file."
                     />
                     <button
                       type="button"
@@ -83,7 +83,7 @@ export function TankRepairPanel({ tanks, welders }: { tanks: TankDTO[]; welders:
                       disabled={pending || welders.length === 0}
                       className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
                     >
-                      اتصلّح
+                      Repaired
                     </button>
                   </div>
                   {msg[t.serial] && <div className="text-[11px] text-bad-fg mt-0.5">{msg[t.serial]}</div>}

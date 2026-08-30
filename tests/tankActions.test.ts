@@ -105,10 +105,10 @@ describe("recordLeakTest", () => {
   it("sends a failing tank back to welding with the reason attached", async () => {
     h.prisma.tankUnit.findMany.mockResolvedValue([tank()]);
     const res = await recordLeakTest(
-      form({ serials: "SF-B-0001", result: "repair", workerId: "7", note: "تسريب من اللحام السفلي" })
+      form({ serials: "SF-B-0001", result: "repair", workerId: "7", note: "leaking on the bottom weld" })
     );
     expect(res).toEqual({ ok: true, count: 1 });
-    expect(writes.tankUpdates[0]).toMatchObject({ status: "repair", testNote: "تسريب من اللحام السفلي" });
+    expect(writes.tankUpdates[0]).toMatchObject({ status: "repair", testNote: "leaking on the bottom weld" });
     expect(writes.events[0]).toMatchObject({ kind: "leak-repair" });
   });
 
@@ -116,21 +116,21 @@ describe("recordLeakTest", () => {
     h.prisma.tankUnit.findMany.mockResolvedValue([tank()]);
     const res = await recordLeakTest(form({ serials: "SF-B-0001", result: "repair", workerId: "7" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/اكتب المشكلة/);
+    expect(res.error).toMatch(/Write what is wrong/);
     expect(writes.tankUpdates).toEqual([]);
   });
 
   it("needs a named tester", async () => {
     const res = await recordLeakTest(form({ serials: "SF-B-0001", result: "pass" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/مين اللى عمل الاختبار/);
+    expect(res.error).toMatch(/who carried out the test/);
   });
 
   it("refuses to re-test a tank that is waiting for its repair", async () => {
     h.prisma.tankUnit.findMany.mockResolvedValue([tank({ status: "repair" })]);
     const res = await recordLeakTest(form({ serials: "SF-B-0001", result: "pass", workerId: "7" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/إصلاح/);
+    expect(res.error).toMatch(/needs its repair first/);
     expect(writes.tankUpdates).toEqual([]);
   });
 
@@ -192,7 +192,7 @@ describe("paintTanks", () => {
     h.prisma.tankUnit.findMany.mockResolvedValue([tank({ status: "welded" })]);
     const res = await paintTanks(form({ serials: "SF-B-0001", workerId: "7" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/اختبار تسريب/);
+    expect(res.error).toMatch(/leak test/);
     expect(writes.ledger).toEqual([]);
   });
 
@@ -200,7 +200,7 @@ describe("paintTanks", () => {
     h.prisma.tankUnit.findMany.mockResolvedValue([tank({ status: "repair" })]);
     const res = await paintTanks(form({ serials: "SF-B-0001", workerId: "7" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/رسب/);
+    expect(res.error).toMatch(/failed the leak test/);
   });
 
   it("still answers to the physical chain", async () => {
@@ -214,16 +214,16 @@ describe("paintTanks", () => {
   it("needs a named painter", async () => {
     const res = await paintTanks(form({ serials: "SF-B-0001" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/مين اللى دهن/);
+    expect(res.error).toMatch(/who painted/);
   });
 });
 
 describe("sendTankBackToWelding", () => {
   it("moves the tank to repair and leaves the ledger alone", async () => {
     h.prisma.tankUnit.findUnique.mockResolvedValue(tank({ status: "tested" }));
-    const res = await sendTankBackToWelding(form({ serial: "SF-B-0001", reason: "لحام مفتوح" }));
+    const res = await sendTankBackToWelding(form({ serial: "SF-B-0001", reason: "open weld seam" }));
     expect(res).toEqual({ ok: true, count: 1 });
-    expect(writes.tankUpdates[0]).toMatchObject({ status: "repair", testNote: "لحام مفتوح" });
+    expect(writes.tankUpdates[0]).toMatchObject({ status: "repair", testNote: "open weld seam" });
     expect(writes.ledger).toEqual([]);
   });
 
@@ -237,7 +237,7 @@ describe("sendTankBackToWelding", () => {
     h.prisma.tankUnit.findUnique.mockResolvedValue(tank({ status: "painted" }));
     const res = await sendTankBackToWelding(form({ serial: "SF-B-0001", reason: "x" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/اتدهن/);
+    expect(res.error).toMatch(/already painted/);
   });
 });
 
@@ -255,7 +255,7 @@ describe("recordTankQa", () => {
     h.prisma.tankUnit.findUnique.mockResolvedValue(tank({ status: "painted" }));
     const res = await recordTankQa(form({ serial: "SF-B-0001", result: "not-ok" }));
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/اكتب المشكلة/);
+    expect(res.error).toMatch(/Write what is wrong/);
   });
 
   it("is gated on the quality permission, not a department", async () => {

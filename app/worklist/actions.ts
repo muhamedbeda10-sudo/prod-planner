@@ -40,7 +40,7 @@ const TANK_PATHS = [...RECORD_PATHS, "/worklist/leak-test", "/barcode"];
  *  either, so they hand the job to the painting worklist instead of silently
  *  recording a quantity no tank backs. */
 const PAINT_TANKS_ELSEWHERE =
-  "التانكات بتتدهن من ورك ليست الدهان — هناك بتختار التانكات نفسها ومين دهنها، والتانك مايتدهنش غير لما يعدّى اختبار التسريب.";
+  "Tanks are painted from the Painting worklist — pick the tanks themselves and who painted them there. A tank cannot be painted until it passes the leak test.";
 
 /** Record output against a plan order line (MO × item) from the execution sheet.
  *  Creates a dated HandoverEntry — the analytics log stays the single source of truth. */
@@ -71,16 +71,16 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     // whole number of tanks and the batch has to say who welded them.
     const mintsTanks = dept === "Welding" && item === TANK_ITEM;
     if (mintsTanks && !Number.isInteger(qty)) {
-      return { ok: false, error: "التانكات بتتسجل بالقطعة — اكتب رقم صحيح." };
+      return { ok: false, error: "Tanks are recorded by the piece — enter a whole number." };
     }
     if (mintsTanks && !mo) {
-      return { ok: false, error: "لازم أمر تصنيع (MO) علشان التانك ياخد سيريال." };
+      return { ok: false, error: "A tank needs an MO to carry its serial." };
     }
     if (mintsTanks && workerId === null) {
-      return { ok: false, error: "اختار مين اللى لحم التانكات دى من القايمة." };
+      return { ok: false, error: "Pick who welded these tanks." };
     }
     if (workerId !== null && !Number.isInteger(workerId)) {
-      return { ok: false, error: "اختيار العامل غير صحيح." };
+      return { ok: false, error: "Invalid worker selection." };
     }
     const welder = mintsTanks ? await resolveWorker(workerId, "Welding") : {};
     if (welder.error) return { ok: false, error: welder.error };
@@ -207,7 +207,7 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
       const { short } = await unmintTankSerials(tx, { bom, mo, count: -delta });
       if (short > 0) {
         throw new TankSyncError(
-          `مينفعش تنزّل الرقم للحد ده: ${short} تانك منهم اتعمل عليه اختبار أو اتدهن بالفعل. اشطب المرحلة اللى بعده الأول.`
+          `The total cannot go that low: ${short} of those tanks have already been tested or painted. Undo the later stage first.`
         );
       }
       return null;
@@ -333,8 +333,8 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     const rawWorker = String(formData.get("workerId") ?? "").trim();
     const groupWorkerId = rawWorker ? Number(rawWorker) : null;
     if (groupMintsTanks && source === "worklist") {
-      if (groupWorkerId === null) return { ok: false, error: "اختار مين اللى لحم التانكات دى من القايمة." };
-      if (!Number.isInteger(groupWorkerId)) return { ok: false, error: "اختيار العامل غير صحيح." };
+      if (groupWorkerId === null) return { ok: false, error: "Pick who welded these tanks." };
+      if (!Number.isInteger(groupWorkerId)) return { ok: false, error: "Invalid worker selection." };
     }
     const groupWelder = groupMintsTanks ? await resolveWorker(groupWorkerId, "Welding") : {};
     if (groupWelder.error) return { ok: false, error: groupWelder.error };
@@ -430,7 +430,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
           const { short } = await unmintTankSerials(tx, { bom, mo, count: -q });
           if (short > 0) {
             throw new TankSyncError(
-              `مينفعش تنزّل الرقم للحد ده: ${short} تانك من ${mo} اتعمل عليه اختبار أو اتدهن بالفعل. اشطب المرحلة اللى بعده الأول.`
+              `The total cannot go that low: ${short} tanks on ${mo} have already been tested or painted. Undo the later stage first.`
             );
           }
         }
@@ -649,7 +649,7 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
     if (item === TANK_ITEM && fromDept === "Painting") {
       // a tank has an identity — sending "3 pieces" back would leave the ledger
       // and the serials disagreeing about which three
-      return { ok: false, error: "التانك بيترجع للّحام من قايمة التانكات نفسها — اختار التانك بالسيريال بتاعه واضغط «رجّع للّحام»." };
+      return { ok: false, error: "A tank goes back to welding by name — open the tank list, find it by serial and use \"Send back to welding\"." };
     }
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a quantity greater than zero." };
     if (!reason) return { ok: false, error: "Write the reason — the upstream dept needs to know what to fix." };

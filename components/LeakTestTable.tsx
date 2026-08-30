@@ -59,11 +59,11 @@ export function LeakTestTable({
 
   function run(serials: string[], result: "pass" | "repair", note: string) {
     if (serials.length === 0) {
-      setMsg("اختار التانكات الأول.");
+      setMsg("Pick the tanks first.");
       return;
     }
     if (!worker) {
-      setMsg("اختار مين اللى عمل الاختبار.");
+      setMsg("Pick who carried out the test.");
       return;
     }
     const fd = new FormData();
@@ -84,7 +84,7 @@ export function LeakTestTable({
         setFailFor(null);
         router.refresh();
       } else {
-        setMsg(res.error ?? "فشل الحفظ");
+        setMsg(res.error ?? "Failed to save");
       }
     });
   }
@@ -97,29 +97,29 @@ export function LeakTestTable({
         onReset={() => setQ("")}
         hasActive={!!q}
       >
-        <SearchBox value={q} onChange={setQ} placeholder="ابحث بالسيريال / أمر التصنيع…" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search serial / MO…" />
         {canEdit && (
           <div className="col-span-2 flex flex-wrap items-center gap-1.5">
             <button type="button" onClick={toggleAll} className="btn btn-sm" disabled={pending || filtered.length === 0}>
-              {allPicked ? "إلغاء الاختيار" : `اختار الكل (${filtered.length})`}
+              {allPicked ? "Clear selection" : `Select all (${filtered.length})`}
             </button>
             <TankWorkerSelect
               workers={testers}
               value={worker}
               onChange={setWorker}
               disabled={pending}
-              placeholder="مين اللى عمل الاختبار؟"
+              placeholder="Who tested them?"
               className="min-w-44"
-              emptyHint="مفيش فنيين اختبار مسجلين — الأدمن يضيفهم من صفحة عمال الإنتاج."
+              emptyHint="No leak testers on file — the admin adds them under Production Workers."
             />
             <button
               type="button"
               onClick={() => run([...picked], "pass", "")}
               disabled={pending || picked.size === 0 || testers.length === 0}
               className="rounded-md px-3 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
-              title="التانكات المختارة عدّت الاختبار وتروح للدهان"
+              title="The picked tanks passed and move on to painting"
             >
-              ✓ عدّى ({picked.size})
+              ✓ Passed ({picked.size})
             </button>
             {msg && <span className="text-[11px] text-bad-fg whitespace-normal">{msg}</span>}
           </div>
@@ -133,15 +133,15 @@ export function LeakTestTable({
             <thead className="md:sticky md:top-0 md:z-10">
               <tr className="bg-brand text-white text-left">
                 {canEdit && <th className="p-2 w-8" />}
-                <th className="p-2">السيريال</th>
-                <th className="p-2">أمر التصنيع</th>
+                <th className="p-2">Serial</th>
+                <th className="p-2">MO</th>
                 <th className="p-2">SO</th>
                 <th className="p-2">BOM</th>
                 <th className="p-2">KVA</th>
-                <th className="p-2">اتلحم يوم</th>
-                <th className="p-2">اللحّام</th>
-                <th className="p-2 text-center">مستني</th>
-                {canEdit && <th className="p-2 text-center w-40">النتيجة</th>}
+                <th className="p-2">Welded on</th>
+                <th className="p-2">Welder</th>
+                <th className="p-2 text-center">Waiting</th>
+                {canEdit && <th className="p-2 text-center w-40">Verdict</th>}
               </tr>
             </thead>
             <tbody>
@@ -149,8 +149,8 @@ export function LeakTestTable({
                 <tr>
                   <td colSpan={canEdit ? 10 : 8} className="p-4 text-center text-muted">
                     {tanks.length === 0
-                      ? "مفيش تانكات مستنية الاختبار — القايمة فاضية."
-                      : "مفيش نتايج للبحث ده."}
+                      ? "No tank is waiting for the leak test — the queue is clear."
+                      : "No tanks match the search."}
                   </td>
                 </tr>
               )}
@@ -180,7 +180,7 @@ export function LeakTestTable({
                   <td className="p-2 text-xs whitespace-nowrap">{t.weldedBy ?? "—"}</td>
                   <td className="p-2 text-center whitespace-nowrap">
                     <span className={`pill ${t.ageDays > 6 ? "pill-bad" : t.ageDays > 2 ? "pill-warn" : "pill-ok"}`}>
-                      ⏳ {t.ageDays === 0 ? "النهارده" : `${t.ageDays}ي`}
+                      ⏳ {t.ageDays === 0 ? "today" : `${t.ageDays}d`}
                     </span>
                   </td>
                   {canEdit && (
@@ -192,7 +192,7 @@ export function LeakTestTable({
                           disabled={pending || testers.length === 0}
                           className="rounded-md px-2 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
                         >
-                          ✓ عدّى
+                          ✓ Passed
                         </button>
                         <button
                           type="button"
@@ -200,7 +200,7 @@ export function LeakTestTable({
                           disabled={pending}
                           className="rounded-md px-2 py-1 text-xs font-bold border text-bad-fg hover:bg-bad-bg"
                         >
-                          ✗ إصلاح
+                          ✗ Repair
                         </button>
                       </div>
                       {failFor === t.serial && (
@@ -209,19 +209,19 @@ export function LeakTestTable({
                           onSubmit={(e) => {
                             e.preventDefault();
                             const note = String(new FormData(e.currentTarget).get("note") ?? "").trim();
-                            if (!note) { setMsg("اكتب المشكلة."); return; }
+                            if (!note) { setMsg("Write what is wrong."); return; }
                             run([t.serial], "repair", note);
                           }}
                         >
                           <input
                             name="note"
                             required
-                            placeholder="التسريب فين؟"
+                            placeholder="Where is it leaking?"
                             className="flex-1 border rounded-md px-2 py-1 text-xs bg-surface"
                             disabled={pending}
                           />
                           <button type="submit" className="btn btn-sm text-bad-fg" disabled={pending}>
-                            رجّع
+                            Send back
                           </button>
                         </form>
                       )}

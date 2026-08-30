@@ -68,14 +68,14 @@ export async function assignTankWelder(formData: FormData): Promise<TankActionRe
     if (guard.error) return { ok: false, error: guard.error };
     const [serial] = serialsFromForm(formData);
     const workerId = workerIdFromForm(formData);
-    if (!serial) return { ok: false, error: "التانك غير محدد." };
-    if (workerId === null || !Number.isInteger(workerId)) return { ok: false, error: "اختار اسم اللحّام." };
+    if (!serial) return { ok: false, error: "No tank selected." };
+    if (workerId === null || !Number.isInteger(workerId)) return { ok: false, error: "Pick the welder's name." };
 
     const welder = await resolveWorker(workerId, "Welding");
     if (welder.error) return { ok: false, error: welder.error };
 
     const tank = await prisma.tankUnit.findUnique({ where: { serial } });
-    if (!tank) return { ok: false, error: "السيريال ده مش موجود." };
+    if (!tank) return { ok: false, error: "No tank carries that serial." };
 
     await prisma.$transaction(async (tx) => {
       await tx.tankUnit.update({
@@ -89,14 +89,14 @@ export async function assignTankWelder(formData: FormData): Promise<TankActionRe
           workerId: welder.worker!.id,
           workerName: welder.worker!.name,
           byUser: guard.user?.name ?? null,
-          note: tank.weldedBy && tank.weldedBy !== welder.worker!.name ? `اتغير من ${tank.weldedBy}` : null,
+          note: tank.weldedBy && tank.weldedBy !== welder.worker!.name ? `changed from ${tank.weldedBy}` : null,
         },
       });
     });
     revalidateTanks();
     return { ok: true, count: 1 };
   } catch (e) {
-    return { ok: false, error: `فشل الحفظ: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -110,14 +110,14 @@ export async function markTankRepaired(formData: FormData): Promise<TankActionRe
     const [serial] = serialsFromForm(formData);
     const workerId = workerIdFromForm(formData);
     const note = String(formData.get("note") ?? "").trim();
-    if (!serial) return { ok: false, error: "التانك غير محدد." };
-    if (workerId === null || !Number.isInteger(workerId)) return { ok: false, error: "اختار مين اللى صلّح التانك." };
+    if (!serial) return { ok: false, error: "No tank selected." };
+    if (workerId === null || !Number.isInteger(workerId)) return { ok: false, error: "Pick who repaired the tank." };
 
     const welder = await resolveWorker(workerId, "Welding");
     if (welder.error) return { ok: false, error: welder.error };
 
     const tank = await prisma.tankUnit.findUnique({ where: { serial } });
-    if (!tank) return { ok: false, error: "السيريال ده مش موجود." };
+    if (!tank) return { ok: false, error: "No tank carries that serial." };
     const blocked = blockedReason("repair", tank.status);
     if (blocked) return { ok: false, error: blocked };
 
@@ -141,7 +141,7 @@ export async function markTankRepaired(formData: FormData): Promise<TankActionRe
     revalidateTanks();
     return { ok: true, count: 1 };
   } catch (e) {
-    return { ok: false, error: `فشل الحفظ: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -160,11 +160,11 @@ export async function recordLeakTest(formData: FormData): Promise<TankActionResu
     const note = String(formData.get("note") ?? "").trim();
     const dateISO = String(formData.get("date") ?? "").trim();
 
-    if (serials.length === 0) return { ok: false, error: "اختار التانكات الأول." };
-    if (!isLeakTestResult(result)) return { ok: false, error: "قول النتيجة: عدّى ولا محتاج إصلاح." };
-    if (workerId === null || !Number.isInteger(workerId)) return { ok: false, error: "اختار مين اللى عمل الاختبار." };
+    if (serials.length === 0) return { ok: false, error: "Pick the tanks first." };
+    if (!isLeakTestResult(result)) return { ok: false, error: "Say the verdict: passed, or needs repair." };
+    if (workerId === null || !Number.isInteger(workerId)) return { ok: false, error: "Pick who carried out the test." };
     if (result === "repair" && !note) {
-      return { ok: false, error: "اكتب المشكلة — اللحام محتاج يعرف بيصلّح إيه." };
+      return { ok: false, error: "Write what is wrong — welding needs to know what to fix." };
     }
 
     const tester = await resolveWorker(workerId, "LeakTest");
@@ -175,7 +175,7 @@ export async function recordLeakTest(formData: FormData): Promise<TankActionResu
     if (tanks.length !== serials.length) {
       const found = new Set(tanks.map((t) => t.serial));
       const missing = serials.filter((s) => !found.has(s));
-      return { ok: false, error: `سيريالات مش موجودة: ${missing.join("، ")}` };
+      return { ok: false, error: `No tank carries these serials: ${missing.join(", ")}` };
     }
     for (const t of tanks) {
       const blocked = blockedReason("leak-test", t.status);
@@ -212,7 +212,7 @@ export async function recordLeakTest(formData: FormData): Promise<TankActionResu
     revalidateTanks();
     return { ok: true, count: tanks.length };
   } catch (e) {
-    return { ok: false, error: `فشل الحفظ: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -231,8 +231,8 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
     const workerId = workerIdFromForm(formData);
     const dateISO = String(formData.get("date") ?? "").trim();
 
-    if (serials.length === 0) return { ok: false, error: "اختار التانكات اللى اتدهنت." };
-    if (workerId === null || !Number.isInteger(workerId)) return { ok: false, error: "اختار مين اللى دهن التانكات دى." };
+    if (serials.length === 0) return { ok: false, error: "Pick the tanks that were painted." };
+    if (workerId === null || !Number.isInteger(workerId)) return { ok: false, error: "Pick who painted these tanks." };
 
     const painter = await resolveWorker(workerId, "Painting");
     if (painter.error) return { ok: false, error: painter.error };
@@ -242,7 +242,7 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
     if (tanks.length !== serials.length) {
       const found = new Set(tanks.map((t) => t.serial));
       const missing = serials.filter((s) => !found.has(s));
-      return { ok: false, error: `سيريالات مش موجودة: ${missing.join("، ")}` };
+      return { ok: false, error: `No tank carries these serials: ${missing.join(", ")}` };
     }
     for (const t of tanks) {
       const blocked = blockedReason("paint", t.status);
@@ -272,7 +272,7 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
           data: {
             date, dept: "Painting", bom: list[0].bom, mo, item: TANK_ITEM,
             qty: list.length, planNo, source: "worklist",
-            note: `تانكات: ${list.map((t) => t.serial).join("، ")}`,
+            note: `tanks: ${list.map((t) => t.serial).join(", ")}`,
             createdBy: guard.user?.name ?? null,
           },
         });
@@ -302,7 +302,7 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
     revalidateTanks();
     return { ok: true, count: tanks.length };
   } catch (e) {
-    return { ok: false, error: `فشل الحفظ: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -316,13 +316,13 @@ export async function sendTankBackToWelding(formData: FormData): Promise<TankAct
     if (guard.error) return { ok: false, error: guard.error };
     const [serial] = serialsFromForm(formData);
     const reason = String(formData.get("reason") ?? "").trim();
-    if (!serial) return { ok: false, error: "التانك غير محدد." };
-    if (!reason) return { ok: false, error: "اكتب السبب — اللحام محتاج يعرف بيصلّح إيه." };
+    if (!serial) return { ok: false, error: "No tank selected." };
+    if (!reason) return { ok: false, error: "Write the reason — welding needs to know what to fix." };
 
     const tank = await prisma.tankUnit.findUnique({ where: { serial } });
-    if (!tank) return { ok: false, error: "السيريال ده مش موجود." };
-    if (tank.status === "painted") return { ok: false, error: "التانك ده اتدهن خلاص — اتكلم مع الأدمن." };
-    if (tank.status === "repair") return { ok: false, error: "التانك ده مرجّع للّحام بالفعل." };
+    if (!tank) return { ok: false, error: "No tank carries that serial." };
+    if (tank.status === "painted") return { ok: false, error: "This tank is already painted — talk to the admin." };
+    if (tank.status === "repair") return { ok: false, error: "This tank is already back with welding." };
 
     await prisma.$transaction(async (tx) => {
       await tx.tankUnit.update({
@@ -334,14 +334,14 @@ export async function sendTankBackToWelding(formData: FormData): Promise<TankAct
           tankId: tank.id,
           kind: "leak-repair",
           byUser: guard.user?.name ?? null,
-          note: `مرجّع من الدهان: ${reason}`,
+          note: `sent back from painting: ${reason}`,
         },
       });
     });
     revalidateTanks();
     return { ok: true, count: 1 };
   } catch (e) {
-    return { ok: false, error: `فشل الحفظ: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -359,16 +359,16 @@ export async function recordTankQa(formData: FormData): Promise<TankActionResult
     const workerId = workerIdFromForm(formData); // optional here — quality often has its own login
     const note = String(formData.get("note") ?? "").trim();
 
-    if (!serial) return { ok: false, error: "التانك غير محدد." };
-    if (!isQaResult(result)) return { ok: false, error: "قول النتيجة: تمام ولا مش تمام." };
-    if (workerId !== null && !Number.isInteger(workerId)) return { ok: false, error: "اختيار الفاحص غير صحيح." };
-    if (result === "not-ok" && !note) return { ok: false, error: "اكتب المشكلة اللى شوفتها." };
+    if (!serial) return { ok: false, error: "No tank selected." };
+    if (!isQaResult(result)) return { ok: false, error: "Say the verdict: OK, or not OK." };
+    if (workerId !== null && !Number.isInteger(workerId)) return { ok: false, error: "Invalid inspector selection." };
+    if (result === "not-ok" && !note) return { ok: false, error: "Write what is wrong with it." };
 
     const inspector = await resolveWorker(workerId, "Quality");
     if (inspector.error) return { ok: false, error: inspector.error };
 
     const tank = await prisma.tankUnit.findUnique({ where: { serial } });
-    if (!tank) return { ok: false, error: "السيريال ده مش موجود." };
+    if (!tank) return { ok: false, error: "No tank carries that serial." };
 
     // the app account is the fallback name — quality often has its own login
     const name = inspector.worker?.name ?? guard.user?.name ?? null;
@@ -397,6 +397,6 @@ export async function recordTankQa(formData: FormData): Promise<TankActionResult
     revalidateTanks([`/tank/${serial}`]);
     return { ok: true, count: 1 };
   } catch (e) {
-    return { ok: false, error: `فشل الحفظ: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }
 }

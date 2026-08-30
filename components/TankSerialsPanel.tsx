@@ -41,7 +41,7 @@ export function TankSerialsPanel({
         setChanged((s) => ({ ...s, [serial]: name }));
         router.refresh();
       } else {
-        setMsg(res.error ?? "فشل الحفظ");
+        setMsg(res.error ?? "Failed to save");
       }
     });
   }
@@ -50,14 +50,14 @@ export function TankSerialsPanel({
     <div className="bg-surface border-2 border-brand rounded-xl p-3 space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-extrabold">
-          ✍️ اكتب السيريالات دى ع التانكات ({serials.length})
+          ✍️ Write these serials on the tanks ({serials.length})
         </span>
         <button type="button" onClick={onClose} className="ml-auto text-muted text-xs hover:underline">
-          تمام، خلصت
+          Done
         </button>
       </div>
       <p className="text-xs text-muted">
-        كل تانك اتسجل باسم <b>{batchWelder ?? "—"}</b>. لو تانك منهم لحمه حد تاني، غيّر الاسم جنبه.
+        All of them were recorded under <b>{batchWelder ?? "—"}</b>. If someone else welded one, change the name beside it.
       </p>
 
       <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
@@ -71,7 +71,7 @@ export function TankSerialsPanel({
                 value=""
                 onChange={(v) => reassign(s, v)}
                 disabled={pending}
-                placeholder="غيّر اللحّام"
+                placeholder="Change welder"
                 emptyHint=""
               />
             </span>

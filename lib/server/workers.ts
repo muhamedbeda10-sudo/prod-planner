@@ -61,9 +61,9 @@ export async function resolveWorker(
 ): Promise<{ worker?: WorkerDTO; error?: string }> {
   if (id === null) return {};
   const row = await prisma.worker.findUnique({ where: { id } });
-  if (!row) return { error: "الاسم ده مش موجود ف قايمة العمال — اعمل ريفريش للصفحة." };
+  if (!row) return { error: "That name is not on the workers list — refresh the page." };
   const dto = toDTO(row);
-  if (!dto.active) return { error: `${dto.name} متوقف ف قايمة العمال — اختار اسم تاني.` };
-  if (!dto.depts.includes(dept)) return { error: `${dto.name} مش مسجّل ف القسم ده.` };
+  if (!dto.active) return { error: `${dto.name} is deactivated on the workers list — pick another name.` };
+  if (!dto.depts.includes(dept)) return { error: `${dto.name} is not registered for this stage.` };
   return { worker: dto };
 }

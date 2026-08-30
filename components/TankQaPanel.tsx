@@ -28,11 +28,11 @@ export function TankQaPanel({
 
   function submit() {
     if (!result) {
-      setMsg("قول النتيجة: تمام ولا مش تمام.");
+      setMsg("Say the verdict: OK, or not OK.");
       return;
     }
     if (result === "not-ok" && !note.trim()) {
-      setMsg("اكتب المشكلة اللى شوفتها.");
+      setMsg("Write what is wrong with it.");
       return;
     }
     const fd = new FormData();
@@ -48,18 +48,18 @@ export function TankQaPanel({
         setNote("");
         router.refresh();
       } else {
-        setMsg(res.error ?? "فشل الحفظ");
+        setMsg(res.error ?? "Failed to save");
       }
     });
   }
 
   return (
     <div className="border rounded-xl p-4 space-y-3">
-      <h2 className="text-sm font-extrabold">🔍 فحص الجودة</h2>
+      <h2 className="text-sm font-extrabold">🔍 Quality check</h2>
 
       {last && (
         <div className={`pill ${last.result === "ok" ? "pill-ok" : "pill-bad"}`}>
-          آخر فحص: {last.result === "ok" ? "تمام" : "مش تمام"} · {last.dateISO}
+          Last check: {last.result === "ok" ? "OK" : "Not OK"} · {last.dateISO}
           {last.by ? ` · ${last.by}` : ""}
         </div>
       )}
@@ -72,7 +72,7 @@ export function TankQaPanel({
           disabled={pending}
           className={`rounded-md px-3 py-1.5 text-xs font-bold border ${result === "ok" ? "bg-ok-fg text-white border-transparent" : "hover:bg-ok-bg"}`}
         >
-          ✓ تمام
+          ✓ OK
         </button>
         <button
           type="button"
@@ -80,14 +80,14 @@ export function TankQaPanel({
           disabled={pending}
           className={`rounded-md px-3 py-1.5 text-xs font-bold border ${result === "not-ok" ? "bg-bad-fg text-white border-transparent" : "text-bad-fg hover:bg-bad-bg"}`}
         >
-          ✗ مش تمام
+          ✗ Not OK
         </button>
         <TankWorkerSelect
           workers={inspectors}
           value={worker}
           onChange={setWorker}
           disabled={pending}
-          placeholder="مين اللى فحص؟ (اختياري)"
+          placeholder="Who checked it? (optional)"
           className="min-w-44"
           emptyHint=""
         />
@@ -97,7 +97,7 @@ export function TankQaPanel({
         value={note}
         onChange={(e) => setNote(e.target.value)}
         rows={2}
-        placeholder={result === "not-ok" ? "المشكلة إيه؟ (إجباري)" : "ملاحظة (اختياري)"}
+        placeholder={result === "not-ok" ? "What is wrong? (required)" : "Note (optional)"}
         className="w-full border rounded-md px-2 py-1.5 text-sm bg-surface"
         disabled={pending}
       />
@@ -109,7 +109,7 @@ export function TankQaPanel({
           disabled={pending}
           className="rounded-md px-4 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
         >
-          {pending ? "بيحفظ…" : "سجّل الفحص"}
+          {pending ? "Saving…" : "Record the check"}
         </button>
         {msg && <span className="text-[11px] text-bad-fg">{msg}</span>}
       </div>

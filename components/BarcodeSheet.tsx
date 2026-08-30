@@ -93,20 +93,20 @@ export function BarcodeSheet({ tanks, baseUrl }: { tanks: TankDTO[]; baseUrl: st
         onReset={() => { setQ(""); setMo(""); setQa(""); }}
         hasActive={!!(q || mo || qa)}
       >
-        <SearchBox value={q} onChange={setQ} placeholder="ابحث بالسيريال / MO / SO…" />
-        <SelectFilter label="أمر التصنيع" value={mo} onChange={setMo} options={mos.map((m) => ({ value: m, label: m }))} />
+        <SearchBox value={q} onChange={setQ} placeholder="Search serial / MO / SO…" />
+        <SelectFilter label="MO" value={mo} onChange={setMo} options={mos.map((m) => ({ value: m, label: m }))} />
         <SelectFilter
-          label="الجودة"
+          label="Quality"
           value={qa}
           onChange={setQa}
           options={[
-            { value: "pending", label: "لسه ماتفحصش" },
-            { value: "done", label: "اتفحص" },
-            { value: "failed", label: "مش تمام" },
+            { value: "pending", label: "Not checked yet" },
+            { value: "done", label: "Checked" },
+            { value: "failed", label: "Not OK" },
           ]}
         />
         <button type="button" onClick={toggleAll} className="btn btn-sm" disabled={filtered.length === 0}>
-          {allPicked ? "إلغاء الاختيار" : `اختار الكل (${filtered.length})`}
+          {allPicked ? "Clear selection" : `Select all (${filtered.length})`}
         </button>
         <button
           type="button"
@@ -114,7 +114,7 @@ export function BarcodeSheet({ tanks, baseUrl }: { tanks: TankDTO[]; baseUrl: st
           disabled={picked.size === 0}
           className="btn btn-primary btn-sm"
         >
-          🖨 اطبع شيت ({picked.size})
+          🖨 Print sheet ({picked.size})
         </button>
       </FilterBar>
 
@@ -124,14 +124,14 @@ export function BarcodeSheet({ tanks, baseUrl }: { tanks: TankDTO[]; baseUrl: st
           <thead>
             <tr className="bg-brand text-white text-left">
               <th className="p-2 w-8" />
-              <th className="p-2">السيريال</th>
-              <th className="p-2">أمر التصنيع</th>
+              <th className="p-2">Serial</th>
+              <th className="p-2">MO</th>
               <th className="p-2">SO</th>
               <th className="p-2">BOM</th>
-              <th className="p-2">العميل</th>
-              <th className="p-2">اتدهن يوم</th>
-              <th className="p-2 text-center">الجودة</th>
-              <th className="p-2 text-center">طباعة</th>
+              <th className="p-2">Customer</th>
+              <th className="p-2">Painted on</th>
+              <th className="p-2 text-center">Quality</th>
+              <th className="p-2 text-center">Print</th>
             </tr>
           </thead>
           <tbody>
@@ -139,8 +139,8 @@ export function BarcodeSheet({ tanks, baseUrl }: { tanks: TankDTO[]; baseUrl: st
               <tr>
                 <td colSpan={9} className="p-4 text-center text-muted">
                   {tanks.length === 0
-                    ? "مفيش تانكات خلّصت كل المراحل لسه. التانك بيوصل هنا بعد الدهان."
-                    : "مفيش نتايج للفلتر ده."}
+                    ? "No tank has finished every stage yet — a tank arrives here after painting."
+                    : "No tanks match the filters."}
                 </td>
               </tr>
             )}
@@ -170,15 +170,15 @@ export function BarcodeSheet({ tanks, baseUrl }: { tanks: TankDTO[]; baseUrl: st
                 <td className="p-2 text-center whitespace-nowrap">
                   {t.qaResult ? (
                     <span className={`pill ${t.qaResult === "ok" ? "pill-ok" : "pill-bad"}`}>
-                      {t.qaResult === "ok" ? "تمام" : "مش تمام"}
+                      {t.qaResult === "ok" ? "OK" : "Not OK"}
                     </span>
                   ) : (
-                    <span className="pill pill-muted">لسه</span>
+                    <span className="pill pill-muted">Pending</span>
                   )}
                 </td>
                 <td className="p-2 text-center">
                   <button type="button" onClick={() => print(t.serial)} className="btn btn-sm">
-                    🖨 استيكر
+                    🖨 Sticker
                   </button>
                 </td>
               </tr>

@@ -214,7 +214,7 @@ export function WeldingQueueTable({
     }
     // tanks are minted one serial per piece — the batch needs a named welder
     if (mintsTanks(r) && !worker[k]) {
-      setMsg((s) => ({ ...s, [k]: "اختار مين اللى لحم التانكات دى." }));
+      setMsg((s) => ({ ...s, [k]: "Pick who welded these tanks." }));
       return;
     }
     const fd = new FormData();
@@ -255,7 +255,7 @@ export function WeldingQueueTable({
       return;
     }
     if (dept === "Welding" && gItem === TANK_ITEM && !worker[k]) {
-      setMsg((s) => ({ ...s, [k]: "اختار مين اللى لحم التانكات دى." }));
+      setMsg((s) => ({ ...s, [k]: "Pick who welded these tanks." }));
       return;
     }
     const fd = new FormData();
@@ -374,8 +374,8 @@ export function WeldingQueueTable({
               <span className="text-muted text-xs" title="View only — you don't have this department's edit permission">—</span>
             ) : (dept === "Welding" || dept === "Painting") && r.item === TANK_ITEM && !r.mo ? (
               // a serial carries its order — a BOM-level line has no MO to carry
-              <span className="text-[11px] text-muted whitespace-normal" title="التانك بياخد سيريال مربوط بأمر تصنيع">
-                التانكات بتتسجل تحت أمر تصنيع — السطر ده مالهوش MO.
+              <span className="text-[11px] text-muted whitespace-normal" title="A tank's serial carries the order it belongs to">
+                Tanks are recorded under an MO — this line has none.
               </span>
             ) : picksTanks(r) ? (
               // painting a tank = picking the tanks that passed the leak test
@@ -384,9 +384,9 @@ export function WeldingQueueTable({
                 onClick={() => setOpenTanks(openTanks === k ? null : k)}
                 disabled={pending}
                 className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
-                title="التانكات بتتدهن بالسيريال — اختار التانكات ومين دهنها"
+                title="Tanks are painted by serial — pick the tanks and who painted them"
               >
-                🛢 اختار التانكات ({(paintableTanks[r.mo] ?? []).length})
+                🛢 Pick tanks ({(paintableTanks[r.mo] ?? []).length})
               </button>
             ) : (
               <div className="flex items-center gap-1.5 flex-wrap justify-center">
@@ -408,8 +408,8 @@ export function WeldingQueueTable({
                     value={worker[k] ?? ""}
                     onChange={(v) => setWorker((s) => ({ ...s, [k]: v }))}
                     disabled={pending}
-                    placeholder="مين اللحّام؟"
-                    emptyHint="مفيش لحّامين مسجلين — الأدمن يضيفهم من صفحة عمال الإنتاج."
+                    placeholder="Welder?"
+                    emptyHint="No welders on file — the admin adds them under Production Workers."
                   />
                 )}
                 <button
@@ -776,7 +776,7 @@ export function WeldingQueueTable({
                       {/* painting tanks happens per PIECE — the group row can
                           only send the user into the MOs, where the picker is */}
                       {dept === "Painting" && gItem === TANK_ITEM ? (
-                        <span className="text-xs text-muted">{open ? "▲ اقفل" : "▼ افتح الأوامر"}</span>
+                        <span className="text-xs text-muted">{open ? "▲ collapse" : "▼ open MOs"}</span>
                       ) : canEdit && gAvailable > 0 && members.some((m) => m.mo) ? (
                         <>
                           <div className="flex items-center gap-1.5 justify-center flex-wrap">
@@ -799,8 +799,8 @@ export function WeldingQueueTable({
                                 value={worker[`g|${gk}`] ?? ""}
                                 onChange={(v) => setWorker((s) => ({ ...s, [`g|${gk}`]: v }))}
                                 disabled={pending}
-                                placeholder="مين اللحّام؟"
-                                emptyHint="مفيش لحّامين مسجلين."
+                                placeholder="Welder?"
+                                emptyHint="No welders on file."
                               />
                             )}
                             <button
