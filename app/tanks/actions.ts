@@ -4,8 +4,9 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { checkOutputChain } from "@/lib/server/outputGuard";
-import { requireDeptEdit, requirePerm } from "@/lib/server/auth";
+import { requireDeptEdit, requirePerm, requireAdmin } from "@/lib/server/auth";
 import { resolveWorker } from "@/lib/server/workers";
+import { deleteTanksWithRecords } from "@/lib/server/tanks";
 import { TANK_ITEM, blockedReason, isLeakTestResult, isQaResult, statusAfterLeakTest } from "@/lib/domain/tanks";
 
 // Everything that happens to a tank AS A PIECE: the welder's name, the leak
@@ -274,7 +275,7 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
       for (const [mo, list] of byMo) {
         const planNo = list[0].planNo;
         await tx.plan.upsert({ where: { planNo }, create: { planNo, startDate: date }, update: {} });
-        await tx.handoverEntry.create({
+        const ledger = await tx.handoverEntry.create({
           data: {
             date, dept: "Painting", bom: list[0].bom, mo, item: TANK_ITEM,
             qty: list.length, planNo, source: "worklist",
@@ -287,6 +288,7 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
             where: { id: t.id },
             data: {
               status: "painted",
+              paintLedgerId: ledger.id,
               paintedAt: date,
               paintedById: painter.worker!.id,
               paintedBy: painter.worker!.name,
@@ -404,5 +406,44 @@ export async function recordTankQa(formData: FormData): Promise<TankActionResult
     return { ok: true, count: 1 };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+// ---- removing a tank altogether ----
+
+/**
+ * Take tanks off the barcode tab and out of the records in one action: the tank
+ * row, its whole history, and the quantity it contributed to the daily log.
+ *
+ * A log row usually covers several tanks, so its quantity is decremented rather
+ * than the row deleted — removing one tank must not wipe the four beside it.
+ * The row only disappears once nothing is left on it.
+ *
+ * ADMIN ONLY, and deliberately so: this crosses departments (it takes quantity
+ * off both the welding and the painting ledger) and it cannot be undone.
+ */
+export async function deleteTanks(formData: FormData): Promise<TankActionResult> {
+  try {
+    const guard = await requireAdmin();
+    if (guard.error) return { ok: false, error: guard.error };
+    const serials = serialsFromForm(formData);
+    if (serials.length === 0) return { ok: false, error: "No tanks selected." };
+    if (serials.length > 200) return { ok: false, error: "Too many tanks at once — 200 is the limit." };
+
+    const found = await prisma.tankUnit.findMany({
+      where: { serial: { in: serials } },
+      select: { serial: true },
+    });
+    if (found.length !== serials.length) {
+      const have = new Set(found.map((t) => t.serial));
+      const missing = serials.filter((s) => !have.has(s));
+      return { ok: false, error: `No tank carries these serials: ${missing.join(", ")}` };
+    }
+
+    const res = await prisma.$transaction((tx) => deleteTanksWithRecords(tx, serials));
+    revalidateTanks();
+    return { ok: true, count: res.deleted };
+  } catch (e) {
+    return { ok: false, error: `Failed to remove: ${e instanceof Error ? e.message : String(e)}` };
   }
 }

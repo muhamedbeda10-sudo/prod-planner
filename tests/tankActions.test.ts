@@ -19,7 +19,9 @@ const h = vi.hoisted(() => {
     checkOutputChain: vi.fn(),
     requireDeptEdit: vi.fn(),
     requirePerm: vi.fn(),
+    requireAdmin: vi.fn(),
     resolveWorker: vi.fn(),
+    deleteTanksWithRecords: vi.fn(),
   };
 });
 
@@ -30,7 +32,9 @@ vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChai
 vi.mock("@/lib/server/auth", () => ({
   requireDeptEdit: h.requireDeptEdit,
   requirePerm: h.requirePerm,
+  requireAdmin: h.requireAdmin,
 }));
+vi.mock("@/lib/server/tanks", () => ({ deleteTanksWithRecords: h.deleteTanksWithRecords }));
 vi.mock("@/lib/server/workers", () => ({ resolveWorker: h.resolveWorker }));
 
 import {
@@ -39,6 +43,7 @@ import {
   paintTanks,
   sendTankBackToWelding,
   recordTankQa,
+  deleteTanks,
 } from "@/app/tanks/actions";
 
 function form(fields: Record<string, string>): FormData {
@@ -73,6 +78,8 @@ beforeEach(() => {
 
   h.requireDeptEdit.mockResolvedValue({ user: { name: "tester" } });
   h.requirePerm.mockResolvedValue({ user: { name: "tester" } });
+  h.requireAdmin.mockResolvedValue({ user: { name: "tester" } });
+  h.deleteTanksWithRecords.mockResolvedValue({ deleted: 1, ledgerRowsTouched: 2 });
   h.resolveWorker.mockResolvedValue({ worker: { id: 7, name: "Sayed" } });
   h.checkOutputChain.mockResolvedValue(null);
 
@@ -80,7 +87,14 @@ beforeEach(() => {
     body({
       tankUnit: { update: async (a: { data: Record<string, unknown> }) => { writes.tankUpdates.push(a.data); } },
       tankEvent: { create: async (a: { data: Record<string, unknown> }) => { writes.events.push(a.data); } },
-      handoverEntry: { create: async (a: { data: Record<string, unknown> }) => { writes.ledger.push(a.data); } },
+      // the real client returns the created row; paintTanks stamps its id onto
+      // every tank it paints, so the stub has to hand one back
+      handoverEntry: {
+        create: async (a: { data: Record<string, unknown> }) => {
+          writes.ledger.push(a.data);
+          return { id: 900 + writes.ledger.length, ...a.data };
+        },
+      },
       plan: { upsert: async () => ({}) },
     })
   );
@@ -186,6 +200,9 @@ describe("paintTanks", () => {
     // the ledger row says which tanks it stands for
     expect(String(writes.ledger[0].note)).toContain("SF-B-0001");
     expect(writes.tankUpdates.every((u) => u.status === "painted")).toBe(true);
+    // each tank remembers WHICH log row painted it, so deleting that row later
+    // can take exactly these tanks back out of the barcode tab
+    expect(writes.tankUpdates.map((u) => u.paintLedgerId)).toEqual([901, 901, 902]);
   });
 
   it("refuses a tank that never passed the leak test — the whole point of the gate", async () => {
@@ -263,5 +280,44 @@ describe("recordTankQa", () => {
     const res = await recordTankQa(form({ serial: "SF-B-0001", result: "ok" }));
     expect(res).toEqual({ ok: false, error: "no permission" });
     expect(h.requirePerm).toHaveBeenCalledWith("quality.qa");
+  });
+});
+
+describe("deleteTanks — removing a tank takes its records with it", () => {
+  it("removes the picked tanks and reports how many went", async () => {
+    h.prisma.tankUnit.findMany.mockResolvedValue([{ serial: "SF-B-0001" }, { serial: "SF-B-0002" }]);
+    h.deleteTanksWithRecords.mockResolvedValue({ deleted: 2, ledgerRowsTouched: 2 });
+    const res = await deleteTanks(form({ serials: "SF-B-0001,SF-B-0002" }));
+    expect(res).toEqual({ ok: true, count: 2 });
+    expect(h.deleteTanksWithRecords).toHaveBeenCalledWith(expect.anything(), ["SF-B-0001", "SF-B-0002"]);
+  });
+
+  it("is admin only — it takes quantity off two departments' ledgers", async () => {
+    h.requireAdmin.mockResolvedValue({ error: "no permission" });
+    const res = await deleteTanks(form({ serials: "SF-B-0001" }));
+    expect(res).toEqual({ ok: false, error: "no permission" });
+    expect(h.deleteTanksWithRecords).not.toHaveBeenCalled();
+  });
+
+  it("names a serial it cannot find instead of half-deleting", async () => {
+    h.prisma.tankUnit.findMany.mockResolvedValue([{ serial: "SF-B-0001" }]);
+    const res = await deleteTanks(form({ serials: "SF-B-0001,SF-B-0404" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("SF-B-0404");
+    expect(h.deleteTanksWithRecords).not.toHaveBeenCalled();
+  });
+
+  it("refuses an empty selection", async () => {
+    const res = await deleteTanks(form({ serials: "" }));
+    expect(res.ok).toBe(false);
+    expect(h.deleteTanksWithRecords).not.toHaveBeenCalled();
+  });
+
+  it("caps a runaway bulk delete", async () => {
+    const many = Array.from({ length: 201 }, (_, i) => `SF-B-${String(i).padStart(4, "0")}`).join(",");
+    const res = await deleteTanks(form({ serials: many }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/200/);
+    expect(h.deleteTanksWithRecords).not.toHaveBeenCalled();
   });
 });
