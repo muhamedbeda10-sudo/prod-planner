@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkerDTO } from "@/lib/server/workers";
 import { recordTankQa } from "@/app/tanks/actions";
-import { TankWorkerSelect } from "@/components/TankWorkerSelect";
+import { TankWorkerPicker, NO_WORKER, type WorkerPick } from "@/components/TankWorkerPicker";
 
 // Quality's half of the tank page: scan the sticker, read what the tank went
 // through, then sign it off. "Not OK" always needs a note — that note is the
@@ -22,7 +22,7 @@ export function TankQaPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<"ok" | "not-ok" | "">("");
-  const [worker, setWorker] = useState("");
+  const [worker, setWorker] = useState<WorkerPick>(NO_WORKER);
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState("");
 
@@ -35,10 +35,15 @@ export function TankQaPanel({
       setMsg("Write what is wrong with it.");
       return;
     }
+    // the inspector is optional, but a number that matches nobody is a typo
+    if (worker.empId.trim() && worker.id === null) {
+      setMsg("No worker has that ID — clear the box to sign it off under your own account.");
+      return;
+    }
     const fd = new FormData();
     fd.set("serial", serial);
     fd.set("result", result);
-    if (worker) fd.set("workerId", worker);
+    if (worker.id !== null) fd.set("workerId", String(worker.id));
     fd.set("note", note.trim());
     setMsg("");
     startTransition(async () => {
@@ -82,13 +87,12 @@ export function TankQaPanel({
         >
           ✗ Not OK
         </button>
-        <TankWorkerSelect
+        <TankWorkerPicker
           workers={inspectors}
           value={worker}
           onChange={setWorker}
           disabled={pending}
-          placeholder="Who checked it? (optional)"
-          className="min-w-44"
+          label="Inspector ID"
           emptyHint=""
         />
       </div>

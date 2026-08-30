@@ -65,11 +65,13 @@ function WorkerCard({ worker }: { worker: WorkerDTO }) {
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[220px]">
           <div className="font-bold flex items-center gap-2">
+            <code className="ltr tabnum text-sm px-1.5 py-0.5 rounded bg-surface-2 border">{worker.empId}</code>
             {worker.name}
+            {worker.mark && <span className="pill pill-muted ltr">mark {worker.mark}</span>}
             {!worker.active && <span className="pill pill-muted">Deactivated</span>}
           </div>
           <div className="text-xs text-muted mt-0.5">
-            {worker.code ? `Code ${worker.code} · ` : ""}
+            {worker.jobTitle ? `${worker.jobTitle} · ` : ""}
             {worker.depts.length > 0 ? worker.depts.map((d) => WORKER_DEPT_LABEL[d]).join(" · ") : "No stage assigned"}
           </div>
         </div>
@@ -119,12 +121,20 @@ function WorkerCard({ worker }: { worker: WorkerDTO }) {
         >
           <div className="grid sm:grid-cols-2 gap-2.5">
             <label className="block">
+              <span className="text-xs font-bold text-muted">ID</span>
+              <input name="empId" defaultValue={worker.empId} required inputMode="numeric" className={`${inputCls} ltr tabnum`} />
+            </label>
+            <label className="block">
               <span className="text-xs font-bold text-muted">Name</span>
               <input name="name" defaultValue={worker.name} required className={inputCls} />
             </label>
             <label className="block">
-              <span className="text-xs font-bold text-muted">Code (optional)</span>
-              <input name="code" defaultValue={worker.code ?? ""} className={inputCls} />
+              <span className="text-xs font-bold text-muted">Job title (optional)</span>
+              <input name="jobTitle" defaultValue={worker.jobTitle ?? ""} className={inputCls} />
+            </label>
+            <label className="block">
+              <span className="text-xs font-bold text-muted">Mark (optional)</span>
+              <input name="mark" defaultValue={worker.mark ?? ""} maxLength={4} className={`${inputCls} ltr`} />
             </label>
           </div>
           <DeptChecks defaults={depts} disabled={edit.pending} />
@@ -161,12 +171,20 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
           >
             <div className="grid sm:grid-cols-2 gap-2.5">
               <label className="block">
+                <span className="text-xs font-bold text-muted">ID</span>
+                <input name="empId" required inputMode="numeric" placeholder="Badge number, e.g. 100058" className={`${inputCls} ltr tabnum`} />
+              </label>
+              <label className="block">
                 <span className="text-xs font-bold text-muted">Name</span>
                 <input name="name" required placeholder="Worker's name" className={inputCls} />
               </label>
               <label className="block">
-                <span className="text-xs font-bold text-muted">Code (optional)</span>
-                <input name="code" placeholder="Badge number" className={inputCls} />
+                <span className="text-xs font-bold text-muted">Job title (optional)</span>
+                <input name="jobTitle" placeholder="Tank Full Welder" className={inputCls} />
+              </label>
+              <label className="block">
+                <span className="text-xs font-bold text-muted">Mark (optional)</span>
+                <input name="mark" maxLength={4} placeholder="X" className={`${inputCls} ltr`} />
               </label>
             </div>
             <DeptChecks defaults={new Set()} disabled={add.pending} />
@@ -182,7 +200,7 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
 
       {workers.length === 0 ? (
         <p className="text-sm text-muted">
-          No workers on the list yet. Without these names, the shop floor cannot record who welded, tested or painted a tank.
+          No workers on the list yet. Without them, the shop floor has no ID to enter when recording who welded, tested or painted a tank.
         </p>
       ) : (
         <div className="space-y-3">

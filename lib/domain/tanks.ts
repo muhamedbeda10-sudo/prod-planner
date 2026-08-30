@@ -92,6 +92,13 @@ export const WORKER_DEPT_LABEL: Record<WorkerDept, string> = {
   Quality: "Quality",
 };
 
+/** Normalize a worker's badge number. It is typed by hand on a noisy floor, so
+ *  "100 058" and "100058" have to be the same man. Lives here rather than in
+ *  the server layer because the picker matches on it in the browser too. */
+export function normalizeEmpId(raw: string): string {
+  return String(raw ?? "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
 /** Normalize a BOM for use inside a serial: trimmed, upper-cased, no spaces.
  *  The serial is written by hand on steel — whitespace in it is a bug. */
 export function normalizeSerialBom(bom: string): string {

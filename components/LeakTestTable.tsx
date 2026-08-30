@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { TankDTO } from "@/lib/server/tanks";
 import type { WorkerDTO } from "@/lib/server/workers";
 import { recordLeakTest } from "@/app/tanks/actions";
-import { TankWorkerSelect } from "@/components/TankWorkerSelect";
+import { TankWorkerPicker, NO_WORKER, type WorkerPick } from "@/components/TankWorkerPicker";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { PrintButton } from "@/components/PrintButton";
 import { tankPath } from "@/lib/domain/tanks";
@@ -35,7 +35,7 @@ export function LeakTestTable({
   const [pending, startTransition] = useTransition();
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [worker, setWorker] = useState("");
+  const [worker, setWorker] = useState<WorkerPick>(NO_WORKER);
   const [msg, setMsg] = useState("");
   const [failFor, setFailFor] = useState<string | null>(null);
 
@@ -62,14 +62,14 @@ export function LeakTestTable({
       setMsg("Pick the tanks first.");
       return;
     }
-    if (!worker) {
-      setMsg("Pick who carried out the test.");
+    if (worker.id === null) {
+      setMsg(worker.empId ? "No worker has that ID." : "Enter the ID of whoever carried out the test.");
       return;
     }
     const fd = new FormData();
     fd.set("serials", serials.join(","));
     fd.set("result", result);
-    fd.set("workerId", worker);
+    fd.set("workerId", String(worker.id));
     fd.set("note", note);
     fd.set("date", day);
     setMsg("");
@@ -103,13 +103,12 @@ export function LeakTestTable({
             <button type="button" onClick={toggleAll} className="btn btn-sm" disabled={pending || filtered.length === 0}>
               {allPicked ? "Clear selection" : `Select all (${filtered.length})`}
             </button>
-            <TankWorkerSelect
+            <TankWorkerPicker
               workers={testers}
               value={worker}
               onChange={setWorker}
               disabled={pending}
-              placeholder="Who tested them?"
-              className="min-w-44"
+              label="Tester ID"
               emptyHint="No leak testers on file — the admin adds them under Production Workers."
             />
             <button

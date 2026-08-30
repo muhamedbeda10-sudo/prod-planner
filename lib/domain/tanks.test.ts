@@ -10,6 +10,7 @@ import {
   tankQrPayload,
   tankPath,
   normalizeSerialBom,
+  normalizeEmpId,
   isWorkerDept,
   isTankStatus,
 } from "./tanks";
@@ -145,6 +146,24 @@ describe("event labels", () => {
 
   it("falls back to the raw kind rather than rendering nothing", () => {
     expect(tankEventLook("something-new")).toEqual({ label: "something-new", tone: "pill-muted" });
+  });
+});
+
+describe("normalizeEmpId", () => {
+  it("survives how a badge number gets typed on the floor", () => {
+    expect(normalizeEmpId("100058")).toBe("100058");
+    expect(normalizeEmpId("  100058 ")).toBe("100058");
+    expect(normalizeEmpId("100 058")).toBe("100058"); // read off the badge in two halves
+    expect(normalizeEmpId("\t100058\n")).toBe("100058");
+  });
+
+  it("upper-cases so a lettered ID matches either way", () => {
+    expect(normalizeEmpId("w-12a")).toBe("W-12A");
+  });
+
+  it("treats a blank box as no answer, not as a worker", () => {
+    expect(normalizeEmpId("")).toBe("");
+    expect(normalizeEmpId("   ")).toBe("");
   });
 });
 

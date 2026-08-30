@@ -486,13 +486,25 @@ model RunOrderEntry {
 // painter, QA inspector). NOT an app account — the people on the floor rarely
 // have logins. The admin keeps this list in Admin → Workers.
 model Worker {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  code      String? // badge / payroll number — for the admin's own reference
+  id Int @id @default(autoincrement())
+
+  // The number on the man's badge — what the shop floor TYPES to identify him.
+  // Names on this list repeat and are long to spell; the number does not, so it
+  // is the identifier everywhere and the name is only shown back to confirm it.
+  empId String @unique
+
+  name     String  @unique
+  jobTitle String? // Tank Full Welder, Welder Helper, Painter, … — as HR lists it
+  // The single letter beside a welder on the workforce sheet, kept as-is so
+  // whoever reads a tank's record can tie it back to that sheet.
+  mark     String?
+
   depts     String   @default("") // CSV of Welding | LeakTest | Painting | Quality
   active    Boolean  @default(true) // inactive workers stay on old records, leave the dropdowns
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([active])
 }
 
 // ONE physical tank, born at its first welding record and carried through
