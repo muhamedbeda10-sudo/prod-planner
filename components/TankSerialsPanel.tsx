@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkerDTO } from "@/lib/server/workers";
 import { assignTankWelder } from "@/app/tanks/actions";
-import { TankWorkerSelect } from "@/components/TankWorkerSelect";
+import { TankWorkerPicker, NO_WORKER, type WorkerPick } from "@/components/TankWorkerPicker";
 
 // What the welder sees the moment a batch is saved: the serials the app just
 // minted, big enough to copy onto the steel, each with the name it was
@@ -27,18 +27,21 @@ export function TankSerialsPanel({
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState("");
   const [changed, setChanged] = useState<Record<string, string>>({});
+  const [picks, setPicks] = useState<Record<string, WorkerPick>>({});
 
-  function reassign(serial: string, workerId: string) {
-    if (!workerId) return;
+  function reassign(serial: string, pick: WorkerPick) {
+    setPicks((s) => ({ ...s, [serial]: pick }));
+    if (pick.id === null) return; // still typing — nothing to save yet
     const fd = new FormData();
     fd.set("serial", serial);
-    fd.set("workerId", workerId);
+    fd.set("workerId", String(pick.id));
     setMsg("");
     startTransition(async () => {
       const res = await assignTankWelder(fd);
       if (res.ok) {
-        const name = welders.find((w) => String(w.id) === workerId)?.name ?? "";
+        const name = welders.find((w) => w.id === pick.id)?.name ?? "";
         setChanged((s) => ({ ...s, [serial]: name }));
+        setPicks((s) => ({ ...s, [serial]: NO_WORKER }));
         router.refresh();
       } else {
         setMsg(res.error ?? "Failed to save");
@@ -66,12 +69,12 @@ export function TankSerialsPanel({
             <code className="ltr font-extrabold tabnum text-sm tracking-wide">{s}</code>
             <span className="ml-auto flex items-center gap-1.5">
               {changed[s] && <span className="pill pill-ok text-[10px]">{changed[s]}</span>}
-              <TankWorkerSelect
+              <TankWorkerPicker
                 workers={welders}
-                value=""
+                value={picks[s] ?? NO_WORKER}
                 onChange={(v) => reassign(s, v)}
                 disabled={pending}
-                placeholder="Change welder"
+                label="Other ID"
                 emptyHint=""
               />
             </span>

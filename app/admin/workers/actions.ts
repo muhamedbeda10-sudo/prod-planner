@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { serializeWorkerDepts } from "@/lib/server/workers";
+import { normalizeEmpId } from "@/lib/domain/tanks";
 
 // The shop-floor workers list: who can be credited with welding, testing,
 // painting or checking a tank. Deactivating is the way to retire someone —
@@ -23,8 +24,10 @@ function revalidateWorkers() {
 
 function readForm(formData: FormData) {
   return {
+    empId: normalizeEmpId(String(formData.get("empId") ?? "")),
     name: String(formData.get("name") ?? "").trim(),
-    code: String(formData.get("code") ?? "").trim(),
+    jobTitle: String(formData.get("jobTitle") ?? "").trim(),
+    mark: String(formData.get("mark") ?? "").trim().toUpperCase(),
     depts: serializeWorkerDepts(formData.getAll("depts").map(String)),
   };
 }
@@ -33,14 +36,20 @@ export async function createWorker(formData: FormData): Promise<WorkerActionResu
   const guard = await requirePerm("workers.manage");
   if (guard.error) return { ok: false, error: guard.error };
 
-  const { name, code, depts } = readForm(formData);
+  const { empId, name, jobTitle, mark, depts } = readForm(formData);
+  if (!empId) return { ok: false, error: "Enter the worker's ID — it is what the shop floor types." };
   if (!name) return { ok: false, error: "Enter the worker's name." };
   if (!depts) return { ok: false, error: "Pick at least one stage they work in." };
+  if (await prisma.worker.findUnique({ where: { empId } })) {
+    return { ok: false, error: `ID ${empId} is already taken by another worker.` };
+  }
   if (await prisma.worker.findUnique({ where: { name } })) {
     return { ok: false, error: "A worker with this name already exists." };
   }
 
-  await prisma.worker.create({ data: { name, code: code || null, depts } });
+  await prisma.worker.create({
+    data: { empId, name, jobTitle: jobTitle || null, mark: mark || null, depts },
+  });
   revalidateWorkers();
   return { ok: true };
 }
@@ -51,14 +60,20 @@ export async function updateWorker(formData: FormData): Promise<WorkerActionResu
 
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid worker." };
-  const { name, code, depts } = readForm(formData);
+  const { empId, name, jobTitle, mark, depts } = readForm(formData);
+  if (!empId) return { ok: false, error: "Enter the worker's ID — it is what the shop floor types." };
   if (!name) return { ok: false, error: "Enter the worker's name." };
   if (!depts) return { ok: false, error: "Pick at least one stage they work in." };
 
+  const idClash = await prisma.worker.findUnique({ where: { empId } });
+  if (idClash && idClash.id !== id) return { ok: false, error: `ID ${empId} is already taken by another worker.` };
   const clash = await prisma.worker.findUnique({ where: { name } });
   if (clash && clash.id !== id) return { ok: false, error: "Another worker already has this name." };
 
-  await prisma.worker.update({ where: { id }, data: { name, code: code || null, depts } });
+  await prisma.worker.update({
+    where: { id },
+    data: { empId, name, jobTitle: jobTitle || null, mark: mark || null, depts },
+  });
   revalidateWorkers();
   return { ok: true };
 }

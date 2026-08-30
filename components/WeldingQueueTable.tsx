@@ -15,7 +15,7 @@ import { assessDeliveryRisk } from "@/lib/domain/insights";
 import { TANK_ITEM } from "@/lib/domain/tanks";
 import type { TankDTO } from "@/lib/server/tanks";
 import type { WorkerDTO } from "@/lib/server/workers";
-import { TankWorkerSelect } from "@/components/TankWorkerSelect";
+import { TankWorkerPicker, NO_WORKER, type WorkerPick } from "@/components/TankWorkerPicker";
 import { TankSerialsPanel } from "@/components/TankSerialsPanel";
 import { TankPaintPicker } from "@/components/TankPaintPicker";
 
@@ -70,7 +70,7 @@ export function WeldingQueueTable({
   // tanks: the welder picked for a line's batch, the serials the last save
   // minted (shown so they can be written on the steel), and which line has its
   // tank picker open on the painting worklist
-  const [worker, setWorker] = useState<Record<string, string>>({});
+  const [worker, setWorker] = useState<Record<string, WorkerPick>>({});
   const [minted, setMinted] = useState<Record<string, string[]>>({});
   const [openTanks, setOpenTanks] = useState<string | null>(null);
   const [openNotes, setOpenNotes] = useState<string | null>(null); // note panel per line (bom|mo|item)
@@ -167,7 +167,8 @@ export function WeldingQueueTable({
   // could say neither, so the tank rows get their own controls.
   const mintsTanks = (r: { item: string; mo: string }) => dept === "Welding" && r.item === TANK_ITEM && !!r.mo;
   const picksTanks = (r: { item: string; mo: string }) => dept === "Painting" && r.item === TANK_ITEM && !!r.mo;
-  const workerName = (k: string) => workers.find((w) => String(w.id) === worker[k])?.name ?? null;
+  const pickOf = (k: string) => worker[k] ?? NO_WORKER;
+  const workerName = (k: string) => workers.find((w) => w.id === pickOf(k).id)?.name ?? null;
 
   // per-item workload — the WHOLE queue (unfiltered): what's waiting per component
   const perItem = ITEMS.map((it) => {
@@ -213,8 +214,11 @@ export function WeldingQueueTable({
       return;
     }
     // tanks are minted one serial per piece — the batch needs a named welder
-    if (mintsTanks(r) && !worker[k]) {
-      setMsg((s) => ({ ...s, [k]: "Pick who welded these tanks." }));
+    if (mintsTanks(r) && pickOf(k).id === null) {
+      setMsg((s) => ({
+        ...s,
+        [k]: pickOf(k).empId ? "No worker has that ID." : "Enter the ID of the welder who made these tanks.",
+      }));
       return;
     }
     const fd = new FormData();
@@ -225,7 +229,7 @@ export function WeldingQueueTable({
     fd.set("item", r.item);
     fd.set("qty", String(n));
     fd.set("planNo", String(r.planNo));
-    if (worker[k]) fd.set("workerId", worker[k]);
+    if (pickOf(k).id !== null) fd.set("workerId", String(pickOf(k).id));
     startTransition(async () => {
       const res = await recordOutput(fd);
       if (res.ok) {
@@ -254,8 +258,11 @@ export function WeldingQueueTable({
       setMsg((s) => ({ ...s, [k]: `Only ${gAvailable} available from ${upLabel}` }));
       return;
     }
-    if (dept === "Welding" && gItem === TANK_ITEM && !worker[k]) {
-      setMsg((s) => ({ ...s, [k]: "Pick who welded these tanks." }));
+    if (dept === "Welding" && gItem === TANK_ITEM && pickOf(k).id === null) {
+      setMsg((s) => ({
+        ...s,
+        [k]: pickOf(k).empId ? "No worker has that ID." : "Enter the ID of the welder who made these tanks.",
+      }));
       return;
     }
     const fd = new FormData();
@@ -266,7 +273,7 @@ export function WeldingQueueTable({
     fd.set("qty", String(n));
     // BOM-level lines (no MO) can't take part in the split — real MOs only
     fd.set("mos", [...new Set(members.map((m) => m.mo).filter(Boolean))].join(","));
-    if (worker[k]) fd.set("workerId", worker[k]);
+    if (pickOf(k).id !== null) fd.set("workerId", String(pickOf(k).id));
     startTransition(async () => {
       const res = await recordGroupOutput(fd);
       if (res.ok) {
@@ -403,12 +410,12 @@ export function WeldingQueueTable({
                   disabled={pending}
                 />
                 {mintsTanks(r) && (
-                  <TankWorkerSelect
+                  <TankWorkerPicker
                     workers={workers}
-                    value={worker[k] ?? ""}
+                    value={pickOf(k)}
                     onChange={(v) => setWorker((s) => ({ ...s, [k]: v }))}
                     disabled={pending}
-                    placeholder="Welder?"
+                    label="Welder ID"
                     emptyHint="No welders on file — the admin adds them under Production Workers."
                   />
                 )}
@@ -794,12 +801,12 @@ export function WeldingQueueTable({
                               title="Record on the WHOLE BOM — the quantity is distributed over its MOs in order"
                             />
                             {dept === "Welding" && gItem === TANK_ITEM && (
-                              <TankWorkerSelect
+                              <TankWorkerPicker
                                 workers={workers}
-                                value={worker[`g|${gk}`] ?? ""}
+                                value={pickOf(`g|${gk}`)}
                                 onChange={(v) => setWorker((s) => ({ ...s, [`g|${gk}`]: v }))}
                                 disabled={pending}
-                                placeholder="Welder?"
+                                label="Welder ID"
                                 emptyHint="No welders on file."
                               />
                             )}

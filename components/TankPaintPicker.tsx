@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { TankDTO } from "@/lib/server/tanks";
 import type { WorkerDTO } from "@/lib/server/workers";
 import { paintTanks, sendTankBackToWelding } from "@/app/tanks/actions";
-import { TankWorkerSelect } from "@/components/TankWorkerSelect";
+import { TankWorkerPicker, NO_WORKER, type WorkerPick } from "@/components/TankWorkerPicker";
 
 // Painting a tank is a per-piece job now: pick the tanks, pick the painter,
 // save. Only tanks that PASSED the leak test are listed — that is the gate the
@@ -32,7 +32,7 @@ export function TankPaintPicker({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [worker, setWorker] = useState("");
+  const [worker, setWorker] = useState<WorkerPick>(NO_WORKER);
   const [msg, setMsg] = useState("");
   const [backFor, setBackFor] = useState<string | null>(null);
 
@@ -52,13 +52,13 @@ export function TankPaintPicker({
       setMsg("Pick the tanks that were painted.");
       return;
     }
-    if (!worker) {
-      setMsg("Pick who painted them.");
+    if (worker.id === null) {
+      setMsg(worker.empId ? "No worker has that ID." : "Enter the ID of whoever painted them.");
       return;
     }
     const fd = new FormData();
     fd.set("serials", [...picked].join(","));
-    fd.set("workerId", worker);
+    fd.set("workerId", String(worker.id));
     fd.set("date", day);
     setMsg("");
     startTransition(async () => {
@@ -159,13 +159,12 @@ export function TankPaintPicker({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t pt-2.5">
-        <TankWorkerSelect
+        <TankWorkerPicker
           workers={painters}
           value={worker}
           onChange={setWorker}
           disabled={pending}
-          placeholder="Who painted them?"
-          className="min-w-40"
+          label="Painter ID"
           emptyHint="No painters on file — the admin adds them under Production Workers."
         />
         <button

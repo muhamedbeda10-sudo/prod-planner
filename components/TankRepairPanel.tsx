@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { TankDTO } from "@/lib/server/tanks";
 import type { WorkerDTO } from "@/lib/server/workers";
 import { markTankRepaired } from "@/app/tanks/actions";
-import { TankWorkerSelect } from "@/components/TankWorkerSelect";
+import { TankWorkerPicker, NO_WORKER, type WorkerPick } from "@/components/TankWorkerPicker";
 import { tankPath } from "@/lib/domain/tanks";
 
 // Tanks the leak test sent back. They sit on top of the welding worklist —
@@ -17,20 +17,23 @@ import { tankPath } from "@/lib/domain/tanks";
 export function TankRepairPanel({ tanks, welders }: { tanks: TankDTO[]; welders: WorkerDTO[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [worker, setWorker] = useState<Record<string, string>>({});
+  const [worker, setWorker] = useState<Record<string, WorkerPick>>({});
   const [msg, setMsg] = useState<Record<string, string>>({});
 
   if (tanks.length === 0) return null;
 
   function confirm(serial: string) {
-    const w = worker[serial];
-    if (!w) {
-      setMsg((s) => ({ ...s, [serial]: "Pick who repaired it." }));
+    const w = worker[serial] ?? NO_WORKER;
+    if (w.id === null) {
+      setMsg((s) => ({
+        ...s,
+        [serial]: w.empId ? "No worker has that ID." : "Enter the ID of whoever repaired it.",
+      }));
       return;
     }
     const fd = new FormData();
     fd.set("serial", serial);
-    fd.set("workerId", w);
+    fd.set("workerId", String(w.id));
     setMsg((s) => ({ ...s, [serial]: "" }));
     startTransition(async () => {
       const res = await markTankRepaired(fd);
@@ -69,12 +72,12 @@ export function TankRepairPanel({ tanks, welders }: { tanks: TankDTO[]; welders:
                 </td>
                 <td className="p-2">
                   <div className="flex items-center gap-1.5 justify-center">
-                    <TankWorkerSelect
+                    <TankWorkerPicker
                       workers={welders}
-                      value={worker[t.serial] ?? ""}
+                      value={worker[t.serial] ?? NO_WORKER}
                       onChange={(v) => setWorker((s) => ({ ...s, [t.serial]: v }))}
                       disabled={pending}
-                      placeholder="Who repaired it?"
+                      label="Welder ID"
                       emptyHint="No welders on file."
                     />
                     <button
