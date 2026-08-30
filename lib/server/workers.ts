@@ -12,8 +12,8 @@ export interface WorkerDTO {
   empId: string;
   name: string;
   jobTitle: string | null;
-  /** The single letter beside a welder on the workforce sheet. */
-  mark: string | null;
+  /** The welder's stamp — the letter he punches into every tank he welds. */
+  stamp: string | null;
   depts: WorkerDept[];
   active: boolean;
 }
@@ -40,11 +40,11 @@ export function serializeWorkerDepts(depts: Iterable<string>): string {
 }
 
 function toDTO(w: {
-  id: number; empId: string; name: string; jobTitle: string | null; mark: string | null;
+  id: number; empId: string; name: string; jobTitle: string | null; stamp: string | null;
   depts: string; active: boolean;
 }): WorkerDTO {
   return {
-    id: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle, mark: w.mark,
+    id: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle, stamp: w.stamp,
     depts: parseWorkerDepts(w.depts), active: w.active,
   };
 }

@@ -138,7 +138,7 @@ export function LeakTestTable({
                 <th className="p-2">BOM</th>
                 <th className="p-2">KVA</th>
                 <th className="p-2">Welded on</th>
-                <th className="p-2">Welder</th>
+                <th className="p-2" title="Name, and the stamp punched into the tank">Welder</th>
                 <th className="p-2 text-center">Waiting</th>
                 {canEdit && <th className="p-2 text-center w-40">Verdict</th>}
               </tr>
@@ -176,7 +176,10 @@ export function LeakTestTable({
                   <td className="p-2 font-bold whitespace-nowrap">{t.bom}</td>
                   <td className="p-2 text-xs text-muted whitespace-nowrap">{t.kva ?? "—"}</td>
                   <td className="p-2 text-xs tabnum whitespace-nowrap">{t.weldedISO}</td>
-                  <td className="p-2 text-xs whitespace-nowrap">{t.weldedBy ?? "—"}</td>
+                  <td className="p-2 text-xs whitespace-nowrap">
+                    {t.weldedBy ?? "—"}
+                    {t.weldedStamp && <span className="pill pill-muted ml-1 ltr">{t.weldedStamp}</span>}
+                  </td>
                   <td className="p-2 text-center whitespace-nowrap">
                     <span className={`pill ${t.ageDays > 6 ? "pill-bad" : t.ageDays > 2 ? "pill-warn" : "pill-ok"}`}>
                       ⏳ {t.ageDays === 0 ? "today" : `${t.ageDays}d`}

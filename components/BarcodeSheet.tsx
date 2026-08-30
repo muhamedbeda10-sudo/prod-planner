@@ -31,6 +31,9 @@ function Sticker({ tank, baseUrl }: { tank: TankDTO; baseUrl: string }) {
           BOM {tank.bom}
           {tank.kva ? ` · ${tank.kva}` : ""}
         </div>
+        {/* the welder's stamp is punched into this tank — printing it lets
+            anyone check the label against the steel without a phone */}
+        {tank.weldedStamp && <div className="text-[10px] font-semibold truncate">Stamp {tank.weldedStamp}</div>}
         <div className="text-[9px] mt-0.5">ATC — Arabian Transformers</div>
       </div>
     </div>

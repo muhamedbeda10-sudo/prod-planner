@@ -95,10 +95,14 @@ export function TankWorkerPicker({
       {match ? (
         <span
           className="pill pill-ok whitespace-nowrap max-w-52 overflow-hidden text-ellipsis"
-          title={match.jobTitle ? `${match.name} · ${match.jobTitle}` : match.name}
+          title={
+            [match.name, match.jobTitle, match.stamp ? `stamp ${match.stamp}` : null]
+              .filter(Boolean)
+              .join(" · ")
+          }
         >
           ✓ {match.name}
-          {match.mark ? ` (${match.mark})` : ""}
+          {match.stamp ? ` · stamp ${match.stamp}` : ""}
         </span>
       ) : unknown ? (
         <span className="pill pill-bad whitespace-nowrap">✗ No worker with this ID</span>

@@ -34,6 +34,8 @@ export interface TankDTO {
   // stages
   weldedISO: string;
   weldedBy: string | null;
+  /** The stamp punched into this tank, as recorded at welding. */
+  weldedStamp: string | null;
   testedISO: string | null;
   testedBy: string | null;
   testResult: LeakTestResult | null;
@@ -96,6 +98,7 @@ function toDTO(t: TankRow, order: OrderBits): TankDTO {
     fgCode: order?.fgCode ?? null,
     weldedISO: toISODate(t.weldedAt),
     weldedBy: t.weldedBy,
+    weldedStamp: t.weldedStamp,
     testedISO: t.testedAt ? toISODate(t.testedAt) : null,
     testedBy: t.testedBy,
     testResult: (t.testResult as LeakTestResult | null) ?? null,
@@ -152,6 +155,7 @@ export async function mintTankSerials(
     date: Date;
     workerId?: number | null;
     workerName?: string | null;
+    workerStamp?: string | null;
     byUser?: string | null;
   }
 ): Promise<MintedTank[]> {
@@ -186,6 +190,7 @@ export async function mintTankSerials(
         weldedAt: opts.date,
         weldedById: opts.workerId ?? null,
         weldedBy: opts.workerName ?? null,
+        weldedStamp: opts.workerStamp ?? null,
         weldedLogBy: opts.byUser ?? null,
         events: {
           create: {

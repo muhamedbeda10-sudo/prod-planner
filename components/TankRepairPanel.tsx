@@ -64,7 +64,10 @@ export function TankRepairPanel({ tanks, welders }: { tanks: TankDTO[]; welders:
                     {t.serial}
                   </Link>
                 </td>
-                <td className="p-2 text-xs font-semibold whitespace-nowrap">{t.mo}</td>
+                <td className="p-2 text-xs font-semibold whitespace-nowrap">
+                  {t.mo}
+                  {t.weldedStamp && <span className="pill pill-muted ml-1 ltr" title="Welder stamp on this tank">{t.weldedStamp}</span>}
+                </td>
                 <td className="p-2 text-xs">{t.testNote ?? "—"}</td>
                 <td className="p-2 text-xs tabnum whitespace-nowrap">
                   {t.testedISO ?? "—"}

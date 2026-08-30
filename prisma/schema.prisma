@@ -495,9 +495,10 @@ model Worker {
 
   name     String  @unique
   jobTitle String? // Tank Full Welder, Welder Helper, Painter, … — as HR lists it
-  // The single letter beside a welder on the workforce sheet, kept as-is so
-  // whoever reads a tank's record can tie it back to that sheet.
-  mark     String?
+  // The welder's STAMP: the letter he punches into every tank he welds. It is
+  // physically on the steel, so it is what ties a tank in the yard back to the
+  // man who made it, with or without the app.
+  stamp    String?
 
   depts     String   @default("") // CSV of Welding | LeakTest | Painting | Quality
   active    Boolean  @default(true) // inactive workers stay on old records, leave the dropdowns
@@ -527,6 +528,10 @@ model TankUnit {
   weldedAt    DateTime
   weldedById  Int?
   weldedBy    String?
+  // The stamp punched into THIS tank — snapshotted at welding, like the name.
+  // Re-assigning a welder's stamp later must never change what an already
+  // finished tank says is on its steel.
+  weldedStamp String?
   weldedLogBy String? // the app account that recorded the welding
 
   // leak test — the LATEST attempt; every attempt is kept in TankEvent

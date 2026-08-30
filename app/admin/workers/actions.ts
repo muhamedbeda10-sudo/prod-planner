@@ -27,7 +27,7 @@ function readForm(formData: FormData) {
     empId: normalizeEmpId(String(formData.get("empId") ?? "")),
     name: String(formData.get("name") ?? "").trim(),
     jobTitle: String(formData.get("jobTitle") ?? "").trim(),
-    mark: String(formData.get("mark") ?? "").trim().toUpperCase(),
+    stamp: String(formData.get("stamp") ?? "").trim().toUpperCase(),
     depts: serializeWorkerDepts(formData.getAll("depts").map(String)),
   };
 }
@@ -36,7 +36,7 @@ export async function createWorker(formData: FormData): Promise<WorkerActionResu
   const guard = await requirePerm("workers.manage");
   if (guard.error) return { ok: false, error: guard.error };
 
-  const { empId, name, jobTitle, mark, depts } = readForm(formData);
+  const { empId, name, jobTitle, stamp, depts } = readForm(formData);
   if (!empId) return { ok: false, error: "Enter the worker's ID — it is what the shop floor types." };
   if (!name) return { ok: false, error: "Enter the worker's name." };
   if (!depts) return { ok: false, error: "Pick at least one stage they work in." };
@@ -48,7 +48,7 @@ export async function createWorker(formData: FormData): Promise<WorkerActionResu
   }
 
   await prisma.worker.create({
-    data: { empId, name, jobTitle: jobTitle || null, mark: mark || null, depts },
+    data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts },
   });
   revalidateWorkers();
   return { ok: true };
@@ -60,7 +60,7 @@ export async function updateWorker(formData: FormData): Promise<WorkerActionResu
 
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid worker." };
-  const { empId, name, jobTitle, mark, depts } = readForm(formData);
+  const { empId, name, jobTitle, stamp, depts } = readForm(formData);
   if (!empId) return { ok: false, error: "Enter the worker's ID — it is what the shop floor types." };
   if (!name) return { ok: false, error: "Enter the worker's name." };
   if (!depts) return { ok: false, error: "Pick at least one stage they work in." };
@@ -72,7 +72,7 @@ export async function updateWorker(formData: FormData): Promise<WorkerActionResu
 
   await prisma.worker.update({
     where: { id },
-    data: { empId, name, jobTitle: jobTitle || null, mark: mark || null, depts },
+    data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts },
   });
   revalidateWorkers();
   return { ok: true };
