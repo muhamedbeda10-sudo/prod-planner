@@ -122,6 +122,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
         bom, mo, planNo, count: qty, date,
         workerId: welder.worker?.id ?? null,
         workerName: welder.worker?.name ?? null,
+        workerStamp: welder.worker?.stamp ?? null,
         byUser: guard.user?.name ?? null,
       });
       return minted.map((m) => m.serial);
@@ -423,6 +424,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
             bom, mo, planNo, count: q, date: today,
             workerId: groupWelder.worker?.id ?? null,
             workerName: groupWelder.worker?.name ?? null,
+            workerStamp: groupWelder.worker?.stamp ?? null,
             byUser: by,
           });
           minted.push(...batch.map((m) => m.serial));

@@ -80,7 +80,13 @@ export async function assignTankWelder(formData: FormData): Promise<TankActionRe
     await prisma.$transaction(async (tx) => {
       await tx.tankUnit.update({
         where: { id: tank.id },
-        data: { weldedById: welder.worker!.id, weldedBy: welder.worker!.name },
+        // the stamp follows the welder: correcting who made the tank corrects
+        // which stamp its record says is on the steel
+        data: {
+          weldedById: welder.worker!.id,
+          weldedBy: welder.worker!.name,
+          weldedStamp: welder.worker!.stamp ?? null,
+        },
       });
       await tx.tankEvent.create({
         data: {

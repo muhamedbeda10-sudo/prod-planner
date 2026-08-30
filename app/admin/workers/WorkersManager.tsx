@@ -67,7 +67,7 @@ function WorkerCard({ worker }: { worker: WorkerDTO }) {
           <div className="font-bold flex items-center gap-2">
             <code className="ltr tabnum text-sm px-1.5 py-0.5 rounded bg-surface-2 border">{worker.empId}</code>
             {worker.name}
-            {worker.mark && <span className="pill pill-muted ltr">mark {worker.mark}</span>}
+            {worker.stamp && <span className="pill pill-muted ltr">stamp {worker.stamp}</span>}
             {!worker.active && <span className="pill pill-muted">Deactivated</span>}
           </div>
           <div className="text-xs text-muted mt-0.5">
@@ -133,8 +133,10 @@ function WorkerCard({ worker }: { worker: WorkerDTO }) {
               <input name="jobTitle" defaultValue={worker.jobTitle ?? ""} className={inputCls} />
             </label>
             <label className="block">
-              <span className="text-xs font-bold text-muted">Mark (optional)</span>
-              <input name="mark" defaultValue={worker.mark ?? ""} maxLength={4} className={`${inputCls} ltr`} />
+              <span className="text-xs font-bold text-muted" title="The letter this welder punches into every tank he welds">
+                Welder stamp (optional)
+              </span>
+              <input name="stamp" defaultValue={worker.stamp ?? ""} maxLength={4} className={`${inputCls} ltr`} />
             </label>
           </div>
           <DeptChecks defaults={depts} disabled={edit.pending} />
@@ -183,8 +185,10 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
                 <input name="jobTitle" placeholder="Tank Full Welder" className={inputCls} />
               </label>
               <label className="block">
-                <span className="text-xs font-bold text-muted">Mark (optional)</span>
-                <input name="mark" maxLength={4} placeholder="X" className={`${inputCls} ltr`} />
+                <span className="text-xs font-bold text-muted" title="The letter this welder punches into every tank he welds">
+                  Welder stamp (optional)
+                </span>
+                <input name="stamp" maxLength={4} placeholder="X" className={`${inputCls} ltr`} />
               </label>
             </div>
             <DeptChecks defaults={new Set()} disabled={add.pending} />

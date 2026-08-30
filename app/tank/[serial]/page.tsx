@@ -77,7 +77,16 @@ export default async function TankPage({ params }: { params: Promise<{ serial: s
           </div>
 
           <div className="border-t pt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <Field label="Welding" value={tank.weldedISO ? `${tank.weldedISO}${tank.weldedBy ? ` · ${tank.weldedBy}` : ""}` : null} />
+            <Field
+              label="Welding"
+              value={
+                tank.weldedISO
+                  ? [tank.weldedISO, tank.weldedBy, tank.weldedStamp ? `stamp ${tank.weldedStamp}` : null]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : null
+              }
+            />
             <Field
               label="Leak test"
               value={tank.testedISO ? `${tank.testedISO}${tank.testedBy ? ` · ${tank.testedBy}` : ""}` : null}
