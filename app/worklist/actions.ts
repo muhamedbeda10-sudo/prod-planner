@@ -13,11 +13,34 @@ import { checkOutputChain } from "@/lib/server/outputGuard";
 import { requireDeptEdit, requireAdmin, requirePerm } from "@/lib/server/auth";
 import { trackerPermKey } from "@/lib/domain/permissions";
 import { DELIVERED_STAGE, SHOTBLAST_STAGE, isPaintExempt } from "@/lib/domain/constants";
+import { TANK_ITEM } from "@/lib/domain/tanks";
+import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
+import { resolveWorker } from "@/lib/server/workers";
 
 export interface RecordResult {
   ok: boolean;
   error?: string;
+  /** Welding a batch of tanks mints their serials — the worklist shows them
+   *  straight away so the technician can write them on the steel. */
+  serials?: string[];
 }
+
+/** Thrown inside a tank transaction to roll it back with a message the shop
+ *  floor can act on, instead of a raw constraint error. */
+class TankSyncError extends Error {}
+
+// Every screen a production record moves. TANK_PATHS adds the two the
+// per-piece layer feeds: the leak-test stage and the barcode sheet.
+const RECORD_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"];
+const TANK_PATHS = [...RECORD_PATHS, "/worklist/leak-test", "/barcode"];
+
+/** Painting a tank now means naming WHICH tank and WHO painted it, and only a
+ *  tank that passed the leak test may go. The quantity boxes elsewhere (the
+ *  Plan Tracker's Paint cell, a BOM group row, the weekly plan) cannot express
+ *  either, so they hand the job to the painting worklist instead of silently
+ *  recording a quantity no tank backs. */
+const PAINT_TANKS_ELSEWHERE =
+  "Tanks are painted from the Painting worklist — pick the tanks themselves and who painted them there. A tank cannot be painted until it passes the leak test.";
 
 /** Record output against a plan order line (MO × item) from the execution sheet.
  *  Creates a dated HandoverEntry — the analytics log stays the single source of truth. */
@@ -30,6 +53,9 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     const item = String(formData.get("item") ?? "").trim().toUpperCase();
     const qty = Number(formData.get("qty"));
     const planNo = Number(formData.get("planNo"));
+    // tanks only: who welded this batch (a Worker row, not an app account)
+    const rawWorker = String(formData.get("workerId") ?? "").trim();
+    const workerId = rawWorker ? Number(rawWorker) : null;
 
     const date = parseISODate(dateStr);
     if (!date) return { ok: false, error: "Invalid date." };
@@ -40,6 +66,24 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     if (!isItem(item)) return { ok: false, error: "Invalid component." };
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a quantity greater than zero." };
     if (!Number.isInteger(planNo) || planNo < 0) return { ok: false, error: "Invalid plan number." };
+
+    // Welding a TANK mints one serial per piece, so the quantity has to be a
+    // whole number of tanks and the batch has to say who welded them.
+    const mintsTanks = dept === "Welding" && item === TANK_ITEM;
+    if (mintsTanks && !Number.isInteger(qty)) {
+      return { ok: false, error: "Tanks are recorded by the piece — enter a whole number." };
+    }
+    if (mintsTanks && !mo) {
+      return { ok: false, error: "A tank needs an MO to carry its serial." };
+    }
+    if (mintsTanks && workerId === null) {
+      return { ok: false, error: "Pick who welded these tanks." };
+    }
+    if (workerId !== null && !Number.isInteger(workerId)) {
+      return { ok: false, error: "Invalid worker selection." };
+    }
+    const welder = mintsTanks ? await resolveWorker(workerId, "Welding") : {};
+    if (welder.error) return { ok: false, error: welder.error };
 
     // lines come from real orders, never free text. The master registry (monthly
     // plan) is the source of truth; weekly schedule/plan lines and prior log
@@ -67,13 +111,23 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
       update: {},
     });
 
-    await prisma.handoverEntry.create({
-      data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist", createdBy: guard.user?.name ?? null },
+    // the ledger row and the tanks' serials are ONE write: a serial must never
+    // survive a welding record that failed to save, nor the other way round
+    const serials = await prisma.$transaction(async (tx) => {
+      await tx.handoverEntry.create({
+        data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist", createdBy: guard.user?.name ?? null },
+      });
+      if (!mintsTanks) return [];
+      const minted = await mintTankSerials(tx, {
+        bom, mo, planNo, count: qty, date,
+        workerId: welder.worker?.id ?? null,
+        workerName: welder.worker?.name ?? null,
+        byUser: guard.user?.name ?? null,
+      });
+      return minted.map((m) => m.serial);
     });
-    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
-      revalidatePath(p);
-    }
-    return { ok: true };
+    for (const p of TANK_PATHS) revalidatePath(p);
+    return { ok: true, serials: serials.length > 0 ? serials : undefined };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }
@@ -105,6 +159,7 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
       return { ok: false, error: `${item} is painted, not shot blasted — SHB applies to the core (CF) only.` };
     }
     if (!Number.isInteger(newTotal) || newTotal < 0) return { ok: false, error: "Enter a whole number ≥ 0." };
+    if (item === TANK_ITEM && dept === "Painting") return { ok: false, error: PAINT_TANKS_ELSEWHERE };
 
     const agg = await prisma.handoverEntry.aggregate({ where: { mo, item, dept }, _sum: { qty: true } });
     const current = agg._sum.qty ?? 0;
@@ -130,17 +185,38 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
       update: {},
     });
 
-    await prisma.handoverEntry.create({
-      data: {
-        date: today, dept, bom, mo, item, qty: delta, planNo, source: "tracker",
-        // negative corrections say exactly what happened for the audit trail
-        note: delta < 0 ? `tracker correction: total ${current} → ${newTotal}` : null,
-        createdBy: guard.user?.name ?? null,
-      },
+    // a Weld cell on TANKS moves the per-piece layer too, so the serials and
+    // the ledger can never disagree about how many tanks exist
+    const syncsTanks = item === TANK_ITEM && dept === "Welding";
+    const failure = await prisma.$transaction(async (tx) => {
+      await tx.handoverEntry.create({
+        data: {
+          date: today, dept, bom, mo, item, qty: delta, planNo, source: "tracker",
+          // negative corrections say exactly what happened for the audit trail
+          note: delta < 0 ? `tracker correction: total ${current} → ${newTotal}` : null,
+          createdBy: guard.user?.name ?? null,
+        },
+      });
+      if (!syncsTanks) return null;
+      if (delta > 0) {
+        // the cell has no room to name a welder — the tank page and the
+        // welding worklist can fill it in afterwards
+        await mintTankSerials(tx, { bom, mo, planNo, count: delta, date: today, byUser: guard.user?.name ?? null });
+        return null;
+      }
+      const { short } = await unmintTankSerials(tx, { bom, mo, count: -delta });
+      if (short > 0) {
+        throw new TankSyncError(
+          `The total cannot go that low: ${short} of those tanks have already been tested or painted. Undo the later stage first.`
+        );
+      }
+      return null;
+    }).catch((e) => {
+      if (e instanceof TankSyncError) return e.message;
+      throw e;
     });
-    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
-      revalidatePath(p);
-    }
+    if (failure) return { ok: false, error: failure };
+    for (const p of TANK_PATHS) revalidatePath(p);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
@@ -197,6 +273,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     if (dept === SHOTBLAST_STAGE && !isPaintExempt(item)) {
       return { ok: false, error: `${item} is painted, not shot blasted — SHB applies to the core (CF) only.` };
     }
+    if (item === TANK_ITEM && dept === "Painting") return { ok: false, error: PAINT_TANKS_ELSEWHERE };
     if (mos.length === 0) return { ok: false, error: "The group has no MOs to distribute over." };
 
     // the member orders + their per-dept ledger totals for this component
@@ -250,6 +327,18 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
       delta = Number(formData.get("qty"));
       if (!Number.isInteger(delta) || delta <= 0) return { ok: false, error: "Enter a whole quantity greater than zero." };
     }
+    // welding a group row of TANKS mints serials for every member MO — same
+    // rules as a single line: whole pieces, and a named welder
+    const groupMintsTanks = item === TANK_ITEM && dept === "Welding" && delta > 0;
+    const rawWorker = String(formData.get("workerId") ?? "").trim();
+    const groupWorkerId = rawWorker ? Number(rawWorker) : null;
+    if (groupMintsTanks && source === "worklist") {
+      if (groupWorkerId === null) return { ok: false, error: "Pick who welded these tanks." };
+      if (!Number.isInteger(groupWorkerId)) return { ok: false, error: "Invalid worker selection." };
+    }
+    const groupWelder = groupMintsTanks ? await resolveWorker(groupWorkerId, "Welding") : {};
+    if (groupWelder.error) return { ok: false, error: groupWelder.error };
+
     // what the weekly cell says it was recorded against — for the ledger note
     const dayISO = source === "weekly" ? String(formData.get("dayISO") ?? "").trim() : "";
     const planLabel = source === "weekly" ? String(formData.get("planLabel") ?? "").trim() : "";
@@ -312,7 +401,9 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
       (windows.length ? Math.max(...windows.map((w) => w.planNo)) : 0);
     await prisma.plan.upsert({ where: { planNo }, create: { planNo, startDate: today }, update: {} });
 
-    await prisma.$transaction(async (tx) => {
+    const syncsTanks = item === TANK_ITEM && dept === "Welding";
+    const outcome = await prisma.$transaction(async (tx) => {
+      const minted: string[] = [];
       for (const [mo, q] of alloc) {
         await tx.handoverEntry.create({
           data: {
@@ -326,12 +417,32 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
             createdBy: by,
           },
         });
+        if (!syncsTanks) continue;
+        if (q > 0) {
+          const batch = await mintTankSerials(tx, {
+            bom, mo, planNo, count: q, date: today,
+            workerId: groupWelder.worker?.id ?? null,
+            workerName: groupWelder.worker?.name ?? null,
+            byUser: by,
+          });
+          minted.push(...batch.map((m) => m.serial));
+        } else if (q < 0) {
+          const { short } = await unmintTankSerials(tx, { bom, mo, count: -q });
+          if (short > 0) {
+            throw new TankSyncError(
+              `The total cannot go that low: ${short} tanks on ${mo} have already been tested or painted. Undo the later stage first.`
+            );
+          }
+        }
       }
+      return minted;
+    }).catch((e) => {
+      if (e instanceof TankSyncError) return e.message;
+      throw e;
     });
-    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
-      revalidatePath(p);
-    }
-    return { ok: true };
+    if (typeof outcome === "string") return { ok: false, error: outcome };
+    for (const p of TANK_PATHS) revalidatePath(p);
+    return { ok: true, serials: outcome.length > 0 ? outcome : undefined };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }
@@ -535,6 +646,11 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
     const guard = await requireDeptEdit(fromDept);
     if (guard.error) return { ok: false, error: guard.error };
     if (!bom || !isItem(item)) return { ok: false, error: "Invalid line." };
+    if (item === TANK_ITEM && fromDept === "Painting") {
+      // a tank has an identity — sending "3 pieces" back would leave the ledger
+      // and the serials disagreeing about which three
+      return { ok: false, error: "A tank goes back to welding by name — open the tank list, find it by serial and use \"Send back to welding\"." };
+    }
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a quantity greater than zero." };
     if (!reason) return { ok: false, error: "Write the reason — the upstream dept needs to know what to fix." };
 

@@ -443,6 +443,20 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   /* readable print tables: the page is wide enough now, so keep a comfortable
      size rather than shrinking to unreadable */
   table { font-size: 11px !important; border-collapse: collapse !important; }
+
+  /* Tank barcode stickers: a grid of small labels to cut apart. Four across a
+     landscape A4 lands each sticker around 65mm wide — enough for a QR a phone
+     reads at arm's length plus the serial and its order in plain text. A
+     sticker is never split across pages. */
+  .sticker-sheet {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4mm;
+  }
+  .sticker {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   th, td { padding: 4px 6px !important; white-space: nowrap !important; }
   /* the wide plan table: keep horizontal padding tight so all columns fit the
      width, but grow the rows vertically to fill the page and stay legible.

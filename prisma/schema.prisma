@@ -475,3 +475,99 @@ model RunOrderEntry {
 
   @@index([mo])
 }
+
+// ---- Tank serial tracking (item TN) ----
+// Tanks are the first component tracked PIECE BY PIECE. HandoverEntry stays the
+// ledger's truth for quantities; the rows below are the per-piece layer on top,
+// so the two always agree in count. Every other component keeps working purely
+// on quantities.
+
+// A shop-floor worker credited with a tank operation (welder, leak tester,
+// painter, QA inspector). NOT an app account — the people on the floor rarely
+// have logins. The admin keeps this list in Admin → Workers.
+model Worker {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  code      String? // badge / payroll number — for the admin's own reference
+  depts     String   @default("") // CSV of Welding | LeakTest | Painting | Quality
+  active    Boolean  @default(true) // inactive workers stay on old records, leave the dropdowns
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ONE physical tank, born at its first welding record and carried through
+// leak test → painting → the printed barcode sticker. The serial is the
+// factory-visible identity the technician writes on the steel:
+//   SF-<BOM>-<0001>   — the number restarts at 1 for every BOM.
+// Worker names are SNAPSHOTS: renaming or deleting a worker never rewrites
+// what a finished tank says about who made it.
+model TankUnit {
+  id     Int    @id @default(autoincrement())
+  serial String @unique
+  bom    String
+  mo     String
+  item   String @default("TN")
+  seq    Int // the running number behind the serial (per BOM)
+  planNo Int    @default(0)
+
+  status String @default("welded") // welded | repair | tested | painted (lib/domain/tanks.ts)
+
+  weldedAt    DateTime
+  weldedById  Int?
+  weldedBy    String?
+  weldedLogBy String? // the app account that recorded the welding
+
+  // leak test — the LATEST attempt; every attempt is kept in TankEvent
+  testedAt   DateTime?
+  testedById Int?
+  testedBy   String?
+  testResult String? // pass | repair
+  testNote   String?
+
+  paintedAt   DateTime?
+  paintedById Int?
+  paintedBy   String?
+
+  // quality's verdict after scanning the printed barcode
+  qaAt     DateTime?
+  qaById   Int?
+  qaBy     String?
+  qaResult String? // ok | not-ok
+  qaNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events TankEvent[]
+
+  @@unique([bom, seq])
+  @@index([mo, status])
+  @@index([status])
+  @@index([bom])
+}
+
+// Every state change a tank went through — its history on the tank page, kept
+// even after a later stage overwrites the summary fields above (a re-tested
+// tank keeps BOTH the failed and the passing test).
+model TankEvent {
+  id         Int      @id @default(autoincrement())
+  tankId     Int
+  kind       String // welded | repaired | leak-pass | leak-repair | painted | qa-ok | qa-not-ok
+  at         DateTime @default(now())
+  workerId   Int?
+  workerName String?
+  byUser     String? // the app account that recorded it
+  note       String?
+
+  tank TankUnit @relation(fields: [tankId], references: [id], onDelete: Cascade)
+
+  @@index([tankId])
+}
+
+// Per-BOM serial counter. Bumping this row inside the SAME transaction that
+// creates the tanks is what stops two technicians saving at the same moment
+// from ever minting the same serial.
+model TankSerialCounter {
+  bom  String @id
+  next Int    @default(1) // the number the NEXT tank of this BOM will take
+}

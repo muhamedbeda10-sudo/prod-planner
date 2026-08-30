@@ -2,6 +2,8 @@ import { getPaintingQueue } from "@/lib/server/execution";
 import { getSettings } from "@/lib/server/data";
 import { getQueueNotes } from "@/lib/server/queueNotes";
 import { getWorklistExtras, getRunOrderLines } from "@/lib/server/worklistExtras";
+import { getPaintableTanks } from "@/lib/server/tanks";
+import { getWorkersFor } from "@/lib/server/workers";
 import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
 import { CascadeTable } from "@/components/CascadeTable";
@@ -18,13 +20,15 @@ export const dynamic = "force-dynamic";
 export default async function PaintingWorklistPage() {
   const today = new Date();
   const dayISO = toISODate(today);
-  const [queue, notes, settings, user, extras, runOrder] = await Promise.all([
+  const [queue, notes, settings, user, extras, runOrder, tanksByMo, painters] = await Promise.all([
     getPaintingQueue(today),
     getQueueNotes(),
     getSettings(),
     getCurrentUser(),
     getWorklistExtras("Painting"),
     getRunOrderLines("Painting"),
+    getPaintableTanks(),
+    getWorkersFor("Painting"),
   ]);
   const canEdit = !!user && canEditDept(user, "Painting");
   const isAdmin = !!user?.isAdmin;
@@ -46,6 +50,8 @@ export default async function PaintingWorklistPage() {
         capacity={settings.capacityPerItem}
         canEdit={canEdit}
         isAdmin={isAdmin}
+        workers={painters}
+        paintableTanks={Object.fromEntries(tanksByMo)}
         before={
           <>
             <RunOrderTable rows={runOrder} deptWord="paint" />
