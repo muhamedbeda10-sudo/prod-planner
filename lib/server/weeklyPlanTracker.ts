@@ -29,6 +29,13 @@ import { dayNumber, toISODate } from "@/lib/domain/dates";
 //     scheduled qty, flagged "not manufactured", and counts in NO total or
 //     percentage. Outsourced (OSP) pieces DO count as covered — they arrive
 //     without our departments working — and the cell says how many were OSP.
+//   • Output logged WITHOUT an order number still counts. The Daily Logs form
+//     records against the PROJECT (there is no MO field), and older log files
+//     have no MO column at all, so a lot of real output carries bom + item and
+//     nothing else. Reading progress by MO alone made that work invisible and
+//     showed finished promises as untouched. Those pieces are pooled per
+//     project+component and fill whatever the order-tagged figures left short,
+//     earliest promise first — each ledger row is read once, never twice.
 
 export interface WeeklyPlanCell {
   req: number; // pcs this delivery day asks for (as scheduled — N/A pcs included)
@@ -92,10 +99,11 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
       select: { bom: true, mo: true, soi: true, description: true, item: true, ovenDate: true, qty: true },
     }),
     prisma.masterOrder.findMany(),
-    // every entry ever logged — work done ahead of the delivery date still counts
+    // every entry ever logged — work done ahead of the delivery date still
+    // counts. Rows with no MO are kept: they are the Daily Logs entries, read
+    // at project level below.
     prisma.handoverEntry.groupBy({
-      by: ["mo", "dept", "item"],
-      where: { mo: { not: null } },
+      by: ["mo", "bom", "dept", "item"],
       _sum: { qty: true },
     }),
   ]);
@@ -105,8 +113,42 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
   // sheet may still schedule them — those promises stay VISIBLE but are never
   // counted as work owed (they will not be manufactured).
   const excludedOf = new Map(orders.map((o) => [o.mo, parseExcludedItems(o.excludedItems)]));
-  const done = new Map<string, number>(); // "mo|dept|item"
-  for (const s of sums) if (s.mo) done.set(`${s.mo}|${s.dept}|${s.item}`, s._sum.qty ?? 0);
+  // ---- what the ledger says, split by what it can be attributed to ----
+  // Stage buckets. `fin` is the component's FINAL stage: shot blast for the
+  // paint-exempt core, painting for everything else — a Painting row on a core
+  // (or a ShotBlast row on a painted component) is not that component's finish
+  // and is ignored here, exactly as the order-tagged reading has always done.
+  type Pool = { cut: number; weld: number; fin: number; delivered: number };
+  const emptyPool = (): Pool => ({ cut: 0, weld: 0, fin: 0, delivered: 0 });
+  const stageOf = (dept: string, item: string): keyof Pool | null =>
+    dept === "Cut" ? "cut"
+    : dept === "Welding" ? "weld"
+    : dept === "Delivered" ? "delivered"
+    : dept === (isPaintExempt(item as Item) ? "ShotBlast" : "Painting") ? "fin"
+    : null;
+
+  const done = new Map<string, number>(); // "mo|dept|item" — logged against an order
+  // "bom|item" — logged against the PROJECT only (no order number on the row).
+  // The Daily Logs form cannot record an MO and legacy log files have no MO
+  // column, so this is ordinary output, not an edge case.
+  const loose = new Map<string, Pool>();
+  for (const s of sums) {
+    const qty = s._sum.qty ?? 0;
+    if (!qty) continue;
+    if (s.mo) {
+      // the same order can be logged under more than one BOM spelling — add up
+      const k = `${s.mo}|${s.dept}|${s.item}`;
+      done.set(k, (done.get(k) ?? 0) + qty);
+      continue;
+    }
+    if (!s.bom) continue;
+    const f = stageOf(s.dept, s.item);
+    if (!f) continue;
+    const k = `${s.bom}|${s.item}`;
+    let pool = loose.get(k);
+    if (!pool) loose.set(k, (pool = emptyPool()));
+    pool[f] += qty;
+  }
   const g = (mo: string, dept: string, item: string) => done.get(`${mo}|${dept}|${item}`) ?? 0;
 
   // ---- the waterfall: one order promised across several days hands its
@@ -189,7 +231,12 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
 
   // ---- turn each project's promise into capped per-department progress ----
   const days = new Map<number, WeeklyPlanDay>();
-  for (const [key, draft] of drafts) {
+  // earliest delivery day first, so the project-level pool below fills the
+  // promise that came due first — the same rule the order-tagged waterfall uses
+  const ordered = [...drafts.entries()].sort(
+    (a, b) => Number(a[0].slice(0, a[0].indexOf("|"))) - Number(b[0].slice(0, b[0].indexOf("|"))),
+  );
+  for (const [key, draft] of ordered) {
     const d = Number(key.slice(0, key.indexOf("|")));
     let day = days.get(d);
     if (!day) {
@@ -231,6 +278,23 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
         delivered += slice.delivered;
         osp += slice.osp;
       }
+      // pieces logged against the project with no order number fill whatever
+      // the order-tagged figures left short — they belong to this project and
+      // to no particular order, so this promise is the only place to read them
+      const pool = loose.get(`${draft.bom}|${it}`);
+      if (pool) {
+        const take = (have: number, f: keyof typeof pool) => {
+          // a return is logged as a negative row — it can shrink the pool, but
+          // it must never subtract from what an order already accounted for
+          const gap = Math.max(0, Math.min(pool[f], owed - have));
+          pool[f] -= gap;
+          return have + gap;
+        };
+        cut = take(cut, "cut");
+        weld = take(weld, "weld");
+        fin = take(fin, "fin");
+        delivered = take(delivered, "delivered");
+      }
       const cap = (v: number) => Math.min(v, owed);
       items[it] = { req, na, osp: cap(osp), cut: cap(cut), weld: cap(weld), finish: cap(fin), delivered: cap(delivered), mos: mos.sort() };
       rowReq += owed;
@@ -251,12 +315,12 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
     day.rows.sort((a, b) => Number(b.urgent) - Number(a.urgent) || b.req - a.req || (a.bom < b.bom ? -1 : 1));
   }
 
-  const ordered = [...days.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v);
+  const byDay = [...days.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v);
   return {
     planNo: active,
     planNos,
-    days: ordered,
-    req: ordered.reduce((s, d) => s + d.req, 0),
-    covered: ordered.reduce((s, d) => s + d.covered, 0),
+    days: byDay,
+    req: byDay.reduce((s, d) => s + d.req, 0),
+    covered: byDay.reduce((s, d) => s + d.covered, 0),
   };
 }
