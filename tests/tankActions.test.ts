@@ -22,6 +22,7 @@ const h = vi.hoisted(() => {
     requireAdmin: vi.fn(),
     resolveWorker: vi.fn(),
     deleteTanksWithRecords: vi.fn(),
+    getSettings: vi.fn(),
   };
 });
 
@@ -36,6 +37,7 @@ vi.mock("@/lib/server/auth", () => ({
 }));
 vi.mock("@/lib/server/tanks", () => ({ deleteTanksWithRecords: h.deleteTanksWithRecords }));
 vi.mock("@/lib/server/workers", () => ({ resolveWorker: h.resolveWorker }));
+vi.mock("@/lib/server/data", () => ({ getSettings: h.getSettings }));
 
 import {
   recordLeakTest,
@@ -82,6 +84,7 @@ beforeEach(() => {
   h.deleteTanksWithRecords.mockResolvedValue({ deleted: 1, ledgerRowsTouched: 2 });
   h.resolveWorker.mockResolvedValue({ worker: { id: 7, name: "Sayed" } });
   h.checkOutputChain.mockResolvedValue(null);
+  h.getSettings.mockResolvedValue({ tankTracking: true });
 
   h.prisma.$transaction.mockImplementation((body: (tx: unknown) => Promise<unknown>) =>
     body({
@@ -319,5 +322,38 @@ describe("deleteTanks — removing a tank takes its records with it", () => {
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/200/);
     expect(h.deleteTanksWithRecords).not.toHaveBeenCalled();
+  });
+});
+
+describe("the master switch — with tank tracking OFF the per-piece flows stand down", () => {
+  beforeEach(() => {
+    h.getSettings.mockResolvedValue({ tankTracking: false });
+  });
+
+  for (const [name, run] of [
+    ["recordLeakTest", () => recordLeakTest(form({ serials: "SF-B-0001", result: "pass", workerId: "7" }))],
+    ["paintTanks", () => paintTanks(form({ serials: "SF-B-0001", workerId: "7" }))],
+    ["markTankRepaired", () => markTankRepaired(form({ serial: "SF-B-0001", workerId: "7" }))],
+    ["sendTankBackToWelding", () => sendTankBackToWelding(form({ serial: "SF-B-0001", reason: "x" }))],
+  ] as const) {
+    it(`${name} refuses and points at the setting`, async () => {
+      const res = await run();
+      expect(res.ok).toBe(false);
+      expect(res.error).toMatch(/turned off/);
+      expect(writes.tankUpdates).toEqual([]);
+      expect(writes.ledger).toEqual([]);
+    });
+  }
+
+  it("still lets an admin remove a tank — that is about records that already exist", async () => {
+    h.prisma.tankUnit.findMany.mockResolvedValue([{ serial: "SF-B-0001" }]);
+    const res = await deleteTanks(form({ serials: "SF-B-0001" }));
+    expect(res.ok).toBe(true);
+  });
+
+  it("still lets quality sign off a tank already on record", async () => {
+    h.prisma.tankUnit.findUnique.mockResolvedValue(tank({ status: "painted" }));
+    const res = await recordTankQa(form({ serial: "SF-B-0001", result: "ok" }));
+    expect(res.ok).toBe(true);
   });
 });

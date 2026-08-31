@@ -68,8 +68,10 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     if (!Number.isInteger(planNo) || planNo < 0) return { ok: false, error: "Invalid plan number." };
 
     // Welding a TANK mints one serial per piece, so the quantity has to be a
-    // whole number of tanks and the batch has to say who welded them.
-    const mintsTanks = dept === "Welding" && item === TANK_ITEM;
+    // whole number of tanks and the batch has to say who welded them — unless
+    // per-piece tracking is switched off, when a tank is just a quantity again.
+    const tankTracking = (await getSettings()).tankTracking;
+    const mintsTanks = tankTracking && dept === "Welding" && item === TANK_ITEM;
     if (mintsTanks && !Number.isInteger(qty)) {
       return { ok: false, error: "Tanks are recorded by the piece — enter a whole number." };
     }
@@ -160,7 +162,8 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
       return { ok: false, error: `${item} is painted, not shot blasted — SHB applies to the core (CF) only.` };
     }
     if (!Number.isInteger(newTotal) || newTotal < 0) return { ok: false, error: "Enter a whole number ≥ 0." };
-    if (item === TANK_ITEM && dept === "Painting") return { ok: false, error: PAINT_TANKS_ELSEWHERE };
+    const tankTracking = (await getSettings()).tankTracking;
+    if (tankTracking && item === TANK_ITEM && dept === "Painting") return { ok: false, error: PAINT_TANKS_ELSEWHERE };
 
     const agg = await prisma.handoverEntry.aggregate({ where: { mo, item, dept }, _sum: { qty: true } });
     const current = agg._sum.qty ?? 0;
@@ -188,7 +191,7 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
 
     // a Weld cell on TANKS moves the per-piece layer too, so the serials and
     // the ledger can never disagree about how many tanks exist
-    const syncsTanks = item === TANK_ITEM && dept === "Welding";
+    const syncsTanks = tankTracking && item === TANK_ITEM && dept === "Welding";
     const failure = await prisma.$transaction(async (tx) => {
       const ledger = await tx.handoverEntry.create({
         data: {
@@ -274,7 +277,8 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     if (dept === SHOTBLAST_STAGE && !isPaintExempt(item)) {
       return { ok: false, error: `${item} is painted, not shot blasted — SHB applies to the core (CF) only.` };
     }
-    if (item === TANK_ITEM && dept === "Painting") return { ok: false, error: PAINT_TANKS_ELSEWHERE };
+    const tankTracking = (await getSettings()).tankTracking;
+    if (tankTracking && item === TANK_ITEM && dept === "Painting") return { ok: false, error: PAINT_TANKS_ELSEWHERE };
     if (mos.length === 0) return { ok: false, error: "The group has no MOs to distribute over." };
 
     // the member orders + their per-dept ledger totals for this component
@@ -330,7 +334,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     }
     // welding a group row of TANKS mints serials for every member MO — same
     // rules as a single line: whole pieces, and a named welder
-    const groupMintsTanks = item === TANK_ITEM && dept === "Welding" && delta > 0;
+    const groupMintsTanks = tankTracking && item === TANK_ITEM && dept === "Welding" && delta > 0;
     const rawWorker = String(formData.get("workerId") ?? "").trim();
     const groupWorkerId = rawWorker ? Number(rawWorker) : null;
     if (groupMintsTanks && source === "worklist") {
@@ -402,7 +406,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
       (windows.length ? Math.max(...windows.map((w) => w.planNo)) : 0);
     await prisma.plan.upsert({ where: { planNo }, create: { planNo, startDate: today }, update: {} });
 
-    const syncsTanks = item === TANK_ITEM && dept === "Welding";
+    const syncsTanks = tankTracking && item === TANK_ITEM && dept === "Welding";
     const outcome = await prisma.$transaction(async (tx) => {
       const minted: string[] = [];
       for (const [mo, q] of alloc) {
@@ -648,7 +652,7 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
     const guard = await requireDeptEdit(fromDept);
     if (guard.error) return { ok: false, error: guard.error };
     if (!bom || !isItem(item)) return { ok: false, error: "Invalid line." };
-    if (item === TANK_ITEM && fromDept === "Painting") {
+    if (item === TANK_ITEM && fromDept === "Painting" && (await getSettings()).tankTracking) {
       // a tank has an identity — sending "3 pieces" back would leave the ledger
       // and the serials disagreeing about which three
       return { ok: false, error: "A tank goes back to welding by name — open the tank list, find it by serial and use \"Send back to welding\"." };

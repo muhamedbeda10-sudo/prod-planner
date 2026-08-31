@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   FileDown, GitCompareArrows, Puzzle, CalendarDays, Users, Timer,
-  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat,
+  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -55,6 +55,7 @@ const ADMIN: (Item & { desc: string; perm?: string })[] = [
   { href: "/reconciliation", label: "Reconciliation", desc: "Compare plan vs previous plan", icon: GitCompareArrows },
   { href: "/boms", label: "BOM Review", desc: "Fix codes & reallocate excess", icon: Puzzle },
   { href: "/calendar", label: "Factory Calendar", desc: "Holidays & shutdown days off", icon: CalendarDays },
+  { href: "/admin/settings", label: "Settings", desc: "Plant-wide switches, including per-piece tank tracking", icon: SlidersHorizontal },
   { href: "/admin/workers", label: "Production Workers", desc: "Who can be credited with welding, testing & painting a tank", icon: HardHat, perm: "workers.manage" },
 ];
 
@@ -63,6 +64,9 @@ export interface NavUser {
   isAdmin: boolean;
   perms: string[];
 }
+
+// The two tabs that only exist while per-piece tank tracking is on.
+const TANK_ONLY = new Set(["/worklist/leak-test", "/barcode"]);
 
 /** Unread chat badge, shared by the desktop tab and the drawer entry. */
 function UnreadBadge({ count }: { count: number }) {
@@ -74,13 +78,25 @@ function UnreadBadge({ count }: { count: number }) {
   );
 }
 
-export function AppNav({ user, unreadChat = 0 }: { user: NavUser; unreadChat?: number }) {
+export function AppNav({
+  user,
+  unreadChat = 0,
+  tankTracking = false,
+}: {
+  user: NavUser;
+  unreadChat?: number;
+  /** With tracking off, the Leak Test and Barcode tabs are not part of the app. */
+  tankTracking?: boolean;
+}) {
   const pathname = usePathname();
 
   // A user who can edit exactly ONE department jumps straight to it from the
   // Worklist tab; everyone else (admins, multi-dept, view-only) expands the
   // tab into the three departments inline.
-  const deptEdits = WORKLIST_DEPTS.filter((d) => user.perms.includes(d.perm));
+  const worklistDepts = WORKLIST_DEPTS.filter((d) => tankTracking || !TANK_ONLY.has(d.href));
+  const restTabs = REST.filter((l) => tankTracking || !TANK_ONLY.has(l.href));
+  const drawerTabs = DRAWER.filter((l) => tankTracking || !TANK_ONLY.has(l.href));
+  const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
   const singleDeptHref = !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;
 
   const [open, setOpen] = useState(false); // desktop admin dropdown
@@ -179,7 +195,7 @@ export function AppNav({ user, unreadChat = 0 }: { user: NavUser; unreadChat?: n
                     </button>
                     {worklistOpen && (
                       <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-white/12 p-0.5 animate-[navdrop_0.16s_ease-out]">
-                        {WORKLIST_DEPTS.map((d) => (
+                        {worklistDepts.map((d) => (
                           <Link
                             key={d.href}
                             href={d.href}
@@ -196,7 +212,7 @@ export function AppNav({ user, unreadChat = 0 }: { user: NavUser; unreadChat?: n
                   </>
                 )}
               </li>
-              {REST.map((l) => (
+              {restTabs.map((l) => (
                 <li key={l.href}>
                   <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match) ? "nav-tab-active" : ""}`}>
                     <l.icon size={15} className="shrink-0" />
@@ -346,7 +362,7 @@ export function AppNav({ user, unreadChat = 0 }: { user: NavUser; unreadChat?: n
             {/* links */}
             <nav className="flex-1 overflow-y-auto py-2">
               <p className="px-4 pt-2 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">Production</p>
-              {DRAWER.map((l) => (
+              {drawerTabs.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}

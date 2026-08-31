@@ -31,6 +31,7 @@ export default async function PaintingWorklistPage() {
     getWorkersFor("Painting"),
   ]);
   const canEdit = !!user && canEditDept(user, "Painting");
+  const tankTracking = settings.tankTracking;
   const isAdmin = !!user?.isAdmin;
   // tracker-pushed lines render on the shared date-less table shape
   const pushedRows = extras.pushed.map((p) => ({
@@ -50,8 +51,9 @@ export default async function PaintingWorklistPage() {
         capacity={settings.capacityPerItem}
         canEdit={canEdit}
         isAdmin={isAdmin}
-        workers={painters}
-        paintableTanks={Object.fromEntries(tanksByMo)}
+        workers={tankTracking ? painters : []}
+        paintableTanks={tankTracking ? Object.fromEntries(tanksByMo) : {}}
+        tankTracking={tankTracking}
         before={
           <>
             <RunOrderTable rows={runOrder} deptWord="paint" />

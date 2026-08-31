@@ -402,6 +402,14 @@ model Settings {
   leadWeld        Int @default(1)
   capacityPerItem Int @default(27)
   dailyTarget     Int @default(27)
+
+  // Master switch for tracking tanks PIECE BY PIECE — serials, the leak-test
+  // stage, painting by selection and the barcode tab. OFF by default: the
+  // plant records tanks as quantities, exactly as it always did, until someone
+  // decides the shop floor is ready to work off the serials. Turning it off
+  // again is always safe — the tanks already recorded stay in the database and
+  // pick up where they left off when it comes back on.
+  tankTracking    Boolean @default(false)
 }
 
 // ---- Standard man-hours (the engineering timings sheet, editable in Admin →

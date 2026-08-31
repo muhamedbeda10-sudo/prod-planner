@@ -11,7 +11,14 @@ export async function getSettings() {
     leadWeld: s?.leadWeld ?? DEFAULTS.leadWeld,
     capacityPerItem: s?.capacityPerItem ?? DEFAULTS.capacityPerItem,
     dailyTarget: s?.dailyTarget ?? DEFAULTS.dailyTarget,
+    tankTracking: s?.tankTracking ?? DEFAULTS.tankTracking,
   };
+}
+
+/** The master switch on its own — the many places that only need to know
+ *  whether tanks are tracked per piece. */
+export async function isTankTrackingOn(): Promise<boolean> {
+  return (await getSettings()).tankTracking;
 }
 
 export async function getPlanWindows(): Promise<PlanWindow[]> {

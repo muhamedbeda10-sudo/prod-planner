@@ -179,4 +179,6 @@ export const DEFAULTS = {
   leadWeld: 1,
   capacityPerItem: 27,
   dailyTarget: 27,
+  /** Per-piece tank tracking starts OFF — see Settings.tankTracking. */
+  tankTracking: false,
 } as const;
