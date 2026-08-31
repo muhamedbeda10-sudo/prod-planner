@@ -126,3 +126,97 @@ describe("getWeeklyPlanTracker — outsourced (OSP) pieces", () => {
     expect(day2.rows[0].items.CB).toMatchObject({ osp: 2, finish: 2 });
   });
 });
+
+// ---- output logged against the PROJECT, with no order number ----------------
+// The Daily Logs form has no MO field and older log files have no MO column, so
+// a lot of genuine output carries bom + item and nothing else. Reading progress
+// by MO alone made that work invisible: finished promises showed as untouched.
+
+/** a ledger group; `mo: null` = recorded on the project, not on an order */
+function log(dept: string, item: string, qty: number, opts: { mo?: string | null; bom?: string } = {}) {
+  return { mo: opts.mo ?? null, bom: opts.bom ?? "B-1", dept, item, _sum: { qty } };
+}
+
+describe("getWeeklyPlanTracker — output logged without an order number", () => {
+  it("counts it against the project's promise", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1")]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([sched("MO-1", "TC", 6, D1)]);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      log("Cut", "TC", 6),
+      log("Welding", "TC", 6),
+      log("Painting", "TC", 6),
+    ]);
+
+    const t = await getWeeklyPlanTracker(34);
+
+    expect(t.days[0].rows[0].items.TC).toMatchObject({ req: 6, cut: 6, weld: 6, finish: 6 });
+    expect(t.covered).toBe(6); // finished, and now it reads finished
+  });
+
+  it("fills only what the order-tagged figures left short", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1")]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([sched("MO-1", "TC", 10, D1)]);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      log("Welding", "TC", 4, { mo: "MO-1" }), // 4 on the order…
+      log("Welding", "TC", 6), // …6 more on the project alone
+    ]);
+
+    const t = await getWeeklyPlanTracker(34);
+
+    expect(t.days[0].rows[0].items.TC).toMatchObject({ req: 10, weld: 10 });
+  });
+
+  it("waterfalls to the earliest promise and never counts the same piece twice", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1")]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([
+      sched("MO-1", "TC", 3, D1),
+      sched("MO-1", "TC", 4, D2),
+    ]);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([log("Welding", "TC", 5)]);
+
+    const t = await getWeeklyPlanTracker(34);
+
+    expect(t.days[0].rows[0].items.TC).toMatchObject({ weld: 3 }); // filled first
+    expect(t.days[1].rows[0].items.TC).toMatchObject({ weld: 2 }); // only the overflow
+  });
+
+  it("splits it across the projects that own it, never across other projects", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1"), order("MO-2")]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([
+      sched("MO-1", "TC", 5, D1, "B-1"),
+      sched("MO-2", "TC", 5, D1, "B-2"),
+    ]);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([log("Welding", "TC", 5, { bom: "B-1" })]);
+
+    const t = await getWeeklyPlanTracker(34);
+    const rows = Object.fromEntries(t.days[0].rows.map((r) => [r.bom, r]));
+
+    expect(rows["B-1"].items.TC).toMatchObject({ weld: 5 });
+    expect(rows["B-2"].items.TC).toMatchObject({ weld: 0 });
+  });
+
+  it("reads the core's finish as shot blast, not painting", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1")]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([sched("MO-1", "CF", 4, D1)]);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      log("ShotBlast", "CF", 4), // the core's real final stage
+      log("Painting", "CF", 4), // the core is never painted — must not count
+    ]);
+
+    const t = await getWeeklyPlanTracker(34);
+
+    expect(t.days[0].rows[0].items.CF).toMatchObject({ finish: 4 });
+    expect(t.covered).toBe(4);
+  });
+
+  it("cannot resurrect a promise the order marked N/A", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1", { excludedItems: "CB" })]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([sched("MO-1", "CB", 10, D1)]);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([log("Welding", "CB", 10)]);
+
+    const t = await getWeeklyPlanTracker(34);
+
+    expect(t.days[0].rows[0].items.CB).toMatchObject({ req: 10, na: 10, weld: 0 });
+    expect(t.req).toBe(0);
+  });
+});
