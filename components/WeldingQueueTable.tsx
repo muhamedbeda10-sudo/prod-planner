@@ -35,6 +35,7 @@ export function WeldingQueueTable({
   isAdmin = false,
   workers = [],
   paintableTanks = {},
+  tankTracking = false,
   before,
   after,
 }: {
@@ -53,6 +54,9 @@ export function WeldingQueueTable({
   /** PAINTING ONLY — tanks that passed the leak test, keyed by MO. The tank
    *  rows are painted by picking from these instead of typing a quantity. */
   paintableTanks?: Record<string, TankDTO[]>;
+  /** Master switch: with it off a tank is just a quantity, like every other
+   *  component — no serial, no welder box, no leak-test gate on painting. */
+  tankTracking?: boolean;
   before?: React.ReactNode; // page sections rendered inside the scroll area, above the queue (priority / pushed)
   after?: React.ReactNode; // page sections at the bottom of the scroll area (hidden-lines panel)
 }) {
@@ -165,8 +169,8 @@ export function WeldingQueueTable({
   // serial each (so the line asks who welded them), and painting them means
   // picking the individual tanks that passed the leak test — a plain quantity
   // could say neither, so the tank rows get their own controls.
-  const mintsTanks = (r: { item: string; mo: string }) => dept === "Welding" && r.item === TANK_ITEM && !!r.mo;
-  const picksTanks = (r: { item: string; mo: string }) => dept === "Painting" && r.item === TANK_ITEM && !!r.mo;
+  const mintsTanks = (r: { item: string; mo: string }) => tankTracking && dept === "Welding" && r.item === TANK_ITEM && !!r.mo;
+  const picksTanks = (r: { item: string; mo: string }) => tankTracking && dept === "Painting" && r.item === TANK_ITEM && !!r.mo;
   const pickOf = (k: string) => worker[k] ?? NO_WORKER;
   const workerName = (k: string) => workers.find((w) => w.id === pickOf(k).id)?.name ?? null;
 
@@ -258,7 +262,7 @@ export function WeldingQueueTable({
       setMsg((s) => ({ ...s, [k]: `Only ${gAvailable} available from ${upLabel}` }));
       return;
     }
-    if (dept === "Welding" && gItem === TANK_ITEM && pickOf(k).id === null) {
+    if (tankTracking && dept === "Welding" && gItem === TANK_ITEM && pickOf(k).id === null) {
       setMsg((s) => ({
         ...s,
         [k]: pickOf(k).empId ? "No worker has that ID." : "Enter the ID of the welder who made these tanks.",
@@ -379,7 +383,7 @@ export function WeldingQueueTable({
               <span className="pill pill-ok">✓ Cleared</span>
             ) : !canEdit ? (
               <span className="text-muted text-xs" title="View only — you don't have this department's edit permission">—</span>
-            ) : (dept === "Welding" || dept === "Painting") && r.item === TANK_ITEM && !r.mo ? (
+            ) : tankTracking && (dept === "Welding" || dept === "Painting") && r.item === TANK_ITEM && !r.mo ? (
               // a serial carries its order — a BOM-level line has no MO to carry
               <span className="text-[11px] text-muted whitespace-normal" title="A tank's serial carries the order it belongs to">
                 Tanks are recorded under an MO — this line has none.
@@ -782,7 +786,7 @@ export function WeldingQueueTable({
                     <td className="p-2 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       {/* painting tanks happens per PIECE — the group row can
                           only send the user into the MOs, where the picker is */}
-                      {dept === "Painting" && gItem === TANK_ITEM ? (
+                      {tankTracking && dept === "Painting" && gItem === TANK_ITEM ? (
                         <span className="text-xs text-muted">{open ? "▲ collapse" : "▼ open MOs"}</span>
                       ) : canEdit && gAvailable > 0 && members.some((m) => m.mo) ? (
                         <>
@@ -791,7 +795,7 @@ export function WeldingQueueTable({
                               type="number"
                               min={1}
                               max={gAvailable}
-                              step={gItem === TANK_ITEM ? 1 : undefined}
+                              step={tankTracking && gItem === TANK_ITEM ? 1 : undefined}
                               placeholder="qty"
                               value={qty[`g|${gk}`] ?? ""}
                               onChange={(e) => setQty((s) => ({ ...s, [`g|${gk}`]: e.target.value }))}
@@ -800,7 +804,7 @@ export function WeldingQueueTable({
                               disabled={pending}
                               title="Record on the WHOLE BOM — the quantity is distributed over its MOs in order"
                             />
-                            {dept === "Welding" && gItem === TANK_ITEM && (
+                            {tankTracking && dept === "Welding" && gItem === TANK_ITEM && (
                               <TankWorkerPicker
                                 workers={workers}
                                 value={pickOf(`g|${gk}`)}

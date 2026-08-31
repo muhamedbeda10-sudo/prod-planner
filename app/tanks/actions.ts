@@ -7,6 +7,7 @@ import { checkOutputChain } from "@/lib/server/outputGuard";
 import { requireDeptEdit, requirePerm, requireAdmin } from "@/lib/server/auth";
 import { resolveWorker } from "@/lib/server/workers";
 import { deleteTanksWithRecords } from "@/lib/server/tanks";
+import { getSettings } from "@/lib/server/data";
 import { TANK_ITEM, blockedReason, isLeakTestResult, isQaResult, statusAfterLeakTest } from "@/lib/domain/tanks";
 
 // Everything that happens to a tank AS A PIECE: the welder's name, the leak
@@ -41,6 +42,16 @@ function revalidateTanks(extra: string[] = []) {
   for (const p of [...TANK_PATHS, ...extra]) revalidatePath(p);
 }
 
+/** Recording a new tank stage only makes sense while per-piece tracking is on.
+ *  Reading a tank, signing it off and removing it stay available either way —
+ *  those are about records that already exist. */
+const TRACKING_OFF =
+  "Per-piece tank tracking is turned off. Tanks are recorded as quantities on the worklists — an admin can turn it back on under Admin → Settings.";
+
+async function requireTankTracking(): Promise<string | null> {
+  return (await getSettings()).tankTracking ? null : TRACKING_OFF;
+}
+
 /** Read a worker id from the form: null when the field is absent or blank,
  *  NaN when it holds something that is not a positive id. Deliberately
  *  string-first — `Number(null)` is 0, which would sail through an integer
@@ -65,6 +76,8 @@ function serialsFromForm(formData: FormData): string[] {
  *  welder actually made. */
 export async function assignTankWelder(formData: FormData): Promise<TankActionResult> {
   try {
+    const off = await requireTankTracking();
+    if (off) return { ok: false, error: off };
     const guard = await requireDeptEdit("Welding");
     if (guard.error) return { ok: false, error: guard.error };
     const [serial] = serialsFromForm(formData);
@@ -112,6 +125,8 @@ export async function assignTankWelder(formData: FormData): Promise<TankActionRe
  *  put back. */
 export async function markTankRepaired(formData: FormData): Promise<TankActionResult> {
   try {
+    const off = await requireTankTracking();
+    if (off) return { ok: false, error: off };
     const guard = await requireDeptEdit("Welding");
     if (guard.error) return { ok: false, error: guard.error };
     const [serial] = serialsFromForm(formData);
@@ -159,6 +174,8 @@ export async function markTankRepaired(formData: FormData): Promise<TankActionRe
  *  test needs a reason — the welder has to know what to fix. */
 export async function recordLeakTest(formData: FormData): Promise<TankActionResult> {
   try {
+    const off = await requireTankTracking();
+    if (off) return { ok: false, error: off };
     const guard = await requireDeptEdit("LeakTest");
     if (guard.error) return { ok: false, error: guard.error };
     const serials = serialsFromForm(formData);
@@ -232,6 +249,8 @@ export async function recordLeakTest(formData: FormData): Promise<TankActionResu
  *  One ledger row per MO keeps the daily log reading exactly as it always did. */
 export async function paintTanks(formData: FormData): Promise<TankActionResult> {
   try {
+    const off = await requireTankTracking();
+    if (off) return { ok: false, error: off };
     const guard = await requireDeptEdit("Painting");
     if (guard.error) return { ok: false, error: guard.error };
     const serials = serialsFromForm(formData);
@@ -320,6 +339,8 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
  *  painted, and it is still a welded tank. */
 export async function sendTankBackToWelding(formData: FormData): Promise<TankActionResult> {
   try {
+    const off = await requireTankTracking();
+    if (off) return { ok: false, error: off };
     const guard = await requireDeptEdit("Painting");
     if (guard.error) return { ok: false, error: guard.error };
     const [serial] = serialsFromForm(formData);

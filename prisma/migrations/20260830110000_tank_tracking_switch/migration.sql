@@ -1,0 +1,13 @@
+-- A master switch for per-piece tank tracking.
+--
+-- The serials, the leak-test stage, painting by selection and the barcode tab
+-- are a change to how the shop floor works, not just to the app. Until the
+-- floor is actually running on serials, the plant needs to keep recording tanks
+-- as quantities the way it always has — and tanks welded before the feature
+-- existed have no leak test on record, so the gate blocks work that is
+-- otherwise perfectly fine.
+--
+-- OFF by default for exactly that reason. Turning it on is a deliberate act;
+-- turning it off again is always safe, because the tanks already recorded stay
+-- in the database and resume where they left off.
+ALTER TABLE "Settings" ADD COLUMN "tankTracking" BOOLEAN NOT NULL DEFAULT false;

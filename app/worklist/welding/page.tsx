@@ -34,6 +34,7 @@ export default async function WeldWorklistPage() {
     getWorkersFor("Welding"),
   ]);
   const canEdit = !!user && canEditDept(user, "Welding");
+  const tankTracking = settings.tankTracking;
   const isAdmin = !!user?.isAdmin;
   // tracker-pushed lines render on the shared date-less table shape
   const pushedRows = extras.pushed.map((p) => ({
@@ -52,10 +53,11 @@ export default async function WeldWorklistPage() {
         capacity={settings.capacityPerItem}
         canEdit={canEdit}
         isAdmin={isAdmin}
-        workers={welders}
+        workers={tankTracking ? welders : []}
+        tankTracking={tankTracking}
         before={
           <>
-            {canEdit && <TankRepairPanel tanks={repairs} welders={welders} />}
+            {tankTracking && canEdit && <TankRepairPanel tanks={repairs} welders={welders} />}
             <RunOrderTable rows={runOrder} deptWord="weld" />
             <PriorityOrdersTable rows={extras.priority} deptWord="welded" />
             {pushedRows.length > 0 && (

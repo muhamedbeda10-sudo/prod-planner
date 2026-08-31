@@ -65,7 +65,7 @@ beforeEach(() => {
   h.requirePerm.mockResolvedValue(OK_GUARD);
   h.checkOutputChain.mockResolvedValue(null);
   h.getPlanWindows.mockResolvedValue([]);
-  h.getSettings.mockResolvedValue({ leadCut: 4 });
+  h.getSettings.mockResolvedValue({ leadCut: 4, tankTracking: true });
   h.prisma.plan.upsert.mockResolvedValue({});
   h.prisma.handoverEntry.create.mockResolvedValue({ id: 1 });
   h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 0 } });
@@ -291,6 +291,66 @@ describe("tanks (TN) — the ledger row and the serials move together", () => {
       { dept: "Painting", _sum: { qty: 0 } },
     ]);
     const res = await returnToUpstream(form({ fromDept: "Painting", bom: "B", mo: "MO-1", item: "TC", qty: "1", reason: "chipped" }));
+    expect(res.ok).toBe(true);
+  });
+});
+
+describe("the master switch — with tank tracking OFF a tank is just a quantity", () => {
+  beforeEach(() => {
+    h.getSettings.mockResolvedValue({ leadCut: 4, tankTracking: false });
+    h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "MO-1" });
+  });
+
+  it("welds tanks by quantity again — no serial, no welder asked for", async () => {
+    const res = await recordOutput(
+      form({ date: DATE, dept: "Welding", bom: "B", mo: "MO-1", item: "TN", qty: "3", planNo: "0" })
+    );
+    expect(res).toEqual({ ok: true });
+    expect(res.serials).toBeUndefined();
+    expect(h.mintTankSerials).not.toHaveBeenCalled();
+    expect(txWrites).toEqual([expect.objectContaining({ dept: "Welding", item: "TN", qty: 3 })]);
+  });
+
+  it("takes a fractional tank quantity, like any other component", async () => {
+    const res = await recordOutput(
+      form({ date: DATE, dept: "Welding", bom: "B", mo: "MO-1", item: "TN", qty: "2.5", planNo: "0" })
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it("lets the tracker's Paint cell record tanks again", async () => {
+    h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 0 } });
+    const res = await recordTrackerTotal(form({ dept: "Painting", bom: "B", mo: "MO-1", item: "TN", total: "3" }));
+    expect(res).toEqual({ ok: true });
+    expect(txWrites).toEqual([expect.objectContaining({ dept: "Painting", item: "TN", qty: 3 })]);
+  });
+
+  it("lets a BOM group row paint tanks again", async () => {
+    // painting is capped at what welding delivered, switch or no switch
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      { mo: "MO-1", dept: "Welding", _sum: { qty: 5 } },
+      { mo: "MO-1", dept: "Painting", _sum: { qty: 0 } },
+    ]);
+    const res = await recordGroupOutput(
+      form({ source: "worklist", dept: "Painting", bom: "B", item: "TN", qty: "2", mos: "MO-1" })
+    );
+    expect(res.ok).toBe(true);
+    expect(txWrites).toEqual([expect.objectContaining({ dept: "Painting", item: "TN", qty: 2 })]);
+  });
+
+  it("does not un-mint on a tracker correction — there are no serials to touch", async () => {
+    h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 5 } });
+    const res = await recordTrackerTotal(form({ dept: "Welding", bom: "B", mo: "MO-1", item: "TN", total: "2" }));
+    expect(res).toEqual({ ok: true });
+    expect(h.unmintTankSerials).not.toHaveBeenCalled();
+  });
+
+  it("returns a tank from painting as a quantity again", async () => {
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      { dept: "Welding", _sum: { qty: 5 } },
+      { dept: "Painting", _sum: { qty: 0 } },
+    ]);
+    const res = await returnToUpstream(form({ fromDept: "Painting", bom: "B", mo: "MO-1", item: "TN", qty: "1", reason: "leak" }));
     expect(res.ok).toBe(true);
   });
 });
