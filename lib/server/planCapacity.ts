@@ -5,6 +5,7 @@ import { projectPace } from "@/lib/domain/eta";
 import { getStdData, getStageCapacity } from "./standardTimes";
 import { countWorkingDays } from "./report";
 import { toISODate } from "@/lib/domain/dates";
+import { owedAcrossDays, promiseCeiling } from "@/lib/domain/planPromises";
 
 /** The capacity check for ONE weekly plan: the standard hours the plan's
  *  promises require per stage, against the stage's available man-hours over
@@ -35,7 +36,7 @@ export async function getPlanCapacity(planNo: number | null): Promise<PlanCapaci
       where: { planNo },
       select: { mo: true, item: true, ovenDate: true, qty: true },
     }),
-    prisma.masterOrder.findMany({ select: { mo: true, fgCode: true, kva: true } }),
+    prisma.masterOrder.findMany({ select: { mo: true, fgCode: true, kva: true, planQty: true, excludedItems: true } }),
     getStdData(),
     getStageCapacity(),
     prisma.holiday.findMany(),
@@ -43,9 +44,29 @@ export async function getPlanCapacity(planNo: number | null): Promise<PlanCapaci
   if (schedules.length === 0) return null;
 
   const byMo = new Map(orders.map((o) => [o.mo, o]));
+
+  // A plan that asks for the same pieces twice does not need twice the hours.
+  // Walk each order+component's promises in date order and keep only what the
+  // order can still owe — the repeats carry no work (see lib/domain/planPromises).
+  const owedQty = new Map<number, number>(); // index into `schedules` -> pcs really owed
+  const byOrderItem = new Map<string, number[]>(); // "mo|item" -> indexes, date order
+  const ordered = schedules.map((s, i) => i).sort((a, b) => +schedules[a].ovenDate - +schedules[b].ovenDate);
+  for (const i of ordered) {
+    const k = `${schedules[i].mo}|${schedules[i].item}`;
+    if (!byOrderItem.has(k)) byOrderItem.set(k, []);
+    byOrderItem.get(k)!.push(i);
+  }
+  for (const [k, idx] of byOrderItem) {
+    const [mo, item] = k.split("|");
+    const owed = owedAcrossDays(idx.map((i) => schedules[i].qty), promiseCeiling(byMo.get(mo), item));
+    idx.forEach((i, n) => owedQty.set(i, owed[n]));
+  }
+
   const { byStage, uncoveredPcs, totalPcs } = requiredHoursForLines(
     std,
-    schedules.map((s) => ({ item: s.item, qty: s.qty, order: byMo.get(s.mo) ?? null }))
+    schedules
+      .map((s, i) => ({ item: s.item, qty: owedQty.get(i) ?? s.qty, order: byMo.get(s.mo) ?? null }))
+      .filter((l) => l.qty > 0)
   );
 
   // the plan's own span decides how much capacity it gets to spend

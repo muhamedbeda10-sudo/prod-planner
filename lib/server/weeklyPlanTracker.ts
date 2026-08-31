@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { ITEMS, isPaintExempt, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 import { dayNumber, toISODate } from "@/lib/domain/dates";
+import { owedAcrossDays, promiseCeiling } from "@/lib/domain/planPromises";
 
 // Plan Tracker on a WEEKLY plan, grouped BY DELIVERY DAY.
 //
@@ -29,6 +30,12 @@ import { dayNumber, toISODate } from "@/lib/domain/dates";
 //     scheduled qty, flagged "not manufactured", and counts in NO total or
 //     percentage. Outsourced (OSP) pieces DO count as covered — they arrive
 //     without our departments working — and the cell says how many were OSP.
+//   • A promise the sheet asks for TWICE is asked for once. The order's own
+//     quantity is the ceiling: if an order needs 2 core boxes and the sheet
+//     schedules 2 on Monday and 2 again on Wednesday, only the first 2 are
+//     owed. The repeat still shows — struck through, flagged "already promised"
+//     — but it is not work, so it can never sit there reading 0% forever on an
+//     order that is finished and closed.
 //   • Output logged WITHOUT an order number still counts. The Daily Logs form
 //     records against the PROJECT (there is no MO field), and older log files
 //     have no MO column at all, so a lot of real output carries bom + item and
@@ -43,6 +50,9 @@ export interface WeeklyPlanCell {
   // them but they will NOT be manufactured. Shown, never counted as work owed.
   na: number;
   osp: number; // pcs of this day's promise covered by outsourcing (made outside)
+  // pcs of `req` the sheet had ALREADY promised earlier this plan — the order
+  // does not need them twice. Shown struck through, never counted as work owed.
+  over: number;
   cut: number; // every figure below is capped at `req - na`
   weld: number;
   finish: number; // Painting, or SHOT BLAST for the core — plus outsourced qty
@@ -154,7 +164,7 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
   // ---- the waterfall: one order promised across several days hands its
   // output to the EARLIEST promise first; only the overflow flows on ----
   // lines per (mo, item): the day-quantities in date order
-  const moLines = new Map<string, { d: number; qty: number }[]>();
+  const moLines = new Map<string, { d: number; qty: number; bom: string }[]>();
   for (const s of schedules) {
     if (!ITEMS.includes(s.item as Item) || !s.qty) continue;
     const k = `${s.mo}|${s.item}`;
@@ -163,13 +173,18 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
     const d = dayNumber(s.ovenDate);
     const line = lines.find((l) => l.d === d);
     if (line) line.qty += s.qty;
-    else lines.push({ d, qty: s.qty });
+    else lines.push({ d, qty: s.qty, bom: s.bom });
   }
   // alloc "mo|item|day" → the slice of the order's output this day may claim.
   // `osp` waterfalls exactly like the stage figures, so a cell can SAY how much
   // of its coverage was made outside rather than by our departments.
   type Slice = { cut: number; weld: number; fin: number; delivered: number; osp: number };
   const alloc = new Map<string, Slice>();
+  // "<dayNumber>|<bom>|<item>" -> pcs this day's promise repeats from an earlier
+  // day of the SAME plan. The order's quantity is the ceiling: a sheet that
+  // schedules 2 on Monday and 2 again on Wednesday for an order that needs 2 is
+  // asking for one thing twice, and the second ask is not work.
+  const repeated = new Map<string, number>();
   for (const [k, lines] of moLines) {
     lines.sort((a, b) => a.d - b.d);
     const [mo, item] = k.split("|");
@@ -183,10 +198,19 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
       delivered: g(mo, "Delivered", item),
       osp,
     };
-    for (const line of lines) {
+    // the order's own quantity is the ceiling on what this plan can ask for
+    const owedLines = owedAcrossDays(lines.map((l) => l.qty), promiseCeiling(o, item));
+    for (const [i, line] of lines.entries()) {
+      const owedLine = owedLines[i];
+      if (owedLine < line.qty) {
+        const rk = `${line.d}|${line.bom}|${item}`;
+        repeated.set(rk, (repeated.get(rk) ?? 0) + (line.qty - owedLine));
+      }
+      // a repeat owes nothing, so it claims nothing — otherwise it would eat
+      // output a later real promise still needs
       const slice: Slice = { cut: 0, weld: 0, fin: 0, delivered: 0, osp: 0 };
       for (const f of ["cut", "weld", "fin", "delivered", "osp"] as const) {
-        slice[f] = Math.min(pool[f], line.qty);
+        slice[f] = Math.min(pool[f], owedLine);
         pool[f] -= slice[f];
       }
       alloc.set(`${k}|${line.d}`, slice);
@@ -262,7 +286,10 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
       // pcs the plan asked for but the order marked N/A — visible, never owed.
       // Only what remains is a promise to manufacture; every figure caps there.
       const na = Math.min(draft.na[it] ?? 0, req);
-      const owed = req - na;
+      // pcs this day repeats from an earlier promise of the same plan — the
+      // order does not need them twice, so they are shown but never owed
+      const over = Math.min(repeated.get(`${d}|${draft.bom}|${it}`) ?? 0, req - na);
+      const owed = req - na - over;
       // each order contributes THIS day's waterfall slice — output already
       // claimed by an earlier promise never shows up again
       let cut = 0, weld = 0, fin = 0, delivered = 0, osp = 0;
@@ -296,7 +323,7 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
         delivered = take(delivered, "delivered");
       }
       const cap = (v: number) => Math.min(v, owed);
-      items[it] = { req, na, osp: cap(osp), cut: cap(cut), weld: cap(weld), finish: cap(fin), delivered: cap(delivered), mos: mos.sort() };
+      items[it] = { req, na, over, osp: cap(osp), cut: cap(cut), weld: cap(weld), finish: cap(fin), delivered: cap(delivered), mos: mos.sort() };
       rowReq += owed;
       day.covered += cap(fin);
     }

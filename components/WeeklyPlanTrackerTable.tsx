@@ -48,9 +48,10 @@ const doneWord = (metric: Stage, it: Item): string =>
   : isPaintExempt(it) ? "shot blasted" : "painted";
 
 /** Work a cell actually OWES: the scheduled qty minus what the order marked
- *  N/A. Every percentage and total reads against this — a promise we will not
- *  manufacture can neither hurt nor help a day's score. */
-const owedOf = (c: WeeklyPlanCell): number => c.req - c.na;
+ *  N/A, minus what the sheet had already promised earlier this week. Every
+ *  percentage and total reads against this — a promise we will not manufacture,
+ *  and a promise asked for twice, can neither hurt nor help a day's score. */
+const owedOf = (c: WeeklyPlanCell): number => c.req - c.na - c.over;
 
 /** Which ledger department a visible stage column writes to. The core's
  *  finishing column IS its shot blast — it is never painted. */
@@ -199,6 +200,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
             // pcs scheduled but NOT to be manufactured (order marked N/A) and
             // pcs covered by outsourcing — the sheet must read like the screen
             "N/A (not manufactured)": r.items[it]!.na,
+            "Already promised earlier": r.items[it]!.over,
             OSP: r.items[it]!.osp,
             ...Object.fromEntries(stages.map((s) => [STAGE_OPTS.find((o) => o.value === s)!.short, r.items[it]![s]])),
           }))
@@ -376,17 +378,22 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
                   </td>
                 );
               }
-              const owed = c.req - c.na;
+              const owed = owedOf(c);
               if (owed === 0) {
-                // the whole promise is N/A on the order — it stays on the sheet
-                // so the plan's ask is visible, but it is not work we will do
+                // the whole promise is N/A on the order, or the sheet already
+                // asked for it earlier this week — it stays visible so the
+                // plan's ask is on the sheet, but it is not work we will do
+                const repeat = c.over >= c.na;
+                const why = repeat
+                  ? `The order only needs ${c.req - c.over} of these, and the plan already asked for them earlier this week — this line repeats that promise, so it is not counted again`
+                  : "This component is marked N/A on the order — it will not be manufactured and does not count in any total";
                 return (
                   <Fragment key={it}>
-                    <td className="px-1 py-1 tabnum text-xs border-l text-muted line-through opacity-50" title="Scheduled by the plan, but marked N/A on the order">
+                    <td className="px-1 py-1 tabnum text-xs border-l text-muted line-through opacity-50" title={why}>
                       {c.req}
                     </td>
-                    <td colSpan={stages.length} className="px-1 py-1 text-[10px] font-bold text-muted opacity-60" title="This component is marked N/A on the order — it will not be manufactured and does not count in any total">
-                      N/A — not manufactured
+                    <td colSpan={stages.length} className="px-1 py-1 text-[10px] font-bold text-muted opacity-60" title={why}>
+                      {repeat ? "Already promised earlier this week" : "N/A — not manufactured"}
                     </td>
                   </Fragment>
                 );
@@ -399,6 +406,13 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
                       // part of the promise is N/A — the numbers run against the rest
                       <span className="block text-[9px] font-normal text-muted" title={`${c.na} of ${c.req} pcs are marked N/A on the order — only ${owed} will be manufactured`}>
                         N/A {c.na}
+                      </span>
+                    )}
+                    {c.over > 0 && (
+                      // the sheet asked for more than the order needs — the
+                      // surplus repeats an earlier day and is not work
+                      <span className="block text-[9px] font-normal text-muted" title={`${c.over} of ${c.req} pcs were already promised earlier this week — the order does not need them twice, so only ${owed} count here`}>
+                        REPEAT {c.over}
                       </span>
                     )}
                     {c.osp > 0 && (
