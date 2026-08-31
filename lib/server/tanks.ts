@@ -481,3 +481,55 @@ export async function deleteTanksWithRecords(
   }
   return { deleted: tanks.length, ledgerRowsTouched: debit.size };
 }
+
+
+// ---- starting over ----
+
+/** How many tanks exist, per stage — what the admin sees before deciding to
+ *  wipe anything. */
+export async function countTanksByStatus(): Promise<{ total: number; byStatus: Record<string, number> }> {
+  const rows = await prisma.tankUnit.groupBy({ by: ["status"], _count: { _all: true } });
+  const byStatus: Record<string, number> = {};
+  let total = 0;
+  for (const r of rows) {
+    byStatus[r.status] = r._count._all;
+    total += r._count._all;
+  }
+  return { total, byStatus };
+}
+
+/**
+ * Wipe the per-piece layer and let serials start from 1 again — the clean slate
+ * after a trial run.
+ *
+ * `keepQuantities` is the whole decision, and it is not a detail:
+ *
+ *  • TRUE  — the daily log is left exactly as it is. The welding and painting
+ *    really happened, the plan's numbers are right, and only the serials and
+ *    their history go. This is what a trial run wants.
+ *
+ *  • FALSE — every tank also takes its quantity back off the log, as if the
+ *    work was never recorded. Only for test data that should never have counted.
+ */
+export async function clearAllTankRecords(
+  tx: Prisma.TransactionClient,
+  opts: { keepQuantities: boolean }
+): Promise<{ deleted: number; ledgerRowsTouched: number }> {
+  const tanks = await tx.tankUnit.findMany({ select: { serial: true } });
+  if (tanks.length === 0) {
+    await tx.tankSerialCounter.deleteMany({});
+    return { deleted: 0, ledgerRowsTouched: 0 };
+  }
+
+  let result: { deleted: number; ledgerRowsTouched: number };
+  if (opts.keepQuantities) {
+    const gone = await tx.tankUnit.deleteMany({}); // events cascade with them
+    result = { deleted: gone.count, ledgerRowsTouched: 0 };
+  } else {
+    result = await deleteTanksWithRecords(tx, tanks.map((t) => t.serial));
+  }
+
+  // serials restart at 1 for every BOM — the point of a clean slate
+  await tx.tankSerialCounter.deleteMany({});
+  return result;
+}
