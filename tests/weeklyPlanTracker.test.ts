@@ -220,3 +220,89 @@ describe("getWeeklyPlanTracker — output logged without an order number", () =>
     expect(t.req).toBe(0);
   });
 });
+
+// ---- a promise the sheet asks for TWICE ---------------------------------------
+// Planners repeat an outstanding line on a later day. The order's own quantity
+// is the ceiling: the repeat is shown, but it is not a second thing to make —
+// otherwise a finished, closed order sits on the sheet reading 0% forever.
+
+describe("getWeeklyPlanTracker — a promise repeated later in the same plan", () => {
+  it("owes the order's quantity once, and flags the repeat", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1", { planQty: 2 })]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([
+      sched("MO-1", "CB", 2, D1),
+      sched("MO-1", "CB", 2, D2), // the same 2 pcs, asked for again
+    ]);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      { mo: "MO-1", bom: "B-1", dept: "Painting", item: "CB", _sum: { qty: 2 } },
+    ]);
+
+    const t = await getWeeklyPlanTracker(34);
+    const [day1, day2] = t.days;
+
+    expect(day1.rows[0].items.CB).toMatchObject({ req: 2, over: 0, finish: 2 });
+    // the repeat still shows what the sheet asked, but owes nothing
+    expect(day2.rows[0].items.CB).toMatchObject({ req: 2, over: 2, finish: 0 });
+    expect(day2.req).toBe(0);
+    // the week asks for 2, not 4 — and all 2 are done
+    expect(t.req).toBe(2);
+    expect(t.covered).toBe(2);
+  });
+
+  it("owes only the part that is new when a day repeats and adds", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1", { planQty: 5 })]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([
+      sched("MO-1", "CB", 3, D1),
+      sched("MO-1", "CB", 4, D2), // 2 of these are new, 2 repeat
+    ]);
+
+    const t = await getWeeklyPlanTracker(34);
+
+    expect(t.days[1].rows[0].items.CB).toMatchObject({ req: 4, over: 2 });
+    expect(t.req).toBe(5); // the order's own quantity, once
+  });
+
+  it("does not cap an order the registry has no quantity for", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1")]); // planQty absent
+    h.prisma.planSchedule.findMany.mockResolvedValue([
+      sched("MO-1", "CB", 2, D1),
+      sched("MO-1", "CB", 2, D2),
+    ]);
+
+    const t = await getWeeklyPlanTracker(34);
+
+    expect(t.days[1].rows[0].items.CB).toMatchObject({ req: 2, over: 0 });
+    expect(t.req).toBe(4);
+  });
+
+  it("leaves the output for the promise that really owes it", async () => {
+    // day 1 is the repeat's ceiling, so day 2 must not be starved of output
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1", { planQty: 4 })]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([
+      sched("MO-1", "CB", 2, D1),
+      sched("MO-1", "CB", 4, D2), // 2 new + 2 repeat
+    ]);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      { mo: "MO-1", bom: "B-1", dept: "Welding", item: "CB", _sum: { qty: 4 } },
+    ]);
+
+    const t = await getWeeklyPlanTracker(34);
+
+    expect(t.days[0].rows[0].items.CB).toMatchObject({ weld: 2 });
+    expect(t.days[1].rows[0].items.CB).toMatchObject({ req: 4, over: 2, weld: 2 });
+  });
+
+  it("does not double-count an N/A promise as a repeat", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1", { planQty: 2, excludedItems: "CB" })]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([
+      sched("MO-1", "CB", 2, D1),
+      sched("MO-1", "CB", 2, D2),
+    ]);
+
+    const t = await getWeeklyPlanTracker(34);
+
+    expect(t.days[0].rows[0].items.CB).toMatchObject({ req: 2, na: 2, over: 0 });
+    expect(t.days[1].rows[0].items.CB).toMatchObject({ req: 2, na: 2, over: 0 });
+    expect(t.req).toBe(0);
+  });
+});
