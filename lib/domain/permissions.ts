@@ -35,6 +35,12 @@ export const PERM_CATEGORIES: PermCategory[] = [
     ],
   },
   {
+    name: "Material",
+    perms: [
+      { key: "material.edit", label: "Material & nesting — record", desc: "Add and edit the material lines on the MATERIAL tab: which sheet (material, thickness, size) a BOM eats, how many one unit needs, and how many were actually nested for the job" },
+    ],
+  },
+  {
     name: "Plan Tracker",
     perms: [
       { key: "tracker.cut", label: "Fabrication column — record", desc: "Edit the Fab stage cells on the Plan Tracker (separate from the Fabrication worklist permission)" },

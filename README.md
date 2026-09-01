@@ -43,6 +43,11 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 7. **Daily report + Dashboard** (`/report`, `/`) — dept output, complete sets, efficiency/balance %,
    projects worked today, tracker snapshot, charts. Dashboard: achievement per item, dept output
    day/week, planned (oven−lead) vs welded.
+8. **Material / nesting** (`/material`) — the planner's Nesting Tracker sheet, live: one line per
+   BOM (× order) × material × thickness × sheet size, carrying the nesting BOM's sheets-per-unit and
+   what was **actually** nested. Sheets-for-job and Difference are **computed**, never stored, and the
+   quantity of units comes from the orders registry instead of being typed. Imports/exports the
+   workbook's own columns; per-material purchasing totals underneath.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

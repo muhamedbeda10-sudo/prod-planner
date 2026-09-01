@@ -606,3 +606,36 @@ model TankSerialCounter {
   bom  String @id
   next Int    @default(1) // the number the NEXT tank of this BOM will take
 }
+
+// ---- MATERIAL / nesting (the planner's "Nesting Tracker" sheet) ----
+
+// One material line: what sheet — material, thickness, size — a BOM eats, how
+// many of them the nesting BOM says ONE unit needs, and how many the nester
+// actually laid out for the job. The sheet's two formula columns (sheets for
+// the job, difference) are derived at read time, never stored.
+//
+// mo "" = the line covers EVERY order on the BOM (how the workbook wrote it);
+// naming an MO gives that one order its own line, so two orders of the same
+// BOM stop overwriting each other's actual nesting.
+//
+// unitsOverride is only for a BOM the orders registry does not carry — while
+// it is null the quantity of units comes live from the registry.
+model MaterialUsage {
+  id            Int      @id @default(autoincrement())
+  bom           String
+  mo            String   @default("")
+  material      String // Steel | Stainless steel | … (lib/domain/material.ts)
+  thicknessMm   Float
+  sheetSize     String // "1220*2440"
+  sheetsPerUnit Float
+  sheetsUsed    Float? // actual sheets nested — null = not laid out yet
+  unitsOverride Float?
+  note          String?
+  recordedBy    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([bom, mo, material, thicknessMm, sheetSize])
+  @@index([bom])
+  @@index([mo])
+}
