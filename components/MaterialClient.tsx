@@ -13,7 +13,6 @@ import { createMaterialLine, updateMaterialLine, setSheetsUsed, deleteMaterialLi
 // beside it, and giving it turns on the two comparison columns. Everything else
 // on the row is computed, so nothing here can disagree with the orders registry.
 
-const inputCls = "px-2.5 py-1.5 text-sm font-semibold w-full";
 const cellInput = "w-24 px-2 py-1 text-sm font-bold tabnum ltr text-center";
 
 function useAction() {
@@ -78,6 +77,29 @@ export function MaterialBomPicker({ boms, value }: { boms: string[]; value: stri
 }
 
 // ---- the shared line form (add + edit use the very same fields) ----
+//
+// ONE row, not a card. Every field is a labelled box on a single wrapping line,
+// so adding a material line costs one glance and one pass across the keyboard
+// instead of a form the height of the screen. The labels live in `title` and
+// `aria-label`; the placeholder carries the hint on screen.
+
+const F = "px-2 py-1.5 text-sm font-semibold";
+
+function Field({
+  hint,
+  className = "",
+  children,
+}: {
+  hint: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className={`inline-flex flex-col ${className}`} title={hint}>
+      {children}
+    </span>
+  );
+}
 
 function LineFields({
   line,
@@ -94,131 +116,91 @@ function LineFields({
 }) {
   const [bom, setBom] = useState(line?.bom ?? lockedBom ?? "");
   const bomOrders = orders.filter((o) => o.bom === bom);
+  // a new line is almost always today's work, so it starts there
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="grid sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-      <label className="block">
-        <span className="text-xs font-bold text-muted">BOM Ref</span>
+    <>
+      <Field hint="The day this material was worked" className="w-[8.5rem]">
+        <input
+          name="workedAt"
+          type="date"
+          aria-label="Date worked"
+          defaultValue={line?.workedISO ?? today}
+          required
+          disabled={disabled}
+          className={`${F} ltr tabnum w-full`}
+        />
+      </Field>
+
+      <Field hint="BOM reference" className="w-36">
         <input
           name="bom"
           list="material-boms"
+          aria-label="BOM reference"
           value={bom}
           onChange={(e) => setBom(e.target.value.toUpperCase())}
           required
           disabled={disabled}
-          placeholder="12008E18M18"
-          className={`${inputCls} ltr`}
+          placeholder="BOM"
+          className={`${F} ltr w-full`}
         />
         <datalist id="material-boms">
           {boms.map((b) => (
             <option key={b} value={b} />
           ))}
         </datalist>
-      </label>
+      </Field>
 
-      <label className="block">
-        <span className="text-xs font-bold text-muted" title="Leave on ‘every order’ to describe the BOM itself">
-          Order (MO)
-        </span>
-        <select name="mo" defaultValue={line?.mo ?? ""} disabled={disabled} className={`${inputCls} ltr`}>
-          <option value="">Every order on this BOM</option>
+      <Field hint="Leave on ‘all orders’ to describe the BOM itself" className="w-44">
+        <select name="mo" aria-label="Order" defaultValue={line?.mo ?? ""} disabled={disabled} className={`${F} ltr w-full`}>
+          <option value="">All orders on this BOM</option>
           {bomOrders.map((o) => (
             <option key={o.mo} value={o.mo}>
               {o.mo} — {o.planQty} pcs{o.status === "closed" ? " (closed)" : ""}
             </option>
           ))}
         </select>
-      </label>
+      </Field>
 
-      <label className="block">
-        <span className="text-xs font-bold text-muted">Material type</span>
-        <input name="material" list="material-types" defaultValue={line?.material ?? ""} required disabled={disabled} placeholder="Steel" className={inputCls} />
+      <Field hint="Material type" className="w-32">
+        <input name="material" list="material-types" aria-label="Material" defaultValue={line?.material ?? ""} required disabled={disabled} placeholder="Steel" className={`${F} w-full`} />
         <datalist id="material-types">
           {MATERIAL_PRESETS.map((m) => (
             <option key={m} value={m} />
           ))}
         </datalist>
-      </label>
+      </Field>
 
-      <label className="block">
-        <span className="text-xs font-bold text-muted">Thickness (mm)</span>
-        <input
-          name="thicknessMm"
-          type="number"
-          step="0.1"
-          min="0.1"
-          defaultValue={line?.thicknessMm ?? ""}
-          required
-          disabled={disabled}
-          placeholder="3"
-          className={`${inputCls} ltr tabnum`}
-        />
-      </label>
+      <Field hint="Thickness in mm" className="w-20">
+        <input name="thicknessMm" type="number" step="0.1" min="0.1" aria-label="Thickness in mm" defaultValue={line?.thicknessMm ?? ""} required disabled={disabled} placeholder="mm" className={`${F} ltr tabnum w-full`} />
+      </Field>
 
-      <label className="block">
-        <span className="text-xs font-bold text-muted">Sheet size</span>
-        <input name="sheetSize" list="sheet-sizes" defaultValue={line?.sheetSize ?? ""} required disabled={disabled} placeholder="1220*2440" className={`${inputCls} ltr`} />
+      <Field hint="Sheet size" className="w-32">
+        <input name="sheetSize" list="sheet-sizes" aria-label="Sheet size" defaultValue={line?.sheetSize ?? ""} required disabled={disabled} placeholder="1220*2440" className={`${F} ltr w-full`} />
         <datalist id="sheet-sizes">
-          {SHEET_SIZE_PRESETS.map((s) => (
-            <option key={s} value={s} />
+          {SHEET_SIZE_PRESETS.map((sz) => (
+            <option key={sz} value={sz} />
           ))}
         </datalist>
-      </label>
+      </Field>
 
-      <label className="block">
-        <span className="text-xs font-bold" title="The sheets this job really ate — what this line is for">
-          Sheets used *
-        </span>
-        <input
-          name="sheetsUsed"
-          type="number"
-          step="0.01"
-          min="0"
-          defaultValue={line?.sheetsUsed ?? ""}
-          required
-          disabled={disabled}
-          placeholder="17"
-          className={`${inputCls} ltr tabnum`}
-        />
-      </label>
+      <Field hint="Sheets this job really ate — what the line records" className="w-24">
+        <input name="sheetsUsed" type="number" step="0.01" min="0" aria-label="Sheets used" defaultValue={line?.sheetsUsed ?? ""} required disabled={disabled} placeholder="used *" className={`${F} ltr tabnum w-full font-extrabold`} />
+      </Field>
 
-      <label className="block">
-        <span className="text-xs font-bold text-muted" title="Optional — the nesting BOM's figure, to measure the real usage against">
-          Sheets per unit (BOM)
-        </span>
-        <input
-          name="sheetsPerUnit"
-          type="number"
-          step="0.0001"
-          min="0"
-          defaultValue={line?.sheetsPerUnit ?? ""}
-          disabled={disabled}
-          placeholder="optional"
-          className={`${inputCls} ltr tabnum`}
-        />
-      </label>
+      <Field hint="Optional — the nesting BOM's sheets per unit, to measure the usage against" className="w-24">
+        <input name="sheetsPerUnit" type="number" step="0.0001" min="0" aria-label="Sheets per unit from the BOM" defaultValue={line?.sheetsPerUnit ?? ""} disabled={disabled} placeholder="BOM/unit" className={`${F} ltr tabnum w-full`} />
+      </Field>
 
-      <label className="block">
-        <span className="text-xs font-bold text-muted" title="Only for a BOM the orders registry does not carry — leave empty and the quantity comes from the registry">
-          Units override
-        </span>
-        <input
-          name="unitsOverride"
-          type="number"
-          step="1"
-          min="0"
-          defaultValue={line?.unitsOverride ?? ""}
-          disabled={disabled}
-          placeholder="from registry"
-          className={`${inputCls} ltr tabnum`}
-        />
-      </label>
+      <Field hint="Only for a BOM the orders registry does not carry — leave empty and the quantity comes from the registry" className="w-24">
+        <input name="unitsOverride" type="number" step="1" min="0" aria-label="Units override" defaultValue={line?.unitsOverride ?? ""} disabled={disabled} placeholder="units" className={`${F} ltr tabnum w-full`} />
+      </Field>
 
-      <label className="block sm:col-span-3 lg:col-span-4">
-        <span className="text-xs font-bold text-muted">Notes</span>
-        <input name="note" defaultValue={line?.note ?? ""} disabled={disabled} className={inputCls} />
-      </label>
-    </div>
+      <Field hint="Notes" className="flex-1 min-w-[8rem]">
+        <input name="note" aria-label="Notes" defaultValue={line?.note ?? ""} disabled={disabled} placeholder="notes" className={`${F} w-full`} />
+      </Field>
+    </>
   );
 }
 
@@ -260,7 +242,15 @@ function LineRow({
   return (
     <>
       <tr className="border-t">
+        <td className="p-2 whitespace-nowrap tabnum ltr">{line.workedISO}</td>
         <td className="p-2 font-bold whitespace-nowrap ltr">{line.bom}</td>
+        <td className="p-2 whitespace-nowrap text-xs">
+          {line.planMonths.length > 0 ? (
+            <span title={line.planMonths.join(" · ")}>{line.planMonths.join(" · ")}</span>
+          ) : (
+            <span className="text-muted" title="No monthly plan carries an order for this BOM">—</span>
+          )}
+        </td>
         <td className="p-2 text-xs font-semibold whitespace-nowrap ltr">{line.mo || <span className="text-muted">all orders</span>}</td>
         <td className="p-2 whitespace-nowrap">{line.material}</td>
         <td className="p-2 text-center tabnum ltr">{line.thicknessMm}</td>
@@ -332,12 +322,12 @@ function LineRow({
 
       {(used.msg?.ok === false || del.msg?.ok === false || editing) && (
         <tr className="border-t-0">
-          <td colSpan={12} className="px-2 pb-3">
+          <td colSpan={14} className="px-2 pb-3">
             <Msg msg={used.msg?.ok === false ? used.msg : null} />
             <Msg msg={del.msg?.ok === false ? del.msg : null} />
             {editing && (
               <form
-                className="mt-2 space-y-2.5 border rounded-xl p-3"
+                className="mt-2 border rounded-xl p-2"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
@@ -345,13 +335,13 @@ function LineRow({
                   edit.run(updateMaterialLine, fd, "Saved.", () => setEditing(false));
                 }}
               >
-                <LineFields line={line} boms={boms} orders={orders} disabled={edit.pending} />
-                <div className="flex items-center gap-3">
-                  <button type="submit" className="btn btn-primary btn-sm" disabled={edit.pending}>
+                <div className="flex flex-wrap items-stretch gap-1.5">
+                  <LineFields line={line} boms={boms} orders={orders} disabled={edit.pending} />
+                  <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={edit.pending}>
                     Save
                   </button>
-                  <Msg msg={edit.msg} />
                 </div>
+                <Msg msg={edit.msg} />
               </form>
             )}
           </td>
@@ -387,7 +377,9 @@ function LinesTable({
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="bg-brand text-white text-left">
+            <th className="p-2" title="The day this material was worked">Date</th>
             <th className="p-2">BOM Ref</th>
+            <th className="p-2" title="The monthly plan(s) the BOM's orders came in on">Month</th>
             <th className="p-2">Order</th>
             <th className="p-2">Material</th>
             <th className="p-2 text-center">Thk (mm)</th>
@@ -483,30 +475,36 @@ function AddLine({
     if (first instanceof HTMLInputElement) first.focus();
   }
 
-  return (
-    <div className="border rounded-xl p-4">
-      <button type="button" className="btn btn-sm" onClick={() => setOpen((v) => !v)}>
-        {open ? "Close" : "➕ Add a material line"}
+  if (!open) {
+    return (
+      <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>
+        ➕ Add a material line
       </button>
-      {open && (
-        <form
-          className="mt-3 space-y-2.5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const form = e.currentTarget;
-            add.run(createMaterialLine, new FormData(form), "Added — next line.", () => clearForNextLine(form));
-          }}
-        >
-          <LineFields boms={boms} orders={orders} lockedBom={lockedBom} disabled={add.pending} />
-          <div className="flex items-center gap-3">
-            <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending}>
-              Add
-            </button>
-            <Msg msg={add.msg} />
-          </div>
-        </form>
-      )}
-    </div>
+    );
+  }
+
+  // the Add button sits on the SAME line as the fields — the whole form is one
+  // strip, and only a failure message ever adds a second line to it
+  return (
+    <form
+      className="border rounded-xl p-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const form = e.currentTarget;
+        add.run(createMaterialLine, new FormData(form), "Added — next line.", () => clearForNextLine(form));
+      }}
+    >
+      <div className="flex flex-wrap items-stretch gap-1.5">
+        <LineFields boms={boms} orders={orders} lockedBom={lockedBom} disabled={add.pending} />
+        <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={add.pending}>
+          Add
+        </button>
+        <button type="button" className="btn btn-sm btn-ghost shrink-0" onClick={() => setOpen(false)}>
+          ✕
+        </button>
+      </div>
+      <Msg msg={add.msg} />
+    </form>
   );
 }
 

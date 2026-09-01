@@ -44,7 +44,8 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    projects worked today, tracker snapshot, charts. Dashboard: achievement per item, dept output
    day/week, planned (oven−lead) vs welded.
 8. **Material actually used** (`/material`) — a record of real consumption, not a plan: one line per
-   BOM (× order) × material × thickness × sheet size saying **how many sheets the job really ate**.
+   BOM (× order) × material × thickness × sheet size saying **how many sheets the job really ate**,
+   and **on what date**. The monthly plan(s) the BOM belongs to are read from the orders registry.
    The nesting BOM's sheets-per-unit is optional beside it; supply it and the tab derives what the BOM
    allowed and the difference (**computed**, never stored). Quantity of units comes from the orders
    registry instead of being typed. Entered directly, line by line; exports in the workbook's own

@@ -1,6 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { toISODate } from "@/lib/domain/dates";
 import {
+  parsePlanMonths,
   resolveUnits,
   round3,
   sheetsDifference,
@@ -16,15 +18,23 @@ export interface MaterialOrderRef {
   planQty: number;
   customer: string | null;
   status: string;
+  planMonths: string[]; // the monthly plan(s) this order was imported under
 }
 
 /** Every order the registry knows, as the material page's BOM/MO pickers. */
 export async function getMaterialOrders(): Promise<MaterialOrderRef[]> {
   const orders = await prisma.masterOrder.findMany({
-    select: { mo: true, bom: true, planQty: true, customer: true, status: true },
+    select: { mo: true, bom: true, planQty: true, customer: true, status: true, months: true, source: true },
     orderBy: [{ bom: "asc" }, { mo: "asc" }],
   });
-  return orders;
+  return orders.map(({ months, source, ...o }) => ({ ...o, planMonths: parsePlanMonths(months, source) }));
+}
+
+/** The monthly plan(s) behind a line: the named MO's own, or every month the
+ *  BOM's orders came in on when the line covers the whole BOM. */
+function planMonthsFor(orders: MaterialOrderRef[], bom: string, mo: string): string[] {
+  const relevant = mo ? orders.filter((o) => o.mo === mo) : orders.filter((o) => o.bom === bom);
+  return [...new Set(relevant.flatMap((o) => o.planMonths))].sort();
 }
 
 /** planQty behind a line: the named MO's own quantity, or every order on the
@@ -37,8 +47,8 @@ function registryQty(orders: MaterialOrderRef[], bom: string, mo: string): numbe
 function toView(
   row: {
     id: number; bom: string; mo: string; material: string; thicknessMm: number; sheetSize: string;
-    sheetsUsed: number; sheetsPerUnit: number | null; unitsOverride: number | null; note: string | null;
-    recordedBy: string | null; updatedAt: Date;
+    workedAt: Date; sheetsUsed: number; sheetsPerUnit: number | null; unitsOverride: number | null;
+    note: string | null; recordedBy: string | null; updatedAt: Date;
   },
   orders: MaterialOrderRef[]
 ): MaterialLineView {
@@ -51,12 +61,14 @@ function toView(
     material: row.material,
     thicknessMm: row.thicknessMm,
     sheetSize: row.sheetSize,
+    workedISO: toISODate(row.workedAt),
     sheetsUsed: row.sheetsUsed,
     sheetsPerUnit: row.sheetsPerUnit,
     unitsOverride: row.unitsOverride,
     note: row.note,
     units,
     unitsFromRegistry: fromRegistry,
+    planMonths: planMonthsFor(orders, row.bom, row.mo),
     allowed,
     difference: sheetsDifference(allowed, row.sheetsUsed),
     updatedISO: row.updatedAt.toISOString().slice(0, 10),
@@ -77,7 +89,7 @@ export async function getMaterialData(bom?: string): Promise<MaterialPageData> {
   const [rows, orders] = await Promise.all([
     prisma.materialUsage.findMany({
       where: bom ? { bom } : undefined,
-      orderBy: [{ bom: "asc" }, { mo: "asc" }, { material: "asc" }, { thicknessMm: "asc" }],
+      orderBy: [{ workedAt: "desc" }, { bom: "asc" }, { mo: "asc" }, { material: "asc" }, { thicknessMm: "asc" }],
     }),
     getMaterialOrders(),
   ]);
