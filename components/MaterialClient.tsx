@@ -197,7 +197,9 @@ function LineFields({
         <input name="unitsOverride" type="number" step="1" min="0" aria-label="Units override" defaultValue={line?.unitsOverride ?? ""} disabled={disabled} placeholder="units" className={`${F} ltr tabnum w-full`} />
       </Field>
 
-      <Field hint="Notes" className="flex-1 min-w-[8rem]">
+      {/* fixed and modest: notes are the exception on a material line, so the
+          box must not eat the strip the way a flex-1 field did */}
+      <Field hint="Notes" className="w-40">
         <input name="note" aria-label="Notes" defaultValue={line?.note ?? ""} disabled={disabled} placeholder="notes" className={`${F} w-full`} />
       </Field>
     </>
