@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { recordGroupOutput } from "@/app/worklist/actions";
-import { pctStyle } from "@/components/ui";
+import { pctStyle, Soi } from "@/components/ui";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle, WeekPlanPicker } from "@/components/PlanViewToggle";
 import { ExportButton } from "@/components/ExportButton";
@@ -325,6 +325,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
           </div>
         </th>
         <th rowSpan={2} className="px-2 py-1 text-left bg-brand text-white align-middle">Project (BOM)</th>
+        <th rowSpan={2} className="px-2 py-1 text-left bg-brand text-white align-middle" title="Sales order item">SOI</th>
         <th rowSpan={2} className="px-2 py-1 bg-brand text-white align-middle" title={`How much of this day's promise ${metricLabel.label} has covered`}>
           Done
           <span className="block text-[9px] font-normal opacity-75">{metricLabel.short}</span>
@@ -364,6 +365,9 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
               >
                 {r.bom}
               </Link>
+            </td>
+            <td className="px-2 py-1 text-left whitespace-nowrap">
+              <Soi soi={r.soi} />
             </td>
             <td className="px-2 py-1 tabnum font-bold" style={cov === null ? undefined : pctStyle(cov)}>
               {cov === null ? <span className="text-muted opacity-40">—</span> : `${Math.round(cov * 100)}%`}

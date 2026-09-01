@@ -4,6 +4,8 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WeldQueueRow } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
+import type { SoiLookup } from "@/lib/server/soi";
+import { Soi, soiOf } from "@/components/ui";
 import { recordOutput, recordGroupOutput, addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote, returnToUpstream, hideWorklistLine } from "@/app/worklist/actions";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Frac } from "@/components/Frac";
@@ -38,6 +40,7 @@ export function WeldingQueueTable({
   tankTracking = false,
   before,
   after,
+  soi,
 }: {
   rows: WeldQueueRow[];
   day: string;
@@ -48,6 +51,7 @@ export function WeldingQueueTable({
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
   canEdit?: boolean; // user holds this dept's edit permission — otherwise view-only
   isAdmin?: boolean; // admins may remove a line from the worklist (restorable)
+  soi?: SoiLookup; // the SOI shown beside each MO
   /** TANKS ONLY — the people this dept can credit (welders here, painters on
    *  the painting worklist). Empty on every other component. */
   workers?: WorkerDTO[];
@@ -356,6 +360,7 @@ export function WeldingQueueTable({
             {inGroup && <span className="text-muted mr-1">↳</span>}
             {r.mo || "—"}
           </td>
+          <td className="p-2 whitespace-nowrap"><Soi soi={soiOf(soi, r.mo, r.bom)} /></td>
           <td className="p-2 font-bold whitespace-nowrap">{r.bom}</td>
           <td className="p-2 text-xs text-muted whitespace-nowrap">{r.description}</td>
           {plansShown.size > 1 && <td className="p-2 text-center text-xs tabnum">{r.planNo}</td>}
@@ -708,6 +713,7 @@ export function WeldingQueueTable({
             <tr className="bg-brand text-white text-left">
               <th className="p-2">Deliver on</th>
               <th className="p-2">MO</th>
+              <th className="p-2" title="Sales order item">SOI</th>
               <th className="p-2">BOM</th>
               <th className="p-2">Description</th>
               {plansShown.size > 1 && <th className="p-2 text-center">Plan</th>}

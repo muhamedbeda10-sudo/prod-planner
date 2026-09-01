@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { setOrderStatus, setExcludedItems, setOrderQty, setOrderPriority, pushOrderToWorklist, removeOrderMonth } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
-import { pctStyle, Num } from "@/components/ui";
+import { pctStyle, Num, Soi } from "@/components/ui";
 import { RingCard } from "@/components/ProgressRing";
 import { ExportButton } from "@/components/ExportButton";
 import { PrintButton } from "@/components/PrintButton";
@@ -171,7 +171,8 @@ export function MasterTrackerTable({
   // table shape under the stage filter: only the picked columns per item, no
   // Complete/Left/Achv
   // +1 for Status, +1 for the ETA forecast column
-  const tableCols = scoped ? 4 + ITEMS.length * stages.length + 2 : 4 + ITEMS.length * 4 + 5;
+  // MO, SOI, BOM, KVA, Required lead the row before the per-item stage columns
+  const tableCols = scoped ? 5 + ITEMS.length * stages.length + 2 : 5 + ITEMS.length * 4 + 5;
 
   // shared BOMs: one summary row per BOM, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -440,6 +441,7 @@ export function MasterTrackerTable({
           <thead className="sticky top-0 z-10">
             <tr className="bg-brand text-white">
               <th rowSpan={2} className="p-2 text-left">MO</th>
+              <th rowSpan={2} className="p-2 text-left" title="Sales order item">SOI</th>
               <th rowSpan={2} className="p-2 text-left">BOM</th>
               <th rowSpan={2} className="p-2">KVA</th>
               <th rowSpan={2} className="p-2">Required</th>
@@ -804,6 +806,9 @@ export function MasterTrackerTable({
                       N/A {it}
                     </span>
                   ))}
+                </td>
+                <td className="p-2 whitespace-nowrap">
+                  <Soi soi={r.soi} />
                 </td>
                 <td className="p-2 font-bold whitespace-nowrap">
                   <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>

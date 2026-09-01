@@ -3,6 +3,7 @@
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
 import { MATERIAL_PRESETS, SHEET_SIZE_PRESETS, type MaterialLineView, type MaterialTotal } from "@/lib/domain/material";
+import { Soi } from "@/components/ui";
 import type { MaterialOrderRef } from "@/lib/server/material";
 import { createMaterialLine, updateMaterialLine, setSheetsUsed, deleteMaterialLine } from "@/app/material/actions";
 
@@ -157,7 +158,7 @@ function LineFields({
           <option value="">All orders on this BOM</option>
           {bomOrders.map((o) => (
             <option key={o.mo} value={o.mo}>
-              {o.mo} — {o.planQty} pcs{o.status === "closed" ? " (closed)" : ""}
+              {o.mo}{o.soi ? ` · ${o.soi}` : ""} — {o.planQty} pcs{o.status === "closed" ? " (closed)" : ""}
             </option>
           ))}
         </select>
@@ -246,6 +247,9 @@ function LineRow({
       <tr className="border-t">
         <td className="p-2 whitespace-nowrap tabnum ltr">{line.workedISO}</td>
         <td className="p-2 font-bold whitespace-nowrap ltr">{line.bom}</td>
+        <td className="p-2 whitespace-nowrap">
+          <Soi soi={line.soi} />
+        </td>
         <td className="p-2 whitespace-nowrap text-xs">
           {line.planMonths.length > 0 ? (
             <span title={line.planMonths.join(" · ")}>{line.planMonths.join(" · ")}</span>
@@ -324,7 +328,7 @@ function LineRow({
 
       {(used.msg?.ok === false || del.msg?.ok === false || editing) && (
         <tr className="border-t-0">
-          <td colSpan={14} className="px-2 pb-3">
+          <td colSpan={15} className="px-2 pb-3">
             <Msg msg={used.msg?.ok === false ? used.msg : null} />
             <Msg msg={del.msg?.ok === false ? del.msg : null} />
             {editing && (
@@ -381,6 +385,7 @@ function LinesTable({
           <tr className="bg-brand text-white text-left">
             <th className="p-2" title="The day this material was worked">Date</th>
             <th className="p-2">BOM Ref</th>
+            <th className="p-2" title="Sales order item">SOI</th>
             <th className="p-2" title="The monthly plan(s) the BOM's orders came in on">Month</th>
             <th className="p-2">Order</th>
             <th className="p-2">Material</th>

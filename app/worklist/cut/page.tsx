@@ -1,3 +1,4 @@
+import { getSoiLookup } from "@/lib/server/soi";
 import { getRunOrderLines } from "@/lib/server/worklistExtras";
 import { getCutSheet } from "@/lib/server/execution";
 import { getSettings } from "@/lib/server/data";
@@ -13,13 +14,14 @@ export const dynamic = "force-dynamic";
 // No page header on screen — every pixel goes to the work (title lives in the
 // nav tab). The PrintHeader appears only on the printed/PDF sheet.
 export default async function CutWorklistPage() {
-  const [{ planNo, today, dueNow, overdue, postponed, remarked, unscheduled, pushed, priority, hidden, planIssues }, returns, notes, settings, user, runOrder] = await Promise.all([
+  const [{ planNo, today, dueNow, overdue, postponed, remarked, unscheduled, pushed, priority, hidden, planIssues }, returns, notes, settings, user, runOrder, soi] = await Promise.all([
     getCutSheet(),
     getReturnsFor("Cut"),
     getQueueNotes(),
     getSettings(),
     getCurrentUser(),
     getRunOrderLines("Cut"),
+    getSoiLookup(),
   ]);
   const dayISO = toISODate(today);
   const canEdit = !!user && canEditDept(user, "Cut");
@@ -27,7 +29,7 @@ export default async function CutWorklistPage() {
   return (
     <>
       <PrintHeader title="Fabrication Worklist" date={toDisplayDate(today)} />
-      <CutWorklistView runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} unscheduled={unscheduled} pushed={pushed} priority={priority} hidden={hidden} planIssues={planIssues} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} />
+      <CutWorklistView soi={soi} runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} unscheduled={unscheduled} pushed={pushed} priority={priority} hidden={hidden} planIssues={planIssues} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} />
     </>
   );
 }

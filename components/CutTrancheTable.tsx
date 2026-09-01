@@ -4,10 +4,12 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { CutTranche } from "@/lib/domain/execution";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
+import type { SoiLookup } from "@/lib/server/soi";
 import { recordOutput, recordGroupOutput, setWorklistDate, clearWorklistDate, hideWorklistLine } from "@/app/worklist/actions";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 import { Frac } from "@/components/Frac";
+import { Soi, soiOf } from "@/components/ui";
 import { DEFAULTS } from "@/lib/domain/constants";
 import { assessDeliveryRisk } from "@/lib/domain/insights";
 
@@ -25,6 +27,7 @@ export function CutTrancheTable({
   capacity = DEFAULTS.capacityPerItem,
   canEdit = false,
   isAdmin = false,
+  soi,
 }: {
   rows: CutTranche[];
   day: string;
@@ -35,6 +38,7 @@ export function CutTrancheTable({
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
   canEdit?: boolean; // user holds cut.edit — otherwise view-only
   isAdmin?: boolean; // admins may re-date a line / revert their override
+  soi?: SoiLookup; // the SOI shown beside each MO
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -283,6 +287,7 @@ export function CutTrancheTable({
           {inGroup && <span className="text-muted mr-1">↳</span>}
           {r.mo}
         </td>
+        <td className="p-2 whitespace-nowrap"><Soi soi={soiOf(soi, r.mo, r.bom)} /></td>
         <td className="p-2 font-bold whitespace-nowrap">{r.bom}</td>
         <td className="p-2 text-xs text-muted whitespace-nowrap">{r.description}</td>
         <td className="p-2 text-center font-bold">{r.item}</td>
@@ -360,6 +365,7 @@ export function CutTrancheTable({
             <tr className={`${variant === "overdue" ? "bg-bad-fg" : "bg-brand"} text-white text-left`}>
               <th className="p-2">{variant === "overdue" ? "Was due" : "Deliver on"}</th>
               <th className="p-2">MO</th>
+              <th className="p-2" title="Sales order item">SOI</th>
               <th className="p-2">BOM</th>
               <th className="p-2">Description</th>
               <th className="p-2 text-center">Item</th>

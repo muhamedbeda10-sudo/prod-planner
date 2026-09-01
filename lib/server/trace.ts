@@ -53,6 +53,7 @@ export interface TraceResult {
   // identity
   members: {
     mo: string;
+    soi: string | null;
     kva: string | null;
     rating: string | null;
     urgent: boolean;
@@ -128,6 +129,7 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
   const members = masters
     .map((m) => ({
       mo: m.mo,
+      soi: (m.soi ?? "").trim() || null,
       kva: m.kva,
       rating: m.rating,
       urgent: m.urgent,

@@ -8,6 +8,7 @@ import type { WorkerDTO } from "@/lib/server/workers";
 import { recordLeakTest } from "@/app/tanks/actions";
 import { TankWorkerPicker, NO_WORKER, type WorkerPick } from "@/components/TankWorkerPicker";
 import { SearchBox, FilterBar } from "@/components/FilterControls";
+import { Soi } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { tankPath } from "@/lib/domain/tanks";
 
@@ -134,6 +135,7 @@ export function LeakTestTable({
                 {canEdit && <th className="p-2 w-8" />}
                 <th className="p-2">Serial</th>
                 <th className="p-2">MO</th>
+                <th className="p-2" title="Sales order item">SOI</th>
                 <th className="p-2">SO</th>
                 <th className="p-2">BOM</th>
                 <th className="p-2">KVA</th>
@@ -146,7 +148,7 @@ export function LeakTestTable({
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={canEdit ? 10 : 8} className="p-4 text-center text-muted">
+                  <td colSpan={canEdit ? 11 : 9} className="p-4 text-center text-muted">
                     {tanks.length === 0
                       ? "No tank is waiting for the leak test — the queue is clear."
                       : "No tanks match the search."}
@@ -172,6 +174,7 @@ export function LeakTestTable({
                     </Link>
                   </td>
                   <td className="p-2 text-xs font-semibold whitespace-nowrap">{t.mo}</td>
+                  <td className="p-2 whitespace-nowrap"><Soi soi={t.so} /></td>
                   <td className="p-2 text-xs whitespace-nowrap">{t.so ?? "—"}</td>
                   <td className="p-2 font-bold whitespace-nowrap">{t.bom}</td>
                   <td className="p-2 text-xs text-muted whitespace-nowrap">{t.kva ?? "—"}</td>
