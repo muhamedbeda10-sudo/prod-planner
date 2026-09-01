@@ -31,16 +31,16 @@ export default async function MaterialPage({
     "Material Type": l.material,
     "Thickness (mm)": l.thicknessMm,
     "Sheet Size": l.sheetSize,
-    "No. of Sheets in BOM for one Unit": l.sheetsPerUnit,
-    "No. of Sheets in BOM for Job": l.required,
-    "No. of Sheets in Actual Nesting for Job": l.sheetsUsed ?? "",
+    "No. of Sheets Actually Used": l.sheetsUsed,
+    "No. of Sheets in BOM for one Unit": l.sheetsPerUnit ?? "",
+    "No. of Sheets in BOM for Job": l.allowed ?? "",
     Difference: l.difference ?? "",
     Notes: l.note ?? "",
   }));
 
   return (
     <div>
-      <PageHeader title="🧱 MATERIAL — nesting tracker">
+      <PageHeader title="🧱 MATERIAL — material actually used">
         <MaterialBomPicker boms={boms} value={bom} />
         <ExportButton
           rows={exportRows}

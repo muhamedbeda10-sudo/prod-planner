@@ -609,10 +609,10 @@ model TankSerialCounter {
 
 // ---- MATERIAL / nesting (the planner's "Nesting Tracker" sheet) ----
 
-// One material line: what sheet — material, thickness, size — a BOM eats, how
-// many of them the nesting BOM says ONE unit needs, and how many the nester
-// actually laid out for the job. The sheet's two formula columns (sheets for
-// the job, difference) are derived at read time, never stored.
+// One material line: what sheet — material, thickness, size — a BOM ACTUALLY
+// consumed, and how many of them. sheetsUsed is the record; sheetsPerUnit is
+// the nesting BOM's optional yardstick beside it. What the BOM allowed and the
+// difference from it are derived at read time, never stored.
 //
 // mo "" = the line covers EVERY order on the BOM (how the workbook wrote it);
 // naming an MO gives that one order its own line, so two orders of the same
@@ -627,8 +627,8 @@ model MaterialUsage {
   material      String // Steel | Stainless steel | … (lib/domain/material.ts)
   thicknessMm   Float
   sheetSize     String // "1220*2440"
-  sheetsPerUnit Float
-  sheetsUsed    Float? // actual sheets nested — null = not laid out yet
+  sheetsUsed    Float // sheets ACTUALLY consumed — the reason the row exists
+  sheetsPerUnit Float? // the nesting BOM's figure, when it is known at all
   unitsOverride Float?
   note          String?
   recordedBy    String?

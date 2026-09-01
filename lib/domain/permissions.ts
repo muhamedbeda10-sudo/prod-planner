@@ -37,7 +37,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
   {
     name: "Material",
     perms: [
-      { key: "material.edit", label: "Material & nesting — record", desc: "Add and edit the material lines on the MATERIAL tab: which sheet (material, thickness, size) a BOM eats, how many one unit needs, and how many were actually nested for the job" },
+      { key: "material.edit", label: "Material & nesting — record", desc: "Add and edit the material lines on the MATERIAL tab — the record of what each order actually consumed: which sheet (material, thickness, size) and how many of them were really used" },
     ],
   },
   {

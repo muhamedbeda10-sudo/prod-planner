@@ -4,20 +4,14 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
 import { MATERIAL_PRESETS, SHEET_SIZE_PRESETS, type MaterialLineView, type MaterialTotal } from "@/lib/domain/material";
 import type { MaterialOrderRef } from "@/lib/server/material";
-import {
-  createMaterialLine,
-  updateMaterialLine,
-  setSheetsUsed,
-  deleteMaterialLine,
-  copyMaterialFromBom,
-} from "@/app/material/actions";
+import { createMaterialLine, updateMaterialLine, setSheetsUsed, deleteMaterialLine } from "@/app/material/actions";
 
-// The MATERIAL tab — the planner's Nesting Tracker, live.
+// The MATERIAL tab — what an order ACTUALLY consumed.
 //
-// One line per BOM (× order) × material × thickness × sheet size. The two
-// numbers a person types are "sheets ONE unit needs" (engineering) and "sheets
-// actually nested" (the nester, per job); everything else on the row is
-// computed, so nothing here can disagree with the orders registry.
+// One line per BOM (× order) × material × thickness × sheet size. The number a
+// person types is "sheets used"; the nesting BOM's sheets-per-unit is optional
+// beside it, and giving it turns on the two comparison columns. Everything else
+// on the row is computed, so nothing here can disagree with the orders registry.
 
 const inputCls = "px-2.5 py-1.5 text-sm font-semibold w-full";
 const cellInput = "w-24 px-2 py-1 text-sm font-bold tabnum ltr text-center";
@@ -172,25 +166,8 @@ function LineFields({
       </label>
 
       <label className="block">
-        <span className="text-xs font-bold text-muted" title="From the nesting BOM — sheets ONE unit eats">
-          Sheets per unit
-        </span>
-        <input
-          name="sheetsPerUnit"
-          type="number"
-          step="0.0001"
-          min="0"
-          defaultValue={line?.sheetsPerUnit ?? ""}
-          required
-          disabled={disabled}
-          placeholder="0.429"
-          className={`${inputCls} ltr tabnum`}
-        />
-      </label>
-
-      <label className="block">
-        <span className="text-xs font-bold text-muted" title="Leave empty until the job is actually laid out">
-          Sheets actually nested
+        <span className="text-xs font-bold" title="The sheets this job really ate — what this line is for">
+          Sheets used *
         </span>
         <input
           name="sheetsUsed"
@@ -198,8 +175,25 @@ function LineFields({
           step="0.01"
           min="0"
           defaultValue={line?.sheetsUsed ?? ""}
+          required
           disabled={disabled}
-          placeholder="—"
+          placeholder="17"
+          className={`${inputCls} ltr tabnum`}
+        />
+      </label>
+
+      <label className="block">
+        <span className="text-xs font-bold text-muted" title="Optional — the nesting BOM's figure, to measure the real usage against">
+          Sheets per unit (BOM)
+        </span>
+        <input
+          name="sheetsPerUnit"
+          type="number"
+          step="0.0001"
+          min="0"
+          defaultValue={line?.sheetsPerUnit ?? ""}
+          disabled={disabled}
+          placeholder="optional"
           className={`${inputCls} ltr tabnum`}
         />
       </label>
@@ -245,11 +239,15 @@ function LineRow({
   const edit = useAction();
   const del = useAction();
   const used = useAction();
-  const [usedDraft, setUsedDraft] = useState(line.sheetsUsed === null ? "" : String(line.sheetsUsed));
+  const [usedDraft, setUsedDraft] = useState(String(line.sheetsUsed));
 
   function saveUsed() {
-    const current = line.sheetsUsed === null ? "" : String(line.sheetsUsed);
-    if (usedDraft.trim() === current) return; // nothing typed — no write, no toast
+    if (usedDraft.trim() === "") {
+      // the number is mandatory — put the stored one back rather than write a blank
+      setUsedDraft(String(line.sheetsUsed));
+      return;
+    }
+    if (usedDraft.trim() === String(line.sheetsUsed)) return; // nothing changed — no write, no toast
     const fd = new FormData();
     fd.set("id", String(line.id));
     fd.set("sheetsUsed", usedDraft.trim());
@@ -268,7 +266,25 @@ function LineRow({
         <td className="p-2 text-center tabnum ltr">{line.thicknessMm}</td>
         <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
         <td className="p-2 text-center">
-          <Sheets v={line.sheetsPerUnit} />
+          {canEdit ? (
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              value={usedDraft}
+              disabled={used.pending}
+              onChange={(e) => setUsedDraft(e.target.value)}
+              onBlur={saveUsed}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              title="Sheets this job actually ate"
+              className={`${cellInput} font-extrabold`}
+            />
+          ) : (
+            <Sheets v={line.sheetsUsed} className="font-extrabold" />
+          )}
         </td>
         <td className="p-2 text-center">
           <span className="tabnum ltr">{line.units}</span>
@@ -278,29 +294,11 @@ function LineRow({
             </span>
           )}
         </td>
-        <td className="p-2 text-center font-bold">
-          <Sheets v={line.required} />
+        <td className="p-2 text-center text-muted">
+          <Sheets v={line.sheetsPerUnit} />
         </td>
         <td className="p-2 text-center">
-          {canEdit ? (
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={usedDraft}
-              disabled={used.pending}
-              onChange={(e) => setUsedDraft(e.target.value)}
-              onBlur={saveUsed}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.blur();
-              }}
-              placeholder="—"
-              title="Sheets actually nested for this job — leave empty until it is laid out"
-              className={cellInput}
-            />
-          ) : (
-            <Sheets v={line.sheetsUsed} />
-          )}
+          <Sheets v={line.allowed} />
         </td>
         <td className={`p-2 text-center font-extrabold ${diffCls}`}>
           <Sheets v={line.difference} />
@@ -379,8 +377,8 @@ function LinesTable({
   if (lines.length === 0) {
     return (
       <p className="text-sm text-muted p-4">
-        No material recorded yet. Add the first line below: the sheet a unit of this BOM eats — material, thickness, size —
-        and how many of them the nesting BOM says one unit needs.
+        No material recorded yet. Add the first line below: the sheet that was actually used — material, thickness, size —
+        and how many of them the job ate.
       </p>
     );
   }
@@ -394,11 +392,11 @@ function LinesTable({
             <th className="p-2">Material</th>
             <th className="p-2 text-center">Thk (mm)</th>
             <th className="p-2 text-center">Sheet size</th>
-            <th className="p-2 text-center" title="From the nesting BOM">Sheets / unit</th>
+            <th className="p-2 text-center" title="The sheets this job really ate">Sheets used</th>
             <th className="p-2 text-center" title="Quantity of units, live from the orders registry">Units</th>
-            <th className="p-2 text-center" title="Sheets per unit × units">Sheets for job</th>
-            <th className="p-2 text-center" title="What the nester actually laid out">Actual nested</th>
-            <th className="p-2 text-center" title="Sheets for job − actual nested. Red = more sheets used than the BOM allows">Difference</th>
+            <th className="p-2 text-center" title="Optional — the nesting BOM's figure">BOM / unit</th>
+            <th className="p-2 text-center" title="Sheets per unit × units — what the BOM allowed for the job">BOM allows</th>
+            <th className="p-2 text-center" title="What the BOM allowed − what was used. Red = ate more than the BOM allows">Difference</th>
             <th className="p-2">Notes</th>
             <th className="p-2 no-print" />
           </tr>
@@ -425,9 +423,9 @@ function TotalsTable({ totals }: { totals: MaterialTotal[] }) {
             <th className="p-2">Material</th>
             <th className="p-2 text-center">Thk (mm)</th>
             <th className="p-2 text-center">Sheet size</th>
-            <th className="p-2 text-center">Sheets required</th>
-            <th className="p-2 text-center">Sheets nested</th>
-            <th className="p-2 text-center">Still to nest</th>
+            <th className="p-2 text-center">Sheets used</th>
+            <th className="p-2 text-center">BOM allows</th>
+            <th className="p-2 text-center">Lines with no BOM figure</th>
           </tr>
         </thead>
         <tbody>
@@ -437,13 +435,13 @@ function TotalsTable({ totals }: { totals: MaterialTotal[] }) {
               <td className="p-2 text-center tabnum ltr">{t.thicknessMm}</td>
               <td className="p-2 text-center tabnum ltr">{t.sheetSize}</td>
               <td className="p-2 text-center font-bold">
-                <Sheets v={t.required} />
-              </td>
-              <td className="p-2 text-center">
                 <Sheets v={t.used} />
               </td>
+              <td className="p-2 text-center text-muted">
+                <Sheets v={t.allowed} />
+              </td>
               <td className="p-2 text-center text-xs text-muted">
-                {t.pendingLines > 0 ? `${t.pendingLines} line(s) not nested yet` : "—"}
+                {t.linesWithoutBom > 0 ? `${t.linesWithoutBom} — “BOM allows” excludes them` : "—"}
               </td>
             </tr>
           ))}
@@ -453,7 +451,7 @@ function TotalsTable({ totals }: { totals: MaterialTotal[] }) {
   );
 }
 
-// ---- add / copy ----
+// ---- add ----
 
 // Typing is the only way material gets in here, and a BOM is never one line:
 // the sheet runs five to seven thicknesses under the same BOM, order and sheet
@@ -512,43 +510,6 @@ function AddLine({
   );
 }
 
-function CopyFromBom({ boms, toBom }: { boms: string[]; toBom: string }) {
-  const copy = useAction();
-  return (
-    <form
-      className="border rounded-xl p-4 flex flex-wrap items-end gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const fd = new FormData(e.currentTarget);
-        fd.set("toBom", toBom);
-        copy.run(copyMaterialFromBom, fd, `Copied onto ${toBom}.`);
-      }}
-    >
-      <label className="block">
-        <span className="text-xs font-bold text-muted">Copy the material lines of</span>
-        <select name="fromBom" required className={`${inputCls} ltr min-w-[200px]`}>
-          <option value="">Pick a BOM…</option>
-          {boms.filter((b) => b !== toBom).map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
-      </label>
-      <span className="text-sm font-semibold pb-2">
-        onto <b className="ltr">{toBom}</b>
-      </span>
-      <button type="submit" className="btn btn-secondary btn-sm mb-1" disabled={copy.pending}>
-        Copy
-      </button>
-      <p className="w-full text-xs text-muted">
-        Family variants share one nesting BOM — this copies the sheets-per-unit lines only, never another job&apos;s actual nesting.
-      </p>
-      <Msg msg={copy.msg} />
-    </form>
-  );
-}
-
 // ---- the page body ----
 
 export function MaterialClient({
@@ -575,14 +536,13 @@ export function MaterialClient({
       {canEdit && (
         <section className="space-y-3">
           <AddLine boms={boms} orders={orders} lockedBom={bom || undefined} startOpen={lines.length === 0} />
-          {bom && <CopyFromBom boms={boms} toBom={bom} />}
         </section>
       )}
 
       {totals.length > 0 && (
         <section>
           <h2 className="font-bold mb-2">
-            Material needed {bom ? `for ${bom}` : "across every BOM"} — per material, thickness and size
+            Material used {bom ? `on ${bom}` : "across every BOM"} — per material, thickness and size
           </h2>
           <div className="bg-surface border rounded-xl overflow-hidden">
             <TotalsTable totals={totals} />

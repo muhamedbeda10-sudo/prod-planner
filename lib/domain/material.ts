@@ -1,15 +1,20 @@
-// MATERIAL / nesting — what raw material an order actually eats.
+// MATERIAL — the raw material an order ACTUALLY consumed.
 //
-// Port of the planner's "Nesting Tracker" sheet: one line per
-// BOM (× order) × material × thickness × sheet size, carrying the nesting
-// BOM's sheets-per-unit and what the nester ACTUALLY laid out for the job.
+// This is a record of real consumption, not a plan: the line says "on this BOM
+// I used N sheets of this material, this thickness, this size". That N is the
+// one number the tab exists to capture, so it is the required field.
 //
-// The sheet's two computed columns are NOT stored — they are derived here, so
-// they can never go stale or come back as #VALUE! the way the workbook's did:
-//   sheets for the job = sheets per unit × quantity of units
-//   difference         = sheets for the job − sheets actually nested
+// The nesting BOM's sheets-per-unit is OPTIONAL alongside it — a reference to
+// measure the real usage against. Give it and the tab derives what the BOM
+// allowed for the job and how far the real usage sat from it; leave it out and
+// the line still stands on its own as "used N sheets".
 //
-// Quantity of units is NOT typed either: it comes from the orders registry
+// Neither derived column is stored, so they can never go stale or come back as
+// #VALUE! the way the workbook's formulas did:
+//   sheets the BOM allowed = sheets per unit × quantity of units
+//   difference             = sheets the BOM allowed − sheets actually used
+//
+// Quantity of units is not typed either: it comes from the orders registry
 // (the MO's plan qty, or every order on the BOM when the line is BOM-wide).
 // `unitsOverride` is the escape hatch for a BOM the registry does not know.
 
@@ -95,16 +100,18 @@ export function parseSheetNumber(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Sheets the nesting BOM says the whole job needs. */
-export function sheetsForJob(sheetsPerUnit: number, units: number): number {
+/** Sheets the nesting BOM allowed for the whole job — null when the line was
+ *  recorded without a BOM figure, which is simply "no yardstick", not zero. */
+export function sheetsForJob(sheetsPerUnit: number | null, units: number): number | null {
+  if (sheetsPerUnit === null) return null;
   return round3(sheetsPerUnit * units);
 }
 
-/** Required − actually nested. Null while nothing has been nested yet: a blank
- *  actual is "not laid out", which is not the same as "used zero sheets". */
-export function sheetsDifference(required: number, used: number | null): number | null {
-  if (used === null) return null;
-  return round3(required - used);
+/** What the BOM allowed − what was actually used. Positive = came in under the
+ *  BOM, negative = ate more than it allowed. Null without a BOM figure. */
+export function sheetsDifference(allowed: number | null, used: number): number | null {
+  if (allowed === null) return null;
+  return round3(allowed - used);
 }
 
 // ---- a line, as the page shows it ----
@@ -115,8 +122,8 @@ export interface MaterialLineInput {
   material: string;
   thicknessMm: number;
   sheetSize: string;
-  sheetsPerUnit: number;
-  sheetsUsed: number | null;
+  sheetsUsed: number; // what was ACTUALLY consumed — the point of the line
+  sheetsPerUnit: number | null; // the nesting BOM's figure, when it is known
   unitsOverride: number | null;
   note: string | null;
 }
@@ -125,8 +132,8 @@ export interface MaterialLineView extends MaterialLineInput {
   id: number;
   units: number; // quantity of units this line covers
   unitsFromRegistry: boolean; // false = the typed override is in effect
-  required: number; // sheets for the job
-  difference: number | null; // required − used
+  allowed: number | null; // sheets the BOM allowed for the job
+  difference: number | null; // allowed − used
   updatedISO: string;
   recordedBy: string | null;
 }
@@ -154,11 +161,13 @@ export interface MaterialTotal {
   material: string;
   thicknessMm: number;
   sheetSize: string;
-  required: number;
+  /** Sheets really consumed — always complete, every line carries one. */
   used: number;
-  /** Lines still waiting for their actual nesting — the totals below are
-   *  incomplete by exactly this many lines. */
-  pendingLines: number;
+  /** Sheets the BOM allowed, over the lines that carry a BOM figure. */
+  allowed: number;
+  /** Lines recorded without a BOM figure — `allowed` is silent about exactly
+   *  this many lines, so the two columns are only comparable when it is 0. */
+  linesWithoutBom: number;
 }
 
 export function summarizeMaterial(lines: MaterialLineView[]): MaterialTotal[] {
@@ -167,12 +176,12 @@ export function summarizeMaterial(lines: MaterialLineView[]): MaterialTotal[] {
     const key = `${l.material}|${l.thicknessMm}|${l.sheetSize}`;
     let t = map.get(key);
     if (!t) {
-      t = { material: l.material, thicknessMm: l.thicknessMm, sheetSize: l.sheetSize, required: 0, used: 0, pendingLines: 0 };
+      t = { material: l.material, thicknessMm: l.thicknessMm, sheetSize: l.sheetSize, used: 0, allowed: 0, linesWithoutBom: 0 };
       map.set(key, t);
     }
-    t.required = round3(t.required + l.required);
-    if (l.sheetsUsed === null) t.pendingLines += 1;
-    else t.used = round3(t.used + l.sheetsUsed);
+    t.used = round3(t.used + l.sheetsUsed);
+    if (l.allowed === null) t.linesWithoutBom += 1;
+    else t.allowed = round3(t.allowed + l.allowed);
   }
   return [...map.values()].sort(
     (a, b) => a.material.localeCompare(b.material) || a.thicknessMm - b.thicknessMm || a.sheetSize.localeCompare(b.sheetSize)

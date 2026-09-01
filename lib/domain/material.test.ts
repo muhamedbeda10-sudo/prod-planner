@@ -59,26 +59,27 @@ describe("parseSheetNumber", () => {
   });
 });
 
-describe("the two computed columns", () => {
-  it("multiplies out the job without Excel's float dust", () => {
+describe("the two comparison columns", () => {
+  it("multiplies out what the BOM allows without Excel's float dust", () => {
     // the sheet stored 0.564 * 3 as 1.6919999999999997
     expect(sheetsForJob(0.564, 3)).toBe(1.692);
     expect(sheetsForJob(1.243, 22)).toBe(27.346);
     expect(sheetsForJob(0, 90)).toBe(0);
   });
 
-  it("difference is BOM-for-job minus what was actually nested", () => {
+  it("difference is what the BOM allowed minus what was really used", () => {
     expect(sheetsDifference(27.346, 17)).toBe(10.346);
     expect(sheetsDifference(2.97, 0.5)).toBe(2.47);
-    // over-consumption is a negative difference, not an error
+    // eating more than the BOM allows is a negative difference, not an error
     expect(sheetsDifference(5, 8)).toBe(-3);
   });
 
-  it("stays blank while the job has not been nested", () => {
-    expect(sheetsDifference(27.346, null)).toBeNull();
+  it("goes silent when the line carries no BOM figure to compare against", () => {
+    expect(sheetsForJob(null, 22)).toBeNull();
+    expect(sheetsDifference(null, 17)).toBeNull();
   });
 
-  it("counts a nested ZERO as nested", () => {
+  it("treats a genuine zero usage as a real number, not a blank", () => {
     expect(sheetsDifference(3, 0)).toBe(3);
   });
 
@@ -112,28 +113,32 @@ describe("materialKey", () => {
 function line(over: Partial<MaterialLineView>): MaterialLineView {
   return {
     id: 1, bom: "B1", mo: "", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
-    sheetsPerUnit: 1, sheetsUsed: null, unitsOverride: null, note: null,
-    units: 10, unitsFromRegistry: true, required: 10, difference: null,
+    sheetsUsed: 10, sheetsPerUnit: 1, unitsOverride: null, note: null,
+    units: 10, unitsFromRegistry: true, allowed: 10, difference: 0,
     updatedISO: "2026-09-01", recordedBy: null, ...over,
   };
 }
 
 describe("summarizeMaterial", () => {
-  it("adds up required and nested per material, thickness and size", () => {
+  it("adds up what was used, and what the BOM allowed, per material and size", () => {
     const totals = summarizeMaterial([
-      line({ id: 1, required: 10, sheetsUsed: 8 }),
-      line({ id: 2, bom: "B2", required: 5.5, sheetsUsed: 5 }),
-      line({ id: 3, material: "Stainless steel", required: 2, sheetsUsed: 2 }),
+      line({ id: 1, sheetsUsed: 8, allowed: 10 }),
+      line({ id: 2, bom: "B2", sheetsUsed: 5, allowed: 5.5 }),
+      line({ id: 3, material: "Stainless steel", sheetsUsed: 2, allowed: 2 }),
     ]);
     expect(totals).toHaveLength(2);
-    expect(totals[0]).toMatchObject({ material: "Stainless steel", required: 2, used: 2, pendingLines: 0 });
-    expect(totals[1]).toMatchObject({ material: "Steel", required: 15.5, used: 13, pendingLines: 0 });
+    expect(totals[0]).toMatchObject({ material: "Stainless steel", used: 2, allowed: 2, linesWithoutBom: 0 });
+    expect(totals[1]).toMatchObject({ material: "Steel", used: 13, allowed: 15.5, linesWithoutBom: 0 });
   });
 
-  it("counts lines that were never nested instead of treating them as zero", () => {
-    const [t] = summarizeMaterial([line({ id: 1, required: 10, sheetsUsed: null }), line({ id: 2, required: 4, sheetsUsed: 4 })]);
-    expect(t.required).toBe(14);
-    expect(t.used).toBe(4);
-    expect(t.pendingLines).toBe(1);
+  it("still totals the real usage when a line carries no BOM figure", () => {
+    const [t] = summarizeMaterial([
+      line({ id: 1, sheetsUsed: 10, sheetsPerUnit: null, allowed: null }),
+      line({ id: 2, sheetsUsed: 4, allowed: 4 }),
+    ]);
+    // the usage total is complete; the BOM column says so itself
+    expect(t.used).toBe(14);
+    expect(t.allowed).toBe(4);
+    expect(t.linesWithoutBom).toBe(1);
   });
 });

@@ -37,13 +37,13 @@ function registryQty(orders: MaterialOrderRef[], bom: string, mo: string): numbe
 function toView(
   row: {
     id: number; bom: string; mo: string; material: string; thicknessMm: number; sheetSize: string;
-    sheetsPerUnit: number; sheetsUsed: number | null; unitsOverride: number | null; note: string | null;
+    sheetsUsed: number; sheetsPerUnit: number | null; unitsOverride: number | null; note: string | null;
     recordedBy: string | null; updatedAt: Date;
   },
   orders: MaterialOrderRef[]
 ): MaterialLineView {
   const { units, fromRegistry } = resolveUnits(row.unitsOverride, registryQty(orders, row.bom, row.mo));
-  const required = sheetsForJob(row.sheetsPerUnit, units);
+  const allowed = sheetsForJob(row.sheetsPerUnit, units);
   return {
     id: row.id,
     bom: row.bom,
@@ -51,14 +51,14 @@ function toView(
     material: row.material,
     thicknessMm: row.thicknessMm,
     sheetSize: row.sheetSize,
-    sheetsPerUnit: row.sheetsPerUnit,
     sheetsUsed: row.sheetsUsed,
+    sheetsPerUnit: row.sheetsPerUnit,
     unitsOverride: row.unitsOverride,
     note: row.note,
     units,
     unitsFromRegistry: fromRegistry,
-    required,
-    difference: sheetsDifference(required, row.sheetsUsed),
+    allowed,
+    difference: sheetsDifference(allowed, row.sheetsUsed),
     updatedISO: row.updatedAt.toISOString().slice(0, 10),
     recordedBy: row.recordedBy,
   };
@@ -71,8 +71,8 @@ export interface MaterialPageData {
   boms: string[]; // every BOM with a material line or an order, for the picker
 }
 
-/** The whole tab: material lines (optionally one BOM's), the purchasing
- *  totals over exactly those lines, and the pickers' data. */
+/** The whole tab: the material lines actually consumed (optionally one BOM's),
+ *  the totals over exactly those lines, and the pickers' data. */
 export async function getMaterialData(bom?: string): Promise<MaterialPageData> {
   const [rows, orders] = await Promise.all([
     prisma.materialUsage.findMany({
