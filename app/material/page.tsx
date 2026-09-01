@@ -25,7 +25,9 @@ export default async function MaterialPage({
   // Export carries the workbook's OWN column names, so the file the planner
   // downloads drops straight into the sheet they already work from.
   const exportRows = lines.map((l) => ({
+    Date: l.workedISO,
     "BOM Ref": l.bom,
+    "Plan month": l.planMonths.join(" · "),
     "Order (MO)": l.mo,
     "Quantity of Units": l.units,
     "Material Type": l.material,

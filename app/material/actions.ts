@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { normalizeMaterialType, normalizeSheetSize, parseSheetNumber } from "@/lib/domain/material";
+import { parseISODate } from "@/lib/domain/dates";
 
 // The MATERIAL tab's writes — a record of what an order ACTUALLY consumed.
 // Everything is keyed on the material line's identity (BOM × order × material ×
@@ -26,6 +27,7 @@ interface LineFields {
   material: string;
   thicknessMm: number | null;
   sheetSize: string;
+  workedAt: Date | null;
   sheetsUsed: number | null;
   sheetsPerUnit: number | null;
   unitsOverride: number | null;
@@ -40,6 +42,7 @@ function readLine(formData: FormData): LineFields {
     material: normalizeMaterialType(formData.get("material")),
     thicknessMm: parseSheetNumber(formData.get("thicknessMm")),
     sheetSize: normalizeSheetSize(formData.get("sheetSize")),
+    workedAt: parseISODate(String(formData.get("workedAt") ?? "")),
     sheetsUsed: parseSheetNumber(formData.get("sheetsUsed")),
     sheetsPerUnit: parseSheetNumber(formData.get("sheetsPerUnit")),
     unitsOverride: parseSheetNumber(formData.get("unitsOverride")),
@@ -53,6 +56,7 @@ function validate(f: LineFields): string | null {
   if (!f.material) return "Enter the material type (Steel, Stainless steel, …).";
   if (f.thicknessMm === null || f.thicknessMm <= 0) return "Enter the sheet thickness in mm.";
   if (!f.sheetSize) return "Enter the sheet size, e.g. 1220*2440.";
+  if (!f.workedAt) return "Enter the date this material was worked.";
   if (f.sheetsUsed === null || f.sheetsUsed < 0) return "Enter how many sheets were actually used — that is what this line records.";
   if (f.sheetsPerUnit !== null && f.sheetsPerUnit < 0) return "Sheets per unit cannot be negative.";
   if (f.unitsOverride !== null && f.unitsOverride < 0) return "Quantity of units cannot be negative.";
@@ -84,8 +88,8 @@ export async function createMaterialLine(formData: FormData): Promise<MaterialAc
   await prisma.materialUsage.create({
     data: {
       bom: f.bom, mo: f.mo, material: f.material, thicknessMm: f.thicknessMm!, sheetSize: f.sheetSize,
-      sheetsUsed: f.sheetsUsed!, sheetsPerUnit: f.sheetsPerUnit, unitsOverride: f.unitsOverride, note: f.note,
-      recordedBy: guard.user?.name ?? null,
+      workedAt: f.workedAt!, sheetsUsed: f.sheetsUsed!, sheetsPerUnit: f.sheetsPerUnit,
+      unitsOverride: f.unitsOverride, note: f.note, recordedBy: guard.user?.name ?? null,
     },
   });
   revalidateMaterial();
@@ -117,8 +121,8 @@ export async function updateMaterialLine(formData: FormData): Promise<MaterialAc
     where: { id },
     data: {
       bom: f.bom, mo: f.mo, material: f.material, thicknessMm: f.thicknessMm!, sheetSize: f.sheetSize,
-      sheetsUsed: f.sheetsUsed!, sheetsPerUnit: f.sheetsPerUnit, unitsOverride: f.unitsOverride, note: f.note,
-      recordedBy: guard.user?.name ?? null,
+      workedAt: f.workedAt!, sheetsUsed: f.sheetsUsed!, sheetsPerUnit: f.sheetsPerUnit,
+      unitsOverride: f.unitsOverride, note: f.note, recordedBy: guard.user?.name ?? null,
     },
   });
   revalidateMaterial();

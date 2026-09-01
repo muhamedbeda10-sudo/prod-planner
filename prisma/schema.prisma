@@ -627,6 +627,7 @@ model MaterialUsage {
   material      String // Steel | Stainless steel | … (lib/domain/material.ts)
   thicknessMm   Float
   sheetSize     String // "1220*2440"
+  workedAt      DateTime // the day this material was worked (day-only granularity)
   sheetsUsed    Float // sheets ACTUALLY consumed — the reason the row exists
   sheetsPerUnit Float? // the nesting BOM's figure, when it is known at all
   unitsOverride Float?
@@ -638,4 +639,5 @@ model MaterialUsage {
   @@unique([bom, mo, material, thicknessMm, sheetSize])
   @@index([bom])
   @@index([mo])
+  @@index([workedAt])
 }

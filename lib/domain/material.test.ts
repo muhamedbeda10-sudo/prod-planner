@@ -7,6 +7,7 @@ import {
   sheetsDifference,
   resolveUnits,
   summarizeMaterial,
+  parsePlanMonths,
   materialKey,
   round3,
   type MaterialLineView,
@@ -103,6 +104,28 @@ describe("resolveUnits", () => {
   });
 });
 
+describe("parsePlanMonths", () => {
+  it("reads the registry's CSV of month labels", () => {
+    expect(parsePlanMonths("Aug 2026,Sep 2026")).toEqual(["Aug 2026", "Sep 2026"]);
+    expect(parsePlanMonths(" Sep 2026 , , Oct 2026 ")).toEqual(["Sep 2026", "Oct 2026"]);
+  });
+
+  it("falls back to the plan that first added the order", () => {
+    // carried-over orders predate the `months` column and only carry `source`
+    expect(parsePlanMonths("", "Jul 2026")).toEqual(["Jul 2026"]);
+    expect(parsePlanMonths(null, "Jul 2026")).toEqual(["Jul 2026"]);
+  });
+
+  it("is empty when the registry knows no month at all", () => {
+    expect(parsePlanMonths(null)).toEqual([]);
+    expect(parsePlanMonths("", "")).toEqual([]);
+  });
+
+  it("prefers months over source when both exist", () => {
+    expect(parsePlanMonths("Aug 2026,Sep 2026", "Jul 2026")).toEqual(["Aug 2026", "Sep 2026"]);
+  });
+});
+
 describe("materialKey", () => {
   it("separates the same sheet on two different orders of one BOM", () => {
     const base = { bom: "12008E18M18", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440" };
@@ -113,8 +136,8 @@ describe("materialKey", () => {
 function line(over: Partial<MaterialLineView>): MaterialLineView {
   return {
     id: 1, bom: "B1", mo: "", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
-    sheetsUsed: 10, sheetsPerUnit: 1, unitsOverride: null, note: null,
-    units: 10, unitsFromRegistry: true, allowed: 10, difference: 0,
+    workedISO: "2026-09-01", sheetsUsed: 10, sheetsPerUnit: 1, unitsOverride: null, note: null,
+    units: 10, unitsFromRegistry: true, planMonths: [], allowed: 10, difference: 0,
     updatedISO: "2026-09-01", recordedBy: null, ...over,
   };
 }

@@ -17,6 +17,8 @@
 // Quantity of units is not typed either: it comes from the orders registry
 // (the MO's plan qty, or every order on the BOM when the line is BOM-wide).
 // `unitsOverride` is the escape hatch for a BOM the registry does not know.
+// The monthly plan(s) the BOM belongs to are read from the registry the same
+// way, so a line never carries a month that disagrees with the order behind it.
 
 /** Sheet counts are fractions of a sheet (0.429 of a sheet per unit). Excel
  *  left 0.564 × 3 as 1.6919999999999997; three decimals is finer than any
@@ -122,6 +124,7 @@ export interface MaterialLineInput {
   material: string;
   thicknessMm: number;
   sheetSize: string;
+  workedISO: string; // the day this material was worked (yyyy-mm-dd)
   sheetsUsed: number; // what was ACTUALLY consumed — the point of the line
   sheetsPerUnit: number | null; // the nesting BOM's figure, when it is known
   unitsOverride: number | null;
@@ -132,10 +135,19 @@ export interface MaterialLineView extends MaterialLineInput {
   id: number;
   units: number; // quantity of units this line covers
   unitsFromRegistry: boolean; // false = the typed override is in effect
+  planMonths: string[]; // the monthly plan(s) the BOM's orders came in on
   allowed: number | null; // sheets the BOM allowed for the job
   difference: number | null; // allowed − used
   updatedISO: string;
   recordedBy: string | null;
+}
+
+/** The monthly plans an order was imported under, as the registry stores them:
+ *  a CSV of month labels, falling back to the plan that first added the MO.
+ *  Same reading as the Orders registry and the Plan Tracker. */
+export function parsePlanMonths(months: string | null | undefined, source?: string | null): string[] {
+  const csv = String(months ?? "").trim() || String(source ?? "");
+  return csv.split(",").map((m) => m.trim()).filter(Boolean);
 }
 
 /** Quantity of units behind a line: the override wins, otherwise the registry
