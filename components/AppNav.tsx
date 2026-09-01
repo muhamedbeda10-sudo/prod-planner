@@ -176,8 +176,11 @@ export function AppNav({
           {/* desktop: centered tabs */}
           <nav className="hidden md:block flex-1 overflow-x-auto overflow-y-hidden">
             <ul className="flex items-center justify-center gap-1 w-max min-w-full">
-              {/* Worklist — expands the three departments inline in the bar */}
-              <li ref={wlRef} className="flex items-center">
+              {/* Worklist — opens the three departments in a panel BELOW the tab.
+                  They used to unroll sideways inside the bar, which shoved every
+                  tab to its right along and left the bar a different width open
+                  than closed. */}
+              <li ref={wlRef} className="relative flex items-center">
                 {singleDeptHref ? (
                   <Link href={singleDeptHref} className={`nav-tab ${isActive("/worklist") ? "nav-tab-active" : ""}`}>
                     <ListChecks size={15} className="shrink-0" />
@@ -196,20 +199,24 @@ export function AppNav({
                       <ChevronDown size={13} className={`shrink-0 transition-transform duration-150 ${worklistOpen ? "rotate-180" : ""}`} />
                     </button>
                     {worklistOpen && (
-                      <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-white/12 p-0.5 animate-[navdrop_0.16s_ease-out]">
+                      <div
+                        role="menu"
+                        className="nav-drop absolute left-0 top-[calc(100%+10px)] w-60 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
+                      >
                         {worklistDepts.map((d) => (
                           <Link
                             key={d.href}
                             href={d.href}
-                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap transition-colors ${
-                              isActive(d.href) ? "bg-white text-brand shadow-sm" : "text-white/85 hover:bg-white/15 hover:text-white"
+                            role="menuitem"
+                            className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-bold whitespace-nowrap transition-colors ${
+                              isActive(d.href) ? "bg-brand-light text-brand" : "hover:bg-surface-2"
                             }`}
                           >
-                            <d.icon size={13} className="shrink-0" />
+                            <d.icon size={16} className={`shrink-0 ${isActive(d.href) ? "text-brand" : "text-muted"}`} />
                             {d.label}
                           </Link>
                         ))}
-                      </span>
+                      </div>
                     )}
                   </>
                 )}
