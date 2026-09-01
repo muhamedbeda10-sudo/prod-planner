@@ -10,7 +10,6 @@ import {
   setSheetsUsed,
   deleteMaterialLine,
   copyMaterialFromBom,
-  importMaterialAction,
 } from "@/app/material/actions";
 
 // The MATERIAL tab — the planner's Nesting Tracker, live.
@@ -380,7 +379,8 @@ function LinesTable({
   if (lines.length === 0) {
     return (
       <p className="text-sm text-muted p-4">
-        No material recorded yet. Add a line below — or import the Nesting Tracker workbook and the whole sheet lands here.
+        No material recorded yet. Add the first line below: the sheet a unit of this BOM eats — material, thickness, size —
+        and how many of them the nesting BOM says one unit needs.
       </p>
     );
   }
@@ -453,11 +453,38 @@ function TotalsTable({ totals }: { totals: MaterialTotal[] }) {
   );
 }
 
-// ---- add / copy / import ----
+// ---- add / copy ----
 
-function AddLine({ boms, orders, lockedBom }: { boms: string[]; orders: MaterialOrderRef[]; lockedBom?: string }) {
+// Typing is the only way material gets in here, and a BOM is never one line:
+// the sheet runs five to seven thicknesses under the same BOM, order and sheet
+// size. So a successful add clears ONLY the columns that change from line to
+// line and puts the cursor back on the material — the repeated columns stay.
+const REPEATED_FIELDS = ["material", "thicknessMm", "sheetsPerUnit", "sheetsUsed", "note"] as const;
+
+function AddLine({
+  boms,
+  orders,
+  lockedBom,
+  startOpen,
+}: {
+  boms: string[];
+  orders: MaterialOrderRef[];
+  lockedBom?: string;
+  /** Nothing recorded yet — the form is the page, so it opens itself. */
+  startOpen: boolean;
+}) {
   const add = useAction();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
+
+  function clearForNextLine(form: HTMLFormElement) {
+    for (const name of REPEATED_FIELDS) {
+      const el = form.elements.namedItem(name);
+      if (el instanceof HTMLInputElement) el.value = "";
+    }
+    const first = form.elements.namedItem("material");
+    if (first instanceof HTMLInputElement) first.focus();
+  }
+
   return (
     <div className="border rounded-xl p-4">
       <button type="button" className="btn btn-sm" onClick={() => setOpen((v) => !v)}>
@@ -469,7 +496,7 @@ function AddLine({ boms, orders, lockedBom }: { boms: string[]; orders: Material
           onSubmit={(e) => {
             e.preventDefault();
             const form = e.currentTarget;
-            add.run(createMaterialLine, new FormData(form), "Added.", () => form.reset());
+            add.run(createMaterialLine, new FormData(form), "Added — next line.", () => clearForNextLine(form));
           }}
         >
           <LineFields boms={boms} orders={orders} lockedBom={lockedBom} disabled={add.pending} />
@@ -522,71 +549,6 @@ function CopyFromBom({ boms, toBom }: { boms: string[]; toBom: string }) {
   );
 }
 
-function ImportPanel() {
-  const [pending, startTransition] = useTransition();
-  const router = useRouter();
-  const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
-  const [issues, setIssues] = useState<string[]>([]);
-
-  function submit(form: HTMLFormElement, preview: boolean) {
-    const fd = new FormData(form);
-    fd.set("preview", String(preview));
-    startTransition(async () => {
-      const r = await importMaterialAction(fd);
-      setIssues(r.issues ?? []);
-      if (!r.ok) {
-        setRes({ ok: false, text: r.error ?? "Import failed." });
-        return;
-      }
-      setRes({
-        ok: true,
-        text: preview
-          ? `Preview only — nothing saved: ${r.added} new line(s), ${r.updated} would be updated.`
-          : `Imported: ${r.added} new line(s), ${r.updated} updated.`,
-      });
-      if (!preview) router.refresh();
-    });
-  }
-
-  return (
-    <form className="border rounded-xl p-4 space-y-3" onSubmit={(e) => e.preventDefault()}>
-      <p className="text-sm font-bold">Import the Nesting Tracker workbook</p>
-      <p className="text-xs text-muted">
-        Columns are matched by their header text (BOM Ref, Material Type, Thickness, Sheet Size, sheets for one unit, actual
-        nesting, Notes). The sheet&apos;s own &quot;for Job&quot; and &quot;Difference&quot; columns are ignored — this tab
-        recomputes them. Re-importing a corrected sheet updates the same lines instead of duplicating them.
-      </p>
-      <input type="file" name="file" accept=".xlsx,.xlsm,.xls" required className="text-sm" />
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          disabled={pending}
-          onClick={(e) => submit(e.currentTarget.form!, true)}
-        >
-          Preview
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          disabled={pending}
-          onClick={(e) => submit(e.currentTarget.form!, false)}
-        >
-          Import
-        </button>
-        <Msg msg={res} />
-      </div>
-      {issues.length > 0 && (
-        <ul className="text-xs text-warn-fg list-disc ps-5 space-y-0.5 max-h-40 overflow-y-auto">
-          {issues.map((i, n) => (
-            <li key={n}>{i}</li>
-          ))}
-        </ul>
-      )}
-    </form>
-  );
-}
-
 // ---- the page body ----
 
 export function MaterialClient({
@@ -612,7 +574,7 @@ export function MaterialClient({
 
       {canEdit && (
         <section className="space-y-3">
-          <AddLine boms={boms} orders={orders} lockedBom={bom || undefined} />
+          <AddLine boms={boms} orders={orders} lockedBom={bom || undefined} startOpen={lines.length === 0} />
           {bom && <CopyFromBom boms={boms} toBom={bom} />}
         </section>
       )}
@@ -625,12 +587,6 @@ export function MaterialClient({
           <div className="bg-surface border rounded-xl overflow-hidden">
             <TotalsTable totals={totals} />
           </div>
-        </section>
-      )}
-
-      {canEdit && (
-        <section className="no-print">
-          <ImportPanel />
         </section>
       )}
     </div>

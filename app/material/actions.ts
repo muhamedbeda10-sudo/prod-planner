@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
-import { importNestingTracker, type MaterialImportResult } from "@/lib/server/material";
 import { normalizeMaterialType, normalizeSheetSize, parseSheetNumber } from "@/lib/domain/material";
 
 // The MATERIAL tab's writes. Everything is keyed on the material line's
@@ -188,23 +187,4 @@ export async function copyMaterialFromBom(formData: FormData): Promise<MaterialA
   }
   revalidateMaterial();
   return copied > 0 ? { ok: true } : { ok: false, error: `${to} already has every material line of ${from}.` };
-}
-
-export async function importMaterialAction(formData: FormData): Promise<MaterialImportResult> {
-  const guard = await requirePerm("material.edit");
-  if (guard.error) return { ok: false, error: guard.error };
-
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose an Excel file." };
-  const preview = formData.get("preview") === "true";
-
-  try {
-    const buffer = await file.arrayBuffer();
-    const res = await importNestingTracker(buffer, guard.user?.name ?? null, preview);
-    if (res.ok && !preview) revalidateMaterial();
-    return res;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: `Import failed: ${msg}` };
-  }
 }

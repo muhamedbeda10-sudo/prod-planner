@@ -7,7 +7,6 @@ import {
   sheetsDifference,
   resolveUnits,
   summarizeMaterial,
-  parseNestingTracker,
   materialKey,
   round3,
   type MaterialLineView,
@@ -136,77 +135,5 @@ describe("summarizeMaterial", () => {
     expect(t.required).toBe(14);
     expect(t.used).toBe(4);
     expect(t.pendingLines).toBe(1);
-  });
-});
-
-// The real workbook's layout, header row and all.
-const HEADER = [
-  "BOM Ref", "Quantity of Units", "Material Type", "Thickness (mm)", "Sheet Size",
-  "No. of Sheets in BOM for one Unit", "No. of Sheets in BOM for Job",
-  "No. of Sheets in Actual Nesting for Job", "Difference", "Notes",
-];
-
-describe("parseNestingTracker", () => {
-  it("reads the tracker's rows and ignores its formula columns", () => {
-    const grid: unknown[][] = [
-      ["NESTING PROJECT TRACKER"],
-      HEADER,
-      ["10017E11M11", 22, "Steel", 5, "1220*2440", 1.243, 27.346, 17, 10.346, null],
-      ["10017E11M11", 22, "Stainless steal", 5, "1220*2440", 0.3034, 6.6748, 5, 1.6748, "check"],
-    ];
-    const { rows, issues, headerRow } = parseNestingTracker(grid);
-    expect(headerRow).toBe(2);
-    expect(issues).toEqual([]);
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({
-      bom: "10017E11M11", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
-      sheetsPerUnit: 1.243, sheetsUsed: 17, units: 22, note: null,
-    });
-    // the misspelling is folded, and the note comes across
-    expect(rows[1]).toMatchObject({ material: "Stainless steel", note: "check" });
-  });
-
-  it("skips the blank template rows the tracker is padded with", () => {
-    const grid: unknown[][] = [HEADER, [null, null, null, null, null, null, "=IF(...)", null, "=IF(...)", null]];
-    const { rows, issues } = parseNestingTracker(grid);
-    expect(rows).toEqual([]);
-    expect(issues).toContain("No material rows found under the header.");
-  });
-
-  it("leaves the actual nesting empty when the sheet has none", () => {
-    const grid: unknown[][] = [HEADER, ["81004E12M11", 3, "Steel", 3, "1220*2440", 0.429, 1.287, null, null, null]];
-    const { rows } = parseNestingTracker(grid);
-    expect(rows[0].sheetsUsed).toBeNull();
-  });
-
-  it("reports the row it could not read instead of importing a broken line", () => {
-    const grid: unknown[][] = [
-      HEADER,
-      ["40013E11M11", 90, "Steel", 5, "1220*2440", " ", " ", 90, "#VALUE!", null],
-      ["40013E11M11", 90, "Steel", 4, "1220*2440", 0.568, 51.12, 51, 0.12, null],
-    ];
-    const { rows, issues } = parseNestingTracker(grid);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].thicknessMm).toBe(4);
-    expect(issues[0]).toMatch(/Row 2 \(40013E11M11\): sheets per unit/);
-  });
-
-  it("finds the columns wherever the planner moved them", () => {
-    const grid: unknown[][] = [
-      ["Notes", "Thickness (mm)", "BOM Ref", "Sheet Size", "Material Type", "No. of Sheets in BOM for one Unit"],
-      ["re-nest", 8, "12005E14M13", "1500*3000", "Steel", 0.015],
-    ];
-    const { rows, issues } = parseNestingTracker(grid);
-    expect(issues).toEqual([]);
-    expect(rows[0]).toMatchObject({
-      bom: "12005E14M13", thicknessMm: 8, sheetSize: "1500*3000", material: "Steel",
-      sheetsPerUnit: 0.015, note: "re-nest", units: null, sheetsUsed: null,
-    });
-  });
-
-  it("says so when the file is not a nesting tracker at all", () => {
-    const { rows, issues } = parseNestingTracker([["Plan No", "MO", "Qty"], [1, "MO-1", 5]]);
-    expect(rows).toEqual([]);
-    expect(issues[0]).toMatch(/No header row found/);
   });
 });

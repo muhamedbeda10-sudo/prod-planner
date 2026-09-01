@@ -46,8 +46,8 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 8. **Material / nesting** (`/material`) — the planner's Nesting Tracker sheet, live: one line per
    BOM (× order) × material × thickness × sheet size, carrying the nesting BOM's sheets-per-unit and
    what was **actually** nested. Sheets-for-job and Difference are **computed**, never stored, and the
-   quantity of units comes from the orders registry instead of being typed. Imports/exports the
-   workbook's own columns; per-material purchasing totals underneath.
+   quantity of units comes from the orders registry instead of being typed. Entered directly, line by
+   line; exports in the workbook's own column names, with per-material purchasing totals underneath.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

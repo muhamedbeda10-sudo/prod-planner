@@ -1,8 +1,6 @@
 import "server-only";
-import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import {
-  parseNestingTracker,
   resolveUnits,
   round3,
   sheetsDifference,
@@ -93,81 +91,3 @@ export async function getMaterialData(bom?: string): Promise<MaterialPageData> {
   return { lines, totals: summarizeMaterial(lines), orders, boms };
 }
 
-// ---- import: the planner's existing Nesting Tracker workbook ----
-
-export interface MaterialImportResult {
-  ok: boolean;
-  error?: string;
-  added?: number;
-  updated?: number;
-  issues?: string[];
-  preview?: boolean;
-}
-
-/**
- * Import the Nesting Tracker sheet. Lines are upserted on their identity
- * (BOM × material × thickness × size, BOM-wide), so re-importing a corrected
- * sheet updates the same rows instead of doubling them.
- *
- * The sheet's "Quantity of Units" is only kept as an OVERRIDE for a BOM the
- * orders registry does not carry — a known BOM takes its quantity live from
- * the registry, which is what stops the two drifting apart.
- */
-export async function importNestingTracker(
-  buffer: ArrayBuffer,
-  recordedBy: string | null,
-  preview = false
-): Promise<MaterialImportResult> {
-  let wb: XLSX.WorkBook;
-  try {
-    wb = XLSX.read(new Uint8Array(buffer), { cellDates: false });
-  } catch {
-    return { ok: false, error: "Could not read the file — make sure it is a valid Excel file." };
-  }
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  if (!ws) return { ok: false, error: "The file has no sheets." };
-
-  const opts: XLSX.Sheet2JSONOpts = { header: 1, raw: true, defval: null, blankrows: true };
-  if (ws["!ref"]) {
-    const range = XLSX.utils.decode_range(ws["!ref"]);
-    range.s.r = 0;
-    range.s.c = 0;
-    opts.range = XLSX.utils.encode_range(range);
-  }
-  const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, opts);
-
-  const { rows, issues } = parseNestingTracker(grid);
-  if (rows.length === 0) return { ok: false, error: issues[0] ?? "No material rows found.", issues };
-
-  const knownBoms = new Set((await prisma.masterOrder.findMany({ select: { bom: true }, distinct: ["bom"] })).map((b) => b.bom));
-  const existing = await prisma.materialUsage.findMany({ where: { mo: "" } });
-  const seen = new Map(existing.map((e) => [`${e.bom}|${e.material}|${e.thicknessMm}|${e.sheetSize}`, e.id]));
-
-  let added = 0;
-  let updated = 0;
-  for (const r of rows) {
-    const key = `${r.bom}|${r.material}|${r.thicknessMm}|${r.sheetSize}`;
-    if (seen.has(key)) updated += 1;
-    else added += 1;
-    if (preview) continue;
-
-    const data = {
-      sheetsPerUnit: r.sheetsPerUnit,
-      sheetsUsed: r.sheetsUsed,
-      unitsOverride: knownBoms.has(r.bom) ? null : r.units,
-      note: r.note,
-      recordedBy,
-    };
-    await prisma.materialUsage.upsert({
-      where: {
-        bom_mo_material_thicknessMm_sheetSize: {
-          bom: r.bom, mo: "", material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize,
-        },
-      },
-      create: { bom: r.bom, mo: "", material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, ...data },
-      update: data,
-    });
-  }
-
-  return { ok: true, added, updated, issues, preview };
-}
