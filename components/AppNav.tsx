@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   FileDown, GitCompareArrows, Puzzle, CalendarDays, Users, Timer,
-  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal,
+  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -29,6 +29,8 @@ const WORKLIST_DEPTS = [
 // Tabs after Worklist, ordered by shop-floor flow: work → log → track →
 // review → the overview dashboard sits last (right side).
 const REST: Item[] = [
+  // Material comes FIRST: nesting is decided before a single sheet is cut.
+  { href: "/material", label: "Material", icon: Layers },
   { href: "/barcode", label: "Barcode", icon: QrCode, match: "/barcode" },
   { href: "/handover", label: "Logs", icon: BookOpenCheck },
   { href: "/tracker", label: "Plan Tracker", icon: Table2 },
