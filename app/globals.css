@@ -346,7 +346,7 @@ main textarea:focus {
 }
 .nav-drop { animation: navdrop 0.16s ease-out; transform-origin: top right; box-shadow: var(--shadow-lg); }
 /* a drop anchored under a left-aligned tab should grow from ITS corner */
-.nav-drop.left-0 { transform-origin: top left; }
+.nav-drop-left { transform-origin: top left; }
 
 /* mobile drawer motion */
 @keyframes drawerslide {

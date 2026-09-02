@@ -106,6 +106,13 @@ export function AppNav({
   const [drawer, setDrawer] = useState(false); // mobile navigation drawer
   const menuRef = useRef<HTMLDivElement>(null);
   const wlRef = useRef<HTMLLIElement>(null);
+  const wlBtnRef = useRef<HTMLButtonElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  // The tab strip scrolls horizontally, so it CLIPS anything that reaches below
+  // it. An absolutely-positioned menu inside it is simply never visible. The
+  // panel is therefore fixed to the viewport and anchored to the button's
+  // measured rect, which no ancestor's overflow can cut off.
+  const [wlPos, setWlPos] = useState<{ top: number; left: number } | null>(null);
 
   // close menus on navigation — state adjusted during render, not in an effect
   const [prevPath, setPrevPath] = useState(pathname);
@@ -136,6 +143,21 @@ export function AppNav({
       document.removeEventListener("keydown", onKey);
     };
   }, []);
+
+  // The worklist panel is fixed to where the button WAS. Resizing the window or
+  // scrolling the tab strip moves the button out from under it, so close it
+  // rather than leave a menu floating away from its tab.
+  useEffect(() => {
+    if (!worklistOpen) return;
+    const close = () => setWorklistOpen(false);
+    const nav = navRef.current;
+    window.addEventListener("resize", close);
+    nav?.addEventListener("scroll", close);
+    return () => {
+      window.removeEventListener("resize", close);
+      nav?.removeEventListener("scroll", close);
+    };
+  }, [worklistOpen]);
 
   const isActive = (href: string, match?: string) => {
     const base = match ?? href;
@@ -174,7 +196,7 @@ export function AppNav({
           </Link>
 
           {/* desktop: centered tabs */}
-          <nav className="hidden md:block flex-1 overflow-x-auto overflow-y-hidden">
+          <nav ref={navRef} className="hidden md:block flex-1 overflow-x-auto overflow-y-hidden">
             <ul className="flex items-center justify-center gap-1 w-max min-w-full">
               {/* Worklist — opens the three departments in a panel BELOW the tab.
                   They used to unroll sideways inside the bar, which shoved every
@@ -190,7 +212,15 @@ export function AppNav({
                   <>
                     <button
                       type="button"
-                      onClick={() => setWorklistOpen((v) => !v)}
+                      ref={wlBtnRef}
+                      onClick={() => {
+                        if (!worklistOpen) {
+                          const r = wlBtnRef.current?.getBoundingClientRect();
+                          // keep the panel on screen when the tab sits near the right edge
+                          if (r) setWlPos({ top: r.bottom + 10, left: Math.max(8, Math.min(r.left, window.innerWidth - 248)) });
+                        }
+                        setWorklistOpen((v) => !v);
+                      }}
                       aria-expanded={worklistOpen}
                       className={`nav-tab ${isActive("/worklist") || worklistOpen ? "nav-tab-active" : ""}`}
                     >
@@ -198,10 +228,11 @@ export function AppNav({
                       Worklist
                       <ChevronDown size={13} className={`shrink-0 transition-transform duration-150 ${worklistOpen ? "rotate-180" : ""}`} />
                     </button>
-                    {worklistOpen && (
+                    {worklistOpen && wlPos && (
                       <div
                         role="menu"
-                        className="nav-drop absolute left-0 top-[calc(100%+10px)] w-60 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
+                        style={{ top: wlPos.top, left: wlPos.left }}
+                        className="nav-drop nav-drop-left fixed w-60 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
                       >
                         {worklistDepts.map((d) => (
                           <Link
