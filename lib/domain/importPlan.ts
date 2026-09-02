@@ -39,6 +39,22 @@ export interface PlanLayout {
 
 const norm = (v: unknown): string => (v == null ? "" : String(v).trim().toUpperCase());
 
+/** The Description column, by its own header label. Counting places left of
+ *  the grid does not survive the reshuffles: the sheets that gained a voltage
+ *  column left Description two places left of the grid on one sheet and three
+ *  on the next, so counting reads the voltage ("33/0.416") as the description.
+ *  Without a label, keep the historical two-left-of-the-grid. */
+function findDescCol(grid: unknown[][], headerRowIdx: number, gridFirst: number): number {
+  const last = Math.min(headerRowIdx + 2, grid.length - 1); // the sub-header repeats it
+  for (let r = 0; r <= last; r++) {
+    const row = grid[r] ?? [];
+    for (let c = 0; c < Math.min(row.length, gridFirst); c++) {
+      if (/^DESC/.test(norm(row[c]))) return c;
+    }
+  }
+  return Math.max(0, gridFirst - 2);
+}
+
 /** Find the day grid by its own header. The header row is the one whose cells
  *  spell CF,TC,TN,CB over and over; the grid starts at the first CF of the
  *  longest such run, Required-Qty sits just before it, and REMARKS just after
@@ -68,7 +84,7 @@ export function detectLayout(grid: unknown[][]): PlanLayout {
       if (blocks >= 2) {
         const gridFirst = c;
         return {
-          desc: Math.max(0, gridFirst - 2),
+          desc: findDescCol(grid, r, gridFirst),
           req: gridFirst - 1,
           gridFirst,
           remark: gridFirst + DAYS * 4,
