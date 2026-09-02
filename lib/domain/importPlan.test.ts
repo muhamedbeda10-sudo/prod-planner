@@ -144,6 +144,26 @@ describe("parseWeeklyPlan — grid located from the header, not assumed", () => 
     expect(p.orders[0].description).toBe("400");
   });
 
+  it("merges an MO the planners wrote on two rows into one order", () => {
+    // the plan keys orders by MO x item, so two rows for one MO must not become
+    // two order rows — the sheet splits an order when its pieces are promised
+    // in separate batches
+    const g = sheet(6, { "0|CF": 2, "0|TC": 2 });
+    const second = [...g[5]] as unknown[];
+    for (let i = 6; i < second.length; i++) second[i] = null; // clear the first row's grid
+    second[6 + 4 * 3] = 5; // day3 CF
+    g[6] = second; // same BOM, same MO, second batch
+    const p = parseWeeklyPlan(g);
+
+    const cf = p.orders.filter((o) => o.mo === "MO-1" && o.item === "CF");
+    expect(cf).toHaveLength(1); // one row per MO x item, as the plan requires
+    expect(cf[0].targetQty).toBe(7); // 2 + 5 — both batches
+    expect(cf[0].requiredQty).toBe(10); // the ORDER's requirement, not doubled
+    // both day cells survive as separate promises
+    expect(p.schedules.filter((s) => s.item === "CF").map((s) => s.dayOffset)).toEqual([0, 3]);
+    expect(p.warnings.filter((w) => w.kind === "repeated-mo")).toHaveLength(1);
+  });
+
   it("ignores a stray CF label that is not a real grid", () => {
     const g = sheet(5, PROMISES);
     g[2] = new Array(31).fill(null);

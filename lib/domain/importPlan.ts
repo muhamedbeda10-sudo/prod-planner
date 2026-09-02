@@ -117,7 +117,7 @@ export interface ImportScheduleRow {
   qty: number;
 }
 export interface ImportWarning {
-  kind: "oversize-grid" | "remark-column" | "double-count" | "layout";
+  kind: "oversize-grid" | "remark-column" | "double-count" | "layout" | "repeated-mo";
   row: number; // 1-based sheet row
   bom?: string;
   mo?: string;
@@ -150,6 +150,9 @@ export function parseWeeklyPlan(grid: unknown[][]): ParsedPlan {
   const schedules: ImportScheduleRow[] = [];
   const warnings: ImportWarning[] = [];
   let carryBom = "";
+  // "<mo>|<item>" -> the order row already emitted for it; the plan keys orders
+  // by MO x item, so a repeated MO merges into the row it already has
+  const orderOf = new Map<string, ImportOrderRow>();
   let orderRowCount = 0;
 
   const layout = detectLayout(grid);
@@ -213,8 +216,36 @@ export function parseWeeklyPlan(grid: unknown[][]): ParsedPlan {
           schedules.push({ bom, soi, mo, description, item, dayOffset: g, qty: cell });
         }
       }
-      // dates-only role: the target IS the scheduled total; remarks are not parsed
-      orders.push({ bom, soi, mo, description, item, requiredQty, plannerBalance: null, targetQty: gridSum, remark });
+      // An order may be written on SEVERAL rows — the planners split one MO
+      // across two lines when its pieces are promised in separate batches.
+      // Those rows are one order: the plan stores a single row per MO x item
+      // (that is its key), so the promises are summed into it. The day cells
+      // themselves stay separate above; only the order total merges.
+      const key = `${mo}|${item}`;
+      const seen = orderOf.get(key);
+      if (seen) {
+        seen.targetQty += gridSum;
+        // the order's requirement is a property of the ORDER, never a sum of
+        // its rows — keep the largest figure the sheet states for it
+        seen.requiredQty = Math.max(seen.requiredQty, requiredQty);
+        seen.remark ??= remark;
+        seen.soi ??= soi;
+        seen.description ??= description;
+        if (item === SHEET_ITEMS[0]) {
+          warnings.push({
+            kind: "repeated-mo",
+            row: sheetRow,
+            bom,
+            mo,
+            message: `MO ${mo} is written on more than one row — the rows were read as one order and their promises added up.`,
+          });
+        }
+      } else {
+        // dates-only role: the target IS the scheduled total; remarks are not parsed
+        const order: ImportOrderRow = { bom, soi, mo, description, item, requiredQty, plannerBalance: null, targetQty: gridSum, remark };
+        orderOf.set(key, order);
+        orders.push(order);
+      }
     });
   }
 
