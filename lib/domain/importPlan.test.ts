@@ -132,6 +132,18 @@ describe("parseWeeklyPlan — grid located from the header, not assumed", () => 
     expect(p.schedules.length).toBe(Object.keys(PROMISES).length);
   });
 
+  it("takes Description from its own header label, not from a place count", () => {
+    // the real week-32+ shape: Description stays at D while a voltage column
+    // sits between it and the total-qty column, pushing the grid out to G
+    const g = sheet(6, PROMISES);
+    g[0][3] = "Description";
+    g[5][3] = "400"; // the description
+    g[5][4] = "33/0.416"; // the voltage — two places left of the grid
+    const p = parseWeeklyPlan(g);
+    expect(p.layout.desc).toBe(3);
+    expect(p.orders[0].description).toBe("400");
+  });
+
   it("ignores a stray CF label that is not a real grid", () => {
     const g = sheet(5, PROMISES);
     g[2] = new Array(31).fill(null);
