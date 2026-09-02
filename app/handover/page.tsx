@@ -1,3 +1,4 @@
+import { getSoiLookup } from "@/lib/server/soi";
 import { getRecentHandover } from "@/lib/server/handover";
 import { HandoverLog } from "@/components/HandoverLog";
 import { toISODate } from "@/lib/domain/dates";
@@ -9,7 +10,7 @@ import { trackerPermKey } from "@/lib/domain/permissions";
 export const dynamic = "force-dynamic";
 
 export default async function HandoverPage() {
-  const [recent, user] = await Promise.all([getRecentHandover(2000), getCurrentUser()]);
+  const [recent, user, soi] = await Promise.all([getRecentHandover(2000), getCurrentUser(), getSoiLookup()]);
   // production depts follow the worklist permissions; the tracker-only stages
   // (Shot Blast / Delivered) follow their own tracker permissions
   const editableDepts = user
@@ -49,5 +50,5 @@ export default async function HandoverPage() {
   }));
 
   // No page header — every pixel goes to the log (title lives in the nav tab).
-  return <HandoverLog rows={rows} editableDepts={editableDepts} />;
+  return <HandoverLog rows={rows} editableDepts={editableDepts} soi={soi} />;
 }

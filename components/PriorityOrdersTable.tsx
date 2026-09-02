@@ -1,12 +1,14 @@
 "use client";
 
 import type { PriorityLineDTO } from "@/lib/server/worklistExtras";
+import type { SoiLookup } from "@/lib/server/soi";
 import { Frac } from "@/components/Frac";
+import { Soi, soiOf } from "@/components/ui";
 
 /** ⭐ The admin's priority orders — a dedicated table on top of every dept
  *  worklist. Informational focus list: output is recorded on the normal
  *  tables below; a line leaves this table when the dept's work is done. */
-export function PriorityOrdersTable({ rows, deptWord }: { rows: PriorityLineDTO[]; deptWord: string }) {
+export function PriorityOrdersTable({ rows, deptWord, soi }: { rows: PriorityLineDTO[]; deptWord: string; soi?: SoiLookup }) {
   if (rows.length === 0) return null;
   const total = rows.reduce((s, r) => s + r.remaining, 0);
   return (
@@ -20,6 +22,7 @@ export function PriorityOrdersTable({ rows, deptWord }: { rows: PriorityLineDTO[
           <thead>
             <tr className="bg-bad-fg text-white text-left">
               <th className="p-2">MO</th>
+              <th className="p-2" title="Sales order item">SOI</th>
               <th className="p-2">BOM</th>
               <th className="p-2">Description</th>
               <th className="p-2 text-center">Item</th>
@@ -31,6 +34,7 @@ export function PriorityOrdersTable({ rows, deptWord }: { rows: PriorityLineDTO[
             {rows.map((r) => (
               <tr key={`${r.mo}|${r.item}`}>
                 <td className="p-2 text-xs font-bold whitespace-nowrap">⭐ {r.mo}</td>
+                <td className="p-2 whitespace-nowrap"><Soi soi={soiOf(soi, r.mo, r.bom)} /></td>
                 <td className="p-2 font-bold whitespace-nowrap">{r.bom}</td>
                 <td className="p-2 text-xs text-muted whitespace-nowrap">{r.description}</td>
                 <td className="p-2 text-center font-bold">{r.item}</td>

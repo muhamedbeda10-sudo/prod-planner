@@ -14,6 +14,7 @@ import { deptLabel, FINISHING_LABEL } from "@/lib/domain/constants";
 import { TraceSearch } from "@/components/TraceSearch";
 import { ExportButton } from "@/components/ExportButton";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
+import { Soi } from "@/components/ui";
 
 /* ============================================================================
    Trace — premium ERP record view.
@@ -161,6 +162,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
                               : <span className="text-xs tabnum text-muted">{m.complete}/{m.planQty}</span>}
                           </span>
                         </div>
+                        {m.soi && <div className="mt-0.5 text-[11px] text-muted ltr">SOI {m.soi}</div>}
                         {m.status !== "closed" && <MiniBar pct={p} className="mt-1.5" />}
                         {m.remarks && <div className="mt-1 text-[11px] text-muted line-clamp-2">📝 {m.remarks}</div>}
                       </li>
@@ -411,6 +413,8 @@ function ComponentProgress({ pipeline }: { pipeline: TracePipelineRow[] }) {
 /* ============================== records (tabbed) ============================== */
 
 function Records({ t }: { t: TraceResult }) {
+  // the plan rows name an MO; its SOI already sits on the linked order card
+  const soiOfMo = (mo: string) => t.members.find((m) => m.mo === mo)?.soi ?? null;
   const [tab, setTab] = useState<"ledger" | "orders">("ledger");
   const exportLedger = t.ledger.map((l) => ({
     Date: l.dateISO, Plan: l.planLabel, Dept: deptLabel(l.dept), Item: l.item, Qty: l.qty,
@@ -488,6 +492,7 @@ function Records({ t }: { t: TraceResult }) {
             <thead className="sticky top-0 z-10">
               <tr className="text-left text-[11px] uppercase tracking-wide text-muted bg-surface/95 backdrop-blur border-b border-border/60">
                 <th className="px-4 py-2.5 font-bold">Plan</th><th className="px-3 py-2.5 font-bold">MO</th>
+                <th className="px-3 py-2.5 font-bold" title="Sales order item">SOI</th>
                 <th className="px-3 py-2.5 font-bold">Description</th><th className="px-3 py-2.5 font-bold text-center">Item</th>
                 <th className="px-3 py-2.5 font-bold text-center">Required</th><th className="px-3 py-2.5 font-bold text-center">Planner balance</th>
                 <th className="px-3 py-2.5 font-bold text-center">Target</th><th className="px-3 py-2.5 font-bold pr-4">Remark</th>
@@ -495,7 +500,7 @@ function Records({ t }: { t: TraceResult }) {
             </thead>
             <tbody>
               {t.orders.length === 0 && (
-                <tr><td colSpan={8} className="p-10 text-center text-muted">
+                <tr><td colSpan={9} className="p-10 text-center text-muted">
                   <div className="text-2xl mb-1">📄</div>Not in any imported plan.
                 </td></tr>
               )}
@@ -503,6 +508,7 @@ function Records({ t }: { t: TraceResult }) {
                 <tr key={o.id} className={`border-b border-border/30 last:border-0 hover:bg-brand-light/25 transition-colors ${i % 2 ? "bg-brand-light/[0.06]" : ""}`}>
                   <td className="px-4 py-2 font-bold text-xs whitespace-nowrap">{o.planLabel}</td>
                   <td className="px-3 py-2 text-xs">{o.mo}</td>
+                  <td className="px-3 py-2"><Soi soi={soiOfMo(o.mo)} /></td>
                   <td className="px-3 py-2 text-xs text-muted max-w-56 truncate" title={o.description ?? ""}>{o.description}</td>
                   <td className="px-3 py-2 text-center font-bold">{o.item}</td>
                   <td className="px-3 py-2 text-center tabnum font-bold">{o.requiredQty}</td>

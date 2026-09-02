@@ -18,23 +18,35 @@ export interface MaterialOrderRef {
   planQty: number;
   customer: string | null;
   status: string;
+  soi: string | null; // sales order item, as the registry carries it
   planMonths: string[]; // the monthly plan(s) this order was imported under
 }
 
 /** Every order the registry knows, as the material page's BOM/MO pickers. */
 export async function getMaterialOrders(): Promise<MaterialOrderRef[]> {
   const orders = await prisma.masterOrder.findMany({
-    select: { mo: true, bom: true, planQty: true, customer: true, status: true, months: true, source: true },
+    select: { mo: true, bom: true, planQty: true, customer: true, status: true, soi: true, months: true, source: true },
     orderBy: [{ bom: "asc" }, { mo: "asc" }],
   });
   return orders.map(({ months, source, ...o }) => ({ ...o, planMonths: parsePlanMonths(months, source) }));
 }
 
+/** The orders a line speaks for: the one it names, or all of its BOM's. */
+function ordersFor(orders: MaterialOrderRef[], bom: string, mo: string): MaterialOrderRef[] {
+  return mo ? orders.filter((o) => o.mo === mo) : orders.filter((o) => o.bom === bom);
+}
+
 /** The monthly plan(s) behind a line: the named MO's own, or every month the
  *  BOM's orders came in on when the line covers the whole BOM. */
 function planMonthsFor(orders: MaterialOrderRef[], bom: string, mo: string): string[] {
-  const relevant = mo ? orders.filter((o) => o.mo === mo) : orders.filter((o) => o.bom === bom);
-  return [...new Set(relevant.flatMap((o) => o.planMonths))].sort();
+  return [...new Set(ordersFor(orders, bom, mo).flatMap((o) => o.planMonths))].sort();
+}
+
+/** The SOI(s) behind a line — joined for a BOM-level line, which can cover
+ *  several orders and must not pretend to be only one of them. */
+function soiFor(orders: MaterialOrderRef[], bom: string, mo: string): string | null {
+  const sois = [...new Set(ordersFor(orders, bom, mo).map((o) => (o.soi ?? "").trim()).filter(Boolean))].sort();
+  return sois.length > 0 ? sois.join(" · ") : null;
 }
 
 /** planQty behind a line: the named MO's own quantity, or every order on the
@@ -68,6 +80,7 @@ function toView(
     note: row.note,
     units,
     unitsFromRegistry: fromRegistry,
+    soi: soiFor(orders, row.bom, row.mo),
     planMonths: planMonthsFor(orders, row.bom, row.mo),
     allowed,
     difference: sheetsDifference(allowed, row.sheetsUsed),

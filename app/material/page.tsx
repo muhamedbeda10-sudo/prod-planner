@@ -27,6 +27,7 @@ export default async function MaterialPage({
   const exportRows = lines.map((l) => ({
     Date: l.workedISO,
     "BOM Ref": l.bom,
+    SOI: l.soi ?? "",
     "Plan month": l.planMonths.join(" · "),
     "Order (MO)": l.mo,
     "Quantity of Units": l.units,

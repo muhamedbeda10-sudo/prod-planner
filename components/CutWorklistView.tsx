@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { CutTranche, CascadeRow, PlanLineIssue } from "@/lib/domain/execution";
+import type { SoiLookup } from "@/lib/server/soi";
 import { CutTrancheTable } from "@/components/CutTrancheTable";
 import { CascadeTable } from "@/components/CascadeTable";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
@@ -39,6 +40,7 @@ export function CutWorklistView({
   leadDays = DEFAULTS.leadCut,
   canEdit = false,
   isAdmin = false,
+  soi,
 }: {
   dueNow: CutTranche[];
   overdue: CutTranche[];
@@ -57,6 +59,7 @@ export function CutWorklistView({
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
   leadDays?: number; // fabrication lead: the plan lands this many days ahead of delivery
   canEdit?: boolean; // user holds cut.edit — otherwise view-only
+  soi?: SoiLookup; // the SOI shown beside each MO
   isAdmin?: boolean; // admins may re-date lines / revert their overrides
 }) {
   // search + item card filter survive navigating away and back
@@ -123,7 +126,7 @@ export function CutWorklistView({
 
       {/* ⭐ the admin's priority orders — a focus list above everything */}
       <RunOrderTable rows={runOrder} deptWord="cut" />
-      <PriorityOrdersTable rows={priority} deptWord="cut" />
+      <PriorityOrdersTable rows={priority} deptWord="cut" soi={soi} />
 
       {/* 0 — pieces sent back by Welding: fix first, they re-enter the flow */}
       <ReturnsTable rows={returns} dept="Cut" canEdit={canEdit} />
@@ -136,7 +139,7 @@ export function CutWorklistView({
             No weekly plan covers today — import the new weekly schedule. The backlogs below still work.
           </p>
         ) : (
-          <CutTrancheTable rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} canEdit={canEdit} isAdmin={isAdmin} />
+          <CutTrancheTable soi={soi} rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} canEdit={canEdit} isAdmin={isAdmin} />
         )}
       </section>
 
@@ -146,7 +149,7 @@ export function CutWorklistView({
           Overdue backlog — missed delivery dates ({totalOverdue} pcs)
           {totalOverdue > 0 && <span className="pill pill-bad ml-2 normal-case">catch up first</span>}
         </h2>
-        <CutTrancheTable rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
+        <CutTrancheTable soi={soi} rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
       </section>
 
       {/* 3 — lines an admin re-dated into the FUTURE: they left today's list
@@ -156,7 +159,7 @@ export function CutWorklistView({
           <h2>
             Re-dated by admin — leaves this list on its new day ({totalPostponed} pcs)
           </h2>
-          <CutTrancheTable rows={postponedF} day={day} planNo={planNo ?? 0} variant="due" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
+          <CutTrancheTable soi={soi} rows={postponedF} day={day} planNo={planNo ?? 0} variant="due" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
         </section>
       )}
 

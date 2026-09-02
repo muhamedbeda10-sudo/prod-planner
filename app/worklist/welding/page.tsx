@@ -1,3 +1,4 @@
+import { getSoiLookup } from "@/lib/server/soi";
 import { getWeldingQueue } from "@/lib/server/execution";
 import { getSettings } from "@/lib/server/data";
 import { getQueueNotes } from "@/lib/server/queueNotes";
@@ -22,7 +23,7 @@ export const dynamic = "force-dynamic";
 export default async function WeldWorklistPage() {
   const today = new Date();
   const dayISO = toISODate(today);
-  const [queue, notes, returns, settings, user, extras, runOrder, repairs, welders] = await Promise.all([
+  const [queue, notes, returns, settings, user, extras, runOrder, repairs, welders, soi] = await Promise.all([
     getWeldingQueue(today),
     getQueueNotes(),
     getReturnsFor("Welding"),
@@ -32,6 +33,7 @@ export default async function WeldWorklistPage() {
     getRunOrderLines("Welding"),
     getRepairQueue(),
     getWorkersFor("Welding"),
+    getSoiLookup(),
   ]);
   const canEdit = !!user && canEditDept(user, "Welding");
   const tankTracking = settings.tankTracking;
@@ -46,6 +48,7 @@ export default async function WeldWorklistPage() {
     <>
       <PrintHeader title="Welding Worklist" date={toDisplayDate(today)} />
       <WeldingQueueTable
+        soi={soi}
         rows={queue}
         day={dayISO}
         notes={notes}
@@ -59,7 +62,7 @@ export default async function WeldWorklistPage() {
           <>
             {tankTracking && canEdit && <TankRepairPanel tanks={repairs} welders={welders} />}
             <RunOrderTable rows={runOrder} deptWord="weld" />
-            <PriorityOrdersTable rows={extras.priority} deptWord="welded" />
+            <PriorityOrdersTable rows={extras.priority} deptWord="welded" soi={soi} />
             {pushedRows.length > 0 && (
               <section className="mb-6">
                 <h2>📥 Sent from the Plan Tracker ({pushedRows.reduce((s, r) => s + r.available, 0)} pcs)</h2>

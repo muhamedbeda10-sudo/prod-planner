@@ -137,7 +137,7 @@ function line(over: Partial<MaterialLineView>): MaterialLineView {
   return {
     id: 1, bom: "B1", mo: "", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
     workedISO: "2026-09-01", sheetsUsed: 10, sheetsPerUnit: 1, unitsOverride: null, note: null,
-    units: 10, unitsFromRegistry: true, planMonths: [], allowed: 10, difference: 0,
+    units: 10, unitsFromRegistry: true, soi: null, planMonths: [], allowed: 10, difference: 0,
     updatedISO: "2026-09-01", recordedBy: null, ...over,
   };
 }

@@ -4,7 +4,9 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateHandover, deleteHandover, bulkSetHandoverDate } from "@/app/handover/actions";
 import { toISODate } from "@/lib/domain/dates";
+import type { SoiLookup } from "@/lib/server/soi";
 import { ExportButton } from "@/components/ExportButton";
+import { Soi, soiOf } from "@/components/ui";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { ITEMS, DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE, deptLabel } from "@/lib/domain/constants";
 
@@ -34,7 +36,7 @@ export interface LogRow {
   flags?: string[] | null; // data-guard warnings — the row LOOKS wrong, check it
 }
 
-export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; editableDepts?: string[] }) {
+export function HandoverLog({ rows, editableDepts = [], soi }: { rows: LogRow[]; editableDepts?: string[]; soi?: SoiLookup }) {
   const canEditRow = (r: LogRow) => editableDepts.includes(r.dept);
   const router = useRouter();
   const [editing, setEditing] = useState<number | null>(null);
@@ -150,6 +152,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
     DEPT: deptLabel(r.dept),
     BOM: r.bom,
     MO: r.mo ?? "",
+    SOI: soiOf(soi, r.mo, r.bom) ?? "",
     Item: r.item,
     QTY: r.qty,
     Source: r.source,
@@ -264,6 +267,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
               <th className="p-2">Dept</th>
               <th className="p-2">BOM</th>
               <th className="p-2">MO</th>
+              <th className="p-2" title="Sales order item">SOI</th>
               <th className="p-2 text-center">Item</th>
               <th className="p-2 text-center">Qty</th>
               <th className="p-2">Source</th>
@@ -273,7 +277,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={10} className="p-4 text-center text-muted">
+              <tr><td colSpan={11} className="p-4 text-center text-muted">
                 {rows.length === 0 ? "No records." : "No rows match the filters."}
               </td></tr>
             )}
@@ -309,6 +313,7 @@ export function HandoverLog({ rows, editableDepts = [] }: { rows: LogRow[]; edit
                   )}
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap text-muted">{r.mo ?? "—"}</td>
+                <td className="p-2 whitespace-nowrap"><Soi soi={soiOf(soi, r.mo, r.bom)} /></td>
                 <td className="p-2 text-center font-bold">{r.item}</td>
                 <td className="p-2 text-center font-bold tabnum">
                   {editing === r.id ? (

@@ -135,6 +135,7 @@ export interface MaterialLineView extends MaterialLineInput {
   id: number;
   units: number; // quantity of units this line covers
   unitsFromRegistry: boolean; // false = the typed override is in effect
+  soi: string | null; // sales order item — the order's, or its BOM's, joined
   planMonths: string[]; // the monthly plan(s) the BOM's orders came in on
   allowed: number | null; // sheets the BOM allowed for the job
   difference: number | null; // allowed − used
