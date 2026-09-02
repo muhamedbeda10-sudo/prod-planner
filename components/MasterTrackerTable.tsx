@@ -494,6 +494,9 @@ export function MasterTrackerTable({
               const gAch = gReq > 0 ? gComplete / gReq : null;
               const urgentCount = members.filter((m) => m.urgent).length;
               const gKva = members.find((m) => m.kva)?.kva ?? "—";
+              // the group speaks for every order in it, so it shows all their
+              // SOIs — the same rule the BOM-level worklist rows follow
+              const gSoi = [...new Set(members.map((m) => (m.soi ?? "").trim()).filter(Boolean))].sort().join(" · ");
               return (
                 <Fragment key={`g|${gBom}`}>
                   <tr
@@ -505,6 +508,9 @@ export function MasterTrackerTable({
                       <span className={`inline-block mr-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>▶</span>
                       {members.length} MOs
                       {urgentCount > 0 && <span className="pill pill-bad ml-1">U×{urgentCount}</span>}
+                    </td>
+                    <td className="p-2 whitespace-nowrap">
+                      <Soi soi={gSoi} />
                     </td>
                     <td className="p-2 font-bold whitespace-nowrap">
                       <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">{gBom}</Link>
