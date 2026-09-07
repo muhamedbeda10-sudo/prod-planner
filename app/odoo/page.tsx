@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import Link from "next/link";
 import { getOdooData, getOdooDashboard } from "@/lib/server/odoo";
-import { parseOdooRange } from "@/lib/domain/odooStats";
+import { resolvePeriod } from "@/lib/domain/odooStats";
 import { OdooDashboard, OdooRangePicker } from "@/components/OdooDashboard";
 import { toISODate } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function OdooPage({
   searchParams,
 }: {
-  searchParams: Promise<{ day?: string; view?: string; range?: string }>;
+  searchParams: Promise<{ day?: string; view?: string; range?: string; from?: string; to?: string }>;
 }) {
   // viewing is free for every account, like the rest of the app; recording is
   // gated on odoo.edit
@@ -35,13 +35,13 @@ export default async function OdooPage({
   );
 
   if (view === "dashboard") {
-    const range = parseOdooRange(sp.range);
-    const data = await getOdooDashboard(range);
+    const period = resolvePeriod(sp);
+    const data = await getOdooDashboard(period);
     return (
       <div>
         <PageHeader title="📦 ODOO — dashboard">
           {viewSwitch}
-          <OdooRangePicker range={range} />
+          <OdooRangePicker period={period} />
         </PageHeader>
         <OdooDashboard data={data} />
       </div>

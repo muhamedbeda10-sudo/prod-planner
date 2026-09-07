@@ -1,16 +1,21 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useState, type ComponentProps } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts";
-import { ODOO_RANGES, ODOO_RANGE_LABEL, ODOO_SERIES, type OdooDashboardData, type OdooSeries } from "@/lib/domain/odooStats";
+import { ExportButton } from "@/components/ExportButton";
+import {
+  ODOO_RANGES, ODOO_RANGE_LABEL, ODOO_SERIES, pctChange, periodLabel,
+  type OdooDashboardData, type OdooPeriod, type OdooSeries,
+} from "@/lib/domain/odooStats";
 
-// The Odoo dashboard — what was logged each day, by product. One filter row
-// scopes everything: a KPI strip, the stacked columns per day, a bar per
-// product for the range, closed-vs-open per day, and the same numbers as a
-// table (the chart is never the only way to read a value).
+// The Odoo dashboard — what was logged each day, by product. One period row
+// scopes everything below it: the headline numbers, a card per product, the
+// stacked columns per day (every count written on its segment), one small
+// chart per product, totals and closed-vs-open, and the same numbers as a
+// table with an Excel export — the chart is never the only way to read a value.
 
 const SERIES_VAR: Record<OdooSeries, string> = {
   Tank: "var(--viz-1)",
@@ -21,10 +26,17 @@ const SERIES_VAR: Record<OdooSeries, string> = {
   Conservator: "var(--viz-6)",
   Other: "var(--viz-other)",
 };
+/** Ink for a number written INSIDE a segment: white on the dark hues, dark on the light ones. */
+const SERIES_INK: Record<OdooSeries, string> = {
+  Tank: "#fff", "Top Cover": "#fff", "Core Frame": "#fff", Encloser: "#fff",
+  "Cable Box": "#1a2420", Conservator: "#1a2420", Other: "#fff",
+};
+
+const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: 1 }));
 
 /** A legend in OUR series order, with text in the text colour — recharts would
  *  sort it alphabetically and paint each name in its series colour. */
-type LegendItem = { value: string; type: "square"; id: string; color: string };
+type LegendItem = { value: string; color: string };
 function legendProps(items: LegendItem[]): ComponentProps<typeof Legend> {
   const order = items.map((i) => i.value);
   return {
@@ -32,46 +44,167 @@ function legendProps(items: LegendItem[]): ComponentProps<typeof Legend> {
     iconType: "square",
     iconSize: 10,
     formatter: (value: unknown) => <span style={{ color: "var(--foreground)" }}>{String(value)}</span>,
-    // recharts sorts legend items by name unless told otherwise
     itemSorter: (item: { value?: unknown }) => order.indexOf(String(item.value)),
   } as ComponentProps<typeof Legend>;
 }
 
+/** Room above the tallest column for its cap label: the next multiple of 5 past +12%. */
+const headroom = (max: number) => Math.max(5, Math.ceil((max * 1.12) / 5) * 5);
+
 /** Tick interval so at most `max` day labels show — the rest stay in the tooltip and table. */
 const tickEvery = (n: number, max: number) => (n > max ? Math.ceil(n / max) - 1 : 0);
 
-const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: 1 }));
+// ---- labels written on the marks ----
 
-// ---- filter row ----
+type LabelBox = { x?: number | string; y?: number | string; width?: number | string; height?: number | string; value?: unknown };
 
-export function OdooRangePicker({ range }: { range: OdooDashboardData["range"] }) {
+/** The count inside a stacked segment — only when the segment is tall and wide enough to hold it. */
+function segmentLabel(ink: string) {
+  const SegLabel = (p: LabelBox) => {
+    const v = Number(p.value ?? 0);
+    const w = Number(p.width ?? 0), h = Number(p.height ?? 0);
+    if (!v || h < 13 || w < 16) return null;
+    return (
+      <text x={Number(p.x) + w / 2} y={Number(p.y) + h / 2} dy={3.5} textAnchor="middle" fontSize={10} fontWeight={700} fill={ink} pointerEvents="none">
+        {fmt(v)}
+      </text>
+    );
+  };
+  return SegLabel;
+}
+
+/** The column's total on its cap. */
+function TopLabel(p: LabelBox) {
+  const v = Number(p.value ?? 0);
+  if (!v) return null;
+  return (
+    <text x={Number(p.x) + Number(p.width ?? 0) / 2} y={Number(p.y)} dy={-4} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--foreground)" pointerEvents="none">
+      {fmt(v)}
+    </text>
+  );
+}
+
+/** The stack's total, drawn once per column by whichever segment is on top
+ *  that day — recharts skips a label on a zero-height segment, so the last
+ *  series cannot carry it alone. */
+function stackTotalLabel(series: OdooSeries, rows: { total: number; top: OdooSeries | null }[]) {
+  const Total = (p: LabelBox & { index?: number }) => {
+    const row = rows[p.index ?? -1];
+    if (!row || row.top !== series) return null;
+    return <TopLabel {...p} value={row.total} />;
+  };
+  return Total;
+}
+
+// ---- period row ----
+
+export function OdooRangePicker({ period }: { period: OdooPeriod }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const go = (v: string) => {
+  const [custom, setCustom] = useState(period.range === "custom");
+  const [from, setFrom] = useState(period.fromISO ?? "");
+  const [to, setTo] = useState(period.toISO);
+  const go = (patch: Record<string, string | null>) => {
     const p = new URLSearchParams(params.toString());
-    p.set("range", v);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null) p.delete(k); else p.set(k, v);
+    }
     router.push(`${pathname}?${p}`);
   };
   return (
-    <div className="seg" role="tablist" aria-label="Date range">
-      {ODOO_RANGES.map((r) => (
-        <button key={r} type="button" role="tab" aria-selected={r === range} className={r === range ? "on" : ""} onClick={() => go(r)}>
-          {ODOO_RANGE_LABEL[r]}
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="seg" role="tablist" aria-label="Period">
+        {ODOO_RANGES.map((r) => (
+          <button key={r} type="button" role="tab" aria-selected={period.range === r} className={period.range === r ? "on" : ""} onClick={() => { setCustom(false); go({ range: r, from: null, to: null }); }}>
+            {ODOO_RANGE_LABEL[r]}
+          </button>
+        ))}
+        <button type="button" role="tab" aria-selected={period.range === "custom"} className={period.range === "custom" ? "on" : ""} onClick={() => setCustom(true)}>
+          Custom
         </button>
-      ))}
+      </div>
+      {custom && (
+        <form
+          className="inline-flex items-center gap-1.5 text-sm"
+          onSubmit={(e) => { e.preventDefault(); if (from && to) go({ range: "custom", from, to }); }}
+        >
+          <input type="date" aria-label="From" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="border rounded-md px-2 py-1.5 bg-surface font-bold ltr tabnum" />
+          <span className="text-muted">→</span>
+          <input type="date" aria-label="To" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="border rounded-md px-2 py-1.5 bg-surface font-bold ltr tabnum" />
+          <button type="submit" className="btn btn-primary btn-sm" disabled={!from || !to}>Apply</button>
+        </form>
+      )}
     </div>
   );
 }
 
-// ---- KPI strip ----
+// ---- headline numbers and the product cards ----
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Delta({ cur, prev, suffix = "" }: { cur: number; prev: number | null; suffix?: string }) {
+  const pct = pctChange(cur, prev);
+  if (pct === null) return prev === null ? null : <span className="text-xs text-muted">new — none before</span>;
+  const cls = pct > 0 ? "text-ok-fg" : pct < 0 ? "text-bad-fg" : "text-muted";
+  const arrow = pct > 0 ? "▲" : pct < 0 ? "▼" : "•";
   return (
-    <div className="bg-surface border rounded-xl px-4 py-3 min-w-[9rem]">
+    <span className={`text-xs font-bold ${cls}`} title={`Previous period: ${fmt(prev!)}${suffix}`}>
+      {arrow} {Math.abs(pct)}% <span className="font-normal text-muted">vs previous</span>
+    </span>
+  );
+}
+
+function Stat({ label, value, sub, delta }: { label: string; value: string; sub?: string; delta?: React.ReactNode }) {
+  return (
+    <div className="bg-surface border rounded-xl px-4 py-3 min-w-[10rem] flex-1">
       <div className="text-xs font-bold text-muted">{label}</div>
       <div className="text-[28px] font-semibold leading-tight ltr">{value}</div>
-      {sub && <div className="text-xs text-muted">{sub}</div>}
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        {delta}
+        {sub && <span className="text-xs text-muted">{sub}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** A dozen-ish thin bars of the product's daily quantity — a shape, not a chart. */
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  const max = Math.max(1, ...values);
+  const n = values.length;
+  const w = 100, h = 28, gap = n > 40 ? 0.4 : 1;
+  const bw = Math.max(0.6, w / n - gap);
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full h-7 block" aria-hidden="true">
+      {values.map((v, i) => {
+        const bh = v > 0 ? Math.max(1.5, (v / max) * h) : 0;
+        return <rect key={i} x={i * (w / n)} y={h - bh} width={bw} height={bh} fill={color} opacity={v > 0 ? 1 : 0} rx={0.6} />;
+      })}
+    </svg>
+  );
+}
+
+function ProductCards({ d, present }: { d: OdooDashboardData; present: OdooSeries[] }) {
+  return (
+    <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))]">
+      {present.map((s) => {
+        const t = d.totals.find((x) => x.series === s)!;
+        const daily = d.days.map((p) => p.bySeries[s]);
+        const best = Math.max(0, ...daily);
+        return (
+          <div key={s} className="bg-surface border rounded-xl px-4 py-3 border-t-4" style={{ borderTopColor: SERIES_VAR[s] }}>
+            <div className="flex items-center gap-2 text-xs font-bold text-muted">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: SERIES_VAR[s] }} />
+              {s}
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-[26px] font-semibold leading-tight ltr">{fmt(t.qty)}</span>
+              <span className="text-xs text-muted">{t.rows} row{t.rows === 1 ? "" : "s"} · {t.share}%</span>
+            </div>
+            <div className="min-h-[1rem]"><Delta cur={t.qty} prev={t.prevQty} /></div>
+            <div className="mt-1.5"><Sparkline values={daily} color={SERIES_VAR[s]} /></div>
+            <div className="text-[11px] text-muted mt-0.5">best day {fmt(best)}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -117,11 +250,16 @@ function Tip({ active, label, payload, total }: { active?: boolean; label?: stri
   );
 }
 
-function Card({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
+function Card({ title, sub, children, right }: { title: string; sub?: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <section className="bg-surface border rounded-xl p-4">
-      <h2 className="font-bold leading-tight">{title}</h2>
-      {sub && <p className="text-xs text-muted mb-2">{sub}</p>}
+      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+        <div>
+          <h2 className="font-bold leading-tight">{title}</h2>
+          {sub && <p className="text-xs text-muted">{sub}</p>}
+        </div>
+        {right}
+      </div>
       {children}
     </section>
   );
@@ -129,39 +267,79 @@ function Card({ title, sub, children }: { title: string; sub?: string; children:
 
 function DailyByProduct({ d, present }: { d: OdooDashboardData; present: OdooSeries[] }) {
   const data = d.days.map((p) => ({ label: p.label, ...p.bySeries }));
+  const stack = d.days.map((p) => ({ total: p.qty, top: [...present].reverse().find((s) => p.bySeries[s] > 0) ?? null }));
   const n = d.days.length;
   return (
-    <ChartScroller minWidth={Math.max(560, n * 28)} height={300}>
-      <BarChart data={data} margin={{ top: 8, right: 16, left: -12, bottom: 0 }} barCategoryGap="30%">
+    <ChartScroller minWidth={Math.max(560, n * 34)} height={340}>
+      <BarChart data={data} margin={{ top: 18, right: 16, left: -12, bottom: 0 }} barCategoryGap="25%">
         <CartesianGrid vertical={false} />
         <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={tickEvery(n, 16)} tickLine={false} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
+        <YAxis domain={[0, headroom]} tickCount={6} allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
         <Tooltip content={<Tip total />} cursor={{ fill: "var(--surface-2)" }} />
-        <Legend {...legendProps(present.map((s) => ({ value: s, type: "square" as const, id: s, color: SERIES_VAR[s] })))} />
+        <Legend {...legendProps(present.map((s) => ({ value: s, color: SERIES_VAR[s] })))} />
         {present.map((s, i) => (
           <Bar
             key={s} dataKey={s} name={s} stackId="qty" fill={SERIES_VAR[s]}
-            stroke="var(--surface)" strokeWidth={2} maxBarSize={24}
+            stroke="var(--surface)" strokeWidth={2} maxBarSize={28}
             radius={i === present.length - 1 ? [4, 4, 0, 0] : 0}
             isAnimationActive={false}
-          />
+          >
+            <LabelList dataKey={s} content={segmentLabel(SERIES_INK[s])} />
+            <LabelList dataKey={s} content={stackTotalLabel(s, stack)} />
+          </Bar>
         ))}
       </BarChart>
     </ChartScroller>
   );
 }
 
+/** One small chart per product, on a shared scale, every day's count on its cap. */
+function SmallMultiples({ d, present }: { d: OdooDashboardData; present: OdooSeries[] }) {
+  const n = d.days.length;
+  const yMax = Math.max(1, ...d.days.flatMap((p) => present.map((s) => p.bySeries[s])));
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {present.map((s) => {
+        const data = d.days.map((p) => ({ label: p.label, qty: p.bySeries[s] }));
+        const t = d.totals.find((x) => x.series === s)!;
+        return (
+          <div key={s} className="border rounded-lg p-2">
+            <div className="flex items-center justify-between px-1 mb-1">
+              <span className="text-sm font-bold flex items-center gap-2">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: SERIES_VAR[s] }} />
+                {s}
+              </span>
+              <span className="text-xs text-muted tabnum">{fmt(t.qty)} in period</span>
+            </div>
+            <ChartScroller minWidth={Math.max(240, n * (n > 45 ? 9 : 14))} height={150}>
+              <BarChart data={data} margin={{ top: 14, right: 10, left: -6, bottom: 0 }} barCategoryGap="30%">
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={tickEvery(n, 8)} tickLine={false} />
+                <YAxis domain={[0, headroom(yMax)]} tickCount={4} allowDecimals={false} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={30} />
+                <Tooltip content={<Tip />} cursor={{ fill: "var(--surface-2)" }} />
+                <Bar dataKey="qty" name={s} fill={SERIES_VAR[s]} maxBarSize={18} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                  <LabelList dataKey="qty" content={TopLabel} />
+                </Bar>
+              </BarChart>
+            </ChartScroller>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ProductTotals({ d }: { d: OdooDashboardData }) {
-  const data = d.totals.map((t) => ({ series: t.series, qty: t.qty, rows: t.rows }));
+  const data = d.totals.map((t) => ({ series: t.series, qty: t.qty, label: `${fmt(t.qty)}  ·  ${t.share}%` }));
   return (
     <ChartScroller minWidth={360} height={Math.max(160, 30 + data.length * 36)}>
-      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 48, left: 8, bottom: 0 }} barCategoryGap="35%">
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 84, left: 8, bottom: 0 }} barCategoryGap="35%">
         <CartesianGrid horizontal={false} />
         <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="series" tick={{ fontSize: 12 }} width={100} axisLine={false} tickLine={false} />
         <Tooltip content={<Tip />} cursor={{ fill: "var(--surface-2)" }} />
         <Bar dataKey="qty" name="Qty" maxBarSize={24} radius={[0, 4, 4, 0]} isAnimationActive={false} fill="var(--brand)">
-          <LabelList dataKey="qty" position="right" fontSize={11} formatter={(v: unknown) => fmt(Number(v))} className="fill-foreground" />
+          <LabelList dataKey="label" position="right" fontSize={11} fill="var(--foreground)" />
         </Bar>
       </BarChart>
     </ChartScroller>
@@ -172,15 +350,19 @@ function ClosedPerDay({ d }: { d: OdooDashboardData }) {
   const data = d.days.map((p) => ({ label: p.label, Done: p.doneQty, "Not closed": Math.max(0, p.qty - p.doneQty) }));
   const n = d.days.length;
   return (
-    <ChartScroller minWidth={Math.max(420, n * 16)} height={220}>
+    <ChartScroller minWidth={Math.max(420, n * 16)} height={240}>
       <BarChart data={data} margin={{ top: 8, right: 16, left: -12, bottom: 0 }} barCategoryGap="30%">
         <CartesianGrid vertical={false} />
         <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={tickEvery(n, 10)} tickLine={false} />
         <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
         <Tooltip content={<Tip total />} cursor={{ fill: "var(--surface-2)" }} />
-        <Legend {...legendProps([{ value: "Done", type: "square", id: "Done", color: "var(--brand)" }, { value: "Not closed", type: "square", id: "Not closed", color: "var(--viz-other)" }])} />
-        <Bar dataKey="Done" stackId="q" fill="var(--brand)" stroke="var(--surface)" strokeWidth={2} maxBarSize={24} isAnimationActive={false} />
-        <Bar dataKey="Not closed" stackId="q" fill="var(--viz-other)" stroke="var(--surface)" strokeWidth={2} maxBarSize={24} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+        <Legend {...legendProps([{ value: "Done", color: "var(--brand)" }, { value: "Not closed", color: "var(--viz-other)" }])} />
+        <Bar dataKey="Done" stackId="q" fill="var(--brand)" stroke="var(--surface)" strokeWidth={2} maxBarSize={24} isAnimationActive={false}>
+          <LabelList dataKey="Done" content={segmentLabel("#fff")} />
+        </Bar>
+        <Bar dataKey="Not closed" stackId="q" fill="var(--viz-other)" stroke="var(--surface)" strokeWidth={2} maxBarSize={24} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+          <LabelList dataKey="Not closed" content={segmentLabel("#fff")} />
+        </Bar>
       </BarChart>
     </ChartScroller>
   );
@@ -241,28 +423,62 @@ function DayTable({ d, present }: { d: OdooDashboardData; present: OdooSeries[] 
 export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
   const [showTable, setShowTable] = useState(false);
   const present = ODOO_SERIES.filter((s) => d.totals.some((t) => t.series === s));
-  const span = d.fromISO ? `${d.fromISO} → ${d.toISO}` : `up to ${d.toISO}`;
+  const title = periodLabel(d.period);
+  const prevTitle = d.previous ? periodLabel({ range: "custom", fromISO: d.previous.fromISO, toISO: d.previous.toISO }) : null;
   const donePct = d.kpi.rows > 0 ? Math.round((d.kpi.doneRows / d.kpi.rows) * 100) : 0;
 
+  const exportRows = useMemo(
+    () => d.days.filter((p) => p.rows > 0).map((p) => ({
+      Day: p.dateISO,
+      ...Object.fromEntries(present.map((s) => [s, p.bySeries[s]])),
+      "Total qty": p.qty,
+      Rows: p.rows,
+      "Done qty": p.doneQty,
+    })),
+    [d, present]
+  );
+
   if (d.kpi.rows === 0) {
-    return <p className="text-sm text-muted bg-surface border rounded-xl p-4">Nothing logged {d.fromISO ? `between ${d.fromISO} and ${d.toISO}` : "yet"}. Pick a wider range, or log the day&apos;s rows first.</p>;
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted">{title}</p>
+        <p className="text-sm text-muted bg-surface border rounded-xl p-4">Nothing logged in this period. Pick a wider one, or log the day&apos;s rows first.</p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm">
+          <span className="font-bold">{title}</span>
+          {prevTitle && <span className="text-muted"> · compared with {prevTitle}</span>}
+        </div>
+        <ExportButton rows={exportRows} filename={`odoo-dashboard-${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`} sheetName="By day" />
+      </div>
+
       <div className="flex flex-wrap gap-3">
-        <Stat label="Quantity logged" value={fmt(d.kpi.qty)} sub={span} />
-        <Stat label="Rows" value={fmt(d.kpi.rows)} sub={`${d.kpi.activeDays} day(s) with entries`} />
+        <Stat label="Quantity logged" value={fmt(d.kpi.qty)} delta={<Delta cur={d.kpi.qty} prev={d.kpi.prevQty} />} />
+        <Stat label="Rows" value={fmt(d.kpi.rows)} delta={<Delta cur={d.kpi.rows} prev={d.kpi.prevRows} />} sub={`${d.kpi.activeDays} day(s) with entries`} />
         <Stat label="Done" value={`${donePct}%`} sub={`${d.kpi.doneRows} of ${d.kpi.rows} rows · ${fmt(d.kpi.doneQty)} qty`} />
         <Stat label="Per active day" value={fmt(d.kpi.qtyPerActiveDay)} sub="qty on the days that had rows" />
       </div>
 
-      <Card title="Quantity per day, by product" sub="Each column is a day; the segments are the products logged that day. Hover a column for the numbers.">
+      <section>
+        <h2 className="font-bold mb-2">Per product</h2>
+        <ProductCards d={d} present={present} />
+      </section>
+
+      <Card title="Quantity per day, by product" sub="Each column is a day; every segment carries its count, the cap the day's total. Hover a column for the full breakdown.">
         <DailyByProduct d={d} present={present} />
       </Card>
 
+      <Card title="Each product, day by day" sub="One chart per product on the same scale, the count on every column.">
+        <SmallMultiples d={d} present={present} />
+      </Card>
+
       <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <Card title="Totals per product" sub={`Quantity over ${ODOO_RANGE_LABEL[d.range].toLowerCase()}.`}>
+        <Card title="Totals per product" sub={`Quantity and share of the period.`}>
           <ProductTotals d={d} />
         </Card>
         <Card title="Closed vs not closed, per day" sub="Quantity on rows whose status is Done, against the rest.">
