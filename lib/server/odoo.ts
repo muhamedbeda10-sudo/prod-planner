@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView } from "@/lib/domain/odoo";
+import { buildOdooDashboard, rangeBounds, type OdooDashboardData, type OdooRange } from "@/lib/domain/odooStats";
 
 export interface OdooPageData {
   entries: OdooEntryView[];
@@ -52,6 +53,23 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     knownSois: uniq(orders.map((o) => o.soi)),
     knownFgCodes: uniq(orders.map((o) => o.fgCode)),
   };
+}
+
+// ---- dashboard: what was logged, by day and product ----
+
+/** The dashboard's numbers for one range preset. */
+export async function getOdooDashboard(range: OdooRange): Promise<OdooDashboardData> {
+  const bounds = rangeBounds(range);
+  const from = bounds.fromISO ? parseISODate(bounds.fromISO) : null;
+  const to = parseISODate(bounds.toISO)!;
+  const rows = await prisma.odooEntry.findMany({
+    where: { date: { ...(from ? { gte: from } : {}), lt: new Date(to.getTime() + 24 * 60 * 60 * 1000) } },
+    select: { date: true, product: true, qty: true, status: true },
+  });
+  return buildOdooDashboard(
+    rows.map((r) => ({ dateISO: toISODate(r.date), product: r.product, qty: r.qty, status: r.status })),
+    range, bounds
+  );
 }
 
 // ---- import: the office's sheet, once, its first seven columns ----
