@@ -50,11 +50,11 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    Import the sheet for a month (re-importing adds new lines and updates changed ones), filter by month,
    edit any value inline, export in the sheet's own headers.
 9. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
-   close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status · Reason. Typed in per day, one strip per
-   row; "Done" and Odoo's stock errors read at a glance; exports in the sheet's own headers. The
-   sheet itself imports in one go (its first seven columns — Reason stays as typed here); the same
-   MO on the same day is updated, never doubled. Reason keeps its history: change it in place and
-   every earlier value stays under the cell.
+   close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
+   clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day
+   updated, never doubled); the planner then moves the Status in place (Pending, Done, Blocked …) and
+   keeps Notes on it — a list with time and author, each deletable on its own. Exports in the sheet's
+   own headers.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

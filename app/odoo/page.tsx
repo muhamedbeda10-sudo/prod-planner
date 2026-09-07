@@ -34,8 +34,7 @@ export default async function OdooPage({
     "MO#": e.odooMo,
     QTY: e.qty,
     Status: e.status,
-    Reason: e.reason ?? "",
-    "Earlier reasons": e.earlierReasons.map((h) => `${h.atISO.slice(0, 16).replace("T", " ")}: ${h.reason}`).join(" | "),
+    Notes: [...e.notes].reverse().map((n) => `${n.atISO.slice(0, 16).replace("T", " ")}: ${n.text}`).join(" | "),
   }));
 
   return (

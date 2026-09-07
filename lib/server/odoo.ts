@@ -2,7 +2,7 @@ import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
-import { blockedItem, earlierReasons, isDoneReason, parseOdooSheet, type OdooEntryView } from "@/lib/domain/odoo";
+import { blockedItem, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView } from "@/lib/domain/odoo";
 
 export interface OdooPageData {
   entries: OdooEntryView[];
@@ -24,7 +24,7 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     prisma.odooEntry.findMany({
       where,
       orderBy: [{ date: "desc" }, { id: "asc" }],
-      include: { reasonHistory: { orderBy: { id: "asc" } } },
+      include: { notes: { orderBy: { id: "desc" } } },
     }),
     prisma.odooEntry.findMany({ select: { date: true }, distinct: ["date"], orderBy: { date: "desc" } }),
     prisma.masterOrder.findMany({ select: { soi: true, fgCode: true } }),
@@ -39,17 +39,10 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     odooMo: r.odooMo,
     qty: r.qty,
     status: r.status,
-    reason: r.reason,
-    done: isDoneReason(r.reason),
-    blockedItem: blockedItem(r.reason),
+    tone: statusTone(r.status),
+    done: isDoneStatus(r.status),
     recordedBy: r.recordedBy,
-    earlierReasons: earlierReasons(r.reasonHistory, r.reason).map((h) => ({
-      reason: h.reason,
-      atISO: h.at.toISOString(),
-      by: h.recordedBy,
-      done: isDoneReason(h.reason),
-      blockedItem: blockedItem(h.reason),
-    })),
+    notes: r.notes.map((n) => ({ id: n.id, text: n.text, atISO: n.at.toISOString(), by: n.recordedBy, blockedItem: blockedItem(n.text) })),
   }));
 
   const uniq = (xs: (string | null)[]) => [...new Set(xs.map((x) => (x ?? "").trim()).filter(Boolean))].sort();
@@ -77,9 +70,11 @@ export interface OdooImportResult {
 /**
  * Import the close-out sheet. A row is the same attempt as an existing one
  * when it is the same Odoo MO on the same day: those are updated in place
- * (SOI, FG code, product, qty, status) instead of doubled, so the same file
- * twice adds nothing. Reason is never read from the sheet and never touched.
- * Rows whose Date cell is blank are filed under `fallbackDayISO` when given.
+ * (SOI, FG code, product, qty) instead of doubled, so the same file twice
+ * adds nothing. Status is taken from the sheet only for NEW rows — on a row
+ * already in the tab it is the planner's column, moved by hand, and the
+ * clerk's re-import must not put it back. Notes are never read from the
+ * sheet. Rows whose Date cell is blank are filed under `fallbackDayISO`.
  */
 export async function importOdooSheet(
   buffer: ArrayBuffer, fallbackDayISO: string | null, recordedBy: string | null, preview = false
@@ -124,15 +119,15 @@ export async function importOdooSheet(
     const k = key(toISODate(date), row.odooMo);
     const cur = byKey.get(k);
     const same = cur && (cur.soi ?? null) === row.soi && cur.fgCode === row.fgCode && cur.product === row.product
-      && cur.qty === row.qty && cur.status === row.status;
+      && cur.qty === row.qty;
     if (!cur) added += 1; else if (same) unchanged += 1; else updated += 1;
     if (preview || same) continue;
 
-    const data = { soi: row.soi, fgCode: row.fgCode, product: row.product, qty: row.qty, status: row.status, recordedBy };
+    const data = { soi: row.soi, fgCode: row.fgCode, product: row.product, qty: row.qty, recordedBy };
     if (cur) {
       await prisma.odooEntry.update({ where: { id: cur.id }, data });
     } else {
-      const created = await prisma.odooEntry.create({ data: { date, odooMo: row.odooMo, ...data } });
+      const created = await prisma.odooEntry.create({ data: { date, odooMo: row.odooMo, status: row.status, ...data } });
       byKey.set(k, created); // a second line for the same MO in the file updates, not doubles
     }
   }
