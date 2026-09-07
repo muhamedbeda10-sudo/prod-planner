@@ -51,3 +51,38 @@ export function toDisplayDate(date: Date): string {
   const m = String(date.getUTCMonth() + 1).padStart(2, "0");
   return `${d}/${m}/${date.getUTCFullYear()}`;
 }
+
+// ---- plan-month labels ("July 2026") — the monthly plan import tags orders
+// with this label, and the material tab files its sheets under the same one.
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** "2026-07" (an <input type="month"> value) → "July 2026"; null if malformed. */
+export function monthLabelFromInput(value: string): string | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(value.trim());
+  if (!m) return null;
+  const idx = Number(m[2]) - 1;
+  if (idx < 0 || idx > 11) return null;
+  return `${MONTH_NAMES[idx]} ${m[1]}`;
+}
+
+/** "July 2026" → "2026-07" for an <input type="month"> default; null if not a label. */
+export function monthInputFromLabel(label: string): string | null {
+  const m = /^([A-Za-z]+)\s+(\d{4})$/.exec(label.trim());
+  if (!m) return null;
+  const idx = MONTH_NAMES.findIndex((n) => n.toLowerCase() === m[1].toLowerCase());
+  if (idx < 0) return null;
+  return `${m[2]}-${String(idx + 1).padStart(2, "0")}`;
+}
+
+/** Today's month as a label, e.g. "September 2026". */
+export function currentMonthLabel(now: Date = new Date()): string {
+  return `${MONTH_NAMES[now.getUTCMonth()]} ${now.getUTCFullYear()}`;
+}
+
+/** Sort key so "August 2026" comes after "July 2026" — labels that are not
+ *  months sort last, in their own order. */
+export function monthLabelSortKey(label: string): number {
+  const v = monthInputFromLabel(label);
+  return v ? Number(v.replace("-", "")) : -1;
+}

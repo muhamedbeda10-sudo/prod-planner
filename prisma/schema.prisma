@@ -607,37 +607,67 @@ model TankSerialCounter {
   next Int    @default(1) // the number the NEXT tank of this BOM will take
 }
 
-// ---- MATERIAL / nesting (the planner's "Nesting Tracker" sheet) ----
+// ---- MATERIAL — the planner's "Nesting Tracker" sheet, month by month ----
 
-// One material line: what sheet — material, thickness, size — a BOM ACTUALLY
-// consumed, and how many of them. sheetsUsed is the record; sheetsPerUnit is
-// the nesting BOM's optional yardstick beside it. What the BOM allowed and the
-// difference from it are derived at read time, never stored.
+// One line per month × BOM × material × thickness × sheet size — the sheet's
+// own row, carrying its typed columns: Quantity of Units, sheets ONE unit
+// needs, and the sheets actually nested for the job. The sheet's two formula
+// columns (sheets for the job, difference) are derived at read time, never
+// stored, so they cannot go stale or come back as #VALUE!.
 //
-// mo "" = the line covers EVERY order on the BOM (how the workbook wrote it);
-// naming an MO gives that one order its own line, so two orders of the same
-// BOM stop overwriting each other's actual nesting.
+// producedQty is the tab's own addition: how many units were actually made
+// so far. Against the sheet's actual-nesting rate it yields the sheets those
+// units really consumed — the number the planner asked for.
 //
-// unitsOverride is only for a BOM the orders registry does not carry — while
-// it is null the quantity of units comes live from the registry.
+// month is the plan month the sheet was imported for ("July 2026", the same
+// label the monthly plan uses). It is part of the identity, so importing a
+// month's sheet again updates that month's lines instead of doubling them.
 model MaterialUsage {
   id            Int      @id @default(autoincrement())
+  month         String   @default("") // "" = entered before months existed
   bom           String
-  mo            String   @default("")
+  mo            String   @default("") // "" = the line covers the BOM (how the sheet writes it)
+  units         Float    @default(0) // Quantity of Units
   material      String // Steel | Stainless steel | … (lib/domain/material.ts)
   thicknessMm   Float
   sheetSize     String // "1220*2440"
-  workedAt      DateTime // the day this material was worked (day-only granularity)
-  sheetsUsed    Float // sheets ACTUALLY consumed — the reason the row exists
-  sheetsPerUnit Float? // the nesting BOM's figure, when it is known at all
-  unitsOverride Float?
+  sheetsPerUnit Float // No. of Sheets in BOM for one Unit
+  sheetsUsed    Float? // No. of Sheets in Actual Nesting for Job — blank until nested
+  producedQty   Float? // units actually produced so far — the daily entry
   note          String?
   recordedBy    String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@unique([bom, mo, material, thicknessMm, sheetSize])
+  @@unique([month, bom, mo, material, thicknessMm, sheetSize])
   @@index([bom])
-  @@index([mo])
-  @@index([workedAt])
+  @@index([month])
+}
+
+// ---- ODOO close-out log (the planner's daily "22" sheet) ----
+
+// One row per Odoo manufacturing order the office tried to close on a day,
+// with what happened: "Done", or the stock error Odoo threw back. A retried
+// close on a later day is a NEW row — the log records attempts, not orders,
+// which is why nothing here is unique.
+//
+// odooMo is Odoo's own MO number (SF01/MO/…), a different series from the
+// plan's MOs (PF01/MO/…), so the row stands on its own rather than linking
+// to the orders registry.
+model OdooEntry {
+  id         Int      @id @default(autoincrement())
+  date       DateTime // the day of the attempt (day-only granularity)
+  soi        String?
+  fgCode     String // FB-022-14003E11M11 — Odoo's finished-good code
+  product    String // Tank | Top Cover | Core Frame | Encloser | Cable Box …
+  odooMo     String // SF01/MO/06234
+  qty        Float
+  status     String   @default("MO to be close")
+  reason     String? // "Done", or the error Odoo returned
+  recordedBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([date])
+  @@index([odooMo])
 }

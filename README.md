@@ -43,13 +43,15 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 7. **Daily report + Dashboard** (`/report`, `/`) — dept output, complete sets, efficiency/balance %,
    projects worked today, tracker snapshot, charts. Dashboard: achievement per item, dept output
    day/week, planned (oven−lead) vs welded.
-8. **Material actually used** (`/material`) — a record of real consumption, not a plan: one line per
-   BOM (× order) × material × thickness × sheet size saying **how many sheets the job really ate**,
-   and **on what date**. The monthly plan(s) the BOM belongs to are read from the orders registry.
-   The nesting BOM's sheets-per-unit is optional beside it; supply it and the tab derives what the BOM
-   allowed and the difference (**computed**, never stored). Quantity of units comes from the orders
-   registry instead of being typed. Entered directly, line by line; exports in the workbook's own
-   column names, with per-material totals underneath.
+8. **Material — nesting tracker** (`/material`) — the planner's Nesting Tracker sheet, filed month by
+   month: one line per BOM × material × thickness × sheet size with Quantity of Units, sheets per unit and
+   the sheets actually nested. Sheets-for-job and Difference are **computed**, never stored. The tab adds
+   **Units Produced** and derives the sheets those units really consumed at the job's actual rate.
+   Import the sheet for a month (re-importing adds new lines and updates changed ones), filter by month,
+   edit any value inline, export in the sheet's own headers.
+9. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
+   close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status · Reason. Typed in per day, one strip per
+   row; "Done" and Odoo's stock errors read at a glance; exports in the sheet's own headers.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

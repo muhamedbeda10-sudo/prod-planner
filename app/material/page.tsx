@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { getMaterialData } from "@/lib/server/material";
+import { currentMonthLabel } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
-import { MaterialClient, MaterialBomPicker } from "@/components/MaterialClient";
+import { MaterialClient, MaterialMonthPicker } from "@/components/MaterialClient";
 
 export const metadata = { title: "Material — ATC" };
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function MaterialPage({
   searchParams,
 }: {
-  searchParams: Promise<{ bom?: string }>;
+  searchParams: Promise<{ month?: string }>;
 }) {
   // viewing is free for every account, like the rest of the app; recording is
   // gated on material.edit
@@ -19,47 +20,35 @@ export default async function MaterialPage({
   if (!me) redirect("/login");
 
   const sp = await searchParams;
-  const bom = (sp.bom ?? "").trim().toUpperCase();
-  const { lines, totals, orders, boms } = await getMaterialData(bom || undefined);
+  const month = (sp.month ?? "").trim() || currentMonthLabel();
+  const { lines, totals, months, knownBoms } = await getMaterialData(month);
 
-  // Export carries the workbook's OWN column names, so the file the planner
-  // downloads drops straight into the sheet they already work from.
+  // the export carries the sheet's OWN column names in its order, then the
+  // tab's additions, so the file drops straight back into the workbook
   const exportRows = lines.map((l) => ({
-    Date: l.workedISO,
+    Month: l.month,
     "BOM Ref": l.bom,
     SOI: l.soi ?? "",
-    "Plan month": l.planMonths.join(" · "),
-    "Order (MO)": l.mo,
     "Quantity of Units": l.units,
     "Material Type": l.material,
     "Thickness (mm)": l.thicknessMm,
     "Sheet Size": l.sheetSize,
-    "No. of Sheets Actually Used": l.sheetsUsed,
-    "No. of Sheets in BOM for one Unit": l.sheetsPerUnit ?? "",
-    "No. of Sheets in BOM for Job": l.allowed ?? "",
+    "No. of Sheets in BOM for one Unit": l.sheetsPerUnit,
+    "No. of Sheets in BOM for Job": l.forJob,
+    "No. of Sheets in Actual Nesting for Job": l.sheetsUsed ?? "",
     Difference: l.difference ?? "",
+    "Units Produced": l.producedQty ?? "",
+    "Sheets Used for Produced": l.forProduced ?? "",
     Notes: l.note ?? "",
   }));
 
   return (
     <div>
-      <PageHeader title="🧱 MATERIAL — material actually used">
-        <MaterialBomPicker boms={boms} value={bom} />
-        <ExportButton
-          rows={exportRows}
-          filename={`material-nesting${bom ? `-${bom}` : ""}.xlsx`}
-          sheetName="Nesting Tracker"
-        />
+      <PageHeader title="🧱 MATERIAL — nesting tracker">
+        <MaterialMonthPicker month={month} months={months} />
+        <ExportButton rows={exportRows} filename={`nesting-tracker-${month.replace(/\s+/g, "-")}.xlsx`} sheetName="Nesting Tracker" />
       </PageHeader>
-
-      <MaterialClient
-        lines={lines}
-        totals={totals}
-        orders={orders}
-        boms={boms}
-        bom={bom}
-        canEdit={hasPerm(me, "material.edit")}
-      />
+      <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, "material.edit")} />
     </div>
   );
 }
