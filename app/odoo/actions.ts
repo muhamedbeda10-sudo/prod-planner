@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { parseISODate } from "@/lib/domain/dates";
+import { importOdooSheet, type OdooImportResult } from "@/lib/server/odoo";
 
 // The ODOO tab's writes — a daily log of close attempts. Rows are plain
 // entries: no identity key, because the same Odoo MO retried tomorrow is a
@@ -101,4 +102,22 @@ export async function deleteOdooEntry(formData: FormData): Promise<OdooActionRes
   await prisma.odooEntry.delete({ where: { id } });
   revalidateOdoo();
   return { ok: true };
+}
+
+/** Import the office's sheet once — its first seven columns; Reason is left alone. */
+export async function importOdooAction(formData: FormData): Promise<OdooImportResult> {
+  const guard = await requirePerm("odoo.edit");
+  if (guard.error) return { ok: false, error: guard.error };
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose the Excel file." };
+  const day = text(formData.get("day"));
+  const fallbackDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+  const preview = formData.get("preview") === "true";
+  try {
+    const res = await importOdooSheet(await file.arrayBuffer(), fallbackDay, guard.user?.name ?? null, preview);
+    if (res.ok && !preview) revalidateOdoo();
+    return res;
+  } catch (e) {
+    return { ok: false, error: `Import failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
 }
