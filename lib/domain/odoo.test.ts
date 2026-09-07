@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blockedItem, isDoneReason, parseOdooDate, parseOdooSheet } from "./odoo";
+import { blockedItem, earlierReasons, isDoneReason, parseOdooDate, parseOdooSheet, reasonChanged } from "./odoo";
 
 const HEADER = ["Date", "SOI#", "FG-CODE", "Product", "MO#", "QTY", "Status", "Reason"];
 
@@ -92,5 +92,23 @@ describe("reason helpers", () => {
     expect(isDoneReason(null)).toBe(false);
     expect(blockedItem("[T-SSS-5MM] SS- Sheet 5mm would become negative")).toBe("T-SSS-5MM");
     expect(blockedItem("Done")).toBeNull();
+  });
+});
+
+describe("reason history", () => {
+  it("records a change only when the new reason is non-blank and different", () => {
+    expect(reasonChanged(null, "Done")).toBe(true);
+    expect(reasonChanged("[X] negative", "Done")).toBe(true);
+    expect(reasonChanged("Done", " done ")).toBe(false);
+    expect(reasonChanged("Done", "")).toBe(false);
+    expect(reasonChanged(null, null)).toBe(false);
+  });
+
+  it("shows the earlier values newest first, without the current one", () => {
+    const h = [{ reason: "[A] negative" }, { reason: "[B] negative" }, { reason: "Done" }];
+    expect(earlierReasons(h, "Done").map((x) => x.reason)).toEqual(["[B] negative", "[A] negative"]);
+    // the reason was cleared afterwards: everything it held is "earlier"
+    expect(earlierReasons(h, null).map((x) => x.reason)).toEqual(["Done", "[B] negative", "[A] negative"]);
+    expect(earlierReasons([], "Done")).toEqual([]);
   });
 });

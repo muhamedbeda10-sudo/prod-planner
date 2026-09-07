@@ -53,7 +53,8 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status · Reason. Typed in per day, one strip per
    row; "Done" and Odoo's stock errors read at a glance; exports in the sheet's own headers. The
    sheet itself imports in one go (its first seven columns — Reason stays as typed here); the same
-   MO on the same day is updated, never doubled.
+   MO on the same day is updated, never doubled. Reason keeps its history: change it in place and
+   every earlier value stays under the cell.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

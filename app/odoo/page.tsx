@@ -35,6 +35,7 @@ export default async function OdooPage({
     QTY: e.qty,
     Status: e.status,
     Reason: e.reason ?? "",
+    "Earlier reasons": e.earlierReasons.map((h) => `${h.atISO.slice(0, 16).replace("T", " ")}: ${h.reason}`).join(" | "),
   }));
 
   return (
