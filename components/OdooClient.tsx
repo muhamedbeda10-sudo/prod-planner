@@ -4,7 +4,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
 import { ODOO_PRODUCTS, ODOO_STATUSES, type OdooEntryView } from "@/lib/domain/odoo";
 import { Soi } from "@/components/ui";
-import { createOdooEntry, updateOdooEntry, deleteOdooEntry } from "@/app/odoo/actions";
+import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction } from "@/app/odoo/actions";
 
 // The ODOO tab — the office's daily log of Odoo close attempts, one strip per
 // row, exactly the columns of the sheet it replaces: Date · SOI# · FG-CODE ·
@@ -263,6 +263,52 @@ function Row({ e, day, knownSois, knownFgCodes, canEdit }: { e: OdooEntryView; d
   );
 }
 
+// ---- import: the sheet, once — its first seven columns ----
+
+function ImportPanel({ day }: { day: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
+  const [issues, setIssues] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  function submit(form: HTMLFormElement, preview: boolean) {
+    const fd = new FormData(form);
+    fd.set("preview", String(preview));
+    fd.set("day", day === "all" ? "" : day);
+    startTransition(async () => {
+      const r = await importOdooAction(fd);
+      setIssues(r.issues ?? []);
+      if (!r.ok) { setRes({ ok: false, text: r.error ?? "Import failed." }); return; }
+      const tail = `${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged`;
+      setRes({ ok: true, text: preview ? `Preview only — nothing saved: ${tail}.` : `Imported: ${tail}.` });
+      if (!preview) router.refresh();
+    });
+  }
+  if (!open) return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>📥 Import Excel</button>;
+  return (
+    <form className="border rounded-xl p-3 space-y-2" onSubmit={(e) => e.preventDefault()}>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block">
+          <span className="text-xs font-bold text-muted">Excel file</span>
+          <input type="file" name="file" accept=".xlsx,.xlsm,.xls,.csv" required className="block text-sm" />
+        </label>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, true)}>Preview</button>
+        <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, false)}>Import</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)}>✕</button>
+      </div>
+      <p className="text-xs text-muted">
+        Reads the sheet&apos;s first seven columns — Date · SOI# · FG-CODE · Product · MO# · QTY · Status. Reason is not
+        read: it stays as typed here. The same MO on the same day is updated, never doubled
+        {day !== "all" ? `; rows with a blank Date are filed under ${day}` : ""}.
+      </p>
+      <Msg msg={res} />
+      {issues.length > 0 && (
+        <ul className="text-xs text-warn-fg list-disc ps-5 space-y-0.5 max-h-40 overflow-y-auto">{issues.map((i, n) => <li key={n}>{i}</li>)}</ul>
+      )}
+    </form>
+  );
+}
+
 export function OdooClient({
   entries,
   day,
@@ -288,7 +334,7 @@ export function OdooClient({
       <section className="bg-surface border rounded-xl overflow-hidden">
         {entries.length === 0 ? (
           <p className="text-sm text-muted p-4">
-            {day === "all" ? "No rows logged yet." : `Nothing logged on ${day}. Add the day's rows below.`}
+            {day === "all" ? "No rows logged yet." : `Nothing logged on ${day}. Add the day's rows below, or import the sheet.`}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -315,7 +361,12 @@ export function OdooClient({
           </div>
         )}
       </section>
-      {canEdit && <AddRow day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} startOpen={entries.length === 0} />}
+      {canEdit && (
+        <div className="space-y-3">
+          <AddRow day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} startOpen={entries.length === 0} />
+          <ImportPanel day={day} />
+        </div>
+      )}
     </div>
   );
 }
