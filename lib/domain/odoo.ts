@@ -6,28 +6,40 @@ import { excelSerialToDate } from "./dates";
  *  constraint: anything typed is kept. */
 export const ODOO_PRODUCTS = ["Tank", "Top Cover", "Core Frame", "Encloser", "Cable Box", "Conservator"] as const;
 
-/** Where a close attempt can stand. Free text is still accepted, so a new
- *  Odoo state never needs a code change. */
-export const ODOO_STATUSES = ["MO to be close", "Closed", "Blocked", "Cancelled"] as const;
+/** Where a close attempt stands. The clerk enters the row as "MO to be close";
+ *  the planner moves it on. Free text is still accepted, so a new state never
+ *  needs a code change. */
+export const ODOO_STATUSES = ["MO to be close", "Pending", "Done", "Blocked", "Cancelled"] as const;
 
-/** "Done" is the one reason worth recognising: it is what a clean close says. */
-export function isDoneReason(reason: string | null | undefined): boolean {
-  return (reason ?? "").trim().toLowerCase() === "done";
+export type OdooTone = "ok" | "warn" | "bad" | "muted";
+
+/** How a status reads at a glance: green when done, amber while pending,
+ *  red when it will not close, grey while it is still just queued. */
+export function statusTone(status: string | null | undefined): OdooTone {
+  const s = (status ?? "").trim().toLowerCase();
+  if (s === "done" || s === "closed") return "ok";
+  if (s === "pending") return "warn";
+  if (s === "blocked" || s === "cancelled" || s === "canceled") return "bad";
+  return "muted";
+}
+
+export function isDoneStatus(status: string | null | undefined): boolean {
+  return statusTone(status) === "ok";
 }
 
 /** Odoo's error text names the item in [BRACKETS] first — pull that out so a
- *  table can show the blocked item without the whole sentence. */
-export function blockedItem(reason: string | null | undefined): string | null {
-  const m = /^\s*\[([^\]]+)\]/.exec(reason ?? "");
+ *  note can show the blocked item without the whole sentence. */
+export function blockedItem(text: string | null | undefined): string | null {
+  const m = /^\s*\[([^\]]+)\]/.exec(text ?? "");
   return m ? m[1] : null;
 }
 
-/** One value the Reason column held, and when. */
-export interface OdooReasonView {
-  reason: string;
+/** One note on a row, and when. */
+export interface OdooNoteView {
+  id: number;
+  text: string;
   atISO: string;
   by: string | null;
-  done: boolean;
   blockedItem: string | null;
 }
 
@@ -40,38 +52,18 @@ export interface OdooEntryView {
   odooMo: string;
   qty: number;
   status: string;
-  reason: string | null;
+  tone: OdooTone;
   done: boolean;
-  blockedItem: string | null;
   recordedBy: string | null;
-  /** The reasons this row held BEFORE the current one, newest first. */
-  earlierReasons: OdooReasonView[];
-}
-
-/** Whether a new reason is worth a history line: non-blank and different. */
-export function reasonChanged(current: string | null | undefined, next: string | null | undefined): boolean {
-  const a = (current ?? "").trim();
-  const b = (next ?? "").trim();
-  return b !== "" && a.toLowerCase() !== b.toLowerCase();
-}
-
-/**
- * The history trail to show beside a row: everything the column held before
- * its current value, newest first. The tail entry equal to the current reason
- * is the current value itself and is not "earlier".
- */
-export function earlierReasons<T extends { reason: string }>(history: T[], current: string | null | undefined): T[] {
-  const cur = (current ?? "").trim();
-  const trail = [...history];
-  if (trail.length > 0 && trail[trail.length - 1].reason.trim() === cur) trail.pop();
-  return trail.reverse();
+  /** Newest first. */
+  notes: OdooNoteView[];
 }
 
 // ---- import: the office's sheet, its first seven columns ----
 //
 // Date | SOI# | FG-CODE | Product | MO# | QTY | Status  — the eighth column,
-// Reason, is deliberately NOT read: the close attempt's outcome is typed in
-// the tab after Odoo answers, so an import must never overwrite it.
+// Reason, is deliberately NOT read: what happened next is the planner's, kept
+// as notes in the tab, so an import must never overwrite it.
 
 export interface OdooSheetRow {
   rowNum: number;

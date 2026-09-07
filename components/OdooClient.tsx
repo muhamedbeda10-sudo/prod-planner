@@ -2,13 +2,14 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
-import { ODOO_PRODUCTS, ODOO_STATUSES, type OdooEntryView, type OdooReasonView } from "@/lib/domain/odoo";
+import { ODOO_PRODUCTS, ODOO_STATUSES, type OdooEntryView, type OdooNoteView, type OdooTone } from "@/lib/domain/odoo";
 import { Soi } from "@/components/ui";
-import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooReason } from "@/app/odoo/actions";
+import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
 
 // The ODOO tab — the office's daily log of Odoo close attempts, one strip per
-// row, exactly the columns of the sheet it replaces: Date · SOI# · FG-CODE ·
-// Product · MO# · QTY · Status · Reason.
+// row, the columns of the sheet it replaces: Date · SOI# · FG-CODE · Product ·
+// MO# · QTY · Status. Two people work a row: the clerk enters it, the planner
+// moves the Status in place and keeps Notes on it — a list, each deletable.
 
 function useAction() {
   const router = useRouter();
@@ -136,18 +137,16 @@ function RowFields({
         <input name="qty" type="number" step="1" min="0" aria-label="QTY" defaultValue={e?.qty ?? ""} required disabled={disabled} placeholder="QTY" className={`${F} ltr tabnum w-full font-extrabold`} />
       </Field>
       <Field hint="Status" className="w-40">
-        <input name="status" list="odoo-statuses" aria-label="Status" defaultValue={e?.status ?? "MO to be close"} disabled={disabled} className={`${F} w-full`} />
-        <datalist id="odoo-statuses">{ODOO_STATUSES.map((s) => <option key={s} value={s} />)}</datalist>
-      </Field>
-      <Field hint="Reason — 'Done', or the error Odoo returned (paste it whole)" className="flex-1 min-w-[16rem]">
-        <input name="reason" aria-label="Reason" defaultValue={e?.reason ?? ""} disabled={disabled} placeholder="Done / Odoo error…" className={`${F} w-full`} />
+        <select name="status" aria-label="Status" defaultValue={e?.status ?? "MO to be close"} disabled={disabled} className={`${F} w-full`}>
+          {statusOptions(e?.status).map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
       </Field>
     </>
   );
 }
 
 // the columns that change from row to row on the same day; date stays
-const PER_ROW = ["soi", "fgCode", "product", "odooMo", "qty", "reason"] as const;
+const PER_ROW = ["soi", "fgCode", "product", "odooMo", "qty"] as const;
 
 function AddRow({ day, knownSois, knownFgCodes, startOpen }: { day: string; knownSois: string[]; knownFgCodes: string[]; startOpen: boolean }) {
   const add = useAction();
@@ -186,19 +185,42 @@ function AddRow({ day, knownSois, knownFgCodes, startOpen }: { day: string; know
   );
 }
 
-// ---- the Reason cell: the current value, editable in place, with every
-// earlier value the row held cascading beneath it ----
+// ---- Status: the planner's column, moved in place ----
 
-function ReasonText({ reason, done, blockedItem, muted }: { reason: string | null; done: boolean; blockedItem: string | null; muted?: boolean }) {
-  if (done) return <span className="pill pill-ok">Done</span>;
-  if (!reason) return <span className="text-muted">—</span>;
+/** The dropdown's choices, plus whatever the row already says if it is not one of them. */
+function statusOptions(current?: string | null): string[] {
+  const cur = (current ?? "").trim();
+  return cur && !(ODOO_STATUSES as readonly string[]).includes(cur) ? [...ODOO_STATUSES, cur] : [...ODOO_STATUSES];
+}
+
+const TONE_PILL: Record<OdooTone, string> = { ok: "pill-ok", warn: "pill-warn", bad: "pill-bad", muted: "pill-muted" };
+
+function StatusCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
+  const a = useAction();
+  if (!canEdit) return <span className={`pill ${TONE_PILL[e.tone]}`}>{e.status}</span>;
   return (
-    <span title={reason}>
-      {blockedItem && <span className="pill pill-bad ltr mr-1">{blockedItem}</span>}
-      <span className={muted ? "text-muted" : ""}>{reason}</span>
+    <span className="inline-flex flex-col">
+      <select
+        aria-label="Status"
+        value={e.status}
+        disabled={a.pending}
+        title="Move the status — saves at once"
+        className={`pill ${TONE_PILL[e.tone]} cursor-pointer pe-5 font-semibold`}
+        onChange={(ev) => {
+          const fd = new FormData();
+          fd.set("id", String(e.id));
+          fd.set("status", ev.target.value);
+          a.run(setOdooStatus, fd, "Saved.");
+        }}
+      >
+        {statusOptions(e.status).map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+      {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
     </span>
   );
 }
+
+// ---- Notes: a list per row, newest first, each deletable; add one below ----
 
 function stamp(iso: string): string {
   const d = new Date(iso);
@@ -206,65 +228,73 @@ function stamp(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-function EarlierReasons({ items }: { items: OdooReasonView[] }) {
-  if (items.length === 0) return null;
+function Note({ n, canEdit }: { n: OdooNoteView; canEdit: boolean }) {
+  const del = useAction();
   return (
-    <details className="soi-cascade mt-1 text-xs" title="What this column said before — click to open">
-      <summary className="cursor-pointer select-none text-muted">
-        <span className="pill pill-muted">🕘 {items.length} earlier</span>
-      </summary>
-      <ol className="mt-1 space-y-1 border-s-2 border-border ps-2">
-        {items.map((h, i) => (
-          <li key={i}>
-            <span className="tabnum ltr text-[11px] text-muted" suppressHydrationWarning>{stamp(h.atISO)}</span>
-            {h.by && <span className="text-[11px] text-muted"> · {h.by}</span>}
-            <div><ReasonText reason={h.reason} done={h.done} blockedItem={h.blockedItem} muted /></div>
-          </li>
-        ))}
-      </ol>
-    </details>
+    <li className="group flex items-start gap-1">
+      <div className="min-w-0 flex-1">
+        <div title={n.text}>
+          {n.blockedItem && <span className="pill pill-bad ltr mr-1">{n.blockedItem}</span>}
+          <span className="whitespace-pre-wrap break-words">{n.text}</span>
+        </div>
+        <div className="text-[11px] text-muted">
+          <span className="tabnum ltr" suppressHydrationWarning>{stamp(n.atISO)}</span>
+          {n.by && <span> · {n.by}</span>}
+        </div>
+        {del.msg?.ok === false && <span className="text-[10px] text-bad-fg">{del.msg.text}</span>}
+      </div>
+      {canEdit && (
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost text-bad-fg shrink-0 opacity-40 group-hover:opacity-100 no-print"
+          title="Delete this note"
+          disabled={del.pending}
+          onClick={() => {
+            if (!confirm("Delete this note?")) return;
+            const fd = new FormData();
+            fd.set("noteId", String(n.id));
+            del.run(deleteOdooNote, fd, "Deleted.");
+          }}
+        >
+          ✕
+        </button>
+      )}
+    </li>
   );
 }
 
-function ReasonCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
-  const a = useAction();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(e.reason ?? "");
-  function save() {
-    setEditing(false);
-    if (draft.trim() === (e.reason ?? "").trim()) return;
+function NotesCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
+  const add = useAction();
+  const [draft, setDraft] = useState("");
+  function submit() {
+    const body = draft.trim();
+    if (!body) return;
     const fd = new FormData();
     fd.set("id", String(e.id));
-    fd.set("reason", draft.trim());
-    a.run(setOdooReason, fd, "Saved.");
+    fd.set("text", body);
+    add.run(addOdooNote, fd, "Added.", () => setDraft(""));
   }
   return (
-    <div className="flex flex-col">
-      {canEdit && editing ? (
-        <input
-          autoFocus
-          value={draft}
-          disabled={a.pending}
-          onChange={(ev) => setDraft(ev.target.value)}
-          onBlur={save}
-          onKeyDown={(ev) => {
-            if (ev.key === "Enter") ev.currentTarget.blur();
-            if (ev.key === "Escape") { setDraft(e.reason ?? ""); setEditing(false); }
-          }}
-          placeholder="Done / Odoo error…"
-          className="px-2 py-1 text-xs font-semibold w-full"
-        />
-      ) : (
-        <span
-          className={canEdit ? "cursor-text rounded px-1 -mx-1 hover:bg-surface-2" : ""}
-          title={canEdit ? "Click to change the reason — the old one is kept in the history" : undefined}
-          onClick={canEdit ? () => { setDraft(e.reason ?? ""); setEditing(true); } : undefined}
-        >
-          <ReasonText reason={e.reason} done={e.done} blockedItem={e.blockedItem} />
-        </span>
+    <div className="flex flex-col gap-1">
+      {e.notes.length > 0 && (
+        <ul className="space-y-1.5">
+          {e.notes.map((n) => <Note key={n.id} n={n} canEdit={canEdit} />)}
+        </ul>
       )}
-      {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
-      <EarlierReasons items={e.earlierReasons} />
+      {e.notes.length === 0 && !canEdit && <span className="text-muted">—</span>}
+      {canEdit && (
+        <input
+          value={draft}
+          disabled={add.pending}
+          onChange={(ev) => setDraft(ev.target.value)}
+          onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); submit(); } }}
+          onBlur={submit}
+          placeholder={e.notes.length === 0 ? "Add a note… (Enter)" : "Another note… (Enter)"}
+          title="Type a note and press Enter — it is kept with the time and your name"
+          className="px-2 py-1 text-xs w-full no-print"
+        />
+      )}
+      {add.msg?.ok === false && <span className="text-[10px] text-bad-fg">{add.msg.text}</span>}
     </div>
   );
 }
@@ -282,9 +312,9 @@ function Row({ e, day, knownSois, knownFgCodes, canEdit }: { e: OdooEntryView; d
         <td className="p-2 whitespace-nowrap">{e.product}</td>
         <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{e.odooMo}</td>
         <td className="p-2 text-center tabnum font-extrabold">{e.qty}</td>
-        <td className="p-2 whitespace-nowrap text-xs">{e.status}</td>
-        <td className="p-2 text-xs max-w-[28rem] align-top">
-          <ReasonCell e={e} canEdit={canEdit} />
+        <td className="p-2 whitespace-nowrap text-xs align-top"><StatusCell e={e} canEdit={canEdit} /></td>
+        <td className="p-2 text-xs min-w-[18rem] max-w-[28rem] align-top">
+          <NotesCell e={e} canEdit={canEdit} />
         </td>
         <td className="p-2 text-center whitespace-nowrap no-print">
           {canEdit ? (
@@ -371,8 +401,8 @@ function ImportPanel({ day }: { day: string }) {
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)}>✕</button>
       </div>
       <p className="text-xs text-muted">
-        Reads the sheet&apos;s first seven columns — Date · SOI# · FG-CODE · Product · MO# · QTY · Status. Reason is not
-        read: it stays as typed here. The same MO on the same day is updated, never doubled
+        Reads the sheet&apos;s first seven columns — Date · SOI# · FG-CODE · Product · MO# · QTY · Status. Notes are
+        never read. The same MO on the same day is updated, never doubled, and its Status stays as moved here
         {day !== "all" ? `; rows with a blank Date are filed under ${day}` : ""}.
       </p>
       <Msg msg={res} />
@@ -421,8 +451,8 @@ export function OdooClient({
                   <th className="p-2">Product</th>
                   <th className="p-2">MO#</th>
                   <th className="p-2 text-center">QTY</th>
-                  <th className="p-2">Status</th>
-                  <th className="p-2" title="The latest reason; earlier ones cascade beneath it">Reason</th>
+                  <th className="p-2" title="Moved in place by the planner">Status</th>
+                  <th className="p-2" title="What Odoo said and what was done — one note at a time, newest first">Notes</th>
                   <th className="p-2 no-print" />
                 </tr>
               </thead>

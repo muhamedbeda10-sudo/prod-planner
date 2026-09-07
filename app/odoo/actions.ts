@@ -4,15 +4,15 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { parseISODate } from "@/lib/domain/dates";
-import { reasonChanged } from "@/lib/domain/odoo";
 import { importOdooSheet, type OdooImportResult } from "@/lib/server/odoo";
 
 // The ODOO tab's writes — a daily log of close attempts. Rows are plain
 // entries: no identity key, because the same Odoo MO retried tomorrow is a
 // second, separate attempt and the log must keep both.
 //
-// Reason keeps its history: every time the column is given a new value, a
-// line is appended to OdooReasonHistory, so the row shows what it said before.
+// Two people work a row: the clerk enters it up to Status; the planner then
+// moves the status and adds notes. Notes are their own rows (OdooNote), each
+// with its time and author, added and deleted one at a time.
 
 export interface OdooActionResult {
   ok: boolean;
@@ -31,7 +31,6 @@ interface Fields {
   odooMo: string;
   qty: number | null;
   status: string;
-  reason: string | null;
 }
 
 const text = (v: FormDataEntryValue | null) => String(v ?? "").replace(/[\r\n]+/g, " ").trim();
@@ -47,7 +46,6 @@ function read(formData: FormData): Fields {
     odooMo: text(formData.get("odooMo")).toUpperCase(),
     qty: Number.isFinite(qty as number) ? qty : NaN,
     status: text(formData.get("status")) || "MO to be close",
-    reason: text(formData.get("reason")) || null,
   };
 }
 
@@ -68,21 +66,14 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
   const bad = validate(f);
   if (bad) return { ok: false, error: bad };
 
-  const by = guard.user?.name ?? null;
   await prisma.odooEntry.create({
     data: {
       date: f.date!, soi: f.soi, fgCode: f.fgCode, product: f.product, odooMo: f.odooMo,
-      qty: f.qty!, status: f.status, reason: f.reason, recordedBy: by,
-      ...(f.reason ? { reasonHistory: { create: { reason: f.reason, recordedBy: by } } } : {}),
+      qty: f.qty!, status: f.status, recordedBy: guard.user?.name ?? null,
     },
   });
   revalidateOdoo();
   return { ok: true };
-}
-
-/** The history line for a reason change — only when the value really changed. */
-function reasonHistoryWrite(current: string | null, next: string | null, by: string | null) {
-  return reasonChanged(current, next) ? { reasonHistory: { create: { reason: next!, recordedBy: by } } } : {};
 }
 
 export async function updateOdooEntry(formData: FormData): Promise<OdooActionResult> {
@@ -94,35 +85,52 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
   const bad = validate(f);
   if (bad) return { ok: false, error: bad };
 
-  const cur = await prisma.odooEntry.findUnique({ where: { id }, select: { reason: true } });
-  if (!cur) return { ok: false, error: "That row no longer exists." };
-  const by = guard.user?.name ?? null;
   await prisma.odooEntry.update({
     where: { id },
     data: {
       date: f.date!, soi: f.soi, fgCode: f.fgCode, product: f.product, odooMo: f.odooMo,
-      qty: f.qty!, status: f.status, reason: f.reason, recordedBy: by,
-      ...reasonHistoryWrite(cur.reason, f.reason, by),
+      qty: f.qty!, status: f.status, recordedBy: guard.user?.name ?? null,
     },
   });
   revalidateOdoo();
   return { ok: true };
 }
 
-/** Rewrite just the Reason of one row — the cell the office changes most. */
-export async function setOdooReason(formData: FormData): Promise<OdooActionResult> {
+/** Move just the Status of one row — the planner's column. */
+export async function setOdooStatus(formData: FormData): Promise<OdooActionResult> {
   const guard = await requirePerm("odoo.edit");
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
-  const reason = text(formData.get("reason")) || null;
-  const cur = await prisma.odooEntry.findUnique({ where: { id }, select: { reason: true } });
-  if (!cur) return { ok: false, error: "That row no longer exists." };
-  const by = guard.user?.name ?? null;
-  await prisma.odooEntry.update({
-    where: { id },
-    data: { reason, recordedBy: by, ...reasonHistoryWrite(cur.reason, reason, by) },
-  });
+  const status = text(formData.get("status"));
+  if (!status) return { ok: false, error: "Pick a status." };
+  await prisma.odooEntry.update({ where: { id }, data: { status, recordedBy: guard.user?.name ?? null } });
+  revalidateOdoo();
+  return { ok: true };
+}
+
+/** Add one note to a row. */
+export async function addOdooNote(formData: FormData): Promise<OdooActionResult> {
+  const guard = await requirePerm("odoo.edit");
+  if (guard.error) return { ok: false, error: guard.error };
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
+  const body = String(formData.get("text") ?? "").trim();
+  if (!body) return { ok: false, error: "Type the note first." };
+  const entry = await prisma.odooEntry.findUnique({ where: { id }, select: { id: true } });
+  if (!entry) return { ok: false, error: "That row no longer exists." };
+  await prisma.odooNote.create({ data: { entryId: id, text: body, recordedBy: guard.user?.name ?? null } });
+  revalidateOdoo();
+  return { ok: true };
+}
+
+/** Delete one note — the row and its other notes stay. */
+export async function deleteOdooNote(formData: FormData): Promise<OdooActionResult> {
+  const guard = await requirePerm("odoo.edit");
+  if (guard.error) return { ok: false, error: guard.error };
+  const noteId = Number(formData.get("noteId"));
+  if (!Number.isInteger(noteId)) return { ok: false, error: "Invalid note." };
+  await prisma.odooNote.deleteMany({ where: { id: noteId } });
   revalidateOdoo();
   return { ok: true };
 }
@@ -137,7 +145,7 @@ export async function deleteOdooEntry(formData: FormData): Promise<OdooActionRes
   return { ok: true };
 }
 
-/** Import the office's sheet once — its first seven columns; Reason is left alone. */
+/** Import the clerk's sheet once — its first seven columns; notes are never read. */
 export async function importOdooAction(formData: FormData): Promise<OdooImportResult> {
   const guard = await requirePerm("odoo.edit");
   if (guard.error) return { ok: false, error: guard.error };

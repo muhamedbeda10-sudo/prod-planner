@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blockedItem, earlierReasons, isDoneReason, parseOdooDate, parseOdooSheet, reasonChanged } from "./odoo";
+import { blockedItem, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone } from "./odoo";
 
 const HEADER = ["Date", "SOI#", "FG-CODE", "Product", "MO#", "QTY", "Status", "Reason"];
 
@@ -86,29 +86,21 @@ describe("parseOdooSheet", () => {
   });
 });
 
-describe("reason helpers", () => {
-  it("recognises Done and Odoo's bracketed item", () => {
-    expect(isDoneReason(" done ")).toBe(true);
-    expect(isDoneReason(null)).toBe(false);
+describe("status and notes helpers", () => {
+  it("colours a status by what it means", () => {
+    expect(statusTone("Done")).toBe("ok");
+    expect(statusTone(" closed ")).toBe("ok");
+    expect(statusTone("Pending")).toBe("warn");
+    expect(statusTone("Blocked")).toBe("bad");
+    expect(statusTone("Cancelled")).toBe("bad");
+    expect(statusTone("MO to be close")).toBe("muted");
+    expect(statusTone(null)).toBe("muted");
+    expect(isDoneStatus("done")).toBe(true);
+    expect(isDoneStatus("MO to be close")).toBe(false);
+  });
+
+  it("pulls Odoo's bracketed item out of a note", () => {
     expect(blockedItem("[T-SSS-5MM] SS- Sheet 5mm would become negative")).toBe("T-SSS-5MM");
     expect(blockedItem("Done")).toBeNull();
-  });
-});
-
-describe("reason history", () => {
-  it("records a change only when the new reason is non-blank and different", () => {
-    expect(reasonChanged(null, "Done")).toBe(true);
-    expect(reasonChanged("[X] negative", "Done")).toBe(true);
-    expect(reasonChanged("Done", " done ")).toBe(false);
-    expect(reasonChanged("Done", "")).toBe(false);
-    expect(reasonChanged(null, null)).toBe(false);
-  });
-
-  it("shows the earlier values newest first, without the current one", () => {
-    const h = [{ reason: "[A] negative" }, { reason: "[B] negative" }, { reason: "Done" }];
-    expect(earlierReasons(h, "Done").map((x) => x.reason)).toEqual(["[B] negative", "[A] negative"]);
-    // the reason was cleared afterwards: everything it held is "earlier"
-    expect(earlierReasons(h, null).map((x) => x.reason)).toEqual(["Done", "[B] negative", "[A] negative"]);
-    expect(earlierReasons([], "Done")).toEqual([]);
   });
 });
