@@ -31,6 +31,17 @@
   --bad-bg: #fbd9d3;
   --bad-fg: #9c2006;
 
+  /* chart series — fixed categorical order for the Odoo dashboard (validated
+     for colour-vision separation on both surfaces): Tank · Top Cover ·
+     Core Frame · Encloser · Cable Box · Conservator · Other */
+  --viz-1: #1a8150;
+  --viz-2: #2a78d6;
+  --viz-3: #eb6834;
+  --viz-4: #4a3aa7;
+  --viz-5: #eda100;
+  --viz-6: #e87ba4;
+  --viz-other: #8a938f;
+
   /* worklist column tints — Cut = brand green tint, Welding = steel blue tint
      (functional colors carried over from the workbook) */
   --cut-tint: #e0efe4;
@@ -70,6 +81,14 @@ html.dark {
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
   --shadow-md: 0 1px 2px rgb(0 0 0 / 0.35), 0 4px 14px rgb(0 0 0 / 0.35);
   --shadow-lg: 0 4px 8px rgb(0 0 0 / 0.4), 0 16px 40px rgb(0 0 0 / 0.5);
+
+  --viz-1: #1f9660;
+  --viz-2: #3987e5;
+  --viz-3: #d95926;
+  --viz-4: #9085e9;
+  --viz-5: #c98500;
+  --viz-6: #d55181;
+  --viz-other: #7c8782;
 
   --ok-bg: #14352a;
   --ok-fg: #7fd6a8;
@@ -559,3 +578,12 @@ div.overflow-x-auto > table thead {
 @media print {
   div.overflow-x-auto:has(> table) { max-height: none; overflow: visible; }
 }
+
+/* ---- Odoo dashboard: segmented view switch + recharts chrome ---- */
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; padding: 2px; background: var(--surface); }
+.seg > a, .seg > button { padding: 0.3rem 0.8rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700; color: var(--muted); }
+.seg > .on { background: var(--brand); color: #fff; }
+.viz .recharts-cartesian-grid line { stroke: var(--border); }
+.viz .recharts-cartesian-axis-line, .viz .recharts-cartesian-axis-tick-line { stroke: var(--border-strong); }
+.viz .recharts-text { fill: var(--muted); }
+.viz .recharts-tooltip-cursor { fill: var(--surface-2); }
