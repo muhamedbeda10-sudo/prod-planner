@@ -663,11 +663,26 @@ model OdooEntry {
   odooMo     String // SF01/MO/06234
   qty        Float
   status     String   @default("MO to be close")
-  reason     String? // "Done", or the error Odoo returned
+  reason     String? // "Done", or the error Odoo returned — the latest; every earlier value is in reasonHistory
   recordedBy String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  reasonHistory OdooReasonHistory[]
+
   @@index([date])
   @@index([odooMo])
+}
+
+/// Every value the Reason column has held on one row, oldest first — the
+/// office rewrites it as Odoo answers, and wants to see what it said before.
+model OdooReasonHistory {
+  id         Int       @id @default(autoincrement())
+  entryId    Int
+  entry      OdooEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  reason     String
+  recordedBy String?
+  at         DateTime  @default(now())
+
+  @@index([entryId])
 }

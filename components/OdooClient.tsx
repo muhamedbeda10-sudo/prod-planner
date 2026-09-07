@@ -2,9 +2,9 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
-import { ODOO_PRODUCTS, ODOO_STATUSES, type OdooEntryView } from "@/lib/domain/odoo";
+import { ODOO_PRODUCTS, ODOO_STATUSES, type OdooEntryView, type OdooReasonView } from "@/lib/domain/odoo";
 import { Soi } from "@/components/ui";
-import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction } from "@/app/odoo/actions";
+import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooReason } from "@/app/odoo/actions";
 
 // The ODOO tab — the office's daily log of Odoo close attempts, one strip per
 // row, exactly the columns of the sheet it replaces: Date · SOI# · FG-CODE ·
@@ -186,6 +186,89 @@ function AddRow({ day, knownSois, knownFgCodes, startOpen }: { day: string; know
   );
 }
 
+// ---- the Reason cell: the current value, editable in place, with every
+// earlier value the row held cascading beneath it ----
+
+function ReasonText({ reason, done, blockedItem, muted }: { reason: string | null; done: boolean; blockedItem: string | null; muted?: boolean }) {
+  if (done) return <span className="pill pill-ok">Done</span>;
+  if (!reason) return <span className="text-muted">—</span>;
+  return (
+    <span title={reason}>
+      {blockedItem && <span className="pill pill-bad ltr mr-1">{blockedItem}</span>}
+      <span className={muted ? "text-muted" : ""}>{reason}</span>
+    </span>
+  );
+}
+
+function stamp(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function EarlierReasons({ items }: { items: OdooReasonView[] }) {
+  if (items.length === 0) return null;
+  return (
+    <details className="soi-cascade mt-1 text-xs" title="What this column said before — click to open">
+      <summary className="cursor-pointer select-none text-muted">
+        <span className="pill pill-muted">🕘 {items.length} earlier</span>
+      </summary>
+      <ol className="mt-1 space-y-1 border-s-2 border-border ps-2">
+        {items.map((h, i) => (
+          <li key={i}>
+            <span className="tabnum ltr text-[11px] text-muted" suppressHydrationWarning>{stamp(h.atISO)}</span>
+            {h.by && <span className="text-[11px] text-muted"> · {h.by}</span>}
+            <div><ReasonText reason={h.reason} done={h.done} blockedItem={h.blockedItem} muted /></div>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+function ReasonCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
+  const a = useAction();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(e.reason ?? "");
+  function save() {
+    setEditing(false);
+    if (draft.trim() === (e.reason ?? "").trim()) return;
+    const fd = new FormData();
+    fd.set("id", String(e.id));
+    fd.set("reason", draft.trim());
+    a.run(setOdooReason, fd, "Saved.");
+  }
+  return (
+    <div className="flex flex-col">
+      {canEdit && editing ? (
+        <input
+          autoFocus
+          value={draft}
+          disabled={a.pending}
+          onChange={(ev) => setDraft(ev.target.value)}
+          onBlur={save}
+          onKeyDown={(ev) => {
+            if (ev.key === "Enter") ev.currentTarget.blur();
+            if (ev.key === "Escape") { setDraft(e.reason ?? ""); setEditing(false); }
+          }}
+          placeholder="Done / Odoo error…"
+          className="px-2 py-1 text-xs font-semibold w-full"
+        />
+      ) : (
+        <span
+          className={canEdit ? "cursor-text rounded px-1 -mx-1 hover:bg-surface-2" : ""}
+          title={canEdit ? "Click to change the reason — the old one is kept in the history" : undefined}
+          onClick={canEdit ? () => { setDraft(e.reason ?? ""); setEditing(true); } : undefined}
+        >
+          <ReasonText reason={e.reason} done={e.done} blockedItem={e.blockedItem} />
+        </span>
+      )}
+      {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
+      <EarlierReasons items={e.earlierReasons} />
+    </div>
+  );
+}
+
 function Row({ e, day, knownSois, knownFgCodes, canEdit }: { e: OdooEntryView; day: string; knownSois: string[]; knownFgCodes: string[]; canEdit: boolean }) {
   const [editing, setEditing] = useState(false);
   const edit = useAction();
@@ -200,17 +283,8 @@ function Row({ e, day, knownSois, knownFgCodes, canEdit }: { e: OdooEntryView; d
         <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{e.odooMo}</td>
         <td className="p-2 text-center tabnum font-extrabold">{e.qty}</td>
         <td className="p-2 whitespace-nowrap text-xs">{e.status}</td>
-        <td className="p-2 text-xs max-w-[28rem]">
-          {e.done ? (
-            <span className="pill pill-ok">Done</span>
-          ) : e.reason ? (
-            <span title={e.reason}>
-              {e.blockedItem && <span className="pill pill-bad ltr mr-1">{e.blockedItem}</span>}
-              <span className="text-muted">{e.reason}</span>
-            </span>
-          ) : (
-            <span className="text-muted">—</span>
-          )}
+        <td className="p-2 text-xs max-w-[28rem] align-top">
+          <ReasonCell e={e} canEdit={canEdit} />
         </td>
         <td className="p-2 text-center whitespace-nowrap no-print">
           {canEdit ? (
@@ -348,7 +422,7 @@ export function OdooClient({
                   <th className="p-2">MO#</th>
                   <th className="p-2 text-center">QTY</th>
                   <th className="p-2">Status</th>
-                  <th className="p-2">Reason</th>
+                  <th className="p-2" title="The latest reason; earlier ones cascade beneath it">Reason</th>
                   <th className="p-2 no-print" />
                 </tr>
               </thead>

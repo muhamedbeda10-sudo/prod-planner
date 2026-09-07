@@ -2,7 +2,7 @@ import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
-import { blockedItem, isDoneReason, parseOdooSheet, type OdooEntryView } from "@/lib/domain/odoo";
+import { blockedItem, earlierReasons, isDoneReason, parseOdooSheet, type OdooEntryView } from "@/lib/domain/odoo";
 
 export interface OdooPageData {
   entries: OdooEntryView[];
@@ -21,7 +21,11 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     : undefined;
 
   const [rows, dayRows, orders] = await Promise.all([
-    prisma.odooEntry.findMany({ where, orderBy: [{ date: "desc" }, { id: "asc" }] }),
+    prisma.odooEntry.findMany({
+      where,
+      orderBy: [{ date: "desc" }, { id: "asc" }],
+      include: { reasonHistory: { orderBy: { id: "asc" } } },
+    }),
     prisma.odooEntry.findMany({ select: { date: true }, distinct: ["date"], orderBy: { date: "desc" } }),
     prisma.masterOrder.findMany({ select: { soi: true, fgCode: true } }),
   ]);
@@ -39,6 +43,13 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     done: isDoneReason(r.reason),
     blockedItem: blockedItem(r.reason),
     recordedBy: r.recordedBy,
+    earlierReasons: earlierReasons(r.reasonHistory, r.reason).map((h) => ({
+      reason: h.reason,
+      atISO: h.at.toISOString(),
+      by: h.recordedBy,
+      done: isDoneReason(h.reason),
+      blockedItem: blockedItem(h.reason),
+    })),
   }));
 
   const uniq = (xs: (string | null)[]) => [...new Set(xs.map((x) => (x ?? "").trim()).filter(Boolean))].sort();

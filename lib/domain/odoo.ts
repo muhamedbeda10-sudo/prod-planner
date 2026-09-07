@@ -22,6 +22,15 @@ export function blockedItem(reason: string | null | undefined): string | null {
   return m ? m[1] : null;
 }
 
+/** One value the Reason column held, and when. */
+export interface OdooReasonView {
+  reason: string;
+  atISO: string;
+  by: string | null;
+  done: boolean;
+  blockedItem: string | null;
+}
+
 export interface OdooEntryView {
   id: number;
   dateISO: string;
@@ -35,6 +44,27 @@ export interface OdooEntryView {
   done: boolean;
   blockedItem: string | null;
   recordedBy: string | null;
+  /** The reasons this row held BEFORE the current one, newest first. */
+  earlierReasons: OdooReasonView[];
+}
+
+/** Whether a new reason is worth a history line: non-blank and different. */
+export function reasonChanged(current: string | null | undefined, next: string | null | undefined): boolean {
+  const a = (current ?? "").trim();
+  const b = (next ?? "").trim();
+  return b !== "" && a.toLowerCase() !== b.toLowerCase();
+}
+
+/**
+ * The history trail to show beside a row: everything the column held before
+ * its current value, newest first. The tail entry equal to the current reason
+ * is the current value itself and is not "earlier".
+ */
+export function earlierReasons<T extends { reason: string }>(history: T[], current: string | null | undefined): T[] {
+  const cur = (current ?? "").trim();
+  const trail = [...history];
+  if (trail.length > 0 && trail[trail.length - 1].reason.trim() === cur) trail.pop();
+  return trail.reverse();
 }
 
 // ---- import: the office's sheet, its first seven columns ----
