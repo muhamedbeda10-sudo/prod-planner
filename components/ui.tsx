@@ -60,7 +60,13 @@ export function Num({ v, className = "" }: { v: number | null | undefined; class
 /** The SOI of an order, as it reads on every screen that names one: the MO's
  *  own SOI, or — for a row that covers a whole BOM — the SOIs of its orders.
  *  Renders an em-dash rather than nothing, so a missing SOI is visibly missing
- *  instead of looking like a layout bug. */
+ *  instead of looking like a layout bug.
+ *
+ *  Several SOIs behind one row CASCADE: the cell shows the first and a "+N"
+ *  badge, and opens into a vertical list on click. A joined strip of sixteen
+ *  codes made the column wider than the rest of the table put together, and
+ *  repeated on every line of the BOM. Native <details>, so it works in server
+ *  and client components alike and needs no state. */
 export function Soi({
   soi,
   className = "",
@@ -70,10 +76,26 @@ export function Soi({
 }) {
   const v = (soi ?? "").trim();
   if (!v) return <span className={`text-muted ${className}`}>—</span>;
+  const parts = v.split("·").map((p) => p.trim()).filter(Boolean);
+  if (parts.length <= 1) {
+    return (
+      <span className={`ltr text-xs font-semibold whitespace-nowrap ${className}`} title={`SOI ${v}`}>
+        {v}
+      </span>
+    );
+  }
   return (
-    <span className={`ltr text-xs font-semibold whitespace-nowrap ${className}`} title={`SOI ${v}`}>
-      {v}
-    </span>
+    <details className={`soi-cascade ltr text-xs font-semibold ${className}`} title={`${parts.length} orders on this line — click to open`}>
+      <summary className="cursor-pointer whitespace-nowrap select-none">
+        {parts[0]}
+        <span className="pill pill-muted ml-1">+{parts.length - 1}</span>
+      </summary>
+      <div className="mt-1 flex flex-col gap-0.5">
+        {parts.map((p) => (
+          <span key={p} className="whitespace-nowrap">{p}</span>
+        ))}
+      </div>
+    </details>
   );
 }
 

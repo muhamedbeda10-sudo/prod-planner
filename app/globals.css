@@ -348,6 +348,11 @@ main textarea:focus {
 /* a drop anchored under a left-aligned tab should grow from ITS corner */
 .nav-drop-left { transform-origin: top left; }
 
+/* SOI cascade: the disclosure is the cell itself — no browser marker */
+.soi-cascade > summary { list-style: none; }
+.soi-cascade > summary::-webkit-details-marker { display: none; }
+.soi-cascade[open] > summary .pill { opacity: 0.6; }
+
 /* mobile drawer motion */
 @keyframes drawerslide {
   from { transform: translateX(-100%); }
