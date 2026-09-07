@@ -41,6 +41,12 @@ export const PERM_CATEGORIES: PermCategory[] = [
     ],
   },
   {
+    name: "Odoo",
+    perms: [
+      { key: "odoo.edit", label: "Odoo close-out log — record", desc: "Add and edit the rows on the ODOO tab — the daily log of which Odoo manufacturing orders were closed and what Odoo answered" },
+    ],
+  },
+  {
     name: "Plan Tracker",
     perms: [
       { key: "tracker.cut", label: "Fabrication column — record", desc: "Edit the Fab stage cells on the Plan Tracker (separate from the Fabrication worklist permission)" },

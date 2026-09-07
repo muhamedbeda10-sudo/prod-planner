@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   FileDown, GitCompareArrows, Puzzle, CalendarDays, Users, Timer,
-  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers,
+  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -31,6 +31,7 @@ const WORKLIST_DEPTS = [
 const REST: Item[] = [
   // Material comes FIRST: nesting is decided before a single sheet is cut.
   { href: "/material", label: "Material", icon: Layers },
+  { href: "/odoo", label: "ODOO", icon: Boxes },
   { href: "/barcode", label: "Barcode", icon: QrCode, match: "/barcode" },
   { href: "/handover", label: "Logs", icon: BookOpenCheck },
   { href: "/tracker", label: "Plan Tracker", icon: Table2 },

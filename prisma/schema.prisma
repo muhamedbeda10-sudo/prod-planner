@@ -641,3 +641,31 @@ model MaterialUsage {
   @@index([mo])
   @@index([workedAt])
 }
+
+// ---- ODOO close-out log (the planner's daily "22" sheet) ----
+
+// One row per Odoo manufacturing order the office tried to close on a day,
+// with what happened: "Done", or the stock error Odoo threw back. A retried
+// close on a later day is a NEW row — the log records attempts, not orders,
+// which is why nothing here is unique.
+//
+// odooMo is Odoo's own MO number (SF01/MO/…), a different series from the
+// plan's MOs (PF01/MO/…), so the row stands on its own rather than linking
+// to the orders registry.
+model OdooEntry {
+  id         Int      @id @default(autoincrement())
+  date       DateTime // the day of the attempt (day-only granularity)
+  soi        String?
+  fgCode     String // FB-022-14003E11M11 — Odoo's finished-good code
+  product    String // Tank | Top Cover | Core Frame | Encloser | Cable Box …
+  odooMo     String // SF01/MO/06234
+  qty        Float
+  status     String   @default("MO to be close")
+  reason     String? // "Done", or the error Odoo returned
+  recordedBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([date])
+  @@index([odooMo])
+}

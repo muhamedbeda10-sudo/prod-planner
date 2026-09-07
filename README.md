@@ -50,6 +50,9 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    allowed and the difference (**computed**, never stored). Quantity of units comes from the orders
    registry instead of being typed. Entered directly, line by line; exports in the workbook's own
    column names, with per-material totals underneath.
+9. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
+   close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status · Reason. Typed in per day, one strip per
+   row; "Done" and Odoo's stock errors read at a glance; exports in the sheet's own headers.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:
