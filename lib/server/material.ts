@@ -1,118 +1,136 @@
 import "server-only";
+import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
-import { toISODate } from "@/lib/domain/dates";
+import { getSoiLookup } from "@/lib/server/soi";
+import { monthLabelSortKey } from "@/lib/domain/dates";
 import {
-  parsePlanMonths,
-  resolveUnits,
-  round3,
-  sheetsDifference,
-  sheetsForJob,
-  summarizeMaterial,
-  type MaterialLineView,
-  type MaterialTotal,
+  actualPerUnit, parseNestingTracker, sheetsDifference, sheetsForJob, sheetsForProduced, summarizeMaterial,
+  type MaterialLineView, type MaterialTotal,
 } from "@/lib/domain/material";
-
-export interface MaterialOrderRef {
-  mo: string;
-  bom: string;
-  planQty: number;
-  customer: string | null;
-  status: string;
-  soi: string | null; // sales order item, as the registry carries it
-  planMonths: string[]; // the monthly plan(s) this order was imported under
-}
-
-/** Every order the registry knows, as the material page's BOM/MO pickers. */
-export async function getMaterialOrders(): Promise<MaterialOrderRef[]> {
-  const orders = await prisma.masterOrder.findMany({
-    select: { mo: true, bom: true, planQty: true, customer: true, status: true, soi: true, months: true, source: true },
-    orderBy: [{ bom: "asc" }, { mo: "asc" }],
-  });
-  return orders.map(({ months, source, ...o }) => ({ ...o, planMonths: parsePlanMonths(months, source) }));
-}
-
-/** The orders a line speaks for: the one it names, or all of its BOM's. */
-function ordersFor(orders: MaterialOrderRef[], bom: string, mo: string): MaterialOrderRef[] {
-  return mo ? orders.filter((o) => o.mo === mo) : orders.filter((o) => o.bom === bom);
-}
-
-/** The monthly plan(s) behind a line: the named MO's own, or every month the
- *  BOM's orders came in on when the line covers the whole BOM. */
-function planMonthsFor(orders: MaterialOrderRef[], bom: string, mo: string): string[] {
-  return [...new Set(ordersFor(orders, bom, mo).flatMap((o) => o.planMonths))].sort();
-}
-
-/** The SOI(s) behind a line — joined for a BOM-level line, which can cover
- *  several orders and must not pretend to be only one of them. */
-function soiFor(orders: MaterialOrderRef[], bom: string, mo: string): string | null {
-  const sois = [...new Set(ordersFor(orders, bom, mo).map((o) => (o.soi ?? "").trim()).filter(Boolean))].sort();
-  return sois.length > 0 ? sois.join(" · ") : null;
-}
-
-/** planQty behind a line: the named MO's own quantity, or every order on the
- *  BOM added up when the line is BOM-wide. */
-function registryQty(orders: MaterialOrderRef[], bom: string, mo: string): number {
-  if (mo) return orders.find((o) => o.mo === mo)?.planQty ?? 0;
-  return round3(orders.filter((o) => o.bom === bom).reduce((s, o) => s + o.planQty, 0));
-}
-
-function toView(
-  row: {
-    id: number; bom: string; mo: string; material: string; thicknessMm: number; sheetSize: string;
-    workedAt: Date; sheetsUsed: number; sheetsPerUnit: number | null; unitsOverride: number | null;
-    note: string | null; recordedBy: string | null; updatedAt: Date;
-  },
-  orders: MaterialOrderRef[]
-): MaterialLineView {
-  const { units, fromRegistry } = resolveUnits(row.unitsOverride, registryQty(orders, row.bom, row.mo));
-  const allowed = sheetsForJob(row.sheetsPerUnit, units);
-  return {
-    id: row.id,
-    bom: row.bom,
-    mo: row.mo,
-    material: row.material,
-    thicknessMm: row.thicknessMm,
-    sheetSize: row.sheetSize,
-    workedISO: toISODate(row.workedAt),
-    sheetsUsed: row.sheetsUsed,
-    sheetsPerUnit: row.sheetsPerUnit,
-    unitsOverride: row.unitsOverride,
-    note: row.note,
-    units,
-    unitsFromRegistry: fromRegistry,
-    soi: soiFor(orders, row.bom, row.mo),
-    planMonths: planMonthsFor(orders, row.bom, row.mo),
-    allowed,
-    difference: sheetsDifference(allowed, row.sheetsUsed),
-    updatedISO: row.updatedAt.toISOString().slice(0, 10),
-    recordedBy: row.recordedBy,
-  };
-}
 
 export interface MaterialPageData {
   lines: MaterialLineView[];
   totals: MaterialTotal[];
-  orders: MaterialOrderRef[];
-  boms: string[]; // every BOM with a material line or an order, for the picker
+  /** Every month the tab can filter by: months with material lines, plus the
+   *  monthly plans the registry knows, newest first. */
+  months: string[];
+  /** BOMs for the add form's typing aid: those with lines, plus the registry's. */
+  knownBoms: string[];
 }
 
-/** The whole tab: the material lines actually consumed (optionally one BOM's),
- *  the totals over exactly those lines, and the pickers' data. */
-export async function getMaterialData(bom?: string): Promise<MaterialPageData> {
-  const [rows, orders] = await Promise.all([
+type Row = {
+  id: number; month: string; bom: string; mo: string; units: number; material: string; thicknessMm: number;
+  sheetSize: string; sheetsPerUnit: number; sheetsUsed: number | null; producedQty: number | null;
+  note: string | null; recordedBy: string | null; updatedAt: Date;
+};
+
+function toView(r: Row, soiByBom: Record<string, string>): MaterialLineView {
+  const forJob = sheetsForJob(r.sheetsPerUnit, r.units);
+  return {
+    id: r.id, month: r.month, bom: r.bom, mo: r.mo, units: r.units, material: r.material,
+    thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, sheetsPerUnit: r.sheetsPerUnit,
+    sheetsUsed: r.sheetsUsed, producedQty: r.producedQty, note: r.note,
+    soi: soiByBom[r.bom] ?? null,
+    forJob,
+    difference: sheetsDifference(forJob, r.sheetsUsed),
+    actualPerUnit: actualPerUnit(r.sheetsUsed, r.units),
+    forProduced: sheetsForProduced(r.sheetsUsed, r.units, r.producedQty),
+    updatedISO: r.updatedAt.toISOString().slice(0, 10),
+    recordedBy: r.recordedBy,
+  };
+}
+
+const monthsOf = (csv: string | null | undefined, source?: string | null) =>
+  (String(csv ?? "").trim() || String(source ?? "")).split(",").map((m) => m.trim()).filter(Boolean);
+
+/** The tab for one month (label), or every month when `month` is "all". */
+export async function getMaterialData(month: string): Promise<MaterialPageData> {
+  const [rows, monthRows, orders, soi] = await Promise.all([
     prisma.materialUsage.findMany({
-      where: bom ? { bom } : undefined,
-      orderBy: [{ workedAt: "desc" }, { bom: "asc" }, { mo: "asc" }, { material: "asc" }, { thicknessMm: "asc" }],
+      where: month === "all" ? undefined : { month },
+      orderBy: [{ month: "desc" }, { bom: "asc" }, { material: "asc" }, { thicknessMm: "asc" }],
     }),
-    getMaterialOrders(),
+    prisma.materialUsage.findMany({ select: { month: true, bom: true }, distinct: ["month", "bom"] }),
+    prisma.masterOrder.findMany({ select: { bom: true, months: true, source: true } }),
+    getSoiLookup(),
   ]);
-  const lines = rows.map((r) => toView(r, orders));
 
-  // the picker lists every BOM that HAS material recorded plus every BOM with
-  // an order — a BOM whose lines were all deleted must stay reachable
-  const allBoms = await prisma.materialUsage.findMany({ select: { bom: true }, distinct: ["bom"] });
-  const boms = [...new Set([...allBoms.map((b) => b.bom), ...orders.map((o) => o.bom)])].sort();
+  const lines = rows.map((r) => toView(r, soi.byBom));
+  const months = [...new Set([...monthRows.map((m) => m.month), ...orders.flatMap((o) => monthsOf(o.months, o.source))])]
+    .filter(Boolean)
+    .sort((a, b) => monthLabelSortKey(b) - monthLabelSortKey(a) || b.localeCompare(a));
+  const knownBoms = [...new Set([...monthRows.map((m) => m.bom), ...orders.map((o) => o.bom)])].sort();
 
-  return { lines, totals: summarizeMaterial(lines), orders, boms };
+  return { lines, totals: summarizeMaterial(lines), months, knownBoms };
 }
 
+// ---- import: the planner's Nesting Tracker workbook, filed under a month ----
+
+export interface MaterialImportResult {
+  ok: boolean;
+  error?: string;
+  added?: number;
+  updated?: number;
+  unchanged?: number;
+  issues?: string[];
+  preview?: boolean;
+  sheet?: string;
+}
+
+/**
+ * Import the Nesting Tracker sheet for one month. Lines are upserted on their
+ * identity (month × BOM × material × thickness × size), so importing the same
+ * month's sheet again adds the rows that are new and updates the ones whose
+ * values changed — never doubles them. The tab's own column, units produced,
+ * is not in the sheet and is left exactly as it was.
+ */
+export async function importNestingTracker(
+  buffer: ArrayBuffer, month: string, recordedBy: string | null, preview = false
+): Promise<MaterialImportResult> {
+  let wb: XLSX.WorkBook;
+  try {
+    wb = XLSX.read(new Uint8Array(buffer), { cellDates: false });
+  } catch {
+    return { ok: false, error: "Could not read the file — make sure it is a valid Excel file." };
+  }
+  // the workbook carries pivots and lookup tabs beside the tracker — take the
+  // tab NAMED for it, else the first one
+  const sheetName = wb.SheetNames.find((n) => /nesting/i.test(n)) ?? wb.SheetNames[0];
+  const ws = sheetName ? wb.Sheets[sheetName] : undefined;
+  if (!ws) return { ok: false, error: "The file has no sheets." };
+
+  const opts: XLSX.Sheet2JSONOpts = { header: 1, raw: true, defval: null, blankrows: true };
+  if (ws["!ref"]) {
+    const range = XLSX.utils.decode_range(ws["!ref"]);
+    range.s.r = 0; range.s.c = 0;
+    opts.range = XLSX.utils.encode_range(range);
+  }
+  const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, opts);
+  const { rows, issues } = parseNestingTracker(grid);
+  if (rows.length === 0) return { ok: false, error: issues[0] ?? "No material rows found.", issues, sheet: sheetName };
+
+  const existing = await prisma.materialUsage.findMany({ where: { month, mo: "" } });
+  const byKey = new Map(existing.map((e) => [`${e.bom}|${e.material}|${e.thicknessMm}|${e.sheetSize}`, e]));
+
+  let added = 0, updated = 0, unchanged = 0;
+  for (const r of rows) {
+    const cur = byKey.get(`${r.bom}|${r.material}|${r.thicknessMm}|${r.sheetSize}`);
+    const same = cur && cur.units === r.units && cur.sheetsPerUnit === r.sheetsPerUnit
+      && cur.sheetsUsed === r.sheetsUsed && (cur.note ?? null) === (r.note ?? cur.note ?? null);
+    if (!cur) added += 1; else if (same) unchanged += 1; else updated += 1;
+    if (preview || same) continue;
+
+    const data = {
+      units: r.units, sheetsPerUnit: r.sheetsPerUnit, sheetsUsed: r.sheetsUsed,
+      // a blank note in the sheet must not erase one typed in the tab
+      ...(r.note !== null ? { note: r.note } : {}),
+      recordedBy,
+    };
+    await prisma.materialUsage.upsert({
+      where: { month_bom_mo_material_thicknessMm_sheetSize: { month, bom: r.bom, mo: "", material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize } },
+      create: { month, bom: r.bom, mo: "", material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, ...data, note: r.note },
+      update: data,
+    });
+  }
+  return { ok: true, added, updated, unchanged, issues, preview, sheet: sheetName };
+}
