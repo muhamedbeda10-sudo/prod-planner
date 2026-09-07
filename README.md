@@ -54,9 +54,10 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day
    updated, never doubled); the planner then moves the Status in place (Pending, Done, Blocked …) and
    keeps Notes on it — a list with time and author, each deletable on its own. Exports in the sheet's
-   own headers. A **Dashboard** view (Log · Dashboard switch) charts what was logged per day by
-   product, totals per product, closed vs not closed, over 7/30/90 days, this month or all time —
-   with the same numbers as a table.
+   own headers. A **Dashboard** view (Log · Dashboard switch) shows what was logged per day by
+   product — a card per product with its trend and change vs the previous period, stacked columns
+   with every count written on, one small chart per product, totals and closed vs not closed — over
+   7/30/90 days, this month, all time or a custom from/to, with the numbers as a table and an Excel export.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

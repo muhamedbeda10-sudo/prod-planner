@@ -24,27 +24,69 @@ export function productSeries(product: string | null | undefined): OdooSeries {
 
 export const ODOO_RANGES = ["7d", "30d", "90d", "month", "all"] as const;
 export type OdooRange = (typeof ODOO_RANGES)[number];
+/** A preset, or a from/to typed by hand. */
+export type OdooRangeKey = OdooRange | "custom";
 
-export function parseOdooRange(raw: string | undefined): OdooRange {
-  return (ODOO_RANGES as readonly string[]).includes(raw ?? "") ? (raw as OdooRange) : "30d";
-}
-
-export const ODOO_RANGE_LABEL: Record<OdooRange, string> = {
+export const ODOO_RANGE_LABEL: Record<OdooRangeKey, string> = {
   "7d": "Last 7 days",
   "30d": "Last 30 days",
   "90d": "Last 90 days",
   month: "This month",
   all: "All time",
+  custom: "Custom",
 };
 
-/** The [from, to] days (ISO, inclusive) a range covers; `null` from = unbounded. */
-export function rangeBounds(range: OdooRange, today: Date = new Date()): { fromISO: string | null; toISO: string } {
-  const t = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+/** The days a dashboard covers: [from, to] inclusive ISO dates; `null` from = unbounded. */
+export interface OdooPeriod {
+  range: OdooRangeKey;
+  fromISO: string | null;
+  toISO: string;
+}
+
+const isISO = (s: string | undefined): s is string => /^\d{4}-\d{2}-\d{2}$/.test(s ?? "");
+
+function utcToday(today: Date): Date {
+  return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+}
+
+/** Read the period from the URL: a preset (`range=30d`, the default) or
+ *  `range=custom&from=…&to=…`. A custom period with a bad or missing date
+ *  falls back to the last 30 days; from/to the wrong way round are swapped. */
+export function resolvePeriod(sp: { range?: string; from?: string; to?: string }, today: Date = new Date()): OdooPeriod {
+  const t = utcToday(today);
   const toISO = toISODate(t);
-  if (range === "all") return { fromISO: null, toISO };
-  if (range === "month") return { fromISO: toISODate(new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1))), toISO };
+  if (sp.range === "custom" && isISO(sp.from) && isISO(sp.to)) {
+    const [a, b] = sp.from <= sp.to ? [sp.from, sp.to] : [sp.to, sp.from];
+    return { range: "custom", fromISO: a, toISO: b };
+  }
+  const range: OdooRange = (ODOO_RANGES as readonly string[]).includes(sp.range ?? "") ? (sp.range as OdooRange) : "30d";
+  if (range === "all") return { range, fromISO: null, toISO };
+  if (range === "month") return { range, fromISO: toISODate(new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1))), toISO };
   const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
-  return { fromISO: toISODate(new Date(t.getTime() - (days - 1) * 86_400_000)), toISO };
+  return { range, fromISO: toISODate(new Date(t.getTime() - (days - 1) * 86_400_000)), toISO };
+}
+
+/** The same number of days immediately before the period — what "vs previous
+ *  period" compares against. None for an unbounded period. */
+export function previousPeriod(p: OdooPeriod): { fromISO: string; toISO: string } | null {
+  if (!p.fromISO) return null;
+  const from = parseISODate(p.fromISO)!;
+  const to = parseISODate(p.toISO)!;
+  const span = Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
+  return {
+    fromISO: toISODate(new Date(from.getTime() - span * 86_400_000)),
+    toISO: toISODate(new Date(from.getTime() - 86_400_000)),
+  };
+}
+
+/** How a period reads in a title: "9 Aug – 7 Sep 2026", or "up to 7 Sep 2026". */
+export function periodLabel(p: OdooPeriod): string {
+  const to = parseISODate(p.toISO)!;
+  const year = to.getUTCFullYear();
+  if (!p.fromISO) return `up to ${shortDayLabel(p.toISO)} ${year}`;
+  const from = parseISODate(p.fromISO)!;
+  const fy = from.getUTCFullYear();
+  return fy === year ? `${shortDayLabel(p.fromISO)} – ${shortDayLabel(p.toISO)} ${year}` : `${shortDayLabel(p.fromISO)} ${fy} – ${shortDayLabel(p.toISO)} ${year}`;
 }
 
 export interface OdooStatRow {
@@ -68,12 +110,16 @@ export interface OdooSeriesTotal {
   series: OdooSeries;
   qty: number;
   rows: number;
+  /** Share of the period's quantity, 0–100. */
+  share: number;
+  /** The same product's quantity in the previous period; null when there is none to compare. */
+  prevQty: number | null;
 }
 
 export interface OdooDashboardData {
-  range: OdooRange;
-  fromISO: string | null;
-  toISO: string;
+  period: OdooPeriod;
+  /** The comparison window, when the period is bounded. */
+  previous: { fromISO: string; toISO: string } | null;
   days: OdooDayPoint[];
   totals: OdooSeriesTotal[];
   kpi: {
@@ -84,7 +130,17 @@ export interface OdooDashboardData {
     activeDays: number;
     /** Mean qty per day that had at least one row. */
     qtyPerActiveDay: number;
+    /** The previous period's quantity and rows; null when there is none. */
+    prevQty: number | null;
+    prevRows: number | null;
   };
+}
+
+/** Signed change from `prev` to `cur` as a percentage, or null when there is nothing to compare. */
+export function pctChange(cur: number, prev: number | null): number | null {
+  if (prev === null) return null;
+  if (prev === 0) return cur === 0 ? 0 : null;
+  return Math.round(((cur - prev) / prev) * 100);
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -104,12 +160,13 @@ function emptySeries(): Record<OdooSeries, number> {
 const FILL_GAPS_UP_TO = 120;
 
 /**
- * Aggregate rows (already filtered to the range) into per-day points, per-product
- * totals and the headline numbers.
+ * Aggregate rows (already filtered to the period) into per-day points,
+ * per-product totals and the headline numbers. `prevRows` are the previous
+ * period's rows, for the comparisons; pass null when there is no previous period.
  */
-export function buildOdooDashboard(rows: OdooStatRow[], range: OdooRange, bounds: { fromISO: string | null; toISO: string }): OdooDashboardData {
+export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prevRows: OdooStatRow[] | null = null): OdooDashboardData {
   const byDay = new Map<string, OdooDayPoint>();
-  const totalsMap = new Map<OdooSeries, OdooSeriesTotal>(ODOO_SERIES.map((s) => [s, { series: s, qty: 0, rows: 0 }]));
+  const totalsMap = new Map<OdooSeries, { qty: number; rows: number }>(ODOO_SERIES.map((s) => [s, { qty: 0, rows: 0 }]));
   let qty = 0, doneRows = 0, doneQty = 0;
 
   for (const r of rows) {
@@ -133,11 +190,21 @@ export function buildOdooDashboard(rows: OdooStatRow[], range: OdooRange, bounds
     }
   }
 
-  // the x-axis: every day of the range when it is short enough, else the logged days
+  // the previous period, per product, for the comparisons
+  const prevBySeries = prevRows ? emptySeries() : null;
+  let prevQty = 0;
+  if (prevRows && prevBySeries) {
+    for (const r of prevRows) {
+      prevBySeries[productSeries(r.product)] += r.qty;
+      prevQty += r.qty;
+    }
+  }
+
+  // the x-axis: every day of the period when it is short enough, else the logged days
   const loggedDays = [...byDay.keys()].sort();
-  const firstISO = bounds.fromISO ?? loggedDays[0] ?? bounds.toISO;
+  const firstISO = period.fromISO ?? loggedDays[0] ?? period.toISO;
   const first = parseISODate(firstISO)!;
-  const last = parseISODate(bounds.toISO)!;
+  const last = parseISODate(period.toISO)!;
   const span = Math.round((last.getTime() - first.getTime()) / 86_400_000) + 1;
   let days: OdooDayPoint[];
   if (span > 0 && span <= FILL_GAPS_UP_TO) {
@@ -152,14 +219,22 @@ export function buildOdooDashboard(rows: OdooStatRow[], range: OdooRange, bounds
 
   const activeDays = loggedDays.length;
   return {
-    range,
-    fromISO: bounds.fromISO,
-    toISO: bounds.toISO,
+    period,
+    previous: prevRows ? previousPeriod(period) : null,
     days,
-    totals: ODOO_SERIES.map((s) => totalsMap.get(s)!).filter((t) => t.rows > 0),
+    totals: ODOO_SERIES
+      .map((s) => ({ series: s, ...totalsMap.get(s)! }))
+      .filter((t) => t.rows > 0)
+      .map((t) => ({
+        ...t,
+        share: qty > 0 ? Math.round((t.qty / qty) * 1000) / 10 : 0,
+        prevQty: prevBySeries ? prevBySeries[t.series] : null,
+      })),
     kpi: {
       qty, rows: rows.length, doneRows, doneQty, activeDays,
       qtyPerActiveDay: activeDays > 0 ? Math.round((qty / activeDays) * 10) / 10 : 0,
+      prevQty: prevRows ? prevQty : null,
+      prevRows: prevRows ? prevRows.length : null,
     },
   };
 }
