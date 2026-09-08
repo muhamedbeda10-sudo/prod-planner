@@ -1,9 +1,13 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useState, useTransition } from "react";
-import { ODOO_PRODUCTS, ODOO_STATUSES, type OdooEntryView, type OdooNoteView, type OdooTone } from "@/lib/domain/odoo";
+import { useCallback, useMemo, useState, useTransition } from "react";
+import {
+  ODOO_PRODUCTS, ODOO_STATUSES, ODOO_NOTE_FILTERS, EMPTY_ODOO_FILTERS, filterOdooEntries,
+  type OdooEntryView, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter,
+} from "@/lib/domain/odoo";
 import { Soi } from "@/components/ui";
+import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
 
 // The ODOO tab — the office's daily log of Odoo close attempts, one strip per
@@ -413,6 +417,51 @@ function ImportPanel({ day }: { day: string }) {
   );
 }
 
+// ---- filters: one row above the table, kept between visits ----
+
+const FILTERS_KEY = "odoo:filters";
+const SEL = "border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold";
+
+function readSavedFilters(raw: string): OdooFilters {
+  const o = parseSaved(raw);
+  const notes = savedString(o, "notes");
+  return {
+    q: savedString(o, "q"), product: savedString(o, "product"), status: savedString(o, "status"),
+    notes: notes in ODOO_NOTE_FILTERS ? (notes as OdooNoteFilter) : "all",
+  };
+}
+
+function FilterBar({ entries, filters, onChange, shown }: { entries: OdooEntryView[]; filters: OdooFilters; onChange: (f: OdooFilters) => void; shown: number }) {
+  const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))];
+  // the sheet's names first, then anything else typed on the rows
+  const products = uniq([...ODOO_PRODUCTS, ...entries.map((e) => e.product)]);
+  const statuses = uniq([...ODOO_STATUSES, ...entries.map((e) => e.status)]);
+  const set = (patch: Partial<OdooFilters>) => onChange({ ...filters, ...patch });
+  const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_ODOO_FILTERS);
+  return (
+    <div className="flex flex-wrap items-center gap-2 no-print">
+      <input
+        type="search" value={filters.q} onChange={(e) => set({ q: e.target.value })}
+        placeholder="Search SOI, FG-CODE, MO, product, notes…" aria-label="Search"
+        className={`${SEL} ltr w-72 font-normal`}
+      />
+      <select aria-label="Product" title="Product" className={SEL} value={filters.product} onChange={(e) => set({ product: e.target.value })}>
+        <option value="">Product: all</option>
+        {products.map((p) => <option key={p} value={p}>{p}</option>)}
+      </select>
+      <select aria-label="Status" title="Status" className={SEL} value={filters.status} onChange={(e) => set({ status: e.target.value })}>
+        <option value="">Status: all</option>
+        {statuses.map((st) => <option key={st} value={st}>{st}</option>)}
+      </select>
+      <select aria-label="Notes" title="Rows with or without notes" className={SEL} value={filters.notes} onChange={(e) => set({ notes: e.target.value as OdooNoteFilter })}>
+        {(Object.keys(ODOO_NOTE_FILTERS) as OdooNoteFilter[]).map((k) => <option key={k} value={k}>{ODOO_NOTE_FILTERS[k]}</option>)}
+      </select>
+      <span className="text-xs text-muted tabnum">{active ? `${shown} of ${entries.length} row(s)` : `${entries.length} row(s)`}</span>
+      {active && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onChange(EMPTY_ODOO_FILTERS)}>✕ Clear</button>}
+    </div>
+  );
+}
+
 export function OdooClient({
   entries,
   day,
@@ -426,13 +475,16 @@ export function OdooClient({
   knownFgCodes: string[];
   canEdit: boolean;
 }) {
-  const done = entries.filter((e) => e.done).length;
+  const { filters, setFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_ODOO_FILTERS);
+  const shown = useMemo(() => filterOdooEntries(entries, filters), [entries, filters]);
+  const done = shown.filter((e) => e.done).length;
   return (
     <div className="space-y-5">
-      {entries.length > 0 && (
+      {entries.length > 0 && <FilterBar entries={entries} filters={filters} onChange={setFilters} shown={shown.length} />}
+      {shown.length > 0 && (
         <div className="text-sm text-muted">
-          {entries.length} row(s){day !== "all" ? ` on ${day}` : ""} · <span className="text-ok-fg font-bold">{done} done</span> ·{" "}
-          <span className="text-bad-fg font-bold">{entries.length - done} not closed</span>
+          {shown.length} row(s){day !== "all" ? ` on ${day}` : ""} · <span className="text-ok-fg font-bold">{done} done</span> ·{" "}
+          <span className="text-bad-fg font-bold">{shown.length - done} not closed</span>
         </div>
       )}
       <section className="bg-surface border rounded-xl overflow-hidden">
@@ -440,6 +492,8 @@ export function OdooClient({
           <p className="text-sm text-muted p-4">
             {day === "all" ? "No rows logged yet." : `Nothing logged on ${day}. Add the day's rows below, or import the sheet.`}
           </p>
+        ) : shown.length === 0 ? (
+          <p className="text-sm text-muted p-4">No row matches these filters.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
@@ -457,7 +511,7 @@ export function OdooClient({
                 </tr>
               </thead>
               <tbody>
-                {entries.map((e) => (
+                {shown.map((e) => (
                   <Row key={e.id} e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} canEdit={canEdit} />
                 ))}
               </tbody>

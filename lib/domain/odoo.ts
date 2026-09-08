@@ -192,3 +192,33 @@ export function parseOdooSheet(grid: unknown[][]): ParsedOdooSheet {
   if (rows.length === 0) issues.push("No rows found under the header.");
   return { rows, issues, headerRow: headerIdx + 1 };
 }
+
+// ---- filters: narrowing the day's rows on the page ----
+
+export const ODOO_NOTE_FILTERS = { all: "Notes: any", with: "With notes", without: "No notes" } as const;
+export type OdooNoteFilter = keyof typeof ODOO_NOTE_FILTERS;
+
+export interface OdooFilters {
+  /** Matches SOI, FG-CODE, MO#, product and every note — case-insensitive, any part. */
+  q: string;
+  product: string; // "" = any
+  status: string; // "" = any
+  notes: OdooNoteFilter;
+}
+
+export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "", notes: "all" };
+
+export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): OdooEntryView[] {
+  const q = f.q.trim().toLowerCase();
+  return entries.filter((e) => {
+    if (f.product && e.product !== f.product) return false;
+    if (f.status && e.status !== f.status) return false;
+    if (f.notes === "with" && e.notes.length === 0) return false;
+    if (f.notes === "without" && e.notes.length > 0) return false;
+    if (q) {
+      const hay = [e.soi ?? "", e.fgCode, e.odooMo, e.product, e.status, ...e.notes.map((n) => n.text)].join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}

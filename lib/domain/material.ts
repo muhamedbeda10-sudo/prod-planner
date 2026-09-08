@@ -27,6 +27,8 @@ export const MATERIAL_PRESETS = ["Steel", "Stainless steel", "Galvanized steel",
  *  fills the part name; anything else typed is kept. */
 export const PART_PRESETS: { code: string; name: string }[] = [
   { code: "FB-022", name: "TANK" },
+  { code: "FB-024", name: "CABLE BOX" },
+  { code: "FB-027", name: "ARRESTER" },
   { code: "FB-051", name: "TOP COVER" },
   { code: "FB-058", name: "CORE FRAME" },
   { code: "FB-059", name: "ENCLOSER" },

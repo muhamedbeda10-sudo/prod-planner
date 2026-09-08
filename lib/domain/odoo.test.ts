@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blockedItem, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone } from "./odoo";
+import { blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView } from "./odoo";
 
 const HEADER = ["Date", "SOI#", "FG-CODE", "Product", "MO#", "QTY", "Status", "Reason"];
 
@@ -102,5 +102,34 @@ describe("status and notes helpers", () => {
   it("pulls Odoo's bracketed item out of a note", () => {
     expect(blockedItem("[T-SSS-5MM] SS- Sheet 5mm would become negative")).toBe("T-SSS-5MM");
     expect(blockedItem("Done")).toBeNull();
+  });
+});
+
+describe("filterOdooEntries", () => {
+  const row = (over: Partial<OdooEntryView>): OdooEntryView => ({
+    id: 1, dateISO: "2026-09-06", soi: "S01035-1", fgCode: "FB-022-14003E11M11", product: "Tank", odooMo: "SF01/MO/06234",
+    qty: 5, status: "MO to be close", tone: "muted", done: false, recordedBy: null, notes: [], ...over,
+  });
+  const rows = [
+    row({ id: 1 }),
+    row({ id: 2, soi: "S01194-4", fgCode: "FB-051-12005E14M13", product: "Top Cover", odooMo: "SF01/MO/13996-002", status: "Done", notes: [{ id: 1, text: "closed fine", atISO: "2026-09-06T10:00:00Z", by: null, blockedItem: null }] }),
+    row({ id: 3, soi: null, product: "Tank", odooMo: "SF01/MO/15890-002", status: "Pending", notes: [{ id: 2, text: "[T-SSS-5MM] would become negative", atISO: "2026-09-06T11:00:00Z", by: null, blockedItem: "T-SSS-5MM" }] }),
+  ];
+  const ids = (f: Partial<typeof EMPTY_ODOO_FILTERS>) => filterOdooEntries(rows, { ...EMPTY_ODOO_FILTERS, ...f }).map((r) => r.id);
+  it("passes everything through with empty filters", () => {
+    expect(ids({})).toEqual([1, 2, 3]);
+  });
+  it("narrows by product, status and notes", () => {
+    expect(ids({ product: "Tank" })).toEqual([1, 3]);
+    expect(ids({ status: "Done" })).toEqual([2]);
+    expect(ids({ notes: "with" })).toEqual([2, 3]);
+    expect(ids({ notes: "without" })).toEqual([1]);
+  });
+  it("searches SOI, FG-CODE, MO, product and the notes, any case", () => {
+    expect(ids({ q: "s01194" })).toEqual([2]);
+    expect(ids({ q: "15890" })).toEqual([3]);
+    expect(ids({ q: "fb-051" })).toEqual([2]);
+    expect(ids({ q: "t-sss" })).toEqual([3]);
+    expect(ids({ q: "nothing" })).toEqual([]);
   });
 });
