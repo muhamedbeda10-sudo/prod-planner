@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetsForJob, sheetsDifference,
   actualPerUnit, sheetsForProduced, summarizeMaterial, parseNestingTracker, materialKey, round3, partNameFor,
+  filterMaterialLines, EMPTY_MATERIAL_FILTERS,
   type MaterialLineView,
 } from "./material";
 import { monthLabelFromInput, monthInputFromLabel, monthLabelSortKey } from "./dates";
@@ -121,6 +122,37 @@ describe("summarizeMaterial", () => {
     expect(t.forJob).toBe(14);
     expect(t.used).toBe(4);
     expect(t.linesNotNested).toBe(1);
+  });
+});
+
+describe("filterMaterialLines", () => {
+  const rows = [
+    line({ id: 1, bom: "10017E11M11", soi: "S01035-1", partCode: "FB-022", partName: "TANK", sheetsUsed: 6.4, difference: 2.4, producedQty: 1 }),
+    line({ id: 2, bom: "40012E11M11", partCode: "FB-051", partName: "TOP COVER", sheetsUsed: null, difference: null, producedQty: null }),
+    line({ id: 3, bom: "40012E11M11", partCode: "FB-022", partName: "TANK", material: "Steel", thicknessMm: 4, sheetsUsed: 9, difference: -1, note: "re-nest" }),
+  ];
+  const ids = (f: Partial<typeof EMPTY_MATERIAL_FILTERS>) => filterMaterialLines(rows, { ...EMPTY_MATERIAL_FILTERS, ...f }).map((l) => l.id);
+  it("passes everything through with empty filters", () => {
+    expect(ids({})).toEqual([1, 2, 3]);
+  });
+  it("narrows by part, material, thickness and size", () => {
+    expect(ids({ partCode: "FB-051" })).toEqual([2]);
+    expect(ids({ partCode: "FB-022", thicknessMm: "4" })).toEqual([3]);
+    expect(ids({ sheetSize: "1500*3000" })).toEqual([]);
+  });
+  it("narrows by where the line stands", () => {
+    expect(ids({ status: "nested" })).toEqual([1, 3]);
+    expect(ids({ status: "notNested" })).toEqual([2]);
+    expect(ids({ status: "produced" })).toEqual([1]);
+    expect(ids({ status: "over" })).toEqual([3]);
+    expect(ids({ status: "within" })).toEqual([1]);
+  });
+  it("searches BOM, SOI, part, code and note, any case, any part", () => {
+    expect(ids({ q: "40012" })).toEqual([2, 3]);
+    expect(ids({ q: "s01035" })).toEqual([1]);
+    expect(ids({ q: "top cover" })).toEqual([2]);
+    expect(ids({ q: "re-nest" })).toEqual([3]);
+    expect(ids({ q: "nothing" })).toEqual([]);
   });
 });
 
