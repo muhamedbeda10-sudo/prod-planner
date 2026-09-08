@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getOdooData, getOdooDashboard } from "@/lib/server/odoo";
 import { resolvePeriod } from "@/lib/domain/odooStats";
 import { OdooDashboard, OdooRangePicker } from "@/components/OdooDashboard";
+import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { toISODate } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
@@ -29,7 +30,7 @@ export default async function OdooPage({
 
   const viewSwitch = (
     <nav className="seg" aria-label="View">
-      <Link href="/odoo" className={view === "log" ? "on" : ""}>Log</Link>
+      <Link href="/odoo?view=log" className={view === "log" ? "on" : ""}>Log</Link>
       <Link href="/odoo?view=dashboard" className={view === "dashboard" ? "on" : ""}>Dashboard</Link>
     </nav>
   );
@@ -39,6 +40,7 @@ export default async function OdooPage({
     const data = await getOdooDashboard(period);
     return (
       <div>
+        <RememberLastVisit storageKey="odoo:last" />
         <PageHeader title="📦 ODOO — dashboard">
           {viewSwitch}
           <OdooRangePicker period={period} />
@@ -65,6 +67,7 @@ export default async function OdooPage({
 
   return (
     <div>
+      <RememberLastVisit storageKey="odoo:last" />
       <PageHeader title="📦 ODOO — daily close-out log">
         {viewSwitch}
         <OdooDayPicker day={day} days={days} />
