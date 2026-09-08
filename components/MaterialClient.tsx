@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState, useSyncExternalStore, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import {
   MATERIAL_PRESETS, PART_PRESETS, SHEET_SIZE_PRESETS, MATERIAL_STATUS_FILTERS, EMPTY_MATERIAL_FILTERS,
   partNameFor, filterMaterialLines, summarizeMaterial,
@@ -9,6 +9,7 @@ import {
 } from "@/lib/domain/material";
 import { monthInputFromLabel } from "@/lib/domain/dates";
 import { Soi } from "@/components/ui";
+import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
   createMaterialLine, updateMaterialLine, setSheetsUsed, setProducedQty, deleteMaterialLine, importMaterialAction,
   deleteMaterialMonth,
@@ -397,40 +398,14 @@ const FILTERS_KEY = "material:filters";
 
 /** Only the known fields, as strings, with a status the page knows — whatever
  *  an old or hand-edited saved value holds. */
-function readSavedFilters(saved: string): MaterialFilters {
-  let raw: unknown = null;
-  try { raw = saved ? JSON.parse(saved) : null; } catch { raw = null; }
-  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const str = (k: keyof MaterialFilters) => (typeof o[k] === "string" ? (o[k] as string) : "");
-  const status = str("status");
+function readSavedFilters(raw: string): MaterialFilters {
+  const o = parseSaved(raw);
+  const status = savedString(o, "status");
   return {
-    q: str("q"), partCode: str("partCode"), material: str("material"), thicknessMm: str("thicknessMm"), sheetSize: str("sheetSize"),
+    q: savedString(o, "q"), partCode: savedString(o, "partCode"), material: savedString(o, "material"),
+    thicknessMm: savedString(o, "thicknessMm"), sheetSize: savedString(o, "sheetSize"),
     status: status in MATERIAL_STATUS_FILTERS ? (status as MaterialStatusFilter) : "all",
   };
-}
-
-// The filters live in this browser's storage, so the tab reopens narrowed the
-// way it was left. Storage is the source of truth: the server renders the
-// page unfiltered, and the browser takes over after hydration.
-const filterListeners = new Set<() => void>();
-function subscribeFilters(cb: () => void) {
-  filterListeners.add(cb);
-  window.addEventListener("storage", cb);
-  return () => { filterListeners.delete(cb); window.removeEventListener("storage", cb); };
-}
-let memoryRaw = ""; // when storage is blocked, the filters still work for this page load
-function readFiltersRaw(): string {
-  try { return localStorage.getItem(FILTERS_KEY) ?? memoryRaw; } catch { return memoryRaw; }
-}
-function useSavedFilters() {
-  const raw = useSyncExternalStore(subscribeFilters, readFiltersRaw, () => "");
-  const filters = useMemo(() => (raw ? readSavedFilters(raw) : EMPTY_MATERIAL_FILTERS), [raw]);
-  const changeFilters = (f: MaterialFilters) => {
-    memoryRaw = JSON.stringify(f);
-    try { localStorage.setItem(FILTERS_KEY, memoryRaw); } catch { /* storage unavailable — the filter holds for this page load only */ }
-    filterListeners.forEach((l) => l());
-  };
-  return { filters, changeFilters };
 }
 
 const SEL = "border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold";
@@ -449,6 +424,10 @@ function Pick({ label, value, options, onChange, render }: {
 function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineView[]; filters: MaterialFilters; onChange: (f: MaterialFilters) => void; shown: number }) {
   const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))].sort();
   const parts = uniq(lines.map((l) => l.partCode));
+  // the part's name as the lines carry it (FB-024 · CABLE BOX), else the preset's
+  const partName = new Map<string, string>();
+  for (const l of lines) if (l.partCode && l.partName && !partName.has(l.partCode)) partName.set(l.partCode, l.partName);
+  const nameOf = (c: string) => partName.get(c) || partNameFor(c);
   const materials = uniq(lines.map((l) => l.material));
   const thicknesses = [...new Set(lines.map((l) => l.thicknessMm))].sort((a, b) => a - b).map(String);
   const sizes = uniq(lines.map((l) => l.sheetSize));
@@ -461,7 +440,7 @@ function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineVie
         placeholder="Search BOM, SOI, part, code, note…" aria-label="Search"
         className={`${SEL} ltr w-64 font-normal`}
       />
-      <Pick label="Part" value={filters.partCode} options={parts} onChange={(v) => set({ partCode: v })} render={(c) => `${c}${partNameFor(c) ? ` · ${partNameFor(c)}` : ""}`} />
+      <Pick label="Part" value={filters.partCode} options={parts} onChange={(v) => set({ partCode: v })} render={(c) => `${c}${nameOf(c) ? ` · ${nameOf(c)}` : ""}`} />
       <Pick label="Material" value={filters.material} options={materials} onChange={(v) => set({ material: v })} />
       <Pick label="Thickness" value={filters.thicknessMm} options={thicknesses} onChange={(v) => set({ thicknessMm: v })} render={(t) => `${t} mm`} />
       <Pick label="Sheet size" value={filters.sheetSize} options={sizes} onChange={(v) => set({ sheetSize: v })} />
@@ -481,7 +460,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
 }) {
   const showMonth = month === "all";
   const knownCodes = [...new Set(lines.map((l) => l.materialCode).filter(Boolean))].sort();
-  const { filters, changeFilters } = useSavedFilters();
+  const { filters, setFilters: changeFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_MATERIAL_FILTERS);
   const shown = useMemo(() => filterMaterialLines(lines, filters), [lines, filters]);
   const filtering = shown.length !== lines.length;
   // the totals follow the filter, so "Stainless steel 5 mm, tanks only" adds up on its own
