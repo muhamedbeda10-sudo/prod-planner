@@ -4,11 +4,11 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { importNestingTracker, type MaterialImportResult } from "@/lib/server/material";
-import { normalizeMaterialType, normalizeSheetSize, parseSheetNumber } from "@/lib/domain/material";
+import { normalizeMaterialType, normalizeSheetSize, parseSheetNumber, partNameFor } from "@/lib/domain/material";
 import { monthLabelFromInput } from "@/lib/domain/dates";
 
 // The MATERIAL tab's writes. Every line is keyed on month × BOM × order ×
-// material × thickness × sheet size — entering the same line twice edits it,
+// part × material × thickness × sheet size — entering the same line twice edits it,
 // it never becomes a second row saying something different.
 
 export interface MaterialActionResult {
@@ -28,17 +28,22 @@ function readMonth(v: FormDataEntryValue | null): string {
 }
 
 interface LineFields {
-  month: string; bom: string; mo: string; units: number | null; material: string; thicknessMm: number | null;
+  month: string; bom: string; mo: string; units: number | null; partCode: string; partName: string; materialCode: string;
+  material: string; thicknessMm: number | null;
   sheetSize: string; sheetsPerUnit: number | null; sheetsUsed: number | null; producedQty: number | null; note: string | null;
 }
 
 function readLine(formData: FormData): LineFields {
   const note = String(formData.get("note") ?? "").trim();
+  const partCode = String(formData.get("partCode") ?? "").trim().toUpperCase();
   return {
     month: readMonth(formData.get("month")),
     bom: String(formData.get("bom") ?? "").replace(/[\r\n]/g, "").trim().toUpperCase(),
     mo: String(formData.get("mo") ?? "").trim(),
     units: parseSheetNumber(formData.get("units")),
+    partCode,
+    partName: String(formData.get("partName") ?? "").trim().toUpperCase() || partNameFor(partCode),
+    materialCode: String(formData.get("materialCode") ?? "").trim().toUpperCase(),
     material: normalizeMaterialType(formData.get("material")),
     thicknessMm: parseSheetNumber(formData.get("thicknessMm")),
     sheetSize: normalizeSheetSize(formData.get("sheetSize")),
@@ -63,15 +68,18 @@ function validate(f: LineFields): string | null {
 }
 
 function keyOf(f: LineFields) {
-  return { month: f.month, bom: f.bom, mo: f.mo, material: f.material, thicknessMm: f.thicknessMm!, sheetSize: f.sheetSize };
+  return { month: f.month, bom: f.bom, mo: f.mo, partCode: f.partCode, material: f.material, thicknessMm: f.thicknessMm!, sheetSize: f.sheetSize };
 }
 
 function dataOf(f: LineFields, by: string | null) {
   return {
-    ...keyOf(f), units: f.units!, sheetsPerUnit: f.sheetsPerUnit!, sheetsUsed: f.sheetsUsed,
+    ...keyOf(f), units: f.units!, partName: f.partName, materialCode: f.materialCode,
+    sheetsPerUnit: f.sheetsPerUnit!, sheetsUsed: f.sheetsUsed,
     producedQty: f.producedQty, note: f.note, recordedBy: by,
   };
 }
+
+const lineLabel = (f: LineFields) => `${f.partCode ? `${f.partCode} ` : ""}${f.material} ${f.thicknessMm}mm ${f.sheetSize}`;
 
 export async function createMaterialLine(formData: FormData): Promise<MaterialActionResult> {
   const guard = await requirePerm("material.edit");
@@ -79,8 +87,8 @@ export async function createMaterialLine(formData: FormData): Promise<MaterialAc
   const f = readLine(formData);
   const bad = validate(f);
   if (bad) return { ok: false, error: bad };
-  const clash = await prisma.materialUsage.findUnique({ where: { month_bom_mo_material_thicknessMm_sheetSize: keyOf(f) } });
-  if (clash) return { ok: false, error: `${f.material} ${f.thicknessMm}mm ${f.sheetSize} is already on ${f.bom} for ${f.month} — edit that line instead.` };
+  const clash = await prisma.materialUsage.findUnique({ where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: keyOf(f) } });
+  if (clash) return { ok: false, error: `${lineLabel(f)} is already on ${f.bom} for ${f.month} — edit that line instead.` };
   await prisma.materialUsage.create({ data: dataOf(f, guard.user?.name ?? null) });
   revalidateMaterial();
   return { ok: true };
@@ -94,8 +102,8 @@ export async function updateMaterialLine(formData: FormData): Promise<MaterialAc
   const f = readLine(formData);
   const bad = validate(f);
   if (bad) return { ok: false, error: bad };
-  const clash = await prisma.materialUsage.findUnique({ where: { month_bom_mo_material_thicknessMm_sheetSize: keyOf(f) } });
-  if (clash && clash.id !== id) return { ok: false, error: `Another line already records ${f.material} ${f.thicknessMm}mm ${f.sheetSize} on ${f.bom} for ${f.month}.` };
+  const clash = await prisma.materialUsage.findUnique({ where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: keyOf(f) } });
+  if (clash && clash.id !== id) return { ok: false, error: `Another line already records ${lineLabel(f)} on ${f.bom} for ${f.month}.` };
   await prisma.materialUsage.update({ where: { id }, data: dataOf(f, guard.user?.name ?? null) });
   revalidateMaterial();
   return { ok: true };

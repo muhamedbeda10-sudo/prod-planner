@@ -43,12 +43,13 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 7. **Daily report + Dashboard** (`/report`, `/`) — dept output, complete sets, efficiency/balance %,
    projects worked today, tracker snapshot, charts. Dashboard: achievement per item, dept output
    day/week, planned (oven−lead) vs welded.
-8. **Material — nesting tracker** (`/material`) — the planner's Nesting Tracker sheet, filed month by
-   month: one line per BOM × material × thickness × sheet size with Quantity of Units, sheets per unit and
-   the sheets actually nested. Sheets-for-job and Difference are **computed**, never stored. The tab adds
-   **Units Produced** and derives the sheets those units really consumed at the job's actual rate.
-   Import the sheet for a month (re-importing adds new lines and updates changed ones), filter by month,
-   edit any value inline, export in the sheet's own headers.
+8. **Material — nesting project tracker** (`/material`) — the planner's Nesting Project Tracker sheet, filed
+   month by month, exactly its columns: BOM Ref · Quantity of Units · Part Code · Part Name · Codes · Material ·
+   Thickness · Sheet Size · Sheets in BOM for one Unit / for Job · Actual Nesting for one Unit / for Job ·
+   Difference · Notes. The tab adds two columns: units **produced** (typed) and the sheets those units really
+   consumed at the job's actual rate (50 sheets nested for 30 units, 5 produced → 8.333). Import the sheet for a
+   month (re-importing adds new lines and updates changed ones; the same BOM's tank and top-cover lines stay
+   apart), filter by month, edit any value inline, export in the sheet's own headers.
 9. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
    clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day

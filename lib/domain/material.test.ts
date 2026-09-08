@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetsForJob, sheetsDifference,
-  actualPerUnit, sheetsForProduced, summarizeMaterial, parseNestingTracker, materialKey, round3,
+  actualPerUnit, sheetsForProduced, summarizeMaterial, parseNestingTracker, materialKey, round3, partNameFor,
   type MaterialLineView,
 } from "./material";
 import { monthLabelFromInput, monthInputFromLabel, monthLabelSortKey } from "./dates";
@@ -82,14 +82,24 @@ describe("what the produced units really consumed", () => {
 
 describe("materialKey", () => {
   it("separates the same line filed under two months", () => {
-    const base = { bom: "12008E18M18", mo: "", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440" };
+    const base = { bom: "12008E18M18", mo: "", partCode: "FB-022", material: "Steel", thicknessMm: 5, sheetSize: "1220*2440" };
     expect(materialKey({ ...base, month: "July 2026" })).not.toBe(materialKey({ ...base, month: "August 2026" }));
+  });
+  it("separates the same BOM's tank and top-cover lines", () => {
+    const base = { month: "September 2026", bom: "40012E11M11", mo: "", material: "Stainless steel", thicknessMm: 5, sheetSize: "1220*2440" };
+    expect(materialKey({ ...base, partCode: "FB-022" })).not.toBe(materialKey({ ...base, partCode: "FB-051" }));
+  });
+  it("knows the parts' names by code", () => {
+    expect(partNameFor("fb-022")).toBe("TANK");
+    expect(partNameFor("FB-051")).toBe("TOP COVER");
+    expect(partNameFor("XX-1")).toBe("");
   });
 });
 
 function line(over: Partial<MaterialLineView>): MaterialLineView {
   return {
-    id: 1, month: "July 2026", bom: "B1", mo: "", units: 10, material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
+    id: 1, month: "July 2026", bom: "B1", mo: "", units: 10, partCode: "FB-022", partName: "TANK", materialCode: "T-SSS-5MM",
+    material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
     sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: null,
     forJob: 10, difference: 0, actualPerUnit: 1, forProduced: null, updatedISO: "2026-09-07", recordedBy: null, ...over,
   };
@@ -134,6 +144,11 @@ const HEADER = [
   "No. of Sheets in BOM for one Unit", "No. of Sheets in BOM for Job",
   "No. of Sheets in Actual Nesting for Job", "Difference", "Notes",
 ];
+const PROJECT_HEADER = [
+  "BOM Ref", "Quantity of Units", "Part Code", "Part Name", "Codes", "Material", "Thickness (mm)", "Sheet Size",
+  "No. of Sheets in BOM for one Unit", "No. of Sheets in BOM for Job", "No. of Sheets in Actual Nesting for one Unit",
+  "No. of Sheets in Actual Nesting for Job", "Difference", "Notes",
+];
 
 describe("parseNestingTracker", () => {
   it("reads the tracker's rows and ignores its formula columns", () => {
@@ -147,8 +162,24 @@ describe("parseNestingTracker", () => {
     expect(headerRow).toBe(2);
     expect(issues).toEqual([]);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ bom: "10017E11M11", units: 22, material: "Steel", thicknessMm: 5, sheetSize: "1220*2440", sheetsPerUnit: 1.243, sheetsUsed: 17, note: null });
+    expect(rows[0]).toMatchObject({ bom: "10017E11M11", units: 22, material: "Steel", thicknessMm: 5, sheetSize: "1220*2440", sheetsPerUnit: 1.243, sheetsUsed: 17, note: null, partCode: "", partName: "", materialCode: "" });
     expect(rows[1]).toMatchObject({ material: "Stainless steel", note: "check" });
+  });
+  it("reads the project tracker's part columns and skips its actual-per-unit column", () => {
+    const grid: unknown[][] = [
+      ["NESTING PROJECT TRACKER"],
+      PROJECT_HEADER,
+      ["10017E11M11", 29, "fb-022", "Tank", "t-sss-5mm", "Stainless steal", 5, "1220*2440", 0.3048, 8.8392, 0.2207, 6.4, 2.4392, null],
+      ["40012E11M11", 7, "FB-051", "TOP COVER", "T-SSS-5MM", "Stainless steal", 5, "1220*2440", 0.022, 0.154, null, null, null, null],
+      ["40012E11M11", 7, "FB-022", null, "T-SSS-5MM", "Stainless steal", 5, "1220*2440", 0.0014, 0.0098, null, null, null, "re-nest"],
+    ];
+    const { rows, issues } = parseNestingTracker(grid);
+    expect(issues).toEqual([]);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatchObject({ bom: "10017E11M11", units: 29, partCode: "FB-022", partName: "TANK", materialCode: "T-SSS-5MM", material: "Stainless steel", sheetsPerUnit: 0.3048, sheetsUsed: 6.4 });
+    expect(rows[1]).toMatchObject({ partCode: "FB-051", partName: "TOP COVER", sheetsUsed: null });
+    // a blank part name is filled from the code
+    expect(rows[2]).toMatchObject({ partCode: "FB-022", partName: "TANK", note: "re-nest" });
   });
   it("skips the blank template rows the tracker is padded with", () => {
     const grid: unknown[][] = [HEADER, [null, null, null, null, null, null, "=IF(...)", null, "=IF(...)", null]];
