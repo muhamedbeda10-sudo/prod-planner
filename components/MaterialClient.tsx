@@ -1,8 +1,12 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useState, useTransition } from "react";
-import { MATERIAL_PRESETS, PART_PRESETS, SHEET_SIZE_PRESETS, partNameFor, type MaterialLineView, type MaterialTotal } from "@/lib/domain/material";
+import { useCallback, useMemo, useState, useTransition } from "react";
+import {
+  MATERIAL_PRESETS, PART_PRESETS, SHEET_SIZE_PRESETS, MATERIAL_STATUS_FILTERS, EMPTY_MATERIAL_FILTERS,
+  partNameFor, filterMaterialLines, summarizeMaterial,
+  type MaterialLineView, type MaterialTotal, type MaterialFilters, type MaterialStatusFilter,
+} from "@/lib/domain/material";
 import { monthInputFromLabel } from "@/lib/domain/dates";
 import { Soi } from "@/components/ui";
 import {
@@ -361,11 +365,61 @@ function TotalsTable({ totals }: { totals: MaterialTotal[] }) {
 
 // ---- the page body ----
 
+// ---- filters: one row above the table; the totals follow what is shown ----
+
+const SEL = "border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold";
+
+function Pick({ label, value, options, onChange, render }: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void; render?: (v: string) => string;
+}) {
+  return (
+    <select aria-label={label} title={label} className={SEL} value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{label}: all</option>
+      {options.map((o) => <option key={o} value={o}>{render ? render(o) : o}</option>)}
+    </select>
+  );
+}
+
+function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineView[]; filters: MaterialFilters; onChange: (f: MaterialFilters) => void; shown: number }) {
+  const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))].sort();
+  const parts = uniq(lines.map((l) => l.partCode));
+  const materials = uniq(lines.map((l) => l.material));
+  const thicknesses = [...new Set(lines.map((l) => l.thicknessMm))].sort((a, b) => a - b).map(String);
+  const sizes = uniq(lines.map((l) => l.sheetSize));
+  const set = (patch: Partial<MaterialFilters>) => onChange({ ...filters, ...patch });
+  const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_MATERIAL_FILTERS);
+  return (
+    <div className="flex flex-wrap items-center gap-2 no-print">
+      <input
+        type="search" value={filters.q} onChange={(e) => set({ q: e.target.value })}
+        placeholder="Search BOM, SOI, part, code, note…" aria-label="Search"
+        className={`${SEL} ltr w-64 font-normal`}
+      />
+      <Pick label="Part" value={filters.partCode} options={parts} onChange={(v) => set({ partCode: v })} render={(c) => `${c}${partNameFor(c) ? ` · ${partNameFor(c)}` : ""}`} />
+      <Pick label="Material" value={filters.material} options={materials} onChange={(v) => set({ material: v })} />
+      <Pick label="Thickness" value={filters.thicknessMm} options={thicknesses} onChange={(v) => set({ thicknessMm: v })} render={(t) => `${t} mm`} />
+      <Pick label="Sheet size" value={filters.sheetSize} options={sizes} onChange={(v) => set({ sheetSize: v })} />
+      <select aria-label="Status" title="Where the line stands" className={SEL} value={filters.status} onChange={(e) => set({ status: e.target.value as MaterialStatusFilter })}>
+        {(Object.keys(MATERIAL_STATUS_FILTERS) as MaterialStatusFilter[]).map((k) => <option key={k} value={k}>{MATERIAL_STATUS_FILTERS[k]}</option>)}
+      </select>
+      <span className="text-xs text-muted tabnum">
+        {active ? `${shown} of ${lines.length} line(s)` : `${lines.length} line(s)`}
+      </span>
+      {active && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onChange(EMPTY_MATERIAL_FILTERS)}>✕ Clear</button>}
+    </div>
+  );
+}
+
 export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
   lines: MaterialLineView[]; totals: MaterialTotal[]; month: string; knownBoms: string[]; canEdit: boolean;
 }) {
   const showMonth = month === "all";
   const knownCodes = [...new Set(lines.map((l) => l.materialCode).filter(Boolean))].sort();
+  const [filters, setFilters] = useState<MaterialFilters>(EMPTY_MATERIAL_FILTERS);
+  const shown = useMemo(() => filterMaterialLines(lines, filters), [lines, filters]);
+  const filtering = shown.length !== lines.length;
+  // the totals follow the filter, so "Stainless steel 5 mm, tanks only" adds up on its own
+  const shownTotals = filtering ? summarizeMaterial(shown) : totals;
   return (
     <div className="space-y-5">
       {canEdit && (
@@ -373,11 +427,14 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
           <ImportPanel month={month} />
         </div>
       )}
+      {lines.length > 0 && <FilterBar lines={lines} filters={filters} onChange={setFilters} shown={shown.length} />}
       <section className="bg-surface border rounded-xl overflow-hidden">
         {lines.length === 0 ? (
           <p className="text-sm text-muted p-4">
             {showMonth ? "No material recorded yet." : `Nothing recorded for ${month}.`} Import the month&apos;s Nesting Tracker sheet, or add lines below.
           </p>
+        ) : shown.length === 0 ? (
+          <p className="text-sm text-muted p-4">No line matches these filters.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
@@ -405,17 +462,20 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
                 </tr>
               </thead>
               <tbody>
-                {lines.map((l) => <LineRow key={l.id} line={l} month={month} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} />)}
+                {shown.map((l) => <LineRow key={l.id} line={l} month={month} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} />)}
               </tbody>
             </table>
           </div>
         )}
       </section>
       {canEdit && <AddLine month={month} knownBoms={knownBoms} knownCodes={knownCodes} startOpen={false} />}
-      {totals.length > 0 && (
+      {shownTotals.length > 0 && (
         <section>
-          <h2 className="font-bold mb-2">Totals {showMonth ? "across every month" : `for ${month}`} — per material, thickness and size</h2>
-          <div className="bg-surface border rounded-xl overflow-hidden"><TotalsTable totals={totals} /></div>
+          <h2 className="font-bold mb-2">
+            Totals {showMonth ? "across every month" : `for ${month}`} — per material, thickness and size
+            {filtering && <span className="text-sm font-normal text-muted"> · filtered lines only</span>}
+          </h2>
+          <div className="bg-surface border rounded-xl overflow-hidden"><TotalsTable totals={shownTotals} /></div>
         </section>
       )}
     </div>

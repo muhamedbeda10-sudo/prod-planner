@@ -301,3 +301,49 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
   if (rows.length === 0) issues.push("No material rows found under the header.");
   return { rows, issues, headerRow: headerIdx + 1 };
 }
+
+// ---- filters: narrowing the month's lines on the page ----
+
+export const MATERIAL_STATUS_FILTERS = {
+  all: "All lines",
+  nested: "Nested",
+  notNested: "Not nested yet",
+  produced: "With produced",
+  over: "Over BOM",
+  within: "Within BOM",
+} as const;
+export type MaterialStatusFilter = keyof typeof MATERIAL_STATUS_FILTERS;
+
+export interface MaterialFilters {
+  /** Matches BOM, SOI, part code, part name, material code or note — case-insensitive, any part. */
+  q: string;
+  partCode: string; // "" = any
+  material: string; // "" = any
+  thicknessMm: string; // "" = any; the number as text, as the select carries it
+  sheetSize: string; // "" = any
+  status: MaterialStatusFilter;
+}
+
+export const EMPTY_MATERIAL_FILTERS: MaterialFilters = { q: "", partCode: "", material: "", thicknessMm: "", sheetSize: "", status: "all" };
+
+export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilters): MaterialLineView[] {
+  const q = f.q.trim().toLowerCase();
+  return lines.filter((l) => {
+    if (f.partCode && l.partCode !== f.partCode) return false;
+    if (f.material && l.material !== f.material) return false;
+    if (f.thicknessMm && String(l.thicknessMm) !== f.thicknessMm) return false;
+    if (f.sheetSize && l.sheetSize !== f.sheetSize) return false;
+    switch (f.status) {
+      case "nested": if (l.sheetsUsed === null) return false; break;
+      case "notNested": if (l.sheetsUsed !== null) return false; break;
+      case "produced": if (l.producedQty === null) return false; break;
+      case "over": if (l.difference === null || l.difference >= 0) return false; break;
+      case "within": if (l.difference === null || l.difference < 0) return false; break;
+    }
+    if (q) {
+      const hay = [l.bom, l.soi ?? "", l.partCode, l.partName, l.materialCode, l.note ?? "", l.mo].join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}

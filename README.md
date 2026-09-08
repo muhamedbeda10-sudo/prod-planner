@@ -49,7 +49,9 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    Difference · Notes. The tab adds two columns: units **produced** (typed) and the sheets those units really
    consumed at the job's actual rate (50 sheets nested for 30 units, 5 produced → 8.333). Import the sheet for a
    month (re-importing adds new lines and updates changed ones; the same BOM's tank and top-cover lines stay
-   apart), filter by month, edit any value inline, export in the sheet's own headers.
+   apart), filter by month and, within it, by part, material, thickness, sheet size, status (nested / not
+   nested / with produced / over BOM) or a search across BOM, SOI, part, code and note — the totals follow
+   the filter; edit any value inline, export in the sheet's own headers.
 9. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
    clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day
