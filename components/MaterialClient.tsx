@@ -11,6 +11,7 @@ import { monthInputFromLabel } from "@/lib/domain/dates";
 import { Soi } from "@/components/ui";
 import {
   createMaterialLine, updateMaterialLine, setSheetsUsed, setProducedQty, deleteMaterialLine, importMaterialAction,
+  deleteMaterialMonth,
 } from "@/app/material/actions";
 
 // The MATERIAL tab — the planner's Nesting Project Tracker, month by month.
@@ -330,6 +331,31 @@ function ImportPanel({ month }: { month: string }) {
   );
 }
 
+// ---- delete a whole month ----
+
+function DeleteMonth({ month, count }: { month: string; count: number }) {
+  const del = useAction();
+  return (
+    <span className="inline-flex flex-col">
+      <button
+        type="button" className="btn btn-sm btn-danger" disabled={del.pending}
+        title="Delete every line filed under this month — cannot be undone"
+        onClick={() => {
+          if (!confirm(`Delete ALL ${count} line(s) of ${month} from the Material tab?\n\nThis cannot be undone. Export the month first if you might need it.`)) return;
+          if (prompt(`Type the month exactly — ${month} — to confirm:`) !== month) return;
+          const fd = new FormData();
+          fd.set("month", month);
+          fd.set("expected", String(count));
+          del.run(deleteMaterialMonth, fd, `Deleted ${month}.`);
+        }}
+      >
+        🗑 Delete {month}
+      </button>
+      <Msg msg={del.msg} />
+    </span>
+  );
+}
+
 // ---- totals ----
 
 function TotalsTable({ totals }: { totals: MaterialTotal[] }) {
@@ -463,8 +489,9 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
   return (
     <div className="space-y-5">
       {canEdit && (
-        <div className="flex flex-wrap items-start gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
           <ImportPanel month={month} />
+          {!showMonth && lines.length > 0 && <DeleteMonth month={month} count={lines.length} />}
         </div>
       )}
       {lines.length > 0 && <FilterBar lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} />}
