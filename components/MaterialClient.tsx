@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import {
   MATERIAL_PRESETS, PART_PRESETS, SHEET_SIZE_PRESETS, MATERIAL_STATUS_FILTERS, EMPTY_MATERIAL_FILTERS,
   partNameFor, filterMaterialLines, summarizeMaterial,
@@ -367,6 +367,46 @@ function TotalsTable({ totals }: { totals: MaterialTotal[] }) {
 
 // ---- filters: one row above the table; the totals follow what is shown ----
 
+const FILTERS_KEY = "material:filters";
+
+/** Only the known fields, as strings, with a status the page knows — whatever
+ *  an old or hand-edited saved value holds. */
+function readSavedFilters(saved: string): MaterialFilters {
+  let raw: unknown = null;
+  try { raw = saved ? JSON.parse(saved) : null; } catch { raw = null; }
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const str = (k: keyof MaterialFilters) => (typeof o[k] === "string" ? (o[k] as string) : "");
+  const status = str("status");
+  return {
+    q: str("q"), partCode: str("partCode"), material: str("material"), thicknessMm: str("thicknessMm"), sheetSize: str("sheetSize"),
+    status: status in MATERIAL_STATUS_FILTERS ? (status as MaterialStatusFilter) : "all",
+  };
+}
+
+// The filters live in this browser's storage, so the tab reopens narrowed the
+// way it was left. Storage is the source of truth: the server renders the
+// page unfiltered, and the browser takes over after hydration.
+const filterListeners = new Set<() => void>();
+function subscribeFilters(cb: () => void) {
+  filterListeners.add(cb);
+  window.addEventListener("storage", cb);
+  return () => { filterListeners.delete(cb); window.removeEventListener("storage", cb); };
+}
+let memoryRaw = ""; // when storage is blocked, the filters still work for this page load
+function readFiltersRaw(): string {
+  try { return localStorage.getItem(FILTERS_KEY) ?? memoryRaw; } catch { return memoryRaw; }
+}
+function useSavedFilters() {
+  const raw = useSyncExternalStore(subscribeFilters, readFiltersRaw, () => "");
+  const filters = useMemo(() => (raw ? readSavedFilters(raw) : EMPTY_MATERIAL_FILTERS), [raw]);
+  const changeFilters = (f: MaterialFilters) => {
+    memoryRaw = JSON.stringify(f);
+    try { localStorage.setItem(FILTERS_KEY, memoryRaw); } catch { /* storage unavailable — the filter holds for this page load only */ }
+    filterListeners.forEach((l) => l());
+  };
+  return { filters, changeFilters };
+}
+
 const SEL = "border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold";
 
 function Pick({ label, value, options, onChange, render }: {
@@ -415,7 +455,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
 }) {
   const showMonth = month === "all";
   const knownCodes = [...new Set(lines.map((l) => l.materialCode).filter(Boolean))].sort();
-  const [filters, setFilters] = useState<MaterialFilters>(EMPTY_MATERIAL_FILTERS);
+  const { filters, changeFilters } = useSavedFilters();
   const shown = useMemo(() => filterMaterialLines(lines, filters), [lines, filters]);
   const filtering = shown.length !== lines.length;
   // the totals follow the filter, so "Stainless steel 5 mm, tanks only" adds up on its own
@@ -427,7 +467,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
           <ImportPanel month={month} />
         </div>
       )}
-      {lines.length > 0 && <FilterBar lines={lines} filters={filters} onChange={setFilters} shown={shown.length} />}
+      {lines.length > 0 && <FilterBar lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} />}
       <section className="bg-surface border rounded-xl overflow-hidden">
         {lines.length === 0 ? (
           <p className="text-sm text-muted p-4">
