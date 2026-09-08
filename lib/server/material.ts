@@ -19,7 +19,8 @@ export interface MaterialPageData {
 }
 
 type Row = {
-  id: number; month: string; bom: string; mo: string; units: number; material: string; thicknessMm: number;
+  id: number; month: string; bom: string; mo: string; units: number; partCode: string; partName: string; materialCode: string;
+  material: string; thicknessMm: number;
   sheetSize: string; sheetsPerUnit: number; sheetsUsed: number | null; producedQty: number | null;
   note: string | null; recordedBy: string | null; updatedAt: Date;
 };
@@ -27,7 +28,8 @@ type Row = {
 function toView(r: Row, soiByBom: Record<string, string>): MaterialLineView {
   const forJob = sheetsForJob(r.sheetsPerUnit, r.units);
   return {
-    id: r.id, month: r.month, bom: r.bom, mo: r.mo, units: r.units, material: r.material,
+    id: r.id, month: r.month, bom: r.bom, mo: r.mo, units: r.units,
+    partCode: r.partCode, partName: r.partName, materialCode: r.materialCode, material: r.material,
     thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, sheetsPerUnit: r.sheetsPerUnit,
     sheetsUsed: r.sheetsUsed, producedQty: r.producedQty, note: r.note,
     soi: soiByBom[r.bom] ?? null,
@@ -48,7 +50,7 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
   const [rows, monthRows, orders, soi] = await Promise.all([
     prisma.materialUsage.findMany({
       where: month === "all" ? undefined : { month },
-      orderBy: [{ month: "desc" }, { bom: "asc" }, { material: "asc" }, { thicknessMm: "asc" }],
+      orderBy: [{ month: "desc" }, { bom: "asc" }, { partCode: "asc" }, { material: "asc" }, { thicknessMm: "asc" }],
     }),
     prisma.materialUsage.findMany({ select: { month: true, bom: true }, distinct: ["month", "bom"] }),
     prisma.masterOrder.findMany({ select: { bom: true, months: true, source: true } }),
@@ -79,7 +81,7 @@ export interface MaterialImportResult {
 
 /**
  * Import the Nesting Tracker sheet for one month. Lines are upserted on their
- * identity (month × BOM × material × thickness × size), so importing the same
+ * identity (month × BOM × part × material × thickness × size), so importing the same
  * month's sheet again adds the rows that are new and updates the ones whose
  * values changed — never doubles them. The tab's own column, units produced,
  * is not in the sheet and is left exactly as it was.
@@ -110,25 +112,28 @@ export async function importNestingTracker(
   if (rows.length === 0) return { ok: false, error: issues[0] ?? "No material rows found.", issues, sheet: sheetName };
 
   const existing = await prisma.materialUsage.findMany({ where: { month, mo: "" } });
-  const byKey = new Map(existing.map((e) => [`${e.bom}|${e.material}|${e.thicknessMm}|${e.sheetSize}`, e]));
+  const byKey = new Map(existing.map((e) => [`${e.bom}|${e.partCode}|${e.material}|${e.thicknessMm}|${e.sheetSize}`, e]));
 
   let added = 0, updated = 0, unchanged = 0;
   for (const r of rows) {
-    const cur = byKey.get(`${r.bom}|${r.material}|${r.thicknessMm}|${r.sheetSize}`);
+    const cur = byKey.get(`${r.bom}|${r.partCode}|${r.material}|${r.thicknessMm}|${r.sheetSize}`);
     const same = cur && cur.units === r.units && cur.sheetsPerUnit === r.sheetsPerUnit
-      && cur.sheetsUsed === r.sheetsUsed && (cur.note ?? null) === (r.note ?? cur.note ?? null);
+      && cur.sheetsUsed === r.sheetsUsed && cur.partName === r.partName && cur.materialCode === r.materialCode
+      && (cur.note ?? null) === (r.note ?? cur.note ?? null);
     if (!cur) added += 1; else if (same) unchanged += 1; else updated += 1;
     if (preview || same) continue;
 
     const data = {
-      units: r.units, sheetsPerUnit: r.sheetsPerUnit, sheetsUsed: r.sheetsUsed,
+      units: r.units, partName: r.partName, materialCode: r.materialCode,
+      sheetsPerUnit: r.sheetsPerUnit, sheetsUsed: r.sheetsUsed,
       // a blank note in the sheet must not erase one typed in the tab
       ...(r.note !== null ? { note: r.note } : {}),
       recordedBy,
     };
+    const key = { month, bom: r.bom, mo: "", partCode: r.partCode, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize };
     await prisma.materialUsage.upsert({
-      where: { month_bom_mo_material_thicknessMm_sheetSize: { month, bom: r.bom, mo: "", material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize } },
-      create: { month, bom: r.bom, mo: "", material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, ...data, note: r.note },
+      where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: key },
+      create: { ...key, ...data, note: r.note },
       update: data,
     });
   }

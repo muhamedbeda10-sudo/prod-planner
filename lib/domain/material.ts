@@ -1,8 +1,9 @@
-// MATERIAL — the planner's "Nesting Tracker" sheet, month by month.
+// MATERIAL — the planner's "Nesting Project Tracker" sheet, month by month.
 //
-// One line per month × BOM × material × thickness × sheet size, exactly the
-// sheet's row: Quantity of Units, the sheets ONE unit needs, and the sheets
-// actually nested for the job. The sheet's two formula columns are derived
+// One line per month × BOM × part × material × thickness × sheet size,
+// exactly the sheet's row: Quantity of Units, Part Code and Name, the
+// material's code, the sheets ONE unit needs, and the sheets actually nested
+// for the job. The sheet's two formula columns are derived
 // here, never stored, so they cannot go stale or come back as #VALUE!:
 //   sheets for the job = sheets per unit × quantity of units
 //   difference         = sheets for the job − sheets actually nested
@@ -21,6 +22,19 @@ export function round3(n: number): number {
 }
 
 export const MATERIAL_PRESETS = ["Steel", "Stainless steel", "Galvanized steel", "Aluminium", "Copper"] as const;
+
+/** The parts the sheet nests for, by Odoo's part code — a typing aid that
+ *  fills the part name; anything else typed is kept. */
+export const PART_PRESETS: { code: string; name: string }[] = [
+  { code: "FB-022", name: "TANK" },
+  { code: "FB-051", name: "TOP COVER" },
+  { code: "FB-058", name: "CORE FRAME" },
+  { code: "FB-059", name: "ENCLOSER" },
+];
+
+export function partNameFor(code: string): string {
+  return PART_PRESETS.find((p) => p.code === code.trim().toUpperCase())?.name ?? "";
+}
 export const SHEET_SIZE_PRESETS = ["1220*2440", "1250*2500", "1500*3000", "2000*6000"] as const;
 
 // The tracker was filled in by hand for years — "Stainless steal", "S.S", "ms"
@@ -108,6 +122,9 @@ export interface MaterialLineInput {
   bom: string;
   mo: string; // "" = the line covers every order on this BOM
   units: number; // Quantity of Units
+  partCode: string; // FB-022 — "" when the line predates the column
+  partName: string; // TANK
+  materialCode: string; // the sheet's "Codes": T-SSS-5MM
   material: string;
   thicknessMm: number;
   sheetSize: string;
@@ -128,10 +145,10 @@ export interface MaterialLineView extends MaterialLineInput {
   recordedBy: string | null;
 }
 
-/** The identity of a line — one per month × BOM × order × material ×
+/** The identity of a line — one per month × BOM × order × part × material ×
  *  thickness × size. Re-importing a month's sheet edits its lines. */
-export function materialKey(l: Pick<MaterialLineInput, "month" | "bom" | "mo" | "material" | "thicknessMm" | "sheetSize">): string {
-  return [l.month, l.bom, l.mo, l.material, l.thicknessMm, l.sheetSize].join("|");
+export function materialKey(l: Pick<MaterialLineInput, "month" | "bom" | "mo" | "partCode" | "material" | "thicknessMm" | "sheetSize">): string {
+  return [l.month, l.bom, l.mo, l.partCode, l.material, l.thicknessMm, l.sheetSize].join("|");
 }
 
 // ---- totals per material, thickness and size ----
@@ -172,6 +189,9 @@ export interface NestingRow {
   rowNum: number; // 1-based sheet row, for the issues list
   bom: string;
   units: number;
+  partCode: string;
+  partName: string;
+  materialCode: string;
   material: string;
   thicknessMm: number;
   sheetSize: string;
@@ -188,16 +208,24 @@ export interface ParsedNesting {
 
 // Columns are found BY HEADER TEXT, so the planner may reorder or add columns
 // without breaking the import. Each entry lists the distinguishing fragments.
+// "…in BOM for one Unit" and "…in Actual Nesting for one Unit" both say "one
+// unit": the BOM's is claimed first (its fragment is more specific), and the
+// actual rate is never read — the tab derives it from the actual for the job.
 const HEADERS = {
   bom: ["bom ref", "bom"],
   units: ["quantity of units", "qty of units", "units"],
+  partCode: ["part code"],
+  partName: ["part name"],
+  code: ["codes", "code"],
   material: ["material type", "material"],
   thickness: ["thickness"],
   size: ["sheet size", "size"],
-  perUnit: ["one unit", "per unit"],
-  actual: ["actual nesting", "actual"],
+  perUnit: ["bom for one unit", "one unit", "per unit"],
+  actual: ["actual nesting for job", "actual for job", "actual nesting", "actual"],
   note: ["notes", "note", "remark"],
 } as const;
+
+const OPTIONAL_HEADERS: ReadonlySet<string> = new Set(["note", "actual", "partCode", "partName", "code"]);
 
 function cellText(v: unknown): string {
   return String(v ?? "").replace(/\s+/g, " ").trim();
@@ -237,7 +265,7 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
   const col = mapColumns(grid[headerIdx] ?? []);
   const issues: string[] = [];
   for (const [key, idx] of Object.entries(col)) {
-    if (idx < 0 && key !== "note" && key !== "actual") issues.push(`Column "${key}" was not found in the header row.`);
+    if (idx < 0 && !OPTIONAL_HEADERS.has(key)) issues.push(`Column "${key}" was not found in the header row.`);
   }
   if (issues.length > 0) return { rows: [], issues, headerRow: headerIdx + 1 };
 
@@ -261,8 +289,12 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
 
     const used = col.actual >= 0 ? parseSheetNumber(line[col.actual]) : null;
     const note = col.note >= 0 ? cellText(line[col.note]) : "";
+    const partCode = col.partCode >= 0 ? cellText(line[col.partCode]).toUpperCase() : "";
+    const partName = col.partName >= 0 ? cellText(line[col.partName]).toUpperCase() : "";
     rows.push({
       rowNum, bom, units, material, thicknessMm: thickness, sheetSize,
+      partCode, partName: partName || partNameFor(partCode),
+      materialCode: col.code >= 0 ? cellText(line[col.code]).toUpperCase() : "",
       sheetsPerUnit: perUnit, sheetsUsed: used !== null && used >= 0 ? used : null, note: note || null,
     });
   }

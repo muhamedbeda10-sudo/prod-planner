@@ -2,19 +2,22 @@
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
-import { MATERIAL_PRESETS, SHEET_SIZE_PRESETS, type MaterialLineView, type MaterialTotal } from "@/lib/domain/material";
+import { MATERIAL_PRESETS, PART_PRESETS, SHEET_SIZE_PRESETS, partNameFor, type MaterialLineView, type MaterialTotal } from "@/lib/domain/material";
 import { monthInputFromLabel } from "@/lib/domain/dates";
 import { Soi } from "@/components/ui";
 import {
   createMaterialLine, updateMaterialLine, setSheetsUsed, setProducedQty, deleteMaterialLine, importMaterialAction,
 } from "@/app/material/actions";
 
-// The MATERIAL tab — the planner's Nesting Tracker, month by month.
+// The MATERIAL tab — the planner's Nesting Project Tracker, month by month.
 //
-// The table is the sheet's row in the sheet's order, plus two columns of the
-// tab's own: units PRODUCED (typed) and the sheets those units really consumed
-// (derived from the sheet's actual-nesting rate). Sheets-for-job and
-// Difference are computed, never typed, so they can never disagree.
+// The table is the sheet's row in the sheet's order — BOM Ref · Quantity of
+// Units · Part Code · Part Name · Codes · Material · Thickness · Sheet Size ·
+// Sheets in BOM for one Unit · for Job · Actual Nesting for one Unit · for
+// Job · Difference · Notes — plus two columns of the tab's own: units
+// PRODUCED (typed) and the sheets those units really consumed (at the actual
+// rate). Sheets-for-job, actual-per-unit and Difference are computed, never
+// typed, so they can never disagree.
 
 const cellInput = "w-20 px-2 py-1 text-sm font-bold tabnum ltr text-center";
 
@@ -40,10 +43,11 @@ function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
   return <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
 }
 
-/** Sheet counts read as fractions of a sheet — 1.287, not 1.3. */
-function Sheets({ v, className = "" }: { v: number | null; className?: string }) {
+/** Sheet counts read as fractions of a sheet — 1.287, not 1.3. A rate per
+ *  unit is finer still: the sheet writes 0.2207. */
+function Sheets({ v, className = "", digits = 3 }: { v: number | null; className?: string; digits?: 3 | 4 }) {
   if (v === null) return <span className="text-muted">—</span>;
-  return <span className={`tabnum ltr ${className}`}>{Number.isInteger(v) ? v : Number(v.toFixed(3))}</span>;
+  return <span className={`tabnum ltr ${className}`}>{Number.isInteger(v) ? v : Number(v.toFixed(digits))}</span>;
 }
 
 // ---- month picker (drives ?month=; this month by default, "all" for everything) ----
@@ -82,7 +86,7 @@ function Field({ hint, className = "", children }: { hint: string; className?: s
   return <span className={`inline-flex flex-col ${className}`} title={hint}>{children}</span>;
 }
 
-function LineFields({ line, month, knownBoms, disabled }: { line?: MaterialLineView; month: string; knownBoms: string[]; disabled?: boolean }) {
+function LineFields({ line, month, knownBoms, knownCodes, disabled }: { line?: MaterialLineView; month: string; knownBoms: string[]; knownCodes: string[]; disabled?: boolean }) {
   const monthDefault = monthInputFromLabel(line?.month ?? (month === "all" ? "" : month)) ?? "";
   return (
     <>
@@ -95,6 +99,25 @@ function LineFields({ line, month, knownBoms, disabled }: { line?: MaterialLineV
       </Field>
       <Field hint="Quantity of Units — the job size on the sheet" className="w-20">
         <input name="units" type="number" step="1" min="0" aria-label="Quantity of units" defaultValue={line?.units ?? ""} required disabled={disabled} placeholder="units" className={`${F} ltr tabnum w-full`} />
+      </Field>
+      <Field hint="Part Code — the part these sheets go into (FB-022 tank, FB-051 top cover …)" className="w-24">
+        <input
+          name="partCode" list="part-codes" aria-label="Part code" defaultValue={line?.partCode ?? ""} disabled={disabled} placeholder="FB-022" className={`${F} ltr w-full`}
+          onChange={(e) => {
+            // a known code fills the name; a typed name is never overwritten
+            const name = partNameFor(e.target.value);
+            const el = e.target.form?.elements.namedItem("partName");
+            if (name && el instanceof HTMLInputElement && (!el.value || partNameFor(el.dataset.from ?? "") === el.value)) { el.value = name; el.dataset.from = e.target.value; }
+          }}
+        />
+        <datalist id="part-codes">{PART_PRESETS.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</datalist>
+      </Field>
+      <Field hint="Part Name" className="w-28">
+        <input name="partName" aria-label="Part name" defaultValue={line?.partName ?? ""} disabled={disabled} placeholder="TANK" className={`${F} w-full`} />
+      </Field>
+      <Field hint="Codes — the material's code on the sheet (T-SSS-5MM)" className="w-28">
+        <input name="materialCode" list="material-codes" aria-label="Material code" defaultValue={line?.materialCode ?? ""} disabled={disabled} placeholder="T-SSS-5MM" className={`${F} ltr w-full`} />
+        <datalist id="material-codes">{knownCodes.map((c) => <option key={c} value={c} />)}</datalist>
       </Field>
       <Field hint="Material type" className="w-32">
         <input name="material" list="material-types" aria-label="Material" defaultValue={line?.material ?? ""} required disabled={disabled} placeholder="Steel" className={`${F} w-full`} />
@@ -154,12 +177,12 @@ function CellInput({ id, field, value, action, title, bold }: {
 
 // ---- one row of the table ----
 
-function LineRow({ line, month, knownBoms, canEdit, showMonth }: { line: MaterialLineView; month: string; knownBoms: string[]; canEdit: boolean; showMonth: boolean }) {
+function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth }: { line: MaterialLineView; month: string; knownBoms: string[]; knownCodes: string[]; canEdit: boolean; showMonth: boolean }) {
   const [editing, setEditing] = useState(false);
   const edit = useAction();
   const del = useAction();
   const diffCls = line.difference === null ? "" : line.difference < 0 ? "text-bad-fg" : line.difference > 0 ? "text-ok-fg" : "text-muted";
-  const cols = 15 + (showMonth ? 1 : 0);
+  const cols = 19 + (showMonth ? 1 : 0);
   return (
     <>
       <tr className="border-t">
@@ -167,11 +190,15 @@ function LineRow({ line, month, knownBoms, canEdit, showMonth }: { line: Materia
         <td className="p-2 font-bold whitespace-nowrap ltr">{line.bom}</td>
         <td className="p-2 whitespace-nowrap"><Soi soi={line.soi} /></td>
         <td className="p-2 text-center tabnum ltr">{line.units}</td>
+        <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{line.partCode || <span className="text-muted">—</span>}</td>
+        <td className="p-2 whitespace-nowrap text-xs">{line.partName || <span className="text-muted">—</span>}</td>
+        <td className="p-2 whitespace-nowrap ltr text-xs">{line.materialCode || <span className="text-muted">—</span>}</td>
         <td className="p-2 whitespace-nowrap">{line.material}</td>
         <td className="p-2 text-center tabnum ltr">{line.thicknessMm}</td>
         <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
-        <td className="p-2 text-center"><Sheets v={line.sheetsPerUnit} /></td>
+        <td className="p-2 text-center"><Sheets v={line.sheetsPerUnit} digits={4} /></td>
         <td className="p-2 text-center font-bold"><Sheets v={line.forJob} /></td>
+        <td className="p-2 text-center text-muted" title="Sheets actually nested ÷ quantity of units"><Sheets v={line.actualPerUnit} digits={4} /></td>
         <td className="p-2 text-center">
           {canEdit ? <CellInput id={line.id} field="sheetsUsed" value={line.sheetsUsed} action={setSheetsUsed} title="No. of Sheets in Actual Nesting for the job" bold /> : <Sheets v={line.sheetsUsed} className="font-extrabold" />}
         </td>
@@ -189,7 +216,7 @@ function LineRow({ line, month, knownBoms, canEdit, showMonth }: { line: Materia
               <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)}>{editing ? "Close" : "Edit"}</button>
               <button type="button" className="btn btn-sm btn-danger" disabled={del.pending}
                 onClick={() => {
-                  if (!confirm(`Delete ${line.material} ${line.thicknessMm}mm ${line.sheetSize} from ${line.bom} (${line.month || "no month"})?`)) return;
+                  if (!confirm(`Delete ${line.partCode ? `${line.partCode} ` : ""}${line.material} ${line.thicknessMm}mm ${line.sheetSize} from ${line.bom} (${line.month || "no month"})?`)) return;
                   const fd = new FormData(); fd.set("id", String(line.id));
                   del.run(deleteMaterialLine, fd, "Deleted.");
                 }}>Delete</button>
@@ -208,7 +235,7 @@ function LineRow({ line, month, knownBoms, canEdit, showMonth }: { line: Materia
                 edit.run(updateMaterialLine, fd, "Saved.", () => setEditing(false));
               }}>
                 <div className="flex flex-wrap items-stretch gap-1.5">
-                  <LineFields line={line} month={month} knownBoms={knownBoms} disabled={edit.pending} />
+                  <LineFields line={line} month={month} knownBoms={knownBoms} knownCodes={knownCodes} disabled={edit.pending} />
                   <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={edit.pending}>Save</button>
                 </div>
                 <Msg msg={edit.msg} />
@@ -226,14 +253,14 @@ function LineRow({ line, month, knownBoms, canEdit, showMonth }: { line: Materia
 // A BOM is never one line: the sheet runs five to seven thicknesses under the
 // same BOM, units and sheet size. A successful add clears only what changes
 // from line to line and returns the cursor to the material.
-const PER_LINE = ["material", "thicknessMm", "sheetsPerUnit", "sheetsUsed", "producedQty", "note"] as const;
+const PER_LINE = ["partCode", "partName", "material", "thicknessMm", "sheetsPerUnit", "sheetsUsed", "producedQty", "note"] as const;
 
-function AddLine({ month, knownBoms, startOpen }: { month: string; knownBoms: string[]; startOpen: boolean }) {
+function AddLine({ month, knownBoms, knownCodes, startOpen }: { month: string; knownBoms: string[]; knownCodes: string[]; startOpen: boolean }) {
   const add = useAction();
   const [open, setOpen] = useState(startOpen);
   function clearForNext(form: HTMLFormElement) {
     for (const n of PER_LINE) { const el = form.elements.namedItem(n); if (el instanceof HTMLInputElement) el.value = ""; }
-    const first = form.elements.namedItem("material"); if (first instanceof HTMLInputElement) first.focus();
+    const first = form.elements.namedItem("partCode"); if (first instanceof HTMLInputElement) first.focus();
   }
   if (!open) return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>➕ Add a material line</button>;
   return (
@@ -242,7 +269,7 @@ function AddLine({ month, knownBoms, startOpen }: { month: string; knownBoms: st
       add.run(createMaterialLine, new FormData(form), "Added — next line.", () => clearForNext(form));
     }}>
       <div className="flex flex-wrap items-stretch gap-1.5">
-        <LineFields month={month} knownBoms={knownBoms} disabled={add.pending} />
+        <LineFields month={month} knownBoms={knownBoms} knownCodes={knownCodes} disabled={add.pending} />
         <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={add.pending}>Add</button>
         <button type="button" className="btn btn-sm btn-ghost shrink-0" onClick={() => setOpen(false)}>✕</button>
       </div>
@@ -288,7 +315,7 @@ function ImportPanel({ month }: { month: string }) {
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)}>✕</button>
       </div>
       <p className="text-xs text-muted">
-        Reads the “Nesting Tracker” tab by its headers. Importing the same month again adds the new rows and updates the
+        Reads the Nesting Project Tracker by its headers — BOM Ref, Quantity of Units, Part Code, Part Name, Codes, Material, Thickness, Sheet Size, Sheets in BOM for one Unit, Actual Nesting for Job, Notes. Importing the same month again adds the new rows and updates the
         ones whose values changed — it never doubles them, and it leaves your “Units produced” exactly as typed.
       </p>
       <Msg msg={res} />
@@ -338,6 +365,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
   lines: MaterialLineView[]; totals: MaterialTotal[]; month: string; knownBoms: string[]; canEdit: boolean;
 }) {
   const showMonth = month === "all";
+  const knownCodes = [...new Set(lines.map((l) => l.materialCode).filter(Boolean))].sort();
   return (
     <div className="space-y-5">
       {canEdit && (
@@ -358,14 +386,18 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
                   {showMonth && <th className="p-2">Month</th>}
                   <th className="p-2">BOM Ref</th>
                   <th className="p-2" title="Sales order item">SOI</th>
-                  <th className="p-2 text-center">Units</th>
+                  <th className="p-2 text-center" title="Quantity of Units">Units</th>
+                  <th className="p-2" title="Part Code">Part</th>
+                  <th className="p-2" title="Part Name">Part name</th>
+                  <th className="p-2" title="Codes — the material's code">Codes</th>
                   <th className="p-2">Material</th>
                   <th className="p-2 text-center">Thk (mm)</th>
                   <th className="p-2 text-center">Sheet size</th>
-                  <th className="p-2 text-center" title="No. of Sheets in BOM for one Unit">Sheets / unit</th>
-                  <th className="p-2 text-center" title="Sheets per unit × units">Sheets for job</th>
-                  <th className="p-2 text-center" title="No. of Sheets in Actual Nesting for Job — type here">Actual nested</th>
-                  <th className="p-2 text-center" title="Sheets for job − actual nested. Red = ate more than the BOM allows">Difference</th>
+                  <th className="p-2 text-center" title="No. of Sheets in BOM for one Unit">BOM / unit</th>
+                  <th className="p-2 text-center" title="No. of Sheets in BOM for Job = per unit × units">BOM for job</th>
+                  <th className="p-2 text-center" title="No. of Sheets in Actual Nesting for one Unit = actual for job ÷ units">Actual / unit</th>
+                  <th className="p-2 text-center" title="No. of Sheets in Actual Nesting for Job — type here">Actual for job</th>
+                  <th className="p-2 text-center" title="BOM for job − actual for job. Red = ate more than the BOM allows">Difference</th>
                   <th className="p-2 text-center bg-brand-dark" title="Units produced so far — type here">Produced</th>
                   <th className="p-2 text-center bg-brand-dark" title="Sheets the produced units really consumed, at the job's actual rate">Sheets used for produced</th>
                   <th className="p-2">Notes</th>
@@ -373,13 +405,13 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
                 </tr>
               </thead>
               <tbody>
-                {lines.map((l) => <LineRow key={l.id} line={l} month={month} knownBoms={knownBoms} canEdit={canEdit} showMonth={showMonth} />)}
+                {lines.map((l) => <LineRow key={l.id} line={l} month={month} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} />)}
               </tbody>
             </table>
           </div>
         )}
       </section>
-      {canEdit && <AddLine month={month} knownBoms={knownBoms} startOpen={false} />}
+      {canEdit && <AddLine month={month} knownBoms={knownBoms} knownCodes={knownCodes} startOpen={false} />}
       {totals.length > 0 && (
         <section>
           <h2 className="font-bold mb-2">Totals {showMonth ? "across every month" : `for ${month}`} — per material, thickness and size</h2>

@@ -628,6 +628,9 @@ model MaterialUsage {
   bom           String
   mo            String   @default("") // "" = the line covers the BOM (how the sheet writes it)
   units         Float    @default(0) // Quantity of Units
+  partCode      String   @default("") // FB-022 — the part this line's sheets go into
+  partName      String   @default("") // TANK, TOP COVER …
+  materialCode  String   @default("") // the sheet's "Codes": T-SSS-5MM
   material      String // Steel | Stainless steel | … (lib/domain/material.ts)
   thicknessMm   Float
   sheetSize     String // "1220*2440"
@@ -639,7 +642,7 @@ model MaterialUsage {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@unique([month, bom, mo, material, thicknessMm, sheetSize])
+  @@unique([month, bom, mo, partCode, material, thicknessMm, sheetSize])
   @@index([bom])
   @@index([month])
 }

@@ -26,27 +26,31 @@ export default async function MaterialPage({
   // the export carries the sheet's OWN column names in its order, then the
   // tab's additions, so the file drops straight back into the workbook
   const exportRows = lines.map((l) => ({
-    Month: l.month,
     "BOM Ref": l.bom,
-    SOI: l.soi ?? "",
     "Quantity of Units": l.units,
-    "Material Type": l.material,
+    "Part Code": l.partCode,
+    "Part Name": l.partName,
+    Codes: l.materialCode,
+    Material: l.material,
     "Thickness (mm)": l.thicknessMm,
     "Sheet Size": l.sheetSize,
     "No. of Sheets in BOM for one Unit": l.sheetsPerUnit,
     "No. of Sheets in BOM for Job": l.forJob,
+    "No. of Sheets in Actual Nesting for one Unit": l.actualPerUnit === null ? "" : Number(l.actualPerUnit.toFixed(4)),
     "No. of Sheets in Actual Nesting for Job": l.sheetsUsed ?? "",
     Difference: l.difference ?? "",
+    Notes: l.note ?? "",
+    Month: l.month,
+    SOI: l.soi ?? "",
     "Units Produced": l.producedQty ?? "",
     "Sheets Used for Produced": l.forProduced ?? "",
-    Notes: l.note ?? "",
   }));
 
   return (
     <div>
-      <PageHeader title="🧱 MATERIAL — nesting tracker">
+      <PageHeader title="🧱 MATERIAL — nesting project tracker">
         <MaterialMonthPicker month={month} months={months} />
-        <ExportButton rows={exportRows} filename={`nesting-tracker-${month.replace(/\s+/g, "-")}.xlsx`} sheetName="Nesting Tracker" />
+        <ExportButton rows={exportRows} filename={`nesting-tracker-${month.replace(/\s+/g, "-")}.xlsx`} sheetName="Sheet1" />
       </PageHeader>
       <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, "material.edit")} />
     </div>
