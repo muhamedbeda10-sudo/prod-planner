@@ -5,6 +5,7 @@ import { currentMonthLabel } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { MaterialClient, MaterialMonthPicker } from "@/components/MaterialClient";
+import { RememberLastVisit } from "@/components/RememberLastVisit";
 
 export const metadata = { title: "Material — ATC" };
 export const dynamic = "force-dynamic";
@@ -48,6 +49,7 @@ export default async function MaterialPage({
 
   return (
     <div>
+      <RememberLastVisit storageKey="material:last" />
       <PageHeader title="🧱 MATERIAL — nesting project tracker">
         <MaterialMonthPicker month={month} months={months} />
         <ExportButton rows={exportRows} filename={`nesting-tracker-${month.replace(/\s+/g, "-")}.xlsx`} sheetName="Sheet1" />
