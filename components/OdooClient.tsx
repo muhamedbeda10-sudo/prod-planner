@@ -7,6 +7,8 @@ import {
   type OdooEntryView, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter,
 } from "@/lib/domain/odoo";
 import { Soi } from "@/components/ui";
+import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
+import { materialNeed, monthLabelOfISO, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
 
@@ -303,26 +305,47 @@ function NotesCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
   );
 }
 
-function Row({ e, day, knownSois, knownFgCodes, canEdit }: { e: OdooEntryView; day: string; knownSois: string[]; knownFgCodes: string[]; canEdit: boolean }) {
+function Row({ e, day, knownSois, knownFgCodes, nesting, canEdit }: {
+  e: OdooEntryView; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; canEdit: boolean;
+}) {
   const [editing, setEditing] = useState(false);
+  const [material, setMaterial] = useState(false);
   const edit = useAction();
   const del = useAction();
+  // the row's material, as a hint on the button — none when the tracker has
+  // no lines for this part on this BOM
+  const need = useMemo(() => materialNeed(nesting, e.fgCode, e.qty, monthLabelOfISO(e.dateISO)), [nesting, e.fgCode, e.qty, e.dateISO]);
+  const closeMaterial = useCallback(() => setMaterial(false), []);
+  // clicking the row's plain cells opens its material; the status and notes
+  // cells keep their own controls
+  const cell = "p-2 whitespace-nowrap cursor-pointer";
+  const open = () => setMaterial(true);
+  const rowTitle = need ? `Click for the material behind ${e.qty} units` : "Click — no nesting lines for this FG-CODE yet";
   return (
     <>
-      <tr className="border-t">
-        <td className="p-2 whitespace-nowrap tabnum ltr">{e.dateISO}</td>
-        <td className="p-2 whitespace-nowrap"><Soi soi={e.soi} /></td>
-        <td className="p-2 whitespace-nowrap ltr text-xs font-semibold">{e.fgCode}</td>
-        <td className="p-2 whitespace-nowrap">{e.product}</td>
-        <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{e.odooMo}</td>
-        <td className="p-2 text-center tabnum font-extrabold">{e.qty}</td>
+      <tr className="border-t hover:bg-surface-2/60">
+        <td className={`${cell} tabnum ltr`} onClick={open} title={rowTitle}>{e.dateISO}</td>
+        <td className={cell} onClick={open} title={rowTitle}><Soi soi={e.soi} /></td>
+        <td className={`${cell} ltr text-xs font-semibold`} onClick={open} title={rowTitle}>{e.fgCode}</td>
+        <td className={cell} onClick={open} title={rowTitle}>{e.product}</td>
+        <td className={`${cell} ltr text-xs font-bold`} onClick={open} title={rowTitle}>{e.odooMo}</td>
+        <td className="p-2 text-center tabnum font-extrabold cursor-pointer" onClick={open} title={rowTitle}>{e.qty}</td>
         <td className="p-2 whitespace-nowrap text-xs align-top"><StatusCell e={e} canEdit={canEdit} /></td>
         <td className="p-2 text-xs min-w-[18rem] max-w-[28rem] align-top">
           <NotesCell e={e} canEdit={canEdit} />
         </td>
         <td className="p-2 text-center whitespace-nowrap no-print">
-          {canEdit ? (
-            <span className="inline-flex gap-1">
+          <span className="inline-flex gap-1">
+            <button
+              type="button"
+              className={`btn btn-sm ${need ? "btn-secondary" : "btn-ghost"}`}
+              title={need ? `Material for ${e.qty} units: ${need.lines.length} line(s), ${need.totalActual || need.totalBom} sheets` : "No nesting lines for this FG-CODE yet"}
+              onClick={open}
+            >
+              🧱{need ? <span className="tabnum ms-1">{need.totalActual || need.totalBom}</span> : null}
+            </button>
+          {canEdit && (
+            <>
               <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)}>{editing ? "Close" : "Edit"}</button>
               <button
                 type="button"
@@ -337,12 +360,12 @@ function Row({ e, day, knownSois, knownFgCodes, canEdit }: { e: OdooEntryView; d
               >
                 Delete
               </button>
-            </span>
-          ) : (
-            <span className="text-muted text-xs">—</span>
+            </>
           )}
+          </span>
         </td>
       </tr>
+      {material && <OdooMaterialPopup e={e} nesting={nesting} onClose={closeMaterial} />}
       {(editing || del.msg?.ok === false) && (
         <tr className="border-t-0">
           <td colSpan={9} className="px-2 pb-3">
@@ -467,12 +490,14 @@ export function OdooClient({
   day,
   knownSois,
   knownFgCodes,
+  nesting,
   canEdit,
 }: {
   entries: OdooEntryView[];
   day: string;
   knownSois: string[];
   knownFgCodes: string[];
+  nesting: NestingLookup;
   canEdit: boolean;
 }) {
   const { filters, setFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_ODOO_FILTERS);
@@ -507,12 +532,12 @@ export function OdooClient({
                   <th className="p-2 text-center">QTY</th>
                   <th className="p-2" title="Moved in place by the planner">Status</th>
                   <th className="p-2" title="What Odoo said and what was done — one note at a time, newest first">Notes</th>
-                  <th className="p-2 no-print" />
+                  <th className="p-2 no-print" title="Click a row (or 🧱) for the material its qty consumes, ready to copy into Odoo">🧱</th>
                 </tr>
               </thead>
               <tbody>
                 {shown.map((e) => (
-                  <Row key={e.id} e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} canEdit={canEdit} />
+                  <Row key={e.id} e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} canEdit={canEdit} />
                 ))}
               </tbody>
             </table>
