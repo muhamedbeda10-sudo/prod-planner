@@ -2,8 +2,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import Link from "next/link";
 import { getOdooData, getOdooDashboard } from "@/lib/server/odoo";
-import { resolvePeriod } from "@/lib/domain/odooStats";
-import { OdooDashboard, OdooRangePicker } from "@/components/OdooDashboard";
+import { resolveBasis, resolvePeriod } from "@/lib/domain/odooStats";
+import { OdooBasisPicker, OdooDashboard, OdooRangePicker } from "@/components/OdooDashboard";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { toISODate } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function OdooPage({
   searchParams,
 }: {
-  searchParams: Promise<{ day?: string; view?: string; range?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ day?: string; view?: string; range?: string; from?: string; to?: string; basis?: string }>;
 }) {
   // viewing is free for every account, like the rest of the app; recording is
   // gated on odoo.edit
@@ -37,12 +37,14 @@ export default async function OdooPage({
 
   if (view === "dashboard") {
     const period = resolvePeriod(sp);
-    const data = await getOdooDashboard(period);
+    const basis = resolveBasis(sp);
+    const data = await getOdooDashboard(period, basis);
     return (
       <div>
         <RememberLastVisit storageKey="odoo:last" />
         <PageHeader title="📦 ODOO — dashboard">
           {viewSwitch}
+          <OdooBasisPicker basis={basis} />
           <OdooRangePicker period={period} />
         </PageHeader>
         <OdooDashboard data={data} />

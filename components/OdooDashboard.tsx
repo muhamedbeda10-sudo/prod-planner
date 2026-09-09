@@ -7,8 +7,8 @@ import {
 } from "recharts";
 import { ExportButton } from "@/components/ExportButton";
 import {
-  ODOO_RANGES, ODOO_RANGE_LABEL, pctChange, periodLabel,
-  type OdooDashboardData, type OdooPeriod, type OdooSeries,
+  ODOO_BASES, ODOO_BASIS_LABEL, ODOO_RANGES, ODOO_RANGE_LABEL, pctChange, periodLabel,
+  type OdooBasis, type OdooDashboardData, type OdooPeriod, type OdooSeries,
 } from "@/lib/domain/odooStats";
 
 // The Odoo dashboard — what was logged each day, by product. One period row
@@ -163,6 +163,27 @@ export function OdooRangePicker({ period }: { period: OdooPeriod }) {
           <button type="submit" className="btn btn-primary btn-sm" disabled={!from || !to}>Apply</button>
         </form>
       )}
+    </div>
+  );
+}
+
+/** Count by the day a row was closed (its status went to Done) or logged. */
+export function OdooBasisPicker({ basis }: { basis: OdooBasis }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const go = (b: OdooBasis) => {
+    const p = new URLSearchParams(params.toString());
+    p.set("basis", b);
+    router.push(`${pathname}?${p}`);
+  };
+  return (
+    <div className="seg" role="tablist" aria-label="Count by" title="Which day a row counts on: the day its status went to Done, or the day it was logged">
+      {ODOO_BASES.map((b) => (
+        <button key={b} type="button" role="tab" aria-selected={basis === b} className={basis === b ? "on" : ""} onClick={() => go(b)}>
+          {ODOO_BASIS_LABEL[b]}
+        </button>
+      ))}
     </div>
   );
 }
@@ -377,9 +398,9 @@ function ProductTotals({ d }: { d: OdooDashboardData }) {
 /** Logged beside closed, per day — two columns, because a close lands on the
  *  day the status went to Done, not on the day the row was logged. */
 function LoggedVsClosed({ d }: { d: OdooDashboardData }) {
-  const data = d.days.map((p) => ({ label: p.label, Logged: p.qty, Closed: p.doneQty }));
+  const data = d.days.map((p) => ({ label: p.label, Logged: p.loggedQty, Closed: p.doneQty }));
   const n = d.days.length;
-  const yMax = Math.max(1, ...d.days.map((p) => Math.max(p.qty, p.doneQty)));
+  const yMax = Math.max(1, ...d.days.map((p) => Math.max(p.loggedQty, p.doneQty)));
   return (
     <ChartScroller minWidth={Math.max(420, n * 22)} height={240}>
       <BarChart data={data} margin={{ top: 14, right: 16, left: -12, bottom: 0 }} barCategoryGap="25%" barGap={2}>
@@ -402,7 +423,8 @@ function LoggedVsClosed({ d }: { d: OdooDashboardData }) {
 // ---- table view: the same numbers, readable without the chart ----
 
 function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
-  const days = [...d.days].filter((p) => p.rows > 0 || p.doneRows > 0).reverse();
+  const days = [...d.days].filter((p) => p.rows > 0 || p.loggedRows > 0 || p.doneRows > 0).reverse();
+  const closedBasis = d.basis === "closed";
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm border-collapse">
@@ -415,9 +437,11 @@ function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeri
                 {s}
               </th>
             ))}
-            <th className="p-2 text-center">Total qty</th>
+            <th className="p-2 text-center">{closedBasis ? "Closed qty" : "Logged qty"}</th>
             <th className="p-2 text-center">Rows</th>
-            <th className="p-2 text-center" title="Quantity whose status went to Done that day, whichever day it was logged">Closed qty</th>
+            <th className="p-2 text-center text-muted" title={closedBasis ? "Quantity logged that day" : "Quantity whose status went to Done that day, whichever day it was logged"}>
+              {closedBasis ? "Logged qty" : "Closed qty"}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -429,7 +453,7 @@ function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeri
               ))}
               <td className="p-2 text-center tabnum font-extrabold">{fmt(p.qty)}</td>
               <td className="p-2 text-center tabnum">{p.rows}</td>
-              <td className="p-2 text-center tabnum text-ok-fg font-bold">{p.doneQty > 0 ? fmt(p.doneQty) : <span className="text-muted font-normal">—</span>}</td>
+              <td className="p-2 text-center tabnum text-muted">{(closedBasis ? p.loggedQty : p.doneQty) > 0 ? fmt(closedBasis ? p.loggedQty : p.doneQty) : "—"}</td>
             </tr>
           ))}
           {days.length > 0 && (
@@ -440,7 +464,7 @@ function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeri
               ))}
               <td className="p-2 text-center tabnum">{fmt(d.kpi.qty)}</td>
               <td className="p-2 text-center tabnum">{d.kpi.rows}</td>
-              <td className="p-2 text-center tabnum text-ok-fg">{fmt(d.kpi.doneQty)}</td>
+              <td className="p-2 text-center tabnum text-muted">{fmt(closedBasis ? d.kpi.loggedQty : d.kpi.doneQty)}</td>
             </tr>
           )}
         </tbody>
@@ -457,25 +481,34 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
   const pal = useMemo(() => paletteFor(present), [present]);
   const title = periodLabel(d.period);
   const prevTitle = d.previous ? periodLabel({ range: "custom", fromISO: d.previous.fromISO, toISO: d.previous.toISO }) : null;
-  const doneNowPct = d.kpi.rows > 0 ? Math.round((d.kpi.doneNowRows / d.kpi.rows) * 100) : 0;
+  const closedBasis = d.basis === "closed";
+  const word = closedBasis ? "closed" : "logged";
+  const doneNowPct = d.kpi.loggedRows > 0 ? Math.round((d.kpi.doneNowRows / d.kpi.loggedRows) * 100) : 0;
 
   const exportRows = useMemo(
-    () => d.days.filter((p) => p.rows > 0 || p.doneRows > 0).map((p) => ({
+    () => d.days.filter((p) => p.rows > 0 || p.loggedRows > 0 || p.doneRows > 0).map((p) => ({
       Day: p.dateISO,
-      ...Object.fromEntries(present.map((s) => [s, p.bySeries[s]])),
-      "Total qty": p.qty,
-      Rows: p.rows,
+      ...Object.fromEntries(present.map((s) => [`${s} (${word})`, p.bySeries[s]])),
+      [`Total ${word}`]: p.qty,
+      [`Rows ${word}`]: p.rows,
+      "Logged qty": p.loggedQty,
+      "Logged rows": p.loggedRows,
       "Closed qty": p.doneQty,
       "Closed rows": p.doneRows,
     })),
-    [d, present]
+    [d, present, word]
   );
 
   if (d.kpi.rows === 0) {
+    const other = closedBasis
+      ? d.kpi.loggedRows > 0 ? ` ${d.kpi.loggedRows} row(s) were logged in it — switch to "Logged day" to see them.` : ""
+      : d.kpi.doneRows > 0 ? ` ${d.kpi.doneRows} row(s) were closed in it — switch to "Closed day" to see them.` : "";
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted">{title}</p>
-        <p className="text-sm text-muted bg-surface border rounded-xl p-4">Nothing logged in this period. Pick a wider one, or log the day&apos;s rows first.</p>
+        <p className="text-sm text-muted bg-surface border rounded-xl p-4">
+          Nothing {word} in this period.{other} {other ? "" : "Pick a wider one."}
+        </p>
       </div>
     );
   }
@@ -491,27 +524,31 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <Stat label="Quantity logged" value={fmt(d.kpi.qty)} delta={<Delta cur={d.kpi.qty} prev={d.kpi.prevQty} />} />
-        <Stat label="Rows" value={fmt(d.kpi.rows)} delta={<Delta cur={d.kpi.rows} prev={d.kpi.prevRows} />} sub={`${d.kpi.activeDays} day(s) with entries`} />
-        <Stat label="Closed in period" value={fmt(d.kpi.doneQty)} sub={`${d.kpi.doneRows} row(s) moved to Done · ${doneNowPct}% of the logged rows are Done now`} />
-        <Stat label="Per active day" value={fmt(d.kpi.qtyPerActiveDay)} sub="qty on the days that had rows" />
+        <Stat label={`Quantity ${word}`} value={fmt(d.kpi.qty)} delta={<Delta cur={d.kpi.qty} prev={d.kpi.prevQty} />} />
+        <Stat label={`Rows ${word}`} value={fmt(d.kpi.rows)} delta={<Delta cur={d.kpi.rows} prev={d.kpi.prevRows} />} sub={`${d.kpi.activeDays} day(s) with ${closedBasis ? "closings" : "entries"}`} />
+        {closedBasis ? (
+          <Stat label="Logged in period" value={fmt(d.kpi.loggedQty)} sub={`${d.kpi.loggedRows} row(s) entered · ${doneNowPct}% of them Done by now`} />
+        ) : (
+          <Stat label="Closed in period" value={fmt(d.kpi.doneQty)} sub={`${d.kpi.doneRows} row(s) moved to Done · ${doneNowPct}% of the logged rows are Done now`} />
+        )}
+        <Stat label="Per active day" value={fmt(d.kpi.qtyPerActiveDay)} sub={`qty on the days that had ${closedBasis ? "closings" : "rows"}`} />
       </div>
 
       <section>
-        <h2 className="font-bold mb-2">Per product</h2>
+        <h2 className="font-bold mb-2">Per product <span className="text-muted font-normal text-sm">· {word}</span></h2>
         <ProductCards d={d} present={present} pal={pal} />
       </section>
 
-      <Card title="Quantity per day, by product" sub="Each column is a day; every segment carries its count, the cap the day's total. Hover a column for the full breakdown.">
+      <Card title={`Quantity ${word} per day, by product`} sub={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
         <DailyByProduct d={d} present={present} pal={pal} />
       </Card>
 
-      <Card title="Each product, day by day" sub="One chart per product on the same scale, the count on every column.">
+      <Card title="Each product, day by day" sub={`One chart per product on the same scale, the quantity ${word} on every column.`}>
         <SmallMultiples d={d} present={present} pal={pal} />
       </Card>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <Card title="Totals per product" sub={`Quantity and share of the period.`}>
+        <Card title="Totals per product" sub={`Quantity ${word} and share of the period.`}>
           <ProductTotals d={d} />
         </Card>
         <Card title="Logged vs closed, per day" sub="Logged on the day the row was entered; closed on the day its status went to Done.">

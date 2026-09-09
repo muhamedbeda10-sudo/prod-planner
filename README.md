@@ -73,10 +73,11 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    says so. A **Dashboard** view (Log · Dashboard switch) shows what was logged per day by
    product — a card per product (the sheet's six and any other product logged, by its own name)
    with its trend and change vs the previous period, stacked columns
-   with every count written on, one small chart per product, totals, and logged vs closed per day
-   (a close counts on the day the status went to Done, whichever day the row was logged, so a row
-   logged in August and closed in September is one of September's closings) — over
-   7/30/90 days, this month, all time or a custom from/to, with the numbers as a table and an Excel export.
+   with every count written on, one small chart per product, totals, and logged vs closed per day —
+   counted, by a **Closed day · Logged day** switch, on the day each row's status went to Done
+   (the default: a row logged in August and closed in September is one of September's closings,
+   under its product) or on the day it was logged — over today, yesterday, 7/30/90 days, this
+   month, all time or a custom from/to, with the numbers as a table and an Excel export.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:
