@@ -56,7 +56,8 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 9. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
    clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day
-   updated, never doubled); the planner then moves the Status in place (Pending, Done, Blocked …) and
+   updated, never doubled); the planner then moves the Status in place (Pending, Done, Blocked …) —
+   moving it to Done stamps the moment, shown under the pill and exported as "Done at" — and
    keeps Notes on it — a list with time and author, each deletable on its own. A filter row (search across
    SOI, FG-CODE, MO, product and notes; product; status; with/without notes) sticks between visits, as
    does the day. Exports in the sheet's own headers. **Click a row (or its 🧱 button)** for the material
@@ -72,7 +73,9 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    says so. A **Dashboard** view (Log · Dashboard switch) shows what was logged per day by
    product — a card per product (the sheet's six and any other product logged, by its own name)
    with its trend and change vs the previous period, stacked columns
-   with every count written on, one small chart per product, totals and closed vs not closed — over
+   with every count written on, one small chart per product, totals, and logged vs closed per day
+   (a close counts on the day the status went to Done, whichever day the row was logged, so a row
+   logged in August and closed in September is one of September's closings) — over
    7/30/90 days, this month, all time or a custom from/to, with the numbers as a table and an Excel export.
 
 ## Validation against the workbook

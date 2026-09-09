@@ -108,19 +108,26 @@ export function periodLabel(p: OdooPeriod): string {
 }
 
 export interface OdooStatRow {
+  /** The day the row was logged. */
   dateISO: string;
   product: string;
   qty: number;
   status: string;
+  /** The day its status was moved to Done — the day the close counts on.
+   *  Null (or absent) while it is not done. */
+  doneISO?: string | null;
 }
 
 export interface OdooDayPoint {
   dateISO: string;
   /** Short axis label, e.g. "6 Sep". */
   label: string;
+  /** Logged that day. */
   qty: number;
   rows: number;
+  /** Closed that day (status moved to Done), whatever day the rows were logged. */
   doneQty: number;
+  doneRows: number;
   bySeries: Record<OdooSeries, number>;
 }
 
@@ -144,10 +151,14 @@ export interface OdooDashboardData {
   days: OdooDayPoint[];
   totals: OdooSeriesTotal[];
   kpi: {
+    /** Logged in the period. */
     qty: number;
     rows: number;
+    /** Closed in the period — rows whose Done day falls in it, logged whenever. */
     doneRows: number;
     doneQty: number;
+    /** Of the rows logged in the period, how many are Done by now. */
+    doneNowRows: number;
     activeDays: number;
     /** Mean qty per day that had at least one row. */
     qtyPerActiveDay: number;
@@ -180,35 +191,50 @@ function emptySeries(series: readonly OdooSeries[]): Record<OdooSeries, number> 
  *  up to this many days; past it (long "all time" spans) only logged days show. */
 const FILL_GAPS_UP_TO = 120;
 
+const inWindow = (iso: string, w: { fromISO: string | null; toISO: string }) => (w.fromISO === null || iso >= w.fromISO) && iso <= w.toISO;
+
 /**
- * Aggregate rows (already filtered to the period) into per-day points,
- * per-product totals and the headline numbers. `prevRows` are the previous
- * period's rows, for the comparisons; pass null when there is no previous period.
+ * Aggregate rows into per-day points, per-product totals and the headline
+ * numbers. Rows may come from a little outside the period: a row counts as
+ * LOGGED on its own day when that day is in the period, and as CLOSED on its
+ * Done day when that day is — a row logged in August and closed in September
+ * is one of September's closings. `prevRows` are the previous period's rows,
+ * for the comparisons; pass null when there is no previous period.
  */
 export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prevRows: OdooStatRow[] | null = null): OdooDashboardData {
   const byDay = new Map<string, OdooDayPoint>();
   const totalsMap = new Map<OdooSeries, { qty: number; rows: number }>();
-  let qty = 0, doneRows = 0, doneQty = 0;
+  let qty = 0, loggedRows = 0, doneRows = 0, doneQty = 0, doneNowRows = 0;
+  const dayOf = (iso: string) => {
+    let day = byDay.get(iso);
+    if (!day) {
+      day = { dateISO: iso, label: shortDayLabel(iso), qty: 0, rows: 0, doneQty: 0, doneRows: 0, bySeries: {} };
+      byDay.set(iso, day);
+    }
+    return day;
+  };
 
   for (const r of rows) {
-    const s = productSeries(r.product);
-    let day = byDay.get(r.dateISO);
-    if (!day) {
-      day = { dateISO: r.dateISO, label: shortDayLabel(r.dateISO), qty: 0, rows: 0, doneQty: 0, bySeries: {} };
-      byDay.set(r.dateISO, day);
+    if (inWindow(r.dateISO, period)) {
+      const s = productSeries(r.product);
+      const day = dayOf(r.dateISO);
+      day.qty += r.qty;
+      day.rows += 1;
+      day.bySeries[s] = (day.bySeries[s] ?? 0) + r.qty;
+      let t = totalsMap.get(s);
+      if (!t) totalsMap.set(s, (t = { qty: 0, rows: 0 }));
+      t.qty += r.qty;
+      t.rows += 1;
+      qty += r.qty;
+      loggedRows += 1;
+      if (isDoneStatus(r.status)) doneNowRows += 1;
     }
-    day.qty += r.qty;
-    day.rows += 1;
-    day.bySeries[s] = (day.bySeries[s] ?? 0) + r.qty;
-    let t = totalsMap.get(s);
-    if (!t) totalsMap.set(s, (t = { qty: 0, rows: 0 }));
-    t.qty += r.qty;
-    t.rows += 1;
-    qty += r.qty;
-    if (isDoneStatus(r.status)) {
+    if (r.doneISO && isDoneStatus(r.status) && inWindow(r.doneISO, period)) {
+      const day = dayOf(r.doneISO);
+      day.doneQty += r.qty;
+      day.doneRows += 1;
       doneRows += 1;
       doneQty += r.qty;
-      day.doneQty += r.qty;
     }
   }
 
@@ -216,14 +242,17 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
   // every day carries every series, so the stacked chart never meets undefined
   for (const day of byDay.values()) day.bySeries = { ...emptySeries(series), ...day.bySeries };
 
-  // the previous period, per product, for the comparisons
+  // the previous period, per product, for the comparisons — logged rows only
+  const prevWindow = previousPeriod(period);
   const prevBySeries = prevRows ? emptySeries(series) : null;
-  let prevQty = 0;
-  if (prevRows && prevBySeries) {
+  let prevQty = 0, prevCount = 0;
+  if (prevRows && prevBySeries && prevWindow) {
     for (const r of prevRows) {
+      if (!inWindow(r.dateISO, prevWindow)) continue;
       const s = productSeries(r.product);
       prevBySeries[s] = (prevBySeries[s] ?? 0) + r.qty;
       prevQty += r.qty;
+      prevCount += 1;
     }
   }
 
@@ -238,16 +267,16 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
     days = [];
     for (let i = 0; i < span; i++) {
       const iso = toISODate(new Date(first.getTime() + i * 86_400_000));
-      days.push(byDay.get(iso) ?? { dateISO: iso, label: shortDayLabel(iso), qty: 0, rows: 0, doneQty: 0, bySeries: emptySeries(series) });
+      days.push(byDay.get(iso) ?? { dateISO: iso, label: shortDayLabel(iso), qty: 0, rows: 0, doneQty: 0, doneRows: 0, bySeries: emptySeries(series) });
     }
   } else {
     days = loggedDays.map((iso) => byDay.get(iso)!);
   }
 
-  const activeDays = loggedDays.length;
+  const activeDays = [...byDay.values()].filter((d) => d.rows > 0).length;
   return {
     period,
-    previous: prevRows ? previousPeriod(period) : null,
+    previous: prevRows ? prevWindow : null,
     series,
     days,
     totals: series.map((s) => {
@@ -259,10 +288,10 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
       };
     }),
     kpi: {
-      qty, rows: rows.length, doneRows, doneQty, activeDays,
+      qty, rows: loggedRows, doneRows, doneQty, doneNowRows, activeDays,
       qtyPerActiveDay: activeDays > 0 ? Math.round((qty / activeDays) * 10) / 10 : 0,
       prevQty: prevRows ? prevQty : null,
-      prevRows: prevRows ? prevRows.length : null,
+      prevRows: prevRows ? prevCount : null,
     },
   };
 }

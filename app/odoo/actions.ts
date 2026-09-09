@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
-import { parseISODate } from "@/lib/domain/dates";
+import { parseISODate, toISODate } from "@/lib/domain/dates";
+import { isDoneStatus } from "@/lib/domain/odoo";
 import { importOdooSheet, type OdooImportResult } from "@/lib/server/odoo";
 
 // The ODOO tab's writes — a daily log of close attempts. Rows are plain
@@ -59,6 +60,19 @@ function validate(f: Fields): string | null {
   return null;
 }
 
+/**
+ * The moment a row counts as closed. Moving to Done stamps now; moving away
+ * clears it; staying Done keeps the first stamp. A row that is Done the moment
+ * it is created for a PAST day was closed that day (the clerk is typing up
+ * yesterday's sheet), not today.
+ */
+function doneAtFor(nextStatus: string, prev: { status: string; doneAt: Date | null } | null, rowDate: Date): Date | null {
+  if (!isDoneStatus(nextStatus)) return null;
+  if (prev && isDoneStatus(prev.status) && prev.doneAt) return prev.doneAt;
+  const now = new Date();
+  return toISODate(rowDate) < toISODate(now) ? rowDate : now;
+}
+
 export async function createOdooEntry(formData: FormData): Promise<OdooActionResult> {
   const guard = await requirePerm("odoo.edit");
   if (guard.error) return { ok: false, error: guard.error };
@@ -69,7 +83,7 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
   await prisma.odooEntry.create({
     data: {
       date: f.date!, soi: f.soi, fgCode: f.fgCode, product: f.product, odooMo: f.odooMo,
-      qty: f.qty!, status: f.status, recordedBy: guard.user?.name ?? null,
+      qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, null, f.date!), recordedBy: guard.user?.name ?? null,
     },
   });
   revalidateOdoo();
@@ -85,11 +99,13 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
   const bad = validate(f);
   if (bad) return { ok: false, error: bad };
 
+  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { status: true, doneAt: true } });
+  if (!prev) return { ok: false, error: "That row no longer exists." };
   await prisma.odooEntry.update({
     where: { id },
     data: {
       date: f.date!, soi: f.soi, fgCode: f.fgCode, product: f.product, odooMo: f.odooMo,
-      qty: f.qty!, status: f.status, recordedBy: guard.user?.name ?? null,
+      qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, prev, f.date!), recordedBy: guard.user?.name ?? null,
     },
   });
   revalidateOdoo();
@@ -104,7 +120,11 @@ export async function setOdooStatus(formData: FormData): Promise<OdooActionResul
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
   const status = text(formData.get("status"));
   if (!status) return { ok: false, error: "Pick a status." };
-  await prisma.odooEntry.update({ where: { id }, data: { status, recordedBy: guard.user?.name ?? null } });
+  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { status: true, doneAt: true, date: true } });
+  if (!prev) return { ok: false, error: "That row no longer exists." };
+  // the planner closing a row is closing it NOW, whatever day it was logged
+  const doneAt = !isDoneStatus(status) ? null : isDoneStatus(prev.status) && prev.doneAt ? prev.doneAt : new Date();
+  await prisma.odooEntry.update({ where: { id }, data: { status, doneAt, recordedBy: guard.user?.name ?? null } });
   revalidateOdoo();
   return { ok: true };
 }

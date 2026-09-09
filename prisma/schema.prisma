@@ -666,6 +666,7 @@ model OdooEntry {
   odooMo     String // SF01/MO/06234
   qty        Float
   status     String   @default("MO to be close") // MO to be close | Pending | Done | Blocked | Cancelled …
+  doneAt     DateTime? // when the status was moved to Done; null while it is not
   recordedBy String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -673,6 +674,7 @@ model OdooEntry {
   notes OdooNote[]
 
   @@index([date])
+  @@index([doneAt])
   @@index([odooMo])
 }
 

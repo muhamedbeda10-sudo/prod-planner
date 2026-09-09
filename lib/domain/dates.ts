@@ -86,3 +86,10 @@ export function monthLabelSortKey(label: string): number {
   const v = monthInputFromLabel(label);
   return v ? Number(v.replace("-", "")) : -1;
 }
+
+/** The calendar day of a moment as the factory sees it (Africa/Cairo),
+ *  "2026-09-07" — a close at 00:30 counts on the day it was made, not on the
+ *  UTC day that was still yesterday. */
+export function factoryDayISO(at: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+}

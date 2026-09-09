@@ -374,22 +374,25 @@ function ProductTotals({ d }: { d: OdooDashboardData }) {
   );
 }
 
-function ClosedPerDay({ d }: { d: OdooDashboardData }) {
-  const data = d.days.map((p) => ({ label: p.label, Done: p.doneQty, "Not closed": Math.max(0, p.qty - p.doneQty) }));
+/** Logged beside closed, per day — two columns, because a close lands on the
+ *  day the status went to Done, not on the day the row was logged. */
+function LoggedVsClosed({ d }: { d: OdooDashboardData }) {
+  const data = d.days.map((p) => ({ label: p.label, Logged: p.qty, Closed: p.doneQty }));
   const n = d.days.length;
+  const yMax = Math.max(1, ...d.days.map((p) => Math.max(p.qty, p.doneQty)));
   return (
-    <ChartScroller minWidth={Math.max(420, n * 16)} height={240}>
-      <BarChart data={data} margin={{ top: 8, right: 16, left: -12, bottom: 0 }} barCategoryGap="30%">
+    <ChartScroller minWidth={Math.max(420, n * 22)} height={240}>
+      <BarChart data={data} margin={{ top: 14, right: 16, left: -12, bottom: 0 }} barCategoryGap="25%" barGap={2}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={tickEvery(n, 10)} tickLine={false} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
-        <Tooltip content={<Tip total />} cursor={{ fill: "var(--surface-2)" }} />
-        <Legend {...legendProps([{ value: "Done", color: "var(--brand)" }, { value: "Not closed", color: "var(--viz-other)" }])} />
-        <Bar dataKey="Done" stackId="q" fill="var(--brand)" stroke="var(--surface)" strokeWidth={2} maxBarSize={24} isAnimationActive={false}>
-          <LabelList dataKey="Done" content={segmentLabel("#fff")} />
+        <YAxis domain={[0, headroom(yMax)]} tickCount={5} allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
+        <Tooltip content={<Tip />} cursor={{ fill: "var(--surface-2)" }} />
+        <Legend {...legendProps([{ value: "Logged", color: "var(--viz-other)" }, { value: "Closed", color: "var(--brand)" }])} />
+        <Bar dataKey="Logged" fill="var(--viz-other)" maxBarSize={18} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+          <LabelList dataKey="Logged" content={TopLabel} />
         </Bar>
-        <Bar dataKey="Not closed" stackId="q" fill="var(--viz-other)" stroke="var(--surface)" strokeWidth={2} maxBarSize={24} radius={[4, 4, 0, 0]} isAnimationActive={false}>
-          <LabelList dataKey="Not closed" content={segmentLabel("#fff")} />
+        <Bar dataKey="Closed" fill="var(--brand)" maxBarSize={18} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+          <LabelList dataKey="Closed" content={TopLabel} />
         </Bar>
       </BarChart>
     </ChartScroller>
@@ -399,7 +402,7 @@ function ClosedPerDay({ d }: { d: OdooDashboardData }) {
 // ---- table view: the same numbers, readable without the chart ----
 
 function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
-  const days = [...d.days].filter((p) => p.rows > 0).reverse();
+  const days = [...d.days].filter((p) => p.rows > 0 || p.doneRows > 0).reverse();
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm border-collapse">
@@ -414,7 +417,7 @@ function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeri
             ))}
             <th className="p-2 text-center">Total qty</th>
             <th className="p-2 text-center">Rows</th>
-            <th className="p-2 text-center">Done qty</th>
+            <th className="p-2 text-center" title="Quantity whose status went to Done that day, whichever day it was logged">Closed qty</th>
           </tr>
         </thead>
         <tbody>
@@ -454,15 +457,16 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
   const pal = useMemo(() => paletteFor(present), [present]);
   const title = periodLabel(d.period);
   const prevTitle = d.previous ? periodLabel({ range: "custom", fromISO: d.previous.fromISO, toISO: d.previous.toISO }) : null;
-  const donePct = d.kpi.rows > 0 ? Math.round((d.kpi.doneRows / d.kpi.rows) * 100) : 0;
+  const doneNowPct = d.kpi.rows > 0 ? Math.round((d.kpi.doneNowRows / d.kpi.rows) * 100) : 0;
 
   const exportRows = useMemo(
-    () => d.days.filter((p) => p.rows > 0).map((p) => ({
+    () => d.days.filter((p) => p.rows > 0 || p.doneRows > 0).map((p) => ({
       Day: p.dateISO,
       ...Object.fromEntries(present.map((s) => [s, p.bySeries[s]])),
       "Total qty": p.qty,
       Rows: p.rows,
-      "Done qty": p.doneQty,
+      "Closed qty": p.doneQty,
+      "Closed rows": p.doneRows,
     })),
     [d, present]
   );
@@ -489,7 +493,7 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
       <div className="flex flex-wrap gap-3">
         <Stat label="Quantity logged" value={fmt(d.kpi.qty)} delta={<Delta cur={d.kpi.qty} prev={d.kpi.prevQty} />} />
         <Stat label="Rows" value={fmt(d.kpi.rows)} delta={<Delta cur={d.kpi.rows} prev={d.kpi.prevRows} />} sub={`${d.kpi.activeDays} day(s) with entries`} />
-        <Stat label="Done" value={`${donePct}%`} sub={`${d.kpi.doneRows} of ${d.kpi.rows} rows · ${fmt(d.kpi.doneQty)} qty`} />
+        <Stat label="Closed in period" value={fmt(d.kpi.doneQty)} sub={`${d.kpi.doneRows} row(s) moved to Done · ${doneNowPct}% of the logged rows are Done now`} />
         <Stat label="Per active day" value={fmt(d.kpi.qtyPerActiveDay)} sub="qty on the days that had rows" />
       </div>
 
@@ -510,8 +514,8 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
         <Card title="Totals per product" sub={`Quantity and share of the period.`}>
           <ProductTotals d={d} />
         </Card>
-        <Card title="Closed vs not closed, per day" sub="Quantity on rows whose status is Done, against the rest.">
-          <ClosedPerDay d={d} />
+        <Card title="Logged vs closed, per day" sub="Logged on the day the row was entered; closed on the day its status went to Done.">
+          <LoggedVsClosed d={d} />
         </Card>
       </div>
 

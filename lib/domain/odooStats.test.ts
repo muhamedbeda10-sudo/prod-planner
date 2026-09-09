@@ -53,11 +53,11 @@ describe("periods", () => {
 
 describe("buildOdooDashboard", () => {
   const rows = [
-    { dateISO: "2026-09-06", product: "Tank", qty: 5, status: "Done" },
+    { dateISO: "2026-09-06", product: "Tank", qty: 5, status: "Done", doneISO: "2026-09-06" },
     { dateISO: "2026-09-06", product: "Tank", qty: 3, status: "MO to be close" },
     { dateISO: "2026-09-06", product: "Top Cover", qty: 4, status: "Pending" },
-    { dateISO: "2026-09-04", product: "Core Frame", qty: 2, status: "Done" },
-    { dateISO: "2026-09-04", product: "Radiator", qty: 1, status: "Done" },
+    { dateISO: "2026-09-04", product: "Core Frame", qty: 2, status: "Done", doneISO: "2026-09-04" },
+    { dateISO: "2026-09-04", product: "Radiator", qty: 1, status: "Done", doneISO: "2026-09-04" },
   ];
   const period = { range: "7d" as const, fromISO: "2026-09-03", toISO: "2026-09-07" };
 
@@ -89,13 +89,13 @@ describe("buildOdooDashboard", () => {
 
   it("carries the headline numbers", () => {
     const d = buildOdooDashboard(rows, period);
-    expect(d.kpi).toEqual({ qty: 15, rows: 5, doneRows: 3, doneQty: 8, activeDays: 2, qtyPerActiveDay: 7.5, prevQty: null, prevRows: null });
+    expect(d.kpi).toEqual({ qty: 15, rows: 5, doneRows: 3, doneQty: 8, doneNowRows: 3, activeDays: 2, qtyPerActiveDay: 7.5, prevQty: null, prevRows: null });
   });
 
   it("compares against the previous period, per product and overall", () => {
     const prev = [
-      { dateISO: "2026-08-30", product: "Tank", qty: 4, status: "Done" },
-      { dateISO: "2026-08-31", product: "Encloser", qty: 6, status: "Done" },
+      { dateISO: "2026-08-30", product: "Tank", qty: 4, status: "Done", doneISO: "2026-08-30" },
+      { dateISO: "2026-08-31", product: "Encloser", qty: 6, status: "Done", doneISO: "2026-08-31" },
     ];
     const d = buildOdooDashboard(rows, period, prev);
     expect(d.previous).toEqual({ fromISO: "2026-08-29", toISO: "2026-09-02" });
@@ -106,18 +106,18 @@ describe("buildOdooDashboard", () => {
   });
 
   it("shows only the logged days on an open-ended range that spans too long", () => {
-    const far = [{ dateISO: "2025-01-01", product: "Tank", qty: 1, status: "Done" }, ...rows];
+    const far = [{ dateISO: "2025-01-01", product: "Tank", qty: 1, status: "Done", doneISO: "2025-01-01" }, ...rows];
     const d = buildOdooDashboard(far, { range: "all", fromISO: null, toISO: "2026-09-07" });
     expect(d.days.map((x) => x.dateISO)).toEqual(["2025-01-01", "2026-09-04", "2026-09-06"]);
   });
 
   it("puts new products after the sheet's, biggest first, and a nameless row last as Other", () => {
     const d = buildOdooDashboard([
-      { dateISO: "2026-09-06", product: "Radiator", qty: 2, status: "Done" },
-      { dateISO: "2026-09-06", product: "Oil Pump", qty: 9, status: "Done" },
-      { dateISO: "2026-09-06", product: "", qty: 1, status: "Done" },
-      { dateISO: "2026-09-06", product: "Encloser", qty: 1, status: "Done" },
-      { dateISO: "2026-09-06", product: "Tank", qty: 1, status: "Done" },
+      { dateISO: "2026-09-06", product: "Radiator", qty: 2, status: "Done", doneISO: "2026-09-06" },
+      { dateISO: "2026-09-06", product: "Oil Pump", qty: 9, status: "Done", doneISO: "2026-09-06" },
+      { dateISO: "2026-09-06", product: "", qty: 1, status: "Done", doneISO: "2026-09-06" },
+      { dateISO: "2026-09-06", product: "Encloser", qty: 1, status: "Done", doneISO: "2026-09-06" },
+      { dateISO: "2026-09-06", product: "Tank", qty: 1, status: "Done", doneISO: "2026-09-06" },
     ], period);
     expect(d.series).toEqual(["Tank", "Encloser", "Oil Pump", "Radiator", "Other"]);
     expect(d.totals.map((t) => t.series)).toEqual(d.series);
@@ -125,9 +125,54 @@ describe("buildOdooDashboard", () => {
   });
 
   it("compares a new product with the previous period too", () => {
-    const prev = [{ dateISO: "2026-08-30", product: "Radiator", qty: 3, status: "Done" }];
+    const prev = [{ dateISO: "2026-08-30", product: "Radiator", qty: 3, status: "Done", doneISO: "2026-08-30" }];
     const d = buildOdooDashboard(rows, period, prev);
     expect(d.totals.find((t) => t.series === "Radiator")!.prevQty).toBe(3);
+  });
+
+  it("counts a close on the day the status went to Done, not the day the row was logged", () => {
+    const d = buildOdooDashboard([
+      { dateISO: "2026-09-03", product: "Tank", qty: 5, status: "Done", doneISO: "2026-09-07" },
+      { dateISO: "2026-09-04", product: "Tank", qty: 2, status: "Pending", doneISO: null },
+    ], period);
+    const third = d.days.find((x) => x.dateISO === "2026-09-03")!;
+    const seventh = d.days.find((x) => x.dateISO === "2026-09-07")!;
+    expect([third.qty, third.doneQty]).toEqual([5, 0]);
+    expect([seventh.qty, seventh.doneQty, seventh.doneRows]).toEqual([0, 5, 1]);
+    expect(d.kpi.doneQty).toBe(5);
+    expect(d.kpi.doneRows).toBe(1);
+    expect(d.kpi.doneNowRows).toBe(1);
+    expect(d.kpi.rows).toBe(2);
+  });
+
+  it("counts a row logged before the period among its closings, and one closed after it not", () => {
+    const d = buildOdooDashboard([
+      { dateISO: "2026-08-20", product: "Tank", qty: 4, status: "Done", doneISO: "2026-09-05" },
+      { dateISO: "2026-09-06", product: "Tank", qty: 3, status: "Done", doneISO: "2026-09-12" },
+    ], period);
+    expect(d.kpi.qty).toBe(3); // only the row logged in the period
+    expect(d.kpi.rows).toBe(1);
+    expect(d.kpi.doneQty).toBe(4); // only the close that fell in the period
+    expect(d.kpi.doneRows).toBe(1);
+    expect(d.kpi.doneNowRows).toBe(1); // the logged row is Done, just not yet inside the period
+    expect(d.days.find((x) => x.dateISO === "2026-09-05")!.doneQty).toBe(4);
+    expect(d.totals.map((t) => [t.series, t.qty])).toEqual([["Tank", 3]]);
+    expect(d.kpi.activeDays).toBe(1);
+  });
+
+  it("ignores a Done day on a row whose status is no longer Done", () => {
+    const d = buildOdooDashboard([{ dateISO: "2026-09-06", product: "Tank", qty: 3, status: "Pending", doneISO: "2026-09-06" }], period);
+    expect(d.kpi.doneQty).toBe(0);
+  });
+
+  it("keeps the previous period to rows logged in it", () => {
+    const prev = [
+      { dateISO: "2026-08-30", product: "Tank", qty: 4, status: "Done", doneISO: "2026-09-04" },
+      { dateISO: "2026-08-20", product: "Tank", qty: 9, status: "Done", doneISO: "2026-08-30" }, // logged before, closed inside
+    ];
+    const d = buildOdooDashboard(rows, period, prev);
+    expect(d.kpi.prevQty).toBe(4);
+    expect(d.kpi.prevRows).toBe(1);
   });
 
   it("is empty but well-formed with no rows", () => {
