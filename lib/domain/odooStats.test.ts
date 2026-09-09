@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildOdooDashboard, pctChange, periodLabel, previousPeriod, productSeries, resolvePeriod, shortDayLabel } from "./odooStats";
+import { buildOdooDashboard, pctChange, periodLabel, previousPeriod, productSeries, resolveBasis, resolvePeriod, shortDayLabel } from "./odooStats";
 
 describe("productSeries", () => {
   it("folds the sheet's product names however typed, keeps any other product by name, Other only for none", () => {
@@ -24,6 +24,9 @@ describe("periods", () => {
     expect(resolvePeriod({ range: "30d" }, today)).toEqual({ range: "30d", fromISO: "2026-08-09", toISO: "2026-09-07" });
     expect(resolvePeriod({ range: "month" }, today)).toEqual({ range: "month", fromISO: "2026-09-01", toISO: "2026-09-07" });
     expect(resolvePeriod({ range: "all" }, today)).toEqual({ range: "all", fromISO: null, toISO: "2026-09-07" });
+    expect(resolvePeriod({ range: "today" }, today)).toEqual({ range: "today", fromISO: "2026-09-07", toISO: "2026-09-07" });
+    expect(resolvePeriod({ range: "yesterday" }, today)).toEqual({ range: "yesterday", fromISO: "2026-09-06", toISO: "2026-09-06" });
+    expect(previousPeriod(resolvePeriod({ range: "today" }, today))).toEqual({ fromISO: "2026-09-06", toISO: "2026-09-06" });
     expect(resolvePeriod({ range: "nope" }, today).range).toBe("30d");
     expect(resolvePeriod({}, today).range).toBe("30d");
   });
@@ -89,7 +92,11 @@ describe("buildOdooDashboard", () => {
 
   it("carries the headline numbers", () => {
     const d = buildOdooDashboard(rows, period);
-    expect(d.kpi).toEqual({ qty: 15, rows: 5, doneRows: 3, doneQty: 8, doneNowRows: 3, activeDays: 2, qtyPerActiveDay: 7.5, prevQty: null, prevRows: null });
+    expect(d.kpi).toEqual({
+      qty: 15, rows: 5, loggedQty: 15, loggedRows: 5, doneRows: 3, doneQty: 8, doneNowRows: 3,
+      activeDays: 2, qtyPerActiveDay: 7.5, prevQty: null, prevRows: null,
+    });
+    expect(d.basis).toBe("logged");
   });
 
   it("compares against the previous period, per product and overall", () => {
@@ -158,6 +165,46 @@ describe("buildOdooDashboard", () => {
     expect(d.days.find((x) => x.dateISO === "2026-09-05")!.doneQty).toBe(4);
     expect(d.totals.map((t) => [t.series, t.qty])).toEqual([["Tank", 3]]);
     expect(d.kpi.activeDays).toBe(1);
+  });
+
+  it("on the closed basis, spreads the closings over products and days by the Done day", () => {
+    const d = buildOdooDashboard([
+      { dateISO: "2026-09-03", product: "Tank", qty: 5, status: "Done", doneISO: "2026-09-07" },
+      { dateISO: "2026-09-03", product: "Top Cover", qty: 2, status: "Done", doneISO: "2026-09-07" },
+      { dateISO: "2026-09-04", product: "Tank", qty: 9, status: "Pending", doneISO: null },
+      { dateISO: "2026-08-20", product: "Radiator", qty: 4, status: "Done", doneISO: "2026-09-05" },
+    ], period, null, "closed");
+    expect(d.basis).toBe("closed");
+    expect(d.series).toEqual(["Tank", "Top Cover", "Radiator"]);
+    const seventh = d.days.find((x) => x.dateISO === "2026-09-07")!;
+    expect(seventh.qty).toBe(7);
+    expect(seventh.rows).toBe(2);
+    expect(seventh.bySeries).toEqual({ Tank: 5, "Top Cover": 2, Radiator: 0 });
+    expect([seventh.loggedQty, seventh.doneQty]).toEqual([0, 7]);
+    const third = d.days.find((x) => x.dateISO === "2026-09-03")!;
+    expect([third.qty, third.loggedQty, third.doneQty]).toEqual([0, 7, 0]);
+    expect(d.totals.map((t) => [t.series, t.qty, t.share])).toEqual([["Tank", 5, 45.5], ["Top Cover", 2, 18.2], ["Radiator", 4, 36.4]]);
+    expect(d.kpi).toEqual({
+      qty: 11, rows: 3, loggedQty: 16, loggedRows: 3, doneQty: 11, doneRows: 3, doneNowRows: 2,
+      activeDays: 2, qtyPerActiveDay: 5.5, prevQty: null, prevRows: null,
+    });
+  });
+
+  it("compares the closed basis with the previous period's closings", () => {
+    const prev = [
+      { dateISO: "2026-08-30", product: "Tank", qty: 4, status: "Done", doneISO: "2026-09-04" }, // closed inside THIS period
+      { dateISO: "2026-08-20", product: "Tank", qty: 9, status: "Done", doneISO: "2026-08-30" }, // closed in the previous one
+    ];
+    const d = buildOdooDashboard(rows, period, prev, "closed");
+    expect(d.kpi.prevQty).toBe(9);
+    expect(d.kpi.prevRows).toBe(1);
+    expect(d.totals.find((t) => t.series === "Tank")!.prevQty).toBe(9);
+  });
+
+  it("reads the basis from the URL, closings by default", () => {
+    expect(resolveBasis({})).toBe("closed");
+    expect(resolveBasis({ basis: "logged" })).toBe("logged");
+    expect(resolveBasis({ basis: "nope" })).toBe("closed");
   });
 
   it("ignores a Done day on a row whose status is no longer Done", () => {

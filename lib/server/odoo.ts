@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView } from "@/lib/domain/odoo";
-import { buildOdooDashboard, previousPeriod, type OdooDashboardData, type OdooPeriod, type OdooStatRow } from "@/lib/domain/odooStats";
+import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod, type OdooStatRow } from "@/lib/domain/odooStats";
 import { candidateBoms, nestingKey, type NestingLookup } from "@/lib/domain/odooMaterial";
 
 export interface OdooPageData {
@@ -125,13 +125,13 @@ async function statRows(fromISO: string | null, toISO: string): Promise<OdooStat
 }
 
 /** The dashboard's numbers for one period, compared with the period before it. */
-export async function getOdooDashboard(period: OdooPeriod): Promise<OdooDashboardData> {
+export async function getOdooDashboard(period: OdooPeriod, basis: OdooBasis = "closed"): Promise<OdooDashboardData> {
   const prev = previousPeriod(period);
   const [rows, prevRows] = await Promise.all([
     statRows(period.fromISO, period.toISO),
     prev ? statRows(prev.fromISO, prev.toISO) : Promise.resolve(null),
   ]);
-  return buildOdooDashboard(rows, period, prevRows);
+  return buildOdooDashboard(rows, period, prevRows, basis);
 }
 
 // ---- import: the office's sheet, once, its first seven columns ----
