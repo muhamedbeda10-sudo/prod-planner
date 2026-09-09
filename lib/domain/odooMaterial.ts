@@ -52,7 +52,27 @@ export interface MaterialNeedLine {
   /** The number to book: actual when nested, else the BOM's. */
   book: number;
   bookIsActual: boolean;
+  /** Actual against BOM for the qty, signed, as a percentage of the BOM
+   *  (+20 = the nesting used a fifth more than the BOM says). Null while not
+   *  nested or when the BOM asks for nothing. */
+  variancePct: number | null;
+  /** How far off: within VARIANCE_WARN → "ok", past it → "warn", past
+   *  VARIANCE_BAD → "bad". Null when there is no variance to judge. */
+  varianceTone: VarianceTone | null;
   note: string | null;
+}
+
+export type VarianceTone = "ok" | "warn" | "bad";
+/** Actual off the BOM by more than this share of the BOM is worth a look… */
+export const VARIANCE_WARN = 15;
+/** …and past this it is flagged. */
+export const VARIANCE_BAD = 30;
+
+export function varianceOf(actual: number | null, bom: number): { pct: number | null; tone: VarianceTone | null } {
+  if (actual === null || !(bom > 0)) return { pct: null, tone: null };
+  const pct = Math.round(((actual - bom) / bom) * 100);
+  const tone: VarianceTone = Math.abs(pct) > VARIANCE_BAD ? "bad" : Math.abs(pct) > VARIANCE_WARN ? "warn" : "ok";
+  return { pct, tone };
 }
 
 export interface MaterialNeed {
@@ -70,6 +90,11 @@ export interface MaterialNeed {
   totalBom: number;
   totalActual: number;
   notNested: number;
+  /** Lines whose actual is off the BOM past the warn line. */
+  offBom: number;
+  /** The total's own variance, over the nested lines only. */
+  totalVariancePct: number | null;
+  totalVarianceTone: VarianceTone | null;
 }
 
 const actualRate = (used: number | null, units: number) => (used === null || !(units > 0) ? null : used / units);
@@ -114,10 +139,14 @@ export function materialNeed(lookup: NestingLookup, fgCode: string, qty: number,
       const rate = actualRate(l.sheetsUsed, l.units);
       const forQtyBom = round3(l.sheetsPerUnit * q);
       const forQtyActual = rate === null ? null : round3(rate * q);
+      // the rates compare the same way whatever the qty — judge them, so a
+      // qty of 0 still shows how the nesting sits against the BOM
+      const v = varianceOf(rate, l.sheetsPerUnit);
       return {
         id: l.id, materialCode: l.materialCode, material: l.material, thicknessMm: l.thicknessMm, sheetSize: l.sheetSize,
         units: l.units, sheetsPerUnit: l.sheetsPerUnit, sheetsUsed: l.sheetsUsed, actualPerUnit: rate,
-        forQtyBom, forQtyActual, book: forQtyActual ?? forQtyBom, bookIsActual: forQtyActual !== null, note: l.note,
+        forQtyBom, forQtyActual, book: forQtyActual ?? forQtyBom, bookIsActual: forQtyActual !== null,
+        variancePct: v.pct, varianceTone: v.tone, note: l.note,
       };
     })
     .sort((a, b) => a.material.localeCompare(b.material) || a.thicknessMm - b.thicknessMm || a.materialCode.localeCompare(b.materialCode));
@@ -134,6 +163,17 @@ export function materialNeed(lookup: NestingLookup, fgCode: string, qty: number,
     totalBom: round3(lines.reduce((s, l) => s + l.forQtyBom, 0)),
     totalActual: round3(lines.reduce((s, l) => s + (l.forQtyActual ?? 0), 0)),
     notNested: lines.filter((l) => l.forQtyActual === null).length,
+    offBom: lines.filter((l) => l.varianceTone === "warn" || l.varianceTone === "bad").length,
+    ...(() => {
+      // the total compared on the nested lines only — an un-nested line has
+      // no actual to hold against its BOM
+      const nested = lines.filter((l) => l.actualPerUnit !== null);
+      const v = varianceOf(
+        nested.length ? nested.reduce((s, l) => s + l.actualPerUnit!, 0) : null,
+        nested.reduce((s, l) => s + l.sheetsPerUnit, 0)
+      );
+      return { totalVariancePct: v.pct, totalVarianceTone: v.tone };
+    })(),
   };
 }
 
@@ -145,9 +185,15 @@ export function bookText(n: number): string {
 /** The whole need as tab-separated text — one line per material, pastes into
  *  a sheet as columns. Code · material · thickness · sheet size · sheets. */
 export function materialNeedText(need: MaterialNeed): string {
-  const head = ["Code", "Material", "Thk mm", "Sheet", `Sheets for ${need.qty}`].join("\t");
+  const head = ["Code", "Material", "Thk mm", "Sheet", `Sheets for ${need.qty}`, "vs BOM"].join("\t");
   const rows = need.lines.map((l) =>
-    [l.materialCode, l.material, l.thicknessMm, l.sheetSize, bookText(l.book) + (l.bookIsActual ? "" : " (BOM)")].join("\t")
+    [l.materialCode, l.material, l.thicknessMm, l.sheetSize, bookText(l.book) + (l.bookIsActual ? "" : " (BOM)"), varianceText(l.variancePct)].join("\t")
   );
   return [head, ...rows].join("\n");
+}
+
+/** "+18%" / "−7%" / "" — the variance as it is written beside a number. */
+export function varianceText(pct: number | null): string {
+  if (pct === null) return "";
+  return pct > 0 ? `+${pct}%` : pct < 0 ? `−${Math.abs(pct)}%` : "0%";
 }
