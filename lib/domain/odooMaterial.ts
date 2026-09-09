@@ -1,12 +1,14 @@
 import { round3, type MaterialLineInput } from "@/lib/domain/material";
 import { monthLabelFromInput, monthLabelSortKey } from "@/lib/domain/dates";
 
-// ODOO row → its nesting lines. The office's FG-CODE is the part code and the
-// nesting BOM joined: FB-022-14003E11M11 is the TANK (FB-022) of BOM
-// 14003E11M11 — exactly the two keys a MATERIAL line carries. So a logged row
-// (qty 5 of FB-022-14003E11M11) knows its material without anyone searching
-// the other tab: every sheet the tracker nests for that part on that BOM,
-// scaled to the row's quantity, ready to be read into Odoo.
+// ODOO row → its nesting lines. A MATERIAL line is keyed by the transformer's
+// BOM and the part code (14003E11M11 × FB-022, the TANK). The row names the
+// part in its FG-CODE's prefix (FB-022-…) and the transformer through its
+// SOI: the orders registry says which BOM the SOI is for. The FG-CODE's
+// suffix is the same BOM for a tank (FB-022-14003E11M11) but the part's own
+// drawing code for a top cover or core frame (FB-051-12011E12M12 on
+// transformer 12011E16M13), so the SOI's BOM is looked up first and the
+// suffix only as the fallback — the path the planner's own search takes.
 
 /** "FB-022-14003E11M11" → part FB-022, BOM 14003E11M11. Null when the code is
  *  not shaped that way (a bare BOM, a typo) — nothing to look up. */
@@ -57,6 +59,8 @@ export interface MaterialNeed {
   partCode: string;
   partName: string;
   bom: string;
+  /** How the BOM was found: through the SOI's order, or the FG-CODE's suffix. */
+  via: "soi" | "fg";
   qty: number;
   /** The tracker month the lines came from. */
   month: string;
@@ -70,18 +74,35 @@ export interface MaterialNeed {
 
 const actualRate = (used: number | null, units: number) => (used === null || !(units > 0) ? null : used / units);
 
-/**
- * The material a logged row's quantity needs: the tracker's lines for the
- * row's part on its BOM, at the row's qty. The month the row was logged in
- * wins when the tracker has it; otherwise the newest month that does — a BOM
- * nested in August is the same BOM in September. Null when the code cannot
- * be split or no line exists for it.
- */
-export function materialNeed(lookup: NestingLookup, fgCode: string, qty: number, loggedMonth: string): MaterialNeed | null {
+/** The BOMs a row's material may sit under, in lookup order: the SOI's
+ *  order(s) from the registry first, then the FG-CODE's own suffix. */
+export function candidateBoms(fgCode: string, soiBoms: readonly string[]): { partCode: string; boms: { bom: string; via: "soi" | "fg" }[] } | null {
   const key = splitFgCode(fgCode);
   if (!key) return null;
-  const all = lookup[nestingKey(key.partCode, key.bom)] ?? [];
-  if (all.length === 0) return null;
+  const boms: { bom: string; via: "soi" | "fg" }[] = [];
+  for (const b of soiBoms) {
+    const bom = b.trim().toUpperCase();
+    if (bom && !boms.some((x) => x.bom === bom)) boms.push({ bom, via: "soi" });
+  }
+  if (!boms.some((x) => x.bom === key.bom)) boms.push({ bom: key.bom, via: "fg" });
+  return { partCode: key.partCode, boms };
+}
+
+/**
+ * The material a logged row's quantity needs: the tracker's lines for the
+ * row's part on its transformer's BOM, at the row's qty. The BOM comes from
+ * the SOI's order when the registry knows it, else from the FG-CODE. The
+ * month the row was logged in wins when the tracker has it; otherwise the
+ * newest month that does — a BOM nested in August is the same BOM in
+ * September. Null when the code cannot be split or no line exists for it.
+ */
+export function materialNeed(lookup: NestingLookup, fgCode: string, qty: number, loggedMonth: string, soiBoms: readonly string[] = []): MaterialNeed | null {
+  const cand = candidateBoms(fgCode, soiBoms);
+  if (!cand) return null;
+  const hit = cand.boms.map((c) => ({ ...c, lines: lookup[nestingKey(cand.partCode, c.bom)] ?? [] })).find((c) => c.lines.length > 0);
+  if (!hit) return null;
+  const key = { partCode: cand.partCode, bom: hit.bom };
+  const all = hit.lines;
 
   const months = [...new Set(all.map((l) => l.month))].sort((a, b) => monthLabelSortKey(b) - monthLabelSortKey(a) || b.localeCompare(a));
   const month = months.includes(loggedMonth) ? loggedMonth : months[0];
@@ -105,6 +126,7 @@ export function materialNeed(lookup: NestingLookup, fgCode: string, qty: number,
     partCode: key.partCode,
     partName: all.find((l) => l.partName)?.partName ?? "",
     bom: key.bom,
+    via: hit.via,
     qty: q,
     month,
     otherMonths: months.filter((m) => m !== month),

@@ -60,8 +60,11 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    keeps Notes on it — a list with time and author, each deletable on its own. A filter row (search across
    SOI, FG-CODE, MO, product and notes; product; status; with/without notes) sticks between visits, as
    does the day. Exports in the sheet's own headers. **Click a row (or its 🧱 button)** for the material
-   its qty consumes: the FG-CODE is the part and the nesting BOM (FB-022-14003E11M11 = TANK on BOM
-   14003E11M11), so the popup lists the Material tab's lines for that part on that BOM — code, material,
+   its qty consumes: the FG-CODE's prefix is the part (FB-022 = TANK) and the row's SOI names the
+   transformer through the orders registry (S01259-4 → BOM 12011E16M13), so the popup lists the Material
+   tab's lines for that part on that BOM — the FG-CODE's own suffix is tried only when the SOI's BOM has no
+   line for the part, since a top cover's or core frame's code carries its drawing number, not the
+   transformer's BOM. It shows code, material,
    thickness, sheet size, BOM and actual sheets per unit — scaled to the row's qty (editable for a partial
    close), with the actual number to book in Odoo one click from the clipboard, a copy of the whole
    table, and "Open in Material" already narrowed to the BOM. The row's own month is used when the
