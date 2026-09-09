@@ -108,7 +108,7 @@ describe("status and notes helpers", () => {
 describe("filterOdooEntries", () => {
   const row = (over: Partial<OdooEntryView>): OdooEntryView => ({
     id: 1, dateISO: "2026-09-06", soi: "S01035-1", fgCode: "FB-022-14003E11M11", product: "Tank", odooMo: "SF01/MO/06234",
-    qty: 5, status: "MO to be close", tone: "muted", done: false, recordedBy: null, notes: [], ...over,
+    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, recordedBy: null, notes: [], ...over,
   });
   const rows = [
     row({ id: 1 }),

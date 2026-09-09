@@ -54,6 +54,8 @@ export interface OdooEntryView {
   status: string;
   tone: OdooTone;
   done: boolean;
+  /** When the status was moved to Done — the day the dashboard counts the close on. */
+  doneAtISO: string | null;
   recordedBy: string | null;
   /** Newest first. */
   notes: OdooNoteView[];

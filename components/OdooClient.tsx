@@ -201,9 +201,25 @@ function statusOptions(current?: string | null): string[] {
 
 const TONE_PILL: Record<OdooTone, string> = { ok: "pill-ok", warn: "pill-warn", bad: "pill-bad", muted: "pill-muted" };
 
+function DoneStamp({ e }: { e: OdooEntryView }) {
+  if (!e.done || !e.doneAtISO) return null;
+  return (
+    <span className="text-[10px] text-muted tabnum ltr" title="When the status was moved to Done — the day the dashboard counts the close on" suppressHydrationWarning>
+      closed {stamp(e.doneAtISO)}
+    </span>
+  );
+}
+
 function StatusCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
   const a = useAction();
-  if (!canEdit) return <span className={`pill ${TONE_PILL[e.tone]}`}>{e.status}</span>;
+  if (!canEdit) {
+    return (
+      <span className="inline-flex flex-col">
+        <span className={`pill ${TONE_PILL[e.tone]}`}>{e.status}</span>
+        <DoneStamp e={e} />
+      </span>
+    );
+  }
   return (
     <span className="inline-flex flex-col">
       <select
@@ -221,6 +237,7 @@ function StatusCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
       >
         {statusOptions(e.status).map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
+      <DoneStamp e={e} />
       {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
     </span>
   );

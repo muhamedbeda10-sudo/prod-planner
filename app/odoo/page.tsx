@@ -62,6 +62,7 @@ export default async function OdooPage({
     "MO#": e.odooMo,
     QTY: e.qty,
     Status: e.status,
+    "Done at": e.doneAtISO ? e.doneAtISO.slice(0, 16).replace("T", " ") : "",
     Notes: [...e.notes].reverse().map((n) => `${n.atISO.slice(0, 16).replace("T", " ")}: ${n.text}`).join(" | "),
   }));
 

@@ -1,7 +1,7 @@
 import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
-import { parseISODate, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView } from "@/lib/domain/odoo";
 import { buildOdooDashboard, previousPeriod, type OdooDashboardData, type OdooPeriod, type OdooStatRow } from "@/lib/domain/odooStats";
 import { candidateBoms, nestingKey, type NestingLookup } from "@/lib/domain/odooMaterial";
@@ -57,6 +57,7 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     status: r.status,
     tone: statusTone(r.status),
     done: isDoneStatus(r.status),
+    doneAtISO: r.doneAt ? r.doneAt.toISOString() : null,
     recordedBy: r.recordedBy,
     notes: r.notes.map((n) => ({ id: n.id, text: n.text, atISO: n.at.toISOString(), by: n.recordedBy, blockedItem: blockedItem(n.text) })),
   }));
@@ -101,14 +102,26 @@ async function nestingFor(entries: { fgCode: string; boms: string[] }[]): Promis
 
 // ---- dashboard: what was logged, by day and product ----
 
+/** Rows logged in the window OR closed in it — a row logged before the period
+ *  and closed inside it counts among the period's closings. The doneAt window
+ *  is a day wider each side; the aggregation filters by the factory's day. */
 async function statRows(fromISO: string | null, toISO: string): Promise<OdooStatRow[]> {
+  const DAY = 24 * 60 * 60 * 1000;
   const from = fromISO ? parseISODate(fromISO) : null;
   const to = parseISODate(toISO)!;
   const rows = await prisma.odooEntry.findMany({
-    where: { date: { ...(from ? { gte: from } : {}), lt: new Date(to.getTime() + 24 * 60 * 60 * 1000) } },
-    select: { date: true, product: true, qty: true, status: true },
+    where: {
+      OR: [
+        { date: { ...(from ? { gte: from } : {}), lt: new Date(to.getTime() + DAY) } },
+        { doneAt: { ...(from ? { gte: new Date(from.getTime() - DAY) } : {}), lt: new Date(to.getTime() + 2 * DAY) } },
+      ],
+    },
+    select: { date: true, product: true, qty: true, status: true, doneAt: true },
   });
-  return rows.map((r) => ({ dateISO: toISODate(r.date), product: r.product, qty: r.qty, status: r.status }));
+  return rows.map((r) => ({
+    dateISO: toISODate(r.date), product: r.product, qty: r.qty, status: r.status,
+    doneISO: r.doneAt ? factoryDayISO(r.doneAt) : null,
+  }));
 }
 
 /** The dashboard's numbers for one period, compared with the period before it. */
@@ -194,7 +207,11 @@ export async function importOdooSheet(
     if (cur) {
       await prisma.odooEntry.update({ where: { id: cur.id }, data });
     } else {
-      const created = await prisma.odooEntry.create({ data: { date, odooMo: row.odooMo, status: row.status, ...data } });
+      // a row the sheet already marks Done was closed on its own day — the
+      // only day known for it
+      const created = await prisma.odooEntry.create({
+        data: { date, odooMo: row.odooMo, status: row.status, doneAt: isDoneStatus(row.status) ? date : null, ...data },
+      });
       byKey.set(k, created); // a second line for the same MO in the file updates, not doubles
     }
   }
