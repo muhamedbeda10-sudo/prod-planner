@@ -68,7 +68,9 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    transformer's BOM. It shows code, material,
    thickness, sheet size, BOM and actual sheets per unit — scaled to the row's qty (editable for a partial
    close), with the actual number to book in Odoo one click from the clipboard, a copy of the whole
-   table, and "Open in Material" already narrowed to the BOM. The row's own month is used when the
+   table, and "Open in Material" already narrowed to the BOM. Each line shows the actual against the
+   BOM (past ±15% amber, past ±30% red, with a banner counting the lines off), so a nesting far from
+   its BOM is caught before it is booked. The row's own month is used when the
    tracker has it, else the newest month that does; a line not nested yet copies its BOM number and
    says so. A **Dashboard** view (Log · Dashboard switch) shows what was logged per day by
    product — a card per product (the sheet's six and any other product logged, by its own name)

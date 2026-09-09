@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookText, candidateBoms, materialNeed, materialNeedText, monthLabelOfISO, nestingKey, splitFgCode, type NestingLine, type NestingLookup } from "./odooMaterial";
+import { bookText, candidateBoms, materialNeed, materialNeedText, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup } from "./odooMaterial";
 
 function line(over: Partial<NestingLine> & { id: number }): NestingLine {
   return {
@@ -103,9 +103,9 @@ describe("materialNeedText", () => {
     const need = materialNeed(lookup, "FB-022-14003E11M11", 5, "September 2026")!;
     const text = materialNeedText(need);
     const rows = text.split("\n");
-    expect(rows[0]).toBe("Code\tMaterial\tThk mm\tSheet\tSheets for 5");
-    expect(rows[1]).toBe("C-SHR-004\tHR Sheet\t4\t1220*2440\t12.586");
-    expect(rows[2]).toBe("C-SHR-016\tHR Sheet\t16\t1220*2440\t0.115 (BOM)");
+    expect(rows[0]).toBe("Code\tMaterial\tThk mm\tSheet\tSheets for 5\tvs BOM");
+    expect(rows[1]).toBe("C-SHR-004\tHR Sheet\t4\t1220*2440\t12.586\t+1%");
+    expect(rows[2]).toBe("C-SHR-016\tHR Sheet\t16\t1220*2440\t0.115 (BOM)\t");
   });
   it("writes numbers without trailing zeros", () => {
     expect(bookText(12.5)).toBe("12.5");
@@ -155,5 +155,50 @@ describe("materialNeed through the SOI's order", () => {
     });
     expect(candidateBoms("FB-022-14003E11M11", [])).toEqual({ partCode: "FB-022", boms: [{ bom: "14003E11M11", via: "fg" }] });
     expect(candidateBoms("14003E11M11", ["12011E16M13"])).toBeNull();
+  });
+});
+
+describe("variance of actual against BOM", () => {
+  it("judges the rate: within 15% ok, past it warn, past 30% bad — either way", () => {
+    expect(varianceOf(2.5172, 2.504)).toEqual({ pct: 1, tone: "ok" });
+    expect(varianceOf(3, 2.5)).toEqual({ pct: 20, tone: "warn" });
+    expect(varianceOf(2, 2.5)).toEqual({ pct: -20, tone: "warn" });
+    expect(varianceOf(4, 2.5)).toEqual({ pct: 60, tone: "bad" });
+    expect(varianceOf(1, 2.5)).toEqual({ pct: -60, tone: "bad" });
+    expect(varianceOf(null, 2.5)).toEqual({ pct: null, tone: null });
+    expect(varianceOf(1, 0)).toEqual({ pct: null, tone: null });
+  });
+
+  it("writes it signed", () => {
+    expect(varianceText(18)).toBe("+18%");
+    expect(varianceText(-7)).toBe("−7%");
+    expect(varianceText(0)).toBe("0%");
+    expect(varianceText(null)).toBe("");
+  });
+
+  it("carries it on the lines and counts the ones off the BOM", () => {
+    const wide: NestingLookup = {
+      [nestingKey("FB-022", "X")]: [
+        line({ id: 1, bom: "X", sheetsPerUnit: 2, sheetsUsed: 2 * 29 }), // spot on
+        line({ id: 2, bom: "X", materialCode: "B", thicknessMm: 5, sheetsPerUnit: 1, sheetsUsed: 1.25 * 29 }), // +25 → warn
+        line({ id: 3, bom: "X", materialCode: "C", thicknessMm: 6, sheetsPerUnit: 1, sheetsUsed: 2 * 29 }), // +100 → bad
+        line({ id: 4, bom: "X", materialCode: "D", thicknessMm: 8, sheetsPerUnit: 1, sheetsUsed: null }), // not nested
+      ],
+    };
+    const need = materialNeed(wide, "FB-022-X", 4, "September 2026")!;
+    expect(need.lines.map((l) => [l.materialCode, l.variancePct, l.varianceTone])).toEqual([
+      ["C-SHR-004", 0, "ok"], ["B", 25, "warn"], ["C", 100, "bad"], ["D", null, null],
+    ]);
+    expect(need.offBom).toBe(2);
+    // over the nested lines: actual 2 + 1.25 + 2 = 5.25 against BOM 2 + 1 + 1 = 4 → +31%
+    expect(need.totalVariancePct).toBe(31);
+    expect(need.totalVarianceTone).toBe("bad");
+  });
+
+  it("has no total variance while nothing is nested", () => {
+    const none: NestingLookup = { [nestingKey("FB-022", "Y")]: [line({ id: 1, bom: "Y", sheetsUsed: null })] };
+    const need = materialNeed(none, "FB-022-Y", 4, "September 2026")!;
+    expect(need.totalVariancePct).toBeNull();
+    expect(need.offBom).toBe(0);
   });
 });

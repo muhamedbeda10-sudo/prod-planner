@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { EMPTY_MATERIAL_FILTERS, type MaterialFilters } from "@/lib/domain/material";
-import { bookText, candidateBoms, materialNeed, materialNeedText, monthLabelOfISO, type MaterialNeed, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { bookText, candidateBoms, materialNeed, materialNeedText, monthLabelOfISO, VARIANCE_BAD, VARIANCE_WARN, varianceText, type MaterialNeed, type NestingLookup, type VarianceTone } from "@/lib/domain/odooMaterial";
 import type { OdooEntryView } from "@/lib/domain/odoo";
 import { Soi } from "@/components/ui";
 import { parseSaved, useStoredFilters } from "@/components/useStoredFilters";
@@ -64,6 +64,26 @@ function CopyBtn({ id, text, copied, onCopy, label, className = "" }: {
 
 const per4 = (n: number | null) => (n === null ? "—" : n.toFixed(4).replace(/\.?0+$/, ""));
 
+// A line whose nesting sits far from its BOM is the one to look at before
+// booking: the actual cell and the "vs BOM" pill take the tone, the row a
+// tint, so it is caught at a glance rather than read off the decimals.
+const TONE_PILL: Record<VarianceTone, string> = { ok: "pill-muted", warn: "pill-warn", bad: "pill-bad" };
+const TONE_ROW: Record<VarianceTone, string> = { ok: "", warn: "bg-warn-bg/40", bad: "bg-bad-bg/50" };
+const TONE_INK: Record<VarianceTone, string> = { ok: "", warn: "text-warn-fg", bad: "text-bad-fg" };
+
+function VariancePill({ pct, tone }: { pct: number | null; tone: VarianceTone | null }) {
+  if (pct === null || tone === null) return <span className="text-muted">—</span>;
+  const title =
+    tone === "bad" ? `Actual is ${Math.abs(pct)}% ${pct > 0 ? "over" : "under"} the BOM — more than ${VARIANCE_BAD}%: check the nesting before booking`
+    : tone === "warn" ? `Actual is ${Math.abs(pct)}% ${pct > 0 ? "over" : "under"} the BOM — more than ${VARIANCE_WARN}%`
+    : "Actual sits close to the BOM";
+  return (
+    <span className={`pill ${TONE_PILL[tone]} tabnum ltr`} title={title}>
+      {tone === "bad" ? "⚠ " : ""}{varianceText(pct)}
+    </span>
+  );
+}
+
 const MATERIAL_FILTERS_KEY = "material:filters";
 const readMaterialFilters = (raw: string) => parseSaved(raw) as Partial<MaterialFilters>;
 
@@ -91,12 +111,13 @@ function NeedTable({ need, copied, copy }: { need: MaterialNeed; copied: string 
             <th className="p-2 text-right" title="Sheets actually nested for the job ÷ its units">Actual / unit</th>
             <th className="p-2 text-right" title={`${need.qty} × BOM per unit`}>For {need.qty} (BOM)</th>
             <th className="p-2 text-right" title={`${need.qty} × actual per unit — the number to book`}>For {need.qty} (actual)</th>
+            <th className="p-2 text-center" title={`Actual against BOM — past ±${VARIANCE_WARN}% it is amber, past ±${VARIANCE_BAD}% red`}>vs BOM</th>
             <th className="p-2" />
           </tr>
         </thead>
         <tbody>
           {need.lines.map((l) => (
-            <tr key={l.id} className="border-t">
+            <tr key={l.id} className={`border-t ${l.varianceTone ? TONE_ROW[l.varianceTone] : ""}`}>
               <td className="p-2 ltr text-xs font-bold whitespace-nowrap">{l.materialCode || <span className="text-muted">—</span>}</td>
               <td className="p-2 whitespace-nowrap">{l.material}</td>
               <td className="p-2 text-center tabnum">{l.thicknessMm}</td>
@@ -104,7 +125,7 @@ function NeedTable({ need, copied, copy }: { need: MaterialNeed; copied: string 
               <td className="p-2 text-right tabnum">{per4(l.sheetsPerUnit)}</td>
               <td className="p-2 text-right tabnum">{per4(l.actualPerUnit)}</td>
               <td className="p-2 text-right tabnum">{bookText(l.forQtyBom)}</td>
-              <td className="p-2 text-right tabnum font-extrabold text-base">
+              <td className={`p-2 text-right tabnum font-extrabold text-base ${l.varianceTone ? TONE_INK[l.varianceTone] : ""}`}>
                 {l.forQtyActual === null ? (
                   <span className="text-muted font-semibold text-xs" title="Not nested yet — the BOM number is what there is">
                     not nested
@@ -113,6 +134,7 @@ function NeedTable({ need, copied, copy }: { need: MaterialNeed; copied: string 
                   bookText(l.forQtyActual)
                 )}
               </td>
+              <td className="p-2 text-center whitespace-nowrap"><VariancePill pct={l.variancePct} tone={l.varianceTone} /></td>
               <td className="p-2 text-right whitespace-nowrap">
                 <CopyBtn id={`l${l.id}`} text={bookText(l.book)} copied={copied} onCopy={copy} label={l.bookIsActual ? "Copy" : "Copy BOM"} />
               </td>
@@ -125,7 +147,8 @@ function NeedTable({ need, copied, copy }: { need: MaterialNeed; copied: string 
               Total sheets{need.notNested > 0 && <span className="text-muted font-normal"> · {need.notNested} line(s) not nested yet</span>}
             </td>
             <td className="p-2 text-right tabnum">{bookText(need.totalBom)}</td>
-            <td className="p-2 text-right tabnum">{bookText(need.totalActual)}</td>
+            <td className={`p-2 text-right tabnum ${need.totalVarianceTone ? TONE_INK[need.totalVarianceTone] : ""}`}>{bookText(need.totalActual)}</td>
+            <td className="p-2 text-center"><VariancePill pct={need.totalVariancePct} tone={need.totalVarianceTone} /></td>
             <td />
           </tr>
         </tfoot>
@@ -229,11 +252,20 @@ export function OdooMaterialPopup({ e, nesting, soiBoms, onClose }: { e: OdooEnt
             )}
           </p>
         ) : (
-          <NeedTable need={need} copied={copied} copy={copy} />
+          <>
+            {need.offBom > 0 && (
+              <p className={`text-sm font-semibold rounded-lg px-3 py-2 mb-2 ${need.lines.some((l) => l.varianceTone === "bad") ? "bg-bad-bg text-bad-fg" : "bg-warn-bg text-warn-fg"}`}>
+                ⚠ {need.offBom} line(s) where the actual nesting is far from the BOM
+                {need.totalVariancePct !== null && <> · overall <b className="tabnum ltr">{varianceText(need.totalVariancePct)}</b> against the BOM</>}
+                . Check them before booking.
+              </p>
+            )}
+            <NeedTable need={need} copied={copied} copy={copy} />
+          </>
         )}
         <p className="text-[11px] text-muted mt-2">
           <b>For qty (actual)</b> = sheets actually nested for the job ÷ its units × this qty — what to book in Odoo. Where nothing was
-          nested yet, Copy takes the BOM number instead and says so.
+          nested yet, Copy takes the BOM number instead and says so. <b>vs BOM</b> is the actual against the BOM: past ±{VARIANCE_WARN}% amber, past ±{VARIANCE_BAD}% red.
         </p>
       </div>
     </div>
