@@ -2,13 +2,18 @@ import { describe, it, expect } from "vitest";
 import { buildOdooDashboard, pctChange, periodLabel, previousPeriod, productSeries, resolvePeriod, shortDayLabel } from "./odooStats";
 
 describe("productSeries", () => {
-  it("folds the sheet's product names, however typed, and gathers the rest as Other", () => {
+  it("folds the sheet's product names however typed, keeps any other product by name, Other only for none", () => {
     expect(productSeries("Tank")).toBe("Tank");
     expect(productSeries(" top  cover ")).toBe("Top Cover");
     expect(productSeries("CB")).toBe("Cable Box");
     expect(productSeries("enclosure")).toBe("Encloser");
-    expect(productSeries("Radiator")).toBe("Other");
+    expect(productSeries("Radiator")).toBe("Radiator");
+    expect(productSeries("radiator ")).toBe("Radiator");
+    expect(productSeries("RADIATOR")).toBe("Radiator");
+    expect(productSeries("oil  pump")).toBe("Oil Pump");
+    expect(productSeries("HV Bushing")).toBe("HV Bushing");
     expect(productSeries(null)).toBe("Other");
+    expect(productSeries("  ")).toBe("Other");
   });
 });
 
@@ -67,14 +72,16 @@ describe("buildOdooDashboard", () => {
     expect(sixth.bySeries["Core Frame"]).toBe(0);
     expect(sixth.doneQty).toBe(5);
     const fourth = d.days.find((x) => x.dateISO === "2026-09-04")!;
-    expect(fourth.bySeries.Other).toBe(1);
+    expect(fourth.bySeries.Radiator).toBe(1);
+    expect(sixth.bySeries.Radiator).toBe(0);
+    expect(d.series).toEqual(["Tank", "Top Cover", "Core Frame", "Radiator"]);
     expect(d.days.find((x) => x.dateISO === "2026-09-05")!.qty).toBe(0);
   });
 
   it("totals per product in the fixed order, only the products that appear, with their share", () => {
     const d = buildOdooDashboard(rows, period);
     expect(d.totals.map((t) => [t.series, t.qty, t.rows, t.share])).toEqual([
-      ["Tank", 8, 2, 53.3], ["Top Cover", 4, 1, 26.7], ["Core Frame", 2, 1, 13.3], ["Other", 1, 1, 6.7],
+      ["Tank", 8, 2, 53.3], ["Top Cover", 4, 1, 26.7], ["Core Frame", 2, 1, 13.3], ["Radiator", 1, 1, 6.7],
     ]);
     expect(d.totals.every((t) => t.prevQty === null)).toBe(true);
     expect(d.previous).toBeNull();
@@ -104,10 +111,30 @@ describe("buildOdooDashboard", () => {
     expect(d.days.map((x) => x.dateISO)).toEqual(["2025-01-01", "2026-09-04", "2026-09-06"]);
   });
 
+  it("puts new products after the sheet's, biggest first, and a nameless row last as Other", () => {
+    const d = buildOdooDashboard([
+      { dateISO: "2026-09-06", product: "Radiator", qty: 2, status: "Done" },
+      { dateISO: "2026-09-06", product: "Oil Pump", qty: 9, status: "Done" },
+      { dateISO: "2026-09-06", product: "", qty: 1, status: "Done" },
+      { dateISO: "2026-09-06", product: "Encloser", qty: 1, status: "Done" },
+      { dateISO: "2026-09-06", product: "Tank", qty: 1, status: "Done" },
+    ], period);
+    expect(d.series).toEqual(["Tank", "Encloser", "Oil Pump", "Radiator", "Other"]);
+    expect(d.totals.map((t) => t.series)).toEqual(d.series);
+    expect(d.days.find((x) => x.dateISO === "2026-09-03")!.bySeries).toEqual({ Tank: 0, Encloser: 0, "Oil Pump": 0, Radiator: 0, Other: 0 });
+  });
+
+  it("compares a new product with the previous period too", () => {
+    const prev = [{ dateISO: "2026-08-30", product: "Radiator", qty: 3, status: "Done" }];
+    const d = buildOdooDashboard(rows, period, prev);
+    expect(d.totals.find((t) => t.series === "Radiator")!.prevQty).toBe(3);
+  });
+
   it("is empty but well-formed with no rows", () => {
     const d = buildOdooDashboard([], { range: "30d", fromISO: "2026-08-09", toISO: "2026-09-07" });
     expect(d.days).toHaveLength(30);
     expect(d.totals).toEqual([]);
+    expect(d.series).toEqual([]);
     expect(d.kpi.qtyPerActiveDay).toBe(0);
   });
 });

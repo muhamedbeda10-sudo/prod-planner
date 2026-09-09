@@ -70,7 +70,8 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    table, and "Open in Material" already narrowed to the BOM. The row's own month is used when the
    tracker has it, else the newest month that does; a line not nested yet copies its BOM number and
    says so. A **Dashboard** view (Log · Dashboard switch) shows what was logged per day by
-   product — a card per product with its trend and change vs the previous period, stacked columns
+   product — a card per product (the sheet's six and any other product logged, by its own name)
+   with its trend and change vs the previous period, stacked columns
    with every count written on, one small chart per product, totals and closed vs not closed — over
    7/30/90 days, this month, all time or a custom from/to, with the numbers as a table and an Excel export.
 

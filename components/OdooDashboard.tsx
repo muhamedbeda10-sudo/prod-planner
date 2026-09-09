@@ -7,7 +7,7 @@ import {
 } from "recharts";
 import { ExportButton } from "@/components/ExportButton";
 import {
-  ODOO_RANGES, ODOO_RANGE_LABEL, ODOO_SERIES, pctChange, periodLabel,
+  ODOO_RANGES, ODOO_RANGE_LABEL, pctChange, periodLabel,
   type OdooDashboardData, type OdooPeriod, type OdooSeries,
 } from "@/lib/domain/odooStats";
 
@@ -17,7 +17,11 @@ import {
 // chart per product, totals and closed-vs-open, and the same numbers as a
 // table with an Excel export — the chart is never the only way to read a value.
 
-const SERIES_VAR: Record<OdooSeries, string> = {
+// The sheet's six products keep their fixed colours; a product logged beyond
+// them takes the next free slot of the palette in the order it appears in
+// the period's series, so a newcomer is coloured, named and legended like
+// the rest. "Other" (a row with no product) stays grey.
+const FIXED_VAR: Record<string, string> = {
   Tank: "var(--viz-1)",
   "Top Cover": "var(--viz-2)",
   "Core Frame": "var(--viz-3)",
@@ -27,10 +31,34 @@ const SERIES_VAR: Record<OdooSeries, string> = {
   Other: "var(--viz-other)",
 };
 /** Ink for a number written INSIDE a segment: white on the dark hues, dark on the light ones. */
-const SERIES_INK: Record<OdooSeries, string> = {
+const FIXED_INK: Record<string, string> = {
   Tank: "#fff", "Top Cover": "#fff", "Core Frame": "#fff", Encloser: "#fff",
   "Cable Box": "#1a2420", Conservator: "#1a2420", Other: "#fff",
 };
+const EXTRA: { color: string; ink: string }[] = [
+  { color: "var(--viz-7)", ink: "#fff" },
+  { color: "var(--viz-8)", ink: "#1a2420" },
+  { color: "var(--viz-1)", ink: "#fff" },
+  { color: "var(--viz-2)", ink: "#fff" },
+  { color: "var(--viz-3)", ink: "#fff" },
+  { color: "var(--viz-4)", ink: "#fff" },
+  { color: "var(--viz-5)", ink: "#1a2420" },
+  { color: "var(--viz-6)", ink: "#1a2420" },
+];
+type Palette = { color: (s: OdooSeries) => string; ink: (s: OdooSeries) => string };
+function paletteFor(series: readonly OdooSeries[]): Palette {
+  const color: Record<string, string> = {};
+  const ink: Record<string, string> = {};
+  let extra = 0;
+  for (const s of series) {
+    if (FIXED_VAR[s]) { color[s] = FIXED_VAR[s]; ink[s] = FIXED_INK[s]; continue; }
+    const slot = EXTRA[extra % EXTRA.length];
+    extra += 1;
+    color[s] = slot.color;
+    ink[s] = slot.ink;
+  }
+  return { color: (s) => color[s] ?? "var(--viz-other)", ink: (s) => ink[s] ?? "#fff" };
+}
 
 const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: 1 }));
 
@@ -182,7 +210,7 @@ function Sparkline({ values, color }: { values: number[]; color: string }) {
   );
 }
 
-function ProductCards({ d, present }: { d: OdooDashboardData; present: OdooSeries[] }) {
+function ProductCards({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
   return (
     <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))]">
       {present.map((s) => {
@@ -190,9 +218,9 @@ function ProductCards({ d, present }: { d: OdooDashboardData; present: OdooSerie
         const daily = d.days.map((p) => p.bySeries[s]);
         const best = Math.max(0, ...daily);
         return (
-          <div key={s} className="bg-surface border rounded-xl px-4 py-3 border-t-4" style={{ borderTopColor: SERIES_VAR[s] }}>
+          <div key={s} className="bg-surface border rounded-xl px-4 py-3 border-t-4" style={{ borderTopColor: pal.color(s) }}>
             <div className="flex items-center gap-2 text-xs font-bold text-muted">
-              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: SERIES_VAR[s] }} />
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: pal.color(s) }} />
               {s}
             </div>
             <div className="flex items-baseline gap-2">
@@ -200,7 +228,7 @@ function ProductCards({ d, present }: { d: OdooDashboardData; present: OdooSerie
               <span className="text-xs text-muted">{t.rows} row{t.rows === 1 ? "" : "s"} · {t.share}%</span>
             </div>
             <div className="min-h-[1rem]"><Delta cur={t.qty} prev={t.prevQty} /></div>
-            <div className="mt-1.5"><Sparkline values={daily} color={SERIES_VAR[s]} /></div>
+            <div className="mt-1.5"><Sparkline values={daily} color={pal.color(s)} /></div>
             <div className="text-[11px] text-muted mt-0.5">best day {fmt(best)}</div>
           </div>
         );
@@ -265,7 +293,7 @@ function Card({ title, sub, children, right }: { title: string; sub?: string; ch
   );
 }
 
-function DailyByProduct({ d, present }: { d: OdooDashboardData; present: OdooSeries[] }) {
+function DailyByProduct({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
   const data = d.days.map((p) => ({ label: p.label, ...p.bySeries }));
   const stack = d.days.map((p) => ({ total: p.qty, top: [...present].reverse().find((s) => p.bySeries[s] > 0) ?? null }));
   const n = d.days.length;
@@ -276,15 +304,15 @@ function DailyByProduct({ d, present }: { d: OdooDashboardData; present: OdooSer
         <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={tickEvery(n, 16)} tickLine={false} />
         <YAxis domain={[0, headroom]} tickCount={6} allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
         <Tooltip content={<Tip total />} cursor={{ fill: "var(--surface-2)" }} />
-        <Legend {...legendProps(present.map((s) => ({ value: s, color: SERIES_VAR[s] })))} />
+        <Legend {...legendProps(present.map((s) => ({ value: s, color: pal.color(s) })))} />
         {present.map((s, i) => (
           <Bar
-            key={s} dataKey={s} name={s} stackId="qty" fill={SERIES_VAR[s]}
+            key={s} dataKey={s} name={s} stackId="qty" fill={pal.color(s)}
             stroke="var(--surface)" strokeWidth={2} maxBarSize={28}
             radius={i === present.length - 1 ? [4, 4, 0, 0] : 0}
             isAnimationActive={false}
           >
-            <LabelList dataKey={s} content={segmentLabel(SERIES_INK[s])} />
+            <LabelList dataKey={s} content={segmentLabel(pal.ink(s))} />
             <LabelList dataKey={s} content={stackTotalLabel(s, stack)} />
           </Bar>
         ))}
@@ -294,7 +322,7 @@ function DailyByProduct({ d, present }: { d: OdooDashboardData; present: OdooSer
 }
 
 /** One small chart per product, on a shared scale, every day's count on its cap. */
-function SmallMultiples({ d, present }: { d: OdooDashboardData; present: OdooSeries[] }) {
+function SmallMultiples({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
   const n = d.days.length;
   const yMax = Math.max(1, ...d.days.flatMap((p) => present.map((s) => p.bySeries[s])));
   return (
@@ -306,7 +334,7 @@ function SmallMultiples({ d, present }: { d: OdooDashboardData; present: OdooSer
           <div key={s} className="border rounded-lg p-2">
             <div className="flex items-center justify-between px-1 mb-1">
               <span className="text-sm font-bold flex items-center gap-2">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: SERIES_VAR[s] }} />
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: pal.color(s) }} />
                 {s}
               </span>
               <span className="text-xs text-muted tabnum">{fmt(t.qty)} in period</span>
@@ -317,7 +345,7 @@ function SmallMultiples({ d, present }: { d: OdooDashboardData; present: OdooSer
                 <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={tickEvery(n, 8)} tickLine={false} />
                 <YAxis domain={[0, headroom(yMax)]} tickCount={4} allowDecimals={false} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip content={<Tip />} cursor={{ fill: "var(--surface-2)" }} />
-                <Bar dataKey="qty" name={s} fill={SERIES_VAR[s]} maxBarSize={18} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                <Bar dataKey="qty" name={s} fill={pal.color(s)} maxBarSize={18} radius={[3, 3, 0, 0]} isAnimationActive={false}>
                   <LabelList dataKey="qty" content={TopLabel} />
                 </Bar>
               </BarChart>
@@ -370,7 +398,7 @@ function ClosedPerDay({ d }: { d: OdooDashboardData }) {
 
 // ---- table view: the same numbers, readable without the chart ----
 
-function DayTable({ d, present }: { d: OdooDashboardData; present: OdooSeries[] }) {
+function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
   const days = [...d.days].filter((p) => p.rows > 0).reverse();
   return (
     <div className="overflow-x-auto">
@@ -380,7 +408,7 @@ function DayTable({ d, present }: { d: OdooDashboardData; present: OdooSeries[] 
             <th className="p-2">Day</th>
             {present.map((s) => (
               <th key={s} className="p-2 text-center whitespace-nowrap">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm align-middle me-1" style={{ background: SERIES_VAR[s] }} />
+                <span className="inline-block w-2.5 h-2.5 rounded-sm align-middle me-1" style={{ background: pal.color(s) }} />
                 {s}
               </th>
             ))}
@@ -422,7 +450,8 @@ function DayTable({ d, present }: { d: OdooDashboardData; present: OdooSeries[] 
 
 export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
   const [showTable, setShowTable] = useState(false);
-  const present = ODOO_SERIES.filter((s) => d.totals.some((t) => t.series === s));
+  const present = d.series;
+  const pal = useMemo(() => paletteFor(present), [present]);
   const title = periodLabel(d.period);
   const prevTitle = d.previous ? periodLabel({ range: "custom", fromISO: d.previous.fromISO, toISO: d.previous.toISO }) : null;
   const donePct = d.kpi.rows > 0 ? Math.round((d.kpi.doneRows / d.kpi.rows) * 100) : 0;
@@ -466,15 +495,15 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
 
       <section>
         <h2 className="font-bold mb-2">Per product</h2>
-        <ProductCards d={d} present={present} />
+        <ProductCards d={d} present={present} pal={pal} />
       </section>
 
       <Card title="Quantity per day, by product" sub="Each column is a day; every segment carries its count, the cap the day's total. Hover a column for the full breakdown.">
-        <DailyByProduct d={d} present={present} />
+        <DailyByProduct d={d} present={present} pal={pal} />
       </Card>
 
       <Card title="Each product, day by day" sub="One chart per product on the same scale, the count on every column.">
-        <SmallMultiples d={d} present={present} />
+        <SmallMultiples d={d} present={present} pal={pal} />
       </Card>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -491,7 +520,7 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
           <span>The numbers as a table</span>
           <span className="text-muted text-sm">{showTable ? "Hide" : "Show"}</span>
         </button>
-        {showTable && <DayTable d={d} present={present} />}
+        {showTable && <DayTable d={d} present={present} pal={pal} />}
       </section>
     </div>
   );

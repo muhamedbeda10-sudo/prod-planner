@@ -5,21 +5,39 @@
 import { parseISODate, toISODate } from "./dates";
 import { isDoneStatus, ODOO_PRODUCTS } from "./odoo";
 
-/** The series, in the fixed order the charts colour them. "Other" gathers any
- *  product typed that is not one of the sheet's names. */
-export const ODOO_SERIES = [...ODOO_PRODUCTS, "Other"] as const;
-export type OdooSeries = (typeof ODOO_SERIES)[number];
+/** A series is a product name. The sheet's six come first, in the fixed order
+ *  the charts colour them; any other product logged is its own series after
+ *  them, under the name it was typed — a new item closed on Odoo shows up by
+ *  name, not as "Other". "Other" is only a row with no product at all. */
+export type OdooSeries = string;
+export const KNOWN_SERIES: readonly OdooSeries[] = ODOO_PRODUCTS;
+export const OTHER_SERIES = "Other";
 
-/** Fold a typed product onto one of the series — case and spacing forgiven. */
+/** Fold a typed product onto its series — the sheet's names however cased or
+ *  abbreviated, anything else tidied to Title Case so "radiator", "Radiator "
+ *  and "RADIATOR" are one series. */
 export function productSeries(product: string | null | undefined): OdooSeries {
-  const key = (product ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  const clean = (product ?? "").replace(/\s+/g, " ").trim();
+  const key = clean.toLowerCase();
+  if (!key) return OTHER_SERIES;
   for (const p of ODOO_PRODUCTS) if (p.toLowerCase() === key) return p;
   if (key === "enclosure" || key === "enclouser") return "Encloser";
   if (key === "cb" || key === "cable-box") return "Cable Box";
   if (key === "tc" || key === "top-cover") return "Top Cover";
   if (key === "cf" || key === "core-frame") return "Core Frame";
   if (key === "tn") return "Tank";
-  return "Other";
+  return clean.split(" ").map((w) => (w.length > 3 && w === w.toUpperCase() ? w[0] + w.slice(1).toLowerCase() : w[0].toUpperCase() + w.slice(1))).join(" ");
+}
+
+/** The order series are drawn in: the sheet's products first (fixed), then the
+ *  rest by quantity, then name — so a new product's colour is stable within a
+ *  period and the biggest newcomer sits nearest the known ones. */
+export function orderSeries(totals: ReadonlyMap<OdooSeries, { qty: number }>): OdooSeries[] {
+  const known = KNOWN_SERIES.filter((s) => totals.has(s));
+  const rest = [...totals.keys()]
+    .filter((s) => !KNOWN_SERIES.includes(s) && s !== OTHER_SERIES)
+    .sort((a, b) => totals.get(b)!.qty - totals.get(a)!.qty || a.localeCompare(b));
+  return [...known, ...rest, ...(totals.has(OTHER_SERIES) ? [OTHER_SERIES] : [])];
 }
 
 export const ODOO_RANGES = ["7d", "30d", "90d", "month", "all"] as const;
@@ -120,6 +138,9 @@ export interface OdooDashboardData {
   period: OdooPeriod;
   /** The comparison window, when the period is bounded. */
   previous: { fromISO: string; toISO: string } | null;
+  /** Every product logged in the period, in drawing order — every day point
+   *  carries a number for each of these. */
+  series: OdooSeries[];
   days: OdooDayPoint[];
   totals: OdooSeriesTotal[];
   kpi: {
@@ -151,8 +172,8 @@ export function shortDayLabel(dateISO: string): string {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
-function emptySeries(): Record<OdooSeries, number> {
-  return Object.fromEntries(ODOO_SERIES.map((s) => [s, 0])) as Record<OdooSeries, number>;
+function emptySeries(series: readonly OdooSeries[]): Record<OdooSeries, number> {
+  return Object.fromEntries(series.map((s) => [s, 0]));
 }
 
 /** Gaps are filled with zero days so a quiet day shows as quiet, not missing —
@@ -166,20 +187,21 @@ const FILL_GAPS_UP_TO = 120;
  */
 export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prevRows: OdooStatRow[] | null = null): OdooDashboardData {
   const byDay = new Map<string, OdooDayPoint>();
-  const totalsMap = new Map<OdooSeries, { qty: number; rows: number }>(ODOO_SERIES.map((s) => [s, { qty: 0, rows: 0 }]));
+  const totalsMap = new Map<OdooSeries, { qty: number; rows: number }>();
   let qty = 0, doneRows = 0, doneQty = 0;
 
   for (const r of rows) {
     const s = productSeries(r.product);
     let day = byDay.get(r.dateISO);
     if (!day) {
-      day = { dateISO: r.dateISO, label: shortDayLabel(r.dateISO), qty: 0, rows: 0, doneQty: 0, bySeries: emptySeries() };
+      day = { dateISO: r.dateISO, label: shortDayLabel(r.dateISO), qty: 0, rows: 0, doneQty: 0, bySeries: {} };
       byDay.set(r.dateISO, day);
     }
     day.qty += r.qty;
     day.rows += 1;
-    day.bySeries[s] += r.qty;
-    const t = totalsMap.get(s)!;
+    day.bySeries[s] = (day.bySeries[s] ?? 0) + r.qty;
+    let t = totalsMap.get(s);
+    if (!t) totalsMap.set(s, (t = { qty: 0, rows: 0 }));
     t.qty += r.qty;
     t.rows += 1;
     qty += r.qty;
@@ -190,12 +212,17 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
     }
   }
 
+  const series = orderSeries(totalsMap);
+  // every day carries every series, so the stacked chart never meets undefined
+  for (const day of byDay.values()) day.bySeries = { ...emptySeries(series), ...day.bySeries };
+
   // the previous period, per product, for the comparisons
-  const prevBySeries = prevRows ? emptySeries() : null;
+  const prevBySeries = prevRows ? emptySeries(series) : null;
   let prevQty = 0;
   if (prevRows && prevBySeries) {
     for (const r of prevRows) {
-      prevBySeries[productSeries(r.product)] += r.qty;
+      const s = productSeries(r.product);
+      prevBySeries[s] = (prevBySeries[s] ?? 0) + r.qty;
       prevQty += r.qty;
     }
   }
@@ -211,7 +238,7 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
     days = [];
     for (let i = 0; i < span; i++) {
       const iso = toISODate(new Date(first.getTime() + i * 86_400_000));
-      days.push(byDay.get(iso) ?? { dateISO: iso, label: shortDayLabel(iso), qty: 0, rows: 0, doneQty: 0, bySeries: emptySeries() });
+      days.push(byDay.get(iso) ?? { dateISO: iso, label: shortDayLabel(iso), qty: 0, rows: 0, doneQty: 0, bySeries: emptySeries(series) });
     }
   } else {
     days = loggedDays.map((iso) => byDay.get(iso)!);
@@ -221,15 +248,16 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
   return {
     period,
     previous: prevRows ? previousPeriod(period) : null,
+    series,
     days,
-    totals: ODOO_SERIES
-      .map((s) => ({ series: s, ...totalsMap.get(s)! }))
-      .filter((t) => t.rows > 0)
-      .map((t) => ({
-        ...t,
+    totals: series.map((s) => {
+      const t = totalsMap.get(s)!;
+      return {
+        series: s, qty: t.qty, rows: t.rows,
         share: qty > 0 ? Math.round((t.qty / qty) * 1000) / 10 : 0,
-        prevQty: prevBySeries ? prevBySeries[t.series] : null,
-      })),
+        prevQty: prevBySeries ? (prevBySeries[s] ?? 0) : null,
+      };
+    }),
     kpi: {
       qty, rows: rows.length, doneRows, doneQty, activeDays,
       qtyPerActiveDay: activeDays > 0 ? Math.round((qty / activeDays) * 10) / 10 : 0,

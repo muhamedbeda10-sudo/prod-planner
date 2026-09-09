@@ -33,13 +33,16 @@
 
   /* chart series — fixed categorical order for the Odoo dashboard (validated
      for colour-vision separation on both surfaces): Tank · Top Cover ·
-     Core Frame · Encloser · Cable Box · Conservator · Other */
+     Core Frame · Encloser · Cable Box · Conservator; 7 and 8 go to products
+     logged beyond the sheet's six, in the order they appear; Other is grey */
   --viz-1: #1a8150;
   --viz-2: #2a78d6;
   --viz-3: #eb6834;
   --viz-4: #4a3aa7;
   --viz-5: #eda100;
   --viz-6: #e87ba4;
+  --viz-7: #e34948;
+  --viz-8: #1baf7a;
   --viz-other: #8a938f;
 
   /* worklist column tints — Cut = brand green tint, Welding = steel blue tint
@@ -88,6 +91,8 @@ html.dark {
   --viz-4: #9085e9;
   --viz-5: #c98500;
   --viz-6: #d55181;
+  --viz-7: #e66767;
+  --viz-8: #199e70;
   --viz-other: #7c8782;
 
   --ok-bg: #14352a;
