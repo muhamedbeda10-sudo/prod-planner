@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView } from "@/lib/domain/odoo";
 import { buildOdooDashboard, previousPeriod, type OdooDashboardData, type OdooPeriod, type OdooStatRow } from "@/lib/domain/odooStats";
-import { nestingKey, splitFgCode, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { candidateBoms, nestingKey, type NestingLookup } from "@/lib/domain/odooMaterial";
 
 export interface OdooPageData {
   entries: OdooEntryView[];
@@ -13,9 +13,11 @@ export interface OdooPageData {
   /** Typing aids from the orders registry: SOIs and FG codes it already knows. */
   knownSois: string[];
   knownFgCodes: string[];
-  /** The MATERIAL tab's nesting lines for every part × BOM the rows name,
-   *  keyed "FB-022|14003E11M11" — what a row's popup scales to its qty. */
+  /** The MATERIAL tab's nesting lines for every part × BOM the rows may sit
+   *  under, keyed "FB-022|14003E11M11" — what a row's popup scales to its qty. */
   nesting: NestingLookup;
+  /** The registry's BOM(s) per SOI — the transformer a row's SOI is for. */
+  soiBoms: Record<string, string[]>;
 }
 
 /** The tab for one day (ISO), or every day when `dayISO` is "all". */
@@ -32,8 +34,17 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
       include: { notes: { orderBy: { id: "desc" } } },
     }),
     prisma.odooEntry.findMany({ select: { date: true }, distinct: ["date"], orderBy: { date: "desc" } }),
-    prisma.masterOrder.findMany({ select: { soi: true, fgCode: true } }),
+    prisma.masterOrder.findMany({ select: { soi: true, fgCode: true, bom: true } }),
   ]);
+
+  const soiBoms: Record<string, string[]> = {};
+  for (const o of orders) {
+    const soi = (o.soi ?? "").trim().toUpperCase();
+    const bom = o.bom.trim().toUpperCase();
+    if (!soi || !bom) continue;
+    const list = (soiBoms[soi] ??= []);
+    if (!list.includes(bom)) list.push(bom);
+  }
 
   const entries: OdooEntryView[] = rows.map((r) => ({
     id: r.id,
@@ -56,16 +67,19 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     days: [...new Set(dayRows.map((d) => toISODate(d.date)))],
     knownSois: uniq(orders.map((o) => o.soi)),
     knownFgCodes: uniq(orders.map((o) => o.fgCode)),
-    nesting: await nestingFor(entries.map((e) => e.fgCode)),
+    nesting: await nestingFor(entries.map((e) => ({ fgCode: e.fgCode, boms: soiBoms[(e.soi ?? "").trim().toUpperCase()] ?? [] }))),
+    soiBoms,
   };
 }
 
-/** The tracker's lines for the parts × BOMs these FG codes name, every month. */
-async function nestingFor(fgCodes: string[]): Promise<NestingLookup> {
+/** The tracker's lines for every part × BOM these rows may sit under
+ *  (the SOI's BOM and the FG-CODE's), every month. */
+async function nestingFor(entries: { fgCode: string; boms: string[] }[]): Promise<NestingLookup> {
   const keys = new Map<string, { partCode: string; bom: string }>();
-  for (const code of fgCodes) {
-    const k = splitFgCode(code);
-    if (k) keys.set(nestingKey(k.partCode, k.bom), k);
+  for (const r of entries) {
+    const cand = candidateBoms(r.fgCode, r.boms);
+    if (!cand) continue;
+    for (const c of cand.boms) keys.set(nestingKey(cand.partCode, c.bom), { partCode: cand.partCode, bom: c.bom });
   }
   if (keys.size === 0) return {};
   const rows = await prisma.materialUsage.findMany({

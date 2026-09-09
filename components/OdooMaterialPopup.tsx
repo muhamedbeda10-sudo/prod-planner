@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { EMPTY_MATERIAL_FILTERS, type MaterialFilters } from "@/lib/domain/material";
-import { bookText, materialNeed, materialNeedText, monthLabelOfISO, splitFgCode, type MaterialNeed, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { bookText, candidateBoms, materialNeed, materialNeedText, monthLabelOfISO, type MaterialNeed, type NestingLookup } from "@/lib/domain/odooMaterial";
 import type { OdooEntryView } from "@/lib/domain/odoo";
 import { Soi } from "@/components/ui";
 import { parseSaved, useStoredFilters } from "@/components/useStoredFilters";
@@ -134,7 +134,7 @@ function NeedTable({ need, copied, copy }: { need: MaterialNeed; copied: string 
   );
 }
 
-export function OdooMaterialPopup({ e, nesting, onClose }: { e: OdooEntryView; nesting: NestingLookup; onClose: () => void }) {
+export function OdooMaterialPopup({ e, nesting, soiBoms, onClose }: { e: OdooEntryView; nesting: NestingLookup; soiBoms: string[]; onClose: () => void }) {
   const [qty, setQty] = useState(String(e.qty));
   const { copied, copy } = useCopy();
   const openInMaterial = useOpenInMaterial();
@@ -148,10 +148,18 @@ export function OdooMaterialPopup({ e, nesting, onClose }: { e: OdooEntryView; n
   }, [onClose]);
 
   const q = Number(qty);
-  const need = materialNeed(nesting, e.fgCode, Number.isFinite(q) ? q : 0, monthLabelOfISO(e.dateISO));
-  const key = splitFgCode(e.fgCode);
-  const partCode = need?.partCode ?? key?.partCode ?? "";
-  const bom = need?.bom ?? key?.bom ?? e.fgCode;
+  const need = materialNeed(nesting, e.fgCode, Number.isFinite(q) ? q : 0, monthLabelOfISO(e.dateISO), soiBoms);
+  const cand = candidateBoms(e.fgCode, soiBoms);
+  const partCode = need?.partCode ?? cand?.partCode ?? "";
+  const bom = need?.bom ?? cand?.boms[0]?.bom ?? e.fgCode;
+  // when nothing matched: which of the looked-up BOMs the tracker has at all,
+  // and for which parts — "the BOM is there, the part isn't" is the usual case
+  const bomsSeen = cand
+    ? cand.boms.map((c) => ({
+        ...c,
+        parts: [...new Set(Object.keys(nesting).filter((k) => k.endsWith(`|${c.bom}`) && nesting[k].length > 0).map((k) => k.split("|")[0]))],
+      }))
+    : [];
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-3" role="dialog" aria-modal="true" aria-label={`Material for ${e.odooMo}`}>
@@ -194,7 +202,8 @@ export function OdooMaterialPopup({ e, nesting, onClose }: { e: OdooEntryView; n
           </button>
           {need && (
             <span className="text-xs text-muted ml-auto">
-              from the <b>{need.month || "untagged"}</b> tracker · job of <b className="tabnum">{need.lines[0]?.units ?? "—"}</b> units
+              BOM <b className="ltr text-foreground">{need.bom}</b> {need.via === "soi" ? "via the SOI's order" : "from the FG-CODE"} ·{" "}
+              <b>{need.month || "untagged"}</b> tracker · job of <b className="tabnum">{need.lines[0]?.units ?? "—"}</b> units
               {need.otherMonths.length > 0 && <> · also in {need.otherMonths.join(", ")}</>}
             </span>
           )}
@@ -202,9 +211,22 @@ export function OdooMaterialPopup({ e, nesting, onClose }: { e: OdooEntryView; n
 
         {!need ? (
           <p className="text-sm text-muted border rounded-xl p-4">
-            {key
-              ? <>No nesting lines for <b className="ltr">{key.partCode}</b> on BOM <b className="ltr">{key.bom}</b> in the Material tab yet — add them there or import the month&apos;s tracker.</>
-              : <>FG-CODE <b className="ltr">{e.fgCode}</b> is not part-BOM shaped (FB-022-14003E11M11), so no material can be looked up.</>}
+            {cand ? (
+              <>
+                No nesting line for <b className="ltr">{cand.partCode}</b> in the Material tab under{" "}
+                {bomsSeen.map((c, i) => (
+                  <span key={c.bom}>
+                    {i > 0 && " or "}
+                    BOM <b className="ltr">{c.bom}</b> ({c.via === "soi" ? "the SOI's order" : "the FG-CODE"}
+                    {c.parts.length > 0 ? `, has ${c.parts.join(", ")}` : ", not in the tracker"})
+                  </span>
+                ))}
+                {" "}— add it there or import the month&apos;s tracker.
+                {!e.soi && <> The row has no SOI, so only the FG-CODE could be tried.</>}
+              </>
+            ) : (
+              <>FG-CODE <b className="ltr">{e.fgCode}</b> is not part-BOM shaped (FB-022-14003E11M11), so no material can be looked up.</>
+            )}
           </p>
         ) : (
           <NeedTable need={need} copied={copied} copy={copy} />

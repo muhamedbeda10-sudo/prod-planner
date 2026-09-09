@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookText, materialNeed, materialNeedText, monthLabelOfISO, nestingKey, splitFgCode, type NestingLine, type NestingLookup } from "./odooMaterial";
+import { bookText, candidateBoms, materialNeed, materialNeedText, monthLabelOfISO, nestingKey, splitFgCode, type NestingLine, type NestingLookup } from "./odooMaterial";
 
 function line(over: Partial<NestingLine> & { id: number }): NestingLine {
   return {
@@ -111,5 +111,49 @@ describe("materialNeedText", () => {
     expect(bookText(12.5)).toBe("12.5");
     expect(bookText(6)).toBe("6");
     expect(bookText(1.6919999999999997)).toBe("1.692");
+  });
+});
+
+describe("materialNeed through the SOI's order", () => {
+  // the top cover's FG-CODE carries its own drawing code, not the transformer's
+  // BOM; the SOI's order in the registry names the transformer
+  const soiLookup: NestingLookup = {
+    ...lookup,
+    [nestingKey("FB-051", "12011E16M13")]: [line({ id: 20, bom: "12011E16M13", partCode: "FB-051", partName: "TOP COVER", sheetsPerUnit: 0.5, sheetsUsed: null, units: 10 })],
+    [nestingKey("FB-022", "12011E16M13")]: [line({ id: 21, bom: "12011E16M13" })],
+  };
+
+  it("finds the part under the SOI's BOM when the FG-CODE's suffix is not it", () => {
+    const need = materialNeed(soiLookup, "FB-051-12011E12M12", 5, "September 2026", ["12011E16M13"])!;
+    expect(need).not.toBeNull();
+    expect(need.bom).toBe("12011E16M13");
+    expect(need.via).toBe("soi");
+    expect(need.partName).toBe("TOP COVER");
+    expect(need.lines[0].forQtyBom).toBe(2.5);
+  });
+
+  it("prefers the SOI's BOM over the FG-CODE's when both have lines", () => {
+    const need = materialNeed(soiLookup, "FB-022-14003E11M11", 1, "September 2026", ["12011E16M13"])!;
+    expect(need.bom).toBe("12011E16M13");
+    expect(need.via).toBe("soi");
+  });
+
+  it("falls back to the FG-CODE's BOM when the SOI's has no line for the part", () => {
+    const need = materialNeed(soiLookup, "FB-022-14003E11M11", 1, "September 2026", ["99999E11M11"])!;
+    expect(need.bom).toBe("14003E11M11");
+    expect(need.via).toBe("fg");
+  });
+
+  it("is null when the part is under neither — the BOM being there is not enough", () => {
+    expect(materialNeed(soiLookup, "FB-059-12011E16M13", 1, "September 2026", ["12011E16M13"])).toBeNull();
+  });
+
+  it("lists the candidates in lookup order without doubling", () => {
+    expect(candidateBoms("FB-022-14003E11M11", ["12011E16M13", "14003e11m11", ""])).toEqual({
+      partCode: "FB-022",
+      boms: [{ bom: "12011E16M13", via: "soi" }, { bom: "14003E11M11", via: "soi" }],
+    });
+    expect(candidateBoms("FB-022-14003E11M11", [])).toEqual({ partCode: "FB-022", boms: [{ bom: "14003E11M11", via: "fg" }] });
+    expect(candidateBoms("14003E11M11", ["12011E16M13"])).toBeNull();
   });
 });

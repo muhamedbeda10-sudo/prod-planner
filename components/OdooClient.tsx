@@ -305,8 +305,8 @@ function NotesCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
   );
 }
 
-function Row({ e, day, knownSois, knownFgCodes, nesting, canEdit }: {
-  e: OdooEntryView; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; canEdit: boolean;
+function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit }: {
+  e: OdooEntryView; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; soiBoms: string[]; canEdit: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [material, setMaterial] = useState(false);
@@ -314,7 +314,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, canEdit }: {
   const del = useAction();
   // the row's material, as a hint on the button — none when the tracker has
   // no lines for this part on this BOM
-  const need = useMemo(() => materialNeed(nesting, e.fgCode, e.qty, monthLabelOfISO(e.dateISO)), [nesting, e.fgCode, e.qty, e.dateISO]);
+  const need = useMemo(() => materialNeed(nesting, e.fgCode, e.qty, monthLabelOfISO(e.dateISO), soiBoms), [nesting, e.fgCode, e.qty, e.dateISO, soiBoms]);
   const closeMaterial = useCallback(() => setMaterial(false), []);
   // clicking the row's plain cells opens its material; the status and notes
   // cells keep their own controls
@@ -365,7 +365,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, canEdit }: {
           </span>
         </td>
       </tr>
-      {material && <OdooMaterialPopup e={e} nesting={nesting} onClose={closeMaterial} />}
+      {material && <OdooMaterialPopup e={e} nesting={nesting} soiBoms={soiBoms} onClose={closeMaterial} />}
       {(editing || del.msg?.ok === false) && (
         <tr className="border-t-0">
           <td colSpan={9} className="px-2 pb-3">
@@ -443,6 +443,7 @@ function ImportPanel({ day }: { day: string }) {
 // ---- filters: one row above the table, kept between visits ----
 
 const FILTERS_KEY = "odoo:filters";
+const NO_BOMS: string[] = [];
 const SEL = "border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold";
 
 function readSavedFilters(raw: string): OdooFilters {
@@ -491,6 +492,7 @@ export function OdooClient({
   knownSois,
   knownFgCodes,
   nesting,
+  soiBoms,
   canEdit,
 }: {
   entries: OdooEntryView[];
@@ -498,8 +500,10 @@ export function OdooClient({
   knownSois: string[];
   knownFgCodes: string[];
   nesting: NestingLookup;
+  soiBoms: Record<string, string[]>;
   canEdit: boolean;
 }) {
+  const bomsOf = (soi: string | null) => soiBoms[(soi ?? "").trim().toUpperCase()] ?? NO_BOMS;
   const { filters, setFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_ODOO_FILTERS);
   const shown = useMemo(() => filterOdooEntries(entries, filters), [entries, filters]);
   const done = shown.filter((e) => e.done).length;
@@ -537,7 +541,7 @@ export function OdooClient({
               </thead>
               <tbody>
                 {shown.map((e) => (
-                  <Row key={e.id} e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} canEdit={canEdit} />
+                  <Row key={e.id} e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} soiBoms={bomsOf(e.soi)} canEdit={canEdit} />
                 ))}
               </tbody>
             </table>
