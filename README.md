@@ -59,7 +59,14 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    updated, never doubled); the planner then moves the Status in place (Pending, Done, Blocked …) and
    keeps Notes on it — a list with time and author, each deletable on its own. A filter row (search across
    SOI, FG-CODE, MO, product and notes; product; status; with/without notes) sticks between visits, as
-   does the day. Exports in the sheet's own headers. A **Dashboard** view (Log · Dashboard switch) shows what was logged per day by
+   does the day. Exports in the sheet's own headers. **Click a row (or its 🧱 button)** for the material
+   its qty consumes: the FG-CODE is the part and the nesting BOM (FB-022-14003E11M11 = TANK on BOM
+   14003E11M11), so the popup lists the Material tab's lines for that part on that BOM — code, material,
+   thickness, sheet size, BOM and actual sheets per unit — scaled to the row's qty (editable for a partial
+   close), with the actual number to book in Odoo one click from the clipboard, a copy of the whole
+   table, and "Open in Material" already narrowed to the BOM. The row's own month is used when the
+   tracker has it, else the newest month that does; a line not nested yet copies its BOM number and
+   says so. A **Dashboard** view (Log · Dashboard switch) shows what was logged per day by
    product — a card per product with its trend and change vs the previous period, stacked columns
    with every count written on, one small chart per product, totals and closed vs not closed — over
    7/30/90 days, this month, all time or a custom from/to, with the numbers as a table and an Excel export.

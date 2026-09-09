@@ -1,0 +1,219 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { EMPTY_MATERIAL_FILTERS, type MaterialFilters } from "@/lib/domain/material";
+import { bookText, materialNeed, materialNeedText, monthLabelOfISO, splitFgCode, type MaterialNeed, type NestingLookup } from "@/lib/domain/odooMaterial";
+import type { OdooEntryView } from "@/lib/domain/odoo";
+import { Soi } from "@/components/ui";
+import { parseSaved, useStoredFilters } from "@/components/useStoredFilters";
+
+// The material behind a logged Odoo row, in a popup on the row itself: the
+// planner used to take the SOI to the MATERIAL tab, search it, and work out
+// by hand what the row's qty consumed before booking it in Odoo. Now the row
+// opens its nesting lines scaled to its qty, each number one click from the
+// clipboard — the qty can be changed here for a partial close.
+
+async function writeClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // http or a denied permission — the old way still works
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    ta.remove();
+    return ok;
+  }
+}
+
+function useCopy() {
+  const [copied, setCopied] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copy = async (id: string, text: string) => {
+    const ok = await writeClipboard(text);
+    setCopied(ok ? id : null);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(null), 1600);
+  };
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  return { copied, copy };
+}
+
+function CopyBtn({ id, text, copied, onCopy, label, className = "" }: {
+  id: string; text: string; copied: string | null; onCopy: (id: string, text: string) => void; label?: string; className?: string;
+}) {
+  const done = copied === id;
+  return (
+    <button
+      type="button"
+      className={`btn btn-sm ${done ? "btn-primary" : "btn-secondary"} ${className}`}
+      title={`Copy ${text}`}
+      onClick={() => onCopy(id, text)}
+    >
+      {done ? "Copied ✓" : label ?? "Copy"}
+    </button>
+  );
+}
+
+const per4 = (n: number | null) => (n === null ? "—" : n.toFixed(4).replace(/\.?0+$/, ""));
+
+const MATERIAL_FILTERS_KEY = "material:filters";
+const readMaterialFilters = (raw: string) => parseSaved(raw) as Partial<MaterialFilters>;
+
+/** Go to the MATERIAL tab already narrowed to this part on this BOM. */
+function useOpenInMaterial() {
+  const router = useRouter();
+  const { setFilters } = useStoredFilters(MATERIAL_FILTERS_KEY, readMaterialFilters, EMPTY_MATERIAL_FILTERS);
+  return (partCode: string, bom: string, month: string) => {
+    setFilters({ ...EMPTY_MATERIAL_FILTERS, q: bom, partCode });
+    router.push(month ? `/material?month=${encodeURIComponent(month)}` : "/material");
+  };
+}
+
+function NeedTable({ need, copied, copy }: { need: MaterialNeed; copied: string | null; copy: (id: string, text: string) => void }) {
+  return (
+    <div className="overflow-x-auto border rounded-xl">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="bg-surface-2 text-left text-xs">
+            <th className="p-2">Code</th>
+            <th className="p-2">Material</th>
+            <th className="p-2 text-center">Thk</th>
+            <th className="p-2">Sheet</th>
+            <th className="p-2 text-right" title="Sheets one unit needs in the nesting BOM">BOM / unit</th>
+            <th className="p-2 text-right" title="Sheets actually nested for the job ÷ its units">Actual / unit</th>
+            <th className="p-2 text-right" title={`${need.qty} × BOM per unit`}>For {need.qty} (BOM)</th>
+            <th className="p-2 text-right" title={`${need.qty} × actual per unit — the number to book`}>For {need.qty} (actual)</th>
+            <th className="p-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {need.lines.map((l) => (
+            <tr key={l.id} className="border-t">
+              <td className="p-2 ltr text-xs font-bold whitespace-nowrap">{l.materialCode || <span className="text-muted">—</span>}</td>
+              <td className="p-2 whitespace-nowrap">{l.material}</td>
+              <td className="p-2 text-center tabnum">{l.thicknessMm}</td>
+              <td className="p-2 ltr tabnum text-xs whitespace-nowrap">{l.sheetSize}</td>
+              <td className="p-2 text-right tabnum">{per4(l.sheetsPerUnit)}</td>
+              <td className="p-2 text-right tabnum">{per4(l.actualPerUnit)}</td>
+              <td className="p-2 text-right tabnum">{bookText(l.forQtyBom)}</td>
+              <td className="p-2 text-right tabnum font-extrabold text-base">
+                {l.forQtyActual === null ? (
+                  <span className="text-muted font-semibold text-xs" title="Not nested yet — the BOM number is what there is">
+                    not nested
+                  </span>
+                ) : (
+                  bookText(l.forQtyActual)
+                )}
+              </td>
+              <td className="p-2 text-right whitespace-nowrap">
+                <CopyBtn id={`l${l.id}`} text={bookText(l.book)} copied={copied} onCopy={copy} label={l.bookIsActual ? "Copy" : "Copy BOM"} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t bg-surface-2 font-bold">
+            <td className="p-2 text-xs" colSpan={6}>
+              Total sheets{need.notNested > 0 && <span className="text-muted font-normal"> · {need.notNested} line(s) not nested yet</span>}
+            </td>
+            <td className="p-2 text-right tabnum">{bookText(need.totalBom)}</td>
+            <td className="p-2 text-right tabnum">{bookText(need.totalActual)}</td>
+            <td />
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+export function OdooMaterialPopup({ e, nesting, onClose }: { e: OdooEntryView; nesting: NestingLookup; onClose: () => void }) {
+  const [qty, setQty] = useState(String(e.qty));
+  const { copied, copy } = useCopy();
+  const openInMaterial = useOpenInMaterial();
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    box.current?.focus();
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const q = Number(qty);
+  const need = materialNeed(nesting, e.fgCode, Number.isFinite(q) ? q : 0, monthLabelOfISO(e.dateISO));
+  const key = splitFgCode(e.fgCode);
+  const partCode = need?.partCode ?? key?.partCode ?? "";
+  const bom = need?.bom ?? key?.bom ?? e.fgCode;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center p-3" role="dialog" aria-modal="true" aria-label={`Material for ${e.odooMo}`}>
+      <button type="button" aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
+      <div ref={box} tabIndex={-1} className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-surface border rounded-xl shadow-lg p-4 outline-none focus-visible:outline-none">
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-2 mb-3">
+          <div className="min-w-0">
+            <div className="font-extrabold text-base">🧱 Material for <span className="ltr">{e.odooMo}</span></div>
+            <div className="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+              <span>SOI <Soi soi={e.soi} className="text-foreground" /></span>
+              <span>FG <b className="ltr text-foreground">{e.fgCode}</b></span>
+              <span>{e.product}{need?.partName && need.partName.toLowerCase() !== e.product.toLowerCase() ? ` (${need.partName})` : ""}</span>
+              <span>logged <b className="tabnum ltr text-foreground">{e.dateISO}</b> · qty <b className="tabnum text-foreground">{e.qty}</b></span>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto btn btn-sm btn-ghost">✕</button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <label className="inline-flex items-center gap-1.5 text-sm font-semibold">
+            Sheets for
+            <input
+              type="number" min={0} step="any" value={qty} onChange={(ev) => setQty(ev.target.value)}
+              aria-label="Quantity" title="Change to see the material for a different quantity — a partial close"
+              className="border rounded-md px-2 py-1 w-20 bg-surface font-extrabold tabnum text-center"
+            />
+            units
+          </label>
+          {need && need.lines.length > 0 && (
+            <>
+              <CopyBtn id="all" text={materialNeedText(need)} copied={copied} onCopy={copy} label="Copy table" />
+              <CopyBtn
+                id="codes" copied={copied} onCopy={copy} label="Copy codes + sheets"
+                text={need.lines.map((l) => `${l.materialCode}\t${bookText(l.book)}`).join("\n")}
+              />
+            </>
+          )}
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => openInMaterial(partCode, bom, need?.month ?? monthLabelOfISO(e.dateISO))}>
+            Open in Material →
+          </button>
+          {need && (
+            <span className="text-xs text-muted ml-auto">
+              from the <b>{need.month || "untagged"}</b> tracker · job of <b className="tabnum">{need.lines[0]?.units ?? "—"}</b> units
+              {need.otherMonths.length > 0 && <> · also in {need.otherMonths.join(", ")}</>}
+            </span>
+          )}
+        </div>
+
+        {!need ? (
+          <p className="text-sm text-muted border rounded-xl p-4">
+            {key
+              ? <>No nesting lines for <b className="ltr">{key.partCode}</b> on BOM <b className="ltr">{key.bom}</b> in the Material tab yet — add them there or import the month&apos;s tracker.</>
+              : <>FG-CODE <b className="ltr">{e.fgCode}</b> is not part-BOM shaped (FB-022-14003E11M11), so no material can be looked up.</>}
+          </p>
+        ) : (
+          <NeedTable need={need} copied={copied} copy={copy} />
+        )}
+        <p className="text-[11px] text-muted mt-2">
+          <b>For qty (actual)</b> = sheets actually nested for the job ÷ its units × this qty — what to book in Odoo. Where nothing was
+          nested yet, Copy takes the BOM number instead and says so.
+        </p>
+      </div>
+    </div>
+  );
+}
