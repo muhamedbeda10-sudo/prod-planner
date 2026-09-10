@@ -145,9 +145,12 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    (or partitions) as blocks, drag them where they stand, pull a corner to resize, draw areas ("Laser hall",
    "Bending & fins") and labels around them, zoom — the drawing saves itself a moment after every change, so
    it is there for everyone who opens that department's floor next. Every block is live: what it is on now, how many
-   lines wait, its load colour, the crew on it today. Click a block for its queue (run next, take off, put a
-   waiting line on it), today's crew, and ✓ to record what it finished. "＋ New partition" creates one on the
-   spot. The screen is the floor and nothing else: the lines not on any machine sit behind the toolbar's
+   lines wait, its load colour, the crew on it today. **Clicking a block opens it over the floor** — a wide
+   panel with every order on that machine in full (BOM, item, pieces, standard hours, delivery date, MO and
+   description), its crew, and the buttons to run one next, split it, take it off or ✓ record what it
+   finished; a long queue scrolls inside the panel, and Esc or the backdrop closes it. A press that moves is
+   still a drag, so the floor is re-drawn with the same hand. "＋ New partition" creates one on the
+   spot. The floor itself keeps the **whole width of the screen** — no side list: the lines not on any machine sit behind the toolbar's
    **"n to place"** button — open it and the weekly plan's dated ones come first (earliest first), the month's
    undated ones after; click a block, then "→ code" sends a line to it in one click (the board on each
    worklist lists them the same way). Drawing needs

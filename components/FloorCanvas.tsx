@@ -87,6 +87,8 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
   const router = useRouter();
   const [planning, startPlanning] = useTransition();
   const [planNote, setPlanNote] = useState("");
+  // the block whose details are open — the floor itself keeps the whole width
+  const [opened, setOpened] = useState<string | null>(null);
 
   const cardOf = useMemo(() => new Map(board.cards.map((c) => [c.machine.id, c])), [board.cards]);
   const allMachines = useMemo(() => {
@@ -117,6 +119,14 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
     return () => clearTimeout(t);
   }, [layout, dirty, canDraw, dept]);
 
+  // Escape closes the open block
+  useEffect(() => {
+    if (!opened) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpened(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [opened]);
+
   // the browser's own leave-page prompt while a save is still in flight
   useEffect(() => {
     if (!dirty && !saving) return;
@@ -125,29 +135,38 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
     return () => window.removeEventListener("beforeunload", onLeave);
   }, [dirty, saving]);
 
-  // ---- dragging and resizing, straight from pointer events ----
-  const drag = useRef<{ id: string; mode: "move" | "resize"; sx: number; sy: number; ox: number; oy: number } | null>(null);
+  // ---- dragging, resizing and opening, straight from pointer events ----
+  // A press that does not MOVE is a click: it opens the block's details. Only
+  // once the pointer has travelled a few pixels does it become a drag, so the
+  // floor can be worked and re-drawn with the same hand.
+  const drag = useRef<{ id: string; mode: "move" | "resize"; sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
   function onDown(e: React.PointerEvent, n: FloorNode, mode: "move" | "resize") {
-    if (!canDraw) { setSelected(n.id); return; }
     if ((e.target as HTMLElement).closest("button, input, select, a")) return;
+    setSelected(n.id);
+    drag.current = { id: n.id, mode, sx: e.clientX, sy: e.clientY, ox: mode === "move" ? n.x : n.w, oy: mode === "move" ? n.y : n.h, moved: false };
+    if (!canDraw) return; // read-only: the press can still open the details
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    drag.current = { id: n.id, mode, sx: e.clientX, sy: e.clientY, ox: mode === "move" ? n.x : n.w, oy: mode === "move" ? n.y : n.h };
-    setSelected(n.id);
   }
   function onMove(e: React.PointerEvent) {
     const d = drag.current;
     if (!d) return;
     const dx = (e.clientX - d.sx) / zoom;
     const dy = (e.clientY - d.sy) / zoom;
+    if (!d.moved && Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) > 4) d.moved = true;
+    if (!canDraw || !d.moved) return;
     setLayout((l) => (d.mode === "move" ? moveNode(l, d.id, d.ox + dx, d.oy + dy) : resizeNode(l, d.id, d.ox + dx, d.oy + dy)));
   }
   function onUp() {
+    const d = drag.current;
     drag.current = null;
+    if (d && !d.moved && d.mode === "move") setOpened(d.id);
   }
 
   const sel = layout.nodes.find((n) => n.id === selected) ?? null;
   const selCard = sel?.kind === "machine" ? cardOf.get(sel.machineId!) ?? null : null;
+  const shown = layout.nodes.find((n) => n.id === opened) ?? null;
+  const shownCard = shown?.kind === "machine" ? cardOf.get(shown.machineId!) ?? null : null;
   // the unassigned lines, the weekly plan's dated ones first — the ones that matter
   const dated = board.unassigned.filter((u) => u.deliveryISO);
   const undated = board.unassigned.filter((u) => !u.deliveryISO);
@@ -233,60 +252,80 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
         {!dirty && !saving && updatedAtISO && <span className="text-[11px] text-muted">drawn {updatedAtISO.slice(0, 10)}{updatedBy ? ` by ${updatedBy}` : ""}</span>}
       </div>
 
-      <div className="flex gap-3 items-start">
-        {/* ---- the floor ---- */}
-        <div className="flex-1 min-w-0 overflow-auto border rounded-xl bg-surface" style={{ maxHeight: "72vh" }} onPointerDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}>
-          <div style={{ width: layout.w * zoom, height: layout.h * zoom }}>
-            <div
-              className="relative select-none"
-              style={{
-                width: layout.w, height: layout.h, transform: `scale(${zoom})`, transformOrigin: "0 0",
-                backgroundImage: "linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px)",
-                backgroundSize: `${GRID * 5}px ${GRID * 5}px`,
-              }}
-              onPointerDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}
-            >
-              {drawOrder(layout.nodes).map((n) => (
-                <Node key={n.id} n={n} card={n.kind === "machine" ? cardOf.get(n.machineId!) ?? null : null} machineName={n.kind === "machine" ? allMachines.get(n.machineId!) : undefined}
-                  selected={selected === n.id} canDraw={canDraw} onDown={onDown} onMove={onMove} onUp={onUp} dept={dept} />
-              ))}
-              {layout.nodes.length === 0 && (
-                <div className="absolute inset-0 grid place-items-center text-sm text-muted">
-                  {canDraw ? `Place the ${machineWord(dept, true)} from the toolbar, drag them where they stand, draw areas around them — it saves by itself.` : "The floor has not been drawn yet."}
+      {/* ---- the floor: the whole width of the screen ---- */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs no-print">
+        <span className="font-bold text-sm">{deptLabel(dept)} floor</span>
+        <span className="text-muted tabnum">{board.cards.length} {machineWord(dept, true)} · {board.totalHours} h queued{board.totalAvailableH !== null ? ` / ${board.totalAvailableH} h today` : ""}</span>
+        {board.unassigned.length > 0 && <span className="text-warn-fg font-semibold">{board.unassigned.length} line(s) not on a {word}</span>}
+        {planNote && <span className="font-semibold">⚡ {planNote}</span>}
+        <span className="text-muted">Click a block for its orders{canDraw ? "; drag it to move, pull the corner to resize" : ""}.</span>
+      </div>
+      <div
+        className="overflow-auto border rounded-xl bg-surface"
+        style={{ height: "calc(100vh - 210px)", minHeight: 420 }}
+        onPointerDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}
+      >
+        <div style={{ width: layout.w * zoom, height: layout.h * zoom }}>
+          <div
+            className="relative select-none"
+            style={{
+              width: layout.w, height: layout.h, transform: `scale(${zoom})`, transformOrigin: "0 0",
+              backgroundImage: "linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px)",
+              backgroundSize: `${GRID * 5}px ${GRID * 5}px`,
+            }}
+            onPointerDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}
+          >
+            {drawOrder(layout.nodes).map((n) => (
+              <Node key={n.id} n={n} card={n.kind === "machine" ? cardOf.get(n.machineId!) ?? null : null} machineName={n.kind === "machine" ? allMachines.get(n.machineId!) : undefined}
+                selected={selected === n.id} canDraw={canDraw} onDown={onDown} onMove={onMove} onUp={onUp} dept={dept} />
+            ))}
+            {layout.nodes.length === 0 && (
+              <div className="absolute inset-0 grid place-items-center text-sm text-muted">
+                {canDraw ? `Place the ${machineWord(dept, true)} from the toolbar, drag them where they stand, draw areas around them — it saves by itself.` : "The floor has not been drawn yet."}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ---- a block's details, over the floor: everything at full width ---- */}
+      {shown && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-6 no-print" role="dialog" aria-modal="true">
+          <button type="button" aria-label="Close" className="absolute inset-0 cursor-default" style={{ background: "rgba(0,0,0,0.55)" }} onClick={() => setOpened(null)} />
+          <div className="relative bg-surface border rounded-xl shadow-lg flex flex-col" style={{ width: "min(96vw, 1000px)", maxHeight: "88vh" }}>
+            <div className="flex items-center gap-2 border-b px-4 py-2 shrink-0">
+              <div className="min-w-0 truncate">
+                {shown.kind === "machine" ? (
+                  <>
+                    <span className="font-extrabold ltr tabnum">{shownCard?.machine.code ?? allMachines.get(shown.machineId!)?.code ?? `#${shown.machineId}`}</span>
+                    <span className="font-semibold text-sm"> · {shownCard?.machine.name ?? allMachines.get(shown.machineId!)?.name ?? ""}</span>
+                  </>
+                ) : (
+                  <span className="font-bold">{shown.kind === "zone" ? "Area" : "Label"}</span>
+                )}
+              </div>
+              <button type="button" className="btn btn-sm btn-secondary shrink-0" style={{ marginInlineStart: "auto" }} title="Close (Esc)" onClick={() => setOpened(null)}>✕ Close</button>
+            </div>
+            <div className="p-4" style={{ overflow: "auto" }}>
+              {shown.kind === "machine" ? (
+                <MachineInspector n={shown} card={shownCard} board={board} canAssign={canAssign} canDraw={canDraw} onRemove={() => { setLayout((l) => removeNode(l, shown.id)); setOpened(null); setSelected(null); }} />
+              ) : (
+                <div className="space-y-2">
+                  <input value={shown.text ?? ""} disabled={!canDraw} onChange={(e) => setLayout((l) => updateNode(l, shown.id, { text: e.target.value }))} className="w-full border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold" aria-label="Text" />
+                  <div className="flex flex-wrap gap-1">
+                    {FLOOR_COLORS.map((c) => (
+                      <button key={c} type="button" disabled={!canDraw} title={c} onClick={() => setLayout((l) => updateNode(l, shown.id, { color: c }))}
+                        className={`w-6 h-6 rounded-md border-2 ${shown.color === c || (!shown.color && c === "slate") ? "ring-2 ring-brand" : ""}`} style={{ background: TINT[c].bg, borderColor: TINT[c].border }} />
+                    ))}
+                  </div>
+                  <div className="text-[11px] text-muted tabnum">{shown.w} × {shown.h} at {shown.x}, {shown.y}</div>
+                  {canDraw && <button type="button" className="btn btn-sm btn-danger" onClick={() => { setLayout((l) => removeNode(l, shown.id)); setOpened(null); setSelected(null); }}>Delete from the floor</button>}
                 </div>
               )}
             </div>
           </div>
         </div>
-
-        {/* ---- inspector ---- */}
-        <aside className="w-72 shrink-0 bg-surface border rounded-xl p-3 space-y-2 no-print hidden md:block">
-          {!sel ? (
-            <div className="text-xs text-muted space-y-1">
-              <div className="font-bold text-foreground text-sm">{deptLabel(dept)} floor</div>
-              <div>{board.cards.length} {machineWord(dept, true)} · {board.totalHours} h queued{board.totalAvailableH !== null ? ` / ${board.totalAvailableH} h today` : ""}</div>
-              {board.unassigned.length > 0 && <div className="text-warn-fg font-semibold">{board.unassigned.length} line(s) not on a {word} — “to place” above opens them</div>}
-              {planNote && <div className="text-foreground font-semibold">⚡ {planNote}</div>}
-              <div className="pt-1">Click a block to see and work its queue{canDraw ? "; drag to move, pull the corner to resize" : ""}.</div>
-            </div>
-          ) : sel.kind === "machine" ? (
-            <MachineInspector n={sel} card={selCard} board={board} canAssign={canAssign} canDraw={canDraw} onRemove={() => { setLayout((l) => removeNode(l, sel.id)); setSelected(null); }} />
-          ) : (
-            <div className="space-y-2">
-              <div className="text-sm font-bold">{sel.kind === "zone" ? "Area" : "Label"}</div>
-              <input value={sel.text ?? ""} disabled={!canDraw} onChange={(e) => setLayout((l) => updateNode(l, sel.id, { text: e.target.value }))} className="w-full border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold" aria-label="Text" />
-              <div className="flex flex-wrap gap-1">
-                {FLOOR_COLORS.map((c) => (
-                  <button key={c} type="button" disabled={!canDraw} title={c} onClick={() => setLayout((l) => updateNode(l, sel.id, { color: c }))}
-                    className={`w-6 h-6 rounded-md border-2 ${sel.color === c || (!sel.color && c === "slate") ? "ring-2 ring-brand" : ""}`} style={{ background: TINT[c].bg, borderColor: TINT[c].border }} />
-                ))}
-              </div>
-              <div className="text-[11px] text-muted tabnum">{sel.w} × {sel.h} at {sel.x}, {sel.y}</div>
-              {canDraw && <button type="button" className="btn btn-sm btn-danger" onClick={() => { setLayout((l) => removeNode(l, sel.id)); setSelected(null); }}>Delete</button>}
-            </div>
-          )}
-        </aside>
-      </div>
+      )}
 
       {/* ---- what is not on a machine yet: the weekly plan first, then the rest of the month ---- */}
       {showQueue && board.unassigned.length > 0 && (
@@ -397,10 +436,11 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
   const compact = n.h < 100;
   return (
     <div
+      data-node={m?.code ?? n.id}
       style={{ ...base, borderColor: tone ? TONE_BORDER[tone] : "var(--border-strong)", boxShadow: ring ?? "var(--shadow-sm)" }}
       className={`rounded-xl border-2 bg-surface p-2 overflow-hidden flex flex-col ${card && !card.machine.active ? "opacity-60" : ""}`}
       onPointerDown={(e) => onDown(e, n, "move")} onPointerMove={onMove} onPointerUp={onUp}
-      title={m ? `${m.code} · ${m.name}` : "Unknown machine"}
+      title={m ? `${m.code} · ${m.name} — click for its orders` : "Unknown machine"}
     >
       <div className="flex items-baseline gap-1.5 min-w-0">
         <span className="font-extrabold text-xs ltr tabnum shrink-0">{m?.code ?? "?"}</span>
@@ -437,6 +477,7 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
   n: FloorNode; card: MachineCard | null; board: MachineBoardData; canAssign: boolean; canDraw: boolean; onRemove: () => void;
 }) {
   const a = useAction();
+  const [showAll, setShowAll] = useState(false);
   const m = card?.machine;
   const line = (bom: string, mo: string, item: string) => {
     const fd = new FormData();
@@ -466,49 +507,86 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
   // the lines this machine's own work centre still owes — a bender is never
   // offered a job that wants a laser
   const mine = board.unassigned.filter((u) => u.center === m.center || board.machines.every((x) => x.center !== u.center));
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = showAll ? card.queue : card.queue.slice(0, 30);
   return (
-    <div className="space-y-2">
-      <div>
-        <div className="font-extrabold ltr tabnum">{m.code} <span className="font-semibold text-sm">· {m.name}</span></div>
-        <div className="text-[11px] text-muted">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <div className="text-xs text-muted">
           {m.center ? `${CENTER_LABEL[m.center] ?? m.center} · ` : ""}
-          {card.availableH !== null ? `${card.availableH} h today${card.downtimeH ? ` (${card.downtimeH} h down)` : ""}` : "hours/day not set"}
+          {card.availableH !== null ? `${card.availableH} h today${card.downtimeH ? ` (${card.downtimeH} h down)` : ""}` : "hours a day not set"}
+        </div>
+        <div className={`ms-auto text-sm font-extrabold tabnum ${tone === "ok" ? "text-ok-fg" : tone === "warn" ? "text-warn-fg" : tone === "bad" ? "text-bad-fg" : ""}`}>
+          {card.hours} h queued · {card.pcs} pcs{card.days !== null ? ` · ${card.days} day(s)` : ""}
         </div>
       </div>
-      <div className={`text-sm font-extrabold tabnum ${tone === "ok" ? "text-ok-fg" : tone === "warn" ? "text-warn-fg" : tone === "bad" ? "text-bad-fg" : ""}`}>
-        {card.hours} h queued · {card.pcs} pcs{card.days !== null ? ` · ${card.days} day(s)` : ""}
+
+      <div className="text-xs flex flex-wrap items-center gap-1">
+        <span className="font-bold text-muted">Today&apos;s crew{card.crewH ? ` · ${card.crewH} mh` : ""}:</span>
+        {card.crew.length === 0 ? <span className="text-muted">nobody on the shift log yet</span> : card.crew.map((w) => <span key={w} className="pill pill-muted">{w}</span>)}
       </div>
-      <div className="text-xs">
-        <div className="font-bold text-muted mb-0.5">Today&apos;s crew{card.crewH ? ` · ${card.crewH} mh` : ""}</div>
-        {card.crew.length === 0 ? <div className="text-muted">nobody on the shift log yet</div> : <div className="flex flex-wrap gap-1">{card.crew.map((w) => <span key={w} className="pill pill-muted">{w}</span>)}</div>}
-      </div>
-      <div className="text-xs">
-        <div className="font-bold text-muted mb-0.5">Queue</div>
-        {card.queue.length === 0 ? <div className="text-muted">nothing on it</div> : (
-          <ol className="space-y-1">
-            {card.queue.map((q) => (
-              <li key={q.key} className={`flex items-center gap-1 rounded-md px-1.5 py-1 ${q.running ? "bg-brand-light/40 border border-brand/30" : "border"}`}>
-                <span className="w-4 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</span>
-                <span className="min-w-0 flex-1 truncate"><b>{q.bom}</b> {q.item} <b className="tabnum">×{q.remaining}</b>{q.split ? <span className="text-muted text-[10px]" title="Part of the line — the rest is on another machine or waits"> ✂ of {q.lineRemaining}</span> : null}{q.hours !== null ? <span className="text-muted"> {q.hours} h</span> : null}{q.deliveryISO ? <span className="text-muted"> 📅 {ddmm(q.deliveryISO)}</span> : null}</span>
-                {canAssign && (
-                  <span className="inline-flex items-center gap-1 shrink-0">
-                    <DoneBox board={board} q={q} onErr={a.setErr} />
-                    {q.running
-                      ? <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
-                      : <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>}
-                    {!q.running && card.waiting.indexOf(q) > 0 && <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>}
-                    <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
-                    <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item))}>✕</button>
-                  </span>
-                )}
-              </li>
-            ))}
-          </ol>
+
+      <div>
+        <div className="text-xs font-bold text-muted mb-1">
+          Queue — {card.running.length} running, {card.waiting.length} waiting
+        </div>
+        {card.queue.length === 0 ? (
+          <div className="text-xs text-muted">nothing on it</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-start text-[10px] uppercase tracking-wide text-muted">
+                  <th className="p-1 w-8 text-center">#</th>
+                  <th className="p-1 text-start">BOM</th>
+                  <th className="p-1 text-center">Item</th>
+                  <th className="p-1 text-center">Pcs</th>
+                  <th className="p-1 text-center">Hours</th>
+                  <th className="p-1 text-center">Deliver</th>
+                  <th className="p-1 text-start">MO · description</th>
+                  {canAssign && <th className="p-1 text-end">Do</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((q) => (
+                  <tr key={q.key} className={`border-t ${q.running ? "bg-brand-light/40" : ""}`}>
+                    <td className="p-1 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</td>
+                    <td className="p-1 font-extrabold ltr whitespace-nowrap">{q.bom}</td>
+                    <td className="p-1 text-center font-bold">{q.item}</td>
+                    <td className="p-1 text-center tabnum font-extrabold whitespace-nowrap">
+                      {q.remaining}
+                      {q.split && <span className="block text-[10px] font-semibold text-muted" title="Part of the line — the rest is on another machine or waits">of {q.lineRemaining}</span>}
+                    </td>
+                    <td className="p-1 text-center tabnum">{q.hours !== null ? q.hours : "—"}</td>
+                    <td className={`p-1 text-center tabnum whitespace-nowrap ${q.deliveryISO && q.deliveryISO < today ? "text-bad-fg font-bold" : ""}`}>{q.deliveryISO ? ddmm(q.deliveryISO) : "—"}</td>
+                    <td className="p-1 text-muted truncate max-w-[18rem]" title={`${q.mo}${q.description ? ` · ${q.description}` : ""}`}>{q.mo || "—"}{q.description ? ` · ${q.description}` : ""}</td>
+                    {canAssign && (
+                      <td className="p-1">
+                        <span className="flex items-center justify-end gap-0.5">
+                          <DoneBox board={board} q={q} onErr={a.setErr} />
+                          {q.running
+                            ? <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
+                            : <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>}
+                          {!q.running && card.waiting.indexOf(q) > 0 && <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>}
+                          <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
+                          <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item))}>✕</button>
+                        </span>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {card.queue.length > rows.length && (
+              <button type="button" className="btn btn-sm btn-ghost mt-1" onClick={() => setShowAll(true)}>Show all {card.queue.length} lines</button>
+            )}
+          </div>
         )}
       </div>
+
       {canAssign && mine.length > 0 && (
         <select
-          className="w-full border rounded-md px-2 py-1.5 bg-surface text-xs font-semibold" value="" disabled={a.pending} aria-label="Put a line on it"
+          className="w-full border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold" value="" disabled={a.pending} aria-label="Put a line on it"
           onChange={(e) => { const u = mine[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
         >
           <option value="">＋ Put a line on it… ({mine.length} waiting{multiCentre(board) ? ` for ${CENTER_LABEL[m.center] ?? m.center}` : ""})</option>
