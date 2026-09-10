@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { CutTranche, CascadeRow, PlanLineIssue } from "@/lib/domain/execution";
 import type { SoiLookup } from "@/lib/server/soi";
 import { CutTrancheTable } from "@/components/CutTrancheTable";
@@ -12,12 +12,14 @@ import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
 import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { PlanIssuesPanel } from "@/components/PlanIssuesPanel";
-import { MachineBoard } from "@/components/MachineBoard";
+import { MachineBoard, PlacementChips, placementPass, type PlacementMode } from "@/components/MachineBoard";
+import type { LinePlacement } from "@/lib/domain/machineBoard";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import type { ReturnRowDTO } from "@/lib/server/returns";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import type { PriorityLineDTO, HiddenLineDTO, RunOrderLineDTO } from "@/lib/server/worklistExtras";
 import { ITEMS, DEFAULTS } from "@/lib/domain/constants";
+import { machineWord } from "@/lib/domain/shifts";
 
 /** The fabrication page, top to bottom: DATED work (due today + overdue from
  *  ANY weekly plan, under its promised date), admin-postponed lines, this
@@ -67,22 +69,29 @@ export function CutWorklistView({
   board?: MachineBoardData; // 🏭 the machine load board — who is on what
 }) {
   const machines = board?.machines ?? [];
-  const assigned = board?.assigned ?? {};
+  const EMPTY: Record<string, LinePlacement> = useMemo(() => ({}), []);
+  const assigned = board?.assigned ?? EMPTY;
   // search + item card filter survive navigating away and back
   const [q, setQ] = useSavedFilter("queue.Cut.q");
   const [item, setItem] = useSavedFilter("queue.Cut.item");
+  // 🏭 show only what is on a machine (what the floor is actually running) or
+  // only what still has to be placed
+  const [place, setPlace] = useSavedFilter("queue.Cut.place");
+  // the month's undated backlog is hundreds of lines — folded until asked for
+  const [showBacklog, setShowBacklog] = useState(false);
 
   const needle = q.trim().toUpperCase();
   const match = (r: { bom: string; mo: string; description: string; item: string; remark?: string | null }) =>
     (!needle || `${r.bom} ${r.mo} ${r.description} ${r.remark ?? ""}`.toUpperCase().includes(needle)) &&
-    (!item || r.item === item);
+    (!item || r.item === item) &&
+    placementPass(place as PlacementMode, assigned, r);
 
-  const dueF = useMemo(() => dueNow.filter(match), [dueNow, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
-  const overdueF = useMemo(() => overdue.filter(match), [overdue, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
-  const postponedF = useMemo(() => postponed.filter(match), [postponed, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
-  const remarkedF = useMemo(() => remarked.filter(match), [remarked, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
-  const unscheduledF = useMemo(() => unscheduled.filter(match), [unscheduled, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
-  const pushedF = useMemo(() => pushed.filter(match), [pushed, needle, item]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dueF = useMemo(() => dueNow.filter(match), [dueNow, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
+  const overdueF = useMemo(() => overdue.filter(match), [overdue, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
+  const postponedF = useMemo(() => postponed.filter(match), [postponed, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
+  const remarkedF = useMemo(() => remarked.filter(match), [remarked, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
+  const unscheduledF = useMemo(() => unscheduled.filter(match), [unscheduled, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pushedF = useMemo(() => pushed.filter(match), [pushed, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const total = dueNow.length + overdue.length + postponed.length + remarked.length + unscheduled.length + pushed.length;
   const shown = dueF.length + overdueF.length + postponedF.length + remarkedF.length + unscheduledF.length + pushedF.length;
@@ -92,6 +101,19 @@ export function CutWorklistView({
   const totalRemarked = remarkedF.reduce((s, r) => s + r.available, 0);
   const totalUnscheduled = unscheduledF.reduce((s, r) => s + r.available, 0);
   const totalPushed = pushedF.reduce((s, r) => s + r.available, 0);
+
+  // how many open lines are already on a machine — the chips' counts
+  const placed = useMemo(() => {
+    const seen = new Set<string>();
+    let on = 0, off = 0;
+    for (const r of [...dueNow, ...overdue, ...postponed, ...remarked, ...unscheduled, ...pushed]) {
+      const k = `${r.bom}|${r.mo}|${r.item}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (assigned[k]) on += 1; else off += 1;
+    }
+    return { on, off };
+  }, [dueNow, overdue, postponed, remarked, unscheduled, pushed, assigned]);
 
   // per-item workload — the WHOLE dept load (unfiltered): what must still be cut
   const perItem = ITEMS.map((it) => {
@@ -105,7 +127,7 @@ export function CutWorklistView({
       {/* search + per-component chips stay pinned below the nav on desktop
           while the worklist tables scroll under them */}
       <div className="md:sticky md:top-16 md:z-20 bg-background">
-      <FilterBar count={shown} total={total} showCount={false} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
+      <FilterBar count={shown} total={total} showCount={false} onReset={() => { setQ(""); setItem(""); setPlace(""); }} hasActive={!!q || !!item || !!place}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / description — filters all tables…" />
         {/* what's left per component — tap a card to filter every table to it */}
         <div className="col-span-2 flex flex-wrap items-center gap-1.5">
@@ -125,6 +147,7 @@ export function CutWorklistView({
               <b className="text-sm tabnum" style={{ color: late > 0 ? "var(--bad-fg)" : "var(--brand)" }}>{t}</b>
             </button>
           ))}
+          {machines.length > 0 && <PlacementChips value={place as PlacementMode} onChange={setPlace} word={board ? machineWord(board.dept) : "machine"} on={placed.on} off={placed.off} />}
         </div>
         <PrintButton />
       </FilterBar>
@@ -196,12 +219,23 @@ export function CutWorklistView({
       )}
 
       {/* 5 — every other OPEN ORDER: no date in any plan, no remark this week.
-          Its own section so the scheduled work above stays the focus. */}
+          It is the whole month's backlog — hundreds of lines — so it stays
+          FOLDED: the scheduled work above is what the shift runs on. */}
       <section className="mt-8">
         <h2 className="text-muted">
           Open orders — not scheduled, no remarks ({totalUnscheduled} pcs)
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost ms-2 normal-case no-print"
+            onClick={() => setShowBacklog((v) => !v)}
+            title={showBacklog ? "Fold the month's backlog away" : "Open the month's backlog — the orders with no date and no remark"}
+          >
+            {showBacklog ? "▾ Hide" : `▸ Show ${unscheduledF.length} line(s)`}
+          </button>
         </h2>
-        <CascadeTable rows={unscheduledF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
+        {showBacklog
+          ? <CascadeTable rows={unscheduledF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
+          : <p className="text-xs text-muted">Folded away — the dated work above is what today runs on. Open it to schedule or place a line from the month.</p>}
       </section>
 
       {/* admin-hidden lines — collapsed restore panel */}

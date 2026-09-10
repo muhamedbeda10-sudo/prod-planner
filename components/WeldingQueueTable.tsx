@@ -20,8 +20,9 @@ import type { WorkerDTO } from "@/lib/server/workers";
 import { TankWorkerPicker, NO_WORKER, type WorkerPick } from "@/components/TankWorkerPicker";
 import { TankSerialsPanel } from "@/components/TankSerialsPanel";
 import { TankPaintPicker } from "@/components/TankPaintPicker";
-import { MachinePick } from "@/components/MachineBoard";
+import { MachinePick, PlacementChips, placementPass, type PlacementMode } from "@/components/MachineBoard";
 import type { MachineDTO } from "@/lib/server/machines";
+import { machineWord } from "@/lib/domain/shifts";
 import type { LinePlacement } from "@/lib/domain/machineBoard";
 
 function ddmm(iso: string) {
@@ -84,6 +85,8 @@ export function WeldingQueueTable({
   // search + item card filter survive navigating away and back
   const [q, setQ] = useSavedFilter(`queue.${dept}.q`);
   const [item, setItem] = useSavedFilter(`queue.${dept}.item`);
+  // 🏭 only the lines already on a machine / partition, or only those still to place
+  const [place, setPlace] = useSavedFilter(`queue.${dept}.place`);
   // tanks: the welder picked for a line's batch, the serials the last save
   // minted (shown so they can be written on the steel), and which line has its
   // tank picker open on the painting worklist
@@ -172,9 +175,17 @@ export function WeldingQueueTable({
     return rows.filter(
       (r) =>
         (!needle || `${r.bom} ${r.mo} ${r.description}`.toUpperCase().includes(needle)) &&
-        (!item || r.item === item)
+        (!item || r.item === item) &&
+        placementPass(place as PlacementMode, assigned, r)
     );
-  }, [rows, q, item]);
+  }, [rows, q, item, place, assigned]);
+
+  // how many of the queue's lines are on a machine already — the chips' counts
+  const placed = useMemo(() => {
+    let on = 0, off = 0;
+    for (const r of rows) if (assigned[`${r.bom}|${r.mo}|${r.item}`]) on += 1; else off += 1;
+    return { on, off };
+  }, [rows, assigned]);
 
   const keyOf = (r: WeldQueueRow) => `${r.planNo}|${r.bom}|${r.mo}|${r.item}`;
 
@@ -684,7 +695,7 @@ export function WeldingQueueTable({
     // pushed / returns + the queue) scrolls inside its own box, with the
     // queue's header row pinned — same pattern as the Plan Tracker.
     <div className="md:flex md:flex-col md:h-[calc(100vh-7rem)]">
-      <FilterBar count={filtered.length} total={rows.length} showCount={false} onReset={() => { setQ(""); setItem(""); }} hasActive={!!q || !!item}>
+      <FilterBar count={filtered.length} total={rows.length} showCount={false} onReset={() => { setQ(""); setItem(""); setPlace(""); }} hasActive={!!q || !!item || !!place}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM…" />
         {/* per-component workload — tap a card to filter the queue to it */}
         <div className="col-span-2 flex flex-wrap items-center gap-1.5">
@@ -709,6 +720,7 @@ export function WeldingQueueTable({
               )}
             </button>
           ))}
+          {machines.length > 0 && <PlacementChips value={place as PlacementMode} onChange={setPlace} word={machineWord(dept)} on={placed.on} off={placed.off} />}
         </div>
         <PrintButton />
       </FilterBar>
