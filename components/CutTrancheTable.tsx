@@ -12,6 +12,7 @@ import { Frac } from "@/components/Frac";
 import { Soi, soiOf } from "@/components/ui";
 import { MachinePick } from "@/components/MachineBoard";
 import type { MachineDTO } from "@/lib/server/machines";
+import type { LinePlacement } from "@/lib/domain/machineBoard";
 import { DEFAULTS } from "@/lib/domain/constants";
 import { assessDeliveryRisk } from "@/lib/domain/insights";
 
@@ -46,7 +47,7 @@ export function CutTrancheTable({
   /** The department's machines — with any, every row carries a Machine picker. */
   machines?: MachineDTO[];
   /** bom|mo|item → the machine the line is on and its place in the queue. */
-  assigned?: Record<string, { machineId: number; rank: number; running: boolean }>;
+  assigned?: Record<string, LinePlacement>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();

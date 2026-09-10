@@ -36,12 +36,19 @@ export interface Assignment {
   rank: number;
   /** Running on the machine now; several can be. Absent = not running. */
   running?: boolean;
+  /** Pieces of the line on this machine; null/absent = whatever the other
+   *  machines do not take. A line split over machines has one assignment each. */
+  qty?: number | null;
 }
 
 export interface MachineQueueLine extends BoardLine {
   /** Position in the machine's queue: the running lines first, then the waiting ones. */
   rank: number;
   running: boolean;
+  /** The line's whole remaining quantity; `remaining` is the share on this machine. */
+  lineRemaining: number;
+  /** Part of the line, not all of it — the rest sits elsewhere or waits unassigned. */
+  split: boolean;
 }
 
 export interface MachineCard {
@@ -69,10 +76,32 @@ export interface MachineCard {
   days: number | null;
 }
 
+/** A line, or the part of one, that no machine has yet. */
+export interface UnassignedLine extends BoardLine {
+  /** The line's whole remaining quantity when only part of it is unassigned. */
+  lineRemaining: number;
+  partial: boolean;
+}
+
+/** Where a line sits, for the tables' pickers: its first machine (a running
+ *  one first), the pieces there when split, and how many more machines hold
+ *  a share of it. */
+export interface LinePlacement {
+  machineId: number;
+  rank: number;
+  running: boolean;
+  /** Pieces on that machine. */
+  qty: number;
+  /** Only part of the line is on it. */
+  split: boolean;
+  /** Other machines holding a share of the line. */
+  others: number;
+}
+
 export interface MachineBoard {
   cards: MachineCard[];
-  /** Open lines on no machine yet, most urgent first. */
-  unassigned: BoardLine[];
+  /** Open lines (or the leftover part of split ones) on no machine yet, most urgent first. */
+  unassigned: UnassignedLine[];
   totalHours: number;
   totalAvailableH: number | null;
 }
@@ -107,15 +136,41 @@ export function buildMachineBoard(
   }
 
   const byMachine = new Map<number, MachineQueueLine[]>();
-  const placed = new Set<string>();
+  // pieces of each line already given to a machine; a line can be split over
+  // several — explicit quantities first, then a row with no quantity takes
+  // whatever is left, and anything beyond that waits unassigned
+  const given = new Map<string, number>();
+  const seen = new Set<string>();
   // running lines first, then the waiting ones, each group in rank order
   const ordered = [...assignments].sort((x, y) => Number(!!y.running) - Number(!!x.running) || x.rank - y.rank);
-  for (const a of ordered) {
+  const explicit = ordered.filter((a) => a.qty !== null && a.qty !== undefined);
+  const open_ = ordered.filter((a) => a.qty === null || a.qty === undefined);
+  const pending: { a: Assignment; pcs: number }[] = [];
+  for (const a of [...explicit, ...open_]) {
     const l = open.get(a.key);
-    if (!l || placed.has(a.key)) continue;
-    placed.add(a.key);
+    const pairKey = `${a.key}#${a.machineId}`;
+    if (!l || seen.has(pairKey)) continue;
+    seen.add(pairKey);
+    const left = Math.max(0, l.remaining - (given.get(a.key) ?? 0));
+    const pcs = a.qty !== null && a.qty !== undefined ? Math.min(Math.max(0, Math.floor(a.qty)), left) : left;
+    if (pcs <= 0) continue;
+    given.set(a.key, (given.get(a.key) ?? 0) + pcs);
+    pending.push({ a, pcs });
+  }
+  // back in queue order (the allocation walk above put explicit rows first)
+  pending.sort((x, y) => ordered.indexOf(x.a) - ordered.indexOf(y.a));
+  for (const { a, pcs } of pending) {
+    const l = open.get(a.key)!;
     if (!byMachine.has(a.machineId)) byMachine.set(a.machineId, []);
-    byMachine.get(a.machineId)!.push({ ...l, rank: 0, running: !!a.running });
+    const share = pcs / l.remaining;
+    byMachine.get(a.machineId)!.push({
+      ...l,
+      remaining: pcs,
+      hours: l.hours === null ? null : round1(l.hours * share),
+      rank: 0, running: !!a.running,
+      lineRemaining: l.remaining,
+      split: pcs < l.remaining,
+    });
   }
 
   // a retired machine still shows while something sits on it
@@ -150,7 +205,15 @@ export function buildMachineBoard(
     };
   });
 
-  const unassigned = [...open.values()].filter((l) => !placed.has(l.key)).sort(urgencyOrder);
+  const unassigned: UnassignedLine[] = [...open.values()]
+    .map((l) => {
+      const left = l.remaining - (given.get(l.key) ?? 0);
+      if (left <= 0) return null;
+      const partial = left < l.remaining;
+      return { ...l, remaining: left, hours: l.hours === null ? null : round1((l.hours * left) / l.remaining), lineRemaining: l.remaining, partial };
+    })
+    .filter((l): l is UnassignedLine => l !== null)
+    .sort(urgencyOrder);
   return { cards, unassigned, totalHours: round1(totalHours), totalAvailableH: totalAvailableH === null ? null : round1(totalAvailableH) };
 }
 

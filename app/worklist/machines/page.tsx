@@ -65,7 +65,7 @@ function Rows({ lines, from = 1, soi, today }: { lines: MachineQueueLine[]; from
           <td className="p-2 whitespace-nowrap ltr">{q.mo || "—"}</td>
           <td className="p-2 whitespace-nowrap ltr">{(q.mo && soi[q.mo]) || "—"}</td>
           <td className="p-2 text-xs">{q.description}</td>
-          <td className="p-2 text-center font-extrabold tabnum text-lg">{q.remaining}</td>
+          <td className="p-2 text-center font-extrabold tabnum text-lg whitespace-nowrap">{q.remaining}{q.split && <span className="block text-[10px] font-semibold text-muted">of {q.lineRemaining}</span>}</td>
           <td className="p-2 text-center tabnum">{q.hours !== null ? q.hours : "—"}</td>
           <td className={`p-2 text-center tabnum whitespace-nowrap ${q.deliveryISO && q.deliveryISO < today ? "text-bad-fg font-bold" : ""}`}>{q.deliveryISO ? ddmm(q.deliveryISO) : "—"}</td>
           <td className="p-2 w-28 border-l"></td>

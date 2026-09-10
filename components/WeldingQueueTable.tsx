@@ -22,6 +22,7 @@ import { TankSerialsPanel } from "@/components/TankSerialsPanel";
 import { TankPaintPicker } from "@/components/TankPaintPicker";
 import { MachinePick } from "@/components/MachineBoard";
 import type { MachineDTO } from "@/lib/server/machines";
+import type { LinePlacement } from "@/lib/domain/machineBoard";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -69,7 +70,7 @@ export function WeldingQueueTable({
   after?: React.ReactNode; // page sections at the bottom of the scroll area (hidden-lines panel)
   /** PAINTING — the paint lines; with any, every row carries a Machine picker. */
   machines?: MachineDTO[];
-  assigned?: Record<string, { machineId: number; rank: number; running: boolean }>;
+  assigned?: Record<string, LinePlacement>;
 }) {
   const hasMachines = machines.length > 0;
   const verb = dept === "Welding" ? "weld" : "paint";

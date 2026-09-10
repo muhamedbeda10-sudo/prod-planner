@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { itemHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
-import { buildMachineBoard, lineKey, type Assignment, type BoardLine, type MachineBoard } from "@/lib/domain/machineBoard";
+import { buildMachineBoard, lineKey, type Assignment, type BoardLine, type LinePlacement, type MachineBoard } from "@/lib/domain/machineBoard";
 import { getStdData } from "./standardTimes";
 import { getAllMachines, type MachineDTO } from "./machines";
 import { getCutSheet, getPaintingQueue, getWeldingQueue } from "./execution";
@@ -29,8 +29,9 @@ export interface MachineBoardData extends MachineBoard {
   dept: BoardDept;
   /** The department's machines a line can be put on (active only). */
   machines: MachineDTO[];
-  /** bom|mo|item → where the line sits, for the tables' pickers. */
-  assigned: Record<string, { machineId: number; rank: number; running: boolean }>;
+  /** bom|mo|item → where the line sits, for the tables' pickers: its first
+   *  machine (a running one first) and how many more it is split over. */
+  assigned: Record<string, LinePlacement>;
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -75,7 +76,7 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
     };
   });
 
-  const assignments: Assignment[] = rows.map((r) => ({ key: lineKey(r.bom, r.mo, r.item), machineId: r.machineId, rank: r.rank, running: r.running }));
+  const assignments: Assignment[] = rows.map((r) => ({ key: lineKey(r.bom, r.mo, r.item), machineId: r.machineId, rank: r.rank, running: r.running, qty: r.qty }));
   const downtimeH: Record<number, number> = {};
   for (const d of downtime) downtimeH[d.machineId] = (downtimeH[d.machineId] ?? 0) + d.hours;
   const crewH: Record<number, number> = {};
@@ -87,8 +88,17 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
   }
 
   const board = buildMachineBoard(machines, boardLines, assignments, { downtimeH, crewH, crew });
-  const assigned: Record<string, { machineId: number; rank: number; running: boolean }> = {};
-  for (const c of board.cards) for (const q of c.queue) assigned[q.key] = { machineId: c.machine.id, rank: q.rank, running: q.running };
+  const assigned: Record<string, LinePlacement> = {};
+  for (const c of board.cards) {
+    for (const q of c.queue) {
+      const cur = assigned[q.key];
+      if (!cur) assigned[q.key] = { machineId: c.machine.id, rank: q.rank, running: q.running, qty: q.remaining, split: q.split, others: 0 };
+      else {
+        cur.others += 1;
+        if (q.running && !cur.running) Object.assign(cur, { machineId: c.machine.id, rank: q.rank, running: true, qty: q.remaining, split: q.split });
+      }
+    }
+  }
   return { ...board, dept, machines: machines.filter((m) => m.active), assigned };
 }
 

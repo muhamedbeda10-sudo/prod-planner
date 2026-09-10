@@ -38,22 +38,41 @@ async function renumber(dept: string, machineId: number) {
   await Promise.all(rows.map((r, i) => (r.rank === i + 1 ? null : prisma.worklistMachine.update({ where: { id: r.id }, data: { rank: i + 1 } }))));
 }
 
-/** Put the line on a machine (at the back of its queue) — or, with an empty
- *  machine, take it off the board. Moving between machines keeps nothing of
- *  the old place. */
+/** The row of a line on one machine — the machine comes with the request
+ *  now that a line can sit on several. */
+function rowKey(line: { dept: BoardDept; bom: string; mo: string; item: string }, machineId: number) {
+  return { dept_bom_mo_item_machineId: { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item, machineId } };
+}
+
+function readQty(fd: FormData): number | null | { error: string } {
+  const raw = String(fd.get("qty") ?? "").trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) return { error: "Pieces must be a whole number above 0 — leave it blank for the whole line." };
+  return n;
+}
+
+/** Put the line on a machine, at the back of its queue. With a quantity the
+ *  line is SPLIT: those pieces go to this machine and the rest stays where it
+ *  is (or waits unassigned); without one this machine takes the rest of the
+ *  line — the whole of it when nothing is split off — and the machine that
+ *  held the rest before loses it. An empty machine takes the line off the
+ *  board, every share of it. */
 export async function assignLineMachine(fd: FormData): Promise<MachineActionResult> {
   const line = readLine(fd);
   if ("error" in line) return { ok: false, error: line.error };
   const guard = await requireDeptEdit(line.dept);
   if (guard.error) return { ok: false, error: guard.error };
   const raw = String(fd.get("machineId") ?? "").trim();
+  const qty = readQty(fd);
+  if (qty !== null && typeof qty === "object") return { ok: false, error: qty.error };
   const key = { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item };
-  const prev = await prisma.worklistMachine.findUnique({ where: { dept_bom_mo_item: key } });
+  const existing = await prisma.worklistMachine.findMany({ where: key });
 
   if (!raw) {
-    if (prev) {
-      await prisma.worklistMachine.delete({ where: { id: prev.id } });
-      await renumber(line.dept, prev.machineId);
+    if (existing.length > 0) {
+      await prisma.worklistMachine.deleteMany({ where: key });
+      for (const m of new Set(existing.map((e) => e.machineId))) await renumber(line.dept, m);
     }
     revalidate();
     return { ok: true };
@@ -63,22 +82,72 @@ export async function assignLineMachine(fd: FormData): Promise<MachineActionResu
   const machine = await prisma.machine.findUnique({ where: { id: machineId } });
   if (!machine || machine.dept !== line.dept) return { ok: false, error: "That machine is not in this department." };
   if (!machine.active) return { ok: false, error: `${machine.code} is retired — bring it back in Tools → Machines first.` };
-  if (prev?.machineId === machineId) return { ok: true };
+
+  const here = existing.find((e) => e.machineId === machineId);
+  // a line has ONE "rest" row (no quantity) at most: giving this machine the
+  // rest takes it off the machine that had it, while the machines holding a
+  // fixed share keep it — so a whole line moves with the picker, and the
+  // leftover of a split line lands on the machine picked for it
+  const displaced = qty === null ? existing.filter((e) => e.machineId !== machineId && e.qty === null) : [];
+  const by = guard.user?.name ?? null;
+  const dropDisplaced = async () => {
+    if (displaced.length === 0) return;
+    await prisma.worklistMachine.deleteMany({ where: { id: { in: displaced.map((e) => e.id) } } });
+    for (const m of new Set(displaced.map((e) => e.machineId))) await renumber(line.dept, m);
+  };
+
+  if (here) {
+    // already on this machine: a quantity resizes its share, none gives it the rest
+    await prisma.worklistMachine.update({ where: { id: here.id }, data: { qty, setBy: by } });
+    await dropDisplaced();
+    revalidate();
+    return { ok: true };
+  }
 
   const [last, runningNow] = await Promise.all([
     prisma.worklistMachine.aggregate({ where: { dept: line.dept, machineId }, _max: { rank: true } }),
     prisma.worklistMachine.count({ where: { dept: line.dept, machineId, running: true } }),
   ]);
   const rank = (last._max.rank ?? 0) + 1;
-  const by = guard.user?.name ?? null;
   // an idle machine starts on the line it is given; a busy one queues it
   const running = runningNow === 0;
-  await prisma.worklistMachine.upsert({
-    where: { dept_bom_mo_item: key },
-    create: { ...key, machineId, rank, running, setBy: by },
-    update: { machineId, rank, running, setBy: by },
-  });
-  if (prev) await renumber(line.dept, prev.machineId);
+  await prisma.worklistMachine.create({ data: { ...key, machineId, rank, running, qty, setBy: by } });
+  await dropDisplaced();
+  revalidate();
+  return { ok: true };
+}
+
+/** Resize a line's share on one machine ("keep 12 of the 20 here" — the rest
+ *  waits unassigned for another machine); blank = the whole rest. */
+export async function setLineQty(fd: FormData): Promise<MachineActionResult> {
+  const line = readLine(fd);
+  if ("error" in line) return { ok: false, error: line.error };
+  const guard = await requireDeptEdit(line.dept);
+  if (guard.error) return { ok: false, error: guard.error };
+  const machineId = Number(fd.get("machineId"));
+  if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
+  const qty = readQty(fd);
+  if (qty !== null && typeof qty === "object") return { ok: false, error: qty.error };
+  const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
+  if (!row) return { ok: false, error: "That line is not on this machine any more — reload the page." };
+  await prisma.worklistMachine.update({ where: { id: row.id }, data: { qty, setBy: guard.user?.name ?? null } });
+  revalidate();
+  return { ok: true };
+}
+
+/** Take one machine's share of a line off it (the other machines keep theirs). */
+export async function unassignLineMachine(fd: FormData): Promise<MachineActionResult> {
+  const line = readLine(fd);
+  if ("error" in line) return { ok: false, error: line.error };
+  const guard = await requireDeptEdit(line.dept);
+  if (guard.error) return { ok: false, error: guard.error };
+  const machineId = Number(fd.get("machineId"));
+  if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
+  const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
+  if (row) {
+    await prisma.worklistMachine.delete({ where: { id: row.id } });
+    await renumber(line.dept, machineId);
+  }
   revalidate();
   return { ok: true };
 }
@@ -92,9 +161,11 @@ export async function moveLineRank(fd: FormData): Promise<MachineActionResult> {
   if (guard.error) return { ok: false, error: guard.error };
   const dir = String(fd.get("dir") ?? "");
   if (!["up", "down", "top"].includes(dir)) return { ok: false, error: "Invalid move." };
+  const machineId = Number(fd.get("machineId"));
+  if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
 
-  const row = await prisma.worklistMachine.findUnique({ where: { dept_bom_mo_item: { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item } } });
-  if (!row) return { ok: false, error: "That line is not on a machine any more — reload the page." };
+  const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
+  if (!row) return { ok: false, error: "That line is not on this machine any more — reload the page." };
   // moves happen within the line's own group: the running lines keep the
   // front, the waiting ones are reordered among themselves
   const queue = await prisma.worklistMachine.findMany({ where: { dept: line.dept, machineId: row.machineId, running: row.running }, orderBy: [{ rank: "asc" }, { updatedAt: "asc" }] });
@@ -122,8 +193,10 @@ export async function setLineRunning(fd: FormData): Promise<MachineActionResult>
   const guard = await requireDeptEdit(line.dept);
   if (guard.error) return { ok: false, error: guard.error };
   const running = String(fd.get("running") ?? "") === "true";
-  const row = await prisma.worklistMachine.findUnique({ where: { dept_bom_mo_item: { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item } } });
-  if (!row) return { ok: false, error: "That line is not on a machine any more — reload the page." };
+  const machineId = Number(fd.get("machineId"));
+  if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
+  const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
+  if (!row) return { ok: false, error: "That line is not on this machine any more — reload the page." };
   if (row.running === running) return { ok: true };
   // a line put back to waiting goes to the front of the waiting ones; a line
   // started goes behind the lines already running

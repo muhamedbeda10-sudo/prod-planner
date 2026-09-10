@@ -11,7 +11,7 @@ import {
 import { loadTone, type MachineCard } from "@/lib/domain/machineBoard";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
-import { assignLineMachine, moveLineRank, setLineRunning } from "@/app/worklist/machineActions";
+import { assignLineMachine, moveLineRank, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
 import { MachinePick } from "@/components/MachineBoard";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 
@@ -291,6 +291,7 @@ function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoa
           <span className="font-bold truncate">{u.bom}</span>
           <span className="font-semibold shrink-0">{u.item}</span>
           <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
+          {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
           {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
           {u.deliveryISO && <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span>}
           {canAssign && (
@@ -391,7 +392,17 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
   const line = (bom: string, mo: string, item: string) => {
     const fd = new FormData();
     fd.set("dept", board.dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item);
+    fd.set("machineId", String(n.machineId ?? ""));
     return fd;
+  };
+  // ✂ — how many pieces of the line stay on this machine; the rest waits
+  // for another machine (or comes back whole with a blank)
+  const resize = (q: { bom: string; mo: string; item: string; remaining: number; lineRemaining: number }) => {
+    const v = prompt(`Pieces of ${q.bom} ${q.item} on ${m?.code ?? "this machine"} — of ${q.lineRemaining} (blank = the rest of the line):`, String(q.remaining));
+    if (v === null) return;
+    const fd = line(q.bom, q.mo, q.item);
+    fd.set("qty", v.trim());
+    a.run(setLineQty, fd);
   };
   if (!card || !m) {
     return (
@@ -426,14 +437,15 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
             {card.queue.map((q) => (
               <li key={q.key} className={`flex items-center gap-1 rounded-md px-1.5 py-1 ${q.running ? "bg-brand-light/40 border border-brand/30" : "border"}`}>
                 <span className="w-4 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</span>
-                <span className="min-w-0 flex-1 truncate"><b>{q.bom}</b> {q.item} <b className="tabnum">×{q.remaining}</b>{q.hours !== null ? <span className="text-muted"> {q.hours} h</span> : null}{q.deliveryISO ? <span className="text-muted"> 📅 {ddmm(q.deliveryISO)}</span> : null}</span>
+                <span className="min-w-0 flex-1 truncate"><b>{q.bom}</b> {q.item} <b className="tabnum">×{q.remaining}</b>{q.split ? <span className="text-muted text-[10px]" title="Part of the line — the rest is on another machine or waits"> ✂ of {q.lineRemaining}</span> : null}{q.hours !== null ? <span className="text-muted"> {q.hours} h</span> : null}{q.deliveryISO ? <span className="text-muted"> 📅 {ddmm(q.deliveryISO)}</span> : null}</span>
                 {canAssign && (
                   <span className="inline-flex shrink-0">
                     {q.running
                       ? <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
                       : <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>}
                     {!q.running && card.waiting.indexOf(q) > 0 && <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>}
-                    <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("machineId", ""); a.run(assignLineMachine, fd); }}>✕</button>
+                    <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
+                    <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item))}>✕</button>
                   </span>
                 )}
               </li>
@@ -447,7 +459,7 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
           onChange={(e) => { const u = board.unassigned[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
         >
           <option value="">＋ Put a line on it… ({board.unassigned.length} waiting)</option>
-          {board.unassigned.map((u, i) => <option key={u.key} value={i}>{u.bom} {u.item} ×{u.remaining}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
+          {board.unassigned.map((u, i) => <option key={u.key} value={i}>{u.bom} {u.item} ×{u.remaining}{u.partial ? ` (rest of ${u.lineRemaining})` : ""}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
         </select>
       )}
       {a.err && <div className="text-[11px] text-bad-fg">{a.err}</div>}
