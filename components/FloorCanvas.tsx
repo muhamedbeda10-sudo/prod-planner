@@ -12,6 +12,7 @@ import { loadTone, type MachineCard } from "@/lib/domain/machineBoard";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { assignLineMachine, moveLineRank } from "@/app/worklist/machineActions";
+import { MachinePick } from "@/components/MachineBoard";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 
 // 🗺 The Floor canvas — a department's bay as the planner draws it: the
@@ -19,8 +20,9 @@ import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 // stand, areas and labels around them. Every machine block is LIVE: what it
 // is on now, how many wait, who the shift log put on it today, how loaded
 // it is — the same board the worklist shows, seen from above. Click a
-// block to work its queue; Save keeps the drawing (the drawing only — what
-// runs where is saved the moment it is picked, like on the worklist).
+// block to work its queue. The drawing SAVES ITSELF a moment after every
+// change, so it is there for everyone who opens the department's floor next
+// (what runs where is saved the moment it is picked, like on the worklist).
 
 type Tone = "ok" | "warn" | "bad";
 const TONE_BORDER: Record<Tone, string> = { ok: "var(--ok-fg)", warn: "var(--warn-fg)", bad: "var(--bad-fg)" };
@@ -74,9 +76,11 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
   const [zoom, setZoom] = useState(1);
   const [savedAt, setSavedAt] = useState<FloorLayoutData>(initial);
   const dirty = useMemo(() => JSON.stringify(layout) !== JSON.stringify(savedAt), [layout, savedAt]);
-  const save = useAction();
+  const [saving, startSaving] = useTransition();
+  const [saveErr, setSaveErr] = useState("");
   const part = useAction();
   const [partName, setPartName] = useState("");
+  const [showAllUndated, setShowAllUndated] = useState(false);
 
   const cardOf = useMemo(() => new Map(board.cards.map((c) => [c.machine.id, c])), [board.cards]);
   const allMachines = useMemo(() => {
@@ -88,13 +92,32 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
   const unplaced = [...allMachines.values()].filter((m) => !placedIds.has(m.id) && m.active);
   const word = machineWord(dept);
 
-  // leaving with an unsaved drawing is a real loss — ask
+  // the drawing saves itself: a moment after the last change (a drag fires
+  // dozens of changes — only the settled one is written), so switching tab
+  // never loses it
   useEffect(() => {
-    if (!dirty) return;
+    if (!canDraw || !dirty) return;
+    const snapshot = layout;
+    const t = setTimeout(() => {
+      const fd = new FormData();
+      fd.set("dept", dept);
+      fd.set("layout", JSON.stringify(snapshot));
+      startSaving(async () => {
+        const res = await saveFloorLayout(fd);
+        if (res.ok) { setSavedAt(snapshot); setSaveErr(""); }
+        else setSaveErr(res.error ?? "Could not save the floor");
+      });
+    }, 700);
+    return () => clearTimeout(t);
+  }, [layout, dirty, canDraw, dept]);
+
+  // the browser's own leave-page prompt while a save is still in flight
+  useEffect(() => {
+    if (!dirty && !saving) return;
     const onLeave = (e: BeforeUnloadEvent) => { e.preventDefault(); };
     window.addEventListener("beforeunload", onLeave);
     return () => window.removeEventListener("beforeunload", onLeave);
-  }, [dirty]);
+  }, [dirty, saving]);
 
   // ---- dragging and resizing, straight from pointer events ----
   const drag = useRef<{ id: string; mode: "move" | "resize"; sx: number; sy: number; ox: number; oy: number } | null>(null);
@@ -117,15 +140,11 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
     drag.current = null;
   }
 
-  function submitSave() {
-    const fd = new FormData();
-    fd.set("dept", dept);
-    fd.set("layout", JSON.stringify(layout));
-    save.run(saveFloorLayout, fd, () => setSavedAt(layout));
-  }
-
   const sel = layout.nodes.find((n) => n.id === selected) ?? null;
   const selCard = sel?.kind === "machine" ? cardOf.get(sel.machineId!) ?? null : null;
+  // the unassigned lines, the weekly plan's dated ones first — the ones that matter
+  const dated = board.unassigned.filter((u) => u.deliveryISO);
+  const undated = board.unassigned.filter((u) => !u.deliveryISO);
 
   return (
     <div className="space-y-3">
@@ -167,13 +186,11 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
           </select>
         </span>
         {canDraw && (
-          <>
-            {dirty && <button type="button" className="btn btn-sm btn-ghost" onClick={() => { setLayout(savedAt); setSelected(null); }}>Undo changes</button>}
-            <button type="button" className="btn btn-primary btn-sm" disabled={!dirty || save.pending} onClick={submitSave}>{dirty ? "Save floor" : "Saved"}</button>
-          </>
+          saveErr ? <span className="pill pill-bad" title={saveErr}>not saved — {saveErr}</span>
+          : saving || dirty ? <span className="pill pill-warn">saving…</span>
+          : <span className="pill pill-ok" title="The drawing is kept for everyone who opens this floor">saved</span>
         )}
-        {save.err && <span className="text-xs text-bad-fg">{save.err}</span>}
-        {!dirty && updatedAtISO && <span className="text-[11px] text-muted">drawn {updatedAtISO.slice(0, 10)}{updatedBy ? ` by ${updatedBy}` : ""}</span>}
+        {!dirty && !saving && updatedAtISO && <span className="text-[11px] text-muted">drawn {updatedAtISO.slice(0, 10)}{updatedBy ? ` by ${updatedBy}` : ""}</span>}
       </div>
 
       <div className="flex gap-3 items-start">
@@ -195,7 +212,7 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
               ))}
               {layout.nodes.length === 0 && (
                 <div className="absolute inset-0 grid place-items-center text-sm text-muted">
-                  {canDraw ? `Place the ${machineWord(dept, true)} from the toolbar, drag them where they stand, draw areas around them, then Save.` : "The floor has not been drawn yet."}
+                  {canDraw ? `Place the ${machineWord(dept, true)} from the toolbar, drag them where they stand, draw areas around them — it saves by itself.` : "The floor has not been drawn yet."}
                 </div>
               )}
             </div>
@@ -229,7 +246,67 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
           )}
         </aside>
       </div>
+
+      {/* ---- what is not on a machine yet: the weekly plan first, then the rest of the month ---- */}
+      {board.unassigned.length > 0 && (
+        <section className="bg-surface border rounded-xl px-3 py-2 no-print">
+          <div className="flex flex-wrap items-center gap-2 text-xs mb-1">
+            <span className="font-bold">Not on a {word} yet</span>
+            <span className="text-muted">— {dated.length} from the weekly plan, {undated.length} open with no date.</span>
+            {canAssign && selCard && <span className="pill pill-ok">click → to put a line on {selCard.machine.code}</span>}
+            {canAssign && !selCard && <span className="text-muted">Click a {word} block first to send lines to it in one click, or pick the {word} on each line.</span>}
+          </div>
+          {dated.length > 0 && (
+            <>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-brand mt-1">📅 Weekly plan — dated, earliest first</div>
+              <UnassignedList lines={dated} board={board} canAssign={canAssign} target={selCard?.machine ?? null} />
+            </>
+          )}
+          {undated.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Open orders — no date yet (the month)</span>
+                {undated.length > 8 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAllUndated((v) => !v)}>{showAllUndated ? "Show fewer" : `Show all ${undated.length}`}</button>}
+              </div>
+              <UnassignedList lines={showAllUndated ? undated : undated.slice(0, 8)} board={board} canAssign={canAssign} target={selCard?.machine ?? null} />
+            </>
+          )}
+        </section>
+      )}
     </div>
+  );
+}
+
+/** The lines on no machine, each with a one-click send to the selected
+ *  block and a picker for any other. */
+function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoardData["unassigned"]; board: MachineBoardData; canAssign: boolean; target: { id: number; code: string } | null }) {
+  const a = useAction();
+  return (
+    <ul className="grid gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
+      {lines.map((u) => (
+        <li key={u.key} className="flex items-center gap-2 text-xs min-w-0">
+          <span className="font-bold truncate">{u.bom}</span>
+          <span className="font-semibold shrink-0">{u.item}</span>
+          <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
+          {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
+          {u.deliveryISO && <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span>}
+          {canAssign && (
+            <span className="ms-auto inline-flex items-center gap-1 shrink-0">
+              {target && (
+                <button
+                  type="button" className="btn btn-sm btn-primary px-2" disabled={a.pending} title={`Put it on ${target.code}, at the back of its queue`}
+                  onClick={() => { const fd = new FormData(); fd.set("dept", board.dept); fd.set("bom", u.bom); fd.set("mo", u.mo); fd.set("item", u.item); fd.set("machineId", String(target.id)); a.run(assignLineMachine, fd); }}
+                >
+                  → {target.code}
+                </button>
+              )}
+              <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} machines={board.machines} current={undefined} canEdit={canAssign} compact />
+            </span>
+          )}
+        </li>
+      ))}
+      {a.err && <li className="text-[11px] text-bad-fg">{a.err}</li>}
+    </ul>
   );
 }
 

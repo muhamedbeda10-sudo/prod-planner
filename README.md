@@ -108,9 +108,13 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    treat a partition like a machine, with the welders the shift log put on it today.
 11. **Floor** (Simulator → Floor) — each department's bay drawn as the planner sees it: place the machines
    (or partitions) as blocks, drag them where they stand, pull a corner to resize, draw areas ("Laser hall",
-   "Bending & fins") and labels around them, zoom, save. Every block is live: what it is on now, how many
+   "Bending & fins") and labels around them, zoom — the drawing saves itself a moment after every change, so
+   it is there for everyone who opens that department's floor next. Every block is live: what it is on now, how many
    lines wait, its load colour, the crew on it today. Click a block for its queue (run next, take off, put a
-   waiting line on it) and today's crew; "＋ New partition" creates one on the spot. Drawing needs
+   waiting line on it) and today's crew; "＋ New partition" creates one on the spot. Under the floor, the lines
+   not on any machine, the weekly plan's dated ones first (earliest first) and the month's undated ones after:
+   click a block, then "→ code" sends a line to it in one click (the board on each worklist lists them the same
+   way). Drawing needs
    `machines.manage`; working a queue needs the department's worklist permission; viewing is free.
 
 ## Validation against the workbook

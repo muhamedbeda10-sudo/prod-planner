@@ -166,7 +166,23 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
   if (board.cards.length === 0 && board.machines.length === 0) return null;
   const word = machineWord(board.dept);
   const tone = board.totalAvailableH === null || board.totalAvailableH === 0 ? null : loadTone(board.totalHours / board.totalAvailableH);
-  const list = showAll ? board.unassigned : board.unassigned.slice(0, 6);
+  // the weekly plan's dated lines all show — they are the ones to place first;
+  // the month's undated backlog folds behind "show all"
+  const dated = board.unassigned.filter((u) => u.deliveryISO);
+  const undated = board.unassigned.filter((u) => !u.deliveryISO);
+  const undatedShown = showAll ? undated : undated.slice(0, 6);
+  const row = (u: MachineBoardData["unassigned"][number]) => (
+    <li key={u.key} className="flex items-center gap-2 text-xs min-w-0">
+      <span className="font-bold truncate">{u.bom}</span>
+      <span className="font-semibold shrink-0">{u.item}</span>
+      <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
+      {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
+      {u.deliveryISO ? <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span> : <span className="text-muted shrink-0">no date</span>}
+      <span className="ms-auto shrink-0">
+        <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} machines={board.machines} current={undefined} canEdit={canEdit} compact />
+      </span>
+    </li>
+  );
   return (
     <section className="mb-6">
       <h2>
@@ -183,26 +199,22 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
       </div>
       {board.unassigned.length > 0 && (
         <div className="mt-3 bg-surface border rounded-xl px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-bold text-muted">Not on a {word} yet — most urgent first:</span>
-            {board.unassigned.length > 6 && (
-              <button type="button" className="btn btn-sm btn-ghost ms-auto" onClick={() => setShowAll((v) => !v)}>{showAll ? "Show fewer" : `Show all ${board.unassigned.length}`}</button>
-            )}
-          </div>
-          <ul className="mt-1 grid gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
-            {list.map((u) => (
-              <li key={u.key} className="flex items-center gap-2 text-xs">
-                <span className="font-bold">{u.bom}</span>
-                <span className="font-semibold">{u.item}</span>
-                <span className="tabnum font-bold">×{u.remaining}</span>
-                {u.hours !== null && <span className="text-muted tabnum">{u.hours} h</span>}
-                {u.deliveryISO ? <span className="text-muted tabnum">📅 {ddmm(u.deliveryISO)}</span> : <span className="text-muted">no date</span>}
-                <span className="ms-auto">
-                  <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} machines={board.machines} current={undefined} canEdit={canEdit} compact />
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="text-xs font-bold text-muted">Not on a {word} yet — {dated.length} from the weekly plan, {undated.length} open with no date</div>
+          {dated.length > 0 && (
+            <>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-brand mt-1">📅 Weekly plan — dated, earliest first</div>
+              <ul className="mt-0.5 grid gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">{dated.map(row)}</ul>
+            </>
+          )}
+          {undated.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Open orders — no date yet (the month)</span>
+                {undated.length > 6 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAll((v) => !v)}>{showAll ? "Show fewer" : `Show all ${undated.length}`}</button>}
+              </div>
+              <ul className="mt-0.5 grid gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">{undatedShown.map(row)}</ul>
+            </>
+          )}
         </div>
       )}
       <p className="text-[11px] text-muted mt-1">
