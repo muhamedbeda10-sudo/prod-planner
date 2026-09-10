@@ -544,10 +544,14 @@ model WorklistMachine {
   // Running on the machine right now — several lines can be, when the
   // machine nests or works them together; the rest wait in rank order.
   running   Boolean  @default(false)
+  // Pieces of the line on THIS machine; null = whatever the other machines
+  // do not take. A line split over two machines is two rows.
+  qty       Int?
   setBy     String?
   updatedAt DateTime @default(now()) @updatedAt
 
-  @@unique([dept, bom, mo, item])
+  @@unique([dept, bom, mo, item, machineId])
+  @@index([dept, bom, mo, item])
   @@index([machineId])
 }
 

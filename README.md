@@ -105,7 +105,11 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    Recording output never touches the board: a line leaves it by itself once nothing remains on it.
    **Several lines can run on one machine at once** (a nest that mixes orders, a bay working two jobs):
    ▶ starts a waiting line alongside what runs, ⏸ puts it back to waiting, and the waiting ones keep their
-   order. **Print sheet** on a card (or in the Floor's inspector) opens the technician's sheet for that
+   order. **A line need not go whole**: the pieces box beside every picker splits it — type 12 and pick
+   B4-09 and 12 pieces queue there while the rest stays where it was (or waits, listed as "rest of 20");
+   ✂ on a card resizes a machine's share, ✕ takes only that machine's share off, and a blank pieces box
+   gives the machine picked the whole rest of the line. Each share is priced by its pieces.
+   **Print sheet** on a card (or in the Floor's inspector) opens the technician's sheet for that
    machine — what runs now, then what is next in order, with pieces, standard hours, delivery date, the
    crew and a Done column to tick — and **Print all sheets** prints every machine of the department, one per
    page, to hand out at the start of the shift (`/worklist/machines?dept=Cut&machine=…`).

@@ -1,21 +1,24 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { loadTone, type MachineCard } from "@/lib/domain/machineBoard";
+import { useRef, useState, useTransition } from "react";
+import { loadTone, type LinePlacement, type MachineCard } from "@/lib/domain/machineBoard";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import type { MachineDTO } from "@/lib/server/machines";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import Link from "next/link";
-import { assignLineMachine, clearMachineQueue, moveLineRank, setLineRunning } from "@/app/worklist/machineActions";
+import { assignLineMachine, clearMachineQueue, moveLineRank, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
 
 // 🏭 The machine load board on a department's worklist — one card per
 // machine: what it is on NOW, what waits behind it, and how many hours the
 // queue is against the hours the machine has today (its hours a day less the
 // downtime the shift log recorded). Lines are put on a machine from the
 // tables below (the Machine column) or from the unassigned list here; their
-// order is moved on the card. Recording output never touches the board — a
-// line leaves it by itself once nothing remains.
+// order is moved on the card. A line need not go whole: a number of pieces
+// typed beside the picker SPLITS it — those go to the machine picked, the
+// rest stays put (or waits unassigned) — and ✂ on a card resizes a share.
+// Recording output never touches the board — a line leaves it by itself once
+// nothing remains.
 
 function useAction() {
   const router = useRouter();
@@ -39,18 +42,31 @@ function ddmm(iso: string) {
 const TONE_BAR: Record<"ok" | "warn" | "bad", string> = { ok: "bg-ok-fg", warn: "bg-warn-fg", bad: "bg-bad-fg" };
 const TONE_INK: Record<"ok" | "warn" | "bad", string> = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" };
 
-/** The picker a table row carries: which machine this line is on. Saves at once. */
+/** The picker a table row carries: which machine this line is on, and a
+ *  pieces box to put only some of it there. Saves at once. */
 export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, compact = false }: {
   dept: string; bom: string; mo: string; item: string; machines: MachineDTO[];
-  current: { machineId: number; rank: number; running: boolean } | undefined; canEdit: boolean; compact?: boolean;
+  current: LinePlacement | undefined; canEdit: boolean; compact?: boolean;
 }) {
   const a = useAction();
+  const qtyRef = useRef<HTMLInputElement>(null);
   if (machines.length === 0) return null;
   const m = current ? machines.find((x) => x.id === current.machineId) : undefined;
-  const state = current ? (current.running ? "running now" : `#${current.rank} in its queue`) : "";
+  const share = current?.split ? ` ×${current.qty}` : "";
+  const state = current ? `${current.running ? "running now" : `#${current.rank} in its queue`}${share ? `, ${current.qty} pcs of it` : ""}${current.others ? `, ${current.others} more ${machineWord(dept, current.others > 1)} hold a share` : ""}` : "";
   if (!canEdit) {
-    return m ? <span className="pill pill-muted ltr tabnum" title={`On ${m.name}, ${state}`}>{m.code}{current!.running ? " ▶" : ` #${current!.rank}`}</span> : <span className="text-muted text-xs">—</span>;
+    return m ? (
+      <span className="inline-flex items-center gap-1">
+        <span className="pill pill-muted ltr tabnum" title={`On ${m.name}, ${state}`}>{m.code}{share}{current!.running ? " ▶" : ` #${current!.rank}`}</span>
+        {current!.others ? <span className="pill pill-muted tabnum" title={state}>+{current!.others}</span> : null}
+      </span>
+    ) : <span className="text-muted text-xs">—</span>;
   }
+  const base = () => {
+    const fd = new FormData();
+    fd.set("dept", dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item);
+    return fd;
+  };
   return (
     <span className="inline-flex flex-col items-start" onClick={(e) => e.stopPropagation()}>
       <span className="inline-flex items-center gap-1">
@@ -58,11 +74,11 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
           value={current?.machineId ?? ""}
           disabled={a.pending}
           aria-label="Machine"
-          title={m ? `On ${m.name} — ${state}. Pick another to move it, blank to take it off.` : "Put this line on a machine"}
+          title={m ? `On ${m.name} — ${state}. Pick another to move it there (with a number in the pieces box, only those pieces go), blank to take it off every ${machineWord(dept)}.` : `Put this line on a ${machineWord(dept)} — type pieces first to put only some of it`}
           onChange={(e) => {
-            const fd = new FormData();
-            fd.set("dept", dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item);
+            const fd = base();
             fd.set("machineId", e.target.value);
+            fd.set("qty", qtyRef.current?.value ?? "");
             a.run(assignLineMachine, fd);
           }}
           className={`border rounded-md px-1.5 py-1 bg-surface text-xs font-bold ltr ${compact ? "max-w-[7rem]" : "max-w-[10rem]"} ${current ? "" : "text-muted"}`}
@@ -70,6 +86,24 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
           <option value="">— {machineWord(dept)}</option>
           {machines.map((x) => <option key={x.id} value={x.id}>{x.code}{compact ? "" : ` · ${x.name}`}</option>)}
         </select>
+        <input
+          key={`${current?.machineId ?? ""}:${current?.split ? current.qty : ""}`}
+          ref={qtyRef}
+          type="number" min={1} step={1} inputMode="numeric" placeholder="all"
+          defaultValue={current?.split ? current.qty : ""}
+          disabled={a.pending}
+          aria-label="Pieces for the machine"
+          title={current ? `Pieces on ${m?.code ?? "the machine"} — blank = the whole line (the rest of it). Enter resizes its share; with another ${machineWord(dept)} picked, this many go there.` : `Pieces to put on the ${machineWord(dept)} picked — blank = the whole line`}
+          className="border rounded-md px-1 py-1 bg-surface text-xs tabnum w-12 ltr"
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || !current) return;
+            e.preventDefault();
+            const fd = base();
+            fd.set("machineId", String(current.machineId));
+            fd.set("qty", e.currentTarget.value);
+            a.run(setLineQty, fd);
+          }}
+        />
         {current && (
           <button
             type="button"
@@ -77,8 +111,8 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
             title={current.running ? "Running on it now — click to put it back to waiting" : `#${current.rank} in the machine's queue — click to start it now, alongside what runs`}
             disabled={a.pending}
             onClick={() => {
-              const fd = new FormData();
-              fd.set("dept", dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item);
+              const fd = base();
+              fd.set("machineId", String(current.machineId));
               fd.set("running", current.running ? "false" : "true");
               a.run(setLineRunning, fd);
             }}
@@ -86,6 +120,7 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
             {current.running ? "▶ now" : `#${current.rank}`}
           </button>
         )}
+        {current?.others ? <span className="pill pill-muted tabnum" title={`Split — ${state}`}>+{current.others}</span> : null}
       </span>
       {a.err && <span className="text-[10px] text-bad-fg">{a.err}</span>}
     </span>
@@ -99,7 +134,17 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
   const line = (bom: string, mo: string, item: string) => {
     const fd = new FormData();
     fd.set("dept", dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item);
+    fd.set("machineId", String(c.machine.id));
     return fd;
+  };
+  // ✂ — how many pieces of the line stay on this machine; the rest waits
+  // for another machine (or goes back to it whole with a blank)
+  const resize = (q: { bom: string; mo: string; item: string; remaining: number; lineRemaining: number }) => {
+    const v = prompt(`Pieces of ${q.bom} ${q.item} on ${c.machine.code} — of ${q.lineRemaining} (blank = the rest of the line):`, String(q.remaining));
+    if (v === null) return;
+    const fd = line(q.bom, q.mo, q.item);
+    fd.set("qty", v.trim());
+    a.run(setLineQty, fd);
   };
   return (
     <div className={`bg-surface border rounded-xl p-3 flex flex-col gap-2 ${c.machine.active ? "" : "opacity-70"}`}>
@@ -133,13 +178,15 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
               <span className="font-extrabold">{q.bom}</span>
               <span className="font-bold">{q.item}</span>
               <span className="tabnum font-extrabold text-brand">×{q.remaining}</span>
-              {q.hours !== null && <span className="text-xs text-muted tabnum">{q.hours} h</span>}
+              {q.split && <span className="text-[11px] text-muted tabnum whitespace-nowrap" title="Part of the line — the rest is on another machine or waits">✂ of {q.lineRemaining}</span>}
+              {q.hours !== null && <span className="text-xs text-muted tabnum whitespace-nowrap">{q.hours} h</span>}
               {q.deliveryISO && <span className={`pill tabnum ${q.deliveryISO < new Date().toISOString().slice(0, 10) ? "pill-bad" : "pill-muted"}`}>📅 {ddmm(q.deliveryISO)}</span>}
               <span className="text-[11px] text-muted truncate">{q.mo}{q.description ? ` · ${q.description}` : ""}</span>
               {canEdit && (
                 <span className="ms-auto inline-flex gap-0.5 no-print">
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
-                  <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("machineId", ""); a.run(assignLineMachine, fd); }}>✕</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item))}>✕</button>
                 </span>
               )}
             </div>
@@ -152,20 +199,22 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
       {c.waiting.length > 0 && (
         <ol className="space-y-1">
           {c.waiting.map((q, i) => (
-            <li key={q.key} className="flex items-center gap-1.5 text-xs">
+            <li key={q.key} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
               <span className="w-5 text-center font-extrabold tabnum text-muted">{i + 1}</span>
               <span className="font-bold">{q.bom}</span>
               <span className="font-semibold">{q.item}</span>
               <span className="tabnum font-bold">×{q.remaining}</span>
-              {q.hours !== null && <span className="text-muted tabnum">{q.hours} h</span>}
-              {q.deliveryISO && <span className="text-muted tabnum">📅 {ddmm(q.deliveryISO)}</span>}
+              {q.split && <span className="text-[10px] text-muted tabnum whitespace-nowrap" title="Part of the line — the rest is on another machine or waits">✂ of {q.lineRemaining}</span>}
+              {q.hours !== null && <span className="text-muted tabnum whitespace-nowrap">{q.hours} h</span>}
+              {q.deliveryISO && <span className="text-muted tabnum whitespace-nowrap">📅 {ddmm(q.deliveryISO)}</span>}
               {canEdit && (
                 <span className="ms-auto inline-flex gap-0.5 no-print">
                   <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Up" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "up"); a.run(moveLineRank, fd); }}>▲</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Down" disabled={a.pending || i === c.waiting.length - 1} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "down"); a.run(moveLineRank, fd); }}>▼</button>
-                  <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("machineId", ""); a.run(assignLineMachine, fd); }}>✕</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item))}>✕</button>
                 </span>
               )}
             </li>
@@ -199,6 +248,7 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
       <span className="font-bold truncate">{u.bom}</span>
       <span className="font-semibold shrink-0">{u.item}</span>
       <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
+      {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
       {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
       {u.deliveryISO ? <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span> : <span className="text-muted shrink-0">no date</span>}
       <span className="ms-auto shrink-0">
@@ -243,6 +293,7 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
       )}
       <p className="text-[11px] text-muted mt-1">
         Hours are the standard times of what is left on each line. A {word}&apos;s hours today are its hours a day less the downtime on the shift log. A line leaves the board by itself once nothing remains on it.
+        To split a line, type the pieces in the box beside the picker before choosing the {word} — the rest stays where it is, or waits here; ✂ on a card resizes a share.
       </p>
     </section>
   );

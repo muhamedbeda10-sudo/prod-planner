@@ -10,6 +10,7 @@ import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 import { Frac } from "@/components/Frac";
 import { MachinePick } from "@/components/MachineBoard";
 import type { MachineDTO } from "@/lib/server/machines";
+import type { LinePlacement } from "@/lib/domain/machineBoard";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -39,7 +40,7 @@ export function CascadeTable({
   allowDate?: boolean;
   /** The department's machines — with any, every row carries a Machine picker. */
   machines?: MachineDTO[];
-  assigned?: Record<string, { machineId: number; rank: number; running: boolean }>;
+  assigned?: Record<string, LinePlacement>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();

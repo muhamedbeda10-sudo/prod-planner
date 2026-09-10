@@ -73,6 +73,37 @@ describe("buildMachineBoard", () => {
     expect(b.cards[0].queue[0].deliveryISO).toBe("2026-09-10");
   });
 
+  it("splits a line over machines by the pieces given, the rest waiting unassigned", () => {
+    const b = buildMachineBoard([m(1), m(2)], [l("A", "TN", 20, 10, "2026-09-12")], [
+      { key: lineKey("A", "MO-1", "TN"), machineId: 1, rank: 1, running: true, qty: 12 },
+      { key: lineKey("A", "MO-1", "TN"), machineId: 2, rank: 1, qty: 5 },
+    ]);
+    const [c1, c2] = b.cards;
+    expect(c1.queue.map((q) => [q.remaining, q.hours, q.split, q.lineRemaining])).toEqual([[12, 6, true, 20]]);
+    expect(c2.queue.map((q) => [q.remaining, q.hours, q.split])).toEqual([[5, 2.5, true]]);
+    expect(b.unassigned).toHaveLength(1);
+    expect(b.unassigned[0]).toMatchObject({ bom: "A", remaining: 3, hours: 1.5, lineRemaining: 20, partial: true });
+    expect(b.totalHours).toBe(8.5);
+  });
+
+  it("gives a share with no quantity whatever the fixed shares leave, and drops one that gets nothing", () => {
+    const b = buildMachineBoard([m(1), m(2), m(3, { active: true })], [l("A", "TN", 20, 10)], [
+      { key: lineKey("A", "MO-1", "TN"), machineId: 1, rank: 1 },
+      { key: lineKey("A", "MO-1", "TN"), machineId: 2, rank: 1, qty: 15 },
+      { key: lineKey("A", "MO-1", "TN"), machineId: 3, rank: 1, qty: 50 }, // more than the line: capped to what is left
+    ]);
+    const by = Object.fromEntries(b.cards.map((c) => [c.machine.id, c.queue.map((q) => q.remaining)]));
+    expect(by).toEqual({ 1: [], 2: [15], 3: [5] });
+    expect(b.unassigned).toEqual([]);
+    expect(b.cards.find((c) => c.machine.id === 2)!.queue[0].split).toBe(true);
+  });
+
+  it("marks a whole line on one machine as not split", () => {
+    const b = buildMachineBoard([m(1)], [l("A", "TN", 20, 10)], [{ key: lineKey("A", "MO-1", "TN"), machineId: 1, rank: 1, qty: 20 }]);
+    expect(b.cards[0].queue[0]).toMatchObject({ remaining: 20, split: false, lineRemaining: 20 });
+    expect(b.unassigned).toEqual([]);
+  });
+
   it("sums the day's available hours when every active machine has a figure", () => {
     const b = buildMachineBoard([m(1), m(2, { hoursPerDay: 8 }), m(3, { active: false, hoursPerDay: null })], lines, []);
     expect(b.totalAvailableH).toBe(17);
