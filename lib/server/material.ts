@@ -77,6 +77,9 @@ export interface MaterialImportResult {
   issues?: string[];
   preview?: boolean;
   sheet?: string;
+  /** Rows whose "for Job" column was stale — the job figure was recomputed
+   *  from the sheet's own per-unit rate. */
+  recomputed?: number;
 }
 
 /**
@@ -108,7 +111,7 @@ export async function importNestingTracker(
     opts.range = XLSX.utils.encode_range(range);
   }
   const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, opts);
-  const { rows, issues } = parseNestingTracker(grid);
+  const { rows, issues, recomputed } = parseNestingTracker(grid);
   if (rows.length === 0) return { ok: false, error: issues[0] ?? "No material rows found.", issues, sheet: sheetName };
 
   const existing = await prisma.materialUsage.findMany({ where: { month, mo: "" } });
@@ -137,5 +140,5 @@ export async function importNestingTracker(
       update: data,
     });
   }
-  return { ok: true, added, updated, unchanged, issues, preview, sheet: sheetName };
+  return { ok: true, added, updated, unchanged, issues, preview, sheet: sheetName, recomputed };
 }

@@ -45,7 +45,12 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    month by month, exactly its columns: BOM Ref · Quantity of Units · Part Code · Part Name · Codes · Material ·
    Thickness · Sheet Size · Sheets in BOM for one Unit / for Job · Actual Nesting for one Unit / for Job ·
    Difference · Notes. The tab adds two columns: units **produced** (typed) and the sheets those units really
-   consumed at the job's actual rate (50 sheets nested for 30 units, 5 produced → 8.333). Import the sheet for a
+   consumed at the job's actual rate (50 sheets nested for 30 units, 5 produced → 8.333). The sheets nested
+   **for the job** are computed on import as the sheet's own **Actual Nesting for one Unit × Quantity of
+   Units**, not read from its "for Job" column: that column is a figure somebody left behind — change the job
+   size and it keeps the old answer (one row of the tracker says 17.6 sheets where 90 units at 0.568 a unit is
+   51.1). A sheet with no per-unit rate still falls back to its job column, and the import says how many rows
+   were stale. Import the sheet for a
    month (re-importing adds new lines and updates changed ones; the same BOM's tank and top-cover lines stay
    apart), filter by month and, within it, by part, material, thickness, sheet size, status (nested / not
    nested / with produced / over BOM) or a search across BOM, SOI, part, code and note — the totals follow
