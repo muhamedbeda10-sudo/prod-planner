@@ -668,6 +668,15 @@ model OdooEntry {
   status     String   @default("MO to be close") // MO to be close | Pending | Done | Blocked | Cancelled …
   doneAt     DateTime? // when the status was moved to Done; null while it is not
   recordedBy String?
+  // Where the row came from: typed (manual), the office's sheet (import), or
+  // born from a closing in the ledger — a painting row (painting) or the
+  // core's shot blast (shotblast). A born row carries its ledger entry's id
+  // and an EMPTY odooMo: Odoo's number is not ours to know, the clerk types it.
+  source     String   @default("manual")
+  ledgerId   Int?     @unique
+  // The FG-CODE was composed (part code + BOM) rather than copied from an
+  // earlier row of the same SOI and product — worth a look before it is booked.
+  fgGuessed  Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

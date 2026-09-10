@@ -8,6 +8,7 @@ import { requireDeptEdit, requirePerm, requireAdmin } from "@/lib/server/auth";
 import { resolveWorker } from "@/lib/server/workers";
 import { deleteTanksWithRecords } from "@/lib/server/tanks";
 import { getSettings } from "@/lib/server/data";
+import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
 import { TANK_ITEM, blockedReason, isLeakTestResult, isQaResult, statusAfterLeakTest } from "@/lib/domain/tanks";
 
 // Everything that happens to a tank AS A PIECE: the welder's name, the leak
@@ -36,6 +37,7 @@ const TANK_PATHS = [
   "/trace",
   "/report",
   "/",
+  "/odoo", // painting a batch writes its row on the ODOO tab
 ];
 
 function revalidateTanks(extra: string[] = []) {
@@ -302,6 +304,7 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
             createdBy: guard.user?.name ?? null,
           },
         });
+        await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
         for (const t of list) {
           await tx.tankUnit.update({
             where: { id: t.id },

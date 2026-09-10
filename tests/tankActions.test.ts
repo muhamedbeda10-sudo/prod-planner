@@ -58,6 +58,7 @@ function form(fields: Record<string, string>): FormData {
 const writes = {
   tankUpdates: [] as Record<string, unknown>[],
   events: [] as Record<string, unknown>[],
+  odoo: [] as Record<string, unknown>[],
   ledger: [] as Record<string, unknown>[],
 };
 
@@ -77,6 +78,7 @@ beforeEach(() => {
   writes.tankUpdates.length = 0;
   writes.events.length = 0;
   writes.ledger.length = 0;
+  writes.odoo.length = 0;
 
   h.requireDeptEdit.mockResolvedValue({ user: { name: "tester" } });
   h.requirePerm.mockResolvedValue({ user: { name: "tester" } });
@@ -99,6 +101,13 @@ beforeEach(() => {
         },
       },
       plan: { upsert: async () => ({}) },
+      // the painting record's row on the ODOO tab: the order names the SOI,
+      // an earlier row of that SOI and product lends its FG-CODE
+      masterOrder: { findUnique: async () => ({ soi: "S01259-4", bom: "12011E16M13" }) },
+      odooEntry: {
+        findMany: async () => [{ fgCode: "FB-022-12011E16M13", product: "Tank", fgGuessed: false }],
+        create: async (a: { data: Record<string, unknown> }) => { writes.odoo.push(a.data); return { id: 1, ...a.data }; },
+      },
     })
   );
 });
@@ -206,6 +215,13 @@ describe("paintTanks", () => {
     // each tank remembers WHICH log row painted it, so deleting that row later
     // can take exactly these tanks back out of the barcode tab
     expect(writes.tankUpdates.map((u) => u.paintLedgerId)).toEqual([901, 901, 902]);
+    // each painting row is a closing: its row on the ODOO tab is born in the
+    // same transaction — SOI from the order, FG-CODE from the earlier row of
+    // that SOI and product, Odoo's MO left for the office to type
+    expect(writes.odoo).toEqual([
+      expect.objectContaining({ ledgerId: 901, soi: "S01259-4", product: "Tank", fgCode: "FB-022-12011E16M13", fgGuessed: false, odooMo: "", qty: 2, source: "painting" }),
+      expect.objectContaining({ ledgerId: 902, qty: 1, source: "painting" }),
+    ]);
   });
 
   it("refuses a tank that never passed the leak test — the whole point of the gate", async () => {

@@ -57,6 +57,12 @@ export interface OdooEntryView {
   /** When the status was moved to Done — the day the dashboard counts the close on. */
   doneAtISO: string | null;
   recordedBy: string | null;
+  /** manual | import | painting | shotblast — a painting / shot-blast row was
+   *  born from a closing in the ledger and starts with no MO. */
+  source: string;
+  /** The FG-CODE was composed (part code + BOM), not copied from an earlier
+   *  row — check it before booking. */
+  fgGuessed: boolean;
   /** Newest first. */
   notes: OdooNoteView[];
 }
@@ -200,15 +206,20 @@ export function parseOdooSheet(grid: unknown[][]): ParsedOdooSheet {
 export const ODOO_NOTE_FILTERS = { all: "Notes: any", with: "With notes", without: "No notes" } as const;
 export type OdooNoteFilter = keyof typeof ODOO_NOTE_FILTERS;
 
+export const ODOO_MO_FILTERS = { all: "MO: any", missing: "Needs MO", guessed: "Check FG-CODE" } as const;
+export type OdooMoFilter = keyof typeof ODOO_MO_FILTERS;
+
 export interface OdooFilters {
   /** Matches SOI, FG-CODE, MO#, product and every note — case-insensitive, any part. */
   q: string;
   product: string; // "" = any
   status: string; // "" = any
   notes: OdooNoteFilter;
+  /** Rows born from a closing that still wait for Odoo's MO, or whose FG-CODE was guessed. */
+  mo: OdooMoFilter;
 }
 
-export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "", notes: "all" };
+export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "", notes: "all", mo: "all" };
 
 export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): OdooEntryView[] {
   const q = f.q.trim().toLowerCase();
@@ -217,6 +228,8 @@ export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): Odo
     if (f.status && e.status !== f.status) return false;
     if (f.notes === "with" && e.notes.length === 0) return false;
     if (f.notes === "without" && e.notes.length > 0) return false;
+    if (f.mo === "missing" && e.odooMo.trim() !== "") return false;
+    if (f.mo === "guessed" && !e.fgGuessed) return false;
     if (q) {
       const hay = [e.soi ?? "", e.fgCode, e.odooMo, e.product, e.status, ...e.notes.map((n) => n.text)].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;

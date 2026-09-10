@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
-  FileDown, GitCompareArrows, Puzzle, CalendarDays, Users, Timer,
+  FileDown, Puzzle, CalendarDays, Users, Timer,
   FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
@@ -55,7 +55,6 @@ const DRAWER: Item[] = [
 const ADMIN: (Item & { desc: string; perm?: string })[] = [
   { href: "/orders", label: "Orders Registry", desc: "Master MO list — import monthly plans", icon: ClipboardList },
   { href: "/import", label: "Import Weekly Plan", desc: "Delivery schedule from Excel", icon: FileDown },
-  { href: "/reconciliation", label: "Reconciliation", desc: "Compare plan vs previous plan", icon: GitCompareArrows },
   { href: "/boms", label: "BOM Review", desc: "Fix codes & reallocate excess", icon: Puzzle },
   { href: "/calendar", label: "Factory Calendar", desc: "Holidays & shutdown days off", icon: CalendarDays },
   { href: "/admin/settings", label: "Settings", desc: "Plant-wide switches, including per-piece tank tracking", icon: SlidersHorizontal },

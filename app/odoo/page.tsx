@@ -65,6 +65,7 @@ export default async function OdooPage({
     QTY: e.qty,
     Status: e.status,
     "Done at": e.doneAtISO ? e.doneAtISO.slice(0, 16).replace("T", " ") : "",
+    Source: e.source === "painting" ? "Painting" : e.source === "shotblast" ? "Shot Blast" : e.source === "import" ? "Import" : "",
     Notes: [...e.notes].reverse().map((n) => `${n.atISO.slice(0, 16).replace("T", " ")}: ${n.text}`).join(" | "),
   }));
 

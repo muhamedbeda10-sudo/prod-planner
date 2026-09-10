@@ -16,6 +16,7 @@ import { DELIVERED_STAGE, SHOTBLAST_STAGE, isPaintExempt } from "@/lib/domain/co
 import { TANK_ITEM } from "@/lib/domain/tanks";
 import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
 import { resolveWorker } from "@/lib/server/workers";
+import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
 
 export interface RecordResult {
   ok: boolean;
@@ -31,7 +32,9 @@ class TankSyncError extends Error {}
 
 // Every screen a production record moves. TANK_PATHS adds the two the
 // per-piece layer feeds: the leak-test stage and the barcode sheet.
-const RECORD_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"];
+// /odoo is on the list because a painting (or shot-blast) record writes its
+// own row on the ODOO tab.
+const RECORD_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report", "/odoo"];
 const TANK_PATHS = [...RECORD_PATHS, "/worklist/leak-test", "/barcode"];
 
 /** Painting a tank now means naming WHICH tank and WHO painted it, and only a
@@ -119,6 +122,8 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
       const ledger = await tx.handoverEntry.create({
         data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist", createdBy: guard.user?.name ?? null },
       });
+      // a painting record is a closing — it gets its row on the ODOO tab
+      await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
       if (!mintsTanks) return [];
       const minted = await mintTankSerials(tx, {
         bom, mo, planNo, count: qty, date, ledgerId: ledger.id,
@@ -201,6 +206,8 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
           createdBy: guard.user?.name ?? null,
         },
       });
+      // a higher Paint / SHB total is a closing (a correction is not: qty ≤ 0 is skipped)
+      await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
       if (!syncsTanks) return null;
       if (delta > 0) {
         // the cell has no room to name a welder — the tank page and the
@@ -422,6 +429,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
             createdBy: by,
           },
         });
+        await mirrorLedgerToOdoo(tx, ledger, by);
         if (!syncsTanks) continue;
         if (q > 0) {
           const batch = await mintTankSerials(tx, {

@@ -3,19 +3,23 @@
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import {
-  ODOO_PRODUCTS, ODOO_STATUSES, ODOO_NOTE_FILTERS, EMPTY_ODOO_FILTERS, filterOdooEntries,
-  type OdooEntryView, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter,
+  ODOO_PRODUCTS, ODOO_STATUSES, ODOO_NOTE_FILTERS, ODOO_MO_FILTERS, EMPTY_ODOO_FILTERS, filterOdooEntries,
+  type OdooEntryView, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter, type OdooMoFilter,
 } from "@/lib/domain/odoo";
+import { sourceLabel } from "@/lib/domain/odooMirror";
 import { Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { materialNeed, monthLabelOfISO, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
-import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
+import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, setOdooFgCode, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
 
 // The ODOO tab — the office's daily log of Odoo close attempts, one strip per
 // row, the columns of the sheet it replaces: Date · SOI# · FG-CODE · Product ·
 // MO# · QTY · Status. Two people work a row: the clerk enters it, the planner
 // moves the Status in place and keeps Notes on it — a list, each deletable.
+// A row can also be BORN here: a painting record (or the core's shot blast)
+// writes its own row with everything but Odoo's MO, which the clerk types in
+// place — and an FG-CODE the app had to compose is flagged until it is looked at.
 
 function useAction() {
   const router = useRouter();
@@ -119,6 +123,7 @@ function RowFields({
   disabled?: boolean;
 }) {
   const today = new Date().toISOString().slice(0, 10);
+  const born = isBorn(e);
   return (
     <>
       <Field hint="Date of the close attempt" className="w-[8.5rem]">
@@ -129,7 +134,7 @@ function RowFields({
         <datalist id="odoo-sois">{knownSois.map((s) => <option key={s} value={s} />)}</datalist>
       </Field>
       <Field hint="FG-CODE — Odoo's finished-good code" className="w-48">
-        <input name="fgCode" list="odoo-fg" aria-label="FG-CODE" defaultValue={e?.fgCode ?? ""} required disabled={disabled} placeholder="FG-CODE" className={`${F} ltr w-full`} />
+        <input name="fgCode" list="odoo-fg" aria-label="FG-CODE" defaultValue={e?.fgCode ?? ""} required={!born} disabled={disabled} placeholder="FG-CODE" className={`${F} ltr w-full`} />
         <datalist id="odoo-fg">{knownFgCodes.map((s) => <option key={s} value={s} />)}</datalist>
       </Field>
       <Field hint="Product" className="w-32">
@@ -137,7 +142,7 @@ function RowFields({
         <datalist id="odoo-products">{ODOO_PRODUCTS.map((p) => <option key={p} value={p} />)}</datalist>
       </Field>
       <Field hint="Odoo MO number (SF01/MO/…)" className="w-44">
-        <input name="odooMo" aria-label="MO#" defaultValue={e?.odooMo ?? ""} required disabled={disabled} placeholder="SF01/MO/…" className={`${F} ltr w-full`} />
+        <input name="odooMo" aria-label="MO#" defaultValue={e?.odooMo ?? ""} required={!born} disabled={disabled} placeholder="SF01/MO/…" className={`${F} ltr w-full`} />
       </Field>
       <Field hint="Quantity" className="w-20">
         <input name="qty" type="number" step="1" min="0" aria-label="QTY" defaultValue={e?.qty ?? ""} required disabled={disabled} placeholder="QTY" className={`${F} ltr tabnum w-full font-extrabold`} />
@@ -200,6 +205,47 @@ function statusOptions(current?: string | null): string[] {
 }
 
 const TONE_PILL: Record<OdooTone, string> = { ok: "pill-ok", warn: "pill-warn", bad: "pill-bad", muted: "pill-muted" };
+
+/** A row born from a closing in the ledger, not typed or imported. */
+function isBorn(e?: OdooEntryView | null): boolean {
+  return e?.source === "painting" || e?.source === "shotblast";
+}
+
+/** One value typed straight into the row and saved on Enter or blur — Odoo's
+ *  MO on a born row, or a guessed FG-CODE the office confirms or corrects. */
+function InlineValue({ id, name, value, placeholder, action, warn, hint, list }: {
+  id: number; name: "odooMo" | "fgCode"; value: string; placeholder: string; warn: boolean; hint: string; list?: string;
+  action: (fd: FormData) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const a = useAction();
+  const [draft, setDraft] = useState(value);
+  function submit() {
+    const v = draft.trim();
+    if (v === value.trim()) return;
+    const fd = new FormData();
+    fd.set("id", String(id));
+    fd.set(name, v);
+    a.run(action, fd, "Saved.");
+  }
+  return (
+    <span className="inline-flex flex-col">
+      <input
+        value={draft}
+        list={list}
+        disabled={a.pending}
+        onChange={(ev) => setDraft(ev.target.value)}
+        onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); submit(); } }}
+        onBlur={submit}
+        onClick={(ev) => ev.stopPropagation()}
+        placeholder={placeholder}
+        title={hint}
+        aria-label={name === "odooMo" ? "MO#" : "FG-CODE"}
+        className={`px-2 py-1 text-xs ltr font-bold no-print ${name === "fgCode" ? "w-48" : "w-40"} ${warn ? "border-warn-fg bg-warn-bg/60" : ""}`}
+      />
+      {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
+    </span>
+  );
+}
 
 function DoneStamp({ e }: { e: OdooEntryView }) {
   if (!e.done || !e.doneAtISO) return null;
@@ -338,14 +384,35 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit }: {
   const cell = "p-2 whitespace-nowrap cursor-pointer";
   const open = () => setMaterial(true);
   const rowTitle = need ? `Click for the material behind ${e.qty} units` : "Click — no nesting lines for this FG-CODE yet";
+  const born = isBorn(e);
   return (
     <>
       <tr className="border-t hover:bg-surface-2/60">
-        <td className={`${cell} tabnum ltr`} onClick={open} title={rowTitle}>{e.dateISO}</td>
+        <td className={`${cell} tabnum ltr`} onClick={open} title={rowTitle}>
+          <span className="inline-flex flex-col">
+            {e.dateISO}
+            {born && <span className="pill pill-muted text-[10px] mt-0.5" title="Written by the closing recorded in the daily log — the office fills in Odoo's MO">{sourceLabel(e.source)}</span>}
+          </span>
+        </td>
         <td className={cell} onClick={open} title={rowTitle}><Soi soi={e.soi} /></td>
-        <td className={`${cell} ltr text-xs font-semibold`} onClick={open} title={rowTitle}>{e.fgCode}</td>
+        <td className={`${cell} ltr text-xs font-semibold`} onClick={e.fgGuessed && canEdit ? undefined : open} title={e.fgGuessed ? "Composed from the part code and the transformer's BOM — no earlier row of this SOI and product to copy from. Confirm or correct it." : rowTitle}>
+          {e.fgGuessed && canEdit ? (
+            <InlineValue id={e.id} name="fgCode" value={e.fgCode} placeholder="FG-CODE" action={setOdooFgCode} warn list="odoo-fg" hint="Guessed FG-CODE — Enter keeps it, or type the right one" />
+          ) : (
+            <span className="inline-flex flex-col">
+              {e.fgCode || <span className="text-muted">—</span>}
+              {e.fgGuessed && <span className="pill pill-warn text-[10px] mt-0.5">check FG-CODE</span>}
+            </span>
+          )}
+        </td>
         <td className={cell} onClick={open} title={rowTitle}>{e.product}</td>
-        <td className={`${cell} ltr text-xs font-bold`} onClick={open} title={rowTitle}>{e.odooMo}</td>
+        <td className={`${cell} ltr text-xs font-bold`} onClick={!e.odooMo && canEdit ? undefined : open} title={e.odooMo ? rowTitle : "Odoo's MO is not known here — type it once the MO is printed from Odoo"}>
+          {e.odooMo ? e.odooMo : canEdit ? (
+            <InlineValue id={e.id} name="odooMo" value="" placeholder="SF01/MO/… (Enter)" action={setOdooMo} warn={false} hint="Type Odoo's MO number for this closing — Enter saves" />
+          ) : (
+            <span className="pill pill-warn text-[10px]">needs MO</span>
+          )}
+        </td>
         <td className="p-2 text-center tabnum font-extrabold cursor-pointer" onClick={open} title={rowTitle}>{e.qty}</td>
         <td className="p-2 whitespace-nowrap text-xs align-top"><StatusCell e={e} canEdit={canEdit} /></td>
         <td className="p-2 text-xs min-w-[18rem] max-w-[28rem] align-top">
@@ -369,7 +436,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit }: {
                 className="btn btn-sm btn-danger"
                 disabled={del.pending}
                 onClick={() => {
-                  if (!confirm(`Delete ${e.odooMo} (${e.dateISO})?`)) return;
+                  if (!confirm(`Delete ${e.odooMo || `${e.product} ×${e.qty}`} (${e.dateISO})?`)) return;
                   const fd = new FormData();
                   fd.set("id", String(e.id));
                   del.run(deleteOdooEntry, fd, "Deleted.");
@@ -466,9 +533,11 @@ const SEL = "border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold";
 function readSavedFilters(raw: string): OdooFilters {
   const o = parseSaved(raw);
   const notes = savedString(o, "notes");
+  const mo = savedString(o, "mo");
   return {
     q: savedString(o, "q"), product: savedString(o, "product"), status: savedString(o, "status"),
     notes: notes in ODOO_NOTE_FILTERS ? (notes as OdooNoteFilter) : "all",
+    mo: mo in ODOO_MO_FILTERS ? (mo as OdooMoFilter) : "all",
   };
 }
 
@@ -497,6 +566,9 @@ function FilterBar({ entries, filters, onChange, shown }: { entries: OdooEntryVi
       <select aria-label="Notes" title="Rows with or without notes" className={SEL} value={filters.notes} onChange={(e) => set({ notes: e.target.value as OdooNoteFilter })}>
         {(Object.keys(ODOO_NOTE_FILTERS) as OdooNoteFilter[]).map((k) => <option key={k} value={k}>{ODOO_NOTE_FILTERS[k]}</option>)}
       </select>
+      <select aria-label="MO" title="Rows born from a closing that still need Odoo's MO, or whose FG-CODE was guessed" className={SEL} value={filters.mo} onChange={(e) => set({ mo: e.target.value as OdooMoFilter })}>
+        {(Object.keys(ODOO_MO_FILTERS) as OdooMoFilter[]).map((k) => <option key={k} value={k}>{ODOO_MO_FILTERS[k]}</option>)}
+      </select>
       <span className="text-xs text-muted tabnum">{active ? `${shown} of ${entries.length} row(s)` : `${entries.length} row(s)`}</span>
       {active && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onChange(EMPTY_ODOO_FILTERS)}>✕ Clear</button>}
     </div>
@@ -524,6 +596,7 @@ export function OdooClient({
   const { filters, setFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_ODOO_FILTERS);
   const shown = useMemo(() => filterOdooEntries(entries, filters), [entries, filters]);
   const done = shown.filter((e) => e.done).length;
+  const needMo = shown.filter((e) => !e.odooMo).length;
   return (
     <div className="space-y-5">
       {entries.length > 0 && <FilterBar entries={entries} filters={filters} onChange={setFilters} shown={shown.length} />}
@@ -531,6 +604,7 @@ export function OdooClient({
         <div className="text-sm text-muted">
           {shown.length} row(s){day !== "all" ? ` on ${day}` : ""} · <span className="text-ok-fg font-bold">{done} done</span> ·{" "}
           <span className="text-bad-fg font-bold">{shown.length - done} not closed</span>
+          {needMo > 0 && <> · <span className="text-warn-fg font-bold" title="Rows written by a painting / shot-blast record, waiting for Odoo's MO">{needMo} need MO</span></>}
         </div>
       )}
       <section className="bg-surface border rounded-xl overflow-hidden">

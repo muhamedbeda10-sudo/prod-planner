@@ -29,21 +29,19 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 1. **Weekly plan import** (`/import`) — grid parser from row 6, merged-BOM carry-down, `ParseBalance`
    (bidirectional digit/letter split, RC→TC), `targetQty = balance + gridSum` (or `requiredQty`),
    idempotent re-import, warnings (oversize / misaligned remark column / suspected double-count).
-2. **Plan-vs-plan reconciliation** (`/reconciliation`) — CONTINUED delta, DROPPED-WITH-BACKLOG,
-   NEW MOs, BALANCE CONFLICTS; severity colors + Excel export.
-3. **Daily handover entry** (`/handover`) — fast RTL form, BOM autocomplete with **entry-time
+2. **Daily handover entry** (`/handover`) — fast RTL form, BOM autocomplete with **entry-time
    normalization** (green auto-correct badge, red block for unknown/ambiguous), editable audited log.
-4. **BOM hygiene & excess reallocation** (`/boms`) — `NormalizeBoms` review queue; `ReallocateExcess`
+3. **BOM hygiene & excess reallocation** (`/boms`) — `NormalizeBoms` review queue; `ReallocateExcess`
    as **explicit reviewable `ReallocationMove` transactions** (approve/reject). Raw handover entries
    stay immutable (the VBA edited them silently — this app never does).
-5. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
+4. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
    Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows.
-6. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
+5. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
    allocation, overdue rollover, fill-up rows, Cut Alarm (Cut ready / Partial / NOT CUT YET).
-7. **Daily report + Dashboard** (`/report`, `/`) — dept output, complete sets, efficiency/balance %,
+6. **Daily report + Dashboard** (`/report`, `/`) — dept output, complete sets, efficiency/balance %,
    projects worked today, tracker snapshot, charts. Dashboard: achievement per item, dept output
    day/week, planned (oven−lead) vs welded.
-8. **Material — nesting project tracker** (`/material`) — the planner's Nesting Project Tracker sheet, filed
+7. **Material — nesting project tracker** (`/material`) — the planner's Nesting Project Tracker sheet, filed
    month by month, exactly its columns: BOM Ref · Quantity of Units · Part Code · Part Name · Codes · Material ·
    Thickness · Sheet Size · Sheets in BOM for one Unit / for Job · Actual Nesting for one Unit / for Job ·
    Difference · Notes. The tab adds two columns: units **produced** (typed) and the sheets those units really
@@ -53,14 +51,20 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    nested / with produced / over BOM) or a search across BOM, SOI, part, code and note — the totals follow
    the filter; edit any value inline, delete a whole month (confirmed by typing its name), export in the
    sheet's own headers.
-9. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
+8. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
    clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day
    updated, never doubled); the planner then moves the Status in place (Pending, Done, Blocked …) —
    moving it to Done stamps the moment, shown under the pill and exported as "Done at" — and
    keeps Notes on it — a list with time and author, each deletable on its own. A filter row (search across
    SOI, FG-CODE, MO, product and notes; product; status; with/without notes) sticks between visits, as
-   does the day. Exports in the sheet's own headers. **Click a row (or its 🧱 button)** for the material
+   does the day. Exports in the sheet's own headers. A row can also be **born from the daily log**: every
+   painting record (and the core frame's shot blast) writes its own row here on the same day with the SOI,
+   product and qty, MO left empty for the office to type in place — the FG-CODE is copied from the last row
+   of the same SOI and product, or composed from the part code and the transformer's BOM and flagged
+   "check FG-CODE" until someone confirms it. Such a row follows its log entry's edits and deletion only
+   while nobody has touched it; a "Needs MO / Check FG-CODE" filter and a count in the day's summary keep
+   them visible, and the export carries a Source column. **Click a row (or its 🧱 button)** for the material
    its qty consumes: the FG-CODE's prefix is the part (FB-022 = TANK) and the row's SOI names the
    transformer through the orders registry (S01259-4 → BOM 12011E16M13), so the popup lists the Material
    tab's lines for that part on that BOM — the FG-CODE's own suffix is tried only when the SOI's BOM has no
