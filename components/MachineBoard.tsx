@@ -7,7 +7,7 @@ import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import type { MachineDTO } from "@/lib/server/machines";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import Link from "next/link";
-import { assignLineMachine, clearMachineQueue, moveLineRank, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
+import { assignLineMachine, clearMachineQueue, moveLineRank, optimizeMachines, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
 import { recordOutput } from "@/app/worklist/actions";
 
 // 🏭 The machine load board on a department's worklist — one card per
@@ -19,7 +19,10 @@ import { recordOutput } from "@/app/worklist/actions";
 // typed beside the picker SPLITS it — those go to the machine picked, the
 // rest stays put (or waits unassigned) — and ✂ on a card resizes a share.
 // Recording output never touches the board — a line leaves it by itself once
-// nothing remains.
+// nothing remains. ⚡ Plan does the whole board in one go: every line in the
+// order the weekly plan needs it, on the machine that finishes it soonest,
+// along the routing (a tank is cut, then bent, then finned) — what is running
+// now is never moved.
 
 function useAction() {
   const router = useRouter();
@@ -55,11 +58,24 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
   const m = current ? machines.find((x) => x.id === current.machineId) : undefined;
   const share = current?.split ? ` ×${current.qty}` : "";
   const state = current ? `${current.running ? "running now" : `#${current.rank} in its queue`}${share ? `, ${current.qty} pcs of it` : ""}${current.others ? `, ${current.others} more ${machineWord(dept, current.others > 1)} hold a share` : ""}` : "";
+  // the rest of the route: where the line goes after this machine, and the
+  // centres of its route nothing is on yet
+  const rest = (
+    <>
+      {current?.next?.map((n) => (
+        <span key={n.center} className="pill pill-muted tabnum ltr" title={`Then ${CENTER_LABEL[n.center] ?? n.center} — ${n.code}, ${n.running ? "running now" : `#${n.rank} in its queue`}`}>→ {n.code}</span>
+      ))}
+      {current?.missing?.map((c) => (
+        <span key={c} className="pill pill-warn" title={`Nothing on ${CENTER_LABEL[c] ?? c} yet — this line still needs it`}>needs {c.toLowerCase()}</span>
+      ))}
+    </>
+  );
   if (!canEdit) {
     return m ? (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center gap-1 flex-wrap">
         <span className="pill pill-muted ltr tabnum" title={`On ${m.name}, ${state}`}>{m.code}{share}{current!.running ? " ▶" : ` #${current!.rank}`}</span>
         {current!.others ? <span className="pill pill-muted tabnum" title={state}>+{current!.others}</span> : null}
+        {rest}
       </span>
     ) : <span className="text-muted text-xs">—</span>;
   }
@@ -122,6 +138,7 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
           </button>
         )}
         {current?.others ? <span className="pill pill-muted tabnum" title={`Split — ${state}`}>+{current.others}</span> : null}
+        {rest}
       </span>
       {a.err && <span className="text-[10px] text-bad-fg">{a.err}</span>}
     </span>
@@ -281,8 +298,32 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
   const [open, setOpen] = useState(false);
   const [showAllDated, setShowAllDated] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [note, setNote] = useState<{ summary?: string; late?: string; error?: string } | null>(null);
+  const router = useRouter();
+  const [planning, startPlanning] = useTransition();
   if (board.cards.length === 0 && board.machines.length === 0) return null;
   const word = machineWord(board.dept);
+  // fabrication runs several work centres (cutting, bending, fins), so a line
+  // shows once per centre it still owes work at
+  const centres = new Set(board.machines.map((m) => m.center));
+  const multi = centres.size > 1;
+  const machinesAt = (center: string) => {
+    const at = board.machines.filter((m) => m.center === center);
+    return at.length > 0 ? at : board.machines;
+  };
+  const plan = () => {
+    if (!confirm(`Plan every ${word} from the weekly plan?\n\nEvery waiting line is re-ordered: earliest date first, each on the ${word} that finishes it soonest. What is RUNNING now stays where it is.`)) return;
+    setNote(null);
+    startPlanning(async () => {
+      const fd = new FormData();
+      fd.set("dept", board.dept);
+      const res = await optimizeMachines(fd);
+      if (res.ok) {
+        setNote({ summary: res.summary, late: res.lateNote });
+        router.refresh();
+      } else setNote({ error: res.error });
+    });
+  };
   const tone = board.totalAvailableH === null || board.totalAvailableH === 0 ? null : loadTone(board.totalHours / board.totalAvailableH);
   // the weekly plan's dated lines are the ones to place first; the month's
   // undated backlog folds behind its own "show all"
@@ -291,15 +332,16 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
   const datedShown = showAllDated ? dated : dated.slice(0, 12);
   const undatedShown = showAll ? undated : undated.slice(0, 6);
   const row = (u: MachineBoardData["unassigned"][number]) => (
-    <li key={u.key} className="flex items-center gap-2 text-xs min-w-0">
+    <li key={`${u.key}#${u.center}`} className="flex items-center gap-2 text-xs min-w-0">
       <span className="font-bold truncate">{u.bom}</span>
       <span className="font-semibold shrink-0">{u.item}</span>
       <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
+      {multi && <span className="pill pill-muted shrink-0" title={`${CENTER_LABEL[u.center] ?? u.center} — step ${u.stepNo} of ${u.stepCount} on this line's route`}>{u.center}</span>}
       {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
       {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
       {u.deliveryISO ? <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span> : <span className="text-muted shrink-0">no date</span>}
       <span className="ms-auto shrink-0">
-        <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} machines={board.machines} current={undefined} canEdit={canEdit} compact />
+        <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} machines={machinesAt(u.center)} current={undefined} canEdit={canEdit} compact />
       </span>
     </li>
   );
@@ -320,8 +362,25 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
             {open ? "▾" : "▸"} {board.unassigned.length} not on a {word}
           </button>
         )}
+        {canEdit && (
+          <button
+            type="button"
+            className="btn btn-sm btn-primary ms-2 normal-case no-print"
+            disabled={planning}
+            onClick={plan}
+            title={`Work out what every ${word} should run, and in what order, from the weekly plan — earliest date first, each line on the ${word} that finishes it soonest. What is running now stays.`}
+          >
+            {planning ? "Planning…" : "⚡ Plan the " + machineWord(board.dept, true)}
+          </button>
+        )}
         <Link href={`/worklist/machines?dept=${board.dept}`} className="btn btn-sm btn-secondary ms-2 normal-case no-print" title={`One sheet per ${word}, each on its own page — hand them to the technicians`}>🖨 Print all sheets</Link>
       </h2>
+      {note && (
+        <div className={`text-xs rounded-lg px-3 py-2 mb-2 border no-print ${note.error ? "bg-bad-light border-bad-fg/30 text-bad-fg" : "bg-brand-light/40 border-brand/30"}`}>
+          {note.error ?? note.summary}
+          {note.late && <div className="text-warn-fg font-semibold mt-0.5">⚠ {note.late}</div>}
+        </div>
+      )}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {board.cards.map((c) => <Card key={c.machine.id} c={c} board={board} canEdit={canEdit} />)}
       </div>
@@ -349,7 +408,7 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
         </div>
       )}
       <p className="text-[11px] text-muted mt-1">
-        Hours are the standard times of what is left on each line. A {word}&apos;s hours today are its hours a day less the downtime on the shift log. A line leaves the board by itself once nothing remains on it.
+        Hours are the standard times of what is left on each line{multi ? ", split over the work centres its routing names (a tank is cut, then bent, then its fins folded — so it queues once on each)" : ""}. A {word}&apos;s hours today are its hours a day less the downtime on the shift log. A line leaves the board by itself once nothing remains on it.
         ✓ records what a {word} finished (blank = the whole share, the rest stays in its queue). To split a line, type the pieces in the box beside the picker before choosing the {word}; ✂ on a card resizes a share.
       </p>
     </section>

@@ -11,7 +11,7 @@ import {
 import { loadTone, type MachineCard } from "@/lib/domain/machineBoard";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
-import { assignLineMachine, moveLineRank, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
+import { assignLineMachine, moveLineRank, optimizeMachines, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
 import { DoneBox, MachinePick } from "@/components/MachineBoard";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 
@@ -84,6 +84,9 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
   // the floor is the point of this screen: the list of lines still to place
   // stays folded until the planner asks for it
   const [showQueue, setShowQueue] = useState(false);
+  const router = useRouter();
+  const [planning, startPlanning] = useTransition();
+  const [planNote, setPlanNote] = useState("");
 
   const cardOf = useMemo(() => new Map(board.cards.map((c) => [c.machine.id, c])), [board.cards]);
   const allMachines = useMemo(() => {
@@ -185,17 +188,38 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
             {part.err && <span className="text-xs text-bad-fg">{part.err}</span>}
           </>
         )}
+        {canAssign && (
+          <button
+            type="button"
+            className="btn btn-sm btn-primary ms-auto"
+            disabled={planning}
+            title={`Work out what every ${word} should run and in what order, from the weekly plan — earliest date first, each line on the ${word} that finishes it soonest. What is running now stays.`}
+            onClick={() => {
+              if (!confirm(`Plan every ${word} from the weekly plan?\n\nEvery waiting line is re-ordered. What is RUNNING now stays where it is.`)) return;
+              setPlanNote("");
+              startPlanning(async () => {
+                const fd = new FormData();
+                fd.set("dept", dept);
+                const res = await optimizeMachines(fd);
+                setPlanNote(res.ok ? [res.summary, res.lateNote].filter(Boolean).join(" ") : res.error ?? "Failed");
+                if (res.ok) router.refresh();
+              });
+            }}
+          >
+            {planning ? "Planning…" : "⚡ Plan"}
+          </button>
+        )}
         {board.unassigned.length > 0 && (
           <button
             type="button"
-            className={`btn btn-sm ${showQueue ? "btn-secondary" : "btn-ghost"} ms-auto`}
+            className={`btn btn-sm ${showQueue ? "btn-secondary" : "btn-ghost"} ${canAssign ? "" : "ms-auto"}`}
             title={showQueue ? "Back to the floor alone" : `Open the ${board.unassigned.length} line(s) no ${word} has yet, to place them from here`}
             onClick={() => setShowQueue((v) => !v)}
           >
             {showQueue ? "▾" : "▸"} {board.unassigned.length} to place
           </button>
         )}
-        <span className={`${board.unassigned.length > 0 ? "" : "ms-auto "}inline-flex items-center gap-1 text-xs text-muted`}>
+        <span className={`${board.unassigned.length > 0 || canAssign ? "" : "ms-auto "}inline-flex items-center gap-1 text-xs text-muted`}>
           zoom
           <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="border rounded-md px-1.5 py-1 bg-surface text-xs font-semibold" aria-label="Zoom">
             {ZOOMS.map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
@@ -242,6 +266,7 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
               <div className="font-bold text-foreground text-sm">{deptLabel(dept)} floor</div>
               <div>{board.cards.length} {machineWord(dept, true)} · {board.totalHours} h queued{board.totalAvailableH !== null ? ` / ${board.totalAvailableH} h today` : ""}</div>
               {board.unassigned.length > 0 && <div className="text-warn-fg font-semibold">{board.unassigned.length} line(s) not on a {word} — “to place” above opens them</div>}
+              {planNote && <div className="text-foreground font-semibold">⚡ {planNote}</div>}
               <div className="pt-1">Click a block to see and work its queue{canDraw ? "; drag to move, pull the corner to resize" : ""}.</div>
             </div>
           ) : sel.kind === "machine" ? (
@@ -295,21 +320,32 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
 
 /** The lines on no machine, each with a one-click send to the selected
  *  block and a picker for any other. */
-function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoardData["unassigned"]; board: MachineBoardData; canAssign: boolean; target: { id: number; code: string } | null }) {
+/** Fabrication runs several work centres, so a line shows once per centre it
+ *  still owes work at; everywhere else there is only one. */
+const multiCentre = (board: MachineBoardData) => new Set(board.machines.map((m) => m.center)).size > 1;
+/** The machines that can take this step — its own centre, or all of them when
+ *  the centre has none. */
+const machinesAt = (board: MachineBoardData, center: string) => {
+  const at = board.machines.filter((m) => m.center === center);
+  return at.length > 0 ? at : board.machines;
+};
+
+function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoardData["unassigned"]; board: MachineBoardData; canAssign: boolean; target: { id: number; code: string; center: string } | null }) {
   const a = useAction();
   return (
     <ul className="grid gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
       {lines.map((u) => (
-        <li key={u.key} className="flex items-center gap-2 text-xs min-w-0">
+        <li key={`${u.key}#${u.center}`} className="flex items-center gap-2 text-xs min-w-0">
           <span className="font-bold truncate">{u.bom}</span>
           <span className="font-semibold shrink-0">{u.item}</span>
           <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
+          {multiCentre(board) && <span className="pill pill-muted shrink-0" title={`${CENTER_LABEL[u.center] ?? u.center} — step ${u.stepNo} of ${u.stepCount} on this line's route`}>{u.center}</span>}
           {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
           {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
           {u.deliveryISO && <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span>}
           {canAssign && (
             <span className="ms-auto inline-flex items-center gap-1 shrink-0">
-              {target && (
+              {target && target.center === u.center && (
                 <button
                   type="button" className="btn btn-sm btn-primary px-2" disabled={a.pending} title={`Put it on ${target.code}, at the back of its queue`}
                   onClick={() => { const fd = new FormData(); fd.set("dept", board.dept); fd.set("bom", u.bom); fd.set("mo", u.mo); fd.set("item", u.item); fd.set("machineId", String(target.id)); a.run(assignLineMachine, fd); }}
@@ -317,7 +353,7 @@ function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoa
                   → {target.code}
                 </button>
               )}
-              <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} machines={board.machines} current={undefined} canEdit={canAssign} compact />
+              <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} machines={machinesAt(board, u.center)} current={undefined} canEdit={canAssign} compact />
             </span>
           )}
         </li>
@@ -427,6 +463,9 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
     );
   }
   const tone = loadTone(card.load);
+  // the lines this machine's own work centre still owes — a bender is never
+  // offered a job that wants a laser
+  const mine = board.unassigned.filter((u) => u.center === m.center || board.machines.every((x) => x.center !== u.center));
   return (
     <div className="space-y-2">
       <div>
@@ -467,13 +506,13 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
           </ol>
         )}
       </div>
-      {canAssign && board.unassigned.length > 0 && (
+      {canAssign && mine.length > 0 && (
         <select
           className="w-full border rounded-md px-2 py-1.5 bg-surface text-xs font-semibold" value="" disabled={a.pending} aria-label="Put a line on it"
-          onChange={(e) => { const u = board.unassigned[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
+          onChange={(e) => { const u = mine[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
         >
-          <option value="">＋ Put a line on it… ({board.unassigned.length} waiting)</option>
-          {board.unassigned.map((u, i) => <option key={u.key} value={i}>{u.bom} {u.item} ×{u.remaining}{u.partial ? ` (rest of ${u.lineRemaining})` : ""}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
+          <option value="">＋ Put a line on it… ({mine.length} waiting{multiCentre(board) ? ` for ${CENTER_LABEL[m.center] ?? m.center}` : ""})</option>
+          {mine.map((u, i) => <option key={`${u.key}#${u.center}`} value={i}>{u.bom} {u.item} ×{u.remaining}{u.partial ? ` (rest of ${u.lineRemaining})` : ""}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
         </select>
       )}
       {a.err && <div className="text-[11px] text-bad-fg">{a.err}</div>}

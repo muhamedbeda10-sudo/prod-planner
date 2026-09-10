@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDeptEdit } from "@/lib/server/auth";
+import { getOptimizerInputs } from "@/lib/server/machineBoard";
+import { optimizePlan } from "@/lib/domain/optimizePlan";
+import { factoryDayISO } from "@/lib/domain/dates";
+import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 
 // The machine board's writes: put a worklist line on a machine (or take it
 // off), move it up or down that machine's queue, empty a machine. The
@@ -12,6 +16,10 @@ import { requireDeptEdit } from "@/lib/server/auth";
 export interface MachineActionResult {
   ok: boolean;
   error?: string;
+  /** What the ⚡ optimizer did, in one line for the planner. */
+  summary?: string;
+  /** Lines it could not get in on time, worst first — a warning, not a failure. */
+  lateNote?: string;
 }
 
 const BOARD_DEPTS = ["Cut", "Welding", "Painting", "ShotBlast"] as const;
@@ -217,4 +225,72 @@ export async function clearMachineQueue(fd: FormData): Promise<MachineActionResu
   await prisma.worklistMachine.deleteMany({ where: { dept, machineId } });
   revalidate();
   return { ok: true };
+}
+
+/** ⚡ Plan every machine of the department from the weekly plan: what runs
+ *  first, then next, on each one. Lines go in the order they are DUE, each to
+ *  the machine that finishes it soonest, split over machines of the same
+ *  centre when parallel work clears the batch sooner, and along the routing
+ *  (cut, then bend, then fins). What is RUNNING now is never moved — the plan
+ *  is built around it. */
+export async function optimizeMachines(fd: FormData): Promise<MachineActionResult> {
+  const dept = String(fd.get("dept") ?? "");
+  if (!(BOARD_DEPTS as readonly string[]).includes(dept)) return { ok: false, error: "This worklist has no machines." };
+  const guard = await requireDeptEdit(dept);
+  if (guard.error) return { ok: false, error: guard.error };
+  const word = machineWord(dept);
+  const dayISO = factoryDayISO(new Date());
+  const { machines, lines, pins } = await getOptimizerInputs(dept as BoardDept, dayISO);
+  if (machines.every((m) => m.availableH <= 0)) {
+    return { ok: false, error: `No ${word} has its hours a day set — put them in Tools → Machines first, then plan.` };
+  }
+  const plan = optimizePlan(machines, lines, pins);
+  if (plan.placements.length === 0) {
+    return { ok: true, summary: `Nothing to plan — every open line is already running on a ${word}.` };
+  }
+
+  // how many pieces of a step the plan gives out, so a share that covers the
+  // whole step is stored as "the rest" and follows the line as output lands
+  const perStep = new Map<string, number>();
+  for (const p of plan.placements) perStep.set(`${p.key}#${p.center}`, (perStep.get(`${p.key}#${p.center}`) ?? 0) + 1);
+  const stepPieces = new Map<string, number>();
+  for (const l of lines) for (const r of l.route) stepPieces.set(`${l.key}#${r.center}`, r.pieces ?? l.pieces);
+  const pinnedStep = new Set(pins.map((p) => `${p.key}#${p.center}`));
+  const by = guard.user?.name ?? null;
+
+  await prisma.$transaction(async (tx) => {
+    // the running work stays exactly where it is; everything else is re-planned
+    await tx.worklistMachine.deleteMany({ where: { dept, running: false } });
+    const running = await tx.worklistMachine.findMany({ where: { dept, running: true } });
+    const held = new Map(running.map((r) => [`${r.bom}|${r.mo}|${r.item}#${r.machineId}`, r]));
+    const base = new Map<number, number>();
+    for (const r of running) base.set(r.machineId, (base.get(r.machineId) ?? 0) + 1);
+
+    for (const p of plan.placements) {
+      const [bom, mo, item] = p.key.split("|");
+      const stepKey = `${p.key}#${p.center}`;
+      const whole = perStep.get(stepKey) === 1 && !pinnedStep.has(stepKey) && p.pieces >= (stepPieces.get(stepKey) ?? p.pieces);
+      const already = held.get(`${p.key}#${p.machineId}`);
+      if (already) {
+        // the plan puts more of the same line on the machine that runs it —
+        // its running row takes the extra pieces rather than a second row
+        if (already.qty !== null) await tx.worklistMachine.update({ where: { id: already.id }, data: { qty: already.qty + p.pieces } });
+        continue;
+      }
+      await tx.worklistMachine.create({
+        data: { dept, bom, mo, item, machineId: p.machineId, rank: (base.get(p.machineId) ?? 0) + p.rank, running: false, qty: whole ? null : p.pieces, setBy: by },
+      });
+    }
+  });
+  revalidate();
+
+  const bits = [`${plan.linesPlaced} line(s) over ${plan.machinesUsed} ${machineWord(dept, plan.machinesUsed !== 1)}`];
+  if (plan.spanDays > 0) bits.push(`clears in ${plan.spanDays} day(s)`);
+  if (plan.unpriced > 0) bits.push(`${plan.unpriced} with no standard time, queued last`);
+  const centresShort = [...new Set(plan.skipped.map((x) => x.center))];
+  if (centresShort.length > 0) bits.push(`no ${word} for ${centresShort.map((c) => CENTER_LABEL[c] ?? c).join(", ")}`);
+  const late = plan.late.length > 0
+    ? `${plan.late.length} line(s) cannot make their date — worst by ${plan.late[0].byDays} day(s). Add hours, or move the date.`
+    : undefined;
+  return { ok: true, summary: `Planned: ${bits.join(" · ")}.`, lateNote: late };
 }

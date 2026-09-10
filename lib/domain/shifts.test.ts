@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CENTERS, MACHINE_DEPTS, ROUTING, SHIFTS, dayTotals, isShiftCode, isShiftDept, lineHours, machineAvailable } from "./shifts";
+import { CENTERS, MACHINE_DEPTS, ROUTING, SHIFTS, centerShares, dayTotals, isShiftCode, isShiftDept, lineHours, machineAvailable, routeFor } from "./shifts";
 import { SHEET_ITEMS } from "./constants";
 
 describe("lineHours", () => {
@@ -50,5 +50,25 @@ describe("the plant's shape", () => {
     for (const it of SHEET_ITEMS) expect(ROUTING[it][0]).toBe("Cutting");
     expect(ROUTING.TN).toEqual(["Cutting", "Bending", "Fins"]);
     expect(ROUTING.TC).toEqual(["Cutting"]);
+  });
+
+  it("gives a department outside fabrication its one centre as the whole route", () => {
+    expect(routeFor("Painting", "TN")).toEqual(["Line"]);
+    expect(routeFor("Welding", "CF")).toEqual(["Zone"]);
+    expect(routeFor("Cut", "TN")).toEqual(["Cutting", "Bending", "Fins"]);
+    expect(routeFor("Cut", "AR")).toEqual(["Cutting"]); // no routing figures — cut only
+  });
+
+  it("splits a piece's stage hours over its own centres, by the crew that does the work", () => {
+    const tank = centerShares("Cut", "TN");
+    expect(Object.keys(tank)).toEqual(["Cutting", "Bending", "Fins"]);
+    expect(Object.values(tank).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 10);
+    expect(tank.Cutting).toBeCloseTo(15 / 33, 6);
+    expect(tank.Fins).toBeCloseTo(10 / 33, 6);
+    // a top cover never sees a press, so its whole cut is cutting
+    expect(centerShares("Cut", "TC")).toEqual({ Cutting: 1 });
+    // a core frame shares between the two centres it does pass
+    expect(centerShares("Cut", "CF").Bending).toBeCloseTo(8 / 23, 6);
+    expect(centerShares("Painting", "TN")).toEqual({ Line: 1 });
   });
 });

@@ -16,6 +16,14 @@ export interface BoardMachine {
   active: boolean;
 }
 
+/** One step of a line's route: a work centre it owes work at, and the hours
+ *  the remaining pieces cost THERE. */
+export interface BoardStep {
+  center: string;
+  /** Standard hours the remaining pieces cost this centre; null = no class known. */
+  hours: number | null;
+}
+
 /** One open worklist line, as the board needs it. */
 export interface BoardLine {
   /** bom|mo|item — the assignment's key. */
@@ -25,9 +33,14 @@ export interface BoardLine {
   item: string;
   description: string;
   remaining: number; // pieces this dept still owes on the line
-  /** Standard hours the remaining pieces cost this stage; null = no class known. */
+  /** Standard hours the remaining pieces cost this stage — all its centres
+   *  together; null = no class known. */
   hours: number | null;
   deliveryISO: string | null;
+  /** The centres the piece passes here, in order, each with its hours. Outside
+   *  fabrication that is the department's one centre; a tank owes cutting,
+   *  then bending, then fins — and the board queues it at each. */
+  route: readonly BoardStep[];
 }
 
 export interface Assignment {
@@ -49,6 +62,14 @@ export interface MachineQueueLine extends BoardLine {
   lineRemaining: number;
   /** Part of the line, not all of it — the rest sits elsewhere or waits unassigned. */
   split: boolean;
+  /** The machine's work centre — the step of the route this queue line is. */
+  center: string;
+  /** The step of the route this machine stands in for (its own centre, or the
+   *  route's first when the machine is off-route — a tube laser cutting). */
+  step: string;
+  /** Which step of the route this is, and how many there are: "bending, 2 of 3". */
+  stepNo: number;
+  stepCount: number;
 }
 
 export interface MachineCard {
@@ -76,11 +97,17 @@ export interface MachineCard {
   days: number | null;
 }
 
-/** A line, or the part of one, that no machine has yet. */
+/** A line, or the part of one, that no machine has yet — at ONE centre of its
+ *  route: a tank whose cutting is placed but whose bending is not shows here
+ *  as its bending. */
 export interface UnassignedLine extends BoardLine {
   /** The line's whole remaining quantity when only part of it is unassigned. */
   lineRemaining: number;
   partial: boolean;
+  /** The centre the pieces still need. */
+  center: string;
+  stepNo: number;
+  stepCount: number;
 }
 
 /** Where a line sits, for the tables' pickers: its first machine (a running
@@ -94,8 +121,13 @@ export interface LinePlacement {
   qty: number;
   /** Only part of the line is on it. */
   split: boolean;
-  /** Other machines holding a share of the line. */
+  /** Other machines sharing the SAME step of the route (a split). */
   others: number;
+  /** The further centres of the route and where they are queued — a tank cut
+   *  on B4-10 goes on to the bender and the fins line. */
+  next?: { center: string; machineId: number; code: string; rank: number; running: boolean }[];
+  /** Centres of the route with nothing placed yet. */
+  missing?: string[];
 }
 
 export interface MachineBoard {
@@ -127,49 +159,75 @@ export function buildMachineBoard(
   for (const l of lines) {
     if (!(l.remaining > 0)) continue;
     const prev = open.get(l.key);
-    if (!prev) open.set(l.key, { ...l });
+    if (!prev) open.set(l.key, { ...l, route: l.route.map((r) => ({ ...r })) });
     else {
       prev.remaining += l.remaining;
       prev.hours = prev.hours === null || l.hours === null ? null : prev.hours + l.hours;
+      const steps = prev.route as BoardStep[];
+      for (const r of l.route) {
+        const at = steps.find((x) => x.center === r.center);
+        if (!at) steps.push({ ...r });
+        else at.hours = at.hours === null || r.hours === null ? null : at.hours + r.hours;
+      }
       if (l.deliveryISO && (!prev.deliveryISO || l.deliveryISO < prev.deliveryISO)) prev.deliveryISO = l.deliveryISO;
     }
   }
 
+  const centerOf = new Map(machines.map((m) => [m.id, m.center]));
+  /** The step of the route a machine stands in for: its own centre when the
+   *  route names it, else the route's first — a tube laser or the roll-blank
+   *  laser is doing that line's cutting, on another machine. */
+  const stepFor = (l: BoardLine, machineId: number): string => {
+    const c = centerOf.get(machineId) ?? "";
+    return l.route.some((r) => r.center === c) ? c : l.route[0]?.center ?? c;
+  };
+  const stepHours = (l: BoardLine, step: string): number | null => l.route.find((r) => r.center === step)?.hours ?? l.route[0]?.hours ?? null;
+
   const byMachine = new Map<number, MachineQueueLine[]>();
-  // pieces of each line already given to a machine; a line can be split over
-  // several — explicit quantities first, then a row with no quantity takes
-  // whatever is left, and anything beyond that waits unassigned
+  // pieces of each line already given to a machine, PER STEP of the route: a
+  // tank owes its 12 pieces to cutting AND to bending AND to fins, so each
+  // step fills up on its own. Explicit quantities are allocated first, then a
+  // row with no quantity takes what is left of that step, and anything beyond
+  // that waits unassigned.
   const given = new Map<string, number>();
   const seen = new Set<string>();
   // running lines first, then the waiting ones, each group in rank order
   const ordered = [...assignments].sort((x, y) => Number(!!y.running) - Number(!!x.running) || x.rank - y.rank);
   const explicit = ordered.filter((a) => a.qty !== null && a.qty !== undefined);
   const open_ = ordered.filter((a) => a.qty === null || a.qty === undefined);
-  const pending: { a: Assignment; pcs: number }[] = [];
+  const pending: { a: Assignment; pcs: number; step: string }[] = [];
   for (const a of [...explicit, ...open_]) {
     const l = open.get(a.key);
     const pairKey = `${a.key}#${a.machineId}`;
     if (!l || seen.has(pairKey)) continue;
     seen.add(pairKey);
-    const left = Math.max(0, l.remaining - (given.get(a.key) ?? 0));
+    const step = stepFor(l, a.machineId);
+    const pool = `${a.key}#${step}`;
+    const left = Math.max(0, l.remaining - (given.get(pool) ?? 0));
     const pcs = a.qty !== null && a.qty !== undefined ? Math.min(Math.max(0, Math.floor(a.qty)), left) : left;
     if (pcs <= 0) continue;
-    given.set(a.key, (given.get(a.key) ?? 0) + pcs);
-    pending.push({ a, pcs });
+    given.set(pool, (given.get(pool) ?? 0) + pcs);
+    pending.push({ a, pcs, step });
   }
   // back in queue order (the allocation walk above put explicit rows first)
   pending.sort((x, y) => ordered.indexOf(x.a) - ordered.indexOf(y.a));
-  for (const { a, pcs } of pending) {
+  for (const { a, pcs, step } of pending) {
     const l = open.get(a.key)!;
     if (!byMachine.has(a.machineId)) byMachine.set(a.machineId, []);
     const share = pcs / l.remaining;
+    const h = stepHours(l, step);
+    const stepNo = Math.max(0, l.route.findIndex((r) => r.center === step)) + 1;
     byMachine.get(a.machineId)!.push({
       ...l,
       remaining: pcs,
-      hours: l.hours === null ? null : round1(l.hours * share),
+      hours: h === null ? null : round1(h * share),
       rank: 0, running: !!a.running,
       lineRemaining: l.remaining,
       split: pcs < l.remaining,
+      center: centerOf.get(a.machineId) ?? step,
+      step,
+      stepNo,
+      stepCount: l.route.length,
     });
   }
 
@@ -205,15 +263,25 @@ export function buildMachineBoard(
     };
   });
 
-  const unassigned: UnassignedLine[] = [...open.values()]
-    .map((l) => {
-      const left = l.remaining - (given.get(l.key) ?? 0);
-      if (left <= 0) return null;
-      const partial = left < l.remaining;
-      return { ...l, remaining: left, hours: l.hours === null ? null : round1((l.hours * left) / l.remaining), lineRemaining: l.remaining, partial };
-    })
-    .filter((l): l is UnassignedLine => l !== null)
-    .sort(urgencyOrder);
+  // what still needs a machine, one row per step of the route that is short
+  const unassigned: UnassignedLine[] = [];
+  for (const l of open.values()) {
+    l.route.forEach((r, i) => {
+      const leftPcs = l.remaining - (given.get(`${l.key}#${r.center}`) ?? 0);
+      if (leftPcs <= 0) return;
+      unassigned.push({
+        ...l,
+        remaining: leftPcs,
+        hours: r.hours === null ? null : round1((r.hours * leftPcs) / l.remaining),
+        lineRemaining: l.remaining,
+        partial: leftPcs < l.remaining,
+        center: r.center,
+        stepNo: i + 1,
+        stepCount: l.route.length,
+      });
+    });
+  }
+  unassigned.sort((a, b) => urgencyOrder(a, b) || a.stepNo - b.stepNo);
   return { cards, unassigned, totalHours: round1(totalHours), totalAvailableH: totalAvailableH === null ? null : round1(totalAvailableH) };
 }
 

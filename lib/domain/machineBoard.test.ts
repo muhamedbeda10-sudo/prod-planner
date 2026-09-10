@@ -4,6 +4,13 @@ import { buildMachineBoard, lineKey, loadTone, urgencyOrder, type BoardLine, typ
 const m = (id: number, over: Partial<BoardMachine> = {}): BoardMachine => ({ id, code: `B4-${id}`, name: `Laser ${id}`, center: "Cutting", hoursPerDay: 9, active: true, ...over });
 const l = (bom: string, item: string, remaining: number, hours: number | null, deliveryISO: string | null = "2026-09-12", mo = "MO-1"): BoardLine => ({
   key: lineKey(bom, mo, item), bom, mo, item, description: "", remaining, hours, deliveryISO,
+  route: [{ center: "Cutting", hours }],
+});
+/** A line that owes work at several centres — a tank is cut, bent, then finned. */
+const routed = (bom: string, item: string, remaining: number, steps: [string, number][], deliveryISO: string | null = "2026-09-12", mo = "MO-1"): BoardLine => ({
+  key: lineKey(bom, mo, item), bom, mo, item, description: "", remaining,
+  hours: steps.reduce((s, [, h]) => s + h, 0), deliveryISO,
+  route: steps.map(([center, hours]) => ({ center, hours })),
 });
 
 describe("buildMachineBoard", () => {
@@ -101,6 +108,54 @@ describe("buildMachineBoard", () => {
   it("marks a whole line on one machine as not split", () => {
     const b = buildMachineBoard([m(1)], [l("A", "TN", 20, 10)], [{ key: lineKey("A", "MO-1", "TN"), machineId: 1, rank: 1, qty: 20 }]);
     expect(b.cards[0].queue[0]).toMatchObject({ remaining: 20, split: false, lineRemaining: 20 });
+    expect(b.unassigned).toEqual([]);
+  });
+
+  it("queues a line at every centre of its route, and asks for the ones still missing", () => {
+    const shop = [m(1, { center: "Cutting" }), m(2, { center: "Bending" }), m(3, { center: "Fins" })];
+    const tank = routed("A", "TN", 10, [["Cutting", 6], ["Bending", 3], ["Fins", 4]]);
+    const b = buildMachineBoard(shop, [tank], [
+      { key: lineKey("A", "MO-1", "TN"), machineId: 1, rank: 1, running: true },
+      { key: lineKey("A", "MO-1", "TN"), machineId: 2, rank: 1 },
+    ]);
+    // the SAME ten pieces are owed to cutting and to bending — not six and four
+    expect(b.cards[0].queue[0]).toMatchObject({ remaining: 10, hours: 6, center: "Cutting", split: false, stepNo: 1, stepCount: 3 });
+    expect(b.cards[1].queue[0]).toMatchObject({ remaining: 10, hours: 3, center: "Bending", stepNo: 2 });
+    expect(b.cards[2].queue).toEqual([]);
+    expect(b.unassigned).toHaveLength(1);
+    expect(b.unassigned[0]).toMatchObject({ center: "Fins", remaining: 10, hours: 4, partial: false, stepNo: 3 });
+    expect(b.totalHours).toBe(9);
+  });
+
+  it("splits the pieces of ONE centre without touching the others", () => {
+    const shop = [m(1, { center: "Cutting" }), m(2, { center: "Cutting" }), m(3, { center: "Bending" })];
+    const b = buildMachineBoard(shop, [routed("A", "CF", 10, [["Cutting", 10], ["Bending", 5]])], [
+      { key: lineKey("A", "MO-1", "CF"), machineId: 1, rank: 1, qty: 6 },
+      { key: lineKey("A", "MO-1", "CF"), machineId: 2, rank: 1 },
+      { key: lineKey("A", "MO-1", "CF"), machineId: 3, rank: 1 },
+    ]);
+    expect(b.cards.map((c) => c.queue.map((q) => [q.center, q.remaining, q.hours]))).toEqual([
+      [["Cutting", 6, 6]], [["Cutting", 4, 4]], [["Bending", 10, 5]],
+    ]);
+    expect(b.unassigned).toEqual([]);
+  });
+
+  it("lists what a centre still lacks even when the line runs elsewhere on its route", () => {
+    const shop = [m(1, { center: "Cutting" }), m(2, { center: "Bending" })];
+    const b = buildMachineBoard(shop, [routed("A", "CB", 8, [["Cutting", 8], ["Bending", 4]])], [
+      { key: lineKey("A", "MO-1", "CB"), machineId: 1, rank: 1, qty: 5 },
+    ]);
+    expect(b.unassigned.map((u) => [u.center, u.remaining, u.partial])).toEqual([["Cutting", 3, true], ["Bending", 8, false]]);
+  });
+
+  it("prices a machine off the route as the step it stands in for", () => {
+    const shop = [m(1, { center: "Cutting" }), m(2, { center: "Tubes" })];
+    const b = buildMachineBoard(shop, [routed("A", "TC", 4, [["Cutting", 8]])], [
+      { key: lineKey("A", "MO-1", "TC"), machineId: 2, rank: 1 },
+    ]);
+    // the tube laser is doing that line's cutting — same hours, and cutting is
+    // no longer asking for it
+    expect(b.cards[1].queue[0]).toMatchObject({ center: "Tubes", step: "Cutting", hours: 8, remaining: 4 });
     expect(b.unassigned).toEqual([]);
   });
 
