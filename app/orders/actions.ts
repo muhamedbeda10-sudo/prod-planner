@@ -42,6 +42,23 @@ export async function setOrderQty(formData: FormData): Promise<{ ok: boolean; er
   return { ok: true };
 }
 
+/** SFM — the one spec column no plan sheet carries, so the planner types it on
+ *  the tracker. Free text: it is a size on some orders and a dash on others,
+ *  and the sheet's own dashes are worth keeping as typed. */
+export async function setOrderSfm(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const guard = await requirePerm("tracker.qty");
+  if (guard.error) return { ok: false, error: guard.error };
+  const mo = String(formData.get("mo") ?? "").trim();
+  if (!mo) return { ok: false, error: "Missing MO." };
+  const raw = String(formData.get("sfm") ?? "").trim();
+  if (raw.length > 40) return { ok: false, error: "Keep SFM under 40 characters." };
+  const order = await prisma.masterOrder.findUnique({ where: { mo } });
+  if (!order) return { ok: false, error: `MO ${mo} not found.` };
+  await prisma.masterOrder.update({ where: { mo }, data: { sfm: raw || null } });
+  for (const p of ["/tracker", "/orders"]) revalidatePath(p);
+  return { ok: true };
+}
+
 /** tracker.priority — flag/unflag an order as PRIORITY: it shows in a dedicated
  *  table on top of every dept worklist until its work is done. */
 export async function setOrderPriority(formData: FormData): Promise<{ ok: boolean; error?: string }> {

@@ -30,6 +30,8 @@ export interface MonthlyOrderRow {
   rating: string | null;
   secItem: string | null;
   planQty: number;
+  fins: string | null;
+  crcSize: string | null;
   colorRal: string | null;
   remarks: string | null;
   done: DoneMatrix; // raw sheet values (see applyCascade for the effective view)
@@ -88,6 +90,8 @@ export interface ExistingOrderFields {
   rating: string | null;
   secItem: string | null;
   planQty: number;
+  fins?: string | null;
+  crcSize?: string | null;
   colorRal: string | null;
   remarks: string | null;
   ospCF: number;
@@ -135,6 +139,9 @@ export function diffRevisionRow(row: MonthlyOrderRow, cur: ExistingOrderFields):
   push("FG Code", T(cur.fgCode), T(row.fgCode));
   push("KVA", T(cur.kva), T(row.kva));
   push("Rating", T(cur.rating), T(row.rating));
+  // a sheet without these columns says nothing about them — it is not a change
+  if (row.fins !== null) push("Fins", T(cur.fins), T(row.fins));
+  if (row.crcSize !== null) push("CRC Size", T(cur.crcSize), T(row.crcSize));
   push("SEC Item", T(cur.secItem), T(row.secItem));
   push("Color RAL", T(cur.colorRal), T(row.colorRal));
   push("Remarks", T(cur.remarks), T(row.remarks));
@@ -169,7 +176,13 @@ const HEADERS: Record<string, string> = {
   PLANQTY: "planQty",
   QTY: "planQty", // Rev 5.0 monthly sheets shortened the header to "QTY"
   KV: "rating", // and label the rating column just "KV"
+  FINS: "fins",
+  CRCSIZE: "crcSize",
+  CRC: "crcSize",
+  CRCSIZEMM: "crcSize",
   COLORRAL: "colorRal",
+  COLOR: "colorRal",
+  RAL: "colorRal",
   REVREMARKS: "remarks",
   REMARKS: "remarks",
 };
@@ -281,6 +294,8 @@ export function parseMonthlyPlan(grid: unknown[][]): ParsedMonthly {
       bom,
       kva: clean(get("kva")),
       rating: clean(get("rating")),
+      fins: clean(get("fins")),
+      crcSize: clean(get("crcSize")),
       secItem: clean(get("secItem")),
       planQty: cols.planQty === undefined ? 0 : N(row[cols.planQty]),
       colorRal: clean(get("colorRal")),

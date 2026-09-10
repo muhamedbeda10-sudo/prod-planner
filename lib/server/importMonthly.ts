@@ -75,6 +75,8 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
         rating: r.rating,
         secItem: r.secItem,
         planQty: r.planQty,
+        fins: r.fins,
+        crcSize: r.crcSize,
         colorRal: r.colorRal,
         remarks: r.remarks,
         source: sourceLabel,
@@ -118,6 +120,9 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
             rating: r.rating,
             secItem: r.secItem,
             planQty, // never lowered here — decreases stay manual
+            // a sheet that does not carry these columns leaves what is there
+            ...(r.fins !== null ? { fins: r.fins } : {}),
+            ...(r.crcSize !== null ? { crcSize: r.crcSize } : {}),
             colorRal: r.colorRal,
             remarks: r.remarks,
             ospCF: r.osp.CF,

@@ -151,7 +151,9 @@ export async function getWeekSnapshot(planNo: number): Promise<ReportPlanRow[]> 
       // MO planned this week but missing from the registry — show it with zeros
       const o = orders.find((x) => x.mo === mo)!;
       members.push({
-        mo, bom: o.bom, soi: o.soi, urgent: false, kva: null, rating: null, required: requiredOf.get(mo) ?? 0,
+        mo, bom: o.bom, soi: o.soi, urgent: false, kva: null, rating: null,
+        fins: null, crcSize: null, colorRal: null, sfm: null,
+        required: requiredOf.get(mo) ?? 0,
         items: {
           CF: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true },
           TC: { cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true },
