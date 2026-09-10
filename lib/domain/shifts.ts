@@ -33,20 +33,22 @@ export function isShiftDept(x: string): x is ShiftDept {
  *  asks which machine a worker was on and records downtime. Welding has no
  *  machines: its "machines" are PARTITIONS of the bay, each a group of
  *  welders working the same orders — they live on the same list so a
- *  partition can be loaded, staffed and drawn like a machine. Bending, for
- *  now, is a stage worked by people with nothing to pick. */
+ *  partition can be loaded, staffed and drawn like a machine. The bending
+ *  presses are one machine on the list too — the plant runs about ten of
+ *  them and plans them as a single centre. */
 export const MACHINE_DEPTS: readonly ShiftDept[] = ["Cut", "Welding", "ShotBlast", "Painting"];
 
 /** A work centre: the machines that do the same job. A job on "Cutting" can
  *  go to any laser or punch. */
 export const CENTERS: Record<ShiftDept, readonly string[]> = {
-  Cut: ["Cutting", "Fins", "Tubes", "RollBlank"],
+  Cut: ["Cutting", "Bending", "Fins", "Tubes", "RollBlank"],
   Welding: ["Zone"],
   ShotBlast: ["Line"],
   Painting: ["Line"],
 };
 export const CENTER_LABEL: Record<string, string> = {
   Cutting: "Cutting (laser / punch)",
+  Bending: "Bending (presses)",
   Fins: "Fins",
   Tubes: "Laser tubes",
   RollBlank: "Laser roll blank",
@@ -62,15 +64,44 @@ export function machineWord(dept: string, plural = false): string {
 }
 
 /** The route each component takes through fabrication, in order: cut on a
- *  laser or punch, then bent, and the tank's fins folded. Recorded from the
- *  planner's routing sheet for the machine load board; nothing consumes it
- *  yet. */
+ *  laser or punch, then bent, and the tank's fins folded — the planner's
+ *  routing sheet. A piece owes work at EVERY centre on its route, so the load
+ *  board queues it on one machine per centre and the planner sequences each. */
 export const ROUTING: Record<SheetItem, readonly ("Cutting" | "Bending" | "Fins")[]> = {
   CF: ["Cutting", "Bending"],
   TC: ["Cutting"],
   TN: ["Cutting", "Bending", "Fins"],
   CB: ["Cutting", "Bending"],
 };
+
+/** The crew each fabrication work centre carries, from the capacity sheet
+ *  ("available manpower: laser 15 + bending 8 + fin folding 10 people").
+ *  Two jobs: it seeds a machine's hours a day, and it SPLITS an item's cut
+ *  hours over the centres its route visits — the timings sheet prices the
+ *  whole stage ("Cut = laser + bending + fin folding"), never each centre. */
+export const CENTER_CREW: Record<string, number> = { Cutting: 15, Bending: 8, Fins: 10 };
+
+/** The centres a line must pass in this department, in order. Outside
+ *  fabrication a department is one centre, so the route is that one step. */
+export function routeFor(dept: string, item: string): readonly string[] {
+  if (dept !== "Cut") return dept === "Welding" ? ["Zone"] : ["Line"];
+  return ROUTING[item as SheetItem] ?? ["Cutting"]; // AR / MB — cut only
+}
+
+/** How ONE piece's stage hours divide over the centres of its route, in
+ *  proportion to the crew that does the work, normalised over that item's own
+ *  route: a top cover never sees bending, so its whole cut is cutting; a tank
+ *  splits over all three. INFERRED — the sheet gives the stage total and the
+ *  centre crews, not the hours per centre — so the split is a plan estimate,
+ *  and a machine's hours a day (Tools → Machines) is what tunes it. */
+export function centerShares(dept: string, item: string): Record<string, number> {
+  const route = routeFor(dept, item);
+  const weights = route.map((c) => CENTER_CREW[c] ?? 1);
+  const total = weights.reduce((s, w) => s + w, 0) || 1;
+  const out: Record<string, number> = {};
+  route.forEach((c, i) => { out[c] = weights[i] / total; });
+  return out;
+}
 
 export interface ShiftLine {
   present: boolean;

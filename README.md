@@ -94,8 +94,12 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    re-sums the department's man-hours into the figure the calibration and the plan's capacity check read
    (Admin → Standard Times shows it read-only now). Recording needs `shifts.<dept>`; viewing is free.
    **Machines & lines** (Tools → Machines, `machines.manage`): the plant's machines by department — code,
-   name, work centre (every laser and punch is "Cutting"; fins, tubes, roll blank; a paint line or
+   name, work centre (every laser and punch is "Cutting"; bending, fins, tubes, roll blank; a paint line or
    shot-blast cabinet is a "Line"), hours a day, retire / bring back — seeded from the fabrication list.
+   The plant's ten-odd **bending presses are one machine** (`BND-1`) for now: one queue, one load. Hours a
+   day are seeded from the capacity sheet's own crews (laser 15 + bending 8 + fin folding 10 people on the
+   11-hour shift → 15 h a machine, 88 for bending, 110 for fins; 22 a shot-blast cabinet, 159.5 a paint
+   line), so fabrication totals the 363 man-hours a day the sheet states. Editing a figure keeps it.
 10. **Machine board** (top of the Fabrication and Painting worklists) — who is on what: a card per machine
    with what it is on **now**, what waits behind it in the order the planner ranked it (⏫ run next, ▲ ▼, ✕),
    the queue priced in standard hours against the hours the machine has today (its hours a day less the
@@ -121,9 +125,22 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    machine — what runs now, then what is next in order, with pieces, standard hours, delivery date, the
    crew and a Done column to tick — and **Print all sheets** prints every machine of the department, one per
    page, to hand out at the start of the shift (`/worklist/machines?dept=Cut&machine=…`).
+   **Routing is respected**: a piece owes work at every work centre its route names — a tank is cut, then
+   bent, then its fins folded; a top cover is only cut — so a line queues **once per centre**, each priced
+   with that centre's share of the stage's standard hours (the timings sheet prices "Cut = laser + bending
+   + fin folding" as one stage, and the share follows the crew that does the work). The board's list of
+   work still to place names the centre on every row and only offers that centre's machines; a table row
+   shows where the line goes next (→ BND-1) and what it still **needs** (amber "needs bending").
    Welding has no machines but **partitions** of the bay — groups of welders on the same orders — kept on
    the same list (centre "Zone"), so the welding worklist, the shift log ("which partition") and the board
    treat a partition like a machine, with the welders the shift log put on it today.
+   **⚡ Plan the machines** (on the board and in the Floor toolbar, `lib/domain/optimizePlan.ts`) fills every
+   queue in one go: lines in the order they are **due** (the weekly plan's date for this stage, then the
+   flagged orders, then the longest job), each on the machine that **finishes** it soonest, split over
+   machines of the same centre when running them in parallel clears the batch sooner, and along the route
+   so the bender never starts before that batch is cut. What is **running now is never moved** — the plan is
+   built around it. It answers with what it did: lines placed, machines used, when the last piece clears,
+   which lines cannot make their date and by how much, and any centre with no machine to run it.
 11. **Floor** (Simulator → Floor) — each department's bay drawn as the planner sees it: place the machines
    (or partitions) as blocks, drag them where they stand, pull a corner to resize, draw areas ("Laser hall",
    "Bending & fins") and labels around them, zoom — the drawing saves itself a moment after every change, so

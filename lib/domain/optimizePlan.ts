@@ -1,0 +1,267 @@
+import { round1 } from "@/lib/domain/shifts";
+
+// ⚡ The optimizer behind the worklists' "Plan the machines" button — pure.
+//
+// It answers the planner's question: given what the weekly plan promises and
+// the machines the department has, WHAT SHOULD EACH MACHINE RUN, AND IN WHAT
+// ORDER, so the promises are kept and the work clears as soon as it can.
+//
+// The rule is the one a planner uses by hand, done consistently and to the
+// hour: take the lines in the order they are DUE (the weekly plan's date
+// first, then the flagged orders, then the longest job — long jobs left to
+// the end are what make a week overrun), and give each one to the machine
+// that can FINISH it first, not the one that is free first. A line's pieces
+// split over several machines of the same centre when running them in
+// parallel finishes the batch sooner. Routing is respected: a tank is cut,
+// then bent, then finned, and the bender cannot start before the cutting of
+// that batch is done, so the schedule walks the route in order.
+//
+// Time is measured in WORKING DAYS from today, each machine at its own pace
+// (its hours a day less today's downtime), because that is the only unit that
+// compares a laser at 15 h a day with the bending presses at 88.
+
+/** A machine the plan may use. `availableH` is its hours on a working day; a
+ *  machine with none (nobody set it) is not schedulable. */
+export interface OptMachine {
+  id: number;
+  code: string;
+  center: string;
+  availableH: number;
+}
+
+/** One centre a line owes work at, the pieces still to place there and the
+ *  hours THOSE pieces cost. `pieces` defaults to the line's — it is lower only
+ *  when part of the step is already running on a machine. */
+export interface OptStep {
+  center: string;
+  hours: number;
+  pieces?: number;
+}
+
+export interface OptLine {
+  key: string;
+  /** Pieces still to place — the same pieces are owed at every step. */
+  pieces: number;
+  route: readonly OptStep[];
+  /** Working days from today the stage must be finished in; null = no date,
+   *  which goes after everything dated. */
+  dueDay: number | null;
+  /** The order is flagged ⭐ — it wins among lines due the same day. */
+  urgent?: boolean;
+}
+
+/** Work already running on a machine: it keeps its place, and the plan is
+ *  built around it. */
+export interface OptPin {
+  key: string;
+  center: string;
+  machineId: number;
+  pieces: number;
+  hours: number;
+}
+
+export interface OptPlacement {
+  key: string;
+  /** The centre this batch is worked at — the machine's own. */
+  center: string;
+  machineId: number;
+  pieces: number;
+  /** Position among the placements on that machine, 1-based. */
+  rank: number;
+  startDay: number;
+  endDay: number;
+}
+
+export interface OptSkip {
+  key: string;
+  center: string;
+  reason: "no machine" | "nothing left";
+}
+
+export interface OptResult {
+  placements: OptPlacement[];
+  /** Steps that could not be planned — the centre has no machine with hours. */
+  skipped: OptSkip[];
+  /** Lines that got at least one placement. */
+  linesPlaced: number;
+  machinesUsed: number;
+  /** Working days until the last piece clears. */
+  spanDays: number;
+  /** Lines that finish after their date, worst first. */
+  late: { key: string; dueDay: number; endDay: number; byDays: number }[];
+  /** Lines queued with no standard time — they cost the schedule nothing. */
+  unpriced: number;
+}
+
+/** A split has to save at least this much of a day, and this much of the
+ *  batch's own length, to be worth making. */
+const MIN_GAIN = 0.05;
+const MIN_GAIN_FRAC = 0.1;
+/** A job shorter than half a machine-day stays whole — chasing an hour by
+ *  cutting a small batch in two just gives the floor two setups. */
+const WHOLE_UNDER_DAYS = 0.5;
+/** Never cut one batch over more machines than this — a queue of slivers is
+ *  worse to work than a slightly later finish. */
+const MAX_SPLIT = 4;
+
+const lineHours = (l: OptLine) => l.route.reduce((s, r) => s + Math.max(0, r.hours), 0);
+
+/** Split `pieces` in proportion to `weights`, keeping whole pieces and the
+ *  exact total (largest remainder), never leaving a machine with none. */
+function sharePieces(pieces: number, weights: number[]): number[] {
+  const total = weights.reduce((s, w) => s + w, 0);
+  if (!(total > 0)) return weights.map((_, i) => (i === 0 ? pieces : 0));
+  const exact = weights.map((w) => (pieces * w) / total);
+  const out = exact.map((x) => Math.floor(x));
+  let left = pieces - out.reduce((s, n) => s + n, 0);
+  const order = exact.map((x, i) => ({ i, frac: x - Math.floor(x) })).sort((a, b) => b.frac - a.frac);
+  for (const { i } of order) {
+    if (left <= 0) break;
+    out[i] += 1;
+    left -= 1;
+  }
+  return out;
+}
+
+export function optimizePlan(
+  machines: readonly OptMachine[],
+  lines: readonly OptLine[],
+  pins: readonly OptPin[] = [],
+  opts: { maxSplit?: number } = {}
+): OptResult {
+  const maxSplit = Math.max(1, opts.maxSplit ?? MAX_SPLIT);
+  const usable = machines.filter((m) => m.availableH > 0);
+  const byCenter = new Map<string, OptMachine[]>();
+  for (const m of usable) (byCenter.get(m.center) ?? byCenter.set(m.center, []).get(m.center)!).push(m);
+
+  // what is already running holds its machine, and the plan queues behind it
+  const free = new Map<number, number>();
+  const pinnedEnd = new Map<string, number>();
+  for (const p of pins) {
+    const m = usable.find((x) => x.id === p.machineId);
+    if (!m) continue;
+    const end = (free.get(m.id) ?? 0) + Math.max(0, p.hours) / m.availableH;
+    free.set(m.id, end);
+    const k = `${p.key}#${p.center}`;
+    pinnedEnd.set(k, Math.max(pinnedEnd.get(k) ?? 0, end));
+  }
+
+  // due first, then the flagged orders, then the longest job, then the key so
+  // the same board always plans the same way
+  const queue = [...lines].sort(
+    (a, b) =>
+      (a.dueDay ?? Number.POSITIVE_INFINITY) - (b.dueDay ?? Number.POSITIVE_INFINITY) ||
+      Number(!!b.urgent) - Number(!!a.urgent) ||
+      lineHours(b) - lineHours(a) ||
+      a.key.localeCompare(b.key)
+  );
+
+  const placements: OptPlacement[] = [];
+  const skipped: OptSkip[] = [];
+  const late: OptResult["late"] = [];
+  const placedKeys = new Set<string>();
+  let unpriced = 0;
+  let span = 0;
+
+  for (const l of queue) {
+    if (!(l.pieces > 0) || l.route.length === 0) continue;
+    if (lineHours(l) <= 0) unpriced += 1;
+    // the route runs in order: nothing can be bent before it is cut
+    let ready = 0;
+    for (const step of l.route) {
+      // Work of this step already running holds its machine and its place. It
+      // does NOT hold up the rest of the step — the pieces still to place run
+      // beside it on other machines — but the NEXT centre waits for all of it.
+      const pinned = pinnedEnd.get(`${l.key}#${step.center}`);
+      const pieces = step.pieces ?? l.pieces;
+      if (pieces <= 0) {
+        if (pinned !== undefined) ready = Math.max(ready, pinned);
+        continue; // the whole step is on a machine already
+      }
+      const cands = (byCenter.get(step.center) ?? []).slice();
+      if (cands.length === 0) {
+        skipped.push({ key: l.key, center: step.center, reason: "no machine" });
+        continue;
+      }
+      const hours = Math.max(0, step.hours);
+      // when each machine could start this batch, soonest first
+      const starts = new Map(cands.map((m) => [m.id, Math.max(free.get(m.id) ?? 0, ready)]));
+      cands.sort((x, y) => starts.get(x.id)! - starts.get(y.id)! || y.availableH - x.availableH || x.id - y.id);
+
+      // one machine, or several in parallel finishing together — whichever
+      // clears the batch earliest (water-filling over the least loaded)
+      let bestK = 1;
+      let bestEnd = starts.get(cands[0].id)! + hours / cands[0].availableH;
+      const single = bestEnd;
+      const worthSplitting = hours >= WHOLE_UNDER_DAYS * cands[0].availableH;
+      for (let k = 2; worthSplitting && k <= Math.min(cands.length, maxSplit, pieces); k += 1) {
+        const group = cands.slice(0, k);
+        const cap = group.reduce((s, m) => s + m.availableH, 0);
+        const weighted = group.reduce((s, m) => s + starts.get(m.id)! * m.availableH, 0);
+        const end = (hours + weighted) / cap;
+        if (end < starts.get(group[k - 1].id)! - 1e-9) continue; // that machine cannot help before `end`
+        if (end < bestEnd - Math.max(MIN_GAIN, MIN_GAIN_FRAC * (single - starts.get(cands[0].id)!))) {
+          bestEnd = end;
+          bestK = k;
+        }
+      }
+
+      let group = cands.slice(0, bestK);
+      let share = group.map((m) => Math.max(0, (bestEnd - starts.get(m.id)!) * m.availableH));
+      let split = sharePieces(pieces, share);
+      // a machine that ends up with no piece is not in the split
+      while (group.length > 1 && split.some((n) => n <= 0)) {
+        group = group.filter((_, i) => split[i] > 0);
+        const cap = group.reduce((s, m) => s + m.availableH, 0);
+        const weighted = group.reduce((s, m) => s + starts.get(m.id)! * m.availableH, 0);
+        bestEnd = cap > 0 ? (hours + weighted) / cap : bestEnd;
+        share = group.map((m) => Math.max(0, (bestEnd - starts.get(m.id)!) * m.availableH));
+        split = sharePieces(pieces, share);
+      }
+      if (group.length === 1) {
+        bestEnd = starts.get(group[0].id)! + hours / group[0].availableH;
+        split = [pieces];
+      }
+
+      group.forEach((m, i) => {
+        if (split[i] <= 0) return;
+        placements.push({
+          key: l.key,
+          center: step.center,
+          machineId: m.id,
+          pieces: split[i],
+          rank: 0,
+          startDay: round1(starts.get(m.id)!),
+          endDay: round1(bestEnd),
+        });
+        free.set(m.id, bestEnd);
+      });
+      placedKeys.add(l.key);
+      // the next centre starts once every piece of this one is through
+      ready = Math.max(ready, bestEnd, pinned ?? 0);
+    }
+    span = Math.max(span, ready);
+    if (l.dueDay !== null && ready > l.dueDay + 1e-9) late.push({ key: l.key, dueDay: l.dueDay, endDay: round1(ready), byDays: round1(ready - l.dueDay) });
+  }
+
+  // each machine's queue in the order the schedule runs it
+  const perMachine = new Map<number, OptPlacement[]>();
+  for (const p of placements) (perMachine.get(p.machineId) ?? perMachine.set(p.machineId, []).get(p.machineId)!).push(p);
+  for (const list of perMachine.values()) {
+    list.sort((a, b) => a.startDay - b.startDay || a.endDay - b.endDay || a.key.localeCompare(b.key));
+    list.forEach((p, i) => {
+      p.rank = i + 1;
+    });
+  }
+
+  late.sort((a, b) => b.byDays - a.byDays);
+  return {
+    placements,
+    skipped,
+    linesPlaced: placedKeys.size,
+    machinesUsed: perMachine.size,
+    spanDays: round1(span),
+    late,
+    unpriced,
+  };
+}
