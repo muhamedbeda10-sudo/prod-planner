@@ -96,6 +96,13 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    **Machines & lines** (Tools → Machines, `machines.manage`): the plant's machines by department — code,
    name, work centre (every laser and punch is "Cutting"; fins, tubes, roll blank; a paint line or
    shot-blast cabinet is a "Line"), hours a day, retire / bring back — seeded from the fabrication list.
+10. **Machine board** (top of the Fabrication and Painting worklists) — who is on what: a card per machine
+   with what it is on **now**, what waits behind it in the order the planner ranked it (⏫ run next, ▲ ▼, ✕),
+   the queue priced in standard hours against the hours the machine has today (its hours a day less the
+   downtime on the shift log — green to a full day, amber past it, red past a day and a half), pieces,
+   days of work, the crew the shift log put on it. Every table row carries a **Machine** picker ("this is
+   running on that now"), and the lines not on any machine are listed most urgent first with a picker each.
+   Recording output never touches the board: a line leaves it by itself once nothing remains on it.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

@@ -20,6 +20,8 @@ import type { WorkerDTO } from "@/lib/server/workers";
 import { TankWorkerPicker, NO_WORKER, type WorkerPick } from "@/components/TankWorkerPicker";
 import { TankSerialsPanel } from "@/components/TankSerialsPanel";
 import { TankPaintPicker } from "@/components/TankPaintPicker";
+import { MachinePick } from "@/components/MachineBoard";
+import type { MachineDTO } from "@/lib/server/machines";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -41,6 +43,8 @@ export function WeldingQueueTable({
   before,
   after,
   soi,
+  machines = [],
+  assigned = {},
 }: {
   rows: WeldQueueRow[];
   day: string;
@@ -63,7 +67,11 @@ export function WeldingQueueTable({
   tankTracking?: boolean;
   before?: React.ReactNode; // page sections rendered inside the scroll area, above the queue (priority / pushed)
   after?: React.ReactNode; // page sections at the bottom of the scroll area (hidden-lines panel)
+  /** PAINTING — the paint lines; with any, every row carries a Machine picker. */
+  machines?: MachineDTO[];
+  assigned?: Record<string, { machineId: number; rank: number }>;
 }) {
+  const hasMachines = machines.length > 0;
   const verb = dept === "Welding" ? "weld" : "paint";
   // display name for the upstream dept ("Cut" shows as "Fabrication")
   const upLabel = upstream === "Welded" ? "Welding" : deptLabel(upstream);
@@ -189,7 +197,7 @@ export function WeldingQueueTable({
     return { it, avail, maxAge };
   });
   const plansShown = new Set(rows.map((r) => r.planNo));
-  const cols = plansShown.size > 1 ? 12 : 11;
+  const cols = (plansShown.size > 1 ? 12 : 11) + (hasMachines ? 1 : 0);
 
   // shared BOMs: one summary row per BOM × item, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -449,6 +457,11 @@ export function WeldingQueueTable({
             )}
             {msg[k] && <div className="text-[11px] text-bad-fg mt-0.5">{msg[k]}</div>}
           </td>
+          {hasMachines && (
+            <td className="p-2 whitespace-nowrap">
+              <MachinePick dept={dept} bom={r.bom} mo={r.mo} item={r.item} machines={machines} current={assigned[`${r.bom}|${r.mo}|${r.item}`]} canEdit={canEdit} compact />
+            </td>
+          )}
           <td className="p-2 text-center whitespace-nowrap">
             <button
               type="button"
@@ -722,6 +735,7 @@ export function WeldingQueueTable({
               <th className="p-2 text-center" title={`Ready to ${verb} now (delivered by ${upLabel})`}>Available</th>
               <th className="p-2 text-center">Waiting</th>
               <th className="p-2 text-center w-44">Record {dept === "Welding" ? "welded" : "painted"}</th>
+              {hasMachines && <th className="p-2" title="Which line the work is on, and its place in that line's queue">Machine</th>}
               <th className="p-2 text-center">Notes</th>
             </tr>
           </thead>
@@ -838,6 +852,14 @@ export function WeldingQueueTable({
                         <span className="text-xs text-muted">{open ? "▲ collapse" : "▼ open MOs"}</span>
                       )}
                     </td>
+                    {hasMachines && (
+                      <td className="p-2 text-xs text-muted whitespace-nowrap">
+                        {(() => {
+                          const on = [...new Set(members.map((m) => assigned[`${m.bom}|${m.mo}|${m.item}`]?.machineId).filter((x): x is number => x !== undefined))];
+                          return on.length > 0 ? on.map((id) => machines.find((x) => x.id === id)?.code ?? id).join(", ") : "—";
+                        })()}
+                      </td>
+                    )}
                     <td className="p-2 text-center whitespace-nowrap">
                       {openNoteCount > 0 ? <span className="pill pill-bad">📝 {openNoteCount}</span> : <span className="text-muted text-xs">—</span>}
                     </td>

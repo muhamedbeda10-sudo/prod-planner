@@ -10,6 +10,8 @@ import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 import { Frac } from "@/components/Frac";
 import { Soi, soiOf } from "@/components/ui";
+import { MachinePick } from "@/components/MachineBoard";
+import type { MachineDTO } from "@/lib/server/machines";
 import { DEFAULTS } from "@/lib/domain/constants";
 import { assessDeliveryRisk } from "@/lib/domain/insights";
 
@@ -28,6 +30,8 @@ export function CutTrancheTable({
   canEdit = false,
   isAdmin = false,
   soi,
+  machines = [],
+  assigned = {},
 }: {
   rows: CutTranche[];
   day: string;
@@ -39,9 +43,15 @@ export function CutTrancheTable({
   canEdit?: boolean; // user holds cut.edit — otherwise view-only
   isAdmin?: boolean; // admins may re-date a line / revert their override
   soi?: SoiLookup; // the SOI shown beside each MO
+  /** The department's machines — with any, every row carries a Machine picker. */
+  machines?: MachineDTO[];
+  /** bom|mo|item → the machine the line is on and its place in the queue. */
+  assigned?: Record<string, { machineId: number; rank: number }>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const hasMachines = machines.length > 0;
+  const cols = hasMachines ? 11 : 10;
   const [qty, setQty] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<Record<string, string>>({});
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({});
@@ -328,6 +338,11 @@ export function CutTrancheTable({
           )}
           {msg[k] && <div className="text-[11px] text-bad-fg mt-0.5">{msg[k]}</div>}
         </td>
+        {hasMachines && (
+          <td className="p-2 whitespace-nowrap">
+            <MachinePick dept="Cut" bom={r.bom} mo={r.mo} item={r.item} machines={machines} current={assigned[`${r.bom}|${r.mo}|${r.item}`]} canEdit={canEdit} compact />
+          </td>
+        )}
         <td className="p-2 text-center whitespace-nowrap">
           <NotesButton lineNotes={lineNotes} onClick={() => setOpenNotes(openNotes === k ? null : k)} />
         </td>
@@ -339,7 +354,7 @@ export function CutTrancheTable({
           item={r.item}
           dept="Cut"
           lineNotes={lineNotes}
-          colSpan={9}
+          colSpan={cols}
           className={inGroup ? "border-x-2 border-brand" : ""}
           canEdit={canEdit}
         />
@@ -372,12 +387,13 @@ export function CutTrancheTable({
               <th className="p-2 text-center" title="Whole order: cut so far / order qty">Done / Order</th>
               <th className="p-2 text-center" title="This date: still to cut / planned for the day">Left / Day plan</th>
               <th className="p-2 text-center w-44">Record cut</th>
+              {hasMachines && <th className="p-2" title="Which machine the line is on, and its place in that machine's queue">Machine</th>}
               <th className="p-2 text-center">Notes</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={9} className="p-4 text-center text-muted">
+              <tr><td colSpan={cols} className="p-4 text-center text-muted">
                 {rows.length === 0
                   ? variant === "overdue"
                     ? "No overdue backlog — nothing slipped 🎉"
@@ -452,6 +468,14 @@ export function CutTrancheTable({
                         <span className="text-xs text-muted">{open ? "▲ collapse" : "▼ open MOs"}</span>
                       )}
                     </td>
+                    {hasMachines && (
+                      <td className="p-2 text-xs text-muted whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        {(() => {
+                          const on = [...new Set(members.map((m) => assigned[`${m.bom}|${m.mo}|${m.item}`]?.machineId).filter((x): x is number => x !== undefined))];
+                          return on.length > 0 ? on.map((id) => machines.find((x) => x.id === id)?.code ?? id).join(", ") : "—";
+                        })()}
+                      </td>
+                    )}
                     <td className="p-2 text-center whitespace-nowrap">
                       {(() => {
                         const openNoteCount = members.reduce(
