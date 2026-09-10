@@ -93,6 +93,10 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    present on the 9-hour shift, so only the exceptions need touching; "Save day" writes every row and
    re-sums the department's man-hours into the figure the calibration and the plan's capacity check read
    (Admin → Standard Times shows it read-only now). Recording needs `shifts.<dept>`; viewing is free.
+   **Shift hours** (Tools → Settings, admin): what the short shift, the long shift and the "+OT" button are
+   worth. Every man-hour the app counts is measured with them — the shift log's day, a machine's crew, the
+   figure the standard times are calibrated against — so a new roster is a setting, not a code change. A day
+   already recorded keeps the shift it was recorded under and is re-counted with the new hours.
    **Machines & lines** (Tools → Machines, `machines.manage`): the plant's machines by department — code,
    name, work centre (every laser and punch is "Cutting"; bending, fins, tubes, roll blank; a paint line or
    shot-blast cabinet is a "Line"), hours a day, retire / bring back — seeded from the fabrication list.
@@ -102,9 +106,10 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    line), so fabrication totals the 363 man-hours a day the sheet states. Editing a figure keeps it.
 10. **Machine board** (top of the Fabrication and Painting worklists) — who is on what: a card per machine
    with what it is on **now**, what waits behind it in the order the planner ranked it (⏫ run next, ▲ ▼, ✕),
-   the queue priced in standard hours against the hours the machine has today (its hours a day less the
-   downtime on the shift log — green to a full day, amber past it, red past a day and a half), pieces,
-   days of work, the crew the shift log put on it. Every table row carries a **Machine** picker ("this is
+   the queue answered in **time, not percentage**: how long the work on it takes (hours while it is under a
+   day, days once it is more) and the working day it **clears** on, with Fridays and the calendar's days off
+   skipped — green to a day's work, amber past it, red past a day and a half. The standard hours, pieces and
+   lines sit under it, and the crew the shift log put on it. Every table row carries a **Machine** picker ("this is
    running on that now"), and the lines not on any machine are listed most urgent first with a picker each.
    Recording output never touches the board: a line leaves it by itself once nothing remains on it.
    **Several lines can run on one machine at once** (a nest that mixes orders, a bay working two jobs):
@@ -141,6 +146,8 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    so the bender never starts before that batch is cut. What is **running now is never moved** — the plan is
    built around it. It answers with what it did: lines placed, machines used, when the last piece clears,
    which lines cannot make their date and by how much, and any centre with no machine to run it.
+   **⟲ Reset** beside it takes every line off every machine of the department — the plan is cleared, the
+   work itself untouched — so the board can be planned again from nothing.
 11. **Floor** (Simulator → Floor) — each department's bay drawn as the planner sees it: place the machines
    (or partitions) as blocks, drag them where they stand, pull a corner to resize, draw areas ("Laser hall",
    "Bending & fins") and labels around them, zoom — the drawing saves itself a moment after every change, so

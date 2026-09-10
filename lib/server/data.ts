@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { makeBomGrouper, type BomGrouper } from "@/lib/domain/bom";
 import type { PlanWindow } from "@/lib/domain/findPlan";
 import { DEFAULTS } from "@/lib/domain/constants";
+import { DEFAULT_SHIFT_HOURS, type ShiftHours } from "@/lib/domain/shifts";
 import { loadPlans, loadSettingsRow } from "./loads";
 
 export async function getSettings() {
@@ -13,7 +14,17 @@ export async function getSettings() {
     capacityPerItem: s?.capacityPerItem ?? DEFAULTS.capacityPerItem,
     dailyTarget: s?.dailyTarget ?? DEFAULTS.dailyTarget,
     tankTracking: s?.tankTracking ?? DEFAULTS.tankTracking,
+    shiftShortH: s?.shiftShortH ?? DEFAULT_SHIFT_HOURS.short,
+    shiftLongH: s?.shiftLongH ?? DEFAULT_SHIFT_HOURS.long,
+    overtimeH: s?.overtimeH ?? DEFAULT_SHIFT_HOURS.overtime,
   };
+}
+
+/** What a shift and the "+OT" button are worth — every man-hour the app
+ *  counts is measured with these. */
+export async function getShiftHours(): Promise<ShiftHours> {
+  const s = await getSettings();
+  return { short: s.shiftShortH, long: s.shiftLongH, overtime: s.overtimeH };
 }
 
 /** The master switch on its own — the many places that only need to know

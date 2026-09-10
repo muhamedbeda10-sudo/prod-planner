@@ -411,6 +411,14 @@ model Settings {
   // again is always safe — the tanks already recorded stay in the database and
   // pick up where they left off when it comes back on.
   tankTracking    Boolean @default(false)
+
+  // The plant's two shifts and the overtime the "+OT" button adds, in hours.
+  // Editable: a roster changes (Ramadan, a second shift starting), and every
+  // man-hour the app counts — the shift log, a machine's crew, the day's
+  // capacity — is measured with these.
+  shiftShortH Float @default(9)
+  shiftLongH  Float @default(11)
+  overtimeH   Float @default(3)
 }
 
 // ---- Standard man-hours (the engineering timings sheet, editable in Admin →

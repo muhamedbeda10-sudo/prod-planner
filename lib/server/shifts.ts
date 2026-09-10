@@ -2,7 +2,8 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { toISODate } from "@/lib/domain/dates";
-import { DEFAULT_SHIFT, MACHINE_DEPTS, dayTotals, isShiftCode, lineHours, type DayTotals, type ShiftCode, type ShiftDept } from "@/lib/domain/shifts";
+import { DEFAULT_SHIFT, MACHINE_DEPTS, dayTotals, isShiftCode, lineHours, type DayTotals, type ShiftCode, type ShiftDept, type ShiftHours } from "@/lib/domain/shifts";
+import { getShiftHours } from "./data";
 import { getMachinesFor, type MachineDTO } from "./machines";
 import { getWorkersFor } from "./workers";
 import { getStageCapacity } from "./standardTimes";
@@ -43,6 +44,8 @@ export interface ShiftDayData {
   totals: DayTotals;
   /** The stage's available man-hours a day from Admin → Standard Times, for the comparison. */
   capacityMh: number | null;
+  /** What a shift and the "+OT" button are worth today (Settings). */
+  shiftHours: ShiftHours;
   /** Whether any row was ever saved for this day — "not recorded yet" until then. */
   saved: boolean;
   recordedBy: string | null;
@@ -52,7 +55,7 @@ const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
 export async function getShiftDay(dateISO: string, dept: ShiftDept): Promise<ShiftDayData> {
   const date = dayOf(dateISO);
-  const [workers, machines, rows, downtime, capacity] = await Promise.all([
+  const [hours, [workers, machines, rows, downtime, capacity]] = await Promise.all([getShiftHours(), Promise.all([
     getWorkersFor(dept),
     MACHINE_DEPTS.includes(dept) ? getMachinesFor(dept) : Promise.resolve([] as MachineDTO[]),
     prisma.shiftEntry.findMany({ where: { date, dept } }),
@@ -60,7 +63,7 @@ export async function getShiftDay(dateISO: string, dept: ShiftDept): Promise<Shi
       ? prisma.machineDowntime.findMany({ where: { date, machine: { dept } }, orderBy: { id: "asc" } })
       : Promise.resolve([]),
     getStageCapacity(),
-  ]);
+  ])]);
   const byWorker = new Map(rows.map((r) => [r.workerId, r]));
   // a worker retired since the day was recorded still shows on that day
   const extra = rows.filter((r) => !workers.some((w) => w.id === r.workerId)).map((r) => r.workerId);
@@ -82,8 +85,9 @@ export async function getShiftDay(dateISO: string, dept: ShiftDept): Promise<Shi
   return {
     dateISO, dept, lines, machines,
     downtime: downtime.map((d) => ({ id: d.id, machineId: d.machineId, hours: d.hours, reason: d.reason })),
-    totals: dayTotals(lines),
+    totals: dayTotals(lines, hours),
     capacityMh: capacity[dept] ?? null,
+    shiftHours: hours,
     saved: rows.length > 0,
     recordedBy: rows.find((r) => r.recordedBy)?.recordedBy ?? null,
   };
@@ -97,7 +101,8 @@ export async function syncDeptDayHours(tx: Prisma.TransactionClient, date: Date,
     await tx.deptDayHours.deleteMany({ where: { date, dept } });
     return 0;
   }
-  const hours = Math.round(rows.reduce((s, r) => s + lineHours({ present: r.present, shift: isShiftCode(r.shift) ? r.shift : DEFAULT_SHIFT, overtimeH: r.overtimeH }), 0) * 10) / 10;
+  const hrs = await getShiftHours();
+  const hours = Math.round(rows.reduce((s, r) => s + lineHours({ present: r.present, shift: isShiftCode(r.shift) ? r.shift : DEFAULT_SHIFT, overtimeH: r.overtimeH }, hrs), 0) * 10) / 10;
   await tx.deptDayHours.upsert({ where: { date_dept: { date, dept } }, create: { date, dept, hours }, update: { hours } });
   return hours;
 }

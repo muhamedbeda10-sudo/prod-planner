@@ -2,12 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
-import { loadTone, type LinePlacement, type MachineCard, type MachineQueueLine } from "@/lib/domain/machineBoard";
-import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
+import { clearWords, loadTone, type LinePlacement, type MachineCard, type MachineQueueLine } from "@/lib/domain/machineBoard";
+import { CENTER_LABEL, machineWord, round1 } from "@/lib/domain/shifts";
 import type { MachineDTO } from "@/lib/server/machines";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import Link from "next/link";
-import { assignLineMachine, clearMachineQueue, moveLineRank, optimizeMachines, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
+import { assignLineMachine, clearMachineQueue, moveLineRank, optimizeMachines, resetMachinePlan, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
 import { recordOutput } from "@/app/worklist/actions";
 
 // 🏭 The machine load board on a department's worklist — one card per
@@ -186,7 +186,8 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
   const dept = board.dept;
   const a = useAction();
   const tone = loadTone(c.load);
-  const pct = c.load === null ? null : Math.min(100, Math.round(Math.min(c.load, 9) * 100));
+  // the bar reads as WORK AHEAD, five days wide — a full bar is a week of it
+  const pct = c.days === null ? null : Math.min(100, Math.round((c.days / 5) * 100));
   const line = (bom: string, mo: string, item: string) => {
     const fd = new FormData();
     fd.set("dept", dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item);
@@ -216,13 +217,19 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className={`text-lg font-extrabold tabnum leading-tight ${tone ? TONE_INK[tone] : ""}`} title="Standard hours of the whole queue">{c.hours} h</div>
-          <div className="text-[11px] text-muted tabnum">{c.pcs} pcs · {c.queue.length} line(s){c.days !== null ? ` · ${c.days} day(s)` : ""}</div>
+          <div
+            className={`text-lg font-extrabold tabnum leading-tight ${tone ? TONE_INK[tone] : ""}`}
+            title={c.availableH ? `${c.hours} standard hours of work at ${c.availableH} h a day` : "No hours a day set for this machine — set it in Tools → Machines"}
+          >
+            {clearWords(c.hours, c.availableH)}
+          </div>
+          <div className="text-[11px] text-muted tabnum">{c.hours} h · {c.pcs} pcs · {c.queue.length} line(s)</div>
+          {c.clearsISO && <div className="text-[11px] text-muted tabnum" title="The working day this queue is finished — Fridays and the calendar's days off skipped">clears {ddmm(c.clearsISO)}</div>}
         </div>
       </div>
       {pct !== null && (
-        <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden" title={c.load === Infinity ? "Nothing available today" : `Loaded to ${Math.round(c.load! * 100)}% of today's hours`}>
-          <div className={`h-full ${tone ? TONE_BAR[tone] : "bg-muted"}`} style={{ width: `${c.load === Infinity ? 100 : pct}%` }} />
+        <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden" title={c.days === null ? "" : `${c.days} working day(s) of work ahead — the bar is five days wide`}>
+          <div className={`h-full ${tone ? TONE_BAR[tone] : "bg-muted"}`} style={{ width: `${pct}%` }} />
         </div>
       )}
       {c.unpricedPcs > 0 && <div className="text-[10px] text-warn-fg">{c.unpricedPcs} pcs with no standard time — hours undercounted</div>}
@@ -311,6 +318,19 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
     const at = board.machines.filter((m) => m.center === center);
     return at.length > 0 ? at : board.machines;
   };
+  const reset = () => {
+    if (!confirm(`Take every line off every ${word}?\n\nThe board goes back to empty — the work itself is untouched, only the plan of what runs where. ⚡ Plan fills it again.`)) return;
+    setNote(null);
+    startPlanning(async () => {
+      const fd = new FormData();
+      fd.set("dept", board.dept);
+      const res = await resetMachinePlan(fd);
+      if (res.ok) {
+        setNote({ summary: res.summary });
+        router.refresh();
+      } else setNote({ error: res.error });
+    });
+  };
   const plan = () => {
     if (!confirm(`Plan every ${word} from the weekly plan?\n\nEvery waiting line is re-ordered: earliest date first, each on the ${word} that finishes it soonest. What is RUNNING now stays where it is.`)) return;
     setNote(null);
@@ -324,7 +344,11 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
       } else setNote({ error: res.error });
     });
   };
-  const tone = board.totalAvailableH === null || board.totalAvailableH === 0 ? null : loadTone(board.totalHours / board.totalAvailableH);
+  // the department clears when its LAST machine does — the queue is worked in
+  // parallel, so the longest one is the answer, not the sum
+  const slowest = board.cards.reduce((d, c) => (c.days !== null && c.days > d ? c.days : d), 0);
+  const clearsISO = board.cards.reduce<string | null>((iso, c) => (c.clearsISO && (!iso || c.clearsISO > iso) ? c.clearsISO : iso), null);
+  const tone = board.cards.some((c) => c.days === null) ? null : loadTone(slowest);
   // the weekly plan's dated lines are the ones to place first; the month's
   // undated backlog folds behind its own "show all"
   const dated = board.unassigned.filter((u) => u.deliveryISO);
@@ -349,8 +373,12 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
     <section className="mb-6">
       <h2>
         🏭 {machineWord(board.dept, true)[0].toUpperCase() + machineWord(board.dept, true).slice(1)} — who is on what
-        <span className={`pill ms-2 normal-case tabnum ${tone ? (tone === "ok" ? "pill-ok" : tone === "warn" ? "pill-warn" : "pill-bad") : "pill-muted"}`} title="Standard hours queued on the machines against the hours they have today">
-          {board.totalHours} h queued{board.totalAvailableH !== null ? ` / ${board.totalAvailableH} h today` : ""}
+        <span
+          className={`pill ms-2 normal-case tabnum ${tone ? (tone === "ok" ? "pill-ok" : tone === "warn" ? "pill-warn" : "pill-bad") : "pill-muted"}`}
+          title={`${board.totalHours} standard hours queued over ${board.cards.length} ${machineWord(board.dept, true)}${board.totalAvailableH !== null ? `, ${board.totalAvailableH} h a day between them` : ""} — the department is done when its slowest ${word} is`}
+        >
+          {slowest >= 1 ? `clears in ${round1(slowest)} day(s)` : slowest > 0 ? "clears today" : `${board.totalHours} h queued`}
+          {slowest >= 1 && clearsISO ? ` · ${ddmm(clearsISO)}` : ""}
         </span>
         {board.unassigned.length > 0 && (
           <button
@@ -371,6 +399,11 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
             title={`Work out what every ${word} should run, and in what order, from the weekly plan — earliest date first, each line on the ${word} that finishes it soonest. What is running now stays.`}
           >
             {planning ? "Planning…" : "⚡ Plan the " + machineWord(board.dept, true)}
+          </button>
+        )}
+        {canEdit && board.cards.some((c) => c.queue.length > 0) && (
+          <button type="button" className="btn btn-sm btn-ghost ms-1 normal-case no-print text-bad-fg" disabled={planning} onClick={reset} title={`Take every line off every ${word} — the plan is cleared, the work is not touched`}>
+            ⟲ Reset
           </button>
         )}
         <Link href={`/worklist/machines?dept=${board.dept}`} className="btn btn-sm btn-secondary ms-2 normal-case no-print" title={`One sheet per ${word}, each on its own page — hand them to the technicians`}>🖨 Print all sheets</Link>

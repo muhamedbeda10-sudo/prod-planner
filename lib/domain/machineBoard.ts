@@ -95,6 +95,9 @@ export interface MachineCard {
   load: number | null;
   /** Working days the queue is worth at today's available hours. */
   days: number | null;
+  /** The working day the queue is finished on, filled in by the server (it
+   *  knows the calendar); null while the machine has no hours figure. */
+  clearsISO?: string | null;
 }
 
 /** A line, or the part of one, that no machine has yet — at ONE centre of its
@@ -283,6 +286,17 @@ export function buildMachineBoard(
   }
   unassigned.sort((a, b) => urgencyOrder(a, b) || a.stepNo - b.stepNo);
   return { cards, unassigned, totalHours: round1(totalHours), totalAvailableH: totalAvailableH === null ? null : round1(totalAvailableH) };
+}
+
+/** How long a queue takes to work off, in words: the hours themselves while
+ *  it is under a day's work, the days once it is more. A planner asks "how
+ *  long", not "what percentage of today". */
+export function clearWords(hours: number, availableH: number | null): string {
+  const h = round1(hours);
+  if (availableH === null || availableH <= 0) return `${h} h`;
+  const d = round1(hours / availableH);
+  if (d < 1) return `${h} h`;
+  return `${d} day${d === 1 ? "" : "s"}`;
 }
 
 /** The tone a load reads in: fine to a full day, amber past it, red past a

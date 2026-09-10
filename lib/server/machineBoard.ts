@@ -2,8 +2,8 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { itemHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
 import { buildMachineBoard, lineKey, type Assignment, type BoardLine, type LinePlacement, type MachineBoard } from "@/lib/domain/machineBoard";
-import { centerShares, round1, routeFor } from "@/lib/domain/shifts";
-import { offsetForDateISO } from "@/lib/domain/whatif";
+import { centerShares, hoursOfShift, isShiftCode, round1, routeFor } from "@/lib/domain/shifts";
+import { dateForOffsetISO, offsetForDateISO } from "@/lib/domain/whatif";
 import type { OptLine, OptMachine, OptPin } from "@/lib/domain/optimizePlan";
 import { getStdData } from "./standardTimes";
 import { getAllMachines, type MachineDTO } from "./machines";
@@ -11,7 +11,7 @@ import { getCutSheet, getPaintingQueue, getWeldingQueue } from "./execution";
 import { getWorklistExtras } from "./worklistExtras";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { loadHolidays, loadMasterOrders } from "./loads";
-import { getSettings } from "./data";
+import { getSettings, getShiftHours } from "./data";
 
 // The machine load board for one worklist: the page hands over the open
 // lines it already computed (every section of the sheet), this prices them
@@ -56,7 +56,8 @@ const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
  *  passes and the standard hours each one owes. */
 async function loadBoardContext(dept: BoardDept, dayISO: string) {
   const date = dayOf(dayISO);
-  const [all, rows, std, orders, downtime, shifts] = await Promise.all([
+  const [shiftHours, all, rows, std, orders, downtime, shifts] = await Promise.all([
+    getShiftHours(),
     getAllMachines(),
     prisma.worklistMachine.findMany({ where: { dept }, orderBy: [{ machineId: "asc" }, { rank: "asc" }] }),
     getStdData(),
@@ -111,15 +112,19 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
   const crew: Record<number, string[]> = {};
   for (const s of shifts) {
     if (s.machineId === null) continue;
-    crewH[s.machineId] = (crewH[s.machineId] ?? 0) + (s.shift === "S11" ? 11 : 9) + Math.max(0, s.overtimeH);
+    crewH[s.machineId] = (crewH[s.machineId] ?? 0) + hoursOfShift(isShiftCode(s.shift) ? s.shift : "S9", shiftHours) + Math.max(0, s.overtimeH);
     (crew[s.machineId] ??= []).push(s.worker.name);
   }
   return { machines, assignments, price, perPiece, urgentByMo, downtimeH, crewH, crew };
 }
 
 export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
-  const [ctx, settings] = await Promise.all([loadBoardContext(dept, dayISO), getSettings()]);
+  const [ctx, settings, holidays] = await Promise.all([loadBoardContext(dept, dayISO), getSettings(), loadHolidays()]);
   const board = buildMachineBoard(ctx.machines, ctx.price(lines), ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew });
+  // the day each machine's queue is finished — Fridays and the calendar's days
+  // off skipped, so "clears 18/09" is a date the floor can hold you to
+  const holidaySet = new Set(holidays.map((h) => toISODate(h.date)));
+  for (const c of board.cards) c.clearsISO = c.days !== null && c.days > 0 ? dateForOffsetISO(c.days, dayISO, holidaySet, false) : null;
 
   // where each line sits for the tables' pickers: the first step of its route,
   // the machines sharing that step, and the centres further along

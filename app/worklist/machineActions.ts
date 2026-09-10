@@ -294,3 +294,16 @@ export async function optimizeMachines(fd: FormData): Promise<MachineActionResul
     : undefined;
   return { ok: true, summary: `Planned: ${bits.join(" · ")}.`, lateNote: late };
 }
+
+/** ⟲ Reset: take every line off every machine of the department — the board
+ *  goes back to empty and nothing is running. The work itself is untouched;
+ *  only the plan of what runs where is cleared, ready to be planned again. */
+export async function resetMachinePlan(fd: FormData): Promise<MachineActionResult> {
+  const dept = String(fd.get("dept") ?? "");
+  if (!(BOARD_DEPTS as readonly string[]).includes(dept)) return { ok: false, error: "This worklist has no machines." };
+  const guard = await requireDeptEdit(dept);
+  if (guard.error) return { ok: false, error: guard.error };
+  const { count } = await prisma.worklistMachine.deleteMany({ where: { dept } });
+  revalidate();
+  return { ok: true, summary: count === 0 ? `Nothing was on a ${machineWord(dept)}.` : `Cleared — ${count} line(s) taken off the ${machineWord(dept, true)}.` };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CENTERS, MACHINE_DEPTS, ROUTING, SHIFTS, centerShares, dayTotals, isShiftCode, isShiftDept, lineHours, machineAvailable, routeFor } from "./shifts";
+import { CENTERS, MACHINE_DEPTS, ROUTING, SHIFTS, centerShares, dayTotals, hoursOfShift, isShiftCode, isShiftDept, lineHours, machineAvailable, routeFor, shiftLabel } from "./shifts";
 import { SHEET_ITEMS } from "./constants";
 
 describe("lineHours", () => {
@@ -72,3 +72,29 @@ describe("the plant's shape", () => {
     expect(centerShares("Painting", "TN")).toEqual({ Line: 1 });
   });
 });
+
+describe("shift hours the planner sets", () => {
+  const hrs = { short: 8, long: 12, overtime: 2 };
+  it("counts a day with the hours in force, not the ones in the code", () => {
+    expect(lineHours({ present: true, shift: "S9", overtimeH: 0 }, hrs)).toBe(8);
+    expect(lineHours({ present: true, shift: "S11", overtimeH: 2 }, hrs)).toBe(14);
+    expect(lineHours({ present: false, shift: "S11", overtimeH: 2 }, hrs)).toBe(0);
+    expect(hoursOfShift("S11", hrs)).toBe(12);
+    expect(shiftLabel("S9", hrs)).toBe("8 h");
+  });
+  it("falls back to the plant's own 9 and 11 when nothing is set", () => {
+    expect(lineHours({ present: true, shift: "S9", overtimeH: 0 })).toBe(9);
+    expect(lineHours({ present: true, shift: "S11", overtimeH: 3 })).toBe(14);
+  });
+  it("totals a day with them", () => {
+    const t = dayTotals([
+      { present: true, shift: "S11", overtimeH: 2, machineId: 1 },
+      { present: true, shift: "S9", overtimeH: 0, machineId: 1 },
+      { present: false, shift: "S9", overtimeH: 0 },
+    ], hrs);
+    expect(t.hours).toBe(22);
+    expect(t.byMachine[1]).toBe(22);
+    expect(t.present).toBe(2);
+  });
+});
+
