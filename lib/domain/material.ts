@@ -198,6 +198,10 @@ export interface NestingRow {
   thicknessMm: number;
   sheetSize: string;
   sheetsPerUnit: number;
+  /** Sheets actually nested for ONE unit — the sheet's own measured rate. */
+  actualPerUnit: number | null;
+  /** Sheets actually nested for the JOB: the rate above × the units, when the
+   *  sheet gives a rate; its own "for Job" column only when it does not. */
   sheetsUsed: number | null;
   note: string | null;
 }
@@ -206,13 +210,16 @@ export interface ParsedNesting {
   rows: NestingRow[];
   issues: string[];
   headerRow: number; // 1-based, for diagnostics
+  /** Rows whose "for Job" column disagreed with their own per-unit rate by
+   *  more than rounding — the sheet's figure was stale and was recomputed. */
+  recomputed: number;
 }
 
 // Columns are found BY HEADER TEXT, so the planner may reorder or add columns
-// without breaking the import. Each entry lists the distinguishing fragments.
-// "…in BOM for one Unit" and "…in Actual Nesting for one Unit" both say "one
-// unit": the BOM's is claimed first (its fragment is more specific), and the
-// actual rate is never read — the tab derives it from the actual for the job.
+// without breaking the import. Each entry lists the distinguishing fragments,
+// and a column is claimed once — so the ACTUAL rate ("…in Actual Nesting for
+// one Unit") is matched BEFORE the BOM's "…for one Unit", and neither can
+// steal the other's column whatever else the header says.
 const HEADERS = {
   bom: ["bom ref", "bom"],
   units: ["quantity of units", "qty of units", "units"],
@@ -222,12 +229,13 @@ const HEADERS = {
   material: ["material type", "material"],
   thickness: ["thickness"],
   size: ["sheet size", "size"],
+  actualPerUnit: ["actual nesting for one unit", "actual for one unit", "actual nesting for unit", "actual per unit"],
   perUnit: ["bom for one unit", "one unit", "per unit"],
   actual: ["actual nesting for job", "actual for job", "actual nesting", "actual"],
   note: ["notes", "note", "remark"],
 } as const;
 
-const OPTIONAL_HEADERS: ReadonlySet<string> = new Set(["note", "actual", "partCode", "partName", "code"]);
+const OPTIONAL_HEADERS: ReadonlySet<string> = new Set(["note", "actual", "actualPerUnit", "partCode", "partName", "code"]);
 
 function cellText(v: unknown): string {
   return String(v ?? "").replace(/\s+/g, " ").trim();
@@ -254,24 +262,37 @@ function mapColumns(header: unknown[]): Record<keyof typeof HEADERS, number> {
   return out;
 }
 
+/** A recomputed job figure only counts as a disagreement when it is bigger
+ *  than the rounding the sheet itself carries (the rate is quoted to four
+ *  decimals, so a long job drifts a little by arithmetic alone). */
+const STALE_ABS = 0.05;
+const STALE_FRAC = 0.02;
+
 /**
  * Parse the Nesting Tracker grid (sheet_to_json with header:1).
- * "Sheets for job" and "Difference" are ignored on purpose — they are the
- * sheet's formulas, and this tab recomputes them.
+ *
+ * The sheets actually nested FOR THE JOB are computed here — the rate the
+ * sheet measured for one unit, times the units the job carries — because the
+ * sheet's own "for Job" column is a figure somebody left behind: change the
+ * quantity of units and it keeps the old job's answer (one row of the
+ * planner's own tracker says 17.6 sheets where 90 units at 0.568 is 51.1).
+ * The BOM's "for one Unit" and "Difference" columns are ignored for the same
+ * reason: this tab recomputes them from what it stores.
  */
 export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
   const headerIdx = findHeaderRow(grid);
   if (headerIdx < 0) {
-    return { rows: [], issues: ["No header row found — expected a row with 'BOM Ref' and 'Thickness'."], headerRow: 0 };
+    return { rows: [], issues: ["No header row found — expected a row with 'BOM Ref' and 'Thickness'."], headerRow: 0, recomputed: 0 };
   }
   const col = mapColumns(grid[headerIdx] ?? []);
   const issues: string[] = [];
   for (const [key, idx] of Object.entries(col)) {
     if (idx < 0 && !OPTIONAL_HEADERS.has(key)) issues.push(`Column "${key}" was not found in the header row.`);
   }
-  if (issues.length > 0) return { rows: [], issues, headerRow: headerIdx + 1 };
+  if (issues.length > 0) return { rows: [], issues, headerRow: headerIdx + 1, recomputed: 0 };
 
   const rows: NestingRow[] = [];
+  let recomputed = 0;
   for (let r = headerIdx + 1; r < grid.length; r++) {
     const line = grid[r] ?? [];
     const rowNum = r + 1;
@@ -289,7 +310,17 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
     if (perUnit === null || perUnit < 0) { issues.push(`Row ${rowNum} (${bom}): sheets per unit is missing or not a number — skipped.`); continue; }
     if (units === null || units < 0) { issues.push(`Row ${rowNum} (${bom}): quantity of units is missing or not a number — skipped.`); continue; }
 
-    const used = col.actual >= 0 ? parseSheetNumber(line[col.actual]) : null;
+    // what the sheet says the job used, and what it measured for ONE unit
+    const onSheet = col.actual >= 0 ? parseSheetNumber(line[col.actual]) : null;
+    const rate = col.actualPerUnit >= 0 ? parseSheetNumber(line[col.actualPerUnit]) : null;
+    const fromSheet = onSheet !== null && onSheet >= 0 ? onSheet : null;
+    // the rate is the measured fact; the job is that rate × this job's units
+    const used = rate !== null && rate >= 0 ? round3(rate * units) : fromSheet;
+    if (used !== null && fromSheet !== null && rate !== null) {
+      const gap = Math.abs(used - fromSheet);
+      if (gap > STALE_ABS && gap > STALE_FRAC * Math.max(used, fromSheet)) recomputed += 1;
+    }
+
     const note = col.note >= 0 ? cellText(line[col.note]) : "";
     const partCode = col.partCode >= 0 ? cellText(line[col.partCode]).toUpperCase() : "";
     const partName = col.partName >= 0 ? cellText(line[col.partName]).toUpperCase() : "";
@@ -297,11 +328,14 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
       rowNum, bom, units, material, thicknessMm: thickness, sheetSize,
       partCode, partName: partName || partNameFor(partCode),
       materialCode: col.code >= 0 ? cellText(line[col.code]).toUpperCase() : "",
-      sheetsPerUnit: perUnit, sheetsUsed: used !== null && used >= 0 ? used : null, note: note || null,
+      sheetsPerUnit: perUnit,
+      actualPerUnit: rate !== null && rate >= 0 ? rate : null,
+      sheetsUsed: used,
+      note: note || null,
     });
   }
   if (rows.length === 0) issues.push("No material rows found under the header.");
-  return { rows, issues, headerRow: headerIdx + 1 };
+  return { rows, issues, headerRow: headerIdx + 1, recomputed };
 }
 
 // ---- filters: narrowing the month's lines on the page ----

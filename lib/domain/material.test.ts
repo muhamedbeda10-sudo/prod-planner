@@ -197,7 +197,7 @@ describe("parseNestingTracker", () => {
     expect(rows[0]).toMatchObject({ bom: "10017E11M11", units: 22, material: "Steel", thicknessMm: 5, sheetSize: "1220*2440", sheetsPerUnit: 1.243, sheetsUsed: 17, note: null, partCode: "", partName: "", materialCode: "" });
     expect(rows[1]).toMatchObject({ material: "Stainless steel", note: "check" });
   });
-  it("reads the project tracker's part columns and skips its actual-per-unit column", () => {
+  it("reads the project tracker's part columns and takes the job from its actual-per-unit column", () => {
     const grid: unknown[][] = [
       ["NESTING PROJECT TRACKER"],
       PROJECT_HEADER,
@@ -208,10 +208,46 @@ describe("parseNestingTracker", () => {
     const { rows, issues } = parseNestingTracker(grid);
     expect(issues).toEqual([]);
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toMatchObject({ bom: "10017E11M11", units: 29, partCode: "FB-022", partName: "TANK", materialCode: "T-SSS-5MM", material: "Stainless steel", sheetsPerUnit: 0.3048, sheetsUsed: 6.4 });
+    // 29 units × 0.2207 nested a unit = 6.4 for the job, which is what the sheet says too
+    expect(rows[0]).toMatchObject({ bom: "10017E11M11", units: 29, partCode: "FB-022", partName: "TANK", materialCode: "T-SSS-5MM", material: "Stainless steel", sheetsPerUnit: 0.3048, actualPerUnit: 0.2207, sheetsUsed: 6.4 });
     expect(rows[1]).toMatchObject({ partCode: "FB-051", partName: "TOP COVER", sheetsUsed: null });
     // a blank part name is filled from the code
     expect(rows[2]).toMatchObject({ partCode: "FB-022", partName: "TANK", note: "re-nest" });
+  });
+  it("computes the job from the per-unit rate when the sheet's own job column is stale", () => {
+    // the planner's tracker really does carry rows like this: the job grew to
+    // 90 units and the "for Job" column kept the answer for the 31 it was
+    const grid: unknown[][] = [
+      PROJECT_HEADER,
+      ["40013E11M11", 90, "FB-022", "TANK", "C-SHR-004", "HR Sheet", 4, "1220*2440", 0.568, 51.12, 0.568, 17.6, null, null],
+    ];
+    const { rows, recomputed } = parseNestingTracker(grid);
+    expect(rows[0].sheetsUsed).toBe(51.12);
+    expect(rows[0].actualPerUnit).toBe(0.568);
+    expect(recomputed).toBe(1);
+  });
+  it("does not call a rounding difference stale", () => {
+    const grid: unknown[][] = [
+      PROJECT_HEADER,
+      // 29 × 0.0128 is 0.3712; the sheet rounded its rate and wrote 0.3701
+      ["10017E11M11", 29, "FB-024", "CABLE BOX", "C-SHR-005", "HR Sheet", 5, "1220*2440", 0.02, 0.58, 0.0128, 0.3701, null, null],
+    ];
+    const { rows, recomputed } = parseNestingTracker(grid);
+    expect(rows[0].sheetsUsed).toBe(0.371);
+    expect(recomputed).toBe(0);
+  });
+  it("falls back to the job column on a sheet that has no per-unit rate", () => {
+    const { rows, recomputed } = parseNestingTracker([HEADER, ["10017E11M11", 22, "Steel", 5, "1220*2440", 1.243, 27.346, 17, 10.346, null]]);
+    expect(rows[0]).toMatchObject({ actualPerUnit: null, sheetsUsed: 17 });
+    expect(recomputed).toBe(0);
+  });
+  it("keeps a nested-nothing row at zero, not empty", () => {
+    const grid: unknown[][] = [
+      PROJECT_HEADER,
+      ["81004E12M11", 3, "FB-022", "TANK", "C-SHR-004", "HR Sheet", 4, "1220*2440", 0.564, 1.692, 0, 0, null, null],
+    ];
+    const { rows } = parseNestingTracker(grid);
+    expect(rows[0].sheetsUsed).toBe(0);
   });
   it("skips the blank template rows the tracker is padded with", () => {
     const grid: unknown[][] = [HEADER, [null, null, null, null, null, null, "=IF(...)", null, "=IF(...)", null]];

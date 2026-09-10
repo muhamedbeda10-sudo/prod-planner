@@ -299,7 +299,8 @@ function ImportPanel({ month }: { month: string }) {
       const r = await importMaterialAction(fd);
       setIssues(r.issues ?? []);
       if (!r.ok) { setRes({ ok: false, text: r.error ?? "Import failed." }); return; }
-      const tail = `${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}`;
+      const stale = r.recomputed ? ` · ${r.recomputed} row(s) whose “for Job” column was stale were recomputed from their own per-unit rate` : "";
+      const tail = `${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}${stale}`;
       setRes({ ok: true, text: preview ? `Preview only — nothing saved: ${tail}.` : `Imported: ${tail}.` });
       if (!preview) router.refresh();
     });
