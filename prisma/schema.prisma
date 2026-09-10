@@ -489,8 +489,29 @@ model Machine {
   shifts    ShiftEntry[]
   downtimes MachineDowntime[]
   lines     WorklistMachine[]
+  itemTimes MachineItemTime[]
 
   @@index([dept])
+}
+
+// What ONE piece of an item really costs on ONE machine, in hours — the
+// planner's own figure, from the routing sheet or from watching the floor.
+// Where it is set it OUTRANKS the standard-times estimate for that machine:
+// its queue is priced with it, and the ⚡ planner schedules with it, so a
+// 6 kW laser and a punch stop being treated as the same machine. Left empty,
+// the estimate stands (the stage's standard hours split over the centres the
+// item routes through).
+model MachineItemTime {
+  id         Int      @id @default(autoincrement())
+  machineId  Int
+  machine    Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  item       String // CF | TC | TN | CB | AR | MB
+  hoursPerPc Float
+  setBy      String?
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([machineId, item])
+  @@index([machineId])
 }
 
 // One worker's day in one department, as the supervisor records it: present
