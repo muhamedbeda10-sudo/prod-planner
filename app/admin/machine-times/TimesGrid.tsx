@@ -25,12 +25,21 @@ export interface TimeMachine {
 
 const minutes = (h: number) => Math.round(h * 60);
 
-export function TimesGrid({ machines, times, estimates, canEdit }: {
+export interface Measured {
+  pieces: number;
+  hours: number;
+  hoursPerPc: number;
+  days: number;
+}
+
+export function TimesGrid({ machines, times, estimates, measured = {}, canEdit }: {
   machines: TimeMachine[];
   /** machineId → item → hours a piece, as saved. */
   times: Record<number, Record<string, number>>;
   /** The estimate a machine's centre carries for a mid-size tank, for comparison. */
   estimates: Record<number, Record<string, number>>;
+  /** machineId → item → what the floor actually did. */
+  measured?: Record<number, Record<string, Measured>>;
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -112,6 +121,22 @@ export function TimesGrid({ machines, times, estimates, canEdit }: {
                           className={`border rounded-md px-1 py-1 bg-surface text-sm tabnum w-20 text-center ltr ${v ? "font-bold" : "text-muted"}`}
                         />
                         {v && Number(v) > 0 && <div className="text-[10px] text-muted tabnum">{minutes(Number(v))} min</div>}
+                        {(() => {
+                          const mm = measured[m.id]?.[item];
+                          if (!mm) return null;
+                          const same = v && Math.abs(Number(v) - mm.hoursPerPc) < 0.005;
+                          return (
+                            <button
+                              type="button"
+                              disabled={!canEdit || pending || !!same}
+                              onClick={() => setDraft((d) => ({ ...d, [key(m.id, item)]: String(mm.hoursPerPc) }))}
+                              title={`Measured: ${mm.pieces} pcs over ${mm.hours} man-hours on ${mm.days} day(s) — ${minutes(mm.hoursPerPc)} min a piece. Click to take it as the figure.`}
+                              className={`block w-full text-[10px] tabnum ${same ? "text-ok-fg" : "text-accent hover:underline cursor-pointer"}`}
+                            >
+                              {same ? "✓ " : "≈ "}{mm.hoursPerPc} <span className="text-muted">({mm.pieces} pcs)</span>
+                            </button>
+                          );
+                        })()}
                       </td>
                     );
                   })}

@@ -147,7 +147,7 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
 
 /** ✓ Done straight off the card: the whole share in one click, or the pieces
  *  actually finished — the rest stays in the machine's queue. */
-export function DoneBox({ board, q, onErr }: { board: MachineBoardData; q: MachineQueueLine; onErr: (m: string) => void }) {
+export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardData; q: MachineQueueLine; machineId?: number; onErr: (m: string) => void }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [val, setVal] = useState("");
@@ -162,6 +162,8 @@ export function DoneBox({ board, q, onErr }: { board: MachineBoardData; q: Machi
     const fd = new FormData();
     fd.set("date", board.dayISO); fd.set("dept", board.dept); fd.set("bom", q.bom); fd.set("mo", q.mo); fd.set("item", q.item);
     fd.set("qty", String(qty)); fd.set("planNo", String(board.planNo));
+    // what was finished on WHICH machine — the only place the app learns it
+    if (machineId !== undefined) fd.set("machineId", String(machineId));
     startTransition(async () => {
       const res = await recordOutput(fd);
       if (res.ok) { setVal(""); router.refresh(); } else onErr(res.error ?? "Failed");
@@ -203,7 +205,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
     fd.set("qty", v.trim());
     a.run(setLineQty, fd);
   };
-  const done = (q: MachineQueueLine) => (canEdit ? <DoneBox board={board} q={q} onErr={a.setErr} /> : null);
+  const done = (q: MachineQueueLine) => (canEdit ? <DoneBox board={board} q={q} machineId={c.machine.id} onErr={a.setErr} /> : null);
   return (
     <div className={`bg-surface border rounded-xl p-3 flex flex-col gap-2 ${c.machine.active ? "" : "opacity-70"}`}>
       <div className="flex items-start gap-2">

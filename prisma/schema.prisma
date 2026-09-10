@@ -81,6 +81,13 @@ model HandoverEntry {
   qty    Float
   planNo Int
 
+  // The machine the pieces were finished on, when the record came off a
+  // machine card — nothing else can say it. It is what lets the app MEASURE
+  // how long an item really takes on a machine, against the hours the shift
+  // log put on it, instead of only holding the figure somebody typed.
+  machineId Int?
+  machine   Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+
   // audit
   source    String   @default("manual") // manual | import | seed | reallocation
   note      String?
@@ -92,6 +99,7 @@ model HandoverEntry {
   @@index([date])
   @@index([bom])
   @@index([dept])
+  @@index([machineId])
 }
 
 // Explicit, reviewable excess-reallocation transaction (replaces the VBA's
@@ -490,6 +498,7 @@ model Machine {
   downtimes MachineDowntime[]
   lines     WorklistMachine[]
   itemTimes MachineItemTime[]
+  output    HandoverEntry[]
 
   @@index([dept])
 }
