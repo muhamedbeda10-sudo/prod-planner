@@ -6,7 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { deptLabel } from "@/lib/domain/constants";
 import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 import {
-  DEFAULT_OVERTIME, MACHINE_DEPTS, SHIFT_CODES, SHIFT_DEPTS, SHIFT_LABEL, dayTotals, lineHours, machineAvailable, machineWord, round1,
+  DEFAULT_SHIFT_HOURS, MACHINE_DEPTS, SHIFT_CODES, SHIFT_DEPTS, dayTotals, lineHours, machineAvailable, machineWord, round1, shiftLabel,
   type ShiftCode, type ShiftDept,
 } from "@/lib/domain/shifts";
 import type { ShiftDayData, ShiftLineDTO } from "@/lib/server/shifts";
@@ -102,7 +102,10 @@ export function ShiftLog({ data, history, canEdit, today }: { data: ShiftDayData
   const clear = useAction();
   const [draft, setDraft] = useState<Draft[]>(() => data.lines.map(toDraft));
   const byId = useMemo(() => new Map(data.lines.map((l) => [l.workerId, l])), [data.lines]);
-  const totals = useMemo(() => dayTotals(draft), [draft]);
+  // the hours a shift and the "+OT" button are worth, as the planner set them
+  const hrs = data.shiftHours ?? DEFAULT_SHIFT_HOURS;
+  const OT = hrs.overtime;
+  const totals = useMemo(() => dayTotals(draft, hrs), [draft, hrs]);
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(data.lines.map(toDraft)), [draft, data.lines]);
   const hasMachines = MACHINE_DEPTS.includes(data.dept) && data.machines.length > 0;
   const downtimeH = round1(data.downtime.reduce((s, d) => s + d.hours, 0));
@@ -164,7 +167,7 @@ export function ShiftLog({ data, history, canEdit, today }: { data: ShiftDayData
               <tbody>
                 {draft.map((l) => {
                   const w = byId.get(l.workerId)!;
-                  const h = lineHours(l);
+                  const h = lineHours(l, hrs);
                   return (
                     <tr key={l.workerId} className={`border-t ${l.present ? "" : "opacity-60 bg-surface-2/50"}`}>
                       <td className="p-2 text-center">
@@ -179,14 +182,14 @@ export function ShiftLog({ data, history, canEdit, today }: { data: ShiftDayData
                       </td>
                       <td className="p-2">
                         <select value={l.shift} disabled={!canEdit || !l.present || save.pending} aria-label="Shift" onChange={(e) => set(l.workerId, { shift: e.target.value as ShiftCode })} className="border rounded-md px-2 py-1 bg-surface font-semibold text-sm">
-                          {SHIFT_CODES.map((c) => <option key={c} value={c}>{SHIFT_LABEL[c]}</option>)}
+                          {SHIFT_CODES.map((c) => <option key={c} value={c}>{shiftLabel(c, hrs)}</option>)}
                         </select>
                       </td>
                       <td className="p-2 whitespace-nowrap">
                         <input type="number" min={0} max={12} step={0.5} value={l.overtimeH || ""} placeholder="0" disabled={!canEdit || !l.present || save.pending} aria-label="Overtime hours" onChange={(e) => set(l.workerId, { overtimeH: Number(e.target.value) || 0 })} className="w-16 border rounded-md px-2 py-1 bg-surface text-center tabnum text-sm" />
                         {canEdit && l.present && (
-                          <button type="button" className="btn btn-sm btn-ghost ms-1" title={`Set ${DEFAULT_OVERTIME} hours of overtime`} disabled={save.pending} onClick={() => set(l.workerId, { overtimeH: l.overtimeH === DEFAULT_OVERTIME ? 0 : DEFAULT_OVERTIME })}>
-                            +{DEFAULT_OVERTIME}
+                          <button type="button" className="btn btn-sm btn-ghost ms-1" title={`Set ${OT} hours of overtime`} disabled={save.pending} onClick={() => set(l.workerId, { overtimeH: l.overtimeH === OT ? 0 : OT })}>
+                            +{OT}
                           </button>
                         )}
                       </td>
@@ -227,8 +230,8 @@ export function ShiftLog({ data, history, canEdit, today }: { data: ShiftDayData
               {data.saved ? "Save changes" : "Save day"}
             </button>
             <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setDraft((d) => d.map((l) => ({ ...l, present: true })))}>Everyone present</button>
-            <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setDraft((d) => d.map((l) => ({ ...l, shift: "S11" })))}>All on 11 h</button>
-            <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setDraft((d) => d.map((l) => ({ ...l, overtimeH: l.present ? DEFAULT_OVERTIME : 0 })))}>Everyone +{DEFAULT_OVERTIME} OT</button>
+            <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setDraft((d) => d.map((l) => ({ ...l, shift: "S11" })))}>All on {shiftLabel("S11", hrs)}</button>
+            <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setDraft((d) => d.map((l) => ({ ...l, overtimeH: l.present ? OT : 0 })))}>Everyone +{OT} OT</button>
             {dirty && <button type="button" className="btn btn-sm btn-ghost" disabled={save.pending} onClick={() => setDraft(data.lines.map(toDraft))}>Reset</button>}
             {data.saved && (
               <button

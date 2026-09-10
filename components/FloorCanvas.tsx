@@ -8,7 +8,7 @@ import {
   FLOOR_COLORS, GRID, addNode, drawOrder, moveNode, placeMachine, removeNode, resizeNode, updateNode,
   type FloorColor, type FloorLayoutData, type FloorNode,
 } from "@/lib/domain/floor";
-import { loadTone, type MachineCard } from "@/lib/domain/machineBoard";
+import { clearWords, loadTone, type MachineCard } from "@/lib/domain/machineBoard";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { assignLineMachine, moveLineRank, optimizeMachines, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
@@ -445,7 +445,11 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
       <div className="flex items-baseline gap-1.5 min-w-0">
         <span className="font-extrabold text-xs ltr tabnum shrink-0">{m?.code ?? "?"}</span>
         <span className="text-xs font-semibold truncate">{m?.name ?? "not on the list"}</span>
-        {card && card.load !== null && <span className={`ms-auto text-[10px] font-extrabold tabnum shrink-0 ${tone === "ok" ? "text-ok-fg" : tone === "warn" ? "text-warn-fg" : "text-bad-fg"}`}>{card.load === Infinity ? "∞" : `${Math.round(card.load * 100)}%`}</span>}
+        {card && card.queue.length > 0 && (
+          <span className={`ms-auto text-[10px] font-extrabold tabnum shrink-0 ${tone === "ok" ? "text-ok-fg" : tone === "warn" ? "text-warn-fg" : tone === "bad" ? "text-bad-fg" : "text-muted"}`} title={card.clearsISO ? `Its queue is finished on ${card.clearsISO}` : "How long the work on it takes"}>
+            {clearWords(card.hours, card.availableH)}
+          </span>
+        )}
       </div>
       {card && card.running.length > 0 ? (
         <div className="mt-1 rounded-md bg-brand-light/40 border border-brand/30 px-1.5 py-1 min-w-0 space-y-0.5">
@@ -466,6 +470,7 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
       <div className="mt-auto flex items-center gap-2 text-[10px] text-muted tabnum pt-1 whitespace-nowrap">
         {card && card.waiting.length > 0 && <span title="Waiting behind what runs">+{card.waiting.length} waiting</span>}
         {card && <span title="Standard hours queued">{card.hours} h</span>}
+        {card?.clearsISO && !compact && <span title="The working day this queue is finished">→ {ddmm(card.clearsISO)}</span>}
         {card && card.crew.length > 0 && <span className="ms-auto font-bold text-foreground" title={`${dept === "Welding" ? "Welders" : "Crew"} today: ${card.crew.join(", ")}`}>👷 {card.crew.length}</span>}
       </div>
       {handle}
@@ -517,7 +522,8 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
           {card.availableH !== null ? `${card.availableH} h today${card.downtimeH ? ` (${card.downtimeH} h down)` : ""}` : "hours a day not set"}
         </div>
         <div className={`ms-auto text-sm font-extrabold tabnum ${tone === "ok" ? "text-ok-fg" : tone === "warn" ? "text-warn-fg" : tone === "bad" ? "text-bad-fg" : ""}`}>
-          {card.hours} h queued · {card.pcs} pcs{card.days !== null ? ` · ${card.days} day(s)` : ""}
+          {clearWords(card.hours, card.availableH)} of work · {card.hours} h · {card.pcs} pcs
+          {card.clearsISO ? <span className="text-muted font-semibold"> · clears {ddmm(card.clearsISO)}</span> : null}
         </div>
       </div>
 

@@ -9,14 +9,32 @@ import type { SheetItem } from "@/lib/domain/constants";
 // a day counts as present on the default shift with no overtime — the
 // supervisor records the exceptions, not the rule.
 
-/** The shifts the plant runs and their hours. */
+/** The shifts the plant runs. The CODE is what a day is recorded under and
+ *  never changes; the HOURS behind it are the planner's to set (Settings), so
+ *  a new roster does not rewrite history. */
 export const SHIFTS = { S9: 9, S11: 11 } as const;
 export type ShiftCode = keyof typeof SHIFTS;
 export const SHIFT_CODES = Object.keys(SHIFTS) as ShiftCode[];
 export const DEFAULT_SHIFT: ShiftCode = "S9";
-export const SHIFT_LABEL: Record<ShiftCode, string> = { S9: "9 h", S11: "11 h" };
 /** The overtime the "+OT" button adds. */
 export const DEFAULT_OVERTIME = 3;
+
+/** What the two shifts are worth today, and the usual overtime. */
+export interface ShiftHours {
+  short: number;
+  long: number;
+  overtime: number;
+}
+export const DEFAULT_SHIFT_HOURS: ShiftHours = { short: SHIFTS.S9, long: SHIFTS.S11, overtime: DEFAULT_OVERTIME };
+
+/** Hours one shift is worth. */
+export function hoursOfShift(code: ShiftCode, h: ShiftHours = DEFAULT_SHIFT_HOURS): number {
+  return code === "S11" ? h.long : h.short;
+}
+/** How a shift reads on screen: its hours, from the settings. */
+export function shiftLabel(code: ShiftCode, h: ShiftHours = DEFAULT_SHIFT_HOURS): string {
+  return `${round1(hoursOfShift(code, h))} h`;
+}
 
 export function isShiftCode(x: string): x is ShiftCode {
   return x in SHIFTS;
@@ -112,10 +130,10 @@ export interface ShiftLine {
 
 /** The hours one worker's day is worth: nothing when absent, else the shift
  *  plus overtime. */
-export function lineHours(l: ShiftLine): number {
+export function lineHours(l: ShiftLine, h: ShiftHours = DEFAULT_SHIFT_HOURS): number {
   if (!l.present) return 0;
   const ot = Number.isFinite(l.overtimeH) && l.overtimeH > 0 ? l.overtimeH : 0;
-  return SHIFTS[l.shift] + ot;
+  return hoursOfShift(l.shift, h) + ot;
 }
 
 export interface DayTotals {
@@ -127,11 +145,11 @@ export interface DayTotals {
   byMachine: Record<number, number>;
 }
 
-export function dayTotals(lines: readonly ShiftLine[]): DayTotals {
+export function dayTotals(lines: readonly ShiftLine[], hrs: ShiftHours = DEFAULT_SHIFT_HOURS): DayTotals {
   const byMachine: Record<number, number> = {};
   let present = 0, hours = 0, overtimeH = 0;
   for (const l of lines) {
-    const h = lineHours(l);
+    const h = lineHours(l, hrs);
     if (l.present) present += 1;
     hours += h;
     if (l.present && l.overtimeH > 0) overtimeH += l.overtimeH;

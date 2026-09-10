@@ -54,3 +54,40 @@ export async function setTankTracking(formData: FormData): Promise<SettingsActio
   revalidatePath("/", "layout");
   return { ok: true };
 }
+
+/** The hours the plant's two shifts and the "+OT" button are worth. Every
+ *  man-hour the app counts — the shift log, a machine's crew, the day's
+ *  capacity — is measured with these, so they are the planner's to set. */
+export async function saveShiftHours(formData: FormData): Promise<SettingsActionResult> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+
+  const read = (k: string, what: string): number | { error: string } => {
+    const n = Number(String(formData.get(k) ?? "").trim());
+    if (!Number.isFinite(n) || n < 0 || n > 24) return { error: `${what} must be between 0 and 24 hours.` };
+    return Math.round(n * 100) / 100;
+  };
+  const short = read("shiftShortH", "The short shift");
+  const long = read("shiftLongH", "The long shift");
+  const overtime = read("overtimeH", "Overtime");
+  for (const v of [short, long, overtime]) if (typeof v === "object") return { ok: false, error: v.error };
+  const hours = { shiftShortH: short as number, shiftLongH: long as number, overtimeH: overtime as number };
+  if (hours.shiftShortH <= 0 || hours.shiftLongH <= 0) return { ok: false, error: "A shift has to be longer than nothing." };
+
+  await prisma.settings.upsert({
+    where: { id: 1 },
+    create: {
+      id: 1,
+      leadCut: DEFAULTS.leadCut,
+      leadWeld: DEFAULTS.leadWeld,
+      capacityPerItem: DEFAULTS.capacityPerItem,
+      dailyTarget: DEFAULTS.dailyTarget,
+      ...hours,
+    },
+    update: hours,
+  });
+  // the day's man-hours are recomputed as they are read, so every screen that
+  // shows them wants refreshing
+  for (const p of ["/admin/settings", "/shifts", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate", "/admin/standard-times"]) revalidatePath(p);
+  return { ok: true };
+}

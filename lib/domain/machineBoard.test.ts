@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMachineBoard, lineKey, loadTone, urgencyOrder, type BoardLine, type BoardMachine } from "./machineBoard";
+import { buildMachineBoard, clearWords, lineKey, loadTone, urgencyOrder, type BoardLine, type BoardMachine } from "./machineBoard";
 
 const m = (id: number, over: Partial<BoardMachine> = {}): BoardMachine => ({ id, code: `B4-${id}`, name: `Laser ${id}`, center: "Cutting", hoursPerDay: 9, active: true, ...over });
 const l = (bom: string, item: string, remaining: number, hours: number | null, deliveryISO: string | null = "2026-09-12", mo = "MO-1"): BoardLine => ({
@@ -170,6 +170,15 @@ describe("urgencyOrder", () => {
   it("puts the earliest delivery first and date-less lines last", () => {
     const rows = [l("B", "TN", 1, 1, null), l("A", "TN", 1, 1, "2026-09-12"), l("C", "TN", 1, 1, "2026-09-11")].sort(urgencyOrder);
     expect(rows.map((r) => r.bom)).toEqual(["C", "A", "B"]);
+  });
+});
+
+describe("clearWords", () => {
+  it("answers in hours while the queue is under a day, in days once it is more", () => {
+    expect(clearWords(6, 9)).toBe("6 h");
+    expect(clearWords(9, 9)).toBe("1 day");
+    expect(clearWords(23, 9)).toBe("2.6 days");
+    expect(clearWords(4.25, null)).toBe("4.3 h"); // no hours a day set — the hours are all it can say
   });
 });
 
