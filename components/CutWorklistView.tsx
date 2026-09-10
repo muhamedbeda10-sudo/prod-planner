@@ -12,6 +12,8 @@ import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
 import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { PlanIssuesPanel } from "@/components/PlanIssuesPanel";
+import { MachineBoard } from "@/components/MachineBoard";
+import type { MachineBoardData } from "@/lib/server/machineBoard";
 import type { ReturnRowDTO } from "@/lib/server/returns";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import type { PriorityLineDTO, HiddenLineDTO, RunOrderLineDTO } from "@/lib/server/worklistExtras";
@@ -41,6 +43,7 @@ export function CutWorklistView({
   canEdit = false,
   isAdmin = false,
   soi,
+  board,
 }: {
   dueNow: CutTranche[];
   overdue: CutTranche[];
@@ -61,7 +64,10 @@ export function CutWorklistView({
   canEdit?: boolean; // user holds cut.edit — otherwise view-only
   soi?: SoiLookup; // the SOI shown beside each MO
   isAdmin?: boolean; // admins may re-date lines / revert their overrides
+  board?: MachineBoardData; // 🏭 the machine load board — who is on what
 }) {
+  const machines = board?.machines ?? [];
+  const assigned = board?.assigned ?? {};
   // search + item card filter survive navigating away and back
   const [q, setQ] = useSavedFilter("queue.Cut.q");
   const [item, setItem] = useSavedFilter("queue.Cut.item");
@@ -124,6 +130,9 @@ export function CutWorklistView({
       </FilterBar>
       </div>
 
+      {/* 🏭 the machines: what each is on now, what waits, how loaded */}
+      {board && <MachineBoard board={board} canEdit={canEdit} />}
+
       {/* ⭐ the admin's priority orders — a focus list above everything */}
       <RunOrderTable rows={runOrder} deptWord="cut" />
       <PriorityOrdersTable rows={priority} deptWord="cut" soi={soi} />
@@ -139,7 +148,7 @@ export function CutWorklistView({
             No weekly plan covers today — import the new weekly schedule. The backlogs below still work.
           </p>
         ) : (
-          <CutTrancheTable soi={soi} rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} canEdit={canEdit} isAdmin={isAdmin} />
+          <CutTrancheTable soi={soi} rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
         )}
       </section>
 
@@ -149,7 +158,7 @@ export function CutWorklistView({
           Overdue backlog — missed delivery dates ({totalOverdue} pcs)
           {totalOverdue > 0 && <span className="pill pill-bad ml-2 normal-case">catch up first</span>}
         </h2>
-        <CutTrancheTable soi={soi} rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
+        <CutTrancheTable soi={soi} rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
       </section>
 
       {/* 3 — lines an admin re-dated into the FUTURE: they left today's list
@@ -159,7 +168,7 @@ export function CutWorklistView({
           <h2>
             Re-dated by admin — leaves this list on its new day ({totalPostponed} pcs)
           </h2>
-          <CutTrancheTable soi={soi} rows={postponedF} day={day} planNo={planNo ?? 0} variant="due" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
+          <CutTrancheTable soi={soi} rows={postponedF} day={day} planNo={planNo ?? 0} variant="due" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
         </section>
       )}
 
@@ -170,7 +179,7 @@ export function CutWorklistView({
           <h2>
             📥 Sent from the Plan Tracker — to be scheduled ({totalPushed} pcs)
           </h2>
-          <CascadeTable rows={pushedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
+          <CascadeTable rows={pushedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
         </section>
       )}
 
@@ -182,7 +191,7 @@ export function CutWorklistView({
           <h2>
             Remarked in this week&apos;s plan — no date yet ({totalRemarked} pcs)
           </h2>
-          <CascadeTable rows={remarkedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
+          <CascadeTable rows={remarkedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
         </section>
       )}
 
@@ -192,7 +201,7 @@ export function CutWorklistView({
         <h2 className="text-muted">
           Open orders — not scheduled, no remarks ({totalUnscheduled} pcs)
         </h2>
-        <CascadeTable rows={unscheduledF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} />
+        <CascadeTable rows={unscheduledF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
       </section>
 
       {/* admin-hidden lines — collapsed restore panel */}

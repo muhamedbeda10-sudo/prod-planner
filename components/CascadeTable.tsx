@@ -8,6 +8,8 @@ import { recordOutput, recordGroupOutput, setWorklistDate, hideWorklistLine } fr
 import { SearchBox, FilterBar } from "@/components/FilterControls";
 import { NotesButton, NotesPanelRow } from "@/components/QueueNotes";
 import { Frac } from "@/components/Frac";
+import { MachinePick } from "@/components/MachineBoard";
+import type { MachineDTO } from "@/lib/server/machines";
 
 function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -23,6 +25,8 @@ export function CascadeTable({
   isAdmin = false,
   dept = "Cut", // which dept records output on these rows (Cut | Welding | Painting)
   allowDate = true, // admins may give a date-less line a delivery date (cut page only)
+  machines = [],
+  assigned = {},
 }: {
   rows: CascadeRow[];
   day: string; // ISO (today — computed by the app)
@@ -33,9 +37,14 @@ export function CascadeTable({
   isAdmin?: boolean; // admins may date / remove lines
   dept?: string;
   allowDate?: boolean;
+  /** The department's machines — with any, every row carries a Machine picker. */
+  machines?: MachineDTO[];
+  assigned?: Record<string, { machineId: number; rank: number }>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const hasMachines = machines.length > 0;
+  const cols = hasMachines ? 10 : 9;
   const [qty, setQty] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<Record<string, string>>({});
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({});
@@ -198,12 +207,13 @@ export function CascadeTable({
               <th className="p-2 text-center" title="Whole order: cut so far / order qty">Done / Order</th>
               <th className="p-2 text-center" title="Unscheduled pool you can pull from">Pool</th>
               <th className="p-2 text-center w-44">Pull &amp; record</th>
+              {hasMachines && <th className="p-2" title="Which machine the line is on, and its place in that machine's queue">Machine</th>}
               <th className="p-2 text-center">Notes</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={9} className="p-4 text-center text-muted">
+              <tr><td colSpan={cols} className="p-4 text-center text-muted">
                 {rows.length === 0 ? "Nothing here — every open order is scheduled or remarked." : "No lines match the search."}
               </td></tr>
             )}
@@ -270,6 +280,14 @@ export function CascadeTable({
                         <span className="text-xs text-muted">{open ? "▲ collapse" : "▼ open MOs"}</span>
                       )}
                     </td>
+                    {hasMachines && (
+                      <td className="p-2 text-xs text-muted whitespace-nowrap">
+                        {(() => {
+                          const on = [...new Set(members.map((m) => assigned[keyOf(m)]?.machineId).filter((x): x is number => x !== undefined))];
+                          return on.length > 0 ? on.map((id) => machines.find((x) => x.id === id)?.code ?? id).join(", ") : "—";
+                        })()}
+                      </td>
+                    )}
                     <td className="p-2 text-center whitespace-nowrap">
                       {(() => {
                         const openNoteCount = members.reduce(
@@ -410,6 +428,11 @@ export function CascadeTable({
                     )}
                     {msg[k] && <div className="text-[11px] text-bad-fg mt-0.5">{msg[k]}</div>}
                   </td>
+                  {hasMachines && (
+                    <td className="p-2 whitespace-nowrap">
+                      <MachinePick dept={dept} bom={r.bom} mo={r.mo} item={r.item} machines={machines} current={assigned[k]} canEdit={canEdit} compact />
+                    </td>
+                  )}
                   <td className="p-2 text-center whitespace-nowrap">
                     <NotesButton lineNotes={lineNotes} onClick={() => setOpenNotes(openNotes === k ? null : k)} />
                   </td>
@@ -421,7 +444,7 @@ export function CascadeTable({
                     item={r.item}
                     dept={dept}
                     lineNotes={lineNotes}
-                    colSpan={9}
+                    colSpan={cols}
                     canEdit={canEdit}
                     className={inGroup ? "border-x-2 border-brand" : ""}
                   />

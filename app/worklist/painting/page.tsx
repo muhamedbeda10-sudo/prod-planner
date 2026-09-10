@@ -13,6 +13,8 @@ import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, canEditDept } from "@/lib/server/auth";
+import { getMachineBoard } from "@/lib/server/machineBoard";
+import { MachineBoard } from "@/components/MachineBoard";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +42,11 @@ export default async function PaintingWorklistPage() {
     bom: p.bom, mo: p.mo, description: p.description, item: p.item,
     target: p.orderQty, scheduled: 0, done: p.done, available: p.qty, deliveryISO: null,
   }));
+  // the paint lines' board: what is ready to paint on each line
+  const board = await getMachineBoard("Painting", [
+    ...queue.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO })),
+    ...pushedRows.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: null })),
+  ], dayISO);
 
   return (
     <>
@@ -57,14 +64,17 @@ export default async function PaintingWorklistPage() {
         workers={tankTracking ? painters : []}
         paintableTanks={tankTracking ? Object.fromEntries(tanksByMo) : {}}
         tankTracking={tankTracking}
+        machines={board.machines}
+        assigned={board.assigned}
         before={
           <>
+            <MachineBoard board={board} canEdit={canEdit} />
             <RunOrderTable rows={runOrder} deptWord="paint" />
             <PriorityOrdersTable rows={extras.priority} deptWord="painted" soi={soi} />
             {pushedRows.length > 0 && (
               <section className="mb-6">
                 <h2>📥 Sent from the Plan Tracker ({pushedRows.reduce((s, r) => s + r.available, 0)} pcs)</h2>
-                <CascadeTable rows={pushedRows} day={dayISO} planNo={0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} dept="Painting" allowDate={false} />
+                <CascadeTable rows={pushedRows} day={dayISO} planNo={0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} dept="Painting" allowDate={false} machines={board.machines} assigned={board.assigned} />
               </section>
             )}
           </>

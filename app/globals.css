@@ -338,6 +338,15 @@ main textarea:focus {
   color: rgb(255 255 255 / 0.68);
   transition: color 0.18s ease;
 }
+/* The strip has to hold every tab on a laptop: tighter tabs below 1800px,
+   icons dropped below 1600px — the labels are what people read. */
+@media (max-width: 1799px) {
+  .nav-tab { padding: 8px 8px; font-size: 13px; gap: 5px; }
+}
+@media (max-width: 1599px) {
+  .nav-tab { padding: 8px 7px; letter-spacing: 0; }
+  .nav-tab > svg:first-child { display: none; }
+}
 .nav-tab::after {
   content: "";
   position: absolute;

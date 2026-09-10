@@ -8,6 +8,7 @@ import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { CutWorklistView } from "@/components/CutWorklistView";
 import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, canEditDept } from "@/lib/server/auth";
+import { getMachineBoard, type BoardLineInput } from "@/lib/server/machineBoard";
 
 export const dynamic = "force-dynamic";
 
@@ -26,10 +27,18 @@ export default async function CutWorklistPage() {
   const dayISO = toISODate(today);
   const canEdit = !!user && canEditDept(user, "Cut");
 
+  // every open line on the sheet, for the machine board: the dated tranches
+  // by what is left on them, the date-less pools by what can be pulled
+  const lines: BoardLineInput[] = [
+    ...[...dueNow, ...overdue, ...postponed].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.remaining, deliveryISO: r.deliveryISO })),
+    ...[...pushed, ...remarked, ...unscheduled].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO })),
+  ];
+  const board = await getMachineBoard("Cut", lines, dayISO);
+
   return (
     <>
       <PrintHeader title="Fabrication Worklist" date={toDisplayDate(today)} />
-      <CutWorklistView soi={soi} runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} unscheduled={unscheduled} pushed={pushed} priority={priority} hidden={hidden} planIssues={planIssues} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} />
+      <CutWorklistView soi={soi} runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} unscheduled={unscheduled} pushed={pushed} priority={priority} hidden={hidden} planIssues={planIssues} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} board={board} />
     </>
   );
 }

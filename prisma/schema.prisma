@@ -479,6 +479,7 @@ model Machine {
 
   shifts    ShiftEntry[]
   downtimes MachineDowntime[]
+  lines     WorklistMachine[]
 
   @@index([dept])
 }
@@ -520,6 +521,27 @@ model MachineDowntime {
   createdAt  DateTime @default(now())
 
   @@index([date])
+  @@index([machineId])
+}
+
+// Which machine a worklist line is on, and where it stands in that machine's
+// queue — "this is running on that now". Keyed like the other worklist
+// layers (dept × bom × mo × item); rank 1 is what the machine is on, the
+// rest wait behind it. Recording output never touches it: a line leaves the
+// board by itself once nothing remains on it.
+model WorklistMachine {
+  id        Int      @id @default(autoincrement())
+  dept      String // Cut | Painting
+  bom       String
+  mo        String
+  item      String
+  machineId Int
+  machine   Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  rank      Int      @default(0)
+  setBy     String?
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([dept, bom, mo, item])
   @@index([machineId])
 }
 
