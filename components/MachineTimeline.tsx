@@ -5,6 +5,7 @@ import Link from "next/link";
 import { buildTimeline, type TimelineBlock } from "@/lib/domain/machineTimeline";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
+import { DeptLoadCurve } from "@/components/DeptLoadCurve";
 
 // 📊 The board's Timeline view: every machine a track, every queued line a
 // block as long as that machine needs for it, laid on the working days ahead.
@@ -48,6 +49,9 @@ function Block({ b, horizon, word }: { b: TimelineBlock; horizon: number; word: 
 
 export function MachineTimeline({ board }: { board: MachineBoardData }) {
   const [horizon, setHorizon] = useState<number>(10);
+  // two readings of the same days: what each machine runs, and whether the
+  // department can carry what it has promised at all
+  const [view, setView] = useState<"machines" | "load">("machines");
   const word = machineWord(board.dept);
   const t = useMemo(() => buildTimeline(board.cards, board.days ?? [], horizon), [board.cards, board.days, horizon]);
   const days = t.days.slice(0, horizon);
@@ -56,13 +60,17 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
   return (
     <section className="bg-surface border rounded-xl p-3 no-print">
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        <span className="text-sm font-bold">📊 The next {horizon} working days</span>
-        {t.lateCount > 0 ? (
+        <span className="inline-flex rounded-md overflow-hidden border">
+          <button type="button" className={`btn btn-sm rounded-none ${view === "machines" ? "btn-primary" : "btn-ghost"}`} onClick={() => setView("machines")} title={`What each ${word} runs, and when`}>By {word}</button>
+          <button type="button" className={`btn btn-sm rounded-none ${view === "load" ? "btn-primary" : "btn-ghost"}`} onClick={() => setView("load")} title="What the whole department has promised, against the hours it has">Department load</button>
+        </span>
+        <span className="text-sm font-bold">the next {horizon} working days</span>
+        {view === "machines" && t.lateCount > 0 ? (
           <span className="pill pill-bad tabnum" title="Blocks that finish after the day their stage was promised">{t.lateCount} job(s) land late</span>
-        ) : (
+        ) : view === "machines" ? (
           <span className="pill pill-ok">every job makes its date</span>
-        )}
-        {t.spanDays > horizon && <span className="pill pill-warn tabnum" title="The longest queue runs past the picture">longest queue {t.spanDays} day(s)</span>}
+        ) : null}
+        {view === "machines" && t.spanDays > horizon && <span className="pill pill-warn tabnum" title="The longest queue runs past the picture">longest queue {t.spanDays} day(s)</span>}
         <span className="ms-auto inline-flex items-center gap-1 text-xs text-muted">
           show
           {ZOOMS.map((z) => (
@@ -71,6 +79,7 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
         </span>
       </div>
 
+      {view === "load" ? <DeptLoadCurve board={board} horizon={horizon} /> : (<>
       {/* the days across the top */}
       <div className="flex text-[10px] text-muted">
         <span className="w-28 shrink-0" />
@@ -125,6 +134,7 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
         its stage was owed, and the thin mark on the track is that day. Move the work with the cards below, or with{" "}
         <Link href={`/worklist/machines?dept=${board.dept}`} className="text-accent font-semibold hover:underline">the printed sheets</Link>.
       </p>
+      </>)}
     </section>
   );
 }
