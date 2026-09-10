@@ -31,9 +31,10 @@ function readLine(fd: FormData): { dept: BoardDept; bom: string; mo: string; ite
   return { dept: dept as BoardDept, bom, mo, item };
 }
 
-/** Renumber a machine's queue 1..n in its current order. */
+/** Renumber a machine's queue 1..n in its current order — running lines
+ *  first, then the waiting ones. */
 async function renumber(dept: string, machineId: number) {
-  const rows = await prisma.worklistMachine.findMany({ where: { dept, machineId }, orderBy: [{ rank: "asc" }, { updatedAt: "asc" }] });
+  const rows = await prisma.worklistMachine.findMany({ where: { dept, machineId }, orderBy: [{ running: "desc" }, { rank: "asc" }, { updatedAt: "asc" }] });
   await Promise.all(rows.map((r, i) => (r.rank === i + 1 ? null : prisma.worklistMachine.update({ where: { id: r.id }, data: { rank: i + 1 } }))));
 }
 
@@ -64,13 +65,18 @@ export async function assignLineMachine(fd: FormData): Promise<MachineActionResu
   if (!machine.active) return { ok: false, error: `${machine.code} is retired — bring it back in Tools → Machines first.` };
   if (prev?.machineId === machineId) return { ok: true };
 
-  const last = await prisma.worklistMachine.aggregate({ where: { dept: line.dept, machineId }, _max: { rank: true } });
+  const [last, runningNow] = await Promise.all([
+    prisma.worklistMachine.aggregate({ where: { dept: line.dept, machineId }, _max: { rank: true } }),
+    prisma.worklistMachine.count({ where: { dept: line.dept, machineId, running: true } }),
+  ]);
   const rank = (last._max.rank ?? 0) + 1;
   const by = guard.user?.name ?? null;
+  // an idle machine starts on the line it is given; a busy one queues it
+  const running = runningNow === 0;
   await prisma.worklistMachine.upsert({
     where: { dept_bom_mo_item: key },
-    create: { ...key, machineId, rank, setBy: by },
-    update: { machineId, rank, setBy: by },
+    create: { ...key, machineId, rank, running, setBy: by },
+    update: { machineId, rank, running, setBy: by },
   });
   if (prev) await renumber(line.dept, prev.machineId);
   revalidate();
@@ -89,7 +95,9 @@ export async function moveLineRank(fd: FormData): Promise<MachineActionResult> {
 
   const row = await prisma.worklistMachine.findUnique({ where: { dept_bom_mo_item: { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item } } });
   if (!row) return { ok: false, error: "That line is not on a machine any more — reload the page." };
-  const queue = await prisma.worklistMachine.findMany({ where: { dept: line.dept, machineId: row.machineId }, orderBy: [{ rank: "asc" }, { updatedAt: "asc" }] });
+  // moves happen within the line's own group: the running lines keep the
+  // front, the waiting ones are reordered among themselves
+  const queue = await prisma.worklistMachine.findMany({ where: { dept: line.dept, machineId: row.machineId, running: row.running }, orderBy: [{ rank: "asc" }, { updatedAt: "asc" }] });
   const i = queue.findIndex((q) => q.id === row.id);
   const order = queue.map((q) => q.id);
   if (dir === "top") {
@@ -100,7 +108,27 @@ export async function moveLineRank(fd: FormData): Promise<MachineActionResult> {
     if (j < 0 || j >= order.length) return { ok: true };
     [order[i], order[j]] = [order[j], order[i]];
   }
-  await prisma.$transaction(order.map((id, n) => prisma.worklistMachine.update({ where: { id }, data: { rank: n + 1 } })));
+  const base = row.running ? 0 : await prisma.worklistMachine.count({ where: { dept: line.dept, machineId: row.machineId, running: true } });
+  await prisma.$transaction(order.map((id, n) => prisma.worklistMachine.update({ where: { id }, data: { rank: base + n + 1 } })));
+  revalidate();
+  return { ok: true };
+}
+
+/** Start a waiting line on its machine now (alongside whatever already runs
+ *  there), or put a running line back to waiting. */
+export async function setLineRunning(fd: FormData): Promise<MachineActionResult> {
+  const line = readLine(fd);
+  if ("error" in line) return { ok: false, error: line.error };
+  const guard = await requireDeptEdit(line.dept);
+  if (guard.error) return { ok: false, error: guard.error };
+  const running = String(fd.get("running") ?? "") === "true";
+  const row = await prisma.worklistMachine.findUnique({ where: { dept_bom_mo_item: { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item } } });
+  if (!row) return { ok: false, error: "That line is not on a machine any more — reload the page." };
+  if (row.running === running) return { ok: true };
+  // a line put back to waiting goes to the front of the waiting ones; a line
+  // started goes behind the lines already running
+  await prisma.worklistMachine.update({ where: { id: row.id }, data: { running, rank: running ? 9999 : 0, setBy: guard.user?.name ?? null } });
+  await renumber(line.dept, row.machineId);
   revalidate();
   return { ok: true };
 }

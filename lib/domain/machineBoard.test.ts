@@ -17,16 +17,18 @@ describe("buildMachineBoard", () => {
   ];
   const assignments = [
     { key: lineKey("B", "MO-1", "TC"), machineId: 1, rank: 2 },
-    { key: lineKey("A", "MO-1", "TN"), machineId: 1, rank: 1 },
-    { key: lineKey("C", "MO-1", "CF"), machineId: 2, rank: 1 },
+    { key: lineKey("A", "MO-1", "TN"), machineId: 1, rank: 1, running: true },
+    { key: lineKey("C", "MO-1", "CF"), machineId: 2, rank: 1, running: true },
     { key: lineKey("D", "MO-1", "CB"), machineId: 1, rank: 0 },
   ];
 
   it("queues each machine in rank order and prices the queue", () => {
     const b = buildMachineBoard(machines, lines, assignments, { downtimeH: { 1: 2 }, crewH: { 1: 23 } });
     const c1 = b.cards.find((c) => c.machine.id === 1)!;
-    expect(c1.queue.map((q) => [q.bom, q.rank])).toEqual([["A", 1], ["B", 2]]);
+    expect(c1.queue.map((q) => [q.bom, q.rank, q.running])).toEqual([["A", 1, true], ["B", 2, false]]);
     expect(c1.now?.bom).toBe("A");
+    expect(c1.running.map((q) => q.bom)).toEqual(["A"]);
+    expect(c1.waiting.map((q) => q.bom)).toEqual(["B"]);
     expect(c1.pcs).toBe(14);
     expect(c1.hours).toBe(7.5);
     expect(c1.availableH).toBe(7); // 9 − 2 down
@@ -48,6 +50,19 @@ describe("buildMachineBoard", () => {
     const b = buildMachineBoard(machines, lines, assignments);
     expect(b.cards.map((c) => c.machine.id)).toEqual([1, 2]);
     expect(b.unassigned.map((u) => u.bom)).toEqual(["E"]);
+  });
+
+  it("puts every running line first, whatever its rank, and the waiting ones after", () => {
+    const b = buildMachineBoard([m(1)], lines, [
+      { key: lineKey("A", "MO-1", "TN"), machineId: 1, rank: 3 },
+      { key: lineKey("B", "MO-1", "TC"), machineId: 1, rank: 1, running: true },
+      { key: lineKey("E", "MO-1", "TN"), machineId: 1, rank: 2, running: true },
+    ]);
+    const c = b.cards[0];
+    expect(c.queue.map((q) => q.bom)).toEqual(["B", "E", "A"]);
+    expect(c.running).toHaveLength(2);
+    expect(c.waiting.map((q) => q.bom)).toEqual(["A"]);
+    expect(c.now?.bom).toBe("B");
   });
 
   it("merges two tranches of one line into one board line", () => {

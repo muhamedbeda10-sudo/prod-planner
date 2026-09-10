@@ -69,7 +69,7 @@ export function WeldingQueueTable({
   after?: React.ReactNode; // page sections at the bottom of the scroll area (hidden-lines panel)
   /** PAINTING — the paint lines; with any, every row carries a Machine picker. */
   machines?: MachineDTO[];
-  assigned?: Record<string, { machineId: number; rank: number }>;
+  assigned?: Record<string, { machineId: number; rank: number; running: boolean }>;
 }) {
   const hasMachines = machines.length > 0;
   const verb = dept === "Welding" ? "weld" : "paint";

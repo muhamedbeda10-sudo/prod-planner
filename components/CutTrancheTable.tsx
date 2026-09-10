@@ -46,7 +46,7 @@ export function CutTrancheTable({
   /** The department's machines — with any, every row carries a Machine picker. */
   machines?: MachineDTO[];
   /** bom|mo|item → the machine the line is on and its place in the queue. */
-  assigned?: Record<string, { machineId: number; rank: number }>;
+  assigned?: Record<string, { machineId: number; rank: number; running: boolean }>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
