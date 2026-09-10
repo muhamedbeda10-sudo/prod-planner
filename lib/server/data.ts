@@ -3,9 +3,10 @@ import { prisma } from "@/lib/db";
 import { makeBomGrouper, type BomGrouper } from "@/lib/domain/bom";
 import type { PlanWindow } from "@/lib/domain/findPlan";
 import { DEFAULTS } from "@/lib/domain/constants";
+import { loadPlans, loadSettingsRow } from "./loads";
 
 export async function getSettings() {
-  const s = await prisma.settings.findUnique({ where: { id: 1 } });
+  const s = await loadSettingsRow();
   return {
     leadCut: s?.leadCut ?? DEFAULTS.leadCut,
     leadWeld: s?.leadWeld ?? DEFAULTS.leadWeld,
@@ -22,7 +23,7 @@ export async function isTankTrackingOn(): Promise<boolean> {
 }
 
 export async function getPlanWindows(): Promise<PlanWindow[]> {
-  const plans = await prisma.plan.findMany({ orderBy: { planNo: "asc" } });
+  const plans = await loadPlans();
   return plans.map((p) => ({ planNo: p.planNo, startDate: p.startDate }));
 }
 

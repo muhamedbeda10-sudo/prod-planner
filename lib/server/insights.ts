@@ -1,5 +1,4 @@
 import "server-only";
-import { prisma } from "@/lib/db";
 import { ITEMS, PAINTED_ITEMS, PAINTED_SHEET_ITEMS, sumItemTargets, type Item } from "@/lib/domain/constants";
 import { dayNumber, dateFromDayNumber, toISODate } from "@/lib/domain/dates";
 import {
@@ -15,6 +14,7 @@ import {
   type Insight,
 } from "@/lib/domain/insights";
 import { getSettings } from "./data";
+import { loadAllHandover, loadHolidays } from "./loads";
 import { getCutSheet, getWeldingQueue, getPaintingQueue } from "./execution";
 
 export interface SmartInsightsData {
@@ -48,11 +48,9 @@ export async function getSmartInsights(): Promise<SmartInsightsData> {
 
   const [settings, holidayRows, entries, cutSheet, weldQueue, paintQueue] = await Promise.all([
     getSettings(),
-    prisma.holiday.findMany(),
-    prisma.handoverEntry.findMany({
-      where: { date: { gte: dateFromDayNumber(weekStart - 21) } }, // week + 3 weeks back for trends
-      select: { date: true, dept: true, item: true, qty: true },
-    }),
+    loadHolidays(),
+    // week + 3 weeks back for trends — from the log the sheet and queues already loaded
+    loadAllHandover().then((all) => { const since = dateFromDayNumber(weekStart - 21); return all.filter((e) => e.date >= since); }),
     getCutSheet(),
     getWeldingQueue(today),
     getPaintingQueue(today),

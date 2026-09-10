@@ -1,0 +1,21 @@
+"use client";
+
+import dynamic from "next/dynamic";
+
+// Recharts is the heaviest thing the browser downloads for this app, and it
+// is only needed where a chart is drawn. Each chart module is split into its
+// own chunk here and fetched when that page renders, with a quiet placeholder
+// of the chart's height in the meantime — the numbers around it paint first.
+// (Server pages cannot code-split a client component themselves, so the
+// splitting has to happen in a client module like this one.)
+
+function Placeholder({ h }: { h: number }) {
+  return <div className="rounded-xl bg-surface-2/60 animate-pulse" style={{ height: h }} aria-hidden />;
+}
+
+export const WeekTrendChart = dynamic(() => import("./DashboardCharts").then((m) => m.WeekTrendChart), { ssr: false, loading: () => <Placeholder h={260} /> });
+export const WeekItemChart = dynamic(() => import("./DashboardCharts").then((m) => m.WeekItemChart), { ssr: false, loading: () => <Placeholder h={260} /> });
+export const HistoryChart = dynamic(() => import("./DashboardCharts").then((m) => m.HistoryChart), { ssr: false, loading: () => <Placeholder h={260} /> });
+export const OutputByComponentChart = dynamic(() => import("./ReportCharts").then((m) => m.OutputByComponentChart), { ssr: false, loading: () => <Placeholder h={300} /> });
+export const PlannedVsWeldedChart = dynamic(() => import("./ReportCharts").then((m) => m.PlannedVsWeldedChart), { ssr: false, loading: () => <Placeholder h={300} /> });
+export const OdooDashboard = dynamic(() => import("./OdooDashboard").then((m) => m.OdooDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });

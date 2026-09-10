@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { loadAllHandover, loadHolidays, loadMasterOrders } from "./loads";
 import { computeDailyReport, type DailyReport } from "@/lib/domain/report";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getSettings, getPlanWindows, getGlobalGrouper, getLatestPlanNo } from "./data";
@@ -20,7 +21,7 @@ export interface DailyReportResult extends DailyReport {
 /** Working days (Sat–Thu, minus factory-calendar days off) inside an inclusive
  *  range — the multiplier the range report measures capacity against. */
 export async function countWorkingDays(from: Date, to: Date): Promise<number> {
-  const holidays = await prisma.holiday.findMany();
+  const holidays = await loadHolidays();
   const off = new Set(holidays.map((h) => toISODate(h.date)));
   let n = 0;
   const d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
@@ -41,7 +42,7 @@ export async function getDailyReport(day: Date, from?: Date, days = 1): Promise<
   const target = settings.dailyTarget || settings.capacityPerItem || 27;
   const [orders, handover, grouper, windows] = await Promise.all([
     prisma.planOrder.findMany({ orderBy: { id: "asc" } }),
-    prisma.handoverEntry.findMany(),
+    loadAllHandover(),
     getGlobalGrouper(),
     getPlanWindows(),
   ]);
@@ -235,7 +236,7 @@ export async function getEarnedHours(day: Date, depts?: string[], from?: Date): 
       where: { date: { gte: start, lt: end }, ...(depts && depts.length ? { dept: { in: depts } } : {}) },
       select: { bom: true, mo: true, dept: true, item: true, qty: true },
     }),
-    prisma.masterOrder.findMany({ select: { mo: true, bom: true, fgCode: true, kva: true } }),
+    loadMasterOrders(),
     getStdData(),
   ]);
 

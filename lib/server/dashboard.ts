@@ -2,6 +2,7 @@
 import { prisma } from "@/lib/db";
 import { ITEMS, SHEET_ITEMS, sumItemTargets, type Item } from "@/lib/domain/constants";
 import { getSettings } from "./data";
+import { loadHolidays } from "./loads";
 import { dayNumber, dateFromDayNumber, toISODate } from "@/lib/domain/dates";
 
 // ============================================================================
@@ -102,7 +103,7 @@ export async function getTargetDashboard(opts?: {
 }): Promise<TargetDashboard> {
   const [settings, holidays] = await Promise.all([
     getSettings(),
-    prisma.holiday.findMany(),
+    loadHolidays(),
   ]);
   const target = settings.dailyTarget || 27;
   const holidayName = new Map(holidays.map((h) => [dayNumber(h.date), h.name]));

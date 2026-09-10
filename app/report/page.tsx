@@ -2,7 +2,8 @@ import Image from "next/image";
 import { getDailyReport, getDayOutputByProject, getEarnedHours } from "@/lib/server/report";
 import { pctStyle, Num } from "@/components/ui";
 import { DayPicker, DeptPicker } from "@/components/controls";
-import { OutputByComponentChart, PrintButton } from "@/components/ReportCharts";
+import { OutputByComponentChart } from "@/components/LazyCharts";
+import { PrintButton } from "@/components/PrintButton";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, STAGE_COLOR, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
+import { loadAllSchedules, loadHolidays, loadMasterOrders } from "./loads";
 import { toISODate } from "@/lib/domain/dates";
 import { isPaintExempt, type Item, ITEMS } from "@/lib/domain/constants";
 import { tierForOrder, itemHoursFor } from "@/lib/domain/stdEngine";
@@ -19,7 +20,7 @@ const isWorkday = (d: Date, off: Set<string>) => d.getUTCDay() !== 5 && !off.has
 /** The plant's ACTUAL std-hours per working day per ETA stage, over the last
  *  RATE_WINDOW_WD working days (ending yesterday). */
 export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, number>; sigma: Record<EtaStage, number>; windowDays: number }> => {
-  const holidays = new Set((await prisma.holiday.findMany()).map((h) => toISODate(h.date)));
+  const holidays = new Set((await loadHolidays()).map((h) => toISODate(h.date)));
   // walk back from yesterday until the window holds RATE_WINDOW_WD working days
   const end = new Date(Math.floor(Date.now() / DAY) * DAY - DAY);
   let start = new Date(end);
@@ -34,7 +35,7 @@ export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, n
       where: { date: { gte: start, lt: new Date(end.getTime() + DAY) } },
       select: { mo: true, bom: true, dept: true, item: true, qty: true, date: true },
     }),
-    prisma.masterOrder.findMany({ select: { mo: true, bom: true, fgCode: true, kva: true } }),
+    loadMasterOrders(),
     getStdData(),
   ]);
   const moTier = new Map(orders.map((o) => [o.mo, tierForOrder(std, o)]));
@@ -105,9 +106,9 @@ export const getEtaBase = cache(async (): Promise<EtaBase> => {
     getMasterTracker(),
     getStdData(),
     getStageRates(),
-    prisma.planSchedule.findMany({ select: { mo: true, ovenDate: true } }),
-    prisma.holiday.findMany(),
-    prisma.masterOrder.findMany({ select: { mo: true, fgCode: true, kva: true } }),
+    loadAllSchedules(),
+    loadHolidays(),
+    loadMasterOrders(),
   ]);
   const masterByMo = new Map(masters.map((m) => [m.mo, m]));
 

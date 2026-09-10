@@ -7,6 +7,7 @@ import { getAllMachines, type MachineDTO } from "./machines";
 import { getCutSheet, getPaintingQueue, getWeldingQueue } from "./execution";
 import { getWorklistExtras } from "./worklistExtras";
 import { parseISODate } from "@/lib/domain/dates";
+import { loadMasterOrders } from "./loads";
 
 // The machine load board for one worklist: the page hands over the open
 // lines it already computed (every section of the sheet), this prices them
@@ -40,7 +41,7 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
     getAllMachines(),
     prisma.worklistMachine.findMany({ where: { dept }, orderBy: [{ machineId: "asc" }, { rank: "asc" }] }),
     getStdData(),
-    prisma.masterOrder.findMany({ select: { mo: true, bom: true, fgCode: true, kva: true } }),
+    loadMasterOrders(),
     prisma.machineDowntime.findMany({ where: { date, machine: { dept } }, select: { machineId: true, hours: true } }),
     prisma.shiftEntry.findMany({ where: { date, dept, present: true, machineId: { not: null } }, select: { machineId: true, shift: true, overtimeH: true, worker: { select: { name: true } } } }),
   ]);

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requiredHoursForLines, tierForOrder, itemHoursFor } from "@/lib/domain/stdEngine";
 import { projectPace } from "@/lib/domain/eta";
 import { getStdData, getStageCapacity } from "./standardTimes";
+import { loadHolidays, loadMasterOrders } from "./loads";
 import { countWorkingDays } from "./report";
 import { toISODate } from "@/lib/domain/dates";
 import { owedAcrossDays, promiseCeiling } from "@/lib/domain/planPromises";
@@ -36,10 +37,10 @@ export async function getPlanCapacity(planNo: number | null): Promise<PlanCapaci
       where: { planNo },
       select: { mo: true, item: true, ovenDate: true, qty: true },
     }),
-    prisma.masterOrder.findMany({ select: { mo: true, fgCode: true, kva: true, planQty: true, excludedItems: true } }),
+    loadMasterOrders(),
     getStdData(),
     getStageCapacity(),
-    prisma.holiday.findMany(),
+    loadHolidays(),
   ]);
   if (schedules.length === 0) return null;
 

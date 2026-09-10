@@ -25,8 +25,7 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentUser(); // null on /login (proxy guards the rest)
-  const unreadChat = user ? await getChatUnreadCount(user.id) : 0;
-  const settings = user ? await getSettings() : null;
+  const [unreadChat, settings] = user ? await Promise.all([getChatUnreadCount(user.id), getSettings()]) : [0, null];
   return (
     <html lang="en" dir="ltr" className={`${inter.variable} h-full`} suppressHydrationWarning>
       <head>

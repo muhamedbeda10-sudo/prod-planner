@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { loadMasterOrders } from "./loads";
 import { ITEMS, isPaintExempt, itemApplies, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 
 // Plan Tracker on the MONTHLY registry: one row per MO. Progress is GLOBAL —
@@ -32,7 +33,7 @@ export interface MasterTrackerRow {
 
 export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
   const [orders, sums] = await Promise.all([
-    prisma.masterOrder.findMany({ orderBy: [{ urgent: "desc" }, { mo: "asc" }] }),
+    loadMasterOrders(),
     prisma.handoverEntry.groupBy({
       by: ["mo", "dept", "item"],
       where: { mo: { not: null } },

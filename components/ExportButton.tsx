@@ -1,8 +1,11 @@
 "use client";
 
-import * as XLSX from "xlsx";
+import { useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
 
+// SheetJS is a quarter of a megabyte — far more than any page it sits on.
+// It is fetched the first time someone actually presses Export, never on
+// page load, so a dozen tabs open faster for a button most visits never use.
 export function ExportButton({
   rows,
   filename,
@@ -14,16 +17,23 @@ export function ExportButton({
   sheetName?: string;
   label?: string;
 }) {
-  function exportXlsx() {
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    XLSX.writeFile(wb, filename);
+  const [busy, setBusy] = useState(false);
+  async function exportXlsx() {
+    setBusy(true);
+    try {
+      const XLSX = await import("xlsx");
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      XLSX.writeFile(wb, filename);
+    } finally {
+      setBusy(false);
+    }
   }
   return (
-    <button onClick={exportXlsx} disabled={rows.length === 0} className="no-print btn btn-secondary btn-sm">
+    <button onClick={exportXlsx} disabled={rows.length === 0 || busy} className="no-print btn btn-secondary btn-sm">
       <FileSpreadsheet size={14} className="text-ok-fg" />
-      {label.replace(/^📊\s*/, "")}
+      {busy ? "Preparing…" : label.replace(/^📊\s*/, "")}
     </button>
   );
 }

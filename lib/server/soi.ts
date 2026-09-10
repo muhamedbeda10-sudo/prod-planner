@@ -1,5 +1,5 @@
 import "server-only";
-import { prisma } from "@/lib/db";
+import { loadMasterOrders } from "./loads";
 
 // The SOI (sales order item) lives on the MASTER ORDER, and the shop floor
 // reads it off every screen that names an order. Rather than thread it through
@@ -20,11 +20,7 @@ export interface SoiLookup {
 
 /** Every order's SOI, keyed by MO and by BOM. One query; every screen shares it. */
 export async function getSoiLookup(): Promise<SoiLookup> {
-  const orders = await prisma.masterOrder.findMany({
-    where: { soi: { not: null } },
-    select: { mo: true, bom: true, soi: true },
-    orderBy: { mo: "asc" },
-  });
+  const orders = [...(await loadMasterOrders())].filter((o) => o.soi !== null).sort((a, b) => a.mo.localeCompare(b.mo));
 
   const byMo: SoiMap = {};
   const perBom = new Map<string, Set<string>>();
