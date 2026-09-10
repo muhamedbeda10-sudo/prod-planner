@@ -50,6 +50,8 @@ export interface MachineCard {
   unpricedPcs: number; // pieces of lines with no class (hours undercounted)
   downtimeH: number;
   crewH: number; // man-hours the shift log put on this machine today
+  /** Who the shift log put on it today. */
+  crew: string[];
   /** Hours the machine has today: hours/day less downtime; null with no figure. */
   availableH: number | null;
   /** hours / availableH, null while either is unknown. */
@@ -79,7 +81,7 @@ export function buildMachineBoard(
   machines: readonly BoardMachine[],
   lines: readonly BoardLine[],
   assignments: readonly Assignment[],
-  today: { downtimeH?: Record<number, number>; crewH?: Record<number, number> } = {}
+  today: { downtimeH?: Record<number, number>; crewH?: Record<number, number>; crew?: Record<number, string[]> } = {}
 ): MachineBoard {
   const open = new Map<string, BoardLine>();
   // a line with nothing left is off the board however it was assigned;
@@ -127,6 +129,7 @@ export function buildMachineBoard(
       unpricedPcs: queue.filter((l) => l.hours === null).reduce((s, l) => s + l.remaining, 0),
       downtimeH,
       crewH: today.crewH?.[m.id] ?? 0,
+      crew: today.crew?.[m.id] ?? [],
       availableH,
       load: availableH === null ? null : availableH > 0 ? Math.round((hours / availableH) * 100) / 100 : hours > 0 ? Infinity : 0,
       days: availableH === null ? null : availableH > 0 ? round1(hours / availableH) : null,

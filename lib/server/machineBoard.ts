@@ -4,13 +4,16 @@ import { itemHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
 import { buildMachineBoard, lineKey, type Assignment, type BoardLine, type MachineBoard } from "@/lib/domain/machineBoard";
 import { getStdData } from "./standardTimes";
 import { getAllMachines, type MachineDTO } from "./machines";
+import { getCutSheet, getPaintingQueue, getWeldingQueue } from "./execution";
+import { getWorklistExtras } from "./worklistExtras";
+import { parseISODate } from "@/lib/domain/dates";
 
 // The machine load board for one worklist: the page hands over the open
 // lines it already computed (every section of the sheet), this prices them
 // in standard hours for the stage, joins the planner's assignments, today's
 // downtime and crew from the shift log, and lays the board out.
 
-export type BoardDept = "Cut" | "Painting";
+export type BoardDept = "Cut" | "Welding" | "Painting" | "ShotBlast";
 
 export interface BoardLineInput {
   bom: string;
@@ -39,7 +42,7 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
     getStdData(),
     prisma.masterOrder.findMany({ select: { mo: true, bom: true, fgCode: true, kva: true } }),
     prisma.machineDowntime.findMany({ where: { date, machine: { dept } }, select: { machineId: true, hours: true } }),
-    prisma.shiftEntry.findMany({ where: { date, dept, present: true, machineId: { not: null } }, select: { machineId: true, shift: true, overtimeH: true } }),
+    prisma.shiftEntry.findMany({ where: { date, dept, present: true, machineId: { not: null } }, select: { machineId: true, shift: true, overtimeH: true, worker: { select: { name: true } } } }),
   ]);
   const machines = all.filter((m) => m.dept === dept);
 
@@ -56,7 +59,7 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
     if (tier === null) return null;
     const per = itemHoursFor(std, tier)[item];
     if (!per) return null; // AR / MB carry no standard times
-    return dept === "Cut" ? per.cut : per.paint;
+    return dept === "Cut" ? per.cut : dept === "Welding" ? per.weld : dept === "ShotBlast" ? per.shb : per.paint;
   };
 
   const boardLines: BoardLine[] = lines.map((l) => {
@@ -75,13 +78,35 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
   const downtimeH: Record<number, number> = {};
   for (const d of downtime) downtimeH[d.machineId] = (downtimeH[d.machineId] ?? 0) + d.hours;
   const crewH: Record<number, number> = {};
+  const crew: Record<number, string[]> = {};
   for (const s of shifts) {
     if (s.machineId === null) continue;
     crewH[s.machineId] = (crewH[s.machineId] ?? 0) + (s.shift === "S11" ? 11 : 9) + Math.max(0, s.overtimeH);
+    (crew[s.machineId] ??= []).push(s.worker.name);
   }
 
-  const board = buildMachineBoard(machines, boardLines, assignments, { downtimeH, crewH });
+  const board = buildMachineBoard(machines, boardLines, assignments, { downtimeH, crewH, crew });
   const assigned: Record<string, { machineId: number; rank: number }> = {};
   for (const c of board.cards) for (const q of c.queue) assigned[q.key] = { machineId: c.machine.id, rank: q.rank };
   return { ...board, dept, machines: machines.filter((m) => m.active), assigned };
+}
+
+/** The open lines of a department's worklist, as the board wants them — the
+ *  same rows the worklist page shows, gathered for a page that has not
+ *  loaded them itself (the Floor canvas). Shot blast has no worklist. */
+export async function getDeptBoardLines(dept: BoardDept, dayISO: string): Promise<BoardLineInput[]> {
+  const day = parseISODate(dayISO) ?? new Date();
+  if (dept === "Cut") {
+    const sheet = await getCutSheet();
+    return [
+      ...[...sheet.dueNow, ...sheet.overdue, ...sheet.postponed].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.remaining, deliveryISO: r.deliveryISO })),
+      ...[...sheet.pushed, ...sheet.remarked, ...sheet.unscheduled].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO })),
+    ];
+  }
+  if (dept === "ShotBlast") return [];
+  const [queue, extras] = await Promise.all([dept === "Welding" ? getWeldingQueue(day) : getPaintingQueue(day), getWorklistExtras(dept)]);
+  return [
+    ...queue.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO })),
+    ...extras.pushed.map((p) => ({ bom: p.bom, mo: p.mo, item: p.item, description: p.description, remaining: p.qty, deliveryISO: null })),
+  ];
 }

@@ -545,6 +545,19 @@ model WorklistMachine {
   @@index([machineId])
 }
 
+// One department's floor as the planner drew it on the Simulator's Floor
+// canvas: where each machine (or welding partition) stands, the areas and
+// labels around them — positions and sizes only, as one JSON blob
+// (lib/domain/floor.ts says its shape). What each machine is ON comes from
+// WorklistMachine and who stands at it from ShiftEntry, live.
+model FloorLayout {
+  id        Int      @id @default(autoincrement())
+  dept      String   @unique // Cut | Welding | ShotBlast | Painting
+  data      Json
+  updatedBy String?
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
 // A named what-if scenario, saved from the Simulator ("the emergency plan for
 // order X") — the knobs, the queue and the splits, as one JSON blob.
 model SimScenario {

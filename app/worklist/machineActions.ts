@@ -14,11 +14,11 @@ export interface MachineActionResult {
   error?: string;
 }
 
-const BOARD_DEPTS = ["Cut", "Painting"] as const;
+const BOARD_DEPTS = ["Cut", "Welding", "Painting", "ShotBlast"] as const;
 type BoardDept = (typeof BOARD_DEPTS)[number];
 
 function revalidate() {
-  for (const p of ["/worklist/cut", "/worklist/painting"]) revalidatePath(p);
+  for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
 }
 
 function readLine(fd: FormData): { dept: BoardDept; bom: string; mo: string; item: string } | { error: string } {
