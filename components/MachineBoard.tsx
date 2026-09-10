@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { loadTone, type MachineCard } from "@/lib/domain/machineBoard";
-import { CENTER_LABEL } from "@/lib/domain/shifts";
+import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import type { MachineDTO } from "@/lib/server/machines";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { assignLineMachine, clearMachineQueue, moveLineRank } from "@/app/worklist/machineActions";
@@ -65,7 +65,7 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
           }}
           className={`border rounded-md px-1.5 py-1 bg-surface text-xs font-bold ltr ${compact ? "max-w-[7rem]" : "max-w-[10rem]"} ${current ? "" : "text-muted"}`}
         >
-          <option value="">— machine</option>
+          <option value="">— {machineWord(dept)}</option>
           {machines.map((x) => <option key={x.id} value={x.id}>{x.code}{compact ? "" : ` · ${x.name}`}</option>)}
         </select>
         {current && (
@@ -96,7 +96,7 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
           <div className="text-[11px] text-muted">
             {c.machine.center && <span>{CENTER_LABEL[c.machine.center] ?? c.machine.center} · </span>}
             {c.availableH !== null ? <span className="tabnum">{c.availableH} h today{c.downtimeH > 0 ? ` (${c.downtimeH} h down)` : ""}</span> : "hours/day not set"}
-            {c.crewH > 0 && <span className="tabnum"> · crew {c.crewH} mh</span>}
+            {c.crew.length > 0 && <span className="tabnum" title={c.crew.join(", ")}> · 👷 {c.crew.length} · {c.crewH} mh</span>}
             {!c.machine.active && <span className="pill pill-muted ms-1">retired</span>}
           </div>
         </div>
@@ -125,7 +125,7 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
           <div className="text-[11px] text-muted truncate">{c.now.mo}{c.now.description ? ` · ${c.now.description}` : ""}</div>
         </div>
       ) : (
-        <div className="rounded-lg border border-dashed px-2.5 py-2 text-xs text-muted">Nothing on it — pick this machine on a line below.</div>
+        <div className="rounded-lg border border-dashed px-2.5 py-2 text-xs text-muted">Nothing on it — pick this {machineWord(dept)} on a line below.</div>
       )}
 
       {c.queue.length > 1 && (
@@ -164,17 +164,18 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
 export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canEdit: boolean }) {
   const [showAll, setShowAll] = useState(false);
   if (board.cards.length === 0 && board.machines.length === 0) return null;
+  const word = machineWord(board.dept);
   const tone = board.totalAvailableH === null || board.totalAvailableH === 0 ? null : loadTone(board.totalHours / board.totalAvailableH);
   const list = showAll ? board.unassigned : board.unassigned.slice(0, 6);
   return (
     <section className="mb-6">
       <h2>
-        🏭 Machines — who is on what
+        🏭 {machineWord(board.dept, true)[0].toUpperCase() + machineWord(board.dept, true).slice(1)} — who is on what
         <span className={`pill ms-2 normal-case tabnum ${tone ? (tone === "ok" ? "pill-ok" : tone === "warn" ? "pill-warn" : "pill-bad") : "pill-muted"}`} title="Standard hours queued on the machines against the hours they have today">
           {board.totalHours} h queued{board.totalAvailableH !== null ? ` / ${board.totalAvailableH} h today` : ""}
         </span>
         {board.unassigned.length > 0 && (
-          <span className="pill pill-warn ms-1 normal-case tabnum" title="Open lines not on any machine">{board.unassigned.length} line(s) not on a machine</span>
+          <span className="pill pill-warn ms-1 normal-case tabnum" title={`Open lines not on any ${word}`}>{board.unassigned.length} line(s) not on a {word}</span>
         )}
       </h2>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -183,7 +184,7 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
       {board.unassigned.length > 0 && (
         <div className="mt-3 bg-surface border rounded-xl px-3 py-2">
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-bold text-muted">Not on a machine yet — most urgent first:</span>
+            <span className="font-bold text-muted">Not on a {word} yet — most urgent first:</span>
             {board.unassigned.length > 6 && (
               <button type="button" className="btn btn-sm btn-ghost ms-auto" onClick={() => setShowAll((v) => !v)}>{showAll ? "Show fewer" : `Show all ${board.unassigned.length}`}</button>
             )}
@@ -205,7 +206,7 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
         </div>
       )}
       <p className="text-[11px] text-muted mt-1">
-        Hours are the standard times of what is left on each line. A machine&apos;s hours today are its hours a day less the downtime on the shift log. A line leaves the board by itself once nothing remains on it.
+        Hours are the standard times of what is left on each line. A {word}&apos;s hours today are its hours a day less the downtime on the shift log. A line leaves the board by itself once nothing remains on it.
       </p>
     </section>
   );

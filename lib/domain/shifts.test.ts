@@ -41,9 +41,9 @@ describe("the plant's shape", () => {
     expect(isShiftCode("S11")).toBe(true);
     expect(isShiftCode("S8")).toBe(false);
   });
-  it("has machines in fabrication, shot blast and painting; welding is people", () => {
-    expect(MACHINE_DEPTS).toEqual(["Cut", "ShotBlast", "Painting"]);
-    expect(CENTERS.Welding).toEqual([]);
+  it("has machines in fabrication, shot blast and painting; welding has partitions", () => {
+    expect(MACHINE_DEPTS).toEqual(["Cut", "Welding", "ShotBlast", "Painting"]);
+    expect(CENTERS.Welding).toEqual(["Zone"]);
     expect(isShiftDept("LeakTest")).toBe(false);
   });
   it("routes every sheet component through cutting first, the tank through fins last", () => {

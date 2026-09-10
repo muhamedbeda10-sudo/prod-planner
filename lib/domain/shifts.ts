@@ -30,15 +30,18 @@ export function isShiftDept(x: string): x is ShiftDept {
 }
 
 /** The departments whose work runs on machines — the ones whose shift log
- *  asks which machine a worker was on and records downtime. Welding is
- *  worked by people at benches; bending, for now, the same. */
-export const MACHINE_DEPTS: readonly ShiftDept[] = ["Cut", "ShotBlast", "Painting"];
+ *  asks which machine a worker was on and records downtime. Welding has no
+ *  machines: its "machines" are PARTITIONS of the bay, each a group of
+ *  welders working the same orders — they live on the same list so a
+ *  partition can be loaded, staffed and drawn like a machine. Bending, for
+ *  now, is a stage worked by people with nothing to pick. */
+export const MACHINE_DEPTS: readonly ShiftDept[] = ["Cut", "Welding", "ShotBlast", "Painting"];
 
 /** A work centre: the machines that do the same job. A job on "Cutting" can
  *  go to any laser or punch. */
 export const CENTERS: Record<ShiftDept, readonly string[]> = {
   Cut: ["Cutting", "Fins", "Tubes", "RollBlank"],
-  Welding: [],
+  Welding: ["Zone"],
   ShotBlast: ["Line"],
   Painting: ["Line"],
 };
@@ -48,7 +51,15 @@ export const CENTER_LABEL: Record<string, string> = {
   Tubes: "Laser tubes",
   RollBlank: "Laser roll blank",
   Line: "Line",
+  Zone: "Partition (welding bay)",
 };
+
+/** What a department's "machines" are called on its pages. */
+export function machineWord(dept: string, plural = false): string {
+  if (dept === "Welding") return plural ? "partitions" : "partition";
+  if (dept === "Painting" || dept === "ShotBlast") return plural ? "lines" : "line";
+  return plural ? "machines" : "machine";
+}
 
 /** The route each component takes through fabrication, in order: cut on a
  *  laser or punch, then bent, and the tank's fins folded. Recorded from the

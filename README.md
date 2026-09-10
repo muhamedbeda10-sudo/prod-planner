@@ -103,6 +103,15 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    days of work, the crew the shift log put on it. Every table row carries a **Machine** picker ("this is
    running on that now"), and the lines not on any machine are listed most urgent first with a picker each.
    Recording output never touches the board: a line leaves it by itself once nothing remains on it.
+   Welding has no machines but **partitions** of the bay — groups of welders on the same orders — kept on
+   the same list (centre "Zone"), so the welding worklist, the shift log ("which partition") and the board
+   treat a partition like a machine, with the welders the shift log put on it today.
+11. **Floor** (Simulator → Floor) — each department's bay drawn as the planner sees it: place the machines
+   (or partitions) as blocks, drag them where they stand, pull a corner to resize, draw areas ("Laser hall",
+   "Bending & fins") and labels around them, zoom, save. Every block is live: what it is on now, how many
+   lines wait, its load colour, the crew on it today. Click a block for its queue (run next, take off, put a
+   waiting line on it) and today's crew; "＋ New partition" creates one on the spot. Drawing needs
+   `machines.manage`; working a queue needs the department's worklist permission; viewing is free.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

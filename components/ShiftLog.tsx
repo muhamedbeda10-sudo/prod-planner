@@ -6,7 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { deptLabel } from "@/lib/domain/constants";
 import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 import {
-  DEFAULT_OVERTIME, MACHINE_DEPTS, SHIFT_CODES, SHIFT_DEPTS, SHIFT_LABEL, dayTotals, lineHours, machineAvailable, round1,
+  DEFAULT_OVERTIME, MACHINE_DEPTS, SHIFT_CODES, SHIFT_DEPTS, SHIFT_LABEL, dayTotals, lineHours, machineAvailable, machineWord, round1,
   type ShiftCode, type ShiftDept,
 } from "@/lib/domain/shifts";
 import type { ShiftDayData, ShiftLineDTO } from "@/lib/server/shifts";
@@ -156,7 +156,7 @@ export function ShiftLog({ data, history, canEdit, today }: { data: ShiftDayData
                   <th className="p-2">Worker</th>
                   <th className="p-2">Shift</th>
                   <th className="p-2" title="Hours on top of the shift">Overtime</th>
-                  {hasMachines && <th className="p-2">Machine</th>}
+                  {hasMachines && <th className="p-2">{machineWord(data.dept)[0].toUpperCase() + machineWord(data.dept).slice(1)}</th>}
                   <th className="p-2 text-center" title="Shift + overtime, nothing when absent">Hours</th>
                   <th className="p-2">Note</th>
                 </tr>
@@ -210,7 +210,7 @@ export function ShiftLog({ data, history, canEdit, today }: { data: ShiftDayData
                 <tfoot>
                   <tr className="border-t bg-surface-2/60 text-xs">
                     <td colSpan={7} className="p-2">
-                      <span className="font-bold text-muted me-2">On the machines:</span>
+                      <span className="font-bold text-muted me-2">On the {machineWord(data.dept, true)}:</span>
                       {Object.entries(totals.byMachine).map(([id, h]) => (
                         <span key={id} className="pill pill-muted me-1 tabnum">{machineName(Number(id))} · {h} h</span>
                       ))}
@@ -281,7 +281,7 @@ function Downtime({ data, canEdit }: { data: ShiftDayData; canEdit: boolean }) {
   return (
     <section className="bg-surface border rounded-xl p-3 space-y-2">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="!mb-0">Machine downtime</h2>
+        <h2 className="!mb-0">{machineWord(data.dept)[0].toUpperCase() + machineWord(data.dept).slice(1)} downtime</h2>
         <span className="text-[11px] text-muted">hours a machine stood still on the day, and why — the load it could not take</span>
       </div>
       {data.downtime.length > 0 && (
