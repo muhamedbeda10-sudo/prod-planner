@@ -29,12 +29,18 @@ export interface OptMachine {
   availableH: number;
 }
 
-/** One centre a line owes work at, the pieces still to place there and the
- *  hours THOSE pieces cost. `pieces` defaults to the line's — it is lower only
- *  when part of the step is already running on a machine. */
+/** One centre a line owes work at: what one piece costs there, and the pieces
+ *  still to place. `pieces` defaults to the line's — it is lower only when part
+ *  of the step is already running on a machine. */
 export interface OptStep {
   center: string;
-  hours: number;
+  /** Hours ONE piece costs at this centre — the estimate every machine of it
+   *  is assumed to work at. */
+  hoursPerPiece: number;
+  /** The machines that have their OWN figure for this item, id → hours a
+   *  piece. A 6 kW laser and a punch are not the same machine, and where the
+   *  planner has said so the plan uses his number, not the estimate. */
+  perMachine?: Record<number, number>;
   pieces?: number;
 }
 
@@ -104,7 +110,7 @@ const WHOLE_UNDER_DAYS = 0.5;
  *  worse to work than a slightly later finish. */
 const MAX_SPLIT = 4;
 
-const lineHours = (l: OptLine) => l.route.reduce((s, r) => s + Math.max(0, r.hours), 0);
+const lineHours = (l: OptLine) => l.route.reduce((s, r) => s + Math.max(0, r.hoursPerPiece) * (r.pieces ?? l.pieces), 0);
 
 /** Split `pieces` in proportion to `weights`, keeping whole pieces and the
  *  exact total (largest remainder), never leaving a machine with none. */
@@ -183,22 +189,34 @@ export function optimizePlan(
         skipped.push({ key: l.key, center: step.center, reason: "no machine" });
         continue;
       }
-      const hours = Math.max(0, step.hours);
-      // when each machine could start this batch, soonest first
+      // How fast each machine works THIS item: its hours a day over the hours
+      // one piece costs it — the planner's own figure where he has set one,
+      // the estimate otherwise. A machine with no figure at all (an unpriced
+      // item) is infinitely fast: it costs the schedule nothing.
+      const perDay = new Map(cands.map((m) => {
+        const h = step.perMachine?.[m.id] ?? step.hoursPerPiece;
+        return [m.id, h > 0 ? m.availableH / h : Number.POSITIVE_INFINITY];
+      }));
+      // when each machine could start this batch, soonest first, fastest first
       const starts = new Map(cands.map((m) => [m.id, Math.max(free.get(m.id) ?? 0, ready)]));
-      cands.sort((x, y) => starts.get(x.id)! - starts.get(y.id)! || y.availableH - x.availableH || x.id - y.id);
+      cands.sort((x, y) => starts.get(x.id)! - starts.get(y.id)! || perDay.get(y.id)! - perDay.get(x.id)! || x.id - y.id);
 
+      const takes = (m: OptMachine, pcs: number) => {
+        const rate = perDay.get(m.id)!;
+        return Number.isFinite(rate) && rate > 0 ? pcs / rate : 0;
+      };
       // one machine, or several in parallel finishing together — whichever
       // clears the batch earliest (water-filling over the least loaded)
-      let bestK = 1;
-      let bestEnd = starts.get(cands[0].id)! + hours / cands[0].availableH;
+      let bestEnd = starts.get(cands[0].id)! + takes(cands[0], pieces);
       const single = bestEnd;
-      const worthSplitting = hours >= WHOLE_UNDER_DAYS * cands[0].availableH;
+      let bestK = 1;
+      const worthSplitting = single - starts.get(cands[0].id)! >= WHOLE_UNDER_DAYS;
       for (let k = 2; worthSplitting && k <= Math.min(cands.length, maxSplit, pieces); k += 1) {
         const group = cands.slice(0, k);
-        const cap = group.reduce((s, m) => s + m.availableH, 0);
-        const weighted = group.reduce((s, m) => s + starts.get(m.id)! * m.availableH, 0);
-        const end = (hours + weighted) / cap;
+        const rate = group.reduce((sum, m) => sum + perDay.get(m.id)!, 0);
+        if (!Number.isFinite(rate) || rate <= 0) break;
+        const weighted = group.reduce((sum, m) => sum + starts.get(m.id)! * perDay.get(m.id)!, 0);
+        const end = (pieces + weighted) / rate;
         if (end < starts.get(group[k - 1].id)! - 1e-9) continue; // that machine cannot help before `end`
         if (end < bestEnd - Math.max(MIN_GAIN, MIN_GAIN_FRAC * (single - starts.get(cands[0].id)!))) {
           bestEnd = end;
@@ -207,19 +225,17 @@ export function optimizePlan(
       }
 
       let group = cands.slice(0, bestK);
-      let share = group.map((m) => Math.max(0, (bestEnd - starts.get(m.id)!) * m.availableH));
-      let split = sharePieces(pieces, share);
+      let split = sharePieces(pieces, group.map((m) => Math.max(0, (bestEnd - starts.get(m.id)!) * perDay.get(m.id)!)));
       // a machine that ends up with no piece is not in the split
       while (group.length > 1 && split.some((n) => n <= 0)) {
         group = group.filter((_, i) => split[i] > 0);
-        const cap = group.reduce((s, m) => s + m.availableH, 0);
-        const weighted = group.reduce((s, m) => s + starts.get(m.id)! * m.availableH, 0);
-        bestEnd = cap > 0 ? (hours + weighted) / cap : bestEnd;
-        share = group.map((m) => Math.max(0, (bestEnd - starts.get(m.id)!) * m.availableH));
-        split = sharePieces(pieces, share);
+        const rate = group.reduce((sum, m) => sum + perDay.get(m.id)!, 0);
+        const weighted = group.reduce((sum, m) => sum + starts.get(m.id)! * perDay.get(m.id)!, 0);
+        bestEnd = rate > 0 && Number.isFinite(rate) ? (pieces + weighted) / rate : bestEnd;
+        split = sharePieces(pieces, group.map((m) => Math.max(0, (bestEnd - starts.get(m.id)!) * perDay.get(m.id)!)));
       }
       if (group.length === 1) {
-        bestEnd = starts.get(group[0].id)! + hours / group[0].availableH;
+        bestEnd = starts.get(group[0].id)! + takes(group[0], pieces);
         split = [pieces];
       }
 

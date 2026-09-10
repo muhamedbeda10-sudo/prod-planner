@@ -7,6 +7,7 @@ import { dateForOffsetISO, offsetForDateISO } from "@/lib/domain/whatif";
 import type { OptLine, OptMachine, OptPin } from "@/lib/domain/optimizePlan";
 import { getStdData } from "./standardTimes";
 import { getAllMachines, type MachineDTO } from "./machines";
+import { getMachineItemTimes } from "./machineTimes";
 import { getCutSheet, getPaintingQueue, getWeldingQueue } from "./execution";
 import { getWorklistExtras } from "./worklistExtras";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
@@ -56,7 +57,7 @@ const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
  *  passes and the standard hours each one owes. */
 async function loadBoardContext(dept: BoardDept, dayISO: string) {
   const date = dayOf(dayISO);
-  const [shiftHours, all, rows, std, orders, downtime, shifts] = await Promise.all([
+  const [shiftHours, all, rows, std, orders, downtime, shifts, rates] = await Promise.all([
     getShiftHours(),
     getAllMachines(),
     prisma.worklistMachine.findMany({ where: { dept }, orderBy: [{ machineId: "asc" }, { rank: "asc" }] }),
@@ -64,6 +65,7 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
     loadMasterOrders(),
     prisma.machineDowntime.findMany({ where: { date, machine: { dept } }, select: { machineId: true, hours: true } }),
     prisma.shiftEntry.findMany({ where: { date, dept, present: true, machineId: { not: null } }, select: { machineId: true, shift: true, overtimeH: true, worker: { select: { name: true } } } }),
+    getMachineItemTimes(),
   ]);
   const machines = all.filter((m) => m.dept === dept);
 
@@ -115,12 +117,12 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
     crewH[s.machineId] = (crewH[s.machineId] ?? 0) + hoursOfShift(isShiftCode(s.shift) ? s.shift : "S9", shiftHours) + Math.max(0, s.overtimeH);
     (crew[s.machineId] ??= []).push(s.worker.name);
   }
-  return { machines, assignments, price, perPiece, urgentByMo, downtimeH, crewH, crew };
+  return { machines, assignments, price, perPiece, urgentByMo, downtimeH, crewH, crew, rates };
 }
 
 export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
   const [ctx, settings, holidays] = await Promise.all([loadBoardContext(dept, dayISO), getSettings(), loadHolidays()]);
-  const board = buildMachineBoard(ctx.machines, ctx.price(lines), ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew });
+  const board = buildMachineBoard(ctx.machines, ctx.price(lines), ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew }, ctx.rates);
   // the day each machine's queue is finished — Fridays and the calendar's days
   // off skipped, so "clears 18/09" is a date the floor can hold you to
   const holidaySet = new Set(holidays.map((h) => toISODate(h.date)));
@@ -170,7 +172,7 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
  *  promises it, and the work already running (which keeps its machine). */
 export async function getOptimizerInputs(dept: BoardDept, dayISO: string): Promise<{ machines: OptMachine[]; lines: OptLine[]; pins: OptPin[] }> {
   const [ctx, inputs, holidays] = await Promise.all([loadBoardContext(dept, dayISO), getDeptBoardLines(dept, dayISO), loadHolidays()]);
-  const board = buildMachineBoard(ctx.machines, ctx.price(inputs), ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew });
+  const board = buildMachineBoard(ctx.machines, ctx.price(inputs), ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew }, ctx.rates);
 
   // what runs now holds its machine, and covers that many pieces of its step
   const pins: OptPin[] = [];
@@ -202,7 +204,13 @@ export async function getOptimizerInputs(dept: BoardDept, dayISO: string): Promi
     const route = routeFor(dept, l.item).map((center) => {
       const left = Math.max(0, l.pieces - (pinned.get(`${l.key}#${center}`) ?? 0));
       const perPc = l.perPiece === null ? 0 : l.perPiece * (shares[center] ?? 1);
-      return { center, pieces: left, hours: round1(perPc * left) };
+      // the machines of this centre that carry the planner's own figure
+      const perMachine: Record<number, number> = {};
+      for (const m of ctx.machines) {
+        const own = ctx.rates[m.id]?.[l.item];
+        if (m.center === center && own !== undefined) perMachine[m.id] = own;
+      }
+      return { center, pieces: left, hoursPerPiece: perPc, ...(Object.keys(perMachine).length > 0 ? { perMachine } : {}) };
     });
     return { key: l.key, pieces: l.pieces, route, dueDay: l.dueISO ? offsetForDateISO(l.dueISO, dayISO, holidaySet, false) : null, urgent: l.urgent };
   });

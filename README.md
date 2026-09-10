@@ -93,6 +93,13 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    present on the 9-hour shift, so only the exceptions need touching; "Save day" writes every row and
    re-sums the department's man-hours into the figure the calibration and the plan's capacity check read
    (Admin → Standard Times shows it read-only now). Recording needs `shifts.<dept>`; viewing is free.
+   **Times per machine** (Tools → Times per Machine, `machines.manage`): what ONE piece of each item really
+   takes on each machine, in hours. A figure here **outranks the standard time** for that machine — its queue
+   on the board is priced with it and ⚡ Plan schedules with it, so a 6 kW laser and a punch stop being planned
+   as the same machine, and an item the timings sheet never priced (AR, MB) gets a time at last. An empty cell
+   keeps the estimate (the stage's standard hours split over the centres the item routes through, which
+   follows the kVA class); the placeholder shows that estimate for a 1000 kVA tank. A typed figure is flat for
+   every size.
    **Shift hours** (Tools → Settings, admin): what the short shift, the long shift and the "+OT" button are
    worth. Every man-hour the app counts is measured with them — the shift log's day, a machine's crew, the
    figure the standard times are calibrated against — so a new roster is a setting, not a code change. A day
@@ -142,8 +149,10 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    **⚡ Plan the machines** (on the board and in the Floor toolbar, `lib/domain/optimizePlan.ts`) fills every
    queue in one go: lines in the order they are **due** (the weekly plan's date for this stage, then the
    flagged orders, then the longest job), each on the machine that **finishes** it soonest, split over
-   machines of the same centre when running them in parallel clears the batch sooner, and along the route
-   so the bender never starts before that batch is cut. What is **running now is never moved** — the plan is
+   machines of the same centre when running them in parallel clears the batch sooner (they finish together,
+   each at its own speed), and along the route so the bender never starts before that batch is cut. Speed is
+   pieces a day: a machine's hours a day over what one piece costs it — the planner's figure from Times per
+   Machine where there is one, the estimate otherwise. What is **running now is never moved** — the plan is
    built around it. It answers with what it did: lines placed, machines used, when the last piece clears,
    which lines cannot make their date and by how much, and any centre with no machine to run it.
    **⟲ Reset** beside it takes every line off every machine of the department — the plan is cleared, the

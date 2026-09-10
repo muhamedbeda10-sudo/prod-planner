@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { optimizePlan, type OptLine, type OptMachine } from "./optimizePlan";
+import { optimizePlan, type OptLine, type OptMachine, type OptStep } from "./optimizePlan";
 
 const m = (id: number, center: string, availableH: number): OptMachine => ({ id, code: `M${id}`, center, availableH });
+/** A one-step line, priced as a whole batch — the module works per piece. */
 const cut = (key: string, pieces: number, hours: number, dueDay: number | null = null, extra: Partial<OptLine> = {}): OptLine => ({
   key,
   pieces,
-  route: [{ center: "Cutting", hours }],
+  route: [{ center: "Cutting", hoursPerPiece: pieces > 0 ? hours / pieces : 0 }],
   dueDay,
   ...extra,
+});
+/** One step of a route, priced as a whole batch. */
+const step = (center: string, hours: number, pieces: number, over: Partial<OptStep> = {}): OptStep => ({
+  center,
+  hoursPerPiece: pieces > 0 ? hours / pieces : 0,
+  ...over,
 });
 
 describe("optimizePlan", () => {
@@ -28,7 +35,7 @@ describe("optimizePlan", () => {
   it("walks the route in order — nothing is bent before it is cut", () => {
     const r = optimizePlan(
       [m(1, "Cutting", 10), m(2, "Bending", 10), m(3, "Fins", 10)],
-      [{ key: "TN", pieces: 10, dueDay: 9, route: [{ center: "Cutting", hours: 20 }, { center: "Bending", hours: 10 }, { center: "Fins", hours: 10 }] }]
+      [{ key: "TN", pieces: 10, dueDay: 9, route: [step("Cutting", 20, 10), step("Bending", 10, 10), step("Fins", 10, 10)] }]
     );
     const at = (c: string) => r.placements.find((p) => p.center === c)!;
     expect(at("Cutting")).toMatchObject({ machineId: 1, startDay: 0, endDay: 2 });
@@ -64,7 +71,7 @@ describe("optimizePlan", () => {
   it("does not re-place a step that is already running, and starts the next step after it", () => {
     const r = optimizePlan(
       [m(1, "Cutting", 10), m(2, "Bending", 10)],
-      [{ key: "TN", pieces: 10, dueDay: 5, route: [{ center: "Cutting", hours: 0, pieces: 0 }, { center: "Bending", hours: 10 }] }],
+      [{ key: "TN", pieces: 10, dueDay: 5, route: [step("Cutting", 0, 10, { pieces: 0 }), step("Bending", 10, 10)] }],
       [{ key: "TN", center: "Cutting", machineId: 1, pieces: 10, hours: 20 }]
     );
     expect(r.placements.map((p) => p.center)).toEqual(["Bending"]);
@@ -74,7 +81,7 @@ describe("optimizePlan", () => {
   it("plans the pieces of a step that the running work does not cover", () => {
     const r = optimizePlan(
       [m(1, "Cutting", 10), m(2, "Cutting", 10)],
-      [{ key: "TN", pieces: 12, dueDay: 5, route: [{ center: "Cutting", hours: 3, pieces: 7 }] }],
+      [{ key: "TN", pieces: 12, dueDay: 5, route: [step("Cutting", 3, 7, { pieces: 7 })] }],
       [{ key: "TN", center: "Cutting", machineId: 1, pieces: 5, hours: 5 }]
     );
     expect(r.placements).toHaveLength(1);
@@ -90,7 +97,7 @@ describe("optimizePlan", () => {
   it("reports a centre with no machine instead of dropping the work", () => {
     const r = optimizePlan(
       [m(1, "Cutting", 10)],
-      [{ key: "CF", pieces: 4, dueDay: 2, route: [{ center: "Cutting", hours: 4 }, { center: "Bending", hours: 2 }] }]
+      [{ key: "CF", pieces: 4, dueDay: 2, route: [step("Cutting", 4, 4), step("Bending", 2, 4)] }]
     );
     expect(r.skipped).toEqual([{ key: "CF", center: "Bending", reason: "no machine" }]);
     expect(r.placements).toHaveLength(1);
@@ -107,6 +114,28 @@ describe("optimizePlan", () => {
     const r = optimizePlan([m(1, "Cutting", 10)], [cut("none", 1, 5, null), cut("plain", 1, 5, 2), cut("urgent", 1, 5, 2, { urgent: true })]);
     const order = r.placements.sort((a, b) => a.rank - b.rank).map((p) => p.key);
     expect(order).toEqual(["urgent", "plain", "none"]);
+  });
+
+  it("gives the work to the machine that is really faster at that item", () => {
+    // both have the same hours a day; the planner has measured machine 2 at
+    // twice the speed for this item, so it should take the batch
+    const r = optimizePlan(
+      [m(1, "Cutting", 10), m(2, "Cutting", 10)],
+      [{ key: "TC", pieces: 4, dueDay: 1, route: [{ center: "Cutting", hoursPerPiece: 1, perMachine: { 2: 0.5 } }] }]
+    );
+    expect(r.placements).toHaveLength(1);
+    expect(r.placements[0]).toMatchObject({ machineId: 2, pieces: 4, endDay: 0.2 });
+  });
+
+  it("splits between machines of different speeds so both finish together", () => {
+    const r = optimizePlan(
+      [m(1, "Cutting", 10), m(2, "Cutting", 10)],
+      [{ key: "TC", pieces: 30, dueDay: 2, route: [{ center: "Cutting", hoursPerPiece: 1, perMachine: { 2: 0.5 } }] }]
+    );
+    // 10 pieces a day on one, 20 on the other → 30 pieces clear in a day
+    expect(r.placements.every((p) => p.endDay === 1)).toBe(true);
+    const by = Object.fromEntries(r.placements.map((p) => [p.machineId, p.pieces]));
+    expect(by).toEqual({ 1: 10, 2: 20 });
   });
 
   it("ignores a machine nobody gave hours to", () => {

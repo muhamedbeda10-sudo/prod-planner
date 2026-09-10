@@ -154,7 +154,10 @@ export function buildMachineBoard(
   machines: readonly BoardMachine[],
   lines: readonly BoardLine[],
   assignments: readonly Assignment[],
-  today: { downtimeH?: Record<number, number>; crewH?: Record<number, number>; crew?: Record<number, string[]> } = {}
+  today: { downtimeH?: Record<number, number>; crewH?: Record<number, number>; crew?: Record<number, string[]> } = {},
+  /** machine id → item → hours ONE piece costs THAT machine. The planner's own
+   *  figure: where it is set it outranks the estimate for that machine's queue. */
+  rates: Record<number, Record<string, number>> = {}
 ): MachineBoard {
   const open = new Map<string, BoardLine>();
   // a line with nothing left is off the board however it was assigned;
@@ -219,11 +222,12 @@ export function buildMachineBoard(
     if (!byMachine.has(a.machineId)) byMachine.set(a.machineId, []);
     const share = pcs / l.remaining;
     const h = stepHours(l, step);
+    const own = rates[a.machineId]?.[l.item];
     const stepNo = Math.max(0, l.route.findIndex((r) => r.center === step)) + 1;
     byMachine.get(a.machineId)!.push({
       ...l,
       remaining: pcs,
-      hours: h === null ? null : round1(h * share),
+      hours: own !== undefined ? round1(own * pcs) : h === null ? null : round1(h * share),
       rank: 0, running: !!a.running,
       lineRemaining: l.remaining,
       split: pcs < l.remaining,

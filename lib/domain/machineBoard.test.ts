@@ -159,6 +159,27 @@ describe("buildMachineBoard", () => {
     expect(b.unassigned).toEqual([]);
   });
 
+  it("prices a machine's queue with the planner's own time for that item", () => {
+    const shop = [m(1, { center: "Cutting" }), m(2, { center: "Cutting" })];
+    const line = routed("A", "TC", 10, [["Cutting", 20]]); // the estimate: 2 h a piece
+    const b = buildMachineBoard(shop, [line], [
+      { key: lineKey("A", "MO-1", "TC"), machineId: 1, rank: 1, qty: 6 },
+      { key: lineKey("A", "MO-1", "TC"), machineId: 2, rank: 1 },
+    ], {}, { 1: { TC: 0.5 } }); // machine 1 really does one in half an hour
+    expect(b.cards[0].queue[0].hours).toBe(3); // 6 × 0.5, his figure
+    expect(b.cards[1].queue[0].hours).toBe(8); // 4 × 2, the estimate
+    expect(b.totalHours).toBe(11);
+  });
+
+  it("prices an item with no standard time at all once the planner gives it one", () => {
+    const shop = [m(1, { center: "Cutting" })];
+    const b = buildMachineBoard(shop, [routed("A", "AR", 4, [["Cutting", 0]], null)], [
+      { key: lineKey("A", "MO-1", "AR"), machineId: 1, rank: 1 },
+    ], {}, { 1: { AR: 1.5 } });
+    expect(b.cards[0].queue[0].hours).toBe(6);
+    expect(b.cards[0].unpricedPcs).toBe(0);
+  });
+
   it("sums the day's available hours when every active machine has a figure", () => {
     const b = buildMachineBoard([m(1), m(2, { hoursPerDay: 8 }), m(3, { active: false, hoursPerDay: null })], lines, []);
     expect(b.totalAvailableH).toBe(17);
