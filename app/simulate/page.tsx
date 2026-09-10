@@ -8,6 +8,7 @@ import { getDeptBoardLines, getMachineBoard } from "@/lib/server/machineBoard";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { deptPermKey } from "@/lib/domain/permissions";
 import { isShiftDept, type ShiftDept } from "@/lib/domain/shifts";
+import { placeMachine } from "@/lib/domain/floor";
 import { PageHeader } from "@/components/ui";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { WhatIfSimulator } from "@/components/WhatIfSimulator";
@@ -34,8 +35,12 @@ export default async function SimulatePage({ searchParams }: { searchParams: Pro
   if (view === "floor") {
     const dept: ShiftDept = isShiftDept(sp.dept ?? "") ? (sp.dept as ShiftDept) : "Cut";
     const today = factoryDayISO(new Date());
-    const [{ layout, updatedBy, updatedAtISO }, lines] = await Promise.all([getFloorLayout(dept), getDeptBoardLines(dept, today)]);
+    const [saved, lines] = await Promise.all([getFloorLayout(dept), getDeptBoardLines(dept, today)]);
     const board = await getMachineBoard(dept, lines, today);
+    // a floor nobody has drawn yet starts with every machine on it, in rows —
+    // what each is on shows at once; the planner then drags them into place
+    const { updatedBy, updatedAtISO } = saved;
+    const layout = saved.layout.nodes.length > 0 ? saved.layout : board.machines.reduce((l, m) => placeMachine(l, m.id), saved.layout);
     return (
       <div>
         <RememberLastVisit storageKey="simulate:last" />

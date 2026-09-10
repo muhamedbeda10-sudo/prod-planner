@@ -161,6 +161,9 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
               <option value="">{unplaced.length ? `＋ Place a ${word}…` : `Every ${word} is on the floor`}</option>
               {unplaced.map((m) => <option key={m.id} value={m.id}>{m.code} · {m.name}</option>)}
             </select>
+            {unplaced.length > 1 && (
+              <button type="button" className="btn btn-sm" title={`Put every ${word} not on the floor yet onto it`} onClick={() => setLayout((l) => unplaced.reduce((acc, m) => placeMachine(acc, m.id), l))}>＋ Place all</button>
+            )}
             <button type="button" className="btn btn-sm" onClick={() => setLayout((l) => addNode(l, "zone", "Area", "slate"))}>＋ Area</button>
             <button type="button" className="btn btn-sm" onClick={() => setLayout((l) => addNode(l, "label", "Label"))}>＋ Label</button>
             <form
