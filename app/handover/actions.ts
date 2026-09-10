@@ -10,6 +10,7 @@ import { importHandoverFile, type HandoverImportResult } from "@/lib/server/impo
 import { checkOutputChain } from "@/lib/server/outputGuard";
 import { requireDeptEdit, requirePerm } from "@/lib/server/auth";
 import { syncTanksToLedgerQty } from "@/lib/server/tanks";
+import { mirrorLedgerToOdoo, syncMirroredOdoo } from "@/lib/server/odooMirror";
 
 export interface ActionResult {
   ok: boolean;
@@ -19,7 +20,7 @@ export interface ActionResult {
 /** The log is the single source of truth — any change to it must refresh every
  *  screen that derives balances from it (worklists, tracker, dashboard, trace). */
 function revalidateEverywhere() {
-  for (const p of ["/handover", "/", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/leak-test", "/barcode", "/tracker", "/trace", "/report", "/boms"]) {
+  for (const p of ["/handover", "/", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/leak-test", "/barcode", "/tracker", "/trace", "/report", "/boms", "/odoo"]) {
     revalidatePath(p);
   }
 }
@@ -86,8 +87,12 @@ export async function addHandover(formData: FormData): Promise<ActionResult> {
   const chainError = await checkOutputChain({ dept, bom: resolved.bom, item, qty });
   if (chainError) return { ok: false, error: chainError };
 
-  await prisma.handoverEntry.create({
-    data: { date, dept, bom: resolved.bom, bomRaw: resolved.bomRaw, item, qty, planNo, source: "manual", createdBy: guard.user?.name ?? null },
+  await prisma.$transaction(async (tx) => {
+    const ledger = await tx.handoverEntry.create({
+      data: { date, dept, bom: resolved.bom, bomRaw: resolved.bomRaw, item, qty, planNo, source: "manual", createdBy: guard.user?.name ?? null },
+    });
+    // a painting row typed here is a closing like any other — ODOO tab too
+    await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
   });
   revalidateEverywhere();
   return { ok: true };
@@ -128,6 +133,8 @@ export async function updateHandover(formData: FormData): Promise<ActionResult> 
   const failure = await prisma
     .$transaction(async (tx) => {
       await tx.handoverEntry.update({ where: { id }, data });
+      // the row's Odoo row follows it while nobody has worked that row yet
+      await syncMirroredOdoo(tx, id, { qty, date: data.date });
       const sync = await syncTanksToLedgerQty(tx, entry, qty);
       if (sync.error) throw new LedgerSyncError(sync.error);
     })
@@ -194,6 +201,7 @@ export async function deleteHandover(formData: FormData): Promise<ActionResult> 
     .$transaction(async (tx) => {
       const sync = await syncTanksToLedgerQty(tx, entry, 0);
       if (sync.error) throw new LedgerSyncError(sync.error);
+      await syncMirroredOdoo(tx, id, "delete");
       await tx.handoverEntry.delete({ where: { id } });
     })
     .catch((e) => {

@@ -59,6 +59,8 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     done: isDoneStatus(r.status),
     doneAtISO: r.doneAt ? r.doneAt.toISOString() : null,
     recordedBy: r.recordedBy,
+    source: r.source,
+    fgGuessed: r.fgGuessed,
     notes: r.notes.map((n) => ({ id: n.id, text: n.text, atISO: n.at.toISOString(), by: n.recordedBy, blockedItem: blockedItem(n.text) })),
   }));
 
@@ -190,6 +192,9 @@ export async function importOdooSheet(
   const key = (dateISO: string, mo: string) => `${dateISO}|${mo}`;
   const byKey = new Map<string, (typeof existing)[number]>();
   for (const e of existing) {
+    // a row born from a painting record has no MO yet — the sheet's rows
+    // never describe it, so it is never the one a sheet row updates
+    if (!e.odooMo) continue;
     const k = key(toISODate(e.date), e.odooMo);
     if (!byKey.has(k)) byKey.set(k, e); // the first attempt of the day is the one the sheet describes
   }
@@ -210,7 +215,7 @@ export async function importOdooSheet(
       // a row the sheet already marks Done was closed on its own day — the
       // only day known for it
       const created = await prisma.odooEntry.create({
-        data: { date, odooMo: row.odooMo, status: row.status, doneAt: isDoneStatus(row.status) ? date : null, ...data },
+        data: { date, odooMo: row.odooMo, status: row.status, doneAt: isDoneStatus(row.status) ? date : null, source: "import", ...data },
       });
       byKey.set(k, created); // a second line for the same MO in the file updates, not doubles
     }

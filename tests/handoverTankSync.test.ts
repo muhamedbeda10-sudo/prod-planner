@@ -40,6 +40,10 @@ function form(fields: Record<string, string>): FormData {
 /** What the transaction body actually did, in order. */
 const calls: string[] = [];
 
+/** The Odoo row linked to the ledger row under test, if any — a painting
+ *  record's row on the ODOO tab follows the record while it is untouched. */
+let odooRow: { id: number; odooMo: string; status: string; _count: { notes: number } } | null = null;
+
 const paintRow = {
   id: 7, dept: "Painting", bom: "25301", mo: "MO/1", item: "TN", qty: 3, note: null,
 };
@@ -52,14 +56,45 @@ beforeEach(() => {
   h.checkOutputChain.mockResolvedValue(null);
   h.syncTanksToLedgerQty.mockResolvedValue({});
   h.prisma.handoverEntry.findUnique.mockResolvedValue(paintRow);
+  odooRow = null;
   h.prisma.$transaction.mockImplementation((body: (tx: unknown) => Promise<unknown>) =>
     body({
       handoverEntry: {
         update: async () => { calls.push("ledger.update"); },
         delete: async () => { calls.push("ledger.delete"); },
       },
+      odooEntry: {
+        findUnique: async () => odooRow,
+        update: async (a: { data: Record<string, unknown> }) => { calls.push(`odoo.update ${JSON.stringify(a.data)}`); },
+        delete: async () => { calls.push("odoo.delete"); },
+      },
     })
   );
+});
+
+const untouched = { id: 40, odooMo: "", status: "MO to be close", _count: { notes: 0 } };
+const worked = { id: 40, odooMo: "SF01/MO/1", status: "MO to be close", _count: { notes: 0 } };
+
+describe("the row's Odoo row follows it", () => {
+  it("is deleted with the row while nobody has touched it", async () => {
+    odooRow = untouched;
+    await deleteHandover(form({ id: "7" }));
+    expect(calls).toEqual(["odoo.delete", "ledger.delete"]);
+  });
+  it("only loses the link once the office has worked it", async () => {
+    odooRow = worked;
+    await deleteHandover(form({ id: "7" }));
+    expect(calls).toEqual(['odoo.update {"ledgerId":null}', "ledger.delete"]);
+  });
+  it("takes the row's new quantity and date while untouched, and not after", async () => {
+    odooRow = untouched;
+    await updateHandover(form({ id: "7", qty: "2", date: "2026-09-10" }));
+    expect(calls).toEqual(["ledger.update", 'odoo.update {"qty":2,"date":"2026-09-10T00:00:00.000Z"}']);
+    calls.length = 0;
+    odooRow = worked;
+    await updateHandover(form({ id: "7", qty: "2" }));
+    expect(calls).toEqual(["ledger.update"]);
+  });
 });
 
 describe("deleteHandover — the row takes its tanks with it", () => {

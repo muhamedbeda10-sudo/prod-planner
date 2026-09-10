@@ -50,11 +50,14 @@ function read(formData: FormData): Fields {
   };
 }
 
-function validate(f: Fields): string | null {
+/** `born`: a row that came from a painting / shot-blast record may keep an
+ *  empty MO and FG-CODE until the office fills them — it is the ledger's row,
+ *  not a typed one. */
+function validate(f: Fields, born = false): string | null {
   if (!f.date) return "Enter the date.";
-  if (!f.fgCode) return "Enter the FG-CODE.";
+  if (!f.fgCode && !born) return "Enter the FG-CODE.";
   if (!f.product) return "Enter the product (Tank, Top Cover, …).";
-  if (!f.odooMo) return "Enter the Odoo MO number.";
+  if (!f.odooMo && !born) return "Enter the Odoo MO number.";
   if (f.qty === null || Number.isNaN(f.qty)) return "Enter the quantity.";
   if (f.qty < 0) return "Quantity cannot be negative.";
   return null;
@@ -96,18 +99,52 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
   const f = read(formData);
-  const bad = validate(f);
-  if (bad) return { ok: false, error: bad };
 
-  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { status: true, doneAt: true } });
+  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { status: true, doneAt: true, ledgerId: true, fgCode: true, fgGuessed: true } });
   if (!prev) return { ok: false, error: "That row no longer exists." };
+  const bad = validate(f, prev.ledgerId !== null);
+  if (bad) return { ok: false, error: bad };
   await prisma.odooEntry.update({
     where: { id },
     data: {
       date: f.date!, soi: f.soi, fgCode: f.fgCode, product: f.product, odooMo: f.odooMo,
       qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, prev, f.date!), recordedBy: guard.user?.name ?? null,
+      // a corrected FG-CODE is a guess no more; an untouched one stays flagged
+      // (this edit may have been about the qty)
+      fgGuessed: prev.fgGuessed && f.fgCode === prev.fgCode,
     },
   });
+  revalidateOdoo();
+  return { ok: true };
+}
+
+/** Type Odoo's MO onto a row born from a closing — the clerk's one missing
+ *  column, filled in place. */
+export async function setOdooMo(formData: FormData): Promise<OdooActionResult> {
+  const guard = await requirePerm("odoo.edit");
+  if (guard.error) return { ok: false, error: guard.error };
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
+  const odooMo = text(formData.get("odooMo")).toUpperCase();
+  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { ledgerId: true } });
+  if (!prev) return { ok: false, error: "That row no longer exists." };
+  if (!odooMo && prev.ledgerId === null) return { ok: false, error: "Enter the Odoo MO number." };
+  await prisma.odooEntry.update({ where: { id }, data: { odooMo, recordedBy: guard.user?.name ?? null } });
+  revalidateOdoo();
+  return { ok: true };
+}
+
+/** Confirm or correct a guessed FG-CODE in place. */
+export async function setOdooFgCode(formData: FormData): Promise<OdooActionResult> {
+  const guard = await requirePerm("odoo.edit");
+  if (guard.error) return { ok: false, error: guard.error };
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
+  const fgCode = text(formData.get("fgCode")).toUpperCase();
+  if (!fgCode) return { ok: false, error: "Enter the FG-CODE." };
+  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { id: true } });
+  if (!prev) return { ok: false, error: "That row no longer exists." };
+  await prisma.odooEntry.update({ where: { id }, data: { fgCode, fgGuessed: false, recordedBy: guard.user?.name ?? null } });
   revalidateOdoo();
   return { ok: true };
 }
