@@ -172,6 +172,7 @@ describe("guards", () => {
     expect(isTankStatus("welded")).toBe(true);
     expect(isTankStatus("shipped")).toBe(false);
     expect(isWorkerDept("LeakTest")).toBe(true);
-    expect(isWorkerDept("Cut")).toBe(false);
+    expect(isWorkerDept("Cut")).toBe(true);
+    expect(isWorkerDept("Oven")).toBe(false);
   });
 });

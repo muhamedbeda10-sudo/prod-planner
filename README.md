@@ -85,6 +85,18 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    under its product) or on the day it was logged — over today, yesterday, 7/30/90 days, this
    month, all time or a custom from/to, with the numbers as a table and an Excel export.
 
+9. **Shift log** (`/shifts`) — the supervisors' page, one department and one day at a time: every worker
+   registered for the department (Tools → Production Workers, now for Fabrication, Welding, Shot Blast and
+   Painting too) with present / shift (9 h or 11 h) / overtime (+3 in one click) / the machine they were on /
+   a note; the day's present count, man-hours against the stage's capacity, overtime and downtime up top;
+   machine downtime with its reason; the last days recorded as a strip. A worker without a row counts as
+   present on the 9-hour shift, so only the exceptions need touching; "Save day" writes every row and
+   re-sums the department's man-hours into the figure the calibration and the plan's capacity check read
+   (Admin → Standard Times shows it read-only now). Recording needs `shifts.<dept>`; viewing is free.
+   **Machines & lines** (Tools → Machines, `machines.manage`): the plant's machines by department — code,
+   name, work centre (every laser and punch is "Cutting"; fins, tubes, roll blank; a paint line or
+   shot-blast cabinet is a "Line"), hours a day, retire / bring back — seeded from the fabrication list.
+
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:
 - **Daily Report** dept output: **exact match** (Cut & Welding — complete sets, efficiency, balance).

@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   FileDown, Puzzle, CalendarDays, Users, Timer,
-  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes,
+  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -32,6 +32,8 @@ const REST: Item[] = [
   // Material comes FIRST: nesting is decided before a single sheet is cut.
   { href: "/material", label: "Material", icon: Layers },
   { href: "/odoo", label: "ODOO", icon: Boxes },
+  // who worked today, how long, on what — the supervisors' page
+  { href: "/shifts", label: "Shifts", icon: Clock },
   { href: "/barcode", label: "Barcode", icon: QrCode, match: "/barcode" },
   { href: "/handover", label: "Logs", icon: BookOpenCheck },
   { href: "/tracker", label: "Plan Tracker", icon: Table2 },
@@ -58,7 +60,8 @@ const ADMIN: (Item & { desc: string; perm?: string })[] = [
   { href: "/boms", label: "BOM Review", desc: "Fix codes & reallocate excess", icon: Puzzle },
   { href: "/calendar", label: "Factory Calendar", desc: "Holidays & shutdown days off", icon: CalendarDays },
   { href: "/admin/settings", label: "Settings", desc: "Plant-wide switches, including per-piece tank tracking", icon: SlidersHorizontal },
-  { href: "/admin/workers", label: "Production Workers", desc: "Who can be credited with welding, testing & painting a tank", icon: HardHat, perm: "workers.manage" },
+  { href: "/admin/workers", label: "Production Workers", desc: "The shop-floor people of every department — the shift log and the tank dropdowns", icon: HardHat, perm: "workers.manage" },
+  { href: "/admin/machines", label: "Machines & Lines", desc: "Lasers, punches, presses, paint lines & shot-blast cabinets per department", icon: Factory, perm: "machines.manage" },
 ];
 
 export interface NavUser {
