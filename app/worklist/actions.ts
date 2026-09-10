@@ -59,6 +59,9 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     // tanks only: who welded this batch (a Worker row, not an app account)
     const rawWorker = String(formData.get("workerId") ?? "").trim();
     const workerId = rawWorker ? Number(rawWorker) : null;
+    // the machine it was finished on, when the record came off a machine card
+    const rawMachine = String(formData.get("machineId") ?? "").trim();
+    const machineId = rawMachine && Number.isInteger(Number(rawMachine)) ? Number(rawMachine) : null;
 
     const date = parseISODate(dateStr);
     if (!date) return { ok: false, error: "Invalid date." };
@@ -120,7 +123,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     // survive a welding record that failed to save, nor the other way round
     const serials = await prisma.$transaction(async (tx) => {
       const ledger = await tx.handoverEntry.create({
-        data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist", createdBy: guard.user?.name ?? null },
+        data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist", machineId, createdBy: guard.user?.name ?? null },
       });
       // a painting record is a closing — it gets its row on the ODOO tab
       await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);

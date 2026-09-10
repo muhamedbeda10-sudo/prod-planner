@@ -99,7 +99,11 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    as the same machine, and an item the timings sheet never priced (AR, MB) gets a time at last. An empty cell
    keeps the estimate (the stage's standard hours split over the centres the item routes through, which
    follows the kVA class); the placeholder shows that estimate for a 1000 kVA tank. A typed figure is flat for
-   every size.
+   every size. Under each cell is what the floor **actually did** over the last 90 days: the pieces that machine
+   finished against the man-hours the shift log put on it, a day's hours split between the items it ran (by the
+   standard hours they earned, or by pieces when nothing that day is priced — so AR and MB get a figure too).
+   Click it to take it as the figure. Only a ✓ on a machine card carries the machine, so the page says what
+   share of the recorded output can be measured at all.
    **Shift hours** (Tools → Settings, admin): what the short shift, the long shift and the "+OT" button are
    worth. Every man-hour the app counts is measured with them — the shift log's day, a machine's crew, the
    figure the standard times are calibrated against — so a new roster is a setting, not a code change. A day

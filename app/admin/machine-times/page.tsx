@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { getAllMachines } from "@/lib/server/machines";
 import { getMachineItemTimes } from "@/lib/server/machineTimes";
+import { getMeasuredRates } from "@/lib/server/machineRates";
 import { getStdData } from "@/lib/server/standardTimes";
 import { itemHoursFor } from "@/lib/domain/stdEngine";
 import { centerShares, routeFor } from "@/lib/domain/shifts";
@@ -23,7 +24,7 @@ export default async function MachineTimesPage() {
   if (!me) redirect("/login");
   if (!hasPerm(me, "machines.manage")) redirect("/");
 
-  const [machines, times, std] = await Promise.all([getAllMachines(), getMachineItemTimes(), getStdData()]);
+  const [machines, times, std, measured] = await Promise.all([getAllMachines(), getMachineItemTimes(), getStdData(), getMeasuredRates()]);
 
   // what the standard times say a piece costs at each machine's work centre —
   // the stage's hours for a mid-size tank, split over the centres the item
@@ -59,8 +60,17 @@ export default async function MachineTimesPage() {
           is the stage&apos;s standard hours split over the work centres the item routes through and follows the tank&apos;s kVA
           class. The placeholder shows that estimate for a {SHOWN_TIER} kVA tank; a figure you type is flat for every size.
         </p>
+        <p className="text-sm text-muted mb-3">
+          <b className="text-foreground">Measured</b> under a cell is what the floor actually did since {measured.fromISO}:
+          the pieces that machine finished (a ✓ on its card is the only record that carries the machine) against the
+          man-hours the shift log put on it, a day&apos;s hours split between the items it ran. Click it to take it as the
+          figure.{" "}
+          {measured.totalPcs > 0
+            ? `${Math.round((measured.attributedPcs / measured.totalPcs) * 100)}% of what was recorded in that window carries a machine — the rest was recorded off a table and cannot be measured.`
+            : "Nothing has been recorded in that window yet."}
+        </p>
         <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
-          <TimesGrid machines={machines} times={times} estimates={estimates} canEdit={hasPerm(me, "machines.manage")} />
+          <TimesGrid machines={machines} times={times} estimates={estimates} measured={measured.byMachine} canEdit={hasPerm(me, "machines.manage")} />
         </Suspense>
       </Card>
     </div>

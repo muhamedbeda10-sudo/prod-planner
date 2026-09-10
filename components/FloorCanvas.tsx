@@ -569,7 +569,7 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                     {canAssign && (
                       <td className="p-1">
                         <span className="flex items-center justify-end gap-0.5">
-                          <DoneBox board={board} q={q} onErr={a.setErr} />
+                          <DoneBox board={board} q={q} machineId={m.id} onErr={a.setErr} />
                           {q.running
                             ? <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
                             : <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>}
