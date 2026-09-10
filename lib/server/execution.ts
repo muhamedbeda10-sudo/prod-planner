@@ -20,6 +20,7 @@ import { applicableItems, ospOf } from "@/lib/domain/constants";
 import type { HiddenLineDTO, PriorityLineDTO } from "@/lib/server/worklistExtras";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getSettings, getPlanWindows } from "./data";
+import { loadAllHandover, loadAllSchedules, loadMasterOrders } from "./loads";
 
 export interface CutSheet {
   planNo: number | null;
@@ -53,11 +54,10 @@ export async function getCutSheet(): Promise<CutSheet> {
   const settings = await getSettings();
   const planNo = findPlanForDate(await getPlanWindows(), today, settings.leadCut);
 
-  const [allSchedules, masters, closedMos, entries, weekOrders, overrideRows, pushRows, hideRows] = await Promise.all([
-    prisma.planSchedule.findMany({ orderBy: { id: "asc" } }), // ALL plans — every week's promises feed the worklist
-    prisma.masterOrder.findMany({ where: { status: "open" }, orderBy: { id: "asc" } }), // closed orders leave the daily screens
-    prisma.masterOrder.findMany({ where: { status: "closed" }, select: { mo: true } }),
-    prisma.handoverEntry.findMany(), // ALL entries — progress is global
+  const [allSchedules, allMasters, entries, weekOrders, overrideRows, pushRows, hideRows] = await Promise.all([
+    loadAllSchedules(), // ALL plans — every week's promises feed the worklist
+    loadMasterOrders(),
+    loadAllHandover(), // ALL entries — progress is global
     planNo === null
       ? Promise.resolve([])
       : prisma.planOrder.findMany({ where: { planNo }, select: { mo: true, remark: true } }),
@@ -65,6 +65,9 @@ export async function getCutSheet(): Promise<CutSheet> {
     prisma.worklistPush.findMany({ where: { dept: "Cut" }, orderBy: { id: "asc" } }),
     prisma.worklistLineHide.findMany({ where: { dept: "Cut" }, orderBy: { id: "asc" } }),
   ]);
+  // closed orders leave the daily screens
+  const masters = [...allMasters].filter((m) => m.status === "open").sort((a, b) => a.id - b.id);
+  const closedMos = allMasters.filter((m) => m.status === "closed");
   const allSchedIn = allSchedules.map((s) => ({ planNo: s.planNo, bom: s.bom, mo: s.mo, description: s.description, item: s.item, ovenDate: s.ovenDate, qty: s.qty }));
   const schedIn = allSchedIn.filter((s) => s.planNo === planNo);
   const entryIn = entries.map((e) => ({ dept: e.dept, bom: e.bom, mo: e.mo, item: e.item, qty: e.qty, date: e.date }));
@@ -268,11 +271,7 @@ export async function getExecutionSheet(day: Date, dept: "Cut" | "Welding"): Pro
 }
 
 async function loadQueueInputs() {
-  const [schedules, entries, masters] = await Promise.all([
-    prisma.planSchedule.findMany({ orderBy: { id: "asc" } }),
-    prisma.handoverEntry.findMany(),
-    prisma.masterOrder.findMany({ select: { mo: true, bom: true, planQty: true, kva: true, rating: true, excludedItems: true, ospCF: true, ospTC: true, ospTN: true, ospCB: true } }),
-  ]);
+  const [schedules, entries, masters] = await Promise.all([loadAllSchedules(), loadAllHandover(), loadMasterOrders()]);
   // in-house share per MO×item where a part is outsourced: planQty − OSP.
   // The OSP share never reaches the welding/painting queues.
   const inhouseCap = new Map<string, number>();

@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { loadMasterOrders } from "./loads";
 import { toISODate } from "@/lib/domain/dates";
 import { requiredHoursForLines } from "@/lib/domain/stdEngine";
 import { etaQueueOrder } from "@/lib/domain/eta";
@@ -25,7 +26,7 @@ export async function getWhatIfInputs(): Promise<WhatIfInputs> {
   if (planNo) {
     const [schedules, orders] = await Promise.all([
       prisma.planSchedule.findMany({ where: { planNo }, select: { mo: true, item: true, ovenDate: true, qty: true } }),
-      prisma.masterOrder.findMany({ select: { mo: true, fgCode: true, kva: true } }),
+      loadMasterOrders(),
     ]);
     if (schedules.length > 0) {
       const byMo = new Map(orders.map((o) => [o.mo, o]));

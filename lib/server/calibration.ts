@@ -4,6 +4,7 @@ import { toISODate } from "@/lib/domain/dates";
 import { tierForOrder, itemHoursFor } from "@/lib/domain/stdEngine";
 import { calibrate, type CalibrationSummary } from "@/lib/domain/calibration";
 import { getStdData } from "./standardTimes";
+import { loadMasterOrders } from "./loads";
 
 // recorded days older than this stop counting — the crew, the standards, or
 // both have moved on, and a stale sample would fight every new recording
@@ -28,7 +29,7 @@ export async function getCalibration(): Promise<{ rows: DayHoursRow[]; stages: S
   const [recorded, std, orders] = await Promise.all([
     prisma.deptDayHours.findMany({ where: { date: { gte: since } }, orderBy: { date: "desc" } }),
     getStdData(),
-    prisma.masterOrder.findMany({ select: { mo: true, bom: true, fgCode: true, kva: true } }),
+    loadMasterOrders(),
   ]);
   if (recorded.length === 0) return { rows: [], stages: CAL_STAGES.map((dept) => ({ dept, ...calibrate([]) })) };
 

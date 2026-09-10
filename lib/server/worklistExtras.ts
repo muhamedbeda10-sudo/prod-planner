@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { applicableItems, ospOf, isPaintExempt, type Dept, type Item } from "@/lib/domain/constants";
+import { loadMasterOrders } from "./loads";
 
 /** A tracker-pushed line as shown on a dept worklist (qty clamped to the
  *  order's live remainder — recorded output shrinks it automatically). */
@@ -58,8 +59,9 @@ export async function getRunOrderLines(dept: Dept): Promise<RunOrderLineDTO[]> {
   const entries = await prisma.runOrderEntry.findMany({ orderBy: { rank: "asc" } });
   if (entries.length === 0) return [];
   const mos = [...new Set(entries.map((e) => e.mo))];
+  const moSet = new Set(mos);
   const [orders, sums] = await Promise.all([
-    prisma.masterOrder.findMany({ where: { mo: { in: mos } } }),
+    loadMasterOrders().then((all) => all.filter((o) => moSet.has(o.mo))),
     prisma.handoverEntry.groupBy({
       by: ["mo", "item"],
       where: { dept, mo: { in: mos } },
@@ -108,10 +110,10 @@ export async function getWorklistExtras(dept: Dept): Promise<WorklistExtras> {
     }),
   ]);
   const pushMos = [...new Set(pushes.map((p) => p.mo))];
-  const [pushOrders, priorityOrders] = await Promise.all([
-    pushMos.length > 0 ? prisma.masterOrder.findMany({ where: { mo: { in: pushMos } } }) : Promise.resolve([]),
-    prisma.masterOrder.findMany({ where: { priority: true, status: "open" }, orderBy: { mo: "asc" } }),
-  ]);
+  const allOrders = await loadMasterOrders();
+  const pushSet = new Set(pushMos);
+  const pushOrders = allOrders.filter((o) => pushSet.has(o.mo));
+  const priorityOrders = [...allOrders].filter((o) => o.priority && o.status === "open").sort((a, b) => a.mo.localeCompare(b.mo));
 
   const done = new Map<string, number>(); // mo|item -> dept output
   for (const s of sums) if (s.mo) done.set(`${s.mo}|${s.item}`, s._sum.qty ?? 0);

@@ -327,6 +327,7 @@ model ChatMessage {
   @@index([fromId, toId, id])
   @@index([toId, readAt])
   @@index([groupId, id])
+  @@index([replyToId])
 }
 
 // A chat group: any user can create one and picks its members. The creator
@@ -506,6 +507,8 @@ model ShiftEntry {
 
   @@unique([date, dept, workerId])
   @@index([date, dept])
+  @@index([workerId])
+  @@index([machineId])
 }
 
 // Hours a machine stood still on a day, and why — the planner's reason a

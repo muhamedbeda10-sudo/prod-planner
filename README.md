@@ -141,6 +141,11 @@ The pure logic is checked cell-for-cell against the workbook's own computed shee
 
 ## Layout
 - `lib/domain/*` — pure, unit-tested ports (no I/O). `*.test.ts` alongside.
-- `lib/server/*` — Prisma-backed data access feeding the pure functions (`server-only`).
+- `lib/server/*` — Prisma-backed data access feeding the pure functions (`server-only`). `loads.ts` holds the
+  request-cached loads of the tables every screen reads (orders registry, schedules, the daily log, holidays,
+  plans, settings): the first caller in a request pays for the query, every later one shares the rows.
+- Heavy browser code loads on demand: the charts (`components/LazyCharts.tsx`) and SheetJS (only when Export
+  is pressed) stay out of every page's first load; `app/loading.tsx` paints a skeleton the instant a tab is
+  clicked while the page streams in.
 - `app/*` — RTL pages + server actions. `components/*` — shared UI + client widgets.
 - `scripts/*` — seed + validation/diagnostic scripts. `reference/*` — original VBA + workbook.

@@ -4,7 +4,7 @@ import { getSmartInsights } from "@/lib/server/insights";
 import { SmartInsights } from "@/components/SmartInsights";
 import { pctStyle } from "@/components/ui";
 import { PeriodFilter, DashboardPeriodMemory } from "@/components/controls";
-import { WeekTrendChart, WeekItemChart, HistoryChart } from "@/components/DashboardCharts";
+import { WeekTrendChart, WeekItemChart, HistoryChart } from "@/components/LazyCharts";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { parseISODate, toDisplayDate } from "@/lib/domain/dates";
 import { ITEMS, itemDailyTarget, FINISHING_LABEL, type Item } from "@/lib/domain/constants";

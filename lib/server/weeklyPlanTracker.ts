@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { loadMasterOrders } from "./loads";
 import { ITEMS, isPaintExempt, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 import { dayNumber, toISODate } from "@/lib/domain/dates";
 import { owedAcrossDays, promiseCeiling } from "@/lib/domain/planPromises";
@@ -108,7 +109,7 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
       where: { planNo: active },
       select: { bom: true, mo: true, soi: true, description: true, item: true, ovenDate: true, qty: true },
     }),
-    prisma.masterOrder.findMany(),
+    loadMasterOrders(),
     // every entry ever logged — work done ahead of the delivery date still
     // counts. Rows with no MO are kept: they are the Daily Logs entries, read
     // at project level below.
