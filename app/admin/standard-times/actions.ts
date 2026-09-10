@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/server/auth";
 import { normFg } from "@/lib/domain/stdEngine";
-import { parseISODate } from "@/lib/domain/dates";
 import { getCalibration, CAL_STAGES, type CalStage } from "@/lib/server/calibration";
 
 export interface StdActionResult {
@@ -99,55 +98,6 @@ export async function deleteFgMap(fd: FormData): Promise<StdActionResult> {
   if (guard.error) return { ok: false, error: guard.error };
 
   await prisma.stdFgMap.deleteMany({ where: { fg: normFg(String(fd.get("fg") ?? "")) } });
-  revalidate();
-  return { ok: true };
-}
-
-/** Record one day's ACTUAL man-hours per stage (blank = not recorded, and an
- *  existing figure for that stage is removed). Feeds the calibration. */
-export async function saveDayHours(fd: FormData): Promise<StdActionResult> {
-  const guard = await requireAdmin();
-  if (guard.error) return { ok: false, error: guard.error };
-
-  const date = parseISODate(String(fd.get("date") ?? ""));
-  if (!date) return { ok: false, error: "Pick a date." };
-  if (date.getTime() >= Math.ceil(Date.now() / 86400000) * 86400000) {
-    return { ok: false, error: "Only past days can be recorded — today isn't finished." };
-  }
-
-  const writes = [];
-  let any = false;
-  for (const dept of CAL_STAGES) {
-    const raw = String(fd.get(dept) ?? "").trim();
-    if (raw === "") {
-      writes.push(prisma.deptDayHours.deleteMany({ where: { date, dept } }));
-      continue;
-    }
-    const hours = Number(raw);
-    if (!Number.isFinite(hours) || hours < 0) return { ok: false, error: `${dept} hours must be a number ≥ 0.` };
-    any = true;
-    writes.push(
-      prisma.deptDayHours.upsert({
-        where: { date_dept: { date, dept } },
-        create: { date, dept, hours },
-        update: { hours },
-      })
-    );
-  }
-  if (!any) return { ok: false, error: "Enter hours for at least one stage." };
-  await prisma.$transaction(writes);
-  revalidate();
-  return { ok: true };
-}
-
-/** Remove every stage's recording for one day. */
-export async function deleteDayHours(fd: FormData): Promise<StdActionResult> {
-  const guard = await requireAdmin();
-  if (guard.error) return { ok: false, error: guard.error };
-
-  const date = parseISODate(String(fd.get("date") ?? ""));
-  if (!date) return { ok: false, error: "Pick a date." };
-  await prisma.deptDayHours.deleteMany({ where: { date } });
   revalidate();
   return { ok: true };
 }

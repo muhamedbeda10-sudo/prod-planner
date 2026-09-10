@@ -457,6 +457,72 @@ model DeptDayHours {
   @@unique([date, dept])
 }
 
+// ---- Machines and the shift log ----
+
+// One machine (or line) of a department — a laser, a punch, the fins press,
+// a paint line, a shot-blast cabinet. `center` groups the ones that do the
+// same work: every laser and punch is "Cutting" (a job goes to whichever is
+// free), the fins press is "Fins", a paint line is "Line". Bending has no
+// machines yet — it is a stage worked by people. The admin keeps the list;
+// the shift log and the worklists only read it.
+model Machine {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique // the plant's asset code: B4-10
+  name        String // Bodor 3K watt
+  dept        String // Cut | Welding | ShotBlast | Painting
+  center      String   @default("") // Cutting | Fins | Tubes | RollBlank | Line
+  hoursPerDay Float? // available hours on a working day; null = not set
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  shifts    ShiftEntry[]
+  downtimes MachineDowntime[]
+
+  @@index([dept])
+}
+
+// One worker's day in one department, as the supervisor records it: present
+// or not, which shift (9 or 11 hours), overtime on top, and the machine they
+// were on. A worker with no row for a day is taken as present on the default
+// shift with no overtime — the supervisor only records the exceptions. The
+// day's man-hours per department are summed into DeptDayHours from here.
+model ShiftEntry {
+  id         Int      @id @default(autoincrement())
+  date       DateTime // day-only granularity
+  dept       String // Cut | Welding | ShotBlast | Painting
+  workerId   Int
+  worker     Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  present    Boolean  @default(true)
+  shift      String   @default("S9") // S9 | S11
+  overtimeH  Float    @default(0)
+  machineId  Int?
+  machine    Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  note       String?
+  recordedBy String?
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([date, dept, workerId])
+  @@index([date, dept])
+}
+
+// Hours a machine stood still on a day, and why — the planner's reason a
+// day's load did not land, and the capacity a machine really had.
+model MachineDowntime {
+  id         Int      @id @default(autoincrement())
+  date       DateTime
+  machineId  Int
+  machine    Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  hours      Float
+  reason     String?
+  recordedBy String?
+  createdAt  DateTime @default(now())
+
+  @@index([date])
+  @@index([machineId])
+}
+
 // A named what-if scenario, saved from the Simulator ("the emergency plan for
 // order X") — the knobs, the queue and the splits, as one JSON blob.
 model SimScenario {
@@ -490,9 +556,10 @@ model RunOrderEntry {
 // so the two always agree in count. Every other component keeps working purely
 // on quantities.
 
-// A shop-floor worker credited with a tank operation (welder, leak tester,
-// painter, QA inspector). NOT an app account — the people on the floor rarely
-// have logins. The admin keeps this list in Admin → Workers.
+// A shop-floor worker: credited with a tank operation (welder, leak tester,
+// painter, QA inspector) and counted on the shift log of every department.
+// NOT an app account — the people on the floor rarely have logins. The admin
+// keeps this list in Admin → Workers.
 model Worker {
   id Int @id @default(autoincrement())
 
@@ -508,10 +575,12 @@ model Worker {
   // man who made it, with or without the app.
   stamp    String?
 
-  depts     String   @default("") // CSV of Welding | LeakTest | Painting | Quality
+  depts     String   @default("") // CSV of Cut | Welding | ShotBlast | LeakTest | Painting | Quality
   active    Boolean  @default(true) // inactive workers stay on old records, leave the dropdowns
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  shifts ShiftEntry[]
 
   @@index([active])
 }

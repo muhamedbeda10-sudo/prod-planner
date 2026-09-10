@@ -56,8 +56,9 @@ export function tankEventLook(kind: string): { label: string; tone: string } {
   return TANK_EVENT_KINDS[kind as TankEventKind] ?? { label: kind, tone: "pill-muted" };
 }
 
-/** The departments a worker can be credited in — the dropdowns' source. */
-export const WORKER_DEPTS = ["Welding", "LeakTest", "Painting", "Quality"] as const;
+/** The departments a worker can be credited in — the dropdowns' source, and
+ *  the shift log's: a worker is counted on the days of every department here. */
+export const WORKER_DEPTS = ["Cut", "Welding", "ShotBlast", "LeakTest", "Painting", "Quality"] as const;
 export type WorkerDept = (typeof WORKER_DEPTS)[number];
 
 export function isWorkerDept(x: string): x is WorkerDept {
@@ -87,7 +88,9 @@ export function tankStatusTone(status: string): string {
 }
 
 export const WORKER_DEPT_LABEL: Record<WorkerDept, string> = {
+  Cut: "Fabrication",
   Welding: "Welding",
+  ShotBlast: "Shot blast",
   LeakTest: "Leak test",
   Painting: "Painting",
   Quality: "Quality",

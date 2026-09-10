@@ -31,7 +31,16 @@ export const PERM_CATEGORIES: PermCategory[] = [
     name: "Tanks",
     perms: [
       { key: "quality.qa", label: "Quality check — sign a tank off", desc: "Scan a tank's barcode and record the quality verdict (OK / not OK) with a note" },
-      { key: "workers.manage", label: "Workers list — manage", desc: "Add, edit and deactivate the shop-floor workers who appear in the welder / tester / painter dropdowns" },
+      { key: "workers.manage", label: "Workers list — manage", desc: "Add, edit and deactivate the shop-floor workers who appear in the welder / tester / painter dropdowns and on the shift log" },
+    ],
+  },
+  {
+    name: "Shifts & machines",
+    perms: [
+      { key: "shifts.cut", label: "Shift log — Fabrication", desc: "Record who worked in Fabrication each day, their shift and overtime, the machine they were on, and machine downtime" },
+      { key: "shifts.welding", label: "Shift log — Welding", desc: "Record who worked in Welding each day, their shift and overtime" },
+      { key: "shifts.shotblast", label: "Shift log — Shot Blast", desc: "Record who worked on the shot-blast cabinets each day, their shift and overtime, and downtime" },
+      { key: "shifts.painting", label: "Shift log — Painting", desc: "Record who worked on the paint lines each day, their shift and overtime, and downtime" },
     ],
   },
   {
@@ -69,6 +78,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "logs.import", label: "Daily Logs — Excel import", desc: "Bulk-import handover logs from Excel (writes to all departments)" },
       { key: "boms.manage", label: "BOM review — manage", desc: "Apply BOM corrections and decide reallocation moves" },
       { key: "calendar.manage", label: "Calendar — manage", desc: "Add and remove factory holidays" },
+      { key: "machines.manage", label: "Machines — manage", desc: "Add, edit and retire the machines and lines of each department (the shift log and the worklists read the list)" },
     ],
   },
 ];
@@ -100,6 +110,12 @@ export function deptPermKey(dept: string): string {
 export function trackerPermKey(dept: string): string {
   const map: Record<string, string> = { Cut: "tracker.cut", Welding: "tracker.weld", Painting: "tracker.paint", ShotBlast: "tracker.shp", Delivered: "tracker.delivered" };
   return map[dept] ?? `tracker.${dept.toLowerCase()}`;
+}
+
+/** Shift-log department -> its permission key (Cut → shifts.cut, ShotBlast →
+ *  shifts.shotblast …). */
+export function shiftPermKey(dept: string): string {
+  return `shifts.${dept.toLowerCase()}`;
 }
 
 export function parsePerms(csv: string): Set<string> {
