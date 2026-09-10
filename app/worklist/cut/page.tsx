@@ -30,7 +30,7 @@ export default async function CutWorklistPage() {
   // every open line on the sheet, for the machine board: the dated tranches
   // by what is left on them, the date-less pools by what can be pulled
   const lines: BoardLineInput[] = [
-    ...[...dueNow, ...overdue, ...postponed].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.remaining, deliveryISO: r.deliveryISO })),
+    ...[...dueNow, ...overdue, ...postponed].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.remaining, deliveryISO: r.deliveryISO, dueISO: r.cutDueISO })),
     ...[...pushed, ...remarked, ...unscheduled].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO })),
   ];
   const board = await getMachineBoard("Cut", lines, dayISO, planNo ?? 0);

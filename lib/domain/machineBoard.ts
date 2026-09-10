@@ -37,6 +37,9 @@ export interface BoardLine {
    *  together; null = no class known. */
   hours: number | null;
   deliveryISO: string | null;
+  /** When THIS stage has to be finished (the delivery less its lead) — what a
+   *  block on the timeline is late against. Null = no date. */
+  dueISO?: string | null;
   /** The centres the piece passes here, in order, each with its hours. Outside
    *  fabrication that is the department's one centre; a tank owes cutting,
    *  then bending, then fins — and the board queues it at each. */
@@ -176,6 +179,7 @@ export function buildMachineBoard(
         else at.hours = at.hours === null || r.hours === null ? null : at.hours + r.hours;
       }
       if (l.deliveryISO && (!prev.deliveryISO || l.deliveryISO < prev.deliveryISO)) prev.deliveryISO = l.deliveryISO;
+      if (l.dueISO && (!prev.dueISO || l.dueISO < prev.dueISO)) prev.dueISO = l.dueISO;
     }
   }
 
