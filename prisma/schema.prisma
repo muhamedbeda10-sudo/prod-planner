@@ -140,7 +140,14 @@ model MasterOrder {
   rating        String?
   secItem       String?
   planQty       Float     @default(0)
+  // The plan sheet's own spec columns, shown on the tracker beside KVA. They
+  // are imported when the monthly sheet carries them and left alone when it
+  // does not — an older revision never blanks what a newer one filled in.
+  fins          String? // the sheet's Fins column
+  crcSize       String? // "CRC Size" — 900, "-", …
   colorRal      String?
+  // Typed on the tracker, never imported: no plan sheet carries it.
+  sfm           String?
   remarks       String?
   source        String? // which monthly plan (month label) FIRST added it
   // EVERY monthly plan the MO appeared in (CSV of month labels) — a carried-over

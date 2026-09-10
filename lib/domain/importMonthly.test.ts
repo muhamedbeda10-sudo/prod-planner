@@ -73,6 +73,40 @@ describe("parseMonthlyPlan", () => {
   });
 });
 
+describe("parseMonthlyPlan — the sheet's spec columns", () => {
+  // the newer sheet names the column that used to sit blank beside Color RAL,
+  // and carries Fins with the other specs
+  const spec: unknown[][] = [
+    ["title"],
+    ["SOI", "MO.", "BoM Ref.", "KVA", "Fins", "Color RAL", "CRC Size", "PLAN \r\nQTY", "Welding", "", "", "", ""],
+    ["", "", "", "", "", "", "", "", "Fins", "Core", "Top  Cover", "Tank", "Cable Box"],
+    ["S1", "PF01/MO/1", "B1E11M11", 1000, "YES", "RAL-7035", 900, 12, 7, 6, 5, 4, 3],
+    ["S2", "PF01/MO/2", "B2E11M11", 100, "-", "RAL-7033", "-", 3, 0, 0, 0, 0, 0],
+  ];
+  const rows = parseMonthlyPlan(spec).rows;
+
+  it("reads Fins, Color RAL and CRC Size from the header row", () => {
+    expect(rows[0]).toMatchObject({ kva: "1000", fins: "YES", colorRal: "RAL-7035", crcSize: "900", planQty: 12 });
+    // a dash is how these sheets write "none" — it comes through as empty
+    expect(rows[1]).toMatchObject({ fins: null, colorRal: "RAL-7033", crcSize: null });
+  });
+
+  it("does not take the Welding group's own Fins column for the spec", () => {
+    // Welding's sub-columns are still read as progress, Fins among them ignored
+    expect(rows[0].done.weld).toEqual({ CF: 6, TC: 5, TN: 4, CB: 3 });
+  });
+
+  it("leaves them empty on a sheet that has neither column", () => {
+    const older: unknown[][] = [
+      ["title"],
+      ["SOI", "MO.", "BoM Ref.", "KVA", "PLAN \r\nQTY"],
+      ["", "", "", "", ""],
+      ["S1", "PF01/MO/9", "B9E11M11", 500, 4],
+    ];
+    expect(parseMonthlyPlan(older).rows[0]).toMatchObject({ fins: null, crcSize: null });
+  });
+});
+
 describe("parseMonthlyPlan — progress sections (setup balances)", () => {
   // header groups merged like the real sheet: section name then blanks, components on the sub-row
   const grid: unknown[][] = [
@@ -140,6 +174,8 @@ describe("diffRevisionRow — qty rises auto-apply, qty drops stay manual", () =
   };
   const row = (over: Partial<MonthlyOrderRow>): MonthlyOrderRow => ({
     rowNum: 4,
+    fins: null,
+    crcSize: null,
     mo: "MO-1",
     soi: "S01",
     urgent: false,

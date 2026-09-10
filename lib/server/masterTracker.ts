@@ -17,6 +17,12 @@ export interface MasterTrackerRow {
   urgent: boolean;
   kva: string | null;
   rating: string | null;
+  /** The plan sheet's own spec columns, shown beside KVA. */
+  fins: string | null;
+  crcSize: string | null;
+  colorRal: string | null;
+  /** Typed on the tracker — no plan sheet carries it. */
+  sfm: string | null;
   required: number; // planQty
   // eligible = the order needs this component by rule (base four always; AR/MB
   // only when KVA/rating match). excluded = admin marked it N/A. A component
@@ -78,6 +84,10 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       soi: o.soi,
       urgent: o.urgent,
       kva: o.kva,
+      fins: o.fins,
+      crcSize: o.crcSize,
+      colorRal: o.colorRal,
+      sfm: o.sfm,
       rating: o.rating,
       required: o.planQty,
       items,

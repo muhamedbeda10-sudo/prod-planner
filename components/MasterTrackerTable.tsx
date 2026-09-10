@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus, setExcludedItems, setOrderQty, setOrderPriority, pushOrderToWorklist, removeOrderMonth } from "@/app/orders/actions";
+import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSfm, setOrderPriority, pushOrderToWorklist, removeOrderMonth } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num, Soi } from "@/components/ui";
 import { RingCard } from "@/components/ProgressRing";
@@ -70,6 +70,22 @@ export function MasterTrackerTable({
   const [qtyEditMo, setQtyEditMo] = useState<string | null>(null);
   const [qtyVal, setQtyVal] = useState("");
   const [qtyErr, setQtyErr] = useState("");
+  // SFM — the one spec column the plan never carries, so it is typed here
+  const [sfmEditMo, setSfmEditMo] = useState<string | null>(null);
+  const [sfmVal, setSfmVal] = useState("");
+
+  function saveSfm(mo: string) {
+    const fd = new FormData();
+    fd.set("mo", mo);
+    fd.set("sfm", sfmVal);
+    startTransition(async () => {
+      const res = await setOrderSfm(fd);
+      if (res.ok) {
+        setSfmEditMo(null);
+        router.refresh();
+      } else setCellErr(res.error ?? "Failed");
+    });
+  }
 
   function saveQty(mo: string) {
     const fd = new FormData();
@@ -172,7 +188,8 @@ export function MasterTrackerTable({
   // Complete/Left/Achv
   // +1 for Status, +1 for the ETA forecast column
   // MO, SOI, BOM, KVA, Required lead the row before the per-item stage columns
-  const tableCols = scoped ? 5 + ITEMS.length * stages.length + 2 : 5 + ITEMS.length * 4 + 5;
+  // MO · SOI · BOM · KVA · Fins · Color · CRC · SFM · Required, then the items
+  const tableCols = scoped ? 9 + ITEMS.length * stages.length + 2 : 9 + ITEMS.length * 4 + 5;
 
   // shared BOMs: one summary row per BOM, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -327,6 +344,10 @@ export function MasterTrackerTable({
       SOI: r.soi ?? "",
       Urgent: r.urgent ? "Yes" : "",
       KVA: r.kva ?? "",
+      Fins: r.fins ?? "",
+      "Color RAL": r.colorRal ?? "",
+      "CRC Size": r.crcSize ?? "",
+      SFM: r.sfm ?? "",
       Required: r.required,
     };
     for (const it of ITEMS) {
@@ -444,6 +465,10 @@ export function MasterTrackerTable({
               <th rowSpan={2} className="p-2 text-left" title="Sales order item">SOI</th>
               <th rowSpan={2} className="p-2 text-left">BOM</th>
               <th rowSpan={2} className="p-2">KVA</th>
+              <th rowSpan={2} className="p-2" title="Fins — from the monthly plan sheet">Fins</th>
+              <th rowSpan={2} className="p-2" title="Colour RAL — from the monthly plan sheet">Color</th>
+              <th rowSpan={2} className="p-2" title="CRC size — from the monthly plan sheet">CRC</th>
+              <th rowSpan={2} className="p-2" title="SFM — typed here; no plan sheet carries it">SFM</th>
               <th rowSpan={2} className="p-2">Required</th>
               {ITEMS.map((it) => (
                 <th key={it} colSpan={scoped ? stages.length : 4} className="p-2 border-r border-border-strong">{it}</th>
@@ -494,6 +519,11 @@ export function MasterTrackerTable({
               const gAch = gReq > 0 ? gComplete / gReq : null;
               const urgentCount = members.filter((m) => m.urgent).length;
               const gKva = members.find((m) => m.kva)?.kva ?? "—";
+              // a group shows a spec only when its MOs agree on it
+              const shared = (pick: (m: MasterTrackerRow) => string | null) => {
+                const vals = [...new Set(members.map(pick).filter((v): v is string => !!v))];
+                return vals.length === 1 ? vals[0] : vals.length === 0 ? "—" : "…";
+              };
               return (
                 <Fragment key={`g|${gBom}`}>
                   <tr
@@ -518,6 +548,10 @@ export function MasterTrackerTable({
                       <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">{gBom}</Link>
                     </td>
                     <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{gKva}</td>
+                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.fins)}</td>
+                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.colorRal)}</td>
+                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.crcSize)}</td>
+                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.sfm)}</td>
                     <td className="p-2 text-center font-bold"><Num v={gReq} /></td>
                     {ITEMS.map((it) =>
                       scoped ? (
@@ -822,6 +856,37 @@ export function MasterTrackerTable({
                   <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>
+                <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.fins ?? "—"}</td>
+                <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.colorRal ?? "—"}</td>
+                <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.crcSize ?? "—"}</td>
+                <td className="p-2 text-xs whitespace-nowrap text-center">
+                  {sfmEditMo === r.mo ? (
+                    <input
+                      value={sfmVal}
+                      autoFocus
+                      onChange={(e) => setSfmVal(e.target.value)}
+                      onBlur={() => saveSfm(r.mo)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveSfm(r.mo);
+                        if (e.key === "Escape") setSfmEditMo(null);
+                      }}
+                      className="w-20 border rounded-md px-1 py-0.5 text-center bg-surface"
+                      disabled={pending}
+                      aria-label={`SFM for ${r.mo}`}
+                    />
+                  ) : can("tracker.qty") ? (
+                    <button
+                      type="button"
+                      className={`w-full ${r.sfm ? "font-semibold" : "text-muted"}`}
+                      title="Click to type the SFM for this order"
+                      onClick={() => { setSfmEditMo(r.mo); setSfmVal(r.sfm ?? ""); }}
+                    >
+                      {r.sfm || "—"}
+                    </button>
+                  ) : (
+                    <span className="text-muted">{r.sfm || "—"}</span>
+                  )}
+                </td>
                 <td className="p-2 text-center font-bold">
                   {qtyEditMo === r.mo ? (
                     <span className="inline-flex flex-col items-center gap-0.5">
