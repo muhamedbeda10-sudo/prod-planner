@@ -8,6 +8,7 @@ import { getCutSheet, getPaintingQueue, getWeldingQueue } from "./execution";
 import { getWorklistExtras } from "./worklistExtras";
 import { parseISODate } from "@/lib/domain/dates";
 import { loadMasterOrders } from "./loads";
+import { getSettings } from "./data";
 
 // The machine load board for one worklist: the page hands over the open
 // lines it already computed (every section of the sheet), this prices them
@@ -27,6 +28,13 @@ export interface BoardLineInput {
 
 export interface MachineBoardData extends MachineBoard {
   dept: BoardDept;
+  /** The day the board is for — the date a Done recorded on a card carries. */
+  dayISO: string;
+  /** The plan a Done recorded on a card belongs to (0 = the queue bucket). */
+  planNo: number;
+  /** Welding mints a serial per tank: those are recorded on the queue table
+   *  (they need the welder), never straight off a card. */
+  tankSerials: boolean;
   /** The department's machines a line can be put on (active only). */
   machines: MachineDTO[];
   /** bom|mo|item → where the line sits, for the tables' pickers: its first
@@ -36,15 +44,16 @@ export interface MachineBoardData extends MachineBoard {
 
 const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
-export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLineInput[], dayISO: string): Promise<MachineBoardData> {
+export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
   const date = dayOf(dayISO);
-  const [all, rows, std, orders, downtime, shifts] = await Promise.all([
+  const [all, rows, std, orders, downtime, shifts, settings] = await Promise.all([
     getAllMachines(),
     prisma.worklistMachine.findMany({ where: { dept }, orderBy: [{ machineId: "asc" }, { rank: "asc" }] }),
     getStdData(),
     loadMasterOrders(),
     prisma.machineDowntime.findMany({ where: { date, machine: { dept } }, select: { machineId: true, hours: true } }),
     prisma.shiftEntry.findMany({ where: { date, dept, present: true, machineId: { not: null } }, select: { machineId: true, shift: true, overtimeH: true, worker: { select: { name: true } } } }),
+    getSettings(),
   ]);
   const machines = all.filter((m) => m.dept === dept);
 
@@ -99,7 +108,7 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
       }
     }
   }
-  return { ...board, dept, machines: machines.filter((m) => m.active), assigned };
+  return { ...board, dept, dayISO, planNo, tankSerials: dept === "Welding" && settings.tankTracking, machines: machines.filter((m) => m.active), assigned };
 }
 
 /** The open lines of a department's worklist, as the board wants them — the

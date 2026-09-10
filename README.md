@@ -109,6 +109,14 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    B4-09 and 12 pieces queue there while the rest stays where it was (or waits, listed as "rest of 20");
    ✂ on a card resizes a machine's share, ✕ takes only that machine's share off, and a blank pieces box
    gives the machine picked the whole rest of the line. Each share is priced by its pieces.
+   **✓ records what the machine finished** without leaving the board: blank takes the whole share, a number
+   takes only the pieces done and the rest stays in that machine's queue (✕ drops the rest off the card).
+   A welded tank is the exception — it carries a serial and the welder's name, so it is recorded on the
+   queue table. The list of lines **not on a machine stays folded** behind the "n not on a machine" pill:
+   the cards are the board, the backlog opens when the planner wants to place work (the weekly plan's
+   dated lines first, the month's undated ones behind "show all"). Every worklist's filter bar carries
+   **🏭 on a machine / not on a machine** chips that filter every table to what the floor is running, or to
+   what still has to be placed, and the fabrication page keeps the month's undated backlog folded away.
    **Print sheet** on a card (or in the Floor's inspector) opens the technician's sheet for that
    machine — what runs now, then what is next in order, with pieces, standard hours, delivery date, the
    crew and a Done column to tick — and **Print all sheets** prints every machine of the department, one per
@@ -121,10 +129,11 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    "Bending & fins") and labels around them, zoom — the drawing saves itself a moment after every change, so
    it is there for everyone who opens that department's floor next. Every block is live: what it is on now, how many
    lines wait, its load colour, the crew on it today. Click a block for its queue (run next, take off, put a
-   waiting line on it) and today's crew; "＋ New partition" creates one on the spot. Under the floor, the lines
-   not on any machine, the weekly plan's dated ones first (earliest first) and the month's undated ones after:
-   click a block, then "→ code" sends a line to it in one click (the board on each worklist lists them the same
-   way). Drawing needs
+   waiting line on it), today's crew, and ✓ to record what it finished. "＋ New partition" creates one on the
+   spot. The screen is the floor and nothing else: the lines not on any machine sit behind the toolbar's
+   **"n to place"** button — open it and the weekly plan's dated ones come first (earliest first), the month's
+   undated ones after; click a block, then "→ code" sends a line to it in one click (the board on each
+   worklist lists them the same way). Drawing needs
    `machines.manage`; working a queue needs the department's worklist permission; viewing is free.
 
 ## Validation against the workbook

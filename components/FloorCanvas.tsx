@@ -12,7 +12,7 @@ import { loadTone, type MachineCard } from "@/lib/domain/machineBoard";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { assignLineMachine, moveLineRank, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
-import { MachinePick } from "@/components/MachineBoard";
+import { DoneBox, MachinePick } from "@/components/MachineBoard";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 
 // 🗺 The Floor canvas — a department's bay as the planner draws it: the
@@ -54,7 +54,7 @@ function useAction() {
       } else setErr(res.error ?? "Failed");
     });
   };
-  return { pending, err, run };
+  return { pending, err, setErr, run };
 }
 
 export function FloorDeptPicker({ dept }: { dept: ShiftDept }) {
@@ -81,6 +81,9 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
   const part = useAction();
   const [partName, setPartName] = useState("");
   const [showAllUndated, setShowAllUndated] = useState(false);
+  // the floor is the point of this screen: the list of lines still to place
+  // stays folded until the planner asks for it
+  const [showQueue, setShowQueue] = useState(false);
 
   const cardOf = useMemo(() => new Map(board.cards.map((c) => [c.machine.id, c])), [board.cards]);
   const allMachines = useMemo(() => {
@@ -182,7 +185,17 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
             {part.err && <span className="text-xs text-bad-fg">{part.err}</span>}
           </>
         )}
-        <span className="ms-auto inline-flex items-center gap-1 text-xs text-muted">
+        {board.unassigned.length > 0 && (
+          <button
+            type="button"
+            className={`btn btn-sm ${showQueue ? "btn-secondary" : "btn-ghost"} ms-auto`}
+            title={showQueue ? "Back to the floor alone" : `Open the ${board.unassigned.length} line(s) no ${word} has yet, to place them from here`}
+            onClick={() => setShowQueue((v) => !v)}
+          >
+            {showQueue ? "▾" : "▸"} {board.unassigned.length} to place
+          </button>
+        )}
+        <span className={`${board.unassigned.length > 0 ? "" : "ms-auto "}inline-flex items-center gap-1 text-xs text-muted`}>
           zoom
           <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="border rounded-md px-1.5 py-1 bg-surface text-xs font-semibold" aria-label="Zoom">
             {ZOOMS.map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
@@ -228,7 +241,7 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
             <div className="text-xs text-muted space-y-1">
               <div className="font-bold text-foreground text-sm">{deptLabel(dept)} floor</div>
               <div>{board.cards.length} {machineWord(dept, true)} · {board.totalHours} h queued{board.totalAvailableH !== null ? ` / ${board.totalAvailableH} h today` : ""}</div>
-              {board.unassigned.length > 0 && <div className="text-warn-fg font-semibold">{board.unassigned.length} line(s) not on a {word}</div>}
+              {board.unassigned.length > 0 && <div className="text-warn-fg font-semibold">{board.unassigned.length} line(s) not on a {word} — “to place” above opens them</div>}
               <div className="pt-1">Click a block to see and work its queue{canDraw ? "; drag to move, pull the corner to resize" : ""}.</div>
             </div>
           ) : sel.kind === "machine" ? (
@@ -251,7 +264,7 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
       </div>
 
       {/* ---- what is not on a machine yet: the weekly plan first, then the rest of the month ---- */}
-      {board.unassigned.length > 0 && (
+      {showQueue && board.unassigned.length > 0 && (
         <section className="bg-surface border rounded-xl px-3 py-2 no-print">
           <div className="flex flex-wrap items-center gap-2 text-xs mb-1">
             <span className="font-bold">Not on a {word} yet</span>
@@ -439,7 +452,8 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                 <span className="w-4 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</span>
                 <span className="min-w-0 flex-1 truncate"><b>{q.bom}</b> {q.item} <b className="tabnum">×{q.remaining}</b>{q.split ? <span className="text-muted text-[10px]" title="Part of the line — the rest is on another machine or waits"> ✂ of {q.lineRemaining}</span> : null}{q.hours !== null ? <span className="text-muted"> {q.hours} h</span> : null}{q.deliveryISO ? <span className="text-muted"> 📅 {ddmm(q.deliveryISO)}</span> : null}</span>
                 {canAssign && (
-                  <span className="inline-flex shrink-0">
+                  <span className="inline-flex items-center gap-1 shrink-0">
+                    <DoneBox board={board} q={q} onErr={a.setErr} />
                     {q.running
                       ? <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
                       : <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>}

@@ -2,12 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
-import { loadTone, type LinePlacement, type MachineCard } from "@/lib/domain/machineBoard";
+import { loadTone, type LinePlacement, type MachineCard, type MachineQueueLine } from "@/lib/domain/machineBoard";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import type { MachineDTO } from "@/lib/server/machines";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import Link from "next/link";
 import { assignLineMachine, clearMachineQueue, moveLineRank, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
+import { recordOutput } from "@/app/worklist/actions";
 
 // 🏭 The machine load board on a department's worklist — one card per
 // machine: what it is on NOW, what waits behind it, and how many hours the
@@ -32,7 +33,7 @@ function useAction() {
       else setErr(res.error ?? "Failed");
     });
   };
-  return { pending, err, run };
+  return { pending, err, setErr, run };
 }
 
 function ddmm(iso: string) {
@@ -127,7 +128,45 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
   );
 }
 
-function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boolean }) {
+/** ✓ Done straight off the card: the whole share in one click, or the pieces
+ *  actually finished — the rest stays in the machine's queue. */
+export function DoneBox({ board, q, onErr }: { board: MachineBoardData; q: MachineQueueLine; onErr: (m: string) => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [val, setVal] = useState("");
+  // a welded tank carries a serial and the welder's name — that recording
+  // belongs on the queue table, not on a card
+  if (board.tankSerials && q.item === "TN") return null;
+  const save = () => {
+    const qty = Number(val.trim() || q.remaining);
+    if (!Number.isFinite(qty) || qty <= 0) { onErr("Enter pieces above 0."); return; }
+    if (qty > q.remaining) { onErr(`Only ${q.remaining} left on this ${board.dept === "Welding" ? "partition" : "machine"}.`); return; }
+    onErr("");
+    const fd = new FormData();
+    fd.set("date", board.dayISO); fd.set("dept", board.dept); fd.set("bom", q.bom); fd.set("mo", q.mo); fd.set("item", q.item);
+    fd.set("qty", String(qty)); fd.set("planNo", String(board.planNo));
+    startTransition(async () => {
+      const res = await recordOutput(fd);
+      if (res.ok) { setVal(""); router.refresh(); } else onErr(res.error ?? "Failed");
+    });
+  };
+  return (
+    <span className="inline-flex items-center gap-0.5 no-print">
+      <input
+        type="number" min={1} max={q.remaining} step={1} inputMode="numeric" placeholder={String(q.remaining)}
+        value={val} disabled={pending} aria-label="Pieces done"
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
+        className="border rounded-md px-1 py-0.5 bg-surface text-xs tabnum w-12 ltr"
+        title={`Pieces finished — blank records all ${q.remaining}. What is left stays in the queue.`}
+      />
+      <button type="button" className="btn btn-sm btn-primary px-1.5" disabled={pending} title={`Record what is done (blank = all ${q.remaining}); the rest stays in the queue`} onClick={save}>✓</button>
+    </span>
+  );
+}
+
+function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; canEdit: boolean }) {
+  const dept = board.dept;
   const a = useAction();
   const tone = loadTone(c.load);
   const pct = c.load === null ? null : Math.min(100, Math.round(Math.min(c.load, 9) * 100));
@@ -146,6 +185,7 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
     fd.set("qty", v.trim());
     a.run(setLineQty, fd);
   };
+  const done = (q: MachineQueueLine) => (canEdit ? <DoneBox board={board} q={q} onErr={a.setErr} /> : null);
   return (
     <div className={`bg-surface border rounded-xl p-3 flex flex-col gap-2 ${c.machine.active ? "" : "opacity-70"}`}>
       <div className="flex items-start gap-2">
@@ -183,7 +223,8 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
               {q.deliveryISO && <span className={`pill tabnum ${q.deliveryISO < new Date().toISOString().slice(0, 10) ? "pill-bad" : "pill-muted"}`}>📅 {ddmm(q.deliveryISO)}</span>}
               <span className="text-[11px] text-muted truncate">{q.mo}{q.description ? ` · ${q.description}` : ""}</span>
               {canEdit && (
-                <span className="ms-auto inline-flex gap-0.5 no-print">
+                <span className="ms-auto inline-flex items-center gap-1 no-print">
+                  {done(q)}
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item))}>✕</button>
@@ -208,7 +249,8 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
               {q.hours !== null && <span className="text-muted tabnum whitespace-nowrap">{q.hours} h</span>}
               {q.deliveryISO && <span className="text-muted tabnum whitespace-nowrap">📅 {ddmm(q.deliveryISO)}</span>}
               {canEdit && (
-                <span className="ms-auto inline-flex gap-0.5 no-print">
+                <span className="ms-auto inline-flex items-center gap-1 no-print">
+                  {done(q)}
                   <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Up" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "up"); a.run(moveLineRank, fd); }}>▲</button>
@@ -234,14 +276,19 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
 }
 
 export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canEdit: boolean }) {
+  // the backlog is long (a month of open orders): it stays FOLDED so the
+  // worklist's own tables are what the page shows, and opens on demand
+  const [open, setOpen] = useState(false);
+  const [showAllDated, setShowAllDated] = useState(false);
   const [showAll, setShowAll] = useState(false);
   if (board.cards.length === 0 && board.machines.length === 0) return null;
   const word = machineWord(board.dept);
   const tone = board.totalAvailableH === null || board.totalAvailableH === 0 ? null : loadTone(board.totalHours / board.totalAvailableH);
-  // the weekly plan's dated lines all show — they are the ones to place first;
-  // the month's undated backlog folds behind "show all"
+  // the weekly plan's dated lines are the ones to place first; the month's
+  // undated backlog folds behind its own "show all"
   const dated = board.unassigned.filter((u) => u.deliveryISO);
   const undated = board.unassigned.filter((u) => !u.deliveryISO);
+  const datedShown = showAllDated ? dated : dated.slice(0, 12);
   const undatedShown = showAll ? undated : undated.slice(0, 6);
   const row = (u: MachineBoardData["unassigned"][number]) => (
     <li key={u.key} className="flex items-center gap-2 text-xs min-w-0">
@@ -264,20 +311,30 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
           {board.totalHours} h queued{board.totalAvailableH !== null ? ` / ${board.totalAvailableH} h today` : ""}
         </span>
         {board.unassigned.length > 0 && (
-          <span className="pill pill-warn ms-1 normal-case tabnum" title={`Open lines not on any ${word}`}>{board.unassigned.length} line(s) not on a {word}</span>
+          <button
+            type="button"
+            className={`pill ms-1 normal-case tabnum no-print cursor-pointer ${open ? "pill-muted" : "pill-warn"}`}
+            title={open ? "Fold the list away" : `Open the lines on no ${word} yet — ${dated.length} from the weekly plan, ${undated.length} open with no date`}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? "▾" : "▸"} {board.unassigned.length} not on a {word}
+          </button>
         )}
         <Link href={`/worklist/machines?dept=${board.dept}`} className="btn btn-sm btn-secondary ms-2 normal-case no-print" title={`One sheet per ${word}, each on its own page — hand them to the technicians`}>🖨 Print all sheets</Link>
       </h2>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {board.cards.map((c) => <Card key={c.machine.id} c={c} dept={board.dept} canEdit={canEdit} />)}
+        {board.cards.map((c) => <Card key={c.machine.id} c={c} board={board} canEdit={canEdit} />)}
       </div>
-      {board.unassigned.length > 0 && (
-        <div className="mt-3 bg-surface border rounded-xl px-3 py-2">
+      {open && board.unassigned.length > 0 && (
+        <div className="mt-3 bg-surface border rounded-xl px-3 py-2 no-print">
           <div className="text-xs font-bold text-muted">Not on a {word} yet — {dated.length} from the weekly plan, {undated.length} open with no date</div>
           {dated.length > 0 && (
             <>
-              <div className="text-[11px] font-bold uppercase tracking-wide text-brand mt-1">📅 Weekly plan — dated, earliest first</div>
-              <ul className="mt-0.5 grid gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">{dated.map(row)}</ul>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-brand">📅 Weekly plan — dated, earliest first</span>
+                {dated.length > 12 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAllDated((v) => !v)}>{showAllDated ? "Show fewer" : `Show all ${dated.length}`}</button>}
+              </div>
+              <ul className="mt-0.5 grid gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">{datedShown.map(row)}</ul>
             </>
           )}
           {undated.length > 0 && (
@@ -293,8 +350,39 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
       )}
       <p className="text-[11px] text-muted mt-1">
         Hours are the standard times of what is left on each line. A {word}&apos;s hours today are its hours a day less the downtime on the shift log. A line leaves the board by itself once nothing remains on it.
-        To split a line, type the pieces in the box beside the picker before choosing the {word} — the rest stays where it is, or waits here; ✂ on a card resizes a share.
+        ✓ records what a {word} finished (blank = the whole share, the rest stays in its queue). To split a line, type the pieces in the box beside the picker before choosing the {word}; ✂ on a card resizes a share.
       </p>
     </section>
   );
+}
+
+/** Show only the lines that are on a machine, or only those that are not —
+ *  the chip pair every worklist filter bar carries. */
+export type PlacementMode = "" | "on" | "off";
+
+export function PlacementChips({ value, onChange, word, on, off }: { value: PlacementMode; onChange: (v: PlacementMode) => void; word: string; on: number; off: number }) {
+  const chip = (mode: PlacementMode, label: string, n: number, title: string) => (
+    <button
+      type="button"
+      onClick={() => onChange(value === mode ? "" : mode)}
+      title={title}
+      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all hover:border-brand hover:shadow-sm ${value === mode ? "border-brand bg-brand-light shadow-sm" : "bg-surface"}`}
+    >
+      <span className="text-muted">{label}</span>
+      <b className="text-sm tabnum">{n}</b>
+    </button>
+  );
+  return (
+    <>
+      {chip("on", `🏭 on a ${word}`, on, `Show only the lines already on a ${word}`)}
+      {chip("off", `not on a ${word}`, off, `Show only the lines no ${word} has yet`)}
+    </>
+  );
+}
+
+/** Does this line pass the on-a-machine filter? */
+export function placementPass(mode: PlacementMode, assigned: Record<string, LinePlacement>, r: { bom: string; mo: string; item: string }): boolean {
+  if (!mode) return true;
+  const on = !!assigned[`${r.bom}|${r.mo}|${r.item}`];
+  return mode === "on" ? on : !on;
 }
