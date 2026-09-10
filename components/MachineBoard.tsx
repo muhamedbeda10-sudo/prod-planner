@@ -6,7 +6,8 @@ import { loadTone, type MachineCard } from "@/lib/domain/machineBoard";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import type { MachineDTO } from "@/lib/server/machines";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
-import { assignLineMachine, clearMachineQueue, moveLineRank } from "@/app/worklist/machineActions";
+import Link from "next/link";
+import { assignLineMachine, clearMachineQueue, moveLineRank, setLineRunning } from "@/app/worklist/machineActions";
 
 // 🏭 The machine load board on a department's worklist — one card per
 // machine: what it is on NOW, what waits behind it, and how many hours the
@@ -41,13 +42,14 @@ const TONE_INK: Record<"ok" | "warn" | "bad", string> = { ok: "text-ok-fg", warn
 /** The picker a table row carries: which machine this line is on. Saves at once. */
 export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, compact = false }: {
   dept: string; bom: string; mo: string; item: string; machines: MachineDTO[];
-  current: { machineId: number; rank: number } | undefined; canEdit: boolean; compact?: boolean;
+  current: { machineId: number; rank: number; running: boolean } | undefined; canEdit: boolean; compact?: boolean;
 }) {
   const a = useAction();
   if (machines.length === 0) return null;
   const m = current ? machines.find((x) => x.id === current.machineId) : undefined;
+  const state = current ? (current.running ? "running now" : `#${current.rank} in its queue`) : "";
   if (!canEdit) {
-    return m ? <span className="pill pill-muted ltr tabnum" title={`On ${m.name}, ${current!.rank === 1 ? "running now" : `#${current!.rank} in its queue`}`}>{m.code}{current!.rank === 1 ? " ▶" : ` #${current!.rank}`}</span> : <span className="text-muted text-xs">—</span>;
+    return m ? <span className="pill pill-muted ltr tabnum" title={`On ${m.name}, ${state}`}>{m.code}{current!.running ? " ▶" : ` #${current!.rank}`}</span> : <span className="text-muted text-xs">—</span>;
   }
   return (
     <span className="inline-flex flex-col items-start" onClick={(e) => e.stopPropagation()}>
@@ -56,7 +58,7 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
           value={current?.machineId ?? ""}
           disabled={a.pending}
           aria-label="Machine"
-          title={m ? `On ${m.name} — ${current!.rank === 1 ? "running now" : `#${current!.rank} in its queue`}. Pick another to move it, blank to take it off.` : "Put this line on a machine"}
+          title={m ? `On ${m.name} — ${state}. Pick another to move it, blank to take it off.` : "Put this line on a machine"}
           onChange={(e) => {
             const fd = new FormData();
             fd.set("dept", dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item);
@@ -69,9 +71,20 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
           {machines.map((x) => <option key={x.id} value={x.id}>{x.code}{compact ? "" : ` · ${x.name}`}</option>)}
         </select>
         {current && (
-          <span className={`pill ${current.rank === 1 ? "pill-ok" : "pill-muted"} tabnum`} title={current.rank === 1 ? "Running on it now" : `#${current.rank} in the machine's queue`}>
-            {current.rank === 1 ? "▶ now" : `#${current.rank}`}
-          </span>
+          <button
+            type="button"
+            className={`pill ${current.running ? "pill-ok" : "pill-muted"} tabnum cursor-pointer`}
+            title={current.running ? "Running on it now — click to put it back to waiting" : `#${current.rank} in the machine's queue — click to start it now, alongside what runs`}
+            disabled={a.pending}
+            onClick={() => {
+              const fd = new FormData();
+              fd.set("dept", dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item);
+              fd.set("running", current.running ? "false" : "true");
+              a.run(setLineRunning, fd);
+            }}
+          >
+            {current.running ? "▶ now" : `#${current.rank}`}
+          </button>
         )}
       </span>
       {a.err && <span className="text-[10px] text-bad-fg">{a.err}</span>}
@@ -112,27 +125,35 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
       )}
       {c.unpricedPcs > 0 && <div className="text-[10px] text-warn-fg">{c.unpricedPcs} pcs with no standard time — hours undercounted</div>}
 
-      {c.now ? (
-        <div className="rounded-lg border border-brand/40 bg-brand-light/30 px-2.5 py-2">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-brand">▶ Now</div>
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="font-extrabold">{c.now.bom}</span>
-            <span className="font-bold">{c.now.item}</span>
-            <span className="tabnum font-extrabold text-brand">×{c.now.remaining}</span>
-            {c.now.hours !== null && <span className="text-xs text-muted tabnum">{c.now.hours} h</span>}
-            {c.now.deliveryISO && <span className={`pill tabnum ${c.now.deliveryISO < new Date().toISOString().slice(0, 10) ? "pill-bad" : "pill-muted"}`}>📅 {ddmm(c.now.deliveryISO)}</span>}
-          </div>
-          <div className="text-[11px] text-muted truncate">{c.now.mo}{c.now.description ? ` · ${c.now.description}` : ""}</div>
+      {c.running.length > 0 ? (
+        <div className="rounded-lg border border-brand/40 bg-brand-light/30 px-2.5 py-2 space-y-1">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-brand">▶ Now{c.running.length > 1 ? ` · ${c.running.length} together` : ""}</div>
+          {c.running.map((q) => (
+            <div key={q.key} className="flex items-baseline gap-2 flex-wrap">
+              <span className="font-extrabold">{q.bom}</span>
+              <span className="font-bold">{q.item}</span>
+              <span className="tabnum font-extrabold text-brand">×{q.remaining}</span>
+              {q.hours !== null && <span className="text-xs text-muted tabnum">{q.hours} h</span>}
+              {q.deliveryISO && <span className={`pill tabnum ${q.deliveryISO < new Date().toISOString().slice(0, 10) ? "pill-bad" : "pill-muted"}`}>📅 {ddmm(q.deliveryISO)}</span>}
+              <span className="text-[11px] text-muted truncate">{q.mo}{q.description ? ` · ${q.description}` : ""}</span>
+              {canEdit && (
+                <span className="ms-auto inline-flex gap-0.5 no-print">
+                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("machineId", ""); a.run(assignLineMachine, fd); }}>✕</button>
+                </span>
+              )}
+            </div>
+          ))}
         </div>
       ) : (
-        <div className="rounded-lg border border-dashed px-2.5 py-2 text-xs text-muted">Nothing on it — pick this {machineWord(dept)} on a line below.</div>
+        <div className="rounded-lg border border-dashed px-2.5 py-2 text-xs text-muted">{c.waiting.length > 0 ? "Nothing running — press ▶ on a waiting line." : `Nothing on it — pick this ${machineWord(dept)} on a line below.`}</div>
       )}
 
-      {c.queue.length > 1 && (
+      {c.waiting.length > 0 && (
         <ol className="space-y-1">
-          {c.queue.slice(1).map((q, i) => (
+          {c.waiting.map((q, i) => (
             <li key={q.key} className="flex items-center gap-1.5 text-xs">
-              <span className="w-5 text-center font-extrabold tabnum text-muted">{q.rank}</span>
+              <span className="w-5 text-center font-extrabold tabnum text-muted">{i + 1}</span>
               <span className="font-bold">{q.bom}</span>
               <span className="font-semibold">{q.item}</span>
               <span className="tabnum font-bold">×{q.remaining}</span>
@@ -140,9 +161,10 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
               {q.deliveryISO && <span className="text-muted tabnum">📅 {ddmm(q.deliveryISO)}</span>}
               {canEdit && (
                 <span className="ms-auto inline-flex gap-0.5 no-print">
-                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Run this next" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Up" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "up"); a.run(moveLineRank, fd); }}>▲</button>
-                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Down" disabled={a.pending || i === c.queue.length - 2} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "down"); a.run(moveLineRank, fd); }}>▼</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Down" disabled={a.pending || i === c.waiting.length - 1} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "down"); a.run(moveLineRank, fd); }}>▼</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("machineId", ""); a.run(assignLineMachine, fd); }}>✕</button>
                 </span>
               )}
@@ -150,10 +172,11 @@ function Card({ c, dept, canEdit }: { c: MachineCard; dept: string; canEdit: boo
           ))}
         </ol>
       )}
-      {canEdit && c.now && (
+      {c.queue.length > 0 && (
         <div className="flex items-center gap-1 text-[11px] no-print">
-          {c.queue.length > 1 && <span className="text-muted">{c.queue.length - 1} waiting</span>}
-          <button type="button" className="btn btn-sm btn-ghost ms-auto text-bad-fg" disabled={a.pending} title="Take every line off this machine" onClick={() => { if (!confirm(`Empty ${c.machine.code}'s queue?`)) return; const fd = new FormData(); fd.set("dept", dept); fd.set("machineId", String(c.machine.id)); a.run(clearMachineQueue, fd); }}>Empty</button>
+          {c.waiting.length > 0 && <span className="text-muted">{c.waiting.length} waiting</span>}
+          <Link href={`/worklist/machines?dept=${dept}&machine=${c.machine.id}`} className="btn btn-sm btn-secondary ms-auto" title="A sheet for the technician: what runs now, then what is next">🖨 Print sheet</Link>
+          {canEdit && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={a.pending} title="Take every line off this machine" onClick={() => { if (!confirm(`Empty ${c.machine.code}'s queue?`)) return; const fd = new FormData(); fd.set("dept", dept); fd.set("machineId", String(c.machine.id)); a.run(clearMachineQueue, fd); }}>Empty</button>}
         </div>
       )}
       {a.err && <div className="text-[11px] text-bad-fg">{a.err}</div>}
@@ -193,6 +216,7 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
         {board.unassigned.length > 0 && (
           <span className="pill pill-warn ms-1 normal-case tabnum" title={`Open lines not on any ${word}`}>{board.unassigned.length} line(s) not on a {word}</span>
         )}
+        <Link href={`/worklist/machines?dept=${board.dept}`} className="btn btn-sm btn-secondary ms-2 normal-case no-print" title={`One sheet per ${word}, each on its own page — hand them to the technicians`}>🖨 Print all sheets</Link>
       </h2>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {board.cards.map((c) => <Card key={c.machine.id} c={c} dept={board.dept} canEdit={canEdit} />)}

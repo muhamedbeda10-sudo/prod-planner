@@ -34,16 +34,25 @@ export interface Assignment {
   key: string;
   machineId: number;
   rank: number;
+  /** Running on the machine now; several can be. Absent = not running. */
+  running?: boolean;
 }
 
 export interface MachineQueueLine extends BoardLine {
-  rank: number; // 1 = what the machine is on now
+  /** Position in the machine's queue: the running lines first, then the waiting ones. */
+  rank: number;
+  running: boolean;
 }
 
 export interface MachineCard {
   machine: BoardMachine;
-  /** The queue, rank 1 first. */
+  /** The queue: the running lines first (in rank order), then the waiting ones. */
   queue: MachineQueueLine[];
+  /** What the machine is on now — one line, or several worked together. */
+  running: MachineQueueLine[];
+  /** The waiting lines, in the order they will be run. */
+  waiting: MachineQueueLine[];
+  /** The first running line, for the one-line summaries. */
   now: MachineQueueLine | null;
   pcs: number;
   hours: number; // std-hours of the whole queue
@@ -99,12 +108,14 @@ export function buildMachineBoard(
 
   const byMachine = new Map<number, MachineQueueLine[]>();
   const placed = new Set<string>();
-  for (const a of [...assignments].sort((x, y) => x.rank - y.rank)) {
+  // running lines first, then the waiting ones, each group in rank order
+  const ordered = [...assignments].sort((x, y) => Number(!!y.running) - Number(!!x.running) || x.rank - y.rank);
+  for (const a of ordered) {
     const l = open.get(a.key);
     if (!l || placed.has(a.key)) continue;
     placed.add(a.key);
     if (!byMachine.has(a.machineId)) byMachine.set(a.machineId, []);
-    byMachine.get(a.machineId)!.push({ ...l, rank: 0 });
+    byMachine.get(a.machineId)!.push({ ...l, rank: 0, running: !!a.running });
   }
 
   // a retired machine still shows while something sits on it
@@ -120,10 +131,13 @@ export function buildMachineBoard(
     if (availableH === null || !m.active) {
       if (m.active) totalAvailableH = null;
     } else if (totalAvailableH !== null) totalAvailableH += availableH;
+    const running = queue.filter((q) => q.running);
     return {
       machine: m,
       queue,
-      now: queue[0] ?? null,
+      running,
+      waiting: queue.filter((q) => !q.running),
+      now: running[0] ?? null,
       pcs: queue.reduce((s, l) => s + l.remaining, 0),
       hours,
       unpricedPcs: queue.filter((l) => l.hours === null).reduce((s, l) => s + l.remaining, 0),

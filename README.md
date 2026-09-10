@@ -103,6 +103,12 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    days of work, the crew the shift log put on it. Every table row carries a **Machine** picker ("this is
    running on that now"), and the lines not on any machine are listed most urgent first with a picker each.
    Recording output never touches the board: a line leaves it by itself once nothing remains on it.
+   **Several lines can run on one machine at once** (a nest that mixes orders, a bay working two jobs):
+   ▶ starts a waiting line alongside what runs, ⏸ puts it back to waiting, and the waiting ones keep their
+   order. **Print sheet** on a card (or in the Floor's inspector) opens the technician's sheet for that
+   machine — what runs now, then what is next in order, with pieces, standard hours, delivery date, the
+   crew and a Done column to tick — and **Print all sheets** prints every machine of the department, one per
+   page, to hand out at the start of the shift (`/worklist/machines?dept=Cut&machine=…`).
    Welding has no machines but **partitions** of the bay — groups of welders on the same orders — kept on
    the same list (centre "Zone"), so the welding worklist, the shift log ("which partition") and the board
    treat a partition like a machine, with the welders the shift log put on it today.

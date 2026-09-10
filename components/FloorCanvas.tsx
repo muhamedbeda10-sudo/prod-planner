@@ -11,7 +11,7 @@ import {
 import { loadTone, type MachineCard } from "@/lib/domain/machineBoard";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
-import { assignLineMachine, moveLineRank } from "@/app/worklist/machineActions";
+import { assignLineMachine, moveLineRank, setLineRunning } from "@/app/worklist/machineActions";
 import { MachinePick } from "@/components/MachineBoard";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 
@@ -357,21 +357,24 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
         <span className="text-xs font-semibold truncate">{m?.name ?? "not on the list"}</span>
         {card && card.load !== null && <span className={`ms-auto text-[10px] font-extrabold tabnum shrink-0 ${tone === "ok" ? "text-ok-fg" : tone === "warn" ? "text-warn-fg" : "text-bad-fg"}`}>{card.load === Infinity ? "∞" : `${Math.round(card.load * 100)}%`}</span>}
       </div>
-      {card?.now ? (
-        <div className="mt-1 rounded-md bg-brand-light/40 border border-brand/30 px-1.5 py-1 min-w-0">
-          <div className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
-            <span className="text-brand font-extrabold shrink-0">▶</span>
-            <span className="font-extrabold truncate">{card.now.bom}</span>
-            <span className="font-bold shrink-0">{card.now.item}</span>
-            <span className="font-extrabold tabnum text-brand shrink-0">×{card.now.remaining}</span>
-          </div>
-          {!compact && <div className="text-[10px] text-muted truncate">{card.now.mo}{card.now.deliveryISO ? ` · 📅 ${ddmm(card.now.deliveryISO)}` : ""}</div>}
+      {card && card.running.length > 0 ? (
+        <div className="mt-1 rounded-md bg-brand-light/40 border border-brand/30 px-1.5 py-1 min-w-0 space-y-0.5">
+          {card.running.slice(0, compact ? 1 : 2).map((q) => (
+            <div key={q.key} className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
+              <span className="text-brand font-extrabold shrink-0">▶</span>
+              <span className="font-extrabold truncate">{q.bom}</span>
+              <span className="font-bold shrink-0">{q.item}</span>
+              <span className="font-extrabold tabnum text-brand shrink-0">×{q.remaining}</span>
+              {!compact && q.deliveryISO && <span className="text-[10px] text-muted shrink-0">📅 {ddmm(q.deliveryISO)}</span>}
+            </div>
+          ))}
+          {card.running.length > (compact ? 1 : 2) && <div className="text-[10px] text-brand font-bold">+{card.running.length - (compact ? 1 : 2)} more running</div>}
         </div>
       ) : (
-        <div className="mt-1 text-[11px] text-muted">idle — nothing on it</div>
+        <div className="mt-1 text-[11px] text-muted">{card && card.waiting.length > 0 ? "nothing running yet" : "idle — nothing on it"}</div>
       )}
       <div className="mt-auto flex items-center gap-2 text-[10px] text-muted tabnum pt-1 whitespace-nowrap">
-        {card && card.queue.length > 1 && <span title="Waiting behind the running line">+{card.queue.length - 1} waiting</span>}
+        {card && card.waiting.length > 0 && <span title="Waiting behind what runs">+{card.waiting.length} waiting</span>}
         {card && <span title="Standard hours queued">{card.hours} h</span>}
         {card && card.crew.length > 0 && <span className="ms-auto font-bold text-foreground" title={`${dept === "Welding" ? "Welders" : "Crew"} today: ${card.crew.join(", ")}`}>👷 {card.crew.length}</span>}
       </div>
@@ -420,13 +423,16 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
         <div className="font-bold text-muted mb-0.5">Queue</div>
         {card.queue.length === 0 ? <div className="text-muted">nothing on it</div> : (
           <ol className="space-y-1">
-            {card.queue.map((q, i) => (
-              <li key={q.key} className={`flex items-center gap-1 rounded-md px-1.5 py-1 ${i === 0 ? "bg-brand-light/40 border border-brand/30" : "border"}`}>
-                <span className="w-4 text-center font-extrabold tabnum text-muted">{i === 0 ? "▶" : q.rank}</span>
+            {card.queue.map((q) => (
+              <li key={q.key} className={`flex items-center gap-1 rounded-md px-1.5 py-1 ${q.running ? "bg-brand-light/40 border border-brand/30" : "border"}`}>
+                <span className="w-4 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</span>
                 <span className="min-w-0 flex-1 truncate"><b>{q.bom}</b> {q.item} <b className="tabnum">×{q.remaining}</b>{q.hours !== null ? <span className="text-muted"> {q.hours} h</span> : null}{q.deliveryISO ? <span className="text-muted"> 📅 {ddmm(q.deliveryISO)}</span> : null}</span>
                 {canAssign && (
                   <span className="inline-flex shrink-0">
-                    {i > 0 && <button type="button" className="btn btn-sm btn-ghost px-1" title="Run this next" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>}
+                    {q.running
+                      ? <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
+                      : <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>}
+                    {!q.running && card.waiting.indexOf(q) > 0 && <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>}
                     <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("machineId", ""); a.run(assignLineMachine, fd); }}>✕</button>
                   </span>
                 )}
@@ -445,7 +451,8 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
         </select>
       )}
       {a.err && <div className="text-[11px] text-bad-fg">{a.err}</div>}
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Link href={`/worklist/machines?dept=${board.dept}&machine=${m.id}`} className="btn btn-sm btn-secondary" title="A sheet for the technician: what runs now, then what is next">🖨 Print sheet</Link>
         <Link href={board.dept === "ShotBlast" ? "/shifts?dept=ShotBlast" : `/worklist/${board.dept === "Cut" ? "cut" : board.dept.toLowerCase()}`} className="text-xs text-accent font-semibold hover:underline">Open the worklist →</Link>
         {canDraw && <button type="button" className="btn btn-sm btn-ghost text-bad-fg ms-auto" onClick={onRemove} title="Off the drawing only — the machine stays on the list">Remove from floor</button>}
       </div>

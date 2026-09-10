@@ -39,7 +39,7 @@ export function CascadeTable({
   allowDate?: boolean;
   /** The department's machines — with any, every row carries a Machine picker. */
   machines?: MachineDTO[];
-  assigned?: Record<string, { machineId: number; rank: number }>;
+  assigned?: Record<string, { machineId: number; rank: number; running: boolean }>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();

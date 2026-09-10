@@ -541,6 +541,9 @@ model WorklistMachine {
   machineId Int
   machine   Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
   rank      Int      @default(0)
+  // Running on the machine right now — several lines can be, when the
+  // machine nests or works them together; the rest wait in rank order.
+  running   Boolean  @default(false)
   setBy     String?
   updatedAt DateTime @default(now()) @updatedAt
 

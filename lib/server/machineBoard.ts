@@ -30,7 +30,7 @@ export interface MachineBoardData extends MachineBoard {
   /** The department's machines a line can be put on (active only). */
   machines: MachineDTO[];
   /** bom|mo|item → where the line sits, for the tables' pickers. */
-  assigned: Record<string, { machineId: number; rank: number }>;
+  assigned: Record<string, { machineId: number; rank: number; running: boolean }>;
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -75,7 +75,7 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
     };
   });
 
-  const assignments: Assignment[] = rows.map((r) => ({ key: lineKey(r.bom, r.mo, r.item), machineId: r.machineId, rank: r.rank }));
+  const assignments: Assignment[] = rows.map((r) => ({ key: lineKey(r.bom, r.mo, r.item), machineId: r.machineId, rank: r.rank, running: r.running }));
   const downtimeH: Record<number, number> = {};
   for (const d of downtime) downtimeH[d.machineId] = (downtimeH[d.machineId] ?? 0) + d.hours;
   const crewH: Record<number, number> = {};
@@ -87,8 +87,8 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
   }
 
   const board = buildMachineBoard(machines, boardLines, assignments, { downtimeH, crewH, crew });
-  const assigned: Record<string, { machineId: number; rank: number }> = {};
-  for (const c of board.cards) for (const q of c.queue) assigned[q.key] = { machineId: c.machine.id, rank: q.rank };
+  const assigned: Record<string, { machineId: number; rank: number; running: boolean }> = {};
+  for (const c of board.cards) for (const q of c.queue) assigned[q.key] = { machineId: c.machine.id, rank: q.rank, running: q.running };
   return { ...board, dept, machines: machines.filter((m) => m.active), assigned };
 }
 
