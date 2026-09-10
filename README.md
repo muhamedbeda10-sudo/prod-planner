@@ -172,7 +172,14 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    running after the day its stage was owed, with that day marked on the track, so "this tank will not be cut
    in time, on this machine" is something the planner SEES rather than works out. Fridays and the calendar's
    days off are not on the axis; lines whose hours are unknown are drawn as slivers, and work starting past
-   the picture is counted beside the machine's code.
+   the picture is counted beside the machine's code. Its second view, **Department load**, leaves the machines
+   aside and asks whether the department can carry what it has promised at all: one bar a day for the standard
+   hours falling due by the end of it — every open line, on a machine or not — against the hours the department
+   has that day (today's after the shift log's downtime). A bar over that mark is a day that cannot be worked
+   as it stands, and the headline carries what actually decides a week: the RUNNING totals, since work can be
+   done early, so it names the day everything promised so far passes everything workable so far, and by how
+   many hours. Work with no date, work owed past the picture and lines with no standard time are named under
+   it rather than folded in.
 11. **Floor** (Simulator → Floor) — each department's bay drawn as the planner sees it: place the machines
    (or partitions) as blocks, drag them where they stand, pull a corner to resize, draw areas ("Laser hall",
    "Bending & fins") and labels around them, zoom — the drawing saves itself a moment after every change, so
