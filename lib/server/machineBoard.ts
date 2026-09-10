@@ -44,12 +44,19 @@ export interface MachineBoardData extends MachineBoard {
   tankSerials: boolean;
   /** The department's machines a line can be put on (active only). */
   machines: MachineDTO[];
+  /** The working days ahead, as ISO dates — index 0 is today. The timeline's
+   *  axis: Fridays and the calendar's days off are already left out. */
+  days: string[];
   /** bom|mo|item → where the line sits, for the tables' pickers: its first
    *  machine (a running one first) and how many more it is split over. */
   assigned: Record<string, LinePlacement>;
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
+
+/** How far ahead the board's timeline is drawn — four working weeks is more
+ *  than any queue a planner works with, and the picture zooms into it. */
+const TIMELINE_DAYS = 20;
 
 /** Everything a board needs from the database, loaded once: the department's
  *  machines, the planner's assignments, today's downtime and crew, and a
@@ -103,6 +110,7 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
         remaining: l.remaining,
         hours,
         deliveryISO: l.deliveryISO,
+        dueISO: l.dueISO ?? l.deliveryISO,
         route,
       };
     });
@@ -127,6 +135,9 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
   // off skipped, so "clears 18/09" is a date the floor can hold you to
   const holidaySet = new Set(holidays.map((h) => toISODate(h.date)));
   for (const c of board.cards) c.clearsISO = c.days !== null && c.days > 0 ? dateForOffsetISO(c.days, dayISO, holidaySet, false) : null;
+  // the axis the timeline draws on: the next working days, today first
+  const days: string[] = [];
+  for (let i = 1; i <= TIMELINE_DAYS; i += 1) days.push(dateForOffsetISO(i, dayISO, holidaySet, false));
 
   // where each line sits for the tables' pickers: the first step of its route,
   // the machines sharing that step, and the centres further along
@@ -164,7 +175,7 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
       ...(missing.length > 0 ? { missing } : {}),
     };
   }
-  return { ...board, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), assigned };
+  return { ...board, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), days, assigned };
 }
 
 /** What the ⚡ optimizer plans from: the department's machines with the hours

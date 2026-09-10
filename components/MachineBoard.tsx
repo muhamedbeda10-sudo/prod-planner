@@ -9,6 +9,7 @@ import type { MachineBoardData } from "@/lib/server/machineBoard";
 import Link from "next/link";
 import { assignLineMachine, clearMachineQueue, moveLineRank, optimizeMachines, resetMachinePlan, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
 import { recordOutput } from "@/app/worklist/actions";
+import { MachineTimeline } from "@/components/MachineTimeline";
 
 // 🏭 The machine load board on a department's worklist — one card per
 // machine: what it is on NOW, what waits behind it, and how many hours the
@@ -308,6 +309,8 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
   const [showAllDated, setShowAllDated] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [note, setNote] = useState<{ summary?: string; late?: string; error?: string } | null>(null);
+  // the cards say what is on each machine; the timeline says WHEN it comes off
+  const [timeline, setTimeline] = useState(false);
   const router = useRouter();
   const [planning, startPlanning] = useTransition();
   if (board.cards.length === 0 && board.machines.length === 0) return null;
@@ -408,6 +411,16 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
             ⟲ Reset
           </button>
         )}
+        {(board.days?.length ?? 0) > 0 && (
+          <button
+            type="button"
+            className={`btn btn-sm ms-1 normal-case no-print ${timeline ? "btn-secondary" : "btn-ghost"}`}
+            onClick={() => setTimeline((v) => !v)}
+            title={`Lay every ${word}'s queue on the days ahead — when each job comes off, and which one misses its date`}
+          >
+            📊 Timeline
+          </button>
+        )}
         <Link href={`/worklist/machines?dept=${board.dept}`} className="btn btn-sm btn-secondary ms-2 normal-case no-print" title={`One sheet per ${word}, each on its own page — hand them to the technicians`}>🖨 Print all sheets</Link>
       </h2>
       {note && (
@@ -416,6 +429,7 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
           {note.late && <div className="text-warn-fg font-semibold mt-0.5">⚠ {note.late}</div>}
         </div>
       )}
+      {timeline && <div className="mb-3"><MachineTimeline board={board} /></div>}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {board.cards.map((c) => <Card key={c.machine.id} c={c} board={board} canEdit={canEdit} />)}
       </div>

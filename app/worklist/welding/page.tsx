@@ -47,7 +47,7 @@ export default async function WeldWorklistPage() {
   }));
   // the bay's partitions: which group of welders is on what
   const board = await getMachineBoard("Welding", [
-    ...queue.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO })),
+    ...queue.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO, dueISO: r.dueISO })),
     ...pushedRows.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: null })),
   ], dayISO);
 

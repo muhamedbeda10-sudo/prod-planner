@@ -166,6 +166,13 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    which lines cannot make their date and by how much, and any centre with no machine to run it.
    **⟲ Reset** beside it takes every line off every machine of the department — the plan is cleared, the
    work itself untouched — so the board can be planned again from nothing.
+   **📊 Timeline** draws the whole department on the working days ahead (5, 10 or 20 of them): one track per
+   machine, one block per queued line, each as long as that machine needs for it and starting where the one
+   before it ends — the queue's own order, what is running now first. A block turns **red** when it is still
+   running after the day its stage was owed, with that day marked on the track, so "this tank will not be cut
+   in time, on this machine" is something the planner SEES rather than works out. Fridays and the calendar's
+   days off are not on the axis; lines whose hours are unknown are drawn as slivers, and work starting past
+   the picture is counted beside the machine's code.
 11. **Floor** (Simulator → Floor) — each department's bay drawn as the planner sees it: place the machines
    (or partitions) as blocks, drag them where they stand, pull a corner to resize, draw areas ("Laser hall",
    "Bending & fins") and labels around them, zoom — the drawing saves itself a moment after every change, so
