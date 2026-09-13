@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { CutTranche, CascadeRow, PlanLineIssue } from "@/lib/domain/execution";
+import { useMemo } from "react";
+import type { CutTranche, CascadeRow } from "@/lib/domain/execution";
 import type { SoiLookup } from "@/lib/server/soi";
 import { CutTrancheTable } from "@/components/CutTrancheTable";
 import { CascadeTable } from "@/components/CascadeTable";
@@ -11,7 +11,6 @@ import { ReturnsTable } from "@/components/ReturnsTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
 import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
-import { PlanIssuesPanel } from "@/components/PlanIssuesPanel";
 import { MachineBoard, PlacementChips, placementPass, type PlacementMode } from "@/components/MachineBoard";
 import type { LinePlacement } from "@/lib/domain/machineBoard";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
@@ -23,19 +22,17 @@ import { machineWord } from "@/lib/domain/shifts";
 
 /** The fabrication page, top to bottom: DATED work (due today + overdue from
  *  ANY weekly plan, under its promised date), admin-postponed lines, this
- *  week's REMARKED date-less lines, and the unscheduled+unremarked backlog in
+ *  week's REMARKED date-less lines, in
  *  its own section. Admins can re-date any line (and revert). */
 export function CutWorklistView({
   dueNow,
   overdue,
   postponed = [],
   remarked = [],
-  unscheduled = [],
   pushed = [],
   priority = [],
   runOrder = [],
   hidden = [],
-  planIssues = [],
   day,
   planNo,
   returns = [],
@@ -52,12 +49,10 @@ export function CutWorklistView({
   overdue: CutTranche[];
   postponed?: CutTranche[]; // admin re-dated to the future — kept visible for revert
   remarked?: CascadeRow[]; // this week's remarked lines with no known date
-  unscheduled?: CascadeRow[]; // open orders with no date and no remark
   pushed?: CascadeRow[]; // sent down from the Plan Tracker — schedule these
   priority?: PriorityLineDTO[]; // ⭐ flagged orders — dedicated table on top
   runOrder?: RunOrderLineDTO[]; // 🎯 the approved simulator sequence
   hidden?: HiddenLineDTO[]; // admin-hidden lines (restore panel)
-  planIssues?: PlanLineIssue[]; // plan lines with no row on screen, each with its reason
   day: string;
   planNo: number | null;
   returns?: ReturnRowDTO[];
@@ -80,7 +75,6 @@ export function CutWorklistView({
   // only what still has to be placed
   const [place, setPlace] = useSavedFilter("queue.Cut.place");
   // the month's undated backlog is hundreds of lines — folded until asked for
-  const [showBacklog, setShowBacklog] = useState(false);
 
   const needle = q.trim().toUpperCase();
   const match = (r: { bom: string; mo: string; description: string; item: string; remark?: string | null }) =>
@@ -92,30 +86,28 @@ export function CutWorklistView({
   const overdueF = useMemo(() => overdue.filter(match), [overdue, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
   const postponedF = useMemo(() => postponed.filter(match), [postponed, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
   const remarkedF = useMemo(() => remarked.filter(match), [remarked, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
-  const unscheduledF = useMemo(() => unscheduled.filter(match), [unscheduled, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
   const pushedF = useMemo(() => pushed.filter(match), [pushed, needle, item, place]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const total = dueNow.length + overdue.length + postponed.length + remarked.length + unscheduled.length + pushed.length;
-  const shown = dueF.length + overdueF.length + postponedF.length + remarkedF.length + unscheduledF.length + pushedF.length;
+  const total = dueNow.length + overdue.length + postponed.length + remarked.length + pushed.length;
+  const shown = dueF.length + overdueF.length + postponedF.length + remarkedF.length + pushedF.length;
   const totalDue = dueF.reduce((s, r) => s + r.remaining, 0);
   const totalOverdue = overdueF.reduce((s, r) => s + r.remaining, 0);
   const totalPostponed = postponedF.reduce((s, r) => s + r.remaining, 0);
   const totalRemarked = remarkedF.reduce((s, r) => s + r.available, 0);
-  const totalUnscheduled = unscheduledF.reduce((s, r) => s + r.available, 0);
   const totalPushed = pushedF.reduce((s, r) => s + r.available, 0);
 
   // how many open lines are already on a machine — the chips' counts
   const placed = useMemo(() => {
     const seen = new Set<string>();
     let on = 0, off = 0;
-    for (const r of [...dueNow, ...overdue, ...postponed, ...remarked, ...unscheduled, ...pushed]) {
+    for (const r of [...dueNow, ...overdue, ...postponed, ...remarked, ...pushed]) {
       const k = `${r.bom}|${r.mo}|${r.item}`;
       if (seen.has(k)) continue;
       seen.add(k);
       if (assigned[k]) on += 1; else off += 1;
     }
     return { on, off };
-  }, [dueNow, overdue, postponed, remarked, unscheduled, pushed, assigned]);
+  }, [dueNow, overdue, postponed, remarked, pushed, assigned]);
 
   // per-item workload — the WHOLE dept load (unfiltered): what must still be cut
   const perItem = ITEMS.map((it) => {
@@ -220,28 +212,9 @@ export function CutWorklistView({
         </section>
       )}
 
-      {/* 5 — every other OPEN ORDER: no date in any plan, no remark this week.
-          It is the whole month's backlog — hundreds of lines — so it stays
-          FOLDED: the scheduled work above is what the shift runs on. */}
-      <section className="mt-8">
-        <h2 className="text-muted">
-          Open orders — not scheduled, no remarks ({totalUnscheduled} pcs)
-          <button
-            type="button"
-            className="btn btn-sm btn-ghost ms-2 normal-case no-print"
-            onClick={() => setShowBacklog((v) => !v)}
-            title={showBacklog ? "Fold the month's backlog away" : "Open the month's backlog — the orders with no date and no remark"}
-          >
-            {showBacklog ? "▾ Hide" : `▸ Show ${unscheduledF.length} line(s)`}
-          </button>
-        </h2>
-        {showBacklog
-          ? <CascadeTable rows={unscheduledF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
-          : <p className="text-xs text-muted">Folded away — the dated work above is what today runs on. Open it to schedule or place a line from the month.</p>}
-      </section>
 
-      {/* admin-hidden lines — collapsed restore panel */}
-      {isAdmin && <PlanIssuesPanel rows={planIssues} planNo={planNo} />}
+      {/* The ONE thing left at the foot of the page: an admin's way back from
+          hiding a line. It draws nothing while nothing is hidden. */}
       {isAdmin && <HiddenLinesPanel rows={hidden} />}
     </>
   );

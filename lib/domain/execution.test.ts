@@ -8,7 +8,6 @@ import {
   computeCutTranches,
   capTranchesToOrder,
   applyWorklistDateOverrides,
-  diagnosePlanLines,
   untouchedWeeklyMos,
   type ExecScheduleRow,
   type ExecEntry,
@@ -574,69 +573,3 @@ describe("applyWorklistDateOverrides — scheduling a date-less line in PARTS", 
   });
 });
 
-describe("diagnosePlanLines — why a scheduled line is not on the worklist", () => {
-  const day = utcDate(2026, 7, 22);
-  const lead = 4;
-  const base = {
-    visibleKeys: new Set<string>(),
-    registryQty: new Map([["MO-A|CB", 20]]),
-    deptDone: new Map<string, number>(),
-    openMos: new Set(["MO-A"]),
-    closedMos: new Set<string>(),
-    hiddenKeys: new Set<string>(),
-    day,
-    lead,
-  };
-  const sched = (over: Partial<ExecScheduleRow> = {}): ExecScheduleRow[] => [
-    { bom: "B1", mo: "MO-A", item: "CB", ovenDate: utcDate(2026, 7, 30), qty: 20, ...over },
-  ];
-
-  it("says NOTHING about a line that is already on the screen", () => {
-    const out = diagnosePlanLines({ ...base, schedules: sched(), visibleKeys: new Set(["B1|MO-A|CB"]) });
-    expect(out).toHaveLength(0);
-  });
-
-  it("future: its cut-due day has not arrived", () => {
-    const out = diagnosePlanLines({ ...base, schedules: sched() });
-    expect(out[0]).toMatchObject({ item: "CB", qty: 20, state: "future", cutDueISO: "2026-07-26" });
-  });
-
-  it("done: the order's whole in-house qty is already fabricated", () => {
-    const out = diagnosePlanLines({
-      ...base,
-      schedules: sched({ ovenDate: utcDate(2026, 7, 24) }), // cut-due 20/07, passed
-      deptDone: new Map([["MO-A|CB", 20]]),
-    });
-    expect(out[0].state).toBe("done");
-    expect(out[0].detail).toContain("20 are already fabricated");
-  });
-
-  it("covered: partial output consumed the promise (earliest dates served first)", () => {
-    const out = diagnosePlanLines({
-      ...base,
-      schedules: sched({ ovenDate: utcDate(2026, 7, 24) }),
-      deptDone: new Map([["MO-A|CB", 8]]),
-    });
-    expect(out[0].state).toBe("covered");
-  });
-
-  it("na / closed / unknown-order / hidden each report themselves", () => {
-    const past = sched({ ovenDate: utcDate(2026, 7, 24) });
-    expect(diagnosePlanLines({ ...base, schedules: past, registryQty: new Map() })[0].state).toBe("na");
-    expect(diagnosePlanLines({ ...base, schedules: past, closedMos: new Set(["MO-A"]) })[0].state).toBe("closed");
-    expect(diagnosePlanLines({ ...base, schedules: past, openMos: new Set() })[0].state).toBe("unknown-order");
-    expect(diagnosePlanLines({ ...base, schedules: past, hiddenKeys: new Set(["B1|MO-A|CB"]) })[0].state).toBe("hidden");
-  });
-
-  it("groups a line's tranches: total qty, earliest promise", () => {
-    const out = diagnosePlanLines({
-      ...base,
-      schedules: [
-        { bom: "B1", mo: "MO-A", item: "CB", ovenDate: utcDate(2026, 7, 30), qty: 12 },
-        { bom: "B1", mo: "MO-A", item: "CB", ovenDate: utcDate(2026, 7, 28), qty: 8 },
-      ],
-    });
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ qty: 20, deliveryISO: "2026-07-28" });
-  });
-});

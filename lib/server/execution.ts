@@ -8,12 +8,10 @@ import {
   computeCutTranches,
   capTranchesToOrder,
   applyWorklistDateOverrides,
-  diagnosePlanLines,
   type ExecRow,
   type WeldQueueRow,
   type CascadeRow,
   type CutTranche,
-  type PlanLineIssue,
 } from "@/lib/domain/execution";
 import { toISODate } from "@/lib/domain/dates";
 import { applicableItems, ospOf } from "@/lib/domain/constants";
@@ -30,13 +28,13 @@ export interface CutSheet {
   overdue: CutTranche[]; // missed dates — backlog carrying the original delivery date
   postponed: CutTranche[]; // admin re-dated to the FUTURE — visible so the date can be reverted
   remarked: CascadeRow[]; // this week's REMARKED lines with no known date — shown date-less
-  unscheduled: CascadeRow[]; // open orders with NO date and NO remark — its own section
+  unscheduled: CascadeRow[]; // open orders with NO date and NO remark. No longer a table
+  // on the worklist — it is the pool the machine board and ⚡ Plan draw from.
   pushed: CascadeRow[]; // sent down from the Plan Tracker (chosen qty) — to be scheduled here
   priority: PriorityLineDTO[]; // ⭐ orders the admin flagged — dedicated table on top
   hidden: HiddenLineDTO[]; // lines the admin removed from this worklist (restorable)
   /** Lines the CURRENT plan schedules that produced NO row above, each with the
    *  reason — so "it's in the plan but not on the list" always has an answer. */
-  planIssues: PlanLineIssue[];
 }
 
 /** The Cut screen: TODAY is computed by the app (no day picking).
@@ -47,7 +45,7 @@ export interface CutSheet {
  *  - A line's shown remaining is silently capped at the ORDER's open quantity,
  *    so a weekly promise larger than the order never creates phantom work.
  *  - Date-less backlog splits by this week's remarks: remarked lines in one
- *    bucket, unscheduled+unremarked lines in their own section.
+ *    bucket; unscheduled+unremarked lines feed the machine board, not a table.
  *  - Admin date overrides re-date any line; reverting restores the plan date. */
 export async function getCutSheet(): Promise<CutSheet> {
   const today = new Date();
@@ -222,26 +220,7 @@ export async function getCutSheet(): Promise<CutSheet> {
 
   // …and explain every line of the CURRENT plan that none of the sections above
   // ended up showing (its day hasn't come, already fabricated, N/A, closed…).
-  const visibleKeys = new Set<string>();
-  for (const rows of [out.dueNow, out.overdue, out.postponed] as { bom: string; mo: string; item: string }[][]) {
-    for (const r of rows) visibleKeys.add(`${r.bom}|${r.mo}|${r.item}`);
-  }
-  for (const rows of [out.remarked, out.unscheduled, out.pushed]) {
-    for (const r of rows) visibleKeys.add(`${r.bom}|${r.mo}|${r.item}`);
-  }
-  const planIssues = diagnosePlanLines({
-    schedules: schedIn,
-    visibleKeys,
-    registryQty: orderQtyOf,
-    deptDone: cutDoneOf,
-    openMos,
-    closedMos: closed,
-    hiddenKeys,
-    day: today,
-    lead: settings.leadCut,
-  });
-
-  return { ...out, planIssues };
+  return out;
 }
 
 export interface ExecutionResult {
