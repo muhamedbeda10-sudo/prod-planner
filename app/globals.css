@@ -52,6 +52,11 @@
   --paint-tint: #f3ecdf;
   --dlvd-tint: #ece3f7;
   --shp-tint: #f3ecdf; /* the core's finishing — same orange as Painting */
+  /* the tracker's Fins column: it stands between the specs and the components
+     and belongs to neither, so it gets a rose of its own — the one hue none of
+     the stage tints, the status pills or the brand green already speak */
+  --fins-tint: #fae4ee;
+  --fins-fg: #9c2f68;
   --zebra: #f6f8f7;
 
   /* chat (WhatsApp-familiar palette, brand-green tinted) */
@@ -107,6 +112,8 @@ html.dark {
   --paint-tint: #302a1c;
   --dlvd-tint: #2a2136;
   --shp-tint: #302a1c; /* the core's finishing — same orange as Painting */
+  --fins-tint: #33202b;
+  --fins-fg: #f0a3c5;
   --zebra: #151c18;
 
   /* chat — the WhatsApp-dark equivalents on the ATC palette */
@@ -145,6 +152,8 @@ html.dark {
   --color-paint-tint: var(--paint-tint);
   --color-dlvd-tint: var(--dlvd-tint);
   --color-shp-tint: var(--shp-tint);
+  --color-fins-tint: var(--fins-tint);
+  --color-fins-fg: var(--fins-fg);
   --color-zebra: var(--zebra);
   --font-sans: var(--font-sans-latin);
 }
@@ -447,6 +456,8 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
     --paint-tint: #f3ecdf;
     --dlvd-tint: #ece3f7;
     --shp-tint: #f3ecdf;
+    --fins-tint: #fae4ee;
+    --fins-fg: #9c2f68;
     --zebra: #f6f8f7;
     color-scheme: light;
   }
