@@ -72,8 +72,12 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    painting record (and the core frame's shot blast) writes its own row here on the same day with the SOI,
    product and qty, MO left empty for the office to type in place — the FG-CODE is copied from the last row
    of the same SOI and product, or composed from the part code and the transformer's BOM and flagged
-   "check FG-CODE" until someone confirms it. Such a row follows its log entry's edits and deletion only
-   while nobody has touched it; a "Needs MO / Check FG-CODE" filter and a count in the day's summary keep
+   "check FG-CODE" until someone confirms it. The tab opens on ONE day, which is how a row logged last
+   week reads as lost, so a banner says how many rows sit on other days and how many of the whole log are
+   still not closed, with **All days** a click away in the day picker (the search covers the day on screen,
+   so the whole log is searched from there). Such a row follows its log entry's edits only while nobody has
+   touched it, and when the log entry behind it is deleted or corrected to nothing the row is **Cancelled
+   with the reason as a note, never silently deleted**; a "Needs MO / Check FG-CODE" filter and a count in the day's summary keep
    them visible, and the export carries a Source column. **Click a row (or its 🧱 button)** for the material
    its qty consumes: the FG-CODE's prefix is the part (FB-022 = TANK) and the row's SOI names the
    transformer through the orders registry (S01259-4 → BOM 12011E16M13), so the popup lists the Material

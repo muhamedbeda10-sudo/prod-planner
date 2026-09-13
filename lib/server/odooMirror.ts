@@ -71,14 +71,35 @@ export async function syncMirroredOdoo(
   if (!row) return;
   const untouched = isUntouched({ odooMo: row.odooMo, status: row.status, notes: row._count.notes });
   if (change === "delete") {
-    if (untouched) await tx.odooEntry.delete({ where: { id: row.id } });
+    if (untouched) await cancelMirror(tx, row.id, "The daily-log record this row was born from was deleted.");
     else await tx.odooEntry.update({ where: { id: row.id }, data: { ledgerId: null } });
     return;
   }
   if (!untouched) return;
   if (!(change.qty > 0)) {
-    await tx.odooEntry.delete({ where: { id: row.id } });
+    await cancelMirror(tx, row.id, "The daily-log record this row was born from was corrected to nothing.");
     return;
   }
   await tx.odooEntry.update({ where: { id: row.id }, data: { qty: change.qty, ...(change.date ? { date: change.date } : {}) } });
+}
+
+/**
+ * A born row whose ledger record is gone is CANCELLED, never deleted.
+ *
+ * Deleting it was tidier and was wrong: the row would disappear from the tab
+ * with nothing to say where it went, and the planner would be left hunting a
+ * close-out he remembers writing. Cancelled, it stays on its day, reads red,
+ * carries the reason, and he removes it himself if he wants it gone. It also
+ * stops following the ledger — there is no ledger left to follow.
+ */
+async function cancelMirror(tx: Prisma.TransactionClient, id: number, why: string): Promise<void> {
+  await tx.odooEntry.update({
+    where: { id },
+    data: {
+      status: "Cancelled",
+      doneAt: null,
+      ledgerId: null,
+      notes: { create: { text: why, recordedBy: null } },
+    },
+  });
 }

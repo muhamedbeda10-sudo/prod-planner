@@ -18,6 +18,11 @@ export interface OdooPageData {
   nesting: NestingLookup;
   /** The registry's BOM(s) per SOI — the transformer a row's SOI is for. */
   soiBoms: Record<string, string[]>;
+  /** The WHOLE log, not just the day on screen: how many rows it holds and how
+   *  many are still not closed. The tab opens on one day, so without this a
+   *  row logged last week reads as lost — it says what is off-screen. */
+  totalRows: number;
+  openRows: number;
 }
 
 /** The tab for one day (ISO), or every day when `dayISO` is "all". */
@@ -27,7 +32,7 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     ? { date: { gte: day, lt: new Date(day.getTime() + 24 * 60 * 60 * 1000) } }
     : undefined;
 
-  const [rows, dayRows, orders] = await Promise.all([
+  const [rows, dayRows, orders, totalRows, byStatus] = await Promise.all([
     prisma.odooEntry.findMany({
       where,
       orderBy: [{ date: "desc" }, { id: "asc" }],
@@ -35,6 +40,10 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     }),
     prisma.odooEntry.findMany({ select: { date: true }, distinct: ["date"], orderBy: { date: "desc" } }),
     prisma.masterOrder.findMany({ select: { soi: true, fgCode: true, bom: true } }),
+    prisma.odooEntry.count(),
+    // grouped and judged in JS, so "off-screen, still open" counts a status
+    // exactly the way the rows on screen are coloured
+    prisma.odooEntry.groupBy({ by: ["status"], _count: { _all: true } }),
   ]);
 
   const soiBoms: Record<string, string[]> = {};
@@ -72,6 +81,8 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     knownFgCodes: uniq(orders.map((o) => o.fgCode)),
     nesting: await nestingFor(entries.map((e) => ({ fgCode: e.fgCode, boms: soiBoms[(e.soi ?? "").trim().toUpperCase()] ?? [] }))),
     soiBoms,
+    totalRows,
+    openRows: byStatus.reduce((n, g) => n + (isDoneStatus(g.status) ? 0 : g._count._all), 0),
   };
 }
 
