@@ -38,8 +38,9 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows.
    Four spec columns ride along, all four **typed on the tracker and never imported**, so a re-import of the
    monthly plan can't blank or overwrite what the planner wrote: **Color** (RAL), **CRC** and **SFM** beside
-   KVA, and **Fins** immediately before the Core Frame — it is a component welded onto the tank, not a spec.
-   Click a cell to type it. A merged BOM row shows a spec only when its MOs agree on it, "…" when they
+   KVA, and **Fins** immediately before the Core Frame — it is a component welded onto the tank, not a spec, and
+   it carries its own rose down the whole column (the one hue the stage tints, the status pills and the
+   brand green leave free) so the eye finds it without counting across. Click a cell to type it. A merged BOM row shows a spec only when its MOs agree on it, "…" when they
    differ. All four export with the rest.
 5. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
    allocation, overdue rollover, fill-up rows, Cut Alarm (Cut ready / Partial / NOT CUT YET).

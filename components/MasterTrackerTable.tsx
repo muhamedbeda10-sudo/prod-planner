@@ -22,6 +22,16 @@ type Progress = "complete" | "inprogress" | "notstarted";
  *  typed. Fins sits with the components (it is one of them, welded onto the
  *  tank); the others sit beside KVA. */
 type SpecField = "fins" | "colorRal" | "crcSize" | "sfm";
+/** Fins reads in its own colour down the whole column — header, MO rows and
+ *  merged BOM rows — so the eye finds it without counting across to the Core
+ *  Frame. The rose is the one hue the stage tints, the status pills and the
+ *  brand green leave free; both pairs clear AA on their surfaces. */
+const FINS_CELL = { background: "var(--fins-tint)", color: "var(--fins-fg)" } as const;
+// the header wears the same pair, not the inverse: inverting it puts white on
+// a pale rose in dark mode, which fails. One tint the whole way down also
+// reads as a single stripe against the green header row.
+const FINS_HEAD = FINS_CELL;
+
 const SPEC_TITLE: Record<SpecField, string> = {
   fins: "Fins — type it here",
   colorRal: "Colour RAL — type it here",
@@ -487,7 +497,7 @@ export function MasterTrackerTable({
               {/* Fins belongs with the components, not with the specs: it is
                   welded onto the tank like the rest, so it reads immediately
                   before the Core Frame. Typed here, never imported. */}
-              <th rowSpan={2} className="p-2" title="Fins — typed here; the import never writes it">Fins</th>
+              <th rowSpan={2} className="p-2" style={FINS_HEAD} title="Fins — typed here; the import never writes it">Fins</th>
               {ITEMS.map((it) => (
                 <th key={it} colSpan={scoped ? stages.length : 4} className="p-2 border-r border-border-strong">{it}</th>
               ))}
@@ -570,7 +580,7 @@ export function MasterTrackerTable({
                     <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.crcSize)}</td>
                     <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.sfm)}</td>
                     <td className="p-2 text-center font-bold"><Num v={gReq} /></td>
-                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.fins)}</td>
+                    <td className="p-2 text-xs whitespace-nowrap text-center" style={FINS_CELL}>{shared((m) => m.fins)}</td>
                     {ITEMS.map((it) =>
                       scoped ? (
                         <Fragment key={it}>
@@ -614,11 +624,12 @@ export function MasterTrackerTable({
   /** One spec cell on an MO row: click the value to type a new one. Free text
    *  — a spec is a size on some orders and a dash on others, and the dashes he
    *  types are worth keeping as typed. */
-  function specCell(r: MasterTrackerRow, field: SpecField, extra = "") {
+  function specCell(r: MasterTrackerRow, field: SpecField) {
     const key = `${r.mo}|${field}`;
     const val = r[field];
+    const tinted = field === "fins";
     return (
-      <td key={field} className={`p-2 text-xs whitespace-nowrap text-center ${extra}`}>
+      <td key={field} className="p-2 text-xs whitespace-nowrap text-center" style={tinted ? FINS_CELL : undefined}>
         {specEdit === key ? (
           <input
             value={specVal}
@@ -636,14 +647,14 @@ export function MasterTrackerTable({
         ) : can("tracker.qty") ? (
           <button
             type="button"
-            className={`w-full ${val ? "font-semibold" : "text-muted"}`}
+            className={`w-full ${val ? "font-semibold" : tinted ? "opacity-60" : "text-muted"}`}
             title={SPEC_TITLE[field]}
             onClick={() => { setSpecEdit(key); setSpecVal(val ?? ""); }}
           >
             {val || "—"}
           </button>
         ) : (
-          <span className="text-muted">{val || "—"}</span>
+          <span className={val ? "font-semibold" : tinted ? "opacity-60" : "text-muted"}>{val || "—"}</span>
         )}
       </td>
     );
