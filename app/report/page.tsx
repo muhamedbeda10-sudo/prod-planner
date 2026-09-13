@@ -1,7 +1,9 @@
 import Image from "next/image";
 import { getDailyReport, getDayOutputByProject, getEarnedHours } from "@/lib/server/report";
 import { pctStyle, Num } from "@/components/ui";
-import { DayPicker, DeptPicker } from "@/components/controls";
+import { ReportPeriodPicker, DeptPicker } from "@/components/controls";
+import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
+import { countWorkingDays } from "@/lib/server/report";
 import { OutputByComponentChart } from "@/components/LazyCharts";
 import { PrintButton } from "@/components/PrintButton";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
@@ -57,13 +59,22 @@ function lastFinishedDay(): Date {
 export default async function ReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ day?: string; dept?: string }>;
+  searchParams: Promise<{ day?: string; dept?: string; from?: string }>;
 }) {
   const sp = await searchParams;
   // default = YESTERDAY: the daily report is reviewed the morning after the
   // day it covers, so it opens on the last finished day (picker overrides)
   const day = (sp.day && parseISODate(sp.day)) || lastFinishedDay();
   const dayISO = toISODate(day);
+  // ...and it covers a PERIOD when From is set — the same report over several
+  // days, with the capacity the efficiency is measured against scaled to the
+  // working days the range really spans (Fridays and factory holidays out).
+  const fromRaw = sp.from ? parseISODate(sp.from) : null;
+  const from = fromRaw && toISODate(fromRaw) < dayISO ? fromRaw : null;
+  const fromISO = from ? toISODate(from) : dayISO;
+  // never 0: a range of nothing but Fridays would otherwise zero the targets
+  const spanDays = from ? Math.max(1, await countWorkingDays(from, day)) : 1;
+  const periodWords = from ? `${toDisplayDate(from)} → ${toDisplayDate(day)}` : toDisplayDate(day);
   // dept filter — MULTI-select: any combination of stages scopes the output
   // table rows, the chart series, the worked-on columns AND the plan highlight.
   // Empty = all stages. Kept in pipeline order whatever the click order was.
@@ -74,9 +85,9 @@ export default async function ReportPage({
   const shownStages: readonly ReportStage[] = scoped ? deptsF : REPORT_STAGES;
 
   const [{ deptOutputs, target }, dayProjects, earned] = await Promise.all([
-    getDailyReport(day),
-    getDayOutputByProject(day, scoped ? ledgerDepts(deptsF) : undefined),
-    getEarnedHours(day, scoped ? ledgerDepts(deptsF) : undefined),
+    getDailyReport(day, from ?? undefined, spanDays),
+    getDayOutputByProject(day, scoped ? ledgerDepts(deptsF) : undefined, from ?? undefined),
+    getEarnedHours(day, scoped ? ledgerDepts(deptsF) : undefined, from ?? undefined),
   ]);
   // which earned-hours cards the stage filter leaves in view (Finishing =
   // Painting + the core's Shot Blast, same grouping as everywhere else)
@@ -97,7 +108,8 @@ export default async function ReportPage({
     <div className="space-y-6">
       {/* controls only — no on-screen title (the print masthead carries the name) */}
       <div className="no-print flex flex-wrap items-center gap-2">
-        <DayPicker value={dayISO} />
+        <ViewTabs views={DASHBOARD_VIEWS} current="/report" label="Dashboard view" />
+        <ReportPeriodPicker from={fromISO} to={dayISO} />
         <DeptPicker value={sp.dept ?? ""} />
         <PrintButton />
       </div>
@@ -107,14 +119,14 @@ export default async function ReportPage({
         <div className="flex items-center justify-between border-b-2 border-foreground pb-2">
           <Image src="/brand/atc-logo-horizontal.svg" alt="Arabian Transformers Co." width={230} height={28} priority />
           <div className="text-right">
-            <div className="text-xl font-extrabold">Daily Production Report</div>
-            <div className="text-sm tabnum">📅 {toDisplayDate(day)}</div>
+            <div className="text-xl font-extrabold">{from ? "Production Report" : "Daily Production Report"}</div>
+            <div className="text-sm tabnum">📅 {periodWords}{from ? ` · ${spanDays} working day(s)` : ""}</div>
           </div>
         </div>
       </div>
 
       <div className="flex items-center justify-between gap-4 no-print">
-        <h2 className="text-lg font-bold min-w-0">Department output — {toDisplayDate(day)}</h2>
+        <h2 className="text-lg font-bold min-w-0">Department output — {periodWords}</h2>
         <Image
           src="/brand/atc-logo-horizontal.svg"
           alt="Arabian Transformers Co."
@@ -123,7 +135,7 @@ export default async function ReportPage({
           className="opacity-90 hidden md:block shrink-0"
         />
       </div>
-      <h2 className="text-lg font-bold print-only">Department output — {toDisplayDate(day)}</h2>
+      <h2 className="text-lg font-bold print-only">Department output — {periodWords}</h2>
 
       {/* Section 1: department output */}
       <div className="bg-surface border rounded-xl overflow-x-auto print-lg">
@@ -206,13 +218,13 @@ export default async function ReportPage({
           no bar or label can ever cover it. */}
       <div className="bg-surface border rounded-xl p-3 print-keep">
         <div className="flex flex-wrap items-center gap-2 mb-2">
-          <h3 className="font-bold text-sm">Output by component — vs daily target</h3>
+          <h3 className="font-bold text-sm">Output by component — vs {from ? "the period's" : "the daily"} target</h3>
           <span className="pill pill-muted tabnum">
             <span aria-hidden style={{ width: 18, borderTop: "2px dashed var(--muted)", display: "inline-block" }} />
-            Target {target}/item · AR & MB {itemDailyTarget("AR", target)}
+            Target {target * spanDays}/item · AR &amp; MB {itemDailyTarget("AR", target) * spanDays}
           </span>
         </div>
-        <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} delivered={delivered.items} target={target} stages={shownStages} />
+        <OutputByComponentChart cut={cut.items} welding={weld.items} painting={paint.items} delivered={delivered.items} target={target} stages={shownStages} days={spanDays} />
       </div>
 
       {/* Worked-on-today table: ONLY the projects with output recorded on the
@@ -221,7 +233,7 @@ export default async function ReportPage({
       <section className="print-keep">
         <div className="flex flex-wrap items-center gap-3 mb-2">
           <h2 className="text-lg font-bold">
-            Worked on — {toDisplayDate(day)}
+            Worked on — {periodWords}
             {scoped && <span className="text-brand"> · {deptsF.map((d) => stageLabel(d)).join(" + ")} only</span>}
           </h2>
           <span className="pill pill-ok normal-case">{dayProjects.length} project{dayProjects.length === 1 ? "" : "s"}</span>

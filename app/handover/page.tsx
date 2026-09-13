@@ -6,6 +6,7 @@ import { guardLedger } from "@/lib/domain/ledgerGuard";
 import { getCurrentUser, canEditDept, hasPerm } from "@/lib/server/auth";
 import { DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
+import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,14 @@ export default async function HandoverPage() {
     flags: flags.get(r.id)?.map((f) => f.detail) ?? null,
   }));
 
-  // No page header — every pixel goes to the log (title lives in the nav tab).
-  return <HandoverLog rows={rows} editableDepts={editableDepts} soi={soi} />;
+  // No page header — every pixel goes to the log; the Tracker tab's switcher
+  // rides in the filter bar and names where you are.
+  return (
+    <HandoverLog
+      rows={rows}
+      editableDepts={editableDepts}
+      soi={soi}
+      viewTabs={<ViewTabs views={TRACKER_VIEWS} current="/handover" label="Tracker view" />}
+    />
+  );
 }

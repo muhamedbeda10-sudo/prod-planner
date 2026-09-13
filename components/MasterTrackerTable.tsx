@@ -68,6 +68,7 @@ export function MasterTrackerTable({
   editableDepts = [],
   etas = {},
   etaWindowDays = 0,
+  viewTabs,
 }: {
   rows: MasterTrackerRow[];
   /** Completion forecast per MO (server-computed flow-shop ETA). */
@@ -79,6 +80,10 @@ export function MasterTrackerTable({
   /** Stage columns this user may record on (their OWN tracker permissions —
    *  separate from the worklist ones): Cut | Welding | Painting | Delivered. */
   editableDepts?: string[];
+  /** The tab's view switcher (Tracker / Daily log). It rides in the filter bar
+   *  rather than on a row of its own — this table is sized to fill the screen,
+   *  and every pixel above it comes off the rows. */
+  viewTabs?: React.ReactNode;
 }) {
   const can = (k: string) => features.includes(k);
   const router = useRouter();
@@ -427,6 +432,7 @@ export function MasterTrackerTable({
       </div>
 
       <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus("open"); setMonth(""); setStage(""); }} hasActive={hasActive}>
+        {viewTabs}
         <PlanViewToggle value="monthly" />
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / KVA…" />
         <SelectFilter

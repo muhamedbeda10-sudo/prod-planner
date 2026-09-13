@@ -7,7 +7,7 @@ import { getQueueNotes } from "@/lib/server/queueNotes";
 import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { CutWorklistView } from "@/components/CutWorklistView";
 import { PrintHeader } from "@/components/PrintHeader";
-import { getCurrentUser, canEditDept } from "@/lib/server/auth";
+import { getCurrentUser, canEditDept, hasPerm } from "@/lib/server/auth";
 import { getMachineBoard, type BoardLineInput } from "@/lib/server/machineBoard";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +38,7 @@ export default async function CutWorklistPage() {
   return (
     <>
       <PrintHeader title="Fabrication Worklist" date={toDisplayDate(today)} />
-      <CutWorklistView soi={soi} runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} unscheduled={unscheduled} pushed={pushed} priority={priority} hidden={hidden} planIssues={planIssues} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} board={board} />
+      <CutWorklistView soi={soi} runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} unscheduled={unscheduled} pushed={pushed} priority={priority} hidden={hidden} planIssues={planIssues} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} canManage={!!user && hasPerm(user, "machines.manage")} board={board} />
     </>
   );
 }

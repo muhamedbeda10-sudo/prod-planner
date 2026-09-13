@@ -4,6 +4,7 @@ import { getSmartInsights } from "@/lib/server/insights";
 import { SmartInsights } from "@/components/SmartInsights";
 import { pctStyle } from "@/components/ui";
 import { PeriodFilter, DashboardPeriodMemory } from "@/components/controls";
+import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
 import { WeekTrendChart, WeekItemChart, HistoryChart } from "@/components/LazyCharts";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { parseISODate, toDisplayDate } from "@/lib/domain/dates";
@@ -44,6 +45,7 @@ export default async function Home({
           the cards and matrix scroll underneath. */}
       <div className="no-print flex flex-wrap items-center justify-between gap-3 bg-surface border rounded-xl px-3 py-2.5 md:sticky md:top-16 md:z-20">
         <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+          <ViewTabs views={DASHBOARD_VIEWS} current="/" label="Dashboard view" />
           {d.mode === "week" && (
             <Link href={`/?w=${d.prevWeekISO}`} className="btn btn-secondary btn-sm whitespace-nowrap">← Prev</Link>
           )}

@@ -7,14 +7,22 @@ import { useEffect, useRef, useState } from "react";
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
-  FileDown, Puzzle, CalendarDays, Users, Timer,
+  Puzzle, CalendarDays, Users, Timer,
   FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ChatDock } from "@/components/ChatDock";
 import { logoutAction } from "@/app/login/actions";
 
-type Item = { href: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }>; match?: string };
+type Item = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  match?: string;
+  /** Extra routes that light this tab — the views that live inside it. */
+  also?: string[];
+};
 
 // The three department worklists live under ONE "Worklist" tab — clicking it
 // expands them inline in the bar; picking one navigates and collapses again.
@@ -28,20 +36,23 @@ const WORKLIST_DEPTS = [
 
 // Tabs after Worklist, ordered by shop-floor flow: work → log → track →
 // review → the overview dashboard sits last (right side).
+// One tab per QUESTION, not per screen. Several of these hold more than one
+// view behind their own switcher (see components/ViewTabs.tsx), which is what
+// keeps the strip short enough to read:
+//   Plan Tracker → the tracker and the daily log it adds up
+//   Floor        → the bay as it is, and the what-if simulator
+//   Dashboard    → this week, the printed report, and the sheet analytics
+// Chat is not here at all — it is the icon in the right cluster; nor is the
+// barcode sheet, which is a print button on the painting worklist.
 const REST: Item[] = [
   // Material comes FIRST: nesting is decided before a single sheet is cut.
   { href: "/material", label: "Material", icon: Layers },
   { href: "/odoo", label: "ODOO", icon: Boxes },
   // who worked today, how long, on what — the supervisors' page
   { href: "/shifts", label: "Shifts", icon: Clock },
-  { href: "/barcode", label: "Barcode", icon: QrCode, match: "/barcode" },
-  { href: "/handover", label: "Logs", icon: BookOpenCheck },
-  { href: "/tracker", label: "Plan Tracker", icon: Table2 },
-  { href: "/simulate", label: "Simulator", icon: FlaskConical },
-  { href: "/report", label: "Report", icon: FileBarChart2 },
-  { href: "/analytics", label: "Analytics", icon: ChartColumnBig },
-  { href: "/chat", label: "Chat", icon: MessagesSquare },
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/tracker", label: "Plan Tracker", icon: Table2, also: ["/handover"] },
+  { href: "/simulate", label: "Floor", icon: FlaskConical },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, also: ["/report", "/analytics"] },
 ];
 
 // The mobile drawer has vertical room — it lists the three worklists directly.
@@ -53,11 +64,22 @@ const DRAWER: Item[] = [
   ...REST,
 ];
 
+// The drawer has room for the views that ride inside a tab on desktop, so a
+// phone reaches them in one tap instead of two.
+const DRAWER_VIEWS: Item[] = [
+  { href: "/report", label: "Report", icon: FileBarChart2 },
+  { href: "/analytics", label: "Analytics", icon: ChartColumnBig },
+  { href: "/handover", label: "Daily log", icon: BookOpenCheck },
+  { href: "/barcode", label: "Tank Barcodes", icon: QrCode, match: "/barcode" },
+  { href: "/chat", label: "Chat", icon: MessagesSquare },
+];
+
 // `perm` opens an entry to a non-admin holding that permission — the rest of
 // the list stays admin-only, exactly as it was.
 const ADMIN: (Item & { desc: string; perm?: string })[] = [
-  { href: "/orders", label: "Orders Registry", desc: "Master MO list — import monthly plans", icon: ClipboardList },
-  { href: "/import", label: "Import Weekly Plan", desc: "Delivery schedule from Excel", icon: FileDown },
+  // both plan imports live here now, behind the page's own switcher — they
+  // were two Admin entries doing the same job a month apart
+  { href: "/orders", label: "Orders & plan imports", desc: "Master MO list, the monthly plan, and the weekly delivery schedule", icon: ClipboardList, also: ["/import"] },
   { href: "/boms", label: "BOM Review", desc: "Fix codes & reallocate excess", icon: Puzzle },
   { href: "/calendar", label: "Factory Calendar", desc: "Holidays & shutdown days off", icon: CalendarDays },
   { href: "/admin/settings", label: "Settings", desc: "Plant-wide switches, including per-piece tank tracking", icon: SlidersHorizontal },
@@ -67,6 +89,7 @@ const ADMIN: (Item & { desc: string; perm?: string })[] = [
 ];
 
 export interface NavUser {
+  id: number;
   name: string;
   isAdmin: boolean;
   perms: string[];
@@ -103,6 +126,7 @@ export function AppNav({
   const worklistDepts = WORKLIST_DEPTS.filter((d) => tankTracking || !TANK_ONLY.has(d.href));
   const restTabs = REST.filter((l) => tankTracking || !TANK_ONLY.has(l.href));
   const drawerTabs = DRAWER.filter((l) => tankTracking || !TANK_ONLY.has(l.href));
+  const drawerViews = DRAWER_VIEWS.filter((l) => tankTracking || !TANK_ONLY.has(l.href));
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
   const singleDeptHref = !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;
 
@@ -164,14 +188,15 @@ export function AppNav({
     };
   }, [worklistOpen]);
 
-  const isActive = (href: string, match?: string) => {
-    const base = match ?? href;
-    return base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");
-  };
+  const on = (base: string) =>
+    base === "/" ? pathname === "/" : pathname === base || pathname.startsWith(base + "/");
+  // a tab holding several views lights on any of them
+  const isActive = (href: string, match?: string, also?: string[]) =>
+    on(match ?? href) || (also ?? []).some(on);
   // what THIS account may open from the tools menu
   const adminLinks = ADMIN.filter((l) => user.isAdmin || (l.perm && user.perms.includes(l.perm)));
   const showTools = user.isAdmin || adminLinks.length > 0;
-  const adminActive = adminLinks.some((l) => isActive(l.href)) || isActive("/admin/users") || isActive("/admin/standard-times");
+  const adminActive = adminLinks.some((l) => isActive(l.href, l.match, l.also)) || isActive("/admin/users") || isActive("/admin/standard-times");
 
   return (
     <header className="no-print sticky top-0 z-30 bg-brand text-white shadow-md">
@@ -259,10 +284,9 @@ export function AppNav({
               </li>
               {restTabs.map((l) => (
                 <li key={l.href}>
-                  <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match) ? "nav-tab-active" : ""}`}>
+                  <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match, l.also) ? "nav-tab-active" : ""}`}>
                     <l.icon size={15} className="shrink-0" />
                     {l.label}
-                    {l.href === "/chat" && <UnreadBadge count={unreadChat} />}
                   </Link>
                 </li>
               ))}
@@ -271,13 +295,19 @@ export function AppNav({
 
           {/* right cluster */}
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
+            {/* chat is a glance, not a destination — an icon here with its
+                unread badge, opening a panel over whatever page you are on */}
+            <div className="hidden md:block">
+              <ChatDock me={{ id: user.id, name: user.name }} unread={unreadChat} />
+            </div>
+
             {/* desktop: admin tools dropdown — admins only, invisible to everyone else */}
             {showTools && (
             <div className="relative shrink-0 hidden md:block" ref={menuRef}>
               <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className={`nav-tab flex items-center ${adminActive || open ? "nav-tab-active" : ""}`}
+                className={`nav-tab nav-tab-icon flex items-center ${adminActive || open ? "nav-tab-active" : ""}`}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-label="Admin Tools"
@@ -297,12 +327,12 @@ export function AppNav({
                       href={l.href}
                       role="menuitem"
                       className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors ${
-                        isActive(l.href) ? "bg-brand-light" : "hover:bg-surface-2"
+                        isActive(l.href, l.match, l.also) ? "bg-brand-light" : "hover:bg-surface-2"
                       }`}
                     >
-                      <l.icon size={17} className={`mt-0.5 shrink-0 ${isActive(l.href) ? "text-brand" : "text-muted"}`} />
+                      <l.icon size={17} className={`mt-0.5 shrink-0 ${isActive(l.href, l.match, l.also) ? "text-brand" : "text-muted"}`} />
                       <span>
-                        <span className={`block text-sm font-bold ${isActive(l.href) ? "text-brand" : ""}`}>{l.label}</span>
+                        <span className={`block text-sm font-bold ${isActive(l.href, l.match, l.also) ? "text-brand" : ""}`}>{l.label}</span>
                         <span className="block text-xs text-muted mt-0.5">{l.desc}</span>
                       </span>
                     </Link>
@@ -408,6 +438,22 @@ export function AppNav({
             <nav className="flex-1 overflow-y-auto py-2">
               <p className="px-4 pt-2 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">Production</p>
               {drawerTabs.map((l) => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
+                    isActive(l.href, l.match) ? "bg-brand-light text-brand" : "hover:bg-surface-2"
+                  }`}
+                >
+                  <l.icon size={19} className={isActive(l.href, l.match) ? "text-brand" : "text-muted"} />
+                  {l.label}
+                </Link>
+              ))}
+
+              {/* on desktop these sit behind a tab's own switcher; the drawer
+                  has the room to list them, so a phone reaches them in one tap */}
+              <p className="px-4 pt-4 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">More</p>
+              {drawerViews.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}

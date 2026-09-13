@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { MonthlyImport } from "@/components/MonthlyImport";
 import { OrdersTable } from "@/components/OrdersTable";
+import { ViewTabs, PLANS_VIEWS } from "@/components/ViewTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,9 @@ export default async function OrdersPage() {
       <PageHeader
         title="Orders Registry"
         sub={`The master MO list, fed by the monthly plans — ${orders.length} orders · ${totalQty} pcs planned. Tick rows to take a wrong import back out.`}
-      />
+      >
+        <ViewTabs views={PLANS_VIEWS} current="/orders" label="Plans view" />
+      </PageHeader>
       <MonthlyImport />
       <div>
         <h2>All orders</h2>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getSoiLookup } from "@/lib/server/soi";
 import { getPaintingQueue } from "@/lib/server/execution";
 import { getSettings } from "@/lib/server/data";
@@ -12,7 +13,7 @@ import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
 import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { PrintHeader } from "@/components/PrintHeader";
-import { getCurrentUser, canEditDept } from "@/lib/server/auth";
+import { getCurrentUser, canEditDept, hasPerm } from "@/lib/server/auth";
 import { getMachineBoard } from "@/lib/server/machineBoard";
 import { MachineBoard } from "@/components/MachineBoard";
 
@@ -37,6 +38,7 @@ export default async function PaintingWorklistPage() {
   const canEdit = !!user && canEditDept(user, "Painting");
   const tankTracking = settings.tankTracking;
   const isAdmin = !!user?.isAdmin;
+  const canManage = !!user && hasPerm(user, "machines.manage");
   // tracker-pushed lines render on the shared date-less table shape
   const pushedRows = extras.pushed.map((p) => ({
     bom: p.bom, mo: p.mo, description: p.description, item: p.item,
@@ -68,7 +70,14 @@ export default async function PaintingWorklistPage() {
         assigned={board.assigned}
         before={
           <>
-            <MachineBoard board={board} canEdit={canEdit} />
+            {/* The barcode sheet is a print job for tanks that finished here —
+                a button where the work ends, not a tab of its own. */}
+            {tankTracking && (
+              <div className="no-print mb-3">
+                <Link href="/barcode" className="btn btn-secondary btn-sm">🏷 Tank barcodes</Link>
+              </div>
+            )}
+            <MachineBoard board={board} canEdit={canEdit} canManage={canManage} />
             <RunOrderTable rows={runOrder} deptWord="paint" />
             <PriorityOrdersTable rows={extras.priority} deptWord="painted" soi={soi} />
             {pushedRows.length > 0 && (

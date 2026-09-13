@@ -43,6 +43,7 @@ export function CutWorklistView({
   capacity = DEFAULTS.capacityPerItem,
   leadDays = DEFAULTS.leadCut,
   canEdit = false,
+  canManage = false,
   isAdmin = false,
   soi,
   board,
@@ -64,6 +65,7 @@ export function CutWorklistView({
   capacity?: number; // pcs/item/working day — feeds the at-risk early warning
   leadDays?: number; // fabrication lead: the plan lands this many days ahead of delivery
   canEdit?: boolean; // user holds cut.edit — otherwise view-only
+  canManage?: boolean; // machines.manage — the board links to what it is priced with
   soi?: SoiLookup; // the SOI shown beside each MO
   isAdmin?: boolean; // admins may re-date lines / revert their overrides
   board?: MachineBoardData; // 🏭 the machine load board — who is on what
@@ -154,7 +156,7 @@ export function CutWorklistView({
       </div>
 
       {/* 🏭 the machines: what each is on now, what waits, how loaded */}
-      {board && <MachineBoard board={board} canEdit={canEdit} />}
+      {board && <MachineBoard board={board} canEdit={canEdit} canManage={canManage} />}
 
       {/* ⭐ the admin's priority orders — a focus list above everything */}
       <RunOrderTable rows={runOrder} deptWord="cut" />

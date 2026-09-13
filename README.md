@@ -25,6 +25,17 @@ components. Process flow Cut → Welding → Oven; **plan dates are OVEN dates**
 oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept (Lists!J4).
 "Done" everywhere = Welding output; Cut gates Welding.
 
+## Navigation
+Seven tabs, one per QUESTION rather than per screen — Worklist · Material · ODOO · Shifts ·
+Plan Tracker · Floor · Dashboard. Three of them hold several views behind their own switcher
+(`components/ViewTabs.tsx`): **Plan Tracker** carries the tracker and the daily log it adds up,
+**Floor** the bay as it is and the what-if simulator, **Dashboard** this week, the printed report
+and the sheet analytics. Two things left the strip entirely: **chat** is the icon in the nav's
+right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
+bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
+worklist, where the tanks it prints for finish. In Admin the two plan imports share one page. The
+mobile drawer still lists every view flat, since it has the vertical room.
+
 ## Features
 1. **Weekly plan import** (`/import`) — grid parser from row 6, merged-BOM carry-down, `ParseBalance`
    (bidirectional digit/letter split, RC→TC), `targetQty = balance + gridSum` (or `requiredQty`),
@@ -44,7 +55,9 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    differ. All four export with the rest.
 5. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
    allocation, overdue rollover, fill-up rows, Cut Alarm (Cut ready / Partial / NOT CUT YET).
-6. **Daily report + Dashboard** (`/report`, `/`) — dept output, complete sets, efficiency/balance %,
+6. **Daily report + Dashboard** (`/report`, `/` — two views of the Dashboard tab; the report covers
+   ONE day or any period through its From→To picker, with the capacity its efficiency is measured
+   against scaled to the working days the range really spans) — dept output, complete sets, efficiency/balance %,
    projects worked today, tracker snapshot, charts. Dashboard: achievement per item, dept output
    day/week, planned (oven−lead) vs welded.
 6b. **Fabrication analytics** (`/analytics`) — the floor read in SHEETS instead of pieces, because a piece is

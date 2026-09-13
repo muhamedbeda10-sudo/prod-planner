@@ -34,7 +34,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col antialiased">
         {user && (
           <AppNav
-            user={{ name: user.name, isAdmin: user.isAdmin, perms: [...userPerms(user)] }}
+            user={{ id: user.id, name: user.name, isAdmin: user.isAdmin, perms: [...userPerms(user)] }}
             unreadChat={unreadChat}
             tankTracking={!!settings?.tankTracking}
           />
