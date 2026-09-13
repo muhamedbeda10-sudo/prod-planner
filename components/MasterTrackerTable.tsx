@@ -21,6 +21,23 @@ type Progress = "complete" | "inprogress" | "notstarted";
  *  monthly import writes none of them, so a re-import can never blank what he
  *  typed. Fins sits with the components (it is one of them, welded onto the
  *  tank); the others sit beside KVA. */
+/** The grid is coloured by COMPONENT, not by stage: all four of an item's
+ *  stage columns wear one wash, so a block of twenty-four numbers reads as six
+ *  components rather than one undifferentiated field. The hues are ordered so
+ *  that NEIGHBOURING items separate best (every adjacent pair ≥ 8 ΔE OKLab in
+ *  both themes); non-adjacent ones never touch, so their distance does not
+ *  matter. Colour is never the only cue — the item's own header spans its
+ *  columns and a strong divider closes each block, which is what carries the
+ *  grouping for a colour-blind reader, where green and orange converge. */
+const ITEM_TINT: Record<Item, string> = {
+  CF: "var(--item-cf)",
+  TC: "var(--item-tc)",
+  TN: "var(--item-tn)",
+  CB: "var(--item-cb)",
+  AR: "var(--item-ar)",
+  MB: "var(--item-mb)",
+};
+
 type SpecField = "fins" | "colorRal" | "crcSize" | "sfm";
 /** Fins reads in its own colour down the whole column — header, MO rows and
  *  merged BOM rows — so the eye finds it without counting across to the Core
@@ -528,11 +545,11 @@ export function MasterTrackerTable({
                 scoped ? (
                   <Fragment key={it}>
                     {stages.map((s, si) => (
-                      <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={si === stages.length - 1} />
+                      <StageHead key={s} tint={ITEM_TINT[it]} shp={isPaintExempt(it)} only={s} borderR={si === stages.length - 1} />
                     ))}
                   </Fragment>
                 ) : (
-                  <StageHead key={it} shp={isPaintExempt(it)} />
+                  <StageHead key={it} tint={ITEM_TINT[it]} shp={isPaintExempt(it)} />
                 )
               )}
             </tr>
@@ -697,7 +714,7 @@ export function MasterTrackerTable({
     }
 
     return (
-      <td className={`p-1 text-center tabnum ${borderR ? "border-r" : ""}`} style={{ background: tint }}>
+      <td className={`p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`} style={{ background: tint }}>
         {editing ? (
           <span className="inline-flex flex-col items-center gap-0.5">
             <span className="inline-flex items-center gap-1">
@@ -760,11 +777,11 @@ export function MasterTrackerTable({
     // the core's Painting column is its SHOT BLAST — same as the MO rows
     const dept = stage === "Painting" && isPaintExempt(it) ? "ShotBlast" : stage;
     const [value, tint] =
-      dept === "Cut" ? [members.reduce((s, r) => s + r.items[it].cut, 0), "var(--cut-tint)"]
-      : dept === "Welding" ? [members.reduce((s, r) => s + r.items[it].weld, 0), "var(--weld-tint)"]
-      : dept === "ShotBlast" ? [members.reduce((s, r) => s + r.items[it].shp, 0), "var(--shp-tint)"]
-      : dept === "Delivered" ? [members.reduce((s, r) => s + r.items[it].delivered, 0), "var(--dlvd-tint)"]
-      : [members.reduce((s, r) => s + r.items[it].paint, 0), "var(--paint-tint)"];
+      dept === "Cut" ? [members.reduce((s, r) => s + r.items[it].cut, 0), ITEM_TINT[it]]
+      : dept === "Welding" ? [members.reduce((s, r) => s + r.items[it].weld, 0), ITEM_TINT[it]]
+      : dept === "ShotBlast" ? [members.reduce((s, r) => s + r.items[it].shp, 0), ITEM_TINT[it]]
+      : dept === "Delivered" ? [members.reduce((s, r) => s + r.items[it].delivered, 0), ITEM_TINT[it]]
+      : [members.reduce((s, r) => s + r.items[it].paint, 0), ITEM_TINT[it]];
     const eligibleMos = members.filter((m) => m.items[it].eligible && !m.items[it].excluded).map((m) => m.mo);
     const k = `g|${gBom}|${it}|${dept}`;
     const editing = editKey === k;
@@ -792,7 +809,7 @@ export function MasterTrackerTable({
     }
 
     return (
-      <td className={`p-1 text-center tabnum ${borderR ? "border-r" : ""}`} style={{ background: tint }} onClick={(e) => e.stopPropagation()}>
+      <td className={`p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`} style={{ background: tint }} onClick={(e) => e.stopPropagation()}>
         {editing ? (
           <span className="inline-flex flex-col items-center gap-0.5">
             <span className="inline-flex items-center gap-1">
@@ -983,17 +1000,17 @@ export function MasterTrackerTable({
                       return (
                         <Fragment key={it}>
                           {stages.map((s, si) => (
-                            <td key={s} className={`p-2 text-center text-muted ${si === stages.length - 1 ? "border-r" : ""}`}>—</td>
+                            <td key={s} className={`p-2 text-center text-muted ${si === stages.length - 1 ? "border-r border-border-strong" : ""}`} style={{ background: ITEM_TINT[it] }}>—</td>
                           ))}
                         </Fragment>
                       );
                     }
                     return (
                       <Fragment key={it}>
-                        <td className="p-2 text-center text-muted">—</td>
-                        <td className="p-2 text-center text-muted">—</td>
-                        <td className="p-2 text-center text-muted">—</td>
-                        <td className="p-2 text-center text-muted border-r">—</td>
+                        <td className="p-2 text-center text-muted" style={{ background: ITEM_TINT[it] }}>—</td>
+                        <td className="p-2 text-center text-muted" style={{ background: ITEM_TINT[it] }}>—</td>
+                        <td className="p-2 text-center text-muted" style={{ background: ITEM_TINT[it] }}>—</td>
+                        <td className="p-2 text-center text-muted border-r border-border-strong" style={{ background: ITEM_TINT[it] }}>—</td>
                       </Fragment>
                     );
                   }
@@ -1006,12 +1023,12 @@ export function MasterTrackerTable({
                           const last = si === stages.length - 1;
                           return (
                             <Fragment key={s}>
-                              {s === "Cut" && stageCell(r, it, "Cut", c.cut, "var(--cut-tint)", last)}
-                              {s === "Welding" && stageCell(r, it, "Welding", c.weld, "var(--weld-tint)", last)}
+                              {s === "Cut" && stageCell(r, it, "Cut", c.cut, ITEM_TINT[it], last)}
+                              {s === "Welding" && stageCell(r, it, "Welding", c.weld, ITEM_TINT[it], last)}
                               {s === "Painting" && (isPaintExempt(it)
-                                ? stageCell(r, it, "ShotBlast", c.shp, "var(--shp-tint)", last)
-                                : stageCell(r, it, "Painting", c.paint, "var(--paint-tint)", last))}
-                              {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, "var(--dlvd-tint)", last)}
+                                ? stageCell(r, it, "ShotBlast", c.shp, ITEM_TINT[it], last)
+                                : stageCell(r, it, "Painting", c.paint, ITEM_TINT[it], last))}
+                              {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, ITEM_TINT[it], last)}
                             </Fragment>
                           );
                         })}
@@ -1020,14 +1037,14 @@ export function MasterTrackerTable({
                   }
                   return (
                     <Fragment key={it}>
-                      {stageCell(r, it, "Cut", c.cut, "var(--cut-tint)")}
-                      {stageCell(r, it, "Welding", c.weld, "var(--weld-tint)")}
+                      {stageCell(r, it, "Cut", c.cut, ITEM_TINT[it])}
+                      {stageCell(r, it, "Welding", c.weld, ITEM_TINT[it])}
                       {isPaintExempt(it) ? (
-                        stageCell(r, it, "ShotBlast", c.shp, "var(--shp-tint)")
+                        stageCell(r, it, "ShotBlast", c.shp, ITEM_TINT[it])
                       ) : (
-                        stageCell(r, it, "Painting", c.paint, "var(--paint-tint)")
+                        stageCell(r, it, "Painting", c.paint, ITEM_TINT[it])
                       )}
-                      {stageCell(r, it, "Delivered", c.delivered, "var(--dlvd-tint)", true)}
+                      {stageCell(r, it, "Delivered", c.delivered, ITEM_TINT[it], true)}
                     </Fragment>
                   );
                 })}
@@ -1206,30 +1223,30 @@ export function MasterTrackerTable({
 
 // stage sub-headers sit on the same tints as their data columns — readable
 // in both themes (the old dark-green fill swallowed the muted header text)
-function StageHead({ shp = false, only, borderR = true }: { shp?: boolean; only?: string; borderR?: boolean }) {
-  // dept-filtered view: one sub-header per PICKED stage (the core's Painting
-  // column is its SHOT BLAST, exactly like the unfiltered table); the item
-  // group's right border sits on the last picked column
+function StageHead({ tint, shp = false, only, borderR = true }: { tint: string; shp?: boolean; only?: string; borderR?: boolean }) {
+  // The sub-header wears its ITEM's wash like the numbers under it, so the
+  // whole column reads as one block. Which stage a column is stays in the
+  // label — Fab / Weld / SHB / Paint / Dlvd — not in a colour of its own.
   if (only) {
-    const [label, tint, title] =
-      only === "Cut" ? ["Fab", "var(--cut-tint)", undefined]
-      : only === "Welding" ? ["Weld", "var(--weld-tint)", undefined]
-      : only === "Delivered" ? ["Dlvd", "var(--dlvd-tint)", "Delivered — received by the customer"]
-      : shp ? ["SHB", "var(--shp-tint)", "Shot Blast — the core's final stage after welding"]
-      : ["Paint", "var(--paint-tint)", undefined];
-    return <th className={`p-1 font-medium ${borderR ? "border-r" : ""}`} style={{ background: tint }} title={title}>{label}</th>;
+    const [label, title] =
+      only === "Cut" ? ["Fab", undefined]
+      : only === "Welding" ? ["Weld", undefined]
+      : only === "Delivered" ? ["Dlvd", "Delivered — received by the customer"]
+      : shp ? ["SHB", "Shot Blast — the core's final stage after welding"]
+      : ["Paint", undefined];
+    return <th className={`p-1 font-medium on-tint ${borderR ? "border-r border-border-strong" : ""}`} style={{ background: tint }} title={title}>{label}</th>;
   }
   return (
     <>
-      <th className="p-1 font-medium" style={{ background: "var(--cut-tint)" }}>Fab</th>
-      <th className="p-1 font-medium" style={{ background: "var(--weld-tint)" }}>Weld</th>
+      <th className="p-1 font-medium on-tint" style={{ background: tint }}>Fab</th>
+      <th className="p-1 font-medium on-tint" style={{ background: tint }}>Weld</th>
       {/* the core (CF) is never painted — its final stage is SHOT BLAST */}
       {shp ? (
-        <th className="p-1 font-medium" style={{ background: "var(--shp-tint)" }} title="Shot Blast — the core's final stage after welding">SHB</th>
+        <th className="p-1 font-medium on-tint" style={{ background: tint }} title="Shot Blast — the core's final stage after welding">SHB</th>
       ) : (
-        <th className="p-1 font-medium" style={{ background: "var(--paint-tint)" }}>Paint</th>
+        <th className="p-1 font-medium on-tint" style={{ background: tint }}>Paint</th>
       )}
-      <th className="p-1 font-medium border-r" style={{ background: "var(--dlvd-tint)" }} title="Delivered — received by the customer">Dlvd</th>
+      <th className="p-1 font-medium on-tint border-r border-border-strong" style={{ background: tint }} title="Delivered — received by the customer">Dlvd</th>
     </>
   );
 }

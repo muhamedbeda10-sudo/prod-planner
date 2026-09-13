@@ -44,6 +44,11 @@ mobile drawer still lists every view flat, since it has the vertical room.
    normalization** (green auto-correct badge, red block for unknown/ambiguous), editable audited log.
 3. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
    Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows.
+   The grid is coloured by COMPONENT, not by stage: all four of an item's stage columns wear one wash, so
+   twenty-four numbers read as six components instead of one field. The hues are ordered to separate
+   NEIGHBOURING components best (every adjacent pair ≥ 8 ΔE OKLab in both themes; non-adjacent ones never
+   touch). Colour is never the only cue — the item's header spans its columns and a strong divider closes
+   each block, which is what carries the grouping where green and orange converge under colour blindness.
    Four spec columns ride along, all four **typed on the tracker and never imported**, so a re-import of the
    monthly plan can't blank or overwrite what the planner wrote: **Color** (RAL), **CRC** and **SFM** beside
    KVA, and **Fins** immediately before the Core Frame — it is a component welded onto the tank, not a spec, and
