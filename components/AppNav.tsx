@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   FileDown, Puzzle, CalendarDays, Users, Timer,
-  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory,
+  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -39,6 +39,7 @@ const REST: Item[] = [
   { href: "/tracker", label: "Plan Tracker", icon: Table2 },
   { href: "/simulate", label: "Simulator", icon: FlaskConical },
   { href: "/report", label: "Report", icon: FileBarChart2 },
+  { href: "/analytics", label: "Analytics", icon: ChartColumnBig },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
 ];

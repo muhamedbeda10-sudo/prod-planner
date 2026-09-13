@@ -59,6 +59,19 @@
   --fins-fg: #9c2f68;
   --zebra: #f6f8f7;
 
+  /* sequential ramp for an ORDERED measure (the analytics page's sheet
+     thicknesses): one hue, six steps, monotone in lightness — darker as the
+     value grows on light surfaces, brighter on dark ones, since that is what
+     reads as "more" on each. Even ~0.09 OKLab gaps; every step clears 1.8:1
+     against its own surface. */
+  --ramp-1: #9dc0ee;
+  --ramp-2: #6a9de3;
+  --ramp-3: #3d84da;
+  --ramp-4: #2568b8;
+  --ramp-5: #1a5093;
+  --ramp-6: #12386b;
+
+
   /* chat (WhatsApp-familiar palette, brand-green tinted) */
   --chat-bg: #eae6df; /* thread backdrop */
   --chat-dots: rgb(26 36 32 / 0.05); /* backdrop texture */
@@ -115,6 +128,13 @@ html.dark {
   --fins-tint: #33202b;
   --fins-fg: #f0a3c5;
   --zebra: #151c18;
+  --ramp-1: #29517f;
+  --ramp-2: #3572ab;
+  --ramp-3: #3987e5;
+  --ramp-4: #62a3ea;
+  --ramp-5: #8dc0f2;
+  --ramp-6: #b8d8f8;
+
 
   /* chat — the WhatsApp-dark equivalents on the ATC palette */
   --chat-bg: #0c1210;
@@ -459,6 +479,12 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
     --fins-tint: #fae4ee;
     --fins-fg: #9c2f68;
     --zebra: #f6f8f7;
+    --ramp-1: #9dc0ee;
+    --ramp-2: #6a9de3;
+    --ramp-3: #3d84da;
+    --ramp-4: #2568b8;
+    --ramp-5: #1a5093;
+    --ramp-6: #12386b;
     color-scheme: light;
   }
   html.dark .recharts-cartesian-grid line { stroke: #cdd5d1; }
