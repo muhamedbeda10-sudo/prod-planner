@@ -172,7 +172,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
    the cards are the board, the backlog opens when the planner wants to place work (the weekly plan's
    dated lines first, the month's undated ones behind "show all"). Every worklist's filter bar carries
    **🏭 on a machine / not on a machine** chips that filter every table to what the floor is running, or to
-   what still has to be placed, and the fabrication page keeps the month's undated backlog folded away.
+   what still has to be placed. The month's undated backlog is no longer a table on the page at all — it
+   is the pool the board and ⚡ Plan draw from, so the worklist ends at the work the shift actually runs.
    **Print sheet** on a card (or in the Floor's inspector) opens the technician's sheet for that
    machine — what runs now, then what is next in order, with pieces, standard hours, delivery date, the
    crew and a Done column to tick — and **Print all sheets** prints every machine of the department, one per
