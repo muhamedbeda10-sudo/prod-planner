@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
 import { requirePerm, requireAdmin } from "@/lib/server/auth";
-import { applicableItems, ospOf, eligibleItems, isDept, isPaintExempt, deptLabel, type Item } from "@/lib/domain/constants";
+import { applicableItems, ospOf, eligibleItems, isDept, isPaintExempt, deptLabel, itemApplies, parseExcludedItems, ITEMS, DELIVERED_STAGE, type Item } from "@/lib/domain/constants";
+import { isFullyDelivered } from "@/lib/domain/groupSpread";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
@@ -331,4 +332,50 @@ export async function deleteOrders(formData: FormData): Promise<{ ok: boolean; e
 function parseMos(raw: FormDataEntryValue | null): string[] {
   const list = String(raw ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   return [...new Set(list)].slice(0, 500);
+}
+
+// ---- closing the orders that are finished ----
+
+/**
+ * Close every OPEN order whose components have all reached the customer.
+ *
+ * The tracker can show which rows those are, but it must not be what decides:
+ * the list is recomputed here from the registry and the ledger, so a stale
+ * page, a filter, or a hand-made request can never close an order that is
+ * still short. The planner's click says "close the finished ones", not "close
+ * these ones".
+ */
+export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: string; closed?: number; mos?: string[] }> {
+  const guard = await requirePerm("tracker.status");
+  if (guard.error) return { ok: false, error: guard.error };
+
+  const open = await prisma.masterOrder.findMany({ where: { status: "open" } });
+  if (open.length === 0) return { ok: true, closed: 0, mos: [] };
+
+  const delivered = await prisma.handoverEntry.groupBy({
+    by: ["mo", "item"],
+    where: { dept: DELIVERED_STAGE, mo: { in: open.map((o) => o.mo) } },
+    _sum: { qty: true },
+  });
+  const got = new Map(delivered.map((d) => [`${d.mo}|${d.item}`, d._sum.qty ?? 0]));
+
+  const done = open.filter((o) => {
+    const excluded = parseExcludedItems(o.excludedItems);
+    return isFullyDelivered(
+      o.planQty,
+      ITEMS.map((it) => ({
+        counts: itemApplies(it, o) && !excluded.has(it),
+        delivered: got.get(`${o.mo}|${it}`) ?? 0,
+      }))
+    );
+  });
+  if (done.length === 0) return { ok: true, closed: 0, mos: [] };
+
+  const at = new Date();
+  await prisma.masterOrder.updateMany({
+    where: { mo: { in: done.map((o) => o.mo) } },
+    data: { status: "closed", closedAt: at },
+  });
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
+  return { ok: true, closed: done.length, mos: done.map((o) => o.mo) };
 }

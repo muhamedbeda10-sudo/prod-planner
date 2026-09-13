@@ -44,6 +44,13 @@ mobile drawer still lists every view flat, since it has the vertical room.
    normalization** (green auto-correct badge, red block for unknown/ambiguous), editable audited log.
 3. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
    Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows.
+   Recording on a MERGED BOM row fills its MOs **one at a time**: the first order is closed to its own chain
+   limit before the second is touched, then the third — never spread evenly — and a correction comes back off
+   the LAST MOs first. The cell says which MOs the number will land on, in fill order, **before** it is saved;
+   the preview and the write are the same functions (`lib/domain/groupSpread.ts`), so they cannot disagree.
+   A **Close N delivered** button closes every open order whose components have all reached the customer —
+   the server recounts from the ledger rather than trusting the page, so a stale or filtered view can never
+   close an order that is still short.
    The grid is coloured by COMPONENT, not by stage: all four of an item's stage columns wear one wash, so
    twenty-four numbers read as six components instead of one field. The hues are ordered to separate
    NEIGHBOURING components best (every adjacent pair ≥ 8 ΔE OKLab in both themes; non-adjacent ones never

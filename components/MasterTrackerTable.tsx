@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setOrderPriority, pushOrderToWorklist, removeOrderMonth } from "@/app/orders/actions";
+import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setOrderPriority, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num, Soi } from "@/components/ui";
 import { RingCard } from "@/components/ProgressRing";
@@ -14,6 +14,7 @@ import { PrintScope } from "@/components/PrintHeader";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle } from "@/components/PlanViewToggle";
 import { ITEMS, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
+import { capsFor, isFullyDelivered, spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -195,6 +196,31 @@ export function MasterTrackerTable({
   }
 
   const closedCount = useMemo(() => rows.filter((r) => r.status === "closed").length, [rows]);
+
+  // Orders the customer has received in full. Closing them one at a time was
+  // the only way, and a month's worth is a lot of clicking — this counts them
+  // so the button can say how many, and the server recounts before it closes
+  // anything (the page can be stale, filtered, or simply wrong).
+  const doneCount = useMemo(
+    () =>
+      rows.filter((r) =>
+        r.status === "open" &&
+        isFullyDelivered(r.required, ITEMS.map((it) => ({ counts: r.items[it].eligible && !r.items[it].excluded, delivered: r.items[it].delivered })))
+      ).length,
+    [rows]
+  );
+  const [closeMsg, setCloseMsg] = useState("");
+  function closeDone() {
+    if (!confirm(`Close ${doneCount} order(s) the customer has received in full?\n\nClosing is a display state — the logs are untouched, and a closed order can be reopened from the Closed filter.`)) return;
+    setCloseMsg("");
+    startTransition(async () => {
+      const res = await closeDeliveredOrders();
+      if (res.ok) {
+        setCloseMsg(res.closed === 0 ? "Nothing to close — no open order is fully delivered." : `${res.closed} order(s) closed.`);
+        router.refresh();
+      } else setCloseMsg(res.error ?? "Failed");
+    });
+  }
 
   // the monthly plans present in the registry, newest first ("July 2026" labels)
   const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -490,6 +516,12 @@ export function MasterTrackerTable({
             { value: "closed", label: `Closed (${closedCount})` },
           ]}
         />
+        {can("tracker.status") && doneCount > 0 && (
+          <button type="button" className="btn btn-sm btn-secondary normal-case" onClick={closeDone} disabled={pending} title="Close every open order whose components have all reached the customer — the ones with nothing left to follow">
+            ✓ Close {doneCount} delivered
+          </button>
+        )}
+        {closeMsg && <span className="text-xs font-semibold text-ok-fg">{closeMsg}</span>}
         <SelectFilter
           label="Progress"
           value={progress}
@@ -768,6 +800,25 @@ export function MasterTrackerTable({
     );
   }
 
+/** The spread a group-row edit will make, in words — the same rule the server
+ *  records with, read off the rows already on screen. Empty when nothing of
+ *  the quantity fits, which is the server's refusal shown early. */
+function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delta: number): string {
+  const usable = members.filter((m) => m.items[it].eligible && !m.items[it].excluded);
+  const spread = spreadOverGroup(
+    usable.map((m) => {
+      const c = m.items[it];
+      const caps = capsFor(
+        { required: m.required, cut: c.cut, weld: c.weld, paint: c.paint, shp: c.shp, delivered: c.delivered, osp: c.osp, eligible: true, paintExempt: isPaintExempt(it) },
+        dept
+      );
+      return { mo: m.mo, capAdd: caps.add, capSub: caps.sub };
+    }),
+    delta
+  );
+  return spreadWords(spread);
+}
+
   /** One stage cell on a BOM GROUP row: shows the members' sum, and (with the
    *  stage's tracker permission) records directly on the whole BOM — type the
    *  NEW group total and the difference is DISTRIBUTED over the member MOs in
@@ -833,10 +884,14 @@ export function MasterTrackerTable({
                 ✕
               </button>
             </span>
-            {added > 0 && !cellErr && <span className="text-[10px] font-bold text-ok-fg whitespace-nowrap">+{added} · split over MOs</span>}
-            {added < 0 && !cellErr && (
-              <span className="text-[10px] font-bold text-bad-fg whitespace-nowrap" title="Taken back off the last MOs first — recorded as negative correction entries in today's Daily Log">
-                −{-added} correction
+            {/* What the number will actually do, before it is saved. The
+                planner's question about a merged row is always "which MO does
+                this land on" — so it says so, in fill order. The rule is the
+                same function the server records with; the server still decides
+                and refuses anything that does not fit. */}
+            {added !== 0 && !cellErr && (
+              <span className={`text-[10px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`} title={added > 0 ? "Each MO is filled to its own limit before the next is touched" : "Taken back off the LAST MOs first — recorded as negative corrections in today's Daily Log"}>
+                {spreadPreview(members, it, dept, added) || (added > 0 ? `+${added}` : `−${-added} correction`)}
               </span>
             )}
             {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{cellErr}</span>}
