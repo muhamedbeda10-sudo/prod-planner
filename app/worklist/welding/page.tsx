@@ -14,7 +14,7 @@ import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
 import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { PrintHeader } from "@/components/PrintHeader";
-import { getCurrentUser, canEditDept } from "@/lib/server/auth";
+import { getCurrentUser, canEditDept, hasPerm } from "@/lib/server/auth";
 import { getMachineBoard } from "@/lib/server/machineBoard";
 import { MachineBoard } from "@/components/MachineBoard";
 
@@ -40,6 +40,7 @@ export default async function WeldWorklistPage() {
   const canEdit = !!user && canEditDept(user, "Welding");
   const tankTracking = settings.tankTracking;
   const isAdmin = !!user?.isAdmin;
+  const canManage = !!user && hasPerm(user, "machines.manage");
   // tracker-pushed lines render on the shared date-less table shape
   const pushedRows = extras.pushed.map((p) => ({
     bom: p.bom, mo: p.mo, description: p.description, item: p.item,
@@ -70,7 +71,7 @@ export default async function WeldWorklistPage() {
         before={
           <>
             {tankTracking && canEdit && <TankRepairPanel tanks={repairs} welders={welders} />}
-            <MachineBoard board={board} canEdit={canEdit} />
+            <MachineBoard board={board} canEdit={canEdit} canManage={canManage} />
             <RunOrderTable rows={runOrder} deptWord="weld" />
             <PriorityOrdersTable rows={extras.priority} deptWord="welded" soi={soi} />
             {pushedRows.length > 0 && (

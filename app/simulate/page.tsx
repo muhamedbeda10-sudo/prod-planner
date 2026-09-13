@@ -17,18 +17,19 @@ import { FloorCanvas, FloorDeptPicker } from "@/components/FloorCanvas";
 export const metadata = { title: "Simulator — ATC" };
 export const dynamic = "force-dynamic";
 
-// Two views: the what-if control room, and the FLOOR — each department's bay
-// drawn as the planner sees it, with what every machine is on right now.
+// Two views under one tab. The FLOOR leads — each department's bay drawn as
+// the planner sees it, with what every machine is on right now, which is what
+// he opens this for daily. The what-if control room is the second view.
 export default async function SimulatePage({ searchParams }: { searchParams: Promise<{ view?: string; dept?: string }> }) {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   const sp = await searchParams;
-  const view = sp.view === "floor" ? "floor" : "whatif";
+  const view = sp.view === "whatif" ? "whatif" : "floor";
 
   const viewSwitch = (
     <nav className="seg" aria-label="View">
-      <Link href="/simulate?view=whatif" className={view === "whatif" ? "on" : ""}>What-if</Link>
-      <Link href="/simulate?view=floor" className={view === "floor" ? "on" : ""}>Floor</Link>
+      <Link href="/simulate?view=floor" className={view === "floor" ? "on" : ""} title="Each department's bay, and what every machine is on">Floor</Link>
+      <Link href="/simulate?view=whatif" className={view === "whatif" ? "on" : ""} title="What-if: move the dates and the capacity and see what lands">Simulator</Link>
     </nav>
   );
 

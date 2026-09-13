@@ -10,6 +10,7 @@ import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
 import { toDisplayDate } from "@/lib/domain/dates";
+import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ export default async function TrackerPage({
     <>
       <PrintHeader title="Plan Tracker — Monthly" date={issued} />
       <MasterTrackerTable
+        viewTabs={<ViewTabs views={TRACKER_VIEWS} current="/tracker" label="Tracker view" />}
         rows={rows}
         etas={Object.fromEntries(byMo)}
         etaWindowDays={windowDays}

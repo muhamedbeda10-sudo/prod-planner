@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/server/auth";
 import { PageHeader } from "@/components/ui";
 import { getFabAnalytics, resolveWindow, WINDOWS } from "@/lib/server/fabAnalytics";
 import { FabAnalyticsView } from "@/components/FabAnalyticsView";
+import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
 
 export const metadata = { title: "Analytics — ATC" };
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ export default async function AnalyticsPage({
   return (
     <div>
       <PageHeader title="📊 Fabrication analytics">
+        <ViewTabs views={DASHBOARD_VIEWS} current="/analytics" label="Dashboard view" />
         <nav className="seg" aria-label="Window">
           {WINDOWS.map((d) => (
             <Link key={d} href={`/analytics?days=${d}`} className={d === days ? "on" : ""}>

@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui";
 import { ImportForm } from "@/components/ImportForm";
 import { toISODate } from "@/lib/domain/dates";
 import { getPlanNos } from "@/lib/server/data";
+import { ViewTabs, PLANS_VIEWS } from "@/components/ViewTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +16,13 @@ export default async function ImportPage() {
   const plans = await getPlanNos();
   return (
     <div className="space-y-5 max-w-3xl">
-      <PageHeader
-        title="Import Weekly Plan"
-        sub="DELIVERY SCHEDULE ONLY — dates per MO come from here; order quantities live in the monthly registry, progress in the daily logs"
-      />
+      <PageHeader title="Import Weekly Plan">
+        <ViewTabs views={PLANS_VIEWS} current="/import" label="Plans view" />
+      </PageHeader>
+      <p className="text-sm text-muted">
+        <b>Delivery schedule only.</b> Dates per MO come from here; order quantities live in the monthly registry
+        beside it, and progress in the daily logs.
+      </p>
       <p className="text-sm text-muted">
         Grid: A=BOM (merged, carried down) · B=SOI · C=MO · D=Description · E=Required · F..AC = 6 days × 4 components · AD=Remarks.
         Plan dates are oven dates. Remarks are stored for reference but never interpreted — no balance parsing.

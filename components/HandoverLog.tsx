@@ -36,7 +36,14 @@ export interface LogRow {
   flags?: string[] | null; // data-guard warnings — the row LOOKS wrong, check it
 }
 
-export function HandoverLog({ rows, editableDepts = [], soi }: { rows: LogRow[]; editableDepts?: string[]; soi?: SoiLookup }) {
+export function HandoverLog({ rows, editableDepts = [], soi, viewTabs }: {
+  rows: LogRow[];
+  editableDepts?: string[];
+  soi?: SoiLookup;
+  /** The tab's view switcher (Tracker / Daily log) — it rides in the filter
+   *  bar, since the log is sized to fill the screen. */
+  viewTabs?: React.ReactNode;
+}) {
   const canEditRow = (r: LogRow) => editableDepts.includes(r.dept);
   const router = useRouter();
   const [editing, setEditing] = useState<number | null>(null);
@@ -195,6 +202,7 @@ export function HandoverLog({ rows, editableDepts = [], soi }: { rows: LogRow[];
   return (
     <>
       <FilterBar count={filtered.length} total={rows.length} onReset={reset} hasActive={hasActive}>
+        {viewTabs}
         <SearchBox value={q} onChange={setQ} placeholder="Search BOM…" />
         <SelectFilter
           label="Show"

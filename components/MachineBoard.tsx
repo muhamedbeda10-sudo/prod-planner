@@ -302,7 +302,15 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
   );
 }
 
-export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canEdit: boolean }) {
+export function MachineBoard({ board, canEdit, canManage = false }: {
+  board: MachineBoardData;
+  canEdit: boolean;
+  /** "machines.manage" — shows the two settings this board is read against,
+   *  where the planner is looking when he wants to change them. They used to
+   *  be reachable only from the Admin menu, which is not where anyone thinks
+   *  "this machine's rate is wrong". */
+  canManage?: boolean;
+}) {
   // the backlog is long (a month of open orders): it stays FOLDED so the
   // worklist's own tables are what the page shows, and opens on demand
   const [open, setOpen] = useState(false);
@@ -422,6 +430,12 @@ export function MachineBoard({ board, canEdit }: { board: MachineBoardData; canE
           </button>
         )}
         <Link href={`/worklist/machines?dept=${board.dept}`} className="btn btn-sm btn-secondary ms-2 normal-case no-print" title={`One sheet per ${word}, each on its own page — hand them to the technicians`}>🖨 Print all sheets</Link>
+        {canManage && (
+          <>
+            <Link href="/admin/machine-times" className="btn btn-sm btn-ghost ms-1 normal-case no-print" title={`What one piece of each item takes on each ${word}, in hours — the figure every number on this board is priced with`}>⏱ Times</Link>
+            <Link href="/admin/machines" className="btn btn-sm btn-ghost ms-1 normal-case no-print" title={`Add or retire a ${word}, and set its hours a day`}>⚙ Machines</Link>
+          </>
+        )}
       </h2>
       {note && (
         <div className={`text-xs rounded-lg px-3 py-2 mb-2 border no-print ${note.error ? "bg-bad-light border-bad-fg/30 text-bad-fg" : "bg-brand-light/40 border-brand/30"}`}>

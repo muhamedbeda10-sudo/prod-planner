@@ -121,7 +121,13 @@ function AttachmentView({ a }: { a: ChatAttachment }) {
   );
 }
 
-export function ChatClient({ me, initialContacts }: { me: { id: number; name: string }; initialContacts: ChatContact[] }) {
+export function ChatClient({ me, initialContacts, fill = false }: {
+  me: { id: number; name: string };
+  initialContacts: ChatContact[];
+  /** Inside the nav's chat popup, the panel already supplies the frame and the
+   *  height — fill it instead of sizing against the viewport. */
+  fill?: boolean;
+}) {
   const [contacts, setContacts] = useState(initialContacts);
   const [active, setActive] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<ChatMessageDTO[]>([]);
@@ -490,7 +496,7 @@ export function ChatClient({ me, initialContacts }: { me: { id: number; name: st
   );
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] overflow-hidden rounded-xl border bg-surface shadow-md">
+    <div className={`flex overflow-hidden bg-surface ${fill ? "h-full" : "h-[calc(100vh-7rem)] rounded-xl border shadow-md"}`}>
       {/* ===== contacts ===== */}
       <aside className={`${active !== null ? "hidden md:flex" : "flex"} w-full md:w-72 lg:w-80 shrink-0 flex-col border-r`}>
         <div className="px-4 py-3 border-b flex items-center gap-2 bg-surface-2">

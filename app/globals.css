@@ -374,7 +374,10 @@ main textarea:focus {
 }
 @media (max-width: 1599px) {
   .nav-tab { padding: 8px 7px; letter-spacing: 0; }
-  .nav-tab > svg:first-child { display: none; }
+  /* narrow screens drop a labelled tab's leading icon to buy width — but a tab
+     that is ONLY an icon (the chat dock, the admin gear) would vanish, which is
+     what silently happened to the gear. Those opt out. */
+  .nav-tab:not(.nav-tab-icon) > svg:first-child { display: none; }
 }
 .nav-tab::after {
   content: "";
