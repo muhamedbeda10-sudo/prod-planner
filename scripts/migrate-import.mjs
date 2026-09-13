@@ -15,7 +15,6 @@ const TABLES = [
   ["planOrder", "PlanOrder"],
   ["planSchedule", "PlanSchedule"],
   ["handoverEntry", "HandoverEntry"],
-  ["reallocationMove", "ReallocationMove"],
   ["holiday", "Holiday"],
   ["returnEntry", "ReturnEntry"],
   ["queueNote", "QueueNote"],

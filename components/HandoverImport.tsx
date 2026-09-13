@@ -61,7 +61,7 @@ export function HandoverImport() {
           </div>
           {res.unknownBoms && res.unknownBoms.length > 0 && (
             <div className="bg-warn-bg text-warn-fg rounded-md px-3 py-2 text-xs">
-              Unknown codes imported as-is (review them in “BOM Review”): {res.unknownBoms.join(", ")}
+              Unknown codes imported as-is — no order in the registry carries them: {res.unknownBoms.join(", ")}
             </div>
           )}
           {res.issues && res.issues.length > 0 && (

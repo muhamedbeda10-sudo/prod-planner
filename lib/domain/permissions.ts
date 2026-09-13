@@ -76,7 +76,6 @@ export const PERM_CATEGORIES: PermCategory[] = [
     perms: [
       { key: "plans.import", label: "Plans — import", desc: "Import monthly plans (Orders Registry) and weekly plans" },
       { key: "logs.import", label: "Daily Logs — Excel import", desc: "Bulk-import handover logs from Excel (writes to all departments)" },
-      { key: "boms.manage", label: "BOM review — manage", desc: "Apply BOM corrections and decide reallocation moves" },
       { key: "calendar.manage", label: "Calendar — manage", desc: "Add and remove factory holidays" },
       { key: "machines.manage", label: "Machines — manage", desc: "Add, edit and retire the machines and lines of each department (the shift log and the worklists read the list)" },
     ],

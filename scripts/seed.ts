@@ -178,7 +178,6 @@ async function main() {
 
   // ---- Wipe + reload (idempotent) ----
   await prisma.$transaction([
-    prisma.reallocationMove.deleteMany(),
     prisma.handoverEntry.deleteMany(),
     prisma.planSchedule.deleteMany(),
     prisma.planOrder.deleteMany(),

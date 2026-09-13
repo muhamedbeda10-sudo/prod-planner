@@ -81,25 +81,16 @@ export interface EffectiveLog {
   date: Date;
 }
 
-/**
- * Handover rows for a plan, plus synthetic adjustment rows for APPROVED
- * reallocation moves (donor -qty, receiver +qty). Raw entries stay immutable.
- */
+/** The handover rows for a plan. (It once folded in synthetic rows for
+ *  approved excess-reallocation moves; the BOM Review that proposed them was
+ *  removed unused, so a plan's logs are simply its entries.) */
 export async function getEffectiveLogs(planNo: number): Promise<EffectiveLog[]> {
-  const [entries, moves] = await Promise.all([
-    prisma.handoverEntry.findMany({ where: { planNo } }),
-    prisma.reallocationMove.findMany({ where: { planNo, status: "approved" } }),
-  ]);
-  const logs: EffectiveLog[] = entries.map((e) => ({
+  const entries = await prisma.handoverEntry.findMany({ where: { planNo } });
+  return entries.map((e) => ({
     dept: e.dept,
     bom: e.bom,
     item: e.item,
     qty: e.qty,
     date: e.date,
   }));
-  for (const m of moves) {
-    logs.push({ dept: m.dept, bom: m.fromBom, item: m.item, qty: -m.qty, date: m.date });
-    logs.push({ dept: m.dept, bom: m.toBom, item: m.item, qty: m.qty, date: m.date });
-  }
-  return logs;
 }

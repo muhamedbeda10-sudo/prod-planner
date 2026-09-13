@@ -42,10 +42,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    idempotent re-import, warnings (oversize / misaligned remark column / suspected double-count).
 2. **Daily handover entry** (`/handover`) — fast RTL form, BOM autocomplete with **entry-time
    normalization** (green auto-correct badge, red block for unknown/ambiguous), editable audited log.
-3. **BOM hygiene & excess reallocation** (`/boms`) — `NormalizeBoms` review queue; `ReallocateExcess`
-   as **explicit reviewable `ReallocationMove` transactions** (approve/reject). Raw handover entries
-   stay immutable (the VBA edited them silently — this app never does).
-4. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
+3. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
    Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows.
    Four spec columns ride along, all four **typed on the tracker and never imported**, so a re-import of the
    monthly plan can't blank or overwrite what the planner wrote: **Color** (RAL), **CRC** and **SFM** beside
@@ -53,14 +50,14 @@ mobile drawer still lists every view flat, since it has the vertical room.
    it carries its own rose down the whole column (the one hue the stage tints, the status pills and the
    brand green leave free) so the eye finds it without counting across. Click a cell to type it. A merged BOM row shows a spec only when its MOs agree on it, "…" when they
    differ. All four export with the rest.
-5. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
+4. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
    allocation, overdue rollover, fill-up rows, Cut Alarm (Cut ready / Partial / NOT CUT YET).
-6. **Daily report + Dashboard** (`/report`, `/` — two views of the Dashboard tab; the report covers
+5. **Daily report + Dashboard** (`/report`, `/` — two views of the Dashboard tab; the report covers
    ONE day or any period through its From→To picker, with the capacity its efficiency is measured
    against scaled to the working days the range really spans) — dept output, complete sets, efficiency/balance %,
    projects worked today, tracker snapshot, charts. Dashboard: achievement per item, dept output
    day/week, planned (oven−lead) vs welded.
-6b. **Fabrication analytics** (`/analytics`) — the floor read in SHEETS instead of pieces, because a piece is
+5b. **Fabrication analytics** (`/analytics`) — the floor read in SHEETS instead of pieces, because a piece is
    not a unit of work: a tank cut from four sheets and one cut from half a sheet are both "1". Every daily-log
    cut record is converted through its BOM's bill of sheets off the Material tab, over a 30/60/90-day or
    all-time window. Sheets and tonnes cut, per day and in total; the thickness mix (which decides what a job
@@ -71,7 +68,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    counts as a piece and contributes no sheets, so the rates read low rather than flattering — the coverage
    figure and the list of un-nested BOMs say exactly how much of the floor the Material tab describes.
 
-7. **Material — nesting project tracker** (`/material`) — the planner's Nesting Project Tracker sheet, filed
+6. **Material — nesting project tracker** (`/material`) — the planner's Nesting Project Tracker sheet, filed
    month by month, exactly its columns: BOM Ref · Quantity of Units · Part Code · Part Name · Codes · Material ·
    Thickness · Sheet Size · Sheets in BOM for one Unit / for Job · Actual Nesting for one Unit / for Job ·
    Difference · Notes. The tab adds two columns: units **produced** (typed) and the sheets those units really
@@ -86,7 +83,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    nested / with produced / over BOM) or a search across BOM, SOI, part, code and note — the totals follow
    the filter; edit any value inline, delete a whole month (confirmed by typing its name), export in the
    sheet's own headers.
-8. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
+7. **Odoo close-out log** (`/odoo`) — the office's daily sheet of Odoo manufacturing orders it tried to
    close: Date · SOI# · FG-CODE · Product · MO# · QTY · Status, plus Notes. Two people work a row: the
    clerk types it in (or imports the sheet — its first seven columns, the same MO on the same day
    updated, never doubled); the planner then moves the Status in place (Pending, Done, Blocked …) —
@@ -124,7 +121,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    under its product) or on the day it was logged — over today, yesterday, 7/30/90 days, this
    month, all time or a custom from/to, with the numbers as a table and an Excel export.
 
-9. **Shift log** (`/shifts`) — the supervisors' page, one department and one day at a time: every worker
+8. **Shift log** (`/shifts`) — the supervisors' page, one department and one day at a time: every worker
    registered for the department (Tools → Production Workers, now for Fabrication, Welding, Shot Blast and
    Painting too) with present / shift (9 h or 11 h) / overtime (+3 in one click) / the machine they were on /
    a note; the day's present count, man-hours against the stage's capacity, overtime and downtime up top;
@@ -154,7 +151,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    day are seeded from the capacity sheet's own crews (laser 15 + bending 8 + fin folding 10 people on the
    11-hour shift → 15 h a machine, 88 for bending, 110 for fins; 22 a shot-blast cabinet, 159.5 a paint
    line), so fabrication totals the 363 man-hours a day the sheet states. Editing a figure keeps it.
-10. **Machine board** (top of the Fabrication and Painting worklists) — who is on what: a card per machine
+9. **Machine board** (top of the Fabrication and Painting worklists) — who is on what: a card per machine
    with what it is on **now**, what waits behind it in the order the planner ranked it (⏫ run next, ▲ ▼, ✕),
    the queue answered in **time, not percentage**: how long the work on it takes (hours while it is under a
    day, days once it is more) and the working day it **clears** on, with Fridays and the calendar's days off
@@ -214,7 +211,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    done early, so it names the day everything promised so far passes everything workable so far, and by how
    many hours. Work with no date, work owed past the picture and lines with no standard time are named under
    it rather than folded in.
-11. **Floor** (Simulator → Floor) — each department's bay drawn as the planner sees it: place the machines
+10. **Floor** (the Floor tab) — each department's bay drawn as the planner sees it: place the machines
    (or partitions) as blocks, drag them where they stand, pull a corner to resize, draw areas ("Laser hall",
    "Bending & fins") and labels around them, zoom — the drawing saves itself a moment after every change, so
    it is there for everyone who opens that department's floor next. Every block is live: what it is on now, how many

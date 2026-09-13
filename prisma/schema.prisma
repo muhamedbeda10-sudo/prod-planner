@@ -105,26 +105,6 @@ model HandoverEntry {
 // Explicit, reviewable excess-reallocation transaction (replaces the VBA's
 // silent edit of the handover log). Raw HandoverEntry rows stay immutable;
 // approved moves are applied as a derived adjustment layer.
-model ReallocationMove {
-  id        Int       @id @default(autoincrement())
-  planNo    Int
-  fromBom   String
-  toBom     String
-  dept      String // Cut | Welding
-  item      String // CF | TC | TN | CB
-  qty       Float
-  date      DateTime
-  reason    String
-  status    String    @default("proposed") // proposed | approved | rejected
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  decidedBy String?
-  decidedAt DateTime?
-
-  @@index([planNo])
-  @@index([status])
-}
-
 // Master order registry — fed by the MONTHLY plan. Import upserts by MO:
 // existing MOs are left untouched, new MOs are added. This is the general
 // orders list; weekly plans only contribute delivery schedules.
