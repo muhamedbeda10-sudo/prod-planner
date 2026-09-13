@@ -75,9 +75,6 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
         rating: r.rating,
         secItem: r.secItem,
         planQty: r.planQty,
-        fins: r.fins,
-        crcSize: r.crcSize,
-        colorRal: r.colorRal,
         remarks: r.remarks,
         source: sourceLabel,
         ospCF: r.osp.CF,
@@ -120,10 +117,9 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
             rating: r.rating,
             secItem: r.secItem,
             planQty, // never lowered here — decreases stay manual
-            // a sheet that does not carry these columns leaves what is there
-            ...(r.fins !== null ? { fins: r.fins } : {}),
-            ...(r.crcSize !== null ? { crcSize: r.crcSize } : {}),
-            colorRal: r.colorRal,
+            // Fins / Color / CRC / SFM are NOT here on purpose: they are the
+            // planner's own columns, typed on the tracker. A re-import of the
+            // monthly plan must never blank or overwrite what he wrote.
             remarks: r.remarks,
             ospCF: r.osp.CF,
             ospTC: r.osp.TC,

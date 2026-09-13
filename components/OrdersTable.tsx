@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
+import { deleteOrders, previewOrderDelete, type OrderDeletePreview } from "@/app/orders/actions";
 
 export interface OrderRow {
   id: number;
@@ -28,6 +30,17 @@ export function OrdersTable({ rows }: { rows: OrderRow[] }) {
   const [urgent, setUrgent] = useSavedFilter("orders.urgent");
   const [source, setSource] = useSavedFilter("orders.source");
 
+  // Taking an import back out. Picking rows is free; what they carry is only
+  // counted when the planner asks to delete, and the answer is shown before
+  // anything is removed.
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [confirm, setConfirm] = useState<OrderDeletePreview[] | null>(null);
+  const [force, setForce] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
   const sources = useMemo(() => [...new Set(rows.map((r) => r.source ?? ""))].filter(Boolean).sort(), [rows]);
 
   const filtered = useMemo(() => {
@@ -51,6 +64,54 @@ export function OrdersTable({ rows }: { rows: OrderRow[] }) {
     Source: r.source ?? "", Added: r.createdAt.slice(0, 10),
   }));
 
+  const shown = filtered.map((r) => r.mo);
+  const allShownPicked = shown.length > 0 && shown.every((mo) => picked.has(mo));
+  const toggle = (mo: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(mo)) next.delete(mo); else next.add(mo);
+      return next;
+    });
+  const toggleAllShown = () =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (allShownPicked) shown.forEach((mo) => next.delete(mo));
+      else shown.forEach((mo) => next.add(mo));
+      return next;
+    });
+  const clearPicked = () => { setPicked(new Set()); setConfirm(null); setForce(false); setErr(""); };
+
+  function askDelete() {
+    const fd = new FormData();
+    fd.set("mos", [...picked].join(","));
+    setErr(""); setMsg("");
+    startTransition(async () => {
+      const res = await previewOrderDelete(fd);
+      if (res.ok && res.rows) { setConfirm(res.rows); setForce(false); }
+      else setErr(res.error ?? "Failed");
+    });
+  }
+
+  function doDelete() {
+    const fd = new FormData();
+    fd.set("mos", [...picked].join(","));
+    if (force) fd.set("force", "true");
+    setErr("");
+    startTransition(async () => {
+      const res = await deleteOrders(fd);
+      if (res.ok) {
+        setMsg(
+          `${res.deleted} order(s) removed from the registry` +
+          (res.keptLedgerRows ? ` — ${res.keptLedgerRows} daily-log entr${res.keptLedgerRows === 1 ? "y" : "ies"} kept as history.` : ".")
+        );
+        clearPicked();
+        router.refresh();
+      } else setErr(res.error ?? "Failed");
+    });
+  }
+
+  const withHistory = (confirm ?? []).filter((c) => c.loggedRows > 0 || c.tanks > 0);
+
   return (
     <>
       <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setUrgent(""); setSource(""); }} hasActive={hasActive}>
@@ -61,12 +122,85 @@ export function OrdersTable({ rows }: { rows: OrderRow[] }) {
         )}
         <span className="text-xs text-muted">Total qty (shown): <b className="text-foreground tabnum">{totalQty}</b></span>
         <ExportButton rows={exportRows} filename="master-orders.xlsx" sheetName="Orders" />
+        {picked.size > 0 && (
+          <span className="inline-flex items-center gap-2">
+            <b className="text-xs tabnum">{picked.size} picked</b>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={clearPicked} disabled={pending}>clear</button>
+            <button type="button" className="btn btn-sm btn-danger" onClick={askDelete} disabled={pending}>🗑 Delete…</button>
+          </span>
+        )}
       </FilterBar>
+
+      {msg && <p className="text-sm font-semibold text-ok-fg">{msg}</p>}
+      {err && <p className="text-sm font-semibold text-bad-fg">{err}</p>}
+
+      {/* What the delete would take, said out loud before it happens. */}
+      {confirm && (
+        <div className="bg-surface border-2 border-bad-fg rounded-xl p-3 space-y-2">
+          <b className="text-bad-fg">Remove {confirm.length} order(s) from the registry?</b>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="text-left text-muted">
+                  <th className="p-1">MO</th>
+                  <th className="p-1">BOM</th>
+                  <th className="p-1 text-center">Plan qty</th>
+                  <th className="p-1 text-center" title="Pieces already recorded in the daily log against this MO — they STAY">Logged</th>
+                  <th className="p-1 text-center" title="Serial-tracked tanks born from this order — they STAY">Tanks</th>
+                  <th className="p-1 text-center" title="Worklist dates, hidden lines, pushes, machine placements, run order and queue notes — these GO with the order">Planning rows</th>
+                </tr>
+              </thead>
+              <tbody>
+                {confirm.map((c) => (
+                  <tr key={c.mo} className={c.loggedRows > 0 || c.tanks > 0 ? "text-bad-fg font-semibold" : ""}>
+                    <td className="p-1 font-bold whitespace-nowrap">{c.mo}</td>
+                    <td className="p-1 whitespace-nowrap">{c.bom}</td>
+                    <td className="p-1 text-center tabnum">{c.planQty}</td>
+                    <td className="p-1 text-center tabnum">{c.loggedRows > 0 ? `${c.loggedQty} pcs · ${c.loggedRows} row(s)` : "—"}</td>
+                    <td className="p-1 text-center tabnum">{c.tanks || "—"}</td>
+                    <td className="p-1 text-center tabnum">{c.planningRows || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted">
+            The order and its planning rows go. Daily-log entries, returns, tracked tanks, material lines and Odoo rows are
+            history and stay exactly as recorded — they simply stop naming an order the registry knows.
+          </p>
+          {withHistory.length > 0 && (
+            <label className="flex items-center gap-2 text-sm font-semibold text-bad-fg">
+              <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
+              {withHistory.length} of them already have work recorded — delete anyway
+            </label>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-sm btn-danger"
+              onClick={doDelete}
+              disabled={pending || (withHistory.length > 0 && !force)}
+            >
+              {pending ? "Deleting…" : `Delete ${confirm.length} order(s)`}
+            </button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setConfirm(null)} disabled={pending}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-brand text-white text-left">
+              <th className="p-2 w-8 text-center">
+                <input
+                  type="checkbox"
+                  checked={allShownPicked}
+                  onChange={toggleAllShown}
+                  aria-label="Pick every order shown"
+                  title={allShownPicked ? "Unpick the rows shown" : "Pick every row the filters show"}
+                />
+              </th>
               <th className="p-2">MO</th>
               <th className="p-2">BOM</th>
               <th className="p-2">SOI</th>
@@ -81,12 +215,20 @@ export function OrdersTable({ rows }: { rows: OrderRow[] }) {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={10} className="p-4 text-center text-muted">
+              <tr><td colSpan={11} className="p-4 text-center text-muted">
                 {rows.length === 0 ? "No orders yet — import a monthly plan." : "No rows match the filters."}
               </td></tr>
             )}
             {filtered.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} className={picked.has(r.mo) ? "bg-brand-light/40" : ""}>
+                <td className="p-2 text-center">
+                  <input
+                    type="checkbox"
+                    checked={picked.has(r.mo)}
+                    onChange={() => toggle(r.mo)}
+                    aria-label={`Pick ${r.mo}`}
+                  />
+                </td>
                 <td className="p-2 font-bold whitespace-nowrap text-xs">{r.mo}</td>
                 <td className="p-2 font-bold whitespace-nowrap">
                   <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>

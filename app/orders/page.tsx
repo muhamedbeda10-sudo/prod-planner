@@ -19,7 +19,7 @@ export default async function OrdersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Orders Registry"
-        sub={`The master MO list, fed by the monthly plans — ${orders.length} orders · ${totalQty} pcs planned`}
+        sub={`The master MO list, fed by the monthly plans — ${orders.length} orders · ${totalQty} pcs planned. Tick rows to take a wrong import back out.`}
       />
       <MonthlyImport />
       <div>

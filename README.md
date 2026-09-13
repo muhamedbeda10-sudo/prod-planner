@@ -36,10 +36,11 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    stay immutable (the VBA edited them silently — this app never does).
 4. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
    Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows.
-   Beside KVA sit four more of the plan's own columns: **Fins**, **Color** (RAL) and **CRC** come with the
-   monthly sheet (a sheet that does not carry them leaves what is already there, so an older revision never
-   blanks a newer one), and **SFM** is typed here — no plan sheet carries it. A merged BOM row shows a spec
-   only when its MOs agree on it, "…" when they differ. All four export with the rest.
+   Four spec columns ride along, all four **typed on the tracker and never imported**, so a re-import of the
+   monthly plan can't blank or overwrite what the planner wrote: **Color** (RAL), **CRC** and **SFM** beside
+   KVA, and **Fins** immediately before the Core Frame — it is a component welded onto the tank, not a spec.
+   Click a cell to type it. A merged BOM row shows a spec only when its MOs agree on it, "…" when they
+   differ. All four export with the rest.
 5. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
    allocation, overdue rollover, fill-up rows, Cut Alarm (Cut ready / Partial / NOT CUT YET).
 6. **Daily report + Dashboard** (`/report`, `/`) — dept output, complete sets, efficiency/balance %,

@@ -42,19 +42,28 @@ export async function setOrderQty(formData: FormData): Promise<{ ok: boolean; er
   return { ok: true };
 }
 
-/** SFM — the one spec column no plan sheet carries, so the planner types it on
- *  the tracker. Free text: it is a size on some orders and a dash on others,
- *  and the sheet's own dashes are worth keeping as typed. */
-export async function setOrderSfm(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+/** The order's spec columns — Fins, Colour RAL, CRC size, SFM. No monthly
+ *  sheet carries them in a form the import can trust, so the planner types
+ *  them on the tracker and a re-import never touches them. All four are free
+ *  text: a spec is a size on some orders and a dash on others, and the dashes
+ *  he types are worth keeping as typed. */
+const SPEC_FIELDS = ["fins", "colorRal", "crcSize", "sfm"] as const;
+type SpecField = (typeof SPEC_FIELDS)[number];
+const SPEC_LABEL: Record<SpecField, string> = { fins: "Fins", colorRal: "Colour", crcSize: "CRC size", sfm: "SFM" };
+const isSpecField = (v: string): v is SpecField => (SPEC_FIELDS as readonly string[]).includes(v);
+
+export async function setOrderSpec(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const guard = await requirePerm("tracker.qty");
   if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
   if (!mo) return { ok: false, error: "Missing MO." };
-  const raw = String(formData.get("sfm") ?? "").trim();
-  if (raw.length > 40) return { ok: false, error: "Keep SFM under 40 characters." };
+  const field = String(formData.get("field") ?? "");
+  if (!isSpecField(field)) return { ok: false, error: "Unknown spec column." };
+  const raw = String(formData.get("value") ?? "").trim();
+  if (raw.length > 40) return { ok: false, error: `Keep ${SPEC_LABEL[field]} under 40 characters.` };
   const order = await prisma.masterOrder.findUnique({ where: { mo } });
   if (!order) return { ok: false, error: `MO ${mo} not found.` };
-  await prisma.masterOrder.update({ where: { mo }, data: { sfm: raw || null } });
+  await prisma.masterOrder.update({ where: { mo }, data: { [field]: raw || null } });
   for (const p of ["/tracker", "/orders"]) revalidatePath(p);
   return { ok: true };
 }
@@ -202,4 +211,124 @@ export async function importMonthlyAction(formData: FormData): Promise<MonthlyIm
   } catch (e) {
     return { ok: false, error: `Import failed: ${e instanceof Error ? e.message : String(e)}` };
   }
+}
+
+// ---- Deleting orders out of the registry ----
+
+/** What a delete would take with it, and what it would leave behind. An order
+ *  that has RECORDED WORK against it is not a mistaken import — deleting it
+ *  would orphan the ledger, so the registry says so and refuses unless the
+ *  planner confirms it deliberately. */
+export interface OrderDeletePreview {
+  mo: string;
+  bom: string;
+  planQty: number;
+  /** Pieces already recorded against the MO in the daily log. */
+  loggedQty: number;
+  loggedRows: number;
+  /** Serial-tracked tanks born from it. */
+  tanks: number;
+  /** Planning rows that go with it (worklist dates, hides, pushes, machine
+   *  placements, run order, queue notes) — none of them is history. */
+  planningRows: number;
+}
+
+/** Count what hangs off each MO, so the delete button can say it out loud. */
+export async function previewOrderDelete(formData: FormData): Promise<{ ok: boolean; error?: string; rows?: OrderDeletePreview[] }> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const mos = parseMos(formData.get("mos"));
+  if (mos.length === 0) return { ok: false, error: "Pick at least one order." };
+  const orders = await prisma.masterOrder.findMany({ where: { mo: { in: mos } } });
+  if (orders.length === 0) return { ok: false, error: "None of those MOs is in the registry." };
+
+  const [ledger, tanks, dates, hides, pushes, machines, runOrder, notes] = await Promise.all([
+    prisma.handoverEntry.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _sum: { qty: true }, _count: { _all: true } }),
+    prisma.tankUnit.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
+    prisma.worklistDateOverride.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
+    prisma.worklistLineHide.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
+    prisma.worklistPush.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
+    prisma.worklistMachine.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
+    prisma.runOrderEntry.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
+    prisma.queueNote.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
+  ]);
+  const count = (g: { mo: string | null; _count: { _all: number } }[], mo: string) =>
+    g.find((x) => x.mo === mo)?._count._all ?? 0;
+
+  return {
+    ok: true,
+    rows: orders.map((o) => {
+      const l = ledger.find((x) => x.mo === o.mo);
+      return {
+        mo: o.mo,
+        bom: o.bom,
+        planQty: o.planQty,
+        loggedQty: l?._sum.qty ?? 0,
+        loggedRows: l?._count._all ?? 0,
+        tanks: count(tanks, o.mo),
+        planningRows:
+          count(dates, o.mo) + count(hides, o.mo) + count(pushes, o.mo) +
+          count(machines, o.mo) + count(runOrder, o.mo) + count(notes, o.mo),
+      };
+    }),
+  };
+}
+
+/**
+ * Delete orders out of the registry — the way back from an import that brought
+ * in orders that do not belong (a wrong sheet, a duplicated month, a plan that
+ * was cancelled).
+ *
+ * It takes the registry row and the PLANNING layers keyed on that MO with it:
+ * worklist date overrides, hidden lines, pushes, machine placements, run order
+ * and queue notes. Those only ever described how the order was going to be
+ * worked, so they are meaningless without it.
+ *
+ * It never touches HISTORY — daily-log entries, returns, serial-tracked tanks,
+ * material lines and Odoo rows all stay exactly as recorded. An order that has
+ * any of that is refused unless `force` says the planner means it, and then
+ * what it leaves behind is reported rather than quietly dropped.
+ */
+export async function deleteOrders(formData: FormData): Promise<{ ok: boolean; error?: string; deleted?: number; keptLedgerRows?: number }> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const mos = parseMos(formData.get("mos"));
+  if (mos.length === 0) return { ok: false, error: "Pick at least one order." };
+  const force = String(formData.get("force") ?? "") === "true";
+
+  const orders = await prisma.masterOrder.findMany({ where: { mo: { in: mos } }, select: { mo: true } });
+  if (orders.length === 0) return { ok: false, error: "None of those MOs is in the registry." };
+  const keys = orders.map((o) => o.mo);
+
+  const [loggedRows, tankRows] = await Promise.all([
+    prisma.handoverEntry.count({ where: { mo: { in: keys } } }),
+    prisma.tankUnit.count({ where: { mo: { in: keys } } }),
+  ]);
+  if ((loggedRows > 0 || tankRows > 0) && !force) {
+    const parts = [
+      loggedRows > 0 ? `${loggedRows} daily-log entr${loggedRows === 1 ? "y" : "ies"}` : "",
+      tankRows > 0 ? `${tankRows} tracked tank(s)` : "",
+    ].filter(Boolean).join(" and ");
+    return { ok: false, error: `Work is already recorded against this selection (${parts}). Tick "delete anyway" to remove the order and leave that history in place, or close the order instead.` };
+  }
+
+  await prisma.$transaction([
+    prisma.worklistDateOverride.deleteMany({ where: { mo: { in: keys } } }),
+    prisma.worklistLineHide.deleteMany({ where: { mo: { in: keys } } }),
+    prisma.worklistPush.deleteMany({ where: { mo: { in: keys } } }),
+    prisma.worklistMachine.deleteMany({ where: { mo: { in: keys } } }),
+    prisma.runOrderEntry.deleteMany({ where: { mo: { in: keys } } }),
+    prisma.queueNote.deleteMany({ where: { mo: { in: keys } } }),
+    prisma.masterOrder.deleteMany({ where: { mo: { in: keys } } }),
+  ]);
+
+  for (const p of ["/orders", "/tracker", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
+  return { ok: true, deleted: keys.length, keptLedgerRows: loggedRows };
+}
+
+/** The selection as it comes off the form: a CSV of MOs, deduped and capped so
+ *  one click can never sweep the whole registry by accident. */
+function parseMos(raw: FormDataEntryValue | null): string[] {
+  const list = String(raw ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return [...new Set(list)].slice(0, 500);
 }
