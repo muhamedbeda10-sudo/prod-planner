@@ -17,6 +17,7 @@ import { TANK_ITEM } from "@/lib/domain/tanks";
 import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
 import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
+import { capsFor, spreadOverGroup } from "@/lib/domain/groupSpread";
 
 export interface RecordResult {
   ok: boolean;
@@ -319,7 +320,6 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     if (members.some((m) => m === null)) return { ok: false, error: "An MO in the group belongs to a different BOM — refresh the page." };
     const list = members as NonNullable<(typeof members)[number]>[];
 
-    const finishedOf = (m: (typeof list)[number]) => (isPaintExempt(item) ? m.shp : m.paint);
     const current = list.reduce((s, m) => {
       switch (dept) {
         case "Cut": return s + m.cut;
@@ -358,55 +358,28 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     const dayISO = source === "weekly" ? String(formData.get("dayISO") ?? "").trim() : "";
     const planLabel = source === "weekly" ? String(formData.get("planLabel") ?? "").trim() : "";
 
-    // per-MO headroom, mirroring the chain guard (painted ≤ welded ≤ cut ≤
-    // order qty; the core's SHB ≤ welded; delivered ≤ finished). Cut also
-    // respects OSP — outsourced pieces are never made in-house.
-    const capAdd = (m: (typeof list)[number]): number => {
-      if (!m.eligible) return 0;
-      switch (dept) {
-        case "Cut": {
-          const qty = m.o?.planQty ?? 0;
-          return qty > 0 ? Math.max(0, qty - ospOf(m.o ?? {}, item as Item) - m.cut) : Number.POSITIVE_INFINITY;
-        }
-        case "Welding": return Math.max(0, m.cut - m.weld);
-        case "Painting": return Math.max(0, m.weld - m.paint);
-        case SHOTBLAST_STAGE: return Math.max(0, m.weld - m.shp);
-        default: return Math.max(0, finishedOf(m) - m.delivered);
-      }
-    };
-    const capSub = (m: (typeof list)[number]): number => {
-      switch (dept) {
-        case "Cut": return Math.max(0, m.cut - m.weld);
-        case "Welding": return Math.max(0, m.weld - Math.max(m.paint, isPaintExempt(item) ? m.shp : 0));
-        case "Painting": return Math.max(0, m.paint - m.delivered);
-        case SHOTBLAST_STAGE: return Math.max(0, m.shp - m.delivered);
-        default: return m.delivered;
-      }
-    };
-
-    // distribute: additions fill the MOs top-down; corrections come back off
-    // the LAST MOs first — all-or-nothing so the group never half-saves
-    const alloc = new Map<string, number>();
-    let left = Math.abs(delta);
-    const order = delta > 0 ? list : [...list].reverse();
-    for (const m of order) {
-      if (left === 0) break;
-      const cap = delta > 0 ? capAdd(m) : capSub(m);
-      const take = Math.min(left, cap);
-      if (take > 0) {
-        alloc.set(m.mo, (alloc.get(m.mo) ?? 0) + (delta > 0 ? take : -take));
-        left -= take;
-      }
-    }
-    if (left > 0) {
-      const fits = Math.abs(delta) - left;
+    // Per-MO headroom and the fill order are ONE rule, shared with the
+    // tracker's own preview — see lib/domain/groupSpread.
+    const caps = (m: (typeof list)[number]) => capsFor({
+      required: m.o?.planQty ?? 0,
+      cut: m.cut, weld: m.weld, paint: m.paint, shp: m.shp, delivered: m.delivered,
+      osp: ospOf(m.o ?? {}, item as Item),
+      eligible: m.eligible,
+      paintExempt: isPaintExempt(item),
+    }, dept);
+    const spread = spreadOverGroup(
+      list.map((m) => { const c = caps(m); return { mo: m.mo, capAdd: c.add, capSub: c.sub }; }),
+      delta
+    );
+    if (spread.left > 0) {
       return {
         ok: false,
         error: delta > 0
-          ? `Only ${fits} pcs fit across this group (chain limits: upstream done / order quantities) — nothing was saved.`
-          : `Only ${fits} pcs can be deducted (downstream already consumed the rest) — nothing was saved.`,
+          ? `Only ${spread.fits} pcs fit across this group (chain limits: upstream done / order quantities) — nothing was saved.`
+          : `Only ${spread.fits} pcs can be deducted (downstream already consumed the rest) — nothing was saved.`,
       };
     }
+    const alloc = new Map(spread.alloc.map((a) => [a.mo, a.qty]));
 
     // date = today; plan = whichever plan covers today (same as tracker cells)
     const today = parseISODate(toISODate(new Date()))!;
