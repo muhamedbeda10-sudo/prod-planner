@@ -36,10 +36,11 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    stay immutable (the VBA edited them silently — this app never does).
 4. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
    Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows.
-   Beside KVA sit four more of the plan's own columns: **Fins**, **Color** (RAL) and **CRC** come with the
-   monthly sheet (a sheet that does not carry them leaves what is already there, so an older revision never
-   blanks a newer one), and **SFM** is typed here — no plan sheet carries it. A merged BOM row shows a spec
-   only when its MOs agree on it, "…" when they differ. All four export with the rest.
+   Four spec columns ride along, all four **typed on the tracker and never imported**, so a re-import of the
+   monthly plan can't blank or overwrite what the planner wrote: **Color** (RAL), **CRC** and **SFM** beside
+   KVA, and **Fins** immediately before the Core Frame — it is a component welded onto the tank, not a spec.
+   Click a cell to type it. A merged BOM row shows a spec only when its MOs agree on it, "…" when they
+   differ. All four export with the rest.
 5. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
    allocation, overdue rollover, fill-up rows, Cut Alarm (Cut ready / Partial / NOT CUT YET).
 6. **Daily report + Dashboard** (`/report`, `/`) — dept output, complete sets, efficiency/balance %,
@@ -71,8 +72,12 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
    painting record (and the core frame's shot blast) writes its own row here on the same day with the SOI,
    product and qty, MO left empty for the office to type in place — the FG-CODE is copied from the last row
    of the same SOI and product, or composed from the part code and the transformer's BOM and flagged
-   "check FG-CODE" until someone confirms it. Such a row follows its log entry's edits and deletion only
-   while nobody has touched it; a "Needs MO / Check FG-CODE" filter and a count in the day's summary keep
+   "check FG-CODE" until someone confirms it. The tab opens on ONE day, which is how a row logged last
+   week reads as lost, so a banner says how many rows sit on other days and how many of the whole log are
+   still not closed, with **All days** a click away in the day picker (the search covers the day on screen,
+   so the whole log is searched from there). Such a row follows its log entry's edits only while nobody has
+   touched it, and when the log entry behind it is deleted or corrected to nothing the row is **Cancelled
+   with the reason as a note, never silently deleted**; a "Needs MO / Check FG-CODE" filter and a count in the day's summary keep
    them visible, and the export carries a Source column. **Click a row (or its 🧱 button)** for the material
    its qty consumes: the FG-CODE's prefix is the part (FB-022 = TANK) and the row's SOI names the
    transformer through the orders registry (S01259-4 → BOM 12011E16M13), so the popup lists the Material

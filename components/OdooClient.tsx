@@ -54,6 +54,12 @@ function shiftISO(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** The day to come back to when leaving the all-days view. */
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function OdooDayPicker({ day, days }: { day: string; days: string[] }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -82,17 +88,27 @@ export function OdooDayPicker({ day, days }: { day: string; days: string[] }) {
       <select
         aria-label="Jump to a day"
         className="border rounded-md px-2 py-1.5 bg-surface font-bold ltr"
-        value={isAll ? "all" : days.includes(day) ? day : ""}
+        value={isAll ? "" : days.includes(day) ? day : ""}
         onChange={(e) => e.target.value && go(e.target.value)}
       >
         <option value="">Jump…</option>
-        <option value="all">All days</option>
         {days.map((d) => (
           <option key={d} value={d}>
             {d}
           </option>
         ))}
       </select>
+      {/* The tab opens on ONE day, which is how a row logged last week reads as
+          lost. This is the way back to the whole log, in the open, not buried
+          in a dropdown — and it is where the search reaches every day. */}
+      <button
+        type="button"
+        className={`btn btn-sm ${isAll ? "btn-primary" : "btn-ghost"}`}
+        onClick={() => go(isAll ? todayISO() : "all")}
+        title={isAll ? "Back to a single day" : "Show every row ever logged — the search then covers them all"}
+      >
+        {isAll ? "✕ All days" : "All days"}
+      </button>
     </div>
   );
 }
@@ -575,6 +591,38 @@ function FilterBar({ entries, filters, onChange, shown }: { entries: OdooEntryVi
   );
 }
 
+/**
+ * What the day on screen is hiding.
+ *
+ * The tab opens on ONE day, so a row logged last week is not gone — it is on
+ * last week. That reads as loss, and rows get retyped. This says out loud how
+ * much of the log sits on other days and how much of it is still open, with
+ * the one click that shows all of it.
+ */
+function ElsewhereBanner({ day, onDay, totalRows, openRows }: { day: string; onDay: number; totalRows: number; openRows: number }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  if (day === "all" || totalRows <= onDay) return null;
+  const elsewhere = totalRows - onDay;
+  const showAll = () => {
+    const p = new URLSearchParams(params.toString());
+    p.set("day", "all");
+    router.push(`${pathname}?${p}`);
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm bg-surface-2 border rounded-xl px-3 py-2 no-print">
+      <span>
+        <b className="tabnum">{elsewhere}</b> more row(s) sit on other days
+        {openRows > 0 && <> — <b className="text-bad-fg tabnum">{openRows}</b> of the whole log is still not closed</>}.
+      </span>
+      <button type="button" className="btn btn-sm btn-primary ms-auto" onClick={showAll}>
+        Show all days
+      </button>
+    </div>
+  );
+}
+
 export function OdooClient({
   entries,
   day,
@@ -583,6 +631,8 @@ export function OdooClient({
   nesting,
   soiBoms,
   canEdit,
+  totalRows,
+  openRows,
 }: {
   entries: OdooEntryView[];
   day: string;
@@ -591,6 +641,9 @@ export function OdooClient({
   nesting: NestingLookup;
   soiBoms: Record<string, string[]>;
   canEdit: boolean;
+  /** The whole log behind this day — see ElsewhereBanner. */
+  totalRows: number;
+  openRows: number;
 }) {
   const bomsOf = (soi: string | null) => soiBoms[(soi ?? "").trim().toUpperCase()] ?? NO_BOMS;
   const { filters, setFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_ODOO_FILTERS);
@@ -599,6 +652,7 @@ export function OdooClient({
   const needMo = shown.filter((e) => !e.odooMo).length;
   return (
     <div className="space-y-5">
+      <ElsewhereBanner day={day} onDay={entries.length} totalRows={totalRows} openRows={openRows} />
       {entries.length > 0 && <FilterBar entries={entries} filters={filters} onChange={setFilters} shown={shown.length} />}
       {shown.length > 0 && (
         <div className="text-sm text-muted">
@@ -610,10 +664,13 @@ export function OdooClient({
       <section className="bg-surface border rounded-xl overflow-hidden">
         {entries.length === 0 ? (
           <p className="text-sm text-muted p-4">
-            {day === "all" ? "No rows logged yet." : `Nothing logged on ${day}. Add the day's rows below, or import the sheet.`}
+            {day === "all" ? "No rows logged yet." : `Nothing logged on ${day}. Add the day's rows below, import the sheet, or look at all days.`}
           </p>
         ) : shown.length === 0 ? (
-          <p className="text-sm text-muted p-4">No row matches these filters.</p>
+          <p className="text-sm text-muted p-4">
+            No row matches these filters{day !== "all" ? ` on ${day}` : ""}.
+            {day !== "all" && " The search only covers the day on screen — switch to All days to search the whole log."}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">

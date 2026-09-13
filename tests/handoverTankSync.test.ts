@@ -76,10 +76,19 @@ const untouched = { id: 40, odooMo: "", status: "MO to be close", _count: { note
 const worked = { id: 40, odooMo: "SF01/MO/1", status: "MO to be close", _count: { notes: 0 } };
 
 describe("the row's Odoo row follows it", () => {
-  it("is deleted with the row while nobody has touched it", async () => {
+  it("is CANCELLED with a reason, never silently deleted, while nobody has touched it", async () => {
+    // it used to be deleted, and the row then vanished from the Odoo tab with
+    // nothing to say where it went — the planner was left hunting a close-out
+    // he remembered writing. Cancelled it stays on its day, reads red, and
+    // carries the reason.
     odooRow = untouched;
     await deleteHandover(form({ id: "7" }));
-    expect(calls).toEqual(["odoo.delete", "ledger.delete"]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toContain('"status":"Cancelled"');
+    expect(calls[0]).toContain('"ledgerId":null');
+    expect(calls[0]).toContain("daily-log record this row was born from was deleted");
+    expect(calls[0].startsWith("odoo.update")).toBe(true);
+    expect(calls[1]).toBe("ledger.delete");
   });
   it("only loses the link once the office has worked it", async () => {
     odooRow = worked;

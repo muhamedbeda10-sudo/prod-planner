@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSfm, setOrderPriority, pushOrderToWorklist, removeOrderMonth } from "@/app/orders/actions";
+import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setOrderPriority, pushOrderToWorklist, removeOrderMonth } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num, Soi } from "@/components/ui";
 import { RingCard } from "@/components/ProgressRing";
@@ -16,6 +16,18 @@ import { PlanViewToggle } from "@/components/PlanViewToggle";
 import { ITEMS, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
 
 type Progress = "complete" | "inprogress" | "notstarted";
+
+/** The order's spec columns. Every one of them is the planner's own — the
+ *  monthly import writes none of them, so a re-import can never blank what he
+ *  typed. Fins sits with the components (it is one of them, welded onto the
+ *  tank); the others sit beside KVA. */
+type SpecField = "fins" | "colorRal" | "crcSize" | "sfm";
+const SPEC_TITLE: Record<SpecField, string> = {
+  fins: "Fins — type it here",
+  colorRal: "Colour RAL — type it here",
+  crcSize: "CRC size — type it here",
+  sfm: "SFM — type it here",
+};
 
 // the tracker's stage columns, in pipeline order — the Dept filter picks any
 // subset of these (the core's Painting column is its SHOT BLAST)
@@ -70,18 +82,21 @@ export function MasterTrackerTable({
   const [qtyEditMo, setQtyEditMo] = useState<string | null>(null);
   const [qtyVal, setQtyVal] = useState("");
   const [qtyErr, setQtyErr] = useState("");
-  // SFM — the one spec column the plan never carries, so it is typed here
-  const [sfmEditMo, setSfmEditMo] = useState<string | null>(null);
-  const [sfmVal, setSfmVal] = useState("");
+  // The spec columns — Fins, Colour, CRC, SFM. No plan sheet carries them in a
+  // form the import can trust, so all four are typed here and a re-import
+  // never touches them. One cell at a time, keyed "mo|field".
+  const [specEdit, setSpecEdit] = useState<string | null>(null);
+  const [specVal, setSpecVal] = useState("");
 
-  function saveSfm(mo: string) {
+  function saveSpec(mo: string, field: SpecField) {
     const fd = new FormData();
     fd.set("mo", mo);
-    fd.set("sfm", sfmVal);
+    fd.set("field", field);
+    fd.set("value", specVal);
     startTransition(async () => {
-      const res = await setOrderSfm(fd);
+      const res = await setOrderSpec(fd);
       if (res.ok) {
-        setSfmEditMo(null);
+        setSpecEdit(null);
         router.refresh();
       } else setCellErr(res.error ?? "Failed");
     });
@@ -344,11 +359,11 @@ export function MasterTrackerTable({
       SOI: r.soi ?? "",
       Urgent: r.urgent ? "Yes" : "",
       KVA: r.kva ?? "",
-      Fins: r.fins ?? "",
       "Color RAL": r.colorRal ?? "",
       "CRC Size": r.crcSize ?? "",
       SFM: r.sfm ?? "",
       Required: r.required,
+      Fins: r.fins ?? "",
     };
     for (const it of ITEMS) {
       const c = r.items[it];
@@ -465,11 +480,14 @@ export function MasterTrackerTable({
               <th rowSpan={2} className="p-2 text-left" title="Sales order item">SOI</th>
               <th rowSpan={2} className="p-2 text-left">BOM</th>
               <th rowSpan={2} className="p-2">KVA</th>
-              <th rowSpan={2} className="p-2" title="Fins — from the monthly plan sheet">Fins</th>
-              <th rowSpan={2} className="p-2" title="Colour RAL — from the monthly plan sheet">Color</th>
-              <th rowSpan={2} className="p-2" title="CRC size — from the monthly plan sheet">CRC</th>
-              <th rowSpan={2} className="p-2" title="SFM — typed here; no plan sheet carries it">SFM</th>
+              <th rowSpan={2} className="p-2" title="Colour RAL — typed here; the import never writes it">Color</th>
+              <th rowSpan={2} className="p-2" title="CRC size — typed here; the import never writes it">CRC</th>
+              <th rowSpan={2} className="p-2" title="SFM — typed here; the import never writes it">SFM</th>
               <th rowSpan={2} className="p-2">Required</th>
+              {/* Fins belongs with the components, not with the specs: it is
+                  welded onto the tank like the rest, so it reads immediately
+                  before the Core Frame. Typed here, never imported. */}
+              <th rowSpan={2} className="p-2" title="Fins — typed here; the import never writes it">Fins</th>
               {ITEMS.map((it) => (
                 <th key={it} colSpan={scoped ? stages.length : 4} className="p-2 border-r border-border-strong">{it}</th>
               ))}
@@ -548,11 +566,11 @@ export function MasterTrackerTable({
                       <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">{gBom}</Link>
                     </td>
                     <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{gKva}</td>
-                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.fins)}</td>
                     <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.colorRal)}</td>
                     <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.crcSize)}</td>
                     <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.sfm)}</td>
                     <td className="p-2 text-center font-bold"><Num v={gReq} /></td>
+                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.fins)}</td>
                     {ITEMS.map((it) =>
                       scoped ? (
                         <Fragment key={it}>
@@ -592,6 +610,44 @@ export function MasterTrackerTable({
       </div>
     </div>
   );
+
+  /** One spec cell on an MO row: click the value to type a new one. Free text
+   *  — a spec is a size on some orders and a dash on others, and the dashes he
+   *  types are worth keeping as typed. */
+  function specCell(r: MasterTrackerRow, field: SpecField, extra = "") {
+    const key = `${r.mo}|${field}`;
+    const val = r[field];
+    return (
+      <td key={field} className={`p-2 text-xs whitespace-nowrap text-center ${extra}`}>
+        {specEdit === key ? (
+          <input
+            value={specVal}
+            autoFocus
+            onChange={(e) => setSpecVal(e.target.value)}
+            onBlur={() => saveSpec(r.mo, field)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveSpec(r.mo, field);
+              if (e.key === "Escape") setSpecEdit(null);
+            }}
+            className="w-20 border rounded-md px-1 py-0.5 text-center bg-surface"
+            disabled={pending}
+            aria-label={`${SPEC_TITLE[field].split(" —")[0]} for ${r.mo}`}
+          />
+        ) : can("tracker.qty") ? (
+          <button
+            type="button"
+            className={`w-full ${val ? "font-semibold" : "text-muted"}`}
+            title={SPEC_TITLE[field]}
+            onClick={() => { setSpecEdit(key); setSpecVal(val ?? ""); }}
+          >
+            {val || "—"}
+          </button>
+        ) : (
+          <span className="text-muted">{val || "—"}</span>
+        )}
+      </td>
+    );
+  }
 
   /** One stage cell on a single-MO row. For depts the user can edit, clicking
    *  the number opens an inline editor: type the NEW cumulative total, the
@@ -856,37 +912,9 @@ export function MasterTrackerTable({
                   <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>
-                <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.fins ?? "—"}</td>
-                <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.colorRal ?? "—"}</td>
-                <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.crcSize ?? "—"}</td>
-                <td className="p-2 text-xs whitespace-nowrap text-center">
-                  {sfmEditMo === r.mo ? (
-                    <input
-                      value={sfmVal}
-                      autoFocus
-                      onChange={(e) => setSfmVal(e.target.value)}
-                      onBlur={() => saveSfm(r.mo)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") saveSfm(r.mo);
-                        if (e.key === "Escape") setSfmEditMo(null);
-                      }}
-                      className="w-20 border rounded-md px-1 py-0.5 text-center bg-surface"
-                      disabled={pending}
-                      aria-label={`SFM for ${r.mo}`}
-                    />
-                  ) : can("tracker.qty") ? (
-                    <button
-                      type="button"
-                      className={`w-full ${r.sfm ? "font-semibold" : "text-muted"}`}
-                      title="Click to type the SFM for this order"
-                      onClick={() => { setSfmEditMo(r.mo); setSfmVal(r.sfm ?? ""); }}
-                    >
-                      {r.sfm || "—"}
-                    </button>
-                  ) : (
-                    <span className="text-muted">{r.sfm || "—"}</span>
-                  )}
-                </td>
+                {specCell(r, "colorRal")}
+                {specCell(r, "crcSize")}
+                {specCell(r, "sfm")}
                 <td className="p-2 text-center font-bold">
                   {qtyEditMo === r.mo ? (
                     <span className="inline-flex flex-col items-center gap-0.5">
@@ -928,6 +956,7 @@ export function MasterTrackerTable({
                     <Num v={r.required} />
                   )}
                 </td>
+                {specCell(r, "fins")}
                 {ITEMS.map((it) => {
                   const c = r.items[it];
                   // AR/MB the order's KVA/rating rule doesn't match, or a manual

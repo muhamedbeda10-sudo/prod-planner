@@ -53,7 +53,7 @@ export default async function OdooPage({
     );
   }
 
-  const { entries, days, knownSois, knownFgCodes, nesting, soiBoms } = await getOdooData(day);
+  const { entries, days, knownSois, knownFgCodes, nesting, soiBoms, totalRows, openRows } = await getOdooData(day);
 
   // the export carries the sheet's OWN headers, so the file drops straight
   // back into the workbook the office keeps
@@ -86,6 +86,8 @@ export default async function OdooPage({
         nesting={nesting}
         soiBoms={soiBoms}
         canEdit={hasPerm(me, "odoo.edit")}
+        totalRows={totalRows}
+        openRows={openRows}
       />
     </div>
   );
