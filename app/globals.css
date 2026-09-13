@@ -59,6 +59,21 @@
   --fins-fg: #9c2f68;
   --zebra: #f6f8f7;
 
+  /* The Plan Tracker colours its grid by ITEM, not by stage: all four of a
+     component's stage columns wear one wash so the eye finds where one
+     component's block ends. Hue order was chosen to maximise the separation of
+     NEIGHBOURING components (every adjacent pair ≥ 8 ΔE OKLab in both themes),
+     since non-adjacent ones never touch. Under colour blindness some pairs do
+     converge, so the grouping never rests on hue alone — the item's own header
+     spans its columns and a strong divider closes each block. Body ink clears
+     9:1 on every wash. */
+  --item-cf: #bdd5f2;
+  --item-tc: #f9e1ad;
+  --item-tn: #c7c2e3;
+  --item-cb: #f8d0bf;
+  --item-ar: #b9d8c9;
+  --item-mb: #f8d4e2;
+
   /* sequential ramp for an ORDERED measure (the analytics page's sheet
      thicknesses): one hue, six steps, monotone in lightness — darker as the
      value grows on light surfaces, brighter on dark ones, since that is what
@@ -128,6 +143,12 @@ html.dark {
   --fins-tint: #33202b;
   --fins-fg: #f0a3c5;
   --zebra: #151c18;
+  --item-cf: #203b52;
+  --item-tc: #483b13;
+  --item-tn: #383a51;
+  --item-cb: #4b2e1d;
+  --item-ar: #1b3f2d;
+  --item-mb: #4a2c37;
   --ramp-1: #29517f;
   --ramp-2: #3572ab;
   --ramp-3: #3987e5;
@@ -220,6 +241,14 @@ main table thead th {
   padding-top: 10px;
   padding-bottom: 10px;
 }
+/* A header cell that carries a component's own wash (the Plan Tracker's
+   Fab/Weld/SHB/Dlvd row) takes the page's ink, not the quiet grey the neutral
+   headers use: grey on those washes falls to ~3:1, under the floor for 11px
+   text. The ink clears 9:1 on every one of them. */
+main table thead th.on-tint {
+  color: var(--foreground) !important;
+}
+
 main table tbody tr {
   transition: background-color 0.15s ease;
 }
@@ -482,6 +511,12 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
     --fins-tint: #fae4ee;
     --fins-fg: #9c2f68;
     --zebra: #f6f8f7;
+    --item-cf: #bdd5f2;
+    --item-tc: #f9e1ad;
+    --item-tn: #c7c2e3;
+    --item-cb: #f8d0bf;
+    --item-ar: #b9d8c9;
+    --item-mb: #f8d4e2;
     --ramp-1: #9dc0ee;
     --ramp-2: #6a9de3;
     --ramp-3: #3d84da;
