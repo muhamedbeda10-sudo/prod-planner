@@ -47,6 +47,17 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 6. **Daily report + Dashboard** (`/report`, `/`) — dept output, complete sets, efficiency/balance %,
    projects worked today, tracker snapshot, charts. Dashboard: achievement per item, dept output
    day/week, planned (oven−lead) vs welded.
+6b. **Fabrication analytics** (`/analytics`) — the floor read in SHEETS instead of pieces, because a piece is
+   not a unit of work: a tank cut from four sheets and one cut from half a sheet are both "1". Every daily-log
+   cut record is converted through its BOM's bill of sheets off the Material tab, over a 30/60/90-day or
+   all-time window. Sheets and tonnes cut, per day and in total; the thickness mix (which decides what a job
+   can go to — the thin end and the thick end are not the same plant); and **sheets per piece per component**
+   with the range across the BOMs produced, which is the argument for sheets over pieces and sizes a new order
+   before anyone nests it. Tonnes come from the sheet size, the thickness and the material's own density; a BOM
+   planned in several months takes its NEWEST nesting, never the sum. A piece whose BOM has no bill still
+   counts as a piece and contributes no sheets, so the rates read low rather than flattering — the coverage
+   figure and the list of un-nested BOMs say exactly how much of the floor the Material tab describes.
+
 7. **Material — nesting project tracker** (`/material`) — the planner's Nesting Project Tracker sheet, filed
    month by month, exactly its columns: BOM Ref · Quantity of Units · Part Code · Part Name · Codes · Material ·
    Thickness · Sheet Size · Sheets in BOM for one Unit / for Job · Actual Nesting for one Unit / for Job ·
