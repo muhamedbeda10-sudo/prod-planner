@@ -20,7 +20,7 @@ export interface ActionResult {
 /** The log is the single source of truth — any change to it must refresh every
  *  screen that derives balances from it (worklists, tracker, dashboard, trace). */
 function revalidateEverywhere() {
-  for (const p of ["/handover", "/", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/leak-test", "/barcode", "/tracker", "/trace", "/report", "/boms", "/odoo"]) {
+  for (const p of ["/handover", "/", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/leak-test", "/barcode", "/tracker", "/trace", "/report", "/odoo"]) {
     revalidatePath(p);
   }
 }

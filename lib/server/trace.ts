@@ -22,7 +22,7 @@ export interface TracePipelineRow {
   finishLabel: "SHB" | "Paint";
 }
 
-export type TraceEventKind = "output" | "correction" | "return" | "note" | "realloc";
+export type TraceEventKind = "output" | "correction" | "return" | "note";
 
 export interface TraceEvent {
   ts: number; // sort key (ms)
@@ -36,12 +36,10 @@ export interface TraceEvent {
   source?: string;
   text?: string; // note body
   photos?: string[];
-  reason?: string; // return / reallocation reason
-  status?: string; // note / return / realloc status
+  reason?: string; // return reason
+  status?: string; // note / return status
   fromDept?: string; // return
   toDept?: string; // return
-  fromBom?: string; // realloc
-  toBom?: string; // realloc
   corrected?: string | null; // bomRaw when the code was auto-fixed at entry
 }
 
@@ -99,10 +97,9 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
   const isMo = !!mo;
   const scope = isMo ? { mo } : { bom };
 
-  const [orders, handover, moves, allBoms, masters, plans, notes, returns, masterRows] = await Promise.all([
+  const [orders, handover, allBoms, masters, plans, notes, returns, masterRows] = await Promise.all([
     prisma.planOrder.findMany({ where: scope, orderBy: [{ planNo: "asc" }, { mo: "asc" }, { item: "asc" }] }),
     prisma.handoverEntry.findMany({ where: scope, orderBy: [{ date: "asc" }, { id: "asc" }] }),
-    isMo ? Promise.resolve([]) : prisma.reallocationMove.findMany({ where: { OR: [{ fromBom: bom }, { toBom: bom }] }, orderBy: { date: "asc" } }),
     isMo ? Promise.resolve([]) : prisma.planOrder.findMany({ select: { bom: true }, distinct: ["bom"] }),
     prisma.masterOrder.findMany({ where: scope }),
     prisma.plan.findMany(),
@@ -217,21 +214,6 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
       text: n.text,
       photos: n.photos ? (JSON.parse(n.photos) as string[]) : [],
       status: n.status,
-    });
-  }
-  for (const m of moves) {
-    events.push({
-      ts: m.date.getTime(),
-      dateISO: toISODate(m.date),
-      kind: "realloc",
-      mo: null,
-      dept: m.dept,
-      item: m.item,
-      qty: m.qty,
-      reason: m.reason,
-      status: m.status,
-      fromBom: m.fromBom,
-      toBom: m.toBom,
     });
   }
   events.sort((a, b) => b.ts - a.ts || 0);

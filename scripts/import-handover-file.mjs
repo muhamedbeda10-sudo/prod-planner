@@ -54,6 +54,6 @@ for (let i = 0; i < toInsert.length; i += 500) {
   await prisma.handoverEntry.createMany({ data: toInsert.slice(i, i + 500) });
 }
 console.log(`Added: ${toInsert.length} | skipped existing: ${skipped} | invalid: ${invalid} | corrected: ${corrected}`);
-if (unknownBoms.size) console.log("Unknown BOMs (review in /boms):", [...unknownBoms].join(", "));
+if (unknownBoms.size) console.log("Unknown BOMs (no order in the registry carries them):", [...unknownBoms].join(", "));
 console.log("Total handover entries now:", await prisma.handoverEntry.count());
 await prisma.$disconnect();

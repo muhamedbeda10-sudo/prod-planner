@@ -13,7 +13,6 @@ const TABLES = [
   "planOrder",
   "planSchedule",
   "handoverEntry",
-  "reallocationMove",
   "masterOrder",
   "holiday",
   "returnEntry",

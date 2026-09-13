@@ -13,7 +13,7 @@ export interface HandoverImportResult {
   skippedExisting?: number;
   invalid?: number;
   corrected?: number;
-  unknownBoms?: string[]; // codes imported as-is that need review in /boms
+  unknownBoms?: string[]; // codes imported as-is that nothing in the registry matches
   issues?: string[]; // first N validation problems
 }
 

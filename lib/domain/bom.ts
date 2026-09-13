@@ -4,7 +4,7 @@
 //   * BomGroup MERGES codes that share base + M-number:
 //       12011E13M12, 12011E14M12, 12011E16M12  ->  key "12011|M12"
 //     and returns the FIRST such code found in Plan Orders as the representative.
-//   * modCut / modWeld / modReport / ReallocateExcess use BomGroup (so they MERGE).
+//   * modCut / modWeld / modReport use BomGroup (so they MERGE).
 //   * modTracker.ShowPlan groups by the RAW bom and never calls BomGroup, so the
 //     Plan Tracker shows those three as THREE separate rows. We replicate both.
 
