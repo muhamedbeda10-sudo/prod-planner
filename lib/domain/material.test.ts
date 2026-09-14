@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetsForJob, sheetsDifference,
-  actualPerUnit, sheetsForProduced, summarizeMaterial, parseNestingTracker, materialKey, round3, partNameFor,
+  actualPerUnit, rateIsTyped, sheetsForProduced, summarizeMaterial, parseNestingTracker, materialKey, round3, partNameFor,
   filterMaterialLines, EMPTY_MATERIAL_FILTERS,
   type MaterialLineView,
 } from "./material";
@@ -108,7 +108,8 @@ function line(over: Partial<MaterialLineView>): MaterialLineView {
     id: 1, month: "July 2026", bom: "B1", mo: "", units: 10, partCode: "FB-022", partName: "TANK", materialCode: "T-SSS-5MM",
     material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
     sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: null,
-    forJob: 10, difference: 0, actualPerUnit: 1, forProduced: null, updatedISO: "2026-09-07", recordedBy: null, ...over,
+    forJob: 10, difference: 0, actualPerUnit: 1, actualPerUnitManual: false, forProduced: null,
+    updatedISO: "2026-09-07", recordedBy: null, ...over,
   };
 }
 
@@ -288,5 +289,35 @@ describe("parseNestingTracker", () => {
     const { rows, issues } = parseNestingTracker([["Plan No", "MO", "Qty"], [1, "MO-1", 5]]);
     expect(rows).toEqual([]);
     expect(issues[0]).toMatch(/No header row found/);
+  });
+});
+
+describe("rateIsTyped — whose figure the per-unit rate is", () => {
+  const sheet = { actualPerUnit: 0.25, actualPerUnitManual: false };
+  const typed = { actualPerUnit: 0.4, actualPerUnitManual: true };
+
+  it("claims the rate when a figure is typed over a line the sheet filled", () => {
+    expect(rateIsTyped(sheet, 0.4)).toBe(true);
+  });
+
+  it("leaves an imported line alone when the box is saved untouched", () => {
+    expect(rateIsTyped(sheet, 0.25)).toBe(false);
+  });
+
+  it("claims the rate on a line the sheet left blank", () => {
+    expect(rateIsTyped({ actualPerUnit: null, actualPerUnitManual: false }, 0.33)).toBe(true);
+  });
+
+  it("keeps a typed rate typed when the line is saved again unchanged", () => {
+    expect(rateIsTyped(typed, 0.4)).toBe(true);
+  });
+
+  it("hands the line back to the sheet when the box is cleared", () => {
+    expect(rateIsTyped(typed, null)).toBe(false);
+    expect(rateIsTyped(sheet, null)).toBe(false);
+  });
+
+  it("treats a typed zero as a figure, not as an empty box", () => {
+    expect(rateIsTyped(sheet, 0)).toBe(true);
   });
 });
