@@ -120,7 +120,19 @@ async function setCell(formData: FormData, field: "sheetsUsed" | "producedQty", 
   const v = raw === "" ? null : parseSheetNumber(raw);
   if (raw !== "" && v === null) return { ok: false, error: `Enter a number for ${label}, or clear the box.` };
   if (v !== null && v < 0) return { ok: false, error: `${label} cannot be negative.` };
-  await prisma.materialUsage.update({ where: { id }, data: { [field]: v, recordedBy: guard.user?.name ?? null } });
+  await prisma.materialUsage.update({
+    where: { id },
+    data: {
+      [field]: v,
+      // Typing the job's nested sheets by hand overrides the sheet, so the
+      // sheet's per-unit rate must not survive it — left standing, the tab
+      // would show a rate that no longer divides into the figure beside it.
+      // Cleared, the rate falls back to this number over the units, which is
+      // exactly what was just typed.
+      ...(field === "sheetsUsed" ? { actualPerUnit: null } : {}),
+      recordedBy: guard.user?.name ?? null,
+    },
+  });
   revalidateMaterial();
   return { ok: true };
 }

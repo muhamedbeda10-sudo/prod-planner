@@ -26,7 +26,7 @@ export function monthLabelOfISO(iso: string): string {
 /** One tracker line, as the lookup carries it across the server/client boundary. */
 export type NestingLine = Pick<
   MaterialLineInput,
-  "month" | "bom" | "partCode" | "partName" | "materialCode" | "material" | "thicknessMm" | "sheetSize" | "units" | "sheetsPerUnit" | "sheetsUsed" | "note"
+  "month" | "bom" | "partCode" | "partName" | "materialCode" | "material" | "thicknessMm" | "sheetSize" | "units" | "sheetsPerUnit" | "actualPerUnit" | "sheetsUsed" | "note"
 > & { id: number };
 
 /** Lines keyed "FB-022|14003E11M11" — the lookup the log page hands the rows. */
@@ -43,7 +43,7 @@ export interface MaterialNeedLine {
   units: number; // the tracker's job size
   sheetsPerUnit: number; // BOM rate
   sheetsUsed: number | null; // nested for the whole job, null while not nested
-  actualPerUnit: number | null; // sheetsUsed / units
+  actualPerUnit: number | null; // the sheet's own rate, or sheetsUsed / units
   /** Sheets the row's quantity needs at the BOM rate. */
   forQtyBom: number;
   /** Sheets the row's quantity really consumes at the nesting's actual rate —
@@ -97,7 +97,12 @@ export interface MaterialNeed {
   totalVarianceTone: VarianceTone | null;
 }
 
-const actualRate = (used: number | null, units: number) => (used === null || !(units > 0) ? null : used / units);
+/** The nesting's rate per unit: the sheet's own figure where the line carries
+ *  it, and the job's sheets over its units only where it does not. The popup
+ *  multiplies this by the closing's quantity, so it must be the same number
+ *  the Material tab shows — not a second recovery of it. */
+const actualRate = (stored: number | null, used: number | null, units: number) =>
+  stored !== null && stored >= 0 ? stored : used === null || !(units > 0) ? null : used / units;
 
 /** The BOMs a row's material may sit under, in lookup order: the SOI's
  *  order(s) from the registry first, then the FG-CODE's own suffix. */
@@ -136,7 +141,7 @@ export function materialNeed(lookup: NestingLookup, fgCode: string, qty: number,
   const lines: MaterialNeedLine[] = all
     .filter((l) => l.month === month)
     .map((l) => {
-      const rate = actualRate(l.sheetsUsed, l.units);
+      const rate = actualRate(l.actualPerUnit, l.sheetsUsed, l.units);
       const forQtyBom = round3(l.sheetsPerUnit * q);
       const forQtyActual = rate === null ? null : round3(rate * q);
       // the rates compare the same way whatever the qty — judge them, so a

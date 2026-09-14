@@ -100,7 +100,7 @@ async function nestingFor(entries: { fgCode: string; boms: string[] }[]): Promis
     where: { bom: { in: [...new Set([...keys.values()].map((k) => k.bom))] } },
     select: {
       id: true, month: true, bom: true, partCode: true, partName: true, materialCode: true, material: true,
-      thicknessMm: true, sheetSize: true, units: true, sheetsPerUnit: true, sheetsUsed: true, note: true,
+      thicknessMm: true, sheetSize: true, units: true, sheetsPerUnit: true, actualPerUnit: true, sheetsUsed: true, note: true,
     },
     orderBy: [{ month: "desc" }, { material: "asc" }, { thicknessMm: "asc" }],
   });

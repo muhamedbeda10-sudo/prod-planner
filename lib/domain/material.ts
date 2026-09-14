@@ -102,17 +102,28 @@ export function sheetsDifference(forJob: number, used: number | null): number | 
 
 // ---- the tab's addition: what the produced units really consumed ----
 
-/** The sheet's real rate: sheets actually nested per unit of the job. Null
- *  until the job is nested, or when the sheet names no units. */
-export function actualPerUnit(used: number | null, units: number): number | null {
+/**
+ * Sheets actually nested for ONE unit.
+ *
+ * The sheet states this outright, and where it did the stored figure IS the
+ * sheet's — it is passed straight back. Dividing the job's sheets by the units
+ * to recover it was a round trip through a rounded product: what the tab
+ * showed was never quite what the sheet said, and a line with no units lost
+ * the rate entirely.
+ *
+ * The division survives only as the fallback for a line that has no rate of
+ * its own — one typed by hand, or imported before the column was kept.
+ */
+export function actualPerUnit(stored: number | null, used: number | null, units: number): number | null {
+  if (stored !== null && stored >= 0) return stored;
   if (used === null || !(units > 0)) return null;
   return used / units;
 }
 
-/** Sheets the produced units really consumed, at the job's actual rate.
- *  50 sheets nested for 30 units, 5 produced → 8.333. */
-export function sheetsForProduced(used: number | null, units: number, produced: number | null): number | null {
-  const rate = actualPerUnit(used, units);
+/** Sheets the produced units really consumed, at that rate. 1.667 a unit with
+ *  5 produced → 8.333. */
+export function sheetsForProduced(stored: number | null, used: number | null, units: number, produced: number | null): number | null {
+  const rate = actualPerUnit(stored, used, units);
   if (rate === null || produced === null) return null;
   return round3(rate * produced);
 }
@@ -131,6 +142,8 @@ export interface MaterialLineInput {
   thicknessMm: number;
   sheetSize: string;
   sheetsPerUnit: number; // No. of Sheets in BOM for one Unit
+  /** "Actual Nesting for one Unit", exactly as the sheet writes it. */
+  actualPerUnit: number | null;
   sheetsUsed: number | null; // No. of Sheets in Actual Nesting for Job
   producedQty: number | null; // units produced so far
   note: string | null;
@@ -141,7 +154,6 @@ export interface MaterialLineView extends MaterialLineInput {
   soi: string | null; // the BOM's orders' SOIs, joined
   forJob: number; // sheets for the job
   difference: number | null; // forJob − sheetsUsed
-  actualPerUnit: number | null; // sheetsUsed / units
   forProduced: number | null; // actualPerUnit × producedQty
   updatedISO: string;
   recordedBy: string | null;

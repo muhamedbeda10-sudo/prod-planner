@@ -21,7 +21,7 @@ export interface MaterialPageData {
 type Row = {
   id: number; month: string; bom: string; mo: string; units: number; partCode: string; partName: string; materialCode: string;
   material: string; thicknessMm: number;
-  sheetSize: string; sheetsPerUnit: number; sheetsUsed: number | null; producedQty: number | null;
+  sheetSize: string; sheetsPerUnit: number; actualPerUnit: number | null; sheetsUsed: number | null; producedQty: number | null;
   note: string | null; recordedBy: string | null; updatedAt: Date;
 };
 
@@ -35,8 +35,10 @@ function toView(r: Row, soiByBom: Record<string, string>): MaterialLineView {
     soi: soiByBom[r.bom] ?? null,
     forJob,
     difference: sheetsDifference(forJob, r.sheetsUsed),
-    actualPerUnit: actualPerUnit(r.sheetsUsed, r.units),
-    forProduced: sheetsForProduced(r.sheetsUsed, r.units, r.producedQty),
+    // the sheet's own rate where there is one; the old division only where
+    // the line predates the column or was typed in by hand
+    actualPerUnit: actualPerUnit(r.actualPerUnit, r.sheetsUsed, r.units),
+    forProduced: sheetsForProduced(r.actualPerUnit, r.sheetsUsed, r.units, r.producedQty),
     updatedISO: r.updatedAt.toISOString().slice(0, 10),
     recordedBy: r.recordedBy,
   };
@@ -121,14 +123,14 @@ export async function importNestingTracker(
   for (const r of rows) {
     const cur = byKey.get(`${r.bom}|${r.partCode}|${r.material}|${r.thicknessMm}|${r.sheetSize}`);
     const same = cur && cur.units === r.units && cur.sheetsPerUnit === r.sheetsPerUnit
-      && cur.sheetsUsed === r.sheetsUsed && cur.partName === r.partName && cur.materialCode === r.materialCode
+      && cur.actualPerUnit === r.actualPerUnit && cur.sheetsUsed === r.sheetsUsed && cur.partName === r.partName && cur.materialCode === r.materialCode
       && (cur.note ?? null) === (r.note ?? cur.note ?? null);
     if (!cur) added += 1; else if (same) unchanged += 1; else updated += 1;
     if (preview || same) continue;
 
     const data = {
       units: r.units, partName: r.partName, materialCode: r.materialCode,
-      sheetsPerUnit: r.sheetsPerUnit, sheetsUsed: r.sheetsUsed,
+      sheetsPerUnit: r.sheetsPerUnit, actualPerUnit: r.actualPerUnit, sheetsUsed: r.sheetsUsed,
       // a blank note in the sheet must not erase one typed in the tab
       ...(r.note !== null ? { note: r.note } : {}),
       recordedBy,
