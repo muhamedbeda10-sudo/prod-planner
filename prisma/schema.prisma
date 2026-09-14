@@ -781,6 +781,10 @@ model MaterialUsage {
   // figure imported, and with no units on the line it vanished. Everything the
   // tab multiplies — the job, a produced quantity — multiplies THIS.
   actualPerUnit Float?
+  // The rate was TYPED in the tab rather than read off the sheet. A re-import
+  // then leaves it alone: the planner types it for the lines the sheet does
+  // not carry, and a fresh sheet must never blank what he worked out.
+  actualPerUnitManual Boolean @default(false)
   sheetsUsed    Float? // No. of Sheets in Actual Nesting for Job — blank until nested
   producedQty   Float? // units actually produced so far — the daily entry
   note          String?

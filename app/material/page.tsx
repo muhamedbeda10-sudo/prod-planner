@@ -41,10 +41,10 @@ export default async function MaterialPage({
     "No. of Sheets in Actual Nesting for Job": l.sheetsUsed ?? "",
     Difference: l.difference ?? "",
     Notes: l.note ?? "",
+    Quantity: l.producedQty ?? "",
+    "Actual for Quantity": l.forProduced ?? "",
     Month: l.month,
     SOI: l.soi ?? "",
-    "Units Produced": l.producedQty ?? "",
-    "Sheets Used for Produced": l.forProduced ?? "",
   }));
 
   return (

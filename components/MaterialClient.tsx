@@ -11,7 +11,7 @@ import { monthInputFromLabel } from "@/lib/domain/dates";
 import { Soi } from "@/components/ui";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
-  createMaterialLine, updateMaterialLine, setSheetsUsed, setProducedQty, deleteMaterialLine, importMaterialAction,
+  createMaterialLine, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, deleteMaterialLine, importMaterialAction,
   deleteMaterialMonth,
 } from "@/app/material/actions";
 
@@ -25,7 +25,12 @@ import {
 // rate). Sheets-for-job, actual-per-unit and Difference are computed, never
 // typed, so they can never disagree.
 
-const cellInput = "w-20 px-2 py-1 text-sm font-bold tabnum ltr text-center";
+const cellInput = "px-2 py-1 text-sm font-bold tabnum ltr text-center";
+
+/** The sheet's own column names are sentences ("No. of Sheets in Actual
+ *  Nesting for one Unit"), so a header cell wraps to a few words wide instead
+ *  of pushing the table off the screen. */
+const TH = "p-2 align-bottom max-w-[7.5rem] whitespace-normal leading-tight";
 
 function useAction() {
   const router = useRouter();
@@ -139,6 +144,9 @@ function LineFields({ line, month, knownBoms, knownCodes, disabled }: { line?: M
       <Field hint="No. of Sheets in BOM for ONE unit" className="w-24">
         <input name="sheetsPerUnit" type="number" step="0.0001" min="0" aria-label="Sheets per unit" defaultValue={line?.sheetsPerUnit ?? ""} required disabled={disabled} placeholder="per unit" className={`${F} ltr tabnum w-full`} />
       </Field>
+      <Field hint="No. of Sheets in Actual Nesting for ONE unit — the sheet's own figure; type it for the lines it leaves blank" className="w-24">
+        <input name="actualPerUnit" type="number" step="0.0001" min="0" aria-label="Sheets actually nested for one unit" defaultValue={line?.actualPerUnit ?? ""} disabled={disabled} placeholder="per unit" className={`${F} ltr tabnum w-full`} />
+      </Field>
       <Field hint="No. of Sheets in Actual Nesting for the job — leave empty until nested" className="w-24">
         <input name="sheetsUsed" type="number" step="0.01" min="0" aria-label="Sheets actually nested" defaultValue={line?.sheetsUsed ?? ""} disabled={disabled} placeholder="actual" className={`${F} ltr tabnum w-full font-extrabold`} />
       </Field>
@@ -154,9 +162,10 @@ function LineFields({ line, month, knownBoms, knownCodes, disabled }: { line?: M
 
 // ---- one editable number cell (actual nested · units produced) ----
 
-function CellInput({ id, field, value, action, title, bold }: {
-  id: number; field: "sheetsUsed" | "producedQty"; value: number | null;
+function CellInput({ id, field, value, action, title, bold, step = "0.01", className = "w-20" }: {
+  id: number; field: "actualPerUnit" | "sheetsUsed" | "producedQty"; value: number | null;
   action: (fd: FormData) => Promise<{ ok: boolean; error?: string }>; title: string; bold?: boolean;
+  step?: string; className?: string;
 }) {
   const a = useAction();
   const [draft, setDraft] = useState(value === null ? "" : String(value));
@@ -171,10 +180,10 @@ function CellInput({ id, field, value, action, title, bold }: {
   return (
     <span className="inline-flex flex-col items-center">
       <input
-        type="number" step="0.01" min="0" value={draft} disabled={a.pending}
+        type="number" step={step} min="0" value={draft} disabled={a.pending}
         onChange={(e) => setDraft(e.target.value)} onBlur={save}
         onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-        placeholder="—" title={title} className={`${cellInput} ${bold ? "font-extrabold" : ""}`}
+        placeholder="—" title={title} className={`${cellInput} ${bold ? "font-extrabold" : ""} ${className}`.trim()}
       />
       {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
     </span>
@@ -188,13 +197,11 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth }: { l
   const edit = useAction();
   const del = useAction();
   const diffCls = line.difference === null ? "" : line.difference < 0 ? "text-bad-fg" : line.difference > 0 ? "text-ok-fg" : "text-muted";
-  const cols = 19 + (showMonth ? 1 : 0);
+  const cols = 18 + (showMonth ? 1 : 0);
   return (
     <>
       <tr className="border-t">
-        {showMonth && <td className="p-2 whitespace-nowrap text-xs">{line.month || <span className="text-muted">—</span>}</td>}
         <td className="p-2 font-bold whitespace-nowrap ltr">{line.bom}</td>
-        <td className="p-2 whitespace-nowrap"><Soi soi={line.soi} /></td>
         <td className="p-2 text-center tabnum ltr">{line.units}</td>
         <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{line.partCode || <span className="text-muted">—</span>}</td>
         <td className="p-2 whitespace-nowrap text-xs">{line.partName || <span className="text-muted">—</span>}</td>
@@ -204,18 +211,38 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth }: { l
         <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
         <td className="p-2 text-center"><Sheets v={line.sheetsPerUnit} digits={4} /></td>
         <td className="p-2 text-center font-bold"><Sheets v={line.forJob} /></td>
-        <td className="p-2 text-center text-muted" title="Sheets actually nested ÷ quantity of units"><Sheets v={line.actualPerUnit} digits={4} /></td>
+        {/* Actual / unit — the sheet's own figure where it carries one, and
+            typed here for the lines it leaves blank (most of them). What is
+            typed outranks the sheet: a re-import fills the blanks and leaves
+            these standing. It is the rate everything below multiplies. */}
+        <td className="p-2 text-center">
+          {canEdit ? (
+            <CellInput
+              id={line.id} field="actualPerUnit" value={line.actualPerUnit} action={setActualPerUnit} step="0.0001"
+              className={`w-24 ${line.actualPerUnitManual ? "font-semibold" : "text-muted font-normal"}`}
+              title={line.actualPerUnitManual
+                ? "Sheets for ONE unit — typed here, so a re-import will not change it. Clear the box to hand it back to the sheet."
+                : "Sheets for ONE unit, as the nesting sheet writes it. Type over it and it becomes yours — the import stops touching it."}
+            />
+          ) : (
+            <span className={line.actualPerUnitManual ? "font-semibold" : "text-muted"} title={line.actualPerUnitManual ? "Typed in this tab" : "From the nesting sheet"}>
+              <Sheets v={line.actualPerUnit} digits={4} />
+            </span>
+          )}
+        </td>
         <td className="p-2 text-center">
           {canEdit ? <CellInput id={line.id} field="sheetsUsed" value={line.sheetsUsed} action={setSheetsUsed} title="No. of Sheets in Actual Nesting for the job" bold /> : <Sheets v={line.sheetsUsed} className="font-extrabold" />}
         </td>
         <td className={`p-2 text-center font-extrabold ${diffCls}`}><Sheets v={line.difference} /></td>
+        <td className="p-2 text-xs max-w-[200px]">{line.note}</td>
         <td className="p-2 text-center bg-brand-light/30">
-          {canEdit ? <CellInput id={line.id} field="producedQty" value={line.producedQty} action={setProducedQty} title="Units produced so far" /> : <Sheets v={line.producedQty} />}
+          {canEdit ? <CellInput id={line.id} field="producedQty" value={line.producedQty} action={setProducedQty} title="The quantity to cost — the tab multiplies the actual rate by it" /> : <Sheets v={line.producedQty} />}
         </td>
-        <td className="p-2 text-center font-extrabold bg-brand-light/30" title={line.actualPerUnit === null ? "Nest the job first — the rate comes from the actual nesting" : `${Number(line.actualPerUnit.toFixed(4))} sheets per unit, actually`}>
+        <td className="p-2 text-center font-extrabold bg-brand-light/30" title={line.actualPerUnit === null ? "No rate yet — type one under Actual Nesting for one Unit, or nest the job" : `${Number(line.actualPerUnit.toFixed(4))} sheets a unit × the quantity beside it`}>
           <Sheets v={line.forProduced} />
         </td>
-        <td className="p-2 text-xs max-w-[200px]">{line.note}</td>
+        {showMonth && <td className="p-2 whitespace-nowrap text-xs">{line.month || <span className="text-muted">—</span>}</td>}
+        <td className="p-2 whitespace-nowrap"><Soi soi={line.soi} /></td>
         <td className="p-2 text-center whitespace-nowrap no-print">
           {canEdit ? (
             <span className="inline-flex gap-1">
@@ -259,7 +286,7 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth }: { l
 // A BOM is never one line: the sheet runs five to seven thicknesses under the
 // same BOM, units and sheet size. A successful add clears only what changes
 // from line to line and returns the cursor to the material.
-const PER_LINE = ["partCode", "partName", "material", "thicknessMm", "sheetsPerUnit", "sheetsUsed", "producedQty", "note"] as const;
+const PER_LINE = ["partCode", "partName", "material", "thicknessMm", "sheetsPerUnit", "actualPerUnit", "sheetsUsed", "producedQty", "note"] as const;
 
 function AddLine({ month, knownBoms, knownCodes, startOpen }: { month: string; knownBoms: string[]; knownCodes: string[]; startOpen: boolean }) {
   const add = useAction();
@@ -369,7 +396,7 @@ function TotalsTable({ totals }: { totals: MaterialTotal[] }) {
             <th className="p-2">Material</th><th className="p-2 text-center">Thk (mm)</th><th className="p-2 text-center">Sheet size</th>
             <th className="p-2 text-center" title="Sheets the BOMs call for">Sheets for job</th>
             <th className="p-2 text-center" title="Sheets actually nested">Actual nested</th>
-            <th className="p-2 text-center" title="Sheets the produced units really consumed">Used for produced</th>
+            <th className="p-2 text-center" title="Sheets the entered quantities really take, at each line's actual rate">Actual for quantity</th>
             <th className="p-2 text-center">Not nested yet</th>
           </tr>
         </thead>
@@ -486,25 +513,30 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-brand text-white text-left">
-                  {showMonth && <th className="p-2">Month</th>}
-                  <th className="p-2">BOM Ref</th>
-                  <th className="p-2" title="Sales order item">SOI</th>
-                  <th className="p-2 text-center" title="Quantity of Units">Units</th>
-                  <th className="p-2" title="Part Code">Part</th>
-                  <th className="p-2" title="Part Name">Part name</th>
-                  <th className="p-2" title="Codes — the material's code">Codes</th>
-                  <th className="p-2">Material</th>
-                  <th className="p-2 text-center">Thk (mm)</th>
-                  <th className="p-2 text-center">Sheet size</th>
-                  <th className="p-2 text-center" title="No. of Sheets in BOM for one Unit">BOM / unit</th>
-                  <th className="p-2 text-center" title="No. of Sheets in BOM for Job = per unit × units">BOM for job</th>
-                  <th className="p-2 text-center" title="No. of Sheets in Actual Nesting for one Unit = actual for job ÷ units">Actual / unit</th>
-                  <th className="p-2 text-center" title="No. of Sheets in Actual Nesting for Job — type here">Actual for job</th>
-                  <th className="p-2 text-center" title="BOM for job − actual for job. Red = ate more than the BOM allows">Difference</th>
-                  <th className="p-2 text-center bg-brand-dark" title="Units produced so far — type here">Produced</th>
-                  <th className="p-2 text-center bg-brand-dark" title="Sheets the produced units really consumed, at the job's actual rate">Sheets used for produced</th>
-                  <th className="p-2">Notes</th>
+                {/* The Nesting Tracker's OWN columns, in the sheet's order and
+                    under the sheet's own names, so the tab reads as the sheet
+                    does. Then the two this tab adds — the quantity he types and
+                    what it really costs — and last the app's own identity
+                    columns, which the sheet has never carried. */}
+                <tr className="bg-brand text-white text-left align-bottom">
+                  <th className={TH}>BOM Ref</th>
+                  <th className={`${TH} text-center`}>Quantity of Units</th>
+                  <th className={TH}>Part Code</th>
+                  <th className={TH}>Part Name</th>
+                  <th className={TH} title="The material's code on the sheet">Codes</th>
+                  <th className={TH}>Material</th>
+                  <th className={`${TH} text-center`}>Thickness (mm)</th>
+                  <th className={`${TH} text-center`}>Sheet Size</th>
+                  <th className={`${TH} text-center`}>No. of Sheets in BOM for one Unit</th>
+                  <th className={`${TH} text-center`} title="Per unit × units">No. of Sheets in BOM for Job</th>
+                  <th className={`${TH} text-center`} title="From the nesting sheet, or typed here for the lines it leaves blank">No. of Sheets in Actual Nesting for one Unit</th>
+                  <th className={`${TH} text-center`} title="Type here">No. of Sheets in Actual Nesting for Job</th>
+                  <th className={`${TH} text-center`} title="BOM for Job − Actual Nesting for Job. Red = ate more than the BOM allows">Difference</th>
+                  <th className={TH}>Notes</th>
+                  <th className={`${TH} text-center bg-brand-dark`} title="Type the quantity you want costed — it does not have to be the whole job">Quantity</th>
+                  <th className={`${TH} text-center bg-brand-dark`} title="Actual Nesting for one Unit × the quantity beside it — the sheets that quantity really takes">Actual for Quantity</th>
+                  {showMonth && <th className={TH}>Month</th>}
+                  <th className={TH} title="Sales order item — from the order registry, not from the sheet">SOI</th>
                   <th className="p-2 no-print" />
                 </tr>
               </thead>

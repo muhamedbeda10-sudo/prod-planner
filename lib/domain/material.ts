@@ -120,6 +120,22 @@ export function actualPerUnit(stored: number | null, used: number | null, units:
   return used / units;
 }
 
+/**
+ * Is the line's rate the planner's OWN after an edit that sets it to `typed`?
+ *
+ * The nesting sheet does not carry a rate for every line — most of them show a
+ * dash — so the tab lets him type one. What he types has to outrank the sheet:
+ * a re-import must fill the blanks and leave his figures standing.
+ *
+ * Clearing the box hands the line back to the sheet. Typing a different figure
+ * makes it his. Saving the line without touching the box leaves it as it was,
+ * so re-saving an imported line does not quietly claim it.
+ */
+export function rateIsTyped(was: { actualPerUnit: number | null; actualPerUnitManual: boolean }, typed: number | null): boolean {
+  if (typed === null) return false;
+  return was.actualPerUnitManual || typed !== was.actualPerUnit;
+}
+
 /** Sheets the produced units really consumed, at that rate. 1.667 a unit with
  *  5 produced → 8.333. */
 export function sheetsForProduced(stored: number | null, used: number | null, units: number, produced: number | null): number | null {
@@ -151,6 +167,9 @@ export interface MaterialLineInput {
 
 export interface MaterialLineView extends MaterialLineInput {
   id: number;
+  /** The rate was typed in the tab, not read off the sheet — a re-import
+   *  leaves it alone. */
+  actualPerUnitManual: boolean;
   soi: string | null; // the BOM's orders' SOIs, joined
   forJob: number; // sheets for the job
   difference: number | null; // forJob − sheetsUsed
