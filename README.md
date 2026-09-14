@@ -101,8 +101,11 @@ mobile drawer still lists every view flat, since it has the vertical room.
    updated, never doubled); the planner then moves the Status in place (Pending, Done, Blocked …) —
    moving it to Done stamps the moment, shown under the pill and exported as "Done at" — and
    keeps Notes on it — a list with time and author, each deletable on its own. A filter row (search across
-   SOI, FG-CODE, MO, product and notes; product; status; with/without notes) sticks between visits, as
-   does the day. Exports in the sheet's own headers. A row can also be **born from the daily log**: every
+   SOI, FG-CODE, MO, product and notes; product; status; closing; with/without notes) sticks between visits,
+   as does the day. **The day's counts are themselves filters** — clicking "19 not closed" narrows to those
+   nineteen, clicking again clears it, and each count is taken with its own filter lifted so the numbers hold
+   still while they are toggled. "Not closed" is every status that is not a closing, which the exact-match
+   status select cannot express. Exports in the sheet's own headers. A row can also be **born from the daily log**: every
    painting record (and the core frame's shot blast) writes its own row here on the same day with the SOI,
    product and qty, MO left empty for the office to type in place — the FG-CODE is copied from the last row
    of the same SOI and product, or composed from the part code and the transformer's BOM and flagged

@@ -209,6 +209,13 @@ export type OdooNoteFilter = keyof typeof ODOO_NOTE_FILTERS;
 export const ODOO_MO_FILTERS = { all: "MO: any", missing: "Needs MO", guessed: "Check FG-CODE" } as const;
 export type OdooMoFilter = keyof typeof ODOO_MO_FILTERS;
 
+/** Whether a row has been closed in Odoo yet. The status select matches ONE
+ *  status exactly; this is the reading the planner actually works from —
+ *  "what is still open" is every status that is not a closing, whichever of
+ *  them it happens to be. */
+export const ODOO_CLOSED_FILTERS = { all: "Closing: any", open: "Not closed", done: "Done" } as const;
+export type OdooClosedFilter = keyof typeof ODOO_CLOSED_FILTERS;
+
 export interface OdooFilters {
   /** Matches SOI, FG-CODE, MO#, product and every note — case-insensitive, any part. */
   q: string;
@@ -217,9 +224,11 @@ export interface OdooFilters {
   notes: OdooNoteFilter;
   /** Rows born from a closing that still wait for Odoo's MO, or whose FG-CODE was guessed. */
   mo: OdooMoFilter;
+  /** Closed in Odoo, still open, or both. */
+  closed: OdooClosedFilter;
 }
 
-export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "", notes: "all", mo: "all" };
+export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "", notes: "all", mo: "all", closed: "all" };
 
 export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): OdooEntryView[] {
   const q = f.q.trim().toLowerCase();
@@ -230,6 +239,8 @@ export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): Odo
     if (f.notes === "without" && e.notes.length > 0) return false;
     if (f.mo === "missing" && e.odooMo.trim() !== "") return false;
     if (f.mo === "guessed" && !e.fgGuessed) return false;
+    if (f.closed === "open" && e.done) return false;
+    if (f.closed === "done" && !e.done) return false;
     if (q) {
       const hay = [e.soi ?? "", e.fgCode, e.odooMo, e.product, e.status, ...e.notes.map((n) => n.text)].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;

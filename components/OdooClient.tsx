@@ -3,8 +3,8 @@
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import {
-  ODOO_PRODUCTS, ODOO_STATUSES, ODOO_NOTE_FILTERS, ODOO_MO_FILTERS, EMPTY_ODOO_FILTERS, filterOdooEntries,
-  type OdooEntryView, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter, type OdooMoFilter,
+  ODOO_PRODUCTS, ODOO_STATUSES, ODOO_NOTE_FILTERS, ODOO_MO_FILTERS, ODOO_CLOSED_FILTERS, EMPTY_ODOO_FILTERS, filterOdooEntries,
+  type OdooEntryView, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter, type OdooMoFilter, type OdooClosedFilter,
 } from "@/lib/domain/odoo";
 import { sourceLabel } from "@/lib/domain/odooMirror";
 import { Soi } from "@/components/ui";
@@ -550,11 +550,30 @@ function readSavedFilters(raw: string): OdooFilters {
   const o = parseSaved(raw);
   const notes = savedString(o, "notes");
   const mo = savedString(o, "mo");
+  const closed = savedString(o, "closed");
   return {
     q: savedString(o, "q"), product: savedString(o, "product"), status: savedString(o, "status"),
     notes: notes in ODOO_NOTE_FILTERS ? (notes as OdooNoteFilter) : "all",
     mo: mo in ODOO_MO_FILTERS ? (mo as OdooMoFilter) : "all",
+    closed: closed in ODOO_CLOSED_FILTERS ? (closed as OdooClosedFilter) : "all",
   };
+}
+
+/** One of the day's counts, as a filter. Reads as the sentence it always was
+ *  until it is hovered or picked — a count that filters must not look like a
+ *  button parked in the middle of a line of prose. */
+function CountFilter({ n, label, tone, on, title, onClick }: { n: number; label: string; tone: string; on: boolean; title: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${title}${on ? " — click again to show them all" : ""}`}
+      aria-pressed={on}
+      className={`font-bold rounded px-1 -mx-0.5 transition-colors hover:bg-surface-2 ${tone} ${on ? "ring-2 ring-brand bg-surface-2" : ""}`}
+    >
+      {n} {label}
+    </button>
+  );
 }
 
 function FilterBar({ entries, filters, onChange, shown }: { entries: OdooEntryView[]; filters: OdooFilters; onChange: (f: OdooFilters) => void; shown: number }) {
@@ -578,6 +597,9 @@ function FilterBar({ entries, filters, onChange, shown }: { entries: OdooEntryVi
       <select aria-label="Status" title="Status" className={SEL} value={filters.status} onChange={(e) => set({ status: e.target.value })}>
         <option value="">Status: all</option>
         {statuses.map((st) => <option key={st} value={st}>{st}</option>)}
+      </select>
+      <select aria-label="Closing" title="Closed in Odoo, still open, or both" className={SEL} value={filters.closed} onChange={(e) => set({ closed: e.target.value as OdooClosedFilter })}>
+        {(Object.keys(ODOO_CLOSED_FILTERS) as OdooClosedFilter[]).map((k) => <option key={k} value={k}>{ODOO_CLOSED_FILTERS[k]}</option>)}
       </select>
       <select aria-label="Notes" title="Rows with or without notes" className={SEL} value={filters.notes} onChange={(e) => set({ notes: e.target.value as OdooNoteFilter })}>
         {(Object.keys(ODOO_NOTE_FILTERS) as OdooNoteFilter[]).map((k) => <option key={k} value={k}>{ODOO_NOTE_FILTERS[k]}</option>)}
@@ -648,17 +670,58 @@ export function OdooClient({
   const bomsOf = (soi: string | null) => soiBoms[(soi ?? "").trim().toUpperCase()] ?? NO_BOMS;
   const { filters, setFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_ODOO_FILTERS);
   const shown = useMemo(() => filterOdooEntries(entries, filters), [entries, filters]);
-  const done = shown.filter((e) => e.done).length;
-  const needMo = shown.filter((e) => !e.odooMo).length;
+  // Each count is taken with its OWN filter lifted, so the numbers hold still
+  // while they are toggled — a count that collapses to 0 the moment you use it
+  // cannot be clicked back off.
+  const byClosing = useMemo(() => filterOdooEntries(entries, { ...filters, closed: "all" }), [entries, filters]);
+  const done = byClosing.filter((e) => e.done).length;
+  const open = byClosing.length - done;
+  const needMo = useMemo(
+    () => filterOdooEntries(entries, { ...filters, mo: "all" }).filter((e) => !e.odooMo).length,
+    [entries, filters]
+  );
   return (
     <div className="space-y-5">
       <ElsewhereBanner day={day} onDay={entries.length} totalRows={totalRows} openRows={openRows} />
       {entries.length > 0 && <FilterBar entries={entries} filters={filters} onChange={setFilters} shown={shown.length} />}
       {shown.length > 0 && (
-        <div className="text-sm text-muted">
-          {shown.length} row(s){day !== "all" ? ` on ${day}` : ""} · <span className="text-ok-fg font-bold">{done} done</span> ·{" "}
-          <span className="text-bad-fg font-bold">{shown.length - done} not closed</span>
-          {needMo > 0 && <> · <span className="text-warn-fg font-bold" title="Rows written by a painting / shot-blast record, waiting for Odoo's MO">{needMo} need MO</span></>}
+        // The counts ARE the filters: the planner reads "19 not closed" and the
+        // next thing he wants is those nineteen. Clicking one narrows to it,
+        // clicking it again clears it, and it stacks with the filter row above
+        // rather than replacing it.
+        <div className="text-sm text-muted flex flex-wrap items-center gap-x-1 gap-y-1 no-print">
+          <span>{shown.length} row(s){day !== "all" ? ` on ${day}` : ""}</span>
+          <span aria-hidden>·</span>
+          <CountFilter
+            n={done}
+            label="done"
+            tone="text-ok-fg"
+            on={filters.closed === "done"}
+            title="Only the rows Odoo has closed"
+            onClick={() => setFilters({ ...filters, closed: filters.closed === "done" ? "all" : "done" })}
+          />
+          <span aria-hidden>·</span>
+          <CountFilter
+            n={open}
+            label="not closed"
+            tone="text-bad-fg"
+            on={filters.closed === "open"}
+            title="Only the rows still waiting to close, whatever status they carry"
+            onClick={() => setFilters({ ...filters, closed: filters.closed === "open" ? "all" : "open" })}
+          />
+          {(needMo > 0 || filters.mo === "missing") && (
+            <>
+              <span aria-hidden>·</span>
+              <CountFilter
+                n={needMo}
+                label="need MO"
+                tone="text-warn-fg"
+                on={filters.mo === "missing"}
+                title="Rows written by a painting / shot-blast record, waiting for Odoo's MO"
+                onClick={() => setFilters({ ...filters, mo: filters.mo === "missing" ? "all" : "missing" })}
+              />
+            </>
+          )}
         </div>
       )}
       <section className="bg-surface border rounded-xl overflow-hidden">
