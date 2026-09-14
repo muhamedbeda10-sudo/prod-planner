@@ -66,18 +66,24 @@ describe("the sheet's formula columns", () => {
 
 describe("what the produced units really consumed", () => {
   it("answers the planner's question: 50 sheets made 30 units, I made 5", () => {
-    expect(actualPerUnit(50, 30)).toBeCloseTo(1.6667, 4);
-    expect(sheetsForProduced(50, 30, 5)).toBe(8.333);
+    // the sheet's own rate is handed straight back, never re-derived
+    expect(actualPerUnit(1.6667, 50, 30)).toBe(1.6667);
+    expect(sheetsForProduced(1.6667, null, 0, 5)).toBe(8.334);
+    // …and the division only stands in where the line carries no rate
+    expect(actualPerUnit(null, 50, 30)).toBeCloseTo(1.6667, 4);
+    expect(sheetsForProduced(null, 50, 30, 5)).toBe(8.333);
   });
   it("uses the job's ACTUAL rate, not the BOM's", () => {
     // BOM says 1.243/unit; the nester actually used 17 for 22 units
-    expect(sheetsForProduced(17, 22, 22)).toBe(17);
-    expect(sheetsForProduced(17, 22, 11)).toBe(8.5);
+    expect(sheetsForProduced(null, 17, 22, 22)).toBe(17);
+    expect(sheetsForProduced(null, 17, 22, 11)).toBe(8.5);
   });
   it("stays blank until the job is nested, or when nothing was produced yet", () => {
-    expect(sheetsForProduced(null, 30, 5)).toBeNull();
-    expect(sheetsForProduced(50, 30, null)).toBeNull();
-    expect(actualPerUnit(50, 0)).toBeNull(); // no units on the sheet — no rate
+    expect(sheetsForProduced(null, null, 30, 5)).toBeNull();
+    expect(sheetsForProduced(null, 50, 30, null)).toBeNull();
+    expect(actualPerUnit(null, 50, 0)).toBeNull(); // nothing to divide by, and no rate of its own
+    // …but a line WITH the sheet's rate keeps it even with no units at all
+    expect(actualPerUnit(0.568, null, 0)).toBe(0.568);
   });
 });
 

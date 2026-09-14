@@ -5,7 +5,7 @@ function line(over: Partial<NestingLine> & { id: number }): NestingLine {
   return {
     month: "September 2026", bom: "14003E11M11", partCode: "FB-022", partName: "TANK",
     materialCode: "C-SHR-004", material: "HR Sheet", thicknessMm: 4, sheetSize: "1220*2440",
-    units: 29, sheetsPerUnit: 2.504, sheetsUsed: 73, note: null,
+    units: 29, sheetsPerUnit: 2.504, actualPerUnit: null, sheetsUsed: 73, note: null,
     ...over,
   };
 }
@@ -200,5 +200,31 @@ describe("variance of actual against BOM", () => {
     const need = materialNeed(none, "FB-022-Y", 4, "September 2026")!;
     expect(need.totalVariancePct).toBeNull();
     expect(need.offBom).toBe(0);
+  });
+});
+
+describe("materialNeed — the rate the popup multiplies is the sheet's own", () => {
+  const key = nestingKey("FB-022", "14003E11M11");
+
+  it("takes the line's stored rate rather than dividing the job's sheets again", () => {
+    // 0.568 a unit is what the sheet said; 17.6 over 29 units is the stale
+    // "for Job" column that the division would have recovered
+    const l: NestingLookup = { [key]: [line({ id: 1, actualPerUnit: 0.568, sheetsUsed: 16.472, units: 29 })] };
+    const need = materialNeed(l, "FB-022-14003E11M11", 10, "September 2026")!;
+    expect(need.lines[0].actualPerUnit).toBe(0.568);
+    expect(need.lines[0].forQtyActual).toBe(5.68);
+  });
+
+  it("still divides for a line that carries no rate of its own", () => {
+    const l: NestingLookup = { [key]: [line({ id: 1, actualPerUnit: null, sheetsUsed: 58, units: 29 })] };
+    const need = materialNeed(l, "FB-022-14003E11M11", 10, "September 2026")!;
+    expect(need.lines[0].actualPerUnit).toBe(2);
+    expect(need.lines[0].forQtyActual).toBe(20);
+  });
+
+  it("keeps a rate even when the line names no units at all", () => {
+    const l: NestingLookup = { [key]: [line({ id: 1, actualPerUnit: 0.5, sheetsUsed: null, units: 0 })] };
+    const need = materialNeed(l, "FB-022-14003E11M11", 8, "September 2026")!;
+    expect(need.lines[0].forQtyActual).toBe(4);
   });
 });

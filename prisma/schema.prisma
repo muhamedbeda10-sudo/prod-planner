@@ -775,6 +775,12 @@ model MaterialUsage {
   thicknessMm   Float
   sheetSize     String // "1220*2440"
   sheetsPerUnit Float // No. of Sheets in BOM for one Unit
+  // "No. of Sheets in Actual Nesting for one Unit", STORED AS THE SHEET WRITES
+  // IT. It used to be derived back out of sheetsUsed ÷ units, which is a
+  // round trip through a rounded product: the figure shown was never quite the
+  // figure imported, and with no units on the line it vanished. Everything the
+  // tab multiplies — the job, a produced quantity — multiplies THIS.
+  actualPerUnit Float?
   sheetsUsed    Float? // No. of Sheets in Actual Nesting for Job — blank until nested
   producedQty   Float? // units actually produced so far — the daily entry
   note          String?
