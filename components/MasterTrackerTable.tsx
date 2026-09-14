@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setOrderPriority, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
+import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setOrderPriority, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num, Soi } from "@/components/ui";
 import { RingCard } from "@/components/ProgressRing";
@@ -14,7 +14,7 @@ import { PrintScope } from "@/components/PrintHeader";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle } from "@/components/PlanViewToggle";
 import { ITEMS, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
-import { capsFor, isFullyDelivered, spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
+import { agreedSpec, capsFor, finsTotal, isFullyDelivered, spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -120,6 +120,21 @@ export function MasterTrackerTable({
   // never touches them. One cell at a time, keyed "mo|field".
   const [specEdit, setSpecEdit] = useState<string | null>(null);
   const [specVal, setSpecVal] = useState("");
+
+  // the same three cells on a merged BOM row, where one value covers every MO
+  function saveGroupSpec(bom: string, field: SpecField) {
+    const fd = new FormData();
+    fd.set("bom", bom);
+    fd.set("field", field);
+    fd.set("value", specVal);
+    startTransition(async () => {
+      const res = await setGroupOrderSpec(fd);
+      if (res.ok) {
+        setSpecEdit(null);
+        router.refresh();
+      } else setCellErr(res.error ?? "Failed");
+    });
+  }
 
   function saveSpec(mo: string, field: SpecField) {
     const fd = new FormData();
@@ -602,11 +617,6 @@ export function MasterTrackerTable({
               const gAch = gReq > 0 ? gComplete / gReq : null;
               const urgentCount = members.filter((m) => m.urgent).length;
               const gKva = members.find((m) => m.kva)?.kva ?? "—";
-              // a group shows a spec only when its MOs agree on it
-              const shared = (pick: (m: MasterTrackerRow) => string | null) => {
-                const vals = [...new Set(members.map(pick).filter((v): v is string => !!v))];
-                return vals.length === 1 ? vals[0] : vals.length === 0 ? "—" : "…";
-              };
               return (
                 <Fragment key={`g|${gBom}`}>
                   <tr
@@ -631,11 +641,11 @@ export function MasterTrackerTable({
                       <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">{gBom}</Link>
                     </td>
                     <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{gKva}</td>
-                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.colorRal)}</td>
-                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.crcSize)}</td>
-                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{shared((m) => m.sfm)}</td>
+                    {groupSpecCell(gBom, members, "colorRal")}
+                    {groupSpecCell(gBom, members, "crcSize")}
+                    {groupSpecCell(gBom, members, "sfm")}
                     <td className="p-2 text-center font-bold"><Num v={gReq} /></td>
-                    <td className="p-2 text-xs whitespace-nowrap text-center" style={FINS_CELL}>{shared((m) => m.fins)}</td>
+                    {groupFinsCell(gBom, members)}
                     {ITEMS.map((it) =>
                       scoped ? (
                         <Fragment key={it}>
@@ -711,6 +721,68 @@ export function MasterTrackerTable({
         ) : (
           <span className={val ? "font-semibold" : tinted ? "opacity-60" : "text-muted"}>{val || "—"}</span>
         )}
+      </td>
+    );
+  }
+
+  /** The same spec cell on a MERGED BOM row. The value there stands for the
+   *  whole group, so typing it writes it to EVERY MO underneath — the planner
+   *  sets a BOM's colour once, not once per MO. A group whose MOs disagree
+   *  reads "…" until he types a value, which then makes them agree. */
+  function groupSpecCell(gBom: string, members: MasterTrackerRow[], field: SpecField) {
+    const key = `g|${gBom}|${field}`;
+    const val = agreedSpec(members.map((m) => m[field]));
+    const label = SPEC_TITLE[field].split(" —")[0];
+    const shown = val === null ? "…" : val || "—";
+    const note = `${label} — typing it here sets the SAME value on all ${members.length} MOs of ${gBom}`;
+    return (
+      <td key={field} className="p-2 text-xs whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
+        {specEdit === key ? (
+          <input
+            value={specVal}
+            autoFocus
+            onChange={(e) => setSpecVal(e.target.value)}
+            onBlur={() => saveGroupSpec(gBom, field)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveGroupSpec(gBom, field);
+              if (e.key === "Escape") setSpecEdit(null);
+            }}
+            className="w-20 border rounded-md px-1 py-0.5 text-center bg-surface"
+            disabled={pending}
+            aria-label={`${label} for every MO of ${gBom}`}
+          />
+        ) : can("tracker.qty") ? (
+          <button
+            type="button"
+            className={`w-full ${val ? "font-semibold" : "text-muted"}`}
+            title={note}
+            onClick={() => { setCellErr(""); setSpecEdit(key); setSpecVal(val ?? ""); }}
+          >
+            {shown}
+          </button>
+        ) : (
+          <span className={val ? "font-semibold" : "text-muted"}>{shown}</span>
+        )}
+      </td>
+    );
+  }
+
+  /** Fins on a merged row is a COUNT, not a shared spec: its figure is the sum
+   *  of the MOs under it, the way every other number on this row is. It only
+   *  adds up while each MO's Fins reads as a number — the column is free text,
+   *  and a group holding "2 rows" beside "3" would sum to nonsense, so that
+   *  one falls back to the agreed-value reading instead. */
+  function groupFinsCell(gBom: string, members: MasterTrackerRow[]) {
+    const fins = members.map((m) => m.fins);
+    const total = finsTotal(fins);
+    const agreed = agreedSpec(fins);
+    return (
+      <td
+        className="p-2 text-xs whitespace-nowrap text-center font-semibold tabnum"
+        style={FINS_CELL}
+        title={total !== null ? `Fins across the ${members.length} MOs of ${gBom}: ${fins.filter(Boolean).join(" + ")}` : "Fins — expand the group to set it per MO"}
+      >
+        {total !== null ? total.toLocaleString(undefined, { maximumFractionDigits: 2 }) : agreed === null ? "…" : agreed || <span className="opacity-60">—</span>}
       </td>
     );
   }

@@ -144,3 +144,35 @@ export function capsFor(m: ChainState, dept: string): { add: number; sub: number
     : m.delivered;
   return { add, sub };
 }
+
+// ---- the spec columns on a merged BOM row ----
+
+/**
+ * What a group of MOs says about one spec column: the value when they agree,
+ * `""` when none of them carries it, and `null` when they disagree.
+ *
+ * Setting a spec on the group row writes the SAME value to every MO under it,
+ * so the three readings are what the row has to tell apart before that: a
+ * value to show, an empty cell to fill, or a genuine disagreement the planner
+ * is about to overwrite.
+ */
+export function agreedSpec(values: readonly (string | null | undefined)[]): string | null {
+  const seen = [...new Set(values.map((v) => v?.trim() ?? "").filter((v) => v !== ""))];
+  return seen.length === 0 ? "" : seen.length === 1 ? seen[0] : null;
+}
+
+/**
+ * Fins on a merged row is a COUNT, not a shared spec: the group's figure is
+ * the sum of the MOs under it, like every other number on that row.
+ *
+ * The column is free text, though — a group holding "2 rows" beside "3" would
+ * sum to nonsense — so it adds up only while every MO that carries a Fins
+ * value reads as a number. Anything else returns null and the row falls back
+ * to the agreed-value reading.
+ */
+export function finsTotal(values: readonly (string | null | undefined)[]): number | null {
+  const written = values.map((v) => v?.trim() ?? "").filter((v) => v !== "");
+  if (written.length === 0) return null;
+  const nums = written.map(Number);
+  return nums.every((n) => Number.isFinite(n)) ? nums.reduce((a, b) => a + b, 0) : null;
+}

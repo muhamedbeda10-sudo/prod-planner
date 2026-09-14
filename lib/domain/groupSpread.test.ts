@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { capsFor, isFullyDelivered, spreadOverGroup, spreadWords, type ChainState, type GroupMember } from "./groupSpread";
+import { agreedSpec, capsFor, finsTotal, isFullyDelivered, spreadOverGroup, spreadWords, type ChainState, type GroupMember } from "./groupSpread";
 
 const m = (mo: string, capAdd: number, capSub = 0): GroupMember => ({ mo, capAdd, capSub });
 
@@ -137,5 +137,47 @@ describe("capsFor — the chain guard as room to move", () => {
     expect(capsFor(st({ cut: 6, weld: 2 }), "Cut").sub).toBe(4);
     expect(capsFor(st({ weld: 6, paint: 4 }), "Welding").sub).toBe(2);
     expect(capsFor(st({ weld: 6, shp: 5, paintExempt: true }), "Welding").sub).toBe(1);
+  });
+});
+
+describe("agreedSpec — one value for the whole BOM, or none", () => {
+  it("gives the value back when every MO already carries it", () => {
+    expect(agreedSpec(["RAL 7035", "RAL 7035", " RAL 7035 "])).toBe("RAL 7035");
+  });
+
+  it("ignores the MOs that have nothing written", () => {
+    expect(agreedSpec(["RAL 7035", null, "", "   ", undefined])).toBe("RAL 7035");
+  });
+
+  it("is empty when nobody carries it — the cell is there to be filled", () => {
+    expect(agreedSpec([null, "", undefined])).toBe("");
+  });
+
+  it("reports a disagreement rather than picking a side", () => {
+    expect(agreedSpec(["RAL 7035", "RAL 9002"])).toBeNull();
+  });
+});
+
+describe("finsTotal — the merged row adds Fins up like every other number", () => {
+  it("sums the MOs under the row", () => {
+    expect(finsTotal(["12", "8", "4"])).toBe(24);
+  });
+
+  it("counts only the MOs that carry a figure", () => {
+    expect(finsTotal(["12", null, "", "8"])).toBe(20);
+  });
+
+  it("keeps a fractional count as it was typed", () => {
+    expect(finsTotal(["1.5", "2.25"])).toBe(3.75);
+  });
+
+  it("refuses to add free text up — the column is not a number field", () => {
+    expect(finsTotal(["12", "2 rows"])).toBeNull();
+    expect(finsTotal(["—"])).toBeNull();
+  });
+
+  it("has nothing to total when no MO carries Fins", () => {
+    expect(finsTotal([null, "", undefined])).toBeNull();
+    expect(finsTotal([])).toBeNull();
   });
 });
