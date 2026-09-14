@@ -105,7 +105,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
    as does the day. **The day's counts are themselves filters** — clicking "19 not closed" narrows to those
    nineteen, clicking again clears it, and each count is taken with its own filter lifted so the numbers hold
    still while they are toggled. "Not closed" is every status that is not a closing, which the exact-match
-   status select cannot express. Exports in the sheet's own headers. A row can also be **born from the daily log**: every
+   status select cannot express, and **"ready to close"** is the office's own queue — still open AND Odoo's MO
+   already on the row, so nothing stands between it and a closing but someone doing it. The three read as one
+   sentence: of the open rows, these are ready and those are still waiting for a number. Exports in the sheet's own headers. A row can also be **born from the daily log**: every
    painting record (and the core frame's shot blast) writes its own row here on the same day with the SOI,
    product and qty, MO left empty for the office to type in place — the FG-CODE is copied from the last row
    of the same SOI and product, or composed from the part code and the transformer's BOM and flagged

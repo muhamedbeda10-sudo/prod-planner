@@ -173,3 +173,32 @@ describe("filterOdooEntries — the day's own counts as filters", () => {
     expect(ids({ closed: "done", q: "nothing" })).toEqual([]);
   });
 });
+
+describe("filterOdooEntries — ready to close: open AND its MO is known", () => {
+  const row = (over: Partial<OdooEntryView>): OdooEntryView => ({
+    id: 1, dateISO: "2026-09-06", soi: "S1", fgCode: "FB-022-X", product: "Tank", odooMo: "SF01/MO/1",
+    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, recordedBy: null,
+    source: "manual", fgGuessed: false, notes: [], ...over,
+  });
+  const rows = [
+    row({ id: 1 }),                                               // open, has MO  → ready
+    row({ id: 2, status: "Blocked" }),                            // open, has MO  → ready
+    row({ id: 3, odooMo: "", source: "painting" }),               // open, no MO
+    row({ id: 4, status: "Done", done: true }),                   // closed
+    row({ id: 5, status: "Done", done: true, odooMo: "" }),       // closed, no MO
+  ];
+  const ids = (f: Partial<typeof EMPTY_ODOO_FILTERS>) => filterOdooEntries(rows, { ...EMPTY_ODOO_FILTERS, ...f }).map((r) => r.id);
+
+  it("'has MO' is the exact opposite of 'needs MO'", () => {
+    expect(ids({ mo: "has" })).toEqual([1, 2, 4]);
+    expect(ids({ mo: "missing" })).toEqual([3, 5]);
+  });
+
+  it("together with 'not closed' it is the office's own queue — waiting on Odoo, nothing else", () => {
+    expect(ids({ closed: "open", mo: "has" })).toEqual([1, 2]);
+  });
+
+  it("leaves out the ones still waiting for their MO, however open they are", () => {
+    expect(ids({ closed: "open", mo: "has" })).not.toContain(3);
+  });
+});

@@ -206,7 +206,7 @@ export function parseOdooSheet(grid: unknown[][]): ParsedOdooSheet {
 export const ODOO_NOTE_FILTERS = { all: "Notes: any", with: "With notes", without: "No notes" } as const;
 export type OdooNoteFilter = keyof typeof ODOO_NOTE_FILTERS;
 
-export const ODOO_MO_FILTERS = { all: "MO: any", missing: "Needs MO", guessed: "Check FG-CODE" } as const;
+export const ODOO_MO_FILTERS = { all: "MO: any", missing: "Needs MO", has: "Has MO", guessed: "Check FG-CODE" } as const;
 export type OdooMoFilter = keyof typeof ODOO_MO_FILTERS;
 
 /** Whether a row has been closed in Odoo yet. The status select matches ONE
@@ -238,6 +238,7 @@ export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): Odo
     if (f.notes === "with" && e.notes.length === 0) return false;
     if (f.notes === "without" && e.notes.length > 0) return false;
     if (f.mo === "missing" && e.odooMo.trim() !== "") return false;
+    if (f.mo === "has" && e.odooMo.trim() === "") return false;
     if (f.mo === "guessed" && !e.fgGuessed) return false;
     if (f.closed === "open" && e.done) return false;
     if (f.closed === "done" && !e.done) return false;
