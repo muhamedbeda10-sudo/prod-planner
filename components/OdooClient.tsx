@@ -680,6 +680,14 @@ export function OdooClient({
     () => filterOdooEntries(entries, { ...filters, mo: "all" }).filter((e) => !e.odooMo).length,
     [entries, filters]
   );
+  // The office's own queue: still open AND Odoo's MO already on the row, so
+  // nothing stands between it and a closing but someone doing it. Faceted on
+  // both filters it controls, so its number holds while it is toggled.
+  const ready = useMemo(
+    () => filterOdooEntries(entries, { ...filters, closed: "all", mo: "all" }).filter((e) => !e.done && !!e.odooMo.trim()).length,
+    [entries, filters]
+  );
+  const readyOn = filters.closed === "open" && filters.mo === "has";
   return (
     <div className="space-y-5">
       <ElsewhereBanner day={day} onDay={entries.length} totalRows={totalRows} openRows={openRows} />
@@ -709,6 +717,19 @@ export function OdooClient({
             title="Only the rows still waiting to close, whatever status they carry"
             onClick={() => setFilters({ ...filters, closed: filters.closed === "open" ? "all" : "open" })}
           />
+          {(ready > 0 || readyOn) && (
+            <>
+              <span aria-hidden>·</span>
+              <CountFilter
+                n={ready}
+                label="ready to close"
+                tone="text-accent"
+                on={readyOn}
+                title="Still open and Odoo's MO is already on the row — nothing is missing but the closing itself"
+                onClick={() => setFilters(readyOn ? { ...filters, closed: "all", mo: "all" } : { ...filters, closed: "open", mo: "has" })}
+              />
+            </>
+          )}
           {(needMo > 0 || filters.mo === "missing") && (
             <>
               <span aria-hidden>·</span>
