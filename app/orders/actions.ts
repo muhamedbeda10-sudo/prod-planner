@@ -69,6 +69,38 @@ export async function setOrderSpec(formData: FormData): Promise<{ ok: boolean; e
   return { ok: true };
 }
 
+/**
+ * The same spec on every MO of a merged BOM row.
+ *
+ * A colour, a CRC size or an SFM belongs to the transformer, not to the slice
+ * of it one MO happens to cover — typing it twelve times down an expanded
+ * group was the planner copying a value the app could have copied itself. So
+ * the group row takes it once and every member gets THAT value, unchanged.
+ * Nothing is split: these are descriptions, not quantities.
+ *
+ * The BOM decides the members, not the page: a stale or filtered view can
+ * never write a spec onto an order that is no longer part of the group.
+ */
+export async function setGroupOrderSpec(formData: FormData): Promise<{ ok: boolean; error?: string; changed?: number }> {
+  const guard = await requirePerm("tracker.qty");
+  if (guard.error) return { ok: false, error: guard.error };
+  const bom = String(formData.get("bom") ?? "").trim().toUpperCase();
+  if (!bom) return { ok: false, error: "Missing BOM." };
+  const field = String(formData.get("field") ?? "");
+  if (!isSpecField(field)) return { ok: false, error: "Unknown spec column." };
+  const raw = String(formData.get("value") ?? "").trim();
+  if (raw.length > 40) return { ok: false, error: `Keep ${SPEC_LABEL[field]} under 40 characters.` };
+
+  const members = await prisma.masterOrder.findMany({ where: { bom }, select: { mo: true } });
+  if (members.length === 0) return { ok: false, error: `No order carries BOM ${bom} — refresh the page.` };
+  const res = await prisma.masterOrder.updateMany({
+    where: { mo: { in: members.map((m) => m.mo) } },
+    data: { [field]: raw || null },
+  });
+  for (const p of ["/tracker", "/orders"]) revalidatePath(p);
+  return { ok: true, changed: res.count };
+}
+
 /** tracker.priority — flag/unflag an order as PRIORITY: it shows in a dedicated
  *  table on top of every dept worklist until its work is done. */
 export async function setOrderPriority(formData: FormData): Promise<{ ok: boolean; error?: string }> {
