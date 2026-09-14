@@ -139,3 +139,37 @@ describe("filterOdooEntries", () => {
     expect(ids({ q: "nothing" })).toEqual([]);
   });
 });
+
+describe("filterOdooEntries — the day's own counts as filters", () => {
+  const row = (over: Partial<OdooEntryView>): OdooEntryView => ({
+    id: 1, dateISO: "2026-09-06", soi: "S1", fgCode: "FB-022-X", product: "Tank", odooMo: "SF01/MO/1",
+    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, recordedBy: null,
+    source: "manual", fgGuessed: false, notes: [], ...over,
+  });
+  const rows = [
+    row({ id: 1 }),
+    row({ id: 2, status: "Done", done: true }),
+    row({ id: 3, status: "Closed", done: true }),
+    row({ id: 4, status: "Blocked" }),
+    row({ id: 5, odooMo: "", source: "painting" }),
+  ];
+  const ids = (f: Partial<typeof EMPTY_ODOO_FILTERS>) => filterOdooEntries(rows, { ...EMPTY_ODOO_FILTERS, ...f }).map((r) => r.id);
+
+  it("shows everything until a closing filter is picked", () => {
+    expect(ids({})).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("'not closed' is every status that is not a closing, not one named status", () => {
+    // Blocked and the default both count as open; Done and Closed do not
+    expect(ids({ closed: "open" })).toEqual([1, 4, 5]);
+  });
+
+  it("'done' takes every closing status, whichever word was used", () => {
+    expect(ids({ closed: "done" })).toEqual([2, 3]);
+  });
+
+  it("stacks with the other filters rather than replacing them", () => {
+    expect(ids({ closed: "open", mo: "missing" })).toEqual([5]);
+    expect(ids({ closed: "done", q: "nothing" })).toEqual([]);
+  });
+});
