@@ -3,8 +3,8 @@
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import {
-  ODOO_PRODUCTS, ODOO_STATUSES, ODOO_NOTE_FILTERS, ODOO_MO_FILTERS, ODOO_CLOSED_FILTERS, EMPTY_ODOO_FILTERS, filterOdooEntries,
-  type OdooEntryView, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter, type OdooMoFilter, type OdooClosedFilter,
+  ODOO_PRODUCTS, ODOO_STATUSES, ODOO_NOTE_FILTERS, ODOO_MO_FILTERS, ODOO_CLOSED_FILTERS, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
+  type OdooEntryView, type OdooGroup, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter, type OdooMoFilter, type OdooClosedFilter,
 } from "@/lib/domain/odoo";
 import { sourceLabel } from "@/lib/domain/odooMirror";
 import { Soi } from "@/components/ui";
@@ -229,8 +229,9 @@ function isBorn(e?: OdooEntryView | null): boolean {
 
 /** One value typed straight into the row and saved on Enter or blur — Odoo's
  *  MO on a born row, or a guessed FG-CODE the office confirms or corrects. */
-function InlineValue({ id, name, value, placeholder, action, warn, hint, list }: {
-  id: number; name: "odooMo" | "fgCode"; value: string; placeholder: string; warn: boolean; hint: string; list?: string;
+function InlineValue({ ids, name, value, placeholder, action, warn, hint, list }: {
+  /** The rows the value is written to — one, or every row of a merged line. */
+  ids: number[]; name: "odooMo" | "fgCode"; value: string; placeholder: string; warn: boolean; hint: string; list?: string;
   action: (fd: FormData) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const a = useAction();
@@ -239,7 +240,7 @@ function InlineValue({ id, name, value, placeholder, action, warn, hint, list }:
     const v = draft.trim();
     if (v === value.trim()) return;
     const fd = new FormData();
-    fd.set("id", String(id));
+    fd.set("ids", ids.join(","));
     fd.set(name, v);
     a.run(action, fd, "Saved.");
   }
@@ -272,8 +273,9 @@ function DoneStamp({ e }: { e: OdooEntryView }) {
   );
 }
 
-function StatusCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
+function StatusCell({ e, canEdit, ids }: { e: OdooEntryView; canEdit: boolean; ids?: number[] }) {
   const a = useAction();
+  const targets = ids ?? [e.id];
   if (!canEdit) {
     return (
       <span className="inline-flex flex-col">
@@ -292,7 +294,7 @@ function StatusCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
         className={`pill ${TONE_PILL[e.tone]} cursor-pointer pe-5 font-semibold`}
         onChange={(ev) => {
           const fd = new FormData();
-          fd.set("id", String(e.id));
+          fd.set("ids", targets.join(","));
           fd.set("status", ev.target.value);
           a.run(setOdooStatus, fd, "Saved.");
         }}
@@ -384,8 +386,11 @@ function NotesCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
   );
 }
 
-function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit }: {
+function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit, inGroup = false }: {
   e: OdooEntryView; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; soiBoms: string[]; canEdit: boolean;
+  /** One of the closings under a merged line — indented, so the line above
+   *  reads as the total of what follows it. */
+  inGroup?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [material, setMaterial] = useState(false);
@@ -403,17 +408,17 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit }: {
   const born = isBorn(e);
   return (
     <>
-      <tr className="border-t hover:bg-surface-2/60">
-        <td className={`${cell} tabnum ltr`} onClick={open} title={rowTitle}>
+      <tr className={`border-t hover:bg-surface-2/60 ${inGroup ? "bg-surface-2/40" : ""}`}>
+        <td className={`${cell} tabnum ltr ${inGroup ? "ps-6" : ""}`} onClick={open} title={rowTitle}>
           <span className="inline-flex flex-col">
-            {e.dateISO}
+            {inGroup ? <span className="text-muted">↳ {e.dateISO}</span> : e.dateISO}
             {born && <span className="pill pill-muted text-[10px] mt-0.5" title="Written by the closing recorded in the daily log — the office fills in Odoo's MO">{sourceLabel(e.source)}</span>}
           </span>
         </td>
         <td className={cell} onClick={open} title={rowTitle}><Soi soi={e.soi} /></td>
         <td className={`${cell} ltr text-xs font-semibold`} onClick={e.fgGuessed && canEdit ? undefined : open} title={e.fgGuessed ? "Composed from the part code and the transformer's BOM — no earlier row of this SOI and product to copy from. Confirm or correct it." : rowTitle}>
           {e.fgGuessed && canEdit ? (
-            <InlineValue id={e.id} name="fgCode" value={e.fgCode} placeholder="FG-CODE" action={setOdooFgCode} warn list="odoo-fg" hint="Guessed FG-CODE — Enter keeps it, or type the right one" />
+            <InlineValue ids={[e.id]} name="fgCode" value={e.fgCode} placeholder="FG-CODE" action={setOdooFgCode} warn list="odoo-fg" hint="Guessed FG-CODE — Enter keeps it, or type the right one" />
           ) : (
             <span className="inline-flex flex-col">
               {e.fgCode || <span className="text-muted">—</span>}
@@ -424,7 +429,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit }: {
         <td className={cell} onClick={open} title={rowTitle}>{e.product}</td>
         <td className={`${cell} ltr text-xs font-bold`} onClick={!e.odooMo && canEdit ? undefined : open} title={e.odooMo ? rowTitle : "Odoo's MO is not known here — type it once the MO is printed from Odoo"}>
           {e.odooMo ? e.odooMo : canEdit ? (
-            <InlineValue id={e.id} name="odooMo" value="" placeholder="SF01/MO/… (Enter)" action={setOdooMo} warn={false} hint="Type Odoo's MO number for this closing — Enter saves" />
+            <InlineValue ids={[e.id]} name="odooMo" value="" placeholder="SF01/MO/… (Enter)" action={setOdooMo} warn={false} hint="Type Odoo's MO number for this closing — Enter saves" />
           ) : (
             <span className="pill pill-warn text-[10px]">needs MO</span>
           )}
@@ -490,6 +495,109 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit }: {
           </td>
         </tr>
       )}
+    </>
+  );
+}
+
+/**
+ * Several closings of the SAME thing, on one line.
+ *
+ * The tab writes a row per closing recorded in the daily log, so painting the
+ * same order three times in a day left three rows reading identically — and
+ * the office typed Odoo's MO into each of them. Here they are one line
+ * carrying the total, and the MO and the status typed on it are written to
+ * every row underneath, so the MO is typed once.
+ *
+ * Nothing is merged in the database: the rows keep their own quantities and
+ * their links to the daily-log records that wrote them, and the line opens to
+ * show them — that is where a single one is edited, noted or deleted.
+ */
+function MergedRow({ g, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit }: {
+  g: OdooGroup; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; soiBoms: string[]; canEdit: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [material, setMaterial] = useState(false);
+  const head = g.rows[0];
+  const ids = g.rows.map((r) => r.id);
+  // the line's material is the material of what it closed in TOTAL — the
+  // whole point of the line is that the office reads one figure, not three
+  const whole = useMemo(() => ({ ...head, qty: g.qty }), [head, g.qty]);
+  const need = useMemo(() => materialNeed(nesting, head.fgCode, g.qty, monthLabelOfISO(head.dateISO), soiBoms), [nesting, head.fgCode, g.qty, head.dateISO, soiBoms]);
+  const closeMaterial = useCallback(() => setMaterial(false), []);
+  const noteCount = g.rows.reduce((n, r) => n + r.notes.length, 0);
+  const guessed = g.rows.some((r) => r.fgGuessed);
+  const born = g.rows.every((r) => isBorn(r));
+  const parts = g.rows.map((r) => r.qty).join(" + ");
+  const cell = "p-2 whitespace-nowrap cursor-pointer";
+  const toggle = () => setOpen((v) => !v);
+  return (
+    <>
+      <tr className={`border-t font-semibold ${open ? "bg-brand-light/40" : "bg-brand-light/20 hover:bg-brand-light/40"} transition-colors`}>
+        <td className={`${cell} tabnum ltr`} onClick={toggle} title={open ? "Hide the closings" : "Show the closings this line adds up"}>
+          <span className="inline-flex flex-col">
+            <span>
+              <span className={`inline-block me-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>▶</span>
+              {head.dateISO}
+            </span>
+            <span className="pill pill-muted text-[10px] mt-0.5" title={born ? "Written by the closings recorded in the daily log" : "Rows that read the same"}>
+              {g.rows.length} closings{born ? " · from the floor" : ""}
+            </span>
+          </span>
+        </td>
+        <td className={cell} onClick={toggle}><Soi soi={head.soi} /></td>
+        <td className={`${cell} ltr text-xs font-semibold`} onClick={toggle}>
+          <span className="inline-flex flex-col">
+            {head.fgCode || <span className="text-muted">—</span>}
+            {guessed && <span className="pill pill-warn text-[10px] mt-0.5" title="Open the line to confirm the guessed code on its rows">check FG-CODE</span>}
+          </span>
+        </td>
+        <td className={cell} onClick={toggle}>{head.product}</td>
+        <td className={`${cell} ltr text-xs font-bold`}>
+          {head.odooMo ? head.odooMo : canEdit ? (
+            <InlineValue
+              ids={ids}
+              name="odooMo"
+              value=""
+              placeholder="SF01/MO/… (Enter)"
+              action={setOdooMo}
+              warn={false}
+              hint={`Type Odoo's MO once — it is written to all ${g.rows.length} closings on this line`}
+            />
+          ) : (
+            <span className="pill pill-warn text-[10px]">needs MO</span>
+          )}
+        </td>
+        <td className="p-2 text-center tabnum font-extrabold cursor-pointer" onClick={toggle} title={`${parts} — the closings on this line`}>{g.qty}</td>
+        <td className="p-2 whitespace-nowrap text-xs align-top">
+          <StatusCell e={head} canEdit={canEdit} ids={ids} />
+        </td>
+        <td className="p-2 text-xs min-w-[18rem] max-w-[28rem] align-top font-normal">
+          {noteCount > 0 ? (
+            <button type="button" className="text-xs text-accent hover:underline" onClick={toggle}>
+              {noteCount} note(s) — open the line to read them
+            </button>
+          ) : (
+            <span className="text-muted text-xs">—</span>
+          )}
+        </td>
+        <td className="p-2 text-center whitespace-nowrap no-print">
+          <span className="inline-flex gap-1">
+            <button
+              type="button"
+              className={`btn btn-sm ${need ? "btn-secondary" : "btn-ghost"}`}
+              title={need ? `Material for all ${g.qty} units: ${need.lines.length} line(s), ${need.totalActual || need.totalBom} sheets` : "No nesting lines for this FG-CODE yet"}
+              onClick={() => setMaterial(true)}
+            >
+              🧱{need ? <span className="tabnum ms-1">{need.totalActual || need.totalBom}</span> : null}
+            </button>
+            <button type="button" className="btn btn-sm" onClick={toggle}>{open ? "Close" : `${g.rows.length} rows`}</button>
+          </span>
+        </td>
+      </tr>
+      {material && <OdooMaterialPopup e={whole} nesting={nesting} soiBoms={soiBoms} onClose={closeMaterial} />}
+      {open && g.rows.map((e) => (
+        <Row key={e.id} e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} soiBoms={soiBoms} canEdit={canEdit} inGroup />
+      ))}
     </>
   );
 }
@@ -670,6 +778,8 @@ export function OdooClient({
   const bomsOf = (soi: string | null) => soiBoms[(soi ?? "").trim().toUpperCase()] ?? NO_BOMS;
   const { filters, setFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_ODOO_FILTERS);
   const shown = useMemo(() => filterOdooEntries(entries, filters), [entries, filters]);
+  // the rows that are the same closing read as one line carrying the total
+  const groups = useMemo(() => groupOdooEntries(shown), [shown]);
   // Each count is taken with its OWN filter lifted, so the numbers hold still
   // while they are toggled — a count that collapses to 0 the moment you use it
   // cannot be clicked back off.
@@ -772,9 +882,11 @@ export function OdooClient({
                 </tr>
               </thead>
               <tbody>
-                {shown.map((e) => (
-                  <Row key={e.id} e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} soiBoms={bomsOf(e.soi)} canEdit={canEdit} />
-                ))}
+                {groups.map((g) => (g.rows.length === 1 ? (
+                  <Row key={g.rows[0].id} e={g.rows[0]} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} soiBoms={bomsOf(g.rows[0].soi)} canEdit={canEdit} />
+                ) : (
+                  <MergedRow key={g.key} g={g} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} soiBoms={bomsOf(g.rows[0].soi)} canEdit={canEdit} />
+                )))}
               </tbody>
             </table>
           </div>

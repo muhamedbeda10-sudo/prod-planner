@@ -242,6 +242,60 @@ export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "",
  * "" when the code does not follow the convention — those rows group together
  * rather than being guessed at.
  */
+// ---- rows that are the SAME closing ----
+
+/**
+ * What makes two close-out rows the same thing.
+ *
+ * The tab writes one row per closing recorded in the daily log, so painting
+ * the same order three times in a day leaves three rows that read identically
+ * — the office then types Odoo's MO into each and closes one MO three times.
+ * They belong on one line, summed.
+ *
+ * The MO is PART of the key, and has to be: rows sharing a day, an SOI and a
+ * finished good very often carry DIFFERENT Odoo MOs (one tranche booked
+ * against SF01/MO/16312, the next against 16323), and those are two closings
+ * that must never be added together. So is the status — a row still to close
+ * and one already Done are not one line, however alike they read.
+ */
+export function odooSameKey(e: Pick<OdooEntryView, "dateISO" | "soi" | "fgCode" | "product" | "odooMo" | "status">): string {
+  return [
+    e.dateISO,
+    (e.soi ?? "").trim().toUpperCase(),
+    e.fgCode.trim().toUpperCase(),
+    e.product.trim().toLowerCase(),
+    e.odooMo.trim().toUpperCase(),
+    e.status.trim().toLowerCase(),
+  ].join("|");
+}
+
+/** The rows of one closing, as the log draws them. */
+export interface OdooGroup {
+  key: string;
+  /** In the order they were given — a group of one is an ordinary row. */
+  rows: OdooEntryView[];
+  /** What the group closed in total. */
+  qty: number;
+}
+
+/** Fold the rows that are the same closing onto one line, keeping the order
+ *  they arrived in (the first row of a group holds its place). */
+export function groupOdooEntries(entries: readonly OdooEntryView[]): OdooGroup[] {
+  const out: OdooGroup[] = [];
+  const byKey = new Map<string, OdooGroup>();
+  for (const e of entries) {
+    const key = odooSameKey(e);
+    let g = byKey.get(key);
+    if (!g) {
+      byKey.set(key, (g = { key, rows: [], qty: 0 }));
+      out.push(g);
+    }
+    g.rows.push(e);
+    g.qty += e.qty;
+  }
+  return out;
+}
+
 export function bomOfFgCode(fgCode: string | null | undefined): string {
   const m = /^[A-Za-z]+-\d+-(.+)$/.exec((fgCode ?? "").trim());
   return m ? m[1].trim().toUpperCase() : "";
