@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bomOfFgCode, blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView } from "./odoo";
+import { groupOdooEntries, odooSameKey, bomOfFgCode, blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView } from "./odoo";
 
 const HEADER = ["Date", "SOI#", "FG-CODE", "Product", "MO#", "QTY", "Status", "Reason"];
 
@@ -224,5 +224,60 @@ describe("bomOfFgCode — the BOM inside Odoo's finished-good code", () => {
     expect(bomOfFgCode("")).toBe("");
     expect(bomOfFgCode(null)).toBe("");
     expect(bomOfFgCode(undefined)).toBe("");
+  });
+});
+
+describe("groupOdooEntries — the rows that are the same closing", () => {
+  const e = (id: number, over: Partial<OdooEntryView> = {}): OdooEntryView => ({
+    id, dateISO: "2026-09-15", soi: "S01264-1", fgCode: "FB-022-14002E14M14", product: "Tank",
+    odooMo: "SF01/MO/16192-002", qty: 3, status: "MO to be close", tone: "muted", done: false,
+    doneAtISO: null, recordedBy: null, source: "painting", fgGuessed: false, notes: [], ...over,
+  });
+
+  it("folds three closings of the same MO onto one line carrying the total", () => {
+    const g = groupOdooEntries([e(1, { qty: 3 }), e(2, { qty: 2 }), e(3, { qty: 4 })]);
+    expect(g).toHaveLength(1);
+    expect(g[0].qty).toBe(9);
+    expect(g[0].rows.map((r) => r.id)).toEqual([1, 2, 3]);
+  });
+
+  it("NEVER folds two different Odoo MOs together, however alike they read", () => {
+    const g = groupOdooEntries([e(1, { odooMo: "SF01/MO/16312" }), e(2, { odooMo: "SF01/MO/16323" })]);
+    expect(g).toHaveLength(2);
+  });
+
+  it("keeps a row still to close apart from one already Done", () => {
+    const g = groupOdooEntries([e(1), e(2, { status: "Done", done: true, tone: "ok" })]);
+    expect(g).toHaveLength(2);
+  });
+
+  it("separates a different day, order, finished good or product", () => {
+    expect(groupOdooEntries([e(1), e(2, { dateISO: "2026-09-14" })])).toHaveLength(2);
+    expect(groupOdooEntries([e(1), e(2, { soi: "S01263-1" })])).toHaveLength(2);
+    expect(groupOdooEntries([e(1), e(2, { fgCode: "FB-051-14002E14M14" })])).toHaveLength(2);
+    expect(groupOdooEntries([e(1), e(2, { product: "Top Cover" })])).toHaveLength(2);
+  });
+
+  it("groups the born rows still waiting for an MO, so it is typed once", () => {
+    const g = groupOdooEntries([e(1, { odooMo: "" }), e(2, { odooMo: "" })]);
+    expect(g).toHaveLength(1);
+    expect(g[0].rows.map((r) => r.id)).toEqual([1, 2]);
+  });
+
+  it("holds each group's place in the order it arrived", () => {
+    const g = groupOdooEntries([e(1), e(2, { soi: "S01263-1" }), e(3)]);
+    expect(g.map((x) => x.rows.map((r) => r.id))).toEqual([[1, 3], [2]]);
+  });
+
+  it("reads a spelling or a case difference as the same thing", () => {
+    expect(odooSameKey(e(1, { odooMo: "sf01/mo/16192-002" }))).toBe(odooSameKey(e(2)));
+    expect(odooSameKey(e(1, { product: "tank" }))).toBe(odooSameKey(e(2)));
+  });
+
+  it("leaves a lone row as a group of one — an ordinary row", () => {
+    const g = groupOdooEntries([e(1, { qty: 5 })]);
+    expect(g).toHaveLength(1);
+    expect(g[0].rows).toHaveLength(1);
+    expect(g[0].qty).toBe(5);
   });
 });

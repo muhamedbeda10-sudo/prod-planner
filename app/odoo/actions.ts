@@ -120,16 +120,27 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
 
 /** Type Odoo's MO onto a row born from a closing — the clerk's one missing
  *  column, filled in place. */
+/** The rows an action applies to: one id, or the `ids` of a merged line —
+ *  the log folds the rows that are the same closing onto one line, and the MO
+ *  and the status typed there belong to every row under it. */
+function idsOf(formData: FormData): number[] {
+  const many = String(formData.get("ids") ?? "").split(",").map((x) => Number(x.trim())).filter(Number.isInteger);
+  if (many.length > 0) return [...new Set(many)];
+  const one = Number(formData.get("id"));
+  return Number.isInteger(one) ? [one] : [];
+}
+
 export async function setOdooMo(formData: FormData): Promise<OdooActionResult> {
   const guard = await requirePerm("odoo.edit");
   if (guard.error) return { ok: false, error: guard.error };
-  const id = Number(formData.get("id"));
-  if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
+  const ids = idsOf(formData);
+  if (ids.length === 0) return { ok: false, error: "Invalid entry." };
   const odooMo = text(formData.get("odooMo")).toUpperCase();
-  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { ledgerId: true } });
-  if (!prev) return { ok: false, error: "That row no longer exists." };
-  if (!odooMo && prev.ledgerId === null) return { ok: false, error: "Enter the Odoo MO number." };
-  await prisma.odooEntry.update({ where: { id }, data: { odooMo, recordedBy: guard.user?.name ?? null } });
+  const prev = await prisma.odooEntry.findMany({ where: { id: { in: ids } }, select: { ledgerId: true } });
+  if (prev.length === 0) return { ok: false, error: "That row no longer exists." };
+  // a typed row must keep an MO; a born one may be emptied back to "no MO yet"
+  if (!odooMo && prev.some((p) => p.ledgerId === null)) return { ok: false, error: "Enter the Odoo MO number." };
+  await prisma.odooEntry.updateMany({ where: { id: { in: ids } }, data: { odooMo, recordedBy: guard.user?.name ?? null } });
   revalidateOdoo();
   return { ok: true };
 }
@@ -153,15 +164,20 @@ export async function setOdooFgCode(formData: FormData): Promise<OdooActionResul
 export async function setOdooStatus(formData: FormData): Promise<OdooActionResult> {
   const guard = await requirePerm("odoo.edit");
   if (guard.error) return { ok: false, error: guard.error };
-  const id = Number(formData.get("id"));
-  if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
+  const ids = idsOf(formData);
+  if (ids.length === 0) return { ok: false, error: "Invalid entry." };
   const status = text(formData.get("status"));
   if (!status) return { ok: false, error: "Pick a status." };
-  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { status: true, doneAt: true, date: true } });
-  if (!prev) return { ok: false, error: "That row no longer exists." };
-  // the planner closing a row is closing it NOW, whatever day it was logged
-  const doneAt = !isDoneStatus(status) ? null : isDoneStatus(prev.status) && prev.doneAt ? prev.doneAt : new Date();
-  await prisma.odooEntry.update({ where: { id }, data: { status, doneAt, recordedBy: guard.user?.name ?? null } });
+  const prev = await prisma.odooEntry.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, doneAt: true } });
+  if (prev.length === 0) return { ok: false, error: "That row no longer exists." };
+  // the planner closing a row is closing it NOW, whatever day it was logged —
+  // but a row already Done keeps the moment it was closed on
+  const now = new Date();
+  const by = guard.user?.name ?? null;
+  await prisma.$transaction(prev.map((p) => {
+    const doneAt = !isDoneStatus(status) ? null : isDoneStatus(p.status) && p.doneAt ? p.doneAt : now;
+    return prisma.odooEntry.update({ where: { id: p.id }, data: { status, doneAt, recordedBy: by } });
+  }));
   revalidateOdoo();
   return { ok: true };
 }
