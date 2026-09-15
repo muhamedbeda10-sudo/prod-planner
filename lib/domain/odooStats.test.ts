@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildOdooDashboard, pctChange, periodLabel, previousPeriod, productSeries, resolveBasis, resolvePeriod, shortDayLabel } from "./odooStats";
+import { bomOptions, buildOdooDashboard, matchesBom, pctChange, periodLabel, previousPeriod, productSeries, resolveBasis, resolveBom, resolvePeriod, shortDayLabel, type OdooStatRow } from "./odooStats";
 
 describe("productSeries", () => {
   it("folds the sheet's product names however typed, keeps any other product by name, Other only for none", () => {
@@ -228,5 +228,67 @@ describe("buildOdooDashboard", () => {
     expect(d.totals).toEqual([]);
     expect(d.series).toEqual([]);
     expect(d.kpi.qtyPerActiveDay).toBe(0);
+  });
+});
+
+describe("narrowing the dashboard to one BOM", () => {
+  const period = { range: "custom" as const, fromISO: "2026-09-01", toISO: "2026-09-03" };
+  const r = (dateISO: string, bom: string, qty: number, product = "Tank"): OdooStatRow =>
+    ({ dateISO, product, qty, status: "Done", doneISO: dateISO, bom });
+  const rows = [
+    r("2026-09-01", "14003E11M11", 4),
+    r("2026-09-01", "12008E16M18", 3, "Top Cover"),
+    r("2026-09-02", "14003E11M11", 5),
+    r("2026-09-02", "", 2),
+    r("2026-08-20", "71005E14M16", 9), // outside the period
+  ];
+
+  it("reads the BOM from the URL, with all and none spelled out", () => {
+    expect(resolveBom({})).toBeNull();
+    expect(resolveBom({ bom: " " })).toBeNull();
+    expect(resolveBom({ bom: "all" })).toBeNull();
+    expect(resolveBom({ bom: "none" })).toBe("");
+    expect(resolveBom({ bom: "14003e11m11" })).toBe("14003E11M11");
+  });
+
+  it("matches a row against the chosen BOM, and every row when none is chosen", () => {
+    expect(matchesBom(rows[0], null)).toBe(true);
+    expect(matchesBom(rows[0], "14003E11M11")).toBe(true);
+    expect(matchesBom(rows[0], "12008E16M18")).toBe(false);
+    expect(matchesBom(rows[3], "")).toBe(true);
+    expect(matchesBom(rows[0], "")).toBe(false);
+  });
+
+  it("offers the BOMs the period holds, by name, the codeless ones last", () => {
+    expect(bomOptions(rows, period, "closed")).toEqual([
+      { bom: "12008E16M18", rows: 1, qty: 3 },
+      { bom: "14003E11M11", rows: 2, qty: 9 },
+      { bom: "", rows: 1, qty: 2 },
+    ]);
+  });
+
+  it("counts only the chosen BOM's rows", () => {
+    const d = buildOdooDashboard(rows, period, null, "closed", "14003E11M11");
+    expect(d.kpi.qty).toBe(9);
+    expect(d.kpi.rows).toBe(2);
+    expect(d.series).toEqual(["Tank"]);
+    expect(d.bom).toBe("14003E11M11");
+  });
+
+  it("still offers every BOM once one is chosen — the list is the way back", () => {
+    const d = buildOdooDashboard(rows, period, null, "closed", "14003E11M11");
+    expect(d.boms.map((b) => b.bom)).toEqual(["12008E16M18", "14003E11M11", ""]);
+  });
+
+  it("narrows the comparison period the same way", () => {
+    const prev = [r("2026-08-30", "14003E11M11", 2), r("2026-08-30", "12008E16M18", 100)];
+    const d = buildOdooDashboard(rows, period, prev, "closed", "14003E11M11");
+    expect(d.kpi.prevQty).toBe(2);
+  });
+
+  it("counts everything when no BOM is chosen", () => {
+    const d = buildOdooDashboard(rows, period, null, "closed");
+    expect(d.kpi.qty).toBe(14);
+    expect(d.bom).toBeNull();
   });
 });

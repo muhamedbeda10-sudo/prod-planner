@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView } from "./odoo";
+import { bomOfFgCode, blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView } from "./odoo";
 
 const HEADER = ["Date", "SOI#", "FG-CODE", "Product", "MO#", "QTY", "Status", "Reason"];
 
@@ -200,5 +200,29 @@ describe("filterOdooEntries — ready to close: open AND its MO is known", () =>
 
   it("leaves out the ones still waiting for their MO, however open they are", () => {
     expect(ids({ closed: "open", mo: "has" })).not.toContain(3);
+  });
+});
+
+describe("bomOfFgCode — the BOM inside Odoo's finished-good code", () => {
+  it("reads the BOM off a code the part prefix leads", () => {
+    expect(bomOfFgCode("FB-022-14003E11M11")).toBe("14003E11M11");
+    expect(bomOfFgCode("FB-058-10017E11M11")).toBe("10017E11M11");
+    expect(bomOfFgCode("FB-052-00005S11")).toBe("00005S11");
+  });
+
+  it("tidies what it reads, so one BOM is one option", () => {
+    expect(bomOfFgCode("  fb-022-14003e11m11  ")).toBe("14003E11M11");
+  });
+
+  it("keeps a BOM that carries dashes of its own", () => {
+    expect(bomOfFgCode("FB-024-19970-002")).toBe("19970-002");
+  });
+
+  it("gives nothing for a code that does not follow the convention", () => {
+    expect(bomOfFgCode("14003E11M11")).toBe("");
+    expect(bomOfFgCode("FB-022-")).toBe("");
+    expect(bomOfFgCode("")).toBe("");
+    expect(bomOfFgCode(null)).toBe("");
+    expect(bomOfFgCode(undefined)).toBe("");
   });
 });

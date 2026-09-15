@@ -132,9 +132,51 @@ export interface OdooStatRow {
   product: string;
   qty: number;
   status: string;
+  /** The BOM read off the row's FG code — "" when the code does not carry
+   *  one. Absent on rows built before the dashboard could filter by it. */
+  bom?: string;
   /** The day its status was moved to Done — the day the close counts on.
    *  Null (or absent) while it is not done. */
   doneISO?: string | null;
+}
+
+/** One BOM the dashboard can be narrowed to, and what it holds. */
+export interface OdooBomOption {
+  bom: string;
+  rows: number;
+  qty: number;
+}
+
+/** Does this row belong to the BOM the dashboard is narrowed to? `null` is
+ *  every BOM; `""` is the rows whose FG code carries none. */
+export function matchesBom(r: OdooStatRow, bom: string | null): boolean {
+  return bom === null || (r.bom ?? "").trim().toUpperCase() === bom;
+}
+
+/** Read the BOM from the URL: absent or "all" is every BOM, "none" the rows
+ *  whose FG code carries none, anything else that BOM. */
+export function resolveBom(sp: { bom?: string }): string | null {
+  const raw = (sp.bom ?? "").trim();
+  if (!raw || raw.toLowerCase() === "all") return null;
+  if (raw.toLowerCase() === "none") return "";
+  return raw.toUpperCase();
+}
+
+/** The BOM picker's options: every BOM counted in the period on the basis,
+ *  by name, with the rows whose code carries none last. Built from the whole
+ *  period so narrowing to one BOM never empties the list it was chosen from. */
+export function bomOptions(rows: readonly OdooStatRow[], window: { fromISO: string | null; toISO: string }, basis: OdooBasis): OdooBomOption[] {
+  const acc = new Map<string, OdooBomOption>();
+  for (const r of rows) {
+    const day = basisDay(r, basis);
+    if (!day || !inWindow(day, window)) continue;
+    const bom = (r.bom ?? "").trim().toUpperCase();
+    let o = acc.get(bom);
+    if (!o) acc.set(bom, (o = { bom, rows: 0, qty: 0 }));
+    o.rows += 1;
+    o.qty += r.qty;
+  }
+  return [...acc.values()].sort((a, b) => (a.bom === "" ? 1 : 0) - (b.bom === "" ? 1 : 0) || a.bom.localeCompare(b.bom));
 }
 
 export interface OdooDayPoint {
@@ -166,6 +208,10 @@ export interface OdooSeriesTotal {
 export interface OdooDashboardData {
   period: OdooPeriod;
   basis: OdooBasis;
+  /** The BOM everything below is narrowed to — null when it is all of them. */
+  bom: string | null;
+  /** Every BOM the period holds, whatever the narrowing — the picker. */
+  boms: OdooBomOption[];
   /** The comparison window, when the period is bounded. */
   previous: { fromISO: string; toISO: string } | null;
   /** Every product counted in the period on the basis, in drawing order —
@@ -265,17 +311,24 @@ function tally(rows: readonly OdooStatRow[], window: { fromISO: string | null; t
  * and closed can sit side by side. `prevRows` are the previous period's
  * rows, for the comparisons; pass null when there is no previous period.
  */
-export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prevRows: OdooStatRow[] | null = null, basis: OdooBasis = "logged"): OdooDashboardData {
-  const main = tally(rows, period, basis);
-  const logged = basis === "logged" ? main : tally(rows, period, "logged");
-  const closed = basis === "closed" ? main : tally(rows, period, "closed");
-  const doneNowRows = rows.filter((r) => inWindow(r.dateISO, period) && isDoneStatus(r.status)).length;
+export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prevRows: OdooStatRow[] | null = null, basis: OdooBasis = "logged", bom: string | null = null): OdooDashboardData {
+  // the picker lists what the PERIOD holds, not what survives the narrowing —
+  // otherwise choosing a BOM would leave the list with one entry and no way
+  // back to the others
+  const boms = bomOptions(rows, period, basis);
+  const kept = bom === null ? rows : rows.filter((r) => matchesBom(r, bom));
+  const keptPrev = prevRows === null ? null : bom === null ? prevRows : prevRows.filter((r) => matchesBom(r, bom));
+
+  const main = tally(kept, period, basis);
+  const logged = basis === "logged" ? main : tally(kept, period, "logged");
+  const closed = basis === "closed" ? main : tally(kept, period, "closed");
+  const doneNowRows = kept.filter((r) => inWindow(r.dateISO, period) && isDoneStatus(r.status)).length;
 
   const series = orderSeries(main.totals);
 
   // the previous period, per product, for the comparisons — on the same basis
   const prevWindow = previousPeriod(period);
-  const prev = prevRows && prevWindow ? tally(prevRows, prevWindow, basis) : null;
+  const prev = keptPrev && prevWindow ? tally(keptPrev, prevWindow, basis) : null;
 
   const point = (iso: string): OdooDayPoint => {
     const m = main.byDay.get(iso);
@@ -307,6 +360,8 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
   return {
     period,
     basis,
+    bom,
+    boms,
     previous: prevRows ? prevWindow : null,
     series,
     days,

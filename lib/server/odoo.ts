@@ -2,7 +2,7 @@ import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
-import { blockedItem, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView } from "@/lib/domain/odoo";
+import { blockedItem, bomOfFgCode, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView } from "@/lib/domain/odoo";
 import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod, type OdooStatRow } from "@/lib/domain/odooStats";
 import { candidateBoms, nestingKey, type NestingLookup } from "@/lib/domain/odooMaterial";
 
@@ -129,22 +129,24 @@ async function statRows(fromISO: string | null, toISO: string): Promise<OdooStat
         { doneAt: { ...(from ? { gte: new Date(from.getTime() - DAY) } : {}), lt: new Date(to.getTime() + 2 * DAY) } },
       ],
     },
-    select: { date: true, product: true, qty: true, status: true, doneAt: true },
+    select: { date: true, product: true, qty: true, status: true, doneAt: true, fgCode: true },
   });
   return rows.map((r) => ({
     dateISO: toISODate(r.date), product: r.product, qty: r.qty, status: r.status,
     doneISO: r.doneAt ? factoryDayISO(r.doneAt) : null,
+    // the BOM is read off the FG code rather than stored again — see bomOfFgCode
+    bom: bomOfFgCode(r.fgCode),
   }));
 }
 
 /** The dashboard's numbers for one period, compared with the period before it. */
-export async function getOdooDashboard(period: OdooPeriod, basis: OdooBasis = "closed"): Promise<OdooDashboardData> {
+export async function getOdooDashboard(period: OdooPeriod, basis: OdooBasis = "closed", bom: string | null = null): Promise<OdooDashboardData> {
   const prev = previousPeriod(period);
   const [rows, prevRows] = await Promise.all([
     statRows(period.fromISO, period.toISO),
     prev ? statRows(prev.fromISO, prev.toISO) : Promise.resolve(null),
   ]);
-  return buildOdooDashboard(rows, period, prevRows, basis);
+  return buildOdooDashboard(rows, period, prevRows, basis, bom);
 }
 
 // ---- import: the office's sheet, once, its first seven columns ----
