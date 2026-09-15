@@ -415,6 +415,9 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
   const present = d.series;
   const pal = useMemo(() => paletteFor(present), [present]);
   const title = periodLabel(d.period);
+  // a narrowed dashboard must say so on the page, not only in the picker —
+  // printed or screenshotted, the numbers are otherwise the whole plant's
+  const bomLabel = d.bom === null ? null : d.bom === "" ? "rows with no BOM in their code" : d.bom;
   const prevTitle = d.previous ? periodLabel({ range: "custom", fromISO: d.previous.fromISO, toISO: d.previous.toISO }) : null;
   const closedBasis = d.basis === "closed";
   const word = closedBasis ? "closed" : "logged";
@@ -440,9 +443,9 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
       : d.kpi.doneRows > 0 ? ` ${d.kpi.doneRows} row(s) were closed in it — switch to "Closed day" to see them.` : "";
     return (
       <div className="space-y-3">
-        <p className="text-sm text-muted">{title}</p>
+        <p className="text-sm text-muted">{title}{bomLabel && <> · <b className="text-foreground">{bomLabel}</b></>}</p>
         <p className="text-sm text-muted bg-surface border rounded-xl p-4">
-          Nothing {word} in this period.{other} {other ? "" : "Pick a wider one."}
+          Nothing {word} {bomLabel ? "on this BOM " : ""}in this period.{other} {other ? "" : `Pick a wider one${bomLabel ? " or another BOM" : ""}.`}
         </p>
       </div>
     );
@@ -453,9 +456,10 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm">
           <span className="font-bold">{title}</span>
+          {bomLabel && <span> · BOM <b className="text-accent">{bomLabel}</b></span>}
           {prevTitle && <span className="text-muted"> · compared with {prevTitle}</span>}
         </div>
-        <ExportButton rows={exportRows} filename={`odoo-dashboard-${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`} sheetName="By day" />
+        <ExportButton rows={exportRows} filename={`odoo-dashboard-${d.bom ? `${d.bom}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`} sheetName="By day" />
       </div>
 
       <div className="flex flex-wrap gap-3">

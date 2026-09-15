@@ -230,6 +230,23 @@ export interface OdooFilters {
 
 export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "", notes: "all", mo: "all", closed: "all" };
 
+/**
+ * The BOM inside an FG code.
+ *
+ * Odoo's finished-good code is the part code and the BOM joined —
+ * "FB-022-14003E11M11" is the tank of 14003E11M11. It is how the mirror
+ * composes a code for a closing and how the office's sheet writes them, so
+ * the BOM can be read back off any row instead of being stored a second time
+ * and drifting from it. Every one of the rows logged so far parses.
+ *
+ * "" when the code does not follow the convention — those rows group together
+ * rather than being guessed at.
+ */
+export function bomOfFgCode(fgCode: string | null | undefined): string {
+  const m = /^[A-Za-z]+-\d+-(.+)$/.exec((fgCode ?? "").trim());
+  return m ? m[1].trim().toUpperCase() : "";
+}
+
 export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): OdooEntryView[] {
   const q = f.q.trim().toLowerCase();
   return entries.filter((e) => {
