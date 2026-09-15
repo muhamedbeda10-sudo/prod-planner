@@ -161,18 +161,39 @@ export function agreedSpec(values: readonly (string | null | undefined)[]): stri
   return seen.length === 0 ? "" : seen.length === 1 ? seen[0] : null;
 }
 
+
+// ---- FINS on a merged row ----
+
+/** One member of a merged BOM, as the Fins column sees it. */
+export interface FinsRow {
+  mo: string;
+  /** The order quantity — the most tanks this MO could ever have finned. */
+  required: number;
+  /** The Fins column as it stands. Free text, so it may be anything. */
+  fins: string | null;
+}
+
 /**
- * Fins on a merged row is a COUNT, not a shared spec: the group's figure is
- * the sum of the MOs under it, like every other number on that row.
+ * Fins is not a spec, it is a COUNT: how many of the order's tanks carry fins.
+ * The registry writes it at or below the order quantity on every BOM that has
+ * it (39 tanks, 28 finned; 36 tanks, 32 finned), so a merged row spreads a
+ * typed total exactly as it spreads a stage quantity — each MO filled to its
+ * own quantity before the next is touched, a correction off the last MOs
+ * first.
  *
- * The column is free text, though — a group holding "2 rows" beside "3" would
- * sum to nonsense — so it adds up only while every MO that carries a Fins
- * value reads as a number. Anything else returns null and the row falls back
- * to the agreed-value reading.
+ * Null when any MO's Fins is written as text rather than a number: there is no
+ * arithmetic to do then, and guessing would overwrite what the planner wrote.
+ * Those groups stay per-MO.
  */
-export function finsTotal(values: readonly (string | null | undefined)[]): number | null {
-  const written = values.map((v) => v?.trim() ?? "").filter((v) => v !== "");
-  if (written.length === 0) return null;
-  const nums = written.map(Number);
-  return nums.every((n) => Number.isFinite(n)) ? nums.reduce((a, b) => a + b, 0) : null;
+export function finsGroup(rows: readonly FinsRow[]): { members: GroupMember[]; current: number } | null {
+  const members: GroupMember[] = [];
+  let current = 0;
+  for (const r of rows) {
+    const raw = (r.fins ?? "").trim();
+    const n = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(n) || n < 0) return null;
+    current += n;
+    members.push({ mo: r.mo, capAdd: Math.max(0, r.required - n), capSub: n });
+  }
+  return { members, current };
 }

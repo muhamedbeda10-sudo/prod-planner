@@ -11,6 +11,7 @@ import {
 } from "@/lib/domain/shifts";
 import type { ShiftDayData, ShiftLineDTO } from "@/lib/server/shifts";
 import { addDowntime, clearShiftDay, deleteDowntime, saveShiftDay } from "@/app/shifts/actions";
+import { ShiftHoursForm } from "@/components/ShiftHoursForm";
 
 // The shift log — the supervisor's page. One department, one day: every
 // worker on the list with present / shift / overtime / machine, the day's
@@ -97,8 +98,13 @@ function Stat({ label, value, sub, tone = "" }: { label: string; value: string; 
   );
 }
 
-export function ShiftLog({ data, history, canEdit, today }: { data: ShiftDayData; history: { dateISO: string; hours: number }[]; canEdit: boolean; today: string }) {
+export function ShiftLog({ data, history, canEdit, today, canSetHours = false }: {
+  data: ShiftDayData; history: { dateISO: string; hours: number }[]; canEdit: boolean; today: string;
+  /** The planner may set what a shift is worth without leaving this page. */
+  canSetHours?: boolean;
+}) {
   const save = useAction();
+  const [hoursOpen, setHoursOpen] = useState(false);
   const clear = useAction();
   const [draft, setDraft] = useState<Draft[]>(() => data.lines.map(toDraft));
   const byId = useMemo(() => new Map(data.lines.map((l) => [l.workerId, l])), [data.lines]);
@@ -252,6 +258,41 @@ export function ShiftLog({ data, history, canEdit, today }: { data: ShiftDayData
           </div>
         )}
       </section>
+
+      {/* What a shift is worth. The two buttons on every line are CODES — the
+          short shift and the long one — and the hours behind them are the
+          plant's, not the app's: a roster that moves to 8 and 12 is two boxes
+          here, not a code change, and it is set on the page the hours are
+          counted on rather than on a settings screen nobody opens. A day
+          already recorded keeps the code it was recorded under and is simply
+          re-counted, so changing these never rewrites what the floor said. */}
+      {canSetHours && (
+        <section className="bg-surface border rounded-xl no-print">
+          <button
+            type="button"
+            onClick={() => setHoursOpen((v) => !v)}
+            className="w-full flex items-center gap-2 p-3 text-start"
+            aria-expanded={hoursOpen}
+          >
+            <span className={`inline-block transition-transform duration-150 ${hoursOpen ? "rotate-90" : ""}`}>▶</span>
+            <b className="text-sm">Shift hours</b>
+            <span className="text-xs text-muted tabnum">
+              short {round1(hrs.short)} h · long {round1(hrs.long)} h · “+OT” {round1(hrs.overtime)} h
+            </span>
+            <span className="ms-auto text-xs text-muted">{hoursOpen ? "Close" : "Change"}</span>
+          </button>
+          {hoursOpen && (
+            <div className="px-3 pb-3 border-t pt-3">
+              <p className="text-xs text-muted mb-3">
+                The hours the two shift options are worth, and what “+{OT} OT” adds. Every man-hour the app counts uses
+                them — this day’s total, the crew on a machine, the standard times’ calibration. Days already recorded
+                are re-counted with the new figures; for a one-off day, use the Overtime box on the worker’s own line.
+              </p>
+              <ShiftHoursForm short={hrs.short} long={hrs.long} overtime={hrs.overtime} compact />
+            </div>
+          )}
+        </section>
+      )}
 
       {hasMachines && <Downtime data={data} canEdit={canEdit} />}
 

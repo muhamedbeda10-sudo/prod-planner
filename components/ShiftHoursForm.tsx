@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveShiftHours } from "./actions";
+import { saveShiftHours } from "@/app/admin/settings/actions";
 
 // The hours the plant's shifts are worth. Every man-hour the app counts is
 // measured with these — the shift log's day, a machine's crew, the day the
@@ -10,7 +10,12 @@ import { saveShiftHours } from "./actions";
 // The CODE a day was recorded under never changes; only what it is worth
 // does, and it applies from now on wherever hours are read.
 
-export function ShiftHoursForm({ short, long, overtime }: { short: number; long: number; overtime: number }) {
+export function ShiftHoursForm({ short, long, overtime, compact = false }: {
+  short: number; long: number; overtime: number;
+  /** On the shift log the panel sits under the roster, where the heading and
+   *  the explanation are the page's own. */
+  compact?: boolean;
+}) {
   const router = useRouter();
   const [v, setV] = useState({ shiftShortH: String(short), shiftLongH: String(long), overtimeH: String(overtime) });
   const [pending, start] = useTransition();
@@ -34,14 +39,8 @@ export function ShiftHoursForm({ short, long, overtime }: { short: number; long:
     </label>
   );
 
-  return (
-    <section className="bg-surface border rounded-xl p-4 mt-4">
-      <h2 className="text-base font-bold">🕘 Shift hours</h2>
-      <p className="text-xs text-muted mt-0.5 mb-3">
-        What a shift is worth on the shift log, and the overtime the “+OT” button adds. Every man-hour the app counts uses
-        these: the day’s total per department, the crew on a machine, and what the standard times are calibrated against.
-        Days already recorded keep the shift they were recorded under and are re-counted with the new hours.
-      </p>
+  const body = (
+    <>
       <div className="flex flex-wrap gap-4">
         {field("shiftShortH", "Short shift", "the default a worker is on")}
         {field("shiftLongH", "Long shift", "the second option on the log")}
@@ -67,6 +66,20 @@ export function ShiftHoursForm({ short, long, overtime }: { short: number; long:
         </button>
         {msg && <span className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</span>}
       </div>
+    </>
+  );
+
+  if (compact) return body;
+
+  return (
+    <section className="bg-surface border rounded-xl p-4 mt-4">
+      <h2 className="text-base font-bold">🕘 Shift hours</h2>
+      <p className="text-xs text-muted mt-0.5 mb-3">
+        What a shift is worth on the shift log, and the overtime the “+OT” button adds. Every man-hour the app counts uses
+        these: the day’s total per department, the crew on a machine, and what the standard times are calibrated against.
+        Days already recorded keep the shift they were recorded under and are re-counted with the new hours.
+      </p>
+      {body}
     </section>
   );
 }

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
 import { requirePerm, requireAdmin } from "@/lib/server/auth";
 import { applicableItems, ospOf, eligibleItems, isDept, isPaintExempt, deptLabel, itemApplies, parseExcludedItems, ITEMS, DELIVERED_STAGE, type Item } from "@/lib/domain/constants";
-import { isFullyDelivered } from "@/lib/domain/groupSpread";
+import { finsGroup, isFullyDelivered, spreadOverGroup } from "@/lib/domain/groupSpread";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
@@ -81,6 +81,70 @@ export async function setOrderSpec(formData: FormData): Promise<{ ok: boolean; e
  * The BOM decides the members, not the page: a stale or filtered view can
  * never write a spec onto an order that is no longer part of the group.
  */
+/**
+ * FINS typed on a merged BOM row, and spread over the MOs under it.
+ *
+ * Fins is a count of the order's tanks that carry fins, not a property of the
+ * BOM, so this one cannot behave like Colour or CRC: the planner types the
+ * whole BOM's figure and the app fills the MOs the way he would by hand —
+ * the first order finished before the second is touched, a reduction off the
+ * last orders first. Nothing is clamped: a total the MOs cannot hold is
+ * refused whole, naming what would fit.
+ *
+ * The MOs arrive in the order the row shows them, so the fill order is the
+ * one he read in the preview; every one of them is checked against the BOM
+ * here, so a stale or filtered page can never write onto an order that has
+ * since left the group.
+ */
+export async function setGroupFins(formData: FormData): Promise<{ ok: boolean; error?: string; changed?: number }> {
+  const guard = await requirePerm("tracker.qty");
+  if (guard.error) return { ok: false, error: guard.error };
+  const bom = String(formData.get("bom") ?? "").trim().toUpperCase();
+  if (!bom) return { ok: false, error: "Missing BOM." };
+  const mos = [...new Set(String(formData.get("mos") ?? "").split(",").map((m) => m.trim()).filter(Boolean))];
+  if (mos.length === 0) return { ok: false, error: "The group has no MOs to spread over." };
+
+  const raw = String(formData.get("total") ?? "").trim();
+  const total = raw === "" ? 0 : Number(raw);
+  if (!Number.isInteger(total) || total < 0) return { ok: false, error: "Type the BOM's whole Fins count — a whole number, 0 or more." };
+
+  const orders = await prisma.masterOrder.findMany({
+    where: { mo: { in: mos } },
+    select: { mo: true, bom: true, planQty: true, fins: true },
+  });
+  const byMo = new Map(orders.map((o) => [o.mo, o]));
+  if (mos.some((mo) => byMo.get(mo)?.bom !== bom)) {
+    return { ok: false, error: `An MO in the group is no longer on ${bom} — refresh the page.` };
+  }
+  const rows = mos.map((mo) => {
+    const o = byMo.get(mo)!;
+    return { mo, required: o.planQty, fins: o.fins };
+  });
+
+  const group = finsGroup(rows);
+  if (!group) {
+    return { ok: false, error: "One of these MOs has Fins written as text, not a number — set those MOs one at a time." };
+  }
+  const spread = spreadOverGroup(group.members, total - group.current);
+  if (spread.left > 0) {
+    const tanks = rows.reduce((s, r) => s + r.required, 0);
+    return { ok: false, error: `Only ${group.current + spread.fits} fit — the ${rows.length} MOs carry ${tanks} tanks in all.` };
+  }
+  if (spread.alloc.length === 0) return { ok: true, changed: 0 };
+
+  const now = new Map(rows.map((r) => [r.mo, Number((r.fins ?? "").trim() || 0)]));
+  await prisma.$transaction(
+    spread.alloc.map((a) => {
+      const v = (now.get(a.mo) ?? 0) + a.qty;
+      // nothing finned reads as an empty cell, the way it does before anyone
+      // types on the line — "0 of them" and "none" are the same thing here
+      return prisma.masterOrder.update({ where: { mo: a.mo }, data: { fins: v > 0 ? String(v) : null } });
+    })
+  );
+  for (const p of ["/tracker", "/orders"]) revalidatePath(p);
+  return { ok: true, changed: spread.alloc.length };
+}
+
 export async function setGroupOrderSpec(formData: FormData): Promise<{ ok: boolean; error?: string; changed?: number }> {
   const guard = await requirePerm("tracker.qty");
   if (guard.error) return { ok: false, error: guard.error };
