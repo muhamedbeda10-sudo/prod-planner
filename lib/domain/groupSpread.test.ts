@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agreedSpec, capsFor, finsTotal, isFullyDelivered, spreadOverGroup, spreadWords, type ChainState, type GroupMember } from "./groupSpread";
+import { agreedSpec, capsFor, finsGroup, isFullyDelivered, spreadOverGroup, spreadWords, type ChainState, type GroupMember } from "./groupSpread";
 
 const m = (mo: string, capAdd: number, capSub = 0): GroupMember => ({ mo, capAdd, capSub });
 
@@ -158,26 +158,63 @@ describe("agreedSpec — one value for the whole BOM, or none", () => {
   });
 });
 
-describe("finsTotal — the merged row adds Fins up like every other number", () => {
-  it("sums the MOs under the row", () => {
-    expect(finsTotal(["12", "8", "4"])).toBe(24);
+
+describe("finsGroup — typing the whole BOM's Fins on the merged row", () => {
+  const rows = [
+    { mo: "MO-1", required: 10, fins: "10" },
+    { mo: "MO-2", required: 6, fins: "2" },
+    { mo: "MO-3", required: 4, fins: null },
+  ];
+
+  it("adds up what the MOs already carry", () => {
+    expect(finsGroup(rows)!.current).toBe(12);
   });
 
-  it("counts only the MOs that carry a figure", () => {
-    expect(finsTotal(["12", null, "", "8"])).toBe(20);
+  it("gives each MO room up to its own order quantity, and back what it carries", () => {
+    expect(finsGroup(rows)!.members).toEqual([
+      { mo: "MO-1", capAdd: 0, capSub: 10 },
+      { mo: "MO-2", capAdd: 4, capSub: 2 },
+      { mo: "MO-3", capAdd: 4, capSub: 0 },
+    ]);
   });
 
-  it("keeps a fractional count as it was typed", () => {
-    expect(finsTotal(["1.5", "2.25"])).toBe(3.75);
+  it("fills the MOs in order when the group total goes up", () => {
+    const g = finsGroup(rows)!;
+    // 12 → 18: MO-1 is full, MO-2 takes its last 4, MO-3 takes the other 2
+    expect(spreadOverGroup(g.members, 18 - g.current).alloc).toEqual([
+      { mo: "MO-2", qty: 4 },
+      { mo: "MO-3", qty: 2 },
+    ]);
   });
 
-  it("refuses to add free text up — the column is not a number field", () => {
-    expect(finsTotal(["12", "2 rows"])).toBeNull();
-    expect(finsTotal(["—"])).toBeNull();
+  it("takes a reduction off the LAST MOs first", () => {
+    const g = finsGroup(rows)!;
+    expect(spreadOverGroup(g.members, 5 - g.current).alloc).toEqual([
+      { mo: "MO-2", qty: -2 },
+      { mo: "MO-1", qty: -5 },
+    ]);
   });
 
-  it("has nothing to total when no MO carries Fins", () => {
-    expect(finsTotal([null, "", undefined])).toBeNull();
-    expect(finsTotal([])).toBeNull();
+  it("reports what will not fit rather than finning more tanks than exist", () => {
+    const g = finsGroup(rows)!;
+    const s = spreadOverGroup(g.members, 25 - g.current);
+    expect(s.fits).toBe(8); // 20 tanks in all, 12 already finned
+    expect(s.left).toBe(5);
+  });
+
+  it("can always be cleared back to nothing", () => {
+    const g = finsGroup(rows)!;
+    expect(spreadOverGroup(g.members, -g.current).left).toBe(0);
+  });
+
+  it("refuses the whole group when one MO's Fins is text", () => {
+    expect(finsGroup([{ mo: "MO-1", required: 10, fins: "2 rows" }])).toBeNull();
+    expect(finsGroup([{ mo: "MO-1", required: 10, fins: "-3" }])).toBeNull();
+  });
+
+  it("treats an MO with nothing written as nothing finned yet", () => {
+    const g = finsGroup([{ mo: "MO-1", required: 5, fins: "  " }])!;
+    expect(g.current).toBe(0);
+    expect(g.members[0]).toEqual({ mo: "MO-1", capAdd: 5, capSub: 0 });
   });
 });

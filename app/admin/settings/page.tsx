@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/server/auth";
 import { getSettings } from "@/lib/server/data";
 import { PageHeader } from "@/components/ui";
 import { TankTrackingToggle } from "./TankTrackingToggle";
-import { ShiftHoursForm } from "./ShiftHoursForm";
+import { ShiftHoursForm } from "@/components/ShiftHoursForm";
 
 export const metadata = { title: "Settings — ATC" };
 export const dynamic = "force-dynamic";

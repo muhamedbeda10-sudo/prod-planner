@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setOrderPriority, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
+import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setGroupFins, setOrderPriority, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num, Soi } from "@/components/ui";
 import { RingCard } from "@/components/ProgressRing";
@@ -14,7 +14,7 @@ import { PrintScope } from "@/components/PrintHeader";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle } from "@/components/PlanViewToggle";
 import { ITEMS, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
-import { agreedSpec, capsFor, finsTotal, isFullyDelivered, spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
+import { agreedSpec, capsFor, finsGroup, isFullyDelivered, spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -773,16 +773,76 @@ export function MasterTrackerTable({
    *  and a group holding "2 rows" beside "3" would sum to nonsense, so that
    *  one falls back to the agreed-value reading instead. */
   function groupFinsCell(gBom: string, members: MasterTrackerRow[]) {
-    const fins = members.map((m) => m.fins);
-    const total = finsTotal(fins);
-    const agreed = agreedSpec(fins);
+    const group = finsGroup(members.map((m) => ({ mo: m.mo, required: m.required, fins: m.fins })));
+    const k = `g|${gBom}|fins`;
+    const editing = editKey === k;
+    const editable = group !== null && can("tracker.qty");
+    const added = editing && group ? Number(editVal) - group.current : 0;
+    const tanks = members.reduce((s, m) => s + m.required, 0);
+
+    function save() {
+      const fd = new FormData();
+      fd.set("bom", gBom);
+      fd.set("total", editVal);
+      fd.set("mos", members.map((m) => m.mo).join(","));
+      setCellErr("");
+      startTransition(async () => {
+        const res = await setGroupFins(fd);
+        if (res.ok) {
+          setEditKey(null);
+          router.refresh();
+        } else setCellErr(res.error ?? "Failed");
+      });
+    }
+
     return (
-      <td
-        className="p-2 text-xs whitespace-nowrap text-center font-semibold tabnum"
-        style={FINS_CELL}
-        title={total !== null ? `Fins across the ${members.length} MOs of ${gBom}: ${fins.filter(Boolean).join(" + ")}` : "Fins — expand the group to set it per MO"}
-      >
-        {total !== null ? total.toLocaleString(undefined, { maximumFractionDigits: 2 }) : agreed === null ? "…" : agreed || <span className="opacity-60">—</span>}
+      <td className="p-2 text-xs whitespace-nowrap text-center font-semibold tabnum" style={FINS_CELL} onClick={(e) => e.stopPropagation()}>
+        {editing && group ? (
+          <span className="inline-flex flex-col items-center gap-0.5">
+            <span className="inline-flex items-center gap-1">
+              <input
+                type="number"
+                min={0}
+                max={tanks}
+                value={editVal}
+                autoFocus
+                onChange={(e) => { setEditVal(e.target.value); setCellErr(""); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") save();
+                  if (e.key === "Escape") setEditKey(null);
+                }}
+                className="w-16 border rounded-md px-1 py-0.5 text-center font-bold tabnum bg-surface text-foreground"
+                disabled={pending}
+              />
+              <button type="button" onClick={save} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title={`Save — spread over the ${members.length} MOs in order`}>✓</button>
+              <button type="button" onClick={() => setEditKey(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">✕</button>
+            </span>
+            {/* which MOs the number lands on, before it is saved — the same
+                rule the server writes with */}
+            {added !== 0 && !cellErr && (
+              <span className={`text-[10px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`}>
+                {spreadWords(spreadOverGroup(group.members, added)) || (added > 0 ? `+${added}` : `−${-added}`)}
+              </span>
+            )}
+            {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight font-normal">{cellErr}</span>}
+          </span>
+        ) : editable ? (
+          <button
+            type="button"
+            onClick={() => { setEditKey(k); setEditVal(String(group!.current)); setCellErr(""); }}
+            disabled={pending}
+            className="print-as-text w-full min-w-8 rounded px-1 py-0.5 tabnum hover:ring-2 hover:ring-brand/60 transition-all cursor-text"
+            title={`Fins on the WHOLE BOM — how many of its ${tanks} tanks carry fins. Type the group's figure: it fills each MO to its own quantity before the next, and a reduction comes off the last MOs first.`}
+          >
+            {group!.current > 0 ? group!.current.toLocaleString() : <span className="opacity-60">—</span>}
+          </button>
+        ) : group ? (
+          group.current > 0 ? group.current.toLocaleString() : <span className="opacity-60">—</span>
+        ) : (
+          <span title="One of these MOs has Fins written as text — expand the group and set them one at a time">
+            {agreedSpec(members.map((m) => m.fins)) || "…"}
+          </span>
+        )}
       </td>
     );
   }

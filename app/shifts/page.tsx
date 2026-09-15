@@ -36,7 +36,9 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
         <ShiftDayPicker day={day} today={today} />
       </PageHeader>
       {/* keyed on the day and department so the draft starts fresh on every navigation */}
-      <ShiftLog key={`${day}|${dept}`} data={data} history={history} canEdit={canEdit} today={today} />
+      {/* the hours a shift is worth are set right here, under the roster they
+          are counted with — not on a settings page the supervisor never opens */}
+      <ShiftLog key={`${day}|${dept}`} data={data} history={history} canEdit={canEdit} today={today} canSetHours={me.isAdmin} />
     </div>
   );
 }
