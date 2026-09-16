@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { AppNav } from "@/components/AppNav";
+import { LineProvider } from "@/components/LineContext";
 import { getCurrentUser, userPerms } from "@/lib/server/auth";
 import { getChatUnreadCount } from "@/lib/server/chat";
 import { getSettings } from "@/lib/server/data";
@@ -33,6 +34,7 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className="min-h-full flex flex-col antialiased">
+        <LineProvider line={line}>
         {user && (
           <AppNav
             user={{ id: user.id, name: user.name, isAdmin: user.isAdmin, perms: [...userPerms(user)] }}
@@ -45,6 +47,7 @@ export default async function RootLayout({
           {children}
         </main>
         <SpeedInsights />
+        </LineProvider>
       </body>
     </html>
   );

@@ -17,6 +17,11 @@ import type { GroupMember } from "./groupSpread";
 export const LV_ITEM = "PNL";
 
 /** The four production stages, in the order a panel passes them. */
+/** The panel types the plan sheet names — the ODOO tab's Product column on
+ *  this line, where the transformers' Tank / Top Cover / Core Frame mean
+ *  nothing. Free text is still accepted, so a new type needs no code change. */
+export const LV_PRODUCTS = ["USS", "LSS"] as const;
+
 export const LV_STAGES = ["Punching", "Bending", "Welding", "Painting"] as const;
 export type LvStage = (typeof LV_STAGES)[number];
 
