@@ -1420,53 +1420,17 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                 {etaCell(etas[r.mo], r.hold.onHold)}
                 <td className="p-2 text-center no-print whitespace-nowrap">
                   <button type="button" onClick={(e) => rowMenu.open(e, { kind: "mo", row: r })} className="text-muted px-1.5 hover:text-accent font-bold" title="Actions — hold, priority, close… (or right-click the row)">⋯</button>
+                  {/* the row's actions live in the ⋯ menu (and on right-click);
+                      the cell keeps only the state, and the one call to action
+                      a finished order earns */}
                   {r.status === "closed" ? (
-                    <>
-                      <span className="pill pill-muted">Closed</span>
-                      {can("tracker.status") && (
-                        <button onClick={() => changeStatus(r.mo, "open")} disabled={pending} className="text-accent text-xs px-1.5 hover:underline">Reopen</button>
-                      )}
-                    </>
+                    <span className="pill pill-muted" title="Reopen from the ⋯ menu">Closed</span>
                   ) : can("tracker.status") && r.required > 0 && r.complete >= r.required ? (
                     <button onClick={() => changeStatus(r.mo, "closed")} disabled={pending} className="rounded-md px-2 py-0.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50">
                       ✓ Close
                     </button>
                   ) : (
                     <span className="pill pill-ok">Open</span>
-                  )}
-                  {can("tracker.components") && (
-                    <button
-                      onClick={() => setOpenConfig(openConfig === r.mo ? null : r.mo)}
-                      disabled={pending}
-                      className="text-muted text-xs px-1.5 hover:text-accent"
-                      title="Which components does this project actually need?"
-                    >
-                      ⚙
-                    </button>
-                  )}
-                  {r.status === "open" && (
-                    <>
-                      {can("tracker.priority") && (
-                        <button
-                          onClick={() => togglePriority(r)}
-                          disabled={pending}
-                          className={`text-xs px-1 ${r.priority ? "" : "grayscale opacity-50 hover:opacity-100"}`}
-                          title={r.priority ? "Remove the priority flag" : "Flag as PRIORITY — shows in a dedicated table on top of every dept worklist"}
-                        >
-                          ⭐
-                        </button>
-                      )}
-                      {can("tracker.push") && (
-                        <button
-                          onClick={() => openPushPanel(r)}
-                          disabled={pending}
-                          className="text-muted text-xs px-1 hover:text-accent"
-                          title="Send this order down to a worklist — pick the dept, items and quantities"
-                        >
-                          📤
-                        </button>
-                      )}
-                    </>
                   )}
                 </td>
               </tr>
