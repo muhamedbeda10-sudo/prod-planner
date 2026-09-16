@@ -13,6 +13,12 @@ import { LV_ITEM, isLvChainStage, lvChainViolation, type LvState } from "@/lib/d
 // deleting an upstream entry can't leave downstream output hanging.
 // Totals are all-time, so date edits can never break the chain by themselves.
 
+/** The rows that are leaving, kept out of the totals the chain is judged on. */
+function excludeWhere(opts: { excludeId?: number; excludeIds?: number[] }) {
+  const ids = [...(opts.excludeId ? [opts.excludeId] : []), ...(opts.excludeIds ?? [])];
+  return ids.length > 0 ? { id: { notIn: ids } } : {};
+}
+
 export async function checkOutputChain(opts: {
   dept: string;
   bom: string;
@@ -20,6 +26,11 @@ export async function checkOutputChain(opts: {
   item: string;
   qty: number; // the entry's quantity after the change (0 = deletion)
   excludeId?: number; // when editing/deleting an existing entry
+  /** Deleting SEVERAL rows at once: every one of them leaves the totals
+   *  together, so the chain is judged on the world after the whole batch —
+   *  dropping a cut row and the weld row it fed is fine, dropping the cut
+   *  row alone is not. */
+  excludeIds?: number[];
 }): Promise<string | null> {
   // an LV panel is one thing through four stages — its own chain, whole
   if (opts.item === LV_ITEM) return checkLvChain(opts);
@@ -30,7 +41,7 @@ export async function checkOutputChain(opts: {
   const [sums, master] = await Promise.all([
     prisma.handoverEntry.groupBy({
       by: ["dept"],
-      where: { ...scope, ...(opts.excludeId ? { id: { not: opts.excludeId } } : {}) },
+      where: { ...scope, ...excludeWhere(opts) },
       _sum: { qty: true },
     }),
     mo ? prisma.masterOrder.findUnique({ where: { mo } }) : Promise.resolve(null),
@@ -59,14 +70,14 @@ export async function checkOutputChain(opts: {
 
 /** The panel's chain — delivered ≤ painted ≤ welded ≤ bent ≤ punched ≤ order
  *  — re-checked as a whole after the proposed change, per MO. */
-async function checkLvChain(opts: { dept: string; bom: string; mo?: string | null; qty: number; excludeId?: number }): Promise<string | null> {
+async function checkLvChain(opts: { dept: string; bom: string; mo?: string | null; qty: number; excludeId?: number; excludeIds?: number[] }): Promise<string | null> {
   if (!isLvChainStage(opts.dept)) return `Chain check: "${opts.dept}" is not a panel stage — a panel is punched, bent, welded, painted, then delivered.`;
   const mo = (opts.mo ?? "").trim();
   const scope = mo ? { mo, item: LV_ITEM } : { bom: opts.bom, item: LV_ITEM };
   const [sums, master] = await Promise.all([
     prisma.handoverEntry.groupBy({
       by: ["dept"],
-      where: { ...scope, ...(opts.excludeId ? { id: { not: opts.excludeId } } : {}) },
+      where: { ...scope, ...excludeWhere(opts) },
       _sum: { qty: true },
     }),
     mo ? prisma.masterOrder.findUnique({ where: { mo }, select: { planQty: true } }) : Promise.resolve(null),
