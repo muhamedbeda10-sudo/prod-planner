@@ -1,6 +1,7 @@
 import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
+import { getActiveLine } from "./line";
 import { getSoiLookup } from "@/lib/server/soi";
 import { monthLabelSortKey } from "@/lib/domain/dates";
 import {
@@ -51,13 +52,14 @@ const monthsOf = (csv: string | null | undefined, source?: string | null) =>
 
 /** The tab for one month (label), or every month when `month` is "all". */
 export async function getMaterialData(month: string): Promise<MaterialPageData> {
+  const line = await getActiveLine(); // one product line at a time
   const [rows, monthRows, orders, soi] = await Promise.all([
     prisma.materialUsage.findMany({
-      where: month === "all" ? undefined : { month },
+      where: month === "all" ? { line } : { month, line },
       orderBy: [{ month: "desc" }, { bom: "asc" }, { partCode: "asc" }, { material: "asc" }, { thicknessMm: "asc" }],
     }),
-    prisma.materialUsage.findMany({ select: { month: true, bom: true }, distinct: ["month", "bom"] }),
-    prisma.masterOrder.findMany({ select: { bom: true, months: true, source: true } }),
+    prisma.materialUsage.findMany({ where: { line }, select: { month: true, bom: true }, distinct: ["month", "bom"] }),
+    prisma.masterOrder.findMany({ where: { line }, select: { bom: true, months: true, source: true } }),
     getSoiLookup(),
   ]);
 
@@ -118,7 +120,8 @@ export async function importNestingTracker(
   const { rows, issues, recomputed } = parseNestingTracker(grid);
   if (rows.length === 0) return { ok: false, error: issues[0] ?? "No material rows found.", issues, sheet: sheetName };
 
-  const existing = await prisma.materialUsage.findMany({ where: { month, mo: "" } });
+  const line = await getActiveLine(); // the sheet is the line on screen's
+  const existing = await prisma.materialUsage.findMany({ where: { month, mo: "", line } });
   const byKey = new Map(existing.map((e) => [`${e.bom}|${e.partCode}|${e.material}|${e.thicknessMm}|${e.sheetSize}`, e]));
 
   let added = 0, updated = 0, unchanged = 0;
@@ -144,7 +147,7 @@ export async function importNestingTracker(
     const key = { month, bom: r.bom, mo: "", partCode: r.partCode, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize };
     await prisma.materialUsage.upsert({
       where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: key },
-      create: { ...key, ...data, note: r.note },
+      create: { ...key, ...data, note: r.note, line },
       update: data,
     });
   }

@@ -143,3 +143,34 @@ export function lvGroupMembers(rows: readonly { mo: string; state: LvState }[], 
 export function lvComplete(s: LvState): number {
   return s.required > 0 ? Math.min(s.paint, s.required) : s.paint;
 }
+
+/** Which department permission records a panel stage from its worklist —
+ *  punching and bending are fabrication's, the rest their namesakes'. */
+export function lvDeptPermKey(stage: LvStage): string {
+  switch (stage) {
+    case "Punching":
+    case "Bending":
+      return "cut.edit";
+    case "Welding":
+      return "welding.edit";
+    case "Painting":
+      return "painting.edit";
+  }
+}
+
+/** The LV worklists, one per stage, in shop-floor order — what the nav's
+ *  Worklist tab unrolls into when the panels are on screen. */
+export const LV_WORKLISTS: readonly { stage: LvStage; href: string; label: string }[] = [
+  { stage: "Punching", href: "/worklist/punching", label: "Punching" },
+  { stage: "Bending", href: "/worklist/bending", label: "Bending" },
+  { stage: "Welding", href: "/worklist/welding", label: "Welding" },
+  { stage: "Painting", href: "/worklist/painting", label: "Painting" },
+];
+
+/** What a stage's worklist has to do on one order: the panels the stage
+ *  before it finished that this one has not — the order quantity for
+ *  punching — less what is already done here. */
+export function lvWaiting(s: LvState, stage: LvStage): number {
+  const c = lvCaps(s, stage);
+  return Number.isFinite(c.add) ? c.add : 0;
+}

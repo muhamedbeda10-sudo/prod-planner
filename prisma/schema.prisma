@@ -775,6 +775,9 @@ model TankSerialCounter {
 // month's sheet again updates that month's lines instead of doubling them.
 model MaterialUsage {
   id            Int      @id @default(autoincrement())
+  // Which product line's nesting this is — TR or LV, stamped from the toggle
+  // when the line is typed or its sheet imported. The tab shows one at a time.
+  line          String   @default("TR")
   month         String   @default("") // "" = entered before months existed
   bom           String
   mo            String   @default("") // "" = the line covers the BOM (how the sheet writes it)
@@ -806,6 +809,7 @@ model MaterialUsage {
   @@unique([month, bom, mo, partCode, material, thicknessMm, sheetSize])
   @@index([bom])
   @@index([month])
+  @@index([line])
 }
 
 // ---- ODOO close-out log (the planner's daily "22" sheet) ----
@@ -820,6 +824,10 @@ model MaterialUsage {
 // to the orders registry.
 model OdooEntry {
   id         Int      @id @default(autoincrement())
+  // Which product line's close-out this is — TR or LV. Stamped from the
+  // toggle when the row is typed or imported, from the order when it is born
+  // of a closing. The tab shows one line at a time.
+  line       String   @default("TR")
   date       DateTime // the day of the attempt (day-only granularity)
   soi        String?
   fgCode     String // FB-022-14003E11M11 — Odoo's finished-good code
@@ -846,6 +854,7 @@ model OdooEntry {
   @@index([date])
   @@index([doneAt])
   @@index([odooMo])
+  @@index([line])
 }
 
 /// The notes on one close-out row, oldest first — what Odoo answered, what

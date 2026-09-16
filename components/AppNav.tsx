@@ -35,6 +35,14 @@ const WORKLIST_DEPTS = [
   { href: "/worklist/leak-test", label: "Leak Test", icon: Droplets, perm: "leaktest.edit" },
   { href: "/worklist/painting", label: "Painting", icon: PowderCoatIcon, perm: "painting.edit" },
 ] as const;
+// The LV panels' four stages, in the order a panel passes them. Punching and
+// bending are the panel's fabrication, so fabrication's permission opens them.
+const LV_WORKLIST_DEPTS = [
+  { href: "/worklist/punching", label: "Punching", icon: LaserCutterIcon, perm: "cut.edit" },
+  { href: "/worklist/bending", label: "Bending", icon: LaserCutterIcon, perm: "cut.edit" },
+  { href: "/worklist/welding", label: "Welding", icon: WeldingIcon, perm: "welding.edit" },
+  { href: "/worklist/painting", label: "Painting", icon: PowderCoatIcon, perm: "painting.edit" },
+] as const;
 
 // Tabs after Worklist, ordered by shop-floor flow: work → log → track →
 // review → the overview dashboard sits last (right side).
@@ -127,9 +135,12 @@ export function AppNav({
   // A user who can edit exactly ONE department jumps straight to it from the
   // Worklist tab; everyone else (admins, multi-dept, view-only) expands the
   // tab into the three departments inline.
-  const worklistDepts = WORKLIST_DEPTS.filter((d) => tankTracking || !TANK_ONLY.has(d.href));
+  const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => tankTracking || !TANK_ONLY.has(d.href));
   const restTabs = REST.filter((l) => tankTracking || !TANK_ONLY.has(l.href));
-  const drawerTabs = DRAWER.filter((l) => tankTracking || !TANK_ONLY.has(l.href));
+  const drawerTabs = (line === "LV"
+    ? [...LV_WORKLIST_DEPTS.map((d): Item => ({ href: d.href, label: `${d.label} Worklist`, icon: d.icon })), ...DRAWER.filter((l) => !l.href.startsWith("/worklist/"))]
+    : DRAWER
+  ).filter((l) => tankTracking || !TANK_ONLY.has(l.href));
   const drawerViews = DRAWER_VIEWS.filter((l) => tankTracking || !TANK_ONLY.has(l.href));
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
   const singleDeptHref = !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;

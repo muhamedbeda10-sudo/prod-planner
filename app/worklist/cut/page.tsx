@@ -11,10 +11,14 @@ import { getCurrentUser, canEditDept, hasPerm } from "@/lib/server/auth";
 import { getMachineBoard, type BoardLineInput } from "@/lib/server/machineBoard";
 
 export const dynamic = "force-dynamic";
+import { redirect } from "next/navigation";
+import { getActiveLine } from "@/lib/server/line";
 
 // No page header on screen — every pixel goes to the work (title lives in the
 // nav tab). The PrintHeader appears only on the printed/PDF sheet.
 export default async function CutWorklistPage() {
+  // a panel is not cut on the lasers — its fabrication is punching, then bending
+  if ((await getActiveLine()) === "LV") redirect("/worklist/punching");
   const [{ planNo, today, dueNow, overdue, postponed, remarked, unscheduled, pushed, priority, hidden }, returns, notes, settings, user, runOrder, soi] = await Promise.all([
     getCutSheet(),
     getReturnsFor("Cut"),

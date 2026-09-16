@@ -19,10 +19,14 @@ import { getMachineBoard } from "@/lib/server/machineBoard";
 import { MachineBoard } from "@/components/MachineBoard";
 
 export const dynamic = "force-dynamic";
+import { getActiveLine } from "@/lib/server/line";
+import { LvWorklistPage } from "@/components/LvWorklistPage";
 
 // No page header on screen — every pixel goes to the queue (title lives in the
 // nav tab). The PrintHeader appears only on the printed/PDF sheet.
 export default async function WeldWorklistPage() {
+  // the panels have their own welding worklist — same route, the line decides
+  if ((await getActiveLine()) === "LV") return <LvWorklistPage stage="Welding" />;
   const today = new Date();
   const dayISO = toISODate(today);
   const [queue, notes, returns, settings, user, extras, runOrder, repairs, welders, soi] = await Promise.all([

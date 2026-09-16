@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { isItem } from "@/lib/domain/constants";
+import { LV_ITEM } from "@/lib/domain/lv";
 import { ITEM_PRODUCT, MIRROR_STATUS, isUntouched, mirrorFgCode, mirrorSource, sameProduct } from "@/lib/domain/odooMirror";
 
 // The ledger → ODOO tab bridge. Every place that writes a Painting or
@@ -24,18 +25,33 @@ interface LedgerRow {
  *  not a closing (another stage, a correction, a paint-exempt part). */
 export async function mirrorLedgerToOdoo(tx: Prisma.TransactionClient, ledger: LedgerRow, by: string | null): Promise<void> {
   const source = mirrorSource(ledger.dept, ledger.item);
-  if (!source || !(ledger.qty > 0) || !isItem(ledger.item)) return;
-  const { product } = ITEM_PRODUCT[ledger.item];
-
-  const order = ledger.mo ? await tx.masterOrder.findUnique({ where: { mo: ledger.mo }, select: { soi: true, bom: true } }) : null;
+  if (!source || !(ledger.qty > 0)) return;
+  const order = ledger.mo ? await tx.masterOrder.findUnique({ where: { mo: ledger.mo }, select: { soi: true, bom: true, line: true, product: true, fgCode: true } }) : null;
   const soi = (order?.soi ?? "").trim().toUpperCase() || null;
   const bom = (order?.bom ?? ledger.bom).trim().toUpperCase();
+
+  // An LV panel's painting is its closing too. Its plan carries Odoo's own
+  // finished-good code and the panel type, so nothing is guessed: the row is
+  // born filed under the panels, with the code the sheet gave it.
+  if (ledger.item === LV_ITEM) {
+    if (!order || order.line !== "LV") return;
+    await tx.odooEntry.create({
+      data: {
+        line: "LV", date: ledger.date, soi, fgCode: (order.fgCode ?? "").trim().toUpperCase(), product: order.product ?? "LV Panel",
+        odooMo: "", qty: ledger.qty, status: MIRROR_STATUS, doneAt: null, recordedBy: by,
+        source, ledgerId: ledger.id, fgGuessed: !order.fgCode,
+      },
+    });
+    return;
+  }
+  if (!isItem(ledger.item)) return;
+  const { product } = ITEM_PRODUCT[ledger.item];
 
   // the last row of the same SOI and product knows the part's real FG-CODE
   let prior: string | null = null;
   if (soi) {
     const rows = await tx.odooEntry.findMany({
-      where: { soi, fgCode: { not: "" } },
+      where: { soi, fgCode: { not: "" }, line: order?.line ?? "TR" },
       orderBy: [{ date: "desc" }, { id: "desc" }],
       select: { fgCode: true, product: true, fgGuessed: true },
       take: 50,
@@ -48,6 +64,7 @@ export async function mirrorLedgerToOdoo(tx: Prisma.TransactionClient, ledger: L
 
   await tx.odooEntry.create({
     data: {
+      line: order?.line ?? "TR",
       date: ledger.date, soi, fgCode: fg.fgCode, product, odooMo: "", qty: ledger.qty,
       status: MIRROR_STATUS, doneAt: null, recordedBy: by,
       source, ledgerId: ledger.id, fgGuessed: fg.guessed,
