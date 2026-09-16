@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spreadOverGroup } from "./groupSpread";
-import { LV_CHAIN, LV_STAGES, lvCaps, lvChainError, lvComplete, lvGroupMembers, lvPermKey, type LvState } from "./lv";
+import { LV_CHAIN, LV_STAGES, LV_WORKLISTS, lvCaps, lvChainError, lvComplete, lvDeptPermKey, lvGroupMembers, lvPermKey, lvWaiting, type LvState } from "./lv";
 
 const st = (over: Partial<LvState> = {}): LvState => ({ required: 10, punch: 0, bend: 0, weld: 0, paint: 0, delivered: 0, ...over });
 
@@ -61,5 +61,29 @@ describe("an LV panel's chain — punched, bent, welded, painted, delivered", ()
   it("counts an order complete by its painted panels, capped at the order", () => {
     expect(lvComplete(st({ paint: 7 }))).toBe(7);
     expect(lvComplete(st({ paint: 12 }))).toBe(10);
+  });
+});
+
+describe("an LV stage's worklist", () => {
+  it("owes what the stage before finished and this one has not", () => {
+    expect(lvWaiting(st({ punch: 8, bend: 3 }), "Bending")).toBe(5);
+    expect(lvWaiting(st({ required: 10, punch: 4 }), "Punching")).toBe(6);
+    expect(lvWaiting(st({ weld: 6, paint: 6 }), "Painting")).toBe(0);
+  });
+
+  it("owes nothing on an order with no quantity — there is no plan to work from", () => {
+    expect(lvWaiting(st({ required: 0 }), "Punching")).toBe(0);
+  });
+
+  it("opens punching and bending with fabrication's permission, the rest with their own", () => {
+    expect(lvDeptPermKey("Punching")).toBe("cut.edit");
+    expect(lvDeptPermKey("Bending")).toBe("cut.edit");
+    expect(lvDeptPermKey("Welding")).toBe("welding.edit");
+    expect(lvDeptPermKey("Painting")).toBe("painting.edit");
+  });
+
+  it("lists the four worklists in the order a panel passes them", () => {
+    expect(LV_WORKLISTS.map((w) => w.stage)).toEqual([...LV_STAGES]);
+    expect(LV_WORKLISTS.map((w) => w.href)).toEqual(["/worklist/punching", "/worklist/bending", "/worklist/welding", "/worklist/painting"]);
   });
 });

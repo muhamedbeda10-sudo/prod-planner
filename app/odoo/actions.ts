@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getActiveLine } from "@/lib/server/line";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
@@ -85,6 +86,7 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
 
   await prisma.odooEntry.create({
     data: {
+      line: await getActiveLine(),
       date: f.date!, soi: f.soi, fgCode: f.fgCode, product: f.product, odooMo: f.odooMo,
       qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, null, f.date!), recordedBy: guard.user?.name ?? null,
     },

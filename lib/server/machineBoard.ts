@@ -13,6 +13,9 @@ import { getWorklistExtras } from "./worklistExtras";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { loadHolidays, loadMasterOrders } from "./loads";
 import { getSettings, getShiftHours } from "./data";
+import { getActiveLine } from "./line";
+import { getLvWorklist } from "./lvWorklist";
+import { LV_ITEM } from "@/lib/domain/lv";
 
 // The machine load board for one worklist: the page hands over the open
 // lines it already computed (every section of the sheet), this prices them
@@ -237,6 +240,15 @@ export async function getOptimizerInputs(dept: BoardDept, dayISO: string): Promi
  *  loaded them itself (the Floor canvas). Shot blast has no worklist. */
 export async function getDeptBoardLines(dept: BoardDept, dayISO: string): Promise<BoardLineInput[]> {
   const day = parseISODate(dayISO) ?? new Date();
+  // The panels: their punching runs on the fabrication bay's punches, their
+  // welding and painting on those bays — each stage's worklist, as lines.
+  // Bending is one centre and is not drawn on a machine.
+  if ((await getActiveLine()) === "LV") {
+    if (dept === "ShotBlast") return [];
+    const stage = dept === "Cut" ? "Punching" : dept;
+    const list = await getLvWorklist(stage);
+    return list.rows.map((r) => ({ bom: r.bom, mo: r.mo, item: LV_ITEM, description: `${r.product ?? "LV panel"} · ${r.customer ?? ""}`.trim(), remaining: r.waiting, deliveryISO: null, dueISO: null }));
+  }
   if (dept === "Cut") {
     const sheet = await getCutSheet();
     return [

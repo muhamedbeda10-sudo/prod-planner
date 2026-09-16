@@ -7,7 +7,8 @@ import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { spreadOverGroup } from "@/lib/domain/groupSpread";
-import { LV_ITEM, isLvChainStage, lvChainError, lvGroupMembers, lvPermKey, lvStageOf, type LvChainStage, type LvState } from "@/lib/domain/lv";
+import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
+import { LV_ITEM, LV_STAGES, isLvChainStage, lvChainError, lvDeptPermKey, lvGroupMembers, lvPermKey, lvStageOf, type LvChainStage, type LvStage, type LvState } from "@/lib/domain/lv";
 
 // Recording an LV panel's stages from its tracker. The same shape as the
 // transformer tracker's cells: type the NEW total, the difference lands in
@@ -15,7 +16,7 @@ import { LV_ITEM, isLvChainStage, lvChainError, lvGroupMembers, lvPermKey, lvSta
 // lower total is a negative correction, and the chain guard refuses what
 // the stages before or after would contradict.
 
-const PATHS = ["/tracker", "/handover", "/", "/report"];
+const PATHS = ["/tracker", "/handover", "/", "/report", "/worklist/punching", "/worklist/bending", "/worklist/welding", "/worklist/painting", "/simulate", "/odoo"];
 
 interface Result { ok: boolean; error?: string }
 
@@ -74,7 +75,8 @@ export async function recordLvTotal(formData: FormData): Promise<Result> {
 
     const { today, planNo } = await todaysPlan();
     await prisma.$transaction(async (tx) => {
-      await writeDelta(tx, { mo, bom: cur.bom, stage, delta, from, today, planNo, by: guard.user?.name ?? null });
+      const ledger = await writeDelta(tx, { mo, bom: cur.bom, stage, delta, from, today, planNo, by: guard.user?.name ?? null });
+      await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
     });
     for (const p of PATHS) revalidatePath(p);
     return { ok: true };
@@ -116,8 +118,45 @@ export async function recordLvGroupTotal(formData: FormData): Promise<Result> {
     await prisma.$transaction(async (tx) => {
       for (const a of spread.alloc) {
         const r = rows.find((x) => x.mo === a.mo)!;
-        await writeDelta(tx, { mo: a.mo, bom, stage, delta: a.qty, from: lvStageOf(r.state, stage), today, planNo, by: guard.user?.name ?? null });
+        const ledger = await writeDelta(tx, { mo: a.mo, bom, stage, delta: a.qty, from: lvStageOf(r.state, stage), today, planNo, by: guard.user?.name ?? null });
+        await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
       }
+    });
+    for (const p of PATHS) revalidatePath(p);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** From a stage's worklist: panels done on one order on a day — a quantity,
+ *  not a total. The department's own permission records it, and the chain
+ *  guard refuses more than the stage before has finished. */
+export async function recordLvOutput(formData: FormData): Promise<Result> {
+  try {
+    const stage = String(formData.get("stage") ?? "");
+    const mo = String(formData.get("mo") ?? "").trim();
+    const qty = Number(formData.get("qty"));
+    const date = parseISODate(String(formData.get("date") ?? ""));
+    if (!(LV_STAGES as readonly string[]).includes(stage)) return { ok: false, error: "Invalid stage." };
+    const guard = await requirePerm(lvDeptPermKey(stage as LvStage));
+    if (guard.error) return { ok: false, error: guard.error };
+    if (!mo) return { ok: false, error: "Missing MO." };
+    if (!date) return { ok: false, error: "Invalid date." };
+    if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: "Enter a whole number of panels greater than zero." };
+
+    const cur = await stateOf(mo);
+    if (!cur) return { ok: false, error: `${mo} is not an LV panel order — refresh the page.` };
+    const chain = lvChainError(cur.state, stage as LvStage, qty, mo);
+    if (chain) return { ok: false, error: chain };
+
+    const { planNo } = await todaysPlan();
+    await prisma.$transaction(async (tx) => {
+      const ledger = await tx.handoverEntry.create({
+        data: { date, dept: stage, bom: cur.bom, mo, item: LV_ITEM, qty, planNo, source: "worklist", createdBy: guard.user?.name ?? null },
+      });
+      // a panel's painting is its closing — it gets its row on the ODOO tab
+      await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
     });
     for (const p of PATHS) revalidatePath(p);
     return { ok: true };

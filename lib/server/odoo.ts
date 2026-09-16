@@ -1,6 +1,7 @@
 import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
+import { getActiveLine } from "./line";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, bomOfFgCode, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView } from "@/lib/domain/odoo";
 import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod, type OdooStatRow } from "@/lib/domain/odooStats";
@@ -32,18 +33,20 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     ? { date: { gte: day, lt: new Date(day.getTime() + 24 * 60 * 60 * 1000) } }
     : undefined;
 
+  // one product line at a time — the toggle in the nav decides which
+  const line = await getActiveLine();
   const [rows, dayRows, orders, totalRows, byStatus] = await Promise.all([
     prisma.odooEntry.findMany({
-      where,
+      where: { ...where, line },
       orderBy: [{ date: "desc" }, { id: "asc" }],
       include: { notes: { orderBy: { id: "desc" } } },
     }),
-    prisma.odooEntry.findMany({ select: { date: true }, distinct: ["date"], orderBy: { date: "desc" } }),
-    prisma.masterOrder.findMany({ select: { soi: true, fgCode: true, bom: true } }),
-    prisma.odooEntry.count(),
+    prisma.odooEntry.findMany({ where: { line }, select: { date: true }, distinct: ["date"], orderBy: { date: "desc" } }),
+    prisma.masterOrder.findMany({ where: { line }, select: { soi: true, fgCode: true, bom: true } }),
+    prisma.odooEntry.count({ where: { line } }),
     // grouped and judged in JS, so "off-screen, still open" counts a status
     // exactly the way the rows on screen are coloured
-    prisma.odooEntry.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.odooEntry.groupBy({ by: ["status"], where: { line }, _count: { _all: true } }),
   ]);
 
   const soiBoms: Record<string, string[]> = {};
@@ -97,7 +100,7 @@ async function nestingFor(entries: { fgCode: string; boms: string[] }[]): Promis
   }
   if (keys.size === 0) return {};
   const rows = await prisma.materialUsage.findMany({
-    where: { bom: { in: [...new Set([...keys.values()].map((k) => k.bom))] } },
+    where: { line: await getActiveLine(), bom: { in: [...new Set([...keys.values()].map((k) => k.bom))] } },
     select: {
       id: true, month: true, bom: true, partCode: true, partName: true, materialCode: true, material: true,
       thicknessMm: true, sheetSize: true, units: true, sheetsPerUnit: true, actualPerUnit: true, sheetsUsed: true, note: true,
@@ -124,6 +127,7 @@ async function statRows(fromISO: string | null, toISO: string): Promise<OdooStat
   const to = parseISODate(toISO)!;
   const rows = await prisma.odooEntry.findMany({
     where: {
+      line: await getActiveLine(),
       OR: [
         { date: { ...(from ? { gte: from } : {}), lt: new Date(to.getTime() + DAY) } },
         { doneAt: { ...(from ? { gte: new Date(from.getTime() - DAY) } : {}), lt: new Date(to.getTime() + 2 * DAY) } },
@@ -198,8 +202,10 @@ export async function importOdooSheet(
   if (dated.length === 0) return { ok: false, error: issues[0] ?? "No dated rows found.", issues, sheet: sheetName };
 
   const days = [...new Set(dated.map((d) => d.date.getTime()))].map((t) => new Date(t));
+  // the sheet is the line on screen's — its rows match and join that line only
+  const line = await getActiveLine();
   const existing = await prisma.odooEntry.findMany({
-    where: { date: { in: days } },
+    where: { date: { in: days }, line },
     orderBy: { id: "asc" },
   });
   const key = (dateISO: string, mo: string) => `${dateISO}|${mo}`;
@@ -228,7 +234,7 @@ export async function importOdooSheet(
       // a row the sheet already marks Done was closed on its own day — the
       // only day known for it
       const created = await prisma.odooEntry.create({
-        data: { date, odooMo: row.odooMo, status: row.status, doneAt: isDoneStatus(row.status) ? date : null, source: "import", ...data },
+        data: { line, date, odooMo: row.odooMo, status: row.status, doneAt: isDoneStatus(row.status) ? date : null, source: "import", ...data },
       });
       byKey.set(k, created); // a second line for the same MO in the file updates, not doubles
     }

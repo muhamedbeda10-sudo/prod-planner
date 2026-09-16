@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
+import { getActiveLine } from "@/lib/server/line";
 import { importNestingTracker, type MaterialImportResult } from "@/lib/server/material";
 import { normalizeMaterialType, normalizeSheetSize, parseSheetNumber, partNameFor, rateIsTyped } from "@/lib/domain/material";
 import { monthLabelFromInput } from "@/lib/domain/dates";
@@ -92,7 +93,7 @@ export async function createMaterialLine(formData: FormData): Promise<MaterialAc
   if (bad) return { ok: false, error: bad };
   const clash = await prisma.materialUsage.findUnique({ where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: keyOf(f) } });
   if (clash) return { ok: false, error: `${lineLabel(f)} is already on ${f.bom} for ${f.month} — edit that line instead.` };
-  await prisma.materialUsage.create({ data: dataOf(f, guard.user?.name ?? null, f.actualPerUnit !== null) });
+  await prisma.materialUsage.create({ data: { ...dataOf(f, guard.user?.name ?? null, f.actualPerUnit !== null), line: await getActiveLine() } });
   revalidateMaterial();
   return { ok: true };
 }
