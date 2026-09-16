@@ -11,9 +11,10 @@ import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants"
 import { trackerPermKey } from "@/lib/domain/permissions";
 import { toDisplayDate } from "@/lib/domain/dates";
 import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
-import { LvOrdersTracker } from "@/components/LvOrdersTracker";
+import { LvTrackerTable } from "@/components/LvTrackerTable";
 import { getActiveLine } from "@/lib/server/line";
-import { loadMasterOrders } from "@/lib/server/loads";
+import { getLvTracker } from "@/lib/server/lvTracker";
+import { LV_CHAIN, lvPermKey } from "@/lib/domain/lv";
 
 export const dynamic = "force-dynamic";
 
@@ -38,21 +39,19 @@ export default async function TrackerPage({
   // different day in the client HTML than the server's and trip hydration
   const issued = toDisplayDate(new Date());
 
-  // The LV panels have no stage grid yet — their side of the tracker is the
-  // plan as planned, one row per order, until their stages are agreed.
+  // The LV panels' side: one panel per row, its four stages and delivery,
+  // recorded the way the transformer cells are — each stage behind the
+  // tracker permission of the transformer column it corresponds to.
   if ((await getActiveLine()) === "LV") {
-    const orders = await loadMasterOrders();
-    const monthsOf = (csv: string) => csv.split(",").map((m) => m.trim()).filter(Boolean);
+    const [rows, user] = await Promise.all([getLvTracker(), getCurrentUser()]);
     return (
       <>
         <PrintHeader title="Plan Tracker — LV Panels" date={issued} />
-        <LvOrdersTracker
+        <LvTrackerTable
           viewTabs={<ViewTabs views={TRACKER_VIEWS} current="/tracker" label="Tracker view" />}
-          rows={orders.map((o) => ({
-            mo: o.mo, soi: o.soi, urgent: o.urgent, customer: o.customer, product: o.product, fgCode: o.fgCode, bom: o.bom,
-            secItem: o.secItem, planQty: o.planQty, ospEncloser: o.ospEncloser, remarks: o.remarks, materialsRemarks: o.materialsRemarks,
-            status: o.status, months: monthsOf(o.months || o.source || ""),
-          }))}
+          rows={rows}
+          editableStages={user ? LV_CHAIN.filter((s) => hasPerm(user, lvPermKey(s))) : []}
+          canStatus={!!user && hasPerm(user, "tracker.status")}
         />
       </>
     );

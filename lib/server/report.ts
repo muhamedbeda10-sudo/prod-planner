@@ -192,7 +192,9 @@ export async function getDayOutputByProject(day: Date, depts?: string[], from?: 
   const start = new Date(Date.UTC(startDay.getUTCFullYear(), startDay.getUTCMonth(), startDay.getUTCDate()));
   const end = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + 24 * 60 * 60 * 1000);
   const entries = await prisma.handoverEntry.findMany({
-    where: { date: { gte: start, lt: end }, ...(depts && depts.length ? { dept: { in: depts } } : {}) },
+    // the transformer components only — an LV panel's welding and painting
+    // rows share those department names but are not this report's
+    where: { date: { gte: start, lt: end }, item: { in: [...ITEMS] }, ...(depts && depts.length ? { dept: { in: depts } } : {}) },
     select: { bom: true, mo: true, dept: true, item: true, qty: true },
   });
 
