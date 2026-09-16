@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import { useLineKey } from "@/components/LineContext";
 import { Search, X, FilterX } from "lucide-react";
 
 /** Small consistent filter controls used by the filterable tables. */
@@ -19,7 +20,11 @@ const subscribeFilters = (cb: () => void) => {
  *  filters exactly as they were (per browser tab; a new tab starts clean).
  *  useSyncExternalStore keeps hydration safe — the server snapshot is the
  *  default, and the stored value applies right after hydration. */
-export function useSavedFilter(key: string, initial = "") {
+export function useSavedFilter(rawKey: string, initial = "") {
+  // each product line keeps its own filters: "CF" or "Cut" means nothing on
+  // the panels, and a value carried over the toggle empties the screen with
+  // no control on it to explain why
+  const key = useLineKey(rawKey);
   const value = useSyncExternalStore(
     subscribeFilters,
     () => {

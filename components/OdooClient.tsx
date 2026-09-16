@@ -7,6 +7,9 @@ import {
   type OdooEntryView, type OdooGroup, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter, type OdooMoFilter, type OdooClosedFilter,
 } from "@/lib/domain/odoo";
 import { sourceLabel } from "@/lib/domain/odooMirror";
+import { LV_PRODUCTS } from "@/lib/domain/lv";
+import type { ProductLine } from "@/lib/domain/lines";
+import { useActiveLine } from "@/components/LineContext";
 import { Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { materialNeed, monthLabelOfISO, type NestingLookup } from "@/lib/domain/odooMaterial";
@@ -125,6 +128,12 @@ function Field({ hint, className = "", children }: { hint: string; className?: s
   );
 }
 
+/** The Product column's vocabulary: the transformers' parts, or the panel
+ *  types. Suggestions only — the field takes anything typed. */
+function productsOf(line: ProductLine): readonly string[] {
+  return line === "LV" ? LV_PRODUCTS : ODOO_PRODUCTS;
+}
+
 function RowFields({
   e,
   day,
@@ -138,6 +147,7 @@ function RowFields({
   knownFgCodes: string[];
   disabled?: boolean;
 }) {
+  const line = useActiveLine();
   const today = new Date().toISOString().slice(0, 10);
   const born = isBorn(e);
   return (
@@ -155,7 +165,7 @@ function RowFields({
       </Field>
       <Field hint="Product" className="w-32">
         <input name="product" list="odoo-products" aria-label="Product" defaultValue={e?.product ?? ""} required disabled={disabled} placeholder="Product" className={`${F} w-full`} />
-        <datalist id="odoo-products">{ODOO_PRODUCTS.map((p) => <option key={p} value={p} />)}</datalist>
+        <datalist id="odoo-products">{productsOf(line).map((p) => <option key={p} value={p} />)}</datalist>
       </Field>
       <Field hint="Odoo MO number (SF01/MO/…)" className="w-44">
         <input name="odooMo" aria-label="MO#" defaultValue={e?.odooMo ?? ""} required={!born} disabled={disabled} placeholder="SF01/MO/…" className={`${F} ltr w-full`} />
@@ -685,9 +695,10 @@ function CountFilter({ n, label, tone, on, title, onClick }: { n: number; label:
 }
 
 function FilterBar({ entries, filters, onChange, shown }: { entries: OdooEntryView[]; filters: OdooFilters; onChange: (f: OdooFilters) => void; shown: number }) {
+  const line = useActiveLine();
   const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))];
-  // the sheet's names first, then anything else typed on the rows
-  const products = uniq([...ODOO_PRODUCTS, ...entries.map((e) => e.product)]);
+  // this line's own names first, then anything else typed on the rows
+  const products = uniq([...productsOf(line), ...entries.map((e) => e.product)]);
   const statuses = uniq([...ODOO_STATUSES, ...entries.map((e) => e.status)]);
   const set = (patch: Partial<OdooFilters>) => onChange({ ...filters, ...patch });
   const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_ODOO_FILTERS);

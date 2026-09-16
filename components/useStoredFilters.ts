@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useSyncExternalStore } from "react";
+import { useLineKey } from "@/components/LineContext";
 
 // A filter row that sticks: its value lives in this browser's storage, so a
 // tab reopens narrowed the way it was left. Storage is the source of truth —
@@ -24,7 +25,10 @@ function readRaw(key: string): string {
   try { return localStorage.getItem(key) ?? memory.get(key) ?? ""; } catch { return memory.get(key) ?? ""; }
 }
 
-export function useStoredFilters<T>(key: string, parse: (raw: string) => T, empty: T): { filters: T; setFilters: (f: T) => void } {
+export function useStoredFilters<T>(rawKey: string, parse: (raw: string) => T, empty: T): { filters: T; setFilters: (f: T) => void } {
+  // one line's filters never apply to the other: a Product reading "Tank"
+  // carried onto the panels' tab hid every panel row it had
+  const key = useLineKey(rawKey);
   const subscribe = useMemo(() => subscribeTo(key), [key]);
   const raw = useSyncExternalStore(subscribe, () => readRaw(key), () => "");
   const filters = useMemo(() => (raw ? parse(raw) : empty), [raw, parse, empty]);
