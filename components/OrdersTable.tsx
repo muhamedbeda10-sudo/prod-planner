@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { deleteOrders, previewOrderDelete, type OrderDeletePreview } from "@/app/orders/actions";
+import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
 export interface OrderRow {
   id: number;
@@ -22,9 +23,19 @@ export interface OrderRow {
   remarks: string | null;
   source: string | null;
   createdAt: string; // ISO
+  /** The LV panels' own columns — empty on a transformer. */
+  product: string | null;
+  secItem: string | null;
+  ospEncloser: number;
+  materialsRemarks: string | null;
 }
 
-export function OrdersTable({ rows }: { rows: OrderRow[] }) {
+/** The registry of ONE product line. A transformer reads by its KVA, rating
+ *  and colour; an LV panel by its type (LSS / USS), its SEC item, the
+ *  enclosures bought outside and what the sheet said about its parts — so
+ *  the middle of the table is the line's, and the rest is shared. */
+export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: ProductLine }) {
+  const lv = line === "LV";
   // filters survive navigating away and back (sessionStorage per tab)
   const [q, setQ] = useSavedFilter("orders.q");
   const [urgent, setUrgent] = useSavedFilter("orders.urgent");
@@ -46,7 +57,7 @@ export function OrdersTable({ rows }: { rows: OrderRow[] }) {
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
     return rows.filter((r) => {
-      if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.fgCode ?? ""} ${r.kva ?? ""}`.toUpperCase().includes(needle))) return false;
+      if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.fgCode ?? ""} ${r.kva ?? ""} ${r.product ?? ""} ${r.secItem ?? ""}`.toUpperCase().includes(needle))) return false;
       if (urgent === "yes" && !r.urgent) return false;
       if (urgent === "no" && r.urgent) return false;
       if (source && r.source !== source) return false;
@@ -57,12 +68,19 @@ export function OrdersTable({ rows }: { rows: OrderRow[] }) {
   const hasActive = !!(q || urgent || source);
   const totalQty = filtered.reduce((s, r) => s + r.planQty, 0);
 
-  const exportRows = filtered.map((r) => ({
-    MO: r.mo, SOI: r.soi ?? "", Urgent: r.urgent ? "Yes" : "", Customer: r.customer ?? "",
-    "FG Code": r.fgCode ?? "", BOM: r.bom, KVA: r.kva ?? "", Rating: r.rating ?? "",
-    "Plan Qty": r.planQty, "Color RAL": r.colorRal ?? "", Remarks: r.remarks ?? "",
-    Source: r.source ?? "", Added: r.createdAt.slice(0, 10),
-  }));
+  const exportRows = filtered.map((r) => (lv
+    ? {
+      MO: r.mo, SOI: r.soi ?? "", Urgent: r.urgent ? "Yes" : "", Customer: r.customer ?? "",
+      Product: r.product ?? "", "FG Code": r.fgCode ?? "", BoM: r.bom, "SEC Item": r.secItem ?? "",
+      "Planned Qty": r.planQty, "OSP Encloser": r.ospEncloser, Remarks: r.remarks ?? "", "Materials Remarks": r.materialsRemarks ?? "",
+      Source: r.source ?? "", Added: r.createdAt.slice(0, 10),
+    }
+    : {
+      MO: r.mo, SOI: r.soi ?? "", Urgent: r.urgent ? "Yes" : "", Customer: r.customer ?? "",
+      "FG Code": r.fgCode ?? "", BOM: r.bom, KVA: r.kva ?? "", Rating: r.rating ?? "",
+      "Plan Qty": r.planQty, "Color RAL": r.colorRal ?? "", Remarks: r.remarks ?? "",
+      Source: r.source ?? "", Added: r.createdAt.slice(0, 10),
+    }));
 
   const shown = filtered.map((r) => r.mo);
   const allShownPicked = shown.length > 0 && shown.every((mo) => picked.has(mo));
@@ -121,7 +139,7 @@ export function OrdersTable({ rows }: { rows: OrderRow[] }) {
           <SelectFilter label="Source" value={source} onChange={setSource} options={sources.map((s) => ({ value: s, label: s }))} />
         )}
         <span className="text-xs text-muted">Total qty (shown): <b className="text-foreground tabnum">{totalQty}</b></span>
-        <ExportButton rows={exportRows} filename="master-orders.xlsx" sheetName="Orders" />
+        <ExportButton rows={exportRows} filename={lv ? "lv-panel-orders.xlsx" : "master-orders.xlsx"} sheetName={LINE_LABEL[line]} />
         {picked.size > 0 && (
           <span className="inline-flex items-center gap-2">
             <b className="text-xs tabnum">{picked.size} picked</b>
@@ -206,17 +224,30 @@ export function OrdersTable({ rows }: { rows: OrderRow[] }) {
               <th className="p-2">SOI</th>
               <th className="p-2 text-center">Urgent</th>
               <th className="p-2">FG Code</th>
-              <th className="p-2 text-center">KVA</th>
-              <th className="p-2">Rating</th>
-              <th className="p-2 text-center">Plan Qty</th>
-              <th className="p-2">RAL</th>
+              {lv ? (
+                <>
+                  <th className="p-2 text-center" title="The panel type on the plan: LSS or USS">Product</th>
+                  <th className="p-2">SEC Item</th>
+                  <th className="p-2 text-center">Planned Qty</th>
+                  <th className="p-2 text-center" title="Enclosures bought outside rather than made here">OSP Encl.</th>
+                  <th className="p-2">Remarks</th>
+                  <th className="p-2">Materials</th>
+                </>
+              ) : (
+                <>
+                  <th className="p-2 text-center">KVA</th>
+                  <th className="p-2">Rating</th>
+                  <th className="p-2 text-center">Plan Qty</th>
+                  <th className="p-2">RAL</th>
+                </>
+              )}
               <th className="p-2">Added</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={11} className="p-4 text-center text-muted">
-                {rows.length === 0 ? "No orders yet — import a monthly plan." : "No rows match the filters."}
+              <tr><td colSpan={lv ? 13 : 11} className="p-4 text-center text-muted">
+                {rows.length === 0 ? `No ${LINE_LABEL[line]} orders yet — import their monthly plan above.` : "No rows match the filters."}
               </td></tr>
             )}
             {filtered.map((r) => (
@@ -236,10 +267,23 @@ export function OrdersTable({ rows }: { rows: OrderRow[] }) {
                 <td className="p-2 text-xs whitespace-nowrap">{r.soi ?? "—"}</td>
                 <td className="p-2 text-center">{r.urgent && <span className="pill pill-bad">URGENT</span>}</td>
                 <td className="p-2 text-xs whitespace-nowrap text-muted">{r.fgCode ?? "—"}</td>
-                <td className="p-2 text-center tabnum">{r.kva ?? "—"}</td>
-                <td className="p-2 text-xs whitespace-nowrap text-muted">{r.rating ?? "—"}</td>
-                <td className="p-2 text-center font-extrabold tabnum">{r.planQty}</td>
-                <td className="p-2 text-xs whitespace-nowrap">{r.colorRal ?? "—"}</td>
+                {lv ? (
+                  <>
+                    <td className="p-2 text-center"><span className="pill pill-muted">{r.product ?? "—"}</span></td>
+                    <td className="p-2 text-xs whitespace-nowrap tabnum text-muted">{r.secItem ?? "—"}</td>
+                    <td className="p-2 text-center font-extrabold tabnum">{r.planQty}</td>
+                    <td className="p-2 text-center tabnum">{r.ospEncloser > 0 ? r.ospEncloser : <span className="text-muted">—</span>}</td>
+                    <td className="p-2 text-xs max-w-[12rem]">{r.remarks ?? <span className="text-muted">—</span>}</td>
+                    <td className="p-2 text-xs max-w-[16rem]">{r.materialsRemarks ?? <span className="text-muted">—</span>}</td>
+                  </>
+                ) : (
+                  <>
+                    <td className="p-2 text-center tabnum">{r.kva ?? "—"}</td>
+                    <td className="p-2 text-xs whitespace-nowrap text-muted">{r.rating ?? "—"}</td>
+                    <td className="p-2 text-center font-extrabold tabnum">{r.planQty}</td>
+                    <td className="p-2 text-xs whitespace-nowrap">{r.colorRal ?? "—"}</td>
+                  </>
+                )}
                 <td className="p-2 text-xs whitespace-nowrap text-muted" title={r.source ?? ""}>{r.createdAt.slice(0, 10)}</td>
               </tr>
             ))}

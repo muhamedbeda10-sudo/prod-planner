@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/ui";
 import { MonthlyImport } from "@/components/MonthlyImport";
 import { OrdersTable } from "@/components/OrdersTable";
 import { ViewTabs, PLANS_VIEWS } from "@/components/ViewTabs";
+import { getActiveLine } from "@/lib/server/line";
+import { LINE_LABEL } from "@/lib/domain/lines";
 
 export const dynamic = "force-dynamic";
 
@@ -13,21 +15,24 @@ export default async function OrdersPage() {
   const me = await getCurrentUser();
   if (!me?.isAdmin) redirect("/");
 
-  const orders = await prisma.masterOrder.findMany({ orderBy: [{ createdAt: "desc" }, { mo: "asc" }] });
+  // one product line at a time — the toggle in the nav decides which
+  const line = await getActiveLine();
+  const orders = await prisma.masterOrder.findMany({ where: { line }, orderBy: [{ createdAt: "desc" }, { mo: "asc" }] });
   const totalQty = orders.reduce((s, o) => s + o.planQty, 0);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Orders Registry"
+        title={`Orders Registry — ${LINE_LABEL[line]}`}
         sub={`The master MO list, fed by the monthly plans — ${orders.length} orders · ${totalQty} pcs planned. Tick rows to take a wrong import back out.`}
       >
         <ViewTabs views={PLANS_VIEWS} current="/orders" label="Plans view" />
       </PageHeader>
-      <MonthlyImport />
+      <MonthlyImport line={line} />
       <div>
-        <h2>All orders</h2>
+        <h2>All {LINE_LABEL[line]} orders</h2>
         <OrdersTable
+          line={line}
           rows={orders.map((o) => ({
             id: o.id,
             mo: o.mo,
@@ -43,6 +48,10 @@ export default async function OrdersPage() {
             remarks: o.remarks,
             source: o.source,
             createdAt: o.createdAt.toISOString(),
+            product: o.product,
+            secItem: o.secItem,
+            ospEncloser: o.ospEncloser,
+            materialsRemarks: o.materialsRemarks,
           }))}
         />
       </div>

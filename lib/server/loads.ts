@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
+import { getActiveLine } from "./line";
 
 // The tables every screen reads, loaded ONCE per request. A worklist page
 // used to fetch the orders registry five times and the whole daily log
@@ -11,8 +12,14 @@ import { prisma } from "@/lib/db";
 // another round trip every time. Callers must treat the arrays as
 // read-only — they are shared for the rest of the request.
 
-/** Every order in the registry, urgent first then by MO. */
-export const loadMasterOrders = cache(async () => prisma.masterOrder.findMany({ orderBy: [{ urgent: "desc" }, { mo: "asc" }] }));
+/** Every order of the product line the screens are showing, urgent first
+ *  then by MO. The line comes from the planner's toggle (a cookie), read
+ *  here so that every screen built on this loader shows one line at a time
+ *  without each of them having to ask. */
+export const loadMasterOrders = cache(async () => {
+  const line = await getActiveLine();
+  return prisma.masterOrder.findMany({ where: { line }, orderBy: [{ urgent: "desc" }, { mo: "asc" }] });
+});
 
 /** Every schedule line of every weekly plan, in import order. */
 export const loadAllSchedules = cache(async () => prisma.planSchedule.findMany({ orderBy: { id: "asc" } }));

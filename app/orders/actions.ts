@@ -6,6 +6,7 @@ import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/import
 import { requirePerm, requireAdmin } from "@/lib/server/auth";
 import { applicableItems, ospOf, eligibleItems, isDept, isPaintExempt, deptLabel, itemApplies, parseExcludedItems, ITEMS, DELIVERED_STAGE, type Item } from "@/lib/domain/constants";
 import { finsGroup, isFullyDelivered, spreadOverGroup } from "@/lib/domain/groupSpread";
+import { getActiveLine } from "@/lib/server/line";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
@@ -302,7 +303,8 @@ export async function importMonthlyAction(formData: FormData): Promise<MonthlyIm
   try {
     const buffer = await file.arrayBuffer();
     const preview = formData.get("preview") === "on"; // dry-run: report only, write nothing
-    const res = await importMonthlyPlan(buffer, label, preview);
+    // the toggle at the top says which product the sheet plans
+    const res = await importMonthlyPlan(buffer, label, preview, await getActiveLine());
     if (res.ok && !preview) revalidatePath("/orders");
     return res;
   } catch (e) {
@@ -445,7 +447,7 @@ export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: str
   const guard = await requirePerm("tracker.status");
   if (guard.error) return { ok: false, error: guard.error };
 
-  const open = await prisma.masterOrder.findMany({ where: { status: "open" } });
+  const open = await prisma.masterOrder.findMany({ where: { status: "open", line: await getActiveLine() } });
   if (open.length === 0) return { ok: true, closed: 0, mos: [] };
 
   const delivered = await prisma.handoverEntry.groupBy({

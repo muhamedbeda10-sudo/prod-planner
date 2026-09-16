@@ -111,6 +111,10 @@ model HandoverEntry {
 model MasterOrder {
   id            Int       @id @default(autoincrement())
   mo            String    @unique
+  // Which of the plant's two products this order is — a transformer (TR) or
+  // an LV panel (LV). Stamped by the plan import it came from and never
+  // inferred from the order's shape. Every screen shows ONE line at a time.
+  line          String    @default("TR")
   soi           String?
   urgent        Boolean   @default(false)
   customer      String?
@@ -119,6 +123,12 @@ model MasterOrder {
   kva           String?
   rating        String?
   secItem       String?
+  // The LV plan's own columns. `product` is the panel type (LSS / USS);
+  // `ospEncloser` the enclosures bought outside rather than made here;
+  // `materialsRemarks` the sheet's second remarks column, about parts.
+  product          String?
+  ospEncloser      Float     @default(0)
+  materialsRemarks String?
   planQty       Float     @default(0)
   // The order's spec columns, shown on the tracker. NONE of them is imported:
   // the monthly sheet does not carry them in a form the import can trust, so
@@ -153,6 +163,7 @@ model MasterOrder {
 
   @@index([bom])
   @@index([status])
+  @@index([line])
 }
 
 // Admin date override on a fabrication-worklist line (BOM × MO × item).
