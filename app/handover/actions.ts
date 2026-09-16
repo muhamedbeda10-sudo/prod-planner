@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { buildBomClassifier } from "@/lib/domain/normalizeBoms";
 import { isItem, isDept } from "@/lib/domain/constants";
+import { LV_ITEM, LV_STAGES } from "@/lib/domain/lv";
 import { parseISODate } from "@/lib/domain/dates";
 import { getKnownBoms } from "@/lib/server/handover";
 import { importHandoverFile, type HandoverImportResult } from "@/lib/server/importHandover";
@@ -69,6 +70,34 @@ export async function addHandover(formData: FormData): Promise<ActionResult> {
 
   const date = parseISODate(dateStr);
   if (!date) return { ok: false, error: "Invalid date." };
+
+  // An LV panel's row: one item, a stage of the panel's chain, and the MO it
+  // was done on — the tracker reads a panel's stages per MO, so a row with
+  // no MO would count for nothing.
+  if (item === LV_ITEM) {
+    const mo = String(formData.get("mo") ?? "").trim().toUpperCase();
+    if (!(LV_STAGES as readonly string[]).includes(dept)) return { ok: false, error: "Choose the stage: Punching, Bending, Welding or Painting." };
+    const guard = await requireDeptEdit(dept);
+    if (guard.error) return { ok: false, error: guard.error };
+    if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: "Enter a whole number of panels greater than zero." };
+    if (!Number.isInteger(planNo) || planNo <= 0) return { ok: false, error: "Invalid plan number." };
+    if (!mo) return { ok: false, error: "Pick the panel order (MO)." };
+    const order = await prisma.masterOrder.findUnique({ where: { mo }, select: { bom: true, line: true } });
+    if (!order || order.line !== "LV") return { ok: false, error: `${mo} is not an LV panel order.` };
+    const plan = await prisma.plan.findUnique({ where: { planNo } });
+    if (!plan) return { ok: false, error: `Plan ${planNo} does not exist.` };
+    const chainError = await checkOutputChain({ dept, bom: order.bom, mo, item, qty });
+    if (chainError) return { ok: false, error: chainError };
+    await prisma.$transaction(async (tx) => {
+      const ledger = await tx.handoverEntry.create({
+        data: { date, dept, bom: order.bom, mo, item, qty, planNo, source: "manual", createdBy: guard.user?.name ?? null },
+      });
+      await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
+    });
+    revalidateEverywhere();
+    return { ok: true };
+  }
+
   if (!isDept(dept)) return { ok: false, error: "Choose a department (Cut/Welding)." };
   const guard = await requireDeptEdit(dept);
   if (guard.error) return { ok: false, error: guard.error };

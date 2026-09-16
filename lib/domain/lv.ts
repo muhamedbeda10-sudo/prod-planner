@@ -36,6 +36,14 @@ export const LV_STAGE_LABEL: Record<LvChainStage, string> = {
   Painting: "Painting",
   Delivered: "Delivered",
 };
+/** A stage's done-word, for the sentences the guards write. */
+export const LV_STAGE_DONE: Record<LvChainStage, string> = {
+  Punching: "punched",
+  Bending: "bent",
+  Welding: "welded",
+  Painting: "painted",
+  Delivered: "delivered",
+};
 /** Column heads — short, the way the transformer tracker writes its own. */
 export const LV_STAGE_SHORT: Record<LvChainStage, string> = {
   Punching: "Punch",
@@ -116,16 +124,16 @@ export function lvCaps(s: LvState, stage: LvChainStage): { add: number; sub: num
 export function lvChainError(s: LvState, stage: LvChainStage, delta: number, label: string): string | null {
   if (delta === 0) return null;
   const caps = lvCaps(s, stage);
-  const short = LV_STAGE_SHORT[stage].toLowerCase();
+  const done = LV_STAGE_DONE[stage];
   if (delta > 0 && delta > caps.add) {
     const i = LV_CHAIN.indexOf(stage);
-    const before = i === 0 ? `the order is for ${s.required}` : `only ${upstream(s, stage)} ${LV_STAGE_SHORT[LV_CHAIN[i - 1]].toLowerCase()}ed`;
-    return `Chain check: ${label} would have ${lvStageOf(s, stage) + delta} ${short}ed but ${before} — max extra now: ${caps.add}.`;
+    const before = i === 0 ? `the order is for ${s.required}` : `only ${upstream(s, stage)} ${LV_STAGE_DONE[LV_CHAIN[i - 1]]}`;
+    return `Chain check: ${label} would have ${lvStageOf(s, stage) + delta} ${done} but ${before} — max extra now: ${caps.add}.`;
   }
   if (delta < 0 && -delta > caps.sub) {
     const i = LV_CHAIN.indexOf(stage);
     const after = i === LV_CHAIN.length - 1 ? 0 : downstream(s, stage);
-    return `Chain check: ${label} cannot drop below ${after} ${short}ed — ${after} already went on to ${LV_STAGE_SHORT[LV_CHAIN[Math.min(i + 1, LV_CHAIN.length - 1)]].toLowerCase()}. Undo the later stage first.`;
+    return `Chain check: ${label} cannot drop below ${after} ${done} — ${after} already went on to ${LV_CHAIN[Math.min(i + 1, LV_CHAIN.length - 1)].toLowerCase()}. Undo the later stage first.`;
   }
   return null;
 }
@@ -173,4 +181,25 @@ export const LV_WORKLISTS: readonly { stage: LvStage; href: string; label: strin
 export function lvWaiting(s: LvState, stage: LvStage): number {
   const c = lvCaps(s, stage);
   return Number.isFinite(c.add) ? c.add : 0;
+}
+
+/**
+ * The first link of the chain a state breaks, or null when it holds:
+ *
+ *   delivered ≤ painted ≤ welded ≤ bent ≤ punched ≤ order qty
+ *
+ * `lvChainError` judges one change at one stage; this judges the state as
+ * a whole, which is what an EDIT or a DELETE of a log row needs — lowering
+ * a punching row can leave the bending after it hanging, and only the whole
+ * chain says so.
+ */
+export function lvChainViolation(s: LvState, label: string): string | null {
+  const word = (st: LvChainStage) => LV_STAGE_DONE[st];
+  for (let i = LV_CHAIN.length - 1; i > 0; i--) {
+    const here = lvStageOf(s, LV_CHAIN[i]);
+    const up = lvStageOf(s, LV_CHAIN[i - 1]);
+    if (here > up) return `Chain check: ${label} would have ${here} ${word(LV_CHAIN[i])} but only ${up} ${word(LV_CHAIN[i - 1])} — ${word(LV_CHAIN[i])} must stay ≤ ${word(LV_CHAIN[i - 1])}.`;
+  }
+  if (s.required > 0 && s.punch > s.required) return `Chain check: order ${label} is for ${s.required} panels — punched would reach ${s.punch}.`;
+  return null;
 }
