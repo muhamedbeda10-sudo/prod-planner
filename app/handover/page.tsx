@@ -5,21 +5,27 @@ import { toISODate } from "@/lib/domain/dates";
 import { guardLedger } from "@/lib/domain/ledgerGuard";
 import { getCurrentUser, canEditDept, hasPerm } from "@/lib/server/auth";
 import { DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE } from "@/lib/domain/constants";
-import { trackerPermKey } from "@/lib/domain/permissions";
+import { deptPermKey, trackerPermKey } from "@/lib/domain/permissions";
+import { getActiveLine } from "@/lib/server/line";
+import { LV_CHAIN } from "@/lib/domain/lv";
 import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
 
 export const dynamic = "force-dynamic";
 
 export default async function HandoverPage() {
-  const [recent, user, soi] = await Promise.all([getRecentHandover(2000), getCurrentUser(), getSoiLookup()]);
+  const [recent, user, soi, line] = await Promise.all([getRecentHandover(2000), getCurrentUser(), getSoiLookup(), getActiveLine()]);
   // production depts follow the worklist permissions; the tracker-only stages
-  // (Shot Blast / Delivered) follow their own tracker permissions
-  const editableDepts = user
-    ? [
-        ...DEPTS.filter((d) => canEditDept(user, d)),
-        ...[SHOTBLAST_STAGE, DELIVERED_STAGE].filter((d) => hasPerm(user, trackerPermKey(d))),
-      ]
-    : [];
+  // (Shot Blast / Delivered) follow their own tracker permissions. A panel's
+  // stages follow the department each corresponds to (punching and bending
+  // are fabrication's) — the same rule the actions check.
+  const editableDepts = !user
+    ? []
+    : line === "LV"
+      ? LV_CHAIN.filter((d) => hasPerm(user, deptPermKey(d)))
+      : [
+          ...DEPTS.filter((d) => canEditDept(user, d)),
+          ...[SHOTBLAST_STAGE, DELIVERED_STAGE].filter((d) => hasPerm(user, trackerPermKey(d))),
+        ];
 
   // the data guard runs over everything loaded (not just what the filters
   // show) so an outlier is judged against the full recent history
@@ -55,6 +61,7 @@ export default async function HandoverPage() {
   return (
     <HandoverLog
       rows={rows}
+      line={line}
       editableDepts={editableDepts}
       soi={soi}
       viewTabs={<ViewTabs views={TRACKER_VIEWS} current="/handover" label="Tracker view" />}

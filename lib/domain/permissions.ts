@@ -100,6 +100,9 @@ export function deptPermKey(dept: string): string {
   if (dept === "Delivered") return "tracker.delivered";
   if (dept === "ShotBlast") return "tracker.shp";
   if (dept === "LeakTest") return "leaktest.edit";
+  // an LV panel's punching and bending are its fabrication — the Fab
+  // department's permission records and edits them
+  if (dept === "Punching" || dept === "Bending") return "cut.edit";
   return `${dept.toLowerCase()}.edit`;
 }
 

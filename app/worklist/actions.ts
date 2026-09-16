@@ -18,6 +18,7 @@ import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
 import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
 import { capsFor, spreadOverGroup } from "@/lib/domain/groupSpread";
+import { LV_ITEM, LV_STAGES } from "@/lib/domain/lv";
 
 export interface RecordResult {
   ok: boolean;
@@ -51,7 +52,7 @@ const PAINT_TANKS_ELSEWHERE =
 export async function recordOutput(formData: FormData): Promise<RecordResult> {
   try {
     const dateStr = String(formData.get("date") ?? "");
-    const dept = String(formData.get("dept") ?? "");
+    let dept = String(formData.get("dept") ?? "");
     const bom = String(formData.get("bom") ?? "").trim();
     const mo = String(formData.get("mo") ?? "").trim();
     const item = String(formData.get("item") ?? "").trim().toUpperCase();
@@ -66,11 +67,18 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
 
     const date = parseISODate(dateStr);
     if (!date) return { ok: false, error: "Invalid date." };
-    if (!isDept(dept)) return { ok: false, error: "Invalid department." };
+    // An LV panel off a machine card: the fabrication bay's punches punch it,
+    // so a panel recorded under "Cut" is punching; the other bays keep their
+    // names. The department's own permission records it either way.
+    const lvPanel = item === LV_ITEM;
+    if (lvPanel && dept === "Cut") dept = "Punching";
+    if (lvPanel ? !(LV_STAGES as readonly string[]).includes(dept) : !isDept(dept)) return { ok: false, error: "Invalid department." };
     const guard = await requireDeptEdit(dept);
     if (guard.error) return { ok: false, error: guard.error };
     if (!bom) return { ok: false, error: "Missing BOM." };
-    if (!isItem(item)) return { ok: false, error: "Invalid component." };
+    if (!lvPanel && !isItem(item)) return { ok: false, error: "Invalid component." };
+    if (lvPanel && !mo) return { ok: false, error: "A panel is recorded on its MO." };
+    if (lvPanel && !Number.isInteger(qty)) return { ok: false, error: "Panels are recorded by the piece — enter a whole number." };
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a quantity greater than zero." };
     if (!Number.isInteger(planNo) || planNo < 0) return { ok: false, error: "Invalid plan number." };
 

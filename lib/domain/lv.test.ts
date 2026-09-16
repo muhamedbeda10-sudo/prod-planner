@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spreadOverGroup } from "./groupSpread";
-import { LV_CHAIN, LV_STAGES, LV_WORKLISTS, lvCaps, lvChainError, lvComplete, lvDeptPermKey, lvGroupMembers, lvPermKey, lvWaiting, type LvState } from "./lv";
+import { LV_CHAIN, LV_STAGES, LV_WORKLISTS, lvCaps, lvChainError, lvChainViolation, lvComplete, lvDeptPermKey, lvGroupMembers, lvPermKey, lvWaiting, type LvState } from "./lv";
 
 const st = (over: Partial<LvState> = {}): LvState => ({ required: 10, punch: 0, bend: 0, weld: 0, paint: 0, delivered: 0, ...over });
 
@@ -85,5 +85,24 @@ describe("an LV stage's worklist", () => {
   it("lists the four worklists in the order a panel passes them", () => {
     expect(LV_WORKLISTS.map((w) => w.stage)).toEqual([...LV_STAGES]);
     expect(LV_WORKLISTS.map((w) => w.href)).toEqual(["/worklist/punching", "/worklist/bending", "/worklist/welding", "/worklist/painting"]);
+  });
+});
+
+describe("lvChainViolation — the whole chain after an edit", () => {
+  it("holds when every stage is within the one before it", () => {
+    expect(lvChainViolation(st({ punch: 8, bend: 6, weld: 4, paint: 4, delivered: 2 }), "MO-1")).toBeNull();
+  });
+
+  it("catches a punching row lowered under the bending after it", () => {
+    expect(lvChainViolation(st({ punch: 3, bend: 6 }), "MO-1")).toMatch(/6 bent but only 3 punched/);
+  });
+
+  it("names the LAST broken link first — delivery over painting before anything upstream", () => {
+    expect(lvChainViolation(st({ punch: 1, bend: 5, weld: 5, paint: 5, delivered: 7 }), "MO-1")).toMatch(/delivered/);
+  });
+
+  it("catches punching beyond the order, and ignores the cap on an order with no quantity", () => {
+    expect(lvChainViolation(st({ punch: 12 }), "MO-1")).toMatch(/for 10 panels/);
+    expect(lvChainViolation(st({ required: 0, punch: 12 }), "MO-1")).toBeNull();
   });
 });

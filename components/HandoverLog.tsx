@@ -9,6 +9,8 @@ import { ExportButton } from "@/components/ExportButton";
 import { Soi, soiOf } from "@/components/ui";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { ITEMS, DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE, deptLabel } from "@/lib/domain/constants";
+import { LV_CHAIN, LV_ITEM } from "@/lib/domain/lv";
+import type { ProductLine } from "@/lib/domain/lines";
 
 // every ledger stage the log can carry — production depts + tracker-only stages
 const LOG_DEPTS = [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE];
@@ -36,9 +38,11 @@ export interface LogRow {
   flags?: string[] | null; // data-guard warnings — the row LOOKS wrong, check it
 }
 
-export function HandoverLog({ rows, editableDepts = [], soi, viewTabs }: {
+export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "TR" }: {
   rows: LogRow[];
   editableDepts?: string[];
+  /** Whose log this is — the transformers' departments and components, or the panels' stages. */
+  line?: ProductLine;
   soi?: SoiLookup;
   /** The tab's view switcher (Tracker / Daily log) — it rides in the filter
    *  bar, since the log is sized to fill the screen. */
@@ -216,8 +220,8 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs }: {
             { value: "30", label: "Last 30 days" },
           ]}
         />
-        <SelectFilter label="Dept" value={dept} onChange={setDept} options={LOG_DEPTS.map((d) => ({ value: d, label: deptLabel(d) }))} />
-        <SelectFilter label="Item" value={item} onChange={setItem} options={ITEMS.map((i) => ({ value: i, label: i }))} />
+        <SelectFilter label={line === "LV" ? "Stage" : "Dept"} value={dept} onChange={setDept} options={(line === "LV" ? [...LV_CHAIN] : LOG_DEPTS).map((d) => ({ value: d, label: deptLabel(d) }))} />
+        {line !== "LV" && <SelectFilter label="Item" value={item} onChange={setItem} options={ITEMS.map((i) => ({ value: i, label: i }))} />}
         {flaggedCount > 0 && (
           <button
             type="button"
@@ -322,7 +326,7 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs }: {
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap text-muted">{r.mo ?? "—"}</td>
                 <td className="p-2 whitespace-nowrap"><Soi soi={soiOf(soi, r.mo, r.bom)} /></td>
-                <td className="p-2 text-center font-bold">{r.item}</td>
+                <td className="p-2 text-center font-bold">{r.item === LV_ITEM ? <span title="An LV panel — one item through its stages">Panel</span> : r.item}</td>
                 <td className="p-2 text-center font-bold tabnum">
                   {editing === r.id ? (
                     <input type="number" min={0} defaultValue={r.qty} onChange={(e) => setQty(e.target.value)} className="w-16 border rounded px-1 py-0.5" autoFocus />
