@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
@@ -80,6 +80,76 @@ export interface RowEta {
   blockedBy: string | null;
 }
 
+/** Keyboard manners for the stage cells, borrowed from a spreadsheet: the
+ *  arrows walk the grid, a digit typed on a focused cell starts the entry,
+ *  and LEAVING the cell — an arrow, Tab, Enter or a click elsewhere —
+ *  records what was typed. There is no tick to press; Escape drops it. */
+type NavDir = "left" | "right" | "up" | "down";
+function navDir(key: string): NavDir | null {
+  return key === "ArrowLeft" ? "left" : key === "ArrowRight" ? "right" : key === "ArrowUp" ? "up" : key === "ArrowDown" || key === "Enter" ? "down" : null;
+}
+/** Focus the neighbouring stage cell. Left/right step along the row; up/down
+ *  find the same column (`data-nav`) in the nearest row that has it, so a
+ *  merged BOM row and the MO rows under it share one column walk. */
+function moveFocus(from: HTMLElement, dir: NavDir): boolean {
+  const tr = from.closest("tr");
+  const table = from.closest("table");
+  if (!tr || !table) return false;
+  let target: HTMLElement | null | undefined;
+  if (dir === "left" || dir === "right") {
+    const cells = Array.from(tr.querySelectorAll<HTMLElement>("[data-nav]"));
+    target = cells[cells.indexOf(from) + (dir === "right" ? 1 : -1)];
+  } else {
+    const col = from.dataset.nav ?? "";
+    const rows = Array.from(table.querySelectorAll("tr"));
+    for (let i = rows.indexOf(tr) + (dir === "down" ? 1 : -1); i >= 0 && i < rows.length && !target; i += dir === "down" ? 1 : -1) {
+      target = rows[i].querySelector<HTMLElement>(`[data-nav="${CSS.escape(col)}"]`);
+    }
+  }
+  if (!target) return false;
+  target.focus();
+  return true;
+}
+/** Keys on a cell that is NOT being edited: a digit starts the entry with
+ *  that digit, an arrow moves. Enter falls through to the button's click,
+ *  which opens the entry with the figure selected. */
+function cellKeys(e: React.KeyboardEvent<HTMLElement>, startWith: (digit: string) => void) {
+  if (/^\d$/.test(e.key)) { e.preventDefault(); startWith(e.key); return; }
+  const dir = navDir(e.key);
+  if (dir && e.key !== "Enter") { e.preventDefault(); moveFocus(e.currentTarget, dir); }
+}
+
+/** The number box inside a stage cell being edited. */
+function CellInput({ col, value, selectAll, label, onChange, onCommit, onCancel }: {
+  col: string; value: string; selectAll: boolean; label: string;
+  onChange: (v: string) => void; onCommit: () => void; onCancel: () => void;
+}) {
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      data-nav={col}
+      value={value}
+      autoFocus
+      // opened by a click: the figure is selected, typing replaces it; opened
+      // by a digit: the caret follows that digit
+      onFocus={(e) => { if (selectAll) e.currentTarget.select(); else { const n = e.currentTarget.value.length; e.currentTarget.setSelectionRange(n, n); } }}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
+      onBlur={onCommit}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") { e.preventDefault(); onCancel(); return; }
+        const dir = navDir(e.key);
+        if (!dir) return; // Tab is native: the next cell takes focus and the blur records
+        e.preventDefault();
+        if (!moveFocus(e.currentTarget, dir)) e.currentTarget.blur();
+      }}
+      className="w-16 border rounded-md px-1 py-0.5 text-center font-bold tabnum bg-surface"
+      aria-label={label}
+    />
+  );
+}
+
 export function MasterTrackerTable({
   rows,
   features = [],
@@ -109,7 +179,28 @@ export function MasterTrackerTable({
   // inline stage-cell editor: one cell at a time (mo|item|dept)
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
-  const [cellErr, setCellErr] = useState("");
+  // a refusal stays on ITS cell after the entry closed — the planner has
+  // usually moved on to the next cell by the time the server answers
+  const [cellErr, setCellErrState] = useState<{ key: string; msg: string } | null>(null);
+  const setCellErr = (msg: string, key = editKey ?? "") => setCellErrState(msg ? { key, msg } : null);
+  const errFor = (k: string) => (cellErr?.key === k ? cellErr.msg : "");
+  // the cell whose entry is open: a commit fired for any other key is stale
+  // (the entry was already recorded or dropped) and does nothing
+  const openRef = useRef<string | null>(null);
+  const selectRef = useRef(true); // opened by a click (select the figure) or by a digit
+  function openCell(k: string, initial: string, selectAll: boolean) {
+    openRef.current = k;
+    selectRef.current = selectAll;
+    setEditKey(k);
+    setEditVal(initial);
+    setCellErrState(null);
+  }
+  function closeCell(k: string) {
+    if (openRef.current !== k) return false;
+    openRef.current = null;
+    setEditKey(null);
+    return true;
+  }
   // inline Required-qty editor (manual order-qty change, e.g. after a revision
   // lowered a quantity — the import never lowers it automatically)
   const [qtyEditMo, setQtyEditMo] = useState<string | null>(null);
@@ -132,7 +223,7 @@ export function MasterTrackerTable({
       if (res.ok) {
         setSpecEdit(null);
         router.refresh();
-      } else setCellErr(res.error ?? "Failed");
+      } else setCellErr(res.error ?? "Failed", `g|${bom}|${field}`);
     });
   }
 
@@ -146,7 +237,7 @@ export function MasterTrackerTable({
       if (res.ok) {
         setSpecEdit(null);
         router.refresh();
-      } else setCellErr(res.error ?? "Failed");
+      } else setCellErr(res.error ?? "Failed", `${mo}|${field}`);
     });
   }
 
@@ -263,7 +354,7 @@ export function MasterTrackerTable({
     const needle = q.trim().toUpperCase();
     return monthRows.filter((r) => {
       if (status && r.status !== status) return false;
-      if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.kva ?? ""}`.toUpperCase().includes(needle))) return false;
+      if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.customer ?? ""} ${r.kva ?? ""}`.toUpperCase().includes(needle))) return false;
       if (progress && progressOf(r) !== progress) return false;
       if (urgent === "yes" && !r.urgent) return false;
       return true;
@@ -276,8 +367,8 @@ export function MasterTrackerTable({
   // Complete/Left/Achv
   // +1 for Status, +1 for the ETA forecast column
   // MO, SOI, BOM, KVA, Required lead the row before the per-item stage columns
-  // MO · SOI · BOM · KVA · Fins · Color · CRC · SFM · Required, then the items
-  const tableCols = scoped ? 9 + ITEMS.length * stages.length + 2 : 9 + ITEMS.length * 4 + 5;
+  // MO · SOI · Customer · BOM · KVA · Fins · Color · CRC · SFM · Required, then the items
+  const tableCols = scoped ? 10 + ITEMS.length * stages.length + 2 : 10 + ITEMS.length * 4 + 5;
 
   // shared BOMs: one summary row per BOM, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -430,6 +521,7 @@ export function MasterTrackerTable({
       BOM: r.bom,
       "Plan months": r.months.join(", "),
       SOI: r.soi ?? "",
+      Customer: r.customer ?? "",
       Urgent: r.urgent ? "Yes" : "",
       KVA: r.kva ?? "",
       "Color RAL": r.colorRal ?? "",
@@ -492,7 +584,7 @@ export function MasterTrackerTable({
       <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus("open"); setMonth(""); setStage(""); }} hasActive={hasActive}>
         {viewTabs}
         <PlanViewToggle value="monthly" />
-        <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / KVA…" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / Customer / KVA…" />
         <SelectFilter
           label="Plan month"
           value={month}
@@ -558,6 +650,7 @@ export function MasterTrackerTable({
             <tr className="bg-brand text-white">
               <th rowSpan={2} className="p-2 text-left">MO</th>
               <th rowSpan={2} className="p-2 text-left" title="Sales order item">SOI</th>
+              <th rowSpan={2} className="p-2 text-left" title="The plan sheet's customer column">Customer</th>
               <th rowSpan={2} className="p-2 text-left">BOM</th>
               <th rowSpan={2} className="p-2">KVA</th>
               <th rowSpan={2} className="p-2" title="Colour RAL — typed here; the import never writes it">Color</th>
@@ -617,6 +710,8 @@ export function MasterTrackerTable({
               const gAch = gReq > 0 ? gComplete / gReq : null;
               const urgentCount = members.filter((m) => m.urgent).length;
               const gKva = members.find((m) => m.kva)?.kva ?? "—";
+              // one customer reads as itself; a BOM shared by two reads "…" until the group is opened
+              const gCustomer = agreedSpec(members.map((m) => m.customer));
               return (
                 <Fragment key={`g|${gBom}`}>
                   <tr
@@ -636,6 +731,9 @@ export function MasterTrackerTable({
                         below do not. */}
                     <td className="p-2 whitespace-nowrap">
                       <Soi soi={null} />
+                    </td>
+                    <td className="p-2 text-xs whitespace-nowrap" title={gCustomer === null ? `${members.length} MOs for more than one customer — open the group` : undefined}>
+                      {gCustomer === null ? <span className="text-muted">…</span> : gCustomer || <span className="text-muted">—</span>}
                     </td>
                     <td className="p-2 font-bold whitespace-nowrap">
                       <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">{gBom}</Link>
@@ -779,6 +877,7 @@ export function MasterTrackerTable({
     const editable = group !== null && can("tracker.qty");
     const added = editing && group ? Number(editVal) - group.current : 0;
     const tanks = members.reduce((s, m) => s + m.required, 0);
+    const cellErr = errFor(k);
 
     function save() {
       const fd = new FormData();
@@ -791,7 +890,7 @@ export function MasterTrackerTable({
         if (res.ok) {
           setEditKey(null);
           router.refresh();
-        } else setCellErr(res.error ?? "Failed");
+        } else setCellErr(res.error ?? "Failed", k);
       });
     }
 
@@ -854,26 +953,27 @@ export function MasterTrackerTable({
    *  the chain guard (painted ≤ welded ≤ cut ≤ order) blocks contradictions. */
   function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, tint: string, borderR = false) {
     const k = `${r.mo}|${it}|${dept}`;
+    const col = `${it}|${dept}`;
     const editing = editKey === k;
     const editable = editableDepts.includes(dept);
-    const added = editing ? Number(editVal) - value : 0;
+    const added = editing && editVal !== "" ? Number(editVal) - value : 0;
+    const err = errFor(k);
 
-    function save() {
+    // leaving the cell records it: an unchanged or emptied figure just closes
+    function commit() {
+      const typed = editVal;
+      if (!closeCell(k)) return;
+      if (typed === "" || Number(typed) === value) return;
       const fd = new FormData();
       fd.set("dept", dept);
       fd.set("bom", r.bom);
       fd.set("mo", r.mo);
       fd.set("item", it);
-      fd.set("total", editVal);
-      setCellErr("");
+      fd.set("total", typed);
       startTransition(async () => {
         const res = await recordTrackerTotal(fd);
-        if (res.ok) {
-          setEditKey(null);
-          router.refresh();
-        } else {
-          setCellErr(res.error ?? "Failed");
-        }
+        if (res.ok) router.refresh();
+        else setCellErr(res.error ?? "Failed", k);
       });
     }
 
@@ -881,50 +981,41 @@ export function MasterTrackerTable({
       <td className={`p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`} style={{ background: tint }}>
         {editing ? (
           <span className="inline-flex flex-col items-center gap-0.5">
-            <span className="inline-flex items-center gap-1">
-              <input
-                type="number"
-                min={0}
-                value={editVal}
-                autoFocus
-                onChange={(e) => { setEditVal(e.target.value); setCellErr(""); }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") save();
-                  if (e.key === "Escape") setEditKey(null);
-                }}
-                className="w-16 border rounded-md px-1 py-0.5 text-center font-bold tabnum bg-surface"
-                disabled={pending}
-              />
-              <button type="button" onClick={save} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title="Save — the difference lands in today's Daily Log (a lower total records a negative correction)">
-                ✓
-              </button>
-              <button type="button" onClick={() => setEditKey(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">
-                ✕
-              </button>
-            </span>
-            {added > 0 && !cellErr && <span className="text-[10px] font-bold text-ok-fg whitespace-nowrap">+{added} today</span>}
-            {added < 0 && !cellErr && (
+            <CellInput
+              col={col}
+              value={editVal}
+              selectAll={selectRef.current}
+              label={`${deptLabel(dept)} ${it} total for ${r.mo}`}
+              onChange={(v) => { setEditVal(v); setCellErrState(null); }}
+              onCommit={commit}
+              onCancel={() => closeCell(k)}
+            />
+            {added > 0 && <span className="text-[10px] font-bold text-ok-fg whitespace-nowrap">+{added} today</span>}
+            {added < 0 && (
               <span className="text-[10px] font-bold text-bad-fg whitespace-nowrap" title="Recorded as a negative correction entry in today's Daily Log">
                 −{-added} correction
               </span>
             )}
-            {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{cellErr}</span>}
             {/* the editor itself never prints — the sheet still shows the
                 figure on record, not a blank cell mid-edit */}
             <span className="print-only tabnum">{value}</span>
           </span>
         ) : editable ? (
-          <button
-            type="button"
-            onClick={() => { setEditKey(k); setEditVal(String(value)); setCellErr(""); }}
-            disabled={pending}
-            // print-as-text: the figure IS the cell — print CSS blanks buttons
-            // inside tables, which would empty every editable stage cell
-            className="print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
-            title={`${deptLabel(dept)} · ${r.mo} · ${it} — click to record: type the NEW total (lower = negative correction in today's Daily Log)`}
-          >
-            {value}
-          </button>
+          <span className="relative inline-flex flex-col items-center gap-0.5 w-full">
+            <button
+              type="button"
+              data-nav={col}
+              onClick={() => openCell(k, String(value), true)}
+              onKeyDown={(e) => cellKeys(e, (d) => openCell(k, d, false))}
+              // print-as-text: the figure IS the cell — print CSS blanks buttons
+              // inside tables, which would empty every editable stage cell
+              className={`print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold focus:ring-2 focus:ring-brand focus:outline-none transition-all cursor-text ${err ? "ring-2 ring-bad-fg" : ""}`}
+              title={`${deptLabel(dept)} · ${r.mo} · ${it} — type the NEW total (a lower one records a correction in today's Daily Log); arrows move, Escape drops it`}
+            >
+              {value}
+            </button>
+            {err && <span className="no-print absolute top-full start-1/2 -translate-x-1/2 mt-0.5 z-20 whitespace-nowrap rounded-md bg-surface border border-bad-fg px-1.5 py-0.5 text-[10px] font-semibold text-bad-fg shadow-md">{err}</span>}
+          </span>
         ) : (
           value
         )}
@@ -967,27 +1058,27 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       : [members.reduce((s, r) => s + r.items[it].paint, 0), ITEM_TINT[it]];
     const eligibleMos = members.filter((m) => m.items[it].eligible && !m.items[it].excluded).map((m) => m.mo);
     const k = `g|${gBom}|${it}|${dept}`;
+    const col = `${it}|${dept}`;
     const editing = editKey === k;
     const editable = editableDepts.includes(dept) && eligibleMos.length > 0;
-    const added = editing ? Number(editVal) - value : 0;
+    const added = editing && editVal !== "" ? Number(editVal) - value : 0;
+    const err = errFor(k);
 
-    function save() {
+    function commit() {
+      const typed = editVal;
+      if (!closeCell(k)) return;
+      if (typed === "" || Number(typed) === value) return;
       const fd = new FormData();
       fd.set("source", "tracker");
       fd.set("dept", dept);
       fd.set("bom", gBom);
       fd.set("item", it);
-      fd.set("total", editVal);
+      fd.set("total", typed);
       fd.set("mos", eligibleMos.join(","));
-      setCellErr("");
       startTransition(async () => {
         const res = await recordGroupOutput(fd);
-        if (res.ok) {
-          setEditKey(null);
-          router.refresh();
-        } else {
-          setCellErr(res.error ?? "Failed");
-        }
+        if (res.ok) router.refresh();
+        else setCellErr(res.error ?? "Failed", k);
       });
     }
 
@@ -995,50 +1086,41 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       <td className={`p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`} style={{ background: tint }} onClick={(e) => e.stopPropagation()}>
         {editing ? (
           <span className="inline-flex flex-col items-center gap-0.5">
-            <span className="inline-flex items-center gap-1">
-              <input
-                type="number"
-                min={0}
-                value={editVal}
-                autoFocus
-                onChange={(e) => { setEditVal(e.target.value); setCellErr(""); }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") save();
-                  if (e.key === "Escape") setEditKey(null);
-                }}
-                className="w-16 border rounded-md px-1 py-0.5 text-center font-bold tabnum bg-surface"
-                disabled={pending}
-              />
-              <button type="button" onClick={save} disabled={pending} className="text-ok-fg font-extrabold px-0.5" title={`Save — the difference is split over the ${eligibleMos.length} MOs in order and lands in today's Daily Log`}>
-                ✓
-              </button>
-              <button type="button" onClick={() => setEditKey(null)} disabled={pending} className="text-muted px-0.5" title="Cancel">
-                ✕
-              </button>
-            </span>
+            <CellInput
+              col={col}
+              value={editVal}
+              selectAll={selectRef.current}
+              label={`${deptLabel(dept)} ${it} total for every MO of ${gBom}`}
+              onChange={(v) => { setEditVal(v); setCellErrState(null); }}
+              onCommit={commit}
+              onCancel={() => closeCell(k)}
+            />
             {/* What the number will actually do, before it is saved. The
                 planner's question about a merged row is always "which MO does
                 this land on" — so it says so, in fill order. The rule is the
                 same function the server records with; the server still decides
                 and refuses anything that does not fit. */}
-            {added !== 0 && !cellErr && (
+            {added !== 0 && (
               <span className={`text-[10px] font-bold whitespace-nowrap ${added > 0 ? "text-ok-fg" : "text-bad-fg"}`} title={added > 0 ? "Each MO is filled to its own limit before the next is touched" : "Taken back off the LAST MOs first — recorded as negative corrections in today's Daily Log"}>
                 {spreadPreview(members, it, dept, added) || (added > 0 ? `+${added}` : `−${-added} correction`)}
               </span>
             )}
-            {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight">{cellErr}</span>}
             <span className="print-only tabnum">{value}</span>
           </span>
         ) : editable ? (
-          <button
-            type="button"
-            onClick={() => { setEditKey(k); setEditVal(String(value)); setCellErr(""); }}
-            disabled={pending}
-            className="print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
-            title={`${deptLabel(dept)} · ${gBom} · ${it} — record on the WHOLE BOM: type the new group total, the difference is distributed over its ${eligibleMos.length} MOs in order`}
-          >
-            {value}
-          </button>
+          <span className="relative inline-flex flex-col items-center gap-0.5 w-full">
+            <button
+              type="button"
+              data-nav={col}
+              onClick={() => openCell(k, String(value), true)}
+              onKeyDown={(e) => cellKeys(e, (d) => openCell(k, d, false))}
+              className={`print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold focus:ring-2 focus:ring-brand focus:outline-none transition-all cursor-text ${err ? "ring-2 ring-bad-fg" : ""}`}
+              title={`${deptLabel(dept)} · ${gBom} · ${it} — record on the WHOLE BOM: type the new group total, the difference is distributed over its ${eligibleMos.length} MOs in order; arrows move, Escape drops it`}
+            >
+              {value}
+            </button>
+            {err && <span className="no-print absolute top-full start-1/2 -translate-x-1/2 mt-0.5 z-20 whitespace-nowrap rounded-md bg-surface border border-bad-fg px-1.5 py-0.5 text-[10px] font-semibold text-bad-fg shadow-md">{err}</span>}
+          </span>
         ) : (
           value
         )}
@@ -1129,6 +1211,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                 <td className="p-2 whitespace-nowrap">
                   <Soi soi={r.soi} />
                 </td>
+                <td className="p-2 text-xs whitespace-nowrap">{r.customer || <span className="text-muted">—</span>}</td>
                 <td className="p-2 font-bold whitespace-nowrap">
                   <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
                 </td>

@@ -14,6 +14,8 @@ export interface MasterTrackerRow {
   mo: string;
   bom: string;
   soi: string | null;
+  /** The plan sheet's customer column (PRI / SEC …). */
+  customer: string | null;
   urgent: boolean;
   kva: string | null;
   rating: string | null;
@@ -82,6 +84,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       mo: o.mo,
       bom: o.bom,
       soi: o.soi,
+      customer: o.customer,
       urgent: o.urgent,
       kva: o.kva,
       fins: o.fins,
