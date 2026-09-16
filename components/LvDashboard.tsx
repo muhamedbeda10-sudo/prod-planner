@@ -37,7 +37,7 @@ export function LvDashboard({ d }: { d: LvDashboardData }) {
           {d.ranged ? `${ddmmyyyy(d.fromISO)} → ${ddmmyyyy(d.toISO)}` : `Last ${d.days.length} days`}
           {d.clamped && <span className="pill pill-warn ms-2">cut to {d.days.length} days</span>}
         </span>
-        <PeriodFilter from={d.ranged ? d.fromISO : ""} to={d.ranged ? d.toISO : ""} active={d.ranged} />
+        <PeriodFilter from={d.ranged ? d.fromISO : ""} to={d.ranged ? d.toISO : ""} active={d.ranged} resetLabel="Back to last 14 days" />
         <span className="ms-auto inline-flex items-center gap-2">
           <PrintButton />
           <Link href="/tracker" className="btn btn-sm">Plan Tracker →</Link>

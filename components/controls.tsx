@@ -73,7 +73,7 @@ export function PlanPicker({ plans, value }: { plans: number[]; value: number })
 }
 
 /** Dashboard period picker: free From/To range (clears the week param). */
-export function PeriodFilter({ from, to, active }: { from: string; to: string; active: boolean }) {
+export function PeriodFilter({ from, to, active, resetLabel = "Back to weekly" }: { from: string; to: string; active: boolean; /** What clearing the period returns to — the week on the transformers, the last two weeks on the panels. */ resetLabel?: string }) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -106,7 +106,7 @@ export function PeriodFilter({ from, to, active }: { from: string; to: string; a
       </button>
       {active && (
         <button type="button" onClick={() => apply("", "")} className="col-span-4 sm:col-span-1 justify-self-start text-xs font-bold text-bad-fg hover:underline">
-          Back to weekly ✕
+          {resetLabel} ✕
         </button>
       )}
     </form>
