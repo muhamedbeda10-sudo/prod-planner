@@ -1,3 +1,4 @@
+import { holdView, isOnHold, type HeldOrderDTO } from "@/lib/domain/hold";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { applicableItems, ospOf, isPaintExempt, type Dept, type Item } from "@/lib/domain/constants";
@@ -38,6 +39,8 @@ export interface WorklistExtras {
   pushed: PushedLineDTO[];
   hidden: HiddenLineDTO[];
   priority: PriorityLineDTO[];
+  /** ⏸ open orders the planner paused — out of every list here, named once. */
+  held: HeldOrderDTO[];
 }
 
 /** One line of the APPROVED run order, as one dept sees it. */
@@ -113,7 +116,11 @@ export async function getWorklistExtras(dept: Dept): Promise<WorklistExtras> {
   const allOrders = await loadMasterOrders();
   const pushSet = new Set(pushMos);
   const pushOrders = allOrders.filter((o) => pushSet.has(o.mo));
-  const priorityOrders = [...allOrders].filter((o) => o.priority && o.status === "open").sort((a, b) => a.mo.localeCompare(b.mo));
+  const priorityOrders = [...allOrders].filter((o) => o.priority && o.status === "open" && !isOnHold(o)).sort((a, b) => a.mo.localeCompare(b.mo));
+  const held: HeldOrderDTO[] = allOrders
+    .filter((o) => o.status === "open" && isOnHold(o))
+    .sort((a, b) => a.mo.localeCompare(b.mo))
+    .map((o) => ({ mo: o.mo, bom: o.bom, description: [o.kva, o.rating].filter(Boolean).join(" · "), hold: holdView(o) }));
 
   const done = new Map<string, number>(); // mo|item -> dept output
   for (const s of sums) if (s.mo) done.set(`${s.mo}|${s.item}`, s._sum.qty ?? 0);
@@ -125,7 +132,7 @@ export async function getWorklistExtras(dept: Dept): Promise<WorklistExtras> {
   const pushed: PushedLineDTO[] = [];
   for (const p of pushes) {
     const o = byMo.get(p.mo);
-    if (!o || o.status !== "open") continue; // closed orders leave the daily screens
+    if (!o || o.status !== "open" || isOnHold(o)) continue; // closed and held orders leave the daily screens
     if (hiddenKeys.has(`${p.bom}|${p.mo}|${p.item}`)) continue;
     const inhouse = Math.max(0, o.planQty - ospOf(o, p.item as Item));
     const d = done.get(`${p.mo}|${p.item}`) ?? 0;
@@ -154,5 +161,6 @@ export async function getWorklistExtras(dept: Dept): Promise<WorklistExtras> {
     pushed,
     hidden: hides.map((h) => ({ dept: h.dept, bom: h.bom, mo: h.mo, item: h.item })),
     priority,
+    held,
   };
 }

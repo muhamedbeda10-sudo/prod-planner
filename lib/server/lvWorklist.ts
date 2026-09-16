@@ -24,10 +24,13 @@ export interface LvWorklist {
   upstream: LvWorklistRow[];
   /** Orders finished at this stage, still open. */
   finished: LvWorklistRow[];
+  /** ⏸ open orders the planner paused — out of every list above, named once. */
+  held: LvWorklistRow[];
 }
 
 export async function getLvWorklist(stage: LvStage): Promise<LvWorklist> {
-  const all = (await getLvTracker()).filter((r) => r.status === "open");
+  const open = (await getLvTracker()).filter((r) => r.status === "open");
+  const all = open.filter((r) => !r.hold.onHold);
   const idx = LV_STAGES.indexOf(stage);
   const prev = idx === 0 ? null : LV_STAGES[idx - 1];
   const doneAt = (r: LvTrackerRow) => (stage === "Punching" ? r.state.punch : stage === "Bending" ? r.state.bend : stage === "Welding" ? r.state.weld : r.state.paint);
@@ -36,6 +39,7 @@ export async function getLvWorklist(stage: LvStage): Promise<LvWorklist> {
   const rows: LvWorklistRow[] = [];
   const upstream: LvWorklistRow[] = [];
   const finished: LvWorklistRow[] = [];
+  const held: LvWorklistRow[] = open.filter((r) => r.hold.onHold).map((r) => ({ ...r, waiting: lvWaiting(r.state, stage), done: doneAt(r) }));
   for (const r of all) {
     const w: LvWorklistRow = { ...r, waiting: lvWaiting(r.state, stage), done: doneAt(r) };
     if (w.waiting > 0) rows.push(w);
@@ -44,5 +48,5 @@ export async function getLvWorklist(stage: LvStage): Promise<LvWorklist> {
   }
   const byUrgency = (a: LvWorklistRow, b: LvWorklistRow) => Number(b.urgent) - Number(a.urgent) || Number(b.priority) - Number(a.priority);
   rows.sort(byUrgency);
-  return { stage, rows, upstream, finished };
+  return { stage, rows, upstream, finished, held };
 }

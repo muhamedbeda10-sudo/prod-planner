@@ -182,6 +182,30 @@ export async function setOrderPriority(formData: FormData): Promise<{ ok: boolea
   return { ok: true };
 }
 
+const HOLD_PATHS = ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/report", "/trace", "/simulate"];
+
+/** tracker.status — put an order ON HOLD, or release it. A held order stays
+ *  open on the tracker (tinted, with the reason) and leaves every worklist
+ *  queue and the ETA until released. Its logs are untouched. */
+export async function setOrderHold(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const guard = await requirePerm("tracker.status");
+  if (guard.error) return { ok: false, error: guard.error };
+  const mos = String(formData.get("mos") ?? formData.get("mo") ?? "").split(",").map((m) => m.trim()).filter(Boolean);
+  const hold = String(formData.get("hold") ?? "") === "true";
+  const note = String(formData.get("note") ?? "").trim().slice(0, 200) || null;
+  if (mos.length === 0) return { ok: false, error: "Missing MO." };
+  const orders = await prisma.masterOrder.findMany({ where: { mo: { in: mos } }, select: { mo: true, status: true } });
+  if (orders.length === 0) return { ok: false, error: `MO ${mos[0]} not found.` };
+  const closed = orders.filter((o) => o.status === "closed");
+  if (hold && closed.length === orders.length) return { ok: false, error: "A closed order cannot be put on hold — reopen it first." };
+  await prisma.masterOrder.updateMany({
+    where: { mo: { in: orders.filter((o) => o.status === "open").map((o) => o.mo) } },
+    data: hold ? { holdAt: new Date(), holdNote: note, holdBy: guard.user?.name ?? null } : { holdAt: null, holdNote: null, holdBy: null },
+  });
+  for (const p of HOLD_PATHS) revalidatePath(p);
+  return { ok: true };
+}
+
 /** tracker.push — send an order DOWN from the Plan Tracker to a dept's worklist:
  *  chosen quantity per item, each capped at the order's UNFINISHED remainder
  *  for that dept (in-house qty − dept output). Replaces any previous push of

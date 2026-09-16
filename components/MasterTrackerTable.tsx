@@ -4,7 +4,7 @@ import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setGroupFins, setOrderPriority, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
+import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setGroupFins, setOrderPriority, setOrderHold, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num, Soi } from "@/components/ui";
 import { RingCard } from "@/components/ProgressRing";
@@ -15,6 +15,8 @@ import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components
 import { PlanViewToggle } from "@/components/PlanViewToggle";
 import { ITEMS, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
 import { agreedSpec, capsFor, finsGroup, isFullyDelivered, spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
+import { holdLabel } from "@/lib/domain/hold";
+import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -38,6 +40,11 @@ const ITEM_TINT: Record<Item, string> = {
   AR: "var(--item-ar)",
   MB: "var(--item-mb)",
 };
+
+/** ⏸️ A held row wears ONE wash over every cell, the component tints
+ *  included: the planner asked for the row to read yellow at a glance, and
+ *  a paused order's stage numbers are not what anyone is scanning for. */
+const HOLD_TINT = "var(--warn-bg)";
 
 type SpecField = "fins" | "colorRal" | "crcSize" | "sfm";
 /** Fins reads in its own colour down the whole column — header, MO rows and
@@ -79,6 +86,9 @@ export interface RowEta {
   done: boolean;
   blockedBy: string | null;
 }
+
+/** What a right-click landed on: one MO's row, or a merged BOM's. */
+type MenuTarget = { kind: "mo"; row: MasterTrackerRow } | { kind: "group"; bom: string; members: MasterTrackerRow[] };
 
 /** Keyboard manners for the stage cells, borrowed from a spreadsheet: the
  *  arrows walk the grid, a digit typed on a focused cell starts the entry,
@@ -176,6 +186,9 @@ export function MasterTrackerTable({
   const can = (k: string) => features.includes(k);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // the row's right-click menu — every row action in one place, so the next
+  // one is an entry here rather than another button in the Status cell
+  const rowMenu = useContextMenu<MenuTarget>();
   // inline stage-cell editor: one cell at a time (mo|item|dept)
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
@@ -302,6 +315,7 @@ export function MasterTrackerTable({
   }
 
   const closedCount = useMemo(() => rows.filter((r) => r.status === "closed").length, [rows]);
+  const holdCount = useMemo(() => rows.filter((r) => r.hold.onHold).length, [rows]);
 
   // Orders the customer has received in full. Closing them one at a time was
   // the only way, and a month's worth is a lot of clicking — this counts them
@@ -353,7 +367,8 @@ export function MasterTrackerTable({
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
     return monthRows.filter((r) => {
-      if (status && r.status !== status) return false;
+      if (status === "hold") { if (!r.hold.onHold) return false; }
+      else if (status && r.status !== status) return false;
       if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.customer ?? ""} ${r.kva ?? ""}`.toUpperCase().includes(needle))) return false;
       if (progress && progressOf(r) !== progress) return false;
       if (urgent === "yes" && !r.urgent) return false;
@@ -459,6 +474,58 @@ export function MasterTrackerTable({
     });
   }
 
+  // ⏸️ hold / release — from the row's menu. A held order stays here, tinted,
+  // and leaves every worklist queue and the ETA until released.
+  function setHold(mos: string[], hold: boolean, note = "") {
+    const fd = new FormData();
+    fd.set("mos", mos.join(","));
+    fd.set("hold", String(hold));
+    fd.set("note", note);
+    startTransition(async () => {
+      const res = await setOrderHold(fd);
+      if (res.ok) router.refresh();
+      else alert(res.error ?? "Failed");
+    });
+  }
+
+  /** What the right-click menu offers for a row: the MO's actions, or the
+   *  whole merged BOM's. Permissions decide which entries appear. */
+  function menuEntries(t: MenuTarget): MenuEntry[] {
+    if (t.kind === "group") {
+      const open = t.members.filter((m) => m.status === "open");
+      const held = open.filter((m) => m.hold.onHold);
+      const free = open.filter((m) => !m.hold.onHold);
+      const e: MenuEntry[] = [{ heading: `${t.bom} — ${t.members.length} MOs` }];
+      if (can("tracker.status")) {
+        e.push(
+          { key: "hold", icon: "⏸️", label: `Put ${free.length} open MO${free.length === 1 ? "" : "s"} on hold`, disabled: free.length === 0, hint: "Pauses every open MO of this BOM: they stay here, tinted, and leave every worklist queue", prompt: { placeholder: "Reason (optional) — e.g. waiting for CRC", submit: "Hold", onSubmit: (note) => setHold(free.map((m) => m.mo), true, note) } },
+          { key: "release", icon: "▶", label: `Release ${held.length} from hold`, disabled: held.length === 0, onSelect: () => setHold(held.map((m) => m.mo), false) },
+          { sep: true }
+        );
+      }
+      e.push({ key: "trace", icon: "🔍", label: "Open trace for this BOM", href: `/trace?bom=${encodeURIComponent(t.bom)}` });
+      return e;
+    }
+    const r = t.row;
+    const closed = r.status === "closed";
+    const done = r.required > 0 && r.complete >= r.required;
+    const e: MenuEntry[] = [{ heading: r.mo }];
+    if (can("tracker.status")) {
+      if (r.hold.onHold) e.push({ key: "release", icon: "▶", label: "Release hold", hint: holdLabel(r.hold), onSelect: () => setHold([r.mo], false) });
+      else e.push({ key: "hold", icon: "⏸️", label: "Put on hold", disabled: closed, hint: closed ? "A closed order cannot be held — reopen it first" : "Pauses the order: it stays here, tinted, and leaves every worklist queue and the ETA", prompt: { placeholder: "Reason (optional) — e.g. waiting for CRC", submit: "Hold", onSubmit: (note) => setHold([r.mo], true, note) } });
+    }
+    if (can("tracker.priority") && !closed) e.push({ key: "prio", icon: "⭐", label: r.priority ? "Remove priority flag" : "Flag as priority", hint: "A priority order shows in the dedicated table on top of every dept worklist", onSelect: () => togglePriority(r) });
+    if (can("tracker.push") && !closed) e.push({ key: "push", icon: "📤", label: "Send to a worklist", hint: "Pick the dept, items and quantities", onSelect: () => openPushPanel(r) });
+    if (can("tracker.components")) e.push({ key: "comp", icon: "⚙", label: "Required components", hint: "Which components this project actually needs", onSelect: () => setOpenConfig(openConfig === r.mo ? null : r.mo) });
+    if (can("tracker.status")) {
+      e.push({ sep: true });
+      if (closed) e.push({ key: "reopen", icon: "↩", label: "Reopen order", onSelect: () => changeStatus(r.mo, "open") });
+      else e.push({ key: "close", icon: "✓", label: "Close order", disabled: !done, hint: done ? "It leaves the daily screens; reopen any time" : "Only an order the customer has received in full can close", onSelect: () => changeStatus(r.mo, "closed") });
+    }
+    e.push({ sep: true }, { key: "trace", icon: "🔍", label: "Open trace", href: `/trace?mo=${encodeURIComponent(r.mo)}` });
+    return e;
+  }
+
   function changeStatus(mo: string, next: "open" | "closed") {
     if (next === "closed" && !confirm(`Close order ${mo}? It will drop out of the daily screens (you can reopen it any time).`)) return;
     const fd = new FormData();
@@ -528,6 +595,7 @@ export function MasterTrackerTable({
       "CRC Size": r.crcSize ?? "",
       SFM: r.sfm ?? "",
       Required: r.required,
+      "On hold": r.hold.onHold ? holdLabel(r.hold) : "",
       Fins: r.fins ?? "",
     };
     for (const it of ITEMS) {
@@ -621,6 +689,7 @@ export function MasterTrackerTable({
           options={[
             { value: "open", label: "Open" },
             { value: "closed", label: `Closed (${closedCount})` },
+            { value: "hold", label: `On hold (${holdCount})` },
           ]}
         />
         {can("tracker.status") && doneCount > 0 && (
@@ -710,6 +779,8 @@ export function MasterTrackerTable({
               const gAch = gReq > 0 ? gComplete / gReq : null;
               const urgentCount = members.filter((m) => m.urgent).length;
               const gKva = members.find((m) => m.kva)?.kva ?? "—";
+              const heldCount = members.filter((m) => m.hold.onHold).length;
+              const allHeld = heldCount === members.length;
               // one customer reads as itself; a BOM shared by two reads "…" until the group is opened
               const gCustomer = agreedSpec(members.map((m) => m.customer));
               return (
@@ -717,12 +788,15 @@ export function MasterTrackerTable({
                   <tr
                     className={`cursor-pointer bg-brand-light/30 hover:bg-brand-light/60 transition-colors font-semibold ${open ? "border-x-2 border-t-2 border-brand" : ""}`}
                     onClick={() => toggleGroup(gBom)}
-                    title={open ? "Collapse MOs" : "Show the MOs inside this BOM"}
+                    onContextMenu={(e) => rowMenu.open(e, { kind: "group", bom: gBom, members })}
+                    style={allHeld ? { background: HOLD_TINT } : undefined}
+                    title={open ? "Collapse MOs" : "Show the MOs inside this BOM · right-click for actions"}
                   >
                     <td className="p-2 font-bold whitespace-nowrap text-xs">
                       <span className={`inline-block mr-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>▶</span>
                       {members.length} MOs
                       {urgentCount > 0 && <span className="pill pill-bad ml-1">U×{urgentCount}</span>}
+                      {heldCount > 0 && <span className="pill pill-warn ml-1" title={allHeld ? "Every MO of this BOM is on hold" : `${heldCount} of ${members.length} MOs on hold — open the group`}>⏸️ {allHeld ? "HOLD" : `${heldCount}/${members.length}`}</span>}
                     </td>
                     {/* the group names its MOs by count, not by list — its SOIs
                         read the same way: each one sits on its own MO row, which
@@ -771,8 +845,11 @@ export function MasterTrackerTable({
                         </td>
                       </>
                     )}
-                    {etaCell(groupEta(members))}
-                    <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap">{open ? "▲ collapse" : "▼ open MOs"}</td>
+                    {etaCell(groupEta(members), members.every((m) => m.hold.onHold))}
+                    <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap">
+                      {open ? "▲ collapse" : "▼ open MOs"}
+                      <button type="button" onClick={(e) => { e.stopPropagation(); rowMenu.open(e, { kind: "group", bom: gBom, members }); }} className="text-muted px-1.5 hover:text-accent font-bold" title="Actions for the whole BOM (or right-click the row)">⋯</button>
+                    </td>
                   </tr>
                   {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
                 </Fragment>
@@ -781,6 +858,7 @@ export function MasterTrackerTable({
           </tbody>
         </table>
       </div>
+      {rowMenu.menu && <ContextMenu x={rowMenu.menu.x} y={rowMenu.menu.y} entries={menuEntries(rowMenu.menu.payload)} onClose={rowMenu.close} />}
     </div>
   );
 
@@ -1050,12 +1128,13 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
   function groupCell(gBom: string, members: MasterTrackerRow[], it: Item, stage: string, borderR: boolean) {
     // the core's Painting column is its SHOT BLAST — same as the MO rows
     const dept = stage === "Painting" && isPaintExempt(it) ? "ShotBlast" : stage;
-    const [value, tint] =
+    const [value, itemTint] =
       dept === "Cut" ? [members.reduce((s, r) => s + r.items[it].cut, 0), ITEM_TINT[it]]
       : dept === "Welding" ? [members.reduce((s, r) => s + r.items[it].weld, 0), ITEM_TINT[it]]
       : dept === "ShotBlast" ? [members.reduce((s, r) => s + r.items[it].shp, 0), ITEM_TINT[it]]
       : dept === "Delivered" ? [members.reduce((s, r) => s + r.items[it].delivered, 0), ITEM_TINT[it]]
       : [members.reduce((s, r) => s + r.items[it].paint, 0), ITEM_TINT[it]];
+    const tint = members.every((m) => m.hold.onHold) ? HOLD_TINT : itemTint;
     const eligibleMos = members.filter((m) => m.items[it].eligible && !m.items[it].excluded).map((m) => m.mo);
     const k = `g|${gBom}|${it}|${dept}`;
     const col = `${it}|${dept}`;
@@ -1128,7 +1207,8 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     );
   }
 
-  function etaCell(eta: RowEta | undefined) {
+  function etaCell(eta: RowEta | undefined, onHold = false) {
+    if (onHold) return <td className="p-2 text-center text-xs font-bold" style={{ color: "var(--warn-fg)" }} title="On hold — in no queue, so no forecast">⏸️</td>;
     if (!eta) return <td className="p-2 text-center text-muted text-xs">—</td>;
     if (eta.done) return <td className="p-2 text-center text-ok-fg font-bold" title="Nothing left to make">✓</td>;
     if (!eta.etaISO) {
@@ -1167,9 +1247,16 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
   function renderRow(r: MasterTrackerRow, inGroup = false, lastInGroup = false) {
     // frame: open groups get a clear border so their extent is obvious
     const frame = inGroup ? `bg-brand-light/10 border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
+    // ⏸️ a held row is yellow end to end — the component tints step aside
+    const tintOf = (it: Item): string => (r.hold.onHold ? HOLD_TINT : ITEM_TINT[it]);
     return (
       <Fragment key={r.mo}>
-              <tr className={frame}>
+              <tr
+                className={frame}
+                style={r.hold.onHold ? { background: HOLD_TINT } : undefined}
+                onContextMenu={(e) => rowMenu.open(e, { kind: "mo", row: r })}
+                title={r.hold.onHold ? `${holdLabel(r.hold)} · right-click for actions` : undefined}
+              >
                 <td className={`p-2 font-bold whitespace-nowrap text-xs ${inGroup ? "pl-6" : ""}`}>
                   {inGroup && <span className="text-muted mr-1">↳</span>}
                   <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline">{r.mo}</Link>
@@ -1197,6 +1284,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                     )
                   )}
                   {r.urgent && <span className="pill pill-bad ml-1">U</span>}
+                  {r.hold.onHold && <span className="pill pill-warn ml-1 cursor-help" title={holdLabel(r.hold)}>⏸️ HOLD{r.hold.holdNote ? ` · ${r.hold.holdNote}` : ""}</span>}
                   {ITEMS.filter((it) => r.items[it].osp > 0).map((it) => (
                     <span key={it} className="pill ml-1" style={{ background: "#ece3f7", color: "#6b45a8" }} title={`${it}: ${r.items[it].osp} pcs outsourced (OSP) — not made by our departments`}>
                       OSP {it}×{r.items[it].osp}
@@ -1270,17 +1358,17 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       return (
                         <Fragment key={it}>
                           {stages.map((s, si) => (
-                            <td key={s} className={`p-2 text-center text-muted ${si === stages.length - 1 ? "border-r border-border-strong" : ""}`} style={{ background: ITEM_TINT[it] }}>—</td>
+                            <td key={s} className={`p-2 text-center text-muted ${si === stages.length - 1 ? "border-r border-border-strong" : ""}`} style={{ background: tintOf(it) }}>—</td>
                           ))}
                         </Fragment>
                       );
                     }
                     return (
                       <Fragment key={it}>
-                        <td className="p-2 text-center text-muted" style={{ background: ITEM_TINT[it] }}>—</td>
-                        <td className="p-2 text-center text-muted" style={{ background: ITEM_TINT[it] }}>—</td>
-                        <td className="p-2 text-center text-muted" style={{ background: ITEM_TINT[it] }}>—</td>
-                        <td className="p-2 text-center text-muted border-r border-border-strong" style={{ background: ITEM_TINT[it] }}>—</td>
+                        <td className="p-2 text-center text-muted" style={{ background: tintOf(it) }}>—</td>
+                        <td className="p-2 text-center text-muted" style={{ background: tintOf(it) }}>—</td>
+                        <td className="p-2 text-center text-muted" style={{ background: tintOf(it) }}>—</td>
+                        <td className="p-2 text-center text-muted border-r border-border-strong" style={{ background: tintOf(it) }}>—</td>
                       </Fragment>
                     );
                   }
@@ -1293,12 +1381,12 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                           const last = si === stages.length - 1;
                           return (
                             <Fragment key={s}>
-                              {s === "Cut" && stageCell(r, it, "Cut", c.cut, ITEM_TINT[it], last)}
-                              {s === "Welding" && stageCell(r, it, "Welding", c.weld, ITEM_TINT[it], last)}
+                              {s === "Cut" && stageCell(r, it, "Cut", c.cut, tintOf(it), last)}
+                              {s === "Welding" && stageCell(r, it, "Welding", c.weld, tintOf(it), last)}
                               {s === "Painting" && (isPaintExempt(it)
-                                ? stageCell(r, it, "ShotBlast", c.shp, ITEM_TINT[it], last)
-                                : stageCell(r, it, "Painting", c.paint, ITEM_TINT[it], last))}
-                              {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, ITEM_TINT[it], last)}
+                                ? stageCell(r, it, "ShotBlast", c.shp, tintOf(it), last)
+                                : stageCell(r, it, "Painting", c.paint, tintOf(it), last))}
+                              {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, tintOf(it), last)}
                             </Fragment>
                           );
                         })}
@@ -1307,14 +1395,14 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                   }
                   return (
                     <Fragment key={it}>
-                      {stageCell(r, it, "Cut", c.cut, ITEM_TINT[it])}
-                      {stageCell(r, it, "Welding", c.weld, ITEM_TINT[it])}
+                      {stageCell(r, it, "Cut", c.cut, tintOf(it))}
+                      {stageCell(r, it, "Welding", c.weld, tintOf(it))}
                       {isPaintExempt(it) ? (
-                        stageCell(r, it, "ShotBlast", c.shp, ITEM_TINT[it])
+                        stageCell(r, it, "ShotBlast", c.shp, tintOf(it))
                       ) : (
-                        stageCell(r, it, "Painting", c.paint, ITEM_TINT[it])
+                        stageCell(r, it, "Painting", c.paint, tintOf(it))
                       )}
-                      {stageCell(r, it, "Delivered", c.delivered, ITEM_TINT[it], true)}
+                      {stageCell(r, it, "Delivered", c.delivered, tintOf(it), true)}
                     </Fragment>
                   );
                 })}
@@ -1329,8 +1417,9 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                     </td>
                   </>
                 )}
-                {etaCell(etas[r.mo])}
+                {etaCell(etas[r.mo], r.hold.onHold)}
                 <td className="p-2 text-center no-print whitespace-nowrap">
+                  <button type="button" onClick={(e) => rowMenu.open(e, { kind: "mo", row: r })} className="text-muted px-1.5 hover:text-accent font-bold" title="Actions — hold, priority, close… (or right-click the row)">⋯</button>
                   {r.status === "closed" ? (
                     <>
                       <span className="pill pill-muted">Closed</span>

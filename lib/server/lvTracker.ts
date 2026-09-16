@@ -1,4 +1,5 @@
 import "server-only";
+import { holdView, type HoldView } from "@/lib/domain/hold";
 import { prisma } from "@/lib/db";
 import { loadMasterOrdersOf } from "./loads";
 import { LV_ITEM, lvComplete, type LvState } from "@/lib/domain/lv";
@@ -24,6 +25,8 @@ export interface LvTrackerRow {
   remaining: number;
   achievement: number | null;
   status: string;
+  /** ⏸ paused by the planner — tinted on the tracker, out of every stage's list. */
+  hold: HoldView;
   priority: boolean;
   months: string[];
 }
@@ -58,7 +61,7 @@ export async function getLvTracker(): Promise<LvTrackerRow[]> {
       state, complete,
       remaining: Math.max(0, o.planQty - complete),
       achievement: o.planQty > 0 ? complete / o.planQty : null,
-      status: o.status, priority: o.priority,
+      status: o.status, hold: holdView(o), priority: o.priority,
       months: (o.months || o.source || "").split(",").map((s) => s.trim()).filter(Boolean),
     };
   });

@@ -1,4 +1,5 @@
 import "server-only";
+import { holdView, type HoldView } from "@/lib/domain/hold";
 import { prisma } from "@/lib/db";
 import { loadMasterOrders } from "./loads";
 import { ITEMS, isPaintExempt, itemApplies, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
@@ -35,6 +36,8 @@ export interface MasterTrackerRow {
   remaining: number;
   achievement: number | null;
   status: string; // open | closed
+  /** ⏸ paused by the planner — tinted on the tracker, out of every queue. */
+  hold: HoldView;
   priority: boolean; // ⭐ flagged by the admin — shows on every dept worklist
   months: string[]; // every monthly plan the MO appeared in (e.g. ["July 2026", "August 2026"])
 }
@@ -99,6 +102,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       remaining: Math.max(0, o.planQty - complete),
       achievement: o.planQty > 0 ? complete / o.planQty : null,
       status: o.status,
+      hold: holdView(o),
       priority: o.priority,
       // months CSV is backfilled from source by the migration; keep the
       // fallback for rows created before either existed

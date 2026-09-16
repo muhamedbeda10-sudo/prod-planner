@@ -9,6 +9,8 @@ import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControl
 import { PrintButton } from "@/components/PrintButton";
 import { ReturnsTable } from "@/components/ReturnsTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
+import { HeldOrdersStrip } from "@/components/HeldOrdersStrip";
+import type { HeldOrderDTO } from "@/lib/domain/hold";
 import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { MachineBoard, PlacementChips, placementPass, type PlacementMode } from "@/components/MachineBoard";
@@ -31,6 +33,7 @@ export function CutWorklistView({
   remarked = [],
   pushed = [],
   priority = [],
+  held = [],
   runOrder = [],
   hidden = [],
   day,
@@ -51,6 +54,7 @@ export function CutWorklistView({
   remarked?: CascadeRow[]; // this week's remarked lines with no known date
   pushed?: CascadeRow[]; // sent down from the Plan Tracker — schedule these
   priority?: PriorityLineDTO[]; // ⭐ flagged orders — dedicated table on top
+  held?: HeldOrderDTO[]; // ⏸ paused orders — out of every section, named once
   runOrder?: RunOrderLineDTO[]; // 🎯 the approved simulator sequence
   hidden?: HiddenLineDTO[]; // admin-hidden lines (restore panel)
   day: string;
@@ -152,6 +156,7 @@ export function CutWorklistView({
 
       {/* ⭐ the admin's priority orders — a focus list above everything */}
       <RunOrderTable rows={runOrder} deptWord="cut" />
+      <HeldOrdersStrip rows={held} />
       <PriorityOrdersTable rows={priority} deptWord="cut" soi={soi} />
 
       {/* 0 — pieces sent back by Welding: fix first, they re-enter the flow */}

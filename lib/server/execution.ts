@@ -1,3 +1,4 @@
+import { holdView, isOnHold, type HeldOrderDTO } from "@/lib/domain/hold";
 import "server-only";
 import { prisma } from "@/lib/db";
 import {
@@ -32,6 +33,7 @@ export interface CutSheet {
   // on the worklist — it is the pool the machine board and ⚡ Plan draw from.
   pushed: CascadeRow[]; // sent down from the Plan Tracker (chosen qty) — to be scheduled here
   priority: PriorityLineDTO[]; // ⭐ orders the admin flagged — dedicated table on top
+  held: HeldOrderDTO[]; // ⏸ orders the planner paused — out of every section, named once
   hidden: HiddenLineDTO[]; // lines the admin removed from this worklist (restorable)
   /** Lines the CURRENT plan schedules that produced NO row above, each with the
    *  reason — so "it's in the plan but not on the list" always has an answer. */
@@ -63,8 +65,11 @@ export async function getCutSheet(): Promise<CutSheet> {
     prisma.worklistPush.findMany({ where: { dept: "Cut" }, orderBy: { id: "asc" } }),
     prisma.worklistLineHide.findMany({ where: { dept: "Cut" }, orderBy: { id: "asc" } }),
   ]);
-  // closed orders leave the daily screens
-  const masters = [...allMasters].filter((m) => m.status === "open").sort((a, b) => a.id - b.id);
+  // closed orders leave the daily screens; held ones leave the queue but are
+  // named, so a line that vanished has a reason on the page
+  const openMasters = [...allMasters].filter((m) => m.status === "open").sort((a, b) => a.id - b.id);
+  const held: HeldOrderDTO[] = openMasters.filter(isOnHold).map((m) => ({ mo: m.mo, bom: m.bom, description: [m.kva, m.rating].filter(Boolean).join(" · "), hold: holdView(m) }));
+  const masters = openMasters.filter((m) => !isOnHold(m));
   const closedMos = allMasters.filter((m) => m.status === "closed");
   const allSchedIn = allSchedules.map((s) => ({ planNo: s.planNo, bom: s.bom, mo: s.mo, description: s.description, item: s.item, ovenDate: s.ovenDate, qty: s.qty }));
   const schedIn = allSchedIn.filter((s) => s.planNo === planNo);
@@ -215,6 +220,7 @@ export async function getCutSheet(): Promise<CutSheet> {
     unscheduled: notHidden(unscheduled),
     pushed: notHidden(pushed),
     priority: notHidden(priority),
+    held,
     hidden: hideRows.map((h) => ({ dept: h.dept, bom: h.bom, mo: h.mo, item: h.item })),
   };
 

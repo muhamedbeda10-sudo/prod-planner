@@ -10,6 +10,7 @@ import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
 import { CascadeTable } from "@/components/CascadeTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
+import { HeldOrdersStrip } from "@/components/HeldOrdersStrip";
 import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { PrintHeader } from "@/components/PrintHeader";
@@ -83,6 +84,7 @@ export default async function PaintingWorklistPage() {
             )}
             <MachineBoard board={board} canEdit={canEdit} canManage={canManage} />
             <RunOrderTable rows={runOrder} deptWord="paint" />
+            <HeldOrdersStrip rows={extras.held} />
             <PriorityOrdersTable rows={extras.priority} deptWord="painted" soi={soi} />
             {pushedRows.length > 0 && (
               <section className="mb-6">
