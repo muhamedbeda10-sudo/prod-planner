@@ -9,6 +9,7 @@ import { Soi } from "@/components/ui";
 import { recordLvOutput } from "@/app/lv/actions";
 import { LV_STAGES, LV_STAGE_LABEL, LV_STAGE_SHORT, lvStageOf } from "@/lib/domain/lv";
 import type { LvWorklist as LvWorklistData, LvWorklistRow } from "@/lib/server/lvWorklist";
+import { HeldOrdersStrip } from "@/components/HeldOrdersStrip";
 
 // One LV stage's worklist: the panel orders it owes something on, each with
 // a box to record what was done today. The list is the monthly plan read
@@ -50,6 +51,7 @@ export function LvWorklist({ data, canEdit, todayISO }: { data: LvWorklistData; 
 
   return (
     <div className="space-y-4">
+      <HeldOrdersStrip rows={data.held.map((r) => ({ mo: r.mo, bom: r.bom, description: [r.product, r.customer].filter(Boolean).join(" · "), hold: r.hold }))} />
       <FilterBar count={filtered.length} total={data.rows.length} onReset={() => setQ("")} hasActive={!!q}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / customer…" />
         <span className="text-xs text-muted">Panels waiting for {data.stage.toLowerCase()}: <b className="text-foreground tabnum">{waiting}</b></span>

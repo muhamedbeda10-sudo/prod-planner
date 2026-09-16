@@ -8,7 +8,9 @@ import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components
 import { Num, Soi } from "@/components/ui";
 import { RingCard } from "@/components/ProgressRing";
 import { recordLvGroupTotal, recordLvTotal } from "@/app/lv/actions";
-import { closeDeliveredOrders, setOrderStatus } from "@/app/orders/actions";
+import { closeDeliveredOrders, setOrderHold, setOrderStatus } from "@/app/orders/actions";
+import { holdLabel } from "@/lib/domain/hold";
+import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
 import { LV_CHAIN, LV_STAGE_LABEL, LV_STAGE_SHORT, lvGroupMembers, lvStageOf, type LvChainStage } from "@/lib/domain/lv";
 import type { LvTrackerRow } from "@/lib/server/lvTracker";
@@ -39,6 +41,8 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // the row's right-click menu — hold, close, trace; the next action is one more entry
+  const rowMenu = useContextMenu<{ kind: "mo"; row: LvTrackerRow } | { kind: "group"; bom: string; members: LvTrackerRow[] }>();
   const [q, setQ] = useSavedFilter("lvtracker.q");
   const [product, setProduct] = useSavedFilter("lvtracker.product");
   const [status, setStatus] = useSavedFilter("lvtracker.status");
@@ -74,7 +78,8 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
     return monthRows.filter((r) => {
       if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.fgCode ?? ""} ${r.secItem ?? ""} ${r.customer ?? ""}`.toUpperCase().includes(needle))) return false;
       if (product && r.product !== product) return false;
-      if (want !== "all" && r.status !== want) return false;
+      if (want === "hold") { if (!r.hold.onHold) return false; }
+      else if (want !== "all" && r.status !== want) return false;
       if (urgent === "yes" && !r.urgent) return false;
       if (urgent === "no" && r.urgent) return false;
       if (progress === "none" && r.complete > 0) return false;
@@ -107,7 +112,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
   const exportRows = filtered.map((r) => ({
     MO: r.mo, SOI: r.soi ?? "", Customer: r.customer ?? "", Product: r.product ?? "", BoM: r.bom, "SEC Item": r.secItem ?? "",
     Required: r.state.required, Punched: r.state.punch, Bent: r.state.bend, Welded: r.state.weld, Painted: r.state.paint,
-    Delivered: r.state.delivered, Left: r.remaining, Status: r.status,
+    Delivered: r.state.delivered, Left: r.remaining, Status: r.status, "On hold": r.hold.onHold ? holdLabel(r.hold) : "",
   }));
 
   function run(fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData, after?: () => void) {
@@ -161,13 +166,62 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
     );
   }
 
+  // ⏸️ hold / release — a held order stays here, yellow, and leaves every
+  // stage's worklist until released
+  function setHold(mos: string[], hold: boolean, note = "") {
+    const fd = new FormData();
+    fd.set("mos", mos.join(","));
+    fd.set("hold", String(hold));
+    fd.set("note", note);
+    run(setOrderHold, fd);
+  }
+  function menuEntries(t: { kind: "mo"; row: LvTrackerRow } | { kind: "group"; bom: string; members: LvTrackerRow[] }): MenuEntry[] {
+    if (t.kind === "group") {
+      const open = t.members.filter((m) => m.status === "open");
+      const held = open.filter((m) => m.hold.onHold);
+      const free = open.filter((m) => !m.hold.onHold);
+      const e: MenuEntry[] = [{ heading: `${t.bom} — ${t.members.length} MOs` }];
+      if (canStatus) {
+        e.push(
+          { key: "hold", icon: "⏸️", label: `Put ${free.length} open MO${free.length === 1 ? "" : "s"} on hold`, disabled: free.length === 0, prompt: { placeholder: "Reason (optional)", submit: "Hold", onSubmit: (note) => setHold(free.map((m) => m.mo), true, note) } },
+          { key: "release", icon: "▶", label: `Release ${held.length} from hold`, disabled: held.length === 0, onSelect: () => setHold(held.map((m) => m.mo), false) },
+          { sep: true }
+        );
+      }
+      e.push({ key: "trace", icon: "🔍", label: "Open trace for this code", href: `/trace?bom=${encodeURIComponent(t.bom)}` });
+      return e;
+    }
+    const r = t.row;
+    const closed = r.status === "closed";
+    const e: MenuEntry[] = [{ heading: r.mo }];
+    if (canStatus) {
+      if (r.hold.onHold) e.push({ key: "release", icon: "▶", label: "Release hold", hint: holdLabel(r.hold), onSelect: () => setHold([r.mo], false) });
+      else e.push({ key: "hold", icon: "⏸️", label: "Put on hold", disabled: closed, hint: closed ? "A closed order cannot be held — reopen it first" : "Pauses the order: it stays here, yellow, and leaves every stage's worklist", prompt: { placeholder: "Reason (optional) — e.g. waiting for enclosure", submit: "Hold", onSubmit: (note) => setHold([r.mo], true, note) } });
+      e.push({ sep: true });
+      const fd = new FormData(); fd.set("mo", r.mo); fd.set("status", closed ? "open" : "closed");
+      e.push(closed
+        ? { key: "reopen", icon: "↩", label: "Reopen order", onSelect: () => run(setOrderStatus, fd) }
+        : { key: "close", icon: "✓", label: "Close order", hint: "It leaves the open screens; the log is untouched", onSelect: () => run(setOrderStatus, fd) });
+      e.push({ sep: true });
+    }
+    e.push({ key: "trace", icon: "🔍", label: "Open trace", href: `/trace?mo=${encodeURIComponent(r.mo)}` });
+    return e;
+  }
+
   function moRow(r: LvTrackerRow, inGroup: boolean) {
     const pct = r.achievement === null ? "—" : `${Math.round(r.achievement * 100)}%`;
     return (
-      <tr key={r.mo} className={`border-t ${r.status === "closed" ? "opacity-60" : ""} ${inGroup ? "bg-surface-2/40" : ""}`}>
+      <tr
+        key={r.mo}
+        className={`border-t ${r.status === "closed" ? "opacity-60" : ""} ${inGroup ? "bg-surface-2/40" : ""}`}
+        style={r.hold.onHold ? { background: "var(--warn-bg)" } : undefined}
+        onContextMenu={(e) => rowMenu.open(e, { kind: "mo", row: r })}
+        title={r.hold.onHold ? `${holdLabel(r.hold)} · right-click for actions` : undefined}
+      >
         <td className={`p-2 font-bold whitespace-nowrap text-xs ${inGroup ? "ps-6" : ""}`}>
           {inGroup && <span className="text-muted me-1">↳</span>}{r.mo}
           {r.urgent && <span className="pill pill-bad ms-1">U</span>}
+          {r.hold.onHold && <span className="pill pill-warn ms-1 cursor-help" title={holdLabel(r.hold)}>⏸️ HOLD{r.hold.holdNote ? ` · ${r.hold.holdNote}` : ""}</span>}
         </td>
         <td className="p-2 whitespace-nowrap"><Soi soi={r.soi} /></td>
         <td className="p-2 text-xs whitespace-nowrap">{r.customer ?? "—"}</td>
@@ -187,6 +241,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
         <td className="p-2 text-center font-bold tabnum">{r.remaining}</td>
         <td className="p-2 text-center text-xs tabnum">{pct}</td>
         <td className="p-2 text-center whitespace-nowrap no-print">
+          <button type="button" onClick={(e) => rowMenu.open(e, { kind: "mo", row: r })} className="text-muted px-1.5 hover:text-accent font-bold" title="Actions — hold, close… (or right-click the row)">⋯</button>
           {canStatus ? (
             <button
               type="button" disabled={pending}
@@ -216,7 +271,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG / SEC…" />
         <SelectFilter label="Plan month" value={month} onChange={setMonth} options={months.map((m) => ({ value: m, label: m }))} />
         {products.length > 1 && <SelectFilter label="Product" value={product} onChange={setProduct} options={products.map((p) => ({ value: p, label: p }))} />}
-        <SelectFilter label="Status" value={status || "open"} onChange={setStatus} options={[{ value: "open", label: "Open" }, { value: "closed", label: "Closed" }, { value: "all", label: "All" }]} />
+        <SelectFilter label="Status" value={status || "open"} onChange={setStatus} options={[{ value: "open", label: "Open" }, { value: "hold", label: `On hold (${rows.filter((r) => r.hold.onHold).length})` }, { value: "closed", label: "Closed" }, { value: "all", label: "All" }]} />
         <SelectFilter label="Progress" value={progress} onChange={setProgress} options={[{ value: "none", label: "Not started" }, { value: "partial", label: "In progress" }, { value: "done", label: "Complete" }]} />
         <SelectFilter label="Urgent" value={urgent} onChange={setUrgent} options={[{ value: "yes", label: "Urgent only" }, { value: "no", label: "Not urgent" }]} />
         <span className="text-xs text-muted">
@@ -271,17 +326,22 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
               const gReq = sum((r) => r.state.required);
               const gComplete = sum((r) => r.complete);
               const urgent = members.filter((m) => m.urgent).length;
+              const heldCount = members.filter((m) => m.hold.onHold).length;
+              const allHeld = heldCount === members.length;
               return (
                 <Fragment key={`g|${bom}`}>
                   <tr
                     className={`cursor-pointer bg-brand-light/30 hover:bg-brand-light/60 transition-colors font-semibold ${open ? "border-x-2 border-t-2 border-brand" : ""}`}
+                    style={allHeld ? { background: "var(--warn-bg)" } : undefined}
                     onClick={() => toggleGroup(bom)}
-                    title={open ? "Collapse MOs" : "Show the MOs inside this BOM"}
+                    onContextMenu={(e) => rowMenu.open(e, { kind: "group", bom, members })}
+                    title={open ? "Collapse MOs" : "Show the MOs inside this BOM · right-click for actions"}
                   >
                     <td className="p-2 font-bold whitespace-nowrap text-xs">
                       <span className={`inline-block mr-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>▶</span>
                       {members.length} MOs
                       {urgent > 0 && <span className="pill pill-bad ml-1">U×{urgent}</span>}
+                      {heldCount > 0 && <span className="pill pill-warn ml-1" title={allHeld ? "Every MO of this code is on hold" : `${heldCount} of ${members.length} MOs on hold — open the group`}>⏸️ {allHeld ? "HOLD" : `${heldCount}/${members.length}`}</span>}
                     </td>
                     <td className="p-2 whitespace-nowrap"><Soi soi={null} /></td>
                     <td className="p-2 text-xs text-muted">{[...new Set(members.map((m) => m.customer).filter(Boolean))].join(" · ") || "—"}</td>
@@ -308,7 +368,9 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
                     )}
                     <td className="p-2 text-center font-bold"><Num v={Math.max(0, gReq - gComplete)} /></td>
                     <td className="p-2 text-center text-xs tabnum">{gReq > 0 ? `${Math.round((gComplete / gReq) * 100)}%` : "—"}</td>
-                    <td className="p-2 no-print" />
+                    <td className="p-2 no-print text-center">
+                      <button type="button" onClick={(e) => { e.stopPropagation(); rowMenu.open(e, { kind: "group", bom, members }); }} className="text-muted px-1.5 hover:text-accent font-bold" title="Actions for the whole code (or right-click the row)">⋯</button>
+                    </td>
                   </tr>
                   {open && members.map((m) => moRow(m, true))}
                 </Fragment>
@@ -317,6 +379,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
           </tbody>
         </table>
       </div>
+      {rowMenu.menu && <ContextMenu x={rowMenu.menu.x} y={rowMenu.menu.y} entries={menuEntries(rowMenu.menu.payload)} onClose={rowMenu.close} />}
     </div>
   );
 }

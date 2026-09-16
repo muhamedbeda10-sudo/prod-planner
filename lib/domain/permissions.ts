@@ -63,7 +63,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "tracker.paint", label: "Painting column — record", desc: "Edit the Paint stage cells on the Plan Tracker (separate from the Painting worklist permission)" },
       { key: "tracker.shp", label: "Shot Blast column — record (SHB)", desc: "Edit the SHB cells — the core frame's real final stage after welding (shown in place of Paint for CF)" },
       { key: "tracker.delivered", label: "Delivered column — record", desc: "Record how many pieces the customer has received (Dlvd cells) — capped at the finished quantity" },
-      { key: "tracker.status", label: "Close / reopen orders", desc: "Close finished orders (they leave the daily screens) and reopen them" },
+      { key: "tracker.status", label: "Close / reopen / hold orders", desc: "Close finished orders (they leave the daily screens), reopen them, and put orders on hold or release them" },
       { key: "tracker.components", label: "Required components (N/A)", desc: "Mark which components an order does not need — they leave the worklists and stop gating completion" },
       { key: "tracker.qty", label: "Order quantity — edit", desc: "Change an order's Required quantity manually (e.g. apply a confirmed decrease from a monthly revision)" },
       { key: "tracker.priority", label: "Priority flag ⭐", desc: "Flag orders as priority — they show in the dedicated table on top of every dept worklist" },

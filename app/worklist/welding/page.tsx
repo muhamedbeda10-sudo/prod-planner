@@ -11,6 +11,7 @@ import { toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
 import { CascadeTable } from "@/components/CascadeTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
+import { HeldOrdersStrip } from "@/components/HeldOrdersStrip";
 import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { PrintHeader } from "@/components/PrintHeader";
@@ -77,6 +78,7 @@ export default async function WeldWorklistPage() {
             {tankTracking && canEdit && <TankRepairPanel tanks={repairs} welders={welders} />}
             <MachineBoard board={board} canEdit={canEdit} canManage={canManage} />
             <RunOrderTable rows={runOrder} deptWord="weld" />
+            <HeldOrdersStrip rows={extras.held} />
             <PriorityOrdersTable rows={extras.priority} deptWord="welded" soi={soi} />
             {pushedRows.length > 0 && (
               <section className="mb-6">

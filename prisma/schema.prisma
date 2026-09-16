@@ -157,6 +157,12 @@ model MasterOrder {
   // Marked IMPORTANT by the admin: shows in a dedicated priority table on top
   // of every dept worklist until its work is done.
   priority      Boolean   @default(false)
+  // ON HOLD — the planner paused this order: it stays open on the tracker
+  // (tinted, with the reason) but leaves every worklist queue and the ETA
+  // until released. `holdAt` set = on hold.
+  holdAt        DateTime?
+  holdNote      String?
+  holdBy        String?
   closedAt      DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

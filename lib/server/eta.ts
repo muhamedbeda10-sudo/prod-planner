@@ -119,7 +119,8 @@ export const getEtaBase = cache(async (): Promise<EtaBase> => {
     if (!cur || iso > cur) dueByMo.set(s.mo, iso);
   }
 
-  const open = tracker.filter((r) => r.status === "open");
+  // a held order is not in any queue, so it has no forecast — its cell says so
+  const open = tracker.filter((r) => r.status === "open" && !r.hold.onHold);
   const jobs: EtaJob[] = [];
   for (const r of open) {
     // resolve through the registry row itself so the FG map gets its say

@@ -19,7 +19,7 @@ import { getActiveLine } from "@/lib/server/line";
 export default async function CutWorklistPage() {
   // a panel is not cut on the lasers — its fabrication is punching, then bending
   if ((await getActiveLine()) === "LV") redirect("/worklist/punching");
-  const [{ planNo, today, dueNow, overdue, postponed, remarked, unscheduled, pushed, priority, hidden }, returns, notes, settings, user, runOrder, soi] = await Promise.all([
+  const [{ planNo, today, dueNow, overdue, postponed, remarked, unscheduled, pushed, priority, held, hidden }, returns, notes, settings, user, runOrder, soi] = await Promise.all([
     getCutSheet(),
     getReturnsFor("Cut"),
     getQueueNotes(),
@@ -42,7 +42,7 @@ export default async function CutWorklistPage() {
   return (
     <>
       <PrintHeader title="Fabrication Worklist" date={toDisplayDate(today)} />
-      <CutWorklistView soi={soi} runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} pushed={pushed} priority={priority} hidden={hidden} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} canManage={!!user && hasPerm(user, "machines.manage")} board={board} />
+      <CutWorklistView soi={soi} runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} pushed={pushed} priority={priority} held={held} hidden={hidden} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} canManage={!!user && hasPerm(user, "machines.manage")} board={board} />
     </>
   );
 }
