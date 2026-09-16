@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateHandover, deleteHandover, bulkSetHandoverDate } from "@/app/handover/actions";
+import { updateHandover, deleteHandover, bulkDeleteHandover, bulkSetHandoverDate } from "@/app/handover/actions";
 import { toISODate } from "@/lib/domain/dates";
 import type { SoiLookup } from "@/lib/server/soi";
 import { ExportButton } from "@/components/ExportButton";
@@ -56,7 +56,7 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
   const [rowErr, setRowErr] = useState<Record<number, string>>({});
   const [pending, startTransition] = useTransition();
 
-  // bulk re-date: tick rows, pick one new date, apply to all of them at once
+  // bulk actions: tick rows, then re-date them all or delete them all
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkDate, setBulkDate] = useState("");
   const [bulkMsg, setBulkMsg] = useState("");
@@ -129,15 +129,55 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
   const selectedVisible = useMemo(() => editableVisible.filter((r) => selected.has(r.id)).map((r) => r.id), [editableVisible, selected]);
   const allVisibleSelected = editableVisible.length > 0 && selectedVisible.length === editableVisible.length;
 
-  const toggleRow = (id: number) =>
+  // shift-click ticks everything between the last tick and this one — thirty
+  // rows of one wrong import are a range, not thirty clicks
+  const lastTicked = useRef<number | null>(null);
+  const toggleRow = (id: number, shift = false) => {
+    const anchor = lastTicked.current;
+    lastTicked.current = id;
     setSelected((s) => {
       const n = new Set(s);
+      if (shift && anchor !== null && anchor !== id) {
+        const order = editableVisible.map((r) => r.id);
+        const a = order.indexOf(anchor);
+        const b = order.indexOf(id);
+        if (a >= 0 && b >= 0) {
+          const on = !n.has(id); // the clicked row decides: tick the range, or clear it
+          for (const rid of order.slice(Math.min(a, b), Math.max(a, b) + 1)) {
+            if (on) n.add(rid);
+            else n.delete(rid);
+          }
+          return n;
+        }
+      }
       if (n.has(id)) n.delete(id);
       else n.add(id);
       return n;
     });
+  };
   const toggleAll = () =>
     setSelected(allVisibleSelected ? new Set() : new Set(editableVisible.map((r) => r.id)));
+
+  /** Delete every ticked row in one go. The server judges the batch as a
+   *  batch, so rows that only break the chain individually (a cut row and the
+   *  weld row it fed) go together; anything it refuses leaves all of them. */
+  function deleteSelected() {
+    const n = selectedVisible.length;
+    if (n === 0) return;
+    if (!confirm(`Delete ${n} record${n === 1 ? "" : "s"} permanently?\n\nTheir quantities return to the pending balance on every screen. This cannot be undone.`)) return;
+    const fd = new FormData();
+    fd.set("ids", selectedVisible.join(","));
+    setBulkMsg("");
+    startTransition(async () => {
+      const r = await bulkDeleteHandover(fd);
+      if (r.ok) {
+        setSelected(new Set());
+        router.refresh();
+      } else {
+        setBulkMsg(r.error ?? "Failed");
+      }
+    });
+  }
 
   function applyBulkDate() {
     if (!bulkDate || selectedVisible.length === 0) return;
@@ -256,7 +296,18 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
           <button type="button" onClick={() => { setSelected(new Set()); setBulkMsg(""); }} className="btn btn-ghost btn-sm">
             Clear selection
           </button>
-          {bulkMsg && <span className="text-xs font-semibold text-bad-fg w-full sm:w-auto">{bulkMsg}</span>}
+          {/* the one destructive button on the bar sits apart from the date
+              controls, so a stray click lands on nothing */}
+          <button
+            type="button"
+            onClick={deleteSelected}
+            disabled={pending}
+            className="btn btn-sm btn-danger ms-auto"
+            title="Delete the ticked records permanently — their quantities return to the pending balance everywhere"
+          >
+            🗑 Delete {selectedVisible.length} selected
+          </button>
+          {bulkMsg && <span className="order-last w-full text-xs font-semibold text-bad-fg">{bulkMsg}</span>}
         </div>
       )}
 
@@ -300,7 +351,11 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
                     <input
                       type="checkbox"
                       checked={selected.has(r.id)}
-                      onChange={() => toggleRow(r.id)}
+                      // the shift key rides on the click behind the change —
+                      // preventing the click instead would leave React's
+                      // controlled box out of step with the range
+                      onChange={(e) => toggleRow(r.id, (e.nativeEvent as MouseEvent).shiftKey)}
+                      title="Tick to select · Shift-click to select a range"
                       className="accent-[var(--brand)] cursor-pointer"
                     />
                   )}

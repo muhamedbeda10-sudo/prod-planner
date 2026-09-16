@@ -208,6 +208,59 @@ export async function bulkSetHandoverDate(formData: FormData): Promise<ActionRes
   return { ok: true, updated: res.count };
 }
 
+/** Delete SEVERAL log rows at once — the ticked rows on the Daily Log.
+ *
+ *  The batch is judged as a batch: the chain is re-checked once per affected
+ *  scope with every selected row already gone, so deleting a cut row together
+ *  with the weld row it fed passes, while deleting the cut row on its own
+ *  still refuses. Nothing is deleted unless the whole batch is legal — a
+ *  half-applied delete would leave the balances telling a story that never
+ *  happened. */
+export async function bulkDeleteHandover(formData: FormData): Promise<ActionResult & { deleted?: number }> {
+  const ids = String(formData.get("ids") ?? "")
+    .split(",")
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0);
+  if (ids.length === 0) return { ok: false, error: "No rows selected." };
+  if (ids.length > 200) return { ok: false, error: "Too many rows at once — max 200." };
+
+  const entries = await prisma.handoverEntry.findMany({ where: { id: { in: ids } } });
+  if (entries.length === 0) return { ok: false, error: "Records not found." };
+  for (const d of [...new Set(entries.map((e) => e.dept))]) {
+    const guard = await requireDeptEdit(d);
+    if (guard.error) return { ok: false, error: guard.error };
+  }
+
+  const leaving = entries.map((e) => e.id);
+  // one check per scope the batch touches: an MO's item, or a BOM's item for
+  // the rows that carry no MO
+  const scopes = new Map<string, (typeof entries)[number]>();
+  for (const e of entries) scopes.set(`${(e.mo ?? "").trim() || `bom:${e.bom}`}|${e.item}`, e);
+  for (const e of scopes.values()) {
+    const chainError = await checkOutputChain({
+      dept: e.dept, bom: e.bom, mo: e.mo, item: e.item, qty: 0, excludeIds: leaving,
+    });
+    if (chainError) return { ok: false, error: chainError };
+  }
+
+  const failure = await prisma
+    .$transaction(async (tx) => {
+      for (const e of entries) {
+        const sync = await syncTanksToLedgerQty(tx, e, 0);
+        if (sync.error) throw new LedgerSyncError(sync.error);
+        await syncMirroredOdoo(tx, e.id, "delete");
+      }
+      await tx.handoverEntry.deleteMany({ where: { id: { in: leaving } } });
+    })
+    .catch((e) => {
+      if (e instanceof LedgerSyncError) return e.message;
+      throw e;
+    });
+  if (failure) return { ok: false, error: failure };
+  revalidateEverywhere();
+  return { ok: true, deleted: entries.length };
+}
+
 export async function deleteHandover(formData: FormData): Promise<ActionResult> {
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid id." };
