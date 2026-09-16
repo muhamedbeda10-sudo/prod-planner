@@ -7,6 +7,7 @@ import { requirePerm, requireAdmin } from "@/lib/server/auth";
 import { applicableItems, ospOf, eligibleItems, isDept, isPaintExempt, deptLabel, itemApplies, parseExcludedItems, ITEMS, DELIVERED_STAGE, type Item } from "@/lib/domain/constants";
 import { finsGroup, isFullyDelivered, spreadOverGroup } from "@/lib/domain/groupSpread";
 import { getActiveLine } from "@/lib/server/line";
+import { LV_ITEM } from "@/lib/domain/lv";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
@@ -458,6 +459,8 @@ export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: str
   const got = new Map(delivered.map((d) => [`${d.mo}|${d.item}`, d._sum.qty ?? 0]));
 
   const done = open.filter((o) => {
+    // an LV panel is one item on the ledger; a transformer is its components
+    if (o.line === "LV") return isFullyDelivered(o.planQty, [{ counts: true, delivered: got.get(`${o.mo}|${LV_ITEM}`) ?? 0 }]);
     const excluded = parseExcludedItems(o.excludedItems);
     return isFullyDelivered(
       o.planQty,
