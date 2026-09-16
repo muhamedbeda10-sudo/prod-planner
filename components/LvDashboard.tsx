@@ -2,6 +2,8 @@ import Link from "next/link";
 import { LV_CHAIN, LV_STAGE_LABEL, LV_STAGE_SHORT } from "@/lib/domain/lv";
 import type { LvDashboardData } from "@/lib/server/lvDashboard";
 import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
+import { PeriodFilter } from "@/components/controls";
+import { PrintButton } from "@/components/PrintButton";
 
 // The panels' Dashboard: where the open orders stand on the chain, what each
 // stage moved this month, and the last two weeks day by day. A server
@@ -9,6 +11,7 @@ import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
 
 const fmt = (n: number) => n.toLocaleString();
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -25,11 +28,22 @@ export function LvDashboard({ d }: { d: LvDashboardData }) {
   const pct = (n: number) => (o.panels > 0 ? `${Math.round((n / o.panels) * 100)}%` : "—");
   return (
     <div className="space-y-6">
+      {/* The report lives inside the dashboard, as it does for the transformers:
+          pick a day (from = to) or a period and the table below is that
+          period, ready to print. */}
       <div className="no-print flex flex-wrap items-center gap-3 bg-surface border rounded-xl px-3 py-2.5">
         <ViewTabs views={DASHBOARD_VIEWS.filter((v) => v.href === "/")} current="/" label="Dashboard view" />
-        <span className="font-extrabold text-sm">LV Panels · {d.monthLabel}</span>
-        <Link href="/tracker" className="btn btn-sm ms-auto">Plan Tracker →</Link>
+        <span className="font-extrabold text-sm tabnum">
+          {d.ranged ? `${ddmmyyyy(d.fromISO)} → ${ddmmyyyy(d.toISO)}` : `Last ${d.days.length} days`}
+          {d.clamped && <span className="pill pill-warn ms-2">cut to {d.days.length} days</span>}
+        </span>
+        <PeriodFilter from={d.ranged ? d.fromISO : ""} to={d.ranged ? d.toISO : ""} active={d.ranged} />
+        <span className="ms-auto inline-flex items-center gap-2">
+          <PrintButton />
+          <Link href="/tracker" className="btn btn-sm">Plan Tracker →</Link>
+        </span>
       </div>
+      <div className="print-only text-sm font-bold">LV Panels · {d.ranged ? `${ddmmyyyy(d.fromISO)} → ${ddmmyyyy(d.toISO)}` : `last ${d.days.length} days`}</div>
 
       {/* the open orders on the chain */}
       <div className="flex flex-wrap gap-3">
@@ -62,7 +76,7 @@ export function LvDashboard({ d }: { d: LvDashboardData }) {
           </tbody>
           <tfoot>
             <tr className="border-t-2 font-bold bg-surface-2/60">
-              <td className="p-2">Last {d.days.length} days</td>
+              <td className="p-2">{d.ranged ? "Period" : `Last ${d.days.length} days`}</td>
               {LV_CHAIN.map((s) => <td key={s} className="p-2 text-center tabnum">{fmt(d.period[s])}</td>)}
             </tr>
             <tr className="font-bold">

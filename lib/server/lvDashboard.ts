@@ -18,8 +18,14 @@ export interface LvDashboardDay {
 }
 
 export interface LvDashboardData {
-  /** The last `DAYS` calendar days, oldest first. */
+  /** The days shown, oldest first: the last two weeks, or the period asked for. */
   days: LvDashboardDay[];
+  fromISO: string;
+  toISO: string;
+  /** A period was asked for (from → to), rather than the default two weeks. */
+  ranged: boolean;
+  /** The period asked for was longer than the cap and was cut to it. */
+  clamped: boolean;
   /** Totals per stage over those days. */
   period: Record<LvChainStage, number>;
   /** This calendar month, per stage. */
@@ -35,11 +41,26 @@ export interface LvDashboardData {
 }
 
 const DAYS = 14;
+/** The longest period drawn day by day — a quarter is a chart, not a table. */
+const MAX_DAYS = 62;
 const zero = (): Record<LvChainStage, number> => ({ Punching: 0, Bending: 0, Welding: 0, Painting: 0, Delivered: 0 });
 
-export async function getLvDashboard(): Promise<LvDashboardData> {
-  const today = dayNumber(new Date());
-  const from = today - (DAYS - 1);
+/** The panels' dashboard for the last two weeks, or for one day or a period
+ *  when `opts` names it — the same day-or-period the transformer dashboard
+ *  answers, which is what makes it the panels' report too. */
+export async function getLvDashboard(opts?: { from?: Date | null; to?: Date | null }): Promise<LvDashboardData> {
+  const todayNum = dayNumber(new Date());
+  let from = todayNum - (DAYS - 1);
+  let today = todayNum;
+  let ranged = false;
+  let clamped = false;
+  if (opts?.from && opts?.to) {
+    ranged = true;
+    from = dayNumber(opts.from);
+    today = dayNumber(opts.to);
+    if (today < from) [from, today] = [today, from];
+    if (today - from >= MAX_DAYS) { today = from + MAX_DAYS - 1; clamped = true; }
+  }
   const monthStart = new Date();
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
@@ -83,7 +104,8 @@ export async function getLvDashboard(): Promise<LvDashboardData> {
   }
 
   return {
-    days, period, month, open,
+    days, period, month, open, ranged, clamped,
+    fromISO: toISODate(dateFromDayNumber(from)), toISO: toISODate(dateFromDayNumber(today)),
     monthLabel: monthStart.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }),
   };
 }
