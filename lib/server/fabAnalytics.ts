@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { getActiveLine, ledgerItemWhere } from "./line";
 import { buildFabAnalytics, type FabAnalytics, type NestingRow, type OutputRow } from "@/lib/domain/fabAnalytics";
 import { toISODate } from "@/lib/domain/dates";
 
@@ -34,13 +35,14 @@ export async function getFabAnalytics(windowDays: Window): Promise<FabAnalyticsD
     from.setUTCDate(from.getUTCDate() - windowDays);
   }
 
+  const line = await getActiveLine(); // the line on screen's sheets and cutting only
   const [entries, nesting] = await Promise.all([
     prisma.handoverEntry.findMany({
-      where: { dept: "Cut", ...(from ? { date: { gte: from } } : {}) },
+      where: { dept: "Cut", ...ledgerItemWhere(line), ...(from ? { date: { gte: from } } : {}) },
       select: { date: true, bom: true, item: true, qty: true },
     }),
     prisma.materialUsage.findMany({
-      where: { partCode: { not: "" }, sheetsPerUnit: { gt: 0 } },
+      where: { line, partCode: { not: "" }, sheetsPerUnit: { gt: 0 } },
       select: { month: true, bom: true, mo: true, partCode: true, material: true, thicknessMm: true, sheetSize: true, sheetsPerUnit: true },
     }),
   ]);

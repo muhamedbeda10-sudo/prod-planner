@@ -135,13 +135,16 @@ export function AppNav({
   // A user who can edit exactly ONE department jumps straight to it from the
   // Worklist tab; everyone else (admins, multi-dept, view-only) expands the
   // tab into the three departments inline.
-  const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => tankTracking || !TANK_ONLY.has(d.href));
-  const restTabs = REST.filter((l) => tankTracking || !TANK_ONLY.has(l.href));
+  // the leak test and the barcodes are the tanks' — with tracking off, or the
+  // panels on screen, they are not part of the app
+  const tankTabs = tankTracking && line !== "LV";
+  const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => tankTabs || !TANK_ONLY.has(d.href));
+  const restTabs = REST.filter((l) => tankTabs || !TANK_ONLY.has(l.href));
   const drawerTabs = (line === "LV"
     ? [...LV_WORKLIST_DEPTS.map((d): Item => ({ href: d.href, label: `${d.label} Worklist`, icon: d.icon })), ...DRAWER.filter((l) => !l.href.startsWith("/worklist/"))]
     : DRAWER
-  ).filter((l) => tankTracking || !TANK_ONLY.has(l.href));
-  const drawerViews = DRAWER_VIEWS.filter((l) => tankTracking || !TANK_ONLY.has(l.href));
+  ).filter((l) => tankTabs || !TANK_ONLY.has(l.href));
+  const drawerViews = DRAWER_VIEWS.filter((l) => tankTabs || !TANK_ONLY.has(l.href));
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
   const singleDeptHref = !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;
 

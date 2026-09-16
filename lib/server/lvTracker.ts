@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { loadMasterOrders } from "./loads";
+import { loadMasterOrdersOf } from "./loads";
 import { LV_ITEM, lvComplete, type LvState } from "@/lib/domain/lv";
 
 // The LV panels' tracker: one row per panel order, its position on the
@@ -30,7 +30,7 @@ export interface LvTrackerRow {
 
 export async function getLvTracker(): Promise<LvTrackerRow[]> {
   const [orders, sums] = await Promise.all([
-    loadMasterOrders(), // the line on screen — LV when this is called
+    loadMasterOrdersOf("LV"), // the panels, whatever the toggle says — the Floor draws both lines
     prisma.handoverEntry.groupBy({
       by: ["mo", "dept"],
       where: { mo: { not: null }, item: LV_ITEM },

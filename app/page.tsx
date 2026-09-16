@@ -1,6 +1,9 @@
 ﻿import Link from "next/link";
 import { getTargetDashboard, type DeptDay } from "@/lib/server/dashboard";
 import { getSmartInsights } from "@/lib/server/insights";
+import { getActiveLine } from "@/lib/server/line";
+import { getLvDashboard } from "@/lib/server/lvDashboard";
+import { LvDashboard } from "@/components/LvDashboard";
 import { SmartInsights } from "@/components/SmartInsights";
 import { pctStyle } from "@/components/ui";
 import { PeriodFilter, DashboardPeriodMemory } from "@/components/controls";
@@ -20,6 +23,10 @@ export default async function Home({
 }: {
   searchParams: Promise<{ w?: string; from?: string; to?: string }>;
 }) {
+  // the panels have their own dashboard — one thing through four stages,
+  // not six components against a target
+  if ((await getActiveLine()) === "LV") return <LvDashboard d={await getLvDashboard()} />;
+
   const sp = await searchParams;
   const [d, ai] = await Promise.all([
     getTargetDashboard({

@@ -11,9 +11,9 @@ import { getMachineItemTimes } from "./machineTimes";
 import { getCutSheet, getPaintingQueue, getWeldingQueue } from "./execution";
 import { getWorklistExtras } from "./worklistExtras";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
-import { loadHolidays, loadMasterOrders } from "./loads";
+import { loadHolidays, loadMasterOrdersOf } from "./loads";
 import { getSettings, getShiftHours } from "./data";
-import { getActiveLine } from "./line";
+import { withLine } from "./line";
 import { getLvWorklist } from "./lvWorklist";
 import { LV_ITEM } from "@/lib/domain/lv";
 
@@ -72,7 +72,7 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
     getAllMachines(),
     prisma.worklistMachine.findMany({ where: { dept }, orderBy: [{ machineId: "asc" }, { rank: "asc" }] }),
     getStdData(),
-    loadMasterOrders(),
+    Promise.all([loadMasterOrdersOf("TR"), loadMasterOrdersOf("LV")]).then(([a, b]) => [...a, ...b]),
     prisma.machineDowntime.findMany({ where: { date, machine: { dept } }, select: { machineId: true, hours: true } }),
     prisma.shiftEntry.findMany({ where: { date, dept, present: true, machineId: { not: null } }, select: { machineId: true, shift: true, overtimeH: true, worker: { select: { name: true } } } }),
     getMachineItemTimes(),
@@ -239,16 +239,16 @@ export async function getOptimizerInputs(dept: BoardDept, dayISO: string): Promi
  *  same rows the worklist page shows, gathered for a page that has not
  *  loaded them itself (the Floor canvas). Shot blast has no worklist. */
 export async function getDeptBoardLines(dept: BoardDept, dayISO: string): Promise<BoardLineInput[]> {
+  // One physical floor: the punches carry panels beside transformer parts,
+  // so the board draws BOTH lines' work whatever the toggle says. The
+  // transformers' lines come off their worklists under a forced line; the
+  // panels' off their stage worklists, which read the panels regardless.
+  const [tr, lv] = await Promise.all([withLine("TR", () => transformerBoardLines(dept, dayISO)), lvBoardLines(dept)]);
+  return [...tr, ...lv];
+}
+
+async function transformerBoardLines(dept: BoardDept, dayISO: string): Promise<BoardLineInput[]> {
   const day = parseISODate(dayISO) ?? new Date();
-  // The panels: their punching runs on the fabrication bay's punches, their
-  // welding and painting on those bays — each stage's worklist, as lines.
-  // Bending is one centre and is not drawn on a machine.
-  if ((await getActiveLine()) === "LV") {
-    if (dept === "ShotBlast") return [];
-    const stage = dept === "Cut" ? "Punching" : dept;
-    const list = await getLvWorklist(stage);
-    return list.rows.map((r) => ({ bom: r.bom, mo: r.mo, item: LV_ITEM, description: `${r.product ?? "LV panel"} · ${r.customer ?? ""}`.trim(), remaining: r.waiting, deliveryISO: null, dueISO: null }));
-  }
   if (dept === "Cut") {
     const sheet = await getCutSheet();
     return [
@@ -262,4 +262,12 @@ export async function getDeptBoardLines(dept: BoardDept, dayISO: string): Promis
     ...queue.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO, dueISO: r.dueISO })),
     ...extras.pushed.map((p) => ({ bom: p.bom, mo: p.mo, item: p.item, description: p.description, remaining: p.qty, deliveryISO: null })),
   ];
+}
+
+/** The panels on a bay: punching on the fabrication bay's punches, welding
+ *  and painting on those bays. Bending is one centre and is not drawn. */
+async function lvBoardLines(dept: BoardDept): Promise<BoardLineInput[]> {
+  if (dept === "ShotBlast") return [];
+  const list = await getLvWorklist(dept === "Cut" ? "Punching" : dept);
+  return list.rows.map((r) => ({ bom: r.bom, mo: r.mo, item: LV_ITEM, description: `LV ${r.product ?? "panel"} · ${r.customer ?? ""}`.trim(), remaining: r.waiting, deliveryISO: null, dueISO: null }));
 }

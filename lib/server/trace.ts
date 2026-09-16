@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { getActiveLine, ledgerItemWhere } from "./line";
 import { getMasterTracker, type MasterTrackerRow } from "./masterTracker";
 import { ITEMS, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { groupKey } from "@/lib/domain/bom";
@@ -97,11 +98,12 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
   const isMo = !!mo;
   const scope = isMo ? { mo } : { bom };
 
+  const line = await getActiveLine(); // the trace stays inside the line on screen
   const [orders, handover, allBoms, masters, plans, notes, returns, masterRows] = await Promise.all([
     prisma.planOrder.findMany({ where: scope, orderBy: [{ planNo: "asc" }, { mo: "asc" }, { item: "asc" }] }),
-    prisma.handoverEntry.findMany({ where: scope, orderBy: [{ date: "asc" }, { id: "asc" }] }),
+    prisma.handoverEntry.findMany({ where: { ...scope, ...ledgerItemWhere(line) }, orderBy: [{ date: "asc" }, { id: "asc" }] }),
     isMo ? Promise.resolve([]) : prisma.planOrder.findMany({ select: { bom: true }, distinct: ["bom"] }),
-    prisma.masterOrder.findMany({ where: scope }),
+    prisma.masterOrder.findMany({ where: { ...scope, line } }),
     prisma.plan.findMany(),
     prisma.queueNote.findMany({ where: scope, orderBy: { createdAt: "asc" } }),
     prisma.returnEntry.findMany({ where: scope, orderBy: { date: "asc" } }),
