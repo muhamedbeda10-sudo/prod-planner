@@ -25,9 +25,11 @@ export default async function Home({
 }) {
   // the panels have their own dashboard — one thing through four stages,
   // not six components against a target
-  if ((await getActiveLine()) === "LV") return <LvDashboard d={await getLvDashboard()} />;
-
   const sp = await searchParams;
+  if ((await getActiveLine()) === "LV") {
+    return <LvDashboard d={await getLvDashboard({ from: sp.from ? parseISODate(sp.from) : null, to: sp.to ? parseISODate(sp.to) : null })} />;
+  }
+
   const [d, ai] = await Promise.all([
     getTargetDashboard({
       weekOf: sp.w ? parseISODate(sp.w) : null,

@@ -6,6 +6,8 @@ import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
 import { countWorkingDays } from "@/lib/server/report";
 import { OutputByComponentChart } from "@/components/LazyCharts";
 import { PrintButton } from "@/components/PrintButton";
+import { redirect } from "next/navigation";
+import { getActiveLine } from "@/lib/server/line";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, STAGE_COLOR, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 
@@ -61,6 +63,9 @@ export default async function ReportPage({
 }: {
   searchParams: Promise<{ day?: string; dept?: string; from?: string }>;
 }) {
+  // the printed report is the transformers' shape (components against a
+  // target); the panels' report is their dashboard with a day or a period
+  if ((await getActiveLine()) === "LV") redirect("/");
   const sp = await searchParams;
   // default = YESTERDAY: the daily report is reviewed the morning after the
   // day it covers, so it opens on the last finished day (picker overrides)
