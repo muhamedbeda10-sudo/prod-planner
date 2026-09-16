@@ -156,6 +156,9 @@ describe("diffRevisionRow — qty rises auto-apply, qty drops stay manual", () =
     secItem: "9085",
     planQty: 10,
     remarks: null,
+    product: null,
+    ospEncloser: 0,
+    materialsRemarks: null,
     ospCF: 0,
     ospTC: 0,
     ospTN: 0,
@@ -174,6 +177,9 @@ describe("diffRevisionRow — qty rises auto-apply, qty drops stay manual", () =
     secItem: "9085",
     planQty: 10,
     remarks: null,
+    product: null,
+    ospEncloser: 0,
+    materialsRemarks: null,
     done: { cut: { CF: 0, TC: 0, TN: 0, CB: 0 }, weld: { CF: 0, TC: 0, TN: 0, CB: 0 }, paint: { CF: 0, TC: 0, TN: 0, CB: 0 } },
     osp: { CF: 0, TC: 0, TN: 0, CB: 0 },
     ...over,
@@ -205,5 +211,49 @@ describe("diffRevisionRow — qty rises auto-apply, qty drops stay manual", () =
     expect(d.changes).toEqual([{ mo: "MO-1", field: "Urgent", from: "No", to: "Yes" }]);
     expect(d.qtyReduction).toEqual({ mo: "MO-1", from: 10, to: 6 });
     expect(d.planQty).toBe(10);
+  });
+});
+
+describe("parseMonthlyPlan — the LV panels' sheet", () => {
+  // the September 2026 sub-station plan, as the planner sends it
+  const grid: unknown[][] = [
+    ["SN", "SOI", "URGENT", "Customer", "Product", "FG Code", "MO", "BoM", "SEC Item", "Planned Qty", "OSP Encloser", "Remarks", "Materials Remarks"],
+    [null, null, null, null, null, null, null, null, null, null, null, "Rev_1.0", null],
+    [1, "S01286-1", "Yes", "PRI", "LSS", "FG-LSC-AHS-MUN-AD-AA", "SF01/MO/15867", "FG-LSC-AHS-MUN-AD-AA", "-", 3, "-", null, null],
+    [2, "S00253-1", "Yes", "SEC", "USS", "FG-US-D5-13-MB", "SF01/MO/12746-002", "FG-US-D5-13-MB", "908567018", 8, 7, null, "*OSP Panels to be used* & one unit in-house."],
+    [6, "S00653-1", null, "PRI", "USS", "FG-SUSA-8569114", "SF01/MO/11714", "FG-SUSA-8569114", "908569114", 27, "-", "Shifted to Sep Plan", "MCCB"],
+    ["Total", null, null, null, null, null, null, null, null, 279, 7, null, null],
+  ];
+
+  it("reads every row off the header names, the Total footer excluded", () => {
+    const { rows, issues } = parseMonthlyPlan(grid, "LV");
+    expect(rows.map((r) => r.mo)).toEqual(["SF01/MO/15867", "SF01/MO/12746-002", "SF01/MO/11714"]);
+    expect(issues).toEqual([]);
+  });
+
+  it("carries the panel's own columns: the product, the enclosures bought outside, the parts remarks", () => {
+    const [lss, uss, third] = parseMonthlyPlan(grid, "LV").rows;
+    expect(lss).toMatchObject({ product: "LSS", planQty: 3, ospEncloser: 0, secItem: null, urgent: true, customer: "PRI" });
+    expect(uss).toMatchObject({ product: "USS", planQty: 8, ospEncloser: 7, secItem: "908567018", materialsRemarks: "*OSP Panels to be used* & one unit in-house." });
+    expect(third).toMatchObject({ remarks: "Shifted to Sep Plan", materialsRemarks: "MCCB", urgent: false });
+  });
+
+  it("does not ask an LV sheet for cutting, welding and painting sections", () => {
+    expect(parseMonthlyPlan(grid, "LV").issues).toEqual([]);
+    expect(parseMonthlyPlan(grid, "TR").issues.some((m) => m.startsWith("Progress sections"))).toBe(true);
+  });
+
+  it("leaves a transformer sheet's rows with no product", () => {
+    const tr: unknown[][] = [
+      ["SOI", "URGENT", "Customer", "FG Code", "MO", "BoM Ref.", "KVA", "Rating", "SEC Item", "Plan Qty", "Remarks"],
+      ["S1", "", "SEC", "FG", "PF01/MO/1", "14003E11M11", "1000", "11/0.4", "9085", 4, ""],
+    ];
+    expect(parseMonthlyPlan(tr, "TR").rows[0]).toMatchObject({ product: null, ospEncloser: 0, materialsRemarks: null, kva: "1000" });
+  });
+
+  it("reports a revision's changes to the panel's own columns", () => {
+    const [, uss] = parseMonthlyPlan(grid, "LV").rows; // the USS row: 8 panels, 7 enclosures outside
+    const d = diffRevisionRow(uss, { ...uss, ospCF: 0, ospTC: 0, ospTN: 0, ospCB: 0, product: "LSS", ospEncloser: 0, materialsRemarks: null });
+    expect(d.changes.map((c) => c.field)).toEqual(["Product", "OSP Encloser", "Materials Remarks"]);
   });
 });

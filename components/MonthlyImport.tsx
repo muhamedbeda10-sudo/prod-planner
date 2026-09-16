@@ -4,8 +4,13 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { importMonthlyAction } from "@/app/orders/actions";
 import type { MonthlyImportResult } from "@/lib/server/importMonthly";
+import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
-export function MonthlyImport() {
+/** The plan import for the product line the toggle is on. The two lines'
+ *  sheets differ (a transformer sheet carries KVA and rating, a panel sheet
+ *  its Product and OSP Encloser columns) but both are read by header name,
+ *  so this one form serves either — it just has to say which it is. */
+export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
@@ -30,7 +35,7 @@ export function MonthlyImport() {
   return (
     <details className="bg-surface border rounded-xl p-4" open>
       <summary className="font-bold cursor-pointer select-none">
-        📥 Import monthly plan <span className="text-xs text-muted font-normal">(order data only: new MOs are added, existing MOs get the revision&apos;s changes — progress quantities are never read)</span>
+        📥 Import monthly plan — <span className="text-accent">{LINE_LABEL[line]}</span> <span className="text-xs text-muted font-normal">(order data only: new MOs are added, existing MOs get the revision&apos;s changes{line === "TR" ? " — progress quantities are never read" : ""})</span>
       </summary>
       <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-3">
         <input ref={inputRef} name="file" type="file" accept=".xlsx,.xlsm,.xls" required
@@ -53,9 +58,10 @@ export function MonthlyImport() {
           <span className="text-xs text-muted font-normal">(review first — untick to actually apply)</span>
         </label>
         <button type="submit" disabled={pending} className="bg-brand hover:bg-brand-dark text-white font-bold rounded-md px-5 py-2 disabled:opacity-50 transition-colors">
-          {pending ? "Importing…" : "Import orders"}
+          {pending ? "Importing…" : `Import ${LINE_LABEL[line]} orders`}
         </button>
         <span className="text-xs text-muted">
+          The sheet is filed under <b>{LINE_LABEL[line]}</b> — switch the toggle at the top of the page first if it is the other product&apos;s plan.
           New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. A LOWERED quantity is never applied automatically — it is flagged and you change it manually on the tracker. Columns are read by header name — any sheet layout month to month.
         </span>
       </form>

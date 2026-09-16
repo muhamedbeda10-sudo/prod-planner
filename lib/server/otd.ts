@@ -2,13 +2,14 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { computeOtd, type OtdStats } from "@/lib/domain/otd";
 import { PAINT_EXEMPT, PAINTED_ITEMS, applicableItems } from "@/lib/domain/constants";
+import { getActiveLine } from "./line";
 
 /** On-Time Delivery stats over the whole registry. A component is "delivered"
  *  when its FINAL stage reaches the order qty: Painting for TC/TN/CB, SHOT
  *  BLAST for the paint-exempt core (CF). We feed the final-stage log of each item. */
 export async function getOtdStats(): Promise<OtdStats> {
   const [orders, schedules, finalLogs] = await Promise.all([
-    prisma.masterOrder.findMany({ select: { mo: true, planQty: true, kva: true, rating: true, ospCF: true, ospTC: true, ospTN: true, ospCB: true, excludedItems: true } }),
+    prisma.masterOrder.findMany({ where: { line: await getActiveLine() }, select: { mo: true, planQty: true, kva: true, rating: true, ospCF: true, ospTC: true, ospTN: true, ospCB: true, excludedItems: true } }),
     prisma.planSchedule.findMany({ select: { planNo: true, mo: true, ovenDate: true } }),
     prisma.handoverEntry.findMany({
       where: {

@@ -2,6 +2,7 @@ import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { parseMonthlyPlan, diffRevisionRow, type RevisionChange } from "@/lib/domain/importMonthly";
+import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
 export type { RevisionChange };
 
@@ -34,7 +35,10 @@ export interface MonthlyImportResult {
   missingFromSheet?: string[];
 }
 
-export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string, preview = false): Promise<MonthlyImportResult> {
+/** Import one month's plan for ONE product line. Every order it adds is
+ *  stamped with the line; an MO already filed under the OTHER line is a
+ *  mistake in the sheet, not a revision, and is refused with its row. */
+export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string, preview = false, line: ProductLine = "TR"): Promise<MonthlyImportResult> {
   let wb: XLSX.WorkBook;
   try {
     wb = XLSX.read(new Uint8Array(buffer), { cellDates: false });
@@ -52,12 +56,28 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
   }
   const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, opts);
 
-  const { rows, issues } = parseMonthlyPlan(grid);
-  if (rows.length === 0) {
+  const parsed = parseMonthlyPlan(grid, line);
+  const issues = [...parsed.issues];
+  if (parsed.rows.length === 0) {
     return { ok: false, error: issues[0] ?? "No order rows found.", issues };
   }
 
-  const registry = await prisma.masterOrder.findMany();
+  // MOs are one namespace across both lines — the same MO cannot be a
+  // transformer and a panel. A row whose MO sits on the other line is left
+  // out and named, so the sheet (or the toggle) gets fixed rather than the
+  // order silently changing sides.
+  const everything = await prisma.masterOrder.findMany();
+  const elsewhere = new Map(everything.filter((o) => o.line !== line).map((o) => [o.mo, o.line]));
+  const rows = parsed.rows.filter((r) => {
+    const other = elsewhere.get(r.mo);
+    if (!other) return true;
+    issues.push(`Row ${r.rowNum}: MO "${r.mo}" is already in the registry as ${LINE_LABEL[other as ProductLine] ?? other} — skipped. Switch the line at the top if this sheet is that line's.`);
+    return false;
+  });
+  if (rows.length === 0) {
+    return { ok: false, error: `Every MO in this sheet is already filed under the other product line — is the toggle at the top on ${LINE_LABEL[line]} by mistake?`, issues };
+  }
+  const registry = everything.filter((o) => o.line === line);
   const byMo = new Map(registry.map((o) => [o.mo, o]));
 
   const toAdd = rows.filter((r) => !byMo.has(r.mo));
@@ -65,6 +85,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     await prisma.masterOrder.createMany({
       data: toAdd.map((r) => ({
         mo: r.mo,
+        line,
         months: sourceLabel,
         soi: r.soi,
         urgent: r.urgent,
@@ -76,6 +97,9 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
         secItem: r.secItem,
         planQty: r.planQty,
         remarks: r.remarks,
+        product: r.product,
+        ospEncloser: r.ospEncloser,
+        materialsRemarks: r.materialsRemarks,
         source: sourceLabel,
         ospCF: r.osp.CF,
         ospTC: r.osp.TC,
@@ -121,6 +145,9 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
             // planner's own columns, typed on the tracker. A re-import of the
             // monthly plan must never blank or overwrite what he wrote.
             remarks: r.remarks,
+            product: r.product,
+            ospEncloser: r.ospEncloser,
+            materialsRemarks: r.materialsRemarks,
             ospCF: r.osp.CF,
             ospTC: r.osp.TC,
             ospTN: r.osp.TN,
@@ -178,7 +205,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     added: toAdd.length,
     existing: rows.length - toAdd.length,
     updatedMos: changedRows.length,
-    totalOrders: await prisma.masterOrder.count(),
+    totalOrders: await prisma.masterOrder.count({ where: { line } }),
     addedMos: toAdd.slice(0, 30).map((r) => r.mo),
     issues: issues.filter((m) => !m.startsWith("Progress sections")),
     preview,

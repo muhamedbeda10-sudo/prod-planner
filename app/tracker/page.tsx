@@ -11,6 +11,9 @@ import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants"
 import { trackerPermKey } from "@/lib/domain/permissions";
 import { toDisplayDate } from "@/lib/domain/dates";
 import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
+import { LvOrdersTracker } from "@/components/LvOrdersTracker";
+import { getActiveLine } from "@/lib/server/line";
+import { loadMasterOrders } from "@/lib/server/loads";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +37,26 @@ export default async function TrackerPage({
   // fixed at render time — a `new Date()` inside the client tables would put a
   // different day in the client HTML than the server's and trip hydration
   const issued = toDisplayDate(new Date());
+
+  // The LV panels have no stage grid yet — their side of the tracker is the
+  // plan as planned, one row per order, until their stages are agreed.
+  if ((await getActiveLine()) === "LV") {
+    const orders = await loadMasterOrders();
+    const monthsOf = (csv: string) => csv.split(",").map((m) => m.trim()).filter(Boolean);
+    return (
+      <>
+        <PrintHeader title="Plan Tracker — LV Panels" date={issued} />
+        <LvOrdersTracker
+          viewTabs={<ViewTabs views={TRACKER_VIEWS} current="/tracker" label="Tracker view" />}
+          rows={orders.map((o) => ({
+            mo: o.mo, soi: o.soi, urgent: o.urgent, customer: o.customer, product: o.product, fgCode: o.fgCode, bom: o.bom,
+            secItem: o.secItem, planQty: o.planQty, ospEncloser: o.ospEncloser, remarks: o.remarks, materialsRemarks: o.materialsRemarks,
+            status: o.status, months: monthsOf(o.months || o.source || ""),
+          }))}
+        />
+      </>
+    );
+  }
 
   if (sp.view === "weekly") {
     // an unknown ?plan= falls back to the newest plan inside the loader

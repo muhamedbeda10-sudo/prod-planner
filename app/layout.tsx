@@ -6,6 +6,7 @@ import { AppNav } from "@/components/AppNav";
 import { getCurrentUser, userPerms } from "@/lib/server/auth";
 import { getChatUnreadCount } from "@/lib/server/chat";
 import { getSettings } from "@/lib/server/data";
+import { getActiveLine } from "@/lib/server/line";
 
 const inter = Inter({
   variable: "--font-sans-latin",
@@ -25,7 +26,7 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentUser(); // null on /login (proxy guards the rest)
-  const [unreadChat, settings] = user ? await Promise.all([getChatUnreadCount(user.id), getSettings()]) : [0, null];
+  const [unreadChat, settings, line] = user ? await Promise.all([getChatUnreadCount(user.id), getSettings(), getActiveLine()]) : [0, null, "TR" as const];
   return (
     <html lang="en" dir="ltr" className={`${inter.variable} h-full`} suppressHydrationWarning>
       <head>
@@ -37,6 +38,7 @@ export default async function RootLayout({
             user={{ id: user.id, name: user.name, isAdmin: user.isAdmin, perms: [...userPerms(user)] }}
             unreadChat={unreadChat}
             tankTracking={!!settings?.tankTracking}
+            line={line}
           />
         )}
         <main className="flex-1 w-full px-4 py-5 md:px-6 md:py-6">

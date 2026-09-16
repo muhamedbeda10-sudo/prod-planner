@@ -8,6 +8,8 @@
 // The import's contract (per the factory's flow): check each MO — if it already
 // exists in the registry it is left untouched; if it is new it is added.
 
+import type { ProductLine } from "./lines";
+
 export type CoreItem = "CF" | "TC" | "TN" | "CB";
 
 /** Per-dept done quantities for the 4 transformer components, as written in the
@@ -31,6 +33,12 @@ export interface MonthlyOrderRow {
   secItem: string | null;
   planQty: number;
   remarks: string | null;
+  // The LV panels' sheet has three columns of its own: the panel type
+  // (LSS / USS), the enclosures bought outside, and a second remarks column
+  // about parts. A transformer sheet leaves them empty.
+  product: string | null;
+  ospEncloser: number;
+  materialsRemarks: string | null;
   done: DoneMatrix; // raw sheet values (see applyCascade for the effective view)
   osp: Record<CoreItem, number>; // OSP section — quantities OUTSOURCED per component (made outside, not by our depts)
 }
@@ -88,6 +96,9 @@ export interface ExistingOrderFields {
   secItem: string | null;
   planQty: number;
   remarks: string | null;
+  product: string | null;
+  ospEncloser: number;
+  materialsRemarks: string | null;
   ospCF: number;
   ospTC: number;
   ospTN: number;
@@ -135,6 +146,9 @@ export function diffRevisionRow(row: MonthlyOrderRow, cur: ExistingOrderFields):
   push("Rating", T(cur.rating), T(row.rating));
   push("SEC Item", T(cur.secItem), T(row.secItem));
   push("Remarks", T(cur.remarks), T(row.remarks));
+  push("Product", T(cur.product), T(row.product));
+  push("OSP Encloser", String(cur.ospEncloser), String(row.ospEncloser));
+  push("Materials Remarks", T(cur.materialsRemarks), T(row.materialsRemarks));
   push("OSP CF", String(cur.ospCF), String(row.osp.CF));
   push("OSP TC", String(cur.ospTC), String(row.osp.TC));
   push("OSP TN", String(cur.ospTN), String(row.osp.TN));
@@ -165,6 +179,11 @@ const HEADERS: Record<string, string> = {
   SECITEM: "secItem",
   PLANQTY: "planQty",
   QTY: "planQty", // Rev 5.0 monthly sheets shortened the header to "QTY"
+  PLANNEDQTY: "planQty", // the LV panels' sheet
+  // the LV panels' sheet's own columns — a transformer sheet has none of them
+  PRODUCT: "product",
+  OSPENCLOSER: "ospEncloser",
+  MATERIALSREMARKS: "materialsRemarks",
   KV: "rating", // and label the rating column just "KV"
   REVREMARKS: "remarks",
   REMARKS: "remarks",
@@ -179,7 +198,14 @@ function findHeaderRow(grid: unknown[][]): number {
   return -1;
 }
 
-export function parseMonthlyPlan(grid: unknown[][]): ParsedMonthly {
+/**
+ * Parse a monthly plan. `line` says which product the sheet plans —
+ * transformers (with their progress and OSP sections) or LV panels (a flat
+ * order list with a Product column) — and is stamped on every row so the
+ * import files them where they belong. The columns are still found by
+ * header name, so either sheet may be laid out any way.
+ */
+export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): ParsedMonthly {
   const issues: string[] = [];
   const hr = findHeaderRow(grid);
   if (hr < 0) {
@@ -228,7 +254,9 @@ export function parseMonthlyPlan(grid: unknown[][]): ParsedMonthly {
   const hasProgress = (["cut", "weld", "paint"] as const).every(
     (s) => Object.keys(sectionCols[s]).length === 4
   );
-  if (!hasProgress) {
+  // an LV panel is not cut, welded and painted by component — its sheet has
+  // no such sections, and their absence is not worth a note
+  if (!hasProgress && line === "TR") {
     issues.push("Progress sections (Laser Cutting / Welding / Paint per component) were not fully mapped — done quantities default to 0.");
   }
 
@@ -280,6 +308,9 @@ export function parseMonthlyPlan(grid: unknown[][]): ParsedMonthly {
       secItem: clean(get("secItem")),
       planQty: cols.planQty === undefined ? 0 : N(row[cols.planQty]),
       remarks: clean(get("remarks")),
+      product: clean(get("product")),
+      ospEncloser: cols.ospEncloser === undefined ? 0 : N(row[cols.ospEncloser]),
+      materialsRemarks: clean(get("materialsRemarks")),
       done,
       osp,
     });

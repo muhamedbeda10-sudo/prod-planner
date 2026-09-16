@@ -13,6 +13,8 @@ import {
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ChatDock } from "@/components/ChatDock";
+import { LineTabs } from "@/components/LineTabs";
+import type { ProductLine } from "@/lib/domain/lines";
 import { logoutAction } from "@/app/login/actions";
 
 type Item = {
@@ -111,11 +113,14 @@ export function AppNav({
   user,
   unreadChat = 0,
   tankTracking = false,
+  line = "TR",
 }: {
   user: NavUser;
   unreadChat?: number;
   /** With tracking off, the Leak Test and Barcode tabs are not part of the app. */
   tankTracking?: boolean;
+  /** The product line every tab is showing — transformers or LV panels. */
+  line?: ProductLine;
 }) {
   const pathname = usePathname();
 
@@ -294,6 +299,8 @@ export function AppNav({
 
           {/* right cluster */}
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
+            {/* the plant's two products: one switch, inside every tab at once */}
+            <LineTabs line={line} />
             {/* chat is a glance, not a destination — an icon here with its
                 unread badge, opening a panel over whatever page you are on */}
             <div className="hidden md:block">
