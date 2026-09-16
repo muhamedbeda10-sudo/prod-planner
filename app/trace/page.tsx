@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { getTrace } from "@/lib/server/trace";
+import { getActiveLine } from "@/lib/server/line";
+import { getLvTrace } from "@/lib/server/lvTrace";
+import { LvTraceView } from "@/components/LvTraceView";
 import { PageHeader } from "@/components/ui";
 import { TraceSearch } from "@/components/TraceSearch";
 import { TraceView } from "@/components/TraceView";
@@ -33,6 +36,27 @@ export default async function TracePage({
         </div>
       </div>
     );
+  }
+
+  // a panel's trace is its own shape: orders on the chain and the rows that
+  // moved them, not six components in a pipeline
+  if ((await getActiveLine()) === "LV") {
+    const lt = await getLvTrace({ mo, bom });
+    if (!lt.exists) {
+      return (
+        <div className="space-y-6">
+          <PageHeader title={`Trace — ${lt.key}`} sub="No LV panel order or log row carries this code.">
+            <Link href="/tracker" className="text-accent text-sm font-semibold">→ Back to tracker</Link>
+          </PageHeader>
+          <div className="rounded-2xl bg-surface border border-border/60 shadow-sm p-10 flex flex-col items-center gap-3 text-center">
+            <div className="text-4xl">🤷</div>
+            <p className="text-sm text-muted">Nothing found for <b>{lt.key}</b> on the panels — try another code or order, or switch the line at the top.</p>
+            <TraceSearch initial={lt.key} initialMode={lt.scope} />
+          </div>
+        </div>
+      );
+    }
+    return <LvTraceView t={lt} />;
   }
 
   const t = await getTrace({ mo, bom });
