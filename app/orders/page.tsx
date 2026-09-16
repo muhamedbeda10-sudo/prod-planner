@@ -26,7 +26,8 @@ export default async function OrdersPage() {
         title={`Orders Registry — ${LINE_LABEL[line]}`}
         sub={`The master MO list, fed by the monthly plans — ${orders.length} orders · ${totalQty} pcs planned. Tick rows to take a wrong import back out.`}
       >
-        <ViewTabs views={PLANS_VIEWS} current="/orders" label="Plans view" />
+        {/* the weekly delivery schedule is the transformers' — the panels have the monthly plan only */}
+        <ViewTabs views={line === "LV" ? PLANS_VIEWS.filter((v) => v.href === "/orders") : PLANS_VIEWS} current="/orders" label="Plans view" />
       </PageHeader>
       <MonthlyImport line={line} />
       <div>

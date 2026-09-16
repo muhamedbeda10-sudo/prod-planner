@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { loadAllHandover, loadHolidays, loadMasterOrders } from "./loads";
+import { getActiveLine, ledgerItemWhere } from "./line";
 import { computeDailyReport, type DailyReport } from "@/lib/domain/report";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getSettings, getPlanWindows, getGlobalGrouper, getLatestPlanNo } from "./data";
@@ -192,9 +193,9 @@ export async function getDayOutputByProject(day: Date, depts?: string[], from?: 
   const start = new Date(Date.UTC(startDay.getUTCFullYear(), startDay.getUTCMonth(), startDay.getUTCDate()));
   const end = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + 24 * 60 * 60 * 1000);
   const entries = await prisma.handoverEntry.findMany({
-    // the transformer components only — an LV panel's welding and painting
-    // rows share those department names but are not this report's
-    where: { date: { gte: start, lt: end }, item: { in: [...ITEMS] }, ...(depts && depts.length ? { dept: { in: depts } } : {}) },
+    // the line on screen's rows only — a panel's welding and painting rows
+    // share the department names but are the panels' report's
+    where: { date: { gte: start, lt: end }, ...ledgerItemWhere(await getActiveLine()), ...(depts && depts.length ? { dept: { in: depts } } : {}) },
     select: { bom: true, mo: true, dept: true, item: true, qty: true },
   });
 

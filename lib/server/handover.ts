@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { getActiveLine, ledgerItemWhere } from "./line";
 import { getPlanWindows, getSettings } from "./data";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 
@@ -16,8 +17,10 @@ export async function getDefaultPlanForDate(day: Date): Promise<number | null> {
 }
 
 export async function getRecentHandover(limit = 60, planNo?: number) {
+  // the line on screen's rows only — a panel's log and a tank's never mix
+  const line = await getActiveLine();
   return prisma.handoverEntry.findMany({
-    where: planNo ? { planNo } : undefined,
+    where: { ...ledgerItemWhere(line), ...(planNo ? { planNo } : {}) },
     orderBy: [{ date: "desc" }, { id: "desc" }],
     take: limit,
   });

@@ -1,5 +1,6 @@
 ﻿import "server-only";
 import { prisma } from "@/lib/db";
+import { getActiveLine, ledgerItemWhere } from "./line";
 import { ITEMS, SHEET_ITEMS, sumItemTargets, type Item } from "@/lib/domain/constants";
 import { getSettings } from "./data";
 import { loadHolidays } from "./loads";
@@ -136,7 +137,7 @@ export async function getTargetDashboard(opts?: {
   const historyAnchor = weekStartOf(toD);
   const queryStart = Math.min(fromD, historyAnchor - 7 * 5) - 7;
   const entries = await prisma.handoverEntry.findMany({
-    where: { date: { gte: dateFromDayNumber(queryStart) } },
+    where: { date: { gte: dateFromDayNumber(queryStart) }, ...ledgerItemWhere(await getActiveLine()) },
     select: { date: true, dept: true, item: true, qty: true },
   });
 

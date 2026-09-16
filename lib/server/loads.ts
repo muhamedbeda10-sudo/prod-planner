@@ -1,7 +1,8 @@
 import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
-import { getActiveLine } from "./line";
+import { getActiveLine, ledgerItemWhere } from "./line";
+import type { ProductLine } from "@/lib/domain/lines";
 
 // The tables every screen reads, loaded ONCE per request. A worklist page
 // used to fetch the orders registry five times and the whole daily log
@@ -12,20 +13,32 @@ import { getActiveLine } from "./line";
 // another round trip every time. Callers must treat the arrays as
 // read-only — they are shared for the rest of the request.
 
-/** Every order of the product line the screens are showing, urgent first
- *  then by MO. The line comes from the planner's toggle (a cookie), read
- *  here so that every screen built on this loader shows one line at a time
- *  without each of them having to ask. */
-export const loadMasterOrders = cache(async () => {
-  const line = await getActiveLine();
-  return prisma.masterOrder.findMany({ where: { line }, orderBy: [{ urgent: "desc" }, { mo: "asc" }] });
-});
+/** Every order of ONE product line, urgent first then by MO — memoised per
+ *  line, so a screen that builds both lines (the Floor) gets each its own. */
+export const loadMasterOrdersOf = cache(async (line: ProductLine) =>
+  prisma.masterOrder.findMany({ where: { line }, orderBy: [{ urgent: "desc" }, { mo: "asc" }] })
+);
+
+/** Every order of the product line the screens are showing. The line comes
+ *  from the planner's toggle (a cookie), read here so that every screen
+ *  built on this loader shows one line at a time without having to ask. */
+export async function loadMasterOrders() {
+  return loadMasterOrdersOf(await getActiveLine());
+}
+
+/** The daily log of ONE product line — the ledger carries no line, so a
+ *  panel's rows are the ones under its item code and a transformer's are
+ *  every other. Memoised per line. */
+export const loadAllHandoverOf = cache(async (line: ProductLine) => prisma.handoverEntry.findMany({ where: ledgerItemWhere(line) }));
 
 /** Every schedule line of every weekly plan, in import order. */
 export const loadAllSchedules = cache(async () => prisma.planSchedule.findMany({ orderBy: { id: "asc" } }));
 
-/** The whole daily log — progress is global, so most screens need all of it. */
-export const loadAllHandover = cache(async () => prisma.handoverEntry.findMany());
+/** The daily log of the line on screen — progress is global within a line,
+ *  so most of its screens need all of it. */
+export async function loadAllHandover() {
+  return loadAllHandoverOf(await getActiveLine());
+}
 
 export const loadHolidays = cache(async () => prisma.holiday.findMany());
 

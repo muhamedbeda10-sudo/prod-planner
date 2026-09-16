@@ -1,5 +1,7 @@
 "use client";
 
+import type { ProductLine } from "@/lib/domain/lines";
+
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import {
@@ -97,8 +99,12 @@ function Field({ hint, className = "", children }: { hint: string; className?: s
   return <span className={`inline-flex flex-col ${className}`} title={hint}>{children}</span>;
 }
 
-function LineFields({ line, month, knownBoms, knownCodes, disabled }: { line?: MaterialLineView; month: string; knownBoms: string[]; knownCodes: string[]; disabled?: boolean }) {
+function LineFields({ line, month, knownBoms, knownCodes, disabled, product = "TR" }: { line?: MaterialLineView; month: string; knownBoms: string[]; knownCodes: string[]; disabled?: boolean; product?: ProductLine }) {
   const monthDefault = monthInputFromLabel(line?.month ?? (month === "all" ? "" : month)) ?? "";
+  // the part presets are the transformer's parts — a panel's are its own,
+  // and until a panel nesting sheet names them the boxes offer nothing
+  const lv = product === "LV";
+  const presets = lv ? [] : PART_PRESETS;
   return (
     <>
       <Field hint="Plan month this line belongs to" className="w-[9.5rem]">
@@ -113,7 +119,7 @@ function LineFields({ line, month, knownBoms, knownCodes, disabled }: { line?: M
       </Field>
       <Field hint="Part Code — the part these sheets go into (FB-022 tank, FB-051 top cover …)" className="w-24">
         <input
-          name="partCode" list="part-codes" aria-label="Part code" defaultValue={line?.partCode ?? ""} disabled={disabled} placeholder="FB-022" className={`${F} ltr w-full`}
+          name="partCode" list="part-codes" aria-label="Part code" defaultValue={line?.partCode ?? ""} disabled={disabled} placeholder={lv ? "part code" : "FB-022"} className={`${F} ltr w-full`}
           onChange={(e) => {
             // a known code fills the name; a typed name is never overwritten
             const name = partNameFor(e.target.value);
@@ -121,13 +127,13 @@ function LineFields({ line, month, knownBoms, knownCodes, disabled }: { line?: M
             if (name && el instanceof HTMLInputElement && (!el.value || partNameFor(el.dataset.from ?? "") === el.value)) { el.value = name; el.dataset.from = e.target.value; }
           }}
         />
-        <datalist id="part-codes">{PART_PRESETS.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</datalist>
+        <datalist id="part-codes">{presets.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</datalist>
       </Field>
       <Field hint="Part Name" className="w-28">
-        <input name="partName" aria-label="Part name" defaultValue={line?.partName ?? ""} disabled={disabled} placeholder="TANK" className={`${F} w-full`} />
+        <input name="partName" aria-label="Part name" defaultValue={line?.partName ?? ""} disabled={disabled} placeholder={lv ? "part name" : "TANK"} className={`${F} w-full`} />
       </Field>
       <Field hint="Codes — the material's code on the sheet (T-SSS-5MM)" className="w-28">
-        <input name="materialCode" list="material-codes" aria-label="Material code" defaultValue={line?.materialCode ?? ""} disabled={disabled} placeholder="T-SSS-5MM" className={`${F} ltr w-full`} />
+        <input name="materialCode" list="material-codes" aria-label="Material code" defaultValue={line?.materialCode ?? ""} disabled={disabled} placeholder={lv ? "material code" : "T-SSS-5MM"} className={`${F} ltr w-full`} />
         <datalist id="material-codes">{knownCodes.map((c) => <option key={c} value={c} />)}</datalist>
       </Field>
       <Field hint="Material type" className="w-32">
@@ -192,7 +198,7 @@ function CellInput({ id, field, value, action, title, bold, step = "0.01", class
 
 // ---- one row of the table ----
 
-function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth }: { line: MaterialLineView; month: string; knownBoms: string[]; knownCodes: string[]; canEdit: boolean; showMonth: boolean }) {
+function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth, product }: { line: MaterialLineView; month: string; knownBoms: string[]; knownCodes: string[]; canEdit: boolean; showMonth: boolean; product: ProductLine }) {
   const [editing, setEditing] = useState(false);
   const edit = useAction();
   const del = useAction();
@@ -268,7 +274,7 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth }: { l
                 edit.run(updateMaterialLine, fd, "Saved.", () => setEditing(false));
               }}>
                 <div className="flex flex-wrap items-stretch gap-1.5">
-                  <LineFields line={line} month={month} knownBoms={knownBoms} knownCodes={knownCodes} disabled={edit.pending} />
+                  <LineFields line={line} month={month} knownBoms={knownBoms} knownCodes={knownCodes} disabled={edit.pending} product={product} />
                   <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={edit.pending}>Save</button>
                 </div>
                 <Msg msg={edit.msg} />
@@ -288,7 +294,7 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth }: { l
 // from line to line and returns the cursor to the material.
 const PER_LINE = ["partCode", "partName", "material", "thicknessMm", "sheetsPerUnit", "actualPerUnit", "sheetsUsed", "producedQty", "note"] as const;
 
-function AddLine({ month, knownBoms, knownCodes, startOpen }: { month: string; knownBoms: string[]; knownCodes: string[]; startOpen: boolean }) {
+function AddLine({ month, knownBoms, knownCodes, startOpen, product }: { month: string; knownBoms: string[]; knownCodes: string[]; startOpen: boolean; product: ProductLine }) {
   const add = useAction();
   const [open, setOpen] = useState(startOpen);
   function clearForNext(form: HTMLFormElement) {
@@ -302,7 +308,7 @@ function AddLine({ month, knownBoms, knownCodes, startOpen }: { month: string; k
       add.run(createMaterialLine, new FormData(form), "Added — next line.", () => clearForNext(form));
     }}>
       <div className="flex flex-wrap items-stretch gap-1.5">
-        <LineFields month={month} knownBoms={knownBoms} knownCodes={knownCodes} disabled={add.pending} />
+        <LineFields month={month} knownBoms={knownBoms} knownCodes={knownCodes} disabled={add.pending} product={product} />
         <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={add.pending}>Add</button>
         <button type="button" className="btn btn-sm btn-ghost shrink-0" onClick={() => setOpen(false)}>✕</button>
       </div>
@@ -483,8 +489,10 @@ function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineVie
   );
 }
 
-export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
+export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR" }: {
   lines: MaterialLineView[]; totals: MaterialTotal[]; month: string; knownBoms: string[]; canEdit: boolean;
+  /** Which product line's nesting this is — the transformer part presets are only offered on theirs. */
+  product?: ProductLine;
 }) {
   const showMonth = month === "all";
   const knownCodes = [...new Set(lines.map((l) => l.materialCode).filter(Boolean))].sort();
@@ -541,13 +549,13 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit }: {
                 </tr>
               </thead>
               <tbody>
-                {shown.map((l) => <LineRow key={l.id} line={l} month={month} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} />)}
+                {shown.map((l) => <LineRow key={l.id} line={l} month={month} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} />)}
               </tbody>
             </table>
           </div>
         )}
       </section>
-      {canEdit && <AddLine month={month} knownBoms={knownBoms} knownCodes={knownCodes} startOpen={false} />}
+      {canEdit && <AddLine month={month} knownBoms={knownBoms} knownCodes={knownCodes} startOpen={false} product={product} />}
       {shownTotals.length > 0 && (
         <section>
           <h2 className="font-bold mb-2">

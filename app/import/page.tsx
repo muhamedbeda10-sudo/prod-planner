@@ -5,6 +5,7 @@ import { ImportForm } from "@/components/ImportForm";
 import { toISODate } from "@/lib/domain/dates";
 import { getPlanNos } from "@/lib/server/data";
 import { ViewTabs, PLANS_VIEWS } from "@/components/ViewTabs";
+import { getActiveLine } from "@/lib/server/line";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export default async function ImportPage() {
   // admin-only page: invisible in the nav for others, and a direct URL bounces
   const me = await getCurrentUser();
   if (!me?.isAdmin) redirect("/");
+  // the weekly delivery schedule is the transformers' — the panels plan monthly
+  if ((await getActiveLine()) === "LV") redirect("/orders");
 
   const plans = await getPlanNos();
   return (

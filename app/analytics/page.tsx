@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/server/auth";
 import { PageHeader } from "@/components/ui";
 import { getFabAnalytics, resolveWindow, WINDOWS } from "@/lib/server/fabAnalytics";
+import { getActiveLine } from "@/lib/server/line";
 import { FabAnalyticsView } from "@/components/FabAnalyticsView";
 import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
 
@@ -19,6 +20,21 @@ export default async function AnalyticsPage({
   // viewing is free for every account, like the rest of the app
   const me = await getCurrentUser();
   if (!me) redirect("/login");
+
+  // the sheet analytics read the fabrication ledger by component and the
+  // nesting sheet by part — the transformers'. The panels' fabrication is
+  // punching, with no nesting sheet yet, so their side says so.
+  if ((await getActiveLine()) === "LV") {
+    return (
+      <div>
+        <PageHeader title="📊 Fabrication analytics — LV Panels" />
+        <p className="text-sm text-muted bg-surface border rounded-xl px-4 py-3">
+          The sheet analytics are built on the nesting tracker and the cutting log, which the panels do not have yet — a panel is punched,
+          not nested. When the panels get a nesting sheet, their sheets, tonnes and thicknesses read here the same way.
+        </p>
+      </div>
+    );
+  }
 
   const sp = await searchParams;
   const days = resolveWindow(sp.days);

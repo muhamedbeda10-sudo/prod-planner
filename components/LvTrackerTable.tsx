@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Num, Soi } from "@/components/ui";
+import { RingCard } from "@/components/ProgressRing";
 import { recordLvGroupTotal, recordLvTotal } from "@/app/lv/actions";
 import { closeDeliveredOrders, setOrderStatus } from "@/app/orders/actions";
 import { spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
@@ -41,6 +42,9 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
   const [q, setQ] = useSavedFilter("lvtracker.q");
   const [product, setProduct] = useSavedFilter("lvtracker.product");
   const [status, setStatus] = useSavedFilter("lvtracker.status");
+  const [month, setMonth] = useSavedFilter("lvtracker.month");
+  const [urgent, setUrgent] = useSavedFilter("lvtracker.urgent");
+  const [progress, setProgress] = useSavedFilter("lvtracker.progress");
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
   const [cellErr, setCellErr] = useState("");
@@ -48,16 +52,45 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
   const [msg, setMsg] = useState("");
 
   const products = useMemo(() => [...new Set(rows.map((r) => r.product ?? ""))].filter(Boolean).sort(), [rows]);
+  // "September 2026" → a sortable key, newest month first in the picker
+  const monthKey = (label: string) => {
+    const m = /^([A-Za-z]+)\s+(\d{4})$/.exec(label);
+    const idx = m ? ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"].indexOf(m[1].toLowerCase()) : -1;
+    return m && idx >= 0 ? Number(m[2]) * 12 + idx : -1;
+  };
+  const months = useMemo(() => {
+    const seen = new Set<string>();
+    for (const r of rows) for (const m of r.months) seen.add(m);
+    return [...seen].sort((a, b) => monthKey(b) - monthKey(a));
+  }, [rows]);
+
+  // month scope — an order carried across plans belongs to EVERY month it
+  // appeared in. The cards follow THIS filter (each month's plan on its own);
+  // search, product, urgency and progress only narrow the table.
+  const monthRows = useMemo(() => (month ? rows.filter((r) => r.months.includes(month)) : rows), [rows, month]);
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
     const want = status || "open";
-    return rows.filter((r) => {
+    return monthRows.filter((r) => {
       if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.fgCode ?? ""} ${r.secItem ?? ""} ${r.customer ?? ""}`.toUpperCase().includes(needle))) return false;
       if (product && r.product !== product) return false;
       if (want !== "all" && r.status !== want) return false;
+      if (urgent === "yes" && !r.urgent) return false;
+      if (urgent === "no" && r.urgent) return false;
+      if (progress === "none" && r.complete > 0) return false;
+      if (progress === "partial" && !(r.complete > 0 && r.remaining > 0)) return false;
+      if (progress === "done" && r.remaining > 0) return false;
       return true;
     });
-  }, [rows, q, product, status]);
+  }, [monthRows, q, product, status, urgent, progress]);
+
+  // the cards: every open order of the month, per stage — the plan as a whole
+  const cardRows = useMemo(() => monthRows.filter((r) => r.status === "open"), [monthRows]);
+  const cards = LV_CHAIN.map((stage) => ({
+    stage,
+    need: cardRows.reduce((s, r) => s + r.state.required, 0),
+    done: cardRows.reduce((s, r) => s + Math.min(lvStageOf(r.state, stage), r.state.required || Infinity), 0),
+  }));
 
   // shared BOMs: one summary row per BOM, expandable to its MOs — the way the
   // planner reads the transformer tracker
@@ -171,11 +204,21 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
 
   return (
     <div className="space-y-4">
-      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProduct(""); setStatus(""); }} hasActive={!!(q || product || (status && status !== "open"))}>
+      {/* the month's plan at a glance: panels through each stage */}
+      <div className="print-keep flex flex-wrap justify-center gap-2">
+        {cards.map((c) => (
+          <RingCard key={c.stage} label={LV_STAGE_SHORT[c.stage]} note={c.stage === "Delivered" ? "delivered" : `${c.stage.toLowerCase().replace(/ing$/, "ed")}`} done={c.done} need={c.need} />
+        ))}
+      </div>
+
+      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProduct(""); setStatus(""); setMonth(""); setUrgent(""); setProgress(""); }} hasActive={!!(q || product || month || urgent || progress || (status && status !== "open"))}>
         {viewTabs}
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG / SEC…" />
+        <SelectFilter label="Plan month" value={month} onChange={setMonth} options={months.map((m) => ({ value: m, label: m }))} />
         {products.length > 1 && <SelectFilter label="Product" value={product} onChange={setProduct} options={products.map((p) => ({ value: p, label: p }))} />}
         <SelectFilter label="Status" value={status || "open"} onChange={setStatus} options={[{ value: "open", label: "Open" }, { value: "closed", label: "Closed" }, { value: "all", label: "All" }]} />
+        <SelectFilter label="Progress" value={progress} onChange={setProgress} options={[{ value: "none", label: "Not started" }, { value: "partial", label: "In progress" }, { value: "done", label: "Complete" }]} />
+        <SelectFilter label="Urgent" value={urgent} onChange={setUrgent} options={[{ value: "yes", label: "Urgent only" }, { value: "no", label: "Not urgent" }]} />
         <span className="text-xs text-muted">
           Panels: <b className="text-foreground tabnum">{complete}</b> / <b className="text-foreground tabnum">{required}</b> painted
         </span>

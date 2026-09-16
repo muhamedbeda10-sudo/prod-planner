@@ -5,6 +5,8 @@ import { currentMonthLabel } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { MaterialClient, MaterialMonthPicker } from "@/components/MaterialClient";
+import { getActiveLine } from "@/lib/server/line";
+import { LINE_LABEL } from "@/lib/domain/lines";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 
 export const metadata = { title: "Material — ATC" };
@@ -22,6 +24,7 @@ export default async function MaterialPage({
 
   const sp = await searchParams;
   const month = (sp.month ?? "").trim() || currentMonthLabel();
+  const line = await getActiveLine(); // one product line at a time
   const { lines, totals, months, knownBoms } = await getMaterialData(month);
 
   // the export carries the sheet's OWN column names in its order, then the
@@ -50,11 +53,11 @@ export default async function MaterialPage({
   return (
     <div>
       <RememberLastVisit storageKey="material:last" />
-      <PageHeader title="🧱 MATERIAL — nesting project tracker">
+      <PageHeader title={`🧱 MATERIAL — nesting project tracker · ${LINE_LABEL[line]}`}>
         <MaterialMonthPicker month={month} months={months} />
         <ExportButton rows={exportRows} filename={`nesting-tracker-${month.replace(/\s+/g, "-")}.xlsx`} sheetName="Sheet1" />
       </PageHeader>
-      <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, "material.edit")} />
+      <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, "material.edit")} product={line} />
     </div>
   );
 }
