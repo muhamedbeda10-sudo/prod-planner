@@ -73,6 +73,16 @@
   --item-cb: #f8d0bf;
   --item-ar: #b9d8c9;
   --item-mb: #f8d4e2;
+  /* dashboard charts — validated with the dataviz palette checks (light on
+     #ffffff): an ordinal green ramp (--stage-*) for the pipeline's stages (later = darker)
+     and the three departments' series colours, the tracker's own identity */
+  --stage-1: #7fc19c;
+  --stage-2: #4fa97b;
+  --stage-3: #1a8150;
+  --stage-4: #0f5a37;
+  --series-fab: #1a8150;
+  --series-weld: #2b6cb0;
+  --series-fin: #d97706;
 
   /* sequential ramp for an ORDERED measure (the analytics page's sheet
      thicknesses): one hue, six steps, monotone in lightness — darker as the
@@ -104,6 +114,15 @@ html.dark {
   --background: #0f1412;
   --surface: #171e1a;
   --surface-2: #1d2521;
+  /* the same ramp and series, stepped for the dark surface (validated on #171e1a):
+     the pipeline's later stages get lighter, the way "more" reads on dark */
+  --stage-1: #2f8a58;
+  --stage-2: #3fb981;
+  --stage-3: #6fcf9c;
+  --stage-4: #a6e3c3;
+  --series-fab: #2f9a66;
+  --series-weld: #4a8fd0;
+  --series-fin: #c47a22;
   --foreground: #e6ece8;
   --muted: #93a099;
   --border: #273129;
