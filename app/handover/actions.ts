@@ -10,6 +10,7 @@ import { getKnownBoms } from "@/lib/server/handover";
 import { importHandoverFile, type HandoverImportResult } from "@/lib/server/importHandover";
 import { checkOutputChain } from "@/lib/server/outputGuard";
 import { requireDeptEdit, requirePerm } from "@/lib/server/auth";
+import { ledgerPermKey } from "@/lib/domain/permissions";
 import { syncTanksToLedgerQty } from "@/lib/server/tanks";
 import { mirrorLedgerToOdoo, syncMirroredOdoo } from "@/lib/server/odooMirror";
 
@@ -77,7 +78,7 @@ export async function addHandover(formData: FormData): Promise<ActionResult> {
   if (item === LV_ITEM) {
     const mo = String(formData.get("mo") ?? "").trim().toUpperCase();
     if (!(LV_STAGES as readonly string[]).includes(dept)) return { ok: false, error: "Choose the stage: Punching, Bending, Welding or Painting." };
-    const guard = await requireDeptEdit(dept);
+    const guard = await requirePerm(ledgerPermKey(dept, item));
     if (guard.error) return { ok: false, error: guard.error };
     if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: "Enter a whole number of panels greater than zero." };
     if (!Number.isInteger(planNo) || planNo <= 0) return { ok: false, error: "Invalid plan number." };
@@ -136,7 +137,7 @@ export async function updateHandover(formData: FormData): Promise<ActionResult> 
 
   const entry = await prisma.handoverEntry.findUnique({ where: { id } });
   if (!entry) return { ok: false, error: "Record not found." };
-  const guard = await requireDeptEdit(entry.dept);
+  const guard = await requirePerm(ledgerPermKey(entry.dept, entry.item));
   if (guard.error) return { ok: false, error: guard.error };
 
   // the note keeps the audit trail of WHO changed the row
@@ -191,11 +192,11 @@ export async function bulkSetHandoverDate(formData: FormData): Promise<ActionRes
   if (ids.length === 0) return { ok: false, error: "No rows selected." };
   if (ids.length > 500) return { ok: false, error: "Too many rows at once — max 500." };
 
-  const entries = await prisma.handoverEntry.findMany({ where: { id: { in: ids } }, select: { id: true, dept: true } });
+  const entries = await prisma.handoverEntry.findMany({ where: { id: { in: ids } }, select: { id: true, dept: true, item: true } });
   if (entries.length === 0) return { ok: false, error: "Records not found." };
   let by: string | null = null;
-  for (const d of [...new Set(entries.map((e) => e.dept))]) {
-    const guard = await requireDeptEdit(d);
+  for (const k of [...new Set(entries.map((e) => ledgerPermKey(e.dept, e.item)))]) {
+    const guard = await requirePerm(k);
     if (guard.error) return { ok: false, error: guard.error };
     by = guard.user?.name ?? null;
   }
@@ -226,8 +227,8 @@ export async function bulkDeleteHandover(formData: FormData): Promise<ActionResu
 
   const entries = await prisma.handoverEntry.findMany({ where: { id: { in: ids } } });
   if (entries.length === 0) return { ok: false, error: "Records not found." };
-  for (const d of [...new Set(entries.map((e) => e.dept))]) {
-    const guard = await requireDeptEdit(d);
+  for (const k of [...new Set(entries.map((e) => ledgerPermKey(e.dept, e.item)))]) {
+    const guard = await requirePerm(k);
     if (guard.error) return { ok: false, error: guard.error };
   }
 
@@ -267,7 +268,7 @@ export async function deleteHandover(formData: FormData): Promise<ActionResult> 
 
   const entry = await prisma.handoverEntry.findUnique({ where: { id } });
   if (!entry) return { ok: false, error: "Record not found." };
-  const guard = await requireDeptEdit(entry.dept);
+  const guard = await requirePerm(ledgerPermKey(entry.dept, entry.item));
   if (guard.error) return { ok: false, error: guard.error };
 
   // deleting upstream output must not leave downstream hanging (weld > cut …)

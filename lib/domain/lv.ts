@@ -64,14 +64,15 @@ export const LV_STAGE_SHORT: Record<LvChainStage, string> = {
 export function lvPermKey(stage: LvChainStage): string {
   switch (stage) {
     case "Punching":
+      return "lv.tracker.punch";
     case "Bending":
-      return "tracker.cut";
+      return "lv.tracker.bend";
     case "Welding":
-      return "tracker.weld";
+      return "lv.tracker.weld";
     case "Painting":
-      return "tracker.paint";
+      return "lv.tracker.paint";
     case "Delivered":
-      return "tracker.delivered";
+      return "lv.tracker.delivered";
   }
 }
 
@@ -160,15 +161,7 @@ export function lvComplete(s: LvState): number {
 /** Which department permission records a panel stage from its worklist —
  *  punching and bending are fabrication's, the rest their namesakes'. */
 export function lvDeptPermKey(stage: LvStage): string {
-  switch (stage) {
-    case "Punching":
-    case "Bending":
-      return "cut.edit";
-    case "Welding":
-      return "welding.edit";
-    case "Painting":
-      return "painting.edit";
-  }
+  return `lv.${stage.toLowerCase()}`;
 }
 
 /** The LV worklists, one per stage, in shop-floor order — what the nav's

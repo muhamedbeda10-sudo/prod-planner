@@ -5,9 +5,9 @@ import { toISODate } from "@/lib/domain/dates";
 import { guardLedger } from "@/lib/domain/ledgerGuard";
 import { getCurrentUser, canEditDept, hasPerm } from "@/lib/server/auth";
 import { DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE } from "@/lib/domain/constants";
-import { deptPermKey, trackerPermKey } from "@/lib/domain/permissions";
+import { ledgerPermKey, trackerPermKey } from "@/lib/domain/permissions";
 import { getActiveLine } from "@/lib/server/line";
-import { LV_CHAIN } from "@/lib/domain/lv";
+import { LV_CHAIN, LV_ITEM } from "@/lib/domain/lv";
 import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
 
 export const dynamic = "force-dynamic";
@@ -16,12 +16,11 @@ export default async function HandoverPage() {
   const [recent, user, soi, line] = await Promise.all([getRecentHandover(2000), getCurrentUser(), getSoiLookup(), getActiveLine()]);
   // production depts follow the worklist permissions; the tracker-only stages
   // (Shot Blast / Delivered) follow their own tracker permissions. A panel's
-  // stages follow the department each corresponds to (punching and bending
-  // are fabrication's) — the same rule the actions check.
+  // stages follow the LV keys — the same rule the actions check.
   const editableDepts = !user
     ? []
     : line === "LV"
-      ? LV_CHAIN.filter((d) => hasPerm(user, deptPermKey(d)))
+      ? LV_CHAIN.filter((d) => hasPerm(user, ledgerPermKey(d, LV_ITEM)))
       : [
           ...DEPTS.filter((d) => canEditDept(user, d)),
           ...[SHOTBLAST_STAGE, DELIVERED_STAGE].filter((d) => hasPerm(user, trackerPermKey(d))),

@@ -8,18 +8,20 @@ import { applicableItems, ospOf, isDept, isPaintExempt, deptLabel, itemOverrides
 import { finsGroup, isFullyDelivered, spreadOverGroup } from "@/lib/domain/groupSpread";
 import { getActiveLine } from "@/lib/server/line";
 import { LV_ITEM } from "@/lib/domain/lv";
+import { linePermKey } from "@/lib/domain/permissions";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
 export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  const guard = await requirePerm("tracker.status");
-  if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
   const status = String(formData.get("status") ?? "");
   if (!mo) return { ok: false, error: "Missing MO." };
   if (status !== "open" && status !== "closed") return { ok: false, error: "Invalid status." };
   const order = await prisma.masterOrder.findUnique({ where: { mo } });
   if (!order) return { ok: false, error: `MO ${mo} not found.` };
+  // a panel order closes behind the LV key, a transformer's behind the tracker's
+  const guard = await requirePerm(linePermKey(order.line, "status"));
+  if (guard.error) return { ok: false, error: guard.error };
   await prisma.masterOrder.update({
     where: { mo },
     data: { status, closedAt: status === "closed" ? new Date() : null },
@@ -188,14 +190,18 @@ const HOLD_PATHS = ["/tracker", "/orders", "/worklist/cut", "/worklist/welding",
  *  open on the tracker (tinted, with the reason) and leaves every worklist
  *  queue and the ETA until released. Its logs are untouched. */
 export async function setOrderHold(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  const guard = await requirePerm("tracker.status");
-  if (guard.error) return { ok: false, error: guard.error };
   const mos = String(formData.get("mos") ?? formData.get("mo") ?? "").split(",").map((m) => m.trim()).filter(Boolean);
   const hold = String(formData.get("hold") ?? "") === "true";
   const note = String(formData.get("note") ?? "").trim().slice(0, 200) || null;
   if (mos.length === 0) return { ok: false, error: "Missing MO." };
-  const orders = await prisma.masterOrder.findMany({ where: { mo: { in: mos } }, select: { mo: true, status: true } });
+  const orders = await prisma.masterOrder.findMany({ where: { mo: { in: mos } }, select: { mo: true, status: true, line: true } });
   if (orders.length === 0) return { ok: false, error: `MO ${mos[0]} not found.` };
+  // each line's own key — a mixed selection needs both
+  let guard: Awaited<ReturnType<typeof requirePerm>> = {};
+  for (const line of [...new Set(orders.map((o) => o.line))]) {
+    guard = await requirePerm(linePermKey(line, "status"));
+    if (guard.error) return { ok: false, error: guard.error };
+  }
   const closed = orders.filter((o) => o.status === "closed");
   if (hold && closed.length === orders.length) return { ok: false, error: "A closed order cannot be put on hold — reopen it first." };
   await prisma.masterOrder.updateMany({
@@ -315,7 +321,7 @@ export async function setExcludedItems(formData: FormData): Promise<{ ok: boolea
 }
 
 export async function importMonthlyAction(formData: FormData): Promise<MonthlyImportResult> {
-  const guard = await requirePerm("plans.import");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "import"));
   if (guard.error) return { ok: false, error: guard.error };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose an Excel file." };
@@ -465,10 +471,11 @@ function parseMos(raw: FormDataEntryValue | null): string[] {
  * these ones".
  */
 export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: string; closed?: number; mos?: string[] }> {
-  const guard = await requirePerm("tracker.status");
+  const line = await getActiveLine();
+  const guard = await requirePerm(linePermKey(line, "status"));
   if (guard.error) return { ok: false, error: guard.error };
 
-  const open = await prisma.masterOrder.findMany({ where: { status: "open", line: await getActiveLine() } });
+  const open = await prisma.masterOrder.findMany({ where: { status: "open", line } });
   if (open.length === 0) return { ok: true, closed: 0, mos: [] };
 
   const delivered = await prisma.handoverEntry.groupBy({

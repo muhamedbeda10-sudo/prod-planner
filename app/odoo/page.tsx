@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
+import { getActiveLine } from "@/lib/server/line";
+import { linePermKey } from "@/lib/domain/permissions";
 import Link from "next/link";
 import { getOdooData, getOdooDashboard } from "@/lib/server/odoo";
 import { resolveBasis, resolveBom, resolvePeriod } from "@/lib/domain/odooStats";
@@ -20,9 +22,10 @@ export default async function OdooPage({
   searchParams: Promise<{ day?: string; view?: string; range?: string; from?: string; to?: string; basis?: string; bom?: string }>;
 }) {
   // viewing is free for every account, like the rest of the app; recording is
-  // gated on odoo.edit
+  // gated on the line's Odoo key (odoo.edit / lv.odoo)
   const me = await getCurrentUser();
   if (!me) redirect("/login");
+  const line = await getActiveLine();
 
   const sp = await searchParams;
   const raw = (sp.day ?? "").trim();
@@ -86,7 +89,7 @@ export default async function OdooPage({
         knownFgCodes={knownFgCodes}
         nesting={nesting}
         soiBoms={soiBoms}
-        canEdit={hasPerm(me, "odoo.edit")}
+        canEdit={hasPerm(me, linePermKey(line, "odoo"))}
         totalRows={totalRows}
         openRows={openRows}
       />

@@ -37,12 +37,12 @@ describe("an LV panel's chain — punched, bent, welded, painted, delivered", ()
     expect(lvChainError(st(), "Welding", 0, "MO-1")).toBeNull();
   });
 
-  it("records punching and bending behind the fabrication key, the rest behind their own", () => {
-    expect(lvPermKey("Punching")).toBe("tracker.cut");
-    expect(lvPermKey("Bending")).toBe("tracker.cut");
-    expect(lvPermKey("Welding")).toBe("tracker.weld");
-    expect(lvPermKey("Painting")).toBe("tracker.paint");
-    expect(lvPermKey("Delivered")).toBe("tracker.delivered");
+  it("records every tracker column behind the panels' own key", () => {
+    expect(lvPermKey("Punching")).toBe("lv.tracker.punch");
+    expect(lvPermKey("Bending")).toBe("lv.tracker.bend");
+    expect(lvPermKey("Welding")).toBe("lv.tracker.weld");
+    expect(lvPermKey("Painting")).toBe("lv.tracker.paint");
+    expect(lvPermKey("Delivered")).toBe("lv.tracker.delivered");
   });
 
   it("spreads a merged row's total over its MOs in order, each to its own room", () => {
@@ -75,11 +75,11 @@ describe("an LV stage's worklist", () => {
     expect(lvWaiting(st({ required: 0 }), "Punching")).toBe(0);
   });
 
-  it("opens punching and bending with fabrication's permission, the rest with their own", () => {
-    expect(lvDeptPermKey("Punching")).toBe("cut.edit");
-    expect(lvDeptPermKey("Bending")).toBe("cut.edit");
-    expect(lvDeptPermKey("Welding")).toBe("welding.edit");
-    expect(lvDeptPermKey("Painting")).toBe("painting.edit");
+  it("opens each worklist with the panels' own key for that stage", () => {
+    expect(lvDeptPermKey("Punching")).toBe("lv.punching");
+    expect(lvDeptPermKey("Bending")).toBe("lv.bending");
+    expect(lvDeptPermKey("Welding")).toBe("lv.welding");
+    expect(lvDeptPermKey("Painting")).toBe("lv.painting");
   });
 
   it("lists the four worklists in the order a panel passes them", () => {
