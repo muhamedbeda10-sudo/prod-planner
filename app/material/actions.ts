@@ -85,6 +85,9 @@ function dataOf(f: LineFields, by: string | null, rateTyped: boolean) {
 
 const lineLabel = (f: LineFields) => `${f.partCode ? `${f.partCode} ` : ""}${f.material} ${f.thicknessMm}mm ${f.sheetSize}`;
 
+/** Lines typed in the tab sort after any sheet's rows (a sheet has fewer rows than this). */
+const MANUAL_SORT = 1_000_000;
+
 export async function createMaterialLine(formData: FormData): Promise<MaterialActionResult> {
   const guard = await requirePerm("material.edit");
   if (guard.error) return { ok: false, error: guard.error };
@@ -93,7 +96,8 @@ export async function createMaterialLine(formData: FormData): Promise<MaterialAc
   if (bad) return { ok: false, error: bad };
   const clash = await prisma.materialUsage.findUnique({ where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: keyOf(f) } });
   if (clash) return { ok: false, error: `${lineLabel(f)} is already on ${f.bom} for ${f.month} — edit that line instead.` };
-  await prisma.materialUsage.create({ data: { ...dataOf(f, guard.user?.name ?? null, f.actualPerUnit !== null), line: await getActiveLine() } });
+  // a typed line goes after the sheet's rows, in the order it was typed
+  await prisma.materialUsage.create({ data: { ...dataOf(f, guard.user?.name ?? null, f.actualPerUnit !== null), line: await getActiveLine(), sortOrder: MANUAL_SORT } });
   revalidateMaterial();
   return { ok: true };
 }

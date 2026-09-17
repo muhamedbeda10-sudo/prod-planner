@@ -56,7 +56,9 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
   const [rows, monthRows, orders, soi] = await Promise.all([
     prisma.materialUsage.findMany({
       where: month === "all" ? { line } : { month, line },
-      orderBy: [{ month: "desc" }, { bom: "asc" }, { partCode: "asc" }, { material: "asc" }, { thicknessMm: "asc" }],
+      // the sheet's own order — its rows come back the way they were laid out;
+      // lines typed in the tab (sortOrder 0, or the manual marker) sort by age
+      orderBy: [{ month: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
     }),
     prisma.materialUsage.findMany({ where: { line }, select: { month: true, bom: true }, distinct: ["month", "bom"] }),
     prisma.masterOrder.findMany({ where: { line }, select: { bom: true, months: true, source: true } }),
@@ -83,8 +85,8 @@ export interface MaterialImportResult {
   issues?: string[];
   preview?: boolean;
   sheet?: string;
-  /** Rows whose "for Job" column was stale — the job figure was recomputed
-   *  from the sheet's own per-unit rate. */
+  /** Rows whose "for Job" column disagrees with their own per-unit rate —
+   *  kept as written, counted so the planner can look. */
   recomputed?: number;
 }
 
@@ -132,6 +134,7 @@ export async function importNestingTracker(
     const keepsRate = cur?.actualPerUnitManual === true;
     const same = cur && cur.units === r.units && cur.sheetsPerUnit === r.sheetsPerUnit
       && (keepsRate || cur.actualPerUnit === r.actualPerUnit) && cur.sheetsUsed === r.sheetsUsed && cur.partName === r.partName && cur.materialCode === r.materialCode
+      && cur.sortOrder === r.rowNum
       && (cur.note ?? null) === (r.note ?? cur.note ?? null);
     if (!cur) added += 1; else if (same) unchanged += 1; else updated += 1;
     if (preview || same) continue;
@@ -139,6 +142,7 @@ export async function importNestingTracker(
     const data = {
       units: r.units, partName: r.partName, materialCode: r.materialCode,
       sheetsPerUnit: r.sheetsPerUnit, sheetsUsed: r.sheetsUsed,
+      sortOrder: r.rowNum, // the sheet's row — the tab reads in this order
       ...(keepsRate ? {} : { actualPerUnit: r.actualPerUnit }),
       // a blank note in the sheet must not erase one typed in the tab
       ...(r.note !== null ? { note: r.note } : {}),
