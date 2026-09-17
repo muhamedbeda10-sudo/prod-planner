@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ControlDashboardData } from "@/lib/server/controlDashboard";
-import { BACKLOG_LABEL, type BacklogStage } from "@/lib/domain/control";
+import { BACKLOG_LABEL, LOAD_LABEL, type BacklogStage } from "@/lib/domain/control";
+import { BacklogChart } from "@/components/LazyCharts";
 import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 
 // The production-control screen. Server-rendered: numbers, meters and bars in
@@ -139,6 +140,47 @@ export function ControlDashboard({ c }: { c: ControlDashboardData }) {
               <Bar key={k} label={BACKLOG_LABEL[k]} value={c.backlog[k]} max={backlogMax} color="var(--series-fab)" badge={c.bottleneck === k ? "bottleneck" : undefined} tip={`${BACKLOG_LABEL[k]}: ${fmt(c.backlog[k])} pieces`} />
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ==== 2b. the queues in hours, and how they moved ==== */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="bg-surface border rounded-xl p-4 min-w-0">
+          <h3 className="font-bold text-sm">Load vs capacity — standard hours queued</h3>
+          <p className="text-xs text-muted mb-3">
+            what the open orders still owe each stage, in std-hours, against the pace the stage earns (last {c.load.windowDays} working days) · the meter is days of work vs the {fmt(pace.daysLeft)} working days left
+            {c.load.uncoveredOrders > 0 && <> · {fmt(c.load.uncoveredOrders)} open order{c.load.uncoveredOrders === 1 ? "" : "s"} carry no standard times and are not counted</>}
+          </p>
+          <div className="space-y-3">
+            {c.load.stages.map((l) => {
+              const days = l.daysOfWork;
+              const ratio = days === null ? null : pace.daysLeft > 0 ? days / pace.daysLeft : Infinity;
+              const tone = ratio === null ? "var(--border-strong)" : ratio <= 1 ? "var(--ok-fg)" : ratio <= 1.25 ? "var(--warn-fg)" : "var(--bad-fg)";
+              const w = ratio === null ? 0 : Math.min(100, ratio * 100);
+              return (
+                <div key={l.stage} className="text-sm" title={`${LOAD_LABEL[l.stage]}: ${one(l.queuedHours)} std-hours queued · earns ${one(l.earnedPerDay)} h a day${l.capacityPerDay !== null ? ` · capacity ${one(l.capacityPerDay)} h a day` : ""}${l.recordedPerDay !== null ? ` · shift log ${one(l.recordedPerDay)} h a day` : ""}`}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="font-semibold">{LOAD_LABEL[l.stage]}</span>
+                    <span className="text-xs text-muted tabnum">
+                      <b className="text-foreground">{fmt(Math.round(l.queuedHours))} h</b> queued · {days === null ? "no pace yet" : <><b className="text-foreground">{one(days)}</b> days of work</>}
+                    </span>
+                  </div>
+                  <div className="mt-1 h-3 rounded-sm bg-border/70 overflow-hidden"><div className="h-full rounded-sm" style={{ width: `${w}%`, background: tone }} /></div>
+                  <div className="text-[11px] text-muted mt-0.5 tabnum">
+                    earns {one(l.earnedPerDay)} h/day
+                    {l.capacityPerDay !== null && <> · capacity {one(l.capacityPerDay)} h/day{l.utilisation !== null && <> ({pct(l.utilisation)} turned into output)</>}</>}
+                    {l.recordedPerDay !== null && <> · shift log {one(l.recordedPerDay)} h/day</>}
+                    {l.capacityPerDay === null && l.recordedPerDay === null && <> · no capacity set and no shift log — <Link href="/admin/standard-times" className="text-accent hover:underline">set it</Link></>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="bg-surface border rounded-xl p-4 min-w-0">
+          <h3 className="font-bold text-sm">Backlog — last 30 days</h3>
+          <p className="text-xs text-muted mb-1">pieces waiting at each stage, day by day, for the orders open today · a line that climbs is a stage falling behind the one before it</p>
+          <BacklogChart history={c.backlogHistory} />
         </div>
       </section>
 
