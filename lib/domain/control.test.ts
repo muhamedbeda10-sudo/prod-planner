@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionOf, backlogOf, backlogSeries, bottleneckOf, deliveredUnitsOf, paceOf, piecesOf, planSummaryOf, stageLoadOf, workingDaysBetween, workingDaysLeft, type ControlRow } from "./control";
+import { attentionOf, backlogOf, backlogSeries, bottleneckOf, byCustomer, deliveredUnitsOf, monthBoundsISO, monthCompareOf, paceOf, piecesByItem, piecesOf, planSummaryOf, promisesAhead, stageLoadOf, workingDaysBetween, workingDaysLeft, type ControlRow } from "./control";
 
 const it6 = (v: Partial<ControlRow["items"]["CF"]> = {}) => ({ cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true, ...v });
 const row = (over: Partial<ControlRow> = {}): ControlRow => ({
@@ -118,5 +118,67 @@ describe("stageLoadOf", () => {
     expect(l.daysOfWork).toBe(8);
     expect(l.utilisation).toBe(0.75);
     expect(stageLoadOf("weld", 100, 0, null, null)).toMatchObject({ daysOfWork: null, utilisation: null });
+  });
+});
+
+describe("piecesByItem", () => {
+  it("splits the pipeline per component and skips components no open order needs", () => {
+    const rows = [
+      row({ mo: "A", required: 10, items: { CF: it6({ cut: 10, weld: 4, shp: 2 }), TC: it6({ cut: 3 }), TN: it6(), CB: it6({ excluded: true }), AR: it6({ eligible: false }), MB: it6({ eligible: false }) } }),
+      row({ mo: "B", required: 5, items: { CF: it6({ cut: 5, weld: 5, shp: 5, delivered: 5 }), TC: it6(), TN: it6(), CB: it6(), AR: it6({ eligible: true, cut: 2 }), MB: it6({ eligible: false }) } }),
+    ];
+    const by = piecesByItem(rows);
+    expect(by.map((b) => b.item)).toEqual(["CF", "TC", "TN", "CB", "AR"]);
+    expect(by[0]).toMatchObject({ item: "CF", pieces: { need: 15, cut: 15, weld: 9, finished: 7, delivered: 5 }, backlog: { fab: 0, weld: 6, finish: 2, deliver: 2 }, bottleneck: "weld" });
+    expect(by[3]).toMatchObject({ item: "CB", pieces: { need: 5, cut: 0 } }); // A excluded it, B needs it
+    expect(by[4]).toMatchObject({ item: "AR", pieces: { need: 5, cut: 2 } });
+  });
+});
+
+describe("promisesAhead", () => {
+  const eta = (v: Partial<{ etaISO: string | null; dueISO: string | null; late: boolean; done: boolean; blockedBy: string | null }>) =>
+    ({ etaISO: null, dueISO: null, late: false, done: false, blockedBy: null, ...v });
+  it("buckets the open orders' remaining units by promise day, flags the at-risk, counts overdue and unscheduled", () => {
+    const rows = [
+      row({ mo: "A", required: 10, complete: 4 }), // due in 2 days, late
+      row({ mo: "B", required: 5, complete: 0 }), // due in 2 days, fine
+      row({ mo: "C", required: 8, complete: 1 }), // overdue
+      row({ mo: "D", required: 3, complete: 3 }), // done — not a promise any more
+      row({ mo: "E", required: 6, complete: 0 }), // never scheduled
+      row({ mo: "F", required: 4, complete: 0, onHold: true }), // due in 5 days, on hold → at risk
+      row({ mo: "G", required: 9, complete: 0 }), // due beyond the span
+    ];
+    const etas = new Map([
+      ["A", eta({ dueISO: "2026-09-19", etaISO: "2026-09-25", late: true })],
+      ["B", eta({ dueISO: "2026-09-19", etaISO: "2026-09-18" })],
+      ["C", eta({ dueISO: "2026-09-10", etaISO: "2026-09-20", late: true })],
+      ["D", eta({ dueISO: "2026-09-19", done: true })],
+      ["F", eta({ dueISO: "2026-09-22", etaISO: "2026-09-21" })],
+      ["G", eta({ dueISO: "2026-10-20", etaISO: "2026-10-19" })],
+    ]);
+    const p = promisesAhead(rows, etas, "2026-09-17", 7);
+    expect(p.days).toHaveLength(7);
+    expect(p.days[2]).toEqual({ dateISO: "2026-09-19", units: 11, atRisk: 6, orders: 2 });
+    expect(p.days[5]).toEqual({ dateISO: "2026-09-22", units: 4, atRisk: 4, orders: 1 });
+    expect(p.overdue).toEqual({ orders: 1, units: 7 });
+    expect(p.unscheduled).toBe(1);
+  });
+});
+
+describe("byCustomer / monthCompareOf / monthBoundsISO", () => {
+  it("groups the open orders per customer, largest first", () => {
+    const rows = [
+      row({ mo: "A", customer: "PRI", required: 10, complete: 4, urgent: true }),
+      row({ mo: "B", customer: "SEC", required: 20, complete: 20 }),
+      row({ mo: "C", customer: null, required: 1 }),
+      row({ mo: "D", customer: "PRI", required: 5, status: "closed" }),
+    ];
+    expect(byCustomer(rows).map((c) => `${c.customer}:${c.orders}:${c.required}:${c.complete}:${c.urgent}`)).toEqual(["SEC:1:20:20:0", "PRI:1:10:4:1", "—:1:1:0:0"]);
+  });
+  it("projects the month from the run-rate so far", () => {
+    expect(monthCompareOf("Cut", 300, 800, 6, 24)).toEqual({ dept: "Cut", mtd: 300, lastMonth: 800, projected: 1200 });
+    expect(monthCompareOf("Cut", 0, 800, 0, 24).projected).toBeNull();
+    expect(monthBoundsISO("2026-09-17")).toEqual({ thisStart: "2026-09-01", lastStart: "2026-08-01", lastEnd: "2026-08-31" });
+    expect(monthBoundsISO("2026-01-05")).toEqual({ thisStart: "2026-01-01", lastStart: "2025-12-01", lastEnd: "2025-12-31" });
   });
 });

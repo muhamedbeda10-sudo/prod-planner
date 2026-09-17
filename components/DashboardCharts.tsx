@@ -1,7 +1,7 @@
 "use client";
 
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
-import type { BacklogPoint } from "@/lib/domain/control";
+import type { BacklogPoint, PromiseDay } from "@/lib/domain/control";
 import { FINISHING_LABEL } from "@/lib/domain/constants";
 import type { DayRow } from "@/lib/server/dashboard";
 
@@ -107,6 +107,30 @@ export function BacklogChart({ history }: { history: BacklogPoint[] }) {
           <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--surface)" }} isAnimationActive={false} />
         ))}
       </LineChart>
+    </ChartScroller>
+  );
+}
+
+// ---- the promises ahead ----
+
+
+/** Units promised per day over the next two weeks, the at-risk share stacked
+ *  on top in the status colour — state, not identity, so it wears the status
+ *  tokens and the legend names it. */
+export function PromisesChart({ days }: { days: PromiseDay[] }) {
+  const data = days.map((d) => ({ day: ddmm(d.dateISO), "On track": d.units - d.atRisk, "At risk": d.atRisk }));
+  const order = ["On track", "At risk"];
+  return (
+    <ChartScroller minWidth={520} height={220}>
+      <BarChart data={data} margin={{ top: 12, right: 10, left: -10, bottom: 0 }} barGap={2}>
+        <CartesianGrid {...GRID} />
+        <XAxis dataKey="day" tick={{ fontSize: 10 }} axisLine={{ stroke: "var(--border-strong)" }} tickLine={false} />
+        <YAxis allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} />
+        <Tooltip cursor={{ fill: "var(--surface-2)" }} />
+        <Legend wrapperStyle={{ fontSize: 12 }} itemSorter={(i) => order.indexOf(String(i.value))} formatter={legendText} />
+        <Bar dataKey="On track" stackId="p" fill="var(--ok-fg)" maxBarSize={24} />
+        <Bar dataKey="At risk" stackId="p" fill="var(--bad-fg)" maxBarSize={24} radius={[4, 4, 0, 0]} />
+      </BarChart>
     </ChartScroller>
   );
 }

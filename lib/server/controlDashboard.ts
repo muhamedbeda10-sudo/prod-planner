@@ -9,8 +9,8 @@ import { getOtdStats } from "./otd";
 import { currentMonthLabel, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import {
-  attentionOf, backlogOf, backlogSeries, bottleneckOf, paceOf, piecesOf, planSummaryOf, stageLoadOf, workingDaysBetween, workingDaysLeft,
-  type AttentionRow, type BacklogPoint, type BacklogStage, type Pace, type PlanSummary, type StageLoad, type StagePieces,
+  attentionOf, backlogOf, backlogSeries, bottleneckOf, byCustomer, monthBoundsISO, monthCompareOf, paceOf, piecesByItem, piecesOf, planSummaryOf, promisesAhead, stageLoadOf, workingDaysBetween, workingDaysLeft,
+  type AttentionRow, type BacklogPoint, type BacklogStage, type CustomerStanding, type ItemPieces, type MonthCompare, type Pace, type PlanSummary, type PromisesAhead, type StageLoad, type StagePieces,
 } from "@/lib/domain/control";
 
 // The production-control screen: the plan's standing, where the work sits,
@@ -38,6 +38,21 @@ export interface ControlDashboardData {
   backlogHistory: BacklogPoint[];
   /** Std-hours queued per stage against the pace it earns, the capacity set and the hours logged. */
   load: { stages: StageLoad[]; windowDays: number; uncoveredOrders: number };
+  /** The pipeline and backlog per component, for the components some open order needs. */
+  byItem: ItemPieces[];
+  /** The next two weeks' promises, day by day, with the at-risk share; overdue and unscheduled beside. */
+  promises: PromisesAhead;
+  customers: CustomerStanding[];
+  /** Pieces per department this month to date against last month, with the month projected from the run-rate. */
+  months: { rows: MonthCompare[]; elapsedWd: number; monthWd: number; lastMonthLabel: string };
+  floor: {
+    /** Attendance recorded today per department: present of logged; null when nothing is logged. */
+    attendance: { dept: string; label: string; present: number; logged: number }[];
+    /** Machine downtime this work week: hours and machines. */
+    downtime: { hours: number; machines: number };
+    /** Pieces sent back by a downstream department and not re-delivered yet. */
+    openReturns: { pieces: number; lines: number };
+  };
 }
 
 const HISTORY_DAYS = 30; // calendar days the backlog curve covers
@@ -52,7 +67,11 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
   const monthLabel = currentMonthLabel(now);
   const trailStart = new Date(today.getTime() - TRAIL_DAYS * 86400000);
 
-  const [tracker, { byMo: etas }, otd, holidays, odooRows, materialRows, hoursToday, finishedRows, etaBase, capacity, loggedHours] = await Promise.all([
+  const bounds = monthBoundsISO(todayISO);
+  const dayOf = (iso: string) => new Date(`${iso}T00:00:00Z`);
+  // the work week runs Sat–Thu: the most recent Saturday on or before today
+  const weekStart = new Date(today.getTime() - ((today.getUTCDay() + 1) % 7) * 86400000);
+  const [tracker, { byMo: etas }, otd, holidays, odooRows, materialRows, hoursToday, finishedRows, etaBase, capacity, loggedHours, monthRows, shiftRows, downtimeRows, returnRows] = await Promise.all([
     getMasterTracker(),
     getOrderEtas(),
     getOtdStats(),
@@ -67,6 +86,13 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
     getEtaBase(),
     getStageCapacity(),
     prisma.deptDayHours.findMany({ where: { date: { gte: trailStart, lt: today } }, select: { dept: true, hours: true, date: true } }),
+    prisma.handoverEntry.findMany({
+      where: { date: { gte: dayOf(bounds.lastStart), lte: today }, dept: { in: ["Cut", "Welding", "Painting", "ShotBlast"] }, ...ledgerItemWhere(line) },
+      select: { date: true, dept: true, qty: true },
+    }),
+    prisma.shiftEntry.findMany({ where: { date: today }, select: { dept: true, present: true } }),
+    prisma.machineDowntime.findMany({ where: { date: { gte: weekStart, lte: today } }, select: { machineId: true, hours: true } }),
+    prisma.returnEntry.findMany({ where: { status: "open" }, select: { qty: true } }),
   ]);
 
   const openMos = tracker.filter((r) => r.status === "open").map((r) => r.mo);
@@ -91,6 +117,24 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
   for (const a of all) attentionCounts[a.kind] += 1;
 
   const openOdoo = odooRows.filter((o) => !isDoneStatus(o.status));
+
+  // this month against last, per department (finishing = painting + shot blast)
+  const deptOf = (d: string) => (d === "Cut" ? "Fabrication" : d === "Welding" ? "Welding" : "Finishing");
+  const sums = { mtd: new Map<string, number>(), last: new Map<string, number>() };
+  for (const e of monthRows) {
+    const iso = toISODate(e.date);
+    const bucket = iso >= bounds.thisStart ? sums.mtd : sums.last;
+    const k = deptOf(e.dept);
+    bucket.set(k, (bucket.get(k) ?? 0) + Math.max(0, e.qty));
+  }
+  const elapsedWd = workingDaysBetween(bounds.thisStart, todayISO, holidayISOs);
+  const monthWd = workingDaysBetween(bounds.thisStart, todayISO, holidayISOs) + workingDaysLeft(todayISO, holidayISOs);
+  const months = {
+    rows: ["Fabrication", "Welding", "Finishing"].map((k) => monthCompareOf(k, sums.mtd.get(k) ?? 0, sums.last.get(k) ?? 0, elapsedWd, monthWd)),
+    elapsedWd,
+    monthWd,
+    lastMonthLabel: dayOf(bounds.lastStart).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }),
+  };
 
   // load: the ETA's jobs already carry the std-hours each open order still
   // owes every stage (held orders and orders with no standard times excluded)
@@ -140,5 +184,17 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
       todayISO
     ),
     load,
+    byItem: piecesByItem(rows),
+    promises: promisesAhead(rows, etas, todayISO),
+    customers: byCustomer(rows),
+    months,
+    floor: {
+      attendance: shiftDepts.map(([dept, label]) => {
+        const rows = shiftRows.filter((s) => s.dept === dept);
+        return { dept, label, present: rows.filter((s) => s.present).length, logged: rows.length };
+      }),
+      downtime: { hours: downtimeRows.reduce((s, d) => s + d.hours, 0), machines: new Set(downtimeRows.map((d) => d.machineId)).size },
+      openReturns: { pieces: returnRows.reduce((s, r) => s + r.qty, 0), lines: returnRows.length },
+    },
   };
 }
