@@ -110,10 +110,14 @@ export function qualifiesMB(rating: string | null | undefined): boolean {
   return !!nums && nums.length >= 2;
 }
 
-/** The order fields the AR/MB rules read. */
+/** The order fields the AR/MB rules read — and the planner's two overrides:
+ *  `includedItems` forces a component ON against the rule, `excludedItems`
+ *  marks one N/A. Between them, all six components are his to switch. */
 export interface ItemRuleFields {
   kva?: string | null;
   rating?: string | null;
+  includedItems?: string | null;
+  excludedItems?: string | null;
 }
 
 /** Whether a component is ELIGIBLE for an order by rule, before any manual N/A.
@@ -124,22 +128,41 @@ export function itemApplies(item: Item, o: ItemRuleFields): boolean {
   return true;
 }
 
-/** Components eligible for an order by rule (ignoring manual N/A) — drives the
- *  tracker's per-order columns and the N/A editor's toggle list. */
-export function eligibleItems(o: ItemRuleFields): Item[] {
-  return ITEMS.filter((it) => itemApplies(it, o));
-}
-
-/** Parse the excludedItems CSV (manual N/A list) into an upper-cased Set. */
-export function parseExcludedItems(csv: string | null | undefined): Set<string> {
+/** Parse an item-list CSV (includedItems / excludedItems) into an upper-cased Set. */
+export function parseItemList(csv: string | null | undefined): Set<string> {
   return new Set((csv ?? "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean));
 }
+/** Parse the excludedItems CSV (manual N/A list) into an upper-cased Set. */
+export const parseExcludedItems = parseItemList;
 
-/** The components an order actually needs: rule-eligible minus manual N/A. The
+/** Whether a component is ELIGIBLE for an order: by rule, or forced on by the
+ *  planner (includedItems). Manual N/A is not looked at here. */
+export function itemEligible(item: Item, o: ItemRuleFields): boolean {
+  return itemApplies(item, o) || parseItemList(o.includedItems).has(item);
+}
+
+/** Components eligible for an order (rule or forced on, ignoring manual N/A)
+ *  — drives the tracker's per-order columns. */
+export function eligibleItems(o: ItemRuleFields): Item[] {
+  return ITEMS.filter((it) => itemEligible(it, o));
+}
+
+/** The components an order actually needs: eligible minus manual N/A. The
  *  single source of truth for "which items does this order have". */
-export function applicableItems(o: ItemRuleFields & { excludedItems?: string | null }): Item[] {
-  const excluded = parseExcludedItems(o.excludedItems);
-  return ITEMS.filter((it) => itemApplies(it, o) && !excluded.has(it));
+export function applicableItems(o: ItemRuleFields): Item[] {
+  const excluded = parseItemList(o.excludedItems);
+  return ITEMS.filter((it) => itemEligible(it, o) && !excluded.has(it));
+}
+
+/** The planner ticked these components as needed; the rest are not. Turns the
+ *  six ticks into the two override lists the order stores: forced on where the
+ *  rule says no, N/A where the rule says yes. Nothing is stored for a tick
+ *  that agrees with the rule, so a rule change later still shows through. */
+export function itemOverrides(o: ItemRuleFields, needed: readonly string[]): { includedItems: string | null; excludedItems: string | null } {
+  const want = new Set(needed.map((s) => s.trim().toUpperCase()));
+  const included = ITEMS.filter((it) => want.has(it) && !itemApplies(it, o));
+  const excluded = ITEMS.filter((it) => !want.has(it) && itemApplies(it, o));
+  return { includedItems: included.length ? included.join(",") : null, excludedItems: excluded.length ? excluded.join(",") : null };
 }
 
 /** Outsourced (OSP) quantity for a component. Only the four base components have

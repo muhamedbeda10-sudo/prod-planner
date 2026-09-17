@@ -5,6 +5,8 @@ import {
   itemApplies,
   eligibleItems,
   applicableItems,
+  itemEligible,
+  itemOverrides,
   itemDailyTarget,
   sumItemTargets,
   ospOf,
@@ -80,6 +82,29 @@ describe("applicableItems / eligibleItems", () => {
     expect(eligibleItems({ kva: "200", rating: "13.8/0.4|0.23" })).toEqual(["CF", "TC", "TN", "CB", "AR", "MB"]);
     // eligibility does not depend on excludedItems
     expect(eligibleItems({ kva: "50", rating: "13.8/0.4" })).toEqual(["CF", "TC", "TN", "CB"]);
+  });
+  it("a forced-on component counts although the rule skipped it", () => {
+    const o = { kva: "50", rating: "13.8/0.4", includedItems: "AR,MB" };
+    expect(itemEligible("AR", o)).toBe(true);
+    expect(eligibleItems(o)).toEqual(["CF", "TC", "TN", "CB", "AR", "MB"]);
+    expect(applicableItems(o)).toEqual(["CF", "TC", "TN", "CB", "AR", "MB"]);
+    // N/A still wins over a force — the planner unticked it last
+    expect(applicableItems({ ...o, excludedItems: "MB" })).toEqual(["CF", "TC", "TN", "CB", "AR"]);
+  });
+});
+
+describe("itemOverrides — the six ticks become the two override lists", () => {
+  it("stores only the ticks that disagree with the rule", () => {
+    const o = { kva: "200", rating: "13.8/0.4" }; // rule: base four + AR
+    expect(itemOverrides(o, ["CF", "TC", "TN", "CB", "AR"])).toEqual({ includedItems: null, excludedItems: null });
+    expect(itemOverrides(o, ["CF", "TC", "TN", "CB", "AR", "MB"])).toEqual({ includedItems: "MB", excludedItems: null });
+    expect(itemOverrides(o, ["CF", "TN", "CB"])).toEqual({ includedItems: null, excludedItems: "TC,AR" });
+    expect(itemOverrides(o, ["cf", "tn", "cb", "mb"])).toEqual({ includedItems: "MB", excludedItems: "TC,AR" });
+  });
+  it("round-trips: the overrides give back the ticks", () => {
+    const o = { kva: "50", rating: "13.8/0.4" };
+    const ticks = ["CF", "TN", "AR"];
+    expect(applicableItems({ ...o, ...itemOverrides(o, ticks) })).toEqual(ticks);
   });
 });
 
