@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
+import { linePermKey } from "@/lib/domain/permissions";
 import { getActiveLine } from "@/lib/server/line";
 import { importNestingTracker, type MaterialImportResult } from "@/lib/server/material";
 import { normalizeMaterialType, normalizeSheetSize, parseSheetNumber, partNameFor, rateIsTyped } from "@/lib/domain/material";
@@ -89,7 +90,7 @@ const lineLabel = (f: LineFields) => `${f.partCode ? `${f.partCode} ` : ""}${f.m
 const MANUAL_SORT = 1_000_000;
 
 export async function createMaterialLine(formData: FormData): Promise<MaterialActionResult> {
-  const guard = await requirePerm("material.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const f = readLine(formData);
   const bad = validate(f);
@@ -103,7 +104,7 @@ export async function createMaterialLine(formData: FormData): Promise<MaterialAc
 }
 
 export async function updateMaterialLine(formData: FormData): Promise<MaterialActionResult> {
-  const guard = await requirePerm("material.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid material line." };
@@ -125,7 +126,7 @@ export async function updateMaterialLine(formData: FormData): Promise<MaterialAc
  *  value — "not nested yet" / "nothing produced yet" / "no rate of its own" —
  *  which is not zero. */
 async function setCell(formData: FormData, field: "actualPerUnit" | "sheetsUsed" | "producedQty", label: string): Promise<MaterialActionResult> {
-  const guard = await requirePerm("material.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid material line." };
@@ -169,7 +170,7 @@ export async function setProducedQty(formData: FormData): Promise<MaterialAction
 }
 
 export async function deleteMaterialLine(formData: FormData): Promise<MaterialActionResult> {
-  const guard = await requirePerm("material.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid material line." };
@@ -181,7 +182,7 @@ export async function deleteMaterialLine(formData: FormData): Promise<MaterialAc
 /** Wipe a whole month's lines — the planner re-imports a month from a fresh
  *  sheet, or filed one under the wrong month. Cannot be undone. */
 export async function deleteMaterialMonth(formData: FormData): Promise<MaterialActionResult & { deleted?: number }> {
-  const guard = await requirePerm("material.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const month = readMonth(formData.get("month"));
   if (!month || month === "all") return { ok: false, error: "Pick one month to delete." };
@@ -198,7 +199,7 @@ export async function deleteMaterialMonth(formData: FormData): Promise<MaterialA
 }
 
 export async function importMaterialAction(formData: FormData): Promise<MaterialImportResult> {
-  const guard = await requirePerm("material.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose the Nesting Tracker Excel file." };

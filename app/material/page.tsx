@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
+import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
 import { currentMonthLabel } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
@@ -57,7 +58,7 @@ export default async function MaterialPage({
         <MaterialMonthPicker month={month} months={months} />
         <ExportButton rows={exportRows} filename={`nesting-tracker-${month.replace(/\s+/g, "-")}.xlsx`} sheetName="Sheet1" />
       </PageHeader>
-      <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, "material.edit")} product={line} />
+      <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))} product={line} />
     </div>
   );
 }

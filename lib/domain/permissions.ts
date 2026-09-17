@@ -72,6 +72,26 @@ export const PERM_CATEGORIES: PermCategory[] = [
     ],
   },
   {
+    // The panels line has its own keys — a transformer supervisor's permission
+    // opens nothing on the panels, and the panel clerk's nothing on the tanks.
+    name: "LV Panels",
+    perms: [
+      { key: "lv.punching", label: "LV Punching worklist — record & edit", desc: "Record panels punched on the LV Punching worklist and add/edit/delete Punching rows in the Daily Logs" },
+      { key: "lv.bending", label: "LV Bending worklist — record & edit", desc: "Record panels bent on the LV Bending worklist and edit Bending rows in the Daily Logs" },
+      { key: "lv.welding", label: "LV Welding worklist — record & edit", desc: "Record panels welded on the LV Welding worklist and edit the panels' Welding rows in the Daily Logs" },
+      { key: "lv.painting", label: "LV Painting worklist — record & edit", desc: "Record panels painted on the LV Painting worklist and edit the panels' Painting rows in the Daily Logs" },
+      { key: "lv.tracker.punch", label: "LV tracker — Punch column", desc: "Type punching totals on the LV Plan Tracker (separate from the worklist permission)" },
+      { key: "lv.tracker.bend", label: "LV tracker — Bend column", desc: "Type bending totals on the LV Plan Tracker" },
+      { key: "lv.tracker.weld", label: "LV tracker — Weld column", desc: "Type welding totals on the LV Plan Tracker" },
+      { key: "lv.tracker.paint", label: "LV tracker — Paint column", desc: "Type painting totals on the LV Plan Tracker" },
+      { key: "lv.tracker.delivered", label: "LV tracker — Delivered column", desc: "Record how many panels the customer has received — capped at the painted quantity" },
+      { key: "lv.status", label: "LV orders — close / reopen / hold", desc: "Close finished panel orders, reopen them, and put panel orders on hold or release them" },
+      { key: "lv.import", label: "LV plans — import", desc: "Import the panels' monthly plan (with the LV toggle on)" },
+      { key: "lv.odoo", label: "LV Odoo close-out log — record", desc: "Add and edit the ODOO tab's rows while the LV toggle is on" },
+      { key: "lv.material", label: "LV material — record", desc: "Add and edit the MATERIAL tab's lines while the LV toggle is on" },
+    ],
+  },
+  {
     name: "Admin",
     perms: [
       { key: "plans.import", label: "Plans — import", desc: "Import monthly plans (Orders Registry) and weekly plans" },
@@ -100,10 +120,26 @@ export function deptPermKey(dept: string): string {
   if (dept === "Delivered") return "tracker.delivered";
   if (dept === "ShotBlast") return "tracker.shp";
   if (dept === "LeakTest") return "leaktest.edit";
-  // an LV panel's punching and bending are its fabrication — the Fab
-  // department's permission records and edits them
-  if (dept === "Punching" || dept === "Bending") return "cut.edit";
+  // punching and bending exist only on the panels line — their own keys
+  if (dept === "Punching" || dept === "Bending") return `lv.${dept.toLowerCase()}`;
   return `${dept.toLowerCase()}.edit`;
+}
+
+/** The key that edits one ledger row: a panel's row (item USS/LSS) follows
+ *  the LV keys whatever its department; a transformer's the department's. */
+export function ledgerPermKey(dept: string, item: string): string {
+  if (item === "USS" || item === "LSS") {
+    if (dept === "Delivered") return "lv.tracker.delivered";
+    return `lv.${dept.toLowerCase()}`;
+  }
+  return deptPermKey(dept);
+}
+
+/** The line's key for the same job: closing and holding orders, importing
+ *  plans, the ODOO and MATERIAL tabs — one key per product line. */
+export function linePermKey(line: string, job: "status" | "import" | "odoo" | "material"): string {
+  if (line === "LV") return `lv.${job}`;
+  return { status: "tracker.status", import: "plans.import", odoo: "odoo.edit", material: "material.edit" }[job];
 }
 
 /** Plan-Tracker stage column -> its own permission key (Cut → tracker.cut,

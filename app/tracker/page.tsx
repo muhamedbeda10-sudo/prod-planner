@@ -41,7 +41,7 @@ export default async function TrackerPage({
 
   // The LV panels' side: one panel per row, its four stages and delivery,
   // recorded the way the transformer cells are — each stage behind the
-  // tracker permission of the transformer column it corresponds to.
+  // panels' own tracker key for that column.
   if ((await getActiveLine()) === "LV") {
     const [rows, user] = await Promise.all([getLvTracker(), getCurrentUser()]);
     return (
@@ -51,7 +51,7 @@ export default async function TrackerPage({
           viewTabs={<ViewTabs views={TRACKER_VIEWS} current="/tracker" label="Tracker view" />}
           rows={rows}
           editableStages={user ? LV_CHAIN.filter((s) => hasPerm(user, lvPermKey(s))) : []}
-          canStatus={!!user && hasPerm(user, "tracker.status")}
+          canStatus={!!user && hasPerm(user, "lv.status")}
         />
       </>
     );

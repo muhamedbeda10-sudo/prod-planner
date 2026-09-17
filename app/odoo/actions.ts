@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getActiveLine } from "@/lib/server/line";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
+import { linePermKey } from "@/lib/domain/permissions";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import { importOdooSheet, type OdooImportResult } from "@/lib/server/odoo";
@@ -78,7 +79,7 @@ function doneAtFor(nextStatus: string, prev: { status: string; doneAt: Date | nu
 }
 
 export async function createOdooEntry(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm("odoo.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const f = read(formData);
   const bad = validate(f);
@@ -96,7 +97,7 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
 }
 
 export async function updateOdooEntry(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm("odoo.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
@@ -133,7 +134,7 @@ function idsOf(formData: FormData): number[] {
 }
 
 export async function setOdooMo(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm("odoo.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const ids = idsOf(formData);
   if (ids.length === 0) return { ok: false, error: "Invalid entry." };
@@ -149,7 +150,7 @@ export async function setOdooMo(formData: FormData): Promise<OdooActionResult> {
 
 /** Confirm or correct a guessed FG-CODE in place. */
 export async function setOdooFgCode(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm("odoo.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
@@ -164,7 +165,7 @@ export async function setOdooFgCode(formData: FormData): Promise<OdooActionResul
 
 /** Move just the Status of one row — the planner's column. */
 export async function setOdooStatus(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm("odoo.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const ids = idsOf(formData);
   if (ids.length === 0) return { ok: false, error: "Invalid entry." };
@@ -186,7 +187,7 @@ export async function setOdooStatus(formData: FormData): Promise<OdooActionResul
 
 /** Add one note to a row. */
 export async function addOdooNote(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm("odoo.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
@@ -201,7 +202,7 @@ export async function addOdooNote(formData: FormData): Promise<OdooActionResult>
 
 /** Delete one note — the row and its other notes stay. */
 export async function deleteOdooNote(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm("odoo.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const noteId = Number(formData.get("noteId"));
   if (!Number.isInteger(noteId)) return { ok: false, error: "Invalid note." };
@@ -211,7 +212,7 @@ export async function deleteOdooNote(formData: FormData): Promise<OdooActionResu
 }
 
 export async function deleteOdooEntry(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm("odoo.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
@@ -222,7 +223,7 @@ export async function deleteOdooEntry(formData: FormData): Promise<OdooActionRes
 
 /** Import the clerk's sheet once — its first seven columns; notes are never read. */
 export async function importOdooAction(formData: FormData): Promise<OdooImportResult> {
-  const guard = await requirePerm("odoo.edit");
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose the Excel file." };
