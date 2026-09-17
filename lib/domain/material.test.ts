@@ -68,10 +68,10 @@ describe("what the produced units really consumed", () => {
   it("answers the planner's question: 50 sheets made 30 units, I made 5", () => {
     // the sheet's own rate is handed straight back, never re-derived
     expect(actualPerUnit(1.6667, 50, 30)).toBe(1.6667);
-    expect(sheetsForProduced(1.6667, null, 0, 5)).toBe(8.334);
+    expect(sheetsForProduced(1.6667, null, 0, 5)).toBe(8.3335);
     // …and the division only stands in where the line carries no rate
     expect(actualPerUnit(null, 50, 30)).toBeCloseTo(1.6667, 4);
-    expect(sheetsForProduced(null, 50, 30, 5)).toBe(8.333);
+    expect(sheetsForProduced(null, 50, 30, 5)).toBe(8.3333);
   });
   it("uses the job's ACTUAL rate, not the BOM's", () => {
     // BOM says 1.243/unit; the nester actually used 17 for 22 units
@@ -221,27 +221,41 @@ describe("parseNestingTracker", () => {
     // a blank part name is filled from the code
     expect(rows[2]).toMatchObject({ partCode: "FB-022", partName: "TANK", note: "re-nest" });
   });
-  it("computes the job from the per-unit rate when the sheet's own job column is stale", () => {
-    // the planner's tracker really does carry rows like this: the job grew to
-    // 90 units and the "for Job" column kept the answer for the 31 it was
+  it("keeps the sheet's own job figure and only counts a disagreement with its rate", () => {
+    // the planner's tracker carries rows like this: the job grew to 90 units
+    // and the "for Job" column kept the answer for the 31 it was. It is his
+    // figure — kept as written, counted so he can look
     const grid: unknown[][] = [
       PROJECT_HEADER,
       ["40013E11M11", 90, "FB-022", "TANK", "C-SHR-004", "HR Sheet", 4, "1220*2440", 0.568, 51.12, 0.568, 17.6, null, null],
     ];
     const { rows, recomputed } = parseNestingTracker(grid);
-    expect(rows[0].sheetsUsed).toBe(51.12);
+    expect(rows[0].sheetsUsed).toBe(17.6);
     expect(rows[0].actualPerUnit).toBe(0.568);
     expect(recomputed).toBe(1);
   });
-  it("does not call a rounding difference stale", () => {
+  it("keeps four decimals and does not call a rounding difference a disagreement", () => {
     const grid: unknown[][] = [
       PROJECT_HEADER,
       // 29 × 0.0128 is 0.3712; the sheet rounded its rate and wrote 0.3701
       ["10017E11M11", 29, "FB-024", "CABLE BOX", "C-SHR-005", "HR Sheet", 5, "1220*2440", 0.02, 0.58, 0.0128, 0.3701, null, null],
+      // the job column blank: the rate × units stands in, to four decimals
+      ["10017E11M11", 29, "FB-024", "CABLE BOX", "C-SHR-003", "HR Sheet", 3, "1220*2440", 1.35, 39.15, 1.4008, null, null, null],
     ];
     const { rows, recomputed } = parseNestingTracker(grid);
-    expect(rows[0].sheetsUsed).toBe(0.371);
+    expect(rows[0].sheetsUsed).toBe(0.3701);
+    expect(rows[1].sheetsUsed).toBe(40.6232);
     expect(recomputed).toBe(0);
+  });
+  it("reports a row that repeats another's identity — the later one replaces it", () => {
+    const grid: unknown[][] = [
+      PROJECT_HEADER,
+      ["14003E14M15", 3, "FB-022", "TANK", "T-SSS-5MM", "Stainless Steel", 5, "1220*2440", 0.0547, 0.1641, null, null, null, null],
+      ["14003E14M15", 3, "FB-022", "TANK", "T-SSS-5MM", "Stainless Steel", 5, "1220*2440", 0.054, 0.162, null, null, null, null],
+    ];
+    const { rows, issues } = parseNestingTracker(grid);
+    expect(rows).toHaveLength(2);
+    expect(issues).toEqual([expect.stringMatching(/^Row 3 .* repeats row 2/)]);
   });
   it("falls back to the job column on a sheet that has no per-unit rate", () => {
     const { rows, recomputed } = parseNestingTracker([HEADER, ["10017E11M11", 22, "Steel", 5, "1220*2440", 1.243, 27.346, 17, 10.346, null]]);

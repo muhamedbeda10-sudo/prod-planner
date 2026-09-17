@@ -2,9 +2,12 @@
 //
 // One line per month × BOM × part × material × thickness × sheet size,
 // exactly the sheet's row: Quantity of Units, Part Code and Name, the
-// material's code, the sheets ONE unit needs, and the sheets actually nested
-// for the job. The sheet's two formula columns are derived
-// here, never stored, so they cannot go stale or come back as #VALUE!:
+// material's code, the sheets ONE unit needs, the sheets nested for one unit
+// and the sheets actually nested for the job — every figure AS THE SHEET
+// WRITES IT, to its four decimals, in the sheet's own row order. The planner
+// asked for the sheet back the way it is; the tab's arithmetic is confined to
+// the two formula columns, which it recomputes from what it stores so they
+// cannot come back as #VALUE!:
 //   sheets for the job = sheets per unit × quantity of units
 //   difference         = sheets for the job − sheets actually nested
 //
@@ -15,8 +18,14 @@
 // "The sheet says 50 sheets made 30 units; I made 5 — so I used 8.333."
 
 /** Sheet counts are fractions of a sheet (0.429 of a sheet per unit). Excel
- *  left 0.564 × 3 as 1.6919999999999997; three decimals is finer than any
- *  nesting is ever quoted and keeps the arithmetic readable. */
+ *  left 0.564 × 3 as 1.6919999999999997; the nesting sheet quotes its figures
+ *  to FOUR decimals (0.6216 a unit, 1.8648 for the job), so that is the
+ *  precision everything here keeps — a third decimal would round the
+ *  planner's own numbers away. */
+export function round4(n: number): number {
+  return Math.round(n * 10000) / 10000;
+}
+/** Three decimals — the Odoo material popup's coarser figures. */
 export function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
@@ -90,14 +99,14 @@ export function parseSheetNumber(raw: unknown): number | null {
 
 /** Sheets the nesting BOM says the whole job needs. */
 export function sheetsForJob(sheetsPerUnit: number, units: number): number {
-  return round3(sheetsPerUnit * units);
+  return round4(sheetsPerUnit * units);
 }
 
 /** Sheets for the job − actually nested. Null while nothing has been nested:
  *  a blank actual is "not laid out", which is not "used zero sheets". */
 export function sheetsDifference(forJob: number, used: number | null): number | null {
   if (used === null) return null;
-  return round3(forJob - used);
+  return round4(forJob - used);
 }
 
 // ---- the tab's addition: what the produced units really consumed ----
@@ -141,7 +150,7 @@ export function rateIsTyped(was: { actualPerUnit: number | null; actualPerUnitMa
 export function sheetsForProduced(stored: number | null, used: number | null, units: number, produced: number | null): number | null {
   const rate = actualPerUnit(stored, used, units);
   if (rate === null || produced === null) return null;
-  return round3(rate * produced);
+  return round4(rate * produced);
 }
 
 // ---- a line, as the page shows it ----
@@ -206,10 +215,10 @@ export function summarizeMaterial(lines: MaterialLineView[]): MaterialTotal[] {
       t = { material: l.material, thicknessMm: l.thicknessMm, sheetSize: l.sheetSize, forJob: 0, used: 0, forProduced: 0, linesNotNested: 0 };
       map.set(key, t);
     }
-    t.forJob = round3(t.forJob + l.forJob);
+    t.forJob = round4(t.forJob + l.forJob);
     if (l.sheetsUsed === null) t.linesNotNested += 1;
-    else t.used = round3(t.used + l.sheetsUsed);
-    if (l.forProduced !== null) t.forProduced = round3(t.forProduced + l.forProduced);
+    else t.used = round4(t.used + l.sheetsUsed);
+    if (l.forProduced !== null) t.forProduced = round4(t.forProduced + l.forProduced);
   }
   return [...map.values()].sort(
     (a, b) => a.material.localeCompare(b.material) || a.thicknessMm - b.thicknessMm || a.sheetSize.localeCompare(b.sheetSize)
@@ -231,8 +240,8 @@ export interface NestingRow {
   sheetsPerUnit: number;
   /** Sheets actually nested for ONE unit — the sheet's own measured rate. */
   actualPerUnit: number | null;
-  /** Sheets actually nested for the JOB: the rate above × the units, when the
-   *  sheet gives a rate; its own "for Job" column only when it does not. */
+  /** Sheets actually nested for the JOB, as the sheet's own column writes it;
+   *  the rate above × the units only where that column is blank. */
   sheetsUsed: number | null;
   note: string | null;
 }
@@ -241,8 +250,8 @@ export interface ParsedNesting {
   rows: NestingRow[];
   issues: string[];
   headerRow: number; // 1-based, for diagnostics
-  /** Rows whose "for Job" column disagreed with their own per-unit rate by
-   *  more than rounding — the sheet's figure was stale and was recomputed. */
+  /** Rows whose "for Job" column disagrees with their own per-unit rate by
+   *  more than rounding — kept as written, counted so the planner can look. */
   recomputed: number;
 }
 
@@ -293,22 +302,25 @@ function mapColumns(header: unknown[]): Record<keyof typeof HEADERS, number> {
   return out;
 }
 
-/** A recomputed job figure only counts as a disagreement when it is bigger
- *  than the rounding the sheet itself carries (the rate is quoted to four
- *  decimals, so a long job drifts a little by arithmetic alone). */
+/** The job column and the rate × units only count as disagreeing when the
+ *  gap is bigger than the rounding the sheet itself carries (the rate is
+ *  quoted to four decimals, so a long job drifts a little by arithmetic). */
 const STALE_ABS = 0.05;
 const STALE_FRAC = 0.02;
 
 /**
  * Parse the Nesting Tracker grid (sheet_to_json with header:1).
  *
- * The sheets actually nested FOR THE JOB are computed here — the rate the
- * sheet measured for one unit, times the units the job carries — because the
- * sheet's own "for Job" column is a figure somebody left behind: change the
- * quantity of units and it keeps the old job's answer (one row of the
- * planner's own tracker says 17.6 sheets where 90 units at 0.568 is 51.1).
- * The BOM's "for one Unit" and "Difference" columns are ignored for the same
- * reason: this tab recomputes them from what it stores.
+ * Every figure is taken as the sheet writes it. The sheets actually nested
+ * FOR THE JOB are the sheet's own column; the rate × units stands in only
+ * where that column is blank. A row whose column disagrees with its own rate
+ * by more than rounding is counted (`recomputed`) so the planner can look,
+ * never overwritten — the sheet is his, and he asked for it back as it is.
+ * The BOM's "for Job" and "Difference" columns are recomputed from what is
+ * stored (per unit × units, and the difference), which on a fresh sheet is
+ * the same figure without the #VALUE! risk. A row that repeats another's
+ * identity (BOM, part, material, thickness, size) is reported: the tab keeps
+ * one line per identity, so the later row replaces the earlier.
  */
 export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
   const headerIdx = findHeaderRow(grid);
@@ -324,6 +336,7 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
 
   const rows: NestingRow[] = [];
   let recomputed = 0;
+  const seen = new Map<string, number>(); // identity → sheet row
   for (let r = headerIdx + 1; r < grid.length; r++) {
     const line = grid[r] ?? [];
     const rowNum = r + 1;
@@ -341,26 +354,32 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
     if (perUnit === null || perUnit < 0) { issues.push(`Row ${rowNum} (${bom}): sheets per unit is missing or not a number — skipped.`); continue; }
     if (units === null || units < 0) { issues.push(`Row ${rowNum} (${bom}): quantity of units is missing or not a number — skipped.`); continue; }
 
-    // what the sheet says the job used, and what it measured for ONE unit
+    // what the sheet says the job used, and what it measured for ONE unit —
+    // both as written; the product stands in only for a blank job column
     const onSheet = col.actual >= 0 ? parseSheetNumber(line[col.actual]) : null;
-    const rate = col.actualPerUnit >= 0 ? parseSheetNumber(line[col.actualPerUnit]) : null;
-    const fromSheet = onSheet !== null && onSheet >= 0 ? onSheet : null;
-    // the rate is the measured fact; the job is that rate × this job's units
-    const used = rate !== null && rate >= 0 ? round3(rate * units) : fromSheet;
-    if (used !== null && fromSheet !== null && rate !== null) {
-      const gap = Math.abs(used - fromSheet);
-      if (gap > STALE_ABS && gap > STALE_FRAC * Math.max(used, fromSheet)) recomputed += 1;
+    const rateRaw = col.actualPerUnit >= 0 ? parseSheetNumber(line[col.actualPerUnit]) : null;
+    const rate = rateRaw !== null && rateRaw >= 0 ? round4(rateRaw) : null;
+    const fromSheet = onSheet !== null && onSheet >= 0 ? round4(onSheet) : null;
+    const used = fromSheet ?? (rate !== null ? round4(rate * units) : null);
+    if (fromSheet !== null && rate !== null) {
+      const product = rate * units;
+      const gap = Math.abs(product - fromSheet);
+      if (gap > STALE_ABS && gap > STALE_FRAC * Math.max(product, fromSheet)) recomputed += 1;
     }
 
     const note = col.note >= 0 ? cellText(line[col.note]) : "";
     const partCode = col.partCode >= 0 ? cellText(line[col.partCode]).toUpperCase() : "";
     const partName = col.partName >= 0 ? cellText(line[col.partName]).toUpperCase() : "";
+    const identity = `${bom}|${partCode}|${material}|${thickness}|${sheetSize}`;
+    const earlier = seen.get(identity);
+    if (earlier !== undefined) issues.push(`Row ${rowNum} (${bom} ${partCode} ${material} ${thickness}mm ${sheetSize}) repeats row ${earlier} — the tab keeps one line per BOM, part, material, thickness and size, so this row replaces it.`);
+    seen.set(identity, rowNum);
     rows.push({
       rowNum, bom, units, material, thicknessMm: thickness, sheetSize,
       partCode, partName: partName || partNameFor(partCode),
       materialCode: col.code >= 0 ? cellText(line[col.code]).toUpperCase() : "",
       sheetsPerUnit: perUnit,
-      actualPerUnit: rate !== null && rate >= 0 ? rate : null,
+      actualPerUnit: rate,
       sheetsUsed: used,
       note: note || null,
     });

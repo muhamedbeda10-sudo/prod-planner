@@ -811,6 +811,9 @@ model MaterialUsage {
   actualPerUnitManual Boolean @default(false)
   sheetsUsed    Float? // No. of Sheets in Actual Nesting for Job — blank until nested
   producedQty   Float? // units actually produced so far — the daily entry
+  // The line's row in the sheet it came from, so the tab reads in the sheet's
+  // own order rather than alphabetically. Lines typed in the tab sort last.
+  sortOrder     Int      @default(0)
   note          String?
   recordedBy    String?
   createdAt     DateTime @default(now())

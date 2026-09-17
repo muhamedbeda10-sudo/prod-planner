@@ -58,7 +58,7 @@ function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
 
 /** Sheet counts read as fractions of a sheet — 1.287, not 1.3. A rate per
  *  unit is finer still: the sheet writes 0.2207. */
-function Sheets({ v, className = "", digits = 3 }: { v: number | null; className?: string; digits?: 3 | 4 }) {
+function Sheets({ v, className = "", digits = 4 }: { v: number | null; className?: string; digits?: 3 | 4 }) {
   if (v === null) return <span className="text-muted">—</span>;
   return <span className={`tabnum ltr ${className}`}>{Number.isInteger(v) ? v : Number(v.toFixed(digits))}</span>;
 }
@@ -332,7 +332,7 @@ function ImportPanel({ month }: { month: string }) {
       const r = await importMaterialAction(fd);
       setIssues(r.issues ?? []);
       if (!r.ok) { setRes({ ok: false, text: r.error ?? "Import failed." }); return; }
-      const stale = r.recomputed ? ` · ${r.recomputed} row(s) whose “for Job” column was stale were recomputed from their own per-unit rate` : "";
+      const stale = r.recomputed ? ` · ${r.recomputed} row(s) where the sheet's “Actual Nesting for Job” disagrees with its own per-unit rate × units — kept as written, worth a look` : "";
       const tail = `${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}${stale}`;
       setRes({ ok: true, text: preview ? `Preview only — nothing saved: ${tail}.` : `Imported: ${tail}.` });
       if (!preview) router.refresh();
