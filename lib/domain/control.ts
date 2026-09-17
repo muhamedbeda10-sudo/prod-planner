@@ -335,3 +335,133 @@ export function stageLoadOf(stage: LoadStage, queuedHours: number, earnedPerDay:
     utilisation: capacityPerDay !== null && capacityPerDay > 0 ? earnedPerDay / capacityPerDay : null,
   };
 }
+
+// ---- the same, component by component ----
+
+export interface ItemPieces {
+  item: Item;
+  pieces: StagePieces;
+  backlog: Record<BacklogStage, number>;
+  bottleneck: BacklogStage | null;
+}
+
+/** Pieces through each stage and waiting at each stage, per component, over
+ *  the open orders — only the components some open order needs. */
+export function piecesByItem(rows: readonly ControlRow[]): ItemPieces[] {
+  const out: ItemPieces[] = [];
+  for (const it of ITEMS) {
+    const p: StagePieces = { need: 0, cut: 0, weld: 0, finished: 0, delivered: 0 };
+    for (const r of rows) {
+      if (r.status !== "open" || !needed(r, it)) continue;
+      const c = r.items[it];
+      const need = Math.max(0, r.required - c.osp);
+      p.need += need;
+      p.cut += cap(c.cut, need);
+      p.weld += cap(c.weld, need);
+      p.finished += cap(isPaintExempt(it) ? c.shp : c.paint, need);
+      p.delivered += cap(c.delivered, need);
+    }
+    if (p.need === 0) continue;
+    const backlog = backlogOf(p);
+    out.push({ item: it, pieces: p, backlog, bottleneck: bottleneckOf(backlog) });
+  }
+  return out;
+}
+
+// ---- promises ahead ----
+
+export interface PromiseDay {
+  dateISO: string;
+  /** Units promised for that day on open orders with work left. */
+  units: number;
+  /** Of those, units whose forecast lands late or cannot be made. */
+  atRisk: number;
+  orders: number;
+}
+
+export interface PromisesAhead {
+  days: PromiseDay[];
+  /** Promises already past with work still left: orders and units. */
+  overdue: { orders: number; units: number };
+  /** Open orders with work left and no scheduled delivery at all. */
+  unscheduled: number;
+}
+
+/** The promises of the next `span` days, day by day, from the latest scheduled
+ *  delivery of every open order that still has work left; overdue ones and
+ *  the never-scheduled counted beside. */
+export function promisesAhead(rows: readonly ControlRow[], etas: ReadonlyMap<string, EtaLike>, todayISO: string, span = 14): PromisesAhead {
+  const byDay = new Map<string, PromiseDay>();
+  for (let i = 0; i < span; i++) {
+    const d = addDaysISO(todayISO, i);
+    byDay.set(d, { dateISO: d, units: 0, atRisk: 0, orders: 0 });
+  }
+  const overdue = { orders: 0, units: 0 };
+  let unscheduled = 0;
+  for (const r of rows) {
+    if (r.status !== "open") continue;
+    const left = Math.max(0, r.required - r.complete);
+    if (left === 0) continue;
+    const e = etas.get(r.mo);
+    const due = e?.dueISO ?? null;
+    if (!due) { unscheduled += 1; continue; }
+    if (due < todayISO) { overdue.orders += 1; overdue.units += left; continue; }
+    const day = byDay.get(due);
+    if (!day) continue; // beyond the span
+    day.units += left;
+    day.orders += 1;
+    if (e && (e.late || e.blockedBy || r.onHold)) day.atRisk += left;
+  }
+  return { days: [...byDay.values()], overdue, unscheduled };
+}
+
+// ---- by customer ----
+
+export interface CustomerStanding {
+  customer: string;
+  orders: number;
+  required: number;
+  complete: number;
+  delivered: number;
+  urgent: number;
+}
+
+export function byCustomer(rows: readonly ControlRow[]): CustomerStanding[] {
+  const map = new Map<string, CustomerStanding>();
+  for (const r of rows) {
+    if (r.status !== "open") continue;
+    const key = (r.customer ?? "").trim() || "—";
+    const c = map.get(key) ?? { customer: key, orders: 0, required: 0, complete: 0, delivered: 0, urgent: 0 };
+    c.orders += 1;
+    c.required += r.required;
+    c.complete += Math.min(r.complete, r.required);
+    c.delivered += deliveredUnitsOf(r);
+    if (r.urgent) c.urgent += 1;
+    map.set(key, c);
+  }
+  return [...map.values()].sort((a, b) => b.required - a.required || a.customer.localeCompare(b.customer));
+}
+
+// ---- this month against last ----
+
+export interface MonthCompare {
+  dept: string;
+  mtd: number;
+  lastMonth: number;
+  /** What this month closes at if the run-rate so far holds; null before any working day has passed. */
+  projected: number | null;
+}
+
+export function monthCompareOf(dept: string, mtd: number, lastMonth: number, elapsedWd: number, monthWd: number): MonthCompare {
+  return { dept, mtd, lastMonth, projected: elapsedWd > 0 ? Math.round((mtd / elapsedWd) * monthWd) : null };
+}
+
+/** The first day of the month `iso` falls in, and of the month before. */
+export function monthBoundsISO(iso: string): { thisStart: string; lastStart: string; lastEnd: string } {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const thisStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  const lastStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1));
+  const lastEnd = new Date(thisStart.getTime() - 86400000);
+  const f = (x: Date) => x.toISOString().slice(0, 10);
+  return { thisStart: f(thisStart), lastStart: f(lastStart), lastEnd: f(lastEnd) };
+}
