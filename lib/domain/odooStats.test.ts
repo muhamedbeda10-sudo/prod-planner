@@ -7,6 +7,10 @@ describe("productSeries", () => {
     expect(productSeries(" top  cover ")).toBe("Top Cover");
     expect(productSeries("CB")).toBe("Cable Box");
     expect(productSeries("enclosure")).toBe("Encloser");
+    expect(productSeries("Arrester")).toBe("Arrester Bracket");
+    expect(productSeries("arrester bracket")).toBe("Arrester Bracket");
+    expect(productSeries("Arrestor Bracket")).toBe("Arrester Bracket");
+    expect(productSeries("AR")).toBe("Arrester Bracket");
     expect(productSeries("Radiator")).toBe("Radiator");
     expect(productSeries("radiator ")).toBe("Radiator");
     expect(productSeries("RADIATOR")).toBe("Radiator");

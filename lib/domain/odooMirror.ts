@@ -19,7 +19,7 @@ export const ITEM_PRODUCT: Record<Item, { product: string; partCode: string | nu
   TC: { product: "Top Cover", partCode: "FB-051" },
   TN: { product: "Tank", partCode: "FB-022" },
   CB: { product: "Cable Box", partCode: "FB-024" },
-  AR: { product: "Arrester", partCode: "FB-027" },
+  AR: { product: "Arrester Bracket", partCode: "FB-027" },
   MB: { product: "Mono Box", partCode: null },
 };
 

@@ -478,6 +478,12 @@ model DeptDayHours {
   date      DateTime // day-only granularity
   dept      String // Cut | Welding | ShotBlast | Painting
   hours     Float
+  // The quick entry: heads present × hours each. Null on a day summed from
+  // the per-worker roster.
+  people     Int?
+  hoursEach  Float?
+  source     String   @default("roster") // roster | quick
+  recordedBy String?
   updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([date, dept])

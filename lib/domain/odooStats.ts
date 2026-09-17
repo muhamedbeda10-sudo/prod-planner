@@ -26,6 +26,9 @@ export function productSeries(product: string | null | undefined): OdooSeries {
   if (key === "tc" || key === "top-cover") return "Top Cover";
   if (key === "cf" || key === "core-frame") return "Core Frame";
   if (key === "tn") return "Tank";
+  // the arrester bracket is one product however the row names it: the
+  // painting closing writes "Arrester", the office sheet "Arrester Bracket"
+  if (key === "ar" || /^arrest[eo]r(\s*-?\s*bracket)?$/.test(key)) return "Arrester Bracket";
   return clean.split(" ").map((w) => (w.length > 3 && w === w.toUpperCase() ? w[0] + w.slice(1).toLowerCase() : w[0].toUpperCase() + w.slice(1))).join(" ");
 }
 
