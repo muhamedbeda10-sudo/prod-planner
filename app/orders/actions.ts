@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
 import { requirePerm, requireAdmin } from "@/lib/server/auth";
-import { applicableItems, ospOf, eligibleItems, isDept, isPaintExempt, deptLabel, itemApplies, parseExcludedItems, ITEMS, DELIVERED_STAGE, type Item } from "@/lib/domain/constants";
+import { applicableItems, ospOf, isDept, isPaintExempt, deptLabel, itemOverrides, isItem, ITEMS, DELIVERED_STAGE } from "@/lib/domain/constants";
 import { finsGroup, isFullyDelivered, spreadOverGroup } from "@/lib/domain/groupSpread";
 import { getActiveLine } from "@/lib/server/line";
 import { LV_ITEM } from "@/lib/domain/lv";
@@ -293,28 +293,24 @@ function monthLabel(value: string): string | null {
   return `${MONTHS[idx]} ${m[1]}`;
 }
 
-/** Mark which components an order does NOT need (e.g. no Cable Box for this
- *  project). The plan sheets can't express this, so it is set on the tracker.
- *  Excluded items leave the cut worklist and stop gating completion/OTD. */
+/** Which of the six components an order needs — the planner's ticks on the
+ *  tracker, whatever the KVA/rating rule says. A tick against the rule forces
+ *  the component on (an Arrester on an order the rule skipped); an untick
+ *  against it marks the component N/A (no Cable Box for this project). Items
+ *  not needed leave the cut worklist and stop gating completion/OTD. */
 export async function setExcludedItems(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const guard = await requirePerm("tracker.components");
   if (guard.error) return { ok: false, error: guard.error };
   const mo = String(formData.get("mo") ?? "").trim();
-  const raw = String(formData.get("excluded") ?? "").trim(); // CSV of the order's components
+  const raw = String(formData.get("required") ?? "").trim(); // CSV of the ticked components
   if (!mo) return { ok: false, error: "Missing MO." };
-  const items = raw ? raw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
+  const needed = raw ? raw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
+  if (needed.some((i) => !isItem(i))) return { ok: false, error: "Invalid component." };
+  if (needed.length === 0) return { ok: false, error: "An order needs at least one component." };
   const order = await prisma.masterOrder.findUnique({ where: { mo } });
   if (!order) return { ok: false, error: `MO ${mo} not found.` };
-  // only the order's own components (base four + AR/MB when its KVA/rating match)
-  // can be marked N/A, and it must keep at least one
-  const eligible = eligibleItems(order);
-  if (items.some((i) => !eligible.includes(i as Item))) return { ok: false, error: "Invalid component." };
-  if (eligible.every((i) => items.includes(i))) return { ok: false, error: "An order cannot exclude all its components." };
-  await prisma.masterOrder.update({
-    where: { mo },
-    data: { excludedItems: items.length > 0 ? items.join(",") : null },
-  });
-  for (const p of ["/tracker", "/orders", "/worklist/cut", "/report", "/trace", "/"]) revalidatePath(p);
+  await prisma.masterOrder.update({ where: { mo }, data: itemOverrides(order, needed) });
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
   return { ok: true };
 }
 
@@ -485,11 +481,11 @@ export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: str
   const done = open.filter((o) => {
     // an LV panel is one item on the ledger; a transformer is its components
     if (o.line === "LV") return isFullyDelivered(o.planQty, [{ counts: true, delivered: got.get(`${o.mo}|${LV_ITEM}`) ?? 0 }]);
-    const excluded = parseExcludedItems(o.excludedItems);
+    const needed = applicableItems(o);
     return isFullyDelivered(
       o.planQty,
       ITEMS.map((it) => ({
-        counts: itemApplies(it, o) && !excluded.has(it),
+        counts: needed.includes(it),
         delivered: got.get(`${o.mo}|${it}`) ?? 0,
       }))
     );

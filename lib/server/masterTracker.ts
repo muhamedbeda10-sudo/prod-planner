@@ -2,7 +2,7 @@ import "server-only";
 import { holdView, type HoldView } from "@/lib/domain/hold";
 import { prisma } from "@/lib/db";
 import { loadMasterOrders } from "./loads";
-import { ITEMS, isPaintExempt, itemApplies, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
+import { ITEMS, isPaintExempt, itemEligible, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 
 // Plan Tracker on the MONTHLY registry: one row per MO. Progress is GLOBAL —
 // setup balances plus every logged output, regardless of week — capped at the
@@ -72,7 +72,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       const paint = cap(g(o.mo, "Painting", it));
       const shp = cap(g(o.mo, "ShotBlast", it)); // the core's real final stage after welding
       const delivered = cap(g(o.mo, "Delivered", it)); // what the customer received
-      const eligible = itemApplies(it, o); // AR/MB only when the KVA/rating rule matches
+      const eligible = itemEligible(it, o); // AR/MB when the KVA/rating rule matches, or the planner forced them on
       const isExcluded = excluded.has(it);
       items[it] = { cut, weld, paint, shp, delivered, osp, excluded: isExcluded, eligible };
       // a component gates completion only when the order needs it and it isn't N/A

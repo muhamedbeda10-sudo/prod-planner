@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { put, del } from "@vercel/blob";
-import { isItem, isDept, itemApplies, parseExcludedItems, ospOf, type Item } from "@/lib/domain/constants";
+import { isItem, isDept, applicableItems, ospOf, type Item } from "@/lib/domain/constants";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
@@ -313,7 +313,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
       const o = orderOf.get(mo);
       if (o && o.bom !== bom) return null; // belongs to another BOM — reject below
       // AR/MB the order doesn't need (rule or manual N/A) can't receive output
-      const eligible = o ? itemApplies(item as Item, o) && !parseExcludedItems(o.excludedItems).has(item) : !["AR", "MB"].includes(item);
+      const eligible = o ? applicableItems(o).includes(item as Item) : !["AR", "MB"].includes(item);
       return {
         mo,
         o,

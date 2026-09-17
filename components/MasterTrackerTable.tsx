@@ -296,13 +296,12 @@ export function MasterTrackerTable({
 
   function saveExcluded(r: MasterTrackerRow, form: HTMLFormElement) {
     const fd = new FormData(form);
+    // the six ticks, as ticked — the server turns them into the order's
+    // overrides against the KVA/rating rule (forced on, or N/A)
     const required = fd.getAll("req").map(String);
-    // only the order's own components can be toggled; excluded = eligible − checked
-    const eligible = ITEMS.filter((it) => r.items[it].eligible);
-    const excluded = eligible.filter((it) => !required.includes(it)).join(",");
     const out = new FormData();
     out.set("mo", r.mo);
-    out.set("excluded", excluded);
+    out.set("required", required.join(","));
     startTransition(async () => {
       const res = await setExcludedItems(out);
       if (res.ok) {
@@ -1524,17 +1523,21 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       className="flex flex-wrap items-center gap-4 text-sm max-w-2xl"
                     >
                       <span className="font-bold text-xs">Components {r.mo} actually needs:</span>
-                      {ITEMS.filter((it) => r.items[it].eligible).map((it) => (
-                        <label key={it} className="inline-flex items-center gap-1.5 font-semibold cursor-pointer">
-                          <input type="checkbox" name="req" value={it} defaultChecked={!r.items[it].excluded} className="accent-[var(--brand)]" />
-                          {it}
-                        </label>
-                      ))}
+                      {ITEMS.map((it) => {
+                        const c = r.items[it];
+                        const needed = c.eligible && !c.excluded;
+                        return (
+                          <label key={it} className="inline-flex items-center gap-1.5 font-semibold cursor-pointer" title={it === "AR" ? "Arrester — the KVA rule adds it on 100–300 kVA; tick or untick it here regardless" : it === "MB" ? "Mono Box — the rating rule adds it when the secondary lists two voltages; tick or untick it here regardless" : undefined}>
+                            <input type="checkbox" name="req" value={it} defaultChecked={needed} className="accent-[var(--brand)]" />
+                            {it}
+                          </label>
+                        );
+                      })}
                       <button type="submit" disabled={pending} className="rounded-md px-3 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50">
                         Save
                       </button>
                       <button type="button" onClick={() => setOpenConfig(null)} className="text-muted text-xs hover:underline">Cancel</button>
-                      <span className="text-[11px] text-muted w-full">Unchecked components are N/A for this project: they leave the cut worklist and stop gating completion &amp; OTD.</span>
+                      <span className="text-[11px] text-muted w-full">Ticked components are what this project is made of — all six are yours to switch, whatever the KVA/rating rule says. Unticked ones leave the worklists and stop gating completion &amp; OTD.</span>
                     </form>
                   </td>
                 </tr>

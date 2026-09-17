@@ -154,6 +154,10 @@ model MasterOrder {
   // Components this order does NOT need at all (CSV of CF/TC/TN/CB). The plan
   // sheets can't express this — it is set manually on the tracker.
   excludedItems String?
+  // Components this order needs although the KVA/rating rule says otherwise
+  // (CSV, in practice AR/MB). The planner's own say over the rule: together
+  // with excludedItems, the six components are his to switch on or off.
+  includedItems String?
   // Marked IMPORTANT by the admin: shows in a dedicated priority table on top
   // of every dept worklist until its work is done.
   priority      Boolean   @default(false)
