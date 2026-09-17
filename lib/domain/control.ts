@@ -223,3 +223,115 @@ export function attentionOf(rows: readonly ControlRow[], etas: ReadonlyMap<strin
     || a.mo.localeCompare(b.mo));
   return out.slice(0, limit);
 }
+
+// ---- the backlog, day by day ----
+
+export interface LedgerLike {
+  mo: string | null;
+  item: string;
+  dept: string;
+  dateISO: string;
+  qty: number;
+}
+
+export interface BacklogPoint {
+  dateISO: string;
+  fab: number;
+  weld: number;
+  finish: number;
+  deliver: number;
+}
+
+/** The backlog at each stage as it stood at the end of every day from
+ *  `fromISO` to `toISO`, read off the ledger of the orders open TODAY — so the
+ *  last point is exactly the backlog card, and the curve is how those orders'
+ *  queues moved. Output is capped at each component's need, like the card. */
+export function backlogSeries(rows: readonly ControlRow[], ledger: readonly LedgerLike[], fromISO: string, toISO: string): BacklogPoint[] {
+  // need per (mo|item), open orders' required components only
+  const need = new Map<string, number>();
+  const finishDept = new Map<string, string>();
+  for (const r of rows) {
+    if (r.status !== "open") continue;
+    for (const it of ITEMS) {
+      if (!needed(r, it)) continue;
+      need.set(`${r.mo}|${it}`, Math.max(0, r.required - r.items[it].osp));
+      finishDept.set(`${r.mo}|${it}`, isPaintExempt(it) ? "ShotBlast" : "Painting");
+    }
+  }
+  // cumulative output per key and stage as of the day before the window,
+  // then the window's rows bucketed by day
+  const stageOf = (key: string, dept: string): "cut" | "weld" | "finished" | "delivered" | null =>
+    dept === "Cut" ? "cut" : dept === "Welding" ? "weld" : dept === "Delivered" ? "delivered" : dept === finishDept.get(key) ? "finished" : null;
+  const cum = new Map<string, { cut: number; weld: number; finished: number; delivered: number }>();
+  const byDay = new Map<string, LedgerLike[]>();
+  for (const e of ledger) {
+    if (!e.mo) continue;
+    const key = `${e.mo}|${e.item}`;
+    if (!need.has(key)) continue;
+    if (e.dateISO < fromISO) {
+      const s = stageOf(key, e.dept);
+      if (!s) continue;
+      const c = cum.get(key) ?? { cut: 0, weld: 0, finished: 0, delivered: 0 };
+      c[s] += e.qty;
+      cum.set(key, c);
+    } else if (e.dateISO <= toISO) {
+      (byDay.get(e.dateISO) ?? byDay.set(e.dateISO, []).get(e.dateISO)!).push(e);
+    }
+  }
+  const out: BacklogPoint[] = [];
+  for (let d = fromISO; d <= toISO; d = addDaysISO(d, 1)) {
+    for (const e of byDay.get(d) ?? []) {
+      const key = `${e.mo}|${e.item}`;
+      const s = stageOf(key, e.dept);
+      if (!s) continue;
+      const c = cum.get(key) ?? { cut: 0, weld: 0, finished: 0, delivered: 0 };
+      c[s] += e.qty;
+      cum.set(key, c);
+    }
+    const p: StagePieces = { need: 0, cut: 0, weld: 0, finished: 0, delivered: 0 };
+    for (const [key, n] of need) {
+      const c = cum.get(key) ?? { cut: 0, weld: 0, finished: 0, delivered: 0 };
+      p.need += n;
+      p.cut += cap(c.cut, n);
+      p.weld += cap(c.weld, n);
+      p.finished += cap(c.finished, n);
+      p.delivered += cap(c.delivered, n);
+    }
+    const b = backlogOf(p);
+    out.push({ dateISO: d, fab: b.fab, weld: b.weld, finish: b.finish, deliver: b.deliver });
+  }
+  return out;
+}
+
+// ---- load against capacity ----
+
+export type LoadStage = "cut" | "weld" | "finish";
+export const LOAD_LABEL: Record<LoadStage, string> = { cut: "Fabrication", weld: "Welding", finish: "Finishing" };
+
+export interface StageLoad {
+  stage: LoadStage;
+  /** Standard hours queued: every open order's remaining pieces × the std-hours a piece costs here. */
+  queuedHours: number;
+  /** Std-hours this stage earned per working day over the trailing window — its actual pace. */
+  earnedPerDay: number;
+  /** Man-hours a day the admin set as the stage's capacity; null when none is set. */
+  capacityPerDay: number | null;
+  /** Man-hours a day the shift log recorded over its last days; null when nothing is logged. */
+  recordedPerDay: number | null;
+  /** Working days the queue takes at the actual pace; null when the pace is 0. */
+  daysOfWork: number | null;
+  /** earned / capacity — how much of the set capacity is turning into output. */
+  utilisation: number | null;
+}
+
+export function stageLoadOf(stage: LoadStage, queuedHours: number, earnedPerDay: number, capacityPerDay: number | null, recordedPerDay: number | null): StageLoad {
+  return {
+    stage,
+    queuedHours,
+    earnedPerDay,
+    capacityPerDay,
+    recordedPerDay,
+    daysOfWork: earnedPerDay > 0 ? queuedHours / earnedPerDay : null,
+    utilisation: capacityPerDay !== null && capacityPerDay > 0 ? earnedPerDay / capacityPerDay : null,
+  };
+}

@@ -3,13 +3,14 @@ import { prisma } from "@/lib/db";
 import { getActiveLine, ledgerItemWhere } from "./line";
 import { loadHolidays } from "./loads";
 import { getMasterTracker } from "./masterTracker";
-import { getOrderEtas } from "./eta";
+import { getEtaBase, getOrderEtas } from "./eta";
+import { getStageCapacity } from "./standardTimes";
 import { getOtdStats } from "./otd";
 import { currentMonthLabel, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import {
-  attentionOf, backlogOf, bottleneckOf, paceOf, piecesOf, planSummaryOf, workingDaysBetween, workingDaysLeft,
-  type AttentionRow, type BacklogStage, type Pace, type PlanSummary, type StagePieces,
+  attentionOf, backlogOf, backlogSeries, bottleneckOf, paceOf, piecesOf, planSummaryOf, stageLoadOf, workingDaysBetween, workingDaysLeft,
+  type AttentionRow, type BacklogPoint, type BacklogStage, type Pace, type PlanSummary, type StageLoad, type StagePieces,
 } from "@/lib/domain/control";
 
 // The production-control screen: the plan's standing, where the work sits,
@@ -33,7 +34,13 @@ export interface ControlDashboardData {
   closing: { open: number; needMo: number };
   material: { lines: number; overBom: number; notNested: number };
   shifts: { dept: string; label: string; hours: number | null }[];
+  /** The backlog at each stage, day by day over the last month, for the orders open today. */
+  backlogHistory: BacklogPoint[];
+  /** Std-hours queued per stage against the pace it earns, the capacity set and the hours logged. */
+  load: { stages: StageLoad[]; windowDays: number; uncoveredOrders: number };
 }
+
+const HISTORY_DAYS = 30; // calendar days the backlog curve covers
 
 const TRAIL_DAYS = 14; // calendar days behind today the pace is read over
 
@@ -45,7 +52,7 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
   const monthLabel = currentMonthLabel(now);
   const trailStart = new Date(today.getTime() - TRAIL_DAYS * 86400000);
 
-  const [tracker, { byMo: etas }, otd, holidays, odooRows, materialRows, hoursToday, finishedRows] = await Promise.all([
+  const [tracker, { byMo: etas }, otd, holidays, odooRows, materialRows, hoursToday, finishedRows, etaBase, capacity, loggedHours] = await Promise.all([
     getMasterTracker(),
     getOrderEtas(),
     getOtdStats(),
@@ -57,8 +64,16 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
       where: { date: { gte: trailStart, lt: today }, dept: { in: ["Painting", "ShotBlast"] }, ...ledgerItemWhere(line) },
       select: { qty: true },
     }),
+    getEtaBase(),
+    getStageCapacity(),
+    prisma.deptDayHours.findMany({ where: { date: { gte: trailStart, lt: today } }, select: { dept: true, hours: true, date: true } }),
   ]);
 
+  const openMos = tracker.filter((r) => r.status === "open").map((r) => r.mo);
+  const ledger = openMos.length === 0 ? [] : await prisma.handoverEntry.findMany({
+    where: { mo: { in: openMos }, ...ledgerItemWhere(line) },
+    select: { mo: true, item: true, dept: true, date: true, qty: true },
+  });
   const rows = tracker.map((r) => ({
     mo: r.mo, bom: r.bom, soi: r.soi, customer: r.customer, required: r.required, complete: r.complete,
     status: r.status, urgent: r.urgent, priority: r.priority, onHold: r.hold.onHold, months: r.months, items: r.items,
@@ -76,6 +91,28 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
   for (const a of all) attentionCounts[a.kind] += 1;
 
   const openOdoo = odooRows.filter((o) => !isDoneStatus(o.status));
+
+  // load: the ETA's jobs already carry the std-hours each open order still
+  // owes every stage (held orders and orders with no standard times excluded)
+  const queued = { cut: 0, weld: 0, finish: 0 };
+  for (const j of etaBase.jobs) { queued.cut += j.hours.cut; queued.weld += j.hours.weld; queued.finish += j.hours.finish; }
+  const jobMos = new Set(etaBase.jobs.map((j) => j.mo));
+  const uncoveredOrders = rows.filter((r) => r.status === "open" && !r.onHold && !jobMos.has(r.mo)).length;
+  const capOf = (depts: string[]) => { const v = depts.map((d) => capacity[d]).filter((x): x is number => typeof x === "number"); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
+  const loggedOf = (depts: string[]) => {
+    const rows = loggedHours.filter((h) => depts.includes(h.dept));
+    if (rows.length === 0 || windowDays === 0) return null;
+    return rows.reduce((s, h) => s + h.hours, 0) / windowDays;
+  };
+  const load = {
+    windowDays: etaBase.windowDays,
+    uncoveredOrders,
+    stages: [
+      stageLoadOf("cut", queued.cut, etaBase.rates.cut, capOf(["Cut"]), loggedOf(["Cut"])),
+      stageLoadOf("weld", queued.weld, etaBase.rates.weld, capOf(["Welding"]), loggedOf(["Welding"])),
+      stageLoadOf("finish", queued.finish, etaBase.rates.finish, capOf(["ShotBlast", "Painting"]), loggedOf(["ShotBlast", "Painting"])),
+    ],
+  };
   const shiftDepts = [["Cut", "Fabrication"], ["Welding", "Welding"], ["ShotBlast", "Shot blast"], ["Painting", "Painting"]] as const;
 
   return {
@@ -96,5 +133,12 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
       notNested: materialRows.filter((m) => m.sheetsUsed === null).length,
     },
     shifts: shiftDepts.map(([dept, label]) => ({ dept, label, hours: hoursToday.find((h) => h.dept === dept)?.hours ?? null })),
+    backlogHistory: backlogSeries(
+      rows,
+      ledger.map((e) => ({ mo: e.mo, item: e.item, dept: e.dept, dateISO: toISODate(e.date), qty: e.qty })),
+      toISODate(new Date(today.getTime() - (HISTORY_DAYS - 1) * 86400000)),
+      todayISO
+    ),
+    load,
   };
 }

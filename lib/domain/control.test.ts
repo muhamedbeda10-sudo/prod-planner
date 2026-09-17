@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionOf, backlogOf, bottleneckOf, deliveredUnitsOf, paceOf, piecesOf, planSummaryOf, workingDaysBetween, workingDaysLeft, type ControlRow } from "./control";
+import { attentionOf, backlogOf, backlogSeries, bottleneckOf, deliveredUnitsOf, paceOf, piecesOf, planSummaryOf, stageLoadOf, workingDaysBetween, workingDaysLeft, type ControlRow } from "./control";
 
 const it6 = (v: Partial<ControlRow["items"]["CF"]> = {}) => ({ cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true, ...v });
 const row = (over: Partial<ControlRow> = {}): ControlRow => ({
@@ -80,5 +80,43 @@ describe("attentionOf", () => {
     const etas = new Map(rows.map((r) => [r.mo, eta({ blockedBy: "Cut" })]));
     expect(attentionOf(rows, etas, "2026-09-17", 5)).toHaveLength(5);
     expect(attentionOf(rows, etas, "2026-09-17", 5)[0].kind).toBe("blocked");
+  });
+});
+
+describe("backlogSeries", () => {
+  const rows = [row({ mo: "A", required: 10, items: { CF: it6(), TC: it6(), TN: it6({ excluded: true }), CB: it6({ excluded: true }), AR: it6({ eligible: false }), MB: it6({ eligible: false }) } })];
+  const led = (mo: string, item: string, dept: string, dateISO: string, qty: number) => ({ mo, item, dept, dateISO, qty });
+  it("walks the ledger day by day, from what stood before the window, capped at the need", () => {
+    const ledger = [
+      led("A", "CF", "Cut", "2026-09-01", 6), // before the window
+      led("A", "CF", "Cut", "2026-09-11", 14), // 20 cut — capped at 10
+      led("A", "CF", "Welding", "2026-09-11", 3),
+      led("A", "CF", "ShotBlast", "2026-09-12", 2), // the core finishes at shot blast
+      led("A", "CF", "Painting", "2026-09-12", 5), // not the core's finishing — ignored
+      led("A", "TC", "Cut", "2026-09-12", 4),
+      led("A", "TC", "Painting", "2026-09-12", 1), // ahead of its welding — still capped at need, backlog never negative
+      led("B", "CF", "Cut", "2026-09-12", 9), // an order not open — ignored
+    ];
+    const s = backlogSeries(rows, ledger, "2026-09-10", "2026-09-12");
+    expect(s.map((p) => p.dateISO)).toEqual(["2026-09-10", "2026-09-11", "2026-09-12"]);
+    expect(s[0]).toMatchObject({ fab: 14, weld: 6, finish: 0, deliver: 0 }); // 6 cut of 20 needed
+    expect(s[1]).toMatchObject({ fab: 10, weld: 7, finish: 3, deliver: 0 }); // CF 10 cut, 3 welded
+    // TC 4 cut (14 cut of 20); CF 2 shot blasted + TC 1 painted = 3 finished with only 3 welded → nothing waits for finishing, 3 wait for delivery
+    expect(s[2]).toMatchObject({ fab: 6, weld: 11, finish: 0, deliver: 3 });
+  });
+  it("is the backlog card on its last day", () => {
+    const ledger = [led("A", "CF", "Cut", "2026-09-01", 10), led("A", "CF", "Welding", "2026-09-02", 4)];
+    const last = backlogSeries(rows, ledger, "2026-09-10", "2026-09-10")[0];
+    const today = backlogOf(piecesOf([row({ mo: "A", required: 10, items: { ...rows[0].items, CF: it6({ cut: 10, weld: 4 }) } })]));
+    expect({ fab: last.fab, weld: last.weld, finish: last.finish, deliver: last.deliver }).toEqual(today);
+  });
+});
+
+describe("stageLoadOf", () => {
+  it("turns queued hours into days of work and utilisation", () => {
+    const l = stageLoadOf("cut", 480, 60, 80, 96);
+    expect(l.daysOfWork).toBe(8);
+    expect(l.utilisation).toBe(0.75);
+    expect(stageLoadOf("weld", 100, 0, null, null)).toMatchObject({ daysOfWork: null, utilisation: null });
   });
 });
