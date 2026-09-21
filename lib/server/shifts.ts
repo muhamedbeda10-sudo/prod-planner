@@ -8,7 +8,8 @@ import { isFridayISO, weekDaysISO, weekStartISO, type ShiftWeek, type WeekDayCel
 import { SHIFT_DEPTS } from "@/lib/domain/shifts";
 import { loadHolidays } from "./loads";
 import { getMachinesFor, type MachineDTO } from "./machines";
-import { getWorkersFor } from "./workers";
+import { getRosterFor, type WorkerDTO } from "./workers";
+import { sectionDept, sectionLabel } from "@/lib/domain/tanks";
 import { getStageCapacity } from "./standardTimes";
 
 // One department's day on the shift log: its workers joined with what was
@@ -22,6 +23,10 @@ export interface ShiftLineDTO {
   empId: string;
   name: string;
   jobTitle: string | null;
+  /** The section(s) of this department he is registered in — "Fin Folding", "Bending TX". */
+  section: string | null;
+  /** Away on vacation on this roster's day as of today — absent unless the supervisor says otherwise. */
+  onVacation: boolean;
   present: boolean;
   shift: ShiftCode;
   overtimeH: number;
@@ -59,7 +64,7 @@ const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 export async function getShiftDay(dateISO: string, dept: ShiftDept): Promise<ShiftDayData> {
   const date = dayOf(dateISO);
   const [hours, [workers, machines, rows, downtime, capacity]] = await Promise.all([getShiftHours(), Promise.all([
-    getWorkersFor(dept),
+    getRosterFor(dept),
     MACHINE_DEPTS.includes(dept) ? getMachinesFor(dept) : Promise.resolve([] as MachineDTO[]),
     prisma.shiftEntry.findMany({ where: { date, dept } }),
     MACHINE_DEPTS.includes(dept)
@@ -71,13 +76,16 @@ export async function getShiftDay(dateISO: string, dept: ShiftDept): Promise<Shi
   // a worker retired since the day was recorded still shows on that day
   const extra = rows.filter((r) => !workers.some((w) => w.id === r.workerId)).map((r) => r.workerId);
   const retired = extra.length ? await prisma.worker.findMany({ where: { id: { in: extra } } }) : [];
-  const all = [...workers, ...retired.map((w) => ({ id: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle }))];
+  const all: Pick<WorkerDTO, "id" | "empId" | "name" | "jobTitle" | "sections" | "onVacation">[] = [...workers, ...retired.map((w) => ({ id: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle, sections: [], onVacation: false }))];
 
   const lines: ShiftLineDTO[] = all.map((w) => {
     const r = byWorker.get(w.id);
+    const section = w.sections.filter((c) => (sectionDept(c) as string) === dept).map(sectionLabel).join(" · ") || null;
     return {
-      workerId: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle,
-      present: r?.present ?? true,
+      workerId: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle, section,
+      // no record yet: present, unless he is away on vacation
+      present: r?.present ?? !w.onVacation,
+      onVacation: w.onVacation,
       shift: r && isShiftCode(r.shift) ? r.shift : DEFAULT_SHIFT,
       overtimeH: r?.overtimeH ?? 0,
       machineId: r?.machineId ?? null,

@@ -183,6 +183,8 @@ export function ShiftLog({ data, history, canEdit, today, canSetHours = false }:
                         <span className="inline-flex items-baseline gap-2">
                           <span className="font-bold">{w.name}</span>
                           <span className="text-xs text-muted ltr tabnum">{w.empId}</span>
+                          {w.section && <span className="pill pill-muted">{w.section}</span>}
+                          {w.onVacation && <span className="pill pill-warn" title="On vacation — absent unless ticked">vacation</span>}
                           {w.jobTitle && <span className="text-xs text-muted">{w.jobTitle}</span>}
                         </span>
                       </td>

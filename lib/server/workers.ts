@@ -1,6 +1,10 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { WORKER_DEPTS, isWorkerDept, normalizeEmpId, type WorkerDept } from "@/lib/domain/tanks";
+import { normalizeEmpId, sectionDept, type WorkerDept, type WorkerSection } from "@/lib/domain/tanks";
+import { factoryDayISO, toISODate } from "@/lib/domain/dates";
+import { parseWorkerSections, serializeWorkerDepts } from "@/lib/domain/workers";
+
+export { parseWorkerSections, serializeWorkerDepts };
 
 // The shop-floor people credited with a tank operation. They are NOT app
 // accounts — a welder rarely has a login, but his name has to end up on the
@@ -14,38 +18,27 @@ export interface WorkerDTO {
   jobTitle: string | null;
   /** The welder's stamp — the letter he punches into every tank he welds. */
   stamp: string | null;
+  /** The sections the man is registered in (Laser Cutting TX, Welding USS/LV …). */
+  sections: WorkerSection[];
+  /** The departments those sections record on — what the dropdowns and the shift log ask for. */
   depts: WorkerDept[];
   active: boolean;
-}
-
-/** Parse the stored CSV, dropping anything that is not a known department. */
-export function parseWorkerDepts(csv: string | null | undefined): WorkerDept[] {
-  const seen = new Set<string>();
-  const out: WorkerDept[] = [];
-  for (const raw of String(csv ?? "").split(",")) {
-    const d = raw.trim();
-    if (isWorkerDept(d) && !seen.has(d)) {
-      seen.add(d);
-      out.push(d);
-    }
-  }
-  return out;
-}
-
-/** Serialize a chosen set of departments back to the stored CSV, in the fixed
- *  order of WORKER_DEPTS so the value is stable however the form was ticked. */
-export function serializeWorkerDepts(depts: Iterable<string>): string {
-  const chosen = new Set([...depts].map((d) => d.trim()));
-  return WORKER_DEPTS.filter((d) => chosen.has(d)).join(",");
+  /** ISO day he is away until (inclusive), null when at work. */
+  vacationUntil: string | null;
+  /** Away today — the column on the workers page, absent by default on the shift log. */
+  onVacation: boolean;
 }
 
 function toDTO(w: {
   id: number; empId: string; name: string; jobTitle: string | null; stamp: string | null;
-  depts: string; active: boolean;
+  depts: string; active: boolean; vacationUntil: Date | null;
 }): WorkerDTO {
+  const sections = parseWorkerSections(w.depts);
+  const vacationUntil = w.vacationUntil ? toISODate(w.vacationUntil) : null;
   return {
     id: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle, stamp: w.stamp,
-    depts: parseWorkerDepts(w.depts), active: w.active,
+    sections, depts: [...new Set(sections.map(sectionDept))], active: w.active,
+    vacationUntil, onVacation: vacationUntil !== null && vacationUntil >= factoryDayISO(new Date()),
   };
 }
 
@@ -62,6 +55,13 @@ export async function getAllWorkers(): Promise<WorkerDTO[]> {
  *  Deactivated workers stay on the tanks they already made; they just stop
  *  being offered for new work. */
 export async function getWorkersFor(dept: WorkerDept): Promise<WorkerDTO[]> {
+  const rows = await prisma.worker.findMany({ where: { active: true }, orderBy: { empId: "asc" } });
+  return rows.map(toDTO).filter((w) => w.depts.includes(dept) && !w.onVacation);
+}
+
+/** The ACTIVE workers of one department INCLUDING those on vacation — the
+ *  shift roster lists them (absent by default) so the day still adds up. */
+export async function getRosterFor(dept: WorkerDept): Promise<WorkerDTO[]> {
   const rows = await prisma.worker.findMany({ where: { active: true }, orderBy: { empId: "asc" } });
   return rows.map(toDTO).filter((w) => w.depts.includes(dept));
 }

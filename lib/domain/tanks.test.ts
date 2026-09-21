@@ -174,5 +174,6 @@ describe("guards", () => {
     expect(isWorkerDept("LeakTest")).toBe(true);
     expect(isWorkerDept("Cut")).toBe(true);
     expect(isWorkerDept("Oven")).toBe(false);
+    expect(isWorkerDept("WeldingLV")).toBe(true);
   });
 });
