@@ -319,15 +319,21 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
                 {g.sections.map((sec) => (
                   <DeptColumn key={sec.code} title={sec.label} count={activeCount(sec.list)} workers={sec.list} selectedId={selectedId} onPick={setSelectedId} />
                 ))}
-                {g.key === "Shared" && (
-                  <DeptColumn title="On vacation" count={away.length} workers={away} selectedId={selectedId} onPick={setSelectedId} tone="warn" />
-                )}
-                {g.key === "Shared" && unassigned.length > 0 && (
-                  <DeptColumn title="No section" count={activeCount(unassigned)} workers={unassigned} selectedId={selectedId} onPick={setSelectedId} />
-                )}
               </div>
             </section>
           ))}
+          <section>
+            <h2 className="flex items-baseline gap-2">
+              Away
+              <span className="text-sm font-normal text-muted tabnum">{away.length} on vacation</span>
+            </h2>
+            <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]">
+              <DeptColumn title="On vacation" count={away.length} workers={away} selectedId={selectedId} onPick={setSelectedId} tone="warn" />
+              {unassigned.length > 0 && (
+                <DeptColumn title="No section" count={activeCount(unassigned)} workers={unassigned} selectedId={selectedId} onPick={setSelectedId} />
+              )}
+            </div>
+          </section>
         </>
       )}
     </div>

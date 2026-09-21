@@ -67,34 +67,30 @@ export function isWorkerDept(x: string): x is WorkerDept {
   return (WORKER_DEPTS as readonly string[]).includes(x);
 }
 
-/** The three parts of the workers list: the transformer line, the LV panels
- *  line, and what serves both. */
+/** The two parts of the workers list: the transformer line and the LV panels line. */
 export const WORKER_GROUPS = [
   { key: "TR", label: "Transformers" },
   { key: "LV", label: "LV panels" },
-  { key: "Shared", label: "Shared" },
 ] as const;
 export type WorkerGroup = (typeof WORKER_GROUPS)[number]["key"];
 
 /** The sections people are registered in — the plant's own names, in the
- *  order they are listed on the floor. Each belongs to one part of the list
- *  and rolls up to the department the app records on: a laser operator, a
- *  bender and a fin folder are all "Cut" to the worklists and the shift log. */
+ *  order they are listed on the floor. Each belongs to one line and rolls up
+ *  to the department the app records on: a laser operator, a bender and a
+ *  fin folder are all "Cut" to the worklists and the shift log. */
 export const WORKER_SECTIONS = [
   { code: "LaserCutTX", label: "Laser Cutting TX", group: "TR", dept: "Cut" },
   { code: "BendingTX", label: "Bending TX", group: "TR", dept: "Cut" },
   { code: "Channels", label: "Channels Fabrication", group: "TR", dept: "Cut" },
   { code: "Fins", label: "Fin Folding", group: "TR", dept: "Cut" },
   { code: "WeldingTX", label: "Welding TX", group: "TR", dept: "Welding" },
-  { code: "LeakTest", label: "Leak Test", group: "TR", dept: "LeakTest" },
+  { code: "ShotBlast", label: "Shot Blasting", group: "TR", dept: "ShotBlast" },
   { code: "PaintingTX", label: "Transformer Painting", group: "TR", dept: "Painting" },
-  { code: "Quality", label: "Quality", group: "TR", dept: "Quality" },
   { code: "LaserCutLV", label: "Laser Cutting LV", group: "LV", dept: "Punching" },
   { code: "Punching", label: "Punching", group: "LV", dept: "Punching" },
   { code: "BendingLV", label: "Bending LV", group: "LV", dept: "Bending" },
   { code: "WeldingLV", label: "Welding USS/LV", group: "LV", dept: "WeldingLV" },
   { code: "PaintingLV", label: "USS Painting", group: "LV", dept: "PaintingLV" },
-  { code: "ShotBlast", label: "Shot Blasting", group: "Shared", dept: "ShotBlast" },
 ] as const satisfies readonly { code: string; label: string; group: WorkerGroup; dept: WorkerDept }[];
 export type WorkerSection = (typeof WORKER_SECTIONS)[number]["code"];
 
