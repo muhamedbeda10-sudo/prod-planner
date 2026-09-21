@@ -191,9 +191,6 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
     floor: {
       attendance: shiftDepts.map(([dept, label]) => {
         const rows = shiftRows.filter((s) => s.dept === dept);
-        // a day typed on the quick grid has a head-count and no roster rows
-        const quick = rows.length === 0 ? hoursToday.find((h) => h.dept === dept && h.source === "quick" && h.people) : undefined;
-        if (quick) return { dept, label, present: quick.people!, logged: quick.people! };
         return { dept, label, present: rows.filter((s) => s.present).length, logged: rows.length };
       }),
       downtime: { hours: downtimeRows.reduce((s, d) => s + d.hours, 0), machines: new Set(downtimeRows.map((d) => d.machineId)).size },

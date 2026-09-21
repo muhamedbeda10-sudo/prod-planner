@@ -6,9 +6,7 @@ import { requirePerm } from "@/lib/server/auth";
 import { shiftPermKey } from "@/lib/domain/permissions";
 import { parseISODate } from "@/lib/domain/dates";
 import { DEFAULT_SHIFT, isShiftCode, isShiftDept, MACHINE_DEPTS, type ShiftDept } from "@/lib/domain/shifts";
-import { syncDeptDayHours, writeQuickCell } from "@/lib/server/shifts";
-import { parseQuickCell } from "@/lib/domain/quickHours";
-import { getShiftHours } from "@/lib/server/data";
+import { syncDeptDayHours } from "@/lib/server/shifts";
 
 // The shift log's writes. A day is saved whole: every worker of the
 // department gets a row (present or not), so the day's man-hours are a
@@ -141,21 +139,4 @@ export async function deleteDowntime(fd: FormData): Promise<ShiftActionResult> {
   await prisma.machineDowntime.delete({ where: { id } });
   revalidate();
   return { ok: true };
-}
-
-/** The quick entry: one cell of the week grid — a day, a department, heads
- *  present and hours each. Blank heads clear the day. */
-export async function saveQuickHours(fd: FormData): Promise<ShiftActionResult & { hours?: number }> {
-  const day = readDay(fd);
-  if ("error" in day) return { ok: false, error: day.error };
-  const { date, dept } = day;
-  const guard = await requirePerm(shiftPermKey(dept));
-  if (guard.error) return { ok: false, error: guard.error };
-  const hrs = await getShiftHours();
-  const cell = parseQuickCell({ people: fd.get("people"), hoursEach: fd.get("hoursEach") }, hrs.short);
-  if (cell && "error" in cell) return { ok: false, error: cell.error };
-  const res = await writeQuickCell(date, dept, cell, guard.user?.name ?? null);
-  if ("error" in res) return { ok: false, error: res.error };
-  revalidate();
-  return { ok: true, hours: res.hours };
 }
