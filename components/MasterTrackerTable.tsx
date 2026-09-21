@@ -273,7 +273,7 @@ export function MasterTrackerTable({
   const [q, setQ] = useSavedFilter("tracker.q");
   const [progress, setProgress] = useSavedFilter("tracker.progress");
   const [urgent, setUrgent] = useSavedFilter("tracker.urgent");
-  const [status, setStatus] = useSavedFilter("tracker.status", "open"); // lifecycle: closed orders are hidden by default
+  const [status, setStatus] = useSavedFilter("tracker.status"); // lifecycle: every order shows unless the planner narrows it
   const [month, setMonth] = useSavedFilter("tracker.month"); // monthly plan (import source), "" = all months
   // stage scope: only the picked depts' columns per item (one or SEVERAL), and
   // the summary cards report the furthest picked stage — the wide table
@@ -375,7 +375,7 @@ export function MasterTrackerTable({
     });
   }, [monthRows, q, progress, urgent, status]);
 
-  const hasActive = !!(q || progress || urgent || month || scoped || status !== "open");
+  const hasActive = !!(q || progress || urgent || month || scoped || status);
 
   // table shape under the stage filter: only the picked columns per item, no
   // Complete/Left/Achv
@@ -648,7 +648,7 @@ export function MasterTrackerTable({
         ))}
       </div>
 
-      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus("open"); setMonth(""); setStage(""); }} hasActive={hasActive}>
+      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus(""); setMonth(""); setStage(""); }} hasActive={hasActive}>
         {viewTabs}
         <PlanViewToggle value="monthly" />
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / Customer / KVA…" />
