@@ -4,11 +4,12 @@ import { prisma } from "@/lib/db";
 import { toISODate } from "@/lib/domain/dates";
 import { DEFAULT_SHIFT, MACHINE_DEPTS, dayTotals, isShiftCode, lineHours, type DayTotals, type ShiftCode, type ShiftDept, type ShiftHours } from "@/lib/domain/shifts";
 import { getShiftHours } from "./data";
-import { isFridayISO, quickHours, weekDaysISO, weekStartISO, type QuickDayCell, type QuickWeek } from "@/lib/domain/quickHours";
+import { isFridayISO, weekDaysISO, weekStartISO, type ShiftWeek, type WeekDayCell } from "@/lib/domain/quickHours";
 import { SHIFT_DEPTS } from "@/lib/domain/shifts";
 import { loadHolidays } from "./loads";
 import { getMachinesFor, type MachineDTO } from "./machines";
-import { getWorkersFor } from "./workers";
+import { getRosterFor, type WorkerDTO } from "./workers";
+import { sectionDept, sectionLabel } from "@/lib/domain/tanks";
 import { getStageCapacity } from "./standardTimes";
 
 // One department's day on the shift log: its workers joined with what was
@@ -22,6 +23,10 @@ export interface ShiftLineDTO {
   empId: string;
   name: string;
   jobTitle: string | null;
+  /** The section(s) of this department he is registered in — "Fin Folding", "Bending TX". */
+  section: string | null;
+  /** Away on vacation on this roster's day as of today — absent unless the supervisor says otherwise. */
+  onVacation: boolean;
   present: boolean;
   shift: ShiftCode;
   overtimeH: number;
@@ -59,7 +64,7 @@ const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 export async function getShiftDay(dateISO: string, dept: ShiftDept): Promise<ShiftDayData> {
   const date = dayOf(dateISO);
   const [hours, [workers, machines, rows, downtime, capacity]] = await Promise.all([getShiftHours(), Promise.all([
-    getWorkersFor(dept),
+    getRosterFor(dept),
     MACHINE_DEPTS.includes(dept) ? getMachinesFor(dept) : Promise.resolve([] as MachineDTO[]),
     prisma.shiftEntry.findMany({ where: { date, dept } }),
     MACHINE_DEPTS.includes(dept)
@@ -71,13 +76,16 @@ export async function getShiftDay(dateISO: string, dept: ShiftDept): Promise<Shi
   // a worker retired since the day was recorded still shows on that day
   const extra = rows.filter((r) => !workers.some((w) => w.id === r.workerId)).map((r) => r.workerId);
   const retired = extra.length ? await prisma.worker.findMany({ where: { id: { in: extra } } }) : [];
-  const all = [...workers, ...retired.map((w) => ({ id: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle }))];
+  const all: Pick<WorkerDTO, "id" | "empId" | "name" | "jobTitle" | "sections" | "onVacation">[] = [...workers, ...retired.map((w) => ({ id: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle, sections: [], onVacation: false }))];
 
   const lines: ShiftLineDTO[] = all.map((w) => {
     const r = byWorker.get(w.id);
+    const section = w.sections.filter((c) => (sectionDept(c) as string) === dept).map(sectionLabel).join(" · ") || null;
     return {
-      workerId: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle,
-      present: r?.present ?? true,
+      workerId: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle, section,
+      // no record yet: present, unless he is away on vacation
+      present: r?.present ?? !w.onVacation,
+      onVacation: w.onVacation,
       shift: r && isShiftCode(r.shift) ? r.shift : DEFAULT_SHIFT,
       overtimeH: r?.overtimeH ?? 0,
       machineId: r?.machineId ?? null,
@@ -112,71 +120,36 @@ export async function syncDeptDayHours(tx: Prisma.TransactionClient, date: Date,
   return hours;
 }
 
-// ---- the quick entry: a week of heads × hours, every department at once ----
+// ---- the week summary: what the rosters summed, every department at once ----
 
-export interface QuickWeekData {
+export interface ShiftWeekData {
   startISO: string;
   /** The seven days, Saturday first; Friday is shown but off. */
   days: { dateISO: string; off: boolean; holiday: string | null; future: boolean }[];
-  week: QuickWeek;
-  /** The hours a head is worth unless typed — the short shift from Settings. */
-  defaultHours: number;
-  /** The last head-count and hours typed per department — the placeholders. */
-  last: Record<ShiftDept, { people: number; hoursEach: number } | null>;
+  week: ShiftWeek;
 }
 
-export async function getQuickWeek(anyDayISO: string, todayISO: string): Promise<QuickWeekData> {
+export async function getShiftWeek(anyDayISO: string, todayISO: string): Promise<ShiftWeekData> {
   const startISO = weekStartISO(anyDayISO);
   const dayISOs = weekDaysISO(startISO);
-  const from = dayOf(dayISOs[0]);
-  const to = dayOf(dayISOs[6]);
-  const [hrs, rows, holidays, lastRows] = await Promise.all([
-    getShiftHours(),
-    prisma.deptDayHours.findMany({ where: { date: { gte: from, lte: to } } }),
+  const [rows, holidays] = await Promise.all([
+    prisma.deptDayHours.findMany({ where: { date: { gte: dayOf(dayISOs[0]), lte: dayOf(dayISOs[6]) } } }),
     loadHolidays(),
-    prisma.deptDayHours.findMany({ where: { source: "quick", people: { not: null } }, orderBy: { date: "desc" }, take: 40, select: { dept: true, people: true, hoursEach: true } }),
   ]);
   const holidayByISO = new Map(holidays.map((h) => [toISODate(h.date), h.name ?? "holiday"]));
-  const empty = (): QuickDayCell => ({ people: null, hoursEach: null, hours: 0, source: null });
-  const week: QuickWeek = Object.fromEntries(dayISOs.map((d) => [d, Object.fromEntries(SHIFT_DEPTS.map((x) => [x, empty()])) as Record<ShiftDept, QuickDayCell>]));
+  const empty = (): WeekDayCell => ({ people: null, hours: 0, recorded: false });
+  const week: ShiftWeek = Object.fromEntries(dayISOs.map((d) => [d, Object.fromEntries(SHIFT_DEPTS.map((x) => [x, empty()])) as Record<ShiftDept, WeekDayCell>]));
   for (const r of rows) {
     const iso = toISODate(r.date);
     const dept = r.dept as ShiftDept;
     if (!week[iso] || !SHIFT_DEPTS.includes(dept)) continue;
-    week[iso][dept] = {
-      people: r.people,
-      hoursEach: r.hoursEach,
-      hours: r.hours,
-      source: r.source === "quick" ? "quick" : "roster",
-    };
-  }
-  const last = Object.fromEntries(SHIFT_DEPTS.map((d) => [d, null])) as QuickWeekData["last"];
-  for (const r of lastRows) {
-    const dept = r.dept as ShiftDept;
-    if (SHIFT_DEPTS.includes(dept) && !last[dept] && r.people) last[dept] = { people: r.people, hoursEach: r.hoursEach ?? hrs.short };
+    week[iso][dept] = { people: r.people, hours: r.hours, recorded: true };
   }
   return {
     startISO,
     days: dayISOs.map((d) => ({ dateISO: d, off: isFridayISO(d), holiday: holidayByISO.get(d) ?? null, future: d > todayISO })),
     week,
-    defaultHours: hrs.short,
-    last,
   };
-}
-
-/** Write one quick cell: heads × hours each becomes the day's figure. A day
- *  summed from the roster is left alone — it is edited on the roster. */
-export async function writeQuickCell(date: Date, dept: ShiftDept, cell: { people: number; hoursEach: number } | null, by: string | null): Promise<{ hours: number } | { error: string }> {
-  const existing = await prisma.deptDayHours.findUnique({ where: { date_dept: { date, dept } }, select: { source: true } });
-  if (existing && existing.source !== "quick") return { error: "That day was recorded on the roster — change it there." };
-  if (!cell) {
-    if (existing) await prisma.deptDayHours.delete({ where: { date_dept: { date, dept } } });
-    return { hours: 0 };
-  }
-  const hours = quickHours(cell.people, cell.hoursEach);
-  const data = { hours, people: cell.people, hoursEach: cell.hoursEach, source: "quick", recordedBy: by };
-  await prisma.deptDayHours.upsert({ where: { date_dept: { date, dept } }, create: { date, dept, ...data }, update: data });
-  return { hours };
 }
 
 /** The days a department has recorded, newest first, with their totals — the

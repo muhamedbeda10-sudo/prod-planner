@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { serializeWorkerDepts } from "@/lib/server/workers";
 import { normalizeEmpId } from "@/lib/domain/tanks";
+import { parseISODate } from "@/lib/domain/dates";
 
 // The shop-floor workers list: who can be credited with welding, testing,
 // painting or checking a tank. Deactivating is the way to retire someone —
@@ -16,7 +17,7 @@ export interface WorkerActionResult {
   error?: string;
 }
 
-const PATHS = ["/admin/workers", "/worklist/welding", "/worklist/leak-test", "/worklist/painting"];
+const PATHS = ["/admin/workers", "/worklist/welding", "/worklist/leak-test", "/worklist/painting", "/shifts"];
 
 function revalidateWorkers() {
   for (const p of PATHS) revalidatePath(p);
@@ -29,6 +30,8 @@ function readForm(formData: FormData) {
     jobTitle: String(formData.get("jobTitle") ?? "").trim(),
     stamp: String(formData.get("stamp") ?? "").trim().toUpperCase(),
     depts: serializeWorkerDepts(formData.getAll("depts").map(String)),
+    // blank = at work; a day = away until then, inclusive
+    vacationUntil: parseISODate(String(formData.get("vacationUntil") ?? "")),
   };
 }
 
@@ -36,10 +39,10 @@ export async function createWorker(formData: FormData): Promise<WorkerActionResu
   const guard = await requirePerm("workers.manage");
   if (guard.error) return { ok: false, error: guard.error };
 
-  const { empId, name, jobTitle, stamp, depts } = readForm(formData);
+  const { empId, name, jobTitle, stamp, depts, vacationUntil } = readForm(formData);
   if (!empId) return { ok: false, error: "Enter the worker's ID — it is what the shop floor types." };
   if (!name) return { ok: false, error: "Enter the worker's name." };
-  if (!depts) return { ok: false, error: "Pick at least one stage they work in." };
+  if (!depts) return { ok: false, error: "Pick at least one section they work in." };
   if (await prisma.worker.findUnique({ where: { empId } })) {
     return { ok: false, error: `ID ${empId} is already taken by another worker.` };
   }
@@ -48,7 +51,7 @@ export async function createWorker(formData: FormData): Promise<WorkerActionResu
   }
 
   await prisma.worker.create({
-    data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts },
+    data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts, vacationUntil },
   });
   revalidateWorkers();
   return { ok: true };
@@ -60,10 +63,10 @@ export async function updateWorker(formData: FormData): Promise<WorkerActionResu
 
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid worker." };
-  const { empId, name, jobTitle, stamp, depts } = readForm(formData);
+  const { empId, name, jobTitle, stamp, depts, vacationUntil } = readForm(formData);
   if (!empId) return { ok: false, error: "Enter the worker's ID — it is what the shop floor types." };
   if (!name) return { ok: false, error: "Enter the worker's name." };
-  if (!depts) return { ok: false, error: "Pick at least one stage they work in." };
+  if (!depts) return { ok: false, error: "Pick at least one section they work in." };
 
   const idClash = await prisma.worker.findUnique({ where: { empId } });
   if (idClash && idClash.id !== id) return { ok: false, error: `ID ${empId} is already taken by another worker.` };
@@ -72,7 +75,7 @@ export async function updateWorker(formData: FormData): Promise<WorkerActionResu
 
   await prisma.worker.update({
     where: { id },
-    data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts },
+    data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts, vacationUntil },
   });
   revalidateWorkers();
   return { ok: true };
@@ -117,5 +120,20 @@ export async function deleteWorker(formData: FormData): Promise<WorkerActionResu
 
   await prisma.worker.delete({ where: { id } });
   revalidateWorkers();
+  return { ok: true };
+}
+
+/** Send a worker on vacation until a day (inclusive), or bring him back (no day). */
+export async function setWorkerVacation(formData: FormData): Promise<WorkerActionResult> {
+  const guard = await requirePerm("workers.manage");
+  if (guard.error) return { ok: false, error: guard.error };
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid worker." };
+  const raw = String(formData.get("until") ?? "").trim();
+  const until = raw ? parseISODate(raw) : null;
+  if (raw && !until) return { ok: false, error: "Pick the day he is back." };
+  await prisma.worker.update({ where: { id }, data: { vacationUntil: until } });
+  revalidateWorkers();
+  revalidatePath("/shifts");
   return { ok: true };
 }

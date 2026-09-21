@@ -57,12 +57,63 @@ export function tankEventLook(kind: string): { label: string; tone: string } {
 }
 
 /** The departments a worker can be credited in — the dropdowns' source, and
- *  the shift log's: a worker is counted on the days of every department here. */
-export const WORKER_DEPTS = ["Cut", "Welding", "ShotBlast", "LeakTest", "Painting", "Quality"] as const;
+ *  the shift log's: a worker is counted on the days of every department here.
+ *  A department is the coarse stage the app records on; the SECTIONS below
+ *  are where the people are actually registered. */
+export const WORKER_DEPTS = ["Cut", "Welding", "ShotBlast", "LeakTest", "Painting", "Quality", "Punching", "Bending", "WeldingLV", "PaintingLV"] as const;
 export type WorkerDept = (typeof WORKER_DEPTS)[number];
 
 export function isWorkerDept(x: string): x is WorkerDept {
   return (WORKER_DEPTS as readonly string[]).includes(x);
+}
+
+/** The two parts of the workers list: the transformer line and the LV panels line. */
+export const WORKER_GROUPS = [
+  { key: "TR", label: "Transformers" },
+  { key: "LV", label: "LV panels" },
+] as const;
+export type WorkerGroup = (typeof WORKER_GROUPS)[number]["key"];
+
+/** The sections people are registered in — the plant's own names, in the
+ *  order they are listed on the floor. Each belongs to one line and rolls up
+ *  to the department the app records on: a laser operator, a bender and a
+ *  fin folder are all "Cut" to the worklists and the shift log. */
+export const WORKER_SECTIONS = [
+  { code: "LaserCutTX", label: "Laser Cutting TX", group: "TR", dept: "Cut" },
+  { code: "BendingTX", label: "Bending TX", group: "TR", dept: "Cut" },
+  { code: "Channels", label: "Channels Fabrication", group: "TR", dept: "Cut" },
+  { code: "Fins", label: "Fin Folding", group: "TR", dept: "Cut" },
+  { code: "WeldingTX", label: "Welding TX", group: "TR", dept: "Welding" },
+  { code: "ShotBlast", label: "Shot Blasting", group: "TR", dept: "ShotBlast" },
+  { code: "PaintingTX", label: "Transformer Painting", group: "TR", dept: "Painting" },
+  { code: "LaserCutLV", label: "Laser Cutting LV", group: "LV", dept: "Punching" },
+  { code: "Punching", label: "Punching", group: "LV", dept: "Punching" },
+  { code: "BendingLV", label: "Bending LV", group: "LV", dept: "Bending" },
+  { code: "WeldingLV", label: "Welding USS/LV", group: "LV", dept: "WeldingLV" },
+  { code: "PaintingLV", label: "USS Painting", group: "LV", dept: "PaintingLV" },
+] as const satisfies readonly { code: string; label: string; group: WorkerGroup; dept: WorkerDept }[];
+export type WorkerSection = (typeof WORKER_SECTIONS)[number]["code"];
+
+export function isWorkerSection(x: string): x is WorkerSection {
+  return WORKER_SECTIONS.some((s) => s.code === x);
+}
+
+/** Section codes stored before the sections existed — a bare department —
+ *  read as that department's first section, so nobody drops off the list. */
+export const LEGACY_SECTION: Record<string, WorkerSection> = { Cut: "LaserCutTX", Welding: "WeldingTX", Painting: "PaintingTX" };
+
+export function sectionLabel(code: string): string {
+  return WORKER_SECTIONS.find((s) => s.code === code)?.label ?? code;
+}
+
+/** The department a section records on. */
+export function sectionDept(code: WorkerSection): WorkerDept {
+  return WORKER_SECTIONS.find((s) => s.code === code)!.dept;
+}
+
+/** The sections that roll up to one department. */
+export function sectionsOf(dept: WorkerDept): WorkerSection[] {
+  return WORKER_SECTIONS.filter((s) => s.dept === dept).map((s) => s.code);
 }
 
 /** What each status means on the shop floor. */
@@ -94,6 +145,10 @@ export const WORKER_DEPT_LABEL: Record<WorkerDept, string> = {
   LeakTest: "Leak test",
   Painting: "Painting",
   Quality: "Quality",
+  Punching: "LV punching",
+  Bending: "LV bending",
+  WeldingLV: "LV welding",
+  PaintingLV: "LV painting",
 };
 
 /** Normalize a worker's badge number. It is typed by hand on a noisy floor, so

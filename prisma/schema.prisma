@@ -673,8 +673,11 @@ model Worker {
   // man who made it, with or without the app.
   stamp    String?
 
-  depts     String   @default("") // CSV of Cut | Welding | ShotBlast | LeakTest | Painting | Quality
+  depts     String   @default("") // CSV of section codes (lib/domain/tanks.ts WORKER_SECTIONS)
   active    Boolean  @default(true) // inactive workers stay on old records, leave the dropdowns
+  // On vacation until this day (inclusive): absent on the shift log by default
+  // and out of the dropdowns until then. Null = at work.
+  vacationUntil DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
