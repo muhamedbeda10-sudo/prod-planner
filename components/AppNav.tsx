@@ -36,12 +36,12 @@ const WORKLIST_DEPTS = [
   { href: "/worklist/painting", label: "Painting", icon: PowderCoatIcon, perm: "painting.edit" },
 ] as const;
 // The LV panels' four stages, in the order a panel passes them. Punching and
-// bending are the panel's fabrication, so fabrication's permission opens them.
+// bending are the panel's fabrication; each opens on the panels' own key.
 const LV_WORKLIST_DEPTS = [
-  { href: "/worklist/punching", label: "Punching", icon: LaserCutterIcon, perm: "cut.edit" },
-  { href: "/worklist/bending", label: "Bending", icon: LaserCutterIcon, perm: "cut.edit" },
-  { href: "/worklist/welding", label: "Welding", icon: WeldingIcon, perm: "welding.edit" },
-  { href: "/worklist/painting", label: "Painting", icon: PowderCoatIcon, perm: "painting.edit" },
+  { href: "/worklist/punching", label: "Punching", icon: LaserCutterIcon, perm: "lv.punching" },
+  { href: "/worklist/bending", label: "Bending", icon: LaserCutterIcon, perm: "lv.bending" },
+  { href: "/worklist/welding", label: "Welding", icon: WeldingIcon, perm: "lv.welding" },
+  { href: "/worklist/painting", label: "Painting", icon: PowderCoatIcon, perm: "lv.painting" },
 ] as const;
 
 // Tabs after Worklist, ordered by shop-floor flow: work → log → track →
