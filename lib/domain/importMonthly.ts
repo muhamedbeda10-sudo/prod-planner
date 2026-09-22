@@ -106,21 +106,23 @@ export interface ExistingOrderFields {
 }
 
 export interface RevisionRowDiff {
-  /** Changes that WILL be applied (includes a qty INCREASE, never a decrease). */
+  /** Changes that WILL be applied — the qty in either direction included. */
   changes: RevisionChange[];
-  /** A qty DECREASE in the sheet — reported only, applied manually by the planner. */
+  /** A qty DECREASE in the sheet — applied, and listed with what the floor
+   *  already produced so the planner sees what the cut ran into. */
   qtyReduction: { mo: string; from: number; to: number } | null;
-  /** The plan qty to write: the sheet's when it grew, the registry's when it shrank. */
+  /** The plan qty to write: the sheet's. */
   planQty: number;
 }
 
 const T = (v: string | null | undefined) => (v ?? "").trim();
 
 /**
- * Diff one revision row against its existing registry order.
- * Every difference is applied EXCEPT a plan-qty DECREASE: a raised qty is a
- * correction we take automatically, but a lowered one may cancel work already
- * produced — it is only reported, and the planner applies it manually.
+ * Diff one revision row against its existing registry order. Every
+ * difference is applied, the plan qty included whichever way it moved: the
+ * sheet is planning's word and the planner does not want to retype it. A
+ * decrease is still called out on its own, with what the floor already
+ * produced, so a cut that lands under the produced count is seen.
  */
 export function diffRevisionRow(row: MonthlyOrderRow, cur: ExistingOrderFields): RevisionRowDiff {
   const changes: RevisionChange[] = [];
@@ -129,13 +131,11 @@ export function diffRevisionRow(row: MonthlyOrderRow, cur: ExistingOrderFields):
   };
 
   let qtyReduction: RevisionRowDiff["qtyReduction"] = null;
-  let planQty = cur.planQty;
-  if (row.planQty > cur.planQty) {
+  if (row.planQty !== cur.planQty) {
     push("Qty", String(cur.planQty), String(row.planQty));
-    planQty = row.planQty;
-  } else if (row.planQty < cur.planQty) {
-    qtyReduction = { mo: row.mo, from: cur.planQty, to: row.planQty };
+    if (row.planQty < cur.planQty) qtyReduction = { mo: row.mo, from: cur.planQty, to: row.planQty };
   }
+  const planQty = row.planQty;
 
   push("Urgent", cur.urgent ? "Yes" : "No", row.urgent ? "Yes" : "No");
   push("BOM", T(cur.bom), T(row.bom));
