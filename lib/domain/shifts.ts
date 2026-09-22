@@ -40,12 +40,26 @@ export function isShiftCode(x: string): x is ShiftCode {
   return x in SHIFTS;
 }
 
-/** The departments the shift log records, in shop-floor order. */
+/** The transformer departments the shift log records, in shop-floor order —
+ *  the ones the machines list and the calibration know. */
 export const SHIFT_DEPTS = ["Cut", "Welding", "ShotBlast", "Painting"] as const;
 export type ShiftDept = (typeof SHIFT_DEPTS)[number];
 export function isShiftDept(x: string): x is ShiftDept {
   return (SHIFT_DEPTS as readonly string[]).includes(x);
 }
+
+/** Every department the ROSTER lists people for: the transformer four and
+ *  the panels' four. A worker's day is recorded under the department his
+ *  section rolls up to; the section itself is what the roster filters by. */
+export const ROSTER_DEPTS = [...SHIFT_DEPTS, "Punching", "Bending", "WeldingLV", "PaintingLV"] as const;
+export type RosterDept = (typeof ROSTER_DEPTS)[number];
+export function isRosterDept(x: string): x is RosterDept {
+  return (ROSTER_DEPTS as readonly string[]).includes(x);
+}
+export const ROSTER_DEPT_LINE: Record<RosterDept, "TR" | "LV"> = {
+  Cut: "TR", Welding: "TR", ShotBlast: "TR", Painting: "TR",
+  Punching: "LV", Bending: "LV", WeldingLV: "LV", PaintingLV: "LV",
+};
 
 /** The departments whose work runs on machines — the ones whose shift log
  *  asks which machine a worker was on and records downtime. Welding has no

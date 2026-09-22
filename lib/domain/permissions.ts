@@ -41,6 +41,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "shifts.welding", label: "Shift log — Welding", desc: "Record who worked in Welding each day, their shift and overtime" },
       { key: "shifts.shotblast", label: "Shift log — Shot Blast", desc: "Record who worked on the shot-blast cabinets each day, their shift and overtime, and downtime" },
       { key: "shifts.painting", label: "Shift log — Painting", desc: "Record who worked on the paint lines each day, their shift and overtime, and downtime" },
+      { key: "shifts.lv", label: "Shift log — LV panels", desc: "Record who worked on the panels each day (laser, punching, bending, welding, painting), their shift and overtime" },
     ],
   },
   {
@@ -153,6 +154,7 @@ export function trackerPermKey(dept: string): string {
 /** Shift-log department -> its permission key (Cut → shifts.cut, ShotBlast →
  *  shifts.shotblast …). */
 export function shiftPermKey(dept: string): string {
+  if (dept === "Punching" || dept === "Bending" || dept === "WeldingLV" || dept === "PaintingLV") return "shifts.lv";
   return `shifts.${dept.toLowerCase()}`;
 }
 
