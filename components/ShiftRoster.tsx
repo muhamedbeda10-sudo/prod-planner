@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
-import { DEFAULT_SHIFT_HOURS, ROSTER_DEPT_LINE, SHIFT_CODES, dayTotals, lineHours, round1, shiftLabel, type RosterDept, type ShiftCode } from "@/lib/domain/shifts";
-import { WORKER_DEPT_LABEL, WORKER_GROUPS, WORKER_SECTIONS, sectionDept, type WorkerSection } from "@/lib/domain/tanks";
+import { DEFAULT_SHIFT_HOURS, SHIFT_CODES, dayTotals, lineHours, round1, shiftLabel, type RosterDept, type ShiftCode } from "@/lib/domain/shifts";
+import { WORKER_DEPT_LABEL, WORKER_GROUPS, WORKER_SECTIONS } from "@/lib/domain/tanks";
+import { rosterDepts, rosterLineMatches, type RosterFilter } from "@/lib/domain/roster";
 import type { ShiftLineDTO, ShiftRosterData } from "@/lib/server/shifts";
 import { clearShiftDay, saveShiftRoster } from "@/app/shifts/actions";
 import { ShiftHoursForm } from "@/components/ShiftHoursForm";
@@ -63,23 +64,6 @@ export function ShiftDayPicker({ day, today }: { day: string; today: string }) {
   );
 }
 
-/** The filter: everyone, a line, or one section. Kept in the URL so a
- *  supervisor's bookmark opens on his section. */
-export type RosterFilter = "" | "line:TR" | "line:LV" | WorkerSection;
-
-export function rosterDepts(filter: RosterFilter): RosterDept[] {
-  const all = Object.keys(ROSTER_DEPT_LINE) as RosterDept[];
-  if (filter === "") return all;
-  if (filter === "line:TR" || filter === "line:LV") return all.filter((d) => ROSTER_DEPT_LINE[d] === filter.slice(5));
-  return [sectionDept(filter) as RosterDept];
-}
-
-function lineMatches(l: ShiftLineDTO, filter: RosterFilter): boolean {
-  if (filter === "") return true;
-  if (filter === "line:TR" || filter === "line:LV") return ROSTER_DEPT_LINE[l.dept] === filter.slice(5);
-  return l.sections.includes(filter);
-}
-
 type Draft = Pick<ShiftLineDTO, "workerId" | "dept" | "present" | "shift" | "overtimeH" | "note">;
 const toDraft = (l: ShiftLineDTO): Draft => ({ workerId: l.workerId, dept: l.dept, present: l.present, shift: l.shift, overtimeH: l.overtimeH, note: l.note });
 const keyOf = (l: { workerId: number; dept: string }) => `${l.dept}|${l.workerId}`;
@@ -126,7 +110,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
   const needle = q.trim().toLowerCase();
   const shown = useMemo(() => draft.filter((d) => {
     const l = byKey.get(keyOf(d))!;
-    if (!lineMatches(l, filter)) return false;
+    if (!rosterLineMatches(l, filter)) return false;
     if (needle && !`${l.name} ${l.empId} ${l.jobTitle ?? ""}`.toLowerCase().includes(needle)) return false;
     return true;
   }), [draft, byKey, filter, needle]);
