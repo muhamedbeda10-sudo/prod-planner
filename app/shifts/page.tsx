@@ -2,12 +2,12 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { shiftPermKey } from "@/lib/domain/permissions";
 import { ROSTER_DEPTS } from "@/lib/domain/shifts";
-import { isWorkerSection } from "@/lib/domain/tanks";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { getShiftHistory, getShiftRoster } from "@/lib/server/shifts";
 import { PageHeader } from "@/components/ui";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
-import { ShiftDayPicker, ShiftRoster, rosterDepts, type RosterFilter } from "@/components/ShiftRoster";
+import { ShiftDayPicker, ShiftRoster } from "@/components/ShiftRoster";
+import { parseRosterFilter, rosterDepts } from "@/lib/domain/roster";
 
 export const metadata = { title: "Shift log — ATC" };
 export const dynamic = "force-dynamic";
@@ -22,8 +22,7 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
   const sp = await searchParams;
   const today = factoryDayISO(new Date());
   const day = /^\d{4}-\d{2}-\d{2}$/.test(sp.day ?? "") ? sp.day! : today;
-  const sec = sp.sec ?? "";
-  const filter: RosterFilter = sec === "line:TR" || sec === "line:LV" ? sec : isWorkerSection(sec) ? sec : "";
+  const filter = parseRosterFilter(sp.sec);
 
   const [data, history] = await Promise.all([getShiftRoster(day), getShiftHistory(rosterDepts(filter))]);
   const editableDepts = ROSTER_DEPTS.filter((d) => hasPerm(me, shiftPermKey(d)));
