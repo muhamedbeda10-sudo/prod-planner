@@ -507,3 +507,55 @@ export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: str
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
   return { ok: true, closed: done.length, mos: done.map((o) => o.mo) };
 }
+
+// ---- editing an order on the registry ----
+
+/** The registry's own edit: every plan field of one order at once, from the
+ *  row on the Orders Registry. Admin-only like the page. The qty may go down
+ *  here as well — the registry is where planning's word is kept. Fins, colour,
+ *  CRC and SFM are the tracker's columns and are not touched. */
+export async function updateOrder(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const mo = String(formData.get("mo") ?? "").trim();
+  if (!mo) return { ok: false, error: "Missing MO." };
+  const order = await prisma.masterOrder.findUnique({ where: { mo } });
+  if (!order) return { ok: false, error: `MO ${mo} not found.` };
+
+  const text = (k: string, max = 120) => {
+    const v = String(formData.get(k) ?? "").trim();
+    if (v.length > max) throw new Error(`Keep ${k} under ${max} characters.`);
+    return v || null;
+  };
+  try {
+    const bom = String(formData.get("bom") ?? "").trim().toUpperCase();
+    if (!bom) return { ok: false, error: "The BOM cannot be empty." };
+    const planQty = Number(formData.get("planQty"));
+    if (!Number.isInteger(planQty) || planQty < 0) return { ok: false, error: "Plan qty must be a whole number ≥ 0." };
+    const ospEncloser = Number(formData.get("ospEncloser") ?? order.ospEncloser);
+    if (!Number.isInteger(ospEncloser) || ospEncloser < 0) return { ok: false, error: "OSP Encloser must be a whole number ≥ 0." };
+    await prisma.masterOrder.update({
+      where: { mo },
+      data: {
+        bom,
+        planQty,
+        urgent: String(formData.get("urgent") ?? "") === "true",
+        soi: text("soi", 40),
+        customer: text("customer", 80),
+        fgCode: text("fgCode", 40),
+        kva: text("kva", 20),
+        rating: text("rating", 40),
+        colorRal: text("colorRal", 40),
+        remarks: text("remarks", 400),
+        product: text("product", 20),
+        secItem: text("secItem", 40),
+        materialsRemarks: text("materialsRemarks", 400),
+        ospEncloser,
+      },
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  for (const p of ["/orders", "/tracker", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/report", "/trace", "/"]) revalidatePath(p);
+  return { ok: true };
+}

@@ -6,7 +6,8 @@ import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
 export type { RevisionChange };
 
-/** A qty DECREASE found in a revision — never applied automatically. */
+/** A qty DECREASE found in a revision — applied, and shown with what the floor
+ *  already produced so a cut under the produced count is seen. */
 export interface QtyReduction {
   mo: string;
   from: number;
@@ -24,15 +25,15 @@ export interface MonthlyImportResult {
   addedMos?: string[]; // first N new MOs for the confirmation view
   issues?: string[];
   preview?: boolean; // true = nothing was written, this is a dry-run report
-  /** Revision diff: every field change on existing MOs (applied unless preview).
-   *  Qty changes appear here only when the qty GREW — decreases are never
-   *  applied automatically and are listed in qtyReductions instead. */
+  /** Revision diff: every field change on existing MOs (applied unless preview),
+   *  the qty in either direction included. */
   changes?: RevisionChange[];
-  /** Qty decreases in the sheet — reported for MANUAL action on the tracker. */
+  /** Qty decreases in the sheet — applied; listed with what was already produced. */
   qtyReductions?: QtyReduction[];
   /** Open MOs previously imported from this same month but ABSENT from this
-   *  sheet — reported only, never auto-closed. */
-  missingFromSheet?: string[];
+   *  sheet — taken out (unless preview): deleted when nothing was ever
+   *  recorded on them, closed when the daily log or a tank names them. */
+  removed?: { mo: string; action: "deleted" | "closed" }[];
 }
 
 /** Import one month's plan for ONE product line. Every order it adds is
@@ -112,9 +113,9 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
   // ---- REVISION handling: mid-month the planner re-sends the same plan with
   // edits. Existing MOs are diffed field by field; every difference is applied
   // (unless preview) and reported as old → new so nothing changes silently.
-  // EXCEPTION — plan qty: an INCREASE is applied like any other change, but a
-  // DECREASE is only reported; the planner confirms and lowers it manually
-  // (a lowered qty may cancel work the departments already produced).
+  // The plan qty follows the sheet in BOTH directions — a decrease is applied
+  // and listed with what the floor already produced, so the planner sees a
+  // cut that landed under the produced count without having to retype it.
   const changes: RevisionChange[] = [];
   const reductions: { mo: string; from: number; to: number }[] = [];
   const changedRows: { r: (typeof rows)[number]; planQty: number }[] = [];
@@ -140,7 +141,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
             kva: r.kva,
             rating: r.rating,
             secItem: r.secItem,
-            planQty, // never lowered here — decreases stay manual
+            planQty, // the sheet's, raised or lowered
             // Fins / Color / CRC / SFM are NOT here on purpose: they are the
             // planner's own columns, typed on the tracker. A re-import of the
             // monthly plan must never blank or overwrite what he wrote.
@@ -177,15 +178,42 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
   }
 
   // MOs previously listed under THIS month's plan but missing from the new
-  // revision — the planner may have cancelled them. Reported, never touched.
+  // revision were taken off the plan. They go: deleted outright when nothing
+  // was ever recorded on them (the planning layers keyed on the MO with them,
+  // as the registry's own delete does), closed when the daily log or a tank
+  // already names them — history is never touched.
   const inSheet = new Set(rows.map((r) => r.mo));
-  const missingFromSheet = registry
-    .filter((o) => o.status === "open" && !inSheet.has(o.mo) && monthsOf(o.months || o.source || "").includes(sourceLabel))
-    .map((o) => o.mo);
+  const gone = registry.filter((o) => o.status === "open" && !inSheet.has(o.mo) && monthsOf(o.months || o.source || "").includes(sourceLabel));
+  const removed: { mo: string; action: "deleted" | "closed" }[] = [];
+  if (gone.length > 0) {
+    const keys = gone.map((o) => o.mo);
+    const [logged, tanks] = await Promise.all([
+      prisma.handoverEntry.groupBy({ by: ["mo"], where: { mo: { in: keys } }, _count: { _all: true } }),
+      prisma.tankUnit.groupBy({ by: ["mo"], where: { mo: { in: keys } }, _count: { _all: true } }),
+    ]);
+    const withHistory = new Set([...logged.map((g) => g.mo), ...tanks.map((g) => g.mo)].filter((m): m is string => !!m));
+    for (const o of gone) removed.push({ mo: o.mo, action: withHistory.has(o.mo) ? "closed" : "deleted" });
+    if (!preview) {
+      const toDelete = removed.filter((r) => r.action === "deleted").map((r) => r.mo);
+      const toClose = removed.filter((r) => r.action === "closed").map((r) => r.mo);
+      await prisma.$transaction([
+        ...(toDelete.length > 0 ? [
+          prisma.worklistDateOverride.deleteMany({ where: { mo: { in: toDelete } } }),
+          prisma.worklistLineHide.deleteMany({ where: { mo: { in: toDelete } } }),
+          prisma.worklistPush.deleteMany({ where: { mo: { in: toDelete } } }),
+          prisma.worklistMachine.deleteMany({ where: { mo: { in: toDelete } } }),
+          prisma.runOrderEntry.deleteMany({ where: { mo: { in: toDelete } } }),
+          prisma.queueNote.deleteMany({ where: { mo: { in: toDelete } } }),
+          prisma.masterOrder.deleteMany({ where: { mo: { in: toDelete } } }),
+        ] : []),
+        ...(toClose.length > 0 ? [prisma.masterOrder.updateMany({ where: { mo: { in: toClose } }, data: { status: "closed", closedAt: new Date() } })] : []),
+      ]);
+    }
+  }
 
-  // qty decreases are never applied — enrich each with what the departments
-  // already produced so the planner can judge the manual change (progress
-  // columns in the sheet are ignored entirely — the daily logs are the truth)
+  // each qty decrease carries what the departments already produced, so a cut
+  // under that count stands out (progress columns in the sheet are ignored
+  // entirely — the daily logs are the truth)
   let qtyReductions: QtyReduction[] = [];
   if (reductions.length > 0) {
     const sums = await prisma.handoverEntry.groupBy({
@@ -211,6 +239,6 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     preview,
     changes: changes.slice(0, 300),
     qtyReductions,
-    missingFromSheet,
+    removed,
   };
 }

@@ -112,12 +112,11 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
             </div>
           )}
 
-          {/* qty DECREASES — never applied automatically, the planner confirms
-              them on the tracker (Required cell) */}
+          {/* qty DECREASES — applied like any change; shown with what was produced */}
           {res.qtyReductions && res.qtyReductions.length > 0 && (
             <div className="border border-warn-fg/40 rounded-lg p-3">
               <div className="text-sm font-bold mb-1 text-warn-fg">
-                ⚠ Quantity DECREASED in the sheet ({res.qtyReductions.length}) — NOT applied
+                ⚠ Quantity DECREASED in the sheet ({res.qtyReductions.length}) — {res.preview ? "will be applied" : "applied"}
               </div>
               <table className="w-full text-xs border-collapse max-w-xl">
                 <thead>
@@ -142,16 +141,23 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
                 </tbody>
               </table>
               <div className="text-[11px] text-muted mt-1">
-                Confirm with planning, then change the Required quantity manually on the Plan Tracker (click the number).
+                The registry now carries the sheet’s quantity. A produced count above it means the floor made more than planning now asks for — check with planning.
               </div>
             </div>
           )}
 
-          {/* MOs that vanished from the revision — flagged, never auto-closed */}
-          {res.missingFromSheet && res.missingFromSheet.length > 0 && (
-            <div className="bg-warn-bg text-warn-fg rounded-md px-3 py-2 text-xs">
-              <b>⚠ In the registry but MISSING from this sheet ({res.missingFromSheet.length}):</b>{" "}
-              {res.missingFromSheet.join(", ")} — possibly cancelled by planning. Nothing was changed for them; close them from the Plan Tracker if confirmed.
+          {/* MOs that vanished from the revision — taken off the registry */}
+          {res.removed && res.removed.length > 0 && (
+            <div className="bg-warn-bg text-warn-fg rounded-md px-3 py-2 text-xs space-y-1">
+              <b>⚠ Taken off this month’s plan ({res.removed.length}) — in the registry but missing from the sheet{res.preview ? " (will be applied)" : ""}:</b>
+              <div>
+                {res.removed.map((r) => (
+                  <span key={r.mo} className="inline-block me-2">
+                    <b>{r.mo}</b> <span className="opacity-80">{r.action === "deleted" ? "deleted" : "closed (has recorded work)"}</span>
+                  </span>
+                ))}
+              </div>
+              <div className="opacity-80">An order nothing was ever recorded on is deleted; one the daily log names is closed and keeps its history.</div>
             </div>
           )}
           {res.addedMos && res.addedMos.length > 0 && (

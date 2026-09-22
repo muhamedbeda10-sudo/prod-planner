@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
-import { deleteOrders, previewOrderDelete, type OrderDeletePreview } from "@/app/orders/actions";
+import { deleteOrders, previewOrderDelete, updateOrder, type OrderDeletePreview } from "@/app/orders/actions";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
 export interface OrderRow {
@@ -51,6 +51,20 @@ export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: Pr
   const [force, setForce] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  // one row at a time turns into inputs; Save writes every field of it at once
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editErr, setEditErr] = useState("");
+
+  function saveRow(form: HTMLFormElement, mo: string) {
+    const fd = new FormData(form);
+    fd.set("mo", mo);
+    setEditErr("");
+    startTransition(async () => {
+      const res = await updateOrder(fd);
+      if (res.ok) { setEditing(null); router.refresh(); }
+      else setEditErr(res.error ?? "Failed");
+    });
+  }
 
   const sources = useMemo(() => [...new Set(rows.map((r) => r.source ?? ""))].filter(Boolean).sort(), [rows]);
 
@@ -222,6 +236,7 @@ export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: Pr
               <th className="p-2">MO</th>
               <th className="p-2">BOM</th>
               <th className="p-2">SOI</th>
+              <th className="p-2">Customer</th>
               <th className="p-2 text-center">Urgent</th>
               <th className="p-2">FG Code</th>
               {lv ? (
@@ -242,15 +257,18 @@ export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: Pr
                 </>
               )}
               <th className="p-2">Added</th>
+              <th className="p-2 w-16 no-print" />
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={lv ? 13 : 11} className="p-4 text-center text-muted">
+              <tr><td colSpan={lv ? 15 : 13} className="p-4 text-center text-muted">
                 {rows.length === 0 ? `No ${LINE_LABEL[line]} orders yet — import their monthly plan above.` : "No rows match the filters."}
               </td></tr>
             )}
-            {filtered.map((r) => (
+            {filtered.map((r) => (editing === r.mo ? (
+              <EditRow key={r.id} r={r} lv={lv} pending={pending} err={editErr} onSave={(form) => saveRow(form, r.mo)} onCancel={() => { setEditing(null); setEditErr(""); }} />
+            ) : (
               <tr key={r.id} className={picked.has(r.mo) ? "bg-brand-light/40" : ""}>
                 <td className="p-2 text-center">
                   <input
@@ -265,6 +283,7 @@ export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: Pr
                   <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap">{r.soi ?? "—"}</td>
+                <td className="p-2 text-xs whitespace-nowrap">{r.customer ?? <span className="text-muted">—</span>}</td>
                 <td className="p-2 text-center">{r.urgent && <span className="pill pill-bad">URGENT</span>}</td>
                 <td className="p-2 text-xs whitespace-nowrap text-muted">{r.fgCode ?? "—"}</td>
                 {lv ? (
@@ -285,11 +304,62 @@ export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: Pr
                   </>
                 )}
                 <td className="p-2 text-xs whitespace-nowrap text-muted" title={r.source ?? ""}>{r.createdAt.slice(0, 10)}</td>
+                <td className="p-1 text-center no-print">
+                  <button type="button" className="btn btn-sm btn-ghost" title="Edit this order" disabled={pending} onClick={() => { setEditing(r.mo); setEditErr(""); }}>✎</button>
+                </td>
               </tr>
-            ))}
+            )))}
           </tbody>
         </table>
       </div>
     </>
+  );
+}
+
+const cell = "w-full min-w-[5rem] border rounded-md px-1.5 py-1 bg-surface text-xs";
+
+/** The row as inputs. A plain form: Enter saves, Escape cancels, and the
+ *  fields travel by name so the action reads them without a mapping. */
+function EditRow({ r, lv, pending, err, onSave, onCancel }: { r: OrderRow; lv: boolean; pending: boolean; err: string; onSave: (form: HTMLFormElement) => void; onCancel: () => void }) {
+  const formId = `edit-${r.id}`;
+  const keys = (e: React.KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onCancel(); } };
+  return (
+    <tr className="bg-brand-light/30 align-top" onKeyDown={keys}>
+      <td className="p-2 text-center">
+        <form id={formId} onSubmit={(e) => { e.preventDefault(); onSave(e.currentTarget); }} />
+      </td>
+      <td className="p-2 font-bold whitespace-nowrap text-xs">{r.mo}</td>
+      <td className="p-1"><input form={formId} name="bom" defaultValue={r.bom} required aria-label="BOM" className={`${cell} font-bold uppercase ltr`} autoFocus /></td>
+      <td className="p-1"><input form={formId} name="soi" defaultValue={r.soi ?? ""} aria-label="SOI" className={`${cell} ltr`} /></td>
+      <td className="p-1"><input form={formId} name="customer" defaultValue={r.customer ?? ""} aria-label="Customer" className={cell} /></td>
+      <td className="p-1 text-center"><input form={formId} type="checkbox" name="urgent" value="true" defaultChecked={r.urgent} aria-label="Urgent" className="mt-1.5" /></td>
+      <td className="p-1"><input form={formId} name="fgCode" defaultValue={r.fgCode ?? ""} aria-label="FG Code" className={`${cell} ltr`} /></td>
+      {lv ? (
+        <>
+          <td className="p-1"><input form={formId} name="product" defaultValue={r.product ?? ""} aria-label="Product" className={`${cell} text-center`} /></td>
+          <td className="p-1"><input form={formId} name="secItem" defaultValue={r.secItem ?? ""} aria-label="SEC Item" className={`${cell} ltr`} /></td>
+          <td className="p-1"><input form={formId} name="planQty" type="number" min={0} step={1} defaultValue={r.planQty} required aria-label="Planned Qty" className={`${cell} text-center font-extrabold tabnum`} /></td>
+          <td className="p-1"><input form={formId} name="ospEncloser" type="number" min={0} step={1} defaultValue={r.ospEncloser} aria-label="OSP Encloser" className={`${cell} text-center tabnum`} /></td>
+          <td className="p-1"><input form={formId} name="remarks" defaultValue={r.remarks ?? ""} aria-label="Remarks" className={cell} /></td>
+          <td className="p-1"><input form={formId} name="materialsRemarks" defaultValue={r.materialsRemarks ?? ""} aria-label="Materials remarks" className={cell} /></td>
+        </>
+      ) : (
+        <>
+          <td className="p-1"><input form={formId} name="kva" defaultValue={r.kva ?? ""} aria-label="KVA" className={`${cell} text-center tabnum`} /></td>
+          <td className="p-1"><input form={formId} name="rating" defaultValue={r.rating ?? ""} aria-label="Rating" className={`${cell} ltr`} /></td>
+          <td className="p-1"><input form={formId} name="planQty" type="number" min={0} step={1} defaultValue={r.planQty} required aria-label="Plan Qty" className={`${cell} text-center font-extrabold tabnum`} /></td>
+          <td className="p-1">
+            <input form={formId} name="colorRal" defaultValue={r.colorRal ?? ""} aria-label="RAL" className={`${cell} ltr`} />
+            <input form={formId} type="hidden" name="remarks" value={r.remarks ?? ""} />
+          </td>
+        </>
+      )}
+      <td className="p-2 text-xs whitespace-nowrap text-muted">{r.createdAt.slice(0, 10)}</td>
+      <td className="p-1 whitespace-nowrap no-print">
+        <button type="submit" form={formId} className="btn btn-sm btn-primary" disabled={pending}>Save</button>
+        <button type="button" className="btn btn-sm btn-ghost ms-1" disabled={pending} onClick={onCancel}>✕</button>
+        {err && <div className="text-[11px] text-bad-fg mt-1 max-w-[12rem]">{err}</div>}
+      </td>
+    </tr>
   );
 }

@@ -144,7 +144,7 @@ describe("applyCascade — later stages imply earlier ones (setup sheet only)", 
   });
 });
 
-describe("diffRevisionRow — qty rises auto-apply, qty drops stay manual", () => {
+describe("diffRevisionRow — the qty follows the sheet both ways", () => {
   const base = {
     soi: "S01",
     urgent: false,
@@ -199,18 +199,18 @@ describe("diffRevisionRow — qty rises auto-apply, qty drops stay manual", () =
     expect(d.planQty).toBe(14);
   });
 
-  it("a LOWERED qty is reported but NEVER applied — the registry value stays", () => {
+  it("a LOWERED qty is applied too, and called out as a reduction", () => {
     const d = diffRevisionRow(row({ planQty: 6 }), base);
-    expect(d.changes).toHaveLength(0); // nothing to write for this row
+    expect(d.changes).toEqual([{ mo: "MO-1", field: "Qty", from: "10", to: "6" }]);
     expect(d.qtyReduction).toEqual({ mo: "MO-1", from: 10, to: 6 });
-    expect(d.planQty).toBe(10); // keep the registry's quantity
+    expect(d.planQty).toBe(6);
   });
 
-  it("other field changes still apply alongside a skipped qty drop", () => {
+  it("other field changes ride along with a qty drop", () => {
     const d = diffRevisionRow(row({ planQty: 6, urgent: true }), base);
-    expect(d.changes).toEqual([{ mo: "MO-1", field: "Urgent", from: "No", to: "Yes" }]);
+    expect(d.changes).toEqual([{ mo: "MO-1", field: "Qty", from: "10", to: "6" }, { mo: "MO-1", field: "Urgent", from: "No", to: "Yes" }]);
     expect(d.qtyReduction).toEqual({ mo: "MO-1", from: 10, to: 6 });
-    expect(d.planQty).toBe(10);
+    expect(d.planQty).toBe(6);
   });
 });
 
