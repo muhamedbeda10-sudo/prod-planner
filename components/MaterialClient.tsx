@@ -449,9 +449,9 @@ function AddLvOrder({ month, orders, templates }: { month: string; orders: LvOrd
             const per = Number(r.sheetsPerUnit); const job = order && Number.isFinite(per) && r.sheetsPerUnit !== "" ? Number((per * order.planQty).toFixed(4)) : null;
             return (
               <tr key={i}>
-                <td className="p-1"><input value={r.material} onChange={(e) => setRow(i, { material: e.target.value })} list="material-types" aria-label="Material" className={`${F} w-40`} /></td>
+                <td className="p-1"><input value={r.material} onChange={(e) => setRow(i, { material: e.target.value })} list="material-types" aria-label="Material" className={`${F} w-48`} /></td>
                 <td className="p-1"><input value={r.thicknessMm} onChange={(e) => setRow(i, { thicknessMm: e.target.value })} type="number" step="0.1" min="0.1" aria-label="Thickness" className={`${F} ltr tabnum w-24`} /></td>
-                <td className="p-1"><input value={r.sheetSize} onChange={(e) => setRow(i, { sheetSize: e.target.value })} list="sheet-sizes" aria-label="Sheet size" className={`${F} ltr w-28`} /></td>
+                <td className="p-1"><input value={r.sheetSize} onChange={(e) => setRow(i, { sheetSize: e.target.value })} list="sheet-sizes" aria-label="Sheet size" className={`${F} ltr w-32`} /></td>
                 <td className="p-1"><input value={r.sheetsPerUnit} onChange={(e) => setRow(i, { sheetsPerUnit: e.target.value })} type="number" step="0.0001" min="0" aria-label="Sheets per unit" placeholder="per unit" className={`${F} ltr tabnum w-28 font-extrabold`} /></td>
                 <td className="p-1 tabnum text-muted">{job === null ? "—" : job}</td>
                 <td className="p-1"><button type="button" className="btn btn-sm btn-ghost" onClick={() => setRows((rs) => rs.filter((_, k) => k !== i))} title="Remove this row">✕</button></td>
