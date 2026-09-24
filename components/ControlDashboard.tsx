@@ -138,9 +138,9 @@ export function ControlDashboard({ c, d, controls }: { c: ControlDashboardData; 
             label="Plan completion"
             value={pct(p.pct)}
             meter={{ value: p.pct ?? 0, tone: "ok" }}
-            sub={<><b className="text-foreground">{fmt(p.complete)}</b> of {fmt(p.required)} units · {fmt(p.orders)} open orders</>}
+            sub={<><b className="text-foreground">{fmt(p.complete)}</b> of {fmt(p.required)} tanks · {fmt(p.orders)} open orders</>}
             href="/tracker"
-            title={`${fmt(p.complete)} units finished of ${fmt(p.required)} on the open orders · ${fmt(p.delivered)} delivered`}
+            title={`${fmt(p.complete)} tanks painted of ${fmt(p.required)} on the open orders — the unit closes on its tank · ${fmt(p.delivered)} units delivered in full`}
           />
           <Kpi
             label="Pace vs month"
