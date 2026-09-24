@@ -107,7 +107,7 @@ function line(over: Partial<MaterialLineView>): MaterialLineView {
   return {
     id: 1, month: "July 2026", bom: "B1", mo: "", units: 10, partCode: "FB-022", partName: "TANK", materialCode: "T-SSS-5MM",
     material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
-    sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: null,
+    sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: null, producedAuto: null, producedUsed: null, remainingUnits: null,
     forJob: 10, difference: 0, actualPerUnit: 1, actualPerUnitManual: false, forProduced: null,
     updatedISO: "2026-09-07", recordedBy: null, ...over,
   };

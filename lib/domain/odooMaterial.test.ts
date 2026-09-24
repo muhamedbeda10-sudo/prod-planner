@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookText, candidateBoms, materialNeed, materialNeedText, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup } from "./odooMaterial";
+import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, materialNeed, materialNeedText, moKey, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup } from "./odooMaterial";
 
 function line(over: Partial<NestingLine> & { id: number }): NestingLine {
   return {
@@ -226,5 +226,59 @@ describe("materialNeed — the rate the popup multiplies is the sheet's own", ()
     const l: NestingLookup = { [key]: [line({ id: 1, actualPerUnit: 0.5, sheetsUsed: null, units: 0 })] };
     const need = materialNeed(l, "FB-022-14003E11M11", 8, "September 2026")!;
     expect(need.lines[0].forQtyActual).toBe(4);
+  });
+});
+
+describe("panels — the material is the order's, keyed by MO", () => {
+  const lvLine = (over: Partial<NestingLine> & { id: number }): NestingLine =>
+    line({ bom: "FG-SUA-AS-AA-000004-1", partCode: "", partName: "USS", materialCode: "908569105", material: "Galvanized steel", sheetSize: "1250*2500", units: 50, ...over });
+  const lookup: NestingLookup = {
+    [moKey("SF01/MO/03673-001")]: [
+      // 8 units consumed 14.4 sheets → 1.8 a unit, against a BOM of 1.6
+      lvLine({ id: 1, thicknessMm: 1.5, sheetsPerUnit: 1.6, actualPerUnit: 1.8, sheetsUsed: null }),
+      lvLine({ id: 2, thicknessMm: 2, sheetsPerUnit: 0.5, actualPerUnit: null, sheetsUsed: null }),
+    ],
+    [moKey("SF01/MO/06206")]: [lvLine({ id: 3, thicknessMm: 1.5, sheetsPerUnit: 1.6, actualPerUnit: 1.6, sheetsUsed: 8, units: 5 })],
+  };
+  const ctx = { lv: true, soiBoms: {}, soiMos: { "S00653-2": ["SF01/MO/03673-001", "SF01/MO/03673-003"], "S01035-1": ["SF01/MO/06206"] } };
+
+  it("lists the candidate orders in lookup order: the closing's, the typed MO, then the SOI's", () => {
+    expect(candidateMos({ mo: "sf01/mo/06206", odooMo: "SF01/MO/03673-001", soi: "S00653-2" }, ctx.soiMos["S00653-2"])).toEqual([
+      { mo: "SF01/MO/06206", via: "ledger" }, { mo: "SF01/MO/03673-001", via: "odoo" }, { mo: "SF01/MO/03673-003", via: "order" },
+    ]);
+    expect(candidateMos({ mo: null, odooMo: "", soi: null }, [])).toEqual([]);
+  });
+
+  it("scales the order's rows to the row's qty, consumed rate first, BOM where nothing was consumed", () => {
+    const need = entryMaterialNeed(lookup, { fgCode: "FG-SUA-AS-AA-000004", dateISO: "2026-09-21", soi: "S00653-2", odooMo: "", mo: "SF01/MO/03673-001" }, 24, ctx)!;
+    expect(need.mo).toBe("SF01/MO/03673-001");
+    expect(need.via).toBe("ledger");
+    expect(need.bom).toBe("FG-SUA-AS-AA-000004-1");
+    expect(need.partCode).toBe("");
+    expect(need.lines.map((l) => [l.thicknessMm, l.forQtyBom, l.forQtyActual, l.book, l.bookIsActual])).toEqual([
+      [1.5, 38.4, 43.2, 43.2, true],
+      [2, 12, null, 12, false],
+    ]);
+    expect(need.lines[0].variancePct).toBe(12);
+    expect(need.totalActual).toBe(43.2);
+    expect(need.notNested).toBe(1);
+  });
+
+  it("falls back to the SOI's orders when the row links to no closing and has no MO typed", () => {
+    const need = entryMaterialNeed(lookup, { fgCode: "FG-SUA-AS-AA-000004", dateISO: "2026-09-21", soi: "s01035-1", odooMo: "", mo: null }, 2, ctx)!;
+    expect(need.mo).toBe("SF01/MO/06206");
+    expect(need.via).toBe("order");
+    expect(need.lines[0].forQtyActual).toBe(3.2);
+  });
+
+  it("is null when none of the row's orders has lines yet — the FG code alone finds nothing", () => {
+    expect(entryMaterialNeed(lookup, { fgCode: "FG-SUA-AS-AA-000004", dateISO: "2026-09-21", soi: "S01060-1", odooMo: "SF01/MO/03673-003", mo: null }, 2, ctx)).toBeNull();
+  });
+
+  it("still finds a transformer part the old way when the context is not the panels'", () => {
+    const trLookup: NestingLookup = { [nestingKey("FB-022", "14003E11M11")]: [line({ id: 1 })] };
+    const need = entryMaterialNeed(trLookup, { fgCode: "FB-022-14003E11M11", dateISO: "2026-09-07", soi: null, odooMo: "WH/MO/1", mo: null }, 2, EMPTY_NEED_CONTEXT)!;
+    expect(need.via).toBe("fg");
+    expect(need.mo).toBeNull();
   });
 });

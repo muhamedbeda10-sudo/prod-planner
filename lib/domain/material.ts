@@ -59,6 +59,8 @@ const MATERIAL_ALIASES: Record<string, string> = {
   "galvanized steel": "Galvanized steel", "galvanised steel": "Galvanized steel",
   alu: "Aluminium", aluminum: "Aluminium", aluminium: "Aluminium",
   copper: "Copper", cu: "Copper",
+  // the panels' sheet writes it "GI Sheet"
+  "gi sheet": "Galvanized steel", "g.i sheet": "Galvanized steel", "g.i": "Galvanized steel",
 };
 
 /** Canonical material name: known aliases fold together, anything else is
@@ -176,6 +178,14 @@ export interface MaterialLineInput {
 
 export interface MaterialLineView extends MaterialLineInput {
   id: number;
+  /** Units the tracker says were produced on this line's order (the panels'
+   *  painted count) — what the tab costs when nothing was typed. Null on a
+   *  line with no order of its own. */
+  producedAuto: number | null;
+  /** The quantity the costing uses: typed if typed, else the tracker's. */
+  producedUsed: number | null;
+  /** Units still to make: the job less what was produced. */
+  remainingUnits: number | null;
   /** The rate was typed in the tab, not read off the sheet — a re-import
    *  leaves it alone. */
   actualPerUnitManual: boolean;
