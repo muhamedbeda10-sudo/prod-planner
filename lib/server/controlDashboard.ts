@@ -8,6 +8,7 @@ import { getStageCapacity } from "./standardTimes";
 import { getOtdStats } from "./otd";
 import { currentMonthLabel, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
+import { TANK_ITEM } from "@/lib/domain/tanks";
 import {
   attentionOf, backlogOf, backlogSeries, bottleneckOf, byCustomer, monthBoundsISO, monthCompareOf, paceOf, piecesByItem, piecesOf, planSummaryOf, promisesAhead, stageLoadOf, workingDaysBetween, workingDaysLeft,
   type AttentionRow, type BacklogPoint, type BacklogStage, type CustomerStanding, type ItemPieces, type MonthCompare, type Pace, type PlanSummary, type PromisesAhead, type StageLoad, type StagePieces,
@@ -79,8 +80,9 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
     prisma.odooEntry.findMany({ where: { line }, select: { status: true, odooMo: true } }),
     prisma.materialUsage.findMany({ where: { line, month: monthLabel }, select: { units: true, sheetsPerUnit: true, sheetsUsed: true } }),
     prisma.deptDayHours.findMany({ where: { date: today } }),
+    // the month's pace is read in tanks — the unit the plan's completion counts
     prisma.handoverEntry.findMany({
-      where: { date: { gte: trailStart, lt: today }, dept: { in: ["Painting", "ShotBlast"] }, ...ledgerItemWhere(line) },
+      where: { date: { gte: trailStart, lt: today }, dept: "Painting", item: TANK_ITEM },
       select: { qty: true },
     }),
     getEtaBase(),
@@ -107,9 +109,12 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
   const holidayISOs = new Set(holidays.map((h) => toISODate(h.date)));
   const pieces = piecesOf(rows);
   const backlog = backlogOf(pieces);
+  // the month's plan, closed orders included — the same rows the tracker's
+  // month view adds up, so the two screens agree
+  const plan = planSummaryOf(rows, monthLabel);
   const finishedInWindow = finishedRows.reduce((s, e) => s + Math.max(0, e.qty), 0);
   const windowDays = workingDaysBetween(toISODate(trailStart), toISODate(new Date(today.getTime() - 86400000)), holidayISOs);
-  const pace = paceOf(pieces.need - pieces.finished, finishedInWindow, windowDays, workingDaysLeft(todayISO, holidayISOs));
+  const pace = paceOf(plan.remaining, finishedInWindow, windowDays, workingDaysLeft(todayISO, holidayISOs));
 
   // the counts behind the capped list — the list shows the worst, the counts say how many there are
   const all = attentionOf(rows, etas, todayISO, Number.MAX_SAFE_INTEGER);
@@ -143,10 +148,14 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
   const jobMos = new Set(etaBase.jobs.map((j) => j.mo));
   const uncoveredOrders = rows.filter((r) => r.status === "open" && !r.onHold && !jobMos.has(r.mo)).length;
   const capOf = (depts: string[]) => { const v = depts.map((d) => capacity[d]).filter((x): x is number => typeof x === "number"); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
+  // hours a day as the shift log has them — over the days it was actually
+  // filled in, not the whole window: two logged days out of twelve must not
+  // read as a sixth of the crew
   const loggedOf = (depts: string[]) => {
     const rows = loggedHours.filter((h) => depts.includes(h.dept));
-    if (rows.length === 0 || windowDays === 0) return null;
-    return rows.reduce((s, h) => s + h.hours, 0) / windowDays;
+    const days = new Set(rows.map((h) => toISODate(h.date))).size;
+    if (days === 0) return null;
+    return rows.reduce((s, h) => s + h.hours, 0) / days;
   };
   const load = {
     windowDays: etaBase.windowDays,
@@ -162,7 +171,7 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
   return {
     todayISO,
     monthLabel,
-    plan: planSummaryOf(rows),
+    plan,
     pieces,
     backlog,
     bottleneck: bottleneckOf(backlog),

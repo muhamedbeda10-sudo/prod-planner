@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionOf, backlogOf, backlogSeries, bottleneckOf, byCustomer, deliveredUnitsOf, monthBoundsISO, monthCompareOf, paceOf, piecesByItem, piecesOf, planSummaryOf, promisesAhead, stageLoadOf, tankUnitsOf, workingDaysBetween, workingDaysLeft, type ControlRow } from "./control";
+import { attentionOf, backlogOf, backlogSeries, bottleneckOf, byCustomer, deliveredUnitsOf, monthBoundsISO, monthCompareOf, paceOf, piecesByItem, piecesOf, planRowsOf, planSummaryOf, promisesAhead, stageLoadOf, tankUnitsOf, tanksLeftOf, workingDaysBetween, workingDaysLeft, type ControlRow } from "./control";
 
 const it6 = (v: Partial<ControlRow["items"]["CF"]> = {}) => ({ cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true, ...v });
 const row = (over: Partial<ControlRow> = {}): ControlRow => ({
@@ -7,6 +7,8 @@ const row = (over: Partial<ControlRow> = {}): ControlRow => ({
   items: { CF: it6(), TC: it6(), TN: it6(), CB: it6(), AR: it6({ eligible: false }), MB: it6({ eligible: false }) },
   ...over,
 });
+/** A row with `tanks` painted — what "left" is read from everywhere now. */
+const painted = (tanks: number, over: Partial<ControlRow> = {}): ControlRow => row({ ...over, items: { ...row().items, TN: it6({ paint: tanks }) } });
 
 describe("piecesOf / backlogOf / bottleneckOf", () => {
   it("counts required pieces stage by stage, the core finishing at shot blast", () => {
@@ -36,11 +38,27 @@ describe("planSummaryOf", () => {
     expect(deliveredUnitsOf(a)).toBe(3);
     expect(tankUnitsOf(a)).toBe(6);
     expect(tankUnitsOf(b)).toBe(5); // capped at the order
-    expect(planSummaryOf([a, b, row({ status: "closed" })])).toEqual({ orders: 2, required: 15, complete: 11, delivered: 8, remaining: 4, pct: 11 / 15, urgent: 1, priority: 0, onHold: 1 });
+    expect(planSummaryOf([a, b, row({ status: "closed" })])).toEqual({ orders: 2, openOrders: 2, required: 15, complete: 11, delivered: 8, remaining: 4, pct: 11 / 15, urgent: 1, priority: 0, onHold: 1 });
   });
   it("falls back to complete units on an order with no tank", () => {
     const r = row({ required: 4, complete: 2, items: { ...row().items, TN: it6({ excluded: true, paint: 9 }) } });
     expect(tankUnitsOf(r)).toBe(2);
+    expect(tanksLeftOf(r)).toBe(2);
+  });
+  it("reads the month's plan, closed orders included — closing a finished order does not pull the month down", () => {
+    const sep = "September 2026";
+    const rows = [
+      painted(10, { mo: "A", required: 10, status: "closed", months: [sep] }),
+      painted(3, { mo: "B", required: 10, months: [sep], urgent: true }),
+      painted(2, { mo: "C", required: 4, months: ["October 2026"], onHold: true }), // next month's — not on this plan
+      painted(1, { mo: "D", required: 5, status: "closed", months: ["August 2026"] }),
+    ];
+    expect(planRowsOf(rows, sep).map((r) => r.mo)).toEqual(["A", "B"]);
+    const p = planSummaryOf(rows, sep);
+    expect(p).toMatchObject({ orders: 2, openOrders: 1, required: 20, complete: 13, remaining: 7, pct: 13 / 20, urgent: 1, onHold: 0 });
+    // no plan for the month yet → the open orders stand in
+    expect(planRowsOf(rows, "November 2026").map((r) => r.mo)).toEqual(["B", "C"]);
+    expect(planSummaryOf(rows, null).orders).toBe(2);
   });
 });
 
@@ -65,12 +83,12 @@ describe("attentionOf", () => {
     ({ etaISO: null, dueISO: null, late: false, done: false, blockedBy: null, ...v });
   it("ranks late, due soon, blocked, then holds — urgent first, most late on top", () => {
     const rows = [
-      row({ mo: "A", required: 10, complete: 2 }),
-      row({ mo: "B", required: 10, complete: 2, urgent: true }),
-      row({ mo: "C", required: 10, complete: 2 }),
-      row({ mo: "D", required: 10, complete: 2, onHold: true }),
-      row({ mo: "E", required: 10, complete: 10 }), // nothing left — never listed
-      row({ mo: "F", required: 10, complete: 0 }), // due in 20 days — not soon
+      painted(2, { mo: "A", required: 10 }),
+      painted(2, { mo: "B", required: 10, urgent: true }),
+      painted(2, { mo: "C", required: 10 }),
+      painted(2, { mo: "D", required: 10, onHold: true }),
+      painted(10, { mo: "E", required: 10, complete: 4 }), // every tank painted — nothing left, whatever the boxes say
+      painted(0, { mo: "F", required: 10 }), // due in 20 days — not soon
     ];
     const etas = new Map([
       ["A", eta({ etaISO: "2026-09-25", dueISO: "2026-09-20", late: true })],
@@ -80,7 +98,7 @@ describe("attentionOf", () => {
       ["F", eta({ etaISO: "2026-10-01", dueISO: "2026-10-07" })],
     ]);
     const out = attentionOf(rows, etas, "2026-09-17");
-    expect(out.map((o) => `${o.mo}:${o.kind}:${o.days}`)).toEqual(["B:late:2", "A:late:5", "C:dueSoon:4", "D:hold:0"]);
+    expect(out.map((o) => `${o.mo}:${o.kind}:${o.days}:${o.remaining}`)).toEqual(["B:late:2:8", "A:late:5:8", "C:dueSoon:4:8", "D:hold:0:8"]);
   });
   it("names a blocked forecast and honours the cap", () => {
     const rows = Array.from({ length: 12 }, (_, i) => row({ mo: `M${i}`, required: 5 }));
@@ -147,13 +165,13 @@ describe("promisesAhead", () => {
     ({ etaISO: null, dueISO: null, late: false, done: false, blockedBy: null, ...v });
   it("buckets the open orders' remaining units by promise day, flags the at-risk, counts overdue and unscheduled", () => {
     const rows = [
-      row({ mo: "A", required: 10, complete: 4 }), // due in 2 days, late
-      row({ mo: "B", required: 5, complete: 0 }), // due in 2 days, fine
-      row({ mo: "C", required: 8, complete: 1 }), // overdue
-      row({ mo: "D", required: 3, complete: 3 }), // done — not a promise any more
-      row({ mo: "E", required: 6, complete: 0 }), // never scheduled
-      row({ mo: "F", required: 4, complete: 0, onHold: true }), // due in 5 days, on hold → at risk
-      row({ mo: "G", required: 9, complete: 0 }), // due beyond the span
+      painted(4, { mo: "A", required: 10 }), // due in 2 days, late
+      painted(0, { mo: "B", required: 5 }), // due in 2 days, fine
+      painted(1, { mo: "C", required: 8 }), // overdue
+      painted(3, { mo: "D", required: 3, complete: 0 }), // tanks done — not a promise any more, even with a box open
+      painted(0, { mo: "E", required: 6 }), // never scheduled
+      painted(0, { mo: "F", required: 4, onHold: true }), // due in 5 days, on hold → at risk
+      painted(0, { mo: "G", required: 9 }), // due beyond the span
     ];
     const etas = new Map([
       ["A", eta({ dueISO: "2026-09-19", etaISO: "2026-09-25", late: true })],
@@ -175,10 +193,10 @@ describe("promisesAhead", () => {
 describe("byCustomer / monthCompareOf / monthBoundsISO", () => {
   it("groups the open orders per customer, largest first", () => {
     const rows = [
-      row({ mo: "A", customer: "PRI", required: 10, complete: 4, urgent: true }),
-      row({ mo: "B", customer: "SEC", required: 20, complete: 20 }),
-      row({ mo: "C", customer: null, required: 1 }),
-      row({ mo: "D", customer: "PRI", required: 5, status: "closed" }),
+      painted(4, { mo: "A", customer: "PRI", required: 10, urgent: true }),
+      painted(25, { mo: "B", customer: "SEC", required: 20, complete: 12 }), // finished = tanks painted, capped at the order
+      painted(0, { mo: "C", customer: null, required: 1 }),
+      painted(5, { mo: "D", customer: "PRI", required: 5, status: "closed" }),
     ];
     expect(byCustomer(rows).map((c) => `${c.customer}:${c.orders}:${c.required}:${c.complete}:${c.urgent}`)).toEqual(["SEC:1:20:20:0", "PRI:1:10:4:1", "—:1:1:0:0"]);
   });

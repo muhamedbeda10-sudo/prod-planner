@@ -83,8 +83,11 @@ export function bottleneckOf(b: Record<BacklogStage, number>): BacklogStage | nu
 }
 
 export interface PlanSummary {
+  /** Orders on the month's plan, open or closed. */
   orders: number;
-  required: number; // units (transformers) on the open orders
+  /** Of those, the ones still open. */
+  openOrders: number;
+  required: number; // units (transformers) on the plan
   /** Units finished, counted by TANKS painted: the tank is the transformer's
    *  body and the piece the plant closes the order on. A unit is not held
    *  back by a cable box or a cover still in paint. */
@@ -96,6 +99,19 @@ export interface PlanSummary {
   priority: number;
   onHold: number;
 }
+
+/** The orders the month's figures are read over: every order the plan of
+ *  `monthLabel` carries, CLOSED ONES INCLUDED — closing a finished order
+ *  must not pull the month's completion down. Before the month has a plan
+ *  (or with no label), the open orders stand in. */
+export function planRowsOf<T extends Pick<ControlRow, "status" | "months">>(rows: readonly T[], monthLabel: string | null): T[] {
+  const plan = monthLabel ? rows.filter((r) => r.months.includes(monthLabel)) : [];
+  return plan.length > 0 ? plan : rows.filter((r) => r.status === "open");
+}
+
+/** Units of an order still to finish, by its tanks — the same yardstick as
+ *  the plan's completion. */
+export const tanksLeftOf = (r: ControlRow) => Math.max(0, r.required - tankUnitsOf(r));
 
 /** A unit is delivered when every required component of it was delivered. */
 export function deliveredUnitsOf(r: ControlRow): number {
@@ -115,18 +131,21 @@ export function tankUnitsOf(r: ControlRow): number {
   return cap(r.items.TN.paint + r.items.TN.osp, r.required);
 }
 
-export function planSummaryOf(rows: readonly ControlRow[]): PlanSummary {
-  const open = rows.filter((r) => r.status === "open");
-  const required = open.reduce((s, r) => s + r.required, 0);
-  const complete = open.reduce((s, r) => s + tankUnitsOf(r), 0);
-  const delivered = open.reduce((s, r) => s + deliveredUnitsOf(r), 0);
+export function planSummaryOf(rows: readonly ControlRow[], monthLabel: string | null = null): PlanSummary {
+  const plan = planRowsOf(rows, monthLabel);
+  const open = plan.filter((r) => r.status === "open");
+  const required = plan.reduce((s, r) => s + r.required, 0);
+  const complete = plan.reduce((s, r) => s + tankUnitsOf(r), 0);
+  const delivered = plan.reduce((s, r) => s + deliveredUnitsOf(r), 0);
   return {
-    orders: open.length,
+    orders: plan.length,
+    openOrders: open.length,
     required,
     complete,
     delivered,
     remaining: Math.max(0, required - complete),
     pct: required > 0 ? complete / required : null,
+    // flags are about work in progress — the plan's open orders only
     urgent: open.filter((r) => r.urgent).length,
     priority: open.filter((r) => r.priority).length,
     onHold: open.filter((r) => r.onHold).length,
@@ -159,22 +178,25 @@ export function workingDaysBetween(fromISO: string, toISO: string, holidayISOs: 
 }
 
 export interface Pace {
-  /** Pieces finished per working day over the trailing window. */
+  /** Tanks painted per working day over the trailing window. */
   actualPerDay: number | null;
-  /** Pieces per working day the remaining work needs to land by month end. */
+  /** Tanks per working day the plan's remaining units need to land by month end. */
   requiredPerDay: number | null;
   daysLeft: number;
   /** actual / required — ≥ 1 means the month lands at this pace. */
   ratio: number | null;
-  /** Working days the remaining pieces take at the actual pace. */
+  /** Working days the remaining units take at the actual pace. */
   daysNeeded: number | null;
 }
 
-export function paceOf(remainingPieces: number, finishedInWindow: number, windowWorkingDays: number, daysLeft: number): Pace {
+/** The month's pace in the plan's own unit: tanks painted over the trailing
+ *  window against the tanks the plan still owes. Cable boxes, covers and
+ *  mono boxes are not mixed in — a tank is the unit the order closes on. */
+export function paceOf(remainingUnits: number, finishedInWindow: number, windowWorkingDays: number, daysLeft: number): Pace {
   const actualPerDay = windowWorkingDays > 0 ? finishedInWindow / windowWorkingDays : null;
-  const requiredPerDay = daysLeft > 0 ? remainingPieces / daysLeft : null;
+  const requiredPerDay = daysLeft > 0 ? remainingUnits / daysLeft : null;
   const ratio = actualPerDay !== null && requiredPerDay !== null && requiredPerDay > 0 ? actualPerDay / requiredPerDay : null;
-  const daysNeeded = actualPerDay !== null && actualPerDay > 0 ? Math.ceil(remainingPieces / actualPerDay) : null;
+  const daysNeeded = actualPerDay !== null && actualPerDay > 0 ? Math.ceil(remainingUnits / actualPerDay) : null;
   return { actualPerDay, requiredPerDay, daysLeft, ratio, daysNeeded };
 }
 
@@ -213,7 +235,7 @@ export function attentionOf(rows: readonly ControlRow[], etas: ReadonlyMap<strin
   const out: AttentionRow[] = [];
   for (const r of rows) {
     if (r.status !== "open") continue;
-    const remaining = Math.max(0, r.required - r.complete);
+    const remaining = tanksLeftOf(r); // by tanks, like the plan's completion
     if (remaining === 0) continue;
     const e = etas.get(r.mo);
     const base = { mo: r.mo, bom: r.bom, soi: r.soi, customer: r.customer, remaining, urgent: r.urgent, priority: r.priority, dueISO: e?.dueISO ?? null, etaISO: e?.etaISO ?? null };
@@ -411,7 +433,7 @@ export function promisesAhead(rows: readonly ControlRow[], etas: ReadonlyMap<str
   let unscheduled = 0;
   for (const r of rows) {
     if (r.status !== "open") continue;
-    const left = Math.max(0, r.required - r.complete);
+    const left = tanksLeftOf(r);
     if (left === 0) continue;
     const e = etas.get(r.mo);
     const due = e?.dueISO ?? null;
@@ -445,7 +467,7 @@ export function byCustomer(rows: readonly ControlRow[]): CustomerStanding[] {
     const c = map.get(key) ?? { customer: key, orders: 0, required: 0, complete: 0, delivered: 0, urgent: 0 };
     c.orders += 1;
     c.required += r.required;
-    c.complete += Math.min(r.complete, r.required);
+    c.complete += tankUnitsOf(r);
     c.delivered += deliveredUnitsOf(r);
     if (r.urgent) c.urgent += 1;
     map.set(key, c);
