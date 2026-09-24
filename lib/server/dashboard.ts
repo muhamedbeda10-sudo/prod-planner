@@ -1,9 +1,9 @@
 ﻿import "server-only";
 import { prisma } from "@/lib/db";
 import { getActiveLine, ledgerItemWhere } from "./line";
-import { ITEMS, SHEET_ITEMS, sumItemTargets, type Item } from "@/lib/domain/constants";
+import { ITEMS, SHEET_ITEMS, applicableItems, sumItemTargets, type Item } from "@/lib/domain/constants";
 import { getSettings } from "./data";
-import { loadHolidays } from "./loads";
+import { loadHolidays, loadMasterOrders } from "./loads";
 import { dayNumber, dateFromDayNumber, toISODate } from "@/lib/domain/dates";
 
 // ============================================================================
@@ -46,8 +46,12 @@ export interface WeekSummary {
 export interface TargetDashboard {
   mode: "week" | "range";
   targetPerItem: number; // base component per working day (27); AR/MB run at 20
-  targetPerDeptDay: number; // Cut/Weld dept-day line = Σ item targets (base ×27 + AR 20 + MB 20)
-  paintTargetDay: number; // Finishing (Painting + Shot Blast) dept-day line = Σ ALL item targets (core via shot blast)
+  /** The components that carry a target: the base four always, AR / MB only
+   *  while some open order needs them — a bracket nobody ordered is not a
+   *  target missed. */
+  targetItems: Item[];
+  targetPerDeptDay: number; // Cut/Weld dept-day line = Σ targets of targetItems
+  paintTargetDay: number; // Finishing (Painting + Shot Blast) dept-day line = the same (core via shot blast)
   workingDays: number; // working days in the shown period
   targetPerItemPeriod: number; // targetPerItem × workingDays
   targetPerDeptPeriod: number; // targetPerDeptDay × workingDays
@@ -102,11 +106,17 @@ export async function getTargetDashboard(opts?: {
   from?: Date | null;
   to?: Date | null;
 }): Promise<TargetDashboard> {
-  const [settings, holidays] = await Promise.all([
+  const [settings, holidays, orders] = await Promise.all([
     getSettings(),
     loadHolidays(),
+    loadMasterOrders(),
   ]);
   const target = settings.dailyTarget || 27;
+  // AR / MB earn a target only while an open order calls for them
+  const wanted = new Set<Item>();
+  for (const o of orders) if (o.status === "open") for (const it of applicableItems(o)) wanted.add(it);
+  const targetItems = ITEMS.filter((it) => (SHEET_ITEMS as readonly string[]).includes(it) || wanted.has(it));
+  const deptDayTarget = sumItemTargets(targetItems, target);
   const holidayName = new Map(holidays.map((h) => [dayNumber(h.date), h.name]));
 
   const todayD = dayNumber(new Date());
@@ -218,12 +228,13 @@ export async function getTargetDashboard(opts?: {
   return {
     mode,
     targetPerItem: target,
-    targetPerDeptDay: sumItemTargets(ITEMS, target),
-    paintTargetDay: sumItemTargets(ITEMS, target),
+    targetItems,
+    targetPerDeptDay: deptDayTarget,
+    paintTargetDay: deptDayTarget,
     workingDays,
     targetPerItemPeriod: target * workingDays,
-    targetPerDeptPeriod: sumItemTargets(ITEMS, target) * workingDays,
-    paintTargetPeriod: sumItemTargets(ITEMS, target) * workingDays,
+    targetPerDeptPeriod: deptDayTarget * workingDays,
+    paintTargetPeriod: deptDayTarget * workingDays,
     fromISO: toISODate(dateFromDayNumber(fromD)),
     toISO: toISODate(dateFromDayNumber(toD)),
     prevWeekISO: toISODate(dateFromDayNumber(fromD - 7)),

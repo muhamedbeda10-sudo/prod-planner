@@ -1,12 +1,14 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { computeOtd, type OtdStats } from "@/lib/domain/otd";
+import { computeOtd, otdGateItems, type OtdStats } from "@/lib/domain/otd";
 import { PAINT_EXEMPT, PAINTED_ITEMS, applicableItems } from "@/lib/domain/constants";
 import { getActiveLine } from "./line";
 
-/** On-Time Delivery stats over the whole registry. A component is "delivered"
- *  when its FINAL stage reaches the order qty: Painting for TC/TN/CB, SHOT
- *  BLAST for the paint-exempt core (CF). We feed the final-stage log of each item. */
+/** On-Time Delivery stats over the whole registry. An order is "delivered"
+ *  when its TANKS are painted to the order qty — the tank is the piece the
+ *  order closes on, the same yardstick as the dashboard's plan completion.
+ *  An order with no tank of its own (marked N/A) falls back to its other base
+ *  components at their final stage: Painting, or shot blast for the core. */
 export async function getOtdStats(): Promise<OtdStats> {
   const [orders, schedules, finalLogs] = await Promise.all([
     prisma.masterOrder.findMany({ where: { line: await getActiveLine() }, select: { mo: true, planQty: true, kva: true, rating: true, ospCF: true, ospTC: true, ospTN: true, ospCB: true, excludedItems: true } }),
@@ -27,12 +29,11 @@ export async function getOtdStats(): Promise<OtdStats> {
       mo: o.mo,
       planQty: o.planQty,
       osp: { CF: o.ospCF, TC: o.ospTC, TN: o.ospTN, CB: o.ospCB },
-      // the order's real components: base four + AR/MB when its KVA/rating rule
-      // matches, minus any marked N/A — only these gate on-time delivery
-      items: applicableItems(o),
+      items: otdGateItems(applicableItems(o)),
     })),
     schedules,
     finalLogs,
     new Date()
   );
 }
+

@@ -13,6 +13,7 @@
 // OTD% = on time / (on time + late + open-late)
 
 import { ITEMS, SHEET_ITEMS } from "./constants";
+import { TANK_ITEM } from "./tanks";
 import { dayNumber, dateFromDayNumber, toISODate } from "./dates";
 
 export interface OtdOrder {
@@ -162,4 +163,13 @@ export function computeOtd(
     avgLatenessDays: lateRows.length > 0 ? lateRows.reduce((s, r) => s + r.latenessDays, 0) / lateRows.length : null,
     worst: [...lateRows].sort((a, b) => b.latenessDays - a.latenessDays).slice(0, 8),
   };
+}
+
+/** The components a promise is judged on: the tank alone when the order has
+ *  one — the piece the order closes on, the same yardstick as the plan's
+ *  completion; else its remaining base components (never AR / MB — a
+ *  bracket or a mono box lagging does not make a transformer late). */
+export function otdGateItems(applicable: readonly string[]): string[] {
+  if (applicable.includes(TANK_ITEM)) return [TANK_ITEM];
+  return applicable.filter((it) => (SHEET_ITEMS as readonly string[]).includes(it));
 }

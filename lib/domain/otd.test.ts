@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeOtd, type OtdPaintLog } from "./otd";
+import { computeOtd, type OtdPaintLog, otdGateItems } from "./otd";
 import { utcDate } from "./dates";
 
 const day = utcDate(2026, 7, 13); // today
@@ -108,5 +108,15 @@ describe("computeOtd", () => {
   it("orders never scheduled in any plan are skipped entirely", () => {
     const stats = computeOtd([{ mo: "MO-X", planQty: 5 }], [], [], day);
     expect(stats.due + stats.upcoming).toBe(0);
+  });
+});
+
+describe("otdGateItems — a promise is judged on the tank", () => {
+  it("is the tank alone when the order has one, whatever else it carries", () => {
+    expect(otdGateItems(["CF", "TC", "TN", "CB", "AR", "MB"])).toEqual(["TN"]);
+  });
+  it("falls back to the other base components when the tank is N/A — never a bracket or a mono box", () => {
+    expect(otdGateItems(["CF", "CB", "MB"])).toEqual(["CF", "CB"]);
+    expect(otdGateItems(["MB"])).toEqual([]);
   });
 });
