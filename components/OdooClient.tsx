@@ -12,7 +12,7 @@ import type { ProductLine } from "@/lib/domain/lines";
 import { useActiveLine } from "@/components/LineContext";
 import { Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
-import { materialNeed, monthLabelOfISO, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { entryMaterialNeed, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, setOdooFgCode, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
 
@@ -396,8 +396,8 @@ function NotesCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
   );
 }
 
-function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit, inGroup = false }: {
-  e: OdooEntryView; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; soiBoms: string[]; canEdit: boolean;
+function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGroup = false }: {
+  e: OdooEntryView; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; needCtx: NeedContext; canEdit: boolean;
   /** One of the closings under a merged line — indented, so the line above
    *  reads as the total of what follows it. */
   inGroup?: boolean;
@@ -408,13 +408,13 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit, inGro
   const del = useAction();
   // the row's material, as a hint on the button — none when the tracker has
   // no lines for this part on this BOM
-  const need = useMemo(() => materialNeed(nesting, e.fgCode, e.qty, monthLabelOfISO(e.dateISO), soiBoms), [nesting, e.fgCode, e.qty, e.dateISO, soiBoms]);
+  const need = useMemo(() => entryMaterialNeed(nesting, e, e.qty, needCtx), [nesting, e, needCtx]);
   const closeMaterial = useCallback(() => setMaterial(false), []);
   // clicking the row's plain cells opens its material; the status and notes
   // cells keep their own controls
   const cell = "p-2 whitespace-nowrap cursor-pointer";
   const open = () => setMaterial(true);
-  const rowTitle = need ? `Click for the material behind ${e.qty} units` : "Click — no nesting lines for this FG-CODE yet";
+  const rowTitle = need ? `Click for the material behind ${e.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "FG-CODE"} yet`;
   const born = isBorn(e);
   return (
     <>
@@ -480,7 +480,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit, inGro
           </span>
         </td>
       </tr>
-      {material && <OdooMaterialPopup e={e} nesting={nesting} soiBoms={soiBoms} onClose={closeMaterial} />}
+      {material && <OdooMaterialPopup e={e} nesting={nesting} needCtx={needCtx} onClose={closeMaterial} />}
       {(editing || del.msg?.ok === false) && (
         <tr className="border-t-0">
           <td colSpan={9} className="px-2 pb-3">
@@ -522,8 +522,8 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit, inGro
  * their links to the daily-log records that wrote them, and the line opens to
  * show them — that is where a single one is edited, noted or deleted.
  */
-function MergedRow({ g, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit }: {
-  g: OdooGroup; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; soiBoms: string[]; canEdit: boolean;
+function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit }: {
+  g: OdooGroup; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; needCtx: NeedContext; canEdit: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [material, setMaterial] = useState(false);
@@ -532,7 +532,7 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit 
   // the line's material is the material of what it closed in TOTAL — the
   // whole point of the line is that the office reads one figure, not three
   const whole = useMemo(() => ({ ...head, qty: g.qty }), [head, g.qty]);
-  const need = useMemo(() => materialNeed(nesting, head.fgCode, g.qty, monthLabelOfISO(head.dateISO), soiBoms), [nesting, head.fgCode, g.qty, head.dateISO, soiBoms]);
+  const need = useMemo(() => entryMaterialNeed(nesting, head, g.qty, needCtx), [nesting, head, g.qty, needCtx]);
   const closeMaterial = useCallback(() => setMaterial(false), []);
   const noteCount = g.rows.reduce((n, r) => n + r.notes.length, 0);
   const guessed = g.rows.some((r) => r.fgGuessed);
@@ -604,9 +604,9 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, soiBoms, canEdit 
           </span>
         </td>
       </tr>
-      {material && <OdooMaterialPopup e={whole} nesting={nesting} soiBoms={soiBoms} onClose={closeMaterial} />}
+      {material && <OdooMaterialPopup e={whole} nesting={nesting} needCtx={needCtx} onClose={closeMaterial} />}
       {open && g.rows.map((e) => (
-        <Row key={e.id} e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} soiBoms={soiBoms} canEdit={canEdit} inGroup />
+        <Row key={e.id} e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} needCtx={needCtx} canEdit={canEdit} inGroup />
       ))}
     </>
   );
@@ -661,7 +661,6 @@ function ImportPanel({ day }: { day: string }) {
 // ---- filters: one row above the table, kept between visits ----
 
 const FILTERS_KEY = "odoo:filters";
-const NO_BOMS: string[] = [];
 const SEL = "border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold";
 
 function readSavedFilters(raw: string): OdooFilters {
@@ -770,7 +769,7 @@ export function OdooClient({
   knownSois,
   knownFgCodes,
   nesting,
-  soiBoms,
+  needCtx,
   canEdit,
   totalRows,
   openRows,
@@ -780,13 +779,13 @@ export function OdooClient({
   knownSois: string[];
   knownFgCodes: string[];
   nesting: NestingLookup;
-  soiBoms: Record<string, string[]>;
+  /** How a row finds its material: by part × BOM (transformers) or by MO (panels). */
+  needCtx: NeedContext;
   canEdit: boolean;
   /** The whole log behind this day — see ElsewhereBanner. */
   totalRows: number;
   openRows: number;
 }) {
-  const bomsOf = (soi: string | null) => soiBoms[(soi ?? "").trim().toUpperCase()] ?? NO_BOMS;
   const { filters, setFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_ODOO_FILTERS);
   const shown = useMemo(() => filterOdooEntries(entries, filters), [entries, filters]);
   // the rows that are the same closing read as one line carrying the total
@@ -894,9 +893,9 @@ export function OdooClient({
               </thead>
               <tbody>
                 {groups.map((g) => (g.rows.length === 1 ? (
-                  <Row key={g.rows[0].id} e={g.rows[0]} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} soiBoms={bomsOf(g.rows[0].soi)} canEdit={canEdit} />
+                  <Row key={g.rows[0].id} e={g.rows[0]} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} needCtx={needCtx} canEdit={canEdit} />
                 ) : (
-                  <MergedRow key={g.key} g={g} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} soiBoms={bomsOf(g.rows[0].soi)} canEdit={canEdit} />
+                  <MergedRow key={g.key} g={g} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} needCtx={needCtx} canEdit={canEdit} />
                 )))}
               </tbody>
             </table>

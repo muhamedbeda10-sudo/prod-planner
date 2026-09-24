@@ -75,12 +75,19 @@ export function varianceOf(actual: number | null, bom: number): { pct: number | 
   return { pct, tone };
 }
 
+/** How a row's lines were found. Transformers: the SOI's order ("soi") or the
+ *  FG-CODE's suffix ("fg"). Panels, keyed by MO: the closing the row was born
+ *  from ("ledger"), the MO typed on the row ("odoo"), or one of the SOI's
+ *  orders in the registry ("order"). */
+export type NeedVia = "soi" | "fg" | "ledger" | "odoo" | "order";
+
 export interface MaterialNeed {
   partCode: string;
   partName: string;
   bom: string;
-  /** How the BOM was found: through the SOI's order, or the FG-CODE's suffix. */
-  via: "soi" | "fg";
+  /** The panel order the lines belong to — panels only, null for a part. */
+  mo: string | null;
+  via: NeedVia;
   qty: number;
   /** The tracker month the lines came from. */
   month: string;
@@ -131,9 +138,67 @@ export function materialNeed(lookup: NestingLookup, fgCode: string, qty: number,
   if (!cand) return null;
   const hit = cand.boms.map((c) => ({ ...c, lines: lookup[nestingKey(cand.partCode, c.bom)] ?? [] })).find((c) => c.lines.length > 0);
   if (!hit) return null;
-  const key = { partCode: cand.partCode, bom: hit.bom };
-  const all = hit.lines;
+  return buildNeed(hit.lines, { partCode: cand.partCode, bom: hit.bom, mo: null, via: hit.via }, qty, loggedMonth);
+}
 
+// ---- panels: the lines are the ORDER's, keyed by its MO ----
+
+/** "SF01/MO/03673-001" → "MO|SF01/MO/03673-001" — the lookup key of a panel
+ *  order's lines. A panel's FG code (FG-SUA-AS-AA-000004) names no part, so
+ *  its material is filed by MO, not part × BOM. */
+export const moKey = (mo: string) => `MO|${mo.trim().toUpperCase()}`;
+
+export interface MoCandidate { mo: string; via: "ledger" | "odoo" | "order" }
+
+/** The MOs a panel row's material may be filed under, in lookup order: the
+ *  closing it was born from, the MO typed on the row, then every order the
+ *  registry has for its SOI. */
+export function candidateMos(e: { mo?: string | null; odooMo: string; soi: string | null }, soiMos: readonly string[]): MoCandidate[] {
+  const out: MoCandidate[] = [];
+  const add = (raw: string | null | undefined, via: MoCandidate["via"]) => {
+    const mo = (raw ?? "").trim().toUpperCase();
+    if (mo && !out.some((c) => c.mo === mo)) out.push({ mo, via });
+  };
+  add(e.mo, "ledger");
+  add(e.odooMo, "odoo");
+  for (const mo of soiMos) add(mo, "order");
+  return out;
+}
+
+/** A panel row's material: the lines of the first candidate order that has
+ *  any, scaled to the row's qty. Null when no order carries lines yet. */
+export function materialNeedByMo(lookup: NestingLookup, cands: readonly MoCandidate[], qty: number, loggedMonth: string): MaterialNeed | null {
+  const hit = cands.map((c) => ({ ...c, lines: lookup[moKey(c.mo)] ?? [] })).find((c) => c.lines.length > 0);
+  if (!hit) return null;
+  const bom = hit.lines.find((l) => l.bom)?.bom ?? "";
+  return buildNeed(hit.lines, { partCode: "", bom, mo: hit.mo, via: hit.via }, qty, loggedMonth);
+}
+
+/** Everything the log page needs to find a row's material, for either line. */
+export interface NeedContext {
+  /** Panels: rows look their lines up by MO rather than part × BOM. */
+  lv: boolean;
+  /** The registry's BOM(s) per SOI (transformers). */
+  soiBoms: Record<string, string[]>;
+  /** The registry's order MO(s) per SOI (panels). */
+  soiMos: Record<string, string[]>;
+}
+
+export const EMPTY_NEED_CONTEXT: NeedContext = { lv: false, soiBoms: {}, soiMos: {} };
+
+const soiOf = (soi: string | null) => (soi ?? "").trim().toUpperCase();
+
+/** The material behind one logged row at `qty` units, whichever line it is on. */
+export function entryMaterialNeed(
+  lookup: NestingLookup, e: { fgCode: string; dateISO: string; soi: string | null; odooMo: string; mo?: string | null }, qty: number, ctx: NeedContext
+): MaterialNeed | null {
+  const month = monthLabelOfISO(e.dateISO);
+  return ctx.lv
+    ? materialNeedByMo(lookup, candidateMos(e, ctx.soiMos[soiOf(e.soi)] ?? []), qty, month)
+    : materialNeed(lookup, e.fgCode, qty, month, ctx.soiBoms[soiOf(e.soi)] ?? []);
+}
+
+function buildNeed(all: readonly NestingLine[], key: { partCode: string; bom: string; mo: string | null; via: NeedVia }, qty: number, loggedMonth: string): MaterialNeed {
   const months = [...new Set(all.map((l) => l.month))].sort((a, b) => monthLabelSortKey(b) - monthLabelSortKey(a) || b.localeCompare(a));
   const month = months.includes(loggedMonth) ? loggedMonth : months[0];
   const q = Number.isFinite(qty) && qty > 0 ? qty : 0;
@@ -160,7 +225,8 @@ export function materialNeed(lookup: NestingLookup, fgCode: string, qty: number,
     partCode: key.partCode,
     partName: all.find((l) => l.partName)?.partName ?? "",
     bom: key.bom,
-    via: hit.via,
+    mo: key.mo,
+    via: key.via,
     qty: q,
     month,
     otherMonths: months.filter((m) => m !== month),

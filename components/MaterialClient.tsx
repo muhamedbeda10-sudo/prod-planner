@@ -1,6 +1,7 @@
 "use client";
 
 import type { ProductLine } from "@/lib/domain/lines";
+import type { LvOrderRef, MaterialPageData } from "@/lib/server/material";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
@@ -13,7 +14,7 @@ import { monthInputFromLabel } from "@/lib/domain/dates";
 import { Soi } from "@/components/ui";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
-  createMaterialLine, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, deleteMaterialLine, importMaterialAction,
+  createMaterialLine, createLvOrderLines, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, deleteMaterialLine, importMaterialAction,
   deleteMaterialMonth,
 } from "@/app/material/actions";
 
@@ -168,10 +169,10 @@ function LineFields({ line, month, knownBoms, knownCodes, disabled, product = "T
 
 // ---- one editable number cell (actual nested · units produced) ----
 
-function CellInput({ id, field, value, action, title, bold, step = "0.01", className = "w-20" }: {
+function CellInput({ id, field, value, action, title, bold, step = "0.01", className = "w-20", placeholder = "—" }: {
   id: number; field: "actualPerUnit" | "sheetsUsed" | "producedQty"; value: number | null;
   action: (fd: FormData) => Promise<{ ok: boolean; error?: string }>; title: string; bold?: boolean;
-  step?: string; className?: string;
+  step?: string; className?: string; placeholder?: string;
 }) {
   const a = useAction();
   const [draft, setDraft] = useState(value === null ? "" : String(value));
@@ -189,7 +190,7 @@ function CellInput({ id, field, value, action, title, bold, step = "0.01", class
         type="number" step={step} min="0" value={draft} disabled={a.pending}
         onChange={(e) => setDraft(e.target.value)} onBlur={save}
         onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-        placeholder="—" title={title} className={`${cellInput} ${bold ? "font-extrabold" : ""} ${className}`.trim()}
+        placeholder={placeholder} title={title} className={`${cellInput} ${bold ? "font-extrabold" : ""} ${className}`.trim()}
       />
       {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
     </span>
@@ -203,7 +204,83 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth, produ
   const edit = useAction();
   const del = useAction();
   const diffCls = line.difference === null ? "" : line.difference < 0 ? "text-bad-fg" : line.difference > 0 ? "text-ok-fg" : "text-muted";
-  const cols = 18 + (showMonth ? 1 : 0);
+  const lv = product === "LV";
+  const cols = (lv ? 16 : 18) + (showMonth ? 1 : 0);
+  const editor = (
+    <tr className="border-t-0">
+      <td colSpan={cols} className="px-2 pb-3">
+        <Msg msg={del.msg?.ok === false ? del.msg : null} />
+        {editing && (
+          <form className="mt-2 border rounded-xl p-2" onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget); fd.set("id", String(line.id));
+            edit.run(updateMaterialLine, fd, "Saved.", () => setEditing(false));
+          }}>
+            <div className="flex flex-wrap items-stretch gap-1.5">
+              <LineFields line={line} month={month} knownBoms={knownBoms} knownCodes={knownCodes} disabled={edit.pending} product={product} />
+              <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={edit.pending}>Save</button>
+            </div>
+            <Msg msg={edit.msg} />
+          </form>
+        )}
+      </td>
+    </tr>
+  );
+  const actions = (
+    <td className="p-2 text-center whitespace-nowrap no-print">
+      {canEdit ? (
+        <span className="inline-flex gap-1">
+          <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)}>{editing ? "Close" : "Edit"}</button>
+          <button type="button" className="btn btn-sm btn-danger" disabled={del.pending}
+            onClick={() => {
+              if (!confirm(`Delete ${line.partCode ? `${line.partCode} ` : ""}${line.material} ${line.thicknessMm}mm ${line.sheetSize} from ${line.mo || line.bom} (${line.month || "no month"})?`)) return;
+              const fd = new FormData(); fd.set("id", String(line.id));
+              del.run(deleteMaterialLine, fd, "Deleted.");
+            }}>Delete</button>
+        </span>
+      ) : <span className="text-muted text-xs">—</span>}
+    </td>
+  );
+  if (lv) {
+    // the panels' sheet: the order's head, then the thickness row, then what
+    // the tracker produced and what that consumed
+    const done = line.remainingUnits === 0 && line.units > 0;
+    return (
+      <>
+        <tr className={`border-t ${done ? "bg-ok-bg/30" : ""}`}>
+          <td className="p-2 font-bold whitespace-nowrap ltr text-xs">{line.mo || <span className="text-muted">—</span>}</td>
+          <td className="p-2 text-center"><span className="pill pill-muted">{line.partName || "—"}</span></td>
+          <td className="p-2 whitespace-nowrap ltr text-xs tabnum text-muted">{line.materialCode || "—"}</td>
+          <td className="p-2 text-center tabnum font-bold">{line.units}</td>
+          <td className="p-2 whitespace-nowrap ltr text-xs">{line.bom}</td>
+          <td className="p-2 whitespace-nowrap">{line.material}</td>
+          <td className="p-2 text-center tabnum ltr">{line.thicknessMm}</td>
+          <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
+          <td className="p-2 text-center"><Sheets v={line.sheetsPerUnit} digits={4} /></td>
+          <td className="p-2 text-center font-bold"><Sheets v={line.forJob} /></td>
+          <td className="p-2 text-center">
+            {canEdit ? (
+              <CellInput id={line.id} field="actualPerUnit" value={line.actualPerUnit} action={setActualPerUnit} step="0.0001" className={`w-24 ${line.actualPerUnitManual ? "font-semibold" : "text-muted font-normal"}`} title="Sheets ONE unit really takes — blank means the BOM's figure" />
+            ) : <Sheets v={line.actualPerUnit} digits={4} />}
+          </td>
+          <td className="p-2 text-center bg-brand-light/30 whitespace-nowrap">
+            {canEdit ? (
+              <CellInput id={line.id} field="producedQty" value={line.producedQty} action={setProducedQty} placeholder={line.producedAuto === null ? "—" : String(line.producedAuto)} title={line.producedAuto === null ? "Units produced — type it" : `${line.producedAuto} painted on the tracker — type over it only to override`} />
+            ) : <Sheets v={line.producedUsed} />}
+            {line.producedQty === null && line.producedAuto !== null && <span className="block text-[10px] text-muted">tracker</span>}
+          </td>
+          <td className="p-2 text-center font-extrabold bg-brand-light/30" title={line.producedUsed === null ? "Nothing produced yet" : `${line.producedUsed} units × ${Number((line.actualPerUnit ?? line.sheetsPerUnit).toFixed(4))} sheets a unit`}>
+            <Sheets v={line.forProduced ?? (line.producedUsed === null ? null : Number((line.sheetsPerUnit * line.producedUsed).toFixed(4)))} />
+          </td>
+          <td className={`p-2 text-center tabnum font-bold ${done ? "text-ok-fg" : ""}`}>{line.remainingUnits === null ? "—" : done ? "Done" : line.remainingUnits}</td>
+          <td className="p-2 text-xs max-w-[200px]">{line.note}</td>
+          {showMonth && <td className="p-2 whitespace-nowrap text-xs">{line.month || <span className="text-muted">—</span>}</td>}
+          {actions}
+        </tr>
+        {(del.msg?.ok === false || editing) && editor}
+      </>
+    );
+  }
   return (
     <>
       <tr className="border-t">
@@ -317,9 +394,89 @@ function AddLine({ month, knownBoms, knownCodes, startOpen, product }: { month: 
   );
 }
 
+// ---- LV: an order's material in one go ----
+
+type LvRowDraft = { material: string; thicknessMm: string; sheetSize: string; sheetsPerUnit: string };
+const LV_DEFAULT_ROWS: LvRowDraft[] = ["1.5", "2", "3"].map((t) => ({ material: "Galvanized steel", thicknessMm: t, sheetSize: "1220*2440", sheetsPerUnit: "" }));
+
+function AddLvOrder({ month, orders, templates }: { month: string; orders: LvOrderRef[]; templates: MaterialPageData["lvTemplates"] }) {
+  const add = useAction();
+  const [open, setOpen] = useState(false);
+  const [mo, setMo] = useState("");
+  const [rows, setRows] = useState<LvRowDraft[]>(LV_DEFAULT_ROWS);
+  const monthDefault = monthInputFromLabel(month === "all" ? "" : month) ?? "";
+  const order = orders.find((o) => o.mo === mo) ?? null;
+  const pick = (v: string) => {
+    setMo(v);
+    const o = orders.find((x) => x.mo === v);
+    const t = o ? templates[o.bom] : undefined;
+    // the BOM's rows from another order, when there are any; else three blank thicknesses
+    setRows(t && t.length ? t.map((r) => ({ material: r.material, thicknessMm: String(r.thicknessMm), sheetSize: r.sheetSize, sheetsPerUnit: String(r.sheetsPerUnit) })) : LV_DEFAULT_ROWS);
+  };
+  const setRow = (i: number, patch: Partial<LvRowDraft>) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+  if (!open) return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>➕ Add an order&apos;s material</button>;
+  const fromTemplate = order && templates[order.bom]?.length;
+  return (
+    <form className="border rounded-xl p-3 space-y-2" onSubmit={(e) => {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      fd.set("rows", JSON.stringify(rows));
+      add.run(createLvOrderLines, fd, "Added — the order's rows are on the tab.", () => { setMo(""); setRows(LV_DEFAULT_ROWS); });
+    }}>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block">
+          <span className="text-xs font-bold text-muted">Plan month</span>
+          <input type="month" name="month" defaultValue={monthDefault} required className={`${F} ltr tabnum block`} />
+        </label>
+        <label className="block min-w-[22rem]">
+          <span className="text-xs font-bold text-muted">Panel order</span>
+          <select name="mo" value={mo} onChange={(e) => pick(e.target.value)} required className={`${F} ltr block w-full`}>
+            <option value="">Pick the MO…</option>
+            {orders.map((o) => <option key={o.mo} value={o.mo}>{o.mo} · {o.product ?? "?"} · {o.secItem ?? "—"} · {o.planQty} pcs · {o.bom}</option>)}
+          </select>
+        </label>
+        {order && (
+          <span className="text-xs text-muted pb-2">
+            BOM <b className="ltr text-foreground">{order.bom}</b> · planned <b className="text-foreground tabnum">{order.planQty}</b> · painted so far <b className="text-foreground tabnum">{order.painted}</b>
+            {fromTemplate ? <> · rows from this BOM&apos;s earlier order — check the figures</> : <> · no earlier order on this BOM — type the sheets per unit</>}
+          </span>
+        )}
+      </div>
+      <table className="text-sm border-collapse">
+        <thead><tr className="text-left text-xs text-muted"><th className="p-1">Material</th><th className="p-1">Thickness (mm)</th><th className="p-1">Sheet size</th><th className="p-1">Sheets per unit (BOM)</th><th className="p-1">Sheets for the order</th><th /></tr></thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const per = Number(r.sheetsPerUnit); const job = order && Number.isFinite(per) && r.sheetsPerUnit !== "" ? Number((per * order.planQty).toFixed(4)) : null;
+            return (
+              <tr key={i}>
+                <td className="p-1"><input value={r.material} onChange={(e) => setRow(i, { material: e.target.value })} list="material-types" aria-label="Material" className={`${F} w-48`} /></td>
+                <td className="p-1"><input value={r.thicknessMm} onChange={(e) => setRow(i, { thicknessMm: e.target.value })} type="number" step="0.1" min="0.1" aria-label="Thickness" className={`${F} ltr tabnum w-24`} /></td>
+                <td className="p-1"><input value={r.sheetSize} onChange={(e) => setRow(i, { sheetSize: e.target.value })} list="sheet-sizes" aria-label="Sheet size" className={`${F} ltr w-32`} /></td>
+                <td className="p-1"><input value={r.sheetsPerUnit} onChange={(e) => setRow(i, { sheetsPerUnit: e.target.value })} type="number" step="0.0001" min="0" aria-label="Sheets per unit" placeholder="per unit" className={`${F} ltr tabnum w-28 font-extrabold`} /></td>
+                <td className="p-1 tabnum text-muted">{job === null ? "—" : job}</td>
+                <td className="p-1"><button type="button" className="btn btn-sm btn-ghost" onClick={() => setRows((rs) => rs.filter((_, k) => k !== i))} title="Remove this row">✕</button></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <datalist id="material-types">{MATERIAL_PRESETS.map((m) => <option key={m} value={m} />)}</datalist>
+      <datalist id="sheet-sizes">{SHEET_SIZE_PRESETS.map((sz) => <option key={sz} value={sz} />)}</datalist>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="btn btn-sm" onClick={() => setRows((rs) => [...rs, { material: "Galvanized steel", thicknessMm: "", sheetSize: "1220*2440", sheetsPerUnit: "" }])}>+ thickness</button>
+        <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending || !order}>Add the order</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)}>✕</button>
+        <Msg msg={add.msg} />
+      </div>
+      <p className="text-xs text-muted">Produced units and the sheets they consumed follow the tracker on their own: every panel painted on this MO counts, at the sheets-per-unit above.</p>
+    </form>
+  );
+}
+
 // ---- import the sheet for a month ----
 
-function ImportPanel({ month }: { month: string }) {
+function ImportPanel({ month, product }: { month: string; product: ProductLine }) {
+  const lv = product === "LV";
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
@@ -338,7 +495,7 @@ function ImportPanel({ month }: { month: string }) {
       if (!preview) router.refresh();
     });
   }
-  if (!open) return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>📥 Import the Nesting Tracker sheet</button>;
+  if (!open) return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>📥 {lv ? "Import the Consumption Details sheet" : "Import the Nesting Tracker sheet"}</button>;
   return (
     <form className="border rounded-xl p-3 space-y-2" onSubmit={(e) => e.preventDefault()}>
       <div className="flex flex-wrap items-end gap-2">
@@ -355,8 +512,10 @@ function ImportPanel({ month }: { month: string }) {
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)}>✕</button>
       </div>
       <p className="text-xs text-muted">
-        Reads the Nesting Project Tracker by its headers — BOM Ref, Quantity of Units, Part Code, Part Name, Codes, Material, Thickness, Sheet Size, Sheets in BOM for one Unit, Actual Nesting for Job, Notes. Importing the same month again adds the new rows and updates the
-        ones whose values changed — it never doubles them, and it leaves your “Units produced” exactly as typed.
+        {lv ? (
+          <>Reads the panels&apos; Consumption Details sheet as it is — Product, Sec Item, Planned qty, MO, BOM, Material, then one row per Thickness with the sheets for one unit and what was actually consumed (“For 8 Units 14.4 Sheets Consumed”, or Done). Importing the same month again updates the rows, never doubles them.</>
+        ) : (<>Reads the Nesting Project Tracker by its headers — BOM Ref, Quantity of Units, Part Code, Part Name, Codes, Material, Thickness, Sheet Size, Sheets in BOM for one Unit, Actual Nesting for Job, Notes. Importing the same month again adds the new rows and updates the
+        ones whose values changed — it never doubles them, and it leaves your “Units produced” exactly as typed.</>)}
       </p>
       <Msg msg={res} />
       {issues.length > 0 && (
@@ -393,7 +552,7 @@ function DeleteMonth({ month, count }: { month: string; count: number }) {
 
 // ---- totals ----
 
-function TotalsTable({ totals }: { totals: MaterialTotal[] }) {
+function TotalsTable({ totals, lv = false }: { totals: MaterialTotal[]; lv?: boolean }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm border-collapse">
@@ -401,9 +560,9 @@ function TotalsTable({ totals }: { totals: MaterialTotal[] }) {
           <tr className="bg-surface-2 text-left">
             <th className="p-2">Material</th><th className="p-2 text-center">Thk (mm)</th><th className="p-2 text-center">Sheet size</th>
             <th className="p-2 text-center" title="Sheets the BOMs call for">Sheets for job</th>
-            <th className="p-2 text-center" title="Sheets actually nested">Actual nested</th>
+            <th className="p-2 text-center" title={lv ? "Sheets actually consumed" : "Sheets actually nested"}>{lv ? "Actual consumed" : "Actual nested"}</th>
             <th className="p-2 text-center" title="Sheets the entered quantities really take, at each line's actual rate">Actual for quantity</th>
-            <th className="p-2 text-center">Not nested yet</th>
+            <th className="p-2 text-center">{lv ? "Nothing consumed yet" : "Not nested yet"}</th>
           </tr>
         </thead>
         <tbody>
@@ -489,12 +648,16 @@ function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineVie
   );
 }
 
-export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR" }: {
+export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR", lvOrders = [], lvTemplates = {} }: {
   lines: MaterialLineView[]; totals: MaterialTotal[]; month: string; knownBoms: string[]; canEdit: boolean;
   /** Which product line's nesting this is — the transformer part presets are only offered on theirs. */
   product?: ProductLine;
+  /** LV only: the panel orders the add form offers, and each BOM's rows so far. */
+  lvOrders?: LvOrderRef[];
+  lvTemplates?: MaterialPageData["lvTemplates"];
 }) {
   const showMonth = month === "all";
+  const lv = product === "LV";
   const knownCodes = [...new Set(lines.map((l) => l.materialCode).filter(Boolean))].sort();
   const { filters, setFilters: changeFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_MATERIAL_FILTERS);
   const shown = useMemo(() => filterMaterialLines(lines, filters), [lines, filters]);
@@ -505,7 +668,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
     <div className="space-y-5">
       {canEdit && (
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <ImportPanel month={month} />
+          <ImportPanel month={month} product={product} />
           {!showMonth && lines.length > 0 && <DeleteMonth month={month} count={lines.length} />}
         </div>
       )}
@@ -513,7 +676,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
       <section className="bg-surface border rounded-xl overflow-hidden">
         {lines.length === 0 ? (
           <p className="text-sm text-muted p-4">
-            {showMonth ? "No material recorded yet." : `Nothing recorded for ${month}.`} Import the month&apos;s Nesting Tracker sheet, or add lines below.
+            {showMonth ? "No material recorded yet." : `Nothing recorded for ${month}.`} {lv ? "Import the Consumption Details sheet, or add an order below." : "Import the month\u2019s Nesting Tracker sheet, or add lines below."}
           </p>
         ) : shown.length === 0 ? (
           <p className="text-sm text-muted p-4">No line matches these filters.</p>
@@ -526,6 +689,27 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                     does. Then the two this tab adds — the quantity he types and
                     what it really costs — and last the app's own identity
                     columns, which the sheet has never carried. */}
+                {lv ? (
+                  <tr className="bg-brand text-white text-left align-bottom">
+                    <th className={TH}>MO</th>
+                    <th className={`${TH} text-center`}>Product</th>
+                    <th className={TH}>Sec Item</th>
+                    <th className={`${TH} text-center`}>Planned qty</th>
+                    <th className={TH}>BOM</th>
+                    <th className={TH}>Material</th>
+                    <th className={`${TH} text-center`}>Thickness (mm)</th>
+                    <th className={`${TH} text-center`}>Sheet Size</th>
+                    <th className={`${TH} text-center`}>No. of Sheets in BOM for one Unit</th>
+                    <th className={`${TH} text-center`} title="Per unit × planned qty">Sheets Qty as per BOM</th>
+                    <th className={`${TH} text-center`} title="Sheets one unit really takes — blank means the BOM's figure">Actual per Unit</th>
+                    <th className={`${TH} text-center bg-brand-dark`} title="Panels painted on the tracker; type here only to override">Produced</th>
+                    <th className={`${TH} text-center bg-brand-dark`} title="Sheets the produced panels consumed — per unit × produced">Actually Consumed</th>
+                    <th className={`${TH} text-center`}>Remaining units</th>
+                    <th className={TH}>Remarks</th>
+                    {showMonth && <th className={TH}>Month</th>}
+                    <th className="p-2 no-print" />
+                  </tr>
+                ) : (
                 <tr className="bg-brand text-white text-left align-bottom">
                   <th className={TH}>BOM Ref</th>
                   <th className={`${TH} text-center`}>Quantity of Units</th>
@@ -547,6 +731,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                   <th className={TH} title="Sales order item — from the order registry, not from the sheet">SOI</th>
                   <th className="p-2 no-print" />
                 </tr>
+                )}
               </thead>
               <tbody>
                 {shown.map((l) => <LineRow key={l.id} line={l} month={month} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} />)}
@@ -555,14 +740,14 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
           </div>
         )}
       </section>
-      {canEdit && <AddLine month={month} knownBoms={knownBoms} knownCodes={knownCodes} startOpen={false} product={product} />}
+      {canEdit && (lv ? <AddLvOrder month={month} orders={lvOrders} templates={lvTemplates} /> : <AddLine month={month} knownBoms={knownBoms} knownCodes={knownCodes} startOpen={false} product={product} />)}
       {shownTotals.length > 0 && (
         <section>
           <h2 className="font-bold mb-2">
             Totals {showMonth ? "across every month" : `for ${month}`} — per material, thickness and size
             {filtering && <span className="text-sm font-normal text-muted"> · filtered lines only</span>}
           </h2>
-          <div className="bg-surface border rounded-xl overflow-hidden"><TotalsTable totals={shownTotals} /></div>
+          <div className="bg-surface border rounded-xl overflow-hidden"><TotalsTable totals={shownTotals} lv={lv} /></div>
         </section>
       )}
     </div>

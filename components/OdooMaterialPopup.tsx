@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { EMPTY_MATERIAL_FILTERS, type MaterialFilters } from "@/lib/domain/material";
-import { bookText, candidateBoms, materialNeed, materialNeedText, monthLabelOfISO, VARIANCE_BAD, VARIANCE_WARN, varianceText, type MaterialNeed, type NestingLookup, type VarianceTone } from "@/lib/domain/odooMaterial";
+import {
+  bookText, candidateBoms, candidateMos, entryMaterialNeed, materialNeedText, moKey, monthLabelOfISO, VARIANCE_BAD, VARIANCE_WARN, varianceText,
+  type MaterialNeed, type NeedContext, type NeedVia, type NestingLookup, type VarianceTone,
+} from "@/lib/domain/odooMaterial";
 import type { OdooEntryView } from "@/lib/domain/odoo";
 import { Soi } from "@/components/ui";
 import { parseSaved, useStoredFilters } from "@/components/useStoredFilters";
@@ -91,13 +94,23 @@ const readMaterialFilters = (raw: string) => parseSaved(raw) as Partial<Material
 function useOpenInMaterial() {
   const router = useRouter();
   const { setFilters } = useStoredFilters(MATERIAL_FILTERS_KEY, readMaterialFilters, EMPTY_MATERIAL_FILTERS);
-  return (partCode: string, bom: string, month: string) => {
-    setFilters({ ...EMPTY_MATERIAL_FILTERS, q: bom, partCode });
+  return (q: string, partCode: string, month: string) => {
+    setFilters({ ...EMPTY_MATERIAL_FILTERS, q, partCode });
     router.push(month ? `/material?month=${encodeURIComponent(month)}` : "/material");
   };
 }
 
-function NeedTable({ need, copied, copy }: { need: MaterialNeed; copied: string | null; copy: (id: string, text: string) => void }) {
+const VIA_TEXT: Record<NeedVia, string> = {
+  soi: "via the SOI's order",
+  fg: "from the FG-CODE",
+  ledger: "the closing this row came from",
+  odoo: "the MO typed on the row",
+  order: "one of the SOI's orders",
+};
+
+function NeedTable({ need, copied, copy, lv }: { need: MaterialNeed; copied: string | null; copy: (id: string, text: string) => void; lv: boolean }) {
+  // panels consume sheets on the order; transformer parts are nested
+  const none = lv ? "not consumed" : "not nested";
   return (
     <div className="overflow-x-auto border rounded-xl">
       <table className="w-full text-sm border-collapse">
@@ -127,8 +140,8 @@ function NeedTable({ need, copied, copy }: { need: MaterialNeed; copied: string 
               <td className="p-2 text-right tabnum">{bookText(l.forQtyBom)}</td>
               <td className={`p-2 text-right tabnum font-extrabold text-base ${l.varianceTone ? TONE_INK[l.varianceTone] : ""}`}>
                 {l.forQtyActual === null ? (
-                  <span className="text-muted font-semibold text-xs" title="Not nested yet — the BOM number is what there is">
-                    not nested
+                  <span className="text-muted font-semibold text-xs" title={`${lv ? "Nothing consumed" : "Not nested"} yet — the BOM number is what there is`}>
+                    {none}
                   </span>
                 ) : (
                   bookText(l.forQtyActual)
@@ -144,7 +157,7 @@ function NeedTable({ need, copied, copy }: { need: MaterialNeed; copied: string 
         <tfoot>
           <tr className="border-t bg-surface-2 font-bold">
             <td className="p-2 text-xs" colSpan={6}>
-              Total sheets{need.notNested > 0 && <span className="text-muted font-normal"> · {need.notNested} line(s) not nested yet</span>}
+              Total sheets{need.notNested > 0 && <span className="text-muted font-normal"> · {need.notNested} line(s) {none} yet</span>}
             </td>
             <td className="p-2 text-right tabnum">{bookText(need.totalBom)}</td>
             <td className={`p-2 text-right tabnum ${need.totalVarianceTone ? TONE_INK[need.totalVarianceTone] : ""}`}>{bookText(need.totalActual)}</td>
@@ -157,7 +170,7 @@ function NeedTable({ need, copied, copy }: { need: MaterialNeed; copied: string 
   );
 }
 
-export function OdooMaterialPopup({ e, nesting, soiBoms, onClose }: { e: OdooEntryView; nesting: NestingLookup; soiBoms: string[]; onClose: () => void }) {
+export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEntryView; nesting: NestingLookup; needCtx: NeedContext; onClose: () => void }) {
   const [qty, setQty] = useState(String(e.qty));
   const { copied, copy } = useCopy();
   const openInMaterial = useOpenInMaterial();
@@ -171,10 +184,16 @@ export function OdooMaterialPopup({ e, nesting, soiBoms, onClose }: { e: OdooEnt
   }, [onClose]);
 
   const q = Number(qty);
-  const need = materialNeed(nesting, e.fgCode, Number.isFinite(q) ? q : 0, monthLabelOfISO(e.dateISO), soiBoms);
-  const cand = candidateBoms(e.fgCode, soiBoms);
+  const soiKey = (e.soi ?? "").trim().toUpperCase();
+  const need = entryMaterialNeed(nesting, e, Number.isFinite(q) ? q : 0, needCtx);
+  // transformers: the part × BOM pairs that were tried; panels: the orders
+  const cand = needCtx.lv ? null : candidateBoms(e.fgCode, needCtx.soiBoms[soiKey] ?? []);
+  const mos = needCtx.lv ? candidateMos(e, needCtx.soiMos[soiKey] ?? []) : [];
   const partCode = need?.partCode ?? cand?.partCode ?? "";
   const bom = need?.bom ?? cand?.boms[0]?.bom ?? e.fgCode;
+  // what the Material tab is searched for on the way over: the order for a
+  // panel, the BOM for a part
+  const openQuery = needCtx.lv ? (need?.mo ?? mos[0]?.mo ?? bom) : bom;
   // when nothing matched: which of the looked-up BOMs the tracker has at all,
   // and for which parts — "the BOM is there, the part isn't" is the usual case
   const bomsSeen = cand
@@ -190,7 +209,7 @@ export function OdooMaterialPopup({ e, nesting, soiBoms, onClose }: { e: OdooEnt
       <div ref={box} tabIndex={-1} className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-surface border rounded-xl shadow-lg p-4 outline-none focus-visible:outline-none">
         <div className="flex flex-wrap items-start gap-x-4 gap-y-2 mb-3">
           <div className="min-w-0">
-            <div className="font-extrabold text-base">🧱 Material for <span className="ltr">{e.odooMo}</span></div>
+            <div className="font-extrabold text-base">🧱 Material for <span className="ltr">{e.odooMo || need?.mo || e.mo || e.fgCode}</span></div>
             <div className="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
               <span>SOI <Soi soi={e.soi} className="text-foreground" /></span>
               <span>FG <b className="ltr text-foreground">{e.fgCode}</b></span>
@@ -220,13 +239,17 @@ export function OdooMaterialPopup({ e, nesting, soiBoms, onClose }: { e: OdooEnt
               />
             </>
           )}
-          <button type="button" className="btn btn-sm btn-ghost" onClick={() => openInMaterial(partCode, bom, need?.month ?? monthLabelOfISO(e.dateISO))}>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => openInMaterial(openQuery, partCode, need?.month ?? monthLabelOfISO(e.dateISO))}>
             Open in Material →
           </button>
           {need && (
             <span className="text-xs text-muted ml-auto">
-              BOM <b className="ltr text-foreground">{need.bom}</b> {need.via === "soi" ? "via the SOI's order" : "from the FG-CODE"} ·{" "}
-              <b>{need.month || "untagged"}</b> tracker · job of <b className="tabnum">{need.lines[0]?.units ?? "—"}</b> units
+              {need.mo ? (
+                <>MO <b className="ltr text-foreground">{need.mo}</b> — {VIA_TEXT[need.via]}{need.bom && <> · BOM <b className="ltr text-foreground">{need.bom}</b></>}</>
+              ) : (
+                <>BOM <b className="ltr text-foreground">{need.bom}</b> {VIA_TEXT[need.via]}</>
+              )} ·{" "}
+              <b>{need.month || "untagged"}</b> {needCtx.lv ? "sheet" : "tracker"} · {needCtx.lv ? "order" : "job"} of <b className="tabnum">{need.lines[0]?.units ?? "—"}</b> units
               {need.otherMonths.length > 0 && <> · also in {need.otherMonths.join(", ")}</>}
             </span>
           )}
@@ -234,7 +257,25 @@ export function OdooMaterialPopup({ e, nesting, soiBoms, onClose }: { e: OdooEnt
 
         {!need ? (
           <p className="text-sm text-muted border rounded-xl p-4">
-            {cand ? (
+            {needCtx.lv ? (
+              mos.length > 0 ? (
+                <>
+                  No material lines in the Material tab for{" "}
+                  {mos.map((c, i) => (
+                    <span key={c.mo}>
+                      {i > 0 && " or "}
+                      MO <b className="ltr">{c.mo}</b> ({VIA_TEXT[c.via]}{nesting[moKey(c.mo)] ? "" : ", not in the tab"})
+                    </span>
+                  ))}
+                  {" "}— add the order there (its thickness rows come from the BOM&apos;s template) or import the Consumption Details sheet.
+                </>
+              ) : (
+                <>
+                  The row names no order: it was not born from a painting closing, has no MO typed, and its SOI{" "}
+                  {e.soi ? <>(<b className="ltr">{e.soi}</b>) has no order in the registry</> : "is blank"} — type Odoo&apos;s MO on the row and its material can be looked up.
+                </>
+              )
+            ) : cand ? (
               <>
                 No nesting line for <b className="ltr">{cand.partCode}</b> in the Material tab under{" "}
                 {bomsSeen.map((c, i) => (
@@ -255,17 +296,23 @@ export function OdooMaterialPopup({ e, nesting, soiBoms, onClose }: { e: OdooEnt
           <>
             {need.offBom > 0 && (
               <p className={`text-sm font-semibold rounded-lg px-3 py-2 mb-2 ${need.lines.some((l) => l.varianceTone === "bad") ? "bg-bad-bg text-bad-fg" : "bg-warn-bg text-warn-fg"}`}>
-                ⚠ {need.offBom} line(s) where the actual nesting is far from the BOM
+                ⚠ {need.offBom} line(s) where the actual {needCtx.lv ? "consumption" : "nesting"} is far from the BOM
                 {need.totalVariancePct !== null && <> · overall <b className="tabnum ltr">{varianceText(need.totalVariancePct)}</b> against the BOM</>}
                 . Check them before booking.
               </p>
             )}
-            <NeedTable need={need} copied={copied} copy={copy} />
+            <NeedTable need={need} copied={copied} copy={copy} lv={needCtx.lv} />
           </>
         )}
         <p className="text-[11px] text-muted mt-2">
-          <b>For qty (actual)</b> = sheets actually nested for the job ÷ its units × this qty — what to book in Odoo. Where nothing was
-          nested yet, Copy takes the BOM number instead and says so. <b>vs BOM</b> is the actual against the BOM: past ±{VARIANCE_WARN}% amber, past ±{VARIANCE_BAD}% red.
+          {needCtx.lv ? (
+            <><b>For qty (actual)</b> = sheets actually consumed on the order ÷ the units it produced them for × this qty — what to book in Odoo. Where nothing
+            was consumed yet, Copy takes the BOM number instead and says so.</>
+          ) : (
+            <><b>For qty (actual)</b> = sheets actually nested for the job ÷ its units × this qty — what to book in Odoo. Where nothing was
+            nested yet, Copy takes the BOM number instead and says so.</>
+          )}{" "}
+          <b>vs BOM</b> is the actual against the BOM: past ±{VARIANCE_WARN}% amber, past ±{VARIANCE_BAD}% red.
         </p>
       </div>
     </div>

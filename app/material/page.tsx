@@ -26,11 +26,27 @@ export default async function MaterialPage({
   const sp = await searchParams;
   const month = (sp.month ?? "").trim() || currentMonthLabel();
   const line = await getActiveLine(); // one product line at a time
-  const { lines, totals, months, knownBoms } = await getMaterialData(month);
+  const { lines, totals, months, knownBoms, lvOrders, lvTemplates } = await getMaterialData(month);
 
   // the export carries the sheet's OWN column names in its order, then the
   // tab's additions, so the file drops straight back into the workbook
-  const exportRows = lines.map((l) => ({
+  const exportRows = line === "LV" ? lines.map((l) => ({
+    MO: l.mo,
+    Product: l.partName,
+    "Sec Item": l.materialCode,
+    "Planned qty": l.units,
+    BOM: l.bom,
+    Material: l.material,
+    Thickness: l.thicknessMm,
+    "Sheet Size": l.sheetSize,
+    "No. of Sheets In BOM For One Unit": l.sheetsPerUnit,
+    "Sheets Qty as Per Bom": l.forJob,
+    Produced: l.producedUsed ?? "",
+    "Actually Consumed Sheets Qty as per Nesting": l.forProduced ?? "",
+    "Remaining units": l.remainingUnits ?? "",
+    REMARKS: l.note ?? "",
+    Month: l.month,
+  })) : lines.map((l) => ({
     "BOM Ref": l.bom,
     "Quantity of Units": l.units,
     "Part Code": l.partCode,
@@ -58,7 +74,7 @@ export default async function MaterialPage({
         <MaterialMonthPicker month={month} months={months} />
         <ExportButton rows={exportRows} filename={`nesting-tracker-${month.replace(/\s+/g, "-")}.xlsx`} sheetName="Sheet1" />
       </PageHeader>
-      <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))} product={line} />
+      <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))} product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} />
     </div>
   );
 }

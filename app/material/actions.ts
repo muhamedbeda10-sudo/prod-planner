@@ -214,3 +214,49 @@ export async function importMaterialAction(formData: FormData): Promise<Material
     return { ok: false, error: `Import failed: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
+
+/** LV: every thickness row of ONE panel order in one go. `rows` is the JSON
+ *  the form built — material, thickness, sheet size, sheets per unit; the
+ *  BOM and the planned qty come from the order itself. */
+export async function createLvOrderLines(formData: FormData): Promise<MaterialActionResult & { added?: number; skipped?: number }> {
+  const line = await getActiveLine();
+  if (line !== "LV") return { ok: false, error: "Switch the line to LV panels first." };
+  const guard = await requirePerm(linePermKey(line, "material"));
+  if (guard.error) return { ok: false, error: guard.error };
+  const month = readMonth(formData.get("month"));
+  const mo = String(formData.get("mo") ?? "").trim().toUpperCase();
+  if (!month) return { ok: false, error: "Pick the plan month." };
+  if (!mo) return { ok: false, error: "Pick the panel order (MO)." };
+  const order = await prisma.masterOrder.findUnique({ where: { mo }, select: { bom: true, planQty: true, line: true } });
+  if (!order || order.line !== "LV") return { ok: false, error: `${mo} is not an LV panel order.` };
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(String(formData.get("rows") ?? "[]")); } catch { return { ok: false, error: "The rows could not be read — try again." }; }
+  if (!Array.isArray(parsed) || parsed.length === 0) return { ok: false, error: "Add at least one thickness row." };
+  const rows: { material: string; thicknessMm: number; sheetSize: string; sheetsPerUnit: number }[] = [];
+  for (const raw of parsed as Record<string, unknown>[]) {
+    const thicknessMm = parseSheetNumber(raw.thicknessMm);
+    const sheetsPerUnit = parseSheetNumber(raw.sheetsPerUnit);
+    if (thicknessMm === null || thicknessMm <= 0) continue; // an empty spare row
+    if (sheetsPerUnit === null || sheetsPerUnit < 0) return { ok: false, error: `${thicknessMm} mm: enter the sheets ONE unit needs.` };
+    rows.push({
+      material: normalizeMaterialType(raw.material) || "Galvanized steel",
+      thicknessMm,
+      sheetSize: normalizeSheetSize(raw.sheetSize) || "1220*2440",
+      sheetsPerUnit,
+    });
+  }
+  if (rows.length === 0) return { ok: false, error: "Add at least one thickness row with its sheets per unit." };
+
+  let added = 0, skipped = 0;
+  const by = guard.user?.name ?? null;
+  for (const r of rows) {
+    const key = { month, bom: order.bom, mo, partCode: "", material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize };
+    const clash = await prisma.materialUsage.findUnique({ where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: key } });
+    if (clash) { skipped += 1; continue; }
+    await prisma.materialUsage.create({ data: { ...key, units: order.planQty, sheetsPerUnit: r.sheetsPerUnit, recordedBy: by, line, sortOrder: MANUAL_SORT } });
+    added += 1;
+  }
+  revalidateMaterial();
+  return { ok: true, added, skipped };
+}

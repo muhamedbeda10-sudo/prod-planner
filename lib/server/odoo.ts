@@ -5,7 +5,7 @@ import { getActiveLine } from "./line";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, bomOfFgCode, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView } from "@/lib/domain/odoo";
 import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod, type OdooStatRow } from "@/lib/domain/odooStats";
-import { candidateBoms, nestingKey, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { candidateBoms, candidateMos, moKey, nestingKey, type NestingLookup } from "@/lib/domain/odooMaterial";
 
 export interface OdooPageData {
   entries: OdooEntryView[];
@@ -19,6 +19,11 @@ export interface OdooPageData {
   nesting: NestingLookup;
   /** The registry's BOM(s) per SOI — the transformer a row's SOI is for. */
   soiBoms: Record<string, string[]>;
+  /** Panels: the registry's order MO(s) per SOI — the material is filed by
+   *  MO, and the lookup carries those lines under "MO|<mo>". */
+  soiMos: Record<string, string[]>;
+  /** Panels on screen: rows look their material up by MO, not part × BOM. */
+  lv: boolean;
   /** The WHOLE log, not just the day on screen: how many rows it holds and how
    *  many are still not closed. The tab opens on one day, so without this a
    *  row logged last week reads as lost — it says what is off-screen. */
@@ -42,7 +47,7 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
       include: { notes: { orderBy: { id: "desc" } } },
     }),
     prisma.odooEntry.findMany({ where: { line }, select: { date: true }, distinct: ["date"], orderBy: { date: "desc" } }),
-    prisma.masterOrder.findMany({ where: { line }, select: { soi: true, fgCode: true, bom: true } }),
+    prisma.masterOrder.findMany({ where: { line }, select: { soi: true, fgCode: true, bom: true, mo: true } }),
     prisma.odooEntry.count({ where: { line } }),
     // grouped and judged in JS, so "off-screen, still open" counts a status
     // exactly the way the rows on screen are coloured
@@ -50,15 +55,26 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
   ]);
 
   const soiBoms: Record<string, string[]> = {};
+  const soiMos: Record<string, string[]> = {};
   for (const o of orders) {
     const soi = (o.soi ?? "").trim().toUpperCase();
     const bom = o.bom.trim().toUpperCase();
-    if (!soi || !bom) continue;
-    const list = (soiBoms[soi] ??= []);
-    if (!list.includes(bom)) list.push(bom);
+    const mo = o.mo.trim().toUpperCase();
+    if (!soi) continue;
+    if (bom) { const list = (soiBoms[soi] ??= []); if (!list.includes(bom)) list.push(bom); }
+    if (mo && line === "LV") { const list = (soiMos[soi] ??= []); if (!list.includes(mo)) list.push(mo); }
   }
 
+  // the closing a row was born from names the planner's MO — the key a
+  // panel row's material sits under
+  const ledgerIds = rows.map((r) => r.ledgerId).filter((id): id is number => id !== null);
+  const ledgers = ledgerIds.length
+    ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true } })
+    : [];
+  const moOfLedger = new Map(ledgers.map((l) => [l.id, (l.mo ?? "").trim().toUpperCase() || null]));
+
   const entries: OdooEntryView[] = rows.map((r) => ({
+    mo: r.ledgerId !== null ? (moOfLedger.get(r.ledgerId) ?? null) : null,
     id: r.id,
     dateISO: toISODate(r.date),
     soi: r.soi,
@@ -82,8 +98,12 @@ export async function getOdooData(dayISO: string): Promise<OdooPageData> {
     days: [...new Set(dayRows.map((d) => toISODate(d.date)))],
     knownSois: uniq(orders.map((o) => o.soi)),
     knownFgCodes: uniq(orders.map((o) => o.fgCode)),
-    nesting: await nestingFor(entries.map((e) => ({ fgCode: e.fgCode, boms: soiBoms[(e.soi ?? "").trim().toUpperCase()] ?? [] }))),
+    nesting: line === "LV"
+      ? await linesByMo(entries.map((e) => candidateMos(e, soiMos[(e.soi ?? "").trim().toUpperCase()] ?? []).map((c) => c.mo)))
+      : await nestingFor(entries.map((e) => ({ fgCode: e.fgCode, boms: soiBoms[(e.soi ?? "").trim().toUpperCase()] ?? [] }))),
     soiBoms,
+    soiMos,
+    lv: line === "LV",
     totalRows,
     openRows: byStatus.reduce((n, g) => n + (isDoneStatus(g.status) ? 0 : g._count._all), 0),
   };
@@ -113,6 +133,24 @@ async function nestingFor(entries: { fgCode: string; boms: string[] }[]): Promis
     if (!keys.has(key)) continue;
     (out[key] ??= []).push(r);
   }
+  return out;
+}
+
+/** Panels: the Material tab's lines of every order these rows may be filed
+ *  under, keyed "MO|<mo>" — every month, the newest first. */
+async function linesByMo(mosPerRow: string[][]): Promise<NestingLookup> {
+  const mos = [...new Set(mosPerRow.flat())];
+  if (mos.length === 0) return {};
+  const rows = await prisma.materialUsage.findMany({
+    where: { line: "LV", mo: { in: mos, mode: "insensitive" } },
+    select: {
+      id: true, month: true, bom: true, mo: true, partCode: true, partName: true, materialCode: true, material: true,
+      thicknessMm: true, sheetSize: true, units: true, sheetsPerUnit: true, actualPerUnit: true, sheetsUsed: true, note: true,
+    },
+    orderBy: [{ month: "desc" }, { thicknessMm: "asc" }, { material: "asc" }],
+  });
+  const out: NestingLookup = {};
+  for (const { mo, ...r } of rows) (out[moKey(mo)] ??= []).push(r);
   return out;
 }
 
