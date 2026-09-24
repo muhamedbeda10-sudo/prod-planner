@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionOf, backlogOf, backlogSeries, bottleneckOf, byCustomer, deliveredUnitsOf, monthBoundsISO, monthCompareOf, paceOf, piecesByItem, piecesOf, planSummaryOf, promisesAhead, stageLoadOf, workingDaysBetween, workingDaysLeft, type ControlRow } from "./control";
+import { attentionOf, backlogOf, backlogSeries, bottleneckOf, byCustomer, deliveredUnitsOf, monthBoundsISO, monthCompareOf, paceOf, piecesByItem, piecesOf, planSummaryOf, promisesAhead, stageLoadOf, tankUnitsOf, workingDaysBetween, workingDaysLeft, type ControlRow } from "./control";
 
 const it6 = (v: Partial<ControlRow["items"]["CF"]> = {}) => ({ cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, osp: 0, excluded: false, eligible: true, ...v });
 const row = (over: Partial<ControlRow> = {}): ControlRow => ({
@@ -29,11 +29,18 @@ describe("piecesOf / backlogOf / bottleneckOf", () => {
 });
 
 describe("planSummaryOf", () => {
-  it("sums units, and a unit is delivered only when every required component was", () => {
-    const a = row({ required: 10, complete: 4, items: { ...row().items, CF: it6({ delivered: 3 }), TC: it6({ delivered: 5 }), TN: it6({ delivered: 3 }), CB: it6({ delivered: 3 }) } });
-    const b = row({ mo: "PF01/MO/2", required: 5, complete: 5, urgent: true, onHold: true, items: { ...row().items, CF: it6({ delivered: 5 }), TC: it6({ delivered: 5 }), TN: it6({ delivered: 5 }), CB: it6({ delivered: 5 }) } });
+  it("counts finished units by tanks painted, and a unit is delivered only when every required component was", () => {
+    // a: 4 complete units, but 6 tanks painted → 6 finished; b: 5 of 5
+    const a = row({ required: 10, complete: 4, items: { ...row().items, CF: it6({ delivered: 3 }), TC: it6({ delivered: 5 }), TN: it6({ paint: 6, delivered: 3 }), CB: it6({ delivered: 3 }) } });
+    const b = row({ mo: "PF01/MO/2", required: 5, complete: 5, urgent: true, onHold: true, items: { ...row().items, CF: it6({ delivered: 5 }), TC: it6({ delivered: 5 }), TN: it6({ paint: 7, delivered: 5 }), CB: it6({ delivered: 5 }) } });
     expect(deliveredUnitsOf(a)).toBe(3);
-    expect(planSummaryOf([a, b, row({ status: "closed" })])).toEqual({ orders: 2, required: 15, complete: 9, delivered: 8, remaining: 6, pct: 0.6, urgent: 1, priority: 0, onHold: 1 });
+    expect(tankUnitsOf(a)).toBe(6);
+    expect(tankUnitsOf(b)).toBe(5); // capped at the order
+    expect(planSummaryOf([a, b, row({ status: "closed" })])).toEqual({ orders: 2, required: 15, complete: 11, delivered: 8, remaining: 4, pct: 11 / 15, urgent: 1, priority: 0, onHold: 1 });
+  });
+  it("falls back to complete units on an order with no tank", () => {
+    const r = row({ required: 4, complete: 2, items: { ...row().items, TN: it6({ excluded: true, paint: 9 }) } });
+    expect(tankUnitsOf(r)).toBe(2);
   });
 });
 

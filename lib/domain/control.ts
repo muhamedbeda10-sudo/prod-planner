@@ -85,7 +85,10 @@ export function bottleneckOf(b: Record<BacklogStage, number>): BacklogStage | nu
 export interface PlanSummary {
   orders: number;
   required: number; // units (transformers) on the open orders
-  complete: number; // units finished — every required component through its last stage
+  /** Units finished, counted by TANKS painted: the tank is the transformer's
+   *  body and the piece the plant closes the order on. A unit is not held
+   *  back by a cable box or a cover still in paint. */
+  complete: number;
   delivered: number; // units the customer has received in full
   remaining: number;
   pct: number | null; // complete / required
@@ -104,10 +107,18 @@ export function deliveredUnitsOf(r: ControlRow): number {
   return Number.isFinite(m) ? m : 0;
 }
 
+/** Units of an order finished, by its tanks: painted (or bought) tanks, capped
+ *  at the order. An order that needs no tank (a rare one) counts its
+ *  complete units instead. */
+export function tankUnitsOf(r: ControlRow): number {
+  if (!needed(r, "TN")) return Math.min(r.complete, r.required);
+  return cap(r.items.TN.paint + r.items.TN.osp, r.required);
+}
+
 export function planSummaryOf(rows: readonly ControlRow[]): PlanSummary {
   const open = rows.filter((r) => r.status === "open");
   const required = open.reduce((s, r) => s + r.required, 0);
-  const complete = open.reduce((s, r) => s + Math.min(r.complete, r.required), 0);
+  const complete = open.reduce((s, r) => s + tankUnitsOf(r), 0);
   const delivered = open.reduce((s, r) => s + deliveredUnitsOf(r), 0);
   return {
     orders: open.length,
