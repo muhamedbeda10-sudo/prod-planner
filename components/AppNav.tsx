@@ -52,8 +52,7 @@ const LV_WORKLIST_DEPTS = [
 //   Plan Tracker → the tracker and the daily log it adds up
 //   Floor        → the bay as it is, and the what-if simulator
 //   Dashboard    → this week, the printed report, and the sheet analytics
-// Chat is not here at all — it is the icon in the right cluster; nor is the
-// barcode sheet, which is a print button on the painting worklist.
+// Chat is not here at all — it is the icon in the right cluster.
 const REST: Item[] = [
   // Material comes FIRST: nesting is decided before a single sheet is cut.
   { href: "/material", label: "Material", icon: Layers },
@@ -61,6 +60,9 @@ const REST: Item[] = [
   // who worked today, how long, on what — the supervisors' page
   { href: "/shifts", label: "Shifts", icon: Clock },
   { href: "/tracker", label: "Plan Tracker", icon: Table2, also: ["/handover"] },
+  // the tanks' sticker sheet — its own tab while per-piece tracking is on
+  // (TANK_ONLY drops it otherwise), and still a button on the painting worklist
+  { href: "/barcode", label: "Tank Barcodes", icon: QrCode, match: "/barcode" },
   { href: "/simulate", label: "Floor", icon: FlaskConical },
   { href: "/", label: "Dashboard", icon: LayoutDashboard, also: ["/report", "/analytics"] },
 ];
@@ -80,7 +82,6 @@ const DRAWER_VIEWS: Item[] = [
   { href: "/report", label: "Report", icon: FileBarChart2 },
   { href: "/analytics", label: "Analytics", icon: ChartColumnBig },
   { href: "/handover", label: "Daily log", icon: BookOpenCheck },
-  { href: "/barcode", label: "Tank Barcodes", icon: QrCode, match: "/barcode" },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
 ];
 
