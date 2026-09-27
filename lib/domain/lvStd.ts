@@ -20,14 +20,16 @@ export interface LvRate {
   totalH: number | null;
 }
 
-export type LvStage = "cutH" | "bendH" | "weldH" | "paintH";
+export type LvStage = "cutH" | "bendH" | "weldH" | "shbH" | "paintH";
 
-/** Which stage of the sheet each LV roster department works. Shot blast is
- *  on the sheet but no LV section records it, so nobody earns it yet. */
+/** Which stage of the sheet each roster department works on a panel. The
+ *  panels are blasted by the transformers' shot-blast crew — there is one —
+ *  so that crew earns the sheet's shot-blast hours for every panel painted. */
 export const LV_DEPT_STAGE: Partial<Record<RosterDept, LvStage>> = {
   Punching: "cutH",
   Bending: "bendH",
   WeldingLV: "weldH",
+  ShotBlast: "shbH",
   PaintingLV: "paintH",
 };
 

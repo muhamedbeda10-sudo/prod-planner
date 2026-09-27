@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OUTPUT_SOURCE, efficiencyTone, productivityOf } from "./productivity";
+import { countsFor, efficiencyTone, productivityOf } from "./productivity";
 
 describe("productivityOf", () => {
   it("adds the recorded days up: man-hours per piece and earned over worked", () => {
@@ -30,9 +30,10 @@ describe("productivityOf", () => {
 });
 
 describe("OUTPUT_SOURCE / efficiencyTone", () => {
-  it("counts every painted piece through the blasters, and the panels under their own line", () => {
-    expect(OUTPUT_SOURCE.ShotBlast.depts).toEqual(["ShotBlast", "Painting"]);
-    expect(OUTPUT_SOURCE.WeldingLV).toEqual({ depts: ["Welding"], line: "LV" });
+  it("counts every painted piece through the blasters — the panels too — and the panels under their own line", () => {
+    expect([countsFor("ShotBlast", "ShotBlast", false), countsFor("ShotBlast", "Painting", false), countsFor("ShotBlast", "Painting", true)]).toEqual([true, true, true]);
+    expect(countsFor("ShotBlast", "Welding", true)).toBe(false);
+    expect([countsFor("WeldingLV", "Welding", true), countsFor("WeldingLV", "Welding", false), countsFor("Welding", "Welding", true)]).toEqual([true, false, false]);
   });
   it("judges the efficiency", () => {
     expect([efficiencyTone(0.95), efficiencyTone(0.75), efficiencyTone(0.5)]).toEqual(["ok", "warn", "bad"]);

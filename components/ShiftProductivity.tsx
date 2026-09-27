@@ -77,7 +77,7 @@ export function ShiftProductivity({ data, dayISO, filterLabel, isAdmin }: { data
         </div>
       )}
       <p className="text-[11px] text-muted mt-1">
-        A single day swings when output is logged a day late — read the last {Math.max(n, 1)} days. Shot blast counts every painted piece as well as the cores it finishes. Panels are priced by the timings sheet&apos;s LV tab; a panel with no row there earns nothing.
+        A single day swings when output is logged a day late — read the last {Math.max(n, 1)} days. Shot blast counts every painted piece as well as the cores it finishes, and the LV panels it blasts. Panels are priced by the timings sheet&apos;s LV tab; a panel with no row there earns nothing.
       </p>
     </section>
   );

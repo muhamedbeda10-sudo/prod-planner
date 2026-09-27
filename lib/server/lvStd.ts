@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { toISODate } from "@/lib/domain/dates";
 import { LV_ITEM } from "@/lib/domain/lv";
 import { indexLvRates, lvRateFor, LV_DEPT_STAGE, type LvRate } from "@/lib/domain/lvStd";
-import { OUTPUT_SOURCE } from "@/lib/domain/productivity";
+import { countsFor } from "@/lib/domain/productivity";
 import type { RosterDept } from "@/lib/domain/shifts";
 
 export async function getLvRates(): Promise<LvRate[]> {
@@ -24,8 +24,9 @@ export async function getLvOrderRates(rates?: LvRate[]): Promise<{ mo: string; f
   });
 }
 
-/** The std-hours the panels' output earned on each of these days, per LV
- *  roster department — what the sheet says those panels are worth there. */
+/** The std-hours the panels' output earned on each of these days, per roster
+ *  department — what the sheet says those panels are worth there. The
+ *  shot-blast crew earns its share on every panel painted. */
 export async function earnedLvOnDays(dates: readonly string[]): Promise<Map<string, Partial<Record<RosterDept, number>>>> {
   const out = new Map<string, Partial<Record<RosterDept, number>>>();
   if (dates.length === 0) return out;
@@ -45,7 +46,7 @@ export async function earnedLvOnDays(dates: readonly string[]): Promise<Map<stri
     const iso = toISODate(e.date);
     const day = out.get(iso) ?? {};
     for (const d of depts) {
-      if (!OUTPUT_SOURCE[d].depts.includes(e.dept)) continue;
+      if (!countsFor(d, e.dept, true)) continue;
       day[d] = (day[d] ?? 0) + rate[LV_DEPT_STAGE[d]!] * e.qty;
     }
     out.set(iso, day);
