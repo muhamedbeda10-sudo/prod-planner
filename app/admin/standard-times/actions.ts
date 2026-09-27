@@ -131,3 +131,39 @@ export async function applyCalibration(fd: FormData): Promise<StdActionResult> {
   revalidate();
   return { ok: true };
 }
+
+// ---- LV panels: the timings sheet's LV tab ----
+
+const LV_FIELDS = [["cutH", "Cutting"], ["bendH", "Bending"], ["weldH", "Welding"], ["shbH", "Shot blast"], ["paintH", "Paint line"]] as const;
+
+/** Create or update one panel's standard hours per unit. */
+export async function upsertLvStdTime(fd: FormData): Promise<StdActionResult> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+
+  const fg = String(fd.get("fg") ?? "").trim().toUpperCase();
+  if (!/^[A-Z0-9][A-Z0-9-]{3,}$/.test(fg)) return { ok: false, error: "Enter the panel's FG code as the sheet writes it (FG-SUSA-8569105)." };
+  const hours = {} as Record<(typeof LV_FIELDS)[number][0], number>;
+  for (const [f, label] of LV_FIELDS) {
+    const v = num(fd.get(f));
+    if (!Number.isFinite(v) || v < 0) return { ok: false, error: `${label} hours must be a number ≥ 0.` };
+    hours[f] = v;
+  }
+  if (Object.values(hours).every((v) => v === 0)) return { ok: false, error: "A panel of all zeros would earn nothing — delete it instead." };
+  const description = String(fd.get("description") ?? "").trim() || null;
+  const kindRaw = String(fd.get("kind") ?? "USS").trim().toUpperCase();
+  const kind = ["USS", "MB", "FP"].includes(kindRaw) ? kindRaw : "USS";
+
+  await prisma.lvStdTime.upsert({ where: { fg }, create: { fg, description, kind, ...hours }, update: { description, kind, ...hours } });
+  for (const p of ["/admin/standard-times", "/shifts"]) revalidatePath(p);
+  return { ok: true };
+}
+
+export async function deleteLvStdTime(fd: FormData): Promise<StdActionResult> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const fg = String(fd.get("fg") ?? "").trim().toUpperCase();
+  await prisma.lvStdTime.deleteMany({ where: { fg } });
+  for (const p of ["/admin/standard-times", "/shifts"]) revalidatePath(p);
+  return { ok: true };
+}
