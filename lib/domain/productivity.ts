@@ -5,8 +5,8 @@
 // Two readings per department:
 //   man-hours per piece — plain, works for every department, panels included
 //   efficiency          — the std-hours the output is worth ÷ the man-hours
-//                         worked; transformers only (the panels have no
-//                         standard times). 100% = the crew works exactly at
+//                         worked, by the KVA class for a transformer and by
+//                         the timings sheet's LV tab for a panel. 100% = the crew works exactly at
 //                         the standard; below it the standard is too tight
 //                         or time went elsewhere.
 // A single day is noisy — output is often recorded a day late — so the

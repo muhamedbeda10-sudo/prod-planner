@@ -5,6 +5,8 @@ import { LV_ITEM } from "@/lib/domain/lv";
 import { isShiftDept, type RosterDept } from "@/lib/domain/shifts";
 import { OUTPUT_SOURCE, productivityOf, type ProdDay, type ProdStat } from "@/lib/domain/productivity";
 import { earnedOnDays } from "./calibration";
+import { earnedLvOnDays } from "./lvStd";
+import { LV_DEPT_STAGE } from "@/lib/domain/lvStd";
 import { getStdData } from "./standardTimes";
 import { loadMasterOrdersOf } from "./loads";
 
@@ -48,7 +50,10 @@ export async function getShiftProductivity(dayISO: string, depts: readonly Roste
     getStdData(),
     loadMasterOrdersOf("TR"),
   ]);
-  const earned = depts.some(isShiftDept) ? await earnedOnDays(dates, std, orders) : new Map();
+  const [earned, earnedLv] = await Promise.all([
+    depts.some(isShiftDept) ? earnedOnDays(dates, std, orders) : Promise.resolve(new Map()),
+    depts.some((d) => LV_DEPT_STAGE[d]) ? earnedLvOnDays(dates) : Promise.resolve(new Map()),
+  ]);
 
   // pieces per day and roster department
   const pieces = new Map<string, number>(); // iso|dept → pcs
@@ -73,7 +78,8 @@ export async function getShiftProductivity(dayISO: string, depts: readonly Roste
           hours: h.hours,
           people: h.people ?? 0,
           pieces: pieces.get(`${iso}|${dept}`) ?? 0,
-          earned: isShiftDept(dept) ? (earned.get(iso)?.[dept] ?? 0) : null,
+          // transformers priced by their KVA class, panels by the timings sheet's LV tab
+          earned: isShiftDept(dept) ? (earned.get(iso)?.[dept] ?? 0) : LV_DEPT_STAGE[dept] ? (earnedLv.get(iso)?.[dept] ?? 0) : null,
         };
       });
     const today = days.filter((d) => d.dateISO === dayISO);

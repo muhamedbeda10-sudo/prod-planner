@@ -459,6 +459,26 @@ model StdTime {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
+// The LV panels' standard hours per UNIT and stage, from the timings sheet's LV
+// tab. An order finds its row by FG code, or through its SEC item — the
+// plan's FG code (FG-SUA-AS-AA-000004) is not the sheet's (FG-SUSA-8569105),
+// but the SEC item 908569105 is the same panel. Steel stages only: punching /
+// laser cutting, bending, welding, shot blast and the paint line; totalH is
+// the sheet's whole per-unit figure, assembly and wiring included.
+model LvStdTime {
+  id          Int      @id @default(autoincrement())
+  fg          String   @unique // as the sheet writes it: FG-SUSA-8569105
+  description String?
+  kind        String   @default("USS") // USS | MB (meter box) | FP (feeder pillar)
+  cutH        Float
+  bendH       Float
+  weldH       Float
+  shbH        Float
+  paintH      Float
+  totalH      Float?
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
 // FG code → KVA class (the sheet's product table). The FG map outranks the
 // order's numeric KVA — the sheet files in-between sizes inconsistently.
 model StdFgMap {
