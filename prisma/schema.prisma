@@ -429,6 +429,12 @@ model Settings {
   // pick up where they left off when it comes back on.
   tankTracking    Boolean @default(false)
 
+  // Master switch for planning work onto MACHINES: the machine board and the
+  // Machine column on the worklists, the machine sheets, and the Floor view.
+  // OFF until the plant plans by machine — the assignments already made stay
+  // saved and come back when it is turned on.
+  machinePlanning Boolean @default(false)
+
   // The plant's two shifts and the overtime the "+OT" button adds, in hours.
   // Editable: a roster changes (Ramadan, a second shift starting), and every
   // man-hour the app counts — the shift log, a machine's crew, the day's

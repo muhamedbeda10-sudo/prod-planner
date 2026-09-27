@@ -86,7 +86,10 @@ export function WeldingQueueTable({
   const [q, setQ] = useSavedFilter(`queue.${dept}.q`);
   const [item, setItem] = useSavedFilter(`queue.${dept}.item`);
   // 🏭 only the lines already on a machine / partition, or only those still to place
-  const [place, setPlace] = useSavedFilter(`queue.${dept}.place`);
+  const [savedPlace, setPlace] = useSavedFilter(`queue.${dept}.place`);
+  // a remembered "on a machine" filter means nothing with no machines shown
+  // (machine planning off) — it must not hide every line
+  const place = hasMachines ? savedPlace : "";
   // tanks: the welder picked for a line's batch, the serials the last save
   // minted (shown so they can be written on the steel), and which line has its
   // tank picker open on the painting worklist

@@ -6,7 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 import { DEFAULT_SHIFT_HOURS, SHIFT_CODES, dayTotals, lineHours, round1, shiftLabel, type RosterDept, type ShiftCode } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL, WORKER_GROUPS, WORKER_SECTIONS } from "@/lib/domain/tanks";
-import { rosterDepts, rosterLineMatches, type RosterFilter } from "@/lib/domain/roster";
+import { rosterDepts, rosterLineMatches, type RosterFilter, rosterFilterLabel } from "@/lib/domain/roster";
 import type { ShiftLineDTO, ShiftRosterData } from "@/lib/server/shifts";
 import { clearShiftDay, saveShiftRoster } from "@/app/shifts/actions";
 import { ShiftHoursForm } from "@/components/ShiftHoursForm";
@@ -140,7 +140,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
   }
 
   const capacityTone = capacity === null ? "" : totals.hours >= capacity ? "text-ok-fg" : totals.hours >= capacity * 0.8 ? "text-warn-fg" : "text-bad-fg";
-  const filterLabel = filter === "" ? "Everyone" : filter === "line:TR" ? "Transformers" : filter === "line:LV" ? "LV panels" : WORKER_SECTIONS.find((s) => s.code === filter)?.label ?? filter;
+  const filterLabel = rosterFilterLabel(filter);
 
   return (
     <div className="space-y-4">

@@ -14,6 +14,7 @@ export async function getSettings() {
     capacityPerItem: s?.capacityPerItem ?? DEFAULTS.capacityPerItem,
     dailyTarget: s?.dailyTarget ?? DEFAULTS.dailyTarget,
     tankTracking: s?.tankTracking ?? DEFAULTS.tankTracking,
+    machinePlanning: s?.machinePlanning ?? DEFAULTS.machinePlanning,
     shiftShortH: s?.shiftShortH ?? DEFAULT_SHIFT_HOURS.short,
     shiftLongH: s?.shiftLongH ?? DEFAULT_SHIFT_HOURS.long,
     overtimeH: s?.overtimeH ?? DEFAULT_SHIFT_HOURS.overtime,
@@ -31,6 +32,12 @@ export async function getShiftHours(): Promise<ShiftHours> {
  *  whether tanks are tracked per piece. */
 export async function isTankTrackingOn(): Promise<boolean> {
   return (await getSettings()).tankTracking;
+}
+
+/** Whether work is planned onto machines — the board, the Machine column
+ *  and the Floor view show only while it is on. */
+export async function isMachinePlanningOn(): Promise<boolean> {
+  return (await getSettings()).machinePlanning;
 }
 
 export async function getPlanWindows(): Promise<PlanWindow[]> {

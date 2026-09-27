@@ -55,6 +55,29 @@ export async function setTankTracking(formData: FormData): Promise<SettingsActio
   return { ok: true };
 }
 
+export async function setMachinePlanning(formData: FormData): Promise<SettingsActionResult> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+
+  const on = formData.get("on") === "true";
+  await prisma.settings.upsert({
+    where: { id: 1 },
+    create: {
+      id: 1,
+      leadCut: DEFAULTS.leadCut,
+      leadWeld: DEFAULTS.leadWeld,
+      capacityPerItem: DEFAULTS.capacityPerItem,
+      dailyTarget: DEFAULTS.dailyTarget,
+      machinePlanning: on,
+    },
+    update: { machinePlanning: on },
+  });
+  for (const p of ["/admin/settings", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate"]) revalidatePath(p);
+  // the Floor tab is renamed with it
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
 /** The hours the plant's two shifts and the "+OT" button are worth. Every
  *  man-hour the app counts — the shift log, a machine's crew, the day's
  *  capacity — is measured with these, so they are the planner's to set. */

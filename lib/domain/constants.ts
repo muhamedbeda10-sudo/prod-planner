@@ -204,4 +204,6 @@ export const DEFAULTS = {
   dailyTarget: 27,
   /** Per-piece tank tracking starts OFF — see Settings.tankTracking. */
   tankTracking: false,
+  /** Planning onto machines starts OFF — see Settings.machinePlanning. */
+  machinePlanning: false,
 } as const;
