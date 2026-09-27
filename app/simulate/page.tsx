@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm, canEditDept } from "@/lib/server/auth";
 import { getWhatIfInputs } from "@/lib/server/whatif";
+import { isMachinePlanningOn } from "@/lib/server/data";
 import { getFloorLayout } from "@/lib/server/floor";
 import { getDeptBoardLines, getMachineBoard } from "@/lib/server/machineBoard";
 import { factoryDayISO } from "@/lib/domain/dates";
@@ -24,14 +25,17 @@ export default async function SimulatePage({ searchParams }: { searchParams: Pro
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   const sp = await searchParams;
-  const view = sp.view === "whatif" ? "whatif" : "floor";
+  // the floor is the machines' view — with machine planning off (Settings)
+  // the tab is the what-if simulator alone
+  const machinePlanning = await isMachinePlanningOn();
+  const view = !machinePlanning || sp.view === "whatif" ? "whatif" : "floor";
 
-  const viewSwitch = (
+  const viewSwitch = machinePlanning ? (
     <nav className="seg" aria-label="View">
       <Link href="/simulate?view=floor" className={view === "floor" ? "on" : ""} title="Each department's bay, and what every machine is on">Floor</Link>
       <Link href="/simulate?view=whatif" className={view === "whatif" ? "on" : ""} title="What-if: move the dates and the capacity and see what lands">Simulator</Link>
     </nav>
-  );
+  ) : null;
 
   if (view === "floor") {
     const dept: ShiftDept = isShiftDept(sp.dept ?? "") ? (sp.dept as ShiftDept) : "Cut";

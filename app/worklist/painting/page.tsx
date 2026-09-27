@@ -50,10 +50,13 @@ export default async function PaintingWorklistPage() {
     target: p.orderQty, scheduled: 0, done: p.done, available: p.qty, deliveryISO: null,
   }));
   // the paint lines' board: what is ready to paint on each line
-  const board = await getMachineBoard("Painting", [
+  // the machine board only while the plant plans by machine (Settings)
+  const board = settings.machinePlanning ? await getMachineBoard("Painting", [
     ...queue.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO, dueISO: r.dueISO })),
     ...pushedRows.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: null })),
-  ], dayISO);
+  ], dayISO) : null;
+  const machines = board?.machines ?? [];
+  const assigned = board?.assigned ?? {};
 
   return (
     <>
@@ -71,8 +74,8 @@ export default async function PaintingWorklistPage() {
         workers={tankTracking ? painters : []}
         paintableTanks={tankTracking ? Object.fromEntries(tanksByMo) : {}}
         tankTracking={tankTracking}
-        machines={board.machines}
-        assigned={board.assigned}
+        machines={machines}
+        assigned={assigned}
         before={
           <>
             {/* The barcode sheet is a print job for tanks that finished here —
@@ -82,14 +85,14 @@ export default async function PaintingWorklistPage() {
                 <Link href="/barcode" className="btn btn-secondary btn-sm">🏷 Tank barcodes</Link>
               </div>
             )}
-            <MachineBoard board={board} canEdit={canEdit} canManage={canManage} />
+            {board && <MachineBoard board={board} canEdit={canEdit} canManage={canManage} />}
             <RunOrderTable rows={runOrder} deptWord="paint" />
             <HeldOrdersStrip rows={extras.held} />
             <PriorityOrdersTable rows={extras.priority} deptWord="painted" soi={soi} />
             {pushedRows.length > 0 && (
               <section className="mb-6">
                 <h2>📥 Sent from the Plan Tracker ({pushedRows.reduce((s, r) => s + r.available, 0)} pcs)</h2>
-                <CascadeTable rows={pushedRows} day={dayISO} planNo={0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} dept="Painting" allowDate={false} machines={board.machines} assigned={board.assigned} />
+                <CascadeTable rows={pushedRows} day={dayISO} planNo={0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} dept="Painting" allowDate={false} machines={machines} assigned={assigned} />
               </section>
             )}
           </>

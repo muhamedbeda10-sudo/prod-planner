@@ -37,7 +37,8 @@ export default async function CutWorklistPage() {
     ...[...dueNow, ...overdue, ...postponed].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.remaining, deliveryISO: r.deliveryISO, dueISO: r.cutDueISO })),
     ...[...pushed, ...remarked, ...unscheduled].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO })),
   ];
-  const board = await getMachineBoard("Cut", lines, dayISO, planNo ?? 0);
+  // the machine board only while the plant plans by machine (Settings)
+  const board = settings.machinePlanning ? await getMachineBoard("Cut", lines, dayISO, planNo ?? 0) : undefined;
 
   return (
     <>

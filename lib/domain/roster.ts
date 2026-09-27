@@ -3,7 +3,7 @@
 // helper exported from a "use client" file cannot be called on the server.
 
 import { ROSTER_DEPT_LINE, type RosterDept } from "./shifts";
-import { isWorkerSection, sectionDept, type WorkerSection } from "./tanks";
+import { WORKER_SECTIONS, isWorkerSection, sectionDept, type WorkerSection } from "./tanks";
 
 export type RosterFilter = "" | "line:TR" | "line:LV" | WorkerSection;
 
@@ -27,4 +27,12 @@ export function rosterLineMatches(l: { dept: RosterDept; sections: readonly stri
   if (filter === "") return true;
   if (filter === "line:TR" || filter === "line:LV") return ROSTER_DEPT_LINE[l.dept] === filter.slice(5);
   return l.sections.includes(filter);
+}
+
+/** How the filter reads on screen. */
+export function rosterFilterLabel(filter: RosterFilter): string {
+  if (filter === "") return "Everyone";
+  if (filter === "line:TR") return "Transformers";
+  if (filter === "line:LV") return "LV panels";
+  return WORKER_SECTIONS.find((s) => s.code === filter)?.label ?? filter;
 }

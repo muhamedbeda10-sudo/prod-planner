@@ -77,7 +77,10 @@ export function CutWorklistView({
   const [item, setItem] = useSavedFilter("queue.Cut.item");
   // 🏭 show only what is on a machine (what the floor is actually running) or
   // only what still has to be placed
-  const [place, setPlace] = useSavedFilter("queue.Cut.place");
+  const [savedPlace, setPlace] = useSavedFilter("queue.Cut.place");
+  // a remembered "on a machine" filter means nothing with no machines shown
+  // (machine planning off) — it must not hide every line
+  const place = machines.length > 0 ? savedPlace : "";
   // the month's undated backlog is hundreds of lines — folded until asked for
 
   const needle = q.trim().toUpperCase();

@@ -122,12 +122,15 @@ export function AppNav({
   user,
   unreadChat = 0,
   tankTracking = false,
+  machinePlanning = false,
   line = "TR",
 }: {
   user: NavUser;
   unreadChat?: number;
   /** With tracking off, the Leak Test and Barcode tabs are not part of the app. */
   tankTracking?: boolean;
+  /** With machine planning off, the Floor tab is the what-if simulator alone — it is named so. */
+  machinePlanning?: boolean;
   /** The product line every tab is showing — transformers or LV panels. */
   line?: ProductLine;
 }) {
@@ -139,12 +142,13 @@ export function AppNav({
   // the leak test and the barcodes are the tanks' — with tracking off, or the
   // panels on screen, they are not part of the app
   const tankTabs = tankTracking && line !== "LV";
+  const named = (l: Item): Item => (l.href === "/simulate" && !machinePlanning ? { ...l, label: "Simulator" } : l);
   const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => tankTabs || !TANK_ONLY.has(d.href));
-  const restTabs = REST.filter((l) => tankTabs || !TANK_ONLY.has(l.href));
+  const restTabs = REST.filter((l) => tankTabs || !TANK_ONLY.has(l.href)).map(named);
   const drawerTabs = (line === "LV"
     ? [...LV_WORKLIST_DEPTS.map((d): Item => ({ href: d.href, label: `${d.label} Worklist`, icon: d.icon })), ...DRAWER.filter((l) => !l.href.startsWith("/worklist/"))]
     : DRAWER
-  ).filter((l) => tankTabs || !TANK_ONLY.has(l.href));
+  ).filter((l) => tankTabs || !TANK_ONLY.has(l.href)).map(named);
   const drawerViews = DRAWER_VIEWS.filter((l) => tankTabs || !TANK_ONLY.has(l.href));
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
   const singleDeptHref = !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/server/auth";
 import { getDeptBoardLines, getMachineBoard, type BoardDept } from "@/lib/server/machineBoard";
 import { getSoiLookup } from "@/lib/server/soi";
+import { isMachinePlanningOn } from "@/lib/server/data";
 import { factoryDayISO, toDisplayDate, parseISODate } from "@/lib/domain/dates";
 import { deptLabel } from "@/lib/domain/constants";
 import { isShiftDept, machineWord } from "@/lib/domain/shifts";
@@ -23,6 +24,17 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   const sp = await searchParams;
+  if (!(await isMachinePlanningOn())) {
+    return (
+      <div>
+        <PageHeader title="🖨 Machine sheets" />
+        <p className="text-sm text-muted bg-surface border rounded-xl p-4">
+          Machine planning is turned off, so no work is planned onto machines and there are no sheets to print.
+          {me.isAdmin ? <> Turn it on under <Link href="/admin/settings" className="text-accent font-semibold hover:underline">Admin → Settings</Link>.</> : " An admin can turn it on under Admin → Settings."}
+        </p>
+      </div>
+    );
+  }
   const dept: BoardDept = isShiftDept(sp.dept ?? "") ? (sp.dept as BoardDept) : "Cut";
   const only = Number(sp.machine) || null;
   const today = factoryDayISO(new Date());

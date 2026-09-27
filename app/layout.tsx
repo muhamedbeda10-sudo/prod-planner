@@ -40,6 +40,7 @@ export default async function RootLayout({
             user={{ id: user.id, name: user.name, isAdmin: user.isAdmin, perms: [...userPerms(user)] }}
             unreadChat={unreadChat}
             tankTracking={!!settings?.tankTracking}
+            machinePlanning={!!settings?.machinePlanning}
             line={line}
           />
         )}
