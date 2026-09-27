@@ -14,19 +14,27 @@
 
 import type { RosterDept } from "./shifts";
 
+export interface OutputSource { depts: readonly string[]; line: "TR" | "LV" }
+
 /** Where a roster department's output sits in the daily log: the ledger
- *  departments it counts and which product line's items. The blasters pass
- *  every painted piece too, not only the core, so shot blast counts both. */
-export const OUTPUT_SOURCE: Record<RosterDept, { depts: readonly string[]; line: "TR" | "LV" }> = {
-  Cut: { depts: ["Cut"], line: "TR" },
-  Welding: { depts: ["Welding"], line: "TR" },
-  ShotBlast: { depts: ["ShotBlast", "Painting"], line: "TR" },
-  Painting: { depts: ["Painting"], line: "TR" },
-  Punching: { depts: ["Punching"], line: "LV" },
-  Bending: { depts: ["Bending"], line: "LV" },
-  WeldingLV: { depts: ["Welding"], line: "LV" },
-  PaintingLV: { depts: ["Painting"], line: "LV" },
+ *  departments it counts, per product line. The blasters pass every painted
+ *  piece, not only the core — and the one shot-blast crew blasts the LV
+ *  panels too, before they are painted. */
+export const OUTPUT_SOURCE: Record<RosterDept, readonly OutputSource[]> = {
+  Cut: [{ depts: ["Cut"], line: "TR" }],
+  Welding: [{ depts: ["Welding"], line: "TR" }],
+  ShotBlast: [{ depts: ["ShotBlast", "Painting"], line: "TR" }, { depts: ["Painting"], line: "LV" }],
+  Painting: [{ depts: ["Painting"], line: "TR" }],
+  Punching: [{ depts: ["Punching"], line: "LV" }],
+  Bending: [{ depts: ["Bending"], line: "LV" }],
+  WeldingLV: [{ depts: ["Welding"], line: "LV" }],
+  PaintingLV: [{ depts: ["Painting"], line: "LV" }],
 };
+
+/** Whether a ledger row (its department, and whether it is a panel) is the output of a roster department. */
+export function countsFor(dept: RosterDept, ledgerDept: string, lv: boolean): boolean {
+  return OUTPUT_SOURCE[dept].some((s) => (s.line === "LV") === lv && s.depts.includes(ledgerDept));
+}
 
 /** One recorded day of one department. */
 export interface ProdDay {

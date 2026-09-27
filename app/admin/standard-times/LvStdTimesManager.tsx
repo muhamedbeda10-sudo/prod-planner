@@ -15,7 +15,7 @@ const FIELDS = [
   ["cutH", "Cutting", "Punching / laser cutting — the LV punching section"],
   ["bendH", "Bending", "The LV bending section"],
   ["weldH", "Welding", "The USS/LV welding section"],
-  ["shbH", "Shot blast", "On the sheet; no LV section records it yet, so nobody earns it"],
+  ["shbH", "Shot blast", "Earned by the shot-blast crew — the transformers' crew blasts the panels too"],
   ["paintH", "Paint line", "The USS painting section"],
 ] as const;
 
@@ -118,7 +118,7 @@ export function LvStdTimesManager({ rates, orders }: { rates: LvRate[]; orders: 
                   {usedBy.has(r.fg) && <span className="pill pill-ok text-[10px]">{usedBy.get(r.fg)} units open</span>}
                 </td>
                 <td className="p-2 text-center text-xs">{r.kind === "MB" ? "Meter box" : r.kind === "FP" ? "Feeder pillar" : "USS"}</td>
-                {FIELDS.map(([f]) => <td key={f} className={`p-2 text-right tabnum ${f === "shbH" ? "text-muted" : ""}`}>{fmt(r[f])}</td>)}
+                {FIELDS.map(([f]) => <td key={f} className="p-2 text-right tabnum">{fmt(r[f])}</td>)}
                 <td className="p-2 text-right tabnum text-muted">{fmt(r.totalH)}</td>
                 <td className="p-2 text-right whitespace-nowrap">
                   <button type="button" className="btn btn-sm btn-ghost" onClick={() => start(r)}>Edit</button>

@@ -5,6 +5,7 @@ import { tierForOrder, itemHoursFor } from "@/lib/domain/stdEngine";
 import { calibrate, type CalibrationSummary } from "@/lib/domain/calibration";
 import { getStdData } from "./standardTimes";
 import { loadMasterOrdersOf } from "./loads";
+import { earnedLvOnDays } from "./lvStd";
 import type { StdData } from "@/lib/domain/stdEngine";
 
 // recorded days older than this stop counting — the crew, the standards, or
@@ -45,7 +46,15 @@ export async function getCalibration(): Promise<{ rows: DayHoursRow[]; stages: S
 
   // what the ledger EARNED on exactly those days, priced like everywhere else
   const dates = [...byDate.keys()];
-  const earned = await earnedOnDays(dates, std, orders);
+  const [earned, earnedLv] = await Promise.all([earnedOnDays(dates, std, orders), earnedLvOnDays(dates)]);
+  // the one shot-blast crew blasts the LV panels as well — its recorded
+  // hours cover both, so the panels' shot-blast hours count on its side
+  for (const [iso, lv] of earnedLv) {
+    if (!lv.ShotBlast) continue;
+    const day = earned.get(iso) ?? { Cut: 0, Welding: 0, ShotBlast: 0, Painting: 0 };
+    day.ShotBlast += lv.ShotBlast;
+    earned.set(iso, day);
+  }
 
   const stages = CAL_STAGES.map((dept) => {
     const days = dates

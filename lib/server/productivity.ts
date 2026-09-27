@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { toISODate } from "@/lib/domain/dates";
 import { LV_ITEM } from "@/lib/domain/lv";
 import { isShiftDept, type RosterDept } from "@/lib/domain/shifts";
-import { OUTPUT_SOURCE, productivityOf, type ProdDay, type ProdStat } from "@/lib/domain/productivity";
+import { countsFor, productivityOf, type ProdDay, type ProdStat } from "@/lib/domain/productivity";
 import { earnedOnDays } from "./calibration";
 import { earnedLvOnDays } from "./lvStd";
 import { LV_DEPT_STAGE } from "@/lib/domain/lvStd";
@@ -54,6 +54,8 @@ export async function getShiftProductivity(dayISO: string, depts: readonly Roste
     depts.some(isShiftDept) ? earnedOnDays(dates, std, orders) : Promise.resolve(new Map()),
     depts.some((d) => LV_DEPT_STAGE[d]) ? earnedLvOnDays(dates) : Promise.resolve(new Map()),
   ]);
+  // a department's day: the transformers' std-hours plus the panels' it worked
+  const earnedOf = (iso: string, dept: RosterDept) => (isShiftDept(dept) ? (earned.get(iso)?.[dept] ?? 0) : 0) + (earnedLv.get(iso)?.[dept] ?? 0);
 
   // pieces per day and roster department
   const pieces = new Map<string, number>(); // iso|dept → pcs
@@ -61,8 +63,7 @@ export async function getShiftProductivity(dayISO: string, depts: readonly Roste
     const iso = toISODate(g.date);
     const lv = g.item === LV_ITEM;
     for (const d of depts) {
-      const src = OUTPUT_SOURCE[d];
-      if ((src.line === "LV") !== lv || !src.depts.includes(g.dept)) continue;
+      if (!countsFor(d, g.dept, lv)) continue;
       const k = `${iso}|${d}`;
       pieces.set(k, (pieces.get(k) ?? 0) + (g._sum.qty ?? 0));
     }
@@ -79,7 +80,7 @@ export async function getShiftProductivity(dayISO: string, depts: readonly Roste
           people: h.people ?? 0,
           pieces: pieces.get(`${iso}|${dept}`) ?? 0,
           // transformers priced by their KVA class, panels by the timings sheet's LV tab
-          earned: isShiftDept(dept) ? (earned.get(iso)?.[dept] ?? 0) : LV_DEPT_STAGE[dept] ? (earnedLv.get(iso)?.[dept] ?? 0) : null,
+          earned: isShiftDept(dept) || LV_DEPT_STAGE[dept] ? earnedOf(iso, dept) : null,
         };
       });
     const today = days.filter((d) => d.dateISO === dayISO);
