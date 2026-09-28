@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groupOdooEntries, odooSameKey, bomOfFgCode, blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView } from "./odoo";
+import { groupOdooEntries, odooSameKey, bomOfFgCode, blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView, odooItemTotals, odooScopeKey, odooScopeLabel, parseOdooScope, singleDayOf } from "./odoo";
 
 const HEADER = ["Date", "SOI#", "FG-CODE", "Product", "MO#", "QTY", "Status", "Reason"];
 
@@ -279,5 +279,42 @@ describe("groupOdooEntries — the rows that are the same closing", () => {
     expect(g).toHaveLength(1);
     expect(g[0].rows).toHaveLength(1);
     expect(g[0].qty).toBe(5);
+  });
+});
+
+describe("the log's period", () => {
+  const today = "2026-09-28";
+  it("reads one day, a range either way round, or every day", () => {
+    expect(parseOdooScope("2026-09-10", today)).toEqual({ kind: "day", iso: "2026-09-10" });
+    expect(parseOdooScope("2026-09-28..2026-09-01", today)).toEqual({ kind: "range", from: "2026-09-01", to: "2026-09-28" });
+    expect(parseOdooScope("2026-09-05..2026-09-05", today)).toEqual({ kind: "day", iso: "2026-09-05" });
+    expect(parseOdooScope("all", today)).toEqual({ kind: "all" });
+    expect(parseOdooScope("rubbish", today)).toEqual({ kind: "day", iso: today });
+  });
+  it("writes it back and labels it", () => {
+    expect(odooScopeKey({ kind: "range", from: "2026-09-01", to: "2026-09-28" })).toBe("2026-09-01..2026-09-28");
+    expect(singleDayOf("2026-09-01..2026-09-28")).toBeNull();
+    expect(singleDayOf("2026-09-01")).toBe("2026-09-01");
+    expect(odooScopeLabel("2026-09-01..2026-09-28")).toBe("from 2026-09-01 to 2026-09-28");
+    expect(odooScopeLabel("2026-09-01")).toBe("on 2026-09-01");
+    expect(odooScopeLabel("all")).toBe("");
+  });
+});
+
+describe("odooItemTotals", () => {
+  it("adds the quantity per product, closed and open apart, the line's own order first", () => {
+    const rows = [
+      { product: "Top Cover", qty: 5, done: true },
+      { product: "Tank", qty: 3, done: false },
+      { product: "Tank", qty: 7, done: true },
+      { product: "Bracket", qty: 2, done: false },
+      { product: "Mystery", qty: 9, done: false },
+    ];
+    expect(odooItemTotals(rows, ["Tank", "Top Cover"])).toEqual([
+      { product: "Tank", qty: 10, rows: 2, doneQty: 7, openQty: 3 },
+      { product: "Top Cover", qty: 5, rows: 1, doneQty: 5, openQty: 0 },
+      { product: "Mystery", qty: 9, rows: 1, doneQty: 0, openQty: 9 },
+      { product: "Bracket", qty: 2, rows: 1, doneQty: 0, openQty: 2 },
+    ]);
   });
 });

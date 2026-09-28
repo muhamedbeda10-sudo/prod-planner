@@ -323,3 +323,65 @@ export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): Odo
     return true;
   });
 }
+
+// ---- the log's period: one day, a from..to range, or every day ----
+
+/** What `?day=` holds: "all", one ISO day, or "2026-09-01..2026-09-28". */
+export type OdooScope = { kind: "all" } | { kind: "day"; iso: string } | { kind: "range"; from: string; to: string };
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+export function parseOdooScope(raw: string, todayISO: string): OdooScope {
+  const v = raw.trim();
+  if (v === "all") return { kind: "all" };
+  const m = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(v);
+  if (m) {
+    const [from, to] = m[1] <= m[2] ? [m[1], m[2]] : [m[2], m[1]];
+    return from === to ? { kind: "day", iso: from } : { kind: "range", from, to };
+  }
+  return { kind: "day", iso: ISO_DAY.test(v) ? v : todayISO };
+}
+
+/** The scope back as the `?day=` value. */
+export function odooScopeKey(s: OdooScope): string {
+  return s.kind === "all" ? "all" : s.kind === "day" ? s.iso : `${s.from}..${s.to}`;
+}
+
+/** The one day on screen, or null for a range or the whole log. */
+export function singleDayOf(dayKey: string): string | null {
+  return ISO_DAY.test(dayKey) ? dayKey : null;
+}
+
+/** "on 2026-09-28", "from 2026-09-01 to 2026-09-28", or "" for every day. */
+export function odooScopeLabel(dayKey: string): string {
+  if (dayKey === "all") return "";
+  const m = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(dayKey);
+  return m ? `from ${m[1]} to ${m[2]}` : `on ${dayKey}`;
+}
+
+// ---- the cards over the log: how much of each item the rows carry ----
+
+export interface OdooItemTotal {
+  product: string;
+  qty: number;
+  rows: number;
+  /** Of qty, what Odoo has closed. */
+  doneQty: number;
+  openQty: number;
+}
+
+/** Quantity per product over the rows given, in `order` first (the line's
+ *  own names), then any other product the rows carry by size. */
+export function odooItemTotals(entries: readonly Pick<OdooEntryView, "product" | "qty" | "done">[], order: readonly string[] = []): OdooItemTotal[] {
+  const by = new Map<string, OdooItemTotal>();
+  for (const e of entries) {
+    const product = e.product.trim() || "—";
+    const t = by.get(product) ?? { product, qty: 0, rows: 0, doneQty: 0, openQty: 0 };
+    t.qty += e.qty;
+    t.rows += 1;
+    if (e.done) t.doneQty += e.qty; else t.openQty += e.qty;
+    by.set(product, t);
+  }
+  const rank = (p: string) => { const i = order.indexOf(p); return i < 0 ? order.length : i; };
+  return [...by.values()].sort((a, b) => rank(a.product) - rank(b.product) || b.qty - a.qty || a.product.localeCompare(b.product));
+}
