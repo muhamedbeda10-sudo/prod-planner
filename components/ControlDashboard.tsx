@@ -4,10 +4,12 @@ import type { TargetDashboard } from "@/lib/server/dashboard";
 import { BACKLOG_LABEL, LOAD_LABEL, type BacklogStage } from "@/lib/domain/control";
 import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 import { FINISHING_LABEL, ITEMS, itemDailyTarget, type Item } from "@/lib/domain/constants";
-import { BacklogChart, HistoryChart, PromisesChart, WeekTrendChart } from "@/components/LazyCharts";
+import { BacklogChart, HistoryChart, LoadRings, PipelineFunnel, PromisesChart, WeekTrendChart } from "@/components/LazyCharts";
+import { Sparkline } from "@/components/charts/kit";
 
 // The production-control screen, in three bands:
-//   NOW        — one row of six figures: where the month stands
+//   NOW        — one row of six figures: where the month stands (the pace
+//                tile carries the period's finishing output as a sparkline)
 //   THE FLOOR  — six cards of equal size, two to a row: output vs target,
 //                the backlog over a month, the pipeline and today's backlog,
 //                load vs capacity, the last six weeks, the orders that need
@@ -34,11 +36,14 @@ function Band({ label, children }: { label: string; children: React.ReactNode })
 }
 
 /** A figure tile: label, one big figure, one line under it. Same height as its neighbours. */
-function Kpi({ label, value, sub, tone, href, title, meter }: { label: string; value: string; sub?: React.ReactNode; tone?: Tone; href?: string; title?: string; meter?: { value: number; tone: Tone } }) {
+function Kpi({ label, value, sub, tone, href, title, meter, spark }: { label: string; value: string; sub?: React.ReactNode; tone?: Tone; href?: string; title?: string; meter?: { value: number; tone: Tone }; spark?: number[] }) {
   const body = (
     <div className="flex h-full flex-col">
       <div className="text-[11px] font-bold text-muted uppercase tracking-wide">{label}</div>
-      <div className={`text-[2rem] font-extrabold leading-none mt-2 ${tone ? toneCls[tone] : ""}`}>{value}</div>
+      <div className="flex items-end justify-between gap-2 mt-2">
+        <div className={`text-[2rem] font-extrabold leading-none ${tone ? toneCls[tone] : ""}`}>{value}</div>
+        {spark && spark.length > 1 && <Sparkline values={spark} width={72} height={26} />}
+      </div>
       {meter && (
         <div className="mt-2 h-1.5 rounded-sm bg-border/70 overflow-hidden"><div className="h-full rounded-sm" style={{ width: `${Math.min(100, meter.value * 100)}%`, background: toneVar[meter.tone] }} /></div>
       )}
@@ -146,6 +151,7 @@ export function ControlDashboard({ c, d, controls }: { c: ControlDashboardData; 
             label="Pace vs month"
             value={pace.actualPerDay === null ? "—" : `${one(pace.actualPerDay)}/day`}
             tone={paceTone}
+            spark={d.days.filter((x) => !x.isFuture).map((x) => x.paint.total)}
             sub={pace.requiredPerDay === null ? "no working days left" : <>{paceWord} · needs <b className="text-foreground">{one(pace.requiredPerDay)}</b>/day</>}
             title={`Tanks painted per working day over the last ${pace.windowDays} working days, against what the ${fmt(p.remaining)} tanks left on ${c.monthLabel}'s plan need by month end`}
           />
@@ -231,10 +237,10 @@ export function ControlDashboard({ c, d, controls }: { c: ControlDashboardData; 
             <PromisesChart days={c.promises.days} />
           </Card>
           <Card title="Pipeline and backlog · now" sub={`Of ${fmt(c.pieces.need)} required pieces the plant makes itself, over the open orders`} aside={<>{fmt(c.pieces.need)} pieces required</>}>
-            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
-              <div className="space-y-2">
-                <div className="text-[11px] font-bold text-muted uppercase tracking-wide">Through each stage</div>
-                {stages.map((s, i) => <Bar key={s.key} label={s.label} value={s.done} max={c.pieces.need} color={stageRamp[i]} tip={`${s.label}: ${fmt(s.done)} of ${fmt(c.pieces.need)} (${pct(c.pieces.need > 0 ? s.done / c.pieces.need : null)})`} />)}
+            <div className="space-y-3">
+              <div>
+                <div className="text-[11px] font-bold text-muted uppercase tracking-wide mb-1">Through each stage</div>
+                <PipelineFunnel need={c.pieces.need} steps={stages.map((s) => ({ label: s.label, done: s.done }))} />
               </div>
               <div className="space-y-2">
                 <div className="text-[11px] font-bold text-muted uppercase tracking-wide">Waiting at each stage</div>
@@ -250,6 +256,7 @@ export function ControlDashboard({ c, d, controls }: { c: ControlDashboardData; 
             aside={c.load.uncoveredOrders > 0 ? <span title="Open orders with no standard times — not counted">{fmt(c.load.uncoveredOrders)} uncounted</span> : undefined}
           >
             <div className="space-y-3">
+              <LoadRings stages={c.load.stages} daysLeft={pace.daysLeft} />
               {c.load.stages.map((l) => {
                 const days = l.daysOfWork;
                 const ratio = days === null ? null : pace.daysLeft > 0 ? days / pace.daysLeft : Infinity;
