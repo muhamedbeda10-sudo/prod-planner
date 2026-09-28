@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { armChime, playChime } from "@/lib/chime";
+import { appInBackground, onNotifyClick, systemNotify } from "@/lib/sysNotify";
 import { closeOdooReady, pollOdooReady } from "@/app/odoo/alertActions";
 import { pruneSeen, unseenReady, type ReadyRow } from "@/lib/domain/odooAlerts";
 
@@ -54,7 +55,20 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
     if (unseen.length > 0) {
       setFresh(new Set(unseen));
       setOpen(true);
-      if (unseen.some((id) => !chimed.current.has(id))) playChime("alert");
+      const newOnes = unseen.filter((id) => !chimed.current.has(id));
+      if (newOnes.length > 0) {
+        playChime("alert");
+        if (appInBackground()) {
+          const first = r.rows.find((x) => x.id === newOnes[0]);
+          void systemNotify({
+            title: `${r.rows.length} ready to close in Odoo`,
+            body: first ? `${first.odooMo} · ${first.product} × ${first.qty}${newOnes.length > 1 ? ` and ${newOnes.length - 1} more` : ""}` : "Open the app to close them",
+            tag: `odoo-ready-${Math.max(...newOnes)}`,
+            url: "/odoo?day=all",
+            action: { kind: "odoo" },
+          });
+        }
+      }
       for (const id of unseen) chimed.current.add(id);
     }
   }, [userId]);
@@ -68,6 +82,12 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
     document.addEventListener("visibilitychange", onVisible);
     return () => { clearTimeout(first); clearInterval(every); document.removeEventListener("visibilitychange", onVisible); };
   }, [enabled, tick]);
+
+  // a click on the system notification opens the popup
+  useEffect(() => {
+    if (!enabled) return;
+    return onNotifyClick((a) => a.kind === "odoo" && setOpen(true));
+  }, [enabled]);
 
   // the browser tab says it too — re-applied after every navigation, since
   // each page sets its own title
