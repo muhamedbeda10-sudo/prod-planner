@@ -8,7 +8,7 @@ import { DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE } from "@/lib/domain/constants"
 import { ledgerPermKey, trackerPermKey } from "@/lib/domain/permissions";
 import { getActiveLine } from "@/lib/server/line";
 import { LV_CHAIN, LV_ITEM } from "@/lib/domain/lv";
-import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
+import { ViewTabs, trackerViews } from "@/components/ViewTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +63,7 @@ export default async function HandoverPage() {
       line={line}
       editableDepts={editableDepts}
       soi={soi}
-      viewTabs={<ViewTabs views={TRACKER_VIEWS} current="/handover" label="Tracker view" />}
+      viewTabs={<ViewTabs views={trackerViews(line)} current="/handover" label="Tracker view" />}
     />
   );
 }

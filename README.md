@@ -26,11 +26,12 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 "Done" everywhere = Welding output; Cut gates Welding.
 
 ## Navigation
-Eight tabs, one per QUESTION rather than per screen — Worklist · Material · ODOO · Consumables · Shifts ·
-Plan Tracker · Floor · Dashboard. Three of them hold several views behind their own switcher
-(`components/ViewTabs.tsx`): **Plan Tracker** carries the tracker and the daily log it adds up,
-**Floor** the bay as it is and the what-if simulator, **Dashboard** this week, the printed report
-and the sheet analytics. Two things left the strip entirely: **chat** is the icon in the nav's
+Seven tabs, one per QUESTION rather than per screen — Worklist · Material · ODOO · Consumables · Shifts ·
+Plan Tracker · Floor. There is **no Dashboard tab**: each dashboard lives with what it reads. Three tabs
+hold several views behind their own switcher (`components/ViewTabs.tsx`): **Plan Tracker** carries the
+tracker, the plan's **Dashboard** (`/`, the home page), the **Daily log** it adds up and the printed
+**Report** of that log; **Material** the nesting sheets and the sheet **Analytics** built on them;
+**Floor** the bay as it is and the what-if simulator. Two things left the strip entirely: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
 worklist, where the tanks it prints for finish. In Admin the two plan imports share one page. The
@@ -64,12 +65,12 @@ mobile drawer still lists every view flat, since it has the vertical room.
    differ. All four export with the rest.
 4. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
    allocation, overdue rollover, fill-up rows, Cut Alarm (Cut ready / Partial / NOT CUT YET).
-5. **Daily report + Dashboard** (`/report`, `/` — two views of the Dashboard tab; the report covers
+5. **Daily report + Dashboard** (`/report`, `/` — views of the Plan Tracker tab; the report covers
    ONE day or any period through its From→To picker, with the capacity its efficiency is measured
    against scaled to the working days the range really spans) — dept output, complete sets, efficiency/balance %,
    projects worked today, tracker snapshot, charts. Dashboard: achievement per item, dept output
    day/week, planned (oven−lead) vs welded.
-5b. **Fabrication analytics** (`/analytics`) — the floor read in SHEETS instead of pieces, because a piece is
+5b. **Fabrication analytics** (`/analytics`, a view of the Material tab) — the floor read in SHEETS instead of pieces, because a piece is
    not a unit of work: a tank cut from four sheets and one cut from half a sheet are both "1". Every daily-log
    cut record is converted through its BOM's bill of sheets off the Material tab, over a 30/60/90-day or
    all-time window. Sheets and tonnes cut, per day and in total; the thickness mix (which decides what a job
