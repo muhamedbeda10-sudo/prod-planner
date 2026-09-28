@@ -926,10 +926,11 @@ model OdooNote {
 // One row per hand-out: an item (typed freely — the store's own words), how
 // much, the department it went to and the worker who took it. The moment is
 // the server's clock at recording, never typed, so the log cannot be
-// back-dated. Once written, a row is the admin's alone: only an admin edits
-// it, and every edit keeps the row as it was in ConsumableIssueRevision.
-// Delete is soft — the row leaves the log but stays in the table with who
-// removed it and when.
+// back-dated. Once written, a row is changed only by the person who recorded
+// it (consumables.edit) or an admin, and every change keeps the row before
+// and after in ConsumableIssueRevision, from which an admin can restore any
+// earlier version. Delete is the admin's, and soft — the row leaves the log
+// but stays in the table with who removed it and when.
 model ConsumableIssue {
   id         Int      @id @default(autoincrement())
   item       String
@@ -968,18 +969,23 @@ model ConsumableIssue {
   @@index([recordedById])
 }
 
-/// The row as it stood before each admin edit or delete — the audit trail
-/// that makes "only the admin may change it" checkable afterwards.
+/// One change to a hand-out: who, when, and the row before and after — the
+/// audit trail the admin reads, and the versions an admin can restore.
 model ConsumableIssueRevision {
   id      Int             @id @default(autoincrement())
   issueId Int
   issue   ConsumableIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  action  String // edit | delete
+  action  String // edit | delete | restore
   // { item, qty, department, workerId, workerEmpId, workerName, notes }
   before  Json
+  // the same shape after the change; null for a delete (nothing is left on
+  // the log) and for revisions written before this column existed
+  after   Json?
   byId    Int?
   by      String
   at      DateTime        @default(now())
 
   @@index([issueId])
+  // the admin's Edits view: every change in a period
+  @@index([at])
 }

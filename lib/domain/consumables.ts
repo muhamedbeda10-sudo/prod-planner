@@ -134,3 +134,73 @@ export function factoryDateTimeLabel(at: Date): string {
   const p = Object.fromEntries(TIME_FMT.formatToParts(at).map((x) => [x.type, x.value]));
   return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
 }
+
+// ---- who may change a saved row, and the versions kept of it ----
+
+/** The row as a revision keeps it — before and after each change. */
+export interface ConsumableSnapshot {
+  item: string;
+  qty: number;
+  department: string;
+  workerId: number;
+  workerEmpId: string;
+  workerName: string;
+  notes: string | null;
+}
+
+/** An admin edits any row; someone holding consumables.edit edits the rows he
+ *  recorded himself — his own mistakes, not a colleague's. A row whose
+ *  recorder's account is gone is the admin's. */
+export function canEditIssue(
+  user: { id: number; isAdmin: boolean; canRecord: boolean },
+  issue: { recordedById: number | null }
+): boolean {
+  if (user.isAdmin) return true;
+  return user.canRecord && issue.recordedById !== null && issue.recordedById === user.id;
+}
+
+/** The same hand-out, field for field (the worker by id — his name on the
+ *  list may have changed since). */
+export function sameSnapshot(a: ConsumableSnapshot, b: ConsumableSnapshot): boolean {
+  return a.item === b.item && a.qty === b.qty && a.department === b.department && a.workerId === b.workerId && (a.notes ?? null) === (b.notes ?? null);
+}
+
+/** Read a snapshot back from a revision's JSON; null when it is not one. */
+export function parseSnapshot(raw: unknown): ConsumableSnapshot | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as Record<string, unknown>;
+  const qty = Number(s.qty);
+  const workerId = Number(s.workerId);
+  if (typeof s.item !== "string" || !s.item || !Number.isFinite(qty) || qty <= 0) return null;
+  if (typeof s.department !== "string" || !s.department || !Number.isInteger(workerId) || workerId <= 0) return null;
+  return {
+    item: s.item, qty, department: s.department, workerId,
+    workerEmpId: typeof s.workerEmpId === "string" ? s.workerEmpId : "",
+    workerName: typeof s.workerName === "string" ? s.workerName : "",
+    notes: typeof s.notes === "string" && s.notes ? s.notes : null,
+  };
+}
+
+/** A snapshot in one line: "2 × Welding wire · Welding TX · 1203 Sayed · “note”". */
+export function describeSnapshot(s: ConsumableSnapshot | null): string {
+  if (!s) return "—";
+  return [
+    `${s.qty} × ${s.item}`,
+    departmentLabel(s.department),
+    `${s.workerEmpId} ${s.workerName}`.trim() || null,
+    s.notes ? `“${s.notes}”` : null,
+  ].filter(Boolean).join(" · ");
+}
+
+/** The fields that differ between two snapshots, as "Qty 10 → 8" lines — what
+ *  the admin reads first. */
+export function snapshotChanges(before: ConsumableSnapshot | null, after: ConsumableSnapshot | null): string[] {
+  if (!before || !after) return [];
+  const out: string[] = [];
+  if (before.item !== after.item) out.push(`Item: ${before.item} → ${after.item}`);
+  if (before.qty !== after.qty) out.push(`Qty: ${before.qty} → ${after.qty}`);
+  if (before.department !== after.department) out.push(`Department: ${departmentLabel(before.department)} → ${departmentLabel(after.department)}`);
+  if (before.workerId !== after.workerId) out.push(`Worker: ${before.workerEmpId} ${before.workerName} → ${after.workerEmpId} ${after.workerName}`);
+  if ((before.notes ?? "") !== (after.notes ?? "")) out.push(`Notes: ${before.notes ? `“${before.notes}”` : "—"} → ${after.notes ? `“${after.notes}”` : "—"}`);
+  return out;
+}

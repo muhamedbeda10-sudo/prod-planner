@@ -3,18 +3,38 @@ import { prisma } from "@/lib/db";
 import { WORKER_SECTIONS } from "@/lib/domain/tanks";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { factoryDayStart } from "@/lib/domain/dates";
-import { departmentLabel, factoryDateTimeLabel } from "@/lib/domain/consumables";
+import {
+  canEditIssue,
+  departmentLabel,
+  describeSnapshot,
+  factoryDateTimeLabel,
+  parseSnapshot,
+  snapshotChanges,
+} from "@/lib/domain/consumables";
 import { getAllWorkers } from "./workers";
 
 // The CONSUMABLES tab's reads. Writes are app/consumables/actions.ts.
+//
+// The history of a row (who changed what, and the versions an admin can
+// restore) is the admin's to read: it is only loaded, and only sent to the
+// browser, for an admin.
+
+export type ConsumableRevisionAction = "edit" | "delete" | "restore";
 
 export interface ConsumableRevisionView {
   id: number;
-  action: "edit" | "delete";
-  /** The row as it stood before the change, in words. */
+  action: ConsumableRevisionAction;
+  /** The row before the change, in one line. */
   before: string;
+  /** The row after it, in one line — null for a delete, and for the few
+   *  revisions written before "after" was kept. */
+  after: string | null;
+  /** "Qty: 10 → 8" — what changed, field by field (empty when unknown). */
+  changes: string[];
   by: string;
   atLabel: string;
+  /** Whether "restore this version" can work: the before-snapshot reads back. */
+  restorable: boolean;
 }
 
 export interface ConsumableIssueView {
@@ -28,8 +48,11 @@ export interface ConsumableIssueView {
   issuedAtLabel: string;
   recordedBy: string;
   edited: { by: string; atLabel: string } | null;
+  /** Newest first — admin only (empty for everyone else). */
   revisions: ConsumableRevisionView[];
-  /** The optimistic-lock token an admin's edit or delete sends back: the
+  /** The viewer may correct this row: his own, or any for an admin. */
+  canEdit: boolean;
+  /** The optimistic-lock token an edit, delete or restore sends back: the
    *  row's updatedAt when the page was drawn. */
   version: string;
 }
@@ -52,26 +75,23 @@ export interface ConsumablesPageData {
   knownItems: string[];
 }
 
-/** The snapshot kept on a revision. */
-export interface ConsumableSnapshot {
-  item: string;
-  qty: number;
-  department: string;
-  workerId: number;
-  workerEmpId: string;
-  workerName: string;
-  notes: string | null;
+/** One line of the admin's Edits view: a change and the row it was made to. */
+export interface ConsumableEditView extends ConsumableRevisionView {
+  issue: {
+    id: number;
+    /** The row as it reads now, in one line. */
+    now: string;
+    issuedAtLabel: string;
+    recordedBy: string;
+    deleted: { by: string | null; atLabel: string } | null;
+    version: string;
+  };
 }
 
-function describeSnapshot(raw: unknown): string {
-  const s = (raw ?? {}) as Partial<ConsumableSnapshot>;
-  const parts = [
-    `${s.qty ?? "?"} × ${s.item ?? "?"}`,
-    s.department ? departmentLabel(s.department) : null,
-    s.workerName ? `${s.workerEmpId ?? ""} ${s.workerName}`.trim() : null,
-    s.notes ? `“${s.notes}”` : null,
-  ];
-  return parts.filter(Boolean).join(" · ");
+export interface ConsumablesViewer {
+  id: number;
+  isAdmin: boolean;
+  canRecord: boolean;
 }
 
 const SECTION_CODES = WORKER_SECTIONS.map((s) => s.code as string);
@@ -88,11 +108,32 @@ export async function getCustomDepartments(): Promise<string[]> {
   return rows.map((r) => r.department);
 }
 
-/** The log for factory days from..to, both included, newest first. */
-export async function getConsumablesData(fromISO: string, toISO: string): Promise<ConsumablesPageData> {
+function periodBounds(fromISO: string, toISO: string): { gte: Date; lt: Date } {
   const gte = factoryDayStart(fromISO);
   const lt = factoryDayStart(addDaysISO(toISO, 1));
   if (!gte || !lt) throw new Error(`Bad consumables period ${fromISO}..${toISO}`);
+  return { gte, lt };
+}
+
+function revisionView(v: { id: number; action: string; before: unknown; after: unknown; by: string; at: Date }): ConsumableRevisionView {
+  const before = parseSnapshot(v.before);
+  const after = parseSnapshot(v.after);
+  const action: ConsumableRevisionAction = v.action === "delete" ? "delete" : v.action === "restore" ? "restore" : "edit";
+  return {
+    id: v.id,
+    action,
+    before: describeSnapshot(before),
+    after: after ? describeSnapshot(after) : null,
+    changes: snapshotChanges(before, after),
+    by: v.by,
+    atLabel: factoryDateTimeLabel(v.at),
+    restorable: before !== null,
+  };
+}
+
+/** The log for factory days from..to, both included, newest first. */
+export async function getConsumablesData(fromISO: string, toISO: string, viewer: ConsumablesViewer): Promise<ConsumablesPageData> {
+  const { gte, lt } = periodBounds(fromISO, toISO);
 
   const [rows, custom, workers, items] = await Promise.all([
     prisma.consumableIssue.findMany({
@@ -100,7 +141,8 @@ export async function getConsumablesData(fromISO: string, toISO: string): Promis
       orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
       include: {
         worker: { select: { id: true, empId: true, name: true, active: true } },
-        revisions: { orderBy: { id: "desc" } },
+        // the history is the admin's — not even fetched for anyone else
+        ...(viewer.isAdmin ? { revisions: { orderBy: { id: "desc" as const } } } : {}),
       },
     }),
     getCustomDepartments(),
@@ -126,13 +168,8 @@ export async function getConsumablesData(fromISO: string, toISO: string): Promis
       issuedAtLabel: factoryDateTimeLabel(r.issuedAt),
       recordedBy: r.recordedBy,
       edited: r.editedAt && r.editedBy ? { by: r.editedBy, atLabel: factoryDateTimeLabel(r.editedAt) } : null,
-      revisions: r.revisions.map((v) => ({
-        id: v.id,
-        action: v.action === "delete" ? "delete" : "edit",
-        before: describeSnapshot(v.before),
-        by: v.by,
-        atLabel: factoryDateTimeLabel(v.at),
-      })),
+      revisions: "revisions" in r && Array.isArray(r.revisions) ? r.revisions.map(revisionView) : [],
+      canEdit: canEditIssue(viewer, r),
       version: r.updatedAt.toISOString(),
     })),
     departments: {
@@ -144,4 +181,35 @@ export async function getConsumablesData(fromISO: string, toISO: string): Promis
       .map((w) => ({ id: w.id, empId: w.empId, name: w.name, sections: [...w.sections] })),
     knownItems: items.map((i) => i.item),
   };
+}
+
+/** Every change made in factory days from..to — edits, deletes and restores,
+ *  newest first, each with the row it was made to. The admin's view: the
+ *  caller checks. Deleted rows are included, so they can be brought back. */
+export async function getConsumableEdits(fromISO: string, toISO: string): Promise<ConsumableEditView[]> {
+  const { gte, lt } = periodBounds(fromISO, toISO);
+  const revs = await prisma.consumableIssueRevision.findMany({
+    where: { at: { gte, lt } },
+    orderBy: [{ at: "desc" }, { id: "desc" }],
+    take: 1000,
+    include: { issue: { include: { worker: { select: { empId: true, name: true } } } } },
+  });
+  return revs.map((v) => {
+    const i = v.issue;
+    const now = {
+      item: i.item, qty: i.qty.toNumber(), department: i.department,
+      workerId: i.workerId, workerEmpId: i.worker.empId, workerName: i.worker.name, notes: i.notes,
+    };
+    return {
+      ...revisionView(v),
+      issue: {
+        id: i.id,
+        now: describeSnapshot(now),
+        issuedAtLabel: factoryDateTimeLabel(i.issuedAt),
+        recordedBy: i.recordedBy,
+        deleted: i.deletedAt ? { by: i.deletedBy, atLabel: factoryDateTimeLabel(i.deletedAt) } : null,
+        version: i.updatedAt.toISOString(),
+      },
+    };
+  });
 }
