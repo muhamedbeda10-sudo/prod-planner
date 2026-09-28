@@ -3,12 +3,13 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MessagesSquare, X, Maximize2, Reply, Volume2, VolumeX } from "lucide-react";
+import { MessagesSquare, X, Maximize2, Reply, Volume2, VolumeX, Bell, BellOff, BellRing } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { pollChat, pollChatInbox } from "@/app/chat/actions";
 import type { ChatContact, ChatInboxItem, ThreadKind } from "@/lib/server/chat";
 import { armChime, chimeOn, playChime, setChimeOn } from "@/lib/chime";
+import { appInBackground, askNotify, notifyPerm, onNotifyClick, prepareNotify, systemNotify, type NotifyPerm } from "@/lib/sysNotify";
 
 // 💬 Chat as a corner icon, not a tab.
 //
@@ -28,10 +29,16 @@ import { armChime, chimeOn, playChime, setChimeOn } from "@/lib/chime";
 // them; the newest id already popped is kept per user in the browser, so a
 // reload or a new page never pops the same message twice. Every new card
 // plays a short chime; the speaker in the panel header mutes it.
+//
+// While the app is out of sight (minimised, another window or tab) a message
+// also raises a system notification with the OS sound — that one needs no
+// click on the page, only a one-time "Allow", which a small card offers once
+// and the bell in the panel header offers any time.
 
 const POLL_MS = 15000;
 const MAX_CARDS = 4;
 const seenKey = (userId: number) => `chat.popup.seen.${userId}`;
+const ASKED_KEY = "notify.asked";
 
 function readSeen(userId: number): number | null {
   try {
@@ -79,6 +86,29 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
     const t = setTimeout(() => setSound(chimeOn()), 0); // localStorage only exists in the browser
     return () => clearTimeout(t);
   }, []);
+  const [perm, setPerm] = useState<NotifyPerm>("unsupported");
+  const [offer, setOffer] = useState(false); // the one-time "turn on desktop alerts" card
+  useEffect(() => {
+    prepareNotify();
+    const t = setTimeout(() => {
+      const p = notifyPerm();
+      setPerm(p);
+      let asked = false;
+      try { asked = localStorage.getItem(ASKED_KEY) === "1"; } catch {}
+      setOffer(p === "default" && !asked);
+    }, 3000);
+    return () => clearTimeout(t);
+  }, []);
+  const turnOnAlerts = async () => {
+    const p = await askNotify();
+    setPerm(p);
+    setOffer(false);
+    try { localStorage.setItem(ASKED_KEY, "1"); } catch {}
+  };
+  const notNow = () => {
+    setOffer(false);
+    try { localStorage.setItem(ASKED_KEY, "1"); } catch {}
+  };
   const [contacts, setContacts] = useState<ChatContact[] | null>(null);
   const [err, setErr] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
@@ -100,6 +130,17 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
     if (!res?.ok) return;
     setLiveUnread(res.unread ?? 0);
     const fresh = first ? [] : (res.items ?? []);
+    // out of sight: the OS notification carries it (even with the panel open)
+    if (fresh.length > 0 && appInBackground()) {
+      const m = fresh[0];
+      void systemNotify({
+        title: fresh.length > 1 ? `${fresh.length} new messages` : m.groupName ? `${m.fromName} in ${m.groupName}` : m.fromName,
+        body: fresh.length > 1 ? fresh.slice(0, 3).map((x) => `${x.fromName}: ${x.snippet}`).join("\n") : m.snippet || "New message",
+        tag: `chat-${m.id}`,
+        url: `/chat?open=${m.kind}-${m.threadId}`,
+        action: { kind: "chat", thread: { kind: m.kind, id: m.threadId } },
+      });
+    }
     if (fresh.length > 0 && !quietRef.current) {
       playChime();
       setCards((cur) => {
@@ -133,16 +174,23 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
     wasOpen.current = open;
   }, [open, poll]);
 
-  const reply = (c: ChatInboxItem) => {
-    setCards([]);
-    // the corner panel is desktop-only; a phone gets the full chat page
-    if (!window.matchMedia("(min-width: 768px)").matches) {
-      router.push(`/chat?open=${c.kind}-${c.threadId}`);
-      return;
-    }
-    setOpenOn({ kind: c.kind, id: c.threadId });
-    setOpen(true);
-  };
+  const openThread = useCallback(
+    (kind: ThreadKind, id: number) => {
+      setCards([]);
+      // the corner panel is desktop-only; a phone gets the full chat page
+      if (!window.matchMedia("(min-width: 768px)").matches) {
+        router.push(`/chat?open=${kind}-${id}`);
+        return;
+      }
+      setOpenOn({ kind, id });
+      setOpen(true);
+    },
+    [router],
+  );
+  const reply = (c: ChatInboxItem) => openThread(c.kind, c.threadId);
+
+  // a click on a system notification lands here
+  useEffect(() => onNotifyClick((a) => a.kind === "chat" && openThread(a.thread.kind, a.thread.id)), [openThread]);
   const dismiss = (id: number) => setCards((cur) => cur.filter((c) => c.id !== id));
 
   useEffect(() => {
@@ -200,6 +248,21 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
           <div className="flex items-center gap-2 px-3 py-2 border-b bg-surface-2 shrink-0">
             <MessagesSquare size={15} className="text-brand" />
             <b className="text-sm">Chat</b>
+            {perm !== "unsupported" && (
+              <button
+                type="button"
+                onClick={() => perm === "default" && void turnOnAlerts()}
+                className={`ms-auto rounded-md p-1.5 hover:bg-surface transition-colors ${perm === "granted" ? "text-brand" : "text-muted"}`}
+                title={
+                  perm === "granted" ? "Desktop alerts are on — they show when the app is minimised or on another tab"
+                  : perm === "denied" ? "Desktop alerts are blocked — allow notifications from the lock icon in the address bar"
+                  : "Turn on desktop alerts"
+                }
+                aria-label="Desktop alerts"
+              >
+                {perm === "granted" ? <BellRing size={15} /> : perm === "denied" ? <BellOff size={15} /> : <Bell size={15} />}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -208,7 +271,7 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
                 setChimeOn(on);
                 if (on) playChime();
               }}
-              className="ms-auto rounded-md p-1.5 hover:bg-surface transition-colors text-muted"
+              className={`${perm === "unsupported" ? "ms-auto " : ""}rounded-md p-1.5 hover:bg-surface transition-colors text-muted`}
               title={sound ? "Sound on for messages and Odoo alerts — click to mute" : "Sound off — click to turn on"}
               aria-label={sound ? "Mute message sound" : "Turn message sound on"}
               aria-pressed={sound}
@@ -244,6 +307,29 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
             )}
           </div>
         </div>
+      )}
+
+      {offer && !open && createPortal(
+        <div
+          role="dialog"
+          aria-label="Desktop alerts"
+          className="fixed bottom-4 left-4 z-50 flex w-[min(360px,calc(100vw-2rem))] gap-3 rounded-xl border border-l-4 border-l-brand bg-surface p-3 text-foreground shadow-xl animate-[navdrop_0.2s_ease-out]"
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand text-white">
+            <BellRing size={17} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <b className="text-sm">Turn on desktop alerts?</b>
+            <p className="mt-0.5 text-sm text-muted">
+              Messages and alerts reach you with a sound even when the app is minimised or on another tab.
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <button type="button" className="btn btn-sm btn-primary" onClick={() => void turnOnAlerts()}>Turn on</button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={notNow}>Not now</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
       {/* portalled: inside the sticky header (its own z-30 layer) the cards
