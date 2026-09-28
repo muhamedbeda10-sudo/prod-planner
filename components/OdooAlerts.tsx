@@ -5,30 +5,40 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { armChime, playChime } from "@/lib/chime";
 import { appInBackground, onNotifyClick, systemNotify } from "@/lib/sysNotify";
-import { closeOdooReady, pollOdooReady } from "@/app/odoo/alertActions";
-import { ODOO_CHANGED_EVENT, pruneSeen, unseenReady, type ReadyRow } from "@/lib/domain/odooAlerts";
+import { closeOdooReady, fillOdooMo, pollOdooAlerts } from "@/app/odoo/alertActions";
+import { ODOO_CHANGED_EVENT, alertKey, pruneSeen, unseenKeys, type ReadyRow } from "@/lib/domain/odooAlerts";
 
-// 🔔 Rows ready to close in Odoo — for the person subscribed (odoo.alerts).
+// 🔔 The ODOO alerts, for whoever is subscribed:
+// - "needs an MO" (odoo.needMo): a row landed on the log without Odoo's MO —
+//   the popup has a box to type it in;
+// - "ready to close" (odoo.alerts): a row has the MO and is still open — the
+//   popup closes it.
 // The ODOO tab carries the count and the browser tab's title starts with it;
-// when a row he has not seen becomes ready, a popup lists them all and each
-// closes from there. "Later" hides it until the next new row. Checked every
-// minute and whenever the window comes back into view. A row that shows up
-// for the first time plays the alert chime once (muted with the chat sound).
+// when a row not seen yet appears, the popup opens with both lists. "Later"
+// hides it until the next new row. Checked every minute, when the window
+// comes back into view, and right after a change saved on the ODOO page. A
+// new row plays the alert chime once (muted with the chat sound) and, with
+// the app out of sight, raises a system notification.
 
 const POLL_MS = 60_000;
-const seenKey = (userId: number) => `odoo.alerts.seen.${userId}`;
+const seenKey = (userId: number) => `odoo.alerts.seen2.${userId}`;
 
-function readSeen(userId: number): Set<number> {
+function readSeen(userId: number): Set<string> {
   try {
     const raw = JSON.parse(localStorage.getItem(seenKey(userId)) ?? "[]");
-    return new Set(Array.isArray(raw) ? raw.filter(Number.isInteger) : []);
+    return new Set(Array.isArray(raw) ? raw.filter((x) => typeof x === "string") : []);
   } catch {
     return new Set();
   }
 }
-function writeSeen(userId: number, ids: number[]) {
-  try { localStorage.setItem(seenKey(userId), JSON.stringify(ids)); } catch {}
+function writeSeen(userId: number, keys: string[]) {
+  try { localStorage.setItem(seenKey(userId), JSON.stringify(keys)); } catch {}
 }
+
+const liveKeys = (close: ReadyRow[], mo: ReadyRow[]) => [
+  ...close.map((r) => alertKey("close", r.id)),
+  ...mo.map((r) => alertKey("mo", r.id)),
+];
 
 export interface OdooAlertsState {
   count: number;
@@ -39,46 +49,54 @@ export interface OdooAlertsState {
 export function useOdooAlerts(enabled: boolean, initialCount: number, userId: number): OdooAlertsState {
   const router = useRouter();
   const pathname = usePathname();
-  const [rows, setRows] = useState<ReadyRow[] | null>(null);
-  const [canClose, setCanClose] = useState<{ TR: boolean; LV: boolean }>({ TR: false, LV: false });
+  const [close, setClose] = useState<ReadyRow[] | null>(null);
+  const [mo, setMo] = useState<ReadyRow[]>([]);
+  const [canEdit, setCanEdit] = useState<{ TR: boolean; LV: boolean }>({ TR: false, LV: false });
   const [open, setOpen] = useState(false);
-  const [fresh, setFresh] = useState<Set<number>>(new Set());
-  const count = rows ? rows.length : enabled ? initialCount : 0;
-  const chimed = useRef<Set<number>>(new Set()); // rows already rung for on this page
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const loaded = close !== null;
+  const count = loaded ? close.length + mo.length : enabled ? initialCount : 0;
+  const chimed = useRef<Set<string>>(new Set()); // keys already rung for on this page
 
   // `ownChange`: the check that follows a change saved on the ODOO page in
-  // this tab — the count follows, but a row this person just made ready is
-  // theirs, not news, so it is marked seen instead of popping up
+  // this tab — the count follows, but a row this person just touched is
+  // their own doing, not news, so it is marked seen instead of popping up
   const tick = useCallback(async (ownChange = false) => {
-    const r = await pollOdooReady().catch(() => null);
-    if (!r?.ok || !r.rows) return;
-    setRows(r.rows);
-    if (r.canClose) setCanClose(r.canClose);
+    const r = await pollOdooAlerts().catch(() => null);
+    if (!r?.ok) return;
+    const c = r.close ?? [];
+    const m = r.mo ?? [];
+    setClose(c);
+    setMo(m);
+    if (r.canEdit) setCanEdit(r.canEdit);
+    const live = liveKeys(c, m);
     if (ownChange) {
-      writeSeen(userId, pruneSeen([...readSeen(userId), ...r.rows.map((x) => x.id)], r.rows));
-      for (const x of r.rows) chimed.current.add(x.id);
+      writeSeen(userId, pruneSeen([...readSeen(userId), ...live], live));
+      for (const k of live) chimed.current.add(k);
       return;
     }
-    const unseen = unseenReady(r.rows, readSeen(userId));
-    if (unseen.length > 0) {
-      setFresh(new Set(unseen));
-      setOpen(true);
-      const newOnes = unseen.filter((id) => !chimed.current.has(id));
-      if (newOnes.length > 0) {
-        playChime("alert");
-        if (appInBackground()) {
-          const first = r.rows.find((x) => x.id === newOnes[0]);
-          void systemNotify({
-            title: `${r.rows.length} ready to close in Odoo`,
-            body: first ? `${first.odooMo} · ${first.product} × ${first.qty}${newOnes.length > 1 ? ` and ${newOnes.length - 1} more` : ""}` : "Open the app to close them",
-            tag: `odoo-ready-${Math.max(...newOnes)}`,
-            url: "/odoo?day=all",
-            action: { kind: "odoo" },
-          });
-        }
-      }
-      for (const id of unseen) chimed.current.add(id);
-    }
+    const unseen = unseenKeys(live, readSeen(userId));
+    if (unseen.length === 0) return;
+    setFresh(new Set(unseen));
+    setOpen(true);
+    const newOnes = unseen.filter((k) => !chimed.current.has(k));
+    for (const k of unseen) chimed.current.add(k);
+    if (newOnes.length === 0) return;
+    playChime("alert");
+    if (!appInBackground()) return;
+    const newMo = m.filter((x) => newOnes.includes(alertKey("mo", x.id)));
+    const newClose = c.filter((x) => newOnes.includes(alertKey("close", x.id)));
+    const lead = newMo[0] ?? newClose[0];
+    const title = [m.length ? `${m.length} need an MO` : "", c.length ? `${c.length} ready to close` : ""].filter(Boolean).join(" · ") + " — Odoo";
+    void systemNotify({
+      title,
+      body: lead
+        ? `${lead.odooMo || "No MO yet"} · ${lead.product} × ${lead.qty}${lead.soi ? ` · ${lead.soi}` : ""}${newOnes.length > 1 ? ` and ${newOnes.length - 1} more` : ""}`
+        : "Open the app to see them",
+      tag: `odoo-${newOnes.sort().at(-1)}`,
+      url: "/odoo?day=all",
+      action: { kind: "odoo" },
+    });
   }, [userId]);
 
   useEffect(() => {
@@ -113,75 +131,151 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
   }, [enabled, count, pathname]);
 
   const later = useCallback(() => {
-    if (rows) writeSeen(userId, pruneSeen([...readSeen(userId), ...rows.map((r) => r.id)], rows));
+    if (close) {
+      const live = liveKeys(close, mo);
+      writeSeen(userId, pruneSeen([...readSeen(userId), ...live], live));
+    }
     setOpen(false);
-  }, [rows, userId]);
+  }, [close, mo, userId]);
 
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
-  const close = (ids: number[]) => {
+  const afterSave = () => {
+    if (pathname.startsWith("/odoo")) router.refresh();
+    void tick(true); // the row moves list (MO typed → ready to close) — no popup for one's own step
+  };
+  const closeRows = (ids: number[]) => {
     const fd = new FormData();
     for (const id of ids) fd.append("id", String(id));
     setErr("");
     start(async () => {
       const r = await closeOdooReady(fd);
       if (!r.ok) { setErr(r.error ?? "Could not close."); return; }
-      setRows((cur) => (cur ? cur.filter((x) => !ids.includes(x.id)) : cur));
-      if (pathname.startsWith("/odoo")) router.refresh();
+      setClose((cur) => (cur ? cur.filter((x) => !ids.includes(x.id)) : cur));
+      afterSave();
+    });
+  };
+  const saveMo = (id: number, value: string) => {
+    const fd = new FormData();
+    fd.set("id", String(id));
+    fd.set("odooMo", value);
+    setErr("");
+    start(async () => {
+      const r = await fillOdooMo(fd);
+      if (!r.ok) { setErr(r.error ?? "Could not save the MO."); return; }
+      setMo((cur) => cur.filter((x) => x.id !== id));
+      afterSave();
     });
   };
 
-  const list = rows ?? [];
-  const popup = enabled && open && list.length > 0 ? (
-    <ReadyPopup rows={list} fresh={fresh} canClose={canClose} pending={pending} err={err} onClose={close} onLater={later} />
+  const popup = enabled && open && count > 0 && loaded ? (
+    <ReadyPopup
+      close={close} mo={mo} fresh={fresh} canEdit={canEdit} pending={pending} err={err}
+      onClose={closeRows} onSaveMo={saveMo} onLater={later}
+    />
   ) : null;
-  return { count, show: () => { setOpen(true); if (!rows) void tick(); }, popup };
+  return { count, show: () => { setOpen(true); if (!loaded) void tick(); }, popup };
 }
 
-function ReadyPopup({ rows, fresh, canClose, pending, err, onClose, onLater }: {
-  rows: ReadyRow[]; fresh: Set<number>; canClose: { TR: boolean; LV: boolean }; pending: boolean; err: string;
-  onClose: (ids: number[]) => void; onLater: () => void;
+const SOURCE_LABEL: Record<string, string> = { painting: "from Painting", shotblast: "from Shot Blast" };
+
+function RowFacts({ r, isNew }: { r: ReadyRow; isNew: boolean }) {
+  return (
+    <div className="flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+      <span className={`pill ${r.line === "LV" ? "pill-muted" : "pill-ok"} text-[10px]`}>{r.line}</span>
+      <span className="tabnum text-xs text-muted ltr">{r.dateISO}</span>
+      {r.odooMo && <b className="ltr tabnum">{r.odooMo}</b>}
+      <span className={r.odooMo ? "text-muted" : "font-bold"}>{r.product}</span>
+      <span className="text-xs text-muted ltr truncate max-w-[14rem]" title={r.fgCode}>{r.fgCode}</span>
+      {r.soi && <span className="text-xs text-muted ltr">{r.soi}</span>}
+      <span className="tabnum font-bold">× {r.qty}</span>
+      {SOURCE_LABEL[r.source] && <span className="pill pill-muted text-[10px]">{SOURCE_LABEL[r.source]}</span>}
+      {isNew && <span className="pill pill-warn text-[10px]">new</span>}
+    </div>
+  );
+}
+
+function MoInput({ r, disabled, onSave }: { r: ReadyRow; disabled: boolean; onSave: (id: number, v: string) => void }) {
+  const [v, setV] = useState("");
+  const save = () => v.trim() && onSave(r.id, v.trim());
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <input
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") save(); }}
+        disabled={disabled}
+        placeholder="SF01/MO/…"
+        aria-label={`Odoo MO for ${r.product} × ${r.qty}`}
+        className="w-40 rounded-md border bg-surface px-2 py-1 text-sm font-semibold uppercase ltr"
+      />
+      <button type="button" className="btn btn-sm btn-primary" disabled={disabled || !v.trim()} onClick={save}>Save</button>
+    </div>
+  );
+}
+
+function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo, onLater }: {
+  close: ReadyRow[]; mo: ReadyRow[]; fresh: Set<string>; canEdit: { TR: boolean; LV: boolean }; pending: boolean; err: string;
+  onClose: (ids: number[]) => void; onSaveMo: (id: number, v: string) => void; onLater: () => void;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onLater(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onLater]);
-  const closable = rows.filter((r) => canClose[r.line as "TR" | "LV"]);
+  const can = (r: ReadyRow) => canEdit[r.line as "TR" | "LV"];
+  const closable = close.filter(can);
+  const title = [mo.length ? `${mo.length} need${mo.length === 1 ? "s" : ""} an MO` : "", close.length ? `${close.length} ready to close` : ""]
+    .filter(Boolean).join(" · ");
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center p-3" role="dialog" aria-modal="true" aria-label="Ready to close in Odoo">
+    <div className="fixed inset-0 z-[60] grid place-items-center p-3" role="dialog" aria-modal="true" aria-label="Odoo alerts">
       <button type="button" aria-label="Later" onClick={onLater} className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
       <div className="relative w-full max-w-3xl max-h-[88vh] overflow-y-auto bg-surface text-foreground border rounded-xl shadow-lg">
         <div className="flex items-start gap-3 p-4 border-b">
           <div className="text-2xl leading-none">🔔</div>
           <div className="min-w-0">
-            <div className="font-extrabold text-base">{rows.length} ready to close in Odoo</div>
-            <div className="text-xs text-muted mt-0.5">Odoo&apos;s MO is on {rows.length === 1 ? "this row" : "these rows"} and {rows.length === 1 ? "it is" : "they are"} still open — close {rows.length === 1 ? "it" : "them"} in Odoo, then here.</div>
+            <div className="font-extrabold text-base">{title} — Odoo</div>
+            <div className="text-xs text-muted mt-0.5">
+              {mo.length > 0 && "Type Odoo's MO number on what was recorded. "}
+              {close.length > 0 && "Close the ready ones in Odoo, then here."}
+            </div>
           </div>
           <button type="button" onClick={onLater} aria-label="Close" className="ms-auto btn btn-sm btn-ghost">✕</button>
         </div>
-        <ul className="divide-y">
-          {rows.map((r) => (
-            <li key={r.id} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${fresh.has(r.id) ? "bg-warn-bg/40" : ""}`}>
-              <div className="flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-              <span className={`pill ${r.line === "LV" ? "pill-muted" : "pill-ok"} text-[10px]`}>{r.line}</span>
-              <span className="tabnum text-xs text-muted ltr">{r.dateISO}</span>
-              <b className="ltr tabnum">{r.odooMo}</b>
-              <span className="text-muted">{r.product}</span>
-              <span className="text-xs text-muted ltr truncate max-w-[14rem]" title={r.fgCode}>{r.fgCode}</span>
-              {r.soi && <span className="text-xs text-muted ltr">{r.soi}</span>}
-              <span className="tabnum font-bold">× {r.qty}</span>
-              {fresh.has(r.id) && <span className="pill pill-warn text-[10px]">new</span>}
-              </div>
-              <button
-                type="button" className="shrink-0 btn btn-sm btn-primary" disabled={pending || !canClose[r.line as "TR" | "LV"]} onClick={() => onClose([r.id])}
-                title={canClose[r.line as "TR" | "LV"] ? "Closed in Odoo — mark it Done" : "You cannot record on this line's ODOO tab"}
-              >
-                ✓ Done
-              </button>
-            </li>
-          ))}
-        </ul>
+
+        {mo.length > 0 && (
+          <section>
+            <h3 className="px-4 pt-3 pb-1 text-xs font-extrabold uppercase tracking-wide text-muted">Needs an MO · {mo.length}</h3>
+            <ul className="divide-y">
+              {mo.map((r) => (
+                <li key={`mo-${r.id}`} className={`flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm ${fresh.has(alertKey("mo", r.id)) ? "bg-warn-bg/40" : ""}`}>
+                  <RowFacts r={r} isNew={fresh.has(alertKey("mo", r.id))} />
+                  {can(r) ? <MoInput r={r} disabled={pending} onSave={onSaveMo} /> : <span className="text-xs text-muted">No permission on this line</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {close.length > 0 && (
+          <section className={mo.length > 0 ? "border-t" : ""}>
+            <h3 className="px-4 pt-3 pb-1 text-xs font-extrabold uppercase tracking-wide text-muted">Ready to close · {close.length}</h3>
+            <ul className="divide-y">
+              {close.map((r) => (
+                <li key={`close-${r.id}`} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${fresh.has(alertKey("close", r.id)) ? "bg-warn-bg/40" : ""}`}>
+                  <RowFacts r={r} isNew={fresh.has(alertKey("close", r.id))} />
+                  <button
+                    type="button" className="shrink-0 btn btn-sm btn-primary" disabled={pending || !can(r)} onClick={() => onClose([r.id])}
+                    title={can(r) ? "Closed in Odoo — mark it Done" : "You cannot record on this line's ODOO tab"}
+                  >
+                    ✓ Done
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {err && <p className="px-4 pt-2 text-sm font-semibold text-bad-fg">{err}</p>}
         <div className="flex flex-wrap items-center gap-2 p-4 border-t">
           {closable.length > 1 && (

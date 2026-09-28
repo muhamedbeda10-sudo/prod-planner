@@ -5,19 +5,35 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm, userPerms } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { isDoneStatus } from "@/lib/domain/odoo";
-import { ODOO_ALERTS_PERM, type ReadyRow } from "@/lib/domain/odooAlerts";
-import { getReadyToClose } from "@/lib/server/odooAlerts";
+import { ODOO_ALERTS_PERM, ODOO_NEED_MO_PERM, type ReadyRow } from "@/lib/domain/odooAlerts";
+import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
 
-// The alert's two calls: what is ready to close now (polled), and closing
-// rows straight from the popup.
+// The alerts' calls: what is waiting now (polled), closing rows and typing an
+// MO straight from the popup.
 
-export async function pollOdooReady(): Promise<{ ok: boolean; rows?: ReadyRow[]; canClose?: { TR: boolean; LV: boolean } }> {
+export interface OdooAlertsPoll {
+  ok: boolean;
+  close?: ReadyRow[]; // only for odoo.alerts
+  mo?: ReadyRow[]; // only for odoo.needMo
+  canEdit?: { TR: boolean; LV: boolean };
+}
+
+export async function pollOdooAlerts(): Promise<OdooAlertsPoll> {
   const me = await getCurrentUser();
-  if (!me || !userPerms(me).has(ODOO_ALERTS_PERM)) return { ok: false };
+  if (!me) return { ok: false };
+  const perms = userPerms(me);
+  const wantClose = perms.has(ODOO_ALERTS_PERM);
+  const wantMo = perms.has(ODOO_NEED_MO_PERM);
+  if (!wantClose && !wantMo) return { ok: false };
+  const [close, mo] = await Promise.all([
+    wantClose ? getReadyToClose() : Promise.resolve(undefined),
+    wantMo ? getNeedingMo() : Promise.resolve(undefined),
+  ]);
   return {
     ok: true,
-    rows: await getReadyToClose(),
-    canClose: { TR: hasPerm(me, linePermKey("TR", "odoo")), LV: hasPerm(me, linePermKey("LV", "odoo")) },
+    close,
+    mo,
+    canEdit: { TR: hasPerm(me, linePermKey("TR", "odoo")), LV: hasPerm(me, linePermKey("LV", "odoo")) },
   };
 }
 
@@ -35,4 +51,22 @@ export async function closeOdooReady(formData: FormData): Promise<{ ok: boolean;
   await prisma.odooEntry.updateMany({ where: { id: { in: allowed.map((r) => r.id) } }, data: { status: "Done", doneAt: now, recordedBy: me.name } });
   revalidatePath("/odoo");
   return { ok: true, closed: allowed.length };
+}
+
+/** Type Odoo's MO on a row that has none, from the popup. Needs the row's own
+ *  line's Odoo permission; a row someone filled meanwhile is left alone. */
+export async function fillOdooMo(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: "Sign in again." };
+  const id = Number(formData.get("id"));
+  const odooMo = String(formData.get("odooMo") ?? "").trim().toUpperCase();
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid row." };
+  if (!odooMo) return { ok: false, error: "Type the MO number." };
+  const row = await prisma.odooEntry.findUnique({ where: { id }, select: { line: true, odooMo: true } });
+  if (!row) return { ok: false, error: "That row no longer exists." };
+  if (!hasPerm(me, linePermKey(row.line, "odoo"))) return { ok: false, error: "You cannot record on this line's ODOO tab." };
+  if (row.odooMo.trim() !== "") return { ok: false, error: `Already has ${row.odooMo}.` };
+  await prisma.odooEntry.update({ where: { id }, data: { odooMo, recordedBy: me.name } });
+  revalidatePath("/odoo");
+  return { ok: true };
 }

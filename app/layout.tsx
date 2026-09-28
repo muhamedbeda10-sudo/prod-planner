@@ -8,8 +8,8 @@ import { getCurrentUser, userPerms } from "@/lib/server/auth";
 import { getChatUnreadCount } from "@/lib/server/chat";
 import { getSettings } from "@/lib/server/data";
 import { getActiveLine } from "@/lib/server/line";
-import { getReadyToClose } from "@/lib/server/odooAlerts";
-import { ODOO_ALERTS_PERM } from "@/lib/domain/odooAlerts";
+import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
+import { ODOO_ALERTS_PERM, ODOO_NEED_MO_PERM } from "@/lib/domain/odooAlerts";
 
 const inter = Inter({
   variable: "--font-sans-latin",
@@ -30,9 +30,16 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentUser(); // null on /login (proxy guards the rest)
   const [unreadChat, settings, line] = user ? await Promise.all([getChatUnreadCount(user.id), getSettings(), getActiveLine()]) : [0, null, "TR" as const];
-  // the ODOO "ready to close" alert, for the one subscribed to it
-  const odooAlertsOn = !!user && userPerms(user).has(ODOO_ALERTS_PERM);
-  const odooReady = odooAlertsOn ? (await getReadyToClose()).length : 0;
+  // the ODOO alerts — "ready to close" and "needs an MO" — for whoever is
+  // subscribed to either
+  const perms = user ? userPerms(user) : new Set<string>();
+  const wantClose = perms.has(ODOO_ALERTS_PERM);
+  const wantMo = perms.has(ODOO_NEED_MO_PERM);
+  const odooAlertsOn = wantClose || wantMo;
+  const [readyRows, moRows] = odooAlertsOn
+    ? await Promise.all([wantClose ? getReadyToClose() : [], wantMo ? getNeedingMo() : []])
+    : [[], []];
+  const odooReady = readyRows.length + moRows.length;
   return (
     <html lang="en" dir="ltr" className={`${inter.variable} h-full`} suppressHydrationWarning>
       <head>
