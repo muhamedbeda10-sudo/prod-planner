@@ -21,7 +21,7 @@ export function LvTraceView({ t }: { t: LvTraceResult }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={`Trace — ${t.key}`} sub={t.scope === "mo" ? "One panel order" : "One panel code, every order on it"}>
+      <PageHeader label={t.key}>
         <TraceSearch initial={t.key} initialMode={t.scope} />
         <Link href="/tracker" className="text-accent text-sm font-semibold">→ Back to tracker</Link>
       </PageHeader>

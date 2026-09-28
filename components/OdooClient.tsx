@@ -50,107 +50,6 @@ function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
   return <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
 }
 
-// ---- day picker (drives ?day=; today by default, "all" for the whole log) ----
-
-function shiftISO(iso: string, days: number): string {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-/** The day to come back to when leaving the all-days view. */
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** The first day of `iso`'s month, and the Saturday its work week starts on. */
-const monthStartOf = (iso: string) => `${iso.slice(0, 7)}-01`;
-const weekStartOf = (iso: string) => shiftISO(iso, -((new Date(iso + "T00:00:00Z").getUTCDay() + 1) % 7));
-
-export function OdooDayPicker({ day, days }: { day: string; days: string[] }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
-  const go = (v: string) => {
-    const p = new URLSearchParams(params.toString());
-    p.set("day", v);
-    router.push(`${pathname}?${p}`);
-  };
-  const isAll = day === "all";
-  const range = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(day);
-  if (range) {
-    const [, from, to] = range;
-    const today = todayISO();
-    const presets: [string, string][] = [
-      ["This week", `${weekStartOf(today)}..${today}`],
-      ["This month", `${monthStartOf(today)}..${today}`],
-      ["Last month", `${monthStartOf(shiftISO(monthStartOf(today), -1))}..${shiftISO(monthStartOf(today), -1)}`],
-    ];
-    return (
-      <div className="inline-flex flex-wrap items-center gap-1.5 text-sm font-semibold">
-        <span className="text-xs text-muted">From</span>
-        <input type="date" aria-label="From" value={from} max={to} onChange={(e) => e.target.value && go(`${e.target.value}..${to}`)} className="border rounded-md px-2 py-1.5 bg-surface font-bold ltr tabnum" />
-        <span className="text-xs text-muted">to</span>
-        <input type="date" aria-label="To" value={to} min={from} onChange={(e) => e.target.value && go(`${from}..${e.target.value}`)} className="border rounded-md px-2 py-1.5 bg-surface font-bold ltr tabnum" />
-        {presets.map(([label, v]) => (
-          <button key={label} type="button" className={`btn btn-sm ${v === day ? "btn-primary" : "btn-ghost"}`} onClick={() => go(v)}>{label}</button>
-        ))}
-        <button type="button" className="btn btn-sm btn-primary" onClick={() => go(to)} title="Back to a single day">✕ Period</button>
-      </div>
-    );
-  }
-  return (
-    <div className="inline-flex items-center gap-1.5 text-sm font-semibold">
-      <button type="button" className="btn btn-sm" disabled={isAll} onClick={() => go(shiftISO(day, -1))} title="Previous day">
-        ‹
-      </button>
-      <input
-        type="date"
-        aria-label="Day"
-        value={isAll ? "" : day}
-        onChange={(e) => e.target.value && go(e.target.value)}
-        className="border rounded-md px-2 py-1.5 bg-surface font-bold ltr tabnum"
-      />
-      <button type="button" className="btn btn-sm" disabled={isAll} onClick={() => go(shiftISO(day, 1))} title="Next day">
-        ›
-      </button>
-      <select
-        aria-label="Jump to a day"
-        className="border rounded-md px-2 py-1.5 bg-surface font-bold ltr"
-        value={isAll ? "" : days.includes(day) ? day : ""}
-        onChange={(e) => e.target.value && go(e.target.value)}
-      >
-        <option value="">Jump…</option>
-        {days.map((d) => (
-          <option key={d} value={d}>
-            {d}
-          </option>
-        ))}
-      </select>
-      {/* The tab opens on ONE day, which is how a row logged last week reads as
-          lost. This is the way back to the whole log, in the open, not buried
-          in a dropdown — and it is where the search reaches every day. */}
-      <button
-        type="button"
-        className="btn btn-sm btn-ghost"
-        onClick={() => { const end = isAll ? todayISO() : day; go(`${monthStartOf(end)}..${end}`); }}
-        title="A from–to period: the rows and the item cards cover every day in it"
-      >
-        Period
-      </button>
-      <button
-        type="button"
-        className={`btn btn-sm ${isAll ? "btn-primary" : "btn-ghost"}`}
-        onClick={() => go(isAll ? todayISO() : "all")}
-        title={isAll ? "Back to a single day" : "Show every row ever logged — the search then covers them all"}
-      >
-        {isAll ? "✕ All days" : "All days"}
-      </button>
-    </div>
-  );
-}
-
 // ---- the row form: one strip, the sheet's columns in the sheet's order ----
 
 const F = "px-2 py-1.5 text-sm font-semibold";
@@ -728,11 +627,8 @@ function CountFilter({ n, label, tone, on, title, onClick }: { n: number; label:
   );
 }
 
-function FilterBar({ entries, filters, onChange, shown }: { entries: OdooEntryView[]; filters: OdooFilters; onChange: (f: OdooFilters) => void; shown: number }) {
-  const line = useActiveLine();
+function FilterBar({ entries, filters, onChange }: { entries: OdooEntryView[]; filters: OdooFilters; onChange: (f: OdooFilters) => void }) {
   const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))];
-  // this line's own names first, then anything else typed on the rows
-  const products = uniq([...productsOf(line), ...entries.map((e) => e.product)]);
   const statuses = uniq([...ODOO_STATUSES, ...entries.map((e) => e.status)]);
   const set = (patch: Partial<OdooFilters>) => onChange({ ...filters, ...patch });
   const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_ODOO_FILTERS);
@@ -743,16 +639,9 @@ function FilterBar({ entries, filters, onChange, shown }: { entries: OdooEntryVi
         placeholder="Search SOI, FG-CODE, MO, product, notes…" aria-label="Search"
         className={`${SEL} ltr w-72 font-normal`}
       />
-      <select aria-label="Product" title="Product" className={SEL} value={filters.product} onChange={(e) => set({ product: e.target.value })}>
-        <option value="">Product: all</option>
-        {products.map((p) => <option key={p} value={p}>{p}</option>)}
-      </select>
       <select aria-label="Status" title="Status" className={SEL} value={filters.status} onChange={(e) => set({ status: e.target.value })}>
         <option value="">Status: all</option>
         {statuses.map((st) => <option key={st} value={st}>{st}</option>)}
-      </select>
-      <select aria-label="Closing" title="Closed in Odoo, still open, or both" className={SEL} value={filters.closed} onChange={(e) => set({ closed: e.target.value as OdooClosedFilter })}>
-        {(Object.keys(ODOO_CLOSED_FILTERS) as OdooClosedFilter[]).map((k) => <option key={k} value={k}>{ODOO_CLOSED_FILTERS[k]}</option>)}
       </select>
       <select aria-label="Notes" title="Rows with or without notes" className={SEL} value={filters.notes} onChange={(e) => set({ notes: e.target.value as OdooNoteFilter })}>
         {(Object.keys(ODOO_NOTE_FILTERS) as OdooNoteFilter[]).map((k) => <option key={k} value={k}>{ODOO_NOTE_FILTERS[k]}</option>)}
@@ -760,7 +649,6 @@ function FilterBar({ entries, filters, onChange, shown }: { entries: OdooEntryVi
       <select aria-label="MO" title="Rows born from a closing that still need Odoo's MO, or whose FG-CODE was guessed" className={SEL} value={filters.mo} onChange={(e) => set({ mo: e.target.value as OdooMoFilter })}>
         {(Object.keys(ODOO_MO_FILTERS) as OdooMoFilter[]).map((k) => <option key={k} value={k}>{ODOO_MO_FILTERS[k]}</option>)}
       </select>
-      <span className="text-xs text-muted tabnum">{active ? `${shown} of ${entries.length} row(s)` : `${entries.length} row(s)`}</span>
       {active && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onChange(EMPTY_ODOO_FILTERS)}>✕ Clear</button>}
     </div>
   );
@@ -778,55 +666,35 @@ function ItemCards({ totals, selected, onPick, periodLabel }: { totals: OdooItem
   const card = (key: string, label: string, t: { qty: number; rows: number; doneQty: number; openQty: number }, on: boolean, onClick: () => void, title: string) => (
     <button
       key={key} type="button" onClick={onClick} title={title} aria-pressed={on}
-      className={`text-start bg-surface border rounded-xl px-3 py-2 min-w-0 sm:min-w-[8.5rem] transition-colors hover:border-brand/60 ${on ? "border-brand ring-2 ring-brand/30" : ""}`}
+      className={`text-start bg-surface border rounded-xl px-3 py-1.5 min-w-0 transition-colors hover:border-brand/60 ${on ? "border-brand ring-2 ring-brand/30" : ""}`}
     >
       <div className="text-[11px] font-bold text-muted uppercase tracking-wide truncate">{label}</div>
-      <div className="text-2xl font-extrabold tabnum leading-tight mt-0.5">{t.qty.toLocaleString("en")}</div>
-      <div className="text-[11px] text-muted tabnum mt-0.5">
+      <div className="text-xl font-extrabold tabnum leading-tight">{t.qty.toLocaleString("en")}</div>
+      <div className="text-[11px] text-muted tabnum mt-0.5 whitespace-nowrap" title={`${t.rows} row${t.rows === 1 ? "" : "s"}`}>
         <span className="text-ok-fg font-semibold">{t.doneQty.toLocaleString("en")} closed</span>
         {t.openQty > 0 && <> · <span className="text-bad-fg font-semibold">{t.openQty.toLocaleString("en")} open</span></>}
-        <span> · {t.rows} row{t.rows === 1 ? "" : "s"}</span>
       </div>
     </button>
   );
   return (
-    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap no-print" aria-label="Quantity per item">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] no-print" aria-label="Quantity per item">
       {card("all", "All items", all, selected === "", () => onPick(""), `Everything the rows ${periodLabel || "in the whole log"} carry, with the other filters applied`)}
       {totals.map((t) => card(t.product, t.product, t, selected === t.product, () => onPick(selected === t.product ? "" : t.product), `${t.product}: ${t.qty} ${periodLabel} — click to show only these rows`))}
     </div>
   );
 }
 
-/**
- * What the day on screen is hiding.
- *
- * The tab opens on ONE day, so a row logged last week is not gone — it is on
- * last week. That reads as loss, and rows get retyped. This says out loud how
- * much of the log sits on other days and how much of it is still open, with
- * the one click that shows all of it.
- */
-function ElsewhereBanner({ day, onDay, totalRows, openRows }: { day: string; onDay: number; totalRows: number; openRows: number }) {
+/** The rows of the log outside the period on screen — said in the counts
+ *  line with the one click that shows them, so nothing reads as lost. */
+function useShowAll() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  if (day === "all" || totalRows <= onDay) return null;
-  const elsewhere = totalRows - onDay;
-  const showAll = () => {
+  return () => {
     const p = new URLSearchParams(params.toString());
     p.set("day", "all");
     router.push(`${pathname}?${p}`);
   };
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-sm bg-surface-2 border rounded-xl px-3 py-2 no-print">
-      <span>
-        <b className="tabnum">{elsewhere}</b> more row(s) sit on other days
-        {openRows > 0 && <> — <b className="text-bad-fg tabnum">{openRows}</b> of the whole log is still not closed</>}.
-      </span>
-      <button type="button" className="btn btn-sm btn-primary ms-auto" onClick={showAll}>
-        Show all days
-      </button>
-    </div>
-  );
 }
 
 export function OdooClient({
@@ -874,6 +742,13 @@ export function OdooClient({
     [entries, filters]
   );
   const readyOn = filters.closed === "open" && filters.mo === "has";
+  const showAll = useShowAll();
+  const elsewhere = day === "all" ? 0 : Math.max(0, totalRows - entries.length);
+  const elsewhereLink = elsewhere > 0 && (
+    <button type="button" className="text-accent font-semibold hover:underline" onClick={showAll} title="Show every row ever logged">
+      +{elsewhere} on other days{openRows > 0 ? ` (${openRows} open)` : ""} — show all
+    </button>
+  );
   // the cards: every filter but the product one, so all items stay in view
   const line = useActiveLine();
   const itemTotals = useMemo(
@@ -881,17 +756,18 @@ export function OdooClient({
     [entries, filters, line]
   );
   return (
-    <div className="space-y-5">
-      <ElsewhereBanner day={day} onDay={entries.length} totalRows={totalRows} openRows={openRows} />
-      {entries.length > 0 && <FilterBar entries={entries} filters={filters} onChange={setFilters} shown={shown.length} />}
+    <div className="space-y-3">
       <ItemCards totals={itemTotals} selected={filters.product} onPick={(product) => setFilters({ ...filters, product })} periodLabel={odooScopeLabel(day)} />
-      {shown.length > 0 && (
-        // The counts ARE the filters: the planner reads "19 not closed" and the
-        // next thing he wants is those nineteen. Clicking one narrows to it,
-        // clicking it again clears it, and it stacks with the filter row above
-        // rather than replacing it.
+      {entries.length > 0 && (
+        // The filters and the counts share one row. The counts ARE filters:
+        // the planner reads "19 not closed" and the next thing he wants is
+        // those nineteen. Clicking one narrows to it, clicking it again clears
+        // it. The filters stay even when nothing matches, so they can be undone.
         <div className="text-sm text-muted flex flex-wrap items-center gap-x-1 gap-y-1 no-print">
-          <span>{shown.length} row(s){day !== "all" ? ` ${odooScopeLabel(day)}` : ""}</span>
+          <FilterBar entries={entries} filters={filters} onChange={setFilters} />
+          {shown.length > 0 && (<>
+          <span className="w-2" aria-hidden />
+          <span className="tabnum">{shown.length} row{shown.length === 1 ? "" : "s"}</span>
           <span aria-hidden>·</span>
           <CountFilter
             n={done}
@@ -923,6 +799,7 @@ export function OdooClient({
               />
             </>
           )}
+          {elsewhereLink && <><span aria-hidden>·</span>{elsewhereLink}</>}
           {(needMo > 0 || filters.mo === "missing") && (
             <>
               <span aria-hidden>·</span>
@@ -936,12 +813,14 @@ export function OdooClient({
               />
             </>
           )}
+          </>)}
         </div>
       )}
       <section className="bg-surface border rounded-xl overflow-hidden">
         {entries.length === 0 ? (
           <p className="text-sm text-muted p-4">
-            {day === "all" ? "No rows logged yet." : singleDayOf(day) ? `Nothing logged on ${day}. Add the day's rows below, import the sheet, or look at all days.` : `Nothing logged ${odooScopeLabel(day)}.`}
+            {day === "all" ? "No rows logged yet." : singleDayOf(day) ? `Nothing logged on ${day}. Add the day's rows below or import the sheet.` : `Nothing logged ${odooScopeLabel(day)}.`}
+            {elsewhereLink && <> {elsewhereLink}</>}
           </p>
         ) : shown.length === 0 ? (
           <p className="text-sm text-muted p-4">
