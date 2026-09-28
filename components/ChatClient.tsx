@@ -121,12 +121,15 @@ function AttachmentView({ a }: { a: ChatAttachment }) {
   );
 }
 
-export function ChatClient({ me, initialContacts, fill = false }: {
+export function ChatClient({ me, initialContacts, fill = false, openOn = null }: {
   me: { id: number; name: string };
   initialContacts: ChatContact[];
   /** Inside the nav's chat popup, the panel already supplies the frame and the
    *  height — fill it instead of sizing against the viewport. */
   fill?: boolean;
+  /** A conversation to open straight away (Reply on a message popup). A new
+   *  object opens it again, so the same thread can be asked for twice. */
+  openOn?: Thread | null;
 }) {
   const [contacts, setContacts] = useState(initialContacts);
   const [active, setActive] = useState<Thread | null>(null);
@@ -274,6 +277,12 @@ export function ChatClient({ me, initialContacts, fill = false }: {
       setGroupCreatedBy(members.createdBy);
     }
   }, []);
+
+  useEffect(() => {
+    if (!openOn) return;
+    const t = setTimeout(() => void openThread(openOn), 0);
+    return () => clearTimeout(t);
+  }, [openOn, openThread]);
 
   // one catch-up poll: new thread messages, a LIGHT state merge for what's
   // already on screen (pins / reads / reactions travel without bodies or
