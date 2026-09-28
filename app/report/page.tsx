@@ -1,7 +1,9 @@
 import Image from "next/image";
 import { getDailyReport, getDayOutputByProject, getEarnedHours } from "@/lib/server/report";
 import { pctStyle, Num } from "@/components/ui";
-import { ReportPeriodPicker, DeptPicker } from "@/components/controls";
+import { DeptPicker } from "@/components/controls";
+import { UrlDateSlicer } from "@/components/UrlDateSlicer";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
 import { countWorkingDays } from "@/lib/server/report";
 import { OutputByComponentChart } from "@/components/LazyCharts";
@@ -77,6 +79,7 @@ export default async function ReportPage({
   const fromRaw = sp.from ? parseISODate(sp.from) : null;
   const from = fromRaw && toISODate(fromRaw) < dayISO ? fromRaw : null;
   const fromISO = from ? toISODate(from) : dayISO;
+  const todayISO = toISODate(new Date());
   // never 0: a range of nothing but Fridays would otherwise zero the targets
   const spanDays = from ? Math.max(1, await countWorkingDays(from, day)) : 1;
   const periodWords = from ? `${toDisplayDate(from)} → ${toDisplayDate(day)}` : toDisplayDate(day);
@@ -112,11 +115,16 @@ export default async function ReportPage({
   return (
     <div className="space-y-6">
       {/* controls only — no on-screen title (the print masthead carries the name) */}
-      <div className="no-print flex flex-wrap items-center gap-2">
-        <ViewTabs views={DASHBOARD_VIEWS} current="/report" label="Dashboard view" />
-        <ReportPeriodPicker from={fromISO} to={dayISO} />
-        <DeptPicker value={sp.dept ?? ""} />
-        <PrintButton />
+      <div className="no-print space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ViewTabs views={DASHBOARD_VIEWS} current="/report" label="Dashboard view" />
+          <DeptPicker value={sp.dept ?? ""} />
+          <span className="ms-auto"><PrintButton /></span>
+        </div>
+        <UrlDateSlicer
+          encoding="report" from={fromISO} to={dayISO} min={addDaysISO(todayISO, -90)} max={todayISO} today={todayISO}
+          presets={["yesterday", "today", "last7", "thisWeek", "thisMonth", "lastMonth"]}
+        />
       </div>
 
       {/* Print masthead — logo + title + day, only on paper */}

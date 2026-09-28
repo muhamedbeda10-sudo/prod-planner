@@ -39,31 +39,6 @@ function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
   return <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
 }
 
-function shiftISO(iso: string, days: number): string {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-export function ShiftDayPicker({ day, today }: { day: string; today: string }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
-  const go = (v: string) => {
-    const p = new URLSearchParams(params.toString());
-    p.set("day", v);
-    router.push(`${pathname}?${p}`);
-  };
-  return (
-    <div className="inline-flex items-center gap-1.5 text-sm font-semibold">
-      <button type="button" className="btn btn-sm" onClick={() => go(shiftISO(day, -1))} title="Previous day">‹</button>
-      <input type="date" aria-label="Day" value={day} max={today} onChange={(e) => e.target.value && go(e.target.value)} className="border rounded-md px-2 py-1.5 bg-surface font-bold ltr tabnum" />
-      <button type="button" className="btn btn-sm" disabled={day >= today} onClick={() => go(shiftISO(day, 1))} title="Next day">›</button>
-      {day !== today && <button type="button" className="btn btn-sm btn-ghost" onClick={() => go(today)}>Today</button>}
-    </div>
-  );
-}
-
 type Draft = Pick<ShiftLineDTO, "workerId" | "dept" | "present" | "shift" | "overtimeH" | "note">;
 const toDraft = (l: ShiftLineDTO): Draft => ({ workerId: l.workerId, dept: l.dept, present: l.present, shift: l.shift, overtimeH: l.overtimeH, note: l.note });
 const keyOf = (l: { workerId: number; dept: string }) => `${l.dept}|${l.workerId}`;

@@ -1,18 +1,27 @@
 import type { ReactNode } from "react";
 
+/**
+ * The page's toolbar row. Pages carry no title — the highlighted tab in the
+ * nav already says where you are — so this is just the view switches and
+ * buttons, packed at the top. `label` is for a page whose name IS data (a
+ * tank's serial, the code being traced); a plain page name is not shown.
+ */
 export function PageHeader({
-  title,
+  label,
   children,
 }: {
-  title: string;
+  /** @deprecated page titles were removed app-wide — accepted, not rendered */
+  title?: string;
   /** @deprecated headlines were removed app-wide — accepted but not rendered */
   sub?: string;
+  label?: ReactNode;
   children?: ReactNode;
 }) {
+  if (!label && !children) return null;
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 mb-5 pb-4 border-b">
-      <h1 className="text-[22px] font-extrabold tracking-tight leading-tight">{title}</h1>
-      <div className="flex flex-wrap items-center gap-3 no-print">{children}</div>
+    <div className="flex flex-wrap items-center gap-2 mb-3">
+      {label && <span className="text-base font-extrabold tracking-tight ltr">{label}</span>}
+      {children && <div className="flex flex-wrap items-center gap-2 no-print">{children}</div>}
     </div>
   );
 }

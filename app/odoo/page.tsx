@@ -5,14 +5,16 @@ import { linePermKey } from "@/lib/domain/permissions";
 import Link from "next/link";
 import { getOdooData, getOdooDashboard } from "@/lib/server/odoo";
 import { resolveBasis, resolveBom, resolvePeriod } from "@/lib/domain/odooStats";
-import { OdooBasisPicker, OdooBomPicker, OdooRangePicker } from "@/components/OdooPickers";
+import { OdooBasisPicker, OdooBomPicker } from "@/components/OdooPickers";
 import { OdooDashboard } from "@/components/LazyCharts";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { toISODate } from "@/lib/domain/dates";
 import { odooScopeKey, parseOdooScope } from "@/lib/domain/odoo";
 import { PageHeader } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
-import { OdooClient, OdooDayPicker } from "@/components/OdooClient";
+import { OdooClient } from "@/components/OdooClient";
+import { UrlDateSlicer } from "@/components/UrlDateSlicer";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
 
 export const metadata = { title: "Odoo — ATC" };
 export const dynamic = "force-dynamic";
@@ -45,15 +47,19 @@ export default async function OdooPage({
     const period = resolvePeriod(sp);
     const basis = resolveBasis(sp);
     const data = await getOdooDashboard(period, basis, resolveBom(sp));
+    const today = toISODate(new Date());
     return (
-      <div>
+      <div className="space-y-3">
         <RememberLastVisit storageKey="odoo:last" />
         <PageHeader title="📦 ODOO — dashboard">
           {viewSwitch}
           <OdooBasisPicker basis={basis} />
           <OdooBomPicker bom={data.bom} boms={data.boms} />
-          <OdooRangePicker period={period} />
         </PageHeader>
+        <UrlDateSlicer
+          encoding="odooDash" from={period.fromISO} to={period.fromISO ? period.toISO : null} min={addDaysISO(today, -120)} max={today} today={today}
+          presets={["today", "yesterday", "last7", "thisMonth", "lastMonth", "last30", "last90"]} allLabel="All time"
+        />
         <OdooDashboard data={data} />
       </div>
     );
@@ -76,14 +82,23 @@ export default async function OdooPage({
     Notes: [...e.notes].reverse().map((n) => `${n.atISO.slice(0, 16).replace("T", " ")}: ${n.text}`).join(" | "),
   }));
 
+  // the strip runs from the first logged day (a month back at least) to today
+  const today = toISODate(new Date());
+  const oldest = days.length ? days[days.length - 1] : today;
+  const min = [oldest, addDaysISO(today, -30)].sort()[0];
+  const sel = scope.kind === "all" ? { from: null, to: null } : scope.kind === "day" ? { from: scope.iso, to: scope.iso } : { from: scope.from, to: scope.to };
+
   return (
-    <div>
+    <div className="space-y-3">
       <RememberLastVisit storageKey="odoo:last" />
-      <PageHeader title="📦 ODOO — daily close-out log">
+      <PageHeader title="📦 ODOO — close-out log">
         {viewSwitch}
-        <OdooDayPicker day={day} days={days} />
         <ExportButton rows={exportRows} filename={`odoo-${day.replace("..", "_to_")}.xlsx`} sheetName="Sheet1" />
       </PageHeader>
+      <UrlDateSlicer
+        encoding="odooDay" from={sel.from} to={sel.to} min={min} max={[today, days[0] ?? today].sort().reverse()[0]} today={today}
+        presets={["today", "yesterday", "last3", "last7", "thisMonth", "lastMonth", "last30"]} allLabel="All days" marks={days}
+      />
       <OdooClient
         entries={entries}
         day={day}

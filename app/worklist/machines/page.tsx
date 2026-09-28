@@ -47,7 +47,7 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
 
   return (
     <div>
-      <PageHeader title={only && cards[0] ? `🖨 ${cards[0].machine.code} · ${cards[0].machine.name}` : `🖨 ${deptLabel(dept)} — ${machineWord(dept, true)} sheets`}>
+      <PageHeader label={only && cards[0] ? `🖨 ${cards[0].machine.code} · ${cards[0].machine.name}` : `🖨 ${deptLabel(dept)} — ${machineWord(dept, true)} sheets`}>
         <Link href={back} className="btn btn-sm">← Worklist</Link>
         <Link href={`/simulate?view=floor&dept=${dept}`} className="btn btn-sm">🗺 Floor</Link>
         {only && <Link href={`/worklist/machines?dept=${dept}`} className="btn btn-sm">All {machineWord(dept, true)}</Link>}

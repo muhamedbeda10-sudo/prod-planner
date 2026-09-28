@@ -8,6 +8,8 @@ import type { SoiLookup } from "@/lib/server/soi";
 import { ExportButton } from "@/components/ExportButton";
 import { Soi, soiOf } from "@/components/ui";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
+import { DateSlicer } from "@/components/DateSlicer";
+import { addDaysISO, slicerPresets } from "@/lib/domain/dateSlicer";
 import { ITEMS, DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE, deptLabel } from "@/lib/domain/constants";
 import { LV_CHAIN, LV_ITEM } from "@/lib/domain/lv";
 import type { ProductLine } from "@/lib/domain/lines";
@@ -71,32 +73,18 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
   // presets and the custom range below widen it
   const [period, setPeriod] = useSavedFilter("log.period", "3");
   const [flaggedOnly, setFlaggedOnly] = useSavedFilter("log.flagged");
-  // the exact-day presets are fixed calendar days, computed once (impure Date
-  // only in the lazy initializer, never during render)
+  // today, computed once (impure Date only in the lazy initializer)
   const [tISO] = useState(() => dayISO(0));
-  const [yISO] = useState(() => dayISO(-1));
-  // "t" and "y" pin ONE day; the numeric presets are rolling windows instead
-  const exactISO = period === "t" ? tISO : period === "y" ? yISO : "";
-
-  // picking a preset clears the custom range; typing a date takes over from
-  // the preset — one always clearly wins
-  const pickPeriod = (v: string) => { setPeriod(v); setFrom(""); setTo(""); };
-  const pickFrom = (v: string) => { setFrom(v); if (v || to) setPeriod(""); };
-  const pickTo = (v: string) => { setTo(v); if (from || v) setPeriod(""); };
-
-  // preset window anchored to the newest recorded day (not "today", so the
-  // log never looks empty after a day off)
-  const newestISO = useMemo(
-    () => (rows.length ? rows.reduce((m, r) => (r.date > m ? r.date : m), rows[0].date) : ""),
-    [rows]
-  );
-  const cutoffISO = useMemo(() => {
-    // the exact-day presets are handled directly in the filter, not as a window
-    if (from || to || !period || exactISO || !newestISO) return "";
-    const d = new Date(`${newestISO}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - (Number(period) - 1));
-    return d.toISOString().slice(0, 10);
-  }, [from, to, period, exactISO, newestISO]);
+  // the days on screen: a range picked on the slicer, else the saved quick
+  // window ("t" today, "y" yesterday, or the last N days — 3 by default)
+  const range = useMemo(() => {
+    if (from || to) return { from: from || to, to: to || from };
+    if (period === "t") return { from: tISO, to: tISO };
+    if (period === "y") { const y = addDaysISO(tISO, -1); return { from: y, to: y }; }
+    return { from: addDaysISO(tISO, -((Number(period) || 3) - 1)), to: tISO };
+  }, [from, to, period, tISO]);
+  const pickRange = (f: string | null, t: string | null) => { setFrom(f ?? ""); setTo(t ?? ""); setPeriod(""); };
+  const loggedDays = useMemo(() => [...new Set(rows.map((r) => r.date))].sort(), [rows]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
@@ -105,13 +93,10 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
       if (needle && !r.bom.toUpperCase().includes(needle)) return false;
       if (dept && r.dept !== dept) return false;
       if (item && r.item !== item) return false;
-      if (exactISO && !from && !to && r.date !== exactISO) return false;
-      if (cutoffISO && r.date < cutoffISO) return false;
-      if (from && r.date < from) return false;
-      if (to && r.date > to) return false;
+      if (r.date < range.from || r.date > range.to) return false;
       return true;
     });
-  }, [rows, q, dept, item, from, to, exactISO, cutoffISO, flaggedOnly]);
+  }, [rows, q, dept, item, range, flaggedOnly]);
 
   // the flag count ignores the flagged-only toggle itself (else clicking it
   // could change its own label) but respects every other filter
@@ -248,18 +233,6 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
       <FilterBar count={filtered.length} total={rows.length} onReset={reset} hasActive={hasActive}>
         {viewTabs}
         <SearchBox value={q} onChange={setQ} placeholder="Search BOM…" />
-        <SelectFilter
-          label="Show"
-          value={period}
-          onChange={pickPeriod}
-          options={[
-            { value: "t", label: "Today" },
-            { value: "y", label: "Yesterday" },
-            { value: "3", label: "Last 3 days" },
-            { value: "7", label: "Last 7 days" },
-            { value: "30", label: "Last 30 days" },
-          ]}
-        />
         <SelectFilter label={line === "LV" ? "Stage" : "Dept"} value={dept} onChange={setDept} options={(line === "LV" ? [...LV_CHAIN] : LOG_DEPTS).map((d) => ({ value: d, label: deptLabel(d) }))} />
         {line !== "LV" && <SelectFilter label="Item" value={item} onChange={setItem} options={ITEMS.map((i) => ({ value: i, label: i }))} />}
         {flaggedCount > 0 && (
@@ -272,15 +245,15 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
             ⚠ <span className="tabnum">{flaggedCount}</span> to check
           </button>
         )}
-        {/* custom range (or one exact day: same date in both) — one tidy row */}
-        <div className="col-span-2 flex items-center gap-1.5 text-sm">
-          <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Range</span>
-          <input type="date" value={from} onChange={(e) => pickFrom(e.target.value)} className="min-w-0 flex-1 sm:flex-none sm:w-auto border rounded-md px-2 py-1.5 text-sm bg-surface" />
-          <span className="text-muted text-xs shrink-0">→</span>
-          <input type="date" value={to} onChange={(e) => pickTo(e.target.value)} className="min-w-0 flex-1 sm:flex-none sm:w-auto border rounded-md px-2 py-1.5 text-sm bg-surface" />
-        </div>
         <ExportButton rows={exportRows} filename={`daily-handover.xlsx`} sheetName="Daily HandOver" />
       </FilterBar>
+      <div className="mb-3">
+        <DateSlicer
+          mode="range" from={range.from} to={range.to} min={[loggedDays[0] ?? tISO, addDaysISO(tISO, -60)].sort()[0]} max={tISO}
+          presets={slicerPresets(["today", "yesterday", "last3", "last7", "thisMonth", "lastMonth", "last30"], tISO)}
+          marks={loggedDays} onChange={pickRange}
+        />
+      </div>
 
       {/* bulk re-date bar — appears once rows are ticked */}
       {selectedVisible.length > 0 && (

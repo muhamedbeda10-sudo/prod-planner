@@ -8,7 +8,9 @@ import { getShiftProductivity } from "@/lib/server/productivity";
 import { ShiftProductivity } from "@/components/ShiftProductivity";
 import { PageHeader } from "@/components/ui";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
-import { ShiftDayPicker, ShiftRoster } from "@/components/ShiftRoster";
+import { ShiftRoster } from "@/components/ShiftRoster";
+import { UrlDateSlicer } from "@/components/UrlDateSlicer";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { parseRosterFilter, rosterDepts, rosterFilterLabel } from "@/lib/domain/roster";
 
 export const metadata = { title: "Shift log — ATC" };
@@ -33,9 +35,11 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
   return (
     <div className="space-y-4">
       <RememberLastVisit storageKey="shifts:last" />
-      <PageHeader title="🕘 Shift log">
-        <ShiftDayPicker day={day} today={today} />
-      </PageHeader>
+      <PageHeader title="🕘 Shift log" />
+      <UrlDateSlicer
+        encoding="day" mode="day" from={day} to={day} min={addDaysISO(today, -60)} max={today} today={today}
+        presets={["today", "yesterday"]} marks={history.map((h) => h.dateISO)}
+      />
       {/* keyed on the day so the draft starts fresh on every navigation; the
           filter is a URL param and keeps the draft */}
       <ShiftRoster key={day} data={data} history={history} editableDepts={editableDepts} today={today} filter={filter} canSetHours={me.isAdmin} />

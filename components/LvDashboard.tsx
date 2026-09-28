@@ -2,7 +2,8 @@ import Link from "next/link";
 import { LV_CHAIN, LV_STAGE_LABEL, LV_STAGE_SHORT } from "@/lib/domain/lv";
 import type { LvDashboardData } from "@/lib/server/lvDashboard";
 import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
-import { PeriodFilter } from "@/components/controls";
+import { UrlDateSlicer } from "@/components/UrlDateSlicer";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { PrintButton } from "@/components/PrintButton";
 
 // The panels' Dashboard: where the open orders stand on the chain, what each
@@ -23,25 +24,29 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-export function LvDashboard({ d }: { d: LvDashboardData }) {
+export function LvDashboard({ d, today }: { d: LvDashboardData; today: string }) {
   const o = d.open;
+  // the dashboard opens on the last two weeks; picking them again clears the dates
+  const last14 = { label: "Last 14 days", from: addDaysISO(today, -13), to: today };
   const pct = (n: number) => (o.panels > 0 ? `${Math.round((n / o.panels) * 100)}%` : "—");
   return (
     <div className="space-y-6">
       {/* The report lives inside the dashboard, as it does for the transformers:
           pick a day (from = to) or a period and the table below is that
           period, ready to print. */}
-      <div className="no-print flex flex-wrap items-center gap-3 bg-surface border rounded-xl px-3 py-2.5">
-        <ViewTabs views={DASHBOARD_VIEWS.filter((v) => v.href === "/")} current="/" label="Dashboard view" />
-        <span className="font-extrabold text-sm tabnum">
-          {d.ranged ? `${ddmmyyyy(d.fromISO)} → ${ddmmyyyy(d.toISO)}` : `Last ${d.days.length} days`}
-          {d.clamped && <span className="pill pill-warn ms-2">cut to {d.days.length} days</span>}
-        </span>
-        <PeriodFilter from={d.ranged ? d.fromISO : ""} to={d.ranged ? d.toISO : ""} active={d.ranged} resetLabel="Back to last 14 days" />
-        <span className="ms-auto inline-flex items-center gap-2">
-          <PrintButton />
-          <Link href="/tracker" className="btn btn-sm">Plan Tracker →</Link>
-        </span>
+      <div className="no-print space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ViewTabs views={DASHBOARD_VIEWS.filter((v) => v.href === "/")} current="/" label="Dashboard view" />
+          {d.clamped && <span className="pill pill-warn">cut to {d.days.length} days</span>}
+          <span className="ms-auto inline-flex items-center gap-2">
+            <PrintButton />
+            <Link href="/tracker" className="btn btn-sm">Plan Tracker →</Link>
+          </span>
+        </div>
+        <UrlDateSlicer
+          encoding="fromTo" from={d.fromISO} to={d.toISO} min={addDaysISO(today, -90)} max={today} today={today}
+          presets={["today", "yesterday", "last7", "thisMonth", "lastMonth", "last30"]} defaultRange={last14}
+        />
       </div>
       <div className="print-only text-sm font-bold">LV Panels · {d.ranged ? `${ddmmyyyy(d.fromISO)} → ${ddmmyyyy(d.toISO)}` : `last ${d.days.length} days`}</div>
 

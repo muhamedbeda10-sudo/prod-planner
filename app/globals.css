@@ -695,3 +695,48 @@ div.overflow-x-auto > table thead {
 .viz .recharts-cartesian-axis-line, .viz .recharts-cartesian-axis-tick-line { stroke: var(--border-strong); }
 .viz .recharts-text { fill: var(--muted); }
 .viz .recharts-tooltip-cursor { fill: var(--surface-2); }
+
+/* ---- the date slicer: two range inputs laid over one strip ----
+   The inputs let the thumbs take the pointer and nothing else, so both
+   handles of a range stay reachable; the strip's own click moves the nearer. */
+.slicer-range {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.slicer-range:focus { outline: none; }
+.slicer-range::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+.slicer-range::-moz-range-track { height: 100%; background: transparent; }
+.slicer-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 7px; /* (2rem − 18px) / 2 */
+  border-radius: 9999px;
+  background: var(--surface);
+  border: 3px solid var(--brand);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  cursor: grab;
+}
+.slicer-range::-moz-range-thumb {
+  pointer-events: auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--surface);
+  border: 3px solid var(--brand);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  cursor: grab;
+}
+.slicer-range:active::-webkit-slider-thumb { cursor: grabbing; }
+.slicer-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 35%, transparent); }
+.slicer-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 35%, transparent); }
+/* one handle: the whole strip may take the pointer */
+.slicer-single { pointer-events: auto; cursor: pointer; }

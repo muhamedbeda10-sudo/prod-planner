@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { getTargetDashboard } from "@/lib/server/dashboard";
 import { getControlDashboard } from "@/lib/server/controlDashboard";
 import { getSmartInsights } from "@/lib/server/insights";
@@ -7,9 +6,12 @@ import { getLvDashboard } from "@/lib/server/lvDashboard";
 import { LvDashboard } from "@/components/LvDashboard";
 import { ControlDashboard } from "@/components/ControlDashboard";
 import { SmartInsights } from "@/components/SmartInsights";
-import { PeriodFilter, DashboardPeriodMemory } from "@/components/controls";
+import { DashboardPeriodMemory } from "@/components/controls";
+import { UrlDateSlicer } from "@/components/UrlDateSlicer";
+import { addDaysISO, presetRange } from "@/lib/domain/dateSlicer";
+import { factoryDayISO } from "@/lib/domain/dates";
 import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
-import { parseISODate, toDisplayDate } from "@/lib/domain/dates";
+import { parseISODate } from "@/lib/domain/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +24,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
   // not six components against a target
   const sp = await searchParams;
   if ((await getActiveLine()) === "LV") {
-    return <LvDashboard d={await getLvDashboard({ from: sp.from ? parseISODate(sp.from) : null, to: sp.to ? parseISODate(sp.to) : null })} />;
+    return <LvDashboard today={factoryDayISO(new Date())} d={await getLvDashboard({ from: sp.from ? parseISODate(sp.from) : null, to: sp.to ? parseISODate(sp.to) : null })} />;
   }
 
   const [c, d, ai] = await Promise.all([
@@ -30,26 +32,24 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
     getTargetDashboard({ weekOf: sp.w ? parseISODate(sp.w) : null, from: sp.from ? parseISODate(sp.from) : null, to: sp.to ? parseISODate(sp.to) : null }),
     getSmartInsights(),
   ]);
-  const periodTitle = `${d.mode === "week" ? "Week" : "Period"} ${toDisplayDate(parseISODate(d.fromISO)!)} → ${toDisplayDate(parseISODate(d.toISO)!)}`;
+  // the week the dashboard opens on: Saturday to Thursday, the current one
+  const today = factoryDayISO(new Date());
+  const weekFrom = presetRange("thisWeek", today).from;
+  const thisWeek = { label: "This week", from: weekFrom, to: addDaysISO(weekFrom, 5) };
 
   const controls = (
-    <div className="no-print flex flex-wrap items-center justify-between gap-3 bg-surface border rounded-xl px-3 py-2">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="no-print space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <ViewTabs views={DASHBOARD_VIEWS} current="/" label="Dashboard view" />
-        {d.mode === "week" && <Link href={`/?w=${d.prevWeekISO}`} className="btn btn-secondary btn-sm whitespace-nowrap">← Prev</Link>}
-        <span className="font-extrabold tabnum text-sm">
-          {periodTitle}
-          {d.isCurrentWeek && <span className="pill pill-ok ml-2">current</span>}
-          {d.mode === "range" && <span className="pill pill-warn ml-2">{d.workingDays} working day{d.workingDays === 1 ? "" : "s"}</span>}
-          {d.clamped && <span className="pill pill-warn ml-2">cut to 31 days</span>}
-        </span>
-        {d.nextWeekISO && <Link href={`/?w=${d.nextWeekISO}`} className="btn btn-secondary btn-sm whitespace-nowrap">Next →</Link>}
-        {d.mode === "week" && !d.isCurrentWeek && <Link href="/" className="text-sm font-bold text-accent hover:underline whitespace-nowrap">Jump to current ↻</Link>}
+        <div className="flex items-center gap-2">
+          {d.clamped && <span className="pill pill-warn">cut to 31 days</span>}
+          <SmartInsights data={ai} />
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <SmartInsights data={ai} />
-        <PeriodFilter from={d.fromISO} to={d.toISO} active={d.mode === "range"} />
-      </div>
+      <UrlDateSlicer
+        encoding="fromTo" from={d.fromISO} to={d.toISO} min={addDaysISO(today, -90)} max={[today, thisWeek.to].sort().reverse()[0]} today={today}
+        presets={["last7", "last14", "thisMonth", "lastMonth", "last30"]} defaultRange={thisWeek}
+      />
     </div>
   );
 

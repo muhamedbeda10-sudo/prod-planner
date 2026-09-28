@@ -1,5 +1,7 @@
 "use client";
 
+import { DateSlicer } from "@/components/DateSlicer";
+import { addDaysISO, slicerPresets } from "@/lib/domain/dateSlicer";
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -454,6 +456,10 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
   const [fStage, setFStage] = useState(""); // a station the job still has to visit
   const [fFrom, setFFrom] = useState(""); // due-date range
   const [fTo, setFTo] = useState("");
+  // the due dates the queue holds — the Due slicer's strip and its dots
+  const dueDays = useMemo(() => [...new Set(inputs.jobs.map((j) => j.dueISO).filter((d): d is string => !!d))].sort(), [inputs.jobs]);
+  const dueMin = [dueDays[0] ?? inputs.todayISO, inputs.todayISO].sort()[0];
+  const dueMax = [dueDays[dueDays.length - 1] ?? inputs.todayISO, addDaysISO(inputs.todayISO, 7)].sort().reverse()[0];
   const [fLate, setFLate] = useState(false);
   const filterActive = !!(fq || fItem || fStage || fFrom || fTo || fLate);
   const resetFilters = () => { setFq(""); setFItem(""); setFStage(""); setFFrom(""); setFTo(""); setFLate(false); };
@@ -718,12 +724,6 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
           <option value="">All stations</option>
           {Object.entries(SEG_LABEL).map(([k, label]) => <option key={k} value={k}>needs {label}</option>)}
         </select>
-        <span className="inline-flex items-center gap-1.5 text-sm">
-          <span className="text-muted text-[10px] font-bold uppercase tracking-wide">Due</span>
-          <input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm bg-surface" />
-          <span className="text-muted text-xs">→</span>
-          <input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm bg-surface" />
-        </span>
         <button
           onClick={() => setFLate((v) => !v)}
           className={`btn btn-sm ${fLate ? "btn-primary" : "btn-secondary"}`}
@@ -739,6 +739,13 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
           filters change what&apos;s SHOWN — every job still holds its place in the queue, so the dates stay honest
         </span>
       </div>
+      {dueDays.length > 0 && (
+        <DateSlicer
+          mode="range" label="Due" from={fFrom || null} to={fTo || null} min={dueMin} max={dueMax}
+          presets={slicerPresets(["overdue", "next7", "next30"], inputs.todayISO, dueMin).filter((p) => p.from <= p.to && p.to >= dueMin && p.from <= dueMax)}
+          allLabel="Any due date" marks={dueDays} onChange={(f, t) => { setFFrom(f ?? ""); setFTo(t ?? ""); }}
+        />
+      )}
 
       {/* ================= timeline ================= */}
       <Timeline result={result} baseline={baseline} inputs={inputs} workFridays={scenario.workFridays} shownIds={shownIds} blackouts={blackouts} />
