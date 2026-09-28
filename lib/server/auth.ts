@@ -3,7 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { parsePerms, deptPermKey } from "@/lib/domain/permissions";
+import { parsePerms, deptPermKey, PERM_KEYS } from "@/lib/domain/permissions";
 import type { User } from "@prisma/client";
 
 const SESSION_COOKIE = "atc_session";
@@ -69,8 +69,13 @@ export function userPerms(user: User): Set<string> {
   return parsePerms(user.perms);
 }
 
+/** Admins follow their ticks like everyone else — every admin was ticked with
+ *  every right when this changed, and the owner unticks what that admin does
+ *  not do. A key that is not in the catalog (so cannot be ticked) stays an
+ *  admin-only right. */
 export function hasPerm(user: User, perm: string): boolean {
-  return user.isAdmin || userPerms(user).has(perm);
+  if (PERM_KEYS.has(perm)) return userPerms(user).has(perm);
+  return user.isAdmin;
 }
 
 export function canEditDept(user: User, dept: string): boolean {

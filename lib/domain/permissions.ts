@@ -1,6 +1,7 @@
 // Granular permission keys. The admin assigns any combination per account from
 // the in-app Users page. Viewing is free for every active account — permissions
-// gate WRITES only. isAdmin bypasses all checks and unlocks user management.
+// gate WRITES only. Admins follow their ticks like everyone else; isAdmin
+// itself unlocks user management, settings and the admin pages with no key.
 //
 // Keys are grouped in CATEGORIES for the Users page. Worklist recording and
 // Plan-Tracker cell editing are DELIBERATELY separate: holding a dept's
@@ -10,6 +11,9 @@ export interface PermDef {
   key: string;
   label: string;
   desc: string;
+  /** A notification, not an access right: never ticked in bulk (an admin
+   *  gets the access rights, not everyone's alerts). */
+  notify?: true;
 }
 
 export interface PermCategory {
@@ -54,8 +58,8 @@ export const PERM_CATEGORIES: PermCategory[] = [
     name: "Odoo",
     perms: [
       { key: "odoo.edit", label: "Odoo close-out log — record", desc: "Add and edit the rows on the ODOO tab — the daily log of which Odoo manufacturing orders were closed and what Odoo answered" },
-      { key: "odoo.needMo", label: "Odoo alerts — rows that need an MO", desc: "Not an access right but a notification: a count on the ODOO tab and a popup whenever a row lands on the log without Odoo's MO number (a painting / shot-blast closing), with a box to type the MO right there. Admins get it only when this is ticked." },
-      { key: "odoo.alerts", label: "Odoo alerts — rows ready to close", desc: "Not an access right but a notification: a count on the ODOO tab and a popup whenever a row has Odoo's MO and is still open, closable from the popup. Admins get it only when this is ticked." },
+      { key: "odoo.needMo", notify: true, label: "Odoo alerts — rows that need an MO", desc: "Not an access right but a notification: a count on the ODOO tab and a popup whenever a row lands on the log without Odoo's MO number (a painting / shot-blast closing), with a box to type the MO right there. Ticked per person, admins included." },
+      { key: "odoo.alerts", notify: true, label: "Odoo alerts — rows ready to close", desc: "Not an access right but a notification: a count on the ODOO tab and a popup whenever a row has Odoo's MO and is still open, closable from the popup. Ticked per person, admins included." },
     ],
   },
   {
@@ -114,6 +118,9 @@ export const PERM_CATEGORIES: PermCategory[] = [
 export const PERMISSIONS: PermDef[] = PERM_CATEGORIES.flatMap((c) => c.perms);
 
 export const PERM_KEYS = new Set(PERMISSIONS.map((p) => p.key));
+
+/** Every access right (no notifications) — what an admin starts ticked with. */
+export const ACCESS_PERM_KEYS = PERMISSIONS.filter((p) => !p.notify).map((p) => p.key);
 
 /** Retired keys auto-expand to their granular successors, so accounts created
  *  before the split keep working without touching the database. */

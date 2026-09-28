@@ -32,6 +32,7 @@ function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: 
                   value={p.key}
                   defaultChecked={defaults.has(p.key)}
                   disabled={disabled}
+                  data-access={p.notify ? undefined : "1"}
                   className="mt-0.5 accent-[var(--brand,#1b7a43)]"
                 />
                 <span>
@@ -44,6 +45,32 @@ function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: 
         </fieldset>
       ))}
     </div>
+  );
+}
+
+/** The admin switch. Ticking it ticks every access right in the form below
+ *  (not the notifications) — an admin starts with everything and the owner
+ *  unticks what this one does not do. */
+function AdminCheck({ defaultChecked, label }: { defaultChecked?: boolean; label: string }) {
+  return (
+    <label className="flex items-start gap-2 text-sm cursor-pointer">
+      <input
+        type="checkbox"
+        name="isAdmin"
+        defaultChecked={defaultChecked}
+        className="mt-0.5 accent-[var(--brand,#1b7a43)]"
+        onChange={(e) => {
+          if (!e.currentTarget.checked) return;
+          e.currentTarget.form?.querySelectorAll<HTMLInputElement>('input[name="perms"][data-access]').forEach((c) => (c.checked = true));
+        }}
+      />
+      <span>
+        <span className="font-bold">{label}</span>
+        <span className="block text-xs text-muted">
+          Manages accounts, Settings and the admin pages. Everything else follows the ticks below, admins included — untick what this admin does not do.
+        </span>
+      </span>
+    </label>
   );
 }
 
@@ -157,10 +184,7 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
           }}
         >
           <input type="hidden" name="id" value={user.id} />
-          <label className="flex items-center gap-2 text-sm font-bold cursor-pointer">
-            <input type="checkbox" name="isAdmin" defaultChecked={user.isAdmin} className="accent-[var(--brand,#1b7a43)]" />
-            Admin — full access to everything, including this page
-          </label>
+          <AdminCheck defaultChecked={user.isAdmin} label="Admin" />
           <PermChecks defaults={new Set(user.perms.split(",").map((s) => s.trim()))} />
           <div className="flex items-center gap-3">
             <button type="submit" disabled={perms.pending} className={btnCls}>Save permissions</button>
@@ -210,10 +234,7 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
               <input name="password" type="text" required minLength={8} className={`${inputCls} ltr`} placeholder="give them this password" />
             </label>
           </div>
-          <label className="flex items-center gap-2 text-sm font-bold cursor-pointer">
-            <input type="checkbox" name="isAdmin" className="accent-[var(--brand,#1b7a43)]" />
-            Admin — full access to everything
-          </label>
+          <AdminCheck label="Admin" />
           <PermChecks defaults={new Set()} />
           <div className="flex items-center gap-3">
             <button type="submit" disabled={create.pending} className={btnCls}>Create account</button>
