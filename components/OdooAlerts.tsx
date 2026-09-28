@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { armChime, playChime } from "@/lib/chime";
 import { closeOdooReady, pollOdooReady } from "@/app/odoo/alertActions";
 import { pruneSeen, unseenReady, type ReadyRow } from "@/lib/domain/odooAlerts";
 
@@ -10,7 +11,8 @@ import { pruneSeen, unseenReady, type ReadyRow } from "@/lib/domain/odooAlerts";
 // The ODOO tab carries the count and the browser tab's title starts with it;
 // when a row he has not seen becomes ready, a popup lists them all and each
 // closes from there. "Later" hides it until the next new row. Checked every
-// minute and whenever the window comes back into view.
+// minute and whenever the window comes back into view. A row that shows up
+// for the first time plays the alert chime once (muted with the chat sound).
 
 const POLL_MS = 60_000;
 const seenKey = (userId: number) => `odoo.alerts.seen.${userId}`;
@@ -41,6 +43,7 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
   const [open, setOpen] = useState(false);
   const [fresh, setFresh] = useState<Set<number>>(new Set());
   const count = rows ? rows.length : enabled ? initialCount : 0;
+  const chimed = useRef<Set<number>>(new Set()); // rows already rung for on this page
 
   const tick = useCallback(async () => {
     const r = await pollOdooReady().catch(() => null);
@@ -51,11 +54,14 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
     if (unseen.length > 0) {
       setFresh(new Set(unseen));
       setOpen(true);
+      if (unseen.some((id) => !chimed.current.has(id))) playChime("alert");
+      for (const id of unseen) chimed.current.add(id);
     }
   }, [userId]);
 
   useEffect(() => {
     if (!enabled) return;
+    armChime();
     const first = setTimeout(tick, 1500); // after the page has painted
     const every = setInterval(tick, POLL_MS);
     const onVisible = () => { if (document.visibilityState === "visible") void tick(); };
