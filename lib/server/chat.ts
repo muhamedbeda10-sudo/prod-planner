@@ -350,3 +350,69 @@ export async function getChatUnreadCount(meId: number): Promise<number> {
   });
   return dm + group;
 }
+
+/** One unread message for the corner popup — who, where, and a preview. */
+export interface ChatInboxItem {
+  id: number;
+  kind: ThreadKind;
+  threadId: number; // the sender (DM) or the group
+  fromName: string;
+  groupName: string | null;
+  snippet: string;
+  createdAt: string;
+}
+
+/** Unread messages addressed to the caller with an id above `afterId`, newest
+ *  first (at most 10), the total unread for the badge, and the newest message
+ *  id the caller can see — the cursor the next poll starts from. */
+export async function getChatInbox(
+  meId: number,
+  afterId: number,
+): Promise<{ items: ChatInboxItem[]; unread: number; latestId: number }> {
+  const memberships = await prisma.chatGroupMember.findMany({
+    where: { userId: meId },
+    select: { groupId: true, lastReadId: true },
+  });
+  const unreadWhere = {
+    OR: [
+      { toId: meId, readAt: null, hiddenForTo: false },
+      ...memberships.map((m) => ({
+        groupId: m.groupId,
+        id: { gt: m.lastReadId },
+        fromId: { not: meId },
+        hides: { none: { userId: meId } },
+      })),
+    ],
+  };
+  const [rows, unread, latest] = await Promise.all([
+    prisma.chatMessage.findMany({
+      where: { AND: [unreadWhere, { id: { gt: afterId } }] },
+      orderBy: { id: "desc" },
+      take: 10,
+      select: {
+        id: true, fromId: true, groupId: true, body: true, mo: true, attachments: true, createdAt: true,
+        from: { select: { name: true } },
+        group: { select: { name: true } },
+      },
+    }),
+    getChatUnreadCount(meId),
+    prisma.chatMessage.findFirst({
+      where: { OR: [{ toId: meId }, { groupId: { in: memberships.map((m) => m.groupId) } }] },
+      orderBy: { id: "desc" },
+      select: { id: true },
+    }),
+  ]);
+  return {
+    items: rows.map((m) => ({
+      id: m.id,
+      kind: m.groupId ? "group" : "user",
+      threadId: m.groupId ?? m.fromId,
+      fromName: m.from.name,
+      groupName: m.group?.name ?? null,
+      snippet: snippetOf(m),
+      createdAt: m.createdAt.toISOString(),
+    })),
+    unread,
+    latestId: latest?.id ?? 0,
+  };
+}

@@ -6,8 +6,8 @@ import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
 import {
-  getChatContacts, getChatThread, getChatThreadState, isGroupMember, snippetOf,
-  type ChatAttachment, type ChatContact, type ChatMessageDTO, type ChatMessageState,
+  getChatContacts, getChatInbox, getChatThread, getChatThreadState, isGroupMember, snippetOf,
+  type ChatAttachment, type ChatInboxItem, type ChatContact, type ChatMessageDTO, type ChatMessageState,
   type ChatReplyRef, type ThreadKind,
 } from "@/lib/server/chat";
 import { broadcast } from "@/lib/server/realtimeBroadcast";
@@ -492,4 +492,17 @@ export async function pollChat(
     members: memberRows.map((m) => ({ ...m.user, lastReadId: m.lastReadId })),
     contacts,
   };
+}
+
+/** The corner popup's poll: unread messages newer than `afterId` (the popup
+ *  shows them), the badge total, and the cursor for the next call. */
+export async function pollChatInbox(afterId: number): Promise<{
+  ok: boolean;
+  items?: ChatInboxItem[];
+  unread?: number;
+  latestId?: number;
+}> {
+  const me = await getCurrentUser();
+  if (!me || !Number.isInteger(afterId)) return { ok: false };
+  return { ok: true, ...(await getChatInbox(me.id, afterId)) };
 }

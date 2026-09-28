@@ -2,10 +2,12 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessagesSquare, X, Maximize2 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { MessagesSquare, X, Maximize2, Reply } from "lucide-react";
 import Link from "next/link";
-import { pollChat } from "@/app/chat/actions";
-import type { ChatContact } from "@/lib/server/chat";
+import { usePathname } from "next/navigation";
+import { pollChat, pollChatInbox } from "@/app/chat/actions";
+import type { ChatContact, ChatInboxItem, ThreadKind } from "@/lib/server/chat";
 
 // 💬 Chat as a corner icon, not a tab.
 //
@@ -18,14 +20,56 @@ import type { ChatContact } from "@/lib/server/chat";
 // The chat bundle is the heaviest client module in the app, so it is only
 // fetched when the panel is first opened — a planner who never chats never
 // downloads it.
+//
+// A message that arrives while the panel is closed pops up as a card in the
+// bottom corner of whatever page is open — who sent it, the group, a preview —
+// with Reply (opens the panel on that conversation) and ✕. A light poll finds
+// them; the newest id already popped is kept per user in the browser, so a
+// reload or a new page never pops the same message twice.
+
+const POLL_MS = 15000;
+const MAX_CARDS = 4;
+const seenKey = (userId: number) => `chat.popup.seen.${userId}`;
+
+function readSeen(userId: number): number | null {
+  try {
+    const v = Number(localStorage.getItem(seenKey(userId)));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSeen(userId: number, id: number) {
+  try {
+    localStorage.setItem(seenKey(userId), String(id));
+  } catch {
+    /* private window — the popups just start fresh next time */
+  }
+}
+
+const timeOf = (iso: string) => {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
 
 const ChatClient = dynamic(() => import("./ChatClient").then((m) => m.ChatClient), {
   ssr: false,
   loading: () => <div className="h-full grid place-items-center text-sm text-muted">Opening chat…</div>,
 });
 
-export function ChatDock({ me, unread }: { me: { id: number; name: string }; unread: number }) {
+export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name: string }; unread: number }) {
   const [open, setOpen] = useState(false);
+  const [liveUnread, setLiveUnread] = useState<number | null>(null);
+  const unread = liveUnread ?? initialUnread;
+  const [cards, setCards] = useState<ChatInboxItem[]>([]);
+  const [openOn, setOpenOn] = useState<{ kind: ThreadKind; id: number } | null>(null);
+  const pathname = usePathname();
+  const quietRef = useRef(false); // panel open or on /chat — the chat itself shows them
+  useEffect(() => {
+    quietRef.current = open || pathname === "/chat";
+  }, [open, pathname]);
+  const cursorRef = useRef<number | null>(null);
   const [contacts, setContacts] = useState<ChatContact[] | null>(null);
   const [err, setErr] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
@@ -39,6 +83,52 @@ export function ChatDock({ me, unread }: { me: { id: number; name: string }; unr
       .then((r) => (r.ok && r.contacts ? setContacts(r.contacts) : setErr(r.error ?? "Could not open chat.")))
       .catch(() => setErr("Could not open chat."));
   }, [contacts]);
+
+  const poll = useCallback(async () => {
+    if (cursorRef.current === null) cursorRef.current = readSeen(me.id);
+    const first = cursorRef.current === null; // first ever — only set the cursor
+    const res = await pollChatInbox(cursorRef.current ?? 0).catch(() => null);
+    if (!res?.ok) return;
+    setLiveUnread(res.unread ?? 0);
+    const fresh = first ? [] : (res.items ?? []);
+    if (fresh.length > 0 && !quietRef.current) {
+      setCards((cur) => {
+        const have = new Set(cur.map((c) => c.id));
+        return [...fresh.filter((m) => !have.has(m.id)), ...cur].slice(0, 10);
+      });
+    }
+    const next = Math.max(cursorRef.current ?? 0, res.latestId ?? 0);
+    if (next !== cursorRef.current) {
+      cursorRef.current = next;
+      writeSeen(me.id, next);
+    }
+  }, [me.id]);
+
+  useEffect(() => {
+    const first = setTimeout(() => void poll(), 1200);
+    const t = setInterval(() => void poll(), POLL_MS);
+    const onVis = () => document.visibilityState === "visible" && void poll();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearTimeout(first);
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [poll]);
+
+  // closing the panel refreshes the badge — reading there changed it
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) void poll();
+    wasOpen.current = open;
+  }, [open, poll]);
+
+  const reply = (c: ChatInboxItem) => {
+    setOpenOn({ kind: c.kind, id: c.threadId });
+    setCards([]);
+    setOpen(true);
+  };
+  const dismiss = (id: number) => setCards((cur) => cur.filter((c) => c.id !== id));
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +153,11 @@ export function ChatDock({ me, unread }: { me: { id: number; name: string }; unr
       <button
         ref={btnRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpenOn(null);
+          setCards([]);
+          setOpen((v) => !v);
+        }}
         onMouseEnter={load}
         className={`nav-tab nav-tab-icon flex items-center relative ${open ? "nav-tab-active" : ""}`}
         aria-haspopup="dialog"
@@ -116,10 +210,66 @@ export function ChatDock({ me, unread }: { me: { id: number; name: string }; unr
             ) : contacts === null ? (
               <div className="h-full grid place-items-center text-sm text-muted">Opening chat…</div>
             ) : (
-              <ChatClient me={me} initialContacts={contacts} fill />
+              <ChatClient me={me} initialContacts={contacts} fill openOn={openOn} />
             )}
           </div>
         </div>
+      )}
+
+      {/* portalled: inside the sticky header (its own z-30 layer) the cards
+          could never sit above a page's own overlays */}
+      {cards.length > 0 && !open && createPortal(
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-4 right-4 z-50 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2 text-foreground"
+        >
+          {cards.slice(0, MAX_CARDS).map((c) => (
+            <div
+              key={c.id}
+              className="flex gap-3 rounded-xl border border-l-4 border-l-brand bg-surface p-3 shadow-xl animate-[navdrop_0.2s_ease-out]"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand text-sm font-extrabold text-white">
+                {c.fromName.trim().charAt(0).toUpperCase() || "?"}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2">
+                  <b className="truncate text-sm">{c.fromName}</b>
+                  {c.groupName && <span className="truncate text-xs text-muted">in {c.groupName}</span>}
+                  <span className="ms-auto shrink-0 text-[11px] text-muted tabnum">{timeOf(c.createdAt)}</span>
+                </div>
+                <p className="mt-0.5 line-clamp-2 break-words text-sm" dir="auto">{c.snippet || "New message"}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <button type="button" className="btn btn-sm btn-primary" onClick={() => reply(c)}>
+                    <Reply size={14} /> Reply
+                  </button>
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => dismiss(c.id)}>Dismiss</button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => dismiss(c.id)}
+                className="self-start rounded-md p-1 text-muted hover:bg-surface-2"
+                aria-label="Dismiss"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+          {cards.length > MAX_CARDS && (
+            <button
+              type="button"
+              className="self-end rounded-full border bg-surface px-3 py-1 text-xs font-bold shadow"
+              onClick={() => {
+                setCards([]);
+                setOpen(true);
+              }}
+            >
+              +{cards.length - MAX_CARDS} more — open chat
+            </button>
+          )}
+        </div>,
+        document.body,
       )}
     </div>
   );
