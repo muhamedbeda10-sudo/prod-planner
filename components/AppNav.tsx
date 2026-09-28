@@ -13,6 +13,7 @@ import {
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ChatDock } from "@/components/ChatDock";
+import { useOdooAlerts } from "@/components/OdooAlerts";
 import { LineTabs } from "@/components/LineTabs";
 import type { ProductLine } from "@/lib/domain/lines";
 import { logoutAction } from "@/app/login/actions";
@@ -123,6 +124,7 @@ export function AppNav({
   unreadChat = 0,
   tankTracking = false,
   machinePlanning = false,
+  odooAlerts = { enabled: false, count: 0 },
   line = "TR",
 }: {
   user: NavUser;
@@ -131,10 +133,25 @@ export function AppNav({
   tankTracking?: boolean;
   /** With machine planning off, the Floor tab is the what-if simulator alone — it is named so. */
   machinePlanning?: boolean;
+  /** The subscribed person's "ready to close in Odoo" alert: its count on the ODOO tab, and the popup. */
+  odooAlerts?: { enabled: boolean; count: number };
   /** The product line every tab is showing — transformers or LV panels. */
   line?: ProductLine;
 }) {
   const pathname = usePathname();
+  const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
+  // the ODOO tab lights up with the rows waiting to be closed; its badge
+  // opens the popup rather than the page
+  const odooBadge = (size: "sm" | "md") => alerts.count > 0 && (
+    <span
+      role="button" tabIndex={0} title={`${alerts.count} ready to close in Odoo — show them`}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); alerts.show(); }}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); alerts.show(); } }}
+      className={`ml-0.5 grid place-items-center rounded-full bg-[#F2C94C] text-[#14201A] font-extrabold leading-none px-1 cursor-pointer ${size === "sm" ? "min-w-[18px] h-[18px] text-[10px]" : "min-w-[22px] h-[22px] text-xs"}`}
+    >
+      {alerts.count > 99 ? "99+" : alerts.count}
+    </span>
+  );
 
   // A user who can edit exactly ONE department jumps straight to it from the
   // Worklist tab; everyone else (admins, multi-dept, view-only) expands the
@@ -307,9 +324,10 @@ export function AppNav({
               </li>
               {restTabs.map((l) => (
                 <li key={l.href}>
-                  <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match, l.also) ? "nav-tab-active" : ""}`}>
+                  <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match, l.also) ? "nav-tab-active" : ""} ${l.href === "/odoo" && alerts.count > 0 ? "ring-2 ring-[#F2C94C]/70" : ""}`}>
                     <l.icon size={15} className="shrink-0" />
                     {l.label}
+                    {l.href === "/odoo" && odooBadge("sm")}
                   </Link>
                 </li>
               ))}
@@ -472,6 +490,7 @@ export function AppNav({
                 >
                   <l.icon size={19} className={isActive(l.href, l.match) ? "text-brand" : "text-muted"} />
                   {l.label}
+                  {l.href === "/odoo" && odooBadge("md")}
                 </Link>
               ))}
 
@@ -543,6 +562,7 @@ export function AppNav({
           </div>
         </div>
       )}
+      {alerts.popup}
     </header>
   );
 }
