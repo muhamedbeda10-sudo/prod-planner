@@ -22,3 +22,4 @@ export const PlannedVsWeldedChart = dynamic(() => import("./ReportCharts").then(
 export const SheetsPerDayChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.SheetsPerDayChart), { ssr: false, loading: () => <Placeholder h={260} /> });
 export const ThicknessChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.ThicknessChart), { ssr: false, loading: () => <Placeholder h={220} /> });
 export const OdooDashboard = dynamic(() => import("./OdooDashboard").then((m) => m.OdooDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });
+export const ConsumablesDashboard = dynamic(() => import("./ConsumablesDashboard").then((m) => m.ConsumablesDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });
