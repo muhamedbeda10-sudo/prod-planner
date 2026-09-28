@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
-import { getConsumableEdits, getConsumablesData } from "@/lib/server/consumables";
+import { getConsumableEdits, getConsumablesDashboard, getConsumablesData } from "@/lib/server/consumables";
 import { addDaysISO, clampISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
@@ -9,6 +9,7 @@ import { ExportButton } from "@/components/ExportButton";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { ConsumablesClient } from "@/components/ConsumablesClient";
 import { ConsumableEdits } from "@/components/ConsumableEdits";
+import { ConsumablesDashboard } from "@/components/LazyCharts";
 
 export const metadata = { title: "Consumables — ATC" };
 export const dynamic = "force-dynamic";
@@ -38,20 +39,22 @@ export default async function ConsumablesPage({
   const periodLabel = from === to ? (from === today ? "today" : `on ${from}`) : `from ${from} to ${to}`;
   const period = from === to ? from : `${from}_to_${to}`;
 
-  const view = me.isAdmin && sp.view === "edits" ? "edits" : "log";
+  // the log and the dashboard are everyone's; the history of edits the admin's
+  const view = sp.view === "dashboard" ? "dashboard" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
   // the switch keeps the period on screen
-  const hrefFor = (v: "log" | "edits") => {
+  const hrefFor = (v: "log" | "dashboard" | "edits") => {
     const p = new URLSearchParams();
     if (sp.from) p.set("from", from);
     if (sp.to) p.set("to", to);
-    if (v === "edits") p.set("view", "edits");
+    if (v !== "log") p.set("view", v);
     const q = p.toString();
     return q ? `/consumables?${q}` : "/consumables";
   };
-  const viewSwitch = me.isAdmin && (
+  const viewSwitch = (
     <nav className="seg" aria-label="View">
       <Link href={hrefFor("log")} className={view === "log" ? "on" : ""}>Log</Link>
-      <Link href={hrefFor("edits")} className={view === "edits" ? "on" : ""}>Edits</Link>
+      <Link href={hrefFor("dashboard")} className={view === "dashboard" ? "on" : ""}>Dashboard</Link>
+      {me.isAdmin && <Link href={hrefFor("edits")} className={view === "edits" ? "on" : ""}>Edits</Link>}
     </nav>
   );
   const slicer = (
@@ -61,6 +64,21 @@ export default async function ConsumablesPage({
       defaultRange={{ label: "Today", from: today, to: today }}
     />
   );
+
+  if (view === "dashboard") {
+    const stats = await getConsumablesDashboard(from, to);
+    const exportRows = stats.items.map((i) => ({ Item: i.item, "Hand-outs": i.issues, Qty: i.qty, Workers: i.workers }));
+    return (
+      <div className="space-y-3">
+        <PageHeader>
+          {viewSwitch}
+          <ExportButton rows={exportRows} filename={`consumables-summary-${period}.xlsx`} sheetName="Items" />
+        </PageHeader>
+        {slicer}
+        <ConsumablesDashboard s={stats} periodLabel={periodLabel} period={period} />
+      </div>
+    );
+  }
 
   if (view === "edits") {
     const edits = await getConsumableEdits(from, to);
