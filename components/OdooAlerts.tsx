@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { armChime, playChime } from "@/lib/chime";
 import { appInBackground, onNotifyClick, systemNotify } from "@/lib/sysNotify";
 import { closeOdooReady, pollOdooReady } from "@/app/odoo/alertActions";
-import { pruneSeen, unseenReady, type ReadyRow } from "@/lib/domain/odooAlerts";
+import { ODOO_CHANGED_EVENT, pruneSeen, unseenReady, type ReadyRow } from "@/lib/domain/odooAlerts";
 
 // 🔔 Rows ready to close in Odoo — for the person subscribed (odoo.alerts).
 // The ODOO tab carries the count and the browser tab's title starts with it;
@@ -46,11 +46,19 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
   const count = rows ? rows.length : enabled ? initialCount : 0;
   const chimed = useRef<Set<number>>(new Set()); // rows already rung for on this page
 
-  const tick = useCallback(async () => {
+  // `ownChange`: the check that follows a change saved on the ODOO page in
+  // this tab — the count follows, but a row this person just made ready is
+  // theirs, not news, so it is marked seen instead of popping up
+  const tick = useCallback(async (ownChange = false) => {
     const r = await pollOdooReady().catch(() => null);
     if (!r?.ok || !r.rows) return;
     setRows(r.rows);
     if (r.canClose) setCanClose(r.canClose);
+    if (ownChange) {
+      writeSeen(userId, pruneSeen([...readSeen(userId), ...r.rows.map((x) => x.id)], r.rows));
+      for (const x of r.rows) chimed.current.add(x.id);
+      return;
+    }
     const unseen = unseenReady(r.rows, readSeen(userId));
     if (unseen.length > 0) {
       setFresh(new Set(unseen));
@@ -76,11 +84,18 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
   useEffect(() => {
     if (!enabled) return;
     armChime();
-    const first = setTimeout(tick, 1500); // after the page has painted
-    const every = setInterval(tick, POLL_MS);
+    const first = setTimeout(() => void tick(), 1500); // after the page has painted
+    const every = setInterval(() => void tick(), POLL_MS);
     const onVisible = () => { if (document.visibilityState === "visible") void tick(); };
+    const onChanged = () => void tick(true);
     document.addEventListener("visibilitychange", onVisible);
-    return () => { clearTimeout(first); clearInterval(every); document.removeEventListener("visibilitychange", onVisible); };
+    window.addEventListener(ODOO_CHANGED_EVENT, onChanged);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener(ODOO_CHANGED_EVENT, onChanged);
+    };
   }, [enabled, tick]);
 
   // a click on the system notification opens the popup

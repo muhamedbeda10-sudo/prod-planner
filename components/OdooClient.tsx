@@ -15,6 +15,7 @@ import { Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { entryMaterialNeed, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
+import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, setOdooFgCode, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
 
 // The ODOO tab — the office's daily log of Odoo close attempts, one strip per
@@ -37,6 +38,7 @@ function useAction() {
         if (res.ok) {
           after?.();
           router.refresh();
+          window.dispatchEvent(new Event(ODOO_CHANGED_EVENT)); // the ODOO tab's count follows now
         }
       });
     },

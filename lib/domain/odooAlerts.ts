@@ -9,6 +9,10 @@ import { isDoneStatus } from "./odoo";
  *  right, so an admin does not get it automatically — it is ticked. */
 export const ODOO_ALERTS_PERM = "odoo.alerts";
 
+/** Fired in the browser after a change saved on the ODOO page, so the tab's
+ *  count follows at once instead of at the next minute's check. */
+export const ODOO_CHANGED_EVENT = "odoo:changed";
+
 export interface ReadyRow {
   id: number;
   line: string;
