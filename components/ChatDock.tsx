@@ -209,7 +209,7 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
                 if (on) playChime();
               }}
               className="ms-auto rounded-md p-1.5 hover:bg-surface transition-colors text-muted"
-              title={sound ? "Message sound on — click to mute" : "Message sound off — click to turn on"}
+              title={sound ? "Sound on for messages and Odoo alerts — click to mute" : "Sound off — click to turn on"}
               aria-label={sound ? "Mute message sound" : "Turn message sound on"}
               aria-pressed={sound}
             >
