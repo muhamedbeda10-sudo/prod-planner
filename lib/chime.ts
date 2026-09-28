@@ -1,4 +1,4 @@
-// A short two-note chime for an incoming chat message, made with Web Audio so
+// Short chimes for an incoming chat message and an Odoo alert, made with Web Audio so
 // there is no sound file to ship. Browsers refuse to start audio until the
 // page has had a click or a key press, so `armChime` listens for the first
 // one and opens the audio context then; after that `playChime` works even
@@ -47,14 +47,21 @@ export function armChime() {
   window.addEventListener("keydown", unlock);
 }
 
-/** Two soft rising notes. Silent when muted or when audio is not unlocked yet. */
-export function playChime() {
+// a message: two soft rising notes; an Odoo alert: three lower ones, so the
+// ear tells them apart without looking
+const NOTES = {
+  message: [880, 1318.5],
+  alert: [523.25, 659.25, 783.99],
+} as const;
+
+/** Play a chime. Silent when muted or when audio is not unlocked yet. */
+export function playChime(kind: keyof typeof NOTES = "message") {
   if (!chimeOn()) return;
   const c = context();
   if (!c) return;
   if (c.state === "suspended") void c.resume();
   const t0 = c.currentTime + 0.01;
-  for (const [i, freq] of [880, 1318.5].entries()) {
+  for (const [i, freq] of NOTES[kind].entries()) {
     const start = t0 + i * 0.14;
     const osc = c.createOscillator();
     const gain = c.createGain();
