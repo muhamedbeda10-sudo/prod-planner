@@ -1,12 +1,12 @@
 "use client";
 
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LabelList, ReferenceLine } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LabelList, ReferenceLine, Pie, PieChart } from "recharts";
 import type { DayPoint, ThicknessSlice } from "@/lib/domain/fabAnalytics";
 
 // The two charts of the Fabrication analytics page. Both measure the same
 // thing — sheets — so both are blue: the daily one a single mid step, the
-// thickness one a sequential ramp of that same hue, light to dark as the sheet
-// gets thicker (brighter as it thickens on dark surfaces, where light reads as
+// thickness one (a donut up to six thicknesses, ranked bars past that) a
+// sequential ramp of that same hue, light to dark as the sheet gets thicker (brighter as it thickens on dark surfaces, where light reads as
 // "more"). One hue for one measure; the ramp's lightness is monotone and every
 // bar is direct-labelled, so the colour only reinforces what the labels say.
 
@@ -76,6 +76,10 @@ export function ThicknessChart({ rows }: { rows: ThicknessSlice[] }) {
     // spread whatever thicknesses exist across the ramp's six steps
     fill: RAMP[rows.length === 1 ? RAMP.length - 1 : Math.round((i / (rows.length - 1)) * (RAMP.length - 1))],
   }));
+  // Up to six thicknesses the share of the whole is the point, so a donut —
+  // shaded thin → thick on the same ramp, the legend in thickness order.
+  // Past six the ramp would repeat a step, so the ranked bars stay.
+  if (rows.length <= RAMP.length) return <ThicknessDonut data={data} />;
   return (
     <div className="viz w-full min-w-0" style={{ height: Math.max(150, rows.length * 34 + 24) }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -108,6 +112,50 @@ export function ThicknessChart({ rows }: { rows: ThicknessSlice[] }) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+type ThicknessDatum = ThicknessSlice & { label: string; tons: number; fill: string };
+
+function ThicknessDonut({ data }: { data: ThicknessDatum[] }) {
+  const sheets = data.reduce((n, d) => n + d.sheets, 0);
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-4">
+      <div className="relative shrink-0" style={{ width: 190, height: 190 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} dataKey="sheets" nameKey="label" innerRadius={58} outerRadius={90} paddingAngle={data.length > 1 ? 1.5 : 0}
+              stroke="var(--surface)" strokeWidth={2} startAngle={90} endAngle={-270} isAnimationActive={false}>
+              {data.map((d) => <Cell key={d.thicknessMm} fill={d.fill} />)}
+            </Pie>
+            <Tooltip content={({ active, payload }) => {
+              const p = active && payload?.length ? (payload[0].payload as ThicknessDatum) : null;
+              if (!p) return null;
+              return (
+                <TipBox>
+                  <b>{p.label} sheets</b>
+                  <div className="tabnum"><b>{n1(p.sheets)}</b> sheets · {(p.share * 100).toFixed(1)}% of the window</div>
+                  <div className="tabnum text-muted">{n1(p.tons)} t of steel</div>
+                </TipBox>
+              );
+            }} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 grid place-items-center pointer-events-none text-center">
+          <div><div className="text-2xl font-semibold leading-none">{n1(sheets)}</div><div className="text-[11px] text-muted">sheets</div></div>
+        </div>
+      </div>
+      <ul className="space-y-1.5 text-sm w-full">
+        {data.map((d) => (
+          <li key={d.thicknessMm} className="flex items-center gap-2">
+            <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: d.fill }} aria-hidden />
+            <span className="flex-1 tabnum">{d.label}</span>
+            <span className="tabnum text-muted">{n1(d.sheets)}</span>
+            <span className="tabnum font-bold w-12 text-right">{(d.share * 100).toFixed(0)}%</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
