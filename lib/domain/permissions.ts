@@ -54,6 +54,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
     name: "Odoo",
     perms: [
       { key: "odoo.edit", label: "Odoo close-out log — record", desc: "Add and edit the rows on the ODOO tab — the daily log of which Odoo manufacturing orders were closed and what Odoo answered" },
+      { key: "odoo.alerts", label: "Odoo alerts — rows ready to close", desc: "Not an access right but a notification: a count on the ODOO tab and a popup whenever a row has Odoo's MO and is still open, closable from the popup. Admins get it only when this is ticked." },
     ],
   },
   {
