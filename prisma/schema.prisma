@@ -302,6 +302,7 @@ model User {
   sentMessages     ChatMessage[] @relation("sentMessages")
   receivedMessages ChatMessage[] @relation("receivedMessages")
   chatGroups       ChatGroupMember[]
+  consumableIssues ConsumableIssue[]
 }
 
 // Chat message (the in-app chat) — either a DIRECT message (toId set) or a
@@ -707,7 +708,8 @@ model Worker {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  shifts ShiftEntry[]
+  shifts           ShiftEntry[]
+  consumableIssues ConsumableIssue[]
 
   @@index([active])
 }
@@ -917,4 +919,67 @@ model OdooNote {
   at         DateTime  @default(now())
 
   @@index([entryId])
+}
+
+// ---- CONSUMABLES — what the store hands out to the shop floor ----
+
+// One row per hand-out: an item (typed freely — the store's own words), how
+// much, the department it went to and the worker who took it. The moment is
+// the server's clock at recording, never typed, so the log cannot be
+// back-dated. Once written, a row is the admin's alone: only an admin edits
+// it, and every edit keeps the row as it was in ConsumableIssueRevision.
+// Delete is soft — the row leaves the log but stays in the table with who
+// removed it and when.
+model ConsumableIssue {
+  id         Int      @id @default(autoincrement())
+  item       String
+  // decimal, not float: grease by the kilo and paint by the litre must add
+  // up exactly when the month is totalled
+  qty        Decimal  @db.Decimal(14, 3)
+  // A worker section's code (WeldingTX, PaintingLV … — lib/domain/tanks.ts
+  // WORKER_SECTIONS), or a department typed by the recorder that is not one
+  // of them (Maintenance, Store …). Typed ones reappear in the dropdown.
+  department String
+  workerId   Int
+  worker     Worker   @relation(fields: [workerId], references: [id], onDelete: Restrict)
+  notes      String?
+  issuedAt   DateTime @default(now())
+
+  // who typed it: the account (SetNull — accounts can be deleted) and the
+  // name as it was that day, so the record reads the same afterwards
+  recordedById   Int?
+  recordedByUser User?  @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+  recordedBy     String
+
+  editedAt  DateTime?
+  editedBy  String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  revisions ConsumableIssueRevision[]
+
+  // the log is always "not deleted, in this period"
+  @@index([deletedAt, issuedAt])
+  @@index([workerId])
+  @@index([department])
+  @@index([recordedById])
+}
+
+/// The row as it stood before each admin edit or delete — the audit trail
+/// that makes "only the admin may change it" checkable afterwards.
+model ConsumableIssueRevision {
+  id      Int             @id @default(autoincrement())
+  issueId Int
+  issue   ConsumableIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  action  String // edit | delete
+  // { item, qty, department, workerId, workerEmpId, workerName, notes }
+  before  Json
+  byId    Int?
+  by      String
+  at      DateTime        @default(now())
+
+  @@index([issueId])
 }

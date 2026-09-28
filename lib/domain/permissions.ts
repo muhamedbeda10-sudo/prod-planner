@@ -58,6 +58,12 @@ export const PERM_CATEGORIES: PermCategory[] = [
     ],
   },
   {
+    name: "Consumables",
+    perms: [
+      { key: "consumables.edit", label: "Consumables — record hand-outs", desc: "Record on the CONSUMABLES tab what the store hands out: the item, the quantity, the department and the worker who took it. A row cannot be changed once saved — only an admin edits or deletes it" },
+    ],
+  },
+  {
     name: "Plan Tracker",
     perms: [
       { key: "tracker.cut", label: "Fabrication column — record", desc: "Edit the Fab stage cells on the Plan Tracker (separate from the Fabrication worklist permission)" },

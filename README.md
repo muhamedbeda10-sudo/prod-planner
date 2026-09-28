@@ -26,7 +26,7 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 "Done" everywhere = Welding output; Cut gates Welding.
 
 ## Navigation
-Seven tabs, one per QUESTION rather than per screen — Worklist · Material · ODOO · Shifts ·
+Eight tabs, one per QUESTION rather than per screen — Worklist · Material · ODOO · Consumables · Shifts ·
 Plan Tracker · Floor · Dashboard. Three of them hold several views behind their own switcher
 (`components/ViewTabs.tsx`): **Plan Tracker** carries the tracker and the daily log it adds up,
 **Floor** the bay as it is and the what-if simulator, **Dashboard** this week, the printed report
@@ -243,6 +243,18 @@ mobile drawer still lists every view flat, since it has the vertical room.
    undated ones after; click a block, then "→ code" sends a line to it in one click (the board on each
    worklist lists them the same way). Drawing needs
    `machines.manage`; working a queue needs the department's worklist permission; viewing is free.
+11. **Consumables** (`/consumables`) — the store's log of what it hands out to the floor: Item (typed
+   freely, earlier items suggested) · Qty (up to 3 decimals) · Department · Technician / worker · Notes. The
+   **department** is a dropdown of the worker sections, plus any department typed before; "➕ New
+   department…" opens a box for one that is not there (Maintenance, Store …) — typed in any case it is filed
+   under its first spelling, and a section typed by name is filed as the section. The **worker** is a
+   dropdown from Production Workers, narrowed to the section picked (a typed department offers every active
+   worker). The date and time are the **server's clock at saving** — never typed, so a row cannot be
+   back-dated. Recording needs `consumables.edit`; viewing is free. **Once saved, only an admin edits or
+   deletes a row**: every change keeps the row as it was (`ConsumableIssueRevision`, shown under the
+   "edited" pill), delete is soft, and an edit made on a page older than the row is refused rather than
+   overwriting someone else's. A worker with hand-outs cannot be deleted from the workers list, only
+   deactivated. Opens on today; the slicer reaches a year back; Excel export.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

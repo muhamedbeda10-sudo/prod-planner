@@ -93,3 +93,27 @@ export function monthLabelSortKey(label: string): number {
 export function factoryDayISO(at: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
 }
+
+const CAIRO_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Africa/Cairo", hourCycle: "h23",
+  year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+
+/** How far the factory's clock is ahead of UTC at one instant, in ms. */
+function cairoOffsetMs(t: number): number {
+  const p = Object.fromEntries(CAIRO_PARTS.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+  return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second)) - (t - (t % 1000));
+}
+
+/** The first instant of a factory day ("2026-09-07") — the lower bound of a
+ *  query over timestamps made that day, the inverse of factoryDayISO. Two
+ *  passes, so a day that starts inside a daylight-saving jump still lands on
+ *  its real first moment. Null for a malformed day. */
+export function factoryDayStart(iso: string): Date | null {
+  const d = parseISODate(iso);
+  if (!d) return null;
+  const midnight = d.getTime();
+  let t = midnight - cairoOffsetMs(midnight);
+  t = midnight - cairoOffsetMs(t);
+  return new Date(t);
+}
