@@ -5,16 +5,20 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts";
 import { ExportButton } from "@/components/ExportButton";
+import { OdooInsightsSection } from "@/components/OdooInsights";
+import type { OdooInsights } from "@/lib/domain/odooInsights";
 import {
   pctChange, periodLabel,
   type OdooDashboardData, type OdooSeries,
 } from "@/lib/domain/odooStats";
 
 // The Odoo dashboard — what was logged each day, by product. One period row
-// scopes everything below it: the headline numbers, a card per product, the
-// stacked columns per day (every count written on its segment), one small
-// chart per product, totals and closed-vs-open, and the same numbers as a
-// table with an Excel export — the chart is never the only way to read a value.
+// scopes everything below it: the headline numbers, a card per product, how
+// the close-out is going (components/OdooInsights.tsx: close-rate gauge,
+// funnel, status donut, lead time, aging, burn-up, BOM mix), the stacked
+// columns per day (every count written on its segment), one small chart per
+// product, totals and closed-vs-open, and the same numbers as a table with an
+// Excel export — the chart is never the only way to read a value.
 
 // The sheet's six products keep their fixed colours; a product logged beyond
 // them takes the next free slot of the palette in the order it appears in
@@ -111,16 +115,17 @@ function TopLabel(p: LabelBox) {
   );
 }
 
-/** The stack's total, drawn once per column by whichever segment is on top
- *  that day — recharts skips a label on a zero-height segment, so the last
- *  series cannot carry it alone. */
-function stackTotalLabel(series: OdooSeries, rows: { total: number; top: OdooSeries | null }[]) {
-  const Total = (p: LabelBox & { index?: number }) => {
-    const row = rows[p.index ?? -1];
-    if (!row || row.top !== series) return null;
-    return <TopLabel {...p} value={row.total} />;
+/** The stack's total, written once per column by whichever segment is on
+ *  top that day. The day is read off the label's own entry: recharts leaves
+ *  a zero-height segment out of the label list, so an index would drift onto
+ *  the wrong column. */
+function stackTotalAccessor(series: OdooSeries, present: readonly OdooSeries[]) {
+  return (entry: { payload?: Record<string, unknown> }) => {
+    const row = entry.payload;
+    if (!row) return "";
+    const top = [...present].reverse().find((s) => Number(row[s] ?? 0) > 0);
+    return top === series ? fmt(present.reduce((n, s) => n + Number(row[s] ?? 0), 0)) : "";
   };
-  return Total;
 }
 
 // ---- headline numbers and the product cards ----
@@ -251,7 +256,6 @@ function Card({ title, sub, children, right }: { title: string; sub?: string; ch
 
 function DailyByProduct({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
   const data = d.days.map((p) => ({ label: p.label, ...p.bySeries }));
-  const stack = d.days.map((p) => ({ total: p.qty, top: [...present].reverse().find((s) => p.bySeries[s] > 0) ?? null }));
   const n = d.days.length;
   return (
     <ChartScroller minWidth={Math.max(560, n * 34)} height={340}>
@@ -269,7 +273,7 @@ function DailyByProduct({ d, present, pal }: { d: OdooDashboardData; present: Od
             isAnimationActive={false}
           >
             <LabelList dataKey={s} content={segmentLabel(pal.ink(s))} />
-            <LabelList dataKey={s} content={stackTotalLabel(s, stack)} />
+            <LabelList valueAccessor={stackTotalAccessor(s, present)} position="top" fontSize={10} fontWeight={700} fill="var(--foreground)" />
           </Bar>
         ))}
       </BarChart>
@@ -410,7 +414,7 @@ function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeri
 
 // ---- the page body ----
 
-export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
+export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insights: OdooInsights } }) {
   const [showTable, setShowTable] = useState(false);
   const present = d.series;
   const pal = useMemo(() => paletteFor(present), [present]);
@@ -477,6 +481,12 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
         <h2 className="font-bold mb-2">Per product <span className="text-muted font-normal text-sm">· {word}</span></h2>
         <ProductCards d={d} present={present} pal={pal} />
       </section>
+
+      <OdooInsightsSection
+        ins={d.insights}
+        colorOf={(product) => pal.color(product)}
+        file={(name) => `odoo-${name}-${d.bom ? `${d.bom}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`}
+      />
 
       <Card title={`Quantity ${word} per day, by product`} sub={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
         <DailyByProduct d={d} present={present} pal={pal} />
