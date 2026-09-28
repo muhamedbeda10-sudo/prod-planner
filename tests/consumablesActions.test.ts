@@ -11,22 +11,28 @@ const h = vi.hoisted(() => {
   return {
     prisma: {
       consumableIssue: { create: fn(), findUnique: fn(), findMany: fn(), updateMany: fn() },
-      consumableIssueRevision: { create: fn() },
+      consumableIssueRevision: { create: fn(), findUnique: fn() },
       worker: { findUnique: fn() },
       $transaction: fn(),
     },
     revalidatePath: vi.fn(),
     requirePerm: vi.fn(),
     requireAdmin: vi.fn(),
+    getCurrentUser: vi.fn(),
   };
 });
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("next/cache", () => ({ revalidatePath: h.revalidatePath }));
-vi.mock("@/lib/server/auth", () => ({ requirePerm: h.requirePerm, requireAdmin: h.requireAdmin }));
+vi.mock("@/lib/server/auth", () => ({
+  requirePerm: h.requirePerm,
+  requireAdmin: h.requireAdmin,
+  getCurrentUser: h.getCurrentUser,
+  hasPerm: (u: { isAdmin: boolean; perms: string }, p: string) => u.isAdmin || u.perms.split(",").includes(p),
+}));
 
-import { createConsumableIssue, updateConsumableIssue, deleteConsumableIssue } from "@/app/consumables/actions";
+import { createConsumableIssue, updateConsumableIssue, deleteConsumableIssue, restoreConsumableRevision } from "@/app/consumables/actions";
 
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -34,8 +40,10 @@ function form(fields: Record<string, string>): FormData {
   return fd;
 }
 
-const storekeeper = { id: 5, name: "Store Keeper", isAdmin: false };
-const admin = { id: 1, name: "Admin", isAdmin: true };
+const storekeeper = { id: 5, name: "Store Keeper", isAdmin: false, perms: "consumables.edit" };
+const colleague = { id: 6, name: "Other Keeper", isAdmin: false, perms: "consumables.edit" };
+const viewer = { id: 9, name: "Viewer", isAdmin: false, perms: "" };
+const admin = { id: 1, name: "Admin", isAdmin: true, perms: "" };
 const NO_PERM = { error: "You do not have permission for this action — ask the admin." };
 
 const sayed = { id: 7, empId: "1203", name: "Sayed", active: true, depts: "WeldingTX" };
@@ -50,6 +58,7 @@ const saved = (over: Record<string, unknown> = {}) => ({
   workerId: 7,
   notes: null,
   deletedAt: null,
+  recordedById: 5,
   updatedAt: version,
   worker: { empId: "1203", name: "Sayed" },
   ...over,
@@ -59,6 +68,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.requirePerm.mockResolvedValue({ user: storekeeper });
   h.requireAdmin.mockResolvedValue({ user: admin });
+  h.getCurrentUser.mockResolvedValue(storekeeper);
   h.prisma.worker.findUnique.mockResolvedValue(sayed);
   // the departments typed on earlier rows
   h.prisma.consumableIssue.findMany.mockResolvedValue([{ department: "Maintenance" }]);
@@ -117,27 +127,39 @@ describe("createConsumableIssue", () => {
 describe("updateConsumableIssue", () => {
   const edit = (over: Record<string, string> = {}) => form({ ...valid, qty: "3", id: "42", version: version.toISOString(), ...over });
 
-  it("is the admin's alone — a recorder cannot change a saved row", async () => {
-    h.requireAdmin.mockResolvedValue(NO_PERM);
-    const res = await updateConsumableIssue(edit());
-    expect(res).toEqual({ ok: false, error: NO_PERM.error });
-    expect(h.prisma.consumableIssue.updateMany).not.toHaveBeenCalled();
-    expect(h.prisma.consumableIssueRevision.create).not.toHaveBeenCalled();
-  });
-
-  it("saves the change and keeps the row as it was", async () => {
+  it("lets the recorder correct his own row, keeping it before and after", async () => {
     const res = await updateConsumableIssue(edit({ notes: "two spools" }));
     expect(res).toEqual({ ok: true });
     const upd = h.prisma.consumableIssue.updateMany.mock.calls[0][0];
-    expect(upd.where).toEqual({ id: 42, deletedAt: null, updatedAt: version });
-    expect(upd.data).toMatchObject({ item: "Welding wire 1.2mm", notes: "two spools", editedBy: "Admin" });
+    expect(upd.where).toEqual({ id: 42, updatedAt: version, deletedAt: null });
+    expect(upd.data).toMatchObject({ item: "Welding wire 1.2mm", notes: "two spools", editedBy: "Store Keeper" });
     expect(upd.data.qty.toString()).toBe("3");
     expect(upd.data).not.toHaveProperty("issuedAt");
     const rev = h.prisma.consumableIssueRevision.create.mock.calls[0][0].data;
     expect(rev).toMatchObject({
-      issueId: 42, action: "edit", byId: 1, by: "Admin",
+      issueId: 42, action: "edit", byId: 5, by: "Store Keeper",
       before: { item: "Welding wire 1.2mm", qty: 2, department: "WeldingTX", workerId: 7, workerEmpId: "1203", workerName: "Sayed", notes: null },
+      after: { item: "Welding wire 1.2mm", qty: 3, department: "WeldingTX", workerId: 7, workerEmpId: "1203", workerName: "Sayed", notes: "two spools" },
     });
+  });
+
+  it("refuses a colleague's row, a viewer, and a logged-out visitor", async () => {
+    h.getCurrentUser.mockResolvedValueOnce(colleague);
+    expect((await updateConsumableIssue(edit())).error).toMatch(/only correct the hand-outs you recorded/);
+    h.getCurrentUser.mockResolvedValueOnce({ ...viewer, id: 5 });
+    expect((await updateConsumableIssue(edit())).error).toMatch(/only correct the hand-outs you recorded/);
+    h.getCurrentUser.mockResolvedValueOnce(null);
+    expect((await updateConsumableIssue(edit())).error).toMatch(/not logged in/);
+    // a row whose recorder's account is gone is the admin's
+    h.prisma.consumableIssue.findUnique.mockResolvedValueOnce(saved({ recordedById: null }));
+    expect((await updateConsumableIssue(edit())).error).toMatch(/only correct/);
+    expect(h.prisma.consumableIssue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("lets an admin correct anyone's row", async () => {
+    h.getCurrentUser.mockResolvedValue(admin);
+    expect((await updateConsumableIssue(edit())).ok).toBe(true);
+    expect(h.prisma.consumableIssueRevision.create.mock.calls[0][0].data).toMatchObject({ byId: 1, by: "Admin" });
   });
 
   it("refuses when the row changed since the page was drawn", async () => {
@@ -188,10 +210,12 @@ describe("deleteConsumableIssue", () => {
     const res = await deleteConsumableIssue(del());
     expect(res).toEqual({ ok: true });
     const upd = h.prisma.consumableIssue.updateMany.mock.calls[0][0];
-    expect(upd.where).toEqual({ id: 42, deletedAt: null, updatedAt: version });
+    expect(upd.where).toEqual({ id: 42, updatedAt: version, deletedAt: null });
     expect(upd.data).toMatchObject({ deletedBy: "Admin" });
     expect(upd.data.deletedAt).toBeInstanceOf(Date);
-    expect(h.prisma.consumableIssueRevision.create.mock.calls[0][0].data).toMatchObject({ issueId: 42, action: "delete", by: "Admin" });
+    const rev = h.prisma.consumableIssueRevision.create.mock.calls[0][0].data;
+    expect(rev).toMatchObject({ issueId: 42, action: "delete", by: "Admin", before: { qty: 2, item: "Welding wire 1.2mm" } });
+    expect(rev.after).toBe(Prisma.DbNull);
   });
 
   it("refuses a stale page or a bad id", async () => {
@@ -199,5 +223,59 @@ describe("deleteConsumableIssue", () => {
     expect((await deleteConsumableIssue(del({ id: "abc" }))).error).toMatch(/Invalid row/);
     expect((await deleteConsumableIssue(del({ version: "" }))).error).toMatch(/Invalid row/);
     expect(h.prisma.consumableIssue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("restoreConsumableRevision", () => {
+  const before = { item: "Welding wire 1.2mm", qty: 5, department: "WeldingTX", workerId: 7, workerEmpId: "1203", workerName: "Sayed", notes: "first" };
+  const restore = (over: Record<string, string> = {}) => form({ revisionId: "11", version: version.toISOString(), ...over });
+
+  beforeEach(() => {
+    h.prisma.consumableIssueRevision.findUnique.mockResolvedValue({ issueId: 42, before });
+  });
+
+  it("is the admin's alone — the recorder cannot restore", async () => {
+    h.requireAdmin.mockResolvedValue(NO_PERM);
+    expect((await restoreConsumableRevision(restore())).ok).toBe(false);
+    expect(h.prisma.consumableIssue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("puts the row back as it read, and keeps the restore as a change of its own", async () => {
+    const res = await restoreConsumableRevision(restore());
+    expect(res).toEqual({ ok: true });
+    const upd = h.prisma.consumableIssue.updateMany.mock.calls[0][0];
+    // no deletedAt in the guard: a deleted row can be brought back too
+    expect(upd.where).toEqual({ id: 42, updatedAt: version });
+    expect(upd.data).toMatchObject({ item: "Welding wire 1.2mm", department: "WeldingTX", workerId: 7, notes: "first", deletedAt: null, deletedBy: null, editedBy: "Admin" });
+    expect(upd.data.qty.toString()).toBe("5");
+    const rev = h.prisma.consumableIssueRevision.create.mock.calls[0][0].data;
+    expect(rev).toMatchObject({
+      issueId: 42, action: "restore", by: "Admin",
+      before: { qty: 2, notes: null },
+      after: { qty: 5, notes: "first" },
+    });
+  });
+
+  it("brings a deleted row back onto the log", async () => {
+    h.prisma.consumableIssue.findUnique.mockResolvedValue(saved({ deletedAt: new Date(), ...{ qty: new Prisma.Decimal(5), notes: "first" } }));
+    const res = await restoreConsumableRevision(restore());
+    expect(res.ok).toBe(true);
+    expect(h.prisma.consumableIssue.updateMany.mock.calls[0][0].data).toMatchObject({ deletedAt: null });
+  });
+
+  it("refuses a restore that would change nothing, a stale page, or an unknown version", async () => {
+    h.prisma.consumableIssue.findUnique.mockResolvedValueOnce(saved({ qty: new Prisma.Decimal(5), notes: "first" }));
+    expect((await restoreConsumableRevision(restore())).error).toMatch(/already reads like that/);
+    expect((await restoreConsumableRevision(restore({ version: "2026-01-01T00:00:00.000Z" }))).error).toMatch(/Someone changed/);
+    h.prisma.consumableIssueRevision.findUnique.mockResolvedValueOnce(null);
+    expect((await restoreConsumableRevision(restore())).error).toMatch(/no longer exists/);
+    h.prisma.consumableIssueRevision.findUnique.mockResolvedValueOnce({ issueId: 42, before: { junk: true } });
+    expect((await restoreConsumableRevision(restore())).error).toMatch(/cannot be read back/);
+    expect(h.prisma.consumableIssue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the version's worker has been deleted from the list", async () => {
+    h.prisma.worker.findUnique.mockResolvedValueOnce(null);
+    expect((await restoreConsumableRevision(restore())).error).toMatch(/no longer on the list/);
   });
 });

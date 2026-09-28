@@ -1,43 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { Fragment, useCallback, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { WORKER_GROUPS } from "@/lib/domain/tanks";
 import { CONSUMABLE_LIMITS, NEW_DEPARTMENT, workersForDepartment } from "@/lib/domain/consumables";
 import type { ConsumableIssueView, ConsumablesPageData, ConsumableWorkerOption } from "@/lib/server/consumables";
 import { createConsumableIssue, deleteConsumableIssue, updateConsumableIssue } from "@/app/consumables/actions";
+import { ActionMsg as Msg, RevisionItem, useConsumableAction as useAction } from "@/components/consumablesUi";
 
 // The CONSUMABLES tab: the store's log of what it hands out. The form on top
 // is the storekeeper's (consumables.edit); the log below is everyone's to
-// read, and only an admin can change or delete a row once it is saved.
-
-type ActionResult = { ok: boolean; error?: string; department?: string };
-type ActionFn = (fd: FormData) => Promise<ActionResult>;
-
-function useAction() {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const run = useCallback(
-    (fn: ActionFn, fd: FormData, okText: string, after?: (res: ActionResult) => void) => {
-      startTransition(async () => {
-        const res = await fn(fd);
-        setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
-        if (res.ok) {
-          after?.(res);
-          router.refresh();
-        }
-      });
-    },
-    [router]
-  );
-  return { pending, msg, run };
-}
-
-function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
-  if (!msg) return null;
-  return <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`} role="status">{msg.text}</p>;
-}
+// read. A saved row is corrected by the person who recorded it or an admin;
+// its history, deleting and restoring are the admin's.
 
 const F = "px-2 py-1.5 text-sm font-semibold";
 const ITEMS_LIST = "consumable-items";
@@ -186,7 +159,7 @@ function RecordForm({ data }: { data: ConsumablesPageData }) {
           {add.pending ? "Saving…" : "Record"}
         </button>
       </div>
-      <p className="text-xs text-muted">The date and time are stamped when you save. A saved row can only be changed by an admin.</p>
+      <p className="text-xs text-muted">The date and time are stamped when you save. You can correct the rows you recorded — every correction is kept for the admin.</p>
       <Msg msg={add.msg} />
     </form>
   );
@@ -217,7 +190,7 @@ function EditRow({ e, data, colSpan, onClose }: { e: ConsumableIssueView; data: 
             <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={edit.pending}>Save</button>
             <button type="button" className="btn btn-sm btn-ghost shrink-0" onClick={onClose} disabled={edit.pending}>Cancel</button>
           </div>
-          <p className="text-xs text-muted">Recorded {e.issuedAtLabel} by {e.recordedBy}. The time stays as recorded; the row as it is now is kept in its history.</p>
+          <p className="text-xs text-muted">Recorded {e.issuedAtLabel} by {e.recordedBy}. The time stays as recorded; the row as it is now is kept, and the admin can restore it.</p>
           <Msg msg={edit.msg} />
         </form>
       </td>
@@ -225,7 +198,7 @@ function EditRow({ e, data, colSpan, onClose }: { e: ConsumableIssueView; data: 
   );
 }
 
-function IssueRow({ e, data, isAdmin, colSpan }: { e: ConsumableIssueView; data: ConsumablesPageData; isAdmin: boolean; colSpan: number }) {
+function IssueRow({ e, data, isAdmin, showActions, colSpan }: { e: ConsumableIssueView; data: ConsumablesPageData; isAdmin: boolean; showActions: boolean; colSpan: number }) {
   const [editing, setEditing] = useState(false);
   const [history, setHistory] = useState(false);
   const del = useAction();
@@ -243,51 +216,55 @@ function IssueRow({ e, data, isAdmin, colSpan }: { e: ConsumableIssueView; data:
         <td className="p-2 text-muted">{e.notes ?? ""}</td>
         <td className="p-2 text-xs text-muted whitespace-nowrap">
           {e.recordedBy}
-          {e.edited && (
+          {e.edited && (isAdmin ? (
+            // the history is the admin's: the pill opens it
             <button
               type="button" className="pill pill-warn ml-1 cursor-pointer" aria-expanded={history}
-              title={`Edited by ${e.edited.by} at ${e.edited.atLabel} — click for the history`}
+              title={`Last changed by ${e.edited.by} at ${e.edited.atLabel} — click for the history`}
               onClick={() => setHistory((v) => !v)}
             >
-              edited
+              edited{e.revisions.length > 1 ? ` ×${e.revisions.length}` : ""}
             </button>
-          )}
+          ) : (
+            <span className="pill pill-warn ml-1" title={`Last changed by ${e.edited.by} at ${e.edited.atLabel}`}>edited</span>
+          ))}
         </td>
-        {isAdmin && (
+        {showActions && (
           <td className="p-2 whitespace-nowrap no-print">
-            <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)} disabled={del.pending}>
-              {editing ? "Close" : "Edit"}
-            </button>
-            <button
-              type="button" className="btn btn-sm btn-danger ml-1" disabled={del.pending}
-              onClick={() => {
-                if (!confirm(`Delete this hand-out?\n\n${e.qty} × ${e.item} → ${e.worker.name}\n\nIt leaves the log; its history is kept.`)) return;
-                const fd = new FormData();
-                fd.set("id", String(e.id));
-                fd.set("version", e.version);
-                del.run(deleteConsumableIssue, fd, "Deleted.");
-              }}
-            >
-              Delete
-            </button>
+            {e.canEdit && (
+              <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)} disabled={del.pending}>
+                {editing ? "Close" : "Edit"}
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                type="button" className="btn btn-sm btn-danger ml-1" disabled={del.pending}
+                onClick={() => {
+                  if (!confirm(`Delete this hand-out?\n\n${e.qty} × ${e.item} → ${e.worker.name}\n\nIt leaves the log; you can restore it from the Edits view.`)) return;
+                  const fd = new FormData();
+                  fd.set("id", String(e.id));
+                  fd.set("version", e.version);
+                  del.run(deleteConsumableIssue, fd, "Deleted.");
+                }}
+              >
+                Delete
+              </button>
+            )}
             <Msg msg={del.msg && !del.msg.ok ? del.msg : null} />
           </td>
         )}
       </tr>
-      {history && e.revisions.length > 0 && (
+      {isAdmin && history && e.revisions.length > 0 && (
         <tr className="bg-surface-2">
           <td colSpan={colSpan} className="p-2">
-            <ul className="text-xs space-y-0.5">
-              {e.revisions.map((r) => (
-                <li key={r.id}>
-                  <span className="ltr tabnum text-muted">{r.atLabel}</span> — <b>{r.by}</b> {r.action === "delete" ? "deleted" : "edited"} the row. It read: <span className="font-semibold">{r.before}</span>
-                </li>
-              ))}
+            <div className="text-xs font-bold text-muted uppercase tracking-wide mb-1">History — newest first</div>
+            <ul className="text-xs">
+              {e.revisions.map((r) => <RevisionItem key={r.id} r={r} version={e.version} />)}
             </ul>
           </td>
         </tr>
       )}
-      {editing && isAdmin && <EditRow e={e} data={data} colSpan={colSpan} onClose={() => setEditing(false)} />}
+      {editing && e.canEdit && <EditRow e={e} data={data} colSpan={colSpan} onClose={() => setEditing(false)} />}
     </Fragment>
   );
 }
@@ -311,7 +288,9 @@ export function ConsumablesClient({
       [e.item, e.departmentLabel, e.worker.name, e.worker.empId, e.notes ?? "", e.recordedBy].some((v) => v.toLowerCase().includes(needle))
     );
   }, [data.entries, q]);
-  const colSpan = isAdmin ? 8 : 7;
+  // the actions column is there for an admin, or for a recorder with a row of his own on screen
+  const showActions = isAdmin || data.entries.some((e) => e.canEdit);
+  const colSpan = showActions ? 8 : 7;
 
   return (
     <div className="space-y-3">
@@ -351,11 +330,11 @@ export function ConsumablesClient({
                   <th className="p-2">Technician / worker</th>
                   <th className="p-2">Notes</th>
                   <th className="p-2">Recorded by</th>
-                  {isAdmin && <th className="p-2 no-print" title="Only an admin changes a saved row">Admin</th>}
+                  {showActions && <th className="p-2 no-print" title="Correct your own rows; deleting is the admin's">Actions</th>}
                 </tr>
               </thead>
               <tbody>
-                {shown.map((e) => <IssueRow key={e.id} e={e} data={data} isAdmin={isAdmin} colSpan={colSpan} />)}
+                {shown.map((e) => <IssueRow key={e.id} e={e} data={data} isAdmin={isAdmin} showActions={showActions} colSpan={colSpan} />)}
               </tbody>
             </table>
           </div>

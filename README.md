@@ -250,11 +250,15 @@ mobile drawer still lists every view flat, since it has the vertical room.
    under its first spelling, and a section typed by name is filed as the section. The **worker** is a
    dropdown from Production Workers, narrowed to the section picked (a typed department offers every active
    worker). The date and time are the **server's clock at saving** — never typed, so a row cannot be
-   back-dated. Recording needs `consumables.edit`; viewing is free. **Once saved, only an admin edits or
-   deletes a row**: every change keeps the row as it was (`ConsumableIssueRevision`, shown under the
-   "edited" pill), delete is soft, and an edit made on a page older than the row is refused rather than
-   overwriting someone else's. A worker with hand-outs cannot be deleted from the workers list, only
-   deactivated. Opens on today; the slicer reaches a year back; Excel export.
+   back-dated. Recording needs `consumables.edit`; viewing is free. **A saved row is corrected by the person
+   who recorded it, or by an admin** — a recorder cannot touch a colleague's rows; deleting is the admin's,
+   and soft. Every change keeps the row **before and after** (`ConsumableIssueRevision`). The history is the
+   admin's: the "edited" pill opens it under the row, and the **Log · Edits** switch lists every correction,
+   delete and restore in the period (who, when, "Qty: 10 → 8"), with **↺ Restore this version** on each —
+   it puts the row back the way it read before that change, brings a deleted row back onto the log, and is
+   itself kept as a change. An edit made on a page older than the row is refused rather than overwriting
+   someone else's. A worker with hand-outs cannot be deleted from the workers list, only deactivated.
+   Opens on today; the slicer reaches a year back; Excel export of the log and of the edits.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

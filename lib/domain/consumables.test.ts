@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   NEW_DEPARTMENT,
+  canEditIssue,
+  describeSnapshot,
+  parseSnapshot,
+  sameSnapshot,
+  snapshotChanges,
   cleanText,
   departmentLabel,
   factoryDateTimeLabel,
@@ -163,5 +168,55 @@ describe("factory time", () => {
   it("cleans text", () => {
     expect(cleanText("  a \n\t b ")).toBe("a b");
     expect(cleanText(null)).toBe("");
+  });
+});
+
+describe("canEditIssue", () => {
+  const recorder = { id: 5, isAdmin: false, canRecord: true };
+  it("lets the recorder edit his own rows only", () => {
+    expect(canEditIssue(recorder, { recordedById: 5 })).toBe(true);
+    expect(canEditIssue(recorder, { recordedById: 6 })).toBe(false);
+    expect(canEditIssue(recorder, { recordedById: null })).toBe(false);
+  });
+  it("takes it back when the permission goes", () => {
+    expect(canEditIssue({ ...recorder, canRecord: false }, { recordedById: 5 })).toBe(false);
+  });
+  it("lets an admin edit any row", () => {
+    expect(canEditIssue({ id: 1, isAdmin: true, canRecord: false }, { recordedById: 6 })).toBe(true);
+    expect(canEditIssue({ id: 1, isAdmin: true, canRecord: false }, { recordedById: null })).toBe(true);
+  });
+});
+
+describe("snapshots", () => {
+  const a = { item: "Gloves", qty: 2, department: "WeldingTX", workerId: 7, workerEmpId: "1203", workerName: "Sayed", notes: null };
+
+  it("compares by value, the worker by id", () => {
+    expect(sameSnapshot(a, { ...a, workerName: "Sayed Ali" })).toBe(true);
+    expect(sameSnapshot(a, { ...a, qty: 3 })).toBe(false);
+    expect(sameSnapshot(a, { ...a, notes: "x" })).toBe(false);
+  });
+
+  it("reads a stored snapshot back, and refuses junk", () => {
+    expect(parseSnapshot(JSON.parse(JSON.stringify(a)))).toEqual(a);
+    expect(parseSnapshot({ ...a, notes: "" })?.notes).toBeNull();
+    expect(parseSnapshot(null)).toBeNull();
+    expect(parseSnapshot({ item: "x" })).toBeNull();
+    expect(parseSnapshot({ ...a, qty: 0 })).toBeNull();
+  });
+
+  it("says what changed, field by field", () => {
+    const b = { ...a, qty: 3, department: "Maintenance", workerId: 8, workerEmpId: "1310", workerName: "Mahmoud", notes: "spare" };
+    expect(snapshotChanges(a, b)).toEqual([
+      "Qty: 2 → 3",
+      "Department: Welding TX → Maintenance",
+      "Worker: 1203 Sayed → 1310 Mahmoud",
+      "Notes: — → “spare”",
+    ]);
+    expect(snapshotChanges(a, null)).toEqual([]);
+  });
+
+  it("describes a snapshot in one line", () => {
+    expect(describeSnapshot(a)).toBe("2 × Gloves · Welding TX · 1203 Sayed");
+    expect(describeSnapshot(null)).toBe("—");
   });
 });
