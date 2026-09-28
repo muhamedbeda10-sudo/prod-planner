@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import { getActiveLine } from "./line";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, bomOfFgCode, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView, type OdooScope } from "@/lib/domain/odoo";
-import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod, type OdooStatRow } from "@/lib/domain/odooStats";
+import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod } from "@/lib/domain/odooStats";
+import { buildOdooInsights, type OdooInsightRow, type OdooInsights } from "@/lib/domain/odooInsights";
 import { candidateBoms, candidateMos, moKey, nestingKey, type NestingLookup } from "@/lib/domain/odooMaterial";
 
 export interface OdooPageData {
@@ -159,7 +160,7 @@ async function linesByMo(mosPerRow: string[][]): Promise<NestingLookup> {
 /** Rows logged in the window OR closed in it — a row logged before the period
  *  and closed inside it counts among the period's closings. The doneAt window
  *  is a day wider each side; the aggregation filters by the factory's day. */
-async function statRows(fromISO: string | null, toISO: string): Promise<OdooStatRow[]> {
+async function statRows(fromISO: string | null, toISO: string): Promise<OdooInsightRow[]> {
   const DAY = 24 * 60 * 60 * 1000;
   const from = fromISO ? parseISODate(fromISO) : null;
   const to = parseISODate(toISO)!;
@@ -171,24 +172,28 @@ async function statRows(fromISO: string | null, toISO: string): Promise<OdooStat
         { doneAt: { ...(from ? { gte: new Date(from.getTime() - DAY) } : {}), lt: new Date(to.getTime() + 2 * DAY) } },
       ],
     },
-    select: { date: true, product: true, qty: true, status: true, doneAt: true, fgCode: true },
+    select: { date: true, product: true, qty: true, status: true, doneAt: true, fgCode: true, odooMo: true },
   });
   return rows.map((r) => ({
     dateISO: toISODate(r.date), product: r.product, qty: r.qty, status: r.status,
     doneISO: r.doneAt ? factoryDayISO(r.doneAt) : null,
     // the BOM is read off the FG code rather than stored again — see bomOfFgCode
     bom: bomOfFgCode(r.fgCode),
+    hasMo: r.odooMo.trim() !== "",
   }));
 }
 
 /** The dashboard's numbers for one period, compared with the period before it. */
-export async function getOdooDashboard(period: OdooPeriod, basis: OdooBasis = "closed", bom: string | null = null): Promise<OdooDashboardData> {
+/** The dashboard as drawn: the per-product numbers and the close-out insights. */
+export type OdooDashboardView = OdooDashboardData & { insights: OdooInsights };
+
+export async function getOdooDashboard(period: OdooPeriod, basis: OdooBasis = "closed", bom: string | null = null): Promise<OdooDashboardView> {
   const prev = previousPeriod(period);
   const [rows, prevRows] = await Promise.all([
     statRows(period.fromISO, period.toISO),
     prev ? statRows(prev.fromISO, prev.toISO) : Promise.resolve(null),
   ]);
-  return buildOdooDashboard(rows, period, prevRows, basis, bom);
+  return { ...buildOdooDashboard(rows, period, prevRows, basis, bom), insights: buildOdooInsights(rows, period, bom) };
 }
 
 // ---- import: the office's sheet, once, its first seven columns ----

@@ -1,0 +1,275 @@
+"use client";
+
+import {
+  Bar, BarChart, CartesianGrid, Cell, Funnel, FunnelChart, LabelList, Line, LineChart, Pie, PieChart,
+  PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
+import { ChartCard, Legend, TipBox, fmt, pct, type TableRow } from "@/components/charts/kit";
+import type { OdooInsights as Insights } from "@/lib/domain/odooInsights";
+import type { OdooTone } from "@/lib/domain/odoo";
+
+// "How the close-out is going" — the ODOO dashboard's second half, one form
+// per question: a gauge for the close rate, a funnel from logged to Done, a
+// donut of where the rows stand now, a histogram of how long a close takes
+// and the average per product, the open rows by age (older = darker), a
+// burn-up of logged against closed, and the quantity per BOM split by
+// product. Products keep the colours the rest of the dashboard gives them.
+
+type TipProps<T> = { active?: boolean; payload?: readonly { payload?: T }[] };
+
+/** Where a row stands: the status colours, each with its name beside it. */
+function statusColor(status: string, tone: OdooTone): string {
+  if (tone === "ok") return "var(--ok-fg)";
+  if (/^pending$/i.test(status)) return "var(--warn-fg)";
+  if (/^blocked$/i.test(status)) return "var(--bad-fg)";
+  if (/cancel/i.test(status)) return "var(--viz-other)";
+  if (/^mo to be close$/i.test(status)) return "var(--viz-2)";
+  return "color-mix(in srgb, var(--viz-other) 55%, var(--surface))";
+}
+
+/** An ordered ramp of one hue — light for the first step, dark for the last. */
+const ramp = (hue: string, i: number, n: number) => `color-mix(in srgb, ${hue} ${Math.round(35 + (65 * i) / Math.max(1, n - 1))}%, var(--surface))`;
+
+function Box({ height, minWidth = 0, children }: { height: number; minWidth?: number; children: React.ReactElement }) {
+  return (
+    <div className="overflow-x-auto viz">
+      <div style={{ height, minWidth }}>
+        <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+/** A funnel step's name and count, one line to the right of the trapezoid —
+ *  recharts' own right label wraps inside the margin. */
+function FunnelLabel(p: { x?: number | string; y?: number | string; width?: number | string; height?: number | string; value?: unknown }) {
+  const x = Number(p.x ?? 0) + Number(p.width ?? 0) + 8;
+  const y = Number(p.y ?? 0) + Number(p.height ?? 0) / 2;
+  return <text x={x} y={y} dy={4} fontSize={12} fill="var(--foreground)">{String(p.value ?? "")}</text>;
+}
+
+function Gauge({ value, label, sub }: { value: number; label: string; sub: string }) {
+  const data = [{ name: label, value: Math.round(value * 1000) / 10 }];
+  return (
+    <div className="relative mx-auto" style={{ width: 240, height: 150 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <RadialBarChart data={data} cx="50%" cy="92%" innerRadius="120%" outerRadius="165%" startAngle={180} endAngle={0} barSize={18}>
+          <PolarAngleAxis type="number" domain={[0, 100]} tick={false} axisLine={false} />
+          <RadialBar dataKey="value" cornerRadius={9} fill="var(--viz-1)" background={{ fill: "color-mix(in srgb, var(--viz-1) 14%, var(--surface))" }} isAnimationActive={false} />
+        </RadialBarChart>
+      </ResponsiveContainer>
+      <div className="absolute inset-x-0 bottom-1 text-center pointer-events-none">
+        <div className="text-[34px] font-semibold leading-none">{pct(value)}</div>
+        <div className="text-xs text-muted mt-1">{sub}</div>
+      </div>
+    </div>
+  );
+}
+
+export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; colorOf: (product: string) => string; file: (name: string) => string }) {
+  const f = ins.funnel;
+  const funnelData = [
+    { name: "Logged", value: f.logged },
+    { name: "With MO", value: f.withMo },
+    { name: "Done", value: f.done },
+  ];
+  const funnelShown = funnelData.map((d) => ({ ...d, label: `${d.name} · ${fmt(d.value)}` }));
+  const statusTotal = ins.statusMix.reduce((n, s) => n + s.rows, 0);
+  const lt = ins.leadTime;
+  const ageMax = Math.max(0, ...ins.aging.buckets.map((b) => b.rows));
+  const burnEvery = ins.burnUp.length > 14 ? Math.ceil(ins.burnUp.length / 14) - 1 : 0;
+  const lastBurn = ins.burnUp.at(-1);
+  const bomData = ins.bomMix.rows.map((r) => ({ bom: r.bom, qty: r.qty, ...r.bySeries }));
+  // each bar's total is written once, at the end of its last non-empty
+  // segment. The row is read off the label's own entry — recharts leaves a
+  // zero-width segment out of the label list, so an index would drift.
+  const topSeries = (row: Record<string, unknown>) => [...ins.bomMix.series].reverse().find((s) => Number(row[s] ?? 0) > 0) ?? null;
+  const bomTotal = (series: string) => (entry: { payload?: Record<string, unknown> }) =>
+    entry.payload && topSeries(entry.payload) === series ? fmt(Number(entry.payload.qty ?? 0)) : "";
+
+  const tables = {
+    funnel: funnelData.map((d) => ({ Stage: d.name, Rows: d.value, "Of logged": f.logged ? pct(d.value / f.logged, 1) : "—" })) as TableRow[],
+    status: ins.statusMix.map((s) => ({ Status: s.status, Rows: s.rows, Qty: s.qty, Share: statusTotal ? pct(s.rows / statusTotal, 1) : "—" })) as TableRow[],
+    lead: lt.buckets.map((b) => ({ "Logged → closed": b.label, Rows: b.rows })) as TableRow[],
+    leadProduct: lt.byProduct.map((p) => ({ Product: p.product, "Average days": p.avgDays, Rows: p.rows })) as TableRow[],
+    aging: ins.aging.buckets.map((b) => ({ Waiting: b.label, "Open rows": b.rows, Qty: b.qty })) as TableRow[],
+    burn: ins.burnUp.map((b) => ({ Day: b.dateISO, "Logged (cumulative)": b.logged, "Closed (cumulative)": b.closed, "Open gap": b.open })) as TableRow[],
+    bom: ins.bomMix.rows.map((r) => ({ BOM: r.bom, ...Object.fromEntries(ins.bomMix.series.map((s) => [s, r.bySeries[s] ?? 0])), Total: r.qty })) as TableRow[],
+  };
+
+  return (
+    <section className="space-y-3">
+      <h2 className="font-bold">How the close-out is going <span className="text-muted font-normal text-sm">· the rows logged in the period, and the closings in it</span></h2>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <ChartCard title="Close rate" sub="Of the rows logged in the period, how many are Done by now" table={{ rows: tables.funnel, filename: file("close-rate"), sheet: "Close rate" }}>
+          <Gauge value={ins.closeRate} label="Close rate" sub={`${fmt(f.done)} of ${fmt(f.logged)} rows Done`} />
+          <div className="mt-3 grid grid-cols-3 text-center text-xs">
+            <div><div className="text-lg font-semibold">{fmt(f.logged)}</div><div className="text-muted">logged</div></div>
+            <div><div className="text-lg font-semibold">{fmt(f.logged - f.done)}</div><div className="text-muted">still open</div></div>
+            <div><div className="text-lg font-semibold">{fmt(ins.aging.openQty)}</div><div className="text-muted">open qty</div></div>
+          </div>
+        </ChartCard>
+
+        <ChartCard title="From logged to Done" sub="Logged → Odoo's MO on the row → Done: each step keeps the rows that reached it" table={{ rows: tables.funnel, filename: file("funnel"), sheet: "Funnel" }}>
+          <Box height={220}>
+            <FunnelChart margin={{ top: 4, right: 120, bottom: 4, left: 8 }}>
+              <Tooltip content={(p: TipProps<{ name: string; value: number }>) => {
+                const r = p.active ? p.payload?.[0]?.payload : undefined;
+                return r ? <TipBox title={r.name} rows={[{ label: "Rows", value: fmt(r.value) }, { label: "Of logged", value: f.logged ? pct(r.value / f.logged, 1) : "—" }]} /> : null;
+              }} />
+              <Funnel dataKey="value" data={funnelShown} isAnimationActive={false} stroke="var(--surface)" strokeWidth={2} lastShapeType="rectangle">
+                {funnelData.map((d, i) => <Cell key={d.name} fill={ramp("var(--viz-1)", i, funnelData.length)} />)}
+                <LabelList dataKey="label" content={FunnelLabel} />
+              </Funnel>
+            </FunnelChart>
+          </Box>
+        </ChartCard>
+
+        <ChartCard title="Where the rows stand now" sub="The logged rows by their status today" table={{ rows: tables.status, filename: file("status"), sheet: "Status" }}>
+          <div className="relative mx-auto" style={{ width: 190, height: 190 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={ins.statusMix} dataKey="rows" nameKey="status" innerRadius={58} outerRadius={90} paddingAngle={ins.statusMix.length > 1 ? 1.5 : 0}
+                  stroke="var(--surface)" strokeWidth={2} startAngle={90} endAngle={-270} isAnimationActive={false}>
+                  {ins.statusMix.map((s) => <Cell key={s.status} fill={statusColor(s.status, s.tone)} />)}
+                </Pie>
+                <Tooltip content={(p: TipProps<(typeof ins.statusMix)[number]>) => {
+                  const r = p.active ? p.payload?.[0]?.payload : undefined;
+                  return r ? <TipBox title={r.status} rows={[{ label: "Rows", value: fmt(r.rows), color: statusColor(r.status, r.tone) }, { label: "Qty", value: fmt(r.qty) }]} /> : null;
+                }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 grid place-items-center pointer-events-none text-center">
+              <div><div className="text-2xl font-semibold leading-none">{fmt(statusTotal)}</div><div className="text-[11px] text-muted">rows</div></div>
+            </div>
+          </div>
+          <ul className="mt-2 space-y-1 text-sm">
+            {ins.statusMix.map((s) => (
+              <li key={s.status} className="flex items-center gap-2">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: statusColor(s.status, s.tone) }} aria-hidden />
+                <span className="flex-1">{s.status}</span>
+                <span className="tabnum text-muted">{fmt(s.rows)}</span>
+                <span className="tabnum font-bold w-12 text-right">{statusTotal ? pct(s.rows / statusTotal) : "—"}</span>
+              </li>
+            ))}
+          </ul>
+        </ChartCard>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <ChartCard title="How long a close takes" sub={lt.rows ? `From the day a row was logged to the day it went Done — ${fmt(lt.rows)} row(s) closed in the period` : "No row closed in the period"}
+          table={{ rows: tables.lead, filename: file("lead-time"), sheet: "Lead time" }}>
+          <div className="flex flex-wrap gap-2 mb-2 text-xs">
+            {[["Median", lt.medianDays], ["Average", lt.avgDays], ["9 in 10 within", lt.p90Days]].map(([label, v]) => (
+              <span key={String(label)} className="pill pill-muted">{label} <b className="tabnum">{v === null ? "—" : `${fmt(Number(v), 1)} d`}</b></span>
+            ))}
+          </div>
+          <Box height={230}>
+            <BarChart data={lt.buckets} margin={{ top: 16, right: 8, left: -18, bottom: 0 }} barCategoryGap="18%">
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
+              <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(p: TipProps<{ label: string; rows: number }>) => {
+                const r = p.active ? p.payload?.[0]?.payload : undefined;
+                return r ? <TipBox title={r.label} rows={[{ label: "Rows closed", value: fmt(r.rows), color: "var(--viz-2)" }, { label: "Share", value: lt.rows ? pct(r.rows / lt.rows) : "—" }]} /> : null;
+              }} />
+              <Bar dataKey="rows" fill="var(--viz-2)" maxBarSize={40} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                <LabelList dataKey="rows" position="top" fontSize={10} fontWeight={700} fill="var(--foreground)" formatter={(v: unknown) => (Number(v) ? fmt(Number(v)) : "")} />
+              </Bar>
+            </BarChart>
+          </Box>
+        </ChartCard>
+
+        <ChartCard title="Average days to close, by product" sub="The slower products first" table={{ rows: tables.leadProduct, filename: file("lead-time-by-product"), sheet: "Lead by product" }}>
+          {lt.byProduct.length === 0 ? <p className="text-sm text-muted">No row closed in the period.</p> : (
+            <Box height={Math.max(140, 24 + lt.byProduct.length * 34)}>
+              <BarChart data={lt.byProduct} layout="vertical" margin={{ top: 0, right: 56, left: 8, bottom: 0 }} barCategoryGap="30%">
+                <CartesianGrid horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit=" d" />
+                <YAxis type="category" dataKey="product" width={110} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(p: TipProps<(typeof lt.byProduct)[number]>) => {
+                  const r = p.active ? p.payload?.[0]?.payload : undefined;
+                  return r ? <TipBox title={r.product} rows={[{ label: "Average", value: `${fmt(r.avgDays, 1)} days`, color: colorOf(r.product) }, { label: "Rows closed", value: fmt(r.rows) }]} /> : null;
+                }} />
+                <Bar dataKey="avgDays" maxBarSize={22} radius={[0, 4, 4, 0]} isAnimationActive={false}>
+                  {lt.byProduct.map((p) => <Cell key={p.product} fill={colorOf(p.product)} />)}
+                  <LabelList dataKey="avgDays" position="right" fontSize={11} fontWeight={700} fill="var(--foreground)" formatter={(v: unknown) => `${fmt(Number(v), 1)} d`} />
+                </Bar>
+              </BarChart>
+            </Box>
+          )}
+        </ChartCard>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <ChartCard title="Open rows by age"
+          sub={ins.aging.openRows ? `${fmt(ins.aging.openRows)} logged row(s) still open at the period's end — the darker, the longer waiting${ins.aging.oldestDays !== null ? ` · oldest ${ins.aging.oldestDays} days` : ""}` : "Every row logged in the period is Done or cancelled"}
+          table={{ rows: tables.aging, filename: file("aging"), sheet: "Aging" }}>
+          <Box height={240}>
+            <BarChart data={ins.aging.buckets} margin={{ top: 16, right: 8, left: -18, bottom: 0 }} barCategoryGap="18%">
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} />
+              <YAxis allowDecimals={false} domain={[0, Math.max(1, ageMax)]} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
+              <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(p: TipProps<(typeof ins.aging.buckets)[number]>) => {
+                const r = p.active ? p.payload?.[0]?.payload : undefined;
+                return r ? <TipBox title={`Waiting ${r.label}`} rows={[{ label: "Open rows", value: fmt(r.rows) }, { label: "Qty", value: fmt(r.qty) }]} /> : null;
+              }} />
+              <Bar dataKey="rows" maxBarSize={44} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                {ins.aging.buckets.map((b, i) => <Cell key={b.label} fill={ramp("var(--viz-3)", i, ins.aging.buckets.length)} />)}
+                <LabelList dataKey="rows" position="top" fontSize={10} fontWeight={700} fill="var(--foreground)" formatter={(v: unknown) => (Number(v) ? fmt(Number(v)) : "")} />
+              </Bar>
+            </BarChart>
+          </Box>
+        </ChartCard>
+
+        <ChartCard title="Burn-up: logged against closed"
+          sub={lastBurn ? `Running totals of rows · the gap is the open backlog — ${fmt(lastBurn.open)} at the end` : "Nothing in the period"}
+          table={{ rows: tables.burn, filename: file("burn-up"), sheet: "Burn-up" }}>
+          <Box height={240} minWidth={Math.max(360, Math.min(ins.burnUp.length, 45) * 12)}>
+            <LineChart data={ins.burnUp} margin={{ top: 10, right: 16, left: -4, bottom: 0 }}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={burnEvery} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
+              <Tooltip cursor={{ stroke: "var(--border-strong)" }} content={(p: TipProps<(typeof ins.burnUp)[number]>) => {
+                const r = p.active ? p.payload?.[0]?.payload : undefined;
+                return r ? <TipBox title={r.label} rows={[
+                  { label: "Logged so far", value: fmt(r.logged), color: "var(--viz-2)", line: true },
+                  { label: "Closed so far", value: fmt(r.closed), color: "var(--viz-1)", line: true },
+                  { label: "Open gap", value: fmt(r.open) },
+                ]} /> : null;
+              }} />
+              <Line type="monotone" dataKey="logged" stroke="var(--viz-2)" strokeWidth={2} dot={false} activeDot={{ r: 5, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
+              <Line type="monotone" dataKey="closed" stroke="var(--viz-1)" strokeWidth={2} dot={false} activeDot={{ r: 5, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
+            </LineChart>
+          </Box>
+          <div className="mt-2"><Legend items={[{ label: "Logged (running total)", color: "var(--viz-2)", line: true }, { label: "Closed (running total)", color: "var(--viz-1)", line: true }]} /></div>
+        </ChartCard>
+      </div>
+
+      {bomData.length > 0 && (
+        <ChartCard title="Quantity per BOM, by product" sub={`The ${bomData.length} heaviest BOM(s) logged in the period — each bar split by product`}
+          table={{ rows: tables.bom, filename: file("bom-mix"), sheet: "BOM mix" }}>
+          <Box height={Math.max(160, 30 + bomData.length * 34)} minWidth={420}>
+            <BarChart data={bomData} layout="vertical" margin={{ top: 0, right: 48, left: 8, bottom: 0 }} barCategoryGap="28%">
+              <CartesianGrid horizontal={false} />
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="bom" width={120} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(p: TipProps<Record<string, number | string>>) => {
+                const r = p.active ? p.payload?.[0]?.payload : undefined;
+                return r ? <TipBox title={`${r.bom} · ${fmt(Number(r.qty))}`} rows={ins.bomMix.series.filter((s) => Number(r[s]) > 0).map((s) => ({ label: s, value: fmt(Number(r[s])), color: colorOf(s) }))} /> : null;
+              }} />
+              {ins.bomMix.series.map((s, i) => (
+                <Bar key={s} dataKey={s} stackId="b" fill={colorOf(s)} stroke="var(--surface)" strokeWidth={1} maxBarSize={22}
+                  radius={i === ins.bomMix.series.length - 1 ? [0, 4, 4, 0] : undefined} isAnimationActive={false}>
+                  <LabelList valueAccessor={bomTotal(s)} position="right" offset={6} fontSize={11} fontWeight={700} fill="var(--foreground)" />
+                </Bar>
+              ))}
+            </BarChart>
+          </Box>
+          <div className="mt-2"><Legend items={ins.bomMix.series.map((s) => ({ label: s, color: colorOf(s) }))} /></div>
+        </ChartCard>
+      )}
+    </section>
+  );
+}
