@@ -3,11 +3,12 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MessagesSquare, X, Maximize2, Reply } from "lucide-react";
+import { MessagesSquare, X, Maximize2, Reply, Volume2, VolumeX } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { pollChat, pollChatInbox } from "@/app/chat/actions";
 import type { ChatContact, ChatInboxItem, ThreadKind } from "@/lib/server/chat";
+import { armChime, chimeOn, playChime, setChimeOn } from "@/lib/chime";
 
 // 💬 Chat as a corner icon, not a tab.
 //
@@ -25,7 +26,8 @@ import type { ChatContact, ChatInboxItem, ThreadKind } from "@/lib/server/chat";
 // bottom corner of whatever page is open — who sent it, the group, a preview —
 // with Reply (opens the panel on that conversation) and ✕. A light poll finds
 // them; the newest id already popped is kept per user in the browser, so a
-// reload or a new page never pops the same message twice.
+// reload or a new page never pops the same message twice. Every new card
+// plays a short chime; the speaker in the panel header mutes it.
 
 const POLL_MS = 15000;
 const MAX_CARDS = 4;
@@ -65,11 +67,18 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
   const [cards, setCards] = useState<ChatInboxItem[]>([]);
   const [openOn, setOpenOn] = useState<{ kind: ThreadKind; id: number } | null>(null);
   const pathname = usePathname();
+  const router = useRouter();
   const quietRef = useRef(false); // panel open or on /chat — the chat itself shows them
   useEffect(() => {
     quietRef.current = open || pathname === "/chat";
   }, [open, pathname]);
   const cursorRef = useRef<number | null>(null);
+  const [sound, setSound] = useState(true);
+  useEffect(() => {
+    armChime();
+    const t = setTimeout(() => setSound(chimeOn()), 0); // localStorage only exists in the browser
+    return () => clearTimeout(t);
+  }, []);
   const [contacts, setContacts] = useState<ChatContact[] | null>(null);
   const [err, setErr] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
@@ -92,6 +101,7 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
     setLiveUnread(res.unread ?? 0);
     const fresh = first ? [] : (res.items ?? []);
     if (fresh.length > 0 && !quietRef.current) {
+      playChime();
       setCards((cur) => {
         const have = new Set(cur.map((c) => c.id));
         return [...fresh.filter((m) => !have.has(m.id)), ...cur].slice(0, 10);
@@ -124,8 +134,13 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
   }, [open, poll]);
 
   const reply = (c: ChatInboxItem) => {
-    setOpenOn({ kind: c.kind, id: c.threadId });
     setCards([]);
+    // the corner panel is desktop-only; a phone gets the full chat page
+    if (!window.matchMedia("(min-width: 768px)").matches) {
+      router.push(`/chat?open=${c.kind}-${c.threadId}`);
+      return;
+    }
+    setOpenOn({ kind: c.kind, id: c.threadId });
     setOpen(true);
   };
   const dismiss = (id: number) => setCards((cur) => cur.filter((c) => c.id !== id));
@@ -185,10 +200,25 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
           <div className="flex items-center gap-2 px-3 py-2 border-b bg-surface-2 shrink-0">
             <MessagesSquare size={15} className="text-brand" />
             <b className="text-sm">Chat</b>
+            <button
+              type="button"
+              onClick={() => {
+                const on = !sound;
+                setSound(on);
+                setChimeOn(on);
+                if (on) playChime();
+              }}
+              className="ms-auto rounded-md p-1.5 hover:bg-surface transition-colors text-muted"
+              title={sound ? "Message sound on — click to mute" : "Message sound off — click to turn on"}
+              aria-label={sound ? "Mute message sound" : "Turn message sound on"}
+              aria-pressed={sound}
+            >
+              {sound ? <Volume2 size={15} /> : <VolumeX size={15} />}
+            </button>
             <Link
               href="/chat"
               onClick={() => setOpen(false)}
-              className="ms-auto rounded-md p-1.5 hover:bg-surface transition-colors text-muted"
+              className="rounded-md p-1.5 hover:bg-surface transition-colors text-muted"
               title="Open chat full screen"
               aria-label="Open chat full screen"
             >
@@ -262,7 +292,8 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
               className="self-end rounded-full border bg-surface px-3 py-1 text-xs font-bold shadow"
               onClick={() => {
                 setCards([]);
-                setOpen(true);
+                if (window.matchMedia("(min-width: 768px)").matches) setOpen(true);
+                else router.push("/chat");
               }}
             >
               +{cards.length - MAX_CARDS} more — open chat
