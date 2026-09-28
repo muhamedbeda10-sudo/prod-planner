@@ -4,7 +4,7 @@ import { pctStyle, Num } from "@/components/ui";
 import { DeptPicker } from "@/components/controls";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
-import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
+import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
 import { countWorkingDays } from "@/lib/server/report";
 import { OutputByComponentChart } from "@/components/LazyCharts";
 import { PrintButton } from "@/components/PrintButton";
@@ -117,7 +117,7 @@ export default async function ReportPage({
       {/* controls only — no on-screen title (the print masthead carries the name) */}
       <div className="no-print space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <ViewTabs views={DASHBOARD_VIEWS} current="/report" label="Dashboard view" />
+          <ViewTabs views={TRACKER_VIEWS} current="/report" label="Tracker view" />
           <DeptPicker value={sp.dept ?? ""} />
           <span className="ms-auto"><PrintButton /></span>
         </div>

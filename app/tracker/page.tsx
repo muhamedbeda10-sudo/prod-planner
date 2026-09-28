@@ -10,7 +10,7 @@ import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
 import { toDisplayDate } from "@/lib/domain/dates";
-import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
+import { ViewTabs, TRACKER_VIEWS, trackerViews } from "@/components/ViewTabs";
 import { LvTrackerTable } from "@/components/LvTrackerTable";
 import { getActiveLine } from "@/lib/server/line";
 import { getLvTracker } from "@/lib/server/lvTracker";
@@ -48,7 +48,7 @@ export default async function TrackerPage({
       <>
         <PrintHeader title="Plan Tracker — LV Panels" date={issued} />
         <LvTrackerTable
-          viewTabs={<ViewTabs views={TRACKER_VIEWS} current="/tracker" label="Tracker view" />}
+          viewTabs={<ViewTabs views={trackerViews("LV")} current="/tracker" label="Tracker view" />}
           rows={rows}
           editableStages={user ? LV_CHAIN.filter((s) => hasPerm(user, lvPermKey(s))) : []}
           canStatus={!!user && hasPerm(user, "lv.status")}

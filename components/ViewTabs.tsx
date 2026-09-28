@@ -1,11 +1,10 @@
 import Link from "next/link";
 
-// One tab in the strip can hold several screens. The nav used to carry a tab
-// each for the Dashboard, the Report and the Analytics — three answers to the
-// same question, three slots — and another for the Plan Tracker beside its own
-// daily log. This is the switcher that lets one tab hold them all: the pages
-// stay separate routes (each is big, and each deep-links), and this reads as
-// one place with views.
+// One tab in the strip can hold several screens: the pages stay separate
+// routes (each is big, and each deep-links), and this switcher reads them as
+// one place with views. The Plan Tracker tab holds the tracker, the plan's
+// dashboard, the daily log and its report; the Material tab holds the nesting
+// sheets and the analytics built on them.
 
 export interface View {
   href: string;
@@ -26,19 +25,28 @@ export function ViewTabs({ views, current, label }: { views: View[]; current: st
   );
 }
 
-/** The Dashboard tab's three screens: how the plant is doing, one day or
- *  period on paper, and the floor read in sheets. */
-export const DASHBOARD_VIEWS: View[] = [
-  { href: "/", label: "Dashboard", title: "How the plant is doing this week" },
-  { href: "/report", label: "Report", title: "One day or a period, ready to print" },
-  { href: "/analytics", label: "Analytics", title: "Fabrication read in sheets, tonnes and thicknesses" },
-];
-
-/** The Plan Tracker tab's two screens: the summary and the raw ledger the
- *  summary is made of. */
+/** The Plan Tracker tab's screens: the tracker, the plan's dashboard (how
+ *  the plant is doing this week), the raw ledger the tracker adds up, and the
+ *  report printed from that ledger. There is no Dashboard tab any more — the
+ *  dashboard is the plan's, so it lives with the plan. */
 export const TRACKER_VIEWS: View[] = [
   { href: "/tracker", label: "Plan Tracker", title: "One row per order, every stage" },
+  { href: "/", label: "Dashboard", title: "How the plan is doing this week — targets, throughput, the control loops" },
   { href: "/handover", label: "Daily log", title: "The raw entries the tracker adds up — edit and correct them here" },
+  { href: "/report", label: "Report", title: "The daily log as one day or a period, ready to print" },
+];
+
+/** The same, for the product line on screen: the printed report is the
+ *  transformers' — the panels' dashboard carries its own period table. */
+export function trackerViews(line: string): View[] {
+  return line === "LV" ? TRACKER_VIEWS.filter((v) => v.href !== "/report") : TRACKER_VIEWS;
+}
+
+/** The Material tab's screens: the nesting sheets, and the fabrication read
+ *  through them in sheets, tonnes and thicknesses. */
+export const MATERIAL_VIEWS: View[] = [
+  { href: "/material", label: "Material", title: "The nesting project tracker — what each order consumed" },
+  { href: "/analytics", label: "Analytics", title: "Fabrication read in sheets, tonnes and thicknesses — built on this tab" },
 ];
 
 /** The two plan imports, which lived on two separate Admin pages: the monthly

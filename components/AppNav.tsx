@@ -46,28 +46,28 @@ const LV_WORKLIST_DEPTS = [
 ] as const;
 
 // Tabs after Worklist, ordered by shop-floor flow: work → log → track →
-// review → the overview dashboard sits last (right side).
+// review. There is no Dashboard tab: each dashboard lives with what it reads.
 // One tab per QUESTION, not per screen. Several of these hold more than one
 // view behind their own switcher (see components/ViewTabs.tsx), which is what
 // keeps the strip short enough to read:
-//   Plan Tracker → the tracker and the daily log it adds up
+//   Material     → the nesting sheets, and the sheet analytics built on them
+//   Plan Tracker → the tracker, the plan's dashboard, the daily log and its report
 //   Floor        → the bay as it is, and the what-if simulator
-//   Dashboard    → this week, the printed report, and the sheet analytics
 // Chat is not here at all — it is the icon in the right cluster.
 const REST: Item[] = [
   // Material comes FIRST: nesting is decided before a single sheet is cut.
-  { href: "/material", label: "Material", icon: Layers },
+  { href: "/material", label: "Material", icon: Layers, also: ["/analytics"] },
   { href: "/odoo", label: "ODOO", icon: Boxes },
   // what the store hands out to the floor — item, qty, department, worker
   { href: "/consumables", label: "Consumables", icon: PackageMinus },
   // who worked today, how long, on what — the supervisors' page
   { href: "/shifts", label: "Shifts", icon: Clock },
-  { href: "/tracker", label: "Plan Tracker", icon: Table2, also: ["/handover"] },
+  // the home page (/) is the plan's dashboard — a view of this tab
+  { href: "/tracker", label: "Plan Tracker", icon: Table2, also: ["/", "/handover", "/report"] },
   // the tanks' sticker sheet — its own tab while per-piece tracking is on
   // (TANK_ONLY drops it otherwise), and still a button on the painting worklist
   { href: "/barcode", label: "Tank Barcodes", icon: QrCode, match: "/barcode" },
   { href: "/simulate", label: "Floor", icon: FlaskConical },
-  { href: "/", label: "Dashboard", icon: LayoutDashboard, also: ["/report", "/analytics"] },
 ];
 
 // The mobile drawer has vertical room — it lists the three worklists directly.
@@ -82,9 +82,10 @@ const DRAWER: Item[] = [
 // The drawer has room for the views that ride inside a tab on desktop, so a
 // phone reaches them in one tap instead of two.
 const DRAWER_VIEWS: Item[] = [
-  { href: "/report", label: "Report", icon: FileBarChart2 },
-  { href: "/analytics", label: "Analytics", icon: ChartColumnBig },
+  { href: "/", label: "Plan dashboard", icon: LayoutDashboard },
   { href: "/handover", label: "Daily log", icon: BookOpenCheck },
+  { href: "/report", label: "Report", icon: FileBarChart2 },
+  { href: "/analytics", label: "Material analytics", icon: ChartColumnBig },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
 ];
 
@@ -168,7 +169,8 @@ export function AppNav({
     ? [...LV_WORKLIST_DEPTS.map((d): Item => ({ href: d.href, label: `${d.label} Worklist`, icon: d.icon })), ...DRAWER.filter((l) => !l.href.startsWith("/worklist/"))]
     : DRAWER
   ).filter((l) => tankTabs || !TANK_ONLY.has(l.href)).map(named);
-  const drawerViews = DRAWER_VIEWS.filter((l) => tankTabs || !TANK_ONLY.has(l.href));
+  // the printed report is the transformers' — the panels' dashboard carries its own
+  const drawerViews = DRAWER_VIEWS.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && !(line === "LV" && l.href === "/report"));
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
   const singleDeptHref = !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;
 
