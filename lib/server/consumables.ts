@@ -2,7 +2,8 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { WORKER_SECTIONS } from "@/lib/domain/tanks";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
-import { factoryDayStart } from "@/lib/domain/dates";
+import { factoryDayISO, factoryDayStart } from "@/lib/domain/dates";
+import { consumablesStats, previousPeriod, type ConsumablesStats } from "@/lib/domain/consumablesStats";
 import {
   canEditIssue,
   departmentLabel,
@@ -212,4 +213,40 @@ export async function getConsumableEdits(fromISO: string, toISO: string): Promis
       },
     };
   });
+}
+
+const CAIRO_HOUR = new Intl.DateTimeFormat("en-US", { timeZone: "Africa/Cairo", hour: "2-digit", hourCycle: "h23" });
+
+/** The dashboard for factory days from..to: the period's hand-outs worked
+ *  into cards, charts and tables, and the count of the period just before. */
+export async function getConsumablesDashboard(fromISO: string, toISO: string): Promise<ConsumablesStats> {
+  const { gte, lt } = periodBounds(fromISO, toISO);
+  const prev = previousPeriod(fromISO, toISO);
+  const prevBounds = periodBounds(prev.fromISO, prev.toISO);
+  const [rows, previousIssues] = await Promise.all([
+    prisma.consumableIssue.findMany({
+      where: { deletedAt: null, issuedAt: { gte, lt } },
+      select: {
+        item: true, qty: true, department: true, workerId: true, issuedAt: true,
+        worker: { select: { name: true, empId: true } },
+      },
+    }),
+    prisma.consumableIssue.count({ where: { deletedAt: null, issuedAt: { gte: prevBounds.gte, lt: prevBounds.lt } } }),
+  ]);
+  return consumablesStats(
+    rows.map((r) => ({
+      item: r.item,
+      qty: r.qty.toNumber(),
+      department: r.department,
+      departmentLabel: departmentLabel(r.department),
+      workerId: r.workerId,
+      workerName: r.worker.name,
+      empId: r.worker.empId,
+      dayISO: factoryDayISO(r.issuedAt),
+      hour: Number(CAIRO_HOUR.format(r.issuedAt)) % 24,
+    })),
+    fromISO,
+    toISO,
+    previousIssues,
+  );
 }
