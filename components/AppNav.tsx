@@ -236,7 +236,9 @@ export function AppNav({
   const isActive = (href: string, match?: string, also?: string[]) =>
     on(match ?? href) || (also ?? []).some(on);
   // what THIS account may open from the tools menu
-  const adminLinks = ADMIN.filter((l) => user.isAdmin || (l.perm && user.perms.includes(l.perm)));
+  // a link with its own key follows the tick, admins included; one without
+  // is an admin page
+  const adminLinks = ADMIN.filter((l) => (l.perm ? user.perms.includes(l.perm) : user.isAdmin));
   const showTools = user.isAdmin || adminLinks.length > 0;
   const adminActive = adminLinks.some((l) => isActive(l.href, l.match, l.also)) || isActive("/admin/users") || isActive("/admin/standard-times");
 

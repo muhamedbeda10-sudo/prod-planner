@@ -51,11 +51,17 @@ describe("password hashing (scrypt, stored as salt:hash hex)", () => {
 });
 
 describe("permission checks", () => {
-  it("an admin bypasses every permission gate", () => {
-    const admin = mkUser({ isAdmin: true, perms: "" });
+  it("an admin follows their ticks like everyone else", () => {
+    const admin = mkUser({ isAdmin: true, perms: "cut.edit" });
     expect(hasPerm(admin, "cut.edit")).toBe(true);
-    expect(hasPerm(admin, "tracker.delivered")).toBe(true);
-    expect(canEditDept(admin, "Welding")).toBe(true);
+    // unticked: not allowed, admin or not
+    expect(hasPerm(admin, "tracker.delivered")).toBe(false);
+    expect(canEditDept(admin, "Welding")).toBe(false);
+  });
+
+  it("a key outside the catalog (nothing to tick) stays admin-only", () => {
+    expect(hasPerm(mkUser({ isAdmin: true, perms: "" }), "not.a.key")).toBe(true);
+    expect(hasPerm(mkUser({ perms: "cut.edit" }), "not.a.key")).toBe(false);
   });
 
   it("a non-admin is gated strictly by their perms CSV", () => {

@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PERM_KEYS, deptPermKey, ledgerPermKey, linePermKey, parsePerms, shiftPermKey, trackerPermKey } from "./permissions";
+import { ACCESS_PERM_KEYS, PERMISSIONS, PERM_KEYS, deptPermKey, ledgerPermKey, linePermKey, parsePerms, shiftPermKey, trackerPermKey } from "./permissions";
 
 describe("the panels' own keys", () => {
   it("are all registered, so the Users page offers them and parsePerms keeps them", () => {
@@ -38,5 +39,22 @@ describe("the panels' own keys", () => {
   it("leave the transformer keys as they were", () => {
     expect(trackerPermKey("ShotBlast")).toBe("tracker.shp");
     expect(shiftPermKey("ShotBlast")).toBe("shifts.shotblast");
+  });
+});
+
+describe("admins follow their ticks", () => {
+  it("start ticked with every access right but no notification", () => {
+    const notify = PERMISSIONS.filter((p) => p.notify).map((p) => p.key);
+    expect(notify.sort()).toEqual(["odoo.alerts", "odoo.needMo"]);
+    for (const k of notify) expect(ACCESS_PERM_KEYS).not.toContain(k);
+    expect(ACCESS_PERM_KEYS.length + notify.length).toBe(PERM_KEYS.size);
+  });
+  it("were ticked by the migration with exactly the access rights of the day", () => {
+    const sql = readFileSync("prisma/migrations/20260928160000_admins_follow_ticks/migration.sql", "utf8");
+    const list = /SET "perms" = '([^']+)'/.exec(sql)?.[1].split(",") ?? [];
+    // every right in the migration exists; a right added later is ticked by hand
+    for (const k of list) expect(ACCESS_PERM_KEYS, k).toContain(k);
+    expect(list).not.toContain("odoo.alerts");
+    expect(list).not.toContain("odoo.needMo");
   });
 });
