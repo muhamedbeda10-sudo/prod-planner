@@ -4,6 +4,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import {
   ODOO_PRODUCTS, ODOO_STATUSES, ODOO_NOTE_FILTERS, ODOO_MO_FILTERS, ODOO_CLOSED_FILTERS, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
+  odooItemTotals, odooScopeLabel, singleDayOf, type OdooItemTotal,
   type OdooEntryView, type OdooGroup, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter, type OdooMoFilter, type OdooClosedFilter,
 } from "@/lib/domain/odoo";
 import { sourceLabel } from "@/lib/domain/odooMirror";
@@ -63,6 +64,10 @@ function todayISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** The first day of `iso`'s month, and the Saturday its work week starts on. */
+const monthStartOf = (iso: string) => `${iso.slice(0, 7)}-01`;
+const weekStartOf = (iso: string) => shiftISO(iso, -((new Date(iso + "T00:00:00Z").getUTCDay() + 1) % 7));
+
 export function OdooDayPicker({ day, days }: { day: string; days: string[] }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -73,6 +78,28 @@ export function OdooDayPicker({ day, days }: { day: string; days: string[] }) {
     router.push(`${pathname}?${p}`);
   };
   const isAll = day === "all";
+  const range = /^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/.exec(day);
+  if (range) {
+    const [, from, to] = range;
+    const today = todayISO();
+    const presets: [string, string][] = [
+      ["This week", `${weekStartOf(today)}..${today}`],
+      ["This month", `${monthStartOf(today)}..${today}`],
+      ["Last month", `${monthStartOf(shiftISO(monthStartOf(today), -1))}..${shiftISO(monthStartOf(today), -1)}`],
+    ];
+    return (
+      <div className="inline-flex flex-wrap items-center gap-1.5 text-sm font-semibold">
+        <span className="text-xs text-muted">From</span>
+        <input type="date" aria-label="From" value={from} max={to} onChange={(e) => e.target.value && go(`${e.target.value}..${to}`)} className="border rounded-md px-2 py-1.5 bg-surface font-bold ltr tabnum" />
+        <span className="text-xs text-muted">to</span>
+        <input type="date" aria-label="To" value={to} min={from} onChange={(e) => e.target.value && go(`${from}..${e.target.value}`)} className="border rounded-md px-2 py-1.5 bg-surface font-bold ltr tabnum" />
+        {presets.map(([label, v]) => (
+          <button key={label} type="button" className={`btn btn-sm ${v === day ? "btn-primary" : "btn-ghost"}`} onClick={() => go(v)}>{label}</button>
+        ))}
+        <button type="button" className="btn btn-sm btn-primary" onClick={() => go(to)} title="Back to a single day">✕ Period</button>
+      </div>
+    );
+  }
   return (
     <div className="inline-flex items-center gap-1.5 text-sm font-semibold">
       <button type="button" className="btn btn-sm" disabled={isAll} onClick={() => go(shiftISO(day, -1))} title="Previous day">
@@ -104,6 +131,14 @@ export function OdooDayPicker({ day, days }: { day: string; days: string[] }) {
       {/* The tab opens on ONE day, which is how a row logged last week reads as
           lost. This is the way back to the whole log, in the open, not buried
           in a dropdown — and it is where the search reaches every day. */}
+      <button
+        type="button"
+        className="btn btn-sm btn-ghost"
+        onClick={() => { const end = isAll ? todayISO() : day; go(`${monthStartOf(end)}..${end}`); }}
+        title="A from–to period: the rows and the item cards cover every day in it"
+      >
+        Period
+      </button>
       <button
         type="button"
         className={`btn btn-sm ${isAll ? "btn-primary" : "btn-ghost"}`}
@@ -153,7 +188,7 @@ function RowFields({
   return (
     <>
       <Field hint="Date of the close attempt" className="w-[8.5rem]">
-        <input name="date" type="date" aria-label="Date" defaultValue={e?.dateISO ?? (day === "all" ? today : day)} required disabled={disabled} className={`${F} ltr tabnum w-full`} />
+        <input name="date" type="date" aria-label="Date" defaultValue={e?.dateISO ?? singleDayOf(day) ?? today} required disabled={disabled} className={`${F} ltr tabnum w-full`} />
       </Field>
       <Field hint="SOI#" className="w-28">
         <input name="soi" list="odoo-sois" aria-label="SOI" defaultValue={e?.soi ?? ""} disabled={disabled} placeholder="SOI#" className={`${F} ltr w-full`} />
@@ -623,7 +658,7 @@ function ImportPanel({ day }: { day: string }) {
   function submit(form: HTMLFormElement, preview: boolean) {
     const fd = new FormData(form);
     fd.set("preview", String(preview));
-    fd.set("day", day === "all" ? "" : day);
+    fd.set("day", singleDayOf(day) ?? "");
     startTransition(async () => {
       const r = await importOdooAction(fd);
       setIssues(r.issues ?? []);
@@ -648,7 +683,7 @@ function ImportPanel({ day }: { day: string }) {
       <p className="text-xs text-muted">
         Reads the sheet&apos;s first seven columns — Date · SOI# · FG-CODE · Product · MO# · QTY · Status. Notes are
         never read. The same MO on the same day is updated, never doubled, and its Status stays as moved here
-        {day !== "all" ? `; rows with a blank Date are filed under ${day}` : ""}.
+        {singleDayOf(day) ? `; rows with a blank Date are filed under ${day}` : ""}.
       </p>
       <Msg msg={res} />
       {issues.length > 0 && (
@@ -732,6 +767,37 @@ function FilterBar({ entries, filters, onChange, shown }: { entries: OdooEntryVi
 }
 
 /**
+ * How much of each item the rows on screen carry — the period's summary.
+ * Every other filter applies; the product filter is lifted so every card
+ * stays on screen, and a card IS that filter: click one to narrow the log
+ * to it, click it again to clear it.
+ */
+function ItemCards({ totals, selected, onPick, periodLabel }: { totals: OdooItemTotal[]; selected: string; onPick: (product: string) => void; periodLabel: string }) {
+  if (totals.length === 0) return null;
+  const all = totals.reduce((a, t) => ({ qty: a.qty + t.qty, rows: a.rows + t.rows, doneQty: a.doneQty + t.doneQty, openQty: a.openQty + t.openQty }), { qty: 0, rows: 0, doneQty: 0, openQty: 0 });
+  const card = (key: string, label: string, t: { qty: number; rows: number; doneQty: number; openQty: number }, on: boolean, onClick: () => void, title: string) => (
+    <button
+      key={key} type="button" onClick={onClick} title={title} aria-pressed={on}
+      className={`text-start bg-surface border rounded-xl px-3 py-2 min-w-0 sm:min-w-[8.5rem] transition-colors hover:border-brand/60 ${on ? "border-brand ring-2 ring-brand/30" : ""}`}
+    >
+      <div className="text-[11px] font-bold text-muted uppercase tracking-wide truncate">{label}</div>
+      <div className="text-2xl font-extrabold tabnum leading-tight mt-0.5">{t.qty.toLocaleString("en")}</div>
+      <div className="text-[11px] text-muted tabnum mt-0.5">
+        <span className="text-ok-fg font-semibold">{t.doneQty.toLocaleString("en")} closed</span>
+        {t.openQty > 0 && <> · <span className="text-bad-fg font-semibold">{t.openQty.toLocaleString("en")} open</span></>}
+        <span> · {t.rows} row{t.rows === 1 ? "" : "s"}</span>
+      </div>
+    </button>
+  );
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap no-print" aria-label="Quantity per item">
+      {card("all", "All items", all, selected === "", () => onPick(""), `Everything the rows ${periodLabel || "in the whole log"} carry, with the other filters applied`)}
+      {totals.map((t) => card(t.product, t.product, t, selected === t.product, () => onPick(selected === t.product ? "" : t.product), `${t.product}: ${t.qty} ${periodLabel} — click to show only these rows`))}
+    </div>
+  );
+}
+
+/**
  * What the day on screen is hiding.
  *
  * The tab opens on ONE day, so a row logged last week is not gone — it is on
@@ -808,17 +874,24 @@ export function OdooClient({
     [entries, filters]
   );
   const readyOn = filters.closed === "open" && filters.mo === "has";
+  // the cards: every filter but the product one, so all items stay in view
+  const line = useActiveLine();
+  const itemTotals = useMemo(
+    () => odooItemTotals(filterOdooEntries(entries, { ...filters, product: "" }), productsOf(line)),
+    [entries, filters, line]
+  );
   return (
     <div className="space-y-5">
       <ElsewhereBanner day={day} onDay={entries.length} totalRows={totalRows} openRows={openRows} />
       {entries.length > 0 && <FilterBar entries={entries} filters={filters} onChange={setFilters} shown={shown.length} />}
+      <ItemCards totals={itemTotals} selected={filters.product} onPick={(product) => setFilters({ ...filters, product })} periodLabel={odooScopeLabel(day)} />
       {shown.length > 0 && (
         // The counts ARE the filters: the planner reads "19 not closed" and the
         // next thing he wants is those nineteen. Clicking one narrows to it,
         // clicking it again clears it, and it stacks with the filter row above
         // rather than replacing it.
         <div className="text-sm text-muted flex flex-wrap items-center gap-x-1 gap-y-1 no-print">
-          <span>{shown.length} row(s){day !== "all" ? ` on ${day}` : ""}</span>
+          <span>{shown.length} row(s){day !== "all" ? ` ${odooScopeLabel(day)}` : ""}</span>
           <span aria-hidden>·</span>
           <CountFilter
             n={done}
@@ -868,12 +941,12 @@ export function OdooClient({
       <section className="bg-surface border rounded-xl overflow-hidden">
         {entries.length === 0 ? (
           <p className="text-sm text-muted p-4">
-            {day === "all" ? "No rows logged yet." : `Nothing logged on ${day}. Add the day's rows below, import the sheet, or look at all days.`}
+            {day === "all" ? "No rows logged yet." : singleDayOf(day) ? `Nothing logged on ${day}. Add the day's rows below, import the sheet, or look at all days.` : `Nothing logged ${odooScopeLabel(day)}.`}
           </p>
         ) : shown.length === 0 ? (
           <p className="text-sm text-muted p-4">
-            No row matches these filters{day !== "all" ? ` on ${day}` : ""}.
-            {day !== "all" && " The search only covers the day on screen — switch to All days to search the whole log."}
+            No row matches these filters{day !== "all" ? ` ${odooScopeLabel(day)}` : ""}.
+            {day !== "all" && ` The search only covers ${singleDayOf(day) ? "the day" : "the period"} on screen — switch to All days to search the whole log.`}
           </p>
         ) : (
           <div className="overflow-x-auto">

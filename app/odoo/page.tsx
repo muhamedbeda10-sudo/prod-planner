@@ -9,6 +9,7 @@ import { OdooBasisPicker, OdooBomPicker, OdooRangePicker } from "@/components/Od
 import { OdooDashboard } from "@/components/LazyCharts";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { toISODate } from "@/lib/domain/dates";
+import { odooScopeKey, parseOdooScope } from "@/lib/domain/odoo";
 import { PageHeader } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { OdooClient, OdooDayPicker } from "@/components/OdooClient";
@@ -28,8 +29,9 @@ export default async function OdooPage({
   const line = await getActiveLine();
 
   const sp = await searchParams;
-  const raw = (sp.day ?? "").trim();
-  const day = raw === "all" ? "all" : /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : toISODate(new Date());
+  // one day (today by default), a from..to period, or every day
+  const scope = parseOdooScope(sp.day ?? "", toISODate(new Date()));
+  const day = odooScopeKey(scope);
   const view = sp.view === "dashboard" ? "dashboard" : "log";
 
   const viewSwitch = (
@@ -57,7 +59,7 @@ export default async function OdooPage({
     );
   }
 
-  const { entries, days, knownSois, knownFgCodes, nesting, soiBoms, soiMos, lv, totalRows, openRows } = await getOdooData(day);
+  const { entries, days, knownSois, knownFgCodes, nesting, soiBoms, soiMos, lv, totalRows, openRows } = await getOdooData(scope);
 
   // the export carries the sheet's OWN headers, so the file drops straight
   // back into the workbook the office keeps
@@ -80,7 +82,7 @@ export default async function OdooPage({
       <PageHeader title="📦 ODOO — daily close-out log">
         {viewSwitch}
         <OdooDayPicker day={day} days={days} />
-        <ExportButton rows={exportRows} filename={`odoo-${day}.xlsx`} sheetName="Sheet1" />
+        <ExportButton rows={exportRows} filename={`odoo-${day.replace("..", "_to_")}.xlsx`} sheetName="Sheet1" />
       </PageHeader>
       <OdooClient
         entries={entries}

@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { getActiveLine } from "./line";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
-import { blockedItem, bomOfFgCode, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView } from "@/lib/domain/odoo";
+import { blockedItem, bomOfFgCode, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView, type OdooScope } from "@/lib/domain/odoo";
 import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod, type OdooStatRow } from "@/lib/domain/odooStats";
 import { candidateBoms, candidateMos, moKey, nestingKey, type NestingLookup } from "@/lib/domain/odooMaterial";
 
@@ -31,12 +31,12 @@ export interface OdooPageData {
   openRows: number;
 }
 
-/** The tab for one day (ISO), or every day when `dayISO` is "all". */
-export async function getOdooData(dayISO: string): Promise<OdooPageData> {
-  const day = dayISO === "all" ? null : parseISODate(dayISO);
-  const where = day
-    ? { date: { gte: day, lt: new Date(day.getTime() + 24 * 60 * 60 * 1000) } }
-    : undefined;
+/** The tab for one day, a from..to range (both days included), or every day. */
+export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const from = scope.kind === "day" ? parseISODate(scope.iso) : scope.kind === "range" ? parseISODate(scope.from) : null;
+  const to = scope.kind === "day" ? parseISODate(scope.iso) : scope.kind === "range" ? parseISODate(scope.to) : null;
+  const where = from && to ? { date: { gte: from, lt: new Date(to.getTime() + DAY_MS) } } : undefined;
 
   // one product line at a time — the toggle in the nav decides which
   const line = await getActiveLine();
