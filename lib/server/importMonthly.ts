@@ -6,13 +6,17 @@ import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
 export type { RevisionChange };
 
-/** A qty DECREASE found in a revision — applied, and shown with what the floor
- *  already produced so a cut under the produced count is seen. */
-export interface QtyReduction {
+/** A qty in the sheet that differs from the registry's — NOT applied. It
+ *  waits on the order (pendingPlanQty) until the planner uses it or keeps the
+ *  old one; shown with what the floor already produced. */
+export interface QtyProposal {
   mo: string;
-  from: number;
-  to: number;
+  bom: string;
+  from: number; // the registry's qty, kept for now
+  to: number; // the sheet's
   produced: number; // max quantity any dept already produced on this MO
+  /** Whether the order came from an earlier month's plan (carried over). */
+  carried: boolean;
 }
 
 export interface MonthlyImportResult {
@@ -25,11 +29,12 @@ export interface MonthlyImportResult {
   addedMos?: string[]; // first N new MOs for the confirmation view
   issues?: string[];
   preview?: boolean; // true = nothing was written, this is a dry-run report
-  /** Revision diff: every field change on existing MOs (applied unless preview),
-   *  the qty in either direction included. */
+  /** Revision diff: every field change on existing MOs but the qty (applied
+   *  unless preview). */
   changes?: RevisionChange[];
-  /** Qty decreases in the sheet — applied; listed with what was already produced. */
-  qtyReductions?: QtyReduction[];
+  /** Existing MOs whose qty in the sheet differs — held for the planner's
+   *  decision, never applied by the import. */
+  qtyProposals?: QtyProposal[];
   /** Open MOs previously imported from this same month but ABSENT from this
    *  sheet — taken out (unless preview): deleted when nothing was ever
    *  recorded on them, closed when the daily log or a tank names them. */
@@ -110,26 +115,39 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     });
   }
 
-  // ---- REVISION handling: mid-month the planner re-sends the same plan with
-  // edits. Existing MOs are diffed field by field; every difference is applied
-  // (unless preview) and reported as old → new so nothing changes silently.
-  // The plan qty follows the sheet in BOTH directions — a decrease is applied
-  // and listed with what the floor already produced, so the planner sees a
-  // cut that landed under the produced count without having to retype it.
+  // ---- REVISION handling: an MO already in the registry — carried over from
+  // an earlier month, or re-sent in a revision of the same one — is diffed
+  // field by field. Every difference but the qty is applied (unless preview)
+  // and reported old → new. The qty is NEVER changed by the import: a
+  // different figure is held on the order (pendingPlanQty) and listed, and
+  // the planner uses it or keeps the old one, here or on the tracker.
   const changes: RevisionChange[] = [];
-  const reductions: { mo: string; from: number; to: number }[] = [];
-  const changedRows: { r: (typeof rows)[number]; planQty: number }[] = [];
+  const proposals: { mo: string; from: number; to: number }[] = [];
+  const changedRows: { r: (typeof rows)[number] }[] = [];
+  const agreed: string[] = []; // a held qty the sheet now matches — nothing left to decide
   for (const r of rows) {
     const cur = byMo.get(r.mo);
     if (!cur) continue;
     const diff = diffRevisionRow(r, cur);
     changes.push(...diff.changes);
-    if (diff.qtyReduction) reductions.push(diff.qtyReduction);
-    if (diff.changes.length > 0) changedRows.push({ r, planQty: diff.planQty });
+    if (diff.qtyProposal) proposals.push(diff.qtyProposal);
+    else if (cur.pendingPlanQty !== null) agreed.push(r.mo);
+    if (diff.changes.length > 0) changedRows.push({ r });
+  }
+  if (!preview && (proposals.length > 0 || agreed.length > 0)) {
+    const now = new Date();
+    await prisma.$transaction([
+      ...proposals.map((p) =>
+        prisma.masterOrder.update({ where: { mo: p.mo }, data: { pendingPlanQty: p.to, pendingQtyMonth: sourceLabel, pendingQtyAt: now } })
+      ),
+      ...(agreed.length > 0
+        ? [prisma.masterOrder.updateMany({ where: { mo: { in: agreed } }, data: { pendingPlanQty: null, pendingQtyMonth: null, pendingQtyAt: null } })]
+        : []),
+    ]);
   }
   if (changedRows.length > 0 && !preview) {
     await prisma.$transaction(
-      changedRows.map(({ r, planQty }) =>
+      changedRows.map(({ r }) =>
         prisma.masterOrder.update({
           where: { mo: r.mo },
           data: {
@@ -141,7 +159,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
             kva: r.kva,
             rating: r.rating,
             secItem: r.secItem,
-            planQty, // the sheet's, raised or lowered
+            // planQty is NOT here: a different qty waits for the planner
             // Fins / Color / CRC / SFM are NOT here on purpose: they are the
             // planner's own columns, typed on the tracker. A re-import of the
             // monthly plan must never blank or overwrite what he wrote.
@@ -211,21 +229,25 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     }
   }
 
-  // each qty decrease carries what the departments already produced, so a cut
-  // under that count stands out (progress columns in the sheet are ignored
-  // entirely — the daily logs are the truth)
-  let qtyReductions: QtyReduction[] = [];
-  if (reductions.length > 0) {
+  // each held qty carries what the departments already produced, so a new
+  // figure under that count stands out (progress columns in the sheet are
+  // ignored entirely — the daily logs are the truth)
+  let qtyProposals: QtyProposal[] = [];
+  if (proposals.length > 0) {
     const sums = await prisma.handoverEntry.groupBy({
       by: ["mo", "dept", "item"],
-      where: { mo: { in: reductions.map((d) => d.mo) } },
+      where: { mo: { in: proposals.map((d) => d.mo) } },
       _sum: { qty: true },
     });
     const produced = new Map<string, number>();
     for (const s of sums) {
       if (s.mo) produced.set(s.mo, Math.max(produced.get(s.mo) ?? 0, s._sum.qty ?? 0));
     }
-    qtyReductions = reductions.map((d) => ({ ...d, produced: produced.get(d.mo) ?? 0 }));
+    qtyProposals = proposals.map((d) => {
+      const o = byMo.get(d.mo)!;
+      const earlier = monthsOf(o.months || o.source || "").some((m) => m !== sourceLabel);
+      return { ...d, bom: o.bom, produced: produced.get(d.mo) ?? 0, carried: earlier };
+    });
   }
 
   return {
@@ -238,7 +260,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     issues: issues.filter((m) => !m.startsWith("Progress sections")),
     preview,
     changes: changes.slice(0, 300),
-    qtyReductions,
+    qtyProposals,
     removed,
   };
 }

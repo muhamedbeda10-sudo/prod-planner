@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
-import { requirePerm, requireAdmin } from "@/lib/server/auth";
+import { requirePerm, requireAdmin, getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { applicableItems, ospOf, isDept, isPaintExempt, deptLabel, itemOverrides, isItem, ITEMS, DELIVERED_STAGE } from "@/lib/domain/constants";
 import { finsGroup, isFullyDelivered, spreadOverGroup } from "@/lib/domain/groupSpread";
 import { getActiveLine } from "@/lib/server/line";
@@ -45,6 +45,39 @@ export async function setOrderQty(formData: FormData): Promise<{ ok: boolean; er
   await prisma.masterOrder.update({ where: { mo }, data: { planQty: qty } });
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
   return { ok: true };
+}
+
+/** The planner's answer to a qty a plan import held back: "use" writes the
+ *  sheet's figure (pendingPlanQty) into the plan, "keep" leaves the old one.
+ *  Either way the question is closed. `mos` may list several orders (the
+ *  import screen's "use all" / "keep all"); an order with nothing pending is
+ *  skipped. Needs the tracker's qty right or the line's import right. */
+export async function decidePlanQty(formData: FormData): Promise<{ ok: boolean; error?: string; done?: number }> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: "You are not logged in — refresh the page." };
+  if (!hasPerm(me, "tracker.qty") && !hasPerm(me, linePermKey(await getActiveLine(), "import"))) {
+    return { ok: false, error: "You do not have permission to change plan quantities — ask the admin." };
+  }
+  const decision = String(formData.get("decision") ?? "");
+  if (decision !== "use" && decision !== "keep") return { ok: false, error: "Pick use or keep." };
+  const mos = String(formData.get("mos") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (mos.length === 0) return { ok: false, error: "No order picked." };
+  const orders = await prisma.masterOrder.findMany({
+    where: { mo: { in: mos }, pendingPlanQty: { not: null } },
+    select: { mo: true, pendingPlanQty: true },
+  });
+  if (orders.length === 0) return { ok: false, error: "Nothing is waiting on these orders any more." };
+  const clear = { pendingPlanQty: null, pendingQtyMonth: null, pendingQtyAt: null };
+  await prisma.$transaction(
+    orders.map((o) =>
+      prisma.masterOrder.update({
+        where: { mo: o.mo },
+        data: decision === "use" && o.pendingPlanQty! > 0 ? { planQty: o.pendingPlanQty!, ...clear } : clear,
+      })
+    )
+  );
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
+  return { ok: true, done: orders.length };
 }
 
 /** The order's spec columns — Fins, Colour RAL, CRC size, SFM. No monthly

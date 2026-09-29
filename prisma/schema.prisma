@@ -130,6 +130,12 @@ model MasterOrder {
   ospEncloser      Float     @default(0)
   materialsRemarks String?
   planQty       Float     @default(0)
+  // A plan import that brings a DIFFERENT qty for an order already in the
+  // registry never overwrites planQty: the sheet's figure waits here, with the
+  // plan that brought it, until the planner uses it or keeps the old one.
+  pendingPlanQty  Float?
+  pendingQtyMonth String?
+  pendingQtyAt    DateTime?
   // The order's spec columns, shown on the tracker. NONE of them is imported:
   // the monthly sheet does not carry them in a form the import can trust, so
   // the planner types them on the tracker and a re-import leaves them alone.

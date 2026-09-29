@@ -2,8 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { importMonthlyAction } from "@/app/orders/actions";
-import type { MonthlyImportResult } from "@/lib/server/importMonthly";
+import { decidePlanQty, importMonthlyAction } from "@/app/orders/actions";
+import type { MonthlyImportResult, QtyProposal } from "@/lib/server/importMonthly";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
 /** The plan import for the product line the toggle is on. The two lines'
@@ -62,7 +62,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
         </button>
         <span className="text-xs text-muted">
           The sheet is filed under <b>{LINE_LABEL[line]}</b> — switch the toggle at the top of the page first if it is the other product&apos;s plan.
-          New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. A LOWERED quantity is never applied automatically — it is flagged and you change it manually on the tracker. Columns are read by header name — any sheet layout month to month.
+          New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. A quantity that differs from the registry&apos;s is never changed by the import — it is flagged with the old and the new figure, and you choose which one stays. Columns are read by header name — any sheet layout month to month.
         </span>
       </form>
 
@@ -112,38 +112,10 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
             </div>
           )}
 
-          {/* qty DECREASES — applied like any change; shown with what was produced */}
-          {res.qtyReductions && res.qtyReductions.length > 0 && (
-            <div className="border border-warn-fg/40 rounded-lg p-3">
-              <div className="text-sm font-bold mb-1 text-warn-fg">
-                ⚠ Quantity DECREASED in the sheet ({res.qtyReductions.length}) — {res.preview ? "will be applied" : "applied"}
-              </div>
-              <table className="w-full text-xs border-collapse max-w-xl">
-                <thead>
-                  <tr className="text-left text-muted">
-                    <th className="p-1">MO</th>
-                    <th className="p-1 text-center">Registry qty</th>
-                    <th className="p-1 text-center">Sheet qty</th>
-                    <th className="p-1 text-center">Already produced</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {res.qtyReductions.map((d) => (
-                    <tr key={d.mo}>
-                      <td className="p-1 font-semibold whitespace-nowrap">{d.mo}</td>
-                      <td className="p-1 text-center tabnum">{d.from}</td>
-                      <td className="p-1 text-center tabnum font-bold text-warn-fg">{d.to}</td>
-                      <td className="p-1 text-center tabnum" style={{ color: d.produced > d.to ? "var(--bad-fg)" : "inherit" }}>
-                        {d.produced}{d.produced > d.to ? " — above the new qty!" : ""}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="text-[11px] text-muted mt-1">
-                The registry now carries the sheet’s quantity. A produced count above it means the floor made more than planning now asks for — check with planning.
-              </div>
-            </div>
+          {/* a different qty on an order already in the registry — held, never
+              applied by the import; the planner decides here or on the tracker */}
+          {res.qtyProposals && res.qtyProposals.length > 0 && (
+            <QtyDecisions proposals={res.qtyProposals} preview={!!res.preview} />
           )}
 
           {/* MOs that vanished from the revision — taken off the registry */}
@@ -176,5 +148,92 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
         </div>
       )}
     </details>
+  );
+}
+
+/** The quantities the import held back: registry vs sheet, per MO, with a
+ *  choice each — use the sheet's figure or keep the one the registry has.
+ *  Undecided ones stay flagged (⚠) on the tracker. */
+function QtyDecisions({ proposals, preview }: { proposals: QtyProposal[]; preview: boolean }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [done, setDone] = useState<Record<string, "use" | "keep">>({});
+  const [err, setErr] = useState("");
+  const open = proposals.filter((p) => !done[p.mo]);
+  const decide = (mos: string[], decision: "use" | "keep") => {
+    const fd = new FormData();
+    fd.set("mos", mos.join(","));
+    fd.set("decision", decision);
+    setErr("");
+    start(async () => {
+      const r = await decidePlanQty(fd);
+      if (!r.ok) { setErr(r.error ?? "Could not save."); return; }
+      setDone((cur) => ({ ...cur, ...Object.fromEntries(mos.map((m) => [m, decision])) }));
+      router.refresh();
+    });
+  };
+  return (
+    <div className="border-2 border-warn-fg/50 rounded-lg p-3">
+      <div className="flex flex-wrap items-center gap-2 mb-1">
+        <div className="text-sm font-bold text-warn-fg">
+          ⚠ Quantity differs from the registry ({proposals.length}) — {preview ? "will be held for your decision" : "not changed, your call"}
+        </div>
+        {!preview && open.length > 1 && (
+          <div className="ms-auto flex gap-2">
+            <button type="button" className="btn btn-sm btn-primary" disabled={pending} onClick={() => decide(open.map((p) => p.mo), "use")}>Use all new ({open.length})</button>
+            <button type="button" className="btn btn-sm btn-secondary" disabled={pending} onClick={() => decide(open.map((p) => p.mo), "keep")}>Keep all old</button>
+          </div>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="text-left text-muted border-b">
+              <th className="p-1.5">MO</th>
+              <th className="p-1.5">BOM</th>
+              <th className="p-1.5 text-center">Old qty (registry)</th>
+              <th className="p-1.5 text-center">New qty (sheet)</th>
+              <th className="p-1.5 text-center">Already produced</th>
+              <th className="p-1.5">{preview ? "" : "Decision"}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {proposals.map((p) => {
+              const d = done[p.mo];
+              return (
+                <tr key={p.mo} className={d ? "opacity-60" : ""}>
+                  <td className="p-1.5 font-semibold whitespace-nowrap">
+                    {p.mo}
+                    {p.carried && <span className="pill pill-warn ms-1 text-[10px]" title="In an earlier month's plan too — carried over">🔁 carried</span>}
+                  </td>
+                  <td className="p-1.5 whitespace-nowrap">{p.bom}</td>
+                  <td className="p-1.5 text-center tabnum font-bold">{p.from}</td>
+                  <td className="p-1.5 text-center tabnum font-bold text-warn-fg">
+                    {p.to} <span className="text-muted font-normal">({p.to > p.from ? "+" : ""}{Math.round((p.to - p.from) * 1000) / 1000})</span>
+                  </td>
+                  <td className="p-1.5 text-center tabnum" style={{ color: p.produced > p.to ? "var(--bad-fg)" : "inherit" }}>
+                    {p.produced}{p.produced > p.to ? " — above the new qty!" : ""}
+                  </td>
+                  <td className="p-1.5 whitespace-nowrap">
+                    {preview ? null : d ? (
+                      <span className="font-bold">{d === "use" ? `✓ now ${p.to}` : `✓ kept ${p.from}`}</span>
+                    ) : (
+                      <span className="inline-flex gap-1.5">
+                        <button type="button" className="btn btn-sm btn-primary" disabled={pending} onClick={() => decide([p.mo], "use")}>Use {p.to}</button>
+                        <button type="button" className="btn btn-sm btn-secondary" disabled={pending} onClick={() => decide([p.mo], "keep")}>Keep {p.from}</button>
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {err && <p className="text-xs font-semibold text-bad-fg mt-1">{err}</p>}
+      <div className="text-[11px] text-muted mt-1">
+        The import never changes a quantity on its own. Until you choose, the order keeps its old quantity and shows ⚠ on the Plan Tracker, where you can decide too.
+      </div>
+    </div>
   );
 }

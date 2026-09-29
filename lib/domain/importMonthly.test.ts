@@ -144,7 +144,7 @@ describe("applyCascade — later stages imply earlier ones (setup sheet only)", 
   });
 });
 
-describe("diffRevisionRow — the qty follows the sheet both ways", () => {
+describe("diffRevisionRow — the qty waits for the planner, the rest is applied", () => {
   const base = {
     soi: "S01",
     urgent: false,
@@ -188,29 +188,25 @@ describe("diffRevisionRow — the qty follows the sheet both ways", () => {
   it("an unchanged row produces no diff", () => {
     const d = diffRevisionRow(row({}), base);
     expect(d.changes).toHaveLength(0);
-    expect(d.qtyReduction).toBeNull();
-    expect(d.planQty).toBe(10);
+    expect(d.qtyProposal).toBeNull();
   });
 
-  it("a RAISED qty is applied like any other change", () => {
+  it("a RAISED qty is not applied — it comes back as a proposal", () => {
     const d = diffRevisionRow(row({ planQty: 14 }), base);
-    expect(d.changes).toEqual([{ mo: "MO-1", field: "Qty", from: "10", to: "14" }]);
-    expect(d.qtyReduction).toBeNull();
-    expect(d.planQty).toBe(14);
+    expect(d.changes).toEqual([]);
+    expect(d.qtyProposal).toEqual({ mo: "MO-1", from: 10, to: 14 });
   });
 
-  it("a LOWERED qty is applied too, and called out as a reduction", () => {
+  it("a LOWERED qty is held the same way", () => {
     const d = diffRevisionRow(row({ planQty: 6 }), base);
-    expect(d.changes).toEqual([{ mo: "MO-1", field: "Qty", from: "10", to: "6" }]);
-    expect(d.qtyReduction).toEqual({ mo: "MO-1", from: 10, to: 6 });
-    expect(d.planQty).toBe(6);
+    expect(d.changes).toEqual([]);
+    expect(d.qtyProposal).toEqual({ mo: "MO-1", from: 10, to: 6 });
   });
 
-  it("other field changes ride along with a qty drop", () => {
+  it("other field changes are applied while the qty waits", () => {
     const d = diffRevisionRow(row({ planQty: 6, urgent: true }), base);
-    expect(d.changes).toEqual([{ mo: "MO-1", field: "Qty", from: "10", to: "6" }, { mo: "MO-1", field: "Urgent", from: "No", to: "Yes" }]);
-    expect(d.qtyReduction).toEqual({ mo: "MO-1", from: 10, to: 6 });
-    expect(d.planQty).toBe(6);
+    expect(d.changes).toEqual([{ mo: "MO-1", field: "Urgent", from: "No", to: "Yes" }]);
+    expect(d.qtyProposal).toEqual({ mo: "MO-1", from: 10, to: 6 });
   });
 });
 
