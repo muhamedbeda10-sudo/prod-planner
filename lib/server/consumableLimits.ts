@@ -278,7 +278,8 @@ function describeLimitJson(raw: unknown): string {
   const l = (raw ?? {}) as { departments?: string; basis?: string; period?: string; qty?: number };
   if (!l.departments) return "—";
   const d = departmentsLabel(parseDepartments(l.departments));
-  const per = isLimitPeriod(l.period ?? "") ? PERIOD_LABEL[l.period as LimitPeriod] : l.period;
+  // "day" survives only in the history, from before limits went weekly
+  const per = isLimitPeriod(l.period ?? "") ? PERIOD_LABEL[l.period as LimitPeriod] : l.period === "day" ? "a day" : l.period;
   return `${l.qty} ${per} · ${d}${l.basis === "person" ? " (per worker)" : l.basis === "each" ? " (each department)" : ""}`;
 }
 

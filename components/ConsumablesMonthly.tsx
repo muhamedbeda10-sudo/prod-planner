@@ -13,7 +13,7 @@ import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import type { MonthlyReportView } from "@/lib/server/consumableMonthly";
 
 // The CONSUMABLES monthly review: each catalogue item's month against its
-// monthly allowance (a week's limit × 4, a day's × 26, a month's × 1; a
+// monthly allowance (a week's limit × 4, a month's × 1; a
 // quarter's counted over the quarter to date), graded over / close / under / not issued — the month
 // before beside it, the last six months as a line, and each item opening
 // onto its limits: the departments, the weeks of a weekly limit that went
@@ -28,7 +28,7 @@ const STATUS_COLOR: Record<MonthStatus, string> = {
 };
 const STATUS_PILL: Record<MonthStatus, string> = { over: "pill-bad", near: "pill-warn", under: "pill-ok", unused: "pill-muted", nolimit: "pill-muted" };
 const STATUS_ORDER: MonthStatus[] = ["over", "near", "under", "unused", "nolimit"];
-const FACTOR_WORD: Record<string, string> = { week: "× 4", day: "× 26", month: "× 1", quarter: "" };
+const FACTOR_WORD: Record<string, string> = { week: "× 4", month: "× 1" };
 
 function StatusPill({ s }: { s: MonthStatus }) {
   return <span className={`pill ${STATUS_PILL[s]} whitespace-nowrap`}>{s === "over" ? "⚠ " : ""}{MONTH_STATUS_LABEL[s]}</span>;
@@ -88,9 +88,6 @@ function LimitDetail({ l, uom, workers }: { l: LimitMonthRow; uom: string; worke
             ))}
           </div>
         )}
-        {l.period === "day" && (l.daysOver.length
-          ? <div className="text-bad-fg">{l.daysOver.length} day(s) over: {l.daysOver.slice(0, 8).map((d) => `${d.dayISO.slice(8)}/${d.dayISO.slice(5, 7)} (${fmt(d.used)})`).join(", ")}{l.daysOver.length > 8 ? " …" : ""}</div>
-          : <div className="text-muted">no day over {fmt(l.qty)}</div>)}
         {l.basis === "person" && (l.workersOver.length
           ? <div className="text-bad-fg">{l.workersOver.map((w) => `${workers[w.workerId]?.name ?? "?"} (${workers[w.workerId]?.empId ?? ""}) ${fmt(w.used)}`).join(" · ")}</div>
           : <div className="text-muted">no worker over {fmt(l.allowance)}</div>)}
@@ -158,7 +155,7 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
           {r.months.map((m) => <option key={m} value={m}>{monthLong(m)}</option>)}
         </select>
         {newer ? <Link href={hrefOf(newer)} className="btn btn-sm" aria-label="Next month">▶</Link> : <span className="btn btn-sm opacity-40">▶</span>}
-        <span className="text-xs text-muted">Monthly limit = a week&apos;s × {MONTHLY_FACTOR.week}, a day&apos;s × {MONTHLY_FACTOR.day}, a month&apos;s as is; a quarter&apos;s is counted over the quarter to date · the limits as they stand today</span>
+        <span className="text-xs text-muted">Monthly limit = a week&apos;s × {MONTHLY_FACTOR.week}, a month&apos;s as is; a limit of several months is counted over its months to date · the limits as they stand today</span>
       </div>
 
       <div className="flex flex-wrap gap-3">

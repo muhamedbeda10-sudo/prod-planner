@@ -5,20 +5,19 @@
 // daily limit — the weeks or days inside the month that went over.
 //
 // The monthly allowance of a limit is a FIXED multiple of its number, the
-// same every month: a week × 4, a day × 26, a month × 1. A quarterly limit
+// same every month: a week × 4, a month × 1. A quarterly limit
 // is not cut into thirds — one tin of glue a quarter handed out in July is
 // not "300% over" — it is counted over the quarter so far (the quarter's
 // first day to the month's last) against its whole number. A per-person
 // limit's allowance is per worker (a worker is over when he alone passes it). Pure and tested; the reads are lib/server/consumableMonthly.ts.
 
-import { addDaysISO } from "./dateSlicer";
 import {
   coversDepartment, isMultiMonth, periodWindow, ruleLabel, usageIn, windowLabel, windowsOverlapping,
   type LimitBasis, type LimitPeriod, type LimitRule, type LimitUse,
 } from "./consumableLimits";
 
 /** The monthly multiple; a quarter's number stands whole over the quarter to date. */
-export const MONTHLY_FACTOR: Record<LimitPeriod, number> = { day: 26, week: 4, month: 1, bimonth: 1, quarter: 1, fourmonth: 1, halfyear: 1, year: 1 };
+export const MONTHLY_FACTOR: Record<LimitPeriod, number> = { week: 4, month: 1, bimonth: 1, quarter: 1, fourmonth: 1, halfyear: 1, year: 1 };
 export const NEAR_RATIO = 0.8;
 
 export type MonthStatus = "over" | "near" | "under" | "unused" | "nolimit";
@@ -115,7 +114,6 @@ export interface LimitMonthRow {
   /** A weekly limit: every work week touching the month, counted whole. */
   weeks: WeekCheck[];
   /** A daily limit: the days of the month it went over. */
-  daysOver: { dayISO: string; used: number }[];
   /** A per-person limit: the workers over their monthly allowance. */
   workersOver: WorkerOver[];
 }
@@ -207,19 +205,10 @@ function limitMonth(rule: LimitRule, allUses: readonly LimitUse[], month: string
     })
     : [];
 
-  const daysOver: { dayISO: string; used: number }[] = [];
-  if (rule.period === "day") {
-    for (let d = from; d <= to; d = addDaysISO(d, 1)) {
-      const w = { from: d, to: d };
-      const u = rule.basis === "person" ? Math.max(0, ...perWorker(rule, cur.filter((x) => x.dayISO === d)).values()) : usageIn(rule, cur, w);
-      if (u > rule.qty + 1e-9) daysOver.push({ dayISO: d, used: u });
-    }
-  }
-
   return {
     ruleId: rule.id, departmentsLabel: ruleLabel(rule), basis: rule.basis, period: rule.period, qty: rule.qty,
     allowance, toDate: quarterly ? `${windowLabel(rule.period, monthWindow)} to date` : null, used, usedAll, ratio: allowance > 0 ? used / allowance : 0, status: grade(used, allowance), prevUsed,
-    weeks, daysOver, workersOver,
+    weeks, workersOver,
   };
 }
 

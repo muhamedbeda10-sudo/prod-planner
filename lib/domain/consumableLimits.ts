@@ -6,7 +6,7 @@
 //
 //   `qty` per `period` for `departments`, counted as a `basis`
 //
-//   period ..... day | week | month | every 2, 3, 4 or 6 months | a year —
+//   period ..... week | month | every 2, 3, 4 or 6 months | a year —
 //                FIXED windows on the factory's
 //                calendar: the day; the work week Saturday → Friday; the
 //                calendar month; the calendar quarter. The count starts again
@@ -30,7 +30,7 @@
 import { addDaysISO } from "./dateSlicer";
 import { WORKER_SECTIONS, sectionLabel } from "./tanks";
 
-export const LIMIT_PERIODS = ["day", "week", "month", "bimonth", "quarter", "fourmonth", "halfyear", "year"] as const;
+export const LIMIT_PERIODS = ["week", "month", "bimonth", "quarter", "fourmonth", "halfyear", "year"] as const;
 export type LimitPeriod = (typeof LIMIT_PERIODS)[number];
 /** The calendar months a period spans — the windows run from January in steps of it. */
 export const PERIOD_MONTHS: Partial<Record<LimitPeriod, number>> = { month: 1, bimonth: 2, quarter: 3, fourmonth: 4, halfyear: 6, year: 12 };
@@ -43,11 +43,11 @@ export const LIMIT_BASES = ["pool", "each", "person"] as const;
 export type LimitBasis = (typeof LIMIT_BASES)[number];
 
 export const PERIOD_LABEL: Record<LimitPeriod, string> = {
-  day: "a day", week: "a week", month: "a month", bimonth: "every 2 months", quarter: "every 3 months",
+  week: "a week", month: "a month", bimonth: "every 2 months", quarter: "every 3 months",
   fourmonth: "every 4 months", halfyear: "every 6 months", year: "a year",
 };
 export const PERIOD_NOUN: Record<LimitPeriod, string> = {
-  day: "today", week: "this week", month: "this month", bimonth: "these 2 months", quarter: "this quarter",
+  week: "this week", month: "this month", bimonth: "these 2 months", quarter: "this quarter",
   fourmonth: "these 4 months", halfyear: "this half-year", year: "this year",
 };
 export const ALL_DEPARTMENTS = "*";
@@ -216,8 +216,6 @@ const iso = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d))
 export function periodWindow(period: LimitPeriod, dayISO: string): { from: string; to: string } {
   const [y, m, d] = ymd(dayISO);
   switch (period) {
-    case "day":
-      return { from: dayISO, to: dayISO };
     case "week": {
       // the work week starts on Saturday (getUTCDay 6)
       const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
@@ -235,10 +233,9 @@ export function periodWindow(period: LimitPeriod, dayISO: string): { from: strin
 }
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** "28 Sep", "week of 26 Sep", "Sep 2026", "Q3 2026". */
+/** "week of 26 Sep", "Sep 2026", "Q3 2026" … */
 export function windowLabel(period: LimitPeriod, w: { from: string; to: string }): string {
   const [y, m, d] = ymd(w.from);
-  if (period === "day") return `${d} ${MON[m - 1]}`;
   if (period === "week") return `week of ${d} ${MON[m - 1]}`;
   if (period === "month") return `${MON[m - 1]} ${y}`;
   if (period === "quarter") return `Q${Math.floor((m - 1) / 3) + 1} ${y}`;
