@@ -35,6 +35,7 @@ interface LineFields {
   month: string; bom: string; mo: string; units: number | null; partCode: string; partName: string; materialCode: string;
   material: string; thicknessMm: number | null;
   sheetSize: string; sheetsPerUnit: number | null; actualPerUnit: number | null; sheetsUsed: number | null; producedQty: number | null; note: string | null;
+  soi: string; weightKg: number | null; utilization: number | null;
 }
 
 function readLine(formData: FormData): LineFields {
@@ -56,6 +57,9 @@ function readLine(formData: FormData): LineFields {
     sheetsUsed: parseSheetNumber(formData.get("sheetsUsed")),
     producedQty: parseSheetNumber(formData.get("producedQty")),
     note: note || null,
+    soi: String(formData.get("soi") ?? "").trim().toUpperCase(),
+    weightKg: parseSheetNumber(formData.get("weightKg")),
+    utilization: parseSheetNumber(formData.get("utilization")),
   };
 }
 
@@ -82,6 +86,7 @@ function dataOf(f: LineFields, by: string | null, rateTyped: boolean) {
     sheetsPerUnit: f.sheetsPerUnit!, actualPerUnit: f.actualPerUnit, actualPerUnitManual: rateTyped,
     sheetsUsed: f.sheetsUsed,
     producedQty: f.producedQty, note: f.note, recordedBy: by,
+    soi: f.soi, weightKg: f.weightKg, utilization: f.utilization,
   };
 }
 
@@ -124,7 +129,7 @@ export async function updateMaterialLine(formData: FormData): Promise<MaterialAc
 /** The three cells typed straight into the table. An empty box clears the
  *  value — "not nested yet" / "nothing produced yet" / "no rate of its own" —
  *  which is not zero. */
-async function setCell(formData: FormData, field: "actualPerUnit" | "sheetsUsed" | "producedQty", label: string): Promise<MaterialActionResult> {
+async function setCell(formData: FormData, field: "actualPerUnit" | "sheetsUsed" | "producedQty" | "utilization", label: string): Promise<MaterialActionResult> {
   const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
@@ -166,6 +171,10 @@ export async function setSheetsUsed(formData: FormData): Promise<MaterialActionR
 
 export async function setProducedQty(formData: FormData): Promise<MaterialActionResult> {
   return setCell(formData, "producedQty", "units produced");
+}
+
+export async function setUtilization(formData: FormData): Promise<MaterialActionResult> {
+  return setCell(formData, "utilization", "average utilization");
 }
 
 export async function deleteMaterialLine(formData: FormData): Promise<MaterialActionResult> {

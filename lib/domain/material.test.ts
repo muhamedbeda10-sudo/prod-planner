@@ -107,7 +107,7 @@ function line(over: Partial<MaterialLineView>): MaterialLineView {
   return {
     id: 1, month: "July 2026", bom: "B1", mo: "", units: 10, partCode: "FB-022", partName: "TANK", materialCode: "T-SSS-5MM",
     material: "Steel", thicknessMm: 5, sheetSize: "1220*2440",
-    sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: null, producedAuto: null, producedUsed: null, remainingUnits: null,
+    sheetsPerUnit: 1, sheetsUsed: 10, producedQty: null, note: null, soi: "", weightKg: null, utilization: null, actualWeightKg: null, producedAuto: null, producedUsed: null, remainingUnits: null,
     forJob: 10, difference: 0, actualPerUnit: 1, actualPerUnitManual: false, forProduced: null,
     updatedISO: "2026-09-07", recordedBy: null, ...over,
   };
@@ -354,5 +354,19 @@ describe("parseNestingTracker — the sheet with Odoo's MO per part", () => {
   it("leaves the MO empty on the older sheet with no MO column", () => {
     const old = grid.map((r) => [...r.slice(0, 1), ...r.slice(2)]);
     expect(parseNestingTracker(old).rows.every((r) => r.mo === "")).toBe(true);
+  });
+});
+
+describe("parseNestingTracker — the sheet with SOI, weight and utilization", () => {
+  const head = ["SOI", "MO", "BOM Ref", "Quantity of Units", "Part Code", "Part Name", "Material Code", "Material", "Thickness (mm)", "Sheet Size", "Weight(Kg)",
+    "BOM Qty for one Unit", "No. of Pieces in Actual Nesting for one Unit", "BOM Pieces for Job", "No. of Pieces in Actual Nesting for Job", "Average Utilization", "Actual Weight (Kg)", "Difference", "Notes"];
+  const grid = [head, ["S01194-12", "SF01/MO/20941", "00007S15", 11, "FB-024", "CABLE BOX", "C-SHR-003", "HR Sheet", 3, "1220x2440", 70.1, 0.79, 0.7, 8.69, 7.7, 0.86, null, null, "ok"]];
+  it("reads every column into its place", () => {
+    const { rows, issues } = parseNestingTracker(grid);
+    expect(issues).toEqual([]);
+    expect(rows[0]).toMatchObject({
+      soi: "S01194-12", mo: "SF01/MO/20941", bom: "00007S15", units: 11, partCode: "FB-024", materialCode: "C-SHR-003", material: "HR Sheet",
+      thicknessMm: 3, weightKg: 70.1, sheetsPerUnit: 0.79, actualPerUnit: 0.7, sheetsUsed: 7.7, utilization: 0.86, note: "ok",
+    });
   });
 });

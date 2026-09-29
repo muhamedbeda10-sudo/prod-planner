@@ -1,8 +1,8 @@
 import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import { getActiveLine } from "./line";
-import { getSoiLookup } from "@/lib/server/soi";
 import { monthLabelSortKey } from "@/lib/domain/dates";
 import {
   actualPerUnit, parseNestingTracker, sheetsDifference, sheetsForJob, sheetsForProduced, summarizeMaterial,
@@ -46,10 +46,11 @@ type Row = {
   material: string; thicknessMm: number;
   sheetSize: string; sheetsPerUnit: number; actualPerUnit: number | null; actualPerUnitManual: boolean;
   sheetsUsed: number | null; producedQty: number | null;
+  soi: string; weightKg: number | null; utilization: number | null;
   note: string | null; recordedBy: string | null; updatedAt: Date;
 };
 
-function toView(r: Row, soiByBom: Record<string, string>, producedAuto: number | null = null): MaterialLineView {
+function toView(r: Row, producedAuto: number | null = null): MaterialLineView {
   const forJob = sheetsForJob(r.sheetsPerUnit, r.units);
   // typed wins; else the tracker's painted count on the line's own order
   const producedUsed = r.producedQty ?? producedAuto;
@@ -61,7 +62,8 @@ function toView(r: Row, soiByBom: Record<string, string>, producedAuto: number |
     partCode: r.partCode, partName: r.partName, materialCode: r.materialCode, material: r.material,
     thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, sheetsPerUnit: r.sheetsPerUnit,
     sheetsUsed: r.sheetsUsed, producedQty: r.producedQty, note: r.note,
-    soi: soiByBom[r.bom] ?? null,
+    soi: r.soi, weightKg: r.weightKg, utilization: r.utilization,
+    actualWeightKg: r.sheetsUsed !== null && r.weightKg !== null ? Math.round(r.sheetsUsed * r.weightKg * 100) / 100 : null,
     forJob,
     difference: sheetsDifference(forJob, r.sheetsUsed),
     // the sheet's own rate where there is one; the old division only where
@@ -78,7 +80,7 @@ function toView(r: Row, soiByBom: Record<string, string>, producedAuto: number |
  *  filed under its plan month, or everything ("all"). */
 export async function getMaterialData(month: string): Promise<MaterialPageData> {
   const line = await getActiveLine(); // one product line at a time
-  const [rows, monthRows, orders, soi, odoo] = await Promise.all([
+  const [rows, monthRows, orders, odoo] = await Promise.all([
     prisma.materialUsage.findMany({
       where: month === "all" ? { line } : { month, line },
       // the sheet's own order — its rows come back the way they were laid out;
@@ -87,13 +89,12 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
     }),
     prisma.materialUsage.findMany({ where: { line }, select: { month: true, bom: true }, distinct: ["month", "bom"] }),
     prisma.masterOrder.findMany({ where: { line }, select: { bom: true } }),
-    getSoiLookup(),
     prisma.odooEntry.findMany({ where: { line, odooMo: { not: "" } }, select: { odooMo: true, status: true }, orderBy: { date: "asc" } }),
   ]);
 
   const lvOrders = line === "LV" ? await lvOrderRefs() : [];
   const paintedByMo = new Map(lvOrders.map((o) => [o.mo, o.painted]));
-  const lines = rows.map((r) => toView(r, soi.byBom, line === "LV" && r.mo ? (paintedByMo.get(r.mo) ?? 0) : null));
+  const lines = rows.map((r) => toView(r, line === "LV" && r.mo ? (paintedByMo.get(r.mo) ?? 0) : null));
   const months = [...new Set(monthRows.map((m) => m.month))]
     .filter(Boolean)
     .sort((a, b) => monthLabelSortKey(b) - monthLabelSortKey(a) || b.localeCompare(a));
@@ -209,7 +210,13 @@ export async function importNestingTracker(
 
   let added = 0, updated = 0, unchanged = 0;
   const seen = new Set<number>();
-  for (const r of rows) {
+  const creates: Prisma.MaterialUsageCreateManyInput[] = [];
+  const updates: { id: number; data: Prisma.MaterialUsageUpdateInput }[] = [];
+  // a sheet may list the same line twice — the later row wins, as it would
+  // have row by row
+  const last = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) last.set(keyOf(r), r);
+  for (const r of last.values()) {
     const cur = byKey.get(keyOf(r));
     if (cur) seen.add(cur.id);
     // A rate typed in the tab is the planner's own statement about a line the
@@ -217,7 +224,7 @@ export async function importNestingTracker(
     const keepsRate = cur?.actualPerUnitManual === true;
     const same = cur && cur.units === r.units && cur.sheetsPerUnit === r.sheetsPerUnit
       && (keepsRate || cur.actualPerUnit === r.actualPerUnit) && cur.sheetsUsed === r.sheetsUsed && cur.partName === r.partName && cur.materialCode === r.materialCode
-      && cur.sortOrder === r.rowNum
+      && cur.sortOrder === r.rowNum && cur.soi === r.soi && cur.weightKg === r.weightKg && cur.utilization === r.utilization
       && (cur.note ?? null) === (r.note ?? cur.note ?? null);
     if (!cur) added += 1; else if (same) unchanged += 1; else updated += 1;
     if (preview || same) continue;
@@ -225,18 +232,21 @@ export async function importNestingTracker(
     const data = {
       units: r.units, partName: r.partName, materialCode: r.materialCode,
       sheetsPerUnit: r.sheetsPerUnit, sheetsUsed: r.sheetsUsed,
+      soi: r.soi, weightKg: r.weightKg, utilization: r.utilization,
       sortOrder: r.rowNum, // the sheet's row — the tab reads in this order
       ...(keepsRate ? {} : { actualPerUnit: r.actualPerUnit }),
       // a blank note in the sheet must not erase one typed in the tab
       ...(r.note !== null ? { note: r.note } : {}),
       recordedBy,
     };
-    const key = { month, bom: r.bom, mo: r.mo, partCode: r.partCode, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize };
-    await prisma.materialUsage.upsert({
-      where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: key },
-      create: { ...key, ...data, note: r.note, line },
-      update: data,
-    });
+    if (cur) updates.push({ id: cur.id, data });
+    else creates.push({ month, bom: r.bom, mo: r.mo, partCode: r.partCode, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, ...data, note: r.note, line });
+  }
+  // in bulk — a sheet of hundreds of rows written one by one outlasted the
+  // request and stopped part-way
+  if (creates.length) await prisma.materialUsage.createMany({ data: creates, skipDuplicates: true });
+  for (let i = 0; i < updates.length; i += 100) {
+    await prisma.$transaction(updates.slice(i, i + 100).map((u) => prisma.materialUsage.update({ where: { id: u.id }, data: u.data })));
   }
   const { missing, removed } = await rowsGone(line, month, seen, prune, preview);
   return { ok: true, added, updated, unchanged, issues, preview, sheet: sheetName, recomputed, missing, removed };
