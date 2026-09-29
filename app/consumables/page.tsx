@@ -90,7 +90,7 @@ export default async function ConsumablesPage({
     const report = await getMonthlyReport(month);
     const exportRows = report.rows.flatMap((r) => [
       {
-        Level: "Item", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: "", "Limit": "", "Monthly limit": r.allowance ?? (r.limits.length ? "per person" : ""),
+        Level: "Item", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: "", "Limit": "", "Monthly limit": r.allowance ?? "",
         Used: r.used, "Outside the limits": r.outside, "Of the limit": r.ratio === null ? "" : `${Math.round(r.ratio * 100)}%`,
         Status: MONTH_STATUS_LABEL[r.status], [`Used ${report.prevMonth}`]: r.prevUsed,
         "Weeks / days / workers over": "",

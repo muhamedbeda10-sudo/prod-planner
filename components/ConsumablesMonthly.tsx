@@ -111,7 +111,7 @@ function ItemRow({ r, open, toggle, workers }: { r: ItemMonthRow; open: boolean;
           </div>
           <div className="text-xs text-muted ltr">{r.code ?? ""}{r.limits.length > 1 ? ` · ${r.limits.length} limits` : ""}</div>
         </td>
-        <td className="p-2 text-end tabnum">{r.allowance === null ? <span className="text-xs text-muted">{r.limits.length ? (r.limits.every((l) => l.period === "quarter") ? "a quarter" : "per person") : "—"}</span> : <>{fmt(r.allowance)} <span className="text-[10px] text-muted">{r.uom}</span></>}</td>
+        <td className="p-2 text-end tabnum">{r.allowance === null ? <span className="text-xs text-muted">{r.limits.length ? (r.limits.every((l) => l.toDate !== null) ? "over months" : "—") : "—"}</span> : <>{fmt(r.allowance)} <span className="text-[10px] text-muted">{r.uom}</span></>}</td>
         <td className="p-2 text-end tabnum">
           <b>{fmt(r.used)}</b> <span className="text-[10px] text-muted">{r.uom}</span>
           {r.outside > 0 && <div className="text-[11px] text-muted" title="Handed out to departments none of its limits cover">{fmt(r.outside)} outside the limits</div>}

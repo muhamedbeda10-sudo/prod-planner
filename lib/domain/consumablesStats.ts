@@ -21,7 +21,13 @@ export interface StatsRow {
 }
 
 export interface ItemStat { item: string; issues: number; qty: number; workers: number }
-export interface DeptStat { department: string; label: string; issues: number; items: number; workers: number }
+export interface DeptStat {
+  department: string; label: string; issues: number; items: number; workers: number;
+  /** The department's workers on the workers list (0 when it has none, or unknown). */
+  people: number;
+  /** Hand-outs per worker in the period; null when the department has no one on the list. */
+  perPerson: number | null;
+}
 export interface WorkerStat { workerId: number; name: string; empId: string; issues: number; items: number; departments: string }
 export interface TimeBucket { key: string; label: string; issues: number }
 
@@ -135,7 +141,7 @@ export function consumablesStats(
   fromISO: string,
   toISO: string,
   previousIssues: number,
-  opts: { topItems?: number; topDepartments?: number; topWorkers?: number } = {},
+  opts: { topItems?: number; topDepartments?: number; topWorkers?: number; headcount?: ReadonlyMap<string, number> } = {},
 ): ConsumablesStats {
   const topItems = opts.topItems ?? 12;
   const topDepts = opts.topDepartments ?? 6;
@@ -170,7 +176,10 @@ export function consumablesStats(
     deptAgg.set(r.department, a);
   }
   const departments: DeptStat[] = [...deptAgg.entries()]
-    .map(([department, a]) => ({ department, label: a.label, issues: a.issues, items: a.items.size, workers: a.workers.size }))
+    .map(([department, a]) => {
+      const people = opts.headcount?.get(department) ?? 0;
+      return { department, label: a.label, issues: a.issues, items: a.items.size, workers: a.workers.size, people, perPerson: people > 0 ? round3(a.issues / people) : null };
+    })
     .sort((a, b) => b.issues - a.issues || a.label.localeCompare(b.label));
 
   // ---- workers

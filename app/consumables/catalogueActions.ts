@@ -77,6 +77,11 @@ export async function saveCatalogueItem(formData: FormData): Promise<CatalogueAc
   });
   if (clash) return { ok: false, error: clash.name.toLowerCase() === name.toLowerCase() ? `${clash.name} is already in the catalogue.` : `The code ${code} is already ${clash.name}'s.` };
 
+  // a new item may carry its limit, set in the same form
+  const withLimit = !id && formData.get("withLimit") === "true";
+  const limit = withLimit ? readLimit(formData) : null;
+  if (limit?.error) return { ok: false, error: limit.error };
+
   const data = { name, code, uom, remark, active };
   const result = await prisma.$transaction(async (tx) => {
     if (id) {
@@ -88,6 +93,11 @@ export async function saveCatalogueItem(formData: FormData): Promise<CatalogueAc
     } else {
       const next = await tx.consumableItem.create({ data });
       await audit(tx, who, { itemId: next.id, entity: "item", entityId: next.id, action: "create", after: itemSnapshot(next) });
+      if (limit?.data) {
+        const d = limit.data;
+        const l = await tx.consumableLimit.create({ data: { itemId: next.id, departments: d.departments, basis: d.basis, period: d.period, qty: new Prisma.Decimal(d.qty) } });
+        await audit(tx, who, { itemId: next.id, entity: "limit", entityId: l.id, action: "create", after: limitSnapshot(l) });
+      }
     }
     return "ok" as const;
   });
@@ -106,8 +116,8 @@ function readLimit(formData: FormData): { error?: string; data?: { departments: 
   if (departments.length > 500) return { error: "Too many departments on one limit." };
   const basis = String(formData.get("basis") ?? "pool");
   const period = String(formData.get("period") ?? "week");
-  if (!isLimitBasis(basis)) return { error: "Pick how the limit counts: shared, or per person." };
-  if (!isLimitPeriod(period)) return { error: "Pick the period: day, week, month or 3 months." };
+  if (!isLimitBasis(basis)) return { error: "Pick how the quantity counts: each department its own, shared, or per worker." };
+  if (!isLimitPeriod(period)) return { error: "Pick how often: a day, a week, a month, or every few months." };
   const q = parseQty(formData.get("qty"));
   if (q.error) return { error: q.error };
   return { data: { departments, basis, period, qty: q.qty! } };

@@ -96,8 +96,8 @@ describe("saveConsumableLimit", () => {
 
   it("refuses a limit with no department, a bad period or basis, or no quantity", async () => {
     expect((await saveConsumableLimit(form({ itemId: "3", basis: "pool", period: "week", qty: "5" }))).error).toMatch(/at least one department/);
-    expect((await saveConsumableLimit(form({ itemId: "3", departments: "WeldingTX", basis: "pool", period: "year", qty: "5" }))).error).toMatch(/period/);
-    expect((await saveConsumableLimit(form({ itemId: "3", departments: "WeldingTX", basis: "team", period: "week", qty: "5" }))).error).toMatch(/shared, or per person/);
+    expect((await saveConsumableLimit(form({ itemId: "3", departments: "WeldingTX", basis: "pool", period: "fortnight", qty: "5" }))).error).toMatch(/how often/);
+    expect((await saveConsumableLimit(form({ itemId: "3", departments: "WeldingTX", basis: "team", period: "week", qty: "5" }))).error).toMatch(/each department its own, shared, or per worker/);
     expect((await saveConsumableLimit(form({ itemId: "3", departments: "WeldingTX", basis: "pool", period: "week", qty: "0" }))).error).toMatch(/more than zero/);
     expect(h.prisma.$transaction).not.toHaveBeenCalled();
   });

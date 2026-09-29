@@ -5,15 +5,12 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm, requireAdmin, requirePerm } from "@/lib/server/auth";
 import { getCustomDepartments } from "@/lib/server/consumables";
-import { getAllWorkers } from "@/lib/server/workers";
 import { checkIssueLimits, limitHints, type LimitHint } from "@/lib/server/consumableLimits";
 import { parseWorkerSections } from "@/lib/domain/workers";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { describeBreach, type LimitBreach } from "@/lib/domain/consumableLimits";
 import {
   canEditIssue,
-  departmentCrew,
-  departmentLabel,
   issueWho,
   parseSnapshot,
   readConsumableForm,
@@ -31,9 +28,9 @@ import {
 // that would take a limit over is refused until the recorder gives a reason,
 // then saved flagged over the limit with the reason and the breach as it read
 // (a warning, not a wall — the store may have a good reason).
-// A hand-out goes to one worker, to several named workers, or to a whole
-// department (its workers at work that day); a group row keeps the workers
-// it was for, and they — and its department — are fixed once it is saved.
+// A hand-out is recorded to a department — the item, the quantity and the
+// department, no worker (rows from before keep the worker they named). A
+// per-person limit counts as the department's: the number times its workers.
 // A saved row is corrected by the person who recorded it or by an admin;
 // deleting it, and restoring an earlier version of it, is the admin's. Every
 // change writes a ConsumableIssueRevision with the row before and after, and
@@ -127,9 +124,8 @@ async function resolveRecipients(pick: RecipientPick, department: string): Promi
     }
     return { r: { scope: "workers", workerId: null, workerIds: [...pick.workerIds] } };
   }
-  const crew = departmentCrew(await getAllWorkers(), department);
-  if (crew.length === 0) return { error: `Nobody in ${departmentLabel(department)} is at work today on the workers list — tick the workers instead.` };
-  return { r: { scope: "department", workerId: null, workerIds: crew.map((w) => w.id) } };
+  void department;
+  return { r: { scope: "department", workerId: null, workerIds: [] } };
 }
 
 /**
@@ -220,8 +216,8 @@ export async function createConsumableIssue(formData: FormData): Promise<Consuma
       department,
       workerId: r.workerId,
       recipientScope: r.scope,
-      recipientCount: r.workerIds.length,
-      ...(r.workerId === null ? { recipients: { create: r.workerIds.map((workerId) => ({ workerId })) } } : {}),
+      recipientCount: r.workerIds.length || 0,
+      ...(r.workerId === null && r.workerIds.length > 0 ? { recipients: { create: r.workerIds.map((workerId) => ({ workerId })) } } : {}),
       notes: f.notes,
       recordedById: user.id,
       recordedBy: user.name,
@@ -248,51 +244,25 @@ export async function updateConsumableIssue(formData: FormData): Promise<Consuma
   }
   if (prev.updatedAt.getTime() !== version.getTime()) return { ok: false, error: STALE };
 
-  // an old row may keep a catalogue item that has since been retired
-  // a group row's department and workers are fixed: only the item, the
-  // quantity and the notes are corrected — whatever the form says of the rest
-  const group = prev.workerId === null;
-  const groupFields: Record<string, string> = group
-    ? { department: prev.department, recipientScope: prev.recipientScope, workerIds: prev.recipients.map((x) => x.workerId).join(",") }
-    : {};
-
+  // an old row may keep a catalogue item that has since been retired; the
+  // item, quantity, department and notes are corrected — the worker an older
+  // row named stays as it was
   const picked = await pickItem(formData, { allowInactiveId: prev.itemId });
   if (picked.error) return { ok: false, error: picked.error };
-  const read = readConsumableForm((n) => (n === "item" && picked.name ? picked.name : n in groupFields ? groupFields[n] : formData.get(n)));
+  const read = readConsumableForm((n) => (n === "item" && picked.name ? picked.name : formData.get(n)));
   if (read.error) return { ok: false, error: read.error };
   const f = read.fields!;
   const reason = readOverLimitReason((n) => formData.get(n));
   if (reason.error) return { ok: false, error: reason.error };
 
   const before = snapshotOf(prev);
-  let department: string;
-  let workerIds: number[];
-  let after: ConsumableSnapshot;
-  if (group) {
-    department = prev.department;
-    workerIds = prev.recipients.map((x) => x.workerId);
-    after = { ...before, item: f.item, qty: new Prisma.Decimal(f.qty).toNumber(), notes: f.notes, itemId: picked.itemId ?? null };
-  } else {
-    if (f.recipients.scope !== "worker") {
-      return { ok: false, error: "A saved hand-out to one worker cannot be turned into a group — record the group hand-out, then ask the admin to delete this one." };
-    }
-    const workerId = f.recipients.workerId;
-    department = resolveDepartment(f.department, await getCustomDepartments());
-    const unchanged = { worker: workerId === prev.workerId, department: department === prev.department };
-    const worker = await loadWorker(workerId);
-    const bad = workerProblem(worker, department, unchanged);
-    if (bad) return { ok: false, error: bad };
-    workerIds = [workerId];
-    after = {
-      item: f.item, qty: new Prisma.Decimal(f.qty).toNumber(), department,
-      workerId, workerEmpId: worker!.empId, workerName: worker!.name, notes: f.notes, itemId: picked.itemId ?? null,
-    };
-  }
+  const department = resolveDepartment(f.department, await getCustomDepartments());
+  const after: ConsumableSnapshot = { ...before, item: f.item, qty: new Prisma.Decimal(f.qty).toNumber(), department, notes: f.notes, itemId: picked.itemId ?? null };
   if (sameSnapshot(before, after)) return { ok: false, error: "Nothing changed." };
 
   // checked on the day it was handed out, the row itself left out of the count
   const breaches = await checkIssueLimits({
-    itemId: picked.itemId ?? null, department, workerIds, qty: f.qty,
+    itemId: picked.itemId ?? null, department, workerIds: [], qty: f.qty,
     dayISO: factoryDayISO(prev.issuedAt), excludeIssueId: id,
   });
   const verdict = overLimitVerdict(breaches, reason.reason, prev.overLimit ? prev.overLimitReason : null);
@@ -302,8 +272,7 @@ export async function updateConsumableIssue(formData: FormData): Promise<Consuma
     id, prev.updatedAt,
     {
       item: f.item, itemId: picked.itemId ?? null, ...verdict.data!,
-      qty: new Prisma.Decimal(f.qty), notes: f.notes, editedAt: new Date(), editedBy: user.name,
-      ...(group ? {} : { department, workerId: workerIds[0] }),
+      qty: new Prisma.Decimal(f.qty), notes: f.notes, department, editedAt: new Date(), editedBy: user.name,
     },
     { action: "edit", before, after },
     user
@@ -369,33 +338,22 @@ export async function restoreConsumableRevision(formData: FormData): Promise<Con
   const current = snapshotOf(prev);
   if (!prev.deletedAt && sameSnapshot(current, target)) return { ok: false, error: "The row already reads like that version." };
 
-  // a group row's department and workers never change, so a version of it
-  // restores the item, the quantity and the notes; a one-worker row restores
-  // its worker as he was
-  const group = prev.workerId === null;
-  if (group !== (target.workerId === 0)) return { ok: false, error: "That version cannot be read back." };
-  let who: { workerEmpId: string; workerName: string };
-  if (group) {
-    who = { workerEmpId: current.workerEmpId, workerName: current.workerName };
-  } else {
-    const worker = await prisma.worker.findUnique({ where: { id: target.workerId }, select: { empId: true, name: true } });
-    if (!worker) return { ok: false, error: "The worker on that version is no longer on the list — it cannot be restored." };
-    who = { workerEmpId: worker.empId, workerName: worker.name };
-  }
+  // a version restores the item, the quantity, the department and the notes;
+  // the worker an older row named is left as it is now
+  const who = { workerId: current.workerId, workerEmpId: current.workerEmpId, workerName: current.workerName };
 
   const now = new Date();
   const done = await writeChange(
     prev.id, prev.updatedAt,
     {
-      item: target.item, qty: new Prisma.Decimal(target.qty), notes: target.notes,
-      ...(group ? {} : { department: target.department, workerId: target.workerId }),
+      item: target.item, qty: new Prisma.Decimal(target.qty), notes: target.notes, department: target.department,
       // a revision from before the catalogue carries no item link: the row keeps its own
       itemId: target.itemId === undefined ? prev.itemId : target.itemId,
       editedAt: now, editedBy: user.name, deletedAt: null, deletedBy: null,
     },
     {
       action: "restore", before: current,
-      after: { ...target, ...(group ? { department: prev.department, workerId: 0 } : {}), ...who },
+      after: { ...target, ...who },
     },
     user,
     {}
@@ -407,8 +365,7 @@ export async function restoreConsumableRevision(formData: FormData): Promise<Con
 }
 
 /** The record form's hint while it is filled in: where the limits of the
- *  picked item stand for that department — and the worker, the ticked
- *  workers, or the department's crew at work — today (for a row being
+ *  picked item stand for that department today (for a row being
  *  corrected, `id`, on its own day and with the row itself out of the count).
  *  Read-only. */
 export async function consumableLimitHints(formData: FormData): Promise<{ hints: LimitHint[] }> {
@@ -418,18 +375,8 @@ export async function consumableLimitHints(formData: FormData): Promise<{ hints:
   const department = String(formData.get("department") ?? "").trim();
   if (!Number.isInteger(itemId) || itemId <= 0 || !department) return { hints: [] };
   const resolved = resolveDepartment(department, await getCustomDepartments());
-  const scope = String(formData.get("recipientScope") ?? "worker");
-  let workerIds: number[];
-  if (scope === "department") {
-    workerIds = departmentCrew(await getAllWorkers(), resolved).map((w) => w.id);
-  } else if (scope === "workers") {
-    workerIds = [...new Set(String(formData.get("workerIds") ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0))];
-  } else {
-    const w = Number(formData.get("workerId"));
-    workerIds = Number.isInteger(w) && w > 0 ? [w] : [];
-  }
   const id = idOf(formData);
   const row = id === null ? null : await prisma.consumableIssue.findUnique({ where: { id }, select: { id: true, issuedAt: true, deletedAt: true } });
   const live = row && !row.deletedAt ? row : null;
-  return { hints: await limitHints(itemId, resolved, workerIds, factoryDayISO(live?.issuedAt ?? new Date()), live?.id) };
+  return { hints: await limitHints(itemId, resolved, [], factoryDayISO(live?.issuedAt ?? new Date()), live?.id) };
 }

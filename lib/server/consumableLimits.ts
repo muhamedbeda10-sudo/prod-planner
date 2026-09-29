@@ -2,9 +2,11 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, factoryDayStart } from "@/lib/domain/dates";
-import { departmentLabel } from "@/lib/domain/consumables";
+import { departmentLabel, departmentWorkers } from "@/lib/domain/consumables";
+import { WORKER_SECTIONS } from "@/lib/domain/tanks";
+import { getAllWorkers } from "./workers";
 import {
-  ALL_DEPARTMENTS, PERIOD_LABEL, candidateStanding, checkAgainstLimits, coversDepartment, departmentsLabel, exceedances, isLimitBasis, isLimitPeriod,
+  ALL_DEPARTMENTS, PERIOD_LABEL, candidateStanding, checkAgainstLimits, expandPerWorker, ruleLabel, coversDepartment, departmentsLabel, exceedances, isLimitBasis, isLimitPeriod,
   issueUses, parseDepartments, periodWindow, standings, windowsSpan, type LimitBasis, type LimitBreach, type LimitPeriod, type LimitRule, type LimitUse,
 } from "@/lib/domain/consumableLimits";
 
@@ -55,12 +57,18 @@ export async function getCatalogue(opts: { activeOnly?: boolean } = {}): Promise
   return items.map((i) => ({ id: i.id, code: i.code, name: i.name, uom: i.uom, remark: i.remark, active: i.active, limits: i.limits.map(toLimitDTO) }));
 }
 
-/** The limit rules of active items (all of them, or the items given). */
+/** The limit rules of active items (all of them, or the items given), as
+ *  they are counted: a per-person rule turned into each department's limit —
+ *  the number times the department's workers. */
 export async function loadRules(itemIds?: number[]): Promise<LimitRule[]> {
-  const rows = await prisma.consumableLimit.findMany({
-    where: { item: { active: true }, ...(itemIds ? { itemId: { in: itemIds } } : {}) },
-  });
-  return rows.map(toRule);
+  const sectionCodes = WORKER_SECTIONS.map((s) => s.code as string);
+  const [rows, workers, typed] = await Promise.all([
+    prisma.consumableLimit.findMany({ where: { item: { active: true }, ...(itemIds ? { itemId: { in: itemIds } } : {}) } }),
+    getAllWorkers(),
+    // the typed departments hand-outs went to — an "every department" per-person rule covers them too
+    prisma.consumableIssue.findMany({ where: { deletedAt: null, department: { notIn: sectionCodes } }, select: { department: true }, distinct: ["department"] }),
+  ]);
+  return expandPerWorker(rows.map(toRule), departmentWorkers(workers), typed.map((t) => t.department));
 }
 
 const CAIRO_DAY = (d: Date) => factoryDayISO(d);
@@ -118,13 +126,11 @@ export async function limitHints(itemId: number, department: string, workerIds: 
   const span = windowsSpan(rules, dayISO);
   if (!span) return [];
   const uses = await loadUses(span.from, span.to, { itemIds: [itemId], excludeIssueId });
+  // every rule is a department's or a shared one by now (per-person numbers
+  // were made the department's when they were loaded)
   return rules.map((r) => {
-    const { used, limit, people } = candidateStanding(r, uses, dayISO, workerIds);
-    const who = r.basis === "person"
-      ? `${departmentsLabel(r.departments)}, per person${people > 1 ? ` × ${people} workers` : ""}`
-      : departmentsLabel(r.departments);
-    const each = r.basis === "person" && people > 1 ? ` (${r.qty} each)` : "";
-    return { ruleId: r.id, label: `${who} · ${limit} ${PERIOD_LABEL[r.period]}${each}`, used, limit, left: Math.round((limit - used) * 1000) / 1000 };
+    const { used, limit } = candidateStanding(r, uses, dayISO, workerIds);
+    return { ruleId: r.id, label: `${ruleLabel(r)} · ${limit} ${PERIOD_LABEL[r.period]}`, used, limit, left: Math.round((limit - used) * 1000) / 1000 };
   });
 }
 
@@ -273,7 +279,7 @@ function describeLimitJson(raw: unknown): string {
   if (!l.departments) return "—";
   const d = departmentsLabel(parseDepartments(l.departments));
   const per = isLimitPeriod(l.period ?? "") ? PERIOD_LABEL[l.period as LimitPeriod] : l.period;
-  return `${l.qty} ${per} · ${d}${l.basis === "person" ? " (per person)" : ""}`;
+  return `${l.qty} ${per} · ${d}${l.basis === "person" ? " (per worker)" : l.basis === "each" ? " (each department)" : ""}`;
 }
 
 function describeItemJson(raw: unknown): string {
@@ -295,10 +301,22 @@ export async function getCatalogueChanges(take = 60, labelOf: (d: Date) => strin
 }
 
 /** Where each rule stands right now, keyed by rule — the Limits view's bars. */
-export async function getCurrentStandings(todayISO: string): Promise<Record<number, { used: number; limit: number; windowLabel: string; overWorkers: number }>> {
+export async function getCurrentStandings(todayISO: string): Promise<Record<number, { used: number; limit: number; windowLabel: string; overWorkers: number; departments?: number }>> {
   const rules = await loadRules();
   const span = windowsSpan(rules, todayISO);
   if (!span) return {};
   const uses = await loadUses(span.from, span.to);
-  return Object.fromEntries(standings(rules, uses, todayISO).map((s) => [s.ruleId, { used: s.used, limit: s.limit, windowLabel: s.windowLabel, overWorkers: s.over.length }]));
+  // a limit made into one per department stands as its fullest department,
+  // and says how many are over
+  const out: Record<number, { used: number; limit: number; windowLabel: string; overWorkers: number; departments?: number }> = {};
+  const sourceOf = new Map(rules.map((r) => [r.id, r.sourceId ?? r.id]));
+  for (const st of standings(rules, uses, todayISO)) {
+    const key = sourceOf.get(st.ruleId) ?? st.ruleId;
+    const over = st.used > st.limit + 1e-9 ? 1 : 0;
+    const cur = out[key];
+    if (!cur) { out[key] = { used: st.used, limit: st.limit, windowLabel: st.windowLabel, overWorkers: over, departments: 1 }; continue; }
+    const worse = st.limit > 0 && st.used / st.limit > (cur.limit > 0 ? cur.used / cur.limit : 0);
+    out[key] = { ...(worse ? { used: st.used, limit: st.limit, windowLabel: st.windowLabel } : cur), overWorkers: cur.overWorkers + over, departments: (cur.departments ?? 1) + 1 };
+  }
+  return out;
 }

@@ -69,7 +69,7 @@ export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard
     Worker: e.worker ? `${e.worker.name} (${e.worker.empId})` : "", Used: e.used, Limit: e.limit, Over: Math.round((e.used - e.limit) * 1000) / 1000,
   }));
   const issueRows: TableRow[] = d.overLimitIssues.map((i) => ({
-    Day: i.dayISO, Item: i.item, Qty: i.qty, Department: departmentLabel(i.department), "Emp ID": i.worker.empId, Worker: i.worker.name,
+    Day: i.dayISO, Item: i.item, Qty: i.qty, Department: departmentLabel(i.department), "Went to": i.worker.name,
     Reason: i.reason ?? "", Breach: i.note ?? "", "Recorded by": i.recordedBy,
   }));
 
@@ -96,7 +96,7 @@ export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard
       <div className="grid gap-3 xl:grid-cols-2">
         <ChartCard
           title="Exceeded in the period"
-          sub={d.exceedances.length ? `Each day, week, month or quarter on the slicer that ended over its limit (per worker for a per-person limit)` : `No limit went over ${periodLabel}`}
+          sub={d.exceedances.length ? `Each day, week, month or longer window on the slicer that ended over its limit — a per-worker limit counts as its department's number × its workers` : `No limit went over ${periodLabel}`}
           table={d.exceedances.length ? { rows: exRows, filename: file("exceeded"), sheet: "Exceeded" } : undefined}
         >
           {d.exceedances.length > 0 ? (

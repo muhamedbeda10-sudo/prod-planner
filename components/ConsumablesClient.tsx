@@ -2,20 +2,18 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { WORKER_GROUPS } from "@/lib/domain/tanks";
-import {
-  CONSUMABLE_LIMITS, NEW_DEPARTMENT, NEW_ITEM, OVER_LIMIT_REASON_MAX, RECIPIENT_SCOPES, RECIPIENT_SCOPE_LABEL,
-  isSectionDepartment, workersForDepartment, type RecipientScope,
-} from "@/lib/domain/consumables";
-import type { CatalogueOption, ConsumableIssueView, ConsumablesPageData, ConsumableWorkerOption } from "@/lib/server/consumables";
+import { CONSUMABLE_LIMITS, NEW_DEPARTMENT, NEW_ITEM, OVER_LIMIT_REASON_MAX } from "@/lib/domain/consumables";
+import type { CatalogueOption, ConsumableIssueView, ConsumablesPageData } from "@/lib/server/consumables";
 import type { LimitHint } from "@/lib/server/consumableLimits";
 import { consumableLimitHints, createConsumableIssue, deleteConsumableIssue, updateConsumableIssue } from "@/app/consumables/actions";
 import { ActionMsg as Msg, RevisionItem, useConsumableAction as useAction } from "@/components/consumablesUi";
 import { Modal } from "@/components/Modal";
 
-// The CONSUMABLES tab: the store's log of what it hands out. "➕ New
-// hand-out" opens the storekeeper's form in a popup (consumables.edit); the
-// log below is everyone's to read. A saved row is corrected by the person who recorded it or an admin;
-// its history, deleting and restoring are the admin's.
+// The CONSUMABLES tab: the store's log of what it hands out — to a
+// department, no worker named. "➕ New hand-out" opens the storekeeper's form
+// in a popup (consumables.edit); the log below is everyone's to read. A
+// saved row is corrected by the person who recorded it or an admin; its
+// history, deleting and restoring are the admin's.
 
 const F = "px-2.5 py-2 text-sm font-semibold";
 const LABEL = "text-[11px] font-bold text-muted uppercase tracking-wide";
@@ -41,24 +39,15 @@ function catalogueFor(catalogue: CatalogueOption[], department: string) {
 
 const itemLabel = (c: CatalogueOption) => `${c.name}${c.code ? ` · ${c.code}` : ""}${c.active ? "" : " (retired)"}`;
 
-/** Who the form's hand-out is for — the recipient choice and its workers. */
-interface Recipients {
-  scope: RecipientScope;
-  workerId: string;
-  /** The ticked workers, for "several workers". */
-  workerIds: string[];
-}
-
 /**
- * Where the limits of the picked item stand for this department (and worker,
- * workers or whole department) today, asked of the server as the form is
- * filled in — and what the quantity being typed would make of them. For a
- * row being corrected (`issueId`), its own day, the row left out.
+ * Where the limits of the picked item stand for this department today,
+ * asked of the server as the form is filled in — and what the quantity being
+ * typed would make of them. For a row being corrected (`issueId`), its own
+ * day, the row left out.
  */
-function LimitHints({ itemId, department, who, qty, issueId }: { itemId: string; department: string; who: Recipients; qty: number; issueId?: number }) {
+function LimitHints({ itemId, department, qty, issueId }: { itemId: string; department: string; qty: number; issueId?: number }) {
   const [hints, setHints] = useState<LimitHint[] | null>(null);
   const ready = /^\d+$/.test(itemId) && department !== "" && department !== NEW_DEPARTMENT;
-  const ids = who.workerIds.join(",");
   useEffect(() => {
     if (!ready) return;
     let live = true;
@@ -66,15 +55,13 @@ function LimitHints({ itemId, department, who, qty, issueId }: { itemId: string;
       const fd = new FormData();
       fd.set("itemId", itemId);
       fd.set("department", department);
-      fd.set("recipientScope", who.scope);
-      fd.set("workerId", who.workerId);
-      fd.set("workerIds", ids);
+      fd.set("recipientScope", "department");
       if (issueId) fd.set("id", String(issueId));
       const res = await consumableLimitHints(fd);
       if (live) setHints(res.hints);
     }, 250);
     return () => { live = false; clearTimeout(t); };
-  }, [ready, itemId, department, who.scope, who.workerId, ids, issueId]);
+  }, [ready, itemId, department, issueId]);
   if (!ready || hints === null) return null;
   if (hints.length === 0) return <p className="text-xs text-muted">No limit on this item for this department.</p>;
   return (
@@ -109,213 +96,69 @@ function OverLimitPrompt({ breaches, disabled }: { breaches: string[]; disabled?
 }
 
 /**
- * Who a hand-out is for: one worker (the dropdown), several (a list to tick),
- * or the whole department — its workers at work today, counted for the
- * per-person limits. A typed department has no members of its own, so it
- * offers one worker or several.
- */
-function RecipientFields({
-  department, workers, offered, who, setWho, disabled,
-}: {
-  department: string;
-  workers: ConsumableWorkerOption[];
-  offered: ConsumableWorkerOption[];
-  who: Recipients;
-  setWho: (v: Recipients) => void;
-  disabled?: boolean;
-}) {
-  const [filter, setFilter] = useState("");
-  const section = department !== "" && isSectionDepartment(department);
-  const crew = section ? workersForDepartment(workers, department) : [];
-  const ticked = new Set(who.workerIds);
-  const needle = filter.trim().toLowerCase();
-  const listed = needle ? offered.filter((w) => `${w.empId} ${w.name}`.toLowerCase().includes(needle)) : offered;
-  const toggle = (id: string) => setWho({ ...who, workerIds: ticked.has(id) ? who.workerIds.filter((x) => x !== id) : [...who.workerIds, id] });
-
-  return (
-    <fieldset className="space-y-2 min-w-0" disabled={disabled}>
-      <input type="hidden" name="recipientScope" value={who.scope} />
-      <input type="hidden" name="workerIds" value={who.scope === "workers" ? who.workerIds.join(",") : ""} />
-      <legend className={LABEL}>Hand-out for</legend>
-      <div className="seg w-full" role="radiogroup" aria-label="Hand-out for">
-        {RECIPIENT_SCOPES.map((sc) => {
-          const off = sc === "department" && department !== "" && !section;
-          return (
-            <button
-              key={sc} type="button" role="radio" aria-checked={who.scope === sc} className={`flex-1 ${who.scope === sc ? "on" : ""} ${off ? "opacity-40" : ""}`} disabled={off}
-              title={off ? "A typed department has no workers of its own on the workers list — tick the workers instead" : undefined}
-              onClick={() => setWho({ ...who, scope: sc })}
-            >
-              {RECIPIENT_SCOPE_LABEL[sc]}
-            </button>
-          );
-        })}
-      </div>
-
-      {who.scope === "worker" && (
-        <select name="workerId" value={who.workerId} onChange={(e) => setWho({ ...who, workerId: e.target.value })} required disabled={disabled || !department} aria-label="Technician / worker" className={`${F} w-full`}>
-          <option value="" disabled>{department ? (offered.length ? "Pick the technician / worker…" : "No active worker in this section") : "Pick the department first"}</option>
-          {offered.map((w) => <option key={w.id} value={w.id}>{workerLabel(w)}</option>)}
-        </select>
-      )}
-
-      {who.scope === "department" && (
-        <div className="rounded-lg border bg-surface-2 px-3 py-2 text-sm" aria-live="polite">
-          {!department ? (
-            <span className="text-muted">Pick the department first.</span>
-          ) : crew.length === 0 ? (
-            <span className="text-bad-fg font-semibold">Nobody in this section is at work today — tick the workers instead.</span>
-          ) : (
-            <>
-              <div><b className="tabnum">{crew.length}</b> worker{crew.length === 1 ? "" : "s"} at work today — the quantity is shared between them, and a per-person limit counts ×{crew.length}.</div>
-              <details className="text-xs text-muted mt-1">
-                <summary className="cursor-pointer">Who is counted</summary>
-                <p className="mt-1">{crew.map(workerLabel).join(" · ")}</p>
-              </details>
-            </>
-          )}
-        </div>
-      )}
-
-      {who.scope === "workers" && (
-        <div className="border rounded-lg bg-surface-2">
-          <div className="flex flex-wrap items-center gap-2 p-2 border-b">
-            <span className="text-sm" aria-live="polite"><b className="tabnum">{who.workerIds.length}</b> ticked{who.workerIds.length > 1 ? <span className="text-muted"> · a per-person limit counts ×{who.workerIds.length}</span> : null}</span>
-            <span className="ms-auto flex items-center gap-1">
-              <button type="button" className="btn btn-sm btn-ghost" disabled={disabled || listed.length === 0}
-                onClick={() => setWho({ ...who, workerIds: [...new Set([...who.workerIds, ...listed.map((w) => String(w.id))])] })}>
-                Tick all{needle ? " shown" : ""}
-              </button>
-              <button type="button" className="btn btn-sm btn-ghost" disabled={disabled || who.workerIds.length === 0} onClick={() => setWho({ ...who, workerIds: [] })}>Clear</button>
-            </span>
-            {offered.length > 10 && (
-              <input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find a name or ID…" aria-label="Find a worker" className={`${F} w-full`} />
-            )}
-          </div>
-          {!department ? (
-            <p className="text-xs text-muted p-2">Pick the department first.</p>
-          ) : offered.length === 0 ? (
-            <p className="text-xs text-muted p-2">No active worker in this section.</p>
-          ) : (
-            <ul className="grid gap-x-3 sm:grid-cols-2 max-h-52 overflow-y-auto p-2">
-              {listed.map((w) => (
-                <li key={w.id}>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer py-1 px-1 rounded hover:bg-surface">
-                    <input type="checkbox" checked={ticked.has(String(w.id))} onChange={() => toggle(String(w.id))} disabled={disabled} />
-                    <span className="ltr tabnum text-xs text-muted">{w.empId}</span>
-                    <span className="truncate">{w.name}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </fieldset>
-  );
-}
-
-/**
  * The hand-out's fields, for a new one and for a correction alike, laid out
- * top to bottom: what (item, qty), where (department), who for, notes. The
- * item comes from the catalogue (the department's items first) or is typed
- * when it is not in it; the department is a worker section, one typed
- * before, or a new one; the worker list narrows to the section picked. A
- * saved group row's department and workers are fixed: it shows them.
+ * top to bottom: where (department), what (item, qty), notes. The item comes
+ * from the catalogue (the department's items first) or is typed when it is
+ * not in it; the department is a worker section, one typed before, or a new
+ * one. No worker is named — a hand-out is the department's, so the
+ * department can be corrected on any row, an older one's included.
  */
 function IssueFields({
   departments,
-  workers,
   catalogue,
   entry,
   disabled,
   department,
   setDepartment,
-  who,
-  setWho,
-  chooseScope,
   itemId,
   setItemId,
   setQty,
   qtyRef,
 }: {
   departments: ConsumablesPageData["departments"];
-  workers: ConsumableWorkerOption[];
   catalogue: CatalogueOption[];
   entry?: ConsumableIssueView;
   disabled?: boolean;
   department: string;
   setDepartment: (v: string) => void;
-  who: Recipients;
-  setWho: (v: Recipients) => void;
-  /** A new hand-out chooses one worker, several or the whole department; a
-   *  saved one keeps what it was. */
-  chooseScope: boolean;
   itemId: string;
   setItemId: (v: string) => void;
   setQty: (v: number) => void;
   qtyRef?: React.Ref<HTMLInputElement>;
 }) {
-  const locked = entry?.group ?? null;
-  // an old row's worker may since have left the list or the section — the
-  // admin's edit still shows him, so the row can be saved as it is
-  const offered = useMemo(() => {
-    const list = workersForDepartment(workers, department);
-    const w = entry?.worker;
-    if (w && String(w.id) === who.workerId && !list.some((x) => x.id === w.id)) {
-      return [...list, { id: w.id, empId: w.empId, name: `${w.name}${w.active ? "" : " (deactivated)"}`, sections: [] }];
-    }
-    return list;
-  }, [workers, department, entry, who.workerId]);
   const items = useMemo(() => catalogueFor(catalogue, department), [catalogue, department]);
   const picked = catalogue.find((c) => String(c.id) === itemId);
-
-  function pickDepartment(next: string) {
-    setDepartment(next);
-    // workers who are not in the new section cannot stay picked, and a typed
-    // department has no "whole department"
-    const inNext = new Set(workersForDepartment(workers, next).map((w) => String(w.id)));
-    setWho({
-      scope: who.scope === "department" && next !== "" && !isSectionDepartment(next) ? "workers" : who.scope,
-      workerId: who.workerId && !inNext.has(who.workerId) ? "" : who.workerId,
-      workerIds: who.workerIds.filter((id) => inNext.has(id)),
-    });
-  }
+  // an older row's department may be one no longer offered — keep it pickable
+  const known = department === "" || department === NEW_DEPARTMENT
+    || departments.sections.some((s) => s.code === department) || departments.custom.includes(department);
 
   return (
     <div className="grid gap-3 sm:grid-cols-6">
-      {locked ? (
-        <div className="sm:col-span-6 rounded-lg border bg-surface-2 px-3 py-2 text-sm">
-          <div className={LABEL}>Department · hand-out for</div>
-          <div className="mt-0.5"><b>{entry!.departmentLabel}</b> · {locked.label} <span className="text-xs text-muted">— fixed when it was recorded</span></div>
-        </div>
-      ) : (
-        <>
-          <Field label="Department" className={department === NEW_DEPARTMENT ? "sm:col-span-3" : "sm:col-span-6"}>
-            <select name="department" value={department} onChange={(e) => pickDepartment(e.target.value)} required disabled={disabled} className={`${F} w-full`}>
-              <option value="" disabled>Pick the department…</option>
-              {WORKER_GROUPS.map((g) => (
-                <optgroup key={g.key} label={g.label}>
-                  {departments.sections.filter((s) => s.group === g.key).map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
-                </optgroup>
-              ))}
-              {departments.custom.length > 0 && (
-                <optgroup label="Other departments">
-                  {departments.custom.map((d) => <option key={d} value={d}>{d}</option>)}
-                </optgroup>
-              )}
-              <option value={NEW_DEPARTMENT}>➕ New department…</option>
-            </select>
-          </Field>
-          {department === NEW_DEPARTMENT && (
-            <Field label="New department" className="sm:col-span-3">
-              <input
-                type="text" name="departmentNew" required disabled={disabled} maxLength={CONSUMABLE_LIMITS.department}
-                placeholder="e.g. Maintenance" autoComplete="off" autoFocus className={`${F} w-full`}
-              />
-            </Field>
+      <input type="hidden" name="recipientScope" value="department" />
+      <Field label="Department" className={department === NEW_DEPARTMENT ? "sm:col-span-3" : "sm:col-span-6"}>
+        <select name="department" value={department} onChange={(e) => setDepartment(e.target.value)} required disabled={disabled} className={`${F} w-full`}>
+          <option value="" disabled>Pick the department…</option>
+          {!known && <option value={department}>{entry?.departmentLabel ?? department}</option>}
+          {WORKER_GROUPS.map((g) => (
+            <optgroup key={g.key} label={g.label}>
+              {departments.sections.filter((s) => s.group === g.key).map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
+            </optgroup>
+          ))}
+          {departments.custom.length > 0 && (
+            <optgroup label="Other departments">
+              {departments.custom.map((d) => <option key={d} value={d}>{d}</option>)}
+            </optgroup>
           )}
-        </>
+          <option value={NEW_DEPARTMENT}>➕ New department…</option>
+        </select>
+      </Field>
+      {department === NEW_DEPARTMENT && (
+        <Field label="New department" className="sm:col-span-3">
+          <input
+            type="text" name="departmentNew" required disabled={disabled} maxLength={CONSUMABLE_LIMITS.department}
+            placeholder="e.g. Maintenance" autoComplete="off" autoFocus className={`${F} w-full`}
+          />
+        </Field>
       )}
 
       <Field label="Item" className="sm:col-span-4">
@@ -350,21 +193,6 @@ function IssueFields({
         </Field>
       )}
 
-      {!locked && (
-        <div className="sm:col-span-6">
-          {chooseScope ? (
-            <RecipientFields department={department} workers={workers} offered={offered} who={who} setWho={setWho} disabled={disabled} />
-          ) : (
-            <Field label="Technician / worker">
-              <select name="workerId" value={who.workerId} onChange={(e) => setWho({ ...who, workerId: e.target.value })} required disabled={disabled || !department} className={`${F} w-full`}>
-                <option value="" disabled>{department ? (offered.length ? "Pick the name…" : "No active worker in this section") : "Pick the department first"}</option>
-                {offered.map((w) => <option key={w.id} value={w.id}>{workerLabel(w)}</option>)}
-              </select>
-            </Field>
-          )}
-        </div>
-      )}
-
       <Field label="Notes (optional)" className="sm:col-span-6">
         <input type="text" name="notes" defaultValue={entry?.notes ?? ""} disabled={disabled} maxLength={CONSUMABLE_LIMITS.notes} autoComplete="off" className={`${F} w-full`} />
       </Field>
@@ -379,13 +207,12 @@ function FormFoot({ children }: { children: React.ReactNode }) {
 
 /**
  * Recording a hand-out, in a popup. "Record & next" keeps it open for the
- * next item to the same department and people (the usual run at the store
+ * next item to the same department (the usual run at the store
  * window); "Record" saves and closes.
  */
 function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; onClose: () => void; onSaved: (text: string) => void }) {
   const add = useAction();
   const [department, setDepartment] = useState("");
-  const [who, setWho] = useState<Recipients>({ scope: "worker", workerId: "", workerIds: [] });
   const [itemId, setItemId] = useState("");
   const [qty, setQty] = useState(0);
   // the breach the server answered with; cleared as soon as the hand-out changes
@@ -402,7 +229,7 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
   }, [refocus, add.pending]);
   const changed = <T,>(set: (v: T) => void) => (v: T) => { set(v); setBreaches(null); };
 
-  // after "Record & next" the department and the people stay; the item,
+  // after "Record & next" the department stays; the item,
   // qty, notes and any reason clear
   function clearForNext(form: HTMLFormElement) {
     for (const n of ["item", "qty", "notes", "overLimitReason"]) {
@@ -418,7 +245,7 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
   return (
     <Modal
       title="➕ New hand-out"
-      sub={savedCount > 0 ? `${savedCount} recorded in this window — the department and the people stay for the next.` : "The date and time are stamped when you save."}
+      sub={savedCount > 0 ? `${savedCount} recorded in this window — the department stays for the next.` : "The date and time are stamped when you save."}
       onClose={onClose}
       busy={add.pending}
     >
@@ -445,11 +272,11 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
         }}
       >
         <IssueFields
-          departments={data.departments} workers={data.workers} catalogue={data.catalogue} disabled={add.pending}
-          department={department} setDepartment={changed(setDepartment)} who={who} setWho={changed(setWho)} chooseScope
+          departments={data.departments} catalogue={data.catalogue} disabled={add.pending}
+          department={department} setDepartment={changed(setDepartment)}
           itemId={itemId} setItemId={changed(setItemId)} setQty={changed(setQty)} qtyRef={qtyRef}
         />
-        <LimitHints itemId={itemId} department={department} who={who} qty={qty} />
+        <LimitHints itemId={itemId} department={department} qty={qty} />
         {breaches && <OverLimitPrompt breaches={breaches} disabled={add.pending} />}
         {!breaches && <Msg msg={add.msg} />}
         <FormFoot>
@@ -469,10 +296,6 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
 function EditDialog({ e, data, onClose }: { e: ConsumableIssueView; data: ConsumablesPageData; onClose: () => void }) {
   const edit = useAction();
   const [department, setDepartment] = useState(e.department);
-  // a group row's workers are fixed — the hints count them as saved
-  const [who, setWho] = useState<Recipients>(
-    e.group ? { scope: "workers", workerId: "", workerIds: e.group.workers.map((w) => String(w.id)) } : { scope: "worker", workerId: String(e.worker?.id ?? ""), workerIds: [] },
-  );
   const [itemId, setItemId] = useState(e.itemId === null ? NEW_ITEM : String(e.itemId));
   const [qty, setQty] = useState(e.qty);
   const [breaches, setBreaches] = useState<string[] | null>(null);
@@ -490,11 +313,11 @@ function EditDialog({ e, data, onClose }: { e: ConsumableIssueView; data: Consum
         }}
       >
         <IssueFields
-          departments={data.departments} workers={data.workers} catalogue={data.catalogue} entry={e} disabled={edit.pending}
-          department={department} setDepartment={changed(setDepartment)} who={who} setWho={changed(setWho)} chooseScope={false}
+          departments={data.departments} catalogue={data.catalogue} entry={e} disabled={edit.pending}
+          department={department} setDepartment={changed(setDepartment)}
           itemId={itemId} setItemId={changed(setItemId)} setQty={changed(setQty)}
         />
-        <LimitHints itemId={itemId} department={department} who={who} qty={qty} issueId={e.id} />
+        <LimitHints itemId={itemId} department={department} qty={qty} issueId={e.id} />
         {breaches && <OverLimitPrompt breaches={breaches} disabled={edit.pending} />}
         {e.overLimit && !breaches && <p className="text-xs text-bad-fg">Recorded over a limit — “{e.overLimit.reason}”. It keeps that reason while it stays over.</p>}
         {!breaches && <Msg msg={edit.msg} />}
@@ -527,20 +350,13 @@ function IssueRow({ e, data, isAdmin, showActions, colSpan }: { e: ConsumableIss
           {e.overLimit?.reason && <div className="text-xs text-bad-fg font-normal">“{e.overLimit.reason}”</div>}
         </td>
         <td className="p-2 text-center ltr tabnum font-extrabold whitespace-nowrap">{e.qty}{e.uom && <span className="text-[10px] text-muted font-semibold ms-0.5">{e.uom}</span>}</td>
-        <td className="p-2">{e.departmentLabel}</td>
         <td className="p-2">
+          {e.departmentLabel}
+          {/* an older row still names who it went to */}
           {e.worker ? (
-            <span className="whitespace-nowrap">
-              <code className="ltr tabnum text-xs px-1 py-0.5 rounded bg-surface-2 border mr-1">{e.worker.empId}</code>
-              {e.worker.name}
-            </span>
-          ) : e.group ? (
-            <details>
-              <summary className="cursor-pointer whitespace-nowrap">
-                <span className="pill pill-muted mr-1">group</span>{e.group.label}
-              </summary>
-              <p className="text-xs text-muted mt-1 max-w-xs">{e.group.workers.map(workerLabel).join(" · ")}</p>
-            </details>
+            <div className="text-[11px] text-muted whitespace-nowrap">{workerLabel(e.worker)}</div>
+          ) : e.group && e.group.workers.length > 0 ? (
+            <div className="text-[11px] text-muted max-w-xs" title={e.group.workers.map(workerLabel).join(" · ")}>{e.group.label}</div>
           ) : null}
         </td>
         <td className="p-2 text-muted">{e.notes ?? ""}</td>
@@ -568,7 +384,7 @@ function IssueRow({ e, data, isAdmin, showActions, colSpan }: { e: ConsumableIss
               <button
                 type="button" className="btn btn-sm btn-danger ml-1" disabled={del.pending}
                 onClick={() => {
-                  if (!confirm(`Delete this hand-out?\n\n${e.qty} × ${e.item} → ${e.worker?.name ?? e.group?.label ?? ""}\n\nIt leaves the log; you can restore it from the Edits view.`)) return;
+                  if (!confirm(`Delete this hand-out?\n\n${e.qty} × ${e.item} → ${e.departmentLabel}\n\nIt leaves the log; you can restore it from the Edits view.`)) return;
                   const fd = new FormData();
                   fd.set("id", String(e.id));
                   fd.set("version", e.version);
@@ -621,7 +437,7 @@ export function ConsumablesClient({
   }, [data.entries, q]);
   // the actions column is there for an admin, or for a recorder with a row of his own on screen
   const showActions = isAdmin || data.entries.some((e) => e.canEdit);
-  const colSpan = showActions ? 8 : 7;
+  const colSpan = showActions ? 7 : 6;
   const [recording, setRecording] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
 
@@ -638,7 +454,7 @@ export function ConsumablesClient({
           <button type="button" className="btn btn-primary" onClick={() => { setSaved(null); setRecording(true); }}>➕ New hand-out</button>
         )}
         <input
-          type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item, worker, department…"
+          type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item, department, notes…"
           aria-label="Search the log" className={`${F} w-full sm:w-72`}
         />
         <span className="text-sm text-muted">
@@ -663,7 +479,6 @@ export function ConsumablesClient({
                   <th className="p-2">Item</th>
                   <th className="p-2 text-center">Qty</th>
                   <th className="p-2">Department</th>
-                  <th className="p-2">Technician / worker</th>
                   <th className="p-2">Notes</th>
                   <th className="p-2">Recorded by</th>
                   {showActions && <th className="p-2 no-print" title="Correct your own rows; deleting is the admin's">Actions</th>}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ALL_DEPARTMENTS, FABRICATION_SECTIONS, FAB_AND_WELD_SECTIONS, checkAgainstLimits, departmentsLabel, describeBreach,
+  ALL_DEPARTMENTS, FABRICATION_SECTIONS, FAB_AND_WELD_SECTIONS, checkAgainstLimits, departmentsLabel, describeBreach, expandPerWorker,
   exceedances, issueUses, parseDepartments, periodWindow, serializeDepartments, splitSheetLimit, standings, windowLabel, windowsOverlapping,
   windowsSpan, type LimitCandidate, type LimitRule, type LimitUse,
 } from "./consumableLimits";
@@ -176,5 +176,62 @@ describe("the alarm board", () => {
     const rules = [rule({ basis: "person", qty: 2 })];
     const ex = exceedances(rules, [use({ workerId: 3, qty: 3 }), use({ workerId: 4, qty: 2 })], "2026-09-26", "2026-10-02");
     expect(ex).toEqual([expect.objectContaining({ workerId: 3, used: 3, limit: 2 })]);
+  });
+});
+
+describe("per-worker and each-department limits become each department's own", () => {
+  const rule = (over: Partial<LimitRule>): LimitRule => ({ id: 7, itemId: 3, departments: ["WeldingTX", "PaintingTX"], basis: "person", period: "week", qty: 2, ...over });
+  const workers = new Map([["WeldingTX", 12], ["PaintingTX", 5]]);
+
+  it("turns a per-worker number into the department's: the number × its workers", () => {
+    const out = expandPerWorker([rule({})], workers);
+    expect(out.map((r) => [r.departments, r.basis, r.qty, r.sourceId, r.perWorker])).toEqual([
+      [["WeldingTX"], "pool", 24, 7, { qty: 2, workers: 12 }],
+      [["PaintingTX"], "pool", 10, 7, { qty: 2, workers: 5 }],
+    ]);
+    expect(out[0].label).toBe("Welding TX (2 per worker × 12 workers)");
+    expect(new Set(out.map((r) => r.id)).size).toBe(2);
+    expect(out.every((r) => r.id < 0)).toBe(true);
+  });
+
+  it("counts a department with no one on the list as one worker, and says so", () => {
+    const [m] = expandPerWorker([rule({ departments: ["Maintenance"] })], workers);
+    expect(m.qty).toBe(2);
+    expect(m.label).toMatch(/no one on the workers list/);
+  });
+
+  it("gives every department picked the whole number for 'each'", () => {
+    const out = expandPerWorker([rule({ basis: "each", qty: 15 })], workers);
+    expect(out.map((r) => [r.departments, r.qty, r.basis])).toEqual([[["WeldingTX"], 15, "pool"], [["PaintingTX"], 15, "pool"]]);
+  });
+
+  it("covers the staffed sections and the typed departments seen for 'every department'", () => {
+    const out = expandPerWorker([rule({ departments: ALL_DEPARTMENTS })], workers, ["Store"]);
+    expect(out.map((r) => r.departments[0])).toEqual(["WeldingTX", "PaintingTX", "Store"]);
+  });
+
+  it("leaves a shared number as it is, and a breach reads in the department's words", () => {
+    const pool = rule({ basis: "pool" });
+    expect(expandPerWorker([pool], workers)).toEqual([pool]);
+    const [w] = expandPerWorker([rule({})], workers);
+    const uses = [{ itemId: 3, department: "WeldingTX", workerId: 0, dayISO: "2026-09-28", qty: 20 }];
+    const b = checkAgainstLimits([w], uses, { itemId: 3, department: "WeldingTX", dayISO: "2026-09-29", qty: 5, workerIds: [] });
+    expect(b).toHaveLength(1);
+    expect(describeBreach(b[0])).toMatch(/^Welding TX \(2 per worker × 12 workers\) · a week .*20 already \+ 5 now = 25 of 24/);
+  });
+});
+
+describe("periods of several months", () => {
+  it("runs from January in steps of the period", () => {
+    expect(periodWindow("bimonth", "2026-09-28")).toEqual({ from: "2026-09-01", to: "2026-10-31" });
+    expect(periodWindow("fourmonth", "2026-09-28")).toEqual({ from: "2026-09-01", to: "2026-12-31" });
+    expect(periodWindow("halfyear", "2026-09-28")).toEqual({ from: "2026-07-01", to: "2026-12-31" });
+    expect(periodWindow("year", "2026-09-28")).toEqual({ from: "2026-01-01", to: "2026-12-31" });
+    expect(periodWindow("quarter", "2026-09-28")).toEqual({ from: "2026-07-01", to: "2026-09-30" });
+  });
+  it("names the window", () => {
+    expect(windowLabel("halfyear", periodWindow("halfyear", "2026-09-28"))).toBe("Jul–Dec 2026");
+    expect(windowLabel("year", periodWindow("year", "2026-09-28"))).toBe("2026");
+    expect(windowLabel("quarter", periodWindow("quarter", "2026-09-28"))).toBe("Q3 2026");
   });
 });

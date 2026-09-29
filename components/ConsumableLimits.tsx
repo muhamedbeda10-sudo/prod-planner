@@ -6,6 +6,7 @@ import { ALL_DEPARTMENTS, LIMIT_PERIODS, PERIOD_LABEL, PERIOD_NOUN, type LimitBa
 import type { CatalogueChangeView, CatalogueItemDTO, LimitDTO } from "@/lib/server/consumableLimits";
 import { deleteConsumableLimit, saveCatalogueItem, saveConsumableLimit } from "@/app/consumables/catalogueActions";
 import { ActionMsg as Msg, useConsumableAction as useAction } from "@/components/consumablesUi";
+import { Modal } from "@/components/Modal";
 
 // The CONSUMABLES tab's Limits view: the store's catalogue — code, name, unit
 // — each item with its limits and where each stands right now in its own
@@ -35,7 +36,7 @@ function UsageBar({ s, basis }: { s: Standing | undefined; basis: LimitBasis }) 
   const ratio = s.limit > 0 ? s.used / s.limit : 0;
   const tone = ratio > 1 + 1e-9 ? "var(--bad-fg)" : ratio >= 0.8 ? "var(--warn-fg)" : "var(--ok-fg)";
   return (
-    <div className="min-w-[9rem]" title={`${basis === "person" ? "The worker who took the most" : "Handed out"} ${s.windowLabel}: ${fmt(s.used)} of ${fmt(s.limit)}`}>
+    <div className="min-w-[9rem]" title={`${basis === "pool" ? "Handed out" : "The fullest department"} ${s.windowLabel}: ${fmt(s.used)} of ${fmt(s.limit)}`}>
       <div className="flex items-baseline justify-between gap-2 text-[11px]">
         <span className="text-muted">{s.windowLabel}</span>
         <span className="tabnum font-bold" style={{ color: ratio > 1 ? "var(--bad-fg)" : undefined }}>{fmt(s.used)} / {fmt(s.limit)}</span>
@@ -43,13 +44,17 @@ function UsageBar({ s, basis }: { s: Standing | undefined; basis: LimitBasis }) 
       <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden mt-0.5">
         <div className="h-full rounded-full" style={{ width: `${Math.min(100, ratio * 100)}%`, background: tone }} />
       </div>
-      {basis === "person" && s.overWorkers > 0 && <div className="text-[11px] text-bad-fg font-semibold">{s.overWorkers} worker(s) over</div>}
+      {basis !== "pool" && s.overWorkers > 0 && <div className="text-[11px] text-bad-fg font-semibold">{s.overWorkers} department(s) over</div>}
     </div>
   );
 }
 
-function ItemForm({ item, onDone }: { item?: CatalogueItemDTO; onDone: () => void }) {
+function ItemForm({ item, onDone, departments }: { item?: CatalogueItemDTO; onDone: () => void; departments?: Departments }) {
   const save = useAction();
+  // a new item takes its limit in the same form — how much, how often, for
+  // which departments and how it counts — so it is set in one go
+  const [withLimit, setWithLimit] = useState(!item);
+  const [all, setAll] = useState(false);
   return (
     <form
       className="flex flex-wrap items-end gap-2"
@@ -57,7 +62,11 @@ function ItemForm({ item, onDone }: { item?: CatalogueItemDTO; onDone: () => voi
         ev.preventDefault();
         const fd = new FormData(ev.currentTarget);
         if (item) fd.set("id", String(item.id));
-        save.run(saveCatalogueItem, fd, item ? "Saved." : "Added to the catalogue.", onDone);
+        if (!item) {
+          fd.set("withLimit", withLimit ? "true" : "false");
+          fd.set("allDepartments", all ? "true" : "false");
+        }
+        save.run(saveCatalogueItem, fd, item ? "Saved." : withLimit ? "Added to the catalogue with its limit." : "Added to the catalogue.", onDone);
       }}
     >
       <Field label="Code" className="w-44"><input type="text" name="code" defaultValue={item?.code ?? ""} maxLength={60} placeholder="C-CON-…" className={`${F} ltr w-full`} disabled={save.pending} /></Field>
@@ -72,6 +81,16 @@ function ItemForm({ item, onDone }: { item?: CatalogueItemDTO; onDone: () => voi
           </select>
         </Field>
       )}
+      {!item && departments && (
+        <div className="w-full border rounded-lg p-2 space-y-2 mt-1">
+          <label className="inline-flex items-center gap-1.5 text-sm font-bold cursor-pointer">
+            <input type="checkbox" checked={withLimit} onChange={(e) => setWithLimit(e.target.checked)} disabled={save.pending} className="accent-[var(--brand,#1b7a43)]" />
+            Its limit
+          </label>
+          {withLimit && <LimitFields departments={departments} all={all} setAll={setAll} busy={save.pending} />}
+          {!withLimit && <p className="text-[11px] text-muted">No limit — anything handed out of it is only logged. Limits can be added to the item later.</p>}
+        </div>
+      )}
       <button type="submit" className="btn btn-primary btn-sm" disabled={save.pending}>{item ? "Save" : "Add item"}</button>
       <button type="button" className="btn btn-sm btn-ghost" onClick={onDone} disabled={save.pending}>Cancel</button>
       <div className="w-full"><Msg msg={save.msg} /></div>
@@ -79,37 +98,28 @@ function ItemForm({ item, onDone }: { item?: CatalogueItemDTO; onDone: () => voi
   );
 }
 
-function LimitForm({ itemId, limit, departments, onDone }: { itemId: number; limit?: LimitDTO; departments: Departments; onDone: () => void }) {
-  const save = useAction();
-  const del = useAction();
-  const [all, setAll] = useState(limit?.departments === ALL_DEPARTMENTS);
+/** The limit's own fields — quantity, how often, how it counts, which
+ *  departments — shared by the limit form and the add-item form. */
+function LimitFields({ limit, departments, all, setAll, busy }: {
+  limit?: LimitDTO; departments: Departments; all: boolean; setAll: (v: boolean) => void; busy: boolean;
+}) {
   const picked = new Set(limit && limit.departments !== ALL_DEPARTMENTS ? limit.departments : []);
-  const busy = save.pending || del.pending;
   return (
-    <form
-      className="space-y-2 border rounded-lg p-2 bg-surface"
-      onSubmit={(ev) => {
-        ev.preventDefault();
-        const fd = new FormData(ev.currentTarget);
-        fd.set("itemId", String(itemId));
-        if (limit) fd.set("id", String(limit.id));
-        fd.set("allDepartments", all ? "true" : "false");
-        save.run(saveConsumableLimit, fd, limit ? "Saved." : "Limit added.", onDone);
-      }}
-    >
+    <>
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Quantity" className="w-24">
           <input type="number" name="qty" inputMode="decimal" step="0.001" min="0.001" required defaultValue={limit?.qty ?? ""} className={`${F} ltr tabnum w-full`} disabled={busy} />
         </Field>
-        <Field label="Per" className="w-32">
+        <Field label="How often" className="w-44">
           <select name="period" defaultValue={limit?.period ?? "week"} className={`${F} w-full`} disabled={busy}>
             {LIMIT_PERIODS.map((p) => <option key={p} value={p}>{PERIOD_LABEL[p as LimitPeriod]}</option>)}
           </select>
         </Field>
-        <Field label="Counted" className="w-56">
-          <select name="basis" defaultValue={limit?.basis ?? "pool"} className={`${F} w-full`} disabled={busy}>
+        <Field label="The quantity is" className="w-80">
+          <select name="basis" defaultValue={limit?.basis ?? "each"} className={`${F} w-full`} disabled={busy}>
+            <option value="each">Each department its own</option>
             <option value="pool">Shared by the departments picked</option>
-            <option value="person">For each worker</option>
+            <option value="person">Per worker (× the department&apos;s workers)</option>
           </select>
         </Field>
       </div>
@@ -144,8 +154,33 @@ function LimitForm({ itemId, limit, departments, onDone }: { itemId: number; lim
             )}
           </div>
         )}
-        <p className="text-[11px] text-muted">Several departments on one limit share the number. To give each its own, add a limit per department.</p>
+        <p className="text-[11px] text-muted">
+          <b>Each its own</b>: every department picked gets the whole number. <b>Shared</b>: the departments picked use one number between them.
+          <b> Per worker</b>: the number times each department&apos;s workers on the workers list becomes that department&apos;s limit.
+        </p>
       </div>
+    </>
+  );
+}
+
+function LimitForm({ itemId, limit, departments, onDone }: { itemId: number; limit?: LimitDTO; departments: Departments; onDone: () => void }) {
+  const save = useAction();
+  const del = useAction();
+  const [all, setAll] = useState(limit?.departments === ALL_DEPARTMENTS);
+  const busy = save.pending || del.pending;
+  return (
+    <form
+      className="space-y-2 border rounded-lg p-2 bg-surface"
+      onSubmit={(ev) => {
+        ev.preventDefault();
+        const fd = new FormData(ev.currentTarget);
+        fd.set("itemId", String(itemId));
+        if (limit) fd.set("id", String(limit.id));
+        fd.set("allDepartments", all ? "true" : "false");
+        save.run(saveConsumableLimit, fd, limit ? "Saved." : "Limit added.", onDone);
+      }}
+    >
+      <LimitFields limit={limit} departments={departments} all={all} setAll={setAll} busy={busy} />
       <div className="flex flex-wrap items-center gap-2">
         <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>{limit ? "Save limit" : "Add limit"}</button>
         {limit && (
@@ -191,11 +226,12 @@ function ItemRow({ item, standings, departments, canEdit }: { item: CatalogueIte
                 <li key={l.id} className="flex flex-wrap items-center gap-x-4 gap-y-1">
                   <div className="min-w-[14rem]">
                     <span className="tabnum font-extrabold">{fmt(l.qty)}</span> <span className="text-muted text-xs">{item.uom} {PERIOD_LABEL[l.period]}</span>
-                    {l.basis === "person" && <span className="pill pill-muted ms-1">per person</span>}
+                    {l.basis === "person" && <span className="pill pill-muted ms-1" title="The number per worker, times each department's workers">per worker</span>}
+                    {l.basis === "each" && <span className="pill pill-muted ms-1" title="Every department picked has the whole number">each department</span>}
                     <div className="text-xs">{l.departmentsLabel}</div>
                   </div>
                   <UsageBar s={standings[l.id]} basis={l.basis} />
-                  {canEdit && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(editing === l.id ? null : l.id)}>{editing === l.id ? "Close" : "Edit"}</button>}
+                  {canEdit && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(l.id)}>Edit</button>}
                 </li>
               ))}
             </ul>
@@ -203,19 +239,21 @@ function ItemRow({ item, standings, departments, canEdit }: { item: CatalogueIte
         </td>
         {canEdit && (
           <td className="p-2 whitespace-nowrap">
-            <button type="button" className="btn btn-sm" onClick={() => setEditing(editing === "item" ? null : "item")}>{editing === "item" ? "Close" : "Edit item"}</button>
-            <button type="button" className="btn btn-sm ms-1" onClick={() => setEditing(editing === "new-limit" ? null : "new-limit")}>+ Limit</button>
+            <button type="button" className="btn btn-sm" onClick={() => setEditing("item")}>Edit item</button>
+            <button type="button" className="btn btn-sm ms-1" onClick={() => setEditing("new-limit")}>+ Limit</button>
           </td>
         )}
       </tr>
       {editing !== null && canEdit && (
-        <tr className="bg-surface-2">
-          <td colSpan={4} className="p-2">
-            {editing === "item" ? <ItemForm item={item} onDone={close} />
-              : editing === "new-limit" ? <LimitForm itemId={item.id} departments={departments} onDone={close} />
-              : <LimitForm itemId={item.id} limit={item.limits.find((l) => l.id === editing)} departments={departments} onDone={close} />}
-          </td>
-        </tr>
+        <Modal
+          title={editing === "item" ? `Edit ${item.name}` : editing === "new-limit" ? `Add a limit to ${item.name}` : `Edit a limit of ${item.name}`}
+          sub={item.code ?? undefined}
+          onClose={close}
+        >
+          {editing === "item" ? <ItemForm item={item} onDone={close} />
+            : editing === "new-limit" ? <LimitForm itemId={item.id} departments={departments} onDone={close} />
+            : <LimitForm itemId={item.id} limit={item.limits.find((l) => l.id === editing)} departments={departments} onDone={close} />}
+        </Modal>
       )}
     </Fragment>
   );
@@ -267,9 +305,13 @@ export function ConsumableLimits({
           ⚠ {overCount} over their limit now
         </button>
         <span className="text-sm text-muted">{shown.length} of {items.length} items</span>
-        {canEdit && <button type="button" className="btn btn-primary btn-sm ms-auto" onClick={() => setAdding((v) => !v)}>{adding ? "Close" : "+ Add item"}</button>}
+        {canEdit && <button type="button" className="btn btn-primary btn-sm ms-auto" onClick={() => setAdding(true)}>+ Add item</button>}
       </div>
-      {adding && canEdit && <div className="bg-surface border rounded-xl p-3"><ItemForm onDone={() => setAdding(false)} /></div>}
+      {adding && canEdit && (
+        <Modal title="Add an item to the catalogue" sub="The item, and its limit — how much, how often, for which departments" onClose={() => setAdding(false)}>
+          <ItemForm departments={departments} onDone={() => setAdding(false)} />
+        </Modal>
+      )}
       {!canEdit && <p className="text-xs text-muted">Changing the catalogue and its limits needs the “Consumables — record” permission.</p>}
 
       <section className="bg-surface border rounded-xl overflow-hidden">

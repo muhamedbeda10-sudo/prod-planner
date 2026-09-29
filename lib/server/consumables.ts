@@ -7,6 +7,7 @@ import { consumablesStats, previousPeriod, type ConsumablesStats } from "@/lib/d
 import {
   canEditIssue,
   departmentLabel,
+  departmentWorkers,
   describeSnapshot,
   factoryDateTimeLabel,
   groupLabel,
@@ -285,7 +286,7 @@ export async function getConsumablesDashboard(fromISO: string, toISO: string): P
   const { gte, lt } = periodBounds(fromISO, toISO);
   const prev = previousPeriod(fromISO, toISO);
   const prevBounds = periodBounds(prev.fromISO, prev.toISO);
-  const [rows, previousIssues] = await Promise.all([
+  const [rows, previousIssues, allWorkers] = await Promise.all([
     prisma.consumableIssue.findMany({
       where: { deletedAt: null, issuedAt: { gte, lt } },
       select: {
@@ -294,8 +295,10 @@ export async function getConsumablesDashboard(fromISO: string, toISO: string): P
       },
     }),
     prisma.consumableIssue.count({ where: { deletedAt: null, issuedAt: { gte: prevBounds.gte, lt: prevBounds.lt } } }),
+    getAllWorkers(),
   ]);
-  // each department's groups under one stand-in, a negative id no worker has
+  // hand-outs are the department's: every row counts under its department
+  // (an older row's worker is not read), one stand-in id per department
   const groupIds = new Map<string, number>();
   const groupId = (department: string) => {
     if (!groupIds.has(department)) groupIds.set(department, -(groupIds.size + 1));
@@ -307,14 +310,15 @@ export async function getConsumablesDashboard(fromISO: string, toISO: string): P
       qty: r.qty.toNumber(),
       department: r.department,
       departmentLabel: departmentLabel(r.department),
-      workerId: r.workerId ?? groupId(r.department),
-      workerName: r.worker?.name ?? `${departmentLabel(r.department)} (group)`,
-      empId: r.worker?.empId ?? "group",
+      workerId: groupId(r.department),
+      workerName: departmentLabel(r.department),
+      empId: "",
       dayISO: factoryDayISO(r.issuedAt),
       hour: Number(CAIRO_HOUR.format(r.issuedAt)) % 24,
     })),
     fromISO,
     toISO,
     previousIssues,
+    { headcount: departmentWorkers(allWorkers) },
   );
 }

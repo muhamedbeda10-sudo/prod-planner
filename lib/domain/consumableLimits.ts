@@ -6,15 +6,20 @@
 //
 //   `qty` per `period` for `departments`, counted as a `basis`
 //
-//   period ..... day | week | month | quarter — FIXED windows on the factory's
+//   period ..... day | week | month | every 2, 3, 4 or 6 months | a year —
+//                FIXED windows on the factory's
 //                calendar: the day; the work week Saturday → Friday; the
 //                calendar month; the calendar quarter. The count starts again
 //                at zero when a window starts.
 //   departments  "*" = every department, else the departments (a worker
 //                section's code, or a typed department) the limit covers.
 //   basis ...... "pool": everything handed out to those departments counts
-//                against the one number; "person": each worker has the number
-//                to himself (the sheet's "Qty for one person").
+//                against the one number; "person": the number is per worker
+//                (the sheet's "Qty for one person"). Hand-outs are recorded to
+//                a department, never to a worker, so a per-person number is
+//                turned into each department's own limit — the number times
+//                the department's workers (expandPerWorker) — and counted
+//                like any shared limit.
 //
 // The sheet's weekly limit is split between the departments it names — a
 // row each — unless it is smaller than the number of departments, when it
@@ -25,13 +30,26 @@
 import { addDaysISO } from "./dateSlicer";
 import { WORKER_SECTIONS, sectionLabel } from "./tanks";
 
-export const LIMIT_PERIODS = ["day", "week", "month", "quarter"] as const;
+export const LIMIT_PERIODS = ["day", "week", "month", "bimonth", "quarter", "fourmonth", "halfyear", "year"] as const;
 export type LimitPeriod = (typeof LIMIT_PERIODS)[number];
-export const LIMIT_BASES = ["pool", "person"] as const;
+/** The calendar months a period spans — the windows run from January in steps of it. */
+export const PERIOD_MONTHS: Partial<Record<LimitPeriod, number>> = { month: 1, bimonth: 2, quarter: 3, fourmonth: 4, halfyear: 6, year: 12 };
+/** A period of more than one month: counted whole over the window to date, never cut into months. */
+export const isMultiMonth = (p: LimitPeriod) => (PERIOD_MONTHS[p] ?? 0) > 1;
+/** pool: one number shared by the departments picked; each: every department
+ *  picked has the number to itself; person: the number per worker, times each
+ *  department's workers. */
+export const LIMIT_BASES = ["pool", "each", "person"] as const;
 export type LimitBasis = (typeof LIMIT_BASES)[number];
 
-export const PERIOD_LABEL: Record<LimitPeriod, string> = { day: "a day", week: "a week", month: "a month", quarter: "3 months" };
-export const PERIOD_NOUN: Record<LimitPeriod, string> = { day: "today", week: "this week", month: "this month", quarter: "this quarter" };
+export const PERIOD_LABEL: Record<LimitPeriod, string> = {
+  day: "a day", week: "a week", month: "a month", bimonth: "every 2 months", quarter: "every 3 months",
+  fourmonth: "every 4 months", halfyear: "every 6 months", year: "a year",
+};
+export const PERIOD_NOUN: Record<LimitPeriod, string> = {
+  day: "today", week: "this week", month: "this month", bimonth: "these 2 months", quarter: "this quarter",
+  fourmonth: "these 4 months", halfyear: "this half-year", year: "this year",
+};
 export const ALL_DEPARTMENTS = "*";
 
 /** The fabrication sections — the sheet's "All fabrication". */
@@ -44,6 +62,14 @@ export const FAB_AND_WELD_SECTIONS: readonly string[] = [
 
 export interface LimitRule {
   id: number;
+  /** A department's limit made from a per-person rule: the rule it came from
+   *  (its own id is a made-up, negative one). */
+  sourceId?: number;
+  /** A per-person rule made a department's: the number per worker and the workers. */
+  perWorker?: { qty: number; workers: number };
+  /** What the rule reads as — the departments, and for a per-person one the
+   *  sum ("Welding TX (2 per worker × 12)"). */
+  label?: string;
   itemId: number;
   /** "*" or the departments covered. */
   departments: typeof ALL_DEPARTMENTS | readonly string[];
@@ -132,6 +158,48 @@ export function departmentsLabel(d: typeof ALL_DEPARTMENTS | readonly string[]):
   return d.map((x) => sectionLabel(x)).join(" + ");
 }
 
+/** How a rule is named on screen. */
+export function ruleLabel(rule: Pick<LimitRule, "departments" | "label">): string {
+  return rule.label ?? departmentsLabel(rule.departments);
+}
+
+/**
+ * Hand-outs name a department, not a worker — so a per-person rule becomes
+ * one limit per department it covers: the number times the department's
+ * workers (`workers`, the workers registered in it). A department with no
+ * one on the workers list counts as one worker. "Every department" covers
+ * the worker sections with people and any other department `seen` in the
+ * hand-outs. Shared ("pool") rules pass through unchanged.
+ */
+export function expandPerWorker(rules: readonly LimitRule[], workers: ReadonlyMap<string, number>, seen: Iterable<string> = []): LimitRule[] {
+  const out: LimitRule[] = [];
+  for (const rule of rules) {
+    if (rule.basis === "pool") { out.push(rule); continue; }
+    const depts = rule.departments === ALL_DEPARTMENTS
+      ? [...new Set([...WORKER_SECTIONS.map((x) => x.code as string).filter((c) => (workers.get(c) ?? 0) > 0), ...seen])]
+      : [...rule.departments];
+    depts.forEach((d, i) => {
+      if (rule.basis === "each") {
+        // every department its own number, whole
+        out.push({ ...rule, id: -(rule.id * 1000 + i + 1), sourceId: rule.id, departments: [d], basis: "pool", label: sectionLabel(d) });
+        return;
+      }
+      const n = workers.get(d) ?? 0;
+      out.push({
+        ...rule,
+        id: -(rule.id * 1000 + i + 1),
+        sourceId: rule.id,
+        departments: [d],
+        basis: "pool",
+        qty: round3(rule.qty * Math.max(1, n)),
+        perWorker: { qty: rule.qty, workers: n },
+        label: `${sectionLabel(d)} (${rule.qty} per worker × ${n > 0 ? `${n} worker${n === 1 ? "" : "s"}` : "1 — no one on the workers list"})`,
+      });
+    });
+  }
+  return out;
+}
+
 export function coversDepartment(rule: Pick<LimitRule, "departments">, department: string): boolean {
   return rule.departments === ALL_DEPARTMENTS || rule.departments.includes(department);
 }
@@ -157,11 +225,11 @@ export function periodWindow(period: LimitPeriod, dayISO: string): { from: strin
       const from = addDaysISO(dayISO, -back);
       return { from, to: addDaysISO(from, 6) };
     }
-    case "month":
-      return { from: iso(y, m, 1), to: iso(y, m + 1, 0) };
-    case "quarter": {
-      const q0 = Math.floor((m - 1) / 3) * 3 + 1;
-      return { from: iso(y, q0, 1), to: iso(y, q0 + 3, 0) };
+    default: {
+      // a run of whole calendar months, stepping from January
+      const n = PERIOD_MONTHS[period] ?? 1;
+      const m0 = Math.floor((m - 1) / n) * n + 1;
+      return { from: iso(y, m0, 1), to: iso(y, m0 + n, 0) };
     }
   }
 }
@@ -173,7 +241,10 @@ export function windowLabel(period: LimitPeriod, w: { from: string; to: string }
   if (period === "day") return `${d} ${MON[m - 1]}`;
   if (period === "week") return `week of ${d} ${MON[m - 1]}`;
   if (period === "month") return `${MON[m - 1]} ${y}`;
-  return `Q${Math.floor((m - 1) / 3) + 1} ${y}`;
+  if (period === "quarter") return `Q${Math.floor((m - 1) / 3) + 1} ${y}`;
+  if (period === "year") return String(y);
+  const last = ymd(w.to)[1];
+  return `${MON[m - 1]}–${MON[last - 1]} ${y}`;
 }
 
 /** Every window of a period that overlaps from..to, in order. */
@@ -261,7 +332,7 @@ export function checkAgainstLimits(rules: readonly LimitRule[], uses: readonly L
     const { window: w, used, limit, people } = candidateStanding(rule, uses, candidate.dayISO, candidate.workerIds);
     if (round3(used + candidate.qty) > limit + 1e-9) {
       out.push({
-        ruleId: rule.id, period: rule.period, basis: rule.basis, departmentsLabel: departmentsLabel(rule.departments),
+        ruleId: rule.id, period: rule.period, basis: rule.basis, departmentsLabel: ruleLabel(rule),
         window: w, windowLabel: windowLabel(rule.period, w), used, adding: candidate.qty, limit, people,
       });
     }
@@ -307,7 +378,7 @@ export function standings(rules: readonly LimitRule[], uses: readonly LimitUse[]
       used = usageIn(rule, uses, w);
     }
     return {
-      ruleId: rule.id, itemId: rule.itemId, period: rule.period, basis: rule.basis, departmentsLabel: departmentsLabel(rule.departments),
+      ruleId: rule.id, itemId: rule.itemId, period: rule.period, basis: rule.basis, departmentsLabel: ruleLabel(rule),
       windowLabel: windowLabel(rule.period, w), limit: rule.qty, used, ratio: rule.qty > 0 ? used / rule.qty : 0, over, topWorkerId,
     };
   });
@@ -337,7 +408,7 @@ export function exceedances(rules: readonly LimitRule[], uses: readonly LimitUse
     for (const w of windowsOverlapping(rule.period, fromISO, toISO)) {
       const inW = mine.filter((u) => u.dayISO >= w.from && u.dayISO <= w.to);
       if (inW.length === 0) continue;
-      const base = { ruleId: rule.id, itemId: rule.itemId, period: rule.period, basis: rule.basis, departmentsLabel: departmentsLabel(rule.departments), window: w, windowLabel: windowLabel(rule.period, w), limit: rule.qty };
+      const base = { ruleId: rule.id, itemId: rule.itemId, period: rule.period, basis: rule.basis, departmentsLabel: ruleLabel(rule), window: w, windowLabel: windowLabel(rule.period, w), limit: rule.qty };
       if (rule.basis === "person") {
         const per = new Map<number, number>();
         for (const u of inW) per.set(u.workerId, round3((per.get(u.workerId) ?? 0) + u.qty));

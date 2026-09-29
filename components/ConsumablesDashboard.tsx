@@ -20,9 +20,13 @@ import { OTHER_KEY, REPEAT_THRESHOLD, WEEKDAYS, pctChange, type ConsumablesStats
 //   …and how that moves ........ stacked columns per day / week
 //   which items matter ......... Pareto (share + running total, the 80% line)
 //   the whole range at once .... treemap, each item in its main department's colour
-//   how workers draw on it ..... scatter: how often × how varied
+//   how departments draw on it . scatter: how often × how varied, and
+//                                hand-outs per worker of each department
 //   where each item goes ....... item × department heatmap with totals
-//   what to look at ............ repeat hand-outs, the same man and item 3+ times
+//   what to look at ............ repeat hand-outs, the same department and item 3+ times
+//
+// A hand-out is recorded to a department — no worker is named — so every
+// "who" here is a department.
 //
 // Every chart has a Table view with its export. Departments keep one colour
 // across every chart on the page (slot by their rank in the period).
@@ -267,15 +271,15 @@ function ItemTreemap({ s, colorOf, inkOf }: { s: ConsumablesStats; colorOf: (key
   );
 }
 
-/** Workers: how often (x) × how many different items (y). Workers on the
- *  same spot share one bubble, sized by how many they are. */
+/** Departments: how often (x) × how many different items (y). Departments
+ *  on the same spot share one bubble, sized by how many they are. */
 function WorkerScatter({ s }: { s: ConsumablesStats }) {
   const spots = new Map<string, { x: number; y: number; n: number; names: string[] }>();
   for (const w of s.workerPoints) {
     const k = `${w.issues}|${w.items}`;
     const spot = spots.get(k) ?? { x: w.issues, y: w.items, n: 0, names: [] };
     spot.n += 1;
-    spot.names.push(`${w.name} (${w.empId})`);
+    spot.names.push(w.name);
     spots.set(k, spot);
   }
   const data = [...spots.values()];
@@ -290,7 +294,7 @@ function WorkerScatter({ s }: { s: ConsumablesStats }) {
         <ZAxis type="number" dataKey="n" range={[70, 420]} />
         <Tooltip cursor={{ stroke: "var(--border-strong)" }} content={(p: TipProps<(typeof data)[number]>) => {
           const r = p.active ? p.payload?.[0]?.payload : undefined;
-          return r ? <TipBox title={r.n === 1 ? r.names[0] : `${r.n} workers`} rows={[
+          return r ? <TipBox title={r.n === 1 ? r.names[0] : `${r.n} departments`} rows={[
             { label: "Hand-outs", value: fmt(r.x) },
             { label: "Different items", value: fmt(r.y) },
             ...(r.n > 1 ? r.names.slice(0, 6).map((nm, i) => ({ label: i === 5 && r.names.length > 6 ? `…and ${r.names.length - 5} more` : nm, value: "" })) : []),
@@ -358,9 +362,11 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
   const weekRows: TableRow[] = WEEK_ORDER.map((d) => ({ Weekday: WEEKDAYS[d], ...Object.fromEntries(s.weekHour.hours.map((h, j) => [hh(h), s.weekHour.counts[d][j]])) }));
   const paretoRows: TableRow[] = s.pareto.rows.map((r, i) => ({ "#": i + 1, Item: r.item, "Hand-outs": r.issues, Share: pct(r.share, 1), "Running total": pct(r.cumulative, 1) }));
   const itemRows: TableRow[] = s.itemTiles.map((t) => ({ Item: t.item, "Hand-outs": t.issues, Qty: t.qty, "Qty per hand-out": Math.round((t.qty / t.issues) * 1000) / 1000, "Mostly to": t.departmentLabel }));
-  const workerRows: TableRow[] = s.workerPoints.map((w) => ({ "Emp ID": w.empId, Worker: w.name, "Hand-outs": w.issues, "Different items": w.items, Departments: w.departments }));
+  const workerRows: TableRow[] = s.workerPoints.map((w) => ({ Department: w.name, "Hand-outs": w.issues, "Different items": w.items }));
+  const perHeadRows: TableRow[] = s.departments.map((d) => ({ Department: d.label, "Hand-outs": d.issues, "Workers on the list": d.people || "", "Hand-outs per worker": d.perPerson ?? "" }));
+  const perHead = s.departments.filter((d) => d.perPerson !== null).sort((a, b) => b.perPerson! - a.perPerson!).slice(0, 12);
   const matrixRows: TableRow[] = s.matrix.items.map((item, i) => ({ Item: item, ...Object.fromEntries(s.matrix.departments.map((d, j) => [d.label, s.matrix.qty[i][j]])) }));
-  const repeatRows: TableRow[] = s.repeats.map((r) => ({ "Emp ID": r.empId, Worker: r.name, Item: r.item, Times: r.times, Qty: r.qty, First: r.firstDay, Last: r.lastDay }));
+  const repeatRows: TableRow[] = s.repeats.map((r) => ({ Department: r.name, Item: r.item, Times: r.times, Qty: r.qty, First: r.firstDay, Last: r.lastDay }));
 
   const weekMax = Math.max(0, ...s.weekHour.counts.flat());
   const repeatMax = Math.max(0, ...s.repeats.map((r) => r.times));
@@ -373,10 +379,10 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
           delta={<Delta pct={pctChange(s.totals.issues, s.previousIssues)} before={s.previousIssues} />} />
         <StatTile label="Per working day" value={fmt(k.perActiveDay, 1)} sub={singleDay ? "one day on the slicer" : `${k.activeDays} of ${days} days with hand-outs`} meter={singleDay ? undefined : k.activeDays / days} />
         <StatTile label="Items" value={fmt(s.totals.items)} sub={`${k.vitalFew} make up 80% of hand-outs`} meter={s.totals.items ? k.vitalFew / s.totals.items : 0} />
-        <StatTile label="Workers served" value={fmt(s.totals.workers)} sub={`${fmt(k.perWorker, 1)} hand-outs each on average`} />
+        <StatTile label="Departments" value={fmt(s.totals.departments)} sub={`${fmt(k.perWorker, 1)} hand-outs each on average`} />
         <StatTile label="Top department" value={pct(k.topDepartmentShare)} sub={s.departments[0]?.label} meter={k.topDepartmentShare} />
         <StatTile label="Busiest" value={k.busiestHour !== null ? hh(k.busiestHour) : "—"} sub={k.busiestWeekday !== null && !singleDay ? `on ${WEEKDAYS[k.busiestWeekday]}s` : "hour of the day"} />
-        <StatTile label="Repeat hand-outs" value={fmt(k.repeatPairs)} sub={`same worker & item ×${REPEAT_THRESHOLD}+`} />
+        <StatTile label="Repeat hand-outs" value={fmt(k.repeatPairs)} sub={`same department & item ×${REPEAT_THRESHOLD}+`} />
       </div>
 
       {/* ---- how much, over time · who, by share */}
@@ -425,15 +431,16 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
         </ChartCard>
       </div>
 
-      {/* ---- workers */}
+      {/* ---- departments: how they draw on it, and for their size */}
       <div className="grid gap-3 xl:grid-cols-2">
-        <ChartCard title="How workers draw on the store" sub="Each bubble: how often × how many different items · bigger = more workers on that spot"
-          table={{ rows: workerRows, filename: file("workers"), sheet: "Workers" }}>
+        <ChartCard title="How departments draw on the store" sub="Each bubble: how often × how many different items"
+          table={{ rows: workerRows, filename: file("departments-draw"), sheet: "Departments" }}>
           <WorkerScatter s={s} />
         </ChartCard>
-        <ChartCard title="Workers who take the most" sub={`Top ${Math.min(10, s.workers.length)} by hand-outs`}
-          table={{ rows: workerRows, filename: file("workers"), sheet: "Workers" }}>
-          <RankedBars unit="Hand-outs" color="var(--viz-2)" data={s.workers.map((w) => ({ name: w.name, value: w.issues, note: `${w.items} items · ${w.departments}` }))} />
+        <ChartCard title="Hand-outs per worker, by department"
+          sub={perHead.length ? "A department's hand-outs over its workers on the workers list — a big crew is not a big spender" : "No department on the workers list took anything in the period"}
+          table={{ rows: perHeadRows, filename: file("per-worker"), sheet: "Per worker" }}>
+          <RankedBars unit="Hand-outs per worker" color="var(--viz-2)" data={perHead.map((d) => ({ name: d.label, value: d.perPerson!, note: `${fmt(d.issues)} hand-outs · ${d.people} worker${d.people === 1 ? "" : "s"}` }))} />
         </ChartCard>
       </div>
 
@@ -445,21 +452,21 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
 
       {/* ---- the watch list */}
       <ChartCard title="Repeat hand-outs"
-        sub={s.repeats.length ? `The same worker took the same item ${REPEAT_THRESHOLD} times or more ${periodLabel} — worth a look` : `Nobody took the same item ${REPEAT_THRESHOLD} times or more ${periodLabel}`}
+        sub={s.repeats.length ? `The same department took the same item ${REPEAT_THRESHOLD} times or more ${periodLabel} — worth a look` : `No department took the same item ${REPEAT_THRESHOLD} times or more ${periodLabel}`}
         table={s.repeats.length ? { rows: repeatRows, filename: file("repeats"), sheet: "Repeats" } : undefined}>
         {s.repeats.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b">
                 <tr className="text-xs text-muted">
-                  <th className="px-2 py-1.5 text-left">Worker</th><th className="px-2 py-1.5 text-left">Item</th>
+                  <th className="px-2 py-1.5 text-left">Department</th><th className="px-2 py-1.5 text-left">Item</th>
                   <th className="px-2 py-1.5 text-left">Times</th><th className="px-2 py-1.5 text-right">Qty</th><th className="px-2 py-1.5 text-left">First → last</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {s.repeats.slice(0, 25).map((r) => (
                   <tr key={`${r.workerId}|${r.item}`}>
-                    <td className="px-2 py-1.5"><b>{r.name}</b> <span className="text-xs text-muted ltr">{r.empId}</span></td>
+                    <td className="px-2 py-1.5"><b>{r.name}</b></td>
                     <td className="px-2 py-1.5">{r.item}</td>
                     <td className="px-2 py-1.5"><DataBar value={r.times} max={repeatMax} label={`×${r.times}`} /></td>
                     <td className="px-2 py-1.5 text-right tabnum">{fmt(r.qty)}</td>
