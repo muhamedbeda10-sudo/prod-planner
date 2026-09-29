@@ -11,9 +11,9 @@ import { Modal } from "@/components/Modal";
 
 // The CONSUMABLES tab: the store's log of what it hands out — to a
 // department (the limits count it there), naming who asked for it or
-// collected it. "➕ New hand-out" opens the storekeeper's form
-// in a popup (consumables.edit); the log below is everyone's to read. A
-// saved row is corrected by the person who recorded it or an admin; its
+// collected it. The storekeeper records on one line above the log
+// (consumables.edit); the log is everyone's to read. A saved row is
+// corrected, in a popup, by the person who recorded it or an admin; its
 // history, deleting and restoring are the admin's.
 
 const F = "px-2.5 py-2 text-sm font-semibold";
@@ -127,6 +127,8 @@ function IssueFields({
   matched,
   setQty,
   qtyRef,
+  row = false,
+  trailing,
 }: {
   departments: ConsumablesPageData["departments"];
   catalogue: CatalogueOption[];
@@ -145,7 +147,14 @@ function IssueFields({
   matched: CatalogueOption | null;
   setQty: (v: number) => void;
   qtyRef?: React.Ref<HTMLInputElement>;
+  /** One line across the page (the record form above the log), rather than
+   *  stacked (the correction popup). */
+  row?: boolean;
+  /** The row's last cell — its button. */
+  trailing?: React.ReactNode;
 }) {
+  // the stacked layout's column spans; the row lays its cells out in order
+  const span = (stacked: string) => (row ? "" : stacked);
   const items = useMemo(() => catalogueFor(catalogue, department), [catalogue, department]);
   const picked = matched;
   // the suggestions: this department's catalogue items, the rest of the
@@ -175,10 +184,21 @@ function IssueFields({
     if (receivedBy && !workersForDepartment(workers, next).some((w) => String(w.id) === receivedBy)) setReceivedBy("");
   }
 
+  // what the Item box names: a catalogue item, or an item as typed
+  const matchLine = itemText.trim() !== "" && (
+    <p className={`${row ? "col-span-full" : "sm:col-span-6 -mt-1"} text-xs ${matched ? "text-ok-fg" : "text-muted"}`} aria-live="polite">
+      {matched
+        ? <>✓ In the catalogue: <b>{matched.name}</b>{matched.code ? <> · <span className="ltr">{matched.code}</span></> : null} · {matched.uom}{matched.active ? "" : " (retired)"}</>
+        : "Not in the catalogue — recorded as typed, and no limit counts it."}
+    </p>
+  );
+
   return (
-    <div className="grid gap-3 sm:grid-cols-6">
+    <div className={row
+      ? "grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(9rem,12rem)_minmax(10rem,15rem)_minmax(12rem,1fr)_6.5rem_minmax(8rem,14rem)_auto] lg:items-end"
+      : "grid gap-3 sm:grid-cols-6"}>
       <input type="hidden" name="recipientScope" value="department" />
-      <Field label="Department" className="sm:col-span-3">
+      <Field label="Department" className={span("sm:col-span-3")}>
         <select name="department" value={department} onChange={(e) => pickDepartment(e.target.value)} required disabled={disabled} className={`${F} w-full`}>
           <option value="" disabled>Pick the department…</option>
           {!known && <option value={department}>{entry?.departmentLabel ?? department}</option>}
@@ -196,45 +216,41 @@ function IssueFields({
         </select>
       </Field>
       {department === NEW_DEPARTMENT && (
-        <Field label="New department" className="sm:col-span-3">
+        <Field label="New department" className={row ? "sm:col-span-2 lg:col-span-full lg:order-last" : "sm:col-span-3"}>
           <input
             type="text" name="departmentNew" required disabled={disabled} maxLength={CONSUMABLE_LIMITS.department}
             placeholder="e.g. Maintenance" autoComplete="off" autoFocus className={`${F} w-full`}
           />
         </Field>
       )}
-      <Field label="Requested / collected by" className={department === NEW_DEPARTMENT ? "sm:col-span-6" : "sm:col-span-3"}>
+      <Field label="Requested / collected by" className={span(department === NEW_DEPARTMENT ? "sm:col-span-6" : "sm:col-span-3")}>
         <select name="receivedById" value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} required disabled={disabled || !department} className={`${F} w-full`}>
           <option value="" disabled>{department ? (offered.length ? "Pick the name…" : "No active worker in this section") : "Pick the department first"}</option>
           {offered.map((w) => <option key={w.id} value={w.id}>{workerLabel(w)}</option>)}
         </select>
       </Field>
 
-      <Field label="Item — type or paste" className="sm:col-span-4">
+      <Field label="Item — type or paste" className={span("sm:col-span-4")}>
         <input
           type="text" name="item" list={ITEMS_LIST} value={itemText} onChange={(e) => setItemText(e.target.value)} required disabled={disabled}
           maxLength={CONSUMABLE_LIMITS.item} placeholder="Paste the item, or type and pick a suggestion" autoComplete="off" className={`${F} w-full`}
         />
         <datalist id={ITEMS_LIST}>{suggestions.map((n) => <option key={n} value={n} />)}</datalist>
       </Field>
-      <Field label={picked ? `Qty (${picked.uom})` : "Qty"} className="sm:col-span-2">
+      <Field label={picked ? `Qty (${picked.uom})` : "Qty"} className={span("sm:col-span-2")}>
         <input
           ref={qtyRef} name="qty" type="number" inputMode="decimal" step="0.001" min="0.001" max={CONSUMABLE_LIMITS.qtyMax}
           defaultValue={entry?.qty ?? ""} required disabled={disabled} placeholder="0" className={`${F} ltr tabnum w-full font-extrabold`}
           onInput={(e) => setQty(Number((e.target as HTMLInputElement).value) || 0)}
         />
       </Field>
-      {itemText.trim() !== "" && (
-        <p className={`sm:col-span-6 -mt-1 text-xs ${matched ? "text-ok-fg" : "text-muted"}`} aria-live="polite">
-          {matched
-            ? <>✓ In the catalogue: <b>{matched.name}</b>{matched.code ? <> · <span className="ltr">{matched.code}</span></> : null} · {matched.uom}{matched.active ? "" : " (retired)"}</>
-            : "Not in the catalogue — recorded as typed, and no limit counts it."}
-        </p>
-      )}
+      {!row && matchLine}
 
-      <Field label="Notes (optional)" className="sm:col-span-6">
+      <Field label="Notes (optional)" className={span("sm:col-span-6")}>
         <input type="text" name="notes" defaultValue={entry?.notes ?? ""} disabled={disabled} maxLength={CONSUMABLE_LIMITS.notes} autoComplete="off" className={`${F} w-full`} />
       </Field>
+      {trailing && <div className={row ? "sm:col-span-2 lg:col-span-1 flex items-end" : "sm:col-span-6"}>{trailing}</div>}
+      {row && matchLine}
     </div>
   );
 }
@@ -245,11 +261,12 @@ function FormFoot({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Recording a hand-out, in a popup. "Record & next" keeps it open for the
- * next item to the same department (the usual run at the store
- * window); "Record" saves and closes.
+ * Recording a hand-out: one line above the log — department, who asked for
+ * it, the item (typed or pasted), qty, notes, Record. After a save the
+ * department and the person stay and the item box is ready for the next
+ * paste (the usual run at the store window).
  */
-function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; onClose: () => void; onSaved: (text: string) => void }) {
+function RecordRow({ data }: { data: ConsumablesPageData }) {
   const add = useAction();
   const [department, setDepartment] = useState("");
   const [receivedBy, setReceivedBy] = useState("");
@@ -259,10 +276,7 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
   const [qty, setQty] = useState(0);
   // the breach the server answered with; cleared as soon as the hand-out changes
   const [breaches, setBreaches] = useState<string[] | null>(null);
-  const keepOpen = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
-  const qtyRef = useRef<HTMLInputElement>(null);
-  const [savedCount, setSavedCount] = useState(0);
   // back to the item for the next one — once the save has finished and the
   // fields are enabled again
   const [refocus, setRefocus] = useState(0);
@@ -271,10 +285,10 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
   }, [refocus, add.pending]);
   const changed = <T,>(set: (v: T) => void) => (v: T) => { set(v); setBreaches(null); };
 
-  // after "Record & next" the department stays; the item,
-  // qty, notes and any reason clear
+  // after a save the department and the person stay; the item, qty, notes
+  // and any reason clear
   function clearForNext(form: HTMLFormElement) {
-    for (const n of ["item", "qty", "notes", "overLimitReason"]) {
+    for (const n of ["qty", "notes", "overLimitReason"]) {
       const el = form.elements.namedItem(n);
       if (el instanceof HTMLInputElement) el.value = "";
     }
@@ -285,53 +299,37 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
   }
 
   return (
-    <Modal
-      title="➕ New hand-out"
-      sub={savedCount > 0 ? `${savedCount} recorded in this window — the department stays for the next.` : "The date and time are stamped when you save."}
-      onClose={onClose}
-      busy={add.pending}
+    <form
+      ref={formRef}
+      className="bg-surface border rounded-xl p-3 space-y-2 no-print"
+      onSubmit={(ev) => {
+        ev.preventDefault();
+        const form = ev.currentTarget;
+        const okText = breaches ? "Saved over the limit — flagged with your reason." : "Saved — the date and time were stamped.";
+        add.run(createConsumableIssue, new FormData(form), okText, (res) => {
+          if (res.department) setDepartment(res.department);
+          clearForNext(form);
+        }, (res) => {
+          if (res.needsReason && res.breaches) setBreaches(res.breaches);
+          if (res.department) setDepartment(res.department);
+        });
+      }}
     >
-      <form
-        ref={formRef}
-        className="space-y-3"
-        onSubmit={(ev) => {
-          ev.preventDefault();
-          const form = ev.currentTarget;
-          const stay = keepOpen.current;
-          const okText = breaches ? "Saved over the limit — flagged with your reason." : "Saved — the date and time were stamped.";
-          add.run(createConsumableIssue, new FormData(form), okText, (res) => {
-            if (res.department) setDepartment(res.department);
-            if (stay) {
-              setSavedCount((n) => n + 1);
-              clearForNext(form);
-            } else {
-              onSaved(okText);
-            }
-          }, (res) => {
-            if (res.needsReason && res.breaches) setBreaches(res.breaches);
-            if (res.department) setDepartment(res.department);
-          });
-        }}
-      >
-        <IssueFields
-          departments={data.departments} catalogue={data.catalogue} disabled={add.pending}
-          department={department} setDepartment={changed(setDepartment)} workers={data.workers} receivedBy={receivedBy} setReceivedBy={changed(setReceivedBy)}
-          knownItems={data.knownItems} itemText={itemText} setItemText={changed(setItemText)} matched={matched} setQty={changed(setQty)} qtyRef={qtyRef}
-        />
-        <LimitHints itemId={itemId} department={department} qty={qty} />
-        {breaches && <OverLimitPrompt breaches={breaches} disabled={add.pending} />}
-        {!breaches && <Msg msg={add.msg} />}
-        <FormFoot>
-          <button type="button" className="btn btn-sm btn-ghost" onClick={onClose} disabled={add.pending}>Cancel</button>
-          <button type="submit" className="btn btn-sm btn-secondary" disabled={add.pending} onClick={() => { keepOpen.current = true; }}>
-            {breaches ? "Record over the limit & next" : "Record & next"}
+      <IssueFields
+        row
+        departments={data.departments} catalogue={data.catalogue} disabled={add.pending}
+        department={department} setDepartment={changed(setDepartment)} workers={data.workers} receivedBy={receivedBy} setReceivedBy={changed(setReceivedBy)}
+        knownItems={data.knownItems} itemText={itemText} setItemText={changed(setItemText)} matched={matched} setQty={changed(setQty)}
+        trailing={
+          <button type="submit" className={`btn w-full lg:w-auto whitespace-nowrap ${breaches ? "btn-danger border" : "btn-primary"}`} disabled={add.pending}>
+            {add.pending ? "Saving…" : breaches ? "Record over the limit" : "➕ Record"}
           </button>
-          <button type="submit" className={`btn btn-sm ${breaches ? "btn-danger border" : "btn-primary"}`} disabled={add.pending} onClick={() => { keepOpen.current = false; }}>
-            {add.pending ? "Saving…" : breaches ? "Record over the limit" : "Record"}
-          </button>
-        </FormFoot>
-      </form>
-    </Modal>
+        }
+      />
+      <LimitHints itemId={itemId} department={department} qty={qty} />
+      {breaches && <OverLimitPrompt breaches={breaches} disabled={add.pending} />}
+      {!breaches && <Msg msg={add.msg} />}
+    </form>
   );
 }
 
@@ -487,20 +485,13 @@ export function ConsumablesClient({
   // the actions column is there for an admin, or for a recorder with a row of his own on screen
   const showActions = isAdmin || data.entries.some((e) => e.canEdit);
   const colSpan = showActions ? 8 : 7;
-  const [recording, setRecording] = useState(false);
-  const [saved, setSaved] = useState<string | null>(null);
 
   return (
     <div className="space-y-3">
 
-      {canRecord && recording && (
-        <RecordDialog data={data} onClose={() => setRecording(false)} onSaved={(text) => { setRecording(false); setSaved(text); }} />
-      )}
+      {canRecord && <RecordRow data={data} />}
 
       <div className="flex flex-wrap items-center gap-2 no-print">
-        {canRecord && (
-          <button type="button" className="btn btn-primary" onClick={() => { setSaved(null); setRecording(true); }}>➕ New hand-out</button>
-        )}
         <input
           type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item, department, notes…"
           aria-label="Search the log" className={`${F} w-full sm:w-72`}
@@ -509,7 +500,6 @@ export function ConsumablesClient({
           <b className="text-foreground tabnum">{shown.length}</b>
           {shown.length !== data.entries.length && <> of <span className="tabnum">{data.entries.length}</span></>} hand-out{data.entries.length === 1 ? "" : "s"} {periodLabel}
         </span>
-        {saved && <span className="text-sm font-semibold text-ok-fg" role="status">✓ {saved}</span>}
       </div>
       {!canRecord && <p className="text-xs text-muted">You can view the log. Recording hand-outs needs the “Consumables — record” permission — ask the admin.</p>}
 
