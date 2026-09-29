@@ -277,42 +277,6 @@ function DailyByProduct({ d, present, pal }: { d: OdooDashboardData; present: Od
   );
 }
 
-/** One small chart per product, on a shared scale, every day's count on its cap. */
-function SmallMultiples({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
-  const n = d.days.length;
-  const yMax = Math.max(1, ...d.days.flatMap((p) => present.map((s) => p.bySeries[s])));
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {present.map((s) => {
-        const data = d.days.map((p) => ({ label: p.label, qty: p.bySeries[s] }));
-        const t = d.totals.find((x) => x.series === s)!;
-        return (
-          <div key={s} className="border rounded-lg p-2">
-            <div className="flex items-center justify-between px-1 mb-1">
-              <span className="text-sm font-bold flex items-center gap-2">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: pal.color(s) }} />
-                {s}
-              </span>
-              <span className="text-xs text-muted tabnum">{fmt(t.qty)} in period</span>
-            </div>
-            <ChartScroller minWidth={Math.max(240, n * (n > 45 ? 9 : 14))} height={150}>
-              <BarChart data={data} margin={{ top: 14, right: 10, left: -6, bottom: 0 }} barCategoryGap="30%">
-                <CartesianGrid vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={tickEvery(n, 8)} tickLine={false} />
-                <YAxis domain={[0, headroom(yMax)]} tickCount={4} allowDecimals={false} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={30} />
-                <Tooltip content={<Tip />} cursor={{ fill: "var(--surface-2)" }} />
-                <Bar dataKey="qty" name={s} fill={pal.color(s)} maxBarSize={18} radius={[3, 3, 0, 0]} isAnimationActive={false}>
-                  <LabelList dataKey="qty" content={TopLabel} />
-                </Bar>
-              </BarChart>
-            </ChartScroller>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function ProductTotals({ d }: { d: OdooDashboardData }) {
   const data = d.totals.map((t) => ({ series: t.series, qty: t.qty, label: `${fmt(t.qty)}  ·  ${t.share}%` }));
   return (
@@ -462,6 +426,11 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
         <ExportButton rows={exportRows} filename={`odoo-dashboard-${d.bom ? `${d.bom}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`} sheetName="By day" />
       </div>
 
+      {/* the day-by-day picture first — it is what the page is opened for */}
+      <Card title={`Quantity ${word} per day, by product`} sub={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
+        <DailyByProduct d={d} present={present} pal={pal} />
+      </Card>
+
       <div className="flex flex-wrap gap-3">
         <Stat label={`Quantity ${word}`} value={fmt(d.kpi.qty)} delta={<Delta cur={d.kpi.qty} prev={d.kpi.prevQty} />} />
         <Stat label={`Rows ${word}`} value={fmt(d.kpi.rows)} delta={<Delta cur={d.kpi.rows} prev={d.kpi.prevRows} />} sub={`${d.kpi.activeDays} day(s) with ${closedBasis ? "closings" : "entries"}`} />
@@ -477,14 +446,6 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData }) {
         <h2 className="font-bold mb-2">Per product <span className="text-muted font-normal text-sm">· {word}</span></h2>
         <ProductCards d={d} present={present} pal={pal} />
       </section>
-
-      <Card title={`Quantity ${word} per day, by product`} sub={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
-        <DailyByProduct d={d} present={present} pal={pal} />
-      </Card>
-
-      <Card title="Each product, day by day" sub={`One chart per product on the same scale, the quantity ${word} on every column.`}>
-        <SmallMultiples d={d} present={present} pal={pal} />
-      </Card>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <Card title="Totals per product" sub={`Quantity ${word} and share of the period.`}>
