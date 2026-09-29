@@ -14,6 +14,8 @@ import {
   issueWho,
   parseSnapshot,
   readConsumableForm,
+  matchCatalogueItem,
+  NEW_ITEM,
   readItemPick,
   readOverLimitReason,
   resolveDepartment,
@@ -164,16 +166,28 @@ async function writeChange(
   }
 }
 
-/** The item the form picked: a catalogue item (active, for a new hand-out)
- *  with its name, or the typed name (itemId null). */
+/** The item the form names: a catalogue item — picked by id, or typed /
+ *  pasted and matched by its name or code — with the catalogue's name, or
+ *  the text as typed (itemId null) when it names none. A new hand-out only
+ *  links an active item; a correction may keep the row's own retired one. */
 async function pickItem(formData: FormData, opts: { allowInactiveId?: number | null } = {}): Promise<{ itemId?: number | null; name?: string; error?: string }> {
-  const pick = readItemPick((n) => formData.get(n));
-  if (pick.error) return { error: pick.error };
-  if (pick.itemId === null || pick.itemId === undefined) return { itemId: null };
-  const item = await prisma.consumableItem.findUnique({ where: { id: pick.itemId }, select: { id: true, name: true, active: true } });
-  if (!item) return { error: "That item is not in the catalogue any more — refresh the page." };
-  if (!item.active && item.id !== opts.allowInactiveId) return { error: `${item.name} is retired from the catalogue — pick another item.` };
-  return { itemId: item.id, name: item.name };
+  const raw = String(formData.get("itemId") ?? "").trim();
+  if (raw !== "" && raw !== NEW_ITEM) {
+    const pick = readItemPick((n) => formData.get(n));
+    if (pick.error) return { error: pick.error };
+    const item = await prisma.consumableItem.findUnique({ where: { id: pick.itemId! }, select: { id: true, name: true, active: true } });
+    if (!item) return { error: "That item is not in the catalogue any more — refresh the page." };
+    if (!item.active && item.id !== opts.allowInactiveId) return { error: `${item.name} is retired from the catalogue — pick another item.` };
+    return { itemId: item.id, name: item.name };
+  }
+  const text = String(formData.get("item") ?? "");
+  if (raw === NEW_ITEM || !text.trim()) return { itemId: null };
+  const offered = await prisma.consumableItem.findMany({
+    where: { OR: [{ active: true }, ...(opts.allowInactiveId ? [{ id: opts.allowInactiveId }] : [])] },
+    select: { id: true, name: true, code: true },
+  });
+  const hit = matchCatalogueItem(text, offered);
+  return hit ? { itemId: hit.id, name: hit.name } : { itemId: null };
 }
 
 /** The over-limit decision for a hand-out: refused (needs the reason), or the

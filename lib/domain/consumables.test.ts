@@ -11,6 +11,7 @@ import {
   factoryDateTimeLabel,
   parseQty,
   readConsumableForm,
+  matchCatalogueItem,
   groupLabel,
   resolveDepartment,
   workerProblem,
@@ -247,5 +248,27 @@ describe("snapshots", () => {
   it("describes a snapshot in one line", () => {
     expect(describeSnapshot(a)).toBe("2 × Gloves · Welding TX · 1203 Sayed");
     expect(describeSnapshot(null)).toBe("—");
+  });
+});
+
+describe("matchCatalogueItem", () => {
+  const cat = [
+    { id: 1, name: "Cleaning Cloth", code: "C-CON-CLEAN-CLOTH" },
+    { id: 2, name: "Grinding Disk 115x6x22.23mm", code: "C-CON-GRD-115x6x22.23" },
+    { id: 3, name: "Black Marker", code: null },
+  ];
+  it("finds a pasted name whatever its case and spacing, and a size's × or x", () => {
+    expect(matchCatalogueItem("  cleaning   CLOTH\n", cat)?.id).toBe(1);
+    expect(matchCatalogueItem("Grinding Disk 115×6×22.23mm", cat)?.id).toBe(2);
+    expect(matchCatalogueItem("grinding disk 115 x 6 x 22.23mm", cat)?.id).toBe(2);
+  });
+  it("finds an item by its code, or as the dropdown showed it", () => {
+    expect(matchCatalogueItem("c-con-clean-cloth", cat)?.id).toBe(1);
+    expect(matchCatalogueItem("Cleaning Cloth · C-CON-CLEAN-CLOTH", cat)?.id).toBe(1);
+  });
+  it("names nothing for an item outside the catalogue, or nothing typed", () => {
+    expect(matchCatalogueItem("Spare fuse 10A", cat)).toBeNull();
+    expect(matchCatalogueItem("Cleaning", cat)).toBeNull();
+    expect(matchCatalogueItem("   ", cat)).toBeNull();
   });
 });

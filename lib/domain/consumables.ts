@@ -302,6 +302,32 @@ export function readItemPick(get: (name: string) => unknown): { itemId?: number 
   return { itemId: id };
 }
 
+/** How an item name compares: case, spacing and the × / x of a size
+ *  ("115×6×22.23" = "115x6x22.23") do not count. */
+export function foldItemName(s: string): string {
+  return cleanText(s).toLowerCase().replace(/×/g, "x").replace(/\s*x\s*/g, "x");
+}
+
+/**
+ * The catalogue item a typed or pasted item names: by its name, by its code,
+ * or as the dropdown used to show it ("Cleaning Cloth · C-CON-CLEAN-CLOTH").
+ * Only the items offered count (the active ones, and for a correction the
+ * row's own retired one); null when the text names none of them — it is
+ * recorded as typed, with no limit counting it.
+ */
+export function matchCatalogueItem<C extends { id: number; name: string; code: string | null }>(text: string, catalogue: readonly C[]): C | null {
+  const t = foldItemName(text);
+  if (!t) return null;
+  const tries = [t, ...t.split("·").map((x) => x.trim()).filter(Boolean)];
+  for (const x of tries) {
+    const byName = catalogue.find((c) => foldItemName(c.name) === x);
+    if (byName) return byName;
+    const byCode = catalogue.find((c) => c.code !== null && foldItemName(c.code) === x);
+    if (byCode) return byCode;
+  }
+  return null;
+}
+
 /** The recorder's reason for going over a limit — one line, trimmed. */
 export function readOverLimitReason(get: (name: string) => unknown): { reason: string | null; error?: string } {
   const reason = cleanText(get("overLimitReason"));

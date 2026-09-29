@@ -282,8 +282,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
    each its own, **shared** by them, or **per worker** (× each department's workers). The sheet's weekly numbers became
    monthly ones of four weeks, and its "Every day" items six working days a week before that (every conversion is in the
    Limits history). Items, limits and retirements are edited in place and every change is kept (who, when, before → after).
-   The record form picks the item from the catalogue (the department's items first; "not in the catalogue" is typed and has
-   no limit), shows where the limit stands as the quantity is typed, and a hand-out that would take a limit over is refused
+   The item is typed or **pasted** (the catalogue suggested as you type, the department's items first): text naming a
+   catalogue item by its name or code — case, spacing and a size's × / x aside — is linked to it; anything else is recorded as
+   typed and has no limit, shows where the limit stands as the quantity is typed, and a hand-out that would take a limit over is refused
    until the recorder gives a **reason** — then saved flagged "over limit" with the reason and the breach. The Dashboard
    opens with the **alarms** — a limit **past its number** in the running month (or its months so far), nothing less —
    then the finished months that ended over, and the hand-outs recorded over a limit.
