@@ -200,27 +200,62 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
 
 const SOURCE_LABEL: Record<string, string> = { painting: "from Painting", shotblast: "from Shot Blast" };
 
-function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; onOpen: (id: number) => void; opening: boolean }) {
-  // the facts are the row's button: a click opens the material behind it
+/** Odoo's MO with a button that copies it, to paste into Odoo. */
+function CopyMo({ mo }: { mo: string }) {
+  const [done, setDone] = useState(false);
+  async function copy(e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(mo);
+    } catch {
+      // an older browser or an insecure page: select it for Ctrl+C instead
+      const el = document.createElement("textarea");
+      el.value = mo; document.body.appendChild(el); el.select();
+      try { document.execCommand("copy"); } finally { el.remove(); }
+    }
+    setDone(true);
+    setTimeout(() => setDone(false), 1500);
+  }
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(r.id)}
-      disabled={opening}
+    <span className="inline-flex items-center gap-1">
+      {/* a click on the MO selects it for copying — it does not open the material */}
+      <b className="ltr tabnum text-base select-all cursor-text" onClick={(e) => e.stopPropagation()}>{mo}</b>
+      <button type="button" onClick={copy} className="btn btn-sm btn-ghost !px-1.5 !py-0.5 text-xs" title="Copy the MO" aria-label={`Copy ${mo}`}>
+        {done ? "✓ copied" : "📋"}
+      </button>
+    </span>
+  );
+}
+
+function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; onOpen: (id: number) => void; opening: boolean }) {
+  // the facts open the material behind the row — unless text is being
+  // selected in them (the MO, to copy it)
+  function open() {
+    if (opening) return;
+    if ((window.getSelection()?.toString() ?? "").trim()) return;
+    onOpen(r.id);
+  }
+  // not a button itself — the MO inside it is selectable and has its own
+  // copy button; the "📦 material" link is the keyboard's way in
+  return (
+    <div
+      onClick={open}
       title="Click for the material behind this row"
-      className="flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md -mx-1.5 px-1.5 py-1 text-left hover:bg-surface-2 cursor-pointer disabled:cursor-wait"
+      className={`flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md -mx-1.5 px-1.5 py-1 text-left hover:bg-surface-2 select-text ${opening ? "cursor-wait" : "cursor-pointer"}`}
     >
       <span className={`pill ${r.line === "LV" ? "pill-muted" : "pill-ok"} text-[10px]`}>{r.line}</span>
       <span className="tabnum text-xs text-muted ltr">{r.dateISO}</span>
-      {r.odooMo && <b className="ltr tabnum">{r.odooMo}</b>}
+      {r.odooMo && <CopyMo mo={r.odooMo} />}
       <span className={r.odooMo ? "text-muted" : "font-bold"}>{r.product}</span>
-      <span className="text-xs text-muted ltr truncate max-w-[14rem]" title={r.fgCode}>{r.fgCode}</span>
+      <span className="text-xs text-muted ltr truncate max-w-[18rem]" title={r.fgCode}>{r.fgCode}</span>
       {r.soi && <span className="text-xs text-muted ltr">{r.soi}</span>}
       <span className="tabnum font-bold">× {r.qty}</span>
       {SOURCE_LABEL[r.source] && <span className="pill pill-muted text-[10px]">{SOURCE_LABEL[r.source]}</span>}
       {isNew && <span className="pill pill-warn text-[10px]">new</span>}
-      <span className="text-xs text-accent font-semibold">{opening ? "opening…" : "📦 material"}</span>
-    </button>
+      <button type="button" disabled={opening} onClick={(e) => { e.stopPropagation(); onOpen(r.id); }} className="text-xs text-accent font-semibold hover:underline">
+        {opening ? "opening…" : "📦 material"}
+      </button>
+    </div>
   );
 }
 
@@ -263,11 +298,11 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center p-3" role="dialog" aria-modal="true" aria-label="Odoo alerts">
       <button type="button" aria-label="Later" onClick={onLater} className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
-      <div className="relative w-full max-w-3xl max-h-[88vh] overflow-y-auto bg-surface text-foreground border rounded-xl shadow-lg">
+      <div className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto bg-surface text-foreground border rounded-xl shadow-lg">
         <div className="flex items-start gap-3 p-4 border-b">
           <div className="text-2xl leading-none">🔔</div>
           <div className="min-w-0">
-            <div className="font-extrabold text-base">{title} — Odoo</div>
+            <div className="font-extrabold text-lg">{title} — Odoo</div>
             <div className="text-xs text-muted mt-0.5">
               {mo.length > 0 && "Type Odoo's MO number on what was recorded. "}
               {close.length > 0 && "Close the ready ones in Odoo, then here."}
@@ -281,7 +316,7 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
             <h3 className="px-4 pt-3 pb-1 text-xs font-extrabold uppercase tracking-wide text-muted">Needs an MO · {mo.length}</h3>
             <ul className="divide-y">
               {mo.map((r) => (
-                <li key={`mo-${r.id}`} className={`flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm ${fresh.has(alertKey("mo", r.id)) ? "bg-warn-bg/40" : ""}`}>
+                <li key={`mo-${r.id}`} className={`flex flex-wrap items-center gap-3 px-5 py-3 text-base ${fresh.has(alertKey("mo", r.id)) ? "bg-warn-bg/40" : ""}`}>
                   <RowFacts r={r} isNew={fresh.has(alertKey("mo", r.id))} onOpen={onOpen} opening={opening === r.id} />
                   {can(r) ? <MoInput r={r} disabled={pending} onSave={onSaveMo} /> : <span className="text-xs text-muted">No permission on this line</span>}
                 </li>
@@ -295,7 +330,7 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
             <h3 className="px-4 pt-3 pb-1 text-xs font-extrabold uppercase tracking-wide text-muted">Ready to close · {close.length}</h3>
             <ul className="divide-y">
               {close.map((r) => (
-                <li key={`close-${r.id}`} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${fresh.has(alertKey("close", r.id)) ? "bg-warn-bg/40" : ""}`}>
+                <li key={`close-${r.id}`} className={`flex items-center gap-3 px-5 py-3 text-base ${fresh.has(alertKey("close", r.id)) ? "bg-warn-bg/40" : ""}`}>
                   <RowFacts r={r} isNew={fresh.has(alertKey("close", r.id))} onOpen={onOpen} opening={opening === r.id} />
                   <button
                     type="button" className="shrink-0 btn btn-sm btn-primary" disabled={pending || !can(r)} onClick={() => onClose([r.id])}
