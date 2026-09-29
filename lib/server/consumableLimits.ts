@@ -32,7 +32,7 @@ export interface CatalogueItemDTO {
 
 type LimitRow = { id: number; itemId: number; departments: string; basis: string; period: string; qty: { toNumber(): number } };
 
-function toRule(l: LimitRow): LimitRule {
+export function toRule(l: LimitRow): LimitRule {
   return {
     id: l.id, itemId: l.itemId, departments: parseDepartments(l.departments),
     basis: isLimitBasis(l.basis) ? l.basis : "pool", period: isLimitPeriod(l.period) ? l.period : "week", qty: l.qty.toNumber(),

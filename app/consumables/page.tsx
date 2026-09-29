@@ -8,6 +8,12 @@ import { WORKER_SECTIONS } from "@/lib/domain/tanks";
 import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import { ConsumableLimits } from "@/components/ConsumableLimits";
 import { ConsumableAlarms } from "@/components/ConsumableAlarms";
+import { ConsumablesMonthly } from "@/components/ConsumablesMonthly";
+import { getMonthlyReport } from "@/lib/server/consumableMonthly";
+import { MONTH_STATUS_LABEL, isMonthKey, monthLong } from "@/lib/domain/consumableMonthly";
+import { PrintHeader } from "@/components/PrintHeader";
+import { PrintButton } from "@/components/PrintButton";
+import { toDisplayDate } from "@/lib/domain/dates";
 import { addDaysISO, clampISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
@@ -27,7 +33,7 @@ const HISTORY_DAYS = 365;
 export default async function ConsumablesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; view?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; view?: string; month?: string }>;
 }) {
   // viewing the log is free for every account, like the rest of the app;
   // recording is consumables.edit (and correcting one's own rows); the
@@ -47,9 +53,9 @@ export default async function ConsumablesPage({
   const period = from === to ? from : `${from}_to_${to}`;
 
   // the log and the dashboard are everyone's; the history of edits the admin's
-  const view = sp.view === "dashboard" ? "dashboard" : sp.view === "limits" ? "limits" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
+  const view = sp.view === "dashboard" ? "dashboard" : sp.view === "limits" ? "limits" : sp.view === "monthly" ? "monthly" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
   // the switch keeps the period on screen
-  const hrefFor = (v: "log" | "dashboard" | "limits" | "edits") => {
+  const hrefFor = (v: "log" | "dashboard" | "limits" | "monthly" | "edits") => {
     const p = new URLSearchParams();
     if (sp.from) p.set("from", from);
     if (sp.to) p.set("to", to);
@@ -61,6 +67,7 @@ export default async function ConsumablesPage({
     <nav className="seg" aria-label="View">
       <Link href={hrefFor("log")} className={view === "log" ? "on" : ""}>Log</Link>
       <Link href={hrefFor("dashboard")} className={view === "dashboard" ? "on" : ""}>Dashboard</Link>
+      <Link href={hrefFor("monthly")} className={view === "monthly" ? "on" : ""}>Monthly</Link>
       <Link href={hrefFor("limits")} className={view === "limits" ? "on" : ""}>Limits</Link>
       {me.isAdmin && <Link href={hrefFor("edits")} className={view === "edits" ? "on" : ""}>Edits</Link>}
     </nav>
@@ -72,6 +79,45 @@ export default async function ConsumablesPage({
       defaultRange={{ label: "Today", from: today, to: today }}
     />
   );
+
+  if (view === "monthly") {
+    // a calendar month, not the slicer: the review is month by month
+    const month = sp.month && isMonthKey(sp.month) && sp.month <= today.slice(0, 7) ? sp.month : today.slice(0, 7);
+    const report = await getMonthlyReport(month);
+    const exportRows = report.rows.flatMap((r) => [
+      {
+        Level: "Item", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: "", "Limit": "", "Monthly limit": r.allowance ?? (r.limits.length ? "per person" : ""),
+        Used: r.used, "Outside the limits": r.outside, "Of the limit": r.ratio === null ? "" : `${Math.round(r.ratio * 100)}%`,
+        Status: MONTH_STATUS_LABEL[r.status], [`Used ${report.prevMonth}`]: r.prevUsed,
+        "Weeks / days / workers over": "",
+        ...Object.fromEntries(r.trend.map((t) => [t.month, t.used])),
+      },
+      ...r.limits.map((l) => ({
+        Level: "Limit", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: l.departmentsLabel,
+        "Limit": `${l.qty} ${PERIOD_LABEL[l.period]}${l.basis === "person" ? " per person" : ""}`, "Monthly limit": l.allowance,
+        Used: l.used, "Outside the limits": "", "Of the limit": `${Math.round(l.ratio * 100)}%`, Status: MONTH_STATUS_LABEL[l.status],
+        [`Used ${report.prevMonth}`]: l.prevUsed,
+        "Weeks / days / workers over": [
+          ...l.weeks.filter((w) => w.over).map((w) => `${w.label}: ${w.used}/${w.limit}`),
+          ...l.daysOver.map((d) => `${d.dayISO}: ${d.used}`),
+          ...l.workersOver.map((w) => `${report.workers[w.workerId]?.name ?? "?"}: ${w.used}`),
+        ].join(" | "),
+        ...Object.fromEntries(r.trend.map((t) => [t.month, ""])),
+      })),
+    ]);
+    return (
+      <div className="space-y-3">
+        <RememberLastVisit storageKey="consumables:last" />
+        <PrintHeader title="Consumables — monthly review" subtitle={monthLong(month)} date={toDisplayDate(new Date())} />
+        <PageHeader>
+          {viewSwitch}
+          <ExportButton rows={exportRows} filename={`consumables-monthly-${month}.xlsx`} sheetName={month} />
+          <PrintButton />
+        </PageHeader>
+        <ConsumablesMonthly report={report} />
+      </div>
+    );
+  }
 
   if (view === "limits") {
     // the catalogue and its limits are about now, not the slicer's period
