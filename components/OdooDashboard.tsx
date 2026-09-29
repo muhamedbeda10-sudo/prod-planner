@@ -142,19 +142,6 @@ function Delta({ cur, prev, suffix = "" }: { cur: number; prev: number | null; s
   );
 }
 
-function Stat({ label, value, sub, delta }: { label: string; value: string; sub?: string; delta?: React.ReactNode }) {
-  return (
-    <div className="bg-surface border rounded-xl px-4 py-3 min-w-[10rem] flex-1">
-      <div className="text-xs font-bold text-muted">{label}</div>
-      <div className="text-[28px] font-semibold leading-tight ltr">{value}</div>
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        {delta}
-        {sub && <span className="text-xs text-muted">{sub}</span>}
-      </div>
-    </div>
-  );
-}
-
 /** A dozen-ish thin bars of the product's daily quantity — a shape, not a chart. */
 function Sparkline({ values, color }: { values: number[]; color: string }) {
   const max = Math.max(1, ...values);
@@ -389,7 +376,6 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
   const prevTitle = d.previous ? periodLabel({ range: "custom", fromISO: d.previous.fromISO, toISO: d.previous.toISO }) : null;
   const closedBasis = d.basis === "closed";
   const word = closedBasis ? "closed" : "logged";
-  const doneNowPct = d.kpi.loggedRows > 0 ? Math.round((d.kpi.doneNowRows / d.kpi.loggedRows) * 100) : 0;
 
   const exportRows = useMemo(
     () => d.days.filter((p) => p.rows > 0 || p.loggedRows > 0 || p.doneRows > 0).map((p) => ({
@@ -434,17 +420,6 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
       <Card title={`Quantity ${word} per day, by product`} sub={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
         <DailyByProduct d={d} present={present} pal={pal} />
       </Card>
-
-      <div className="flex flex-wrap gap-3">
-        <Stat label={`Quantity ${word}`} value={fmt(d.kpi.qty)} delta={<Delta cur={d.kpi.qty} prev={d.kpi.prevQty} />} />
-        <Stat label={`Rows ${word}`} value={fmt(d.kpi.rows)} delta={<Delta cur={d.kpi.rows} prev={d.kpi.prevRows} />} sub={`${d.kpi.activeDays} day(s) with ${closedBasis ? "closings" : "entries"}`} />
-        {closedBasis ? (
-          <Stat label="Logged in period" value={fmt(d.kpi.loggedQty)} sub={`${d.kpi.loggedRows} row(s) entered · ${doneNowPct}% of them Done by now`} />
-        ) : (
-          <Stat label="Closed in period" value={fmt(d.kpi.doneQty)} sub={`${d.kpi.doneRows} row(s) moved to Done · ${doneNowPct}% of the logged rows are Done now`} />
-        )}
-        <Stat label="Per active day" value={fmt(d.kpi.qtyPerActiveDay)} sub={`qty on the days that had ${closedBasis ? "closings" : "rows"}`} />
-      </div>
 
       <section>
         <h2 className="font-bold mb-2">Per product <span className="text-muted font-normal text-sm">· {word}</span></h2>
