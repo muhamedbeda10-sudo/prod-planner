@@ -7,9 +7,9 @@ import {
 
 const rule = (over: Partial<LimitRule>): LimitRule => ({ id: 1, itemId: 10, departments: ["WeldingTX"], basis: "pool", period: "week", qty: 15, ...over });
 const use = (over: Partial<LimitUse>): LimitUse => ({ itemId: 10, department: "WeldingTX", workerId: 1, dayISO: "2026-09-28", qty: 1, ...over });
-const cand = (over: Partial<LimitUse> & { workerIds?: number[] }): LimitCandidate => {
-  const u = use(over);
-  return { itemId: u.itemId, department: u.department, dayISO: u.dayISO, qty: u.qty, workerIds: over.workerIds ?? [u.workerId] };
+const cand = ({ workerIds, ...over }: Partial<LimitUse> & { workerIds?: number[] }): LimitCandidate => {
+  const { workerId, ...rest } = { itemId: 10, department: "WeldingTX", workerId: 1, dayISO: "2026-09-28", qty: 1, ...over };
+  return { ...rest, workerIds: workerIds ?? [workerId] };
 };
 
 describe("fixed windows", () => {
