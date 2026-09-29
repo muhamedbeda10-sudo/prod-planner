@@ -106,23 +106,21 @@ export interface ExistingOrderFields {
 }
 
 export interface RevisionRowDiff {
-  /** Changes that WILL be applied — the qty in either direction included. */
+  /** Changes that WILL be applied — every field but the qty. */
   changes: RevisionChange[];
-  /** A qty DECREASE in the sheet — applied, and listed with what the floor
-   *  already produced so the planner sees what the cut ran into. */
-  qtyReduction: { mo: string; from: number; to: number } | null;
-  /** The plan qty to write: the sheet's. */
-  planQty: number;
+  /** The sheet's qty when it differs from the registry's. It is NOT applied:
+   *  it waits on the order for the planner to use it or keep the old one. */
+  qtyProposal: { mo: string; from: number; to: number } | null;
 }
 
 const T = (v: string | null | undefined) => (v ?? "").trim();
 
 /**
  * Diff one revision row against its existing registry order. Every
- * difference is applied, the plan qty included whichever way it moved: the
- * sheet is planning's word and the planner does not want to retype it. A
- * decrease is still called out on its own, with what the floor already
- * produced, so a cut that lands under the produced count is seen.
+ * difference but the qty is applied. A different qty — an order carried into
+ * a new month's plan with a new figure, or a revision of the same month — is
+ * never written by the import: it comes back as a proposal, old → new, and
+ * the planner decides whether the registry takes it.
  */
 export function diffRevisionRow(row: MonthlyOrderRow, cur: ExistingOrderFields): RevisionRowDiff {
   const changes: RevisionChange[] = [];
@@ -130,12 +128,7 @@ export function diffRevisionRow(row: MonthlyOrderRow, cur: ExistingOrderFields):
     if (from !== to) changes.push({ mo: row.mo, field, from: from || "—", to: to || "—" });
   };
 
-  let qtyReduction: RevisionRowDiff["qtyReduction"] = null;
-  if (row.planQty !== cur.planQty) {
-    push("Qty", String(cur.planQty), String(row.planQty));
-    if (row.planQty < cur.planQty) qtyReduction = { mo: row.mo, from: cur.planQty, to: row.planQty };
-  }
-  const planQty = row.planQty;
+  const qtyProposal = row.planQty !== cur.planQty ? { mo: row.mo, from: cur.planQty, to: row.planQty } : null;
 
   push("Urgent", cur.urgent ? "Yes" : "No", row.urgent ? "Yes" : "No");
   push("BOM", T(cur.bom), T(row.bom));
@@ -154,7 +147,7 @@ export function diffRevisionRow(row: MonthlyOrderRow, cur: ExistingOrderFields):
   push("OSP TN", String(cur.ospTN), String(row.osp.TN));
   push("OSP CB", String(cur.ospCB), String(row.osp.CB));
 
-  return { changes, qtyReduction, planQty };
+  return { changes, qtyProposal };
 }
 
 const S = (v: unknown): string => (v == null ? "" : String(v).replace(/\r?\n/g, " ").trim());

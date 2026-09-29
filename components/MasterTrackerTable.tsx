@@ -4,7 +4,7 @@ import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
-import { setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setGroupFins, setOrderPriority, setOrderHold, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
+import { decidePlanQty, setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setGroupFins, setOrderPriority, setOrderHold, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num, Soi } from "@/components/ui";
 import { RingCard } from "@/components/ProgressRing";
@@ -628,6 +628,8 @@ export function MasterTrackerTable({
     // `print-flow` hands the height back to the paper: a fixed-height scroller
     // would print one page and clip everything under it.
     <div className="print-flow md:flex md:flex-col md:h-[calc(100vh-7rem)]">
+      {/* a plan import brought a different qty for these orders — waiting on the planner */}
+      <PendingQtyBanner rows={rows} />
       {/* what the sheet is showing — filters don't survive onto paper otherwise */}
       <PrintScope
         parts={[
@@ -1282,6 +1284,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       </span>
                     )
                   )}
+                  {r.pendingQty && <PendingQty r={r} canDecide={can("tracker.qty")} />}
                   {r.urgent && <span className="pill pill-bad ml-1">U</span>}
                   {r.hold.onHold && <span className="pill pill-warn ml-1 cursor-help" title={holdLabel(r.hold)}>⏸️ HOLD{r.hold.holdNote ? ` · ${r.hold.holdNote}` : ""}</span>}
                   {ITEMS.filter((it) => r.items[it].osp > 0).map((it) => (
@@ -1577,3 +1580,65 @@ function StageHead({ tint, shp = false, only, borderR = true }: { tint: string; 
   );
 }
 
+
+/** ⚠ on an order whose qty a plan import held back: the old figure stays in
+ *  the plan until the planner uses the sheet's or keeps his own. */
+function PendingQty({ r, canDecide }: { r: MasterTrackerRow; canDecide: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState("");
+  const p = r.pendingQty!;
+  const title = `${p.month ?? "A plan import"} says ${p.to} — the registry keeps ${r.required} until you choose`;
+  const decide = (decision: "use" | "keep") => {
+    const fd = new FormData();
+    fd.set("mos", r.mo);
+    fd.set("decision", decision);
+    setErr("");
+    start(async () => {
+      const res = await decidePlanQty(fd);
+      if (!res.ok) { setErr(res.error ?? "Could not save."); return; }
+      setOpen(false);
+      router.refresh();
+    });
+  };
+  const pill = <>⚠ Qty {r.required} → {p.to}?</>;
+  if (!canDecide) return <span className="pill pill-warn ml-1 cursor-help" title={title}>{pill}</span>;
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="print-as-text pill pill-warn ml-1 cursor-pointer hover:ring-2 hover:ring-brand/60 transition-all"
+        title={`${title} — click to choose`}
+        aria-expanded={open}
+      >
+        {pill}
+      </button>
+      {open && (
+        <span className="absolute left-0 top-[calc(100%+4px)] z-30 flex flex-col gap-1.5 whitespace-normal rounded-lg border bg-surface p-2.5 text-foreground shadow-lg w-60 font-normal">
+          <span className="text-xs">
+            <b>{p.month ?? "The new plan"}</b> has <b className="text-warn-fg">{p.to}</b>; the registry has <b>{r.required}</b>.
+          </span>
+          <span className="flex gap-1.5">
+            <button type="button" className="btn btn-sm btn-primary" disabled={pending} onClick={() => decide("use")}>Use {p.to}</button>
+            <button type="button" className="btn btn-sm btn-secondary" disabled={pending} onClick={() => decide("keep")}>Keep {r.required}</button>
+          </span>
+          {err && <span className="text-[11px] font-semibold text-bad-fg">{err}</span>}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** One line above the table while any order has a held qty. */
+function PendingQtyBanner({ rows }: { rows: MasterTrackerRow[] }) {
+  const waiting = rows.filter((r) => r.pendingQty);
+  if (waiting.length === 0) return null;
+  return (
+    <div className="no-print mb-2 rounded-lg border border-warn-fg/40 bg-warn-bg px-3 py-2 text-sm text-warn-fg">
+      <b>⚠ {waiting.length} order{waiting.length === 1 ? "" : "s"}</b>: the new plan brought a different quantity — the old one stays until you choose. Click the ⚠ on the MO:{" "}
+      <span className="font-semibold">{waiting.slice(0, 6).map((r) => `${r.mo} (${r.required}→${r.pendingQty!.to})`).join(" · ")}{waiting.length > 6 ? " …" : ""}</span>
+    </div>
+  );
+}

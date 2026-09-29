@@ -40,6 +40,9 @@ export interface MasterTrackerRow {
   hold: HoldView;
   priority: boolean; // ⭐ flagged by the admin — shows on every dept worklist
   months: string[]; // every monthly plan the MO appeared in (e.g. ["July 2026", "August 2026"])
+  /** A qty a plan import brought and held back for the planner: the sheet's
+   *  figure and the plan it came with. Null when nothing is waiting. */
+  pendingQty: { to: number; month: string | null } | null;
 }
 
 export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
@@ -107,6 +110,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       // months CSV is backfilled from source by the migration; keep the
       // fallback for rows created before either existed
       months: (o.months || o.source || "").split(",").map((s) => s.trim()).filter(Boolean),
+      pendingQty: o.pendingPlanQty !== null ? { to: o.pendingPlanQty, month: o.pendingQtyMonth } : null,
     };
   });
 }
