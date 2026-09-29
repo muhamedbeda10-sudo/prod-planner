@@ -1,34 +1,18 @@
 "use client";
 
 import {
-  Bar, BarChart, CartesianGrid, Cell, Funnel, FunnelChart, LabelList, Line, LineChart, Pie, PieChart,
+  Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart,
   PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { ChartCard, Legend, TipBox, fmt, pct, type TableRow } from "@/components/charts/kit";
 import type { OdooInsights as Insights } from "@/lib/domain/odooInsights";
-import type { OdooTone } from "@/lib/domain/odoo";
 
 // "How the close-out is going" — the ODOO dashboard's second half, one form
-// per question: a gauge for the close rate, a funnel from logged to Done, a
-// donut of where the rows stand now, a histogram of how long a close takes
-// and the average per product, the open rows by age (older = darker), a
-// burn-up of logged against closed, and the quantity per BOM split by
-// product. Products keep the colours the rest of the dashboard gives them.
+// per question: a histogram of how long a close takes and the average per
+// product, a gauge for the close rate beside a burn-up of logged against
+// closed, and the quantity per BOM split by product. Products keep the colours the rest of the dashboard gives them.
 
 type TipProps<T> = { active?: boolean; payload?: readonly { payload?: T }[] };
-
-/** Where a row stands: the status colours, each with its name beside it. */
-function statusColor(status: string, tone: OdooTone): string {
-  if (tone === "ok") return "var(--ok-fg)";
-  if (/^pending$/i.test(status)) return "var(--warn-fg)";
-  if (/^blocked$/i.test(status)) return "var(--bad-fg)";
-  if (/cancel/i.test(status)) return "var(--viz-other)";
-  if (/^mo to be close$/i.test(status)) return "var(--viz-2)";
-  return "color-mix(in srgb, var(--viz-other) 55%, var(--surface))";
-}
-
-/** An ordered ramp of one hue — light for the first step, dark for the last. */
-const ramp = (hue: string, i: number, n: number) => `color-mix(in srgb, ${hue} ${Math.round(35 + (65 * i) / Math.max(1, n - 1))}%, var(--surface))`;
 
 function Box({ height, minWidth = 0, children }: { height: number; minWidth?: number; children: React.ReactElement }) {
   return (
@@ -38,14 +22,6 @@ function Box({ height, minWidth = 0, children }: { height: number; minWidth?: nu
       </div>
     </div>
   );
-}
-
-/** A funnel step's name and count, one line to the right of the trapezoid —
- *  recharts' own right label wraps inside the margin. */
-function FunnelLabel(p: { x?: number | string; y?: number | string; width?: number | string; height?: number | string; value?: unknown }) {
-  const x = Number(p.x ?? 0) + Number(p.width ?? 0) + 8;
-  const y = Number(p.y ?? 0) + Number(p.height ?? 0) / 2;
-  return <text x={x} y={y} dy={4} fontSize={12} fill="var(--foreground)">{String(p.value ?? "")}</text>;
 }
 
 function Gauge({ value, label, sub }: { value: number; label: string; sub: string }) {
@@ -73,10 +49,7 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
     { name: "With MO", value: f.withMo },
     { name: "Done", value: f.done },
   ];
-  const funnelShown = funnelData.map((d) => ({ ...d, label: `${d.name} · ${fmt(d.value)}` }));
-  const statusTotal = ins.statusMix.reduce((n, s) => n + s.rows, 0);
   const lt = ins.leadTime;
-  const ageMax = Math.max(0, ...ins.aging.buckets.map((b) => b.rows));
   const burnEvery = ins.burnUp.length > 14 ? Math.ceil(ins.burnUp.length / 14) - 1 : 0;
   const lastBurn = ins.burnUp.at(-1);
   const bomData = ins.bomMix.rows.map((r) => ({ bom: r.bom, qty: r.qty, ...r.bySeries }));
@@ -89,10 +62,8 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
 
   const tables = {
     funnel: funnelData.map((d) => ({ Stage: d.name, Rows: d.value, "Of logged": f.logged ? pct(d.value / f.logged, 1) : "—" })) as TableRow[],
-    status: ins.statusMix.map((s) => ({ Status: s.status, Rows: s.rows, Qty: s.qty, Share: statusTotal ? pct(s.rows / statusTotal, 1) : "—" })) as TableRow[],
     lead: lt.buckets.map((b) => ({ "Logged → closed": b.label, Rows: b.rows })) as TableRow[],
     leadProduct: lt.byProduct.map((p) => ({ Product: p.product, "Average days": p.avgDays, Rows: p.rows })) as TableRow[],
-    aging: ins.aging.buckets.map((b) => ({ Waiting: b.label, "Open rows": b.rows, Qty: b.qty })) as TableRow[],
     burn: ins.burnUp.map((b) => ({ Day: b.dateISO, "Logged (cumulative)": b.logged, "Closed (cumulative)": b.closed, "Open gap": b.open })) as TableRow[],
     bom: ins.bomMix.rows.map((r) => ({ BOM: r.bom, ...Object.fromEntries(ins.bomMix.series.map((s) => [s, r.bySeries[s] ?? 0])), Total: r.qty })) as TableRow[],
   };
@@ -100,62 +71,6 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
   return (
     <section className="space-y-3">
       <h2 className="font-bold">How the close-out is going <span className="text-muted font-normal text-sm">· the rows logged in the period, and the closings in it</span></h2>
-
-      <div className="grid gap-3 lg:grid-cols-3">
-        <ChartCard title="Close rate" sub="Of the rows logged in the period, how many are Done by now" table={{ rows: tables.funnel, filename: file("close-rate"), sheet: "Close rate" }}>
-          <Gauge value={ins.closeRate} label="Close rate" sub={`${fmt(f.done)} of ${fmt(f.logged)} rows Done`} />
-          <div className="mt-3 grid grid-cols-3 text-center text-xs">
-            <div><div className="text-lg font-semibold">{fmt(f.logged)}</div><div className="text-muted">logged</div></div>
-            <div><div className="text-lg font-semibold">{fmt(f.logged - f.done)}</div><div className="text-muted">still open</div></div>
-            <div><div className="text-lg font-semibold">{fmt(ins.aging.openQty)}</div><div className="text-muted">open qty</div></div>
-          </div>
-        </ChartCard>
-
-        <ChartCard title="From logged to Done" sub="Logged → Odoo's MO on the row → Done: each step keeps the rows that reached it" table={{ rows: tables.funnel, filename: file("funnel"), sheet: "Funnel" }}>
-          <Box height={220}>
-            <FunnelChart margin={{ top: 4, right: 120, bottom: 4, left: 8 }}>
-              <Tooltip content={(p: TipProps<{ name: string; value: number }>) => {
-                const r = p.active ? p.payload?.[0]?.payload : undefined;
-                return r ? <TipBox title={r.name} rows={[{ label: "Rows", value: fmt(r.value) }, { label: "Of logged", value: f.logged ? pct(r.value / f.logged, 1) : "—" }]} /> : null;
-              }} />
-              <Funnel dataKey="value" data={funnelShown} isAnimationActive={false} stroke="var(--surface)" strokeWidth={2} lastShapeType="rectangle">
-                {funnelData.map((d, i) => <Cell key={d.name} fill={ramp("var(--viz-1)", i, funnelData.length)} />)}
-                <LabelList dataKey="label" content={FunnelLabel} />
-              </Funnel>
-            </FunnelChart>
-          </Box>
-        </ChartCard>
-
-        <ChartCard title="Where the rows stand now" sub="The logged rows by their status today" table={{ rows: tables.status, filename: file("status"), sheet: "Status" }}>
-          <div className="relative mx-auto" style={{ width: 190, height: 190 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={ins.statusMix} dataKey="rows" nameKey="status" innerRadius={58} outerRadius={90} paddingAngle={ins.statusMix.length > 1 ? 1.5 : 0}
-                  stroke="var(--surface)" strokeWidth={2} startAngle={90} endAngle={-270} isAnimationActive={false}>
-                  {ins.statusMix.map((s) => <Cell key={s.status} fill={statusColor(s.status, s.tone)} />)}
-                </Pie>
-                <Tooltip content={(p: TipProps<(typeof ins.statusMix)[number]>) => {
-                  const r = p.active ? p.payload?.[0]?.payload : undefined;
-                  return r ? <TipBox title={r.status} rows={[{ label: "Rows", value: fmt(r.rows), color: statusColor(r.status, r.tone) }, { label: "Qty", value: fmt(r.qty) }]} /> : null;
-                }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 grid place-items-center pointer-events-none text-center">
-              <div><div className="text-2xl font-semibold leading-none">{fmt(statusTotal)}</div><div className="text-[11px] text-muted">rows</div></div>
-            </div>
-          </div>
-          <ul className="mt-2 space-y-1 text-sm">
-            {ins.statusMix.map((s) => (
-              <li key={s.status} className="flex items-center gap-2">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: statusColor(s.status, s.tone) }} aria-hidden />
-                <span className="flex-1">{s.status}</span>
-                <span className="tabnum text-muted">{fmt(s.rows)}</span>
-                <span className="tabnum font-bold w-12 text-right">{statusTotal ? pct(s.rows / statusTotal) : "—"}</span>
-              </li>
-            ))}
-          </ul>
-        </ChartCard>
-      </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
         <ChartCard title="How long a close takes" sub={lt.rows ? `From the day a row was logged to the day it went Done — ${fmt(lt.rows)} row(s) closed in the period` : "No row closed in the period"}
@@ -203,24 +118,13 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <ChartCard title="Open rows by age"
-          sub={ins.aging.openRows ? `${fmt(ins.aging.openRows)} logged row(s) still open at the period's end — the darker, the longer waiting${ins.aging.oldestDays !== null ? ` · oldest ${ins.aging.oldestDays} days` : ""}` : "Every row logged in the period is Done or cancelled"}
-          table={{ rows: tables.aging, filename: file("aging"), sheet: "Aging" }}>
-          <Box height={240}>
-            <BarChart data={ins.aging.buckets} margin={{ top: 16, right: 8, left: -18, bottom: 0 }} barCategoryGap="18%">
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} />
-              <YAxis allowDecimals={false} domain={[0, Math.max(1, ageMax)]} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
-              <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(p: TipProps<(typeof ins.aging.buckets)[number]>) => {
-                const r = p.active ? p.payload?.[0]?.payload : undefined;
-                return r ? <TipBox title={`Waiting ${r.label}`} rows={[{ label: "Open rows", value: fmt(r.rows) }, { label: "Qty", value: fmt(r.qty) }]} /> : null;
-              }} />
-              <Bar dataKey="rows" maxBarSize={44} radius={[4, 4, 0, 0]} isAnimationActive={false}>
-                {ins.aging.buckets.map((b, i) => <Cell key={b.label} fill={ramp("var(--viz-3)", i, ins.aging.buckets.length)} />)}
-                <LabelList dataKey="rows" position="top" fontSize={10} fontWeight={700} fill="var(--foreground)" formatter={(v: unknown) => (Number(v) ? fmt(Number(v)) : "")} />
-              </Bar>
-            </BarChart>
-          </Box>
+        <ChartCard title="Close rate" sub="Of the rows logged in the period, how many are Done by now" table={{ rows: tables.funnel, filename: file("close-rate"), sheet: "Close rate" }}>
+          <Gauge value={ins.closeRate} label="Close rate" sub={`${fmt(f.done)} of ${fmt(f.logged)} rows Done`} />
+          <div className="mt-3 grid grid-cols-3 text-center text-xs">
+            <div><div className="text-lg font-semibold">{fmt(f.logged)}</div><div className="text-muted">logged</div></div>
+            <div><div className="text-lg font-semibold">{fmt(f.logged - f.done)}</div><div className="text-muted">still open</div></div>
+            <div><div className="text-lg font-semibold">{fmt(ins.aging.openQty)}</div><div className="text-muted">open qty</div></div>
+          </div>
         </ChartCard>
 
         <ChartCard title="Burn-up: logged against closed"
