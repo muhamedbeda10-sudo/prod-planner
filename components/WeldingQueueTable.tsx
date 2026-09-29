@@ -20,6 +20,7 @@ import type { WorkerDTO } from "@/lib/server/workers";
 import { TankWorkerPicker, NO_WORKER, type WorkerPick } from "@/components/TankWorkerPicker";
 import { TankSerialsPanel } from "@/components/TankSerialsPanel";
 import { TankPaintPicker } from "@/components/TankPaintPicker";
+import { Modal } from "@/components/Modal";
 import { MachinePick, PlacementChips, placementPass, type PlacementMode } from "@/components/MachineBoard";
 import type { MachineDTO } from "@/lib/server/machines";
 import { machineWord } from "@/lib/domain/shifts";
@@ -501,8 +502,7 @@ export function WeldingQueueTable({
           </tr>
         )}
         {openTanks === k && picksTanks(r) && (
-          <tr className={inGroup ? "border-x-2 border-brand" : ""}>
-            <td colSpan={cols} className="p-3 bg-brand-light/20 border-y">
+          <Modal title={`Record painted tanks — ${r.mo || r.bom}`} onClose={() => setOpenTanks(null)} width="max-w-3xl">
               <TankPaintPicker
                 tanks={paintableTanks[r.mo] ?? []}
                 painters={workers}
@@ -510,13 +510,11 @@ export function WeldingQueueTable({
                 label={`${r.mo} · ${r.bom}`}
                 onDone={() => setOpenTanks(null)}
               />
-            </td>
-          </tr>
+          </Modal>
         )}
         {openReturn === noteKey && (
-          <tr className={inGroup ? "border-x-2 border-brand" : ""}>
-            <td colSpan={cols} className="p-3 bg-bad-bg/30 border-y">
-              <form onSubmit={submitReturn} className="max-w-3xl bg-surface border rounded-lg p-2.5 space-y-2">
+          <Modal title={`↩ Return ${r.mo || r.bom} ${r.item}`} onClose={() => setOpenReturn(null)} busy={pending}>
+              <form onSubmit={submitReturn} className="space-y-2">
                 <p className="text-xs font-bold text-bad-fg">
                   ↩ Return {r.mo || r.bom} {r.item} to {dept === "Welding" ? deptLabel("Cut") : "Welding"} — the qty comes OFF their delivered total and lands in their Returns table until re-delivered.
                 </p>
@@ -554,12 +552,10 @@ export function WeldingQueueTable({
                 </div>
                 {retMsg && <div className="text-[11px] text-bad-fg">{retMsg}</div>}
               </form>
-            </td>
-          </tr>
+          </Modal>
         )}
         {openNotes === noteKey && (
-          <tr className={inGroup ? "border-x-2 border-brand" : ""}>
-            <td colSpan={cols} className="p-4 bg-brand-light/20 border-y">
+          <Modal title={`📝 Notes — ${r.mo || r.bom} · ${r.item}`} onClose={() => setOpenNotes(null)} busy={pending} width="max-w-4xl">
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted">
                   📝 Notes — {r.mo || r.bom} · {r.item}
@@ -685,8 +681,7 @@ export function WeldingQueueTable({
                 </form>
                 )}
               </div>
-            </td>
-          </tr>
+          </Modal>
         )}
       </Fragment>
     );

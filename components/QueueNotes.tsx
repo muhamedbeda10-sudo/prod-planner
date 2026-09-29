@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { QueueNoteDTO } from "@/lib/server/queueNotes";
 import { addQueueNote, setQueueNoteStatus, updateQueueNote, deleteQueueNote } from "@/app/worklist/actions";
+import { Modal } from "@/components/Modal";
 
 /** The 📝 pill button that opens a line's notes panel. Red = open issues. */
 export function NotesButton({ lineNotes, onClick }: { lineNotes: QueueNoteDTO[]; onClick: () => void }) {
@@ -29,18 +30,16 @@ export function NotesPanelRow({
   item,
   dept,
   lineNotes,
-  colSpan,
-  className = "",
   canEdit = false,
+  onClose,
 }: {
   bom: string;
   mo: string;
   item: string;
   dept: string; // Cut | Welding | Painting — where the note is raised
   lineNotes: QueueNoteDTO[];
-  colSpan: number;
-  className?: string;
   canEdit?: boolean; // user holds this dept's edit permission — otherwise view-only
+  onClose: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -101,14 +100,10 @@ export function NotesPanelRow({
     });
   }
 
+  // a popup over the table, opened from the line's 📝 button
   return (
-    <tr className={className}>
-      <td colSpan={colSpan} className="p-4 bg-brand-light/20 border-y">
+    <Modal title={`📝 Notes — ${mo || bom} · ${item}`} sub={lineNotes.length ? `${lineNotes.length} note${lineNotes.length === 1 ? "" : "s"}` : undefined} onClose={onClose} busy={pending} width="max-w-4xl">
         <div className="space-y-3">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted">
-            📝 Notes — {mo || bom} · {item}
-            {lineNotes.length > 0 && <span className="pill pill-muted normal-case">{lineNotes.length}</span>}
-          </div>
 
           {lineNotes.length > 0 && (
             <div className="grid gap-2.5 lg:grid-cols-2">
@@ -229,7 +224,6 @@ export function NotesPanelRow({
           </form>
           )}
         </div>
-      </td>
-    </tr>
+    </Modal>
   );
 }

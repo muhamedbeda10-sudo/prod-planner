@@ -5,6 +5,7 @@ import { WORKER_GROUPS, WORKER_SECTIONS, sectionLabel } from "@/lib/domain/tanks
 import type { WorkerDTO } from "@/lib/server/workers";
 import { createWorker, updateWorker, setWorkerActive, deleteWorker, setWorkerVacation } from "./actions";
 import { parseISODate, toDisplayDate } from "@/lib/domain/dates";
+import { Modal } from "@/components/Modal";
 
 // The list behind every "who did this?" dropdown. Kept deliberately plain: a
 // name, an optional badge number, and the stages the person can be credited in.
@@ -253,14 +254,14 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
           <div className="text-[11px] text-muted tabnum">{workers.length - activeCount(workers)} deactivated{unassigned.length ? ` · ${unassigned.length} in no section` : ""}</div>
         </div>
         <div className="ms-auto self-center">
-          <button type="button" className="btn btn-sm" onClick={() => setOpen((v) => !v)}>
-            {open ? "Close" : "➕ Add a worker"}
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
+            ➕ Add a worker
           </button>
         </div>
       </div>
 
       {open && (
-        <div className="border rounded-xl p-4">
+        <Modal title="➕ Add a worker" sub="After Add the form clears for the next one." onClose={() => setOpen(false)} busy={add.pending}>
           <form
             className="space-y-2.5"
             onSubmit={(e) => {
@@ -290,18 +291,23 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
               </label>
             </div>
             <DeptChecks defaults={new Set()} disabled={add.pending} />
-            <div className="flex items-center gap-3">
-              <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending}>
-                Add
-              </button>
+            <div className="flex items-center justify-end gap-3 pt-3 border-t">
               <Msg msg={add.msg} />
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={add.pending}>Close</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending}>
+                {add.pending ? "Adding…" : "Add"}
+              </button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
 
-      {/* the one being edited — above the columns, so the columns never reflow */}
-      {selected && <WorkerCard key={selected.id} worker={selected} onClose={() => setSelectedId(null)} />}
+      {/* the one being edited, in a popup over the columns */}
+      {selected && (
+        <Modal title={selected.name} sub={`ID ${selected.empId}`} onClose={() => setSelectedId(null)} width="max-w-3xl">
+          <WorkerCard key={selected.id} worker={selected} onClose={() => setSelectedId(null)} />
+        </Modal>
+      )}
 
       {workers.length === 0 ? (
         <p className="text-sm text-muted">

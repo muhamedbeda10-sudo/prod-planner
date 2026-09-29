@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upsertLvStdTime, deleteLvStdTime } from "./actions";
 import type { LvRate } from "@/lib/domain/lvStd";
+import { Modal } from "@/components/Modal";
 
 /* The LV panels' standard hours per unit, from the timings sheet's LV tab.
    Each open panel order shows which row prices it — by its FG code, or
@@ -132,11 +133,45 @@ export function LvStdTimesManager({ rates, orders }: { rates: LvRate[]; orders: 
                 </td>
               </tr>
             ))}
-            {editing === "" && editRow("")}
           </tbody>
         </table>
       </div>
-      {editing === null && <button type="button" className="btn btn-sm btn-secondary" onClick={() => start(null)}>＋ Add a panel</button>}
+      <button type="button" className="btn btn-sm btn-secondary" disabled={editing !== null} onClick={() => start(null)}>＋ Add a panel</button>
+      {editing === "" && (
+        <Modal title="＋ Add a panel" sub="Standard hours for one unit, by stage." onClose={() => setEditing(null)} busy={pending} width="max-w-3xl">
+          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save(); }}>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-muted uppercase tracking-wide">FG code</span>
+                <input value={draft.fg} onChange={(e) => setDraft({ ...draft, fg: e.target.value })} required placeholder="FG-SUSA-8569105" className="border rounded px-1.5 py-1 w-48 ltr bg-surface" />
+              </label>
+              <label className="flex flex-col gap-1 flex-1 min-w-48">
+                <span className="text-[11px] font-bold text-muted uppercase tracking-wide">Description</span>
+                <input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Description" className="border rounded px-1.5 py-1 w-full bg-surface" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] font-bold text-muted uppercase tracking-wide">Kind</span>
+                <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="border rounded px-1 py-1 bg-surface">
+                  <option value="USS">USS</option><option value="MB">Meter box</option><option value="FP">Feeder pillar</option>
+                </select>
+              </label>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              {FIELDS.map(([f, label, tip]) => (
+                <label key={f} className="flex flex-col gap-1" title={tip}>
+                  <span className="text-[11px] font-bold text-muted uppercase tracking-wide">{label}</span>
+                  <input type="number" step="0.01" min="0" value={draft[f]} onChange={(e) => setDraft({ ...draft, [f]: e.target.value })} className={INPUT} />
+                </label>
+              ))}
+            </div>
+            {err && <p className="text-sm font-semibold text-bad-fg">{err}</p>}
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(null)} disabled={pending}>Cancel</button>
+              <button type="submit" className="btn btn-sm btn-primary" disabled={pending}>Save</button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </section>
   );
 }

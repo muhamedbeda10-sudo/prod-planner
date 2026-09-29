@@ -13,6 +13,7 @@ import type { ProductLine } from "@/lib/domain/lines";
 import { useActiveLine } from "@/components/LineContext";
 import { Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
+import { Modal } from "@/components/Modal";
 import { entryMaterialNeed, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
@@ -56,11 +57,12 @@ function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
 
 const F = "px-2 py-1.5 text-sm font-semibold";
 
-function Field({ hint, className = "", children }: { hint: string; className?: string; children: React.ReactNode }) {
+function Field({ hint, label, className = "", children }: { hint: string; label: string; className?: string; children: React.ReactNode }) {
   return (
-    <span className={`inline-flex flex-col ${className}`} title={hint}>
+    <label className={`inline-flex flex-col gap-0.5 ${className}`} title={hint}>
+      <span className="text-[11px] font-bold text-muted uppercase tracking-wide">{label}</span>
       {children}
-    </span>
+    </label>
   );
 }
 
@@ -88,28 +90,28 @@ function RowFields({
   const born = isBorn(e);
   return (
     <>
-      <Field hint="Date of the close attempt" className="w-[8.5rem]">
+      <Field hint="Date of the close attempt" label="Date" className="w-[8.5rem]">
         <input name="date" type="date" aria-label="Date" defaultValue={e?.dateISO ?? singleDayOf(day) ?? today} required disabled={disabled} className={`${F} ltr tabnum w-full`} />
       </Field>
-      <Field hint="SOI#" className="w-28">
+      <Field hint="SOI#" label="SOI#" className="w-28">
         <input name="soi" list="odoo-sois" aria-label="SOI" defaultValue={e?.soi ?? ""} disabled={disabled} placeholder="SOI#" className={`${F} ltr w-full`} />
         <datalist id="odoo-sois">{knownSois.map((s) => <option key={s} value={s} />)}</datalist>
       </Field>
-      <Field hint="FG-CODE — Odoo's finished-good code" className="w-48">
+      <Field hint="FG-CODE — Odoo's finished-good code" label="FG-CODE" className="w-48">
         <input name="fgCode" list="odoo-fg" aria-label="FG-CODE" defaultValue={e?.fgCode ?? ""} required={!born} disabled={disabled} placeholder="FG-CODE" className={`${F} ltr w-full`} />
         <datalist id="odoo-fg">{knownFgCodes.map((s) => <option key={s} value={s} />)}</datalist>
       </Field>
-      <Field hint="Product" className="w-32">
+      <Field hint="Product" label="Product" className="w-32">
         <input name="product" list="odoo-products" aria-label="Product" defaultValue={e?.product ?? ""} required disabled={disabled} placeholder="Product" className={`${F} w-full`} />
         <datalist id="odoo-products">{productsOf(line).map((p) => <option key={p} value={p} />)}</datalist>
       </Field>
-      <Field hint="Odoo MO number (SF01/MO/…)" className="w-44">
+      <Field hint="Odoo MO number (SF01/MO/…)" label="MO#" className="w-44">
         <input name="odooMo" aria-label="MO#" defaultValue={e?.odooMo ?? ""} required={!born} disabled={disabled} placeholder="SF01/MO/…" className={`${F} ltr w-full`} />
       </Field>
-      <Field hint="Quantity" className="w-20">
+      <Field hint="Quantity" label="QTY" className="w-20">
         <input name="qty" type="number" step="1" min="0" aria-label="QTY" defaultValue={e?.qty ?? ""} required disabled={disabled} placeholder="QTY" className={`${F} ltr tabnum w-full font-extrabold`} />
       </Field>
-      <Field hint="Status" className="w-40">
+      <Field hint="Status" label="Status" className="w-40">
         <select name="status" aria-label="Status" defaultValue={e?.status ?? "MO to be close"} disabled={disabled} className={`${F} w-full`}>
           {statusOptions(e?.status).map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -121,9 +123,9 @@ function RowFields({
 // the columns that change from row to row on the same day; date stays
 const PER_ROW = ["soi", "fgCode", "product", "odooMo", "qty"] as const;
 
-function AddRow({ day, knownSois, knownFgCodes, startOpen }: { day: string; knownSois: string[]; knownFgCodes: string[]; startOpen: boolean }) {
+function AddRow({ day, knownSois, knownFgCodes }: { day: string; knownSois: string[]; knownFgCodes: string[] }) {
   const add = useAction();
-  const [open, setOpen] = useState(startOpen);
+  const [open, setOpen] = useState(false);
   function clearForNext(form: HTMLFormElement) {
     for (const n of PER_ROW) {
       const el = form.elements.namedItem(n);
@@ -132,29 +134,32 @@ function AddRow({ day, knownSois, knownFgCodes, startOpen }: { day: string; know
     const first = form.elements.namedItem("soi");
     if (first instanceof HTMLInputElement) first.focus();
   }
-  if (!open) {
-    return (
-      <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>
+  return (
+    <>
+      <button type="button" className="btn btn-sm btn-primary" onClick={() => setOpen(true)}>
         ➕ Add a row
       </button>
-    );
-  }
-  return (
-    <form
-      className="border rounded-xl p-2"
-      onSubmit={(ev) => {
-        ev.preventDefault();
-        const form = ev.currentTarget;
-        add.run(createOdooEntry, new FormData(form), "Added — next row.", () => clearForNext(form));
-      }}
-    >
-      <div className="flex flex-wrap items-stretch gap-1.5">
-        <RowFields day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} disabled={add.pending} />
-        <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={add.pending}>Add</button>
-        <button type="button" className="btn btn-sm btn-ghost shrink-0" onClick={() => setOpen(false)}>✕</button>
-      </div>
-      <Msg msg={add.msg} />
-    </form>
+      {open && (
+        <Modal title="➕ Add a row" sub="After Add, the date and status stay for the next row." onClose={() => setOpen(false)} busy={add.pending} width="max-w-4xl">
+          <form
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              const form = ev.currentTarget;
+              add.run(createOdooEntry, new FormData(form), "Added — next row.", () => clearForNext(form));
+            }}
+          >
+            <div className="flex flex-wrap items-end gap-2">
+              <RowFields day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} disabled={add.pending} />
+            </div>
+            <Msg msg={add.msg} />
+            <div className="flex justify-end gap-2 pt-3 mt-3 border-t">
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={add.pending}>Close</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending}>{add.pending ? "Adding…" : "Add"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -397,7 +402,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
             </button>
           {canEdit && (
             <>
-              <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)}>{editing ? "Close" : "Edit"}</button>
+              <button type="button" className="btn btn-sm" onClick={() => setEditing(true)}>Edit</button>
               <button
                 type="button"
                 className="btn btn-sm btn-danger"
@@ -417,28 +422,30 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
         </td>
       </tr>
       {material && <OdooMaterialPopup e={e} nesting={nesting} needCtx={needCtx} onClose={closeMaterial} />}
-      {(editing || del.msg?.ok === false) && (
+      {editing && (
+        <Modal title="Edit a row" sub={`${e.odooMo || e.product} · ${e.dateISO}`} onClose={() => setEditing(false)} busy={edit.pending} width="max-w-4xl">
+          <form
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              const fd = new FormData(ev.currentTarget);
+              fd.set("id", String(e.id));
+              edit.run(updateOdooEntry, fd, "Saved.", () => setEditing(false));
+            }}
+          >
+            <div className="flex flex-wrap items-end gap-2">
+              <RowFields e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} disabled={edit.pending} />
+            </div>
+            <Msg msg={edit.msg} />
+            <div className="flex justify-end gap-2 pt-3 mt-3 border-t">
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(false)} disabled={edit.pending}>Cancel</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={edit.pending}>{edit.pending ? "Saving…" : "Save"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {del.msg?.ok === false && (
         <tr className="border-t-0">
-          <td colSpan={9} className="px-2 pb-3">
-            <Msg msg={del.msg?.ok === false ? del.msg : null} />
-            {editing && (
-              <form
-                className="mt-2 border rounded-xl p-2"
-                onSubmit={(ev) => {
-                  ev.preventDefault();
-                  const fd = new FormData(ev.currentTarget);
-                  fd.set("id", String(e.id));
-                  edit.run(updateOdooEntry, fd, "Saved.", () => setEditing(false));
-                }}
-              >
-                <div className="flex flex-wrap items-stretch gap-1.5">
-                  <RowFields e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} disabled={edit.pending} />
-                  <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={edit.pending}>Save</button>
-                </div>
-                <Msg msg={edit.msg} />
-              </form>
-            )}
-          </td>
+          <td colSpan={9} className="px-2 pb-3"><Msg msg={del.msg} /></td>
         </tr>
       )}
     </>
@@ -569,18 +576,17 @@ function ImportPanel({ day }: { day: string }) {
       if (!preview) router.refresh();
     });
   }
-  if (!open) return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>📥 Import Excel</button>;
+  const button = <button type="button" className="btn btn-sm" onClick={() => { setRes(null); setIssues([]); setOpen(true); }}>📥 Import Excel</button>;
+  if (!open) return button;
   return (
-    <form className="border rounded-xl p-3 space-y-2" onSubmit={(e) => e.preventDefault()}>
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="block">
-          <span className="text-xs font-bold text-muted">Excel file</span>
-          <input type="file" name="file" accept=".xlsx,.xlsm,.xls,.csv" required className="block text-sm" />
-        </label>
-        <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, true)}>Preview</button>
-        <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, false)}>Import</button>
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)}>✕</button>
-      </div>
+    <>
+    {button}
+    <Modal title="📥 Import Excel" onClose={() => setOpen(false)} busy={pending}>
+    <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
+      <label className="block">
+        <span className="text-xs font-bold text-muted">Excel file</span>
+        <input type="file" name="file" accept=".xlsx,.xlsm,.xls,.csv" required className="block text-sm mt-1" />
+      </label>
       <p className="text-xs text-muted">
         Reads the sheet&apos;s first seven columns — Date · SOI# · FG-CODE · Product · MO# · QTY · Status. Notes are
         never read. The same MO on the same day is updated, never doubled, and its Status stays as moved here
@@ -590,7 +596,14 @@ function ImportPanel({ day }: { day: string }) {
       {issues.length > 0 && (
         <ul className="text-xs text-warn-fg list-disc ps-5 space-y-0.5 max-h-40 overflow-y-auto">{issues.map((i, n) => <li key={n}>{i}</li>)}</ul>
       )}
+      <div className="flex justify-end gap-2 pt-3 border-t">
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={pending}>Close</button>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, true)}>Preview</button>
+        <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, false)}>{pending ? "Working…" : "Import"}</button>
+      </div>
     </form>
+    </Modal>
+    </>
   );
 }
 
@@ -857,8 +870,8 @@ export function OdooClient({
         )}
       </section>
       {canEdit && (
-        <div className="space-y-3">
-          <AddRow day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} startOpen={entries.length === 0} />
+        <div className="flex flex-wrap gap-2">
+          <AddRow day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} />
           <ImportPanel day={day} />
         </div>
       )}

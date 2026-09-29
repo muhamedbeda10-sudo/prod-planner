@@ -17,6 +17,7 @@ import { ITEMS, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, typ
 import { agreedSpec, capsFor, finsGroup, isFullyDelivered, spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
 import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
+import { Modal } from "@/components/Modal";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -1465,13 +1466,12 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                 </tr>
               )}
               {openPush === r.mo && (
-                <tr className={`no-print ${inGroup ? "border-x-2 border-brand" : ""}`}>
-                  <td colSpan={tableCols} className="p-3 bg-brand-light/30 border-y">
+                <Modal title={`📤 Send ${r.mo} to a worklist`} onClose={() => setOpenPush(null)} busy={pending}>
                     <form
                       onSubmit={(e) => { e.preventDefault(); submitPush(r); }}
                       className="flex flex-wrap items-center gap-3 text-sm"
                     >
-                      <span className="font-bold text-xs">📤 Send {r.mo} to:</span>
+                      <span className="font-bold text-xs">Send to:</span>
                       <select
                         value={pushDept}
                         onChange={(e) => {
@@ -1515,17 +1515,14 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                         Quantities are capped at what the department still owes on this order. The line lands date-less on the chosen worklist — schedule it there (📅✎). Sending again replaces the previous push; all-zero clears it.
                       </span>
                     </form>
-                  </td>
-                </tr>
+                </Modal>
               )}
               {openConfig === r.mo && (
-                <tr className={`no-print ${inGroup ? "border-x-2 border-brand" : ""}`}>
-                  <td colSpan={tableCols} className="p-3 bg-brand-light/30 border-y">
+                <Modal title={`Components ${r.mo} actually needs`} onClose={() => setOpenConfig(null)} busy={pending}>
                     <form
                       onSubmit={(e) => { e.preventDefault(); saveExcluded(r, e.currentTarget); }}
-                      className="flex flex-wrap items-center gap-4 text-sm max-w-2xl"
+                      className="flex flex-wrap items-center gap-4 text-sm"
                     >
-                      <span className="font-bold text-xs">Components {r.mo} actually needs:</span>
                       {ITEMS.map((it) => {
                         const c = r.items[it];
                         const needed = c.eligible && !c.excluded;
@@ -1542,8 +1539,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       <button type="button" onClick={() => setOpenConfig(null)} className="text-muted text-xs hover:underline">Cancel</button>
                       <span className="text-[11px] text-muted w-full">Ticked components are what this project is made of — all six are yours to switch, whatever the KVA/rating rule says. Unticked ones leave the worklists and stop gating completion &amp; OTD.</span>
                     </form>
-                  </td>
-                </tr>
+                </Modal>
               )}
       </Fragment>
     );

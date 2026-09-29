@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { PERM_CATEGORIES } from "@/lib/domain/permissions";
 import { createUser, updateUserPerms, setUserActive, resetUserPassword, deleteUser } from "./actions";
+import { Modal } from "@/components/Modal";
 
 interface Row {
   id: number;
@@ -113,13 +114,13 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
           <div className="text-sm text-muted ltr">{user.email}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className={btnCls} onClick={() => setExpanded((v) => !v)}>
-            {expanded ? "Close" : "Permissions"}
+          <button type="button" className={btnCls} onClick={() => setExpanded(true)}>
+            Permissions
           </button>
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => setShowReset((v) => !v)}
+            onClick={() => setShowReset(true)}
           >
             Reset password
           </button>
@@ -161,8 +162,9 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
       <Msg msg={del.msg} />
 
       {showReset && (
+        <Modal title="Reset password" sub={`${user.name} · ${user.email}`} onClose={() => setShowReset(false)} busy={pw.pending} width="max-w-lg">
         <form
-          className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3"
+          className="flex flex-wrap items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             pw.run(resetUserPassword, new FormData(e.currentTarget), "Password changed — their old sessions were signed out.", () => setShowReset(false));
@@ -173,11 +175,13 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
           <button type="submit" disabled={pw.pending} className={btnCls}>Save password</button>
           <Msg msg={pw.msg} />
         </form>
+        </Modal>
       )}
 
       {expanded && (
+        <Modal title={`Permissions — ${user.name}`} sub={user.email} onClose={() => setExpanded(false)} busy={perms.pending} width="max-w-4xl">
         <form
-          className="mt-3 border-t pt-3 space-y-3"
+          className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
             perms.run(updateUserPerms, new FormData(e.currentTarget), "Permissions saved.");
@@ -186,11 +190,13 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
           <input type="hidden" name="id" value={user.id} />
           <AdminCheck defaultChecked={user.isAdmin} label="Admin" />
           <PermChecks defaults={new Set(user.perms.split(",").map((s) => s.trim()))} />
-          <div className="flex items-center gap-3">
-            <button type="submit" disabled={perms.pending} className={btnCls}>Save permissions</button>
+          <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <Msg msg={perms.msg} />
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setExpanded(false)} disabled={perms.pending}>Close</button>
+            <button type="submit" disabled={perms.pending} className={btnCls}>Save permissions</button>
           </div>
         </form>
+        </Modal>
       )}
     </div>
   );
@@ -206,18 +212,19 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
         <p className="text-sm text-muted flex-1 min-w-52">
           Every active account can <b>view</b> all screens. Permissions control who can <b>edit</b> what.
         </p>
-        <button type="button" className={btnCls} onClick={() => setShowCreate((v) => !v)}>
-          {showCreate ? "Close" : "+ Add account"}
+        <button type="button" className={btnCls} onClick={() => setShowCreate(true)}>
+          + Add account
         </button>
       </div>
 
       {showCreate && (
+        <Modal title="+ Add account" onClose={() => setShowCreate(false)} busy={create.pending} width="max-w-4xl">
         <form
-          className="border-2 border-dashed rounded-xl p-4 space-y-3"
+          className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
             const form = e.currentTarget;
-            create.run(createUser, new FormData(form), "Account created.", () => form.reset());
+            create.run(createUser, new FormData(form), "Account created.", () => { form.reset(); setShowCreate(false); });
           }}
         >
           <div className="grid sm:grid-cols-3 gap-3">
@@ -236,11 +243,13 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
           </div>
           <AdminCheck label="Admin" />
           <PermChecks defaults={new Set()} />
-          <div className="flex items-center gap-3">
-            <button type="submit" disabled={create.pending} className={btnCls}>Create account</button>
+          <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <Msg msg={create.msg} />
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowCreate(false)} disabled={create.pending}>Cancel</button>
+            <button type="submit" disabled={create.pending} className={btnCls}>Create account</button>
           </div>
         </form>
+        </Modal>
       )}
 
       <div className="space-y-3">
