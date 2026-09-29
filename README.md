@@ -266,6 +266,13 @@ mobile drawer still lists every view flat, since it has the vertical room.
    itself kept as a change. An edit made on a page older than the row is refused rather than overwriting
    someone else's. A worker with hand-outs cannot be deleted from the workers list, only deactivated.
    Opens on today; the slicer reaches a year back; Excel export of the log and of the edits.
+   **Powder** (the switch's Powder view) — the painting lines' **powder scrap**: the storekeeper records each
+   weighing (day, Transformer Painting / USS Painting, kg, note — `PowderScrap`, corrected by its recorder or
+   an admin with every change kept, deleted softly by the admin). The month sets it against the **powder
+   drawn**: the hand-outs to that section of items named "…Powder…" (catalogue or typed), in kg — a powder
+   item counted in another unit is listed apart, not added in. **Scrap rate = scrap ÷ drawn**, **net used =
+   drawn − scrap**, per section and both together, the month before in points, six months of trend
+   (bars + rate line), what was drawn by item; print and Excel.
    **Catalogue & limits** (the **Limits** view, `consumables.edit`): the store's list — code, name, unit, remark — loaded
    from its sheet (47 items), each with its limits: a number per **day**, **work week** (Saturday → Friday), **calendar
    month** or **calendar quarter**, for the departments it names, **shared** by them or **per worker**. The sheet's weekly

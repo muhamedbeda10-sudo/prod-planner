@@ -309,6 +309,7 @@ model User {
   receivedMessages ChatMessage[] @relation("receivedMessages")
   chatGroups       ChatGroupMember[]
   consumableIssues ConsumableIssue[]
+  powderScraps     PowderScrap[]
 }
 
 // Chat message (the in-app chat) — either a DIRECT message (toId set) or a
@@ -1086,4 +1087,47 @@ model ConsumableIssueRecipient {
 
   @@id([issueId, workerId])
   @@index([workerId])
+}
+
+/// POWDER SCRAP — the powder-coating powder the painting lines throw away
+/// (overspray that is not reclaimed, contaminated or expired powder), weighed
+/// in kg and recorded per painting section and day. The month's scrap is set
+/// against the powder the store handed out to that section (the consumables
+/// hand-outs of catalogue items named "…Powder…") — the scrap rate. Soft
+/// delete, every change kept in PowderScrapRevision.
+model PowderScrap {
+  id             Int       @id @default(autoincrement())
+  /// The factory day the scrap was weighed (chosen — it is often weighed after the shift).
+  day            DateTime  @db.Date
+  department     String // PaintingTX | PaintingLV
+  kg             Decimal   @db.Decimal(12, 3)
+  notes          String?
+  recordedById   Int?
+  recordedByUser User?     @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+  recordedBy     String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  editedAt       DateTime?
+  editedBy       String?
+  deletedAt      DateTime?
+  deletedBy      String?
+
+  revisions PowderScrapRevision[]
+
+  @@index([deletedAt, day])
+}
+
+model PowderScrapRevision {
+  id      Int         @id @default(autoincrement())
+  scrapId Int
+  scrap   PowderScrap @relation(fields: [scrapId], references: [id], onDelete: Cascade)
+  action  String // edit | delete
+  before  Json
+  after   Json?
+  byId    Int?
+  by      String
+  at      DateTime    @default(now())
+
+  @@index([scrapId])
+  @@index([at])
 }

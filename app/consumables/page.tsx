@@ -9,6 +9,9 @@ import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import { ConsumableLimits } from "@/components/ConsumableLimits";
 import { ConsumableAlarms } from "@/components/ConsumableAlarms";
 import { ConsumablesMonthly } from "@/components/ConsumablesMonthly";
+import { PowderScrap } from "@/components/PowderScrap";
+import { getPowderReport } from "@/lib/server/powderScrap";
+import { SCRAP_LIMITS } from "@/lib/domain/powderScrap";
 import { getMonthlyReport } from "@/lib/server/consumableMonthly";
 import { MONTH_STATUS_LABEL, isMonthKey, monthLong } from "@/lib/domain/consumableMonthly";
 import { PrintHeader } from "@/components/PrintHeader";
@@ -53,9 +56,9 @@ export default async function ConsumablesPage({
   const period = from === to ? from : `${from}_to_${to}`;
 
   // the log and the dashboard are everyone's; the history of edits the admin's
-  const view = sp.view === "dashboard" ? "dashboard" : sp.view === "limits" ? "limits" : sp.view === "monthly" ? "monthly" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
+  const view = sp.view === "dashboard" ? "dashboard" : sp.view === "limits" ? "limits" : sp.view === "monthly" ? "monthly" : sp.view === "powder" ? "powder" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
   // the switch keeps the period on screen
-  const hrefFor = (v: "log" | "dashboard" | "limits" | "monthly" | "edits") => {
+  const hrefFor = (v: "log" | "dashboard" | "limits" | "monthly" | "powder" | "edits") => {
     const p = new URLSearchParams();
     if (sp.from) p.set("from", from);
     if (sp.to) p.set("to", to);
@@ -68,6 +71,7 @@ export default async function ConsumablesPage({
       <Link href={hrefFor("log")} className={view === "log" ? "on" : ""}>Log</Link>
       <Link href={hrefFor("dashboard")} className={view === "dashboard" ? "on" : ""}>Dashboard</Link>
       <Link href={hrefFor("monthly")} className={view === "monthly" ? "on" : ""}>Monthly</Link>
+      <Link href={hrefFor("powder")} className={view === "powder" ? "on" : ""}>Powder</Link>
       <Link href={hrefFor("limits")} className={view === "limits" ? "on" : ""}>Limits</Link>
       {me.isAdmin && <Link href={hrefFor("edits")} className={view === "edits" ? "on" : ""}>Edits</Link>}
     </nav>
@@ -115,6 +119,33 @@ export default async function ConsumablesPage({
           <PrintButton />
         </PageHeader>
         <ConsumablesMonthly report={report} />
+      </div>
+    );
+  }
+
+  if (view === "powder") {
+    // month by month, like the monthly review
+    const month = sp.month && isMonthKey(sp.month) && sp.month <= today.slice(0, 7) ? sp.month : today.slice(0, 7);
+    const r = await getPowderReport(month, { id: me.id, isAdmin: me.isAdmin, canRecord: hasPerm(me, "consumables.edit") });
+    const rate = (x: { rate: number | null }) => (x.rate === null ? "" : `${Math.round(x.rate * 1000) / 10}%`);
+    const exportRows = [
+      ...[...r.departments, { label: "Both sections", ...r.total }].map((d) => ({
+        Kind: "Month", Month: month, Day: "", Section: d.label, "Drawn (kg)": d.withdrawn, "Scrap (kg)": d.scrap, "Net used (kg)": d.net, "Scrap rate": rate(d), Notes: "", "Recorded by": "",
+      })),
+      ...r.entries.map((e) => ({
+        Kind: "Weighing", Month: month, Day: e.dayISO, Section: e.departmentLabel, "Drawn (kg)": "", "Scrap (kg)": e.kg, "Net used (kg)": "", "Scrap rate": "", Notes: e.notes ?? "", "Recorded by": e.recordedBy,
+      })),
+    ];
+    return (
+      <div className="space-y-3">
+        <RememberLastVisit storageKey="consumables:last" />
+        <PrintHeader title="Powder scrap" subtitle={monthLong(month)} date={toDisplayDate(new Date())} />
+        <PageHeader>
+          {viewSwitch}
+          <ExportButton rows={exportRows} filename={`powder-scrap-${month}.xlsx`} sheetName={month} />
+          <PrintButton />
+        </PageHeader>
+        <PowderScrap r={r} canRecord={hasPerm(me, "consumables.edit")} isAdmin={me.isAdmin} today={today} earliest={addDaysISO(today, -SCRAP_LIMITS.daysBack)} />
       </div>
     );
   }
