@@ -321,7 +321,7 @@ export function ConsumableLimits({
               <tr className="bg-brand text-white text-left">
                 <th className="p-2">Item</th>
                 <th className="p-2">UOM</th>
-                <th className="p-2">Limits · where each stands now ({(["day", "week", "month", "quarter"] as LimitPeriod[]).map((p) => PERIOD_NOUN[p]).join(", ")})</th>
+                <th className="p-2">Limits · where each stands now ({(["week", "month", "quarter"] as LimitPeriod[]).map((p) => PERIOD_NOUN[p]).join(", ")})</th>
                 {canEdit && <th className="p-2 no-print">Change</th>}
               </tr>
             </thead>

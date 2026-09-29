@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_DEPARTMENTS, FABRICATION_SECTIONS, FAB_AND_WELD_SECTIONS, checkAgainstLimits, departmentsLabel, describeBreach, expandPerWorker,
-  exceedances, issueUses, parseDepartments, periodWindow, serializeDepartments, splitSheetLimit, standings, windowLabel, windowsOverlapping,
+  exceedances, isLimitPeriod, issueUses, parseDepartments, periodWindow, serializeDepartments, splitSheetLimit, standings, windowLabel, windowsOverlapping,
   windowsSpan, type LimitCandidate, type LimitRule, type LimitUse,
 } from "./consumableLimits";
 
@@ -26,14 +26,13 @@ describe("fixed windows", () => {
     expect(periodWindow("month", "2026-12-31")).toEqual({ from: "2026-12-01", to: "2026-12-31" });
     expect(periodWindow("quarter", "2026-09-28")).toEqual({ from: "2026-07-01", to: "2026-09-30" });
     expect(periodWindow("quarter", "2026-01-01")).toEqual({ from: "2026-01-01", to: "2026-03-31" });
-    expect(periodWindow("day", "2026-09-28")).toEqual({ from: "2026-09-28", to: "2026-09-28" });
   });
 
   it("labels and lists the windows over a range", () => {
     expect(windowLabel("week", { from: "2026-09-26", to: "2026-10-02" })).toBe("week of 26 Sep");
     expect(windowLabel("quarter", { from: "2026-07-01", to: "2026-09-30" })).toBe("Q3 2026");
     expect(windowsOverlapping("month", "2026-08-20", "2026-10-05").map((w) => w.from)).toEqual(["2026-08-01", "2026-09-01", "2026-10-01"]);
-    expect(windowsSpan([{ period: "day" }, { period: "week" }], "2026-09-28")).toEqual({ from: "2026-09-26", to: "2026-10-02" });
+    expect(windowsSpan([{ period: "week" }, { period: "month" }], "2026-09-28")).toEqual({ from: "2026-09-01", to: "2026-10-02" });
     expect(windowsSpan([], "2026-09-28")).toBeNull();
   });
 });
@@ -147,11 +146,17 @@ describe("checking a hand-out", () => {
     expect(checkAgainstLimits(rules, [use({ qty: 10 })], cand({ qty: 6, workerIds: [1, 2, 3] }))).toHaveLength(1);
   });
 
-  it("counts a daily limit per day", () => {
-    const rules = [rule({ period: "day", qty: 30 })];
-    const uses = [use({ qty: 30, dayISO: "2026-09-27" })];
-    expect(checkAgainstLimits(rules, uses, cand({ qty: 30, dayISO: "2026-09-28" }))).toEqual([]);
-    expect(checkAgainstLimits(rules, [...uses, use({ qty: 1 })], cand({ qty: 30 }))).toHaveLength(1);
+  it("counts a week's draw whole — a week's stock taken in one go is within a weekly limit", () => {
+    // the store draws the week at once: 90 on Monday against 90 a week is fine, the next one is over
+    const rules = [rule({ qty: 90 })];
+    expect(checkAgainstLimits(rules, [], cand({ qty: 90, dayISO: "2026-09-28" }))).toEqual([]);
+    expect(checkAgainstLimits(rules, [use({ qty: 90, dayISO: "2026-09-28" })], cand({ qty: 1, dayISO: "2026-09-29" }))).toHaveLength(1);
+    // a new week starts again on Saturday
+    expect(checkAgainstLimits(rules, [use({ qty: 90, dayISO: "2026-09-28" })], cand({ qty: 90, dayISO: "2026-10-03" }))).toEqual([]);
+  });
+
+  it("has no daily period any more", () => {
+    expect(isLimitPeriod("day")).toBe(false);
   });
 });
 

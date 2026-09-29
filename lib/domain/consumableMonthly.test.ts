@@ -9,7 +9,6 @@ const item = (over: Partial<ItemInput>): ItemInput => ({ id: 10, code: "C-1", na
 describe("the monthly allowance", () => {
   it("is a fixed multiple of the limit", () => {
     expect(monthlyAllowance({ qty: 15, period: "week" })).toBe(60);
-    expect(monthlyAllowance({ qty: 30, period: "day" })).toBe(780);
     expect(monthlyAllowance({ qty: 3, period: "month" })).toBe(3);
     expect(monthlyAllowance({ qty: 1, period: "quarter" })).toBe(1); // whole, over the quarter to date
   });
@@ -65,12 +64,6 @@ describe("the monthly report", () => {
     expect(weeks).toHaveLength(5);
   });
 
-  it("lists the days a daily limit went over", () => {
-    const i = item({ rules: [rule({ period: "day", qty: 30 })] });
-    const r = buildMonthlyReport([i], [use({ qty: 31, dayISO: "2026-09-03" }), use({ qty: 30, dayISO: "2026-09-04" })], "2026-09");
-    expect(r.rows[0].limits[0].daysOver).toEqual([{ dayISO: "2026-09-03", used: 31 }]);
-    expect(r.rows[0].limits[0].allowance).toBe(780);
-  });
 
   it("grades a per-person limit by its workers, each against his own allowance", () => {
     const i = item({ rules: [rule({ basis: "person", qty: 2 })] }); // 8 a month each

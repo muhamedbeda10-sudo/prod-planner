@@ -245,7 +245,7 @@ function monthlyExportRows(report: Awaited<ReturnType<typeof getMonthlyReport>>)
       Level: "Item", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: "", "Limit": "", "Monthly limit": r.allowance ?? "",
       Used: r.used, "Outside the limits": r.outside, "Of the limit": r.ratio === null ? "" : `${Math.round(r.ratio * 100)}%`,
       Status: MONTH_STATUS_LABEL[r.status], [`Used ${report.prevMonth}`]: r.prevUsed,
-      "Weeks / days / workers over": "",
+      "Weeks / workers over": "",
       ...Object.fromEntries(r.trend.map((t) => [t.month, t.used])),
     },
     ...r.limits.map((l) => ({
@@ -253,9 +253,8 @@ function monthlyExportRows(report: Awaited<ReturnType<typeof getMonthlyReport>>)
       "Limit": `${l.qty} ${PERIOD_LABEL[l.period]}${l.basis === "person" ? " per person" : ""}`, "Monthly limit": l.allowance,
       Used: l.used, "Outside the limits": "", "Of the limit": `${Math.round(l.ratio * 100)}%`, Status: MONTH_STATUS_LABEL[l.status],
       [`Used ${report.prevMonth}`]: l.prevUsed,
-      "Weeks / days / workers over": [
+      "Weeks / workers over": [
         ...l.weeks.filter((w) => w.over).map((w) => `${w.label}: ${w.used}/${w.limit}`),
-        ...l.daysOver.map((d) => `${d.dayISO}: ${d.used}`),
         ...l.workersOver.map((w) => `${report.workers[w.workerId]?.name ?? "?"}: ${w.used}`),
       ].join(" | "),
       ...Object.fromEntries(r.trend.map((t) => [t.month, ""])),
