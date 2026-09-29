@@ -12,7 +12,7 @@ const h = vi.hoisted(() => {
     prisma: {
       consumableIssue: { create: fn(), findUnique: fn(), findMany: fn(), updateMany: fn() },
       consumableIssueRevision: { create: fn(), findUnique: fn() },
-      consumableItem: { findUnique: fn() },
+      consumableItem: { findUnique: fn(), findMany: fn() },
       worker: { findUnique: fn(), findMany: fn() },
       $transaction: fn(),
     },
@@ -75,6 +75,8 @@ beforeEach(() => {
   h.getCurrentUser.mockResolvedValue(storekeeper);
   h.checkIssueLimits.mockResolvedValue([]);
   h.prisma.consumableItem.findUnique.mockResolvedValue({ id: 3, name: "Grinding Disk 115x6x22.23mm", active: true });
+  // the catalogue a pasted item is matched against
+  h.prisma.consumableItem.findMany.mockResolvedValue([{ id: 3, name: "Grinding Disk 115x6x22.23mm", code: "C-CON-GRD-115x6x22.23" }]);
   h.prisma.worker.findUnique.mockResolvedValue(sayed);
   // the departments typed on earlier rows
   h.prisma.consumableIssue.findMany.mockResolvedValue([{ department: "Maintenance" }]);
@@ -327,6 +329,21 @@ describe("limits at recording", () => {
     expect(res.ok).toBe(true);
     expect(h.prisma.consumableIssue.create.mock.calls[0][0].data).toMatchObject({ itemId: null, item: "Spare fuse" });
     expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: null }));
+  });
+
+  it("links a pasted item to the catalogue by its name or code, under the catalogue's name", async () => {
+    expect((await createConsumableIssue(form({ ...valid, item: "  grinding disk 115×6×22.23MM " }))).ok).toBe(true);
+    expect(h.prisma.consumableIssue.create.mock.calls[0][0].data).toMatchObject({ itemId: 3, item: "Grinding Disk 115x6x22.23mm" });
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3 }));
+    expect((await createConsumableIssue(form({ ...valid, item: "c-con-grd-115x6x22.23" }))).ok).toBe(true);
+    expect(h.prisma.consumableIssue.create.mock.calls[1][0].data).toMatchObject({ itemId: 3 });
+    // only active items (and, for a correction, the row's own) are matched
+    expect(h.prisma.consumableItem.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { OR: [{ active: true }] } }));
+  });
+
+  it("records a pasted item outside the catalogue as typed", async () => {
+    expect((await createConsumableIssue(form({ ...valid, item: "Spare fuse 10A" }))).ok).toBe(true);
+    expect(h.prisma.consumableIssue.create.mock.calls[0][0].data).toMatchObject({ itemId: null, item: "Spare fuse 10A" });
   });
 
   it("refuses a retired catalogue item for a new hand-out", async () => {

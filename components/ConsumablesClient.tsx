@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { WORKER_GROUPS } from "@/lib/domain/tanks";
-import { CONSUMABLE_LIMITS, NEW_DEPARTMENT, NEW_ITEM, OVER_LIMIT_REASON_MAX, workersForDepartment } from "@/lib/domain/consumables";
+import { CONSUMABLE_LIMITS, NEW_DEPARTMENT, OVER_LIMIT_REASON_MAX, matchCatalogueItem, workersForDepartment } from "@/lib/domain/consumables";
 import type { CatalogueOption, ConsumableIssueView, ConsumablesPageData, ConsumableWorkerOption } from "@/lib/server/consumables";
 import type { LimitHint } from "@/lib/server/consumableLimits";
 import { consumableLimitHints, createConsumableIssue, deleteConsumableIssue, updateConsumableIssue } from "@/app/consumables/actions";
@@ -18,7 +18,14 @@ import { Modal } from "@/components/Modal";
 
 const F = "px-2.5 py-2 text-sm font-semibold";
 const LABEL = "text-[11px] font-bold text-muted uppercase tracking-wide";
-const ITEMS_LIST = "consumable-items";
+const ITEMS_LIST = "consumable-item-options";
+
+/** The catalogue item the Item box names — typed or pasted, by name or code.
+ *  A new hand-out links only an active item; a correction may keep its own
+ *  retired one. */
+function catalogueMatch(catalogue: CatalogueOption[], text: string, keepId: number | null = null): CatalogueOption | null {
+  return matchCatalogueItem(text, catalogue.filter((c) => c.active || c.id === keepId));
+}
 
 function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
   return (
@@ -38,7 +45,6 @@ function catalogueFor(catalogue: CatalogueOption[], department: string) {
   return { meant: catalogue.filter(meant), rest: catalogue.filter((c) => !meant(c)) };
 }
 
-const itemLabel = (c: CatalogueOption) => `${c.name}${c.code ? ` · ${c.code}` : ""}${c.active ? "" : " (retired)"}`;
 
 /**
  * Where the limits of the picked item stand for this department today,
@@ -115,8 +121,10 @@ function IssueFields({
   setDepartment,
   receivedBy,
   setReceivedBy,
-  itemId,
-  setItemId,
+  knownItems,
+  itemText,
+  setItemText,
+  matched,
   setQty,
   qtyRef,
 }: {
@@ -129,13 +137,24 @@ function IssueFields({
   setDepartment: (v: string) => void;
   receivedBy: string;
   setReceivedBy: (v: string) => void;
-  itemId: string;
-  setItemId: (v: string) => void;
+  /** Items typed on earlier rows — suggested after the catalogue. */
+  knownItems: string[];
+  itemText: string;
+  setItemText: (v: string) => void;
+  /** The catalogue item the text names, if any. */
+  matched: CatalogueOption | null;
   setQty: (v: number) => void;
   qtyRef?: React.Ref<HTMLInputElement>;
 }) {
   const items = useMemo(() => catalogueFor(catalogue, department), [catalogue, department]);
-  const picked = catalogue.find((c) => String(c.id) === itemId);
+  const picked = matched;
+  // the suggestions: this department's catalogue items, the rest of the
+  // catalogue, then items typed before that are not in it
+  const suggestions = useMemo(() => {
+    const names = [...items.meant, ...items.rest].filter((c) => c.active).map((c) => c.name);
+    const inCat = new Set(names.map((n) => n.toLowerCase()));
+    return [...names, ...knownItems.filter((k) => !inCat.has(k.toLowerCase()))];
+  }, [items, knownItems]);
   // an older row's department may be one no longer offered — keep it pickable
   const known = department === "" || department === NEW_DEPARTMENT
     || departments.sections.some((s) => s.code === department) || departments.custom.includes(department);
@@ -191,21 +210,12 @@ function IssueFields({
         </select>
       </Field>
 
-      <Field label="Item" className="sm:col-span-4">
-        <select name="itemId" value={itemId} onChange={(e) => setItemId(e.target.value)} required disabled={disabled} className={`${F} w-full`}>
-          <option value="" disabled>Pick the item…</option>
-          {items.meant.length > 0 && (
-            <optgroup label={department ? "For this department" : "Items with a limit for every department"}>
-              {items.meant.map((c) => <option key={c.id} value={c.id}>{itemLabel(c)}</option>)}
-            </optgroup>
-          )}
-          {items.rest.length > 0 && (
-            <optgroup label={items.meant.length > 0 ? "Other items" : "The catalogue"}>
-              {items.rest.map((c) => <option key={c.id} value={c.id}>{itemLabel(c)}</option>)}
-            </optgroup>
-          )}
-          <option value={NEW_ITEM}>➕ Not in the catalogue — type it…</option>
-        </select>
+      <Field label="Item — type or paste" className="sm:col-span-4">
+        <input
+          type="text" name="item" list={ITEMS_LIST} value={itemText} onChange={(e) => setItemText(e.target.value)} required disabled={disabled}
+          maxLength={CONSUMABLE_LIMITS.item} placeholder="Paste the item, or type and pick a suggestion" autoComplete="off" className={`${F} w-full`}
+        />
+        <datalist id={ITEMS_LIST}>{suggestions.map((n) => <option key={n} value={n} />)}</datalist>
       </Field>
       <Field label={picked ? `Qty (${picked.uom})` : "Qty"} className="sm:col-span-2">
         <input
@@ -214,13 +224,12 @@ function IssueFields({
           onInput={(e) => setQty(Number((e.target as HTMLInputElement).value) || 0)}
         />
       </Field>
-      {itemId === NEW_ITEM && (
-        <Field label="Item name (not in the catalogue — no limit counts it)" className="sm:col-span-6">
-          <input
-            type="text" name="item" list={ITEMS_LIST} defaultValue={entry && entry.itemId === null ? entry.item : ""} required disabled={disabled}
-            maxLength={CONSUMABLE_LIMITS.item} placeholder="e.g. Spare fuse 10A" autoComplete="off" autoFocus className={`${F} w-full`}
-          />
-        </Field>
+      {itemText.trim() !== "" && (
+        <p className={`sm:col-span-6 -mt-1 text-xs ${matched ? "text-ok-fg" : "text-muted"}`} aria-live="polite">
+          {matched
+            ? <>✓ In the catalogue: <b>{matched.name}</b>{matched.code ? <> · <span className="ltr">{matched.code}</span></> : null} · {matched.uom}{matched.active ? "" : " (retired)"}</>
+            : "Not in the catalogue — recorded as typed, and no limit counts it."}
+        </p>
       )}
 
       <Field label="Notes (optional)" className="sm:col-span-6">
@@ -244,7 +253,9 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
   const add = useAction();
   const [department, setDepartment] = useState("");
   const [receivedBy, setReceivedBy] = useState("");
-  const [itemId, setItemId] = useState("");
+  const [itemText, setItemText] = useState("");
+  const matched = useMemo(() => catalogueMatch(data.catalogue, itemText), [data.catalogue, itemText]);
+  const itemId = matched ? String(matched.id) : "";
   const [qty, setQty] = useState(0);
   // the breach the server answered with; cleared as soon as the hand-out changes
   const [breaches, setBreaches] = useState<string[] | null>(null);
@@ -256,7 +267,7 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
   // fields are enabled again
   const [refocus, setRefocus] = useState(0);
   useEffect(() => {
-    if (refocus > 0 && !add.pending) formRef.current?.querySelector<HTMLSelectElement>('select[name="itemId"]')?.focus();
+    if (refocus > 0 && !add.pending) formRef.current?.querySelector<HTMLInputElement>('input[name="item"]')?.focus();
   }, [refocus, add.pending]);
   const changed = <T,>(set: (v: T) => void) => (v: T) => { set(v); setBreaches(null); };
 
@@ -267,7 +278,7 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
       const el = form.elements.namedItem(n);
       if (el instanceof HTMLInputElement) el.value = "";
     }
-    setItemId("");
+    setItemText("");
     setQty(0);
     setBreaches(null);
     setRefocus((n) => n + 1);
@@ -305,7 +316,7 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
         <IssueFields
           departments={data.departments} catalogue={data.catalogue} disabled={add.pending}
           department={department} setDepartment={changed(setDepartment)} workers={data.workers} receivedBy={receivedBy} setReceivedBy={changed(setReceivedBy)}
-          itemId={itemId} setItemId={changed(setItemId)} setQty={changed(setQty)} qtyRef={qtyRef}
+          knownItems={data.knownItems} itemText={itemText} setItemText={changed(setItemText)} matched={matched} setQty={changed(setQty)} qtyRef={qtyRef}
         />
         <LimitHints itemId={itemId} department={department} qty={qty} />
         {breaches && <OverLimitPrompt breaches={breaches} disabled={add.pending} />}
@@ -328,7 +339,9 @@ function EditDialog({ e, data, onClose }: { e: ConsumableIssueView; data: Consum
   const edit = useAction();
   const [department, setDepartment] = useState(e.department);
   const [receivedBy, setReceivedBy] = useState(e.worker ? String(e.worker.id) : "");
-  const [itemId, setItemId] = useState(e.itemId === null ? NEW_ITEM : String(e.itemId));
+  const [itemText, setItemText] = useState(e.item);
+  const matched = useMemo(() => catalogueMatch(data.catalogue, itemText, e.itemId), [data.catalogue, itemText, e.itemId]);
+  const itemId = matched ? String(matched.id) : "";
   const [qty, setQty] = useState(e.qty);
   const [breaches, setBreaches] = useState<string[] | null>(null);
   const changed = <T,>(set: (v: T) => void) => (v: T) => { set(v); setBreaches(null); };
@@ -347,7 +360,7 @@ function EditDialog({ e, data, onClose }: { e: ConsumableIssueView; data: Consum
         <IssueFields
           departments={data.departments} catalogue={data.catalogue} entry={e} disabled={edit.pending}
           department={department} setDepartment={changed(setDepartment)} workers={data.workers} receivedBy={receivedBy} setReceivedBy={changed(setReceivedBy)}
-          itemId={itemId} setItemId={changed(setItemId)} setQty={changed(setQty)}
+          knownItems={data.knownItems} itemText={itemText} setItemText={changed(setItemText)} matched={matched} setQty={changed(setQty)}
         />
         <LimitHints itemId={itemId} department={department} qty={qty} issueId={e.id} />
         {breaches && <OverLimitPrompt breaches={breaches} disabled={edit.pending} />}
@@ -479,7 +492,6 @@ export function ConsumablesClient({
 
   return (
     <div className="space-y-3">
-      <datalist id={ITEMS_LIST}>{data.knownItems.map((i) => <option key={i} value={i} />)}</datalist>
 
       {canRecord && recording && (
         <RecordDialog data={data} onClose={() => setRecording(false)} onSaved={(text) => { setRecording(false); setSaved(text); }} />
