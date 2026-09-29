@@ -1,23 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import type { FabAnalyticsData } from "@/lib/server/fabAnalytics";
+import type { MaterialDashboardData } from "@/lib/server/fabAnalytics";
+import type { Breakdown, MoRow } from "@/lib/domain/materialDashboard";
 import { SheetsPerDayChart, ThicknessChart } from "@/components/LazyCharts";
 
-// 📊 Material consumed, read in SHEETS and tonnes.
+// 📊 The MATERIAL dashboard.
 //
-// An order's material is booked on the day its MO is closed on Odoo (moved
-// to Done on the ODOO tab): the closed quantity × the sheets one unit takes
-// on the Material tab's lines of that same MO. Closings of MOs the material
-// sheet does not carry (the older orders) stay off the page.
+// Top: what the window CONSUMED — booked the day each MO of the material
+// sheet was closed on Odoo — and the scrap in it. Then the sheet as a whole:
+// planned by the BOM, nested, the nesting against the BOM, utilization,
+// scrap and what the open MOs will still take. Then where the steel goes:
+// per day, thickness, material, sheet size and part, and the MOs worth a look.
 
 const n1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
 const n2 = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const t = (kg: number) => n2(kg / 1000);
+const pct = (f: number | null) => (f === null ? "—" : `${(f * 100).toFixed(1)}%`);
 
-function Tile({ head, value, unit, sub, tone }: { head: string; value: string; unit?: string; sub?: string; tone?: "ok" | "warn" | "bad" }) {
+type Tone = "ok" | "warn" | "bad";
+
+function Tile({ head, value, unit, sub, tone }: { head: string; value: string; unit?: string; sub?: React.ReactNode; tone?: Tone }) {
   const color = tone === "ok" ? "var(--ok-fg)" : tone === "warn" ? "var(--warn-fg)" : tone === "bad" ? "var(--bad-fg)" : undefined;
   return (
-    <div className="bg-surface border rounded-xl p-3">
+    <div className="bg-surface border rounded-xl p-3 min-w-0">
       <div className="text-[11px] font-bold uppercase tracking-wide text-muted">{head}</div>
       <div className="mt-1 flex items-baseline gap-1">
         <span className="text-2xl font-extrabold tabnum leading-none" style={color ? { color } : undefined}>{value}</span>
@@ -38,148 +44,196 @@ function Section({ title, sub, children }: { title: string; sub?: string; childr
   );
 }
 
-export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted">{title}</h2>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">{children}</div>
+    </div>
+  );
+}
+
+/** Tonnes per key as bars, the scrap in them in red at the end. */
+function Bars({ rows }: { rows: Breakdown[] }) {
+  if (rows.length === 0) return <p className="text-xs text-muted">Nothing yet.</p>;
+  const max = Math.max(...rows.map((r) => r.kg), 1);
+  return (
+    <ul className="space-y-1.5">
+      {rows.map((r) => (
+        <li key={r.key} className="text-xs">
+          <div className="flex items-baseline gap-2">
+            <span className="font-bold truncate ltr">{r.key}</span>
+            <span className="ms-auto tabnum"><b>{t(r.kg)}</b> t · {n1(r.sheets)} sheets</span>
+            <span className="tabnum text-muted w-10 text-end">{(r.share * 100).toFixed(0)}%</span>
+          </div>
+          <div className="relative h-2 rounded bg-surface-2 mt-0.5 overflow-hidden" title={r.scrapKg > 0 ? `${t(r.scrapKg)} t of it scrap` : undefined}>
+            <span className="absolute inset-y-0 start-0 rounded" style={{ width: `${(r.kg / max) * 100}%`, background: "var(--viz-2)" }} />
+            {r.scrapKg > 0 && (
+              <span className="absolute inset-y-0" style={{ insetInlineStart: `${((r.kg - r.scrapKg) / max) * 100}%`, width: `${(r.scrapKg / max) * 100}%`, background: "var(--bad-fg)", opacity: 0.75 }} />
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function MoTable({ rows, value, head }: { rows: MoRow[]; value: (m: MoRow) => number | null; head: string }) {
+  if (rows.length === 0) return <p className="text-xs text-muted">Nothing to show yet.</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="text-left text-muted">
+            <th className="p-1">MO</th>
+            <th className="p-1">SOI</th>
+            <th className="p-1">Part</th>
+            <th className="p-1 text-end">Units</th>
+            <th className="p-1 text-end">Nested t</th>
+            <th className="p-1 text-end">Utilization</th>
+            <th className="p-1 text-end">{head}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((m) => (
+            <tr key={m.mo} className="border-t">
+              <td className="p-1 ltr font-bold whitespace-nowrap">{m.mo}</td>
+              <td className="p-1 ltr whitespace-nowrap text-muted">{m.soi || "—"}</td>
+              <td className="p-1 whitespace-nowrap">{m.part || "—"}</td>
+              <td className="p-1 text-end tabnum">{n1(m.units)}</td>
+              <td className="p-1 text-end tabnum">{m.nestedKg === null ? "—" : t(m.nestedKg)}</td>
+              <td className="p-1 text-end tabnum">{pct(m.utilization)}</td>
+              <td className="p-1 text-end tabnum font-bold text-bad-fg">{t(value(m) ?? 0)} t</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function FabAnalyticsView({ a }: { a: MaterialDashboardData }) {
   const windowWords = a.windowDays === 0 ? "everything on record" : `the last ${a.windowDays} days`;
 
-  if (a.pieces === 0) {
+  if (a.nested.linesTotal === 0) {
     return (
       <p className="bg-surface border rounded-xl p-4 text-sm text-muted">
-        No MO of the material sheet was closed on Odoo in {windowWords}. The material is booked here the day one of its MOs is moved to Done on the{" "}
-        <Link href="/odoo" className="text-accent font-semibold hover:underline">ODOO tab</Link>.
+        The material sheet is empty. Upload it on the{" "}
+        <Link href="/material" className="text-accent font-semibold hover:underline">Material tab</Link> and the dashboard fills in.
       </p>
     );
   }
 
-  // the spread across a single item is the whole argument for sheets over
-  // pieces, so the range plot is scaled to the widest item on the page
-  const widest = Math.max(1, ...a.items.map((i) => i.max));
+  const c = a.consumed;
+  const scrapTone: Tone | undefined = a.scrap.kg === 0 ? undefined : a.scrap.share > 0.25 ? "bad" : a.scrap.share > 0.15 ? "warn" : "ok";
+  const utilTone: Tone | undefined = a.utilization === null ? undefined : a.utilization >= 0.85 ? "ok" : a.utilization >= 0.75 ? "warn" : "bad";
+  const overTone: Tone | undefined = a.overBom.kg > 0 ? "bad" : a.overBom.kg < 0 ? "ok" : undefined;
+  const consumedShare = a.planned.kg > 0 ? Math.min(1, Math.max(0, 1 - a.remaining.kg / a.planned.kg)) : null;
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tile head="Sheets consumed" value={n1(a.sheets)} sub={`${n1(a.sheetsPerDay)} a day over ${a.workedDays} closing day(s)`} />
-        <Tile head="Steel consumed" value={n1(a.tons)} unit="t" sub={`${n2(a.tonsPerDay)} t a day`} />
-        <Tile head="Units closed on Odoo" value={n1(a.pieces)} sub={`${a.closings.length} closing(s) · ${a.items.length} component(s)`} />
-        <Tile head="MOs closed" value={String(new Set(a.closings.map((c) => c.mo.toUpperCase())).size)} sub="of the material sheet's MOs" />
-      </div>
+    <div className="space-y-5">
+      <Group title={`Consumed — MOs of the sheet closed on Odoo, ${windowWords}`}>
+        <Tile head="Steel consumed" value={t(c.kg)} unit="t" sub={`${n1(c.sheets)} sheets · ${n2(a.consumedPerDay.kg / 1000)} t a day`} />
+        <Tile
+          head="Scrap in it"
+          value={t(c.scrapKg)}
+          unit="t"
+          tone={c.scrapKg > 0 ? "warn" : undefined}
+          sub={c.kg > 0 ? `${pct(c.scrapKg / c.kg)} of the consumed weight${c.scrapKnownShare < 0.999 ? ` · utilization known on ${pct(c.scrapKnownShare)} of it` : ""}` : "nothing closed yet"}
+        />
+        <Tile head="In the product" value={t(c.netKg)} unit="t" sub="consumed less scrap" />
+        <Tile head="Units closed" value={n1(c.units)} sub={`${c.mos} MO(s) · ${c.closings} closing(s)`} />
+      </Group>
 
-      <Section
-        title="Sheets consumed a day"
-        sub={`Booked on the day each MO was closed on Odoo, through the Material tab's lines of the same MO. The dashed line is the pace over these days — ${n1(a.sheetsPerDay)} sheets.`}
-      >
-        <SheetsPerDayChart days={a.days} avg={a.sheetsPerDay} />
+      <Group title="The material sheet">
+        <Tile head="Planned by the BOM" value={t(a.planned.kg)} unit="t" sub={`${n1(a.planned.sheets)} sheets`} />
+        <Tile head="Nested" value={t(a.nested.kg)} unit="t" sub={`${n1(a.nested.sheets)} sheets · ${a.nested.lines} of ${a.nested.linesTotal} lines`} />
+        <Tile
+          head="Nesting vs BOM"
+          value={`${a.overBom.kg > 0 ? "+" : ""}${t(a.overBom.kg)}`}
+          unit="t"
+          tone={overTone}
+          sub={a.overBom.kg > 0 ? `${n1(a.overBom.sheets)} sheets over the BOM` : a.overBom.kg < 0 ? `${n1(-a.overBom.sheets)} sheets saved on the BOM` : "no nesting to compare yet"}
+        />
+        <Tile head="Average utilization" value={pct(a.utilization)} tone={utilTone} sub={a.utilization === null ? "fill “Average Utilization” on the sheet" : "weighted by the nested weight"} />
+        <Tile
+          head="Scrap on the sheet"
+          value={t(a.scrap.kg)}
+          unit="t"
+          tone={scrapTone}
+          sub={a.scrap.knownShare > 0 ? `${pct(a.scrap.share)} of the nested weight${a.scrap.knownShare < 0.999 ? ` · known on ${pct(a.scrap.knownShare)}` : ""}` : "needs the nesting and the utilization"}
+        />
+        <Tile head="Still to consume" value={t(a.remaining.kg)} unit="t" sub={`${n1(a.remaining.sheets)} sheets · ${n1(a.remaining.units)} units open`} />
+        <Tile head="MOs on the sheet" value={String(a.mos.total)} sub={`${a.mos.nested} nested · ${a.mos.closed} closed on Odoo · ${a.mos.open} open`} />
+        <Tile head="Consumed so far" value={pct(consumedShare)} sub="of the planned weight" />
+      </Group>
+
+      <Section title="Consumed a day" sub={`Sheets booked on the day each MO was closed on Odoo · ${n1(a.consumedPerDay.sheets)} sheets a day over ${a.consumedPerDay.days} day(s) (dashed).`}>
+        {a.days.length ? <SheetsPerDayChart days={a.days} avg={a.consumedPerDay.sheets} /> : <p className="text-xs text-muted">No MO of the sheet was closed on Odoo in {windowWords} yet.</p>}
       </Section>
 
-      {/* each card keeps its own height — stretched to match, the shorter one
-          became a large empty box */}
-      <div className="grid lg:grid-cols-2 gap-4 items-start">
-        <Section
-          title="Where the sheets go"
-          sub="Sheets consumed per thickness, over the MOs closed in the window."
-        >
-          <ThicknessChart rows={a.thicknesses} />
-          <div className="overflow-x-auto mt-2">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="text-left text-muted">
-                  <th className="p-1">Thickness</th>
-                  <th className="p-1 text-end">Sheets</th>
-                  <th className="p-1 text-end">Share</th>
-                  <th className="p-1 text-end">Tonnes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {a.thicknesses.map((t) => (
-                  <tr key={t.thicknessMm}>
-                    <td className="p-1 font-bold tabnum">{t.thicknessMm} mm</td>
-                    <td className="p-1 text-end tabnum">{n1(t.sheets)}</td>
-                    <td className="p-1 text-end tabnum">{(t.share * 100).toFixed(1)}%</td>
-                    <td className="p-1 text-end tabnum text-muted">{n1(t.kg / 1000)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <div className="grid lg:grid-cols-3 gap-4 items-start">
+        <Section title="By thickness" sub="Sheets consumed in the window.">
+          {a.thicknesses.length ? <ThicknessChart rows={a.thicknesses} /> : <p className="text-xs text-muted">Nothing consumed in the window yet.</p>}
         </Section>
-
-        <Section
-          title="What one piece really costs"
-          sub="Sheets per unit, per component. The bar is the range across the MOs closed; the mark on it is the average. Where the range is wide, two orders of the same component are not the same job."
-        >
-          <div className="space-y-2">
-            {a.items.map((i) => {
-              const left = (i.min / widest) * 100;
-              const width = Math.max(1.5, ((i.max - i.min) / widest) * 100);
-              const at = (i.avg / widest) * 100;
-              return (
-                <div key={i.item} className="flex items-center gap-2 text-xs">
-                  <span className="w-8 shrink-0 font-extrabold">{i.item}</span>
-                  <span
-                    className="relative flex-1 h-6 rounded-md bg-surface-2"
-                    title={`${i.item}: ${n2(i.min)} to ${n2(i.max)} sheets a unit, ${n2(i.avg)} on average · ${n1(i.pieces)} units over ${i.boms} MO(s)`}
-                  >
-                    <span
-                      className="absolute top-1.5 bottom-1.5 rounded-[3px]"
-                      style={{ left: `${left}%`, width: `${width}%`, background: "var(--viz-2)", opacity: 0.35 }}
-                    />
-                    {/* the average, ringed in the surface so it stays visible on the band */}
-                    <span
-                      className="absolute top-1/2 w-2.5 h-2.5 rounded-full"
-                      style={{
-                        left: `${at}%`,
-                        transform: "translate(-50%, -50%)",
-                        background: "var(--viz-2)",
-                        boxShadow: "0 0 0 2px var(--surface)",
-                      }}
-                    />
-                  </span>
-                  <span className="w-32 shrink-0 text-end tabnum text-muted">
-                    <b className="text-foreground">{n2(i.avg)}</b> · {n2(i.min)}–{n2(i.max)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <p className="text-[11px] text-muted mt-2">
-            Multiply a component&apos;s average by an order&apos;s quantity to size a new job in sheets before anyone nests it.
-          </p>
+        <Section title="By material" sub="The sheet's weight — nested where nested, else the BOM's; red = scrap.">
+          <Bars rows={a.materials} />
+        </Section>
+        <Section title="By sheet size" sub="The same weight, per size.">
+          <Bars rows={a.sizes} />
         </Section>
       </div>
 
-      <Section title="MOs closed" sub="Each closing and what it consumed — the sheets and tonnes are booked on its day.">
-        <div className="overflow-x-auto max-h-96 overflow-y-auto">
+      <Section title="By part" sub="Per part of the range: the plan, the nesting, what was consumed and the scrap. Sheets per unit are averaged over the part's MOs.">
+        <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
-            <thead className="sticky top-0 bg-surface">
+            <thead>
               <tr className="text-left text-muted">
-                <th className="p-1">Closed</th>
-                <th className="p-1">MO</th>
                 <th className="p-1">Part</th>
-                <th className="p-1 text-end">Units</th>
-                <th className="p-1 text-end">Sheets</th>
-                <th className="p-1 text-end">Tonnes</th>
+                <th className="p-1 text-end">MOs</th>
+                <th className="p-1 text-end">Units planned</th>
+                <th className="p-1 text-end">Units closed</th>
+                <th className="p-1 text-end">BOM / unit</th>
+                <th className="p-1 text-end">Nested / unit</th>
+                <th className="p-1 text-end">Planned t</th>
+                <th className="p-1 text-end">Nested t</th>
+                <th className="p-1 text-end">Consumed t</th>
+                <th className="p-1 text-end">Scrap t</th>
+                <th className="p-1 text-end">Utilization</th>
               </tr>
             </thead>
             <tbody>
-              {a.closings.map((c, i) => (
-                <tr key={`${c.mo}-${c.dateISO}-${i}`} className="border-t">
-                  <td className="p-1 tabnum whitespace-nowrap">{c.dateISO}</td>
-                  <td className="p-1 ltr font-bold whitespace-nowrap">{c.mo}</td>
-                  <td className="p-1">{c.item ?? "—"}</td>
-                  <td className="p-1 text-end tabnum">{n1(c.qty)}</td>
-                  <td className="p-1 text-end tabnum">{n2(c.sheets)}</td>
-                  <td className="p-1 text-end tabnum text-muted">{n2(c.kg / 1000)}</td>
-                </tr>
-              ))}
+              {a.parts.map((p) => {
+                const over = p.actualPerUnit !== null && p.actualPerUnit > p.bomPerUnit + 1e-9;
+                return (
+                  <tr key={`${p.partCode}|${p.partName}`} className="border-t">
+                    <td className="p-1 whitespace-nowrap"><b>{p.partName || p.partCode || "—"}</b>{p.partCode && <span className="text-muted ltr"> · {p.partCode}</span>}</td>
+                    <td className="p-1 text-end tabnum">{p.mos}</td>
+                    <td className="p-1 text-end tabnum">{n1(p.unitsPlanned)}</td>
+                    <td className="p-1 text-end tabnum">{n1(p.unitsClosed)}</td>
+                    <td className="p-1 text-end tabnum">{n2(p.bomPerUnit)}</td>
+                    <td className={`p-1 text-end tabnum ${over ? "text-bad-fg font-bold" : ""}`}>{p.actualPerUnit === null ? "—" : n2(p.actualPerUnit)}</td>
+                    <td className="p-1 text-end tabnum">{t(p.plannedKg)}</td>
+                    <td className="p-1 text-end tabnum">{t(p.nestedKg)}</td>
+                    <td className="p-1 text-end tabnum font-bold">{t(p.consumedKg)}</td>
+                    <td className="p-1 text-end tabnum text-bad-fg">{p.scrapKg ? t(p.scrapKg) : "—"}</td>
+                    <td className="p-1 text-end tabnum">{pct(p.utilization)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </Section>
 
-      <p className="text-[11px] text-muted">
-        Only the MOs on the{" "}
-        <Link href="/material" className="text-accent font-semibold hover:underline">material sheet</Link> are counted ({a.nestingBoms} MO(s), {a.nestingRows} line(s)).
-        A unit takes the actual nesting&apos;s sheets where the sheet has them, else the BOM&apos;s; tonnes use the sheet&apos;s Weight(Kg).
-      </p>
+      <div className="grid lg:grid-cols-2 gap-4 items-start">
+        <Section title="Most scrap" sub="The MOs whose nesting leaves the most steel unused — nested weight × (1 − utilization).">
+          <MoTable rows={a.topScrap} value={(m) => m.scrapKg} head="Scrap" />
+        </Section>
+        <Section title="Most over the BOM" sub="The MOs whose nesting took more steel than the BOM allows.">
+          <MoTable rows={a.topOver} value={(m) => m.overKg} head="Over" />
+        </Section>
+      </div>
     </div>
   );
 }

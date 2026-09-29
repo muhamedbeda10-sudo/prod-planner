@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { billsOf, buildClosedConsumption, buildFabAnalytics, densityOf, sheetAreaM2, sheetKg, type NestingRow, type OutputRow } from "./fabAnalytics";
+import { billsOf, buildFabAnalytics, densityOf, sheetAreaM2, sheetKg, type NestingRow, type OutputRow } from "./fabAnalytics";
 
 const nest = (over: Partial<NestingRow>): NestingRow => ({
   month: "September 2026", bom: "B1", mo: "", partCode: "FB-022", material: "HR Sheet",
@@ -128,23 +128,5 @@ describe("buildFabAnalytics", () => {
     expect(a).toMatchObject({ pieces: 0, sheets: 0, tons: 0, sheetsPerDay: 0, coverage: 0, workedDays: 0 });
     expect(a.days).toEqual([]);
     expect(a.items).toEqual([]);
-  });
-});
-
-describe("buildClosedConsumption", () => {
-  const lines = [
-    { mo: "SF01/MO/1", partCode: "FB-022", material: "HR Sheet", thicknessMm: 3, sheetSize: "1220x2440", sheetsPerUnit: 0.8, actualPerUnit: 0.5, weightKg: 70 },
-    { mo: "SF01/MO/1", partCode: "FB-022", material: "HR Sheet", thicknessMm: 5, sheetSize: "1220x2440", sheetsPerUnit: 0.2, actualPerUnit: null, weightKg: 117 },
-  ];
-  it("books the closed qty × each line's sheets on the closing day, by MO", () => {
-    const r = buildClosedConsumption([{ dateISO: "2026-09-29", mo: "sf01/mo/1", qty: 10 }, { dateISO: "2026-09-29", mo: "SF01/MO/9", qty: 4 }], lines);
-    // actual 0.5 × 10 = 5 sheets of 3 mm, BOM 0.2 × 10 = 2 of 5 mm
-    expect(r.sheets).toBe(7);
-    expect(r.tons).toBe(Math.round((5 * 70 + 2 * 117) / 100) / 10);
-    expect(r.thicknesses.map((t) => [t.thicknessMm, t.sheets])).toEqual([[3, 5], [5, 2]]);
-    expect(r.items[0]).toMatchObject({ item: "TN", pieces: 10, avg: 0.7 });
-    expect(r.pieces).toBe(14);
-    expect(r.uncoveredBoms).toEqual([{ bom: "SF01/MO/9", pieces: 4 }]);
-    expect(r.days).toEqual([{ dateISO: "2026-09-29", pieces: 14, uncoveredPieces: 4, sheets: 7, kg: 584 }]);
   });
 });
