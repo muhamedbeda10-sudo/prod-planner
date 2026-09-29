@@ -56,9 +56,10 @@ export default async function ConsumablesPage({
   const period = from === to ? from : `${from}_to_${to}`;
 
   // the log and the dashboard are everyone's; the history of edits the admin's
-  const view = sp.view === "dashboard" ? "dashboard" : sp.view === "limits" ? "limits" : sp.view === "monthly" ? "monthly" : sp.view === "powder" ? "powder" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
+  // the monthly review lives on the dashboard now — an old ?view=monthly link lands there
+  const view = sp.view === "dashboard" || sp.view === "monthly" ? "dashboard" : sp.view === "limits" ? "limits" : sp.view === "powder" ? "powder" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
   // the switch keeps the period on screen
-  const hrefFor = (v: "log" | "dashboard" | "limits" | "monthly" | "powder" | "edits") => {
+  const hrefFor = (v: "log" | "dashboard" | "limits" | "powder" | "edits") => {
     const p = new URLSearchParams();
     if (sp.from) p.set("from", from);
     if (sp.to) p.set("to", to);
@@ -70,7 +71,6 @@ export default async function ConsumablesPage({
     <nav className="seg" aria-label="View">
       <Link href={hrefFor("log")} className={view === "log" ? "on" : ""}>Log</Link>
       <Link href={hrefFor("dashboard")} className={view === "dashboard" ? "on" : ""}>Dashboard</Link>
-      <Link href={hrefFor("monthly")} className={view === "monthly" ? "on" : ""}>Monthly</Link>
       <Link href={hrefFor("powder")} className={view === "powder" ? "on" : ""}>Powder</Link>
       <Link href={hrefFor("limits")} className={view === "limits" ? "on" : ""}>Limits</Link>
       {me.isAdmin && <Link href={hrefFor("edits")} className={view === "edits" ? "on" : ""}>Edits</Link>}
@@ -83,45 +83,6 @@ export default async function ConsumablesPage({
       defaultRange={{ label: "Today", from: today, to: today }}
     />
   );
-
-  if (view === "monthly") {
-    // a calendar month, not the slicer: the review is month by month
-    const month = sp.month && isMonthKey(sp.month) && sp.month <= today.slice(0, 7) ? sp.month : today.slice(0, 7);
-    const report = await getMonthlyReport(month);
-    const exportRows = report.rows.flatMap((r) => [
-      {
-        Level: "Item", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: "", "Limit": "", "Monthly limit": r.allowance ?? "",
-        Used: r.used, "Outside the limits": r.outside, "Of the limit": r.ratio === null ? "" : `${Math.round(r.ratio * 100)}%`,
-        Status: MONTH_STATUS_LABEL[r.status], [`Used ${report.prevMonth}`]: r.prevUsed,
-        "Weeks / days / workers over": "",
-        ...Object.fromEntries(r.trend.map((t) => [t.month, t.used])),
-      },
-      ...r.limits.map((l) => ({
-        Level: "Limit", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: l.departmentsLabel,
-        "Limit": `${l.qty} ${PERIOD_LABEL[l.period]}${l.basis === "person" ? " per person" : ""}`, "Monthly limit": l.allowance,
-        Used: l.used, "Outside the limits": "", "Of the limit": `${Math.round(l.ratio * 100)}%`, Status: MONTH_STATUS_LABEL[l.status],
-        [`Used ${report.prevMonth}`]: l.prevUsed,
-        "Weeks / days / workers over": [
-          ...l.weeks.filter((w) => w.over).map((w) => `${w.label}: ${w.used}/${w.limit}`),
-          ...l.daysOver.map((d) => `${d.dayISO}: ${d.used}`),
-          ...l.workersOver.map((w) => `${report.workers[w.workerId]?.name ?? "?"}: ${w.used}`),
-        ].join(" | "),
-        ...Object.fromEntries(r.trend.map((t) => [t.month, ""])),
-      })),
-    ]);
-    return (
-      <div className="space-y-3">
-        <RememberLastVisit storageKey="consumables:last" />
-        <PrintHeader title="Consumables — monthly review" subtitle={monthLong(month)} date={toDisplayDate(new Date())} />
-        <PageHeader>
-          {viewSwitch}
-          <ExportButton rows={exportRows} filename={`consumables-monthly-${month}.xlsx`} sheetName={month} />
-          <PrintButton />
-        </PageHeader>
-        <ConsumablesMonthly report={report} />
-      </div>
-    );
-  }
 
   if (view === "powder") {
     // month by month, like the monthly review
@@ -186,19 +147,31 @@ export default async function ConsumablesPage({
   }
 
   if (view === "dashboard") {
-    const [stats, limits] = await Promise.all([getConsumablesDashboard(from, to), getLimitDashboard(from, to, today)]);
+    // the monthly review at the bottom goes by calendar month, not the slicer
+    const month = sp.month && isMonthKey(sp.month) && sp.month <= today.slice(0, 7) ? sp.month : today.slice(0, 7);
+    const [stats, limits, report] = await Promise.all([getConsumablesDashboard(from, to), getLimitDashboard(from, to, today), getMonthlyReport(month)]);
     const exportRows = stats.items.map((i) => ({ Item: i.item, "Hand-outs": i.issues, Qty: i.qty, Workers: i.workers }));
+    const monthParams = new URLSearchParams({ view: "dashboard" });
+    if (sp.from) monthParams.set("from", from);
+    if (sp.to) monthParams.set("to", to);
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" />
+        <PrintHeader title="Consumables — dashboard" subtitle={`${periodLabel} · monthly review ${monthLong(month)}`} date={toDisplayDate(new Date())} />
         <PageHeader>
           {viewSwitch}
           <ExportButton rows={exportRows} filename={`consumables-summary-${period}.xlsx`} sheetName="Items" />
+          <ExportButton rows={monthlyExportRows(report)} filename={`consumables-monthly-${month}.xlsx`} sheetName={month} label="Monthly Excel" />
+          <PrintButton />
         </PageHeader>
         {slicer}
         {/* the limits first: an alarm is what the page is opened for */}
         <ConsumableAlarms d={limits} periodLabel={periodLabel} period={period} />
         <ConsumablesDashboard s={stats} periodLabel={periodLabel} period={period} />
+        <section id="monthly" className="space-y-3 scroll-mt-24 pt-2">
+          <h2 className="font-bold text-lg">Monthly review · {monthLong(month)}</h2>
+          <ConsumablesMonthly report={report} monthHref={`/consumables?${monthParams.toString()}&month=`} />
+        </section>
       </div>
     );
   }
@@ -263,4 +236,29 @@ export default async function ConsumablesPage({
       />
     </div>
   );
+}
+
+/** The monthly review as a spreadsheet: a row per item, then a row per limit under it. */
+function monthlyExportRows(report: Awaited<ReturnType<typeof getMonthlyReport>>) {
+  return report.rows.flatMap((r) => [
+    {
+      Level: "Item", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: "", "Limit": "", "Monthly limit": r.allowance ?? "",
+      Used: r.used, "Outside the limits": r.outside, "Of the limit": r.ratio === null ? "" : `${Math.round(r.ratio * 100)}%`,
+      Status: MONTH_STATUS_LABEL[r.status], [`Used ${report.prevMonth}`]: r.prevUsed,
+      "Weeks / days / workers over": "",
+      ...Object.fromEntries(r.trend.map((t) => [t.month, t.used])),
+    },
+    ...r.limits.map((l) => ({
+      Level: "Limit", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: l.departmentsLabel,
+      "Limit": `${l.qty} ${PERIOD_LABEL[l.period]}${l.basis === "person" ? " per person" : ""}`, "Monthly limit": l.allowance,
+      Used: l.used, "Outside the limits": "", "Of the limit": `${Math.round(l.ratio * 100)}%`, Status: MONTH_STATUS_LABEL[l.status],
+      [`Used ${report.prevMonth}`]: l.prevUsed,
+      "Weeks / days / workers over": [
+        ...l.weeks.filter((w) => w.over).map((w) => `${w.label}: ${w.used}/${w.limit}`),
+        ...l.daysOver.map((d) => `${d.dayISO}: ${d.used}`),
+        ...l.workersOver.map((w) => `${report.workers[w.workerId]?.name ?? "?"}: ${w.used}`),
+      ].join(" | "),
+      ...Object.fromEntries(r.trend.map((t) => [t.month, ""])),
+    })),
+  ]);
 }
