@@ -271,6 +271,12 @@ mobile drawer still lists every view flat, since it has the vertical room.
    that would take a limit over is refused until the recorder gives a **reason** — then saved flagged "over limit" with
    the reason and the breach. The Dashboard opens with the **alarms**: limits over or within 80% in their current period,
    the periods on the slicer that ended over (per worker for per-person limits), and the hand-outs recorded over a limit.
+   **Monthly** view — the month-end review: every catalogue item's calendar month against a monthly limit made from its
+   limits (a week's × 4, a day's × 26, a month's as is; a quarter's is counted over the quarter to date against its whole
+   number), graded **over / close (80–100%) / under / not issued**, with the month before, the last six months (a
+   sparkline per item and a chart of how many items fell in each grade), and each item opening onto its departments: the
+   work weeks of a weekly limit that went over (counted whole), the days of a daily one, the workers past a per-person one.
+   Month picker, Excel export (item and limit lines) and a print / PDF with the company header.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:
