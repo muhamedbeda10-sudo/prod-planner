@@ -178,25 +178,6 @@ export async function deleteMaterialLine(formData: FormData): Promise<MaterialAc
   return { ok: true };
 }
 
-/** Wipe a whole month's lines — the planner re-imports a month from a fresh
- *  sheet, or filed one under the wrong month. Cannot be undone. */
-export async function deleteMaterialMonth(formData: FormData): Promise<MaterialActionResult & { deleted?: number }> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
-  if (guard.error) return { ok: false, error: guard.error };
-  const month = readMonth(formData.get("month"));
-  if (!month || month === "all") return { ok: false, error: "Pick one month to delete." };
-  // the caller says how many lines it is looking at; a mismatch means the
-  // month changed under them — stop rather than delete something unseen
-  const expected = Number(formData.get("expected"));
-  const count = await prisma.materialUsage.count({ where: { month } });
-  if (Number.isInteger(expected) && expected !== count) {
-    return { ok: false, error: `${month} now has ${count} line(s), not ${expected} — reload and try again.` };
-  }
-  const { count: deleted } = await prisma.materialUsage.deleteMany({ where: { month } });
-  revalidateMaterial();
-  return { ok: true, deleted };
-}
-
 export async function importMaterialAction(formData: FormData): Promise<MaterialImportResult> {
   const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
   if (guard.error) return { ok: false, error: guard.error };

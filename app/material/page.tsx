@@ -4,7 +4,7 @@ import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
 import { PageHeader } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
-import { MaterialClient, MaterialMonthPicker } from "@/components/MaterialClient";
+import { MaterialClient } from "@/components/MaterialClient";
 import { getActiveLine } from "@/lib/server/line";
 import { LINE_LABEL } from "@/lib/domain/lines";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
@@ -16,18 +16,18 @@ export const dynamic = "force-dynamic";
 export default async function MaterialPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   // viewing is free for every account, like the rest of the app; recording is
   // gated on material.edit
   const me = await getCurrentUser();
   if (!me) redirect("/login");
 
-  const sp = await searchParams;
-  // one living table — no month; ?month= opens an older sheet filed under one
-  const month = (sp.month ?? "").trim();
+  await searchParams; // an old link's ?month= is ignored
+  // one living table — no month
+  const month = "";
   const line = await getActiveLine(); // one product line at a time
-  const { lines, totals, months, knownBoms, lvOrders, lvTemplates, odooByMo } = await getMaterialData(month);
+  const { lines, totals, knownBoms, lvOrders, lvTemplates, odooByMo } = await getMaterialData(month);
 
   // the export carries the sheet's OWN column names in its order, then the
   // tab's additions, so the file drops straight back into the workbook
@@ -72,8 +72,7 @@ export default async function MaterialPage({
       <RememberLastVisit storageKey="material:last" />
       <PageHeader title={`🧱 MATERIAL — material sheet · ${LINE_LABEL[line]}`}>
         <ViewTabs views={MATERIAL_VIEWS} current="/material" label="Material view" />
-        <MaterialMonthPicker month={month} months={months} />
-        <ExportButton rows={exportRows} filename={`material-sheet${month ? `-${month.replace(/\s+/g, "-")}` : ""}.xlsx`} sheetName="Sheet1" />
+        <ExportButton rows={exportRows} filename="material-sheet.xlsx" sheetName="Sheet1" />
       </PageHeader>
       <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))} product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} odooByMo={odooByMo} />
     </div>
