@@ -130,7 +130,7 @@ function ItemRow({ r, open, toggle, workers }: { r: ItemMonthRow; open: boolean;
   );
 }
 
-export function ConsumablesMonthly({ report: r }: { report: MonthlyReportView }) {
+export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyReportView; /** The page's link with "month=" last — the month is appended. */ monthHref: string }) {
   const router = useRouter();
   const [filter, setFilter] = useState<MonthStatus | "all">("all");
   const [q, setQ] = useState("");
@@ -138,7 +138,8 @@ export function ConsumablesMonthly({ report: r }: { report: MonthlyReportView })
   const idx = r.months.indexOf(r.month);
   const older = r.months[idx + 1];
   const newer = idx > 0 ? r.months[idx - 1] : undefined;
-  const hrefOf = (m: string) => `/consumables?view=monthly&month=${m}`;
+  // back to this section after the page reloads on the new month
+  const hrefOf = (m: string) => `${monthHref}${m}#monthly`;
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
