@@ -204,9 +204,9 @@ export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEnt
     : [];
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-3" role="dialog" aria-modal="true" aria-label={`Material for ${e.odooMo}`}>
+    <div className="fixed inset-0 z-[70] grid place-items-center p-3 text-left font-normal" role="dialog" aria-modal="true" aria-label={`Material for ${e.odooMo}`}>
       <button type="button" aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
-      <div ref={box} tabIndex={-1} className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-surface border rounded-xl shadow-lg p-4 outline-none focus-visible:outline-none">
+      <div ref={box} tabIndex={-1} className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-surface text-foreground border rounded-xl shadow-lg p-4 outline-none focus-visible:outline-none">
         <div className="flex flex-wrap items-start gap-x-4 gap-y-2 mb-3">
           <div className="min-w-0">
             <div className="font-extrabold text-base">🧱 Material for <span className="ltr">{e.odooMo || need?.mo || e.mo || e.fgCode}</span></div>

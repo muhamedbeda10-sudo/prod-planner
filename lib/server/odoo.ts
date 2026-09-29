@@ -6,7 +6,7 @@ import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, bomOfFgCode, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView, type OdooScope } from "@/lib/domain/odoo";
 import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod } from "@/lib/domain/odooStats";
 import { buildOdooInsights, type OdooInsightRow, type OdooInsights } from "@/lib/domain/odooInsights";
-import { candidateBoms, candidateMos, moKey, nestingKey, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { candidateBoms, candidateMos, moKey, nestingKey, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 
 export interface OdooPageData {
   entries: OdooEntryView[];
@@ -99,9 +99,7 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     days: [...new Set(dayRows.map((d) => toISODate(d.date)))],
     knownSois: uniq(orders.map((o) => o.soi)),
     knownFgCodes: uniq(orders.map((o) => o.fgCode)),
-    nesting: line === "LV"
-      ? await linesByMo(entries.map((e) => candidateMos(e, soiMos[(e.soi ?? "").trim().toUpperCase()] ?? []).map((c) => c.mo)))
-      : await nestingFor(entries.map((e) => ({ fgCode: e.fgCode, boms: soiBoms[(e.soi ?? "").trim().toUpperCase()] ?? [] }))),
+    nesting: await nestingOf(entries, line, soiBoms, soiMos),
     soiBoms,
     soiMos,
     lv: line === "LV",
@@ -110,9 +108,58 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
   };
 }
 
+/** The material lines the rows may read: panels by their orders' MOs; a
+ *  transformer row by its own Odoo MO (the newer sheet files each part under
+ *  it) and by its part × BOM (the older sheet, and the rows with no MO yet). */
+async function nestingOf(
+  entries: { fgCode: string; soi: string | null; odooMo: string; mo?: string | null }[],
+  line: string, soiBoms: Record<string, string[]>, soiMos: Record<string, string[]>,
+): Promise<NestingLookup> {
+  const soi = (e: { soi: string | null }) => (e.soi ?? "").trim().toUpperCase();
+  if (line === "LV") return linesByMo(entries.map((e) => candidateMos(e, soiMos[soi(e)] ?? []).map((c) => c.mo)), "LV");
+  const [byPart, byMo] = await Promise.all([
+    nestingFor(entries.map((e) => ({ fgCode: e.fgCode, boms: soiBoms[soi(e)] ?? [] })), line),
+    linesByMo(entries.map((e) => [e.odooMo.trim().toUpperCase()].filter(Boolean)), "TR"),
+  ]);
+  return { ...byPart, ...byMo };
+}
+
+/** Everything the material popup needs for ONE row — the ODOO alert's popup
+ *  opens it from any page, so it cannot lean on the log page's lookup. */
+export async function getOdooRowMaterial(id: number): Promise<{ entry: OdooEntryView; nesting: NestingLookup; needCtx: NeedContext } | null> {
+  const r = await prisma.odooEntry.findUnique({ where: { id }, include: { notes: { orderBy: { id: "desc" } } } });
+  if (!r) return null;
+  const soi = (r.soi ?? "").trim().toUpperCase();
+  const [ledger, orders] = await Promise.all([
+    r.ledgerId !== null ? prisma.handoverEntry.findUnique({ where: { id: r.ledgerId }, select: { mo: true } }) : Promise.resolve(null),
+    soi ? prisma.masterOrder.findMany({ where: { line: r.line, soi: { equals: soi, mode: "insensitive" } }, select: { bom: true, mo: true } }) : Promise.resolve([]),
+  ]);
+  const soiBoms: Record<string, string[]> = soi ? { [soi]: [...new Set(orders.map((o) => o.bom.trim().toUpperCase()).filter(Boolean))] } : {};
+  const soiMos: Record<string, string[]> = soi && r.line === "LV" ? { [soi]: [...new Set(orders.map((o) => o.mo.trim().toUpperCase()).filter(Boolean))] } : {};
+  const entry: OdooEntryView = {
+    mo: (ledger?.mo ?? "").trim().toUpperCase() || null,
+    id: r.id,
+    dateISO: toISODate(r.date),
+    soi: r.soi,
+    fgCode: r.fgCode,
+    product: r.product,
+    odooMo: r.odooMo,
+    qty: r.qty,
+    status: r.status,
+    tone: statusTone(r.status),
+    done: isDoneStatus(r.status),
+    doneAtISO: r.doneAt ? r.doneAt.toISOString() : null,
+    recordedBy: r.recordedBy,
+    source: r.source,
+    fgGuessed: r.fgGuessed,
+    notes: r.notes.map((n) => ({ id: n.id, text: n.text, atISO: n.at.toISOString(), by: n.recordedBy, blockedItem: blockedItem(n.text) })),
+  };
+  return { entry, nesting: await nestingOf([entry], r.line, soiBoms, soiMos), needCtx: { lv: r.line === "LV", soiBoms, soiMos } };
+}
+
 /** The tracker's lines for every part × BOM these rows may sit under
  *  (the SOI's BOM and the FG-CODE's), every month. */
-async function nestingFor(entries: { fgCode: string; boms: string[] }[]): Promise<NestingLookup> {
+async function nestingFor(entries: { fgCode: string; boms: string[] }[], line: string): Promise<NestingLookup> {
   const keys = new Map<string, { partCode: string; bom: string }>();
   for (const r of entries) {
     const cand = candidateBoms(r.fgCode, r.boms);
@@ -121,7 +168,7 @@ async function nestingFor(entries: { fgCode: string; boms: string[] }[]): Promis
   }
   if (keys.size === 0) return {};
   const rows = await prisma.materialUsage.findMany({
-    where: { line: await getActiveLine(), bom: { in: [...new Set([...keys.values()].map((k) => k.bom))] } },
+    where: { line, bom: { in: [...new Set([...keys.values()].map((k) => k.bom))] } },
     select: {
       id: true, month: true, bom: true, partCode: true, partName: true, materialCode: true, material: true,
       thicknessMm: true, sheetSize: true, units: true, sheetsPerUnit: true, actualPerUnit: true, sheetsUsed: true, note: true,
@@ -137,13 +184,14 @@ async function nestingFor(entries: { fgCode: string; boms: string[] }[]): Promis
   return out;
 }
 
-/** Panels: the Material tab's lines of every order these rows may be filed
- *  under, keyed "MO|<mo>" — every month, the newest first. */
-async function linesByMo(mosPerRow: string[][]): Promise<NestingLookup> {
+/** The Material tab's lines of every MO these rows may be filed under, keyed
+ *  "MO|<mo>" — every month, the newest first. Panels: the orders' MOs;
+ *  transformers: Odoo's MO per part, from the newer material sheet. */
+async function linesByMo(mosPerRow: string[][], line: string): Promise<NestingLookup> {
   const mos = [...new Set(mosPerRow.flat())];
   if (mos.length === 0) return {};
   const rows = await prisma.materialUsage.findMany({
-    where: { line: "LV", mo: { in: mos, mode: "insensitive" } },
+    where: { line, mo: { in: mos, mode: "insensitive" } },
     select: {
       id: true, month: true, bom: true, mo: true, partCode: true, partName: true, materialCode: true, material: true,
       thicknessMm: true, sheetSize: true, units: true, sheetsPerUnit: true, actualPerUnit: true, sheetsUsed: true, note: true,

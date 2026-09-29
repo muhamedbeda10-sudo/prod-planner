@@ -335,3 +335,24 @@ describe("rateIsTyped — whose figure the per-unit rate is", () => {
     expect(rateIsTyped(sheet, 0)).toBe(true);
   });
 });
+
+describe("parseNestingTracker — the sheet with Odoo's MO per part", () => {
+  const grid: unknown[][] = [
+    ["SOI", "MO", "BOM Ref", "Quantity of Units", "Part Code", "Part Name", "Material Code", "Material", "Thickness (mm)", "Sheet Size", "Weight(Kg)", "BOM Qty for one Unit", "No. of Pieces in Actual Nesting for one Unit", "BOM Pieces for Job", "No. of Pieces in Actual Nesting for Job", "Average Utilization", "Actual Weight (Kg)", "Difference", "Notes"],
+    ["S01194-12", "SF01/MO/20941", "00007S15", 11, "FB-024", "CABLE BOX", "C-SHR-003", "HR Sheet", 3, "1220x2440", 70.1, 0.79, null, 8.69, null, null, null, null, null],
+    ["S01194-12", "SF01/MO/20943", "00007S15", 4, "FB-024", "CABLE BOX", "C-SHR-003", "HR Sheet", 3, "1220x2440", 70.1, 0.79, 0.75, 3.16, 3, null, null, null, "ok"],
+  ];
+
+  it("reads the MO, keeps one line per MO, and takes the per-unit and job columns", () => {
+    const { rows, issues } = parseNestingTracker(grid);
+    expect(issues).toEqual([]);
+    expect(rows.map((r) => [r.mo, r.bom, r.units])).toEqual([["SF01/MO/20941", "00007S15", 11], ["SF01/MO/20943", "00007S15", 4]]);
+    expect(rows[0]).toMatchObject({ partCode: "FB-024", materialCode: "C-SHR-003", material: "HR Sheet", thicknessMm: 3, sheetSize: "1220*2440", sheetsPerUnit: 0.79, actualPerUnit: null, sheetsUsed: null });
+    expect(rows[1]).toMatchObject({ actualPerUnit: 0.75, sheetsUsed: 3, note: "ok" });
+  });
+
+  it("leaves the MO empty on the older sheet with no MO column", () => {
+    const old = grid.map((r) => [...r.slice(0, 1), ...r.slice(2)]);
+    expect(parseNestingTracker(old).rows.every((r) => r.mo === "")).toBe(true);
+  });
+});

@@ -284,7 +284,11 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth, produ
   return (
     <>
       <tr className="border-t">
-        <td className="p-2 font-bold whitespace-nowrap ltr">{line.bom}</td>
+        <td className="p-2 font-bold whitespace-nowrap ltr">
+          {line.bom}
+          {/* the newer sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
+          {line.mo && <div className="text-[11px] font-semibold text-muted">{line.mo}</div>}
+        </td>
         <td className="p-2 text-center tabnum ltr">{line.units}</td>
         <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{line.partCode || <span className="text-muted">—</span>}</td>
         <td className="p-2 whitespace-nowrap text-xs">{line.partName || <span className="text-muted">—</span>}</td>
@@ -514,7 +518,7 @@ function ImportPanel({ month, product }: { month: string; product: ProductLine }
       <p className="text-xs text-muted">
         {lv ? (
           <>Reads the panels&apos; Consumption Details sheet as it is — Product, Sec Item, Planned qty, MO, BOM, Material, then one row per Thickness with the sheets for one unit and what was actually consumed (“For 8 Units 14.4 Sheets Consumed”, or Done). Importing the same month again updates the rows, never doubles them.</>
-        ) : (<>Reads the Nesting Project Tracker by its headers — BOM Ref, Quantity of Units, Part Code, Part Name, Codes, Material, Thickness, Sheet Size, Sheets in BOM for one Unit, Actual Nesting for Job, Notes. Importing the same month again adds the new rows and updates the
+        ) : (<>Reads the Nesting Project Tracker by its headers — BOM Ref, MO (Odoo&apos;s, when the sheet has the column — each ODOO row then finds its own lines), Quantity of Units, Part Code, Part Name, Codes, Material, Thickness, Sheet Size, Sheets in BOM for one Unit, Actual Nesting for Job, Notes. Importing the same month again adds the new rows and updates the
         ones whose values changed — it never doubles them, and it leaves your “Units produced” exactly as typed.</>)}
       </p>
       <Msg msg={res} />
@@ -711,7 +715,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                   </tr>
                 ) : (
                 <tr className="bg-brand text-white text-left align-bottom">
-                  <th className={TH}>BOM Ref</th>
+                  <th className={TH} title="The BOM, and Odoo's MO under it when the sheet names one">BOM Ref / MO</th>
                   <th className={`${TH} text-center`}>Quantity of Units</th>
                   <th className={TH}>Part Code</th>
                   <th className={TH}>Part Name</th>
