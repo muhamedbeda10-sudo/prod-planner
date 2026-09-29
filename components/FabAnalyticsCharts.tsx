@@ -46,9 +46,9 @@ export function SheetsPerDayChart({ days, avg }: { days: DayPoint[]; avg: number
                 <TipBox>
                   <b className="tabnum">{p.dateISO}</b>
                   <div className="tabnum"><b>{n1(p.sheets)}</b> sheets · {n1(p.tons)} t</div>
-                  <div className="tabnum text-muted">{n1(p.pieces)} pieces</div>
+                  <div className="tabnum text-muted">{n1(p.pieces)} units closed</div>
                   {p.uncoveredPieces > 0 && (
-                    <div className="tabnum text-muted">{n1(p.uncoveredPieces)} of them not nested — no sheets counted</div>
+                    <div className="tabnum text-muted">{n1(p.uncoveredPieces)} of them not on the material sheet — no sheets counted</div>
                   )}
                 </TipBox>
               );
