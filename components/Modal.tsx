@@ -3,57 +3,68 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
-// The app's popup for adding and recording. Every "add" / "record" form
-// opens in one of these over the page rather than unfolding inline: the page
-// underneath stays where it was, the form has the whole width it needs, and
-// Escape or a click outside puts it away. Portalled to <body>, so a form
-// opened from inside the nav or a table cell sits above everything and reads
-// in the page's own text colour.
+// A centred popup over a dimmed page: Escape or a click on the dim closes it
+// (unless `busy` — a save in flight is not abandoned half-way), the page
+// behind stops scrolling, and focus moves into it and back out when it
+// closes. It is drawn straight into the page's <main> (a portal) — where the
+// app's control and table styles live — so it can be opened from anywhere,
+// a table row included, without breaking the markup there. Only ever
+// rendered after a click, so the document is there.
 
 export function Modal({
   title,
   sub,
   onClose,
-  children,
-  width = "max-w-3xl",
   busy = false,
+  width = "max-w-2xl",
+  children,
 }: {
   title: React.ReactNode;
   sub?: React.ReactNode;
   onClose: () => void;
-  children: React.ReactNode;
-  /** A Tailwind max-width class for the panel. */
-  width?: string;
-  /** While saving, Escape and the backdrop do not close it. */
+  /** A save is running: the popup stays until it answers. */
   busy?: boolean;
+  width?: string;
+  children: React.ReactNode;
 }) {
   const box = useRef<HTMLDivElement>(null);
-  // the latest close and busy, without re-running the effects on each render
   const closeRef = useRef(onClose);
   const busyRef = useRef(busy);
-  useEffect(() => { closeRef.current = onClose; busyRef.current = busy; });
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busyRef.current) closeRef.current(); };
+    closeRef.current = onClose;
+    busyRef.current = busy;
+  });
+
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    // the first field, or the box itself
+    const first = box.current?.querySelector<HTMLElement>("input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])");
+    (first ?? box.current)?.focus();
+    const onKey = (ev: KeyboardEvent) => { if (ev.key === "Escape" && !busyRef.current) closeRef.current(); };
     window.addEventListener("keydown", onKey);
-    // focus the first field once, on opening — not the close button
-    box.current?.querySelector<HTMLElement>("input:not([type=hidden]), select, textarea")?.focus();
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+      before?.focus?.();
+    };
   }, []);
-  if (typeof document === "undefined") return null;
+
   return createPortal(
-    <div className="fixed inset-0 z-[65] grid place-items-center p-3 text-left font-normal" role="dialog" aria-modal="true">
-      <button type="button" aria-label="Close" onClick={() => !busy && onClose()} className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
-      <div ref={box} className={`relative w-full ${width} max-h-[92vh] overflow-y-auto bg-surface text-foreground border rounded-xl shadow-lg`}>
-        <div className="flex items-start gap-3 px-4 pt-4 pb-2 border-b">
+    <div className="fixed inset-0 z-50 grid place-items-center p-3 no-print" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
+      <button type="button" aria-label="Close" tabIndex={-1} onClick={() => { if (!busy) onClose(); }} className="absolute inset-0 bg-black/45 backdrop-blur-[2px] cursor-default" />
+      <div ref={box} tabIndex={-1} className={`relative w-full ${width} max-h-[92vh] overflow-y-auto bg-surface border rounded-xl shadow-lg outline-none`}>
+        <div className="sticky top-0 z-10 bg-surface border-b px-4 py-3 flex items-start gap-3">
           <div className="min-w-0">
-            <div className="font-extrabold text-base">{title}</div>
-            {sub && <div className="text-xs text-muted mt-0.5">{sub}</div>}
+            <div role="heading" aria-level={2} className="font-extrabold text-base leading-tight">{title}</div>
+            {sub && <p className="text-xs text-muted mt-0.5">{sub}</p>}
           </div>
           <button type="button" onClick={onClose} disabled={busy} aria-label="Close" className="ms-auto btn btn-sm btn-ghost">✕</button>
         </div>
         <div className="p-4">{children}</div>
       </div>
     </div>,
-    document.body,
+    document.querySelector("main") ?? document.body,
   );
 }
