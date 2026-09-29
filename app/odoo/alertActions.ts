@@ -7,6 +7,7 @@ import { linePermKey } from "@/lib/domain/permissions";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import { ODOO_ALERTS_PERM, ODOO_NEED_MO_PERM, type ReadyRow } from "@/lib/domain/odooAlerts";
 import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
+import { getOdooRowMaterial } from "@/lib/server/odoo";
 
 // The alerts' calls: what is waiting now (polled), closing rows and typing an
 // MO straight from the popup.
@@ -69,4 +70,14 @@ export async function fillOdooMo(formData: FormData): Promise<{ ok: boolean; err
   await prisma.odooEntry.update({ where: { id }, data: { odooMo, recordedBy: me.name } });
   revalidatePath("/odoo");
   return { ok: true };
+}
+
+/** The material popup for one row, from the alert popup on any page —
+ *  viewing is free for every account, like the ODOO tab itself. */
+export async function odooRowMaterial(id: number): Promise<{ ok: boolean; error?: string; data?: Awaited<ReturnType<typeof getOdooRowMaterial>> }> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, error: "Sign in again." };
+  if (!Number.isInteger(id)) return { ok: false, error: "Invalid row." };
+  const data = await getOdooRowMaterial(id);
+  return data ? { ok: true, data } : { ok: false, error: "That row no longer exists." };
 }

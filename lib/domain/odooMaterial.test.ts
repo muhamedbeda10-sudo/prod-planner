@@ -282,3 +282,26 @@ describe("panels — the material is the order's, keyed by MO", () => {
     expect(need.mo).toBeNull();
   });
 });
+
+describe("a transformer row finds the lines filed under its own Odoo MO first", () => {
+  const withMo: NestingLookup = {
+    ...lookup,
+    [moKey("SF01/MO/20905")]: [line({ id: 50, units: 11, sheetsPerUnit: 0.8, sheetsUsed: null, materialCode: "C-SHR-004" })],
+  };
+  const row = { fgCode: "FB-022-14003E11M11", dateISO: "2026-09-20", soi: null, odooMo: "sf01/mo/20905 " };
+
+  it("uses the MO's lines when the material sheet names that MO", () => {
+    const need = entryMaterialNeed(withMo, row, 11, EMPTY_NEED_CONTEXT)!;
+    expect(need.mo).toBe("SF01/MO/20905");
+    expect(need.via).toBe("odoo");
+    expect(need.partCode).toBe("FB-022");
+    expect(need.lines.map((l) => l.id)).toEqual([50]);
+    expect(need.totalBom).toBeCloseTo(8.8);
+  });
+
+  it("falls back to part × BOM when the MO has no lines", () => {
+    const need = entryMaterialNeed(withMo, { ...row, odooMo: "SF01/MO/99999" }, 11, EMPTY_NEED_CONTEXT)!;
+    expect(need.mo).toBeNull();
+    expect(need.lines.map((l) => l.id)).toEqual([1, 3, 2]);
+  });
+});

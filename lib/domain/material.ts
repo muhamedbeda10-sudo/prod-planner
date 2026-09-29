@@ -240,6 +240,9 @@ export function summarizeMaterial(lines: MaterialLineView[]): MaterialTotal[] {
 export interface NestingRow {
   rowNum: number; // 1-based sheet row, for the issues list
   bom: string;
+  /** Odoo's MO for this part (SF01/MO/20941) when the sheet has an MO column;
+   *  "" when the line covers the BOM, as the older sheet wrote it. */
+  mo: string;
   units: number;
   partCode: string;
   partName: string;
@@ -338,6 +341,9 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
     return { rows: [], issues: ["No header row found — expected a row with 'BOM Ref' and 'Thickness'."], headerRow: 0, recomputed: 0 };
   }
   const col = mapColumns(grid[headerIdx] ?? []);
+  // the newer sheet carries Odoo's MO per part: a column headed exactly "MO"
+  // (a fragment match would catch other headers), found apart from the rest
+  const moCol = (grid[headerIdx] ?? []).findIndex((c) => /^mo\s*(#|no\.?)?$/i.test(cellText(c)));
   const issues: string[] = [];
   for (const [key, idx] of Object.entries(col)) {
     if (idx < 0 && !OPTIONAL_HEADERS.has(key)) issues.push(`Column "${key}" was not found in the header row.`);
@@ -380,12 +386,13 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
     const note = col.note >= 0 ? cellText(line[col.note]) : "";
     const partCode = col.partCode >= 0 ? cellText(line[col.partCode]).toUpperCase() : "";
     const partName = col.partName >= 0 ? cellText(line[col.partName]).toUpperCase() : "";
-    const identity = `${bom}|${partCode}|${material}|${thickness}|${sheetSize}`;
+    const mo = moCol >= 0 ? cellText(line[moCol]).toUpperCase() : "";
+    const identity = `${bom}|${mo}|${partCode}|${material}|${thickness}|${sheetSize}`;
     const earlier = seen.get(identity);
-    if (earlier !== undefined) issues.push(`Row ${rowNum} (${bom} ${partCode} ${material} ${thickness}mm ${sheetSize}) repeats row ${earlier} — the tab keeps one line per BOM, part, material, thickness and size, so this row replaces it.`);
+    if (earlier !== undefined) issues.push(`Row ${rowNum} (${mo ? `${mo} ` : ""}${bom} ${partCode} ${material} ${thickness}mm ${sheetSize}) repeats row ${earlier} — the tab keeps one line per ${mo ? "MO, " : ""}BOM, part, material, thickness and size, so this row replaces it.`);
     seen.set(identity, rowNum);
     rows.push({
-      rowNum, bom, units, material, thicknessMm: thickness, sheetSize,
+      rowNum, bom, mo, units, material, thicknessMm: thickness, sheetSize,
       partCode, partName: partName || partNameFor(partCode),
       materialCode: col.code >= 0 ? cellText(line[col.code]).toUpperCase() : "",
       sheetsPerUnit: perUnit,

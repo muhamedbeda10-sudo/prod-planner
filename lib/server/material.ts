@@ -175,12 +175,16 @@ export async function importNestingTracker(
   const { rows, issues, recomputed } = parseNestingTracker(grid);
   if (rows.length === 0) return { ok: false, error: issues[0] ?? "No material rows found.", issues, sheet: sheetName };
 
-  const existing = await prisma.materialUsage.findMany({ where: { month, mo: "", line } });
-  const byKey = new Map(existing.map((e) => [`${e.bom}|${e.partCode}|${e.material}|${e.thicknessMm}|${e.sheetSize}`, e]));
+  // a line is its MO's when the sheet names one (the newer sheet: Odoo's MO
+  // per part), else the BOM's (mo "")
+  const existing = await prisma.materialUsage.findMany({ where: { month, line } });
+  const keyOf = (e: { bom: string; mo: string; partCode: string; material: string; thicknessMm: number; sheetSize: string }) =>
+    `${e.bom}|${e.mo}|${e.partCode}|${e.material}|${e.thicknessMm}|${e.sheetSize}`;
+  const byKey = new Map(existing.map((e) => [keyOf(e), e]));
 
   let added = 0, updated = 0, unchanged = 0;
   for (const r of rows) {
-    const cur = byKey.get(`${r.bom}|${r.partCode}|${r.material}|${r.thicknessMm}|${r.sheetSize}`);
+    const cur = byKey.get(keyOf(r));
     // A rate typed in the tab is the planner's own statement about a line the
     // sheet leaves blank. The import fills the blanks; it never overwrites his.
     const keepsRate = cur?.actualPerUnitManual === true;
@@ -200,7 +204,7 @@ export async function importNestingTracker(
       ...(r.note !== null ? { note: r.note } : {}),
       recordedBy,
     };
-    const key = { month, bom: r.bom, mo: "", partCode: r.partCode, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize };
+    const key = { month, bom: r.bom, mo: r.mo, partCode: r.partCode, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize };
     await prisma.materialUsage.upsert({
       where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: key },
       create: { ...key, ...data, note: r.note, line },

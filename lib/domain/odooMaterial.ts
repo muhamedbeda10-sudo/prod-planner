@@ -171,7 +171,8 @@ export function materialNeedByMo(lookup: NestingLookup, cands: readonly MoCandid
   const hit = cands.map((c) => ({ ...c, lines: lookup[moKey(c.mo)] ?? [] })).find((c) => c.lines.length > 0);
   if (!hit) return null;
   const bom = hit.lines.find((l) => l.bom)?.bom ?? "";
-  return buildNeed(hit.lines, { partCode: "", bom, mo: hit.mo, via: hit.via }, qty, loggedMonth);
+  const partCode = hit.lines.find((l) => l.partCode)?.partCode ?? "";
+  return buildNeed(hit.lines, { partCode, bom, mo: hit.mo, via: hit.via }, qty, loggedMonth);
 }
 
 /** Everything the log page needs to find a row's material, for either line. */
@@ -188,14 +189,18 @@ export const EMPTY_NEED_CONTEXT: NeedContext = { lv: false, soiBoms: {}, soiMos:
 
 const soiOf = (soi: string | null) => (soi ?? "").trim().toUpperCase();
 
-/** The material behind one logged row at `qty` units, whichever line it is on. */
+/** The material behind one logged row at `qty` units, whichever line it is on.
+ *  A transformer row looks first for the lines filed under its OWN Odoo MO —
+ *  the material sheet names Odoo's MO per part (SF01/MO/20941), the number
+ *  typed on the ODOO row — and falls back to its part × BOM. */
 export function entryMaterialNeed(
   lookup: NestingLookup, e: { fgCode: string; dateISO: string; soi: string | null; odooMo: string; mo?: string | null }, qty: number, ctx: NeedContext
 ): MaterialNeed | null {
   const month = monthLabelOfISO(e.dateISO);
-  return ctx.lv
-    ? materialNeedByMo(lookup, candidateMos(e, ctx.soiMos[soiOf(e.soi)] ?? []), qty, month)
-    : materialNeed(lookup, e.fgCode, qty, month, ctx.soiBoms[soiOf(e.soi)] ?? []);
+  if (ctx.lv) return materialNeedByMo(lookup, candidateMos(e, ctx.soiMos[soiOf(e.soi)] ?? []), qty, month);
+  const odooMo = e.odooMo.trim().toUpperCase();
+  const byMo = odooMo ? materialNeedByMo(lookup, [{ mo: odooMo, via: "odoo" }], qty, month) : null;
+  return byMo ?? materialNeed(lookup, e.fgCode, qty, month, ctx.soiBoms[soiOf(e.soi)] ?? []);
 }
 
 function buildNeed(all: readonly NestingLine[], key: { partCode: string; bom: string; mo: string | null; via: NeedVia }, qty: number, loggedMonth: string): MaterialNeed {

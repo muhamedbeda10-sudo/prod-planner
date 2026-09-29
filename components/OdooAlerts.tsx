@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { armChime, playChime } from "@/lib/chime";
 import { appInBackground, onNotifyClick, systemNotify } from "@/lib/sysNotify";
-import { closeOdooReady, fillOdooMo, pollOdooAlerts } from "@/app/odoo/alertActions";
+import { closeOdooReady, fillOdooMo, odooRowMaterial, pollOdooAlerts } from "@/app/odoo/alertActions";
+import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { ODOO_CHANGED_EVENT, alertKey, pruneSeen, unseenKeys, type ReadyRow } from "@/lib/domain/odooAlerts";
 
 // 🔔 The ODOO alerts, for whoever is subscribed:
@@ -168,20 +169,47 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
     });
   };
 
+  // a row clicked in the popup opens its material on top — the same popup
+  // the ODOO tab opens, fetched for that one row
+  type Material = NonNullable<Awaited<ReturnType<typeof odooRowMaterial>>["data"]>;
+  const [material, setMaterial] = useState<Material | null>(null);
+  const [opening, setOpening] = useState<number | null>(null);
+  const openMaterial = (id: number) => {
+    setErr("");
+    setOpening(id);
+    odooRowMaterial(id)
+      .then((r) => (r.ok && r.data ? setMaterial(r.data) : setErr(r.error ?? "Could not open the material.")))
+      .catch(() => setErr("Could not open the material."))
+      .finally(() => setOpening(null));
+  };
+
   const popup = enabled && open && count > 0 && loaded ? (
-    <ReadyPopup
-      close={close} mo={mo} fresh={fresh} canEdit={canEdit} pending={pending} err={err}
-      onClose={closeRows} onSaveMo={saveMo} onLater={later}
-    />
+    <>
+      <ReadyPopup
+        close={close} mo={mo} fresh={fresh} canEdit={canEdit} pending={pending} err={err}
+        onClose={closeRows} onSaveMo={saveMo} onLater={later}
+        onOpen={openMaterial} opening={opening} covered={material !== null}
+      />
+      {material && (
+        <OdooMaterialPopup e={material.entry} nesting={material.nesting} needCtx={material.needCtx} onClose={() => setMaterial(null)} />
+      )}
+    </>
   ) : null;
   return { count, show: () => { setOpen(true); if (!loaded) void tick(); }, popup };
 }
 
 const SOURCE_LABEL: Record<string, string> = { painting: "from Painting", shotblast: "from Shot Blast" };
 
-function RowFacts({ r, isNew }: { r: ReadyRow; isNew: boolean }) {
+function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; onOpen: (id: number) => void; opening: boolean }) {
+  // the facts are the row's button: a click opens the material behind it
   return (
-    <div className="flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+    <button
+      type="button"
+      onClick={() => onOpen(r.id)}
+      disabled={opening}
+      title="Click for the material behind this row"
+      className="flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md -mx-1.5 px-1.5 py-1 text-left hover:bg-surface-2 cursor-pointer disabled:cursor-wait"
+    >
       <span className={`pill ${r.line === "LV" ? "pill-muted" : "pill-ok"} text-[10px]`}>{r.line}</span>
       <span className="tabnum text-xs text-muted ltr">{r.dateISO}</span>
       {r.odooMo && <b className="ltr tabnum">{r.odooMo}</b>}
@@ -191,7 +219,8 @@ function RowFacts({ r, isNew }: { r: ReadyRow; isNew: boolean }) {
       <span className="tabnum font-bold">× {r.qty}</span>
       {SOURCE_LABEL[r.source] && <span className="pill pill-muted text-[10px]">{SOURCE_LABEL[r.source]}</span>}
       {isNew && <span className="pill pill-warn text-[10px]">new</span>}
-    </div>
+      <span className="text-xs text-accent font-semibold">{opening ? "opening…" : "📦 material"}</span>
+    </button>
   );
 }
 
@@ -214,15 +243,19 @@ function MoInput({ r, disabled, onSave }: { r: ReadyRow; disabled: boolean; onSa
   );
 }
 
-function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo, onLater }: {
+function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo, onLater, onOpen, opening, covered }: {
   close: ReadyRow[]; mo: ReadyRow[]; fresh: Set<string>; canEdit: { TR: boolean; LV: boolean }; pending: boolean; err: string;
   onClose: (ids: number[]) => void; onSaveMo: (id: number, v: string) => void; onLater: () => void;
+  onOpen: (id: number) => void; opening: number | null;
+  /** The material popup is open on top — Escape is its, not this one's. */
+  covered: boolean;
 }) {
   useEffect(() => {
+    if (covered) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onLater(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onLater]);
+  }, [onLater, covered]);
   const can = (r: ReadyRow) => canEdit[r.line as "TR" | "LV"];
   const closable = close.filter(can);
   const title = [mo.length ? `${mo.length} need${mo.length === 1 ? "s" : ""} an MO` : "", close.length ? `${close.length} ready to close` : ""]
@@ -249,7 +282,7 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
             <ul className="divide-y">
               {mo.map((r) => (
                 <li key={`mo-${r.id}`} className={`flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm ${fresh.has(alertKey("mo", r.id)) ? "bg-warn-bg/40" : ""}`}>
-                  <RowFacts r={r} isNew={fresh.has(alertKey("mo", r.id))} />
+                  <RowFacts r={r} isNew={fresh.has(alertKey("mo", r.id))} onOpen={onOpen} opening={opening === r.id} />
                   {can(r) ? <MoInput r={r} disabled={pending} onSave={onSaveMo} /> : <span className="text-xs text-muted">No permission on this line</span>}
                 </li>
               ))}
@@ -263,7 +296,7 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
             <ul className="divide-y">
               {close.map((r) => (
                 <li key={`close-${r.id}`} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${fresh.has(alertKey("close", r.id)) ? "bg-warn-bg/40" : ""}`}>
-                  <RowFacts r={r} isNew={fresh.has(alertKey("close", r.id))} />
+                  <RowFacts r={r} isNew={fresh.has(alertKey("close", r.id))} onOpen={onOpen} opening={opening === r.id} />
                   <button
                     type="button" className="shrink-0 btn btn-sm btn-primary" disabled={pending || !can(r)} onClick={() => onClose([r.id])}
                     title={can(r) ? "Closed in Odoo — mark it Done" : "You cannot record on this line's ODOO tab"}
