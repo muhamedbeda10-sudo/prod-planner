@@ -2,13 +2,13 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/server/auth";
 import { PageHeader } from "@/components/ui";
-import { getFabAnalytics, resolveWindow, WINDOWS } from "@/lib/server/fabAnalytics";
+import { getMaterialDashboard, resolveWindow, WINDOWS } from "@/lib/server/fabAnalytics";
 import { getActiveLine } from "@/lib/server/line";
 import { FabAnalyticsView } from "@/components/FabAnalyticsView";
 import { ViewTabs, MATERIAL_VIEWS } from "@/components/ViewTabs";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 
-export const metadata = { title: "Analytics — ATC" };
+export const metadata = { title: "Material dashboard — ATC" };
 export const dynamic = "force-dynamic";
 
 const label = (d: number) => (d === 0 ? "All" : `${d}d`);
@@ -42,12 +42,12 @@ export default async function AnalyticsPage({
 
   const sp = await searchParams;
   const days = resolveWindow(sp.days);
-  const a = await getFabAnalytics(days);
+  const a = await getMaterialDashboard(days);
 
   return (
     <div>
       <RememberLastVisit storageKey="analytics:last" />
-      <PageHeader title="📊 Material analytics — consumed when closed on Odoo">
+      <PageHeader title="📊 Material dashboard">
         <ViewTabs views={MATERIAL_VIEWS} current="/analytics" label="Material view" />
         <nav className="seg" aria-label="Window">
           {WINDOWS.map((d) => (

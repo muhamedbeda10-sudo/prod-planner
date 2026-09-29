@@ -1,13 +1,13 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { getActiveLine } from "./line";
-import { buildClosedConsumption, type ClosedConsumption, type ClosingRow, type MoMaterialLine } from "@/lib/domain/fabAnalytics";
+import { buildMaterialDashboard, type DoneRow, type MaterialDashboard, type SheetLine } from "@/lib/domain/materialDashboard";
 import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 
-// The material analytics page's one query pair: the MOs closed on Odoo over a
-// window, and every line the Material tab holds under an MO. The lines are
-// NOT windowed — an MO closed today was nested whenever it was nested.
+// The material dashboard's one query pair: every MO closed on Odoo, and every
+// line of the material sheet. The sheet is NOT windowed — an MO closed today
+// was nested whenever it was nested.
 
 /** The windows the page offers, in days back from today. */
 export const WINDOWS = [30, 60, 90, 0] as const; // 0 = everything on record
@@ -18,21 +18,17 @@ export function resolveWindow(raw: string | undefined): Window {
   return (WINDOWS as readonly number[]).includes(n) ? (n as Window) : 90;
 }
 
-export interface FabAnalyticsData extends ClosedConsumption {
+export interface MaterialDashboardData extends MaterialDashboard {
   windowDays: Window;
   fromISO: string | null;
-  /** Lines on the Material tab filed under an MO, and the MOs they cover —
-   *  the page says how much of the plant the tab actually describes. */
-  nestingRows: number;
-  nestingBoms: number;
 }
 
 /**
- * The window's material consumption, booked on the day each MO was closed
- * (moved to Done) on the ODOO tab, through the Material tab's lines of the
- * same MO.
+ * The material dashboard: the whole material sheet, and the window's
+ * closings on the ODOO tab of the sheet's MOs — booked on the day each was
+ * moved to Done.
  */
-export async function getFabAnalytics(windowDays: Window): Promise<FabAnalyticsData> {
+export async function getMaterialDashboard(windowDays: Window): Promise<MaterialDashboardData> {
   let from: Date | null = null;
   if (windowDays > 0) {
     from = new Date();
@@ -40,29 +36,27 @@ export async function getFabAnalytics(windowDays: Window): Promise<FabAnalyticsD
     from.setUTCDate(from.getUTCDate() - windowDays);
   }
 
-  const line = await getActiveLine(); // the line on screen's closings and sheet only
+  const line = await getActiveLine(); // the line on screen's sheet and closings only
   const [done, material] = await Promise.all([
+    // every closing — what is still open needs all of them; the window picks its own
     prisma.odooEntry.findMany({
-      where: { line, odooMo: { not: "" }, doneAt: from ? { gte: from } : { not: null } },
+      where: { line, odooMo: { not: "" }, doneAt: { not: null } },
       select: { odooMo: true, qty: true, status: true, doneAt: true },
     }),
     prisma.materialUsage.findMany({
-      where: { line, mo: { not: "" } },
-      select: { mo: true, partCode: true, material: true, thicknessMm: true, sheetSize: true, sheetsPerUnit: true, actualPerUnit: true, weightKg: true },
+      where: { line, month: "" },
+      select: {
+        mo: true, soi: true, bom: true, partCode: true, partName: true, material: true, thicknessMm: true, sheetSize: true, units: true,
+        sheetsPerUnit: true, actualPerUnit: true, sheetsUsed: true, weightKg: true, utilization: true,
+      },
     }),
   ]);
 
-  // a row moved back out of Done keeps no doneAt, but check the status too
-  const closings: ClosingRow[] = done
+  const rows: DoneRow[] = done
     .filter((r) => r.doneAt && isDoneStatus(r.status))
     .map((r) => ({ dateISO: factoryDayISO(r.doneAt!), mo: r.odooMo.trim(), qty: r.qty }));
-  const lines: MoMaterialLine[] = material;
+  const fromISO = from ? toISODate(from) : null;
+  const lines: SheetLine[] = material;
 
-  return {
-    ...buildClosedConsumption(closings, lines),
-    windowDays,
-    fromISO: from ? toISODate(from) : null,
-    nestingRows: lines.length,
-    nestingBoms: new Set(lines.map((l) => l.mo.trim().toUpperCase())).size,
-  };
+  return { ...buildMaterialDashboard(lines, rows, fromISO), windowDays, fromISO };
 }

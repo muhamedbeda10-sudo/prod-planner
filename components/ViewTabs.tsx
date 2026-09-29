@@ -46,7 +46,7 @@ export function trackerViews(line: string): View[] {
  *  through them in sheets, tonnes and thicknesses. */
 export const MATERIAL_VIEWS: View[] = [
   { href: "/material", label: "Material", title: "The nesting project tracker — what each order consumed" },
-  { href: "/analytics", label: "Analytics", title: "Material consumed — booked the day each MO is closed on Odoo" },
+  { href: "/analytics", label: "Dashboard", title: "Material dashboard — consumption (booked when the MO is closed on Odoo), scrap, weights" },
 ];
 
 /** The two plan imports, which lived on two separate Admin pages: the monthly
