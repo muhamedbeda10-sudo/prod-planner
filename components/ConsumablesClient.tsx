@@ -3,13 +3,13 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { WORKER_GROUPS } from "@/lib/domain/tanks";
 import {
-  CONSUMABLE_LIMITS, NEW_DEPARTMENT, NEW_ITEM, OVER_LIMIT_REASON_MAX, RECIPIENT_SCOPES, RECIPIENT_SCOPE_LABEL,
-  isSectionDepartment, workersForDepartment, type RecipientScope,
+  CONSUMABLE_LIMITS, NEW_DEPARTMENT, NEW_ITEM, OVER_LIMIT_REASON_MAX,
 } from "@/lib/domain/consumables";
-import type { CatalogueOption, ConsumableIssueView, ConsumablesPageData, ConsumableWorkerOption } from "@/lib/server/consumables";
+import type { CatalogueOption, ConsumableIssueView, ConsumablesPageData } from "@/lib/server/consumables";
 import type { LimitHint } from "@/lib/server/consumableLimits";
 import { consumableLimitHints, createConsumableIssue, deleteConsumableIssue, updateConsumableIssue } from "@/app/consumables/actions";
 import { ActionMsg as Msg, RevisionItem, useConsumableAction as useAction } from "@/components/consumablesUi";
+import { Modal } from "@/components/Modal";
 
 // The CONSUMABLES tab: the store's log of what it hands out. The form on top
 // is the storekeeper's (consumables.edit); the log below is everyone's to
@@ -39,24 +39,15 @@ function catalogueFor(catalogue: CatalogueOption[], department: string) {
 
 const itemLabel = (c: CatalogueOption) => `${c.name}${c.code ? ` · ${c.code}` : ""}${c.active ? "" : " (retired)"}`;
 
-/** Who the form's hand-out is for — the recipient choice and its workers. */
-interface Recipients {
-  scope: RecipientScope;
-  workerId: string;
-  /** The ticked workers, for "several workers". */
-  workerIds: string[];
-}
-
 /**
- * Where the limits of the picked item stand for this department (and worker,
- * workers or whole department) today, asked of the server as the form is
+ * Where the limits of the picked item stand for this department today, asked
+ * of the server as the form is
  * filled in — and what the quantity being typed would make of them. For a
  * row being corrected (`issueId`), its own day, the row left out.
  */
-function LimitHints({ itemId, department, who, qty, issueId }: { itemId: string; department: string; who: Recipients; qty: number; issueId?: number }) {
+function LimitHints({ itemId, department, qty, issueId }: { itemId: string; department: string; qty: number; issueId?: number }) {
   const [hints, setHints] = useState<LimitHint[] | null>(null);
   const ready = /^\d+$/.test(itemId) && department !== "" && department !== NEW_DEPARTMENT;
-  const ids = who.workerIds.join(",");
   useEffect(() => {
     if (!ready) return;
     let live = true;
@@ -64,15 +55,12 @@ function LimitHints({ itemId, department, who, qty, issueId }: { itemId: string;
       const fd = new FormData();
       fd.set("itemId", itemId);
       fd.set("department", department);
-      fd.set("recipientScope", who.scope);
-      fd.set("workerId", who.workerId);
-      fd.set("workerIds", ids);
       if (issueId) fd.set("id", String(issueId));
       const res = await consumableLimitHints(fd);
       if (live) setHints(res.hints);
     }, 250);
     return () => { live = false; clearTimeout(t); };
-  }, [ready, itemId, department, who.scope, who.workerId, ids, issueId]);
+  }, [ready, itemId, department, issueId]);
   if (!ready || hints === null) return null;
   if (hints.length === 0) return <p className="text-xs text-muted">No limit on this item for this department.</p>;
   return (
@@ -107,183 +95,42 @@ function OverLimitPrompt({ breaches, disabled }: { breaches: string[]; disabled?
 }
 
 /**
- * Who a hand-out is for: one worker (the dropdown), several (a list to tick),
- * or the whole department — its workers at work today, counted for the
- * per-person limits. A typed department has no members of its own, so it
- * offers one worker or several.
- */
-function RecipientFields({
-  department, workers, offered, who, setWho, disabled,
-}: {
-  department: string;
-  workers: ConsumableWorkerOption[];
-  offered: ConsumableWorkerOption[];
-  who: Recipients;
-  setWho: (v: Recipients) => void;
-  disabled?: boolean;
-}) {
-  const [filter, setFilter] = useState("");
-  const section = department !== "" && isSectionDepartment(department);
-  const crew = section ? workersForDepartment(workers, department) : [];
-  const ticked = new Set(who.workerIds);
-  const needle = filter.trim().toLowerCase();
-  const listed = needle ? offered.filter((w) => `${w.empId} ${w.name}`.toLowerCase().includes(needle)) : offered;
-  const toggle = (id: string) => setWho({ ...who, workerIds: ticked.has(id) ? who.workerIds.filter((x) => x !== id) : [...who.workerIds, id] });
-
-  return (
-    <div className="w-full space-y-2">
-      <input type="hidden" name="recipientScope" value={who.scope} />
-      <input type="hidden" name="workerIds" value={who.scope === "workers" ? who.workerIds.join(",") : ""} />
-      <div className="flex flex-wrap items-end gap-2">
-        <fieldset className="inline-flex flex-col gap-0.5" disabled={disabled}>
-          <legend className="text-[11px] font-bold text-muted uppercase tracking-wide">Hand-out for</legend>
-          <div className="seg" role="radiogroup" aria-label="Hand-out for">
-            {RECIPIENT_SCOPES.map((sc) => {
-              const off = sc === "department" && department !== "" && !section;
-              return (
-                <button
-                  key={sc} type="button" role="radio" aria-checked={who.scope === sc} className={who.scope === sc ? "on" : ""} disabled={off}
-                  title={off ? "A typed department has no workers of its own on the workers list — tick the workers instead" : undefined}
-                  onClick={() => setWho({ ...who, scope: sc })}
-                >
-                  {RECIPIENT_SCOPE_LABEL[sc]}
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
-        {who.scope === "worker" && (
-          <Field label="Technician / worker" className="w-full sm:w-64">
-            <select name="workerId" value={who.workerId} onChange={(e) => setWho({ ...who, workerId: e.target.value })} required disabled={disabled || !department} className={`${F} w-full`}>
-              <option value="" disabled>{department ? (offered.length ? "Pick the name…" : "No active worker in this section") : "Pick the department first"}</option>
-              {offered.map((w) => <option key={w.id} value={w.id}>{workerLabel(w)}</option>)}
-            </select>
-          </Field>
-        )}
-        {who.scope === "department" && (
-          <p className="text-sm pb-1.5" aria-live="polite">
-            {!department ? (
-              <span className="text-muted">Pick the department first.</span>
-            ) : crew.length === 0 ? (
-              <span className="text-bad-fg font-semibold">Nobody in this section is at work today — tick the workers instead.</span>
-            ) : (
-              <>
-                <b className="tabnum">{crew.length}</b> worker{crew.length === 1 ? "" : "s"} at work today — the quantity is shared between them, and a per-person limit counts ×{crew.length}.
-              </>
-            )}
-          </p>
-        )}
-        {who.scope === "workers" && (
-          <p className="text-sm pb-1.5" aria-live="polite">
-            <b className="tabnum">{who.workerIds.length}</b> ticked{who.workerIds.length > 1 ? <> — a per-person limit counts ×{who.workerIds.length}</> : null}
-          </p>
-        )}
-      </div>
-      {who.scope === "department" && crew.length > 0 && (
-        <details className="text-xs text-muted">
-          <summary className="cursor-pointer">Who is counted</summary>
-          <p className="mt-1">{crew.map(workerLabel).join(" · ")}</p>
-        </details>
-      )}
-      {who.scope === "workers" && (
-        <div className="border rounded-lg p-2 bg-surface-2 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            {offered.length > 12 && (
-              <input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find a name or ID…" aria-label="Find a worker" className={`${F} w-full sm:w-56`} />
-            )}
-            <button type="button" className="btn btn-sm btn-ghost" disabled={disabled || listed.length === 0}
-              onClick={() => setWho({ ...who, workerIds: [...new Set([...who.workerIds, ...listed.map((w) => String(w.id))])] })}>
-              Tick all{needle ? " shown" : ""}
-            </button>
-            <button type="button" className="btn btn-sm btn-ghost" disabled={disabled || who.workerIds.length === 0} onClick={() => setWho({ ...who, workerIds: [] })}>Clear</button>
-          </div>
-          {!department ? (
-            <p className="text-xs text-muted">Pick the department first.</p>
-          ) : offered.length === 0 ? (
-            <p className="text-xs text-muted">No active worker in this section.</p>
-          ) : (
-            <ul className="grid gap-x-3 gap-y-0.5 sm:grid-cols-2 lg:grid-cols-3 max-h-56 overflow-y-auto">
-              {listed.map((w) => (
-                <li key={w.id}>
-                  <label className="flex items-center gap-1.5 text-sm cursor-pointer py-0.5">
-                    <input type="checkbox" checked={ticked.has(String(w.id))} onChange={() => toggle(String(w.id))} disabled={disabled} />
-                    <span className="ltr tabnum text-xs text-muted">{w.empId}</span> {w.name}
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
  * The row's fields, for a new hand-out and for an edit alike. The item comes
  * from the catalogue (the department's items first) or is typed when it is
  * not in it; the department is a dropdown: a worker section, a department
- * typed before, or a new one typed in the box that opens beside it; then who
- * it is for — the worker list narrows to the section picked. A saved group
- * row's department and workers are fixed (`locked`): it shows them.
+ * typed before, or a new one typed in the box that opens beside it. No worker
+ * is named — the hand-out is the department's.
  */
 function IssueFields({
   departments,
-  workers,
   catalogue,
   entry,
   disabled,
   department,
   setDepartment,
-  who,
-  setWho,
-  chooseScope,
   itemId,
   setItemId,
   setQty,
   itemRef,
 }: {
   departments: ConsumablesPageData["departments"];
-  workers: ConsumableWorkerOption[];
   catalogue: CatalogueOption[];
   entry?: ConsumableIssueView;
   disabled?: boolean;
   department: string;
   setDepartment: (v: string) => void;
-  who: Recipients;
-  setWho: (v: Recipients) => void;
-  /** A new hand-out chooses one worker, several or the whole department; a
-   *  saved one keeps what it was. */
-  chooseScope: boolean;
   itemId: string;
   setItemId: (v: string) => void;
   setQty: (v: number) => void;
   itemRef?: React.Ref<HTMLSelectElement>;
 }) {
-  const locked = entry?.group ?? null;
-  // an old row's worker may since have left the list or the section — the
-  // admin's edit still shows him, so the row can be saved as it is
-  const offered = useMemo(() => {
-    const list = workersForDepartment(workers, department);
-    const w = entry?.worker;
-    if (w && String(w.id) === who.workerId && !list.some((x) => x.id === w.id)) {
-      return [...list, { id: w.id, empId: w.empId, name: `${w.name}${w.active ? "" : " (deactivated)"}`, sections: [] }];
-    }
-    return list;
-  }, [workers, department, entry, who.workerId]);
+  // a hand-out is the department's — no worker is picked any more, so the
+  // department can be corrected on any row, an older group row's included
   const items = useMemo(() => catalogueFor(catalogue, department), [catalogue, department]);
   const picked = catalogue.find((c) => String(c.id) === itemId);
 
   function pickDepartment(next: string) {
     setDepartment(next);
-    // workers who are not in the new section cannot stay picked, and a typed
-    // department has no "whole department"
-    const inNext = new Set(workersForDepartment(workers, next).map((w) => String(w.id)));
-    setWho({
-      scope: who.scope === "department" && next !== "" && !isSectionDepartment(next) ? "workers" : who.scope,
-      workerId: who.workerId && !inNext.has(who.workerId) ? "" : who.workerId,
-      workerIds: who.workerIds.filter((id) => inNext.has(id)),
-    });
   }
 
   return (
@@ -319,13 +166,7 @@ function IssueFields({
           onInput={(e) => setQty(Number((e.target as HTMLInputElement).value) || 0)}
         />
       </Field>
-      {locked ? (
-        <div className="inline-flex flex-col gap-0.5 text-sm pb-1.5">
-          <span className="text-[11px] font-bold text-muted uppercase tracking-wide">Department · hand-out for</span>
-          <span><b>{entry!.departmentLabel}</b> · {locked.label} <span className="text-xs text-muted">(fixed when it was recorded)</span></span>
-        </div>
-      ) : (
-        <>
+      <>
           <Field label="Department" className="w-full sm:w-56">
             <select name="department" value={department} onChange={(e) => pickDepartment(e.target.value)} required disabled={disabled} className={`${F} w-full`}>
               <option value="" disabled>Pick the department…</option>
@@ -350,22 +191,12 @@ function IssueFields({
               />
             </Field>
           )}
-          {!chooseScope && (
-            <Field label="Technician / worker" className="w-full sm:w-64">
-              <select name="workerId" value={who.workerId} onChange={(e) => setWho({ ...who, workerId: e.target.value })} required disabled={disabled || !department} className={`${F} w-full`}>
-                <option value="" disabled>{department ? (offered.length ? "Pick the name…" : "No active worker in this section") : "Pick the department first"}</option>
-                {offered.map((w) => <option key={w.id} value={w.id}>{workerLabel(w)}</option>)}
-              </select>
-            </Field>
-          )}
-        </>
-      )}
+          <input type="hidden" name="recipientScope" value="department" />
+      </>
       <Field label="Notes (optional)" className="w-full sm:flex-1 sm:min-w-[12rem]">
         <input type="text" name="notes" defaultValue={entry?.notes ?? ""} disabled={disabled} maxLength={CONSUMABLE_LIMITS.notes} autoComplete="off" className={`${F} w-full`} />
       </Field>
-      {chooseScope && !locked && (
-        <RecipientFields department={department} workers={workers} offered={offered} who={who} setWho={setWho} disabled={disabled} />
-      )}
+
     </>
   );
 }
@@ -373,7 +204,6 @@ function IssueFields({
 function RecordForm({ data }: { data: ConsumablesPageData }) {
   const add = useAction();
   const [department, setDepartment] = useState("");
-  const [who, setWho] = useState<Recipients>({ scope: "worker", workerId: "", workerIds: [] });
   const [itemId, setItemId] = useState("");
   const [qty, setQty] = useState(0);
   // the breach the server answered with; cleared as soon as the hand-out changes
@@ -381,8 +211,8 @@ function RecordForm({ data }: { data: ConsumablesPageData }) {
   const itemRef = useRef<HTMLSelectElement>(null);
   const changed = <T,>(set: (v: T) => void) => (v: T) => { set(v); setBreaches(null); };
 
-  // after a save the next hand-out is usually to the same man (or group):
-  // department and who it is for stay, the item, qty and notes clear
+  // after a save the next hand-out is usually to the same department: it
+  // stays, the item, qty and notes clear
   function clearForNext(form: HTMLFormElement) {
     for (const n of ["item", "qty", "notes", "overLimitReason"]) {
       const el = form.elements.namedItem(n);
@@ -396,7 +226,7 @@ function RecordForm({ data }: { data: ConsumablesPageData }) {
 
   return (
     <form
-      className="bg-surface border rounded-xl p-3 space-y-2"
+      className="space-y-2"
       onSubmit={(ev) => {
         ev.preventDefault();
         const form = ev.currentTarget;
@@ -413,15 +243,15 @@ function RecordForm({ data }: { data: ConsumablesPageData }) {
     >
       <div className="flex flex-wrap items-end gap-2">
         <IssueFields
-          departments={data.departments} workers={data.workers} catalogue={data.catalogue} disabled={add.pending}
-          department={department} setDepartment={changed(setDepartment)} who={who} setWho={changed(setWho)} chooseScope
+          departments={data.departments} catalogue={data.catalogue} disabled={add.pending}
+          department={department} setDepartment={changed(setDepartment)}
           itemId={itemId} setItemId={changed(setItemId)} setQty={changed(setQty)} itemRef={itemRef}
         />
         <button type="submit" className={`btn btn-sm shrink-0 ${breaches ? "btn-danger border" : "btn-primary"}`} disabled={add.pending}>
           {add.pending ? "Saving…" : breaches ? "Record over the limit" : "Record"}
         </button>
       </div>
-      <LimitHints itemId={itemId} department={department} who={who} qty={qty} />
+      <LimitHints itemId={itemId} department={department} qty={qty} />
       {breaches && <OverLimitPrompt breaches={breaches} disabled={add.pending} />}
       <p className="text-xs text-muted">The date and time are stamped when you save. You can correct the rows you recorded — every correction is kept for the admin.</p>
       {!breaches && <Msg msg={add.msg} />}
@@ -432,10 +262,6 @@ function RecordForm({ data }: { data: ConsumablesPageData }) {
 function EditRow({ e, data, colSpan, onClose }: { e: ConsumableIssueView; data: ConsumablesPageData; colSpan: number; onClose: () => void }) {
   const edit = useAction();
   const [department, setDepartment] = useState(e.department);
-  // a group row's workers are fixed — the hints count them as saved
-  const [who, setWho] = useState<Recipients>(
-    e.group ? { scope: "workers", workerId: "", workerIds: e.group.workers.map((w) => String(w.id)) } : { scope: "worker", workerId: String(e.worker?.id ?? ""), workerIds: [] },
-  );
   const [itemId, setItemId] = useState(e.itemId === null ? NEW_ITEM : String(e.itemId));
   const [qty, setQty] = useState(e.qty);
   const [breaches, setBreaches] = useState<string[] | null>(null);
@@ -455,14 +281,14 @@ function EditRow({ e, data, colSpan, onClose }: { e: ConsumableIssueView; data: 
         >
           <div className="flex flex-wrap items-end gap-2">
             <IssueFields
-              departments={data.departments} workers={data.workers} catalogue={data.catalogue} entry={e} disabled={edit.pending}
-              department={department} setDepartment={changed(setDepartment)} who={who} setWho={changed(setWho)} chooseScope={false}
+              departments={data.departments} catalogue={data.catalogue} entry={e} disabled={edit.pending}
+              department={department} setDepartment={changed(setDepartment)}
               itemId={itemId} setItemId={changed(setItemId)} setQty={changed(setQty)}
             />
             <button type="submit" className={`btn btn-sm shrink-0 ${breaches ? "btn-danger border" : "btn-primary"}`} disabled={edit.pending}>{breaches ? "Save over the limit" : "Save"}</button>
             <button type="button" className="btn btn-sm btn-ghost shrink-0" onClick={onClose} disabled={edit.pending}>Cancel</button>
           </div>
-          <LimitHints itemId={itemId} department={department} who={who} qty={qty} issueId={e.id} />
+          <LimitHints itemId={itemId} department={department} qty={qty} issueId={e.id} />
           {breaches && <OverLimitPrompt breaches={breaches} disabled={edit.pending} />}
           {e.overLimit && !breaches && <p className="text-xs text-bad-fg">Recorded over a limit — “{e.overLimit.reason}”. It keeps that reason while it stays over.</p>}
           <p className="text-xs text-muted">Recorded {e.issuedAtLabel} by {e.recordedBy}. The time stays as recorded; the row as it is now is kept, and the admin can restore it.</p>
@@ -491,20 +317,13 @@ function IssueRow({ e, data, isAdmin, showActions, colSpan }: { e: ConsumableIss
           {e.overLimit?.reason && <div className="text-xs text-bad-fg font-normal">“{e.overLimit.reason}”</div>}
         </td>
         <td className="p-2 text-center ltr tabnum font-extrabold whitespace-nowrap">{e.qty}{e.uom && <span className="text-[10px] text-muted font-semibold ms-0.5">{e.uom}</span>}</td>
-        <td className="p-2">{e.departmentLabel}</td>
         <td className="p-2">
+          {e.departmentLabel}
+          {/* an older row named who it went to — kept, in small print */}
           {e.worker ? (
-            <span className="whitespace-nowrap">
-              <code className="ltr tabnum text-xs px-1 py-0.5 rounded bg-surface-2 border mr-1">{e.worker.empId}</code>
-              {e.worker.name}
-            </span>
-          ) : e.group ? (
-            <details>
-              <summary className="cursor-pointer whitespace-nowrap">
-                <span className="pill pill-muted mr-1">group</span>{e.group.label}
-              </summary>
-              <p className="text-xs text-muted mt-1 max-w-xs">{e.group.workers.map(workerLabel).join(" · ")}</p>
-            </details>
+            <div className="text-[11px] text-muted whitespace-nowrap">{workerLabel(e.worker)}</div>
+          ) : e.group && e.group.workers.length > 0 ? (
+            <div className="text-[11px] text-muted max-w-xs" title={e.group.workers.map(workerLabel).join(" · ")}>{e.group.label}</div>
           ) : null}
         </td>
         <td className="p-2 text-muted">{e.notes ?? ""}</td>
@@ -587,21 +406,32 @@ export function ConsumablesClient({
   }, [data.entries, q]);
   // the actions column is there for an admin, or for a recorder with a row of his own on screen
   const showActions = isAdmin || data.entries.some((e) => e.canEdit);
-  const colSpan = showActions ? 8 : 7;
+  const colSpan = showActions ? 7 : 6;
+  // recording opens in a popup; it stays open after a save for the next one
+  const [recording, setRecording] = useState(false);
 
   return (
     <div className="space-y-3">
       <datalist id={ITEMS_LIST}>{data.knownItems.map((i) => <option key={i} value={i} />)}</datalist>
 
       {canRecord ? (
-        <RecordForm data={data} />
+        <>
+          <div className="flex justify-end">
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setRecording(true)}>+ Record a hand-out</button>
+          </div>
+          {recording && (
+            <Modal title="Record a hand-out" sub="The item, the quantity and the department it went to — the date and time are stamped when you save" width="max-w-4xl" onClose={() => setRecording(false)}>
+              <RecordForm data={data} />
+            </Modal>
+          )}
+        </>
       ) : (
         <p className="text-xs text-muted">You can view the log. Recording hand-outs needs the “Consumables — record” permission — ask the admin.</p>
       )}
 
       <div className="flex flex-wrap items-center gap-2 no-print">
         <input
-          type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item, worker, department…"
+          type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item, department, notes…"
           aria-label="Search the log" className={`${F} w-full sm:w-72`}
         />
         <span className="text-sm text-muted">
@@ -624,7 +454,6 @@ export function ConsumablesClient({
                   <th className="p-2">Item</th>
                   <th className="p-2 text-center">Qty</th>
                   <th className="p-2">Department</th>
-                  <th className="p-2">Technician / worker</th>
                   <th className="p-2">Notes</th>
                   <th className="p-2">Recorded by</th>
                   {showActions && <th className="p-2 no-print" title="Correct your own rows; deleting is the admin's">Actions</th>}

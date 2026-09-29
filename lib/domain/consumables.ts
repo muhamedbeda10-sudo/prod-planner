@@ -88,6 +88,18 @@ export function groupLabel(scope: Exclude<RecipientScope, "worker">, department:
   return `${workers.length} workers: ${shown}${names.length > 3 ? ` +${names.length - 3}` : ""}`;
 }
 
+/** The workers each worker section has — its active workers on the list,
+ *  those on leave included (a department's limit follows its staff, not who
+ *  came in today). A per-person limit is times this number. */
+export function departmentWorkers<W extends { active: boolean; sections: readonly string[] }>(workers: readonly W[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const w of workers) {
+    if (!w.active) continue;
+    for (const s of new Set(w.sections)) m.set(s, (m.get(s) ?? 0) + 1);
+  }
+  return m;
+}
+
 /** Who "whole department" hands out to: the section's active workers who are
  *  at work today (not away on vacation) — the headcount a per-person limit
  *  is multiplied by. */
@@ -105,6 +117,8 @@ export function issueWho(r: {
   recipients: readonly { worker: { name: string } }[];
 }): { empId: string; name: string } {
   if (r.worker) return { empId: r.worker.empId, name: r.worker.name };
+  // hand-outs are recorded to a department now — no one named
+  if (r.recipientScope === "department" && r.recipients.length === 0) return { empId: "", name: departmentLabel(r.department) };
   const scope = r.recipientScope === "department" ? "department" : "workers";
   return { empId: "", name: groupLabel(scope, r.department, r.recipients.map((x) => x.worker)) };
 }
@@ -135,18 +149,12 @@ export function readConsumableForm(get: (name: string) => unknown): { fields?: C
   if (department.length > CONSUMABLE_LIMITS.department) return { error: `The department name is too long (at most ${CONSUMABLE_LIMITS.department} characters).` };
   if (department === NEW_DEPARTMENT) return { error: "Pick the department." };
 
-  const r = readRecipients(get);
-  if (r.error) return { error: r.error };
-  // a typed department (Maintenance, Store …) has no members on the workers
-  // list — "whole department" would be nobody
-  if (r.recipients!.scope === "department" && !isSectionDepartment(resolveDepartment(department, []))) {
-    return { error: `${departmentLabel(department)} has no workers of its own on the workers list — tick the workers instead.` };
-  }
-
   const notesRaw = String(get("notes") ?? "").trim();
   if (notesRaw.length > CONSUMABLE_LIMITS.notes) return { error: `The notes are too long (at most ${CONSUMABLE_LIMITS.notes} characters).` };
 
-  return { fields: { item, qty: q.qty!, department, recipients: r.recipients!, notes: notesRaw || null } };
+  // a hand-out is recorded to the department and the quantity it took — no
+  // worker is named any more (older rows keep the one they had)
+  return { fields: { item, qty: q.qty!, department, recipients: { scope: "department" }, notes: notesRaw || null } };
 }
 
 const fold = (s: string) => cleanText(s).toLowerCase();

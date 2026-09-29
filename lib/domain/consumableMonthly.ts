@@ -13,12 +13,12 @@
 
 import { addDaysISO } from "./dateSlicer";
 import {
-  coversDepartment, departmentsLabel, periodWindow, usageIn, windowLabel, windowsOverlapping,
+  coversDepartment, isMultiMonth, periodWindow, ruleLabel, usageIn, windowLabel, windowsOverlapping,
   type LimitBasis, type LimitPeriod, type LimitRule, type LimitUse,
 } from "./consumableLimits";
 
 /** The monthly multiple; a quarter's number stands whole over the quarter to date. */
-export const MONTHLY_FACTOR: Record<LimitPeriod, number> = { day: 26, week: 4, month: 1, quarter: 1 };
+export const MONTHLY_FACTOR: Record<LimitPeriod, number> = { day: 26, week: 4, month: 1, bimonth: 1, quarter: 1, fourmonth: 1, halfyear: 1, year: 1 };
 export const NEAR_RATIO = 0.8;
 
 export type MonthStatus = "over" | "near" | "under" | "unused" | "nolimit";
@@ -75,7 +75,8 @@ export function isMonthKey(s: string): boolean {
 export function reportSpan(month: string, trendMonths = 6): { from: string; to: string } {
   const { from, to } = monthBounds(month);
   const first = monthBounds(shiftMonth(month, -(trendMonths - 1))).from;
-  return { from: [first, periodWindow("week", from).from, periodWindow("quarter", from).from].sort()[0], to: periodWindow("week", to).to };
+  // back to the year's start: every multi-month window of the month is inside it
+  return { from: [first, periodWindow("week", from).from, periodWindow("year", from).from].sort()[0], to: periodWindow("week", to).to };
 }
 
 // ---------------------------------------------------------------- the report
@@ -175,9 +176,9 @@ function limitMonth(rule: LimitRule, allUses: readonly LimitUse[], month: string
   const { from, to } = monthBounds(month);
   const prevBounds = monthBounds(prevMonth);
   // a quarterly limit counts the quarter so far; every other the month
-  const quarterly = rule.period === "quarter";
-  const monthWindow = quarterly ? { from: periodWindow("quarter", from).from, to } : { from, to };
-  const prevWindow = quarterly ? { from: periodWindow("quarter", prevBounds.from).from, to: prevBounds.to } : prevBounds;
+  const quarterly = isMultiMonth(rule.period);
+  const monthWindow = quarterly ? { from: periodWindow(rule.period, from).from, to } : { from, to };
+  const prevWindow = quarterly ? { from: periodWindow(rule.period, prevBounds.from).from, to: prevBounds.to } : prevBounds;
   const between = (w: { from: string; to: string }) => allUses.filter((u) => u.dayISO >= w.from && u.dayISO <= w.to);
   const cur = between(monthWindow);
   const prev = between(prevWindow);
@@ -216,8 +217,8 @@ function limitMonth(rule: LimitRule, allUses: readonly LimitUse[], month: string
   }
 
   return {
-    ruleId: rule.id, departmentsLabel: departmentsLabel(rule.departments), basis: rule.basis, period: rule.period, qty: rule.qty,
-    allowance, toDate: quarterly ? `${windowLabel("quarter", monthWindow)} to date` : null, used, usedAll, ratio: allowance > 0 ? used / allowance : 0, status: grade(used, allowance), prevUsed,
+    ruleId: rule.id, departmentsLabel: ruleLabel(rule), basis: rule.basis, period: rule.period, qty: rule.qty,
+    allowance, toDate: quarterly ? `${windowLabel(rule.period, monthWindow)} to date` : null, used, usedAll, ratio: allowance > 0 ? used / allowance : 0, status: grade(used, allowance), prevUsed,
     weeks, daysOver, workersOver,
   };
 }
@@ -233,7 +234,7 @@ function itemMonth(item: ItemInput, allUses: readonly LimitUse[], month: string,
 
   // the item's monthly allowance adds its shared limits — a quarterly one
   // stands on its own over the quarter, so it grades the item through its row
-  const pools = item.rules.filter((r) => r.basis === "pool" && r.period !== "quarter");
+  const pools = item.rules.filter((r) => r.basis === "pool" && !isMultiMonth(r.period));
   const allowance = pools.length ? round3(pools.reduce((n, r) => n + monthlyAllowance(r), 0)) : null;
   const poolUsed = round3(cur.filter((u) => pools.some((r) => coversDepartment(r, u.department))).reduce((n, u) => n + u.qty, 0));
 

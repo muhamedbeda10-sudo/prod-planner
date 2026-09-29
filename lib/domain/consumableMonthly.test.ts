@@ -28,11 +28,11 @@ describe("months", () => {
     expect(monthBounds("2026-02")).toEqual({ from: "2026-02-01", to: "2026-02-28" });
     expect(shiftMonth("2026-01", -1)).toBe("2025-12");
     expect(shiftMonth("2026-12", 1)).toBe("2027-01");
-    // six months back to the month's end, the month's own edge weeks counted whole
+    // back to the year's first day (every multi-month window of the month is
+    // inside it), to the month's end with its edge weeks counted whole
     // (30 Sep 2026 is a Wednesday: its week runs to Friday 2 Oct)
-    expect(reportSpan("2026-09")).toEqual({ from: "2026-04-01", to: "2026-10-02" });
-    // a one-month trend still reaches back to the quarter's first day (and the month's first week)
-    expect(reportSpan("2026-09", 1)).toEqual({ from: "2026-07-01", to: "2026-10-02" });
+    expect(reportSpan("2026-09")).toEqual({ from: "2026-01-01", to: "2026-10-02" });
+    expect(reportSpan("2026-09", 1)).toEqual({ from: "2026-01-01", to: "2026-10-02" });
   });
 });
 

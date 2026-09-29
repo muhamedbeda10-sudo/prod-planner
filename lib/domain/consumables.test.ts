@@ -48,7 +48,7 @@ describe("readConsumableForm", () => {
   it("reads a complete hand-out", () => {
     const r = readConsumableForm(form({ ...valid, item: "  Welding   wire\n1.2mm ", notes: " for tank 12 " }));
     expect(r.error).toBeUndefined();
-    expect(r.fields).toEqual({ item: "Welding wire 1.2mm", qty: 2, department: "WeldingTX", recipients: { scope: "worker", workerId: 7 }, notes: "for tank 12" });
+    expect(r.fields).toEqual({ item: "Welding wire 1.2mm", qty: 2, department: "WeldingTX", recipients: { scope: "department" }, notes: "for tank 12" });
   });
 
   it("stores empty notes as null", () => {
@@ -65,26 +65,16 @@ describe("readConsumableForm", () => {
     expect(readConsumableForm(form({ ...valid, qty: "" })).error).toMatch(/quantity/);
     expect(readConsumableForm(form({ ...valid, department: "" })).error).toMatch(/Pick the department/);
     expect(readConsumableForm(form({ ...valid, department: NEW_DEPARTMENT, departmentNew: "" })).error).toMatch(/new department/);
-    expect(readConsumableForm(form({ ...valid, workerId: "" })).error).toMatch(/worker/);
-    expect(readConsumableForm(form({ ...valid, workerId: "abc" })).error).toMatch(/worker/);
-    expect(readConsumableForm(form({ ...valid, workerId: "-1" })).error).toMatch(/worker/);
+    // no worker is asked for any more — a hand-out is the department's
+    expect(readConsumableForm(form({ ...valid, workerId: "" })).error).toBeUndefined();
   });
 
-  it("reads several ticked workers, and one ticked as just that worker", () => {
-    const several = readConsumableForm(form({ ...valid, workerId: "", recipientScope: "workers", workerIds: "9, 3,9" }));
-    expect(several.fields?.recipients).toEqual({ scope: "workers", workerIds: [3, 9] });
-    const one = readConsumableForm(form({ ...valid, workerId: "", recipientScope: "workers", workerIds: "4" }));
-    expect(one.fields?.recipients).toEqual({ scope: "worker", workerId: 4 });
-    expect(readConsumableForm(form({ ...valid, recipientScope: "workers", workerIds: "" })).error).toMatch(/Tick the workers/);
-    expect(readConsumableForm(form({ ...valid, recipientScope: "workers", workerIds: "3,x" })).error).toMatch(/did not read/);
-    expect(readConsumableForm(form({ ...valid, recipientScope: "everyone" })).error).toMatch(/who the hand-out is for/);
-  });
-
-  it("takes a whole department only for a worker section", () => {
-    expect(readConsumableForm(form({ ...valid, workerId: "", recipientScope: "department" })).fields?.recipients).toEqual({ scope: "department" });
-    expect(readConsumableForm(form({ ...valid, department: "welding tx", recipientScope: "department" })).error).toBeUndefined();
+  it("records to the department whatever an older form sends of workers", () => {
+    expect(readConsumableForm(form({ ...valid, workerId: "", recipientScope: "workers", workerIds: "9, 3,9" })).fields?.recipients).toEqual({ scope: "department" });
+    // a typed department has no one on the workers list — still fine: the hand-out is its own
     const typed = readConsumableForm(form({ ...valid, department: NEW_DEPARTMENT, departmentNew: "Maintenance", recipientScope: "department" }));
-    expect(typed.error).toMatch(/Maintenance has no workers of its own/);
+    expect(typed.error).toBeUndefined();
+    expect(typed.fields?.department).toBe("Maintenance");
   });
 
   it("refuses over-long text", () => {
