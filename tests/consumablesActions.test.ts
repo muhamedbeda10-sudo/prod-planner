@@ -12,6 +12,7 @@ const h = vi.hoisted(() => {
     prisma: {
       consumableIssue: { create: fn(), findUnique: fn(), findMany: fn(), updateMany: fn() },
       consumableIssueRevision: { create: fn(), findUnique: fn() },
+      consumableItem: { findUnique: fn() },
       worker: { findUnique: fn() },
       $transaction: fn(),
     },
@@ -19,12 +20,15 @@ const h = vi.hoisted(() => {
     requirePerm: vi.fn(),
     requireAdmin: vi.fn(),
     getCurrentUser: vi.fn(),
+    checkIssueLimits: vi.fn(),
+    limitHints: vi.fn(),
   };
 });
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("next/cache", () => ({ revalidatePath: h.revalidatePath }));
+vi.mock("@/lib/server/consumableLimits", () => ({ checkIssueLimits: h.checkIssueLimits, limitHints: h.limitHints }));
 vi.mock("@/lib/server/auth", () => ({
   requirePerm: h.requirePerm,
   requireAdmin: h.requireAdmin,
@@ -69,6 +73,8 @@ beforeEach(() => {
   h.requirePerm.mockResolvedValue({ user: storekeeper });
   h.requireAdmin.mockResolvedValue({ user: admin });
   h.getCurrentUser.mockResolvedValue(storekeeper);
+  h.checkIssueLimits.mockResolvedValue([]);
+  h.prisma.consumableItem.findUnique.mockResolvedValue({ id: 3, name: "Grinding Disk 115x6x22.23mm", active: true });
   h.prisma.worker.findUnique.mockResolvedValue(sayed);
   // the departments typed on earlier rows
   h.prisma.consumableIssue.findMany.mockResolvedValue([{ department: "Maintenance" }]);
@@ -277,5 +283,82 @@ describe("restoreConsumableRevision", () => {
   it("refuses when the version's worker has been deleted from the list", async () => {
     h.prisma.worker.findUnique.mockResolvedValueOnce(null);
     expect((await restoreConsumableRevision(restore())).error).toMatch(/no longer on the list/);
+  });
+});
+
+describe("limits at recording", () => {
+  const breach = {
+    ruleId: 9, period: "week", basis: "pool", departmentsLabel: "Welding TX", window: { from: "2026-09-26", to: "2026-10-02" },
+    windowLabel: "week of 26 Sep", used: 14, adding: 2, limit: 15,
+  };
+
+  it("records a catalogue item under the catalogue's own name, linked to it", async () => {
+    const res = await createConsumableIssue(form({ ...valid, itemId: "3", item: "whatever was typed" }));
+    expect(res.ok).toBe(true);
+    const data = h.prisma.consumableIssue.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ itemId: 3, item: "Grinding Disk 115x6x22.23mm", overLimit: false, overLimitReason: null });
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3, department: "WeldingTX", workerId: 7, qty: 2 }));
+  });
+
+  it("records a typed item with no catalogue link, and no limit check to speak of", async () => {
+    const res = await createConsumableIssue(form({ ...valid, itemId: "__new__", item: "Spare fuse" }));
+    expect(res.ok).toBe(true);
+    expect(h.prisma.consumableIssue.create.mock.calls[0][0].data).toMatchObject({ itemId: null, item: "Spare fuse" });
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: null }));
+  });
+
+  it("refuses a retired catalogue item for a new hand-out", async () => {
+    h.prisma.consumableItem.findUnique.mockResolvedValueOnce({ id: 3, name: "Old disk", active: false });
+    const res = await createConsumableIssue(form({ ...valid, itemId: "3" }));
+    expect(res.error).toMatch(/retired/);
+    expect(h.prisma.consumableIssue.create).not.toHaveBeenCalled();
+  });
+
+  it("stops at a breach and asks for the reason, saving nothing", async () => {
+    h.checkIssueLimits.mockResolvedValue([breach]);
+    const res = await createConsumableIssue(form({ ...valid, itemId: "3" }));
+    expect(res).toMatchObject({ ok: false, needsReason: true, breaches: ["Welding TX · a week (week of 26 Sep): 14 already + 2 now = 16 of 15"] });
+    expect(h.prisma.consumableIssue.create).not.toHaveBeenCalled();
+  });
+
+  it("records over the limit once the reason is given, flagged with the breach", async () => {
+    h.checkIssueLimits.mockResolvedValue([breach]);
+    const res = await createConsumableIssue(form({ ...valid, itemId: "3", overLimitReason: "  second shift ran out  " }));
+    expect(res.ok).toBe(true);
+    expect(h.prisma.consumableIssue.create.mock.calls[0][0].data).toMatchObject({
+      overLimit: true, overLimitReason: "second shift ran out", overLimitNote: expect.stringContaining("16 of 15"),
+    });
+  });
+
+  it("refuses an over-long reason", async () => {
+    h.checkIssueLimits.mockResolvedValue([breach]);
+    expect((await createConsumableIssue(form({ ...valid, itemId: "3", overLimitReason: "x".repeat(301) }))).error).toMatch(/too long/);
+  });
+
+  it("checks an edit on the day it was handed out, leaving the row itself out", async () => {
+    h.prisma.consumableIssue.findUnique.mockResolvedValue(saved({ issuedAt: new Date("2026-09-20T08:00:00Z"), itemId: 3 }));
+    await updateConsumableIssue(form({ ...valid, itemId: "3", qty: "3", id: "42", version: version.toISOString() }));
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3, dayISO: "2026-09-20", excludeIssueId: 42, qty: 3 }));
+  });
+
+  it("keeps an edited row's earlier reason while it is still over, and clears the flag once it is not", async () => {
+    h.checkIssueLimits.mockResolvedValue([breach]);
+    h.prisma.consumableIssue.findUnique.mockResolvedValue(saved({ issuedAt: new Date("2026-09-28T08:00:00Z"), itemId: 3, overLimit: true, overLimitReason: "urgent job" }));
+    const edit = form({ ...valid, itemId: "3", qty: "3", id: "42", version: version.toISOString() });
+    expect((await updateConsumableIssue(edit)).ok).toBe(true);
+    expect(h.prisma.consumableIssue.updateMany.mock.calls[0][0].data).toMatchObject({ overLimit: true, overLimitReason: "urgent job" });
+
+    h.checkIssueLimits.mockResolvedValue([]);
+    h.prisma.consumableIssue.updateMany.mockClear();
+    expect((await updateConsumableIssue(edit)).ok).toBe(true);
+    expect(h.prisma.consumableIssue.updateMany.mock.calls[0][0].data).toMatchObject({ overLimit: false, overLimitReason: null, overLimitNote: null });
+  });
+
+  it("asks for a reason when an edit newly takes a row over", async () => {
+    h.checkIssueLimits.mockResolvedValue([breach]);
+    h.prisma.consumableIssue.findUnique.mockResolvedValue(saved({ issuedAt: new Date("2026-09-28T08:00:00Z"), itemId: 3 }));
+    const res = await updateConsumableIssue(form({ ...valid, itemId: "3", qty: "9", id: "42", version: version.toISOString() }));
+    expect(res.needsReason).toBe(true);
+    expect(h.prisma.consumableIssue.updateMany).not.toHaveBeenCalled();
   });
 });

@@ -146,6 +146,9 @@ export interface ConsumableSnapshot {
   workerEmpId: string;
   workerName: string;
   notes: string | null;
+  /** The catalogue item; null for a typed item. Absent on revisions written
+   *  before the catalogue existed. */
+  itemId?: number | null;
 }
 
 /** An admin edits any row; someone holding consumables.edit edits the rows he
@@ -162,7 +165,8 @@ export function canEditIssue(
 /** The same hand-out, field for field (the worker by id — his name on the
  *  list may have changed since). */
 export function sameSnapshot(a: ConsumableSnapshot, b: ConsumableSnapshot): boolean {
-  return a.item === b.item && a.qty === b.qty && a.department === b.department && a.workerId === b.workerId && (a.notes ?? null) === (b.notes ?? null);
+  return a.item === b.item && a.qty === b.qty && a.department === b.department && a.workerId === b.workerId && (a.notes ?? null) === (b.notes ?? null)
+    && (a.itemId ?? null) === (b.itemId ?? null);
 }
 
 /** Read a snapshot back from a revision's JSON; null when it is not one. */
@@ -178,7 +182,35 @@ export function parseSnapshot(raw: unknown): ConsumableSnapshot | null {
     workerEmpId: typeof s.workerEmpId === "string" ? s.workerEmpId : "",
     workerName: typeof s.workerName === "string" ? s.workerName : "",
     notes: typeof s.notes === "string" && s.notes ? s.notes : null,
+    ...(s.itemId === undefined ? {} : { itemId: Number.isInteger(Number(s.itemId)) && s.itemId !== null ? Number(s.itemId) : null }),
   };
+}
+
+// ---- the catalogue pick and the over-limit reason ----
+
+/** The item dropdown's "not in the catalogue — type it" choice. */
+export const NEW_ITEM = "__new__";
+export const OVER_LIMIT_REASON_MAX = 300;
+
+/** Which item the form picked: a catalogue id, or a typed item (null — the
+ *  name is in the "item" box). */
+export function readItemPick(get: (name: string) => unknown): { itemId?: number | null; error?: string } {
+  const raw = cleanText(get("itemId"));
+  if (raw === NEW_ITEM) return { itemId: null };
+  if (raw === "") {
+    // an older form (or a script) that only sends the typed name
+    return cleanText(get("item")) ? { itemId: null } : { error: "Pick the item." };
+  }
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id <= 0) return { error: "Pick the item." };
+  return { itemId: id };
+}
+
+/** The recorder's reason for going over a limit — one line, trimmed. */
+export function readOverLimitReason(get: (name: string) => unknown): { reason: string | null; error?: string } {
+  const reason = cleanText(get("overLimitReason"));
+  if (reason.length > OVER_LIMIT_REASON_MAX) return { reason: null, error: `The reason is too long (at most ${OVER_LIMIT_REASON_MAX} characters).` };
+  return { reason: reason || null };
 }
 
 /** A snapshot in one line: "2 × Welding wire · Welding TX · 1203 Sayed · “note”". */

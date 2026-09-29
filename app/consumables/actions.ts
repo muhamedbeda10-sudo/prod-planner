@@ -5,11 +5,16 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm, requireAdmin, requirePerm } from "@/lib/server/auth";
 import { getCustomDepartments } from "@/lib/server/consumables";
+import { checkIssueLimits, limitHints, type LimitHint } from "@/lib/server/consumableLimits";
 import { parseWorkerSections } from "@/lib/domain/workers";
+import { factoryDayISO } from "@/lib/domain/dates";
+import { describeBreach, type LimitBreach } from "@/lib/domain/consumableLimits";
 import {
   canEditIssue,
   parseSnapshot,
   readConsumableForm,
+  readItemPick,
+  readOverLimitReason,
   resolveDepartment,
   sameSnapshot,
   workerProblem,
@@ -17,6 +22,10 @@ import {
 } from "@/lib/domain/consumables";
 
 // The CONSUMABLES tab's writes. Recording a hand-out needs consumables.edit.
+// A hand-out of a catalogue item is checked against the item's limits: one
+// that would take a limit over is refused until the recorder gives a reason,
+// then saved flagged over the limit with the reason and the breach as it read
+// (a warning, not a wall — the store may have a good reason).
 // A saved row is corrected by the person who recorded it or by an admin;
 // deleting it, and restoring an earlier version of it, is the admin's. Every
 // change writes a ConsumableIssueRevision with the row before and after, and
@@ -28,6 +37,10 @@ export interface ConsumableActionResult {
   /** The department as stored (a section's code, or a typed department in
    *  its first spelling) — the form keeps it picked for the next hand-out. */
   department?: string;
+  /** The hand-out would take a limit over: nothing was saved — the form shows
+   *  these lines and asks for the reason, then sends again with it. */
+  needsReason?: boolean;
+  breaches?: string[];
 }
 
 const NOT_LOGGED_IN = "You are not logged in — refresh the page.";
@@ -71,7 +84,7 @@ async function loadIssue(id: number) {
 function snapshotOf(row: NonNullable<Awaited<ReturnType<typeof loadIssue>>>): ConsumableSnapshot {
   return {
     item: row.item, qty: row.qty.toNumber(), department: row.department,
-    workerId: row.workerId, workerEmpId: row.worker.empId, workerName: row.worker.name, notes: row.notes,
+    workerId: row.workerId, workerEmpId: row.worker.empId, workerName: row.worker.name, notes: row.notes, itemId: row.itemId,
   };
 }
 
@@ -103,23 +116,59 @@ async function writeChange(
   });
 }
 
+/** The item the form picked: a catalogue item (active, for a new hand-out)
+ *  with its name, or the typed name (itemId null). */
+async function pickItem(formData: FormData, opts: { allowInactiveId?: number | null } = {}): Promise<{ itemId?: number | null; name?: string; error?: string }> {
+  const pick = readItemPick((n) => formData.get(n));
+  if (pick.error) return { error: pick.error };
+  if (pick.itemId === null || pick.itemId === undefined) return { itemId: null };
+  const item = await prisma.consumableItem.findUnique({ where: { id: pick.itemId }, select: { id: true, name: true, active: true } });
+  if (!item) return { error: "That item is not in the catalogue any more — refresh the page." };
+  if (!item.active && item.id !== opts.allowInactiveId) return { error: `${item.name} is retired from the catalogue — pick another item.` };
+  return { itemId: item.id, name: item.name };
+}
+
+/** The over-limit decision for a hand-out: refused (needs the reason), or the
+ *  flag, reason and note to save. `keepReason` — an edited row already over
+ *  keeps the reason it was given unless a new one comes. */
+function overLimitVerdict(breaches: LimitBreach[], reason: string | null, keepReason: string | null = null):
+  { refuse?: ConsumableActionResult; data?: { overLimit: boolean; overLimitReason: string | null; overLimitNote: string | null } } {
+  if (breaches.length === 0) return { data: { overLimit: false, overLimitReason: null, overLimitNote: null } };
+  const lines = breaches.map(describeBreach);
+  const why = reason ?? keepReason;
+  if (!why) {
+    return { refuse: { ok: false, needsReason: true, breaches: lines, error: "This takes a limit over — give the reason to record it anyway." } };
+  }
+  return { data: { overLimit: true, overLimitReason: why, overLimitNote: lines.join(" | ") } };
+}
+
 export async function createConsumableIssue(formData: FormData): Promise<ConsumableActionResult> {
   const guard = await requirePerm("consumables.edit");
   if (guard.error) return { ok: false, error: guard.error };
   const user = guard.user!;
 
-  const read = readConsumableForm((n) => formData.get(n));
+  const picked = await pickItem(formData);
+  if (picked.error) return { ok: false, error: picked.error };
+  const read = readConsumableForm((n) => (n === "item" && picked.name ? picked.name : formData.get(n)));
   if (read.error) return { ok: false, error: read.error };
   const f = read.fields!;
+  const reason = readOverLimitReason((n) => formData.get(n));
+  if (reason.error) return { ok: false, error: reason.error };
 
   const department = resolveDepartment(f.department, await getCustomDepartments());
   const worker = await loadWorker(f.workerId);
   const bad = workerProblem(worker, department);
   if (bad) return { ok: false, error: bad };
 
+  const breaches = await checkIssueLimits({ itemId: picked.itemId ?? null, department, workerId: f.workerId, qty: f.qty, dayISO: factoryDayISO(new Date()) });
+  const verdict = overLimitVerdict(breaches, reason.reason);
+  if (verdict.refuse) return { ...verdict.refuse, department };
+
   // issuedAt is the database's clock (the column default) — never the form's
   await prisma.consumableIssue.create({
     data: {
+      itemId: picked.itemId ?? null,
+      ...verdict.data!,
       item: f.item,
       qty: new Prisma.Decimal(f.qty),
       department,
@@ -150,9 +199,14 @@ export async function updateConsumableIssue(formData: FormData): Promise<Consuma
   }
   if (prev.updatedAt.getTime() !== version.getTime()) return { ok: false, error: STALE };
 
-  const read = readConsumableForm((n) => formData.get(n));
+  // an old row may keep a catalogue item that has since been retired
+  const picked = await pickItem(formData, { allowInactiveId: prev.itemId });
+  if (picked.error) return { ok: false, error: picked.error };
+  const read = readConsumableForm((n) => (n === "item" && picked.name ? picked.name : formData.get(n)));
   if (read.error) return { ok: false, error: read.error };
   const f = read.fields!;
+  const reason = readOverLimitReason((n) => formData.get(n));
+  if (reason.error) return { ok: false, error: reason.error };
 
   const department = resolveDepartment(f.department, await getCustomDepartments());
   const unchanged = { worker: f.workerId === prev.workerId, department: department === prev.department };
@@ -163,13 +217,24 @@ export async function updateConsumableIssue(formData: FormData): Promise<Consuma
   const before = snapshotOf(prev);
   const after: ConsumableSnapshot = {
     item: f.item, qty: new Prisma.Decimal(f.qty).toNumber(), department,
-    workerId: f.workerId, workerEmpId: worker!.empId, workerName: worker!.name, notes: f.notes,
+    workerId: f.workerId, workerEmpId: worker!.empId, workerName: worker!.name, notes: f.notes, itemId: picked.itemId ?? null,
   };
   if (sameSnapshot(before, after)) return { ok: false, error: "Nothing changed." };
 
+  // checked on the day it was handed out, the row itself left out of the count
+  const breaches = await checkIssueLimits({
+    itemId: picked.itemId ?? null, department, workerId: f.workerId, qty: f.qty,
+    dayISO: factoryDayISO(prev.issuedAt), excludeIssueId: id,
+  });
+  const verdict = overLimitVerdict(breaches, reason.reason, prev.overLimit ? prev.overLimitReason : null);
+  if (verdict.refuse) return verdict.refuse;
+
   const done = await writeChange(
     id, prev.updatedAt,
-    { item: f.item, qty: new Prisma.Decimal(f.qty), department, workerId: f.workerId, notes: f.notes, editedAt: new Date(), editedBy: user.name },
+    {
+      item: f.item, itemId: picked.itemId ?? null, ...verdict.data!,
+      qty: new Prisma.Decimal(f.qty), department, workerId: f.workerId, notes: f.notes, editedAt: new Date(), editedBy: user.name,
+    },
     { action: "edit", before, after },
     user
   );
@@ -242,6 +307,8 @@ export async function restoreConsumableRevision(formData: FormData): Promise<Con
     prev.id, prev.updatedAt,
     {
       item: target.item, qty: new Prisma.Decimal(target.qty), department: target.department, workerId: target.workerId, notes: target.notes,
+      // a revision from before the catalogue carries no item link: the row keeps its own
+      itemId: target.itemId === undefined ? prev.itemId : target.itemId,
       editedAt: now, editedBy: user.name, deletedAt: null, deletedBy: null,
     },
     { action: "restore", before: current, after: { ...target, workerEmpId: worker.empId, workerName: worker.name } },
@@ -252,4 +319,17 @@ export async function restoreConsumableRevision(formData: FormData): Promise<Con
 
   revalidateConsumables();
   return { ok: true };
+}
+
+/** The record form's hint while it is filled in: where the limits of the
+ *  picked item stand for that department (and worker) today. Read-only. */
+export async function consumableLimitHints(formData: FormData): Promise<{ hints: LimitHint[] }> {
+  const user = await getCurrentUser();
+  if (!user) return { hints: [] };
+  const itemId = Number(formData.get("itemId"));
+  const department = String(formData.get("department") ?? "").trim();
+  const workerRaw = Number(formData.get("workerId"));
+  if (!Number.isInteger(itemId) || itemId <= 0 || !department) return { hints: [] };
+  const resolved = resolveDepartment(department, await getCustomDepartments());
+  return { hints: await limitHints(itemId, resolved, Number.isInteger(workerRaw) && workerRaw > 0 ? workerRaw : null, factoryDayISO(new Date())) };
 }

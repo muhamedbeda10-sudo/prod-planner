@@ -65,7 +65,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
   {
     name: "Consumables",
     perms: [
-      { key: "consumables.edit", label: "Consumables — record hand-outs", desc: "Record on the CONSUMABLES tab what the store hands out: the item, the quantity, the department and the worker who took it — and correct the rows you recorded yourself. Every correction is kept for the admin, who can restore the earlier version; deleting a row is the admin's alone" },
+      { key: "consumables.edit", label: "Consumables — record hand-outs & manage limits", desc: "Record on the CONSUMABLES tab what the store hands out (the item from the catalogue, the quantity, the department and the worker) and correct the rows you recorded yourself; a hand-out over a limit needs a reason. Also keeps the catalogue and its limits (Limits view) — every change is recorded. Deleting a hand-out stays the admin's" },
     ],
   },
   {

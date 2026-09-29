@@ -8,7 +8,7 @@ import { restoreConsumableRevision } from "@/app/consumables/actions";
 // What the CONSUMABLES log and the admin's Edits view share: running a server
 // action with its message, and one line of a row's history with its Restore.
 
-export type ConsumableActionResultLike = { ok: boolean; error?: string; department?: string };
+export type ConsumableActionResultLike = { ok: boolean; error?: string; department?: string; needsReason?: boolean; breaches?: string[] };
 type ActionFn = (fd: FormData) => Promise<ConsumableActionResultLike>;
 
 export function useConsumableAction() {
@@ -16,13 +16,15 @@ export function useConsumableAction() {
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const run = useCallback(
-    (fn: ActionFn, fd: FormData, okText: string, after?: (res: ConsumableActionResultLike) => void) => {
+    (fn: ActionFn, fd: FormData, okText: string, after?: (res: ConsumableActionResultLike) => void, onFail?: (res: ConsumableActionResultLike) => void) => {
       startTransition(async () => {
         const res = await fn(fd);
         setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
         if (res.ok) {
           after?.(res);
           router.refresh();
+        } else {
+          onFail?.(res);
         }
       });
     },

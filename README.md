@@ -260,6 +260,17 @@ mobile drawer still lists every view flat, since it has the vertical room.
    itself kept as a change. An edit made on a page older than the row is refused rather than overwriting
    someone else's. A worker with hand-outs cannot be deleted from the workers list, only deactivated.
    Opens on today; the slicer reaches a year back; Excel export of the log and of the edits.
+   **Catalogue & limits** (the **Limits** view, `consumables.edit`): the store's list — code, name, unit, remark — loaded
+   from its sheet (47 items), each with its limits: a number per **day**, **work week** (Saturday → Friday), **calendar
+   month** or **calendar quarter**, for the departments it names, **shared** by them or **per worker**. The sheet's weekly
+   number is split between its departments unless it is smaller than their count (then one shared pool); "All", "All
+   fabrication" and "All fabrication and welding" are one pool; its remarks set the period ("Every day", "1 month",
+   "3 Month") or the basis ("Qty for one person"). Items, limits and retirements are edited in place and every change is
+   kept (who, when, before → after). The record form picks the item from the catalogue (the department's items first; "not
+   in the catalogue" is typed and has no limit), shows where the limit stands as the quantity is typed, and a hand-out
+   that would take a limit over is refused until the recorder gives a **reason** — then saved flagged "over limit" with
+   the reason and the breach. The Dashboard opens with the **alarms**: limits over or within 80% in their current period,
+   the periods on the slicer that ended over (per worker for per-person limits), and the hand-outs recorded over a limit.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

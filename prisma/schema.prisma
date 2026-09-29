@@ -952,6 +952,16 @@ model ConsumableIssue {
   notes      String?
   issuedAt   DateTime @default(now())
 
+  // The catalogue item it was handed out of; null for an item typed by hand
+  // (not in the catalogue — no limit applies). `item` keeps the name either way.
+  itemId  Int?
+  catalog ConsumableItem? @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  // Recorded although it took a limit over (the recorder was warned and gave
+  // the reason); the breach as it read at that moment, for the record.
+  overLimit       Boolean @default(false)
+  overLimitReason String?
+  overLimitNote   String?
+
   // who typed it: the account (SetNull — accounts can be deleted) and the
   // name as it was that day, so the record reads the same afterwards
   recordedById   Int?
@@ -970,6 +980,8 @@ model ConsumableIssue {
 
   // the log is always "not deleted, in this period"
   @@index([deletedAt, issuedAt])
+  // the limit checks: one item's hand-outs in a window
+  @@index([itemId, issuedAt])
   @@index([workerId])
   @@index([department])
   @@index([recordedById])
@@ -993,5 +1005,64 @@ model ConsumableIssueRevision {
 
   @@index([issueId])
   // the admin's Edits view: every change in a period
+  @@index([at])
+}
+
+// ---- CONSUMABLES catalogue and limits ----
+
+/// What the store hands out: the item's code and name, its unit, and the
+/// limits on how much of it may go out. Never deleted once used — retired
+/// items are made inactive and leave the record form.
+model ConsumableItem {
+  id     Int     @id @default(autoincrement())
+  code   String? @unique // C-CON-DRB-04; the markers have none
+  name   String  @unique
+  uom    String  @default("PC")
+  // the sheet's remark, kept as written ("1 month", "Qty for one person" …)
+  remark String?
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  limits ConsumableLimit[]
+  issues ConsumableIssue[]
+
+  @@index([active])
+}
+
+/// One limit on an item: `qty` per `period` for `departments`, counted as a
+/// `basis` — see lib/domain/consumableLimits.ts.
+model ConsumableLimit {
+  id          Int            @id @default(autoincrement())
+  itemId      Int
+  item        ConsumableItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  // "*" = every department, else a CSV of department keys (section codes or typed departments)
+  departments String
+  basis       String         @default("pool") // pool | person
+  period      String         @default("week") // day | week | month | quarter
+  qty         Decimal        @db.Decimal(14, 3)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([itemId])
+}
+
+/// Every change to the catalogue or a limit: who, when, and the thing before
+/// and after — so a limit that moved can always be traced.
+model ConsumableCatalogueChange {
+  id       Int      @id @default(autoincrement())
+  itemId   Int
+  entity   String // item | limit
+  entityId Int
+  action   String // create | update | delete
+  before   Json?
+  after    Json?
+  byId     Int?
+  by       String
+  at       DateTime @default(now())
+
+  @@index([itemId])
   @@index([at])
 }
