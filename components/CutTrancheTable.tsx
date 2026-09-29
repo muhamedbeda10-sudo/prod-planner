@@ -355,9 +355,8 @@ export function CutTrancheTable({
           item={r.item}
           dept="Cut"
           lineNotes={lineNotes}
-          colSpan={cols}
-          className={inGroup ? "border-x-2 border-brand" : ""}
           canEdit={canEdit}
+          onClose={() => setOpenNotes(null)}
         />
       )}
       </Fragment>

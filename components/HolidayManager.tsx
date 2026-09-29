@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addHoliday, deleteHoliday } from "@/app/calendar/actions";
+import { Modal } from "@/components/Modal";
 
 export interface HolidayRow {
   id: number;
@@ -14,6 +15,7 @@ export function HolidayManager({ rows }: { rows: HolidayRow[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState("");
+  const [adding, setAdding] = useState(false);
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -24,6 +26,7 @@ export function HolidayManager({ rows }: { rows: HolidayRow[] }) {
       const r = await addHoliday(fd);
       if (r.ok) {
         form.reset();
+        setAdding(false);
         router.refresh();
       } else {
         setMsg(r.error ?? "Failed");
@@ -43,7 +46,10 @@ export function HolidayManager({ rows }: { rows: HolidayRow[] }) {
 
   return (
     <div className="space-y-4 max-w-xl">
-      <form onSubmit={submit} className="bg-surface border rounded-xl p-4 flex flex-wrap items-end gap-3">
+      <button type="button" className="btn btn-primary btn-sm" onClick={() => { setMsg(""); setAdding(true); }}>+ Add day off</button>
+      {adding && (
+      <Modal title="+ Add a day off" sub="Fridays are always off — add holidays and shutdowns." onClose={() => setAdding(false)} busy={pending} width="max-w-lg">
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
           <span className="block text-xs text-muted font-semibold mb-1">Date</span>
           <input name="date" type="date" required className="border rounded-md px-2 py-1.5 bg-surface text-sm" />
@@ -53,10 +59,12 @@ export function HolidayManager({ rows }: { rows: HolidayRow[] }) {
           <input name="name" type="text" required placeholder="Eid al-Fitr, maintenance shutdown…" className="w-full border rounded-md px-2 py-1.5 bg-surface text-sm" />
         </label>
         <button type="submit" disabled={pending} className="bg-brand hover:bg-brand-dark text-white font-bold rounded-md px-4 py-2 text-sm disabled:opacity-50 transition-colors">
-          + Add day off
+          {pending ? "Saving…" : "Add"}
         </button>
         {msg && <span className="text-xs text-bad-fg font-semibold w-full">{msg}</span>}
       </form>
+      </Modal>
+      )}
 
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">

@@ -5,6 +5,7 @@ import { deptLabel } from "@/lib/domain/constants";
 import { CENTERS, CENTER_LABEL, SHIFT_DEPTS, type ShiftDept } from "@/lib/domain/shifts";
 import type { MachineDTO } from "@/lib/server/machines";
 import { createMachine, updateMachine, setMachineActive, deleteMachine } from "./actions";
+import { Modal } from "@/components/Modal";
 
 // The machines list, by department. A code, a name, the work centre it
 // belongs to (every laser and punch is "Cutting" — a job goes to whichever is
@@ -97,16 +98,19 @@ function MachineRow({ m }: { m: MachineDTO }) {
       <Msg msg={act.msg} />
       <Msg msg={del.msg} />
       {editing && (
-        <form
-          className="mt-3 space-y-2.5 border-t pt-3"
-          onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); fd.set("id", String(m.id)); edit.run(updateMachine, fd, "Saved.", () => setEditing(false)); }}
-        >
-          <Fields m={m} disabled={edit.pending} />
-          <div className="flex items-center gap-2">
-            <button type="submit" className="btn btn-primary btn-sm" disabled={edit.pending}>Save</button>
-            <Msg msg={edit.msg} />
-          </div>
-        </form>
+        <Modal title={`Edit ${m.code}`} sub={m.name} onClose={() => setEditing(false)} busy={edit.pending}>
+          <form
+            className="space-y-2.5"
+            onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); fd.set("id", String(m.id)); edit.run(updateMachine, fd, "Saved.", () => setEditing(false)); }}
+          >
+            <Fields m={m} disabled={edit.pending} />
+            <div className="flex items-center justify-end gap-2 pt-3 border-t">
+              <Msg msg={edit.msg} />
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(false)} disabled={edit.pending}>Cancel</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={edit.pending}>Save</button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );
@@ -119,19 +123,22 @@ export function MachinesManager({ machines }: { machines: MachineDTO[] }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm text-muted">{machines.length} machine(s) · retired ones stay on the days they were used and leave the dropdowns</span>
-        <button type="button" className="btn btn-primary btn-sm ms-auto" onClick={() => setOpen((v) => !v)}>{open ? "Close" : "➕ Add a machine"}</button>
+        <button type="button" className="btn btn-primary btn-sm ms-auto" onClick={() => setOpen(true)}>➕ Add a machine</button>
       </div>
       {open && (
-        <form
-          className="border rounded-xl p-3 space-y-2.5"
-          onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; add.run(createMachine, new FormData(form), "Added.", () => form.reset()); }}
-        >
-          <Fields disabled={add.pending} />
-          <div className="flex items-center gap-2">
-            <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending}>Add</button>
-            <Msg msg={add.msg} />
-          </div>
-        </form>
+        <Modal title="➕ Add a machine" onClose={() => setOpen(false)} busy={add.pending}>
+          <form
+            className="space-y-2.5"
+            onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; add.run(createMachine, new FormData(form), "Added.", () => { form.reset(); setOpen(false); }); }}
+          >
+            <Fields disabled={add.pending} />
+            <div className="flex items-center justify-end gap-2 pt-3 border-t">
+              <Msg msg={add.msg} />
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={add.pending}>Cancel</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending}>{add.pending ? "Adding…" : "Add"}</button>
+            </div>
+          </form>
+        </Modal>
       )}
       {SHIFT_DEPTS.map((d) => {
         const list = machines.filter((m) => m.dept === d);

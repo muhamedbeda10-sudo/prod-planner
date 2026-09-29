@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { upsertStdTier, deleteStdTier, setStageCapacity, upsertFgMap, deleteFgMap } from "./actions";
 import { SearchBox } from "@/components/FilterControls";
 import { deptLabel } from "@/lib/domain/constants";
+import { Modal } from "@/components/Modal";
 
 /* Admin editor for everything the standard-hours features read:
    1. KVA classes — man-hours ONE tank costs each stage (feeds the report's
@@ -63,6 +64,7 @@ export function StandardTimesManager({
   // ---- section 3: FG map ----
   const [q, setQ] = useState("");
   const [fgNew, setFgNew] = useState({ fg: "", kva: "" });
+  const [fgOpen, setFgOpen] = useState(false);
   const shownFgs = useMemo(() => {
     const needle = q.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     const list = needle ? fgs.filter((f) => f.fg.includes(needle)) : fgs;
@@ -146,37 +148,43 @@ export function StandardTimesManager({
                   </tr>
                 );
               })}
-              {adding && (
-                <tr className="text-center bg-brand-light/30">
-                  <td className="p-2 text-left">
-                    <input
-                      type="number" min={1} placeholder="e.g. 5000"
-                      value={draft.kva ?? ""}
-                      onChange={(e) => setDraft((d) => ({ ...d, kva: e.target.value }))}
-                      className="w-24 border rounded-md px-1.5 py-1 tabnum bg-surface"
-                      disabled={pending}
-                      autoFocus
-                    />
-                  </td>
-                  {STAGES.map((s) => <td key={s} className="p-2">{numCell(STAGE_FIELD[s])}</td>)}
-                  <td className="p-2">—</td>
-                  <td className="p-2 whitespace-nowrap">
-                    <button onClick={() => saveTier(Number(draft.kva))} disabled={pending} className="btn btn-primary btn-sm mr-1">Add</button>
-                    <button onClick={() => setAdding(false)} disabled={pending} className="btn btn-ghost btn-sm">Cancel</button>
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
-        {!adding && (
-          <button
-            onClick={() => { setAdding(true); setEditKva(null); setDraft({ kva: "", cutMh: "", weldMh: "", shbMh: "", paintMh: "" }); }}
-            disabled={pending}
-            className="btn btn-secondary btn-sm mt-2"
-          >
-            + Add a KVA class
-          </button>
+        <button
+          onClick={() => { setAdding(true); setEditKva(null); setDraft({ kva: "", cutMh: "", weldMh: "", shbMh: "", paintMh: "" }); }}
+          disabled={pending}
+          className="btn btn-secondary btn-sm mt-2"
+        >
+          + Add a KVA class
+        </button>
+        {adding && (
+          <Modal title="+ Add a KVA class" sub="Man-hours one unit of this class takes at each stage." onClose={() => setAdding(false)} busy={pending} width="max-w-2xl">
+            <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); saveTier(Number(draft.kva)); }}>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-bold text-muted uppercase tracking-wide">KVA class</span>
+                  <input
+                    type="number" min={1} required placeholder="e.g. 5000"
+                    value={draft.kva ?? ""}
+                    onChange={(e) => setDraft((d) => ({ ...d, kva: e.target.value }))}
+                    className="w-28 border rounded-md px-1.5 py-1 tabnum bg-surface"
+                    disabled={pending}
+                  />
+                </label>
+                {STAGES.map((s) => (
+                  <label key={s} className="flex flex-col gap-1">
+                    <span className="text-[11px] font-bold text-muted uppercase tracking-wide">{deptLabel(s)}</span>
+                    {numCell(STAGE_FIELD[s])}
+                  </label>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button type="button" onClick={() => setAdding(false)} disabled={pending} className="btn btn-ghost btn-sm">Cancel</button>
+                <button type="submit" disabled={pending || !draft.kva} className="btn btn-primary btn-sm">Add</button>
+              </div>
+            </form>
+          </Modal>
         )}
         <p className="mt-1.5 text-[11px] text-muted">
           The split across components (CF/TC/TN/CB) follows the engineering shares automatically — edit the stage totals and every component follows. A new class borrows the nearest class&apos;s shares.
@@ -226,14 +234,17 @@ export function StandardTimesManager({
         </div>
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <SearchBox value={q} onChange={setQ} placeholder="Search FG code…" />
-          <form
-            className="flex items-center gap-1.5"
+<button type="button" className="btn btn-primary btn-sm" onClick={() => setFgOpen(true)} disabled={pending}>+ Add / update an FG code</button>
+          {fgOpen && (
+            <Modal title="+ Add / update an FG code" sub="Point an FG code at the KVA class it is costed as." onClose={() => setFgOpen(false)} busy={pending} width="max-w-lg">
+                    <form
+            className="flex flex-wrap items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData();
               fd.set("fg", fgNew.fg);
               fd.set("kva", fgNew.kva);
-              run(upsertFgMap, fd, () => setFgNew({ fg: "", kva: "" }));
+              run(upsertFgMap, fd, () => { setFgNew({ fg: "", kva: "" }); setFgOpen(false); });
             }}
           >
             <input
@@ -254,6 +265,8 @@ export function StandardTimesManager({
             </select>
             <button type="submit" disabled={pending || !fgNew.fg || !fgNew.kva} className="btn btn-primary btn-sm">Add / update</button>
           </form>
+            </Modal>
+          )}
           <span className="text-xs text-muted tabnum">{shownFgs.length < fgTotal ? `${shownFgs.length} of ${fgTotal}` : `${fgTotal} codes`}</span>
         </div>
         <div className="bg-surface border rounded-xl overflow-x-auto">

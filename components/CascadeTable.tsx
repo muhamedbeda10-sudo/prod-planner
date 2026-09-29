@@ -445,9 +445,8 @@ export function CascadeTable({
                     item={r.item}
                     dept={dept}
                     lineNotes={lineNotes}
-                    colSpan={cols}
                     canEdit={canEdit}
-                    className={inGroup ? "border-x-2 border-brand" : ""}
+                    onClose={() => setOpenNotes(null)}
                   />
                 )}
               </Fragment>
