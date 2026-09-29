@@ -5,13 +5,15 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getActiveLine } from "@/lib/server/line";
-import { importNestingTracker, type MaterialImportResult } from "@/lib/server/material";
+import { MANUAL_SORT, importNestingTracker, type MaterialImportResult } from "@/lib/server/material";
 import { normalizeMaterialType, normalizeSheetSize, parseSheetNumber, partNameFor, rateIsTyped } from "@/lib/domain/material";
 import { monthLabelFromInput } from "@/lib/domain/dates";
 
-// The MATERIAL tab's writes. Every line is keyed on month × BOM × order ×
-// part × material × thickness × sheet size — entering the same line twice edits it,
-// it never becomes a second row saying something different.
+// The MATERIAL tab's writes. The tab is one living table — no month: every
+// line is keyed on its MO × BOM × part × material × thickness × sheet size
+// (the month key stays "" — older sheets filed under a plan month keep theirs,
+// the archive). Entering the same line twice edits it, it never becomes a
+// second row saying something different.
 
 export interface MaterialActionResult {
   ok: boolean;
@@ -22,8 +24,8 @@ function revalidateMaterial() {
   revalidatePath("/material");
 }
 
-/** The month field arrives as an <input type="month"> value ("2026-07") or,
- *  from an inline save, already as a label. Both land on the label. */
+/** The month a line is filed under: "" for the living table (a new line, or
+ *  one of it being edited), or an archived sheet's label kept as it was. */
 function readMonth(v: FormDataEntryValue | null): string {
   const raw = String(v ?? "").trim();
   return monthLabelFromInput(raw) ?? raw;
@@ -58,7 +60,6 @@ function readLine(formData: FormData): LineFields {
 }
 
 function validate(f: LineFields): string | null {
-  if (!f.month) return "Pick the plan month this line belongs to.";
   if (!f.bom) return "Enter the BOM reference.";
   if (f.units === null || f.units < 0) return "Enter the quantity of units.";
   if (!f.material) return "Enter the material type (Steel, Stainless steel, …).";
@@ -86,8 +87,6 @@ function dataOf(f: LineFields, by: string | null, rateTyped: boolean) {
 
 const lineLabel = (f: LineFields) => `${f.partCode ? `${f.partCode} ` : ""}${f.material} ${f.thicknessMm}mm ${f.sheetSize}`;
 
-/** Lines typed in the tab sort after any sheet's rows (a sheet has fewer rows than this). */
-const MANUAL_SORT = 1_000_000;
 
 export async function createMaterialLine(formData: FormData): Promise<MaterialActionResult> {
   const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
@@ -96,7 +95,7 @@ export async function createMaterialLine(formData: FormData): Promise<MaterialAc
   const bad = validate(f);
   if (bad) return { ok: false, error: bad };
   const clash = await prisma.materialUsage.findUnique({ where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: keyOf(f) } });
-  if (clash) return { ok: false, error: `${lineLabel(f)} is already on ${f.bom} for ${f.month} — edit that line instead.` };
+  if (clash) return { ok: false, error: `${lineLabel(f)} is already on ${f.mo || f.bom} — edit that line instead.` };
   // a typed line goes after the sheet's rows, in the order it was typed
   await prisma.materialUsage.create({ data: { ...dataOf(f, guard.user?.name ?? null, f.actualPerUnit !== null), line: await getActiveLine(), sortOrder: MANUAL_SORT } });
   revalidateMaterial();
@@ -115,7 +114,7 @@ export async function updateMaterialLine(formData: FormData): Promise<MaterialAc
     prisma.materialUsage.findUnique({ where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: keyOf(f) } }),
     prisma.materialUsage.findUnique({ where: { id }, select: { actualPerUnit: true, actualPerUnitManual: true } }),
   ]);
-  if (clash && clash.id !== id) return { ok: false, error: `Another line already records ${lineLabel(f)} on ${f.bom} for ${f.month}.` };
+  if (clash && clash.id !== id) return { ok: false, error: `Another line already records ${lineLabel(f)} on ${f.mo || f.bom}.` };
   if (!was) return { ok: false, error: "That material line is gone — refresh the page." };
   await prisma.materialUsage.update({ where: { id }, data: dataOf(f, guard.user?.name ?? null, rateIsTyped(was, f.actualPerUnit)) });
   revalidateMaterial();
@@ -202,12 +201,11 @@ export async function importMaterialAction(formData: FormData): Promise<Material
   const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose the Nesting Tracker Excel file." };
-  const month = readMonth(formData.get("month"));
-  if (!month) return { ok: false, error: "Pick the plan month this sheet is for." };
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose the material sheet (Excel)." };
   const preview = formData.get("preview") === "true";
+  const prune = formData.get("prune") === "on" || formData.get("prune") === "true";
   try {
-    const res = await importNestingTracker(await file.arrayBuffer(), month, guard.user?.name ?? null, preview);
+    const res = await importNestingTracker(await file.arrayBuffer(), guard.user?.name ?? null, preview, prune);
     if (res.ok && !preview) revalidateMaterial();
     return res;
   } catch (e) {
@@ -223,9 +221,8 @@ export async function createLvOrderLines(formData: FormData): Promise<MaterialAc
   if (line !== "LV") return { ok: false, error: "Switch the line to LV panels first." };
   const guard = await requirePerm(linePermKey(line, "material"));
   if (guard.error) return { ok: false, error: guard.error };
-  const month = readMonth(formData.get("month"));
+  const month = ""; // the living table
   const mo = String(formData.get("mo") ?? "").trim().toUpperCase();
-  if (!month) return { ok: false, error: "Pick the plan month." };
   if (!mo) return { ok: false, error: "Pick the panel order (MO)." };
   const order = await prisma.masterOrder.findUnique({ where: { mo }, select: { bom: true, planQty: true, line: true } });
   if (!order || order.line !== "LV") return { ok: false, error: `${mo} is not an LV panel order.` };

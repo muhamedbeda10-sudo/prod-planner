@@ -10,17 +10,20 @@ import {
   partNameFor, filterMaterialLines, summarizeMaterial,
   type MaterialLineView, type MaterialTotal, type MaterialFilters, type MaterialStatusFilter,
 } from "@/lib/domain/material";
-import { monthInputFromLabel } from "@/lib/domain/dates";
 import { Soi } from "@/components/ui";
+import { Modal } from "@/components/Modal";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
   createMaterialLine, createLvOrderLines, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, deleteMaterialLine, importMaterialAction,
   deleteMaterialMonth,
 } from "@/app/material/actions";
 
-// The MATERIAL tab — the planner's Nesting Project Tracker, month by month.
+// The MATERIAL tab — the planner's material sheet as one living table: no
+// month, each row known by Odoo's MO (the one the ODOO tab's clerk types), so
+// uploading the sheet again simply updates it. Older sheets filed under a plan
+// month stay reachable from the archive picker.
 //
-// The table is the sheet's row in the sheet's order — BOM Ref · Quantity of
+// The table is the sheet's row in the sheet's order — MO · BOM Ref · Quantity of
 // Units · Part Code · Part Name · Codes · Material · Thickness · Sheet Size ·
 // Sheets in BOM for one Unit · for Job · Actual Nesting for one Unit · for
 // Job · Difference · Notes — plus two columns of the tab's own: units
@@ -64,29 +67,35 @@ function Sheets({ v, className = "", digits = 4 }: { v: number | null; className
   return <span className={`tabnum ltr ${className}`}>{Number.isInteger(v) ? v : Number(v.toFixed(digits))}</span>;
 }
 
-// ---- month picker (drives ?month=; this month by default, "all" for everything) ----
+// ---- archive picker (drives ?month=; "" = the living table, the default) ----
 
+/** Shown only while older sheets filed under a plan month exist: the table
+ *  itself has no month. */
 export function MaterialMonthPicker({ month, months }: { month: string; months: string[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const options = months.includes(month) || month === "all" ? months : [month, ...months];
+  if (months.length === 0 && month === "") return null;
+  const options = months.includes(month) || month === "all" || month === "" ? months : [month, ...months];
   return (
     <label className="inline-flex items-center gap-2 text-sm font-semibold">
-      Month:
+      Showing:
       <select
         className="border rounded-md px-2 py-1.5 bg-surface font-bold"
         value={month}
         onChange={(e) => {
           const p = new URLSearchParams(params.toString());
-          p.set("month", e.target.value);
-          router.push(`${pathname}?${p}`);
+          if (e.target.value) p.set("month", e.target.value); else p.delete("month");
+          router.push(`${pathname}${p.size ? `?${p}` : ""}`);
         }}
       >
-        <option value="all">All months</option>
-        {options.map((m) => (
-          <option key={m} value={m}>{m || "No month"}</option>
-        ))}
+        <option value="">The material sheet</option>
+        {options.length > 0 && (
+          <optgroup label="Older sheets, by plan month">
+            {options.map((m) => <option key={m} value={m}>{m}</option>)}
+            <option value="all">Everything together</option>
+          </optgroup>
+        )}
       </select>
     </label>
   );
@@ -96,29 +105,35 @@ export function MaterialMonthPicker({ month, months }: { month: string; months: 
 
 const F = "px-2 py-1.5 text-sm font-semibold";
 
-function Field({ hint, className = "", children }: { hint: string; className?: string; children: React.ReactNode }) {
-  return <span className={`inline-flex flex-col ${className}`} title={hint}>{children}</span>;
+function Field({ hint, label, className = "", children }: { hint: string; label: string; className?: string; children: React.ReactNode }) {
+  return (
+    <label className={`inline-flex flex-col gap-0.5 ${className}`} title={hint}>
+      <span className="text-[11px] font-bold text-muted uppercase tracking-wide">{label}</span>
+      {children}
+    </label>
+  );
 }
 
-function LineFields({ line, month, knownBoms, knownCodes, disabled, product = "TR" }: { line?: MaterialLineView; month: string; knownBoms: string[]; knownCodes: string[]; disabled?: boolean; product?: ProductLine }) {
-  const monthDefault = monthInputFromLabel(line?.month ?? (month === "all" ? "" : month)) ?? "";
+function LineFields({ line, knownBoms, knownCodes, disabled, product = "TR" }: { line?: MaterialLineView; knownBoms: string[]; knownCodes: string[]; disabled?: boolean; product?: ProductLine }) {
   // the part presets are the transformer's parts — a panel's are its own,
   // and until a panel nesting sheet names them the boxes offer nothing
   const lv = product === "LV";
   const presets = lv ? [] : PART_PRESETS;
   return (
     <>
-      <Field hint="Plan month this line belongs to" className="w-[9.5rem]">
-        <input name="month" type="month" aria-label="Month" defaultValue={monthDefault} required disabled={disabled} className={`${F} ltr tabnum w-full`} />
+      {/* a new line joins the table; an archived sheet's line keeps its month */}
+      <input type="hidden" name="month" value={line?.month ?? ""} />
+      <Field hint="Odoo's MO for this part — the ODOO tab finds the line by it" label="MO" className="w-40">
+        <input name="mo" aria-label="MO" defaultValue={line?.mo ?? ""} disabled={disabled} placeholder="SF01/MO/20941" className={`${F} ltr w-full`} />
       </Field>
-      <Field hint="BOM reference" className="w-36">
+      <Field hint="BOM reference" label="BOM Ref" className="w-36">
         <input name="bom" list="material-boms" aria-label="BOM" defaultValue={line?.bom ?? ""} required disabled={disabled} placeholder="BOM" className={`${F} ltr w-full`} />
         <datalist id="material-boms">{knownBoms.map((b) => <option key={b} value={b} />)}</datalist>
       </Field>
-      <Field hint="Quantity of Units — the job size on the sheet" className="w-20">
+      <Field hint="Quantity of Units — the job size on the sheet" label="Units" className="w-20">
         <input name="units" type="number" step="1" min="0" aria-label="Quantity of units" defaultValue={line?.units ?? ""} required disabled={disabled} placeholder="units" className={`${F} ltr tabnum w-full`} />
       </Field>
-      <Field hint="Part Code — the part these sheets go into (FB-022 tank, FB-051 top cover …)" className="w-24">
+      <Field hint="Part Code — the part these sheets go into (FB-022 tank, FB-051 top cover …)" label="Part code" className="w-24">
         <input
           name="partCode" list="part-codes" aria-label="Part code" defaultValue={line?.partCode ?? ""} disabled={disabled} placeholder={lv ? "part code" : "FB-022"} className={`${F} ltr w-full`}
           onChange={(e) => {
@@ -130,37 +145,37 @@ function LineFields({ line, month, knownBoms, knownCodes, disabled, product = "T
         />
         <datalist id="part-codes">{presets.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}</datalist>
       </Field>
-      <Field hint="Part Name" className="w-28">
+      <Field hint="Part Name" label="Part name" className="w-28">
         <input name="partName" aria-label="Part name" defaultValue={line?.partName ?? ""} disabled={disabled} placeholder={lv ? "part name" : "TANK"} className={`${F} w-full`} />
       </Field>
-      <Field hint="Codes — the material's code on the sheet (T-SSS-5MM)" className="w-28">
+      <Field hint="Codes — the material's code on the sheet (T-SSS-5MM)" label="Codes" className="w-28">
         <input name="materialCode" list="material-codes" aria-label="Material code" defaultValue={line?.materialCode ?? ""} disabled={disabled} placeholder={lv ? "material code" : "T-SSS-5MM"} className={`${F} ltr w-full`} />
         <datalist id="material-codes">{knownCodes.map((c) => <option key={c} value={c} />)}</datalist>
       </Field>
-      <Field hint="Material type" className="w-32">
+      <Field hint="Material type" label="Material" className="w-32">
         <input name="material" list="material-types" aria-label="Material" defaultValue={line?.material ?? ""} required disabled={disabled} placeholder="Steel" className={`${F} w-full`} />
         <datalist id="material-types">{MATERIAL_PRESETS.map((m) => <option key={m} value={m} />)}</datalist>
       </Field>
-      <Field hint="Thickness in mm" className="w-20">
+      <Field hint="Thickness in mm" label="Thickness" className="w-20">
         <input name="thicknessMm" type="number" step="0.1" min="0.1" aria-label="Thickness" defaultValue={line?.thicknessMm ?? ""} required disabled={disabled} placeholder="mm" className={`${F} ltr tabnum w-full`} />
       </Field>
-      <Field hint="Sheet size" className="w-32">
+      <Field hint="Sheet size" label="Sheet size" className="w-32">
         <input name="sheetSize" list="sheet-sizes" aria-label="Sheet size" defaultValue={line?.sheetSize ?? ""} required disabled={disabled} placeholder="1220*2440" className={`${F} ltr w-full`} />
         <datalist id="sheet-sizes">{SHEET_SIZE_PRESETS.map((s) => <option key={s} value={s} />)}</datalist>
       </Field>
-      <Field hint="No. of Sheets in BOM for ONE unit" className="w-24">
+      <Field hint="No. of Sheets in BOM for ONE unit" label="BOM / unit" className="w-24">
         <input name="sheetsPerUnit" type="number" step="0.0001" min="0" aria-label="Sheets per unit" defaultValue={line?.sheetsPerUnit ?? ""} required disabled={disabled} placeholder="per unit" className={`${F} ltr tabnum w-full`} />
       </Field>
-      <Field hint="No. of Sheets in Actual Nesting for ONE unit — the sheet's own figure; type it for the lines it leaves blank" className="w-24">
+      <Field hint="No. of Sheets in Actual Nesting for ONE unit — the sheet's own figure; type it for the lines it leaves blank" label="Actual / unit" className="w-24">
         <input name="actualPerUnit" type="number" step="0.0001" min="0" aria-label="Sheets actually nested for one unit" defaultValue={line?.actualPerUnit ?? ""} disabled={disabled} placeholder="per unit" className={`${F} ltr tabnum w-full`} />
       </Field>
-      <Field hint="No. of Sheets in Actual Nesting for the job — leave empty until nested" className="w-24">
+      <Field hint="No. of Sheets in Actual Nesting for the job — leave empty until nested" label="Actual / job" className="w-24">
         <input name="sheetsUsed" type="number" step="0.01" min="0" aria-label="Sheets actually nested" defaultValue={line?.sheetsUsed ?? ""} disabled={disabled} placeholder="actual" className={`${F} ltr tabnum w-full font-extrabold`} />
       </Field>
-      <Field hint="Units produced so far — the tab works out the sheets they really consumed" className="w-24">
+      <Field hint="Units produced so far — the tab works out the sheets they really consumed" label="Produced" className="w-24">
         <input name="producedQty" type="number" step="1" min="0" aria-label="Units produced" defaultValue={line?.producedQty ?? ""} disabled={disabled} placeholder="produced" className={`${F} ltr tabnum w-full`} />
       </Field>
-      <Field hint="Notes" className="w-40">
+      <Field hint="Notes" label="Notes" className="w-40">
         <input name="note" aria-label="Notes" defaultValue={line?.note ?? ""} disabled={disabled} placeholder="notes" className={`${F} w-full`} />
       </Field>
     </>
@@ -199,41 +214,60 @@ function CellInput({ id, field, value, action, title, bold, step = "0.01", class
 
 // ---- one row of the table ----
 
-function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth, product }: { line: MaterialLineView; month: string; knownBoms: string[]; knownCodes: string[]; canEdit: boolean; showMonth: boolean; product: ProductLine }) {
+/** The MO cell: the sheet's MO and whether the ODOO tab carries it yet. */
+function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
+  if (!mo) return <span className="text-muted">—</span>;
+  const status = odoo[mo.trim().toUpperCase()];
+  return (
+    <>
+      <div>{mo}</div>
+      {status
+        ? <span className="pill pill-ok text-[10px]" title={`On the ODOO tab — ${status}`}>✓ ODOO · {status}</span>
+        : <span className="pill pill-muted text-[10px]" title="No ODOO row carries this MO yet">not on ODOO</span>}
+    </>
+  );
+}
+
+function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odoo }: { line: MaterialLineView; knownBoms: string[]; knownCodes: string[]; canEdit: boolean; showMonth: boolean; product: ProductLine; odoo: Record<string, string> }) {
   const [editing, setEditing] = useState(false);
   const edit = useAction();
   const del = useAction();
   const diffCls = line.difference === null ? "" : line.difference < 0 ? "text-bad-fg" : line.difference > 0 ? "text-ok-fg" : "text-muted";
   const lv = product === "LV";
-  const cols = (lv ? 16 : 18) + (showMonth ? 1 : 0);
+  const cols = (lv ? 16 : 19) + (showMonth ? 1 : 0);
   const editor = (
-    <tr className="border-t-0">
-      <td colSpan={cols} className="px-2 pb-3">
-        <Msg msg={del.msg?.ok === false ? del.msg : null} />
-        {editing && (
-          <form className="mt-2 border rounded-xl p-2" onSubmit={(e) => {
+    <>
+      {del.msg?.ok === false && (
+        <tr className="border-t-0"><td colSpan={cols} className="px-2 pb-3"><Msg msg={del.msg} /></td></tr>
+      )}
+      {editing && (
+        <Modal title="Edit a material line" sub={`${line.mo || line.bom} · ${line.material} ${line.thicknessMm} mm ${line.sheetSize}`} onClose={() => setEditing(false)} busy={edit.pending} width="max-w-4xl">
+          <form onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget); fd.set("id", String(line.id));
             edit.run(updateMaterialLine, fd, "Saved.", () => setEditing(false));
           }}>
-            <div className="flex flex-wrap items-stretch gap-1.5">
-              <LineFields line={line} month={month} knownBoms={knownBoms} knownCodes={knownCodes} disabled={edit.pending} product={product} />
-              <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={edit.pending}>Save</button>
+            <div className="flex flex-wrap items-end gap-2">
+              <LineFields line={line} knownBoms={knownBoms} knownCodes={knownCodes} disabled={edit.pending} product={product} />
             </div>
             <Msg msg={edit.msg} />
+            <div className="flex justify-end gap-2 pt-3 mt-3 border-t">
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(false)} disabled={edit.pending}>Cancel</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={edit.pending}>{edit.pending ? "Saving…" : "Save"}</button>
+            </div>
           </form>
-        )}
-      </td>
-    </tr>
+        </Modal>
+      )}
+    </>
   );
   const actions = (
     <td className="p-2 text-center whitespace-nowrap no-print">
       {canEdit ? (
         <span className="inline-flex gap-1">
-          <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)}>{editing ? "Close" : "Edit"}</button>
+          <button type="button" className="btn btn-sm" onClick={() => setEditing(true)}>Edit</button>
           <button type="button" className="btn btn-sm btn-danger" disabled={del.pending}
             onClick={() => {
-              if (!confirm(`Delete ${line.partCode ? `${line.partCode} ` : ""}${line.material} ${line.thicknessMm}mm ${line.sheetSize} from ${line.mo || line.bom} (${line.month || "no month"})?`)) return;
+              if (!confirm(`Delete ${line.partCode ? `${line.partCode} ` : ""}${line.material} ${line.thicknessMm}mm ${line.sheetSize} from ${line.mo || line.bom}?`)) return;
               const fd = new FormData(); fd.set("id", String(line.id));
               del.run(deleteMaterialLine, fd, "Deleted.");
             }}>Delete</button>
@@ -248,7 +282,7 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth, produ
     return (
       <>
         <tr className={`border-t ${done ? "bg-ok-bg/30" : ""}`}>
-          <td className="p-2 font-bold whitespace-nowrap ltr text-xs">{line.mo || <span className="text-muted">—</span>}</td>
+          <td className="p-2 font-bold whitespace-nowrap ltr text-xs"><MoCell mo={line.mo} odoo={odoo} /></td>
           <td className="p-2 text-center"><span className="pill pill-muted">{line.partName || "—"}</span></td>
           <td className="p-2 whitespace-nowrap ltr text-xs tabnum text-muted">{line.materialCode || "—"}</td>
           <td className="p-2 text-center tabnum font-bold">{line.units}</td>
@@ -277,18 +311,16 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth, produ
           {showMonth && <td className="p-2 whitespace-nowrap text-xs">{line.month || <span className="text-muted">—</span>}</td>}
           {actions}
         </tr>
-        {(del.msg?.ok === false || editing) && editor}
+        {editor}
       </>
     );
   }
   return (
     <>
       <tr className="border-t">
-        <td className="p-2 font-bold whitespace-nowrap ltr">
-          {line.bom}
-          {/* the newer sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
-          {line.mo && <div className="text-[11px] font-semibold text-muted">{line.mo}</div>}
-        </td>
+        {/* the sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
+        <td className="p-2 font-bold whitespace-nowrap ltr text-xs"><MoCell mo={line.mo} odoo={odoo} /></td>
+        <td className="p-2 whitespace-nowrap ltr text-xs">{line.bom}</td>
         <td className="p-2 text-center tabnum ltr">{line.units}</td>
         <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{line.partCode || <span className="text-muted">—</span>}</td>
         <td className="p-2 whitespace-nowrap text-xs">{line.partName || <span className="text-muted">—</span>}</td>
@@ -330,40 +362,9 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth, produ
         </td>
         {showMonth && <td className="p-2 whitespace-nowrap text-xs">{line.month || <span className="text-muted">—</span>}</td>}
         <td className="p-2 whitespace-nowrap"><Soi soi={line.soi} /></td>
-        <td className="p-2 text-center whitespace-nowrap no-print">
-          {canEdit ? (
-            <span className="inline-flex gap-1">
-              <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)}>{editing ? "Close" : "Edit"}</button>
-              <button type="button" className="btn btn-sm btn-danger" disabled={del.pending}
-                onClick={() => {
-                  if (!confirm(`Delete ${line.partCode ? `${line.partCode} ` : ""}${line.material} ${line.thicknessMm}mm ${line.sheetSize} from ${line.bom} (${line.month || "no month"})?`)) return;
-                  const fd = new FormData(); fd.set("id", String(line.id));
-                  del.run(deleteMaterialLine, fd, "Deleted.");
-                }}>Delete</button>
-            </span>
-          ) : <span className="text-muted text-xs">—</span>}
-        </td>
+        {actions}
       </tr>
-      {(del.msg?.ok === false || editing) && (
-        <tr className="border-t-0">
-          <td colSpan={cols} className="px-2 pb-3">
-            <Msg msg={del.msg?.ok === false ? del.msg : null} />
-            {editing && (
-              <form className="mt-2 border rounded-xl p-2" onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget); fd.set("id", String(line.id));
-                edit.run(updateMaterialLine, fd, "Saved.", () => setEditing(false));
-              }}>
-                <div className="flex flex-wrap items-stretch gap-1.5">
-                  <LineFields line={line} month={month} knownBoms={knownBoms} knownCodes={knownCodes} disabled={edit.pending} product={product} />
-                  <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={edit.pending}>Save</button>
-                </div>
-                <Msg msg={edit.msg} />
-              </form>
-            )}
-          </td>
-        </tr>
-      )}
+      {editor}
     </>
   );
 }
@@ -375,26 +376,34 @@ function LineRow({ line, month, knownBoms, knownCodes, canEdit, showMonth, produ
 // from line to line and returns the cursor to the material.
 const PER_LINE = ["partCode", "partName", "material", "thicknessMm", "sheetsPerUnit", "actualPerUnit", "sheetsUsed", "producedQty", "note"] as const;
 
-function AddLine({ month, knownBoms, knownCodes, startOpen, product }: { month: string; knownBoms: string[]; knownCodes: string[]; startOpen: boolean; product: ProductLine }) {
+function AddLine({ knownBoms, knownCodes, product }: { knownBoms: string[]; knownCodes: string[]; product: ProductLine }) {
   const add = useAction();
-  const [open, setOpen] = useState(startOpen);
+  const [open, setOpen] = useState(false);
   function clearForNext(form: HTMLFormElement) {
     for (const n of PER_LINE) { const el = form.elements.namedItem(n); if (el instanceof HTMLInputElement) el.value = ""; }
     const first = form.elements.namedItem("partCode"); if (first instanceof HTMLInputElement) first.focus();
   }
-  if (!open) return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>➕ Add a material line</button>;
   return (
-    <form className="border rounded-xl p-2" onSubmit={(e) => {
-      e.preventDefault(); const form = e.currentTarget;
-      add.run(createMaterialLine, new FormData(form), "Added — next line.", () => clearForNext(form));
-    }}>
-      <div className="flex flex-wrap items-stretch gap-1.5">
-        <LineFields month={month} knownBoms={knownBoms} knownCodes={knownCodes} disabled={add.pending} product={product} />
-        <button type="submit" className="btn btn-primary btn-sm shrink-0" disabled={add.pending}>Add</button>
-        <button type="button" className="btn btn-sm btn-ghost shrink-0" onClick={() => setOpen(false)}>✕</button>
-      </div>
-      <Msg msg={add.msg} />
-    </form>
+    <>
+      <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>➕ Add a material line</button>
+      {open && (
+        <Modal title="➕ Add a material line" sub="Joins the table. After Add, the MO and BOM stay for the next line." onClose={() => setOpen(false)} busy={add.pending} width="max-w-4xl">
+          <form onSubmit={(e) => {
+            e.preventDefault(); const form = e.currentTarget;
+            add.run(createMaterialLine, new FormData(form), "Added — next line.", () => clearForNext(form));
+          }}>
+            <div className="flex flex-wrap items-end gap-2">
+              <LineFields knownBoms={knownBoms} knownCodes={knownCodes} disabled={add.pending} product={product} />
+            </div>
+            <Msg msg={add.msg} />
+            <div className="flex justify-end gap-2 pt-3 mt-3 border-t">
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={add.pending}>Close</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending}>{add.pending ? "Adding…" : "Add"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -403,12 +412,11 @@ function AddLine({ month, knownBoms, knownCodes, startOpen, product }: { month: 
 type LvRowDraft = { material: string; thicknessMm: string; sheetSize: string; sheetsPerUnit: string };
 const LV_DEFAULT_ROWS: LvRowDraft[] = ["1.5", "2", "3"].map((t) => ({ material: "Galvanized steel", thicknessMm: t, sheetSize: "1220*2440", sheetsPerUnit: "" }));
 
-function AddLvOrder({ month, orders, templates }: { month: string; orders: LvOrderRef[]; templates: MaterialPageData["lvTemplates"] }) {
+function AddLvOrder({ orders, templates }: { orders: LvOrderRef[]; templates: MaterialPageData["lvTemplates"] }) {
   const add = useAction();
   const [open, setOpen] = useState(false);
   const [mo, setMo] = useState("");
   const [rows, setRows] = useState<LvRowDraft[]>(LV_DEFAULT_ROWS);
-  const monthDefault = monthInputFromLabel(month === "all" ? "" : month) ?? "";
   const order = orders.find((o) => o.mo === mo) ?? null;
   const pick = (v: string) => {
     setMo(v);
@@ -418,20 +426,20 @@ function AddLvOrder({ month, orders, templates }: { month: string; orders: LvOrd
     setRows(t && t.length ? t.map((r) => ({ material: r.material, thicknessMm: String(r.thicknessMm), sheetSize: r.sheetSize, sheetsPerUnit: String(r.sheetsPerUnit) })) : LV_DEFAULT_ROWS);
   };
   const setRow = (i: number, patch: Partial<LvRowDraft>) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)));
-  if (!open) return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>➕ Add an order&apos;s material</button>;
+  const button = <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>➕ Add an order&apos;s material</button>;
+  if (!open) return button;
   const fromTemplate = order && templates[order.bom]?.length;
   return (
-    <form className="border rounded-xl p-3 space-y-2" onSubmit={(e) => {
+    <>
+    {button}
+    <Modal title="➕ Add an order's material" sub="One row per thickness — the BOM and the planned qty come from the order." onClose={() => setOpen(false)} busy={add.pending} width="max-w-4xl">
+    <form className="space-y-2" onSubmit={(e) => {
       e.preventDefault();
       const fd = new FormData(e.currentTarget);
       fd.set("rows", JSON.stringify(rows));
       add.run(createLvOrderLines, fd, "Added — the order's rows are on the tab.", () => { setMo(""); setRows(LV_DEFAULT_ROWS); });
     }}>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="block">
-          <span className="text-xs font-bold text-muted">Plan month</span>
-          <input type="month" name="month" defaultValue={monthDefault} required className={`${F} ltr tabnum block`} />
-        </label>
         <label className="block min-w-[22rem]">
           <span className="text-xs font-bold text-muted">Panel order</span>
           <select name="mo" value={mo} onChange={(e) => pick(e.target.value)} required className={`${F} ltr block w-full`}>
@@ -469,24 +477,24 @@ function AddLvOrder({ month, orders, templates }: { month: string; orders: LvOrd
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn btn-sm" onClick={() => setRows((rs) => [...rs, { material: "Galvanized steel", thicknessMm: "", sheetSize: "1220*2440", sheetsPerUnit: "" }])}>+ thickness</button>
         <button type="submit" className="btn btn-primary btn-sm" disabled={add.pending || !order}>Add the order</button>
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)}>✕</button>
         <Msg msg={add.msg} />
       </div>
       <p className="text-xs text-muted">Produced units and the sheets they consumed follow the tracker on their own: every panel painted on this MO counts, at the sheets-per-unit above.</p>
     </form>
+    </Modal>
+    </>
   );
 }
 
-// ---- import the sheet for a month ----
+// ---- upload the sheet: it updates the table, row by MO ----
 
-function ImportPanel({ month, product }: { month: string; product: ProductLine }) {
+function ImportPanel({ product }: { product: ProductLine }) {
   const lv = product === "LV";
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
   const [issues, setIssues] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
-  const monthDefault = monthInputFromLabel(month === "all" ? "" : month) ?? "";
   function submit(form: HTMLFormElement, preview: boolean) {
     const fd = new FormData(form); fd.set("preview", String(preview));
     startTransition(async () => {
@@ -494,42 +502,55 @@ function ImportPanel({ month, product }: { month: string; product: ProductLine }
       setIssues(r.issues ?? []);
       if (!r.ok) { setRes({ ok: false, text: r.error ?? "Import failed." }); return; }
       const stale = r.recomputed ? ` · ${r.recomputed} row(s) where the sheet's “Actual Nesting for Job” disagrees with its own per-unit rate × units — kept as written, worth a look` : "";
-      const tail = `${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}${stale}`;
-      setRes({ ok: true, text: preview ? `Preview only — nothing saved: ${tail}.` : `Imported: ${tail}.` });
+      const gone = r.missing
+        ? preview
+          ? ` · ${r.missing} row(s) on the tab are not in this file${fd.get("prune") ? " — they would be removed" : " — they stay"}`
+          : r.removed ? ` · ${r.removed} row(s) no longer in the file removed` : ` · ${r.missing} row(s) not in this file kept`
+        : "";
+      const tail = `${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}${gone}${stale}`;
+      setRes({ ok: true, text: preview ? `Preview only — nothing saved: ${tail}.` : `Table updated: ${tail}.` });
       if (!preview) router.refresh();
     });
   }
-  if (!open) return <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>📥 {lv ? "Import the Consumption Details sheet" : "Import the Nesting Tracker sheet"}</button>;
   return (
-    <form className="border rounded-xl p-3 space-y-2" onSubmit={(e) => e.preventDefault()}>
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="block">
-          <span className="text-xs font-bold text-muted">Excel file</span>
-          <input type="file" name="file" accept=".xlsx,.xlsm,.xls" required className="block text-sm" />
-        </label>
-        <label className="block">
-          <span className="text-xs font-bold text-muted">Plan month</span>
-          <input type="month" name="month" defaultValue={monthDefault} required className={`${F} ltr tabnum block`} />
-        </label>
-        <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, true)}>Preview</button>
-        <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, false)}>Import</button>
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)}>✕</button>
-      </div>
-      <p className="text-xs text-muted">
-        {lv ? (
-          <>Reads the panels&apos; Consumption Details sheet as it is — Product, Sec Item, Planned qty, MO, BOM, Material, then one row per Thickness with the sheets for one unit and what was actually consumed (“For 8 Units 14.4 Sheets Consumed”, or Done). Importing the same month again updates the rows, never doubles them.</>
-        ) : (<>Reads the Nesting Project Tracker by its headers — BOM Ref, MO (Odoo&apos;s, when the sheet has the column — each ODOO row then finds its own lines), Quantity of Units, Part Code, Part Name, Codes, Material, Thickness, Sheet Size, Sheets in BOM for one Unit, Actual Nesting for Job, Notes. Importing the same month again adds the new rows and updates the
-        ones whose values changed — it never doubles them, and it leaves your “Units produced” exactly as typed.</>)}
-      </p>
-      <Msg msg={res} />
-      {issues.length > 0 && (
-        <ul className="text-xs text-warn-fg list-disc ps-5 space-y-0.5 max-h-40 overflow-y-auto">{issues.map((i, n) => <li key={n}>{i}</li>)}</ul>
+    <>
+      <button type="button" className="btn btn-sm btn-primary" onClick={() => { setRes(null); setIssues([]); setOpen(true); }}>
+        📥 {lv ? "Upload the Consumption Details sheet" : "Upload the material sheet"}
+      </button>
+      {open && (
+        <Modal title={lv ? "📥 Upload the Consumption Details sheet" : "📥 Upload the material sheet"} sub="No month to pick — each row is matched on its MO and the table is updated." onClose={() => setOpen(false)} busy={pending}>
+          <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
+            <label className="block">
+              <span className="text-xs font-bold text-muted">Excel file</span>
+              <input type="file" name="file" accept=".xlsx,.xlsm,.xls" required className="block text-sm mt-1" />
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" name="prune" className="mt-1" />
+              <span>Remove the rows that are no longer in the file <span className="text-muted">(lines typed in the tab stay)</span></span>
+            </label>
+            <p className="text-xs text-muted">
+              {lv ? (
+                <>Reads the panels&apos; Consumption Details sheet as it is — Product, Sec Item, Planned qty, MO, BOM, Material, then one row per Thickness with the sheets for one unit and what was actually consumed (“For 8 Units 14.4 Sheets Consumed”, or Done). Uploading it again updates the rows, never doubles them.</>
+              ) : (<>Reads the sheet by its headers — MO, BOM Ref, Quantity of Units, Part Code, Part Name, Codes, Material, Thickness, Sheet Size, Sheets in BOM for one Unit, Actual Nesting for Job, Notes. Each row is matched on its MO (with the BOM, part, material, thickness and size): uploading again adds the new rows and updates the
+              changed ones — never doubles them — and leaves your “Quantity” exactly as typed. The ODOO tab finds each MO&apos;s lines by the same MO.</>)}
+            </p>
+            <Msg msg={res} />
+            {issues.length > 0 && (
+              <ul className="text-xs text-warn-fg list-disc ps-5 space-y-0.5 max-h-40 overflow-y-auto">{issues.map((i, n) => <li key={n}>{i}</li>)}</ul>
+            )}
+            <div className="flex justify-end gap-2 pt-3 border-t">
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={pending}>Close</button>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, true)}>Preview</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, false)}>{pending ? "Working…" : "Upload"}</button>
+            </div>
+          </form>
+        </Modal>
       )}
-    </form>
+    </>
   );
 }
 
-// ---- delete a whole month ----
+// ---- delete an older sheet filed under a month ----
 
 function DeleteMonth({ month, count }: { month: string; count: number }) {
   const del = useAction();
@@ -652,8 +673,10 @@ function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineVie
   );
 }
 
-export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR", lvOrders = [], lvTemplates = {} }: {
+export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR", lvOrders = [], lvTemplates = {}, odooByMo = {} }: {
   lines: MaterialLineView[]; totals: MaterialTotal[]; month: string; knownBoms: string[]; canEdit: boolean;
+  /** MO (upper case) → its status on the ODOO tab. */
+  odooByMo?: Record<string, string>;
   /** Which product line's nesting this is — the transformer part presets are only offered on theirs. */
   product?: ProductLine;
   /** LV only: the panel orders the add form offers, and each BOM's rows so far. */
@@ -672,15 +695,18 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
     <div className="space-y-5">
       {canEdit && (
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <ImportPanel month={month} product={product} />
-          {!showMonth && lines.length > 0 && <DeleteMonth month={month} count={lines.length} />}
+          <span className="flex flex-wrap gap-2">
+            <ImportPanel product={product} />
+            {lv ? <AddLvOrder orders={lvOrders} templates={lvTemplates} /> : <AddLine knownBoms={knownBoms} knownCodes={knownCodes} product={product} />}
+          </span>
+          {month !== "" && !showMonth && lines.length > 0 && <DeleteMonth month={month} count={lines.length} />}
         </div>
       )}
       {lines.length > 0 && <FilterBar lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} />}
       <section className="bg-surface border rounded-xl overflow-hidden">
         {lines.length === 0 ? (
           <p className="text-sm text-muted p-4">
-            {showMonth ? "No material recorded yet." : `Nothing recorded for ${month}.`} {lv ? "Import the Consumption Details sheet, or add an order below." : "Import the month\u2019s Nesting Tracker sheet, or add lines below."}
+            {showMonth ? "No material recorded yet." : month ? `Nothing filed under ${month}.` : "The table is empty."} {lv ? "Upload the Consumption Details sheet, or add an order." : "Upload the material sheet, or add a line."}
           </p>
         ) : shown.length === 0 ? (
           <p className="text-sm text-muted p-4">No line matches these filters.</p>
@@ -715,7 +741,8 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                   </tr>
                 ) : (
                 <tr className="bg-brand text-white text-left align-bottom">
-                  <th className={TH} title="The BOM, and Odoo's MO under it when the sheet names one">BOM Ref / MO</th>
+                  <th className={TH} title="Odoo's MO for the part — the ODOO tab finds the line by it">MO</th>
+                  <th className={TH}>BOM Ref</th>
                   <th className={`${TH} text-center`}>Quantity of Units</th>
                   <th className={TH}>Part Code</th>
                   <th className={TH}>Part Name</th>
@@ -738,17 +765,16 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                 )}
               </thead>
               <tbody>
-                {shown.map((l) => <LineRow key={l.id} line={l} month={month} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} />)}
+                {shown.map((l) => <LineRow key={l.id} line={l} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} />)}
               </tbody>
             </table>
           </div>
         )}
       </section>
-      {canEdit && (lv ? <AddLvOrder month={month} orders={lvOrders} templates={lvTemplates} /> : <AddLine month={month} knownBoms={knownBoms} knownCodes={knownCodes} startOpen={false} product={product} />)}
       {shownTotals.length > 0 && (
         <section>
           <h2 className="font-bold mb-2">
-            Totals {showMonth ? "across every month" : `for ${month}`} — per material, thickness and size
+            Totals {showMonth ? "across everything" : month ? `for ${month}` : ""} — per material, thickness and size
             {filtering && <span className="text-sm font-normal text-muted"> · filtered lines only</span>}
           </h2>
           <div className="bg-surface border rounded-xl overflow-hidden"><TotalsTable totals={shownTotals} lv={lv} /></div>
