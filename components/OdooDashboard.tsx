@@ -160,13 +160,15 @@ function Sparkline({ values, color }: { values: number[]; color: string }) {
 
 function ProductCards({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
   return (
-    <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))]">
+    // a centred row of equal cards: a short row sits in the middle of the page
+    // instead of hugging the left edge
+    <div className="flex flex-wrap justify-center gap-3">
       {present.map((s) => {
         const t = d.totals.find((x) => x.series === s)!;
         const daily = d.days.map((p) => p.bySeries[s]);
         const best = Math.max(0, ...daily);
         return (
-          <div key={s} className="bg-surface border rounded-xl px-4 py-3 border-t-4" style={{ borderTopColor: pal.color(s) }}>
+          <div key={s} className="w-[12.5rem] max-w-full bg-surface border rounded-xl px-4 py-3 border-t-4" style={{ borderTopColor: pal.color(s) }}>
             <div className="flex items-center gap-2 text-xs font-bold text-muted">
               <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: pal.color(s) }} />
               {s}
@@ -416,15 +418,15 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
         <ExportButton rows={exportRows} filename={`odoo-dashboard-${d.bom ? `${d.bom}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`} sheetName="By day" />
       </div>
 
-      {/* the day-by-day picture first — it is what the page is opened for */}
+      {/* the products first, centred across the page, then the day by day */}
+      <section>
+        <h2 className="font-bold mb-2 text-center">Per product <span className="text-muted font-normal text-sm">· {word}</span></h2>
+        <ProductCards d={d} present={present} pal={pal} />
+      </section>
+
       <Card title={`Quantity ${word} per day, by product`} sub={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
         <DailyByProduct d={d} present={present} pal={pal} />
       </Card>
-
-      <section>
-        <h2 className="font-bold mb-2">Per product <span className="text-muted font-normal text-sm">· {word}</span></h2>
-        <ProductCards d={d} present={present} pal={pal} />
-      </section>
 
       <OdooInsightsSection
         ins={d.insights}
