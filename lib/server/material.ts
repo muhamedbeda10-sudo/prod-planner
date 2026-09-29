@@ -26,8 +26,8 @@ export interface LvOrderRef {
 export interface MaterialPageData {
   lines: MaterialLineView[];
   totals: MaterialTotal[];
-  /** Every month the tab can filter by: months with material lines, plus the
-   *  monthly plans the registry knows, newest first. */
+  /** The older sheets filed under a plan month, newest first — the tab's
+   *  archive. The living sheet ("") is not among them. */
   months: string[];
   /** BOMs for the add form's typing aid: those with lines, plus the registry's. */
   knownBoms: string[];
@@ -36,6 +36,9 @@ export interface MaterialPageData {
   /** LV only: the thickness rows already recorded under each BOM, on any
    *  order — the template a new order of that BOM starts from. */
   lvTemplates: Record<string, { material: string; thicknessMm: number; sheetSize: string; sheetsPerUnit: number }[]>;
+  /** Each MO the ODOO tab carries (upper case) → its status there, so the
+   *  sheet's rows show which MOs the clerk has typed in. */
+  odooByMo: Record<string, string>;
 }
 
 type Row = {
@@ -71,13 +74,11 @@ function toView(r: Row, soiByBom: Record<string, string>, producedAuto: number |
   };
 }
 
-const monthsOf = (csv: string | null | undefined, source?: string | null) =>
-  (String(csv ?? "").trim() || String(source ?? "")).split(",").map((m) => m.trim()).filter(Boolean);
-
-/** The tab for one month (label), or every month when `month` is "all". */
+/** The tab: the living sheet (`month` "", the default), one older sheet
+ *  filed under its plan month, or everything ("all"). */
 export async function getMaterialData(month: string): Promise<MaterialPageData> {
   const line = await getActiveLine(); // one product line at a time
-  const [rows, monthRows, orders, soi] = await Promise.all([
+  const [rows, monthRows, orders, soi, odoo] = await Promise.all([
     prisma.materialUsage.findMany({
       where: month === "all" ? { line } : { month, line },
       // the sheet's own order — its rows come back the way they were laid out;
@@ -85,14 +86,15 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
       orderBy: [{ month: "desc" }, { sortOrder: "asc" }, { id: "asc" }],
     }),
     prisma.materialUsage.findMany({ where: { line }, select: { month: true, bom: true }, distinct: ["month", "bom"] }),
-    prisma.masterOrder.findMany({ where: { line }, select: { bom: true, months: true, source: true } }),
+    prisma.masterOrder.findMany({ where: { line }, select: { bom: true } }),
     getSoiLookup(),
+    prisma.odooEntry.findMany({ where: { line, odooMo: { not: "" } }, select: { odooMo: true, status: true }, orderBy: { date: "asc" } }),
   ]);
 
   const lvOrders = line === "LV" ? await lvOrderRefs() : [];
   const paintedByMo = new Map(lvOrders.map((o) => [o.mo, o.painted]));
   const lines = rows.map((r) => toView(r, soi.byBom, line === "LV" && r.mo ? (paintedByMo.get(r.mo) ?? 0) : null));
-  const months = [...new Set([...monthRows.map((m) => m.month), ...orders.flatMap((o) => monthsOf(o.months, o.source))])]
+  const months = [...new Set(monthRows.map((m) => m.month))]
     .filter(Boolean)
     .sort((a, b) => monthLabelSortKey(b) - monthLabelSortKey(a) || b.localeCompare(a));
   const knownBoms = [...new Set([...monthRows.map((m) => m.bom), ...orders.map((o) => o.bom)])].sort();
@@ -111,7 +113,11 @@ export async function getMaterialData(month: string): Promise<MaterialPageData> 
     for (const list of Object.values(lvTemplates)) list.sort((a, b) => a.thicknessMm - b.thicknessMm);
   }
 
-  return { lines, totals: summarizeMaterial(lines), months, knownBoms, lvOrders, lvTemplates };
+  // the latest row of an MO speaks for it
+  const odooByMo: Record<string, string> = {};
+  for (const o of odoo) odooByMo[o.odooMo.trim().toUpperCase()] = o.status;
+
+  return { lines, totals: summarizeMaterial(lines), months, knownBoms, lvOrders, lvTemplates, odooByMo };
 }
 
 /** The panels' orders with what the tracker says was painted on each — the
@@ -125,7 +131,7 @@ async function lvOrderRefs(): Promise<LvOrderRef[]> {
   return orders.map((o) => ({ mo: o.mo, bom: o.bom, product: o.product, secItem: o.secItem, planQty: o.planQty, painted: Math.min(o.planQty, by.get(o.mo) ?? 0), status: o.status }));
 }
 
-// ---- import: the planner's Nesting Tracker workbook, filed under a month ----
+// ---- import: the planner's material sheet — one living table, row by MO ----
 
 export interface MaterialImportResult {
   ok: boolean;
@@ -139,18 +145,37 @@ export interface MaterialImportResult {
   /** Rows whose "for Job" column disagrees with their own per-unit rate —
    *  kept as written, counted so the planner can look. */
   recomputed?: number;
+  /** Rows of the tab's table the file no longer carries (lines typed in the
+   *  tab aside) — removed when the import was asked to, else kept. */
+  missing?: number;
+  removed?: number;
 }
 
+/** The sheet's rows on the tab that the file no longer carries: the ids to
+ *  drop when the import mirrors the file. Lines typed in the tab stay. */
+async function rowsGone(line: string, month: string, seen: Set<number>, prune: boolean, preview: boolean) {
+  const gone = (await prisma.materialUsage.findMany({ where: { line, month, sortOrder: { gt: 0, lt: MANUAL_SORT } }, select: { id: true } }))
+    .map((r) => r.id).filter((id) => !seen.has(id));
+  let removed = 0;
+  if (prune && !preview && gone.length > 0) removed = (await prisma.materialUsage.deleteMany({ where: { id: { in: gone } } })).count;
+  return { missing: gone.length, removed };
+}
+
+/** Lines typed in the tab sort after any sheet's rows (a sheet has fewer rows than this). */
+export const MANUAL_SORT = 1_000_000;
+
 /**
- * Import the Nesting Tracker sheet for one month. Lines are upserted on their
- * identity (month × BOM × part × material × thickness × size), so importing the same
- * month's sheet again adds the rows that are new and updates the ones whose
- * values changed — never doubles them. The tab's own column, units produced,
- * is not in the sheet and is left exactly as it was.
+ * Import the material sheet into the tab's one table — no month: each row is
+ * known by its MO (Odoo's, per part), BOM, part, material, thickness and
+ * size, so uploading the sheet again adds the rows that are new and updates
+ * the ones whose values changed — never doubles them. The tab's own column,
+ * units produced, is not in the sheet and is left exactly as it was. With
+ * `prune`, rows the file no longer carries leave the table.
  */
 export async function importNestingTracker(
-  buffer: ArrayBuffer, month: string, recordedBy: string | null, preview = false
+  buffer: ArrayBuffer, recordedBy: string | null, preview = false, prune = false
 ): Promise<MaterialImportResult> {
+  const month = ""; // the living table
   let wb: XLSX.WorkBook;
   try {
     wb = XLSX.read(new Uint8Array(buffer), { cellDates: false });
@@ -171,7 +196,7 @@ export async function importNestingTracker(
   }
   const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, opts);
   const line = await getActiveLine(); // the sheet is the line on screen's
-  if (line === "LV") return importLvConsumption(grid, month, recordedBy, preview, sheetName);
+  if (line === "LV") return importLvConsumption(grid, month, recordedBy, preview, sheetName, prune);
   const { rows, issues, recomputed } = parseNestingTracker(grid);
   if (rows.length === 0) return { ok: false, error: issues[0] ?? "No material rows found.", issues, sheet: sheetName };
 
@@ -183,8 +208,10 @@ export async function importNestingTracker(
   const byKey = new Map(existing.map((e) => [keyOf(e), e]));
 
   let added = 0, updated = 0, unchanged = 0;
+  const seen = new Set<number>();
   for (const r of rows) {
     const cur = byKey.get(keyOf(r));
+    if (cur) seen.add(cur.id);
     // A rate typed in the tab is the planner's own statement about a line the
     // sheet leaves blank. The import fills the blanks; it never overwrites his.
     const keepsRate = cur?.actualPerUnitManual === true;
@@ -211,7 +238,8 @@ export async function importNestingTracker(
       update: data,
     });
   }
-  return { ok: true, added, updated, unchanged, issues, preview, sheet: sheetName, recomputed };
+  const { missing, removed } = await rowsGone(line, month, seen, prune, preview);
+  return { ok: true, added, updated, unchanged, issues, preview, sheet: sheetName, recomputed, missing, removed };
 }
 
 /**
@@ -221,7 +249,7 @@ export async function importNestingTracker(
  * running block's "For 8 Units 14.4 Sheets Consumed" lands as produced 8
  * with the rate 14.4 ÷ 8, a Done block as the whole job nested.
  */
-async function importLvConsumption(grid: unknown[][], month: string, recordedBy: string | null, preview: boolean, sheetName: string): Promise<MaterialImportResult> {
+async function importLvConsumption(grid: unknown[][], month: string, recordedBy: string | null, preview: boolean, sheetName: string, prune: boolean): Promise<MaterialImportResult> {
   const { rows, issues } = parseLvConsumption(grid);
   if (rows.length === 0) return { ok: false, error: issues[0] ?? "No material rows found.", issues, sheet: sheetName };
   const existing = await prisma.materialUsage.findMany({ where: { month, line: "LV" } });
@@ -230,9 +258,11 @@ async function importLvConsumption(grid: unknown[][], month: string, recordedBy:
   const known = new Set((await prisma.masterOrder.findMany({ where: { line: "LV" }, select: { mo: true } })).map((o) => o.mo));
 
   let added = 0, updated = 0, unchanged = 0;
+  const seen = new Set<number>();
   for (const r of rows) {
     if (!known.has(r.mo)) issues.push(`Row ${r.rowNum}: ${r.mo} is not in the LV orders registry — the line is kept, but the tracker cannot count its panels.`);
     const cur = byKey.get(keyOf(r));
+    if (cur) seen.add(cur.id);
     // a running block: the rate is what was consumed over what was produced
     const rate = r.done ? null : r.producedQty && r.consumed !== null && r.producedQty > 0 ? Math.round((r.consumed / r.producedQty) * 10000) / 10000 : null;
     const data = {
@@ -257,5 +287,6 @@ async function importLvConsumption(grid: unknown[][], month: string, recordedBy:
       update: data,
     });
   }
-  return { ok: true, added, updated, unchanged, issues, preview, sheet: sheetName, recomputed: 0 };
+  const { missing, removed } = await rowsGone("LV", month, seen, prune, preview);
+  return { ok: true, added, updated, unchanged, issues, preview, sheet: sheetName, recomputed: 0, missing, removed };
 }

@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
-import { currentMonthLabel } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { MaterialClient, MaterialMonthPicker } from "@/components/MaterialClient";
@@ -25,9 +24,10 @@ export default async function MaterialPage({
   if (!me) redirect("/login");
 
   const sp = await searchParams;
-  const month = (sp.month ?? "").trim() || currentMonthLabel();
+  // one living table — no month; ?month= opens an older sheet filed under one
+  const month = (sp.month ?? "").trim();
   const line = await getActiveLine(); // one product line at a time
-  const { lines, totals, months, knownBoms, lvOrders, lvTemplates } = await getMaterialData(month);
+  const { lines, totals, months, knownBoms, lvOrders, lvTemplates, odooByMo } = await getMaterialData(month);
 
   // the export carries the sheet's OWN column names in its order, then the
   // tab's additions, so the file drops straight back into the workbook
@@ -46,8 +46,8 @@ export default async function MaterialPage({
     "Actually Consumed Sheets Qty as per Nesting": l.forProduced ?? "",
     "Remaining units": l.remainingUnits ?? "",
     REMARKS: l.note ?? "",
-    Month: l.month,
   })) : lines.map((l) => ({
+    MO: l.mo,
     "BOM Ref": l.bom,
     "Quantity of Units": l.units,
     "Part Code": l.partCode,
@@ -64,19 +64,18 @@ export default async function MaterialPage({
     Notes: l.note ?? "",
     Quantity: l.producedQty ?? "",
     "Actual for Quantity": l.forProduced ?? "",
-    Month: l.month,
     SOI: l.soi ?? "",
   }));
 
   return (
     <div>
       <RememberLastVisit storageKey="material:last" />
-      <PageHeader title={`🧱 MATERIAL — nesting project tracker · ${LINE_LABEL[line]}`}>
+      <PageHeader title={`🧱 MATERIAL — material sheet · ${LINE_LABEL[line]}`}>
         <ViewTabs views={MATERIAL_VIEWS} current="/material" label="Material view" />
         <MaterialMonthPicker month={month} months={months} />
-        <ExportButton rows={exportRows} filename={`nesting-tracker-${month.replace(/\s+/g, "-")}.xlsx`} sheetName="Sheet1" />
+        <ExportButton rows={exportRows} filename={`material-sheet${month ? `-${month.replace(/\s+/g, "-")}` : ""}.xlsx`} sheetName="Sheet1" />
       </PageHeader>
-      <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))} product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} />
+      <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))} product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} odooByMo={odooByMo} />
     </div>
   );
 }

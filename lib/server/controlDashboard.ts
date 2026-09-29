@@ -82,7 +82,7 @@ export async function getControlDashboard(opts: { planMonth?: string | null } = 
     getOtdStats(),
     loadHolidays(),
     prisma.odooEntry.findMany({ where: { line }, select: { status: true, odooMo: true } }),
-    prisma.materialUsage.findMany({ where: { line, month: monthLabel }, select: { units: true, sheetsPerUnit: true, sheetsUsed: true } }),
+    prisma.materialUsage.findMany({ where: { line, month: { in: [monthLabel, ""] } }, select: { units: true, sheetsPerUnit: true, sheetsUsed: true } }),
     prisma.deptDayHours.findMany({ where: { date: today } }),
     // the month's pace is read in tanks — the unit the plan's completion counts
     prisma.handoverEntry.findMany({
