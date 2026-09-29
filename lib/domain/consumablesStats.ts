@@ -35,8 +35,9 @@ export interface ConsumablesStats {
   fromISO: string;
   toISO: string;
   totals: { issues: number; items: number; workers: number; departments: number };
-  /** Hand-outs in the period of the same length just before — for the change. */
-  previousIssues: number;
+  /** Hand-outs in the period of the same length just before — for the
+   *  change; null when the log does not go back over all of it. */
+  previousIssues: number | null;
   /** One bucket per day of the period, or per hour when it is a single day. */
   timeline: { unit: "day" | "hour"; buckets: TimeBucket[] };
   items: ItemStat[];
@@ -67,9 +68,6 @@ export interface ConsumablesStats {
   itemTiles: ItemTile[];
   /** Every worker served: how often and how varied — the scatter. */
   workerPoints: WorkerPoint[];
-  /** The same worker taking the same item again and again in the period —
-   *  the store's watch list. */
-  repeats: RepeatRow[];
 }
 
 export interface DailyPoint { dayISO: string; label: string; issues: number; avg7: number | null }
@@ -84,21 +82,15 @@ export interface ConsumablesKpis {
   topDepartmentShare: number;
   /** Items that make up 80% of hand-outs. */
   vitalFew: number;
-  /** The hour and weekday with the most hand-outs (null when none). */
-  busiestHour: number | null;
-  busiestWeekday: number | null;
-  /** Worker × item pairs taken at least REPEAT_THRESHOLD times. */
-  repeatPairs: number;
+  /** The weekday × hour with the most hand-outs (null when none). */
+  busiestSlot: { weekday: number; hour: number; issues: number } | null;
 }
 export interface ShareSlice { key: string; label: string; issues: number; share: number }
 export interface StackBucket { key: string; label: string; total: number; values: Record<string, number> }
 export interface ParetoRow { item: string; issues: number; share: number; cumulative: number }
 export interface ItemTile { item: string; issues: number; qty: number; department: string; departmentLabel: string }
 export interface WorkerPoint { workerId: number; name: string; empId: string; issues: number; items: number; departments: number }
-export interface RepeatRow { workerId: number; name: string; empId: string; item: string; times: number; qty: number; firstDay: string; lastDay: string }
 
-/** How many times the same worker must take the same item to be flagged. */
-export const REPEAT_THRESHOLD = 3;
 /** Departments shown by name in the share and the trend; the rest are "Other". */
 export const SHARE_SLOTS = 5;
 export const OTHER_KEY = "__other__";
@@ -140,7 +132,7 @@ export function consumablesStats(
   rows: readonly StatsRow[],
   fromISO: string,
   toISO: string,
-  previousIssues: number,
+  previousIssues: number | null,
   opts: { topItems?: number; topDepartments?: number; topWorkers?: number; headcount?: ReadonlyMap<string, number> } = {},
 ): ConsumablesStats {
   const topItems = opts.topItems ?? 12;
@@ -263,10 +255,13 @@ export function consumablesStats(
   const hours: number[] = [];
   for (let h = hFirst; h <= hLast; h++) hours.push(h);
   const weekHour = { hours, counts: grid.map((row) => hours.map((h) => row[h])) };
-  const byHour = new Array<number>(24).fill(0);
-  const byWeekday = new Array<number>(7).fill(0);
-  for (const r of rows) { byHour[r.hour] += 1; byWeekday[weekdayOf(r.dayISO)] += 1; }
-  const argMax = (a: number[]) => (a.some((n) => n > 0) ? a.indexOf(Math.max(...a)) : null);
+  // the busiest hour of the week: one weekday × hour cell (the first in the
+  // week's order on a tie) — not the busiest hour and busiest weekday picked
+  // apart, which can name a slot nobody came in
+  let busiestSlot: ConsumablesKpis["busiestSlot"] = null;
+  grid.forEach((row, weekday) => row.forEach((n, hour) => {
+    if (n > (busiestSlot?.issues ?? 0)) busiestSlot = { weekday, hour, issues: n };
+  }));
 
   // ---- department share: top SHARE_SLOTS + Other
   const named = departments.slice(0, SHARE_SLOTS);
@@ -330,21 +325,6 @@ export function consumablesStats(
     .map(([workerId, a]) => ({ workerId, name: a.name, empId: a.empId, issues: a.issues, items: a.items.size, departments: a.depts.size }))
     .sort((a, b) => b.issues - a.issues || a.name.localeCompare(b.name));
 
-  // ---- repeats: worker × item taken REPEAT_THRESHOLD+ times
-  const pairAgg = new Map<string, RepeatRow>();
-  for (const r of rows) {
-    const k = `${r.workerId}|${fold(r.item)}`;
-    const a = pairAgg.get(k) ?? { workerId: r.workerId, name: r.workerName, empId: r.empId, item: nameOf(fold(r.item)), times: 0, qty: 0, firstDay: r.dayISO, lastDay: r.dayISO };
-    a.times += 1;
-    a.qty = round3(a.qty + r.qty);
-    if (r.dayISO < a.firstDay) a.firstDay = r.dayISO;
-    if (r.dayISO > a.lastDay) a.lastDay = r.dayISO;
-    pairAgg.set(k, a);
-  }
-  const repeats = [...pairAgg.values()]
-    .filter((p) => p.times >= REPEAT_THRESHOLD)
-    .sort((a, b) => b.times - a.times || b.qty - a.qty || a.name.localeCompare(b.name));
-
   const activeDays = daily.filter((d) => d.issues > 0).length;
   const kpis: ConsumablesKpis = {
     activeDays,
@@ -352,9 +332,7 @@ export function consumablesStats(
     perWorker: workerAgg.size ? Math.round((rows.length / workerAgg.size) * 10) / 10 : 0,
     topDepartmentShare: departments[0] ? departments[0].issues / total : 0,
     vitalFew,
-    busiestHour: argMax(byHour),
-    busiestWeekday: argMax(byWeekday),
-    repeatPairs: repeats.length,
+    busiestSlot,
   };
 
   return {
@@ -379,6 +357,5 @@ export function consumablesStats(
     pareto: { rows: pareto, vitalFew },
     itemTiles,
     workerPoints,
-    repeats,
   };
 }

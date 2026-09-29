@@ -6,18 +6,17 @@ import { Fragment, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Legend, Sparkline, StatTile, TipBox, fmt, pct } from "@/components/charts/kit";
 import {
-  MONTHLY_FACTOR, MONTH_STATUS_LABEL, monthLong, monthShort,
+  MONTH_STATUS_LABEL, monthLong, monthShort,
   type ItemMonthRow, type LimitMonthRow, type MonthStatus,
 } from "@/lib/domain/consumableMonthly";
 import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import type { MonthlyReportView } from "@/lib/server/consumableMonthly";
 
 // The CONSUMABLES monthly review: each catalogue item's month against its
-// monthly allowance (a week's limit × 4, a month's × 1; a
-// quarter's counted over the quarter to date), graded over / close / under / not issued — the month
-// before beside it, the last six months as a line, and each item opening
-// onto its limits: the departments, the weeks of a weekly limit that went
-// over, the days of a daily one, the workers past a per-person one.
+// monthly limit (a limit of several months counted over its months so far),
+// graded over / close / under / not issued — the month before beside it, the
+// last six months as a line, and each item opening onto its limits by
+// department.
 
 const STATUS_COLOR: Record<MonthStatus, string> = {
   over: "var(--bad-fg)",
@@ -28,7 +27,6 @@ const STATUS_COLOR: Record<MonthStatus, string> = {
 };
 const STATUS_PILL: Record<MonthStatus, string> = { over: "pill-bad", near: "pill-warn", under: "pill-ok", unused: "pill-muted", nolimit: "pill-muted" };
 const STATUS_ORDER: MonthStatus[] = ["over", "near", "under", "unused", "nolimit"];
-const FACTOR_WORD: Record<string, string> = { week: "× 4", month: "× 1" };
 
 function StatusPill({ s }: { s: MonthStatus }) {
   return <span className={`pill ${STATUS_PILL[s]} whitespace-nowrap`}>{s === "over" ? "⚠ " : ""}{MONTH_STATUS_LABEL[s]}</span>;
@@ -60,14 +58,14 @@ function Change({ row }: { row: ItemMonthRow }) {
   );
 }
 
-function LimitDetail({ l, uom, workers }: { l: LimitMonthRow; uom: string; workers: MonthlyReportView["workers"] }) {
+function LimitDetail({ l, uom, workers, prevComplete }: { l: LimitMonthRow; uom: string; workers: MonthlyReportView["workers"]; prevComplete: boolean }) {
   return (
     <tr className="border-t">
       <td className="p-1.5 ps-6 text-xs">
         <div className="font-semibold">{l.departmentsLabel}</div>
         <div className="text-muted">
           {fmt(l.qty)} {uom} {PERIOD_LABEL[l.period]}{l.basis === "person" ? " per person" : ""}
-          {l.toDate ? <> — counted over <b>{l.toDate}</b></> : <> {FACTOR_WORD[l.period]} = {fmt(l.allowance)} a month{l.basis === "person" ? " each" : ""}</>}
+          {l.toDate ? <> — counted over <b>{l.toDate}</b></> : null}
         </div>
       </td>
       <td className="p-1.5 text-end tabnum text-xs">{fmt(l.allowance)}</td>
@@ -77,17 +75,8 @@ function LimitDetail({ l, uom, workers }: { l: LimitMonthRow; uom: string; worke
       </td>
       <td className="p-1.5"><UseBar used={l.used} allowance={l.allowance} status={l.status} /></td>
       <td className="p-1.5"><StatusPill s={l.status} /></td>
-      <td className="p-1.5 text-xs tabnum text-muted">{fmt(l.prevUsed)}</td>
+      <td className="p-1.5 text-xs tabnum text-muted">{prevComplete ? fmt(l.prevUsed) : "—"}</td>
       <td className="p-1.5 text-xs" colSpan={2}>
-        {l.weeks.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {l.weeks.map((w) => (
-              <span key={w.from} className={`pill ${w.over ? "pill-bad" : w.used > 0 ? "pill-muted" : "pill-muted opacity-60"}`} title={`${w.label} (the whole week): ${fmt(w.used)} of ${fmt(w.limit)}`}>
-                {w.label.replace("week of ", "")}: <b className="tabnum">{fmt(w.used)}</b>/{fmt(w.limit)}
-              </span>
-            ))}
-          </div>
-        )}
         {l.basis === "person" && (l.workersOver.length
           ? <div className="text-bad-fg">{l.workersOver.map((w) => `${workers[w.workerId]?.name ?? "?"} (${workers[w.workerId]?.empId ?? ""}) ${fmt(w.used)}`).join(" · ")}</div>
           : <div className="text-muted">no worker over {fmt(l.allowance)}</div>)}
@@ -96,7 +85,7 @@ function LimitDetail({ l, uom, workers }: { l: LimitMonthRow; uom: string; worke
   );
 }
 
-function ItemRow({ r, open, toggle, workers }: { r: ItemMonthRow; open: boolean; toggle: () => void; workers: MonthlyReportView["workers"] }) {
+function ItemRow({ r, open, toggle, workers, prevComplete }: { r: ItemMonthRow; open: boolean; toggle: () => void; workers: MonthlyReportView["workers"]; prevComplete: boolean }) {
   return (
     <Fragment>
       <tr className="border-t align-middle cursor-pointer hover:bg-surface-2/60" onClick={toggle} aria-expanded={open}>
@@ -122,7 +111,7 @@ function ItemRow({ r, open, toggle, workers }: { r: ItemMonthRow; open: boolean;
         <td className="p-2" title={r.trend.map((t) => `${monthShort(t.month)}: ${fmt(t.used)}`).join("\n")}><Sparkline values={r.trend.map((t) => t.used)} width={90} height={24} /></td>
         <td className="p-2 text-[11px] text-muted tabnum whitespace-nowrap">{r.trend.map((t) => fmt(t.used)).join(" · ")}</td>
       </tr>
-      {open && r.limits.map((l) => <LimitDetail key={l.ruleId} l={l} uom={r.uom} workers={workers} />)}
+      {open && r.limits.map((l) => <LimitDetail key={l.ruleId} l={l} uom={r.uom} workers={workers} prevComplete={prevComplete} />)}
     </Fragment>
   );
 }
@@ -145,7 +134,7 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
   const allOpen = shown.length > 0 && shown.every((row) => open.has(row.itemId));
 
   const toggle = (id: number) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const handChange = r.handOuts.prev > 0 ? Math.round(((r.handOuts.month - r.handOuts.prev) / r.handOuts.prev) * 100) : null;
+  const handChange = r.prevComplete && r.handOuts.prev > 0 ? Math.round(((r.handOuts.month - r.handOuts.prev) / r.handOuts.prev) * 100) : null;
 
   return (
     <div className="space-y-3">
@@ -155,7 +144,7 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
           {r.months.map((m) => <option key={m} value={m}>{monthLong(m)}</option>)}
         </select>
         {newer ? <Link href={hrefOf(newer)} className="btn btn-sm" aria-label="Next month">▶</Link> : <span className="btn btn-sm opacity-40">▶</span>}
-        <span className="text-xs text-muted">Monthly limit = a week&apos;s × {MONTHLY_FACTOR.week}, a month&apos;s as is; a limit of several months is counted over its months to date · the limits as they stand today</span>
+        <span className="text-xs text-muted">Each item against its monthly limit; a limit of several months is counted over its months so far · the limits as they stand today</span>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -164,7 +153,7 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
             <StatTile label={MONTH_STATUS_LABEL[s]} value={fmt(r.counts[s])} sub={<span style={{ color: STATUS_COLOR[s] }}>● {s === "nolimit" ? "handed out, no limit set" : "items"}</span>} />
           </button>
         ))}
-        <StatTile label="Catalogue hand-outs" value={fmt(r.handOuts.month)} sub={handChange === null ? `none in ${monthShort(r.prevMonth)}` : `${handChange > 0 ? "▲" : handChange < 0 ? "▼" : "•"} ${Math.abs(handChange)}% vs ${monthShort(r.prevMonth)} (${fmt(r.handOuts.prev)})`} />
+        <StatTile label="Catalogue hand-outs" value={fmt(r.handOuts.month)} sub={!r.prevComplete ? `the log does not cover ${monthShort(r.prevMonth)} — nothing to compare with` : handChange === null ? `none in ${monthShort(r.prevMonth)}` : `${handChange > 0 ? "▲" : handChange < 0 ? "▼" : "•"} ${Math.abs(handChange)}% vs ${monthShort(r.prevMonth)} (${fmt(r.handOuts.prev)})`} />
       </div>
 
       <section className="bg-surface border rounded-xl p-4">
@@ -211,13 +200,13 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
               </tr>
             </thead>
             <tbody>
-              {shown.map((row) => <ItemRow key={row.itemId} r={row} open={open.has(row.itemId)} toggle={() => toggle(row.itemId)} workers={r.workers} />)}
+              {shown.map((row) => <ItemRow key={row.itemId} r={row} open={open.has(row.itemId)} toggle={() => toggle(row.itemId)} workers={r.workers} prevComplete={r.prevComplete} />)}
               {shown.length === 0 && <tr><td colSpan={8} className="p-4 text-sm text-muted">No item matches.</td></tr>}
             </tbody>
           </table>
         </div>
       </section>
-      <p className="text-[11px] text-muted">A weekly limit&apos;s weeks are counted whole, days outside the month included. Items handed out to departments none of their limits cover show that part apart and it does not count against the limit.</p>
+      <p className="text-[11px] text-muted">Items handed out to departments none of their limits cover show that part apart and it does not count against the limit.</p>
     </div>
   );
 }

@@ -286,7 +286,7 @@ export async function getConsumablesDashboard(fromISO: string, toISO: string): P
   const { gte, lt } = periodBounds(fromISO, toISO);
   const prev = previousPeriod(fromISO, toISO);
   const prevBounds = periodBounds(prev.fromISO, prev.toISO);
-  const [rows, previousIssues, allWorkers] = await Promise.all([
+  const [rows, previousCount, allWorkers, first] = await Promise.all([
     prisma.consumableIssue.findMany({
       where: { deletedAt: null, issuedAt: { gte, lt } },
       select: {
@@ -296,7 +296,11 @@ export async function getConsumablesDashboard(fromISO: string, toISO: string): P
     }),
     prisma.consumableIssue.count({ where: { deletedAt: null, issuedAt: { gte: prevBounds.gte, lt: prevBounds.lt } } }),
     getAllWorkers(),
+    prisma.consumableIssue.findFirst({ where: { deletedAt: null }, orderBy: { issuedAt: "asc" }, select: { issuedAt: true } }),
   ]);
+  // the period before is only a comparison if the log already ran for all
+  // of it — against a part of one, "▲ 400%" is the log's start, not the store
+  const previousIssues = first && factoryDayISO(first.issuedAt) <= prev.fromISO ? previousCount : null;
   // hand-outs are the department's: every row counts under its department
   // (an older row's worker is not read), one stand-in id per department
   const groupIds = new Map<string, number>();

@@ -5,7 +5,7 @@ import {
   windowsSpan, type LimitCandidate, type LimitRule, type LimitUse,
 } from "./consumableLimits";
 
-const rule = (over: Partial<LimitRule>): LimitRule => ({ id: 1, itemId: 10, departments: ["WeldingTX"], basis: "pool", period: "week", qty: 15, ...over });
+const rule = (over: Partial<LimitRule>): LimitRule => ({ id: 1, itemId: 10, departments: ["WeldingTX"], basis: "pool", period: "month", qty: 15, ...over });
 const use = (over: Partial<LimitUse>): LimitUse => ({ itemId: 10, department: "WeldingTX", workerId: 1, dayISO: "2026-09-28", qty: 1, ...over });
 const cand = ({ workerIds, ...over }: Partial<LimitUse> & { workerIds?: number[] }): LimitCandidate => {
   const { workerId, ...rest } = { itemId: 10, department: "WeldingTX", workerId: 1, dayISO: "2026-09-28", qty: 1, ...over };
@@ -13,15 +13,12 @@ const cand = ({ workerIds, ...over }: Partial<LimitUse> & { workerIds?: number[]
 };
 
 describe("fixed windows", () => {
-  it("runs the work week Saturday to Friday", () => {
-    // 2026-09-26 is a Saturday, 2026-10-02 a Friday
-    expect(periodWindow("week", "2026-09-26")).toEqual({ from: "2026-09-26", to: "2026-10-02" });
-    expect(periodWindow("week", "2026-09-28")).toEqual({ from: "2026-09-26", to: "2026-10-02" });
-    expect(periodWindow("week", "2026-10-02")).toEqual({ from: "2026-09-26", to: "2026-10-02" });
-    expect(periodWindow("week", "2026-10-03")).toEqual({ from: "2026-10-03", to: "2026-10-09" });
+  it("has nothing shorter than a month", () => {
+    expect(isLimitPeriod("week")).toBe(false);
+    expect(isLimitPeriod("day")).toBe(false);
   });
 
-  it("takes the calendar month and quarter, and the day itself", () => {
+  it("takes the calendar month, and runs of months from January", () => {
     expect(periodWindow("month", "2026-02-14")).toEqual({ from: "2026-02-01", to: "2026-02-28" });
     expect(periodWindow("month", "2026-12-31")).toEqual({ from: "2026-12-01", to: "2026-12-31" });
     expect(periodWindow("quarter", "2026-09-28")).toEqual({ from: "2026-07-01", to: "2026-09-30" });
@@ -29,10 +26,10 @@ describe("fixed windows", () => {
   });
 
   it("labels and lists the windows over a range", () => {
-    expect(windowLabel("week", { from: "2026-09-26", to: "2026-10-02" })).toBe("week of 26 Sep");
+    expect(windowLabel("month", { from: "2026-09-01", to: "2026-09-30" })).toBe("Sep 2026");
     expect(windowLabel("quarter", { from: "2026-07-01", to: "2026-09-30" })).toBe("Q3 2026");
     expect(windowsOverlapping("month", "2026-08-20", "2026-10-05").map((w) => w.from)).toEqual(["2026-08-01", "2026-09-01", "2026-10-01"]);
-    expect(windowsSpan([{ period: "week" }, { period: "month" }], "2026-09-28")).toEqual({ from: "2026-09-01", to: "2026-10-02" });
+    expect(windowsSpan([{ period: "month" }, { period: "quarter" }], "2026-09-28")).toEqual({ from: "2026-07-01", to: "2026-09-30" });
     expect(windowsSpan([], "2026-09-28")).toBeNull();
   });
 });
@@ -98,12 +95,12 @@ describe("a group hand-out's uses", () => {
 describe("checking a hand-out", () => {
   it("passes while the window has room, and names the breach once it would not", () => {
     const rules = [rule({})];
-    const uses = [use({ qty: 10, dayISO: "2026-09-26" }), use({ qty: 4, dayISO: "2026-09-19" })]; // the second is last week
+    const uses = [use({ qty: 10, dayISO: "2026-09-02" }), use({ qty: 4, dayISO: "2026-08-31" })]; // the second is last month
     expect(checkAgainstLimits(rules, uses, cand({ qty: 5 }))).toEqual([]);
     const b = checkAgainstLimits(rules, uses, cand({ qty: 6 }));
     expect(b).toHaveLength(1);
-    expect(b[0]).toMatchObject({ used: 10, adding: 6, limit: 15, windowLabel: "week of 26 Sep" });
-    expect(describeBreach(b[0])).toBe("Welding TX · a week (week of 26 Sep): 10 already + 6 now = 16 of 15");
+    expect(b[0]).toMatchObject({ used: 10, adding: 6, limit: 15, windowLabel: "Sep 2026" });
+    expect(describeBreach(b[0])).toBe("Welding TX · a month (Sep 2026): 10 already + 6 now = 16 of 15");
   });
 
   it("only counts the departments a rule covers, and ignores other items", () => {
@@ -134,7 +131,7 @@ describe("checking a hand-out", () => {
     expect(checkAgainstLimits(rules, [], cand({ qty: 20, workerIds: ten }))).toEqual([]);
     const b = checkAgainstLimits(rules, [], cand({ qty: 21, workerIds: ten }));
     expect(b[0]).toMatchObject({ used: 0, adding: 21, limit: 20, people: 10 });
-    expect(describeBreach(b[0])).toBe("Welding TX, per person × 10 workers · a week (week of 26 Sep): 0 already + 21 now = 21 of 20");
+    expect(describeBreach(b[0])).toBe("Welding TX, per person × 10 workers · a month (Sep 2026): 0 already + 21 now = 21 of 20");
     // what the group's workers already had this week counts; other workers' does not
     const uses = [use({ workerId: 1, qty: 2 }), use({ workerId: 99, qty: 50 })];
     expect(checkAgainstLimits(rules, uses, cand({ qty: 18, workerIds: ten }))).toEqual([]);
@@ -172,9 +169,9 @@ describe("the alarm board", () => {
 
   it("lists every window of the range that ended over", () => {
     const rules = [rule({})];
-    const uses = [use({ qty: 16, dayISO: "2026-09-14" }), use({ qty: 5, dayISO: "2026-09-21" }), use({ qty: 20, dayISO: "2026-09-28" })];
-    const ex = exceedances(rules, uses, "2026-09-01", "2026-09-30");
-    expect(ex.map((e) => [e.windowLabel, e.used])).toEqual([["week of 26 Sep", 20], ["week of 12 Sep", 16]]);
+    const uses = [use({ qty: 16, dayISO: "2026-07-14" }), use({ qty: 5, dayISO: "2026-08-21" }), use({ qty: 20, dayISO: "2026-09-28" })];
+    const ex = exceedances(rules, uses, "2026-07-01", "2026-09-30");
+    expect(ex.map((e) => [e.windowLabel, e.used])).toEqual([["Sep 2026", 20], ["Jul 2026", 16]]);
   });
 
   it("lists per-person exceedances per worker", () => {
@@ -185,7 +182,7 @@ describe("the alarm board", () => {
 });
 
 describe("per-worker and each-department limits become each department's own", () => {
-  const rule = (over: Partial<LimitRule>): LimitRule => ({ id: 7, itemId: 3, departments: ["WeldingTX", "PaintingTX"], basis: "person", period: "week", qty: 2, ...over });
+  const rule = (over: Partial<LimitRule>): LimitRule => ({ id: 7, itemId: 3, departments: ["WeldingTX", "PaintingTX"], basis: "person", period: "month", qty: 2, ...over });
   const workers = new Map([["WeldingTX", 12], ["PaintingTX", 5]]);
 
   it("turns a per-worker number into the department's: the number × its workers", () => {
@@ -222,7 +219,7 @@ describe("per-worker and each-department limits become each department's own", (
     const uses = [{ itemId: 3, department: "WeldingTX", workerId: 0, dayISO: "2026-09-28", qty: 20 }];
     const b = checkAgainstLimits([w], uses, { itemId: 3, department: "WeldingTX", dayISO: "2026-09-29", qty: 5, workerIds: [] });
     expect(b).toHaveLength(1);
-    expect(describeBreach(b[0])).toMatch(/^Welding TX \(2 per worker × 12 workers\) · a week .*20 already \+ 5 now = 25 of 24/);
+    expect(describeBreach(b[0])).toMatch(/^Welding TX \(2 per worker × 12 workers\) · a month \(Sep 2026\): 20 already \+ 5 now = 25 of 24/);
   });
 });
 

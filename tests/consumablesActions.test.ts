@@ -291,8 +291,8 @@ describe("restoreConsumableRevision", () => {
 
 describe("limits at recording", () => {
   const breach = {
-    ruleId: 9, period: "week", basis: "pool", departmentsLabel: "Welding TX", window: { from: "2026-09-26", to: "2026-10-02" },
-    windowLabel: "week of 26 Sep", used: 14, adding: 2, limit: 15,
+    ruleId: 9, period: "month", basis: "pool", departmentsLabel: "Welding TX", window: { from: "2026-09-01", to: "2026-09-30" },
+    windowLabel: "Sep 2026", used: 14, adding: 2, limit: 15,
   };
 
   it("records a catalogue item under the catalogue's own name, linked to it", async () => {
@@ -320,7 +320,7 @@ describe("limits at recording", () => {
   it("stops at a breach and asks for the reason, saving nothing", async () => {
     h.checkIssueLimits.mockResolvedValue([breach]);
     const res = await createConsumableIssue(form({ ...valid, itemId: "3" }));
-    expect(res).toMatchObject({ ok: false, needsReason: true, breaches: ["Welding TX · a week (week of 26 Sep): 14 already + 2 now = 16 of 15"] });
+    expect(res).toMatchObject({ ok: false, needsReason: true, breaches: ["Welding TX · a month (Sep 2026): 14 already + 2 now = 16 of 15"] });
     expect(h.prisma.consumableIssue.create).not.toHaveBeenCalled();
   });
 

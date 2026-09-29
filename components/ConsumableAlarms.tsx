@@ -4,13 +4,13 @@ import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
 import type { AlarmRow, LimitDashboard } from "@/lib/server/consumableLimits";
 
 // The CONSUMABLES dashboard's alarms: the limits, in two tenses —
-//   now ........ every rule in its current window (today, this week, this
-//                month, this quarter): what is over, what is close;
-//   the period . every window on the slicer's period that ended over a
-//                limit, and the hand-outs recorded over one with the reason
-//                the recorder gave.
+//   now ........ every rule in its current window (this month, this
+//                quarter …) that is past its number — an alarm is a limit
+//                exceeded, nothing less;
+//   the period . every finished window touching the slicer's period that
+//                ended over a limit, and the hand-outs recorded over one
+//                with the reason the recorder gave.
 
-const NEAR = 0.8;
 const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: 3 }));
 
 /** Used against the limit: the bar is scaled to whichever is larger, the
@@ -18,8 +18,7 @@ const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toL
 function BulletBar({ used, limit }: { used: number; limit: number }) {
   const top = Math.max(used, limit, 1e-9);
   const over = used > limit + 1e-9;
-  const near = !over && used >= limit * NEAR;
-  const tone = over ? "var(--bad-fg)" : near ? "var(--warn-fg)" : "var(--ok-fg)";
+  const tone = over ? "var(--bad-fg)" : "var(--ok-fg)";
   return (
     <div className="relative h-2.5 rounded-full bg-surface-2 min-w-[8rem]" aria-hidden>
       <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(used / top) * 100}%`, background: tone }} />
@@ -45,7 +44,7 @@ function AlarmLine({ a }: { a: AlarmRow }) {
       </div>
       <BulletBar used={a.used} limit={a.limit} />
       <div className="text-sm tabnum text-end whitespace-nowrap">
-        <b className={over ? "text-bad-fg" : a.used >= a.limit * NEAR ? "text-warn-fg" : ""}>{fmt(a.used)}</b>
+        <b className={over ? "text-bad-fg" : ""}>{fmt(a.used)}</b>
         <span className="text-muted"> / {fmt(a.limit)}{a.basis === "person" ? " (top worker)" : ""}</span>
       </div>
     </li>
@@ -55,11 +54,9 @@ function AlarmLine({ a }: { a: AlarmRow }) {
 export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard; periodLabel: string; period: string }) {
   const isOver = (a: AlarmRow) => (a.basis === "person" ? a.over.length > 0 : a.used > a.limit + 1e-9);
   const overNow = d.board.filter(isOver);
-  const nearNow = d.board.filter((a) => !isOver(a) && a.used >= a.limit * NEAR);
-  const watch = [...overNow, ...nearNow];
   const file = (name: string) => `consumables-${name}-${period}.xlsx`;
 
-  const boardRows: TableRow[] = d.board.map((a) => ({
+  const boardRows: TableRow[] = overNow.map((a) => ({
     Item: a.item, Code: a.code ?? "", Departments: a.departmentsLabel, Limit: a.limit, UOM: a.uom, Per: PERIOD_LABEL[a.period],
     Counted: a.basis === "person" ? "per person" : "shared", Window: a.windowLabel, Used: a.used, "Used %": `${Math.round(a.ratio * 100)}%`,
     "Workers over": a.over.map((w) => `${w.name} (${w.empId}) ${w.used}`).join(" · "),
@@ -76,27 +73,26 @@ export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap gap-3">
-        <StatTile label="Over a limit now" value={fmt(overNow.length)} sub={overNow.length ? "limits past their number in the current period" : "✓ every limit within its number"} />
-        <StatTile label={`Close to a limit (${Math.round(NEAR * 100)}%+)`} value={fmt(nearNow.length)} sub="still within, watch them" />
-        <StatTile label="Exceeded in the period" value={fmt(d.exceedances.length)} sub={`periods that went over, ${periodLabel}`} />
+        <StatTile label="Over a limit now" value={fmt(overNow.length)} sub={overNow.length ? "limits past their number this month (or their months so far)" : "✓ every limit within its number"} />
+        <StatTile label="Closed over a limit" value={fmt(d.exceedances.length)} sub={`past months (or longer limits) that ended over, ${periodLabel}`} />
         <StatTile label="Recorded over a limit" value={fmt(d.overLimitIssues.length)} sub={`hand-outs with a reason, ${periodLabel}`} />
         {d.uncatalogued > 0 && <StatTile label="Not in the catalogue" value={fmt(d.uncatalogued)} sub="hand-outs no limit counts — add the item?" />}
       </div>
 
       <ChartCard
         title="Alarms now"
-        sub={watch.length ? "Every limit over its number or close to it, in its current period — the mark on each bar is the limit" : "Nothing over or close to a limit in its current period"}
+        sub={overNow.length ? "Every limit past its number in its current window — this month, or its months so far — the mark on each bar is the limit" : "No limit is past its number this month"}
         table={{ rows: boardRows, filename: file("limits-now"), sheet: "Limits now" }}
       >
-        {watch.length === 0 ? <p className="text-sm text-ok-fg">✓ Every item is within its limits.</p> : (
-          <ul className="divide-y">{watch.map((a) => <AlarmLine key={a.ruleId} a={a} />)}</ul>
+        {overNow.length === 0 ? <p className="text-sm text-ok-fg">✓ Every item is within its limits.</p> : (
+          <ul className="divide-y">{overNow.map((a) => <AlarmLine key={a.ruleId} a={a} />)}</ul>
         )}
       </ChartCard>
 
       <div className="grid gap-3 xl:grid-cols-2">
         <ChartCard
-          title="Exceeded in the period"
-          sub={d.exceedances.length ? `Each day, week, month or longer window on the slicer that ended over its limit — a per-worker limit counts as its department's number × its workers` : `No limit went over ${periodLabel}`}
+          title="Past months over the limit"
+          sub={d.exceedances.length ? `Each finished month (or longer limit) on the slicer that ended over its number — the running month is under Alarms now` : `No finished month went over a limit ${periodLabel}`}
           table={d.exceedances.length ? { rows: exRows, filename: file("exceeded"), sheet: "Exceeded" } : undefined}
         >
           {d.exceedances.length > 0 ? (

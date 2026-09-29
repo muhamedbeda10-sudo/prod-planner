@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { factoryDayISO } from "@/lib/domain/dates";
-import { buildMonthlyReport, reportSpan, shiftMonth, type MonthlyReport } from "@/lib/domain/consumableMonthly";
+import { buildMonthlyReport, monthBounds, reportSpan, shiftMonth, type MonthlyReport } from "@/lib/domain/consumableMonthly";
 import { loadUses, toRule } from "./consumableLimits";
 
 // The CONSUMABLES monthly review — the reads. The arithmetic is
@@ -13,6 +13,10 @@ export interface MonthlyReportView extends MonthlyReport {
   /** The months the picker offers: the first month anything was handed out
    *  to this month, newest first. */
   months: string[];
+  /** The log covers the whole month before — its figures are a comparison.
+   *  When it began later, "vs last month" is left out rather than shown as a
+   *  rise from nothing. */
+  prevComplete: boolean;
 }
 
 export async function getMonthlyReport(month: string): Promise<MonthlyReportView> {
@@ -39,5 +43,10 @@ export async function getMonthlyReport(month: string): Promise<MonthlyReportView
   for (let m = thisMonth; m >= start && months.length < 60; m = shiftMonth(m, -1)) months.push(m);
   if (!months.includes(month)) months.push(month);
 
-  return { ...report, workers, months: months.sort().reverse() };
+  const prevComplete = first !== null && factoryDayISO(first.issuedAt) <= monthBounds(report.prevMonth).from;
+  return {
+    ...report,
+    rows: prevComplete ? report.rows : report.rows.map((r) => ({ ...r, change: null })),
+    workers, months: months.sort().reverse(), prevComplete,
+  };
 }
