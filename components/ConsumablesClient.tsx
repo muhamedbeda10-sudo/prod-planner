@@ -2,15 +2,16 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { WORKER_GROUPS } from "@/lib/domain/tanks";
-import { CONSUMABLE_LIMITS, NEW_DEPARTMENT, NEW_ITEM, OVER_LIMIT_REASON_MAX } from "@/lib/domain/consumables";
-import type { CatalogueOption, ConsumableIssueView, ConsumablesPageData } from "@/lib/server/consumables";
+import { CONSUMABLE_LIMITS, NEW_DEPARTMENT, NEW_ITEM, OVER_LIMIT_REASON_MAX, workersForDepartment } from "@/lib/domain/consumables";
+import type { CatalogueOption, ConsumableIssueView, ConsumablesPageData, ConsumableWorkerOption } from "@/lib/server/consumables";
 import type { LimitHint } from "@/lib/server/consumableLimits";
 import { consumableLimitHints, createConsumableIssue, deleteConsumableIssue, updateConsumableIssue } from "@/app/consumables/actions";
 import { ActionMsg as Msg, RevisionItem, useConsumableAction as useAction } from "@/components/consumablesUi";
 import { Modal } from "@/components/Modal";
 
 // The CONSUMABLES tab: the store's log of what it hands out — to a
-// department, no worker named. "➕ New hand-out" opens the storekeeper's form
+// department (the limits count it there), naming who asked for it or
+// collected it. "➕ New hand-out" opens the storekeeper's form
 // in a popup (consumables.edit); the log below is everyone's to read. A
 // saved row is corrected by the person who recorded it or an admin; its
 // history, deleting and restoring are the admin's.
@@ -97,19 +98,23 @@ function OverLimitPrompt({ breaches, disabled }: { breaches: string[]; disabled?
 
 /**
  * The hand-out's fields, for a new one and for a correction alike, laid out
- * top to bottom: where (department), what (item, qty), notes. The item comes
- * from the catalogue (the department's items first) or is typed when it is
- * not in it; the department is a worker section, one typed before, or a new
- * one. No worker is named — a hand-out is the department's, so the
- * department can be corrected on any row, an older one's included.
+ * top to bottom: where (department) and who asked for it / collected it,
+ * what (item, qty), notes. The item comes from the catalogue (the
+ * department's items first) or is typed when it is not in it; the department
+ * is a worker section, one typed before, or a new one; the person is a
+ * worker of that section (anyone on the list for a typed department). The
+ * hand-out is the department's — the limits count it there.
  */
 function IssueFields({
   departments,
   catalogue,
+  workers,
   entry,
   disabled,
   department,
   setDepartment,
+  receivedBy,
+  setReceivedBy,
   itemId,
   setItemId,
   setQty,
@@ -117,10 +122,13 @@ function IssueFields({
 }: {
   departments: ConsumablesPageData["departments"];
   catalogue: CatalogueOption[];
+  workers: ConsumableWorkerOption[];
   entry?: ConsumableIssueView;
   disabled?: boolean;
   department: string;
   setDepartment: (v: string) => void;
+  receivedBy: string;
+  setReceivedBy: (v: string) => void;
   itemId: string;
   setItemId: (v: string) => void;
   setQty: (v: number) => void;
@@ -131,12 +139,28 @@ function IssueFields({
   // an older row's department may be one no longer offered — keep it pickable
   const known = department === "" || department === NEW_DEPARTMENT
     || departments.sections.some((s) => s.code === department) || departments.custom.includes(department);
+  // the people the department offers; the one an older row names stays
+  // pickable (deactivated or moved since) while its department stays
+  const offered = useMemo(() => {
+    const list = workersForDepartment(workers, department);
+    const w = entry?.worker;
+    if (w && department === entry.department && !list.some((x) => x.id === w.id)) {
+      return [...list, { id: w.id, empId: w.empId, name: `${w.name}${w.active ? "" : " (deactivated)"}`, sections: [] }];
+    }
+    return list;
+  }, [workers, department, entry]);
+
+  function pickDepartment(next: string) {
+    setDepartment(next);
+    // someone not in the new section cannot stay picked
+    if (receivedBy && !workersForDepartment(workers, next).some((w) => String(w.id) === receivedBy)) setReceivedBy("");
+  }
 
   return (
     <div className="grid gap-3 sm:grid-cols-6">
       <input type="hidden" name="recipientScope" value="department" />
-      <Field label="Department" className={department === NEW_DEPARTMENT ? "sm:col-span-3" : "sm:col-span-6"}>
-        <select name="department" value={department} onChange={(e) => setDepartment(e.target.value)} required disabled={disabled} className={`${F} w-full`}>
+      <Field label="Department" className="sm:col-span-3">
+        <select name="department" value={department} onChange={(e) => pickDepartment(e.target.value)} required disabled={disabled} className={`${F} w-full`}>
           <option value="" disabled>Pick the department…</option>
           {!known && <option value={department}>{entry?.departmentLabel ?? department}</option>}
           {WORKER_GROUPS.map((g) => (
@@ -160,6 +184,12 @@ function IssueFields({
           />
         </Field>
       )}
+      <Field label="Requested / collected by" className={department === NEW_DEPARTMENT ? "sm:col-span-6" : "sm:col-span-3"}>
+        <select name="receivedById" value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} required disabled={disabled || !department} className={`${F} w-full`}>
+          <option value="" disabled>{department ? (offered.length ? "Pick the name…" : "No active worker in this section") : "Pick the department first"}</option>
+          {offered.map((w) => <option key={w.id} value={w.id}>{workerLabel(w)}</option>)}
+        </select>
+      </Field>
 
       <Field label="Item" className="sm:col-span-4">
         <select name="itemId" value={itemId} onChange={(e) => setItemId(e.target.value)} required disabled={disabled} className={`${F} w-full`}>
@@ -213,6 +243,7 @@ function FormFoot({ children }: { children: React.ReactNode }) {
 function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; onClose: () => void; onSaved: (text: string) => void }) {
   const add = useAction();
   const [department, setDepartment] = useState("");
+  const [receivedBy, setReceivedBy] = useState("");
   const [itemId, setItemId] = useState("");
   const [qty, setQty] = useState(0);
   // the breach the server answered with; cleared as soon as the hand-out changes
@@ -273,7 +304,7 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
       >
         <IssueFields
           departments={data.departments} catalogue={data.catalogue} disabled={add.pending}
-          department={department} setDepartment={changed(setDepartment)}
+          department={department} setDepartment={changed(setDepartment)} workers={data.workers} receivedBy={receivedBy} setReceivedBy={changed(setReceivedBy)}
           itemId={itemId} setItemId={changed(setItemId)} setQty={changed(setQty)} qtyRef={qtyRef}
         />
         <LimitHints itemId={itemId} department={department} qty={qty} />
@@ -296,6 +327,7 @@ function RecordDialog({ data, onClose, onSaved }: { data: ConsumablesPageData; o
 function EditDialog({ e, data, onClose }: { e: ConsumableIssueView; data: ConsumablesPageData; onClose: () => void }) {
   const edit = useAction();
   const [department, setDepartment] = useState(e.department);
+  const [receivedBy, setReceivedBy] = useState(e.worker ? String(e.worker.id) : "");
   const [itemId, setItemId] = useState(e.itemId === null ? NEW_ITEM : String(e.itemId));
   const [qty, setQty] = useState(e.qty);
   const [breaches, setBreaches] = useState<string[] | null>(null);
@@ -314,7 +346,7 @@ function EditDialog({ e, data, onClose }: { e: ConsumableIssueView; data: Consum
       >
         <IssueFields
           departments={data.departments} catalogue={data.catalogue} entry={e} disabled={edit.pending}
-          department={department} setDepartment={changed(setDepartment)}
+          department={department} setDepartment={changed(setDepartment)} workers={data.workers} receivedBy={receivedBy} setReceivedBy={changed(setReceivedBy)}
           itemId={itemId} setItemId={changed(setItemId)} setQty={changed(setQty)}
         />
         <LimitHints itemId={itemId} department={department} qty={qty} issueId={e.id} />
@@ -350,14 +382,18 @@ function IssueRow({ e, data, isAdmin, showActions, colSpan }: { e: ConsumableIss
           {e.overLimit?.reason && <div className="text-xs text-bad-fg font-normal">“{e.overLimit.reason}”</div>}
         </td>
         <td className="p-2 text-center ltr tabnum font-extrabold whitespace-nowrap">{e.qty}{e.uom && <span className="text-[10px] text-muted font-semibold ms-0.5">{e.uom}</span>}</td>
+        <td className="p-2">{e.departmentLabel}</td>
         <td className="p-2">
-          {e.departmentLabel}
-          {/* an older row still names who it went to */}
           {e.worker ? (
-            <div className="text-[11px] text-muted whitespace-nowrap">{workerLabel(e.worker)}</div>
+            <span className="whitespace-nowrap">
+              <code className="ltr tabnum text-xs px-1 py-0.5 rounded bg-surface-2 border mr-1">{e.worker.empId}</code>
+              {e.worker.name}
+            </span>
           ) : e.group && e.group.workers.length > 0 ? (
-            <div className="text-[11px] text-muted max-w-xs" title={e.group.workers.map(workerLabel).join(" · ")}>{e.group.label}</div>
-          ) : null}
+            <span className="text-xs max-w-xs inline-block" title={e.group.workers.map(workerLabel).join(" · ")}>{e.group.label}</span>
+          ) : (
+            <span className="text-xs text-muted" title="Recorded to the department before the name was asked for">—</span>
+          )}
         </td>
         <td className="p-2 text-muted">{e.notes ?? ""}</td>
         <td className="p-2 text-xs text-muted whitespace-nowrap">
@@ -437,7 +473,7 @@ export function ConsumablesClient({
   }, [data.entries, q]);
   // the actions column is there for an admin, or for a recorder with a row of his own on screen
   const showActions = isAdmin || data.entries.some((e) => e.canEdit);
-  const colSpan = showActions ? 7 : 6;
+  const colSpan = showActions ? 8 : 7;
   const [recording, setRecording] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
 
@@ -479,6 +515,7 @@ export function ConsumablesClient({
                   <th className="p-2">Item</th>
                   <th className="p-2 text-center">Qty</th>
                   <th className="p-2">Department</th>
+                  <th className="p-2">Requested / collected by</th>
                   <th className="p-2">Notes</th>
                   <th className="p-2">Recorded by</th>
                   {showActions && <th className="p-2 no-print" title="Correct your own rows; deleting is the admin's">Actions</th>}

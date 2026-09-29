@@ -129,6 +129,9 @@ export interface ConsumableFields {
   /** As typed or picked — resolveDepartment turns it into what is stored. */
   department: string;
   recipients: RecipientPick;
+  /** Who asked for it or collected it — a worker on the list. The hand-out
+   *  is still the department's: the limits count it under the department. */
+  receivedById: number;
   notes: string | null;
 }
 
@@ -149,12 +152,16 @@ export function readConsumableForm(get: (name: string) => unknown): { fields?: C
   if (department.length > CONSUMABLE_LIMITS.department) return { error: `The department name is too long (at most ${CONSUMABLE_LIMITS.department} characters).` };
   if (department === NEW_DEPARTMENT) return { error: "Pick the department." };
 
+  const byRaw = cleanText(get("receivedById"));
+  const receivedById = Number(byRaw);
+  if (!byRaw || !Number.isInteger(receivedById) || receivedById <= 0) return { error: "Pick who asked for it / collected it." };
+
   const notesRaw = String(get("notes") ?? "").trim();
   if (notesRaw.length > CONSUMABLE_LIMITS.notes) return { error: `The notes are too long (at most ${CONSUMABLE_LIMITS.notes} characters).` };
 
-  // a hand-out is recorded to the department and the quantity it took — no
-  // worker is named any more (older rows keep the one they had)
-  return { fields: { item, qty: q.qty!, department, recipients: { scope: "department" }, notes: notesRaw || null } };
+  // a hand-out is the department's — the quantity counts under it — and
+  // names the person who asked for it or collected it
+  return { fields: { item, qty: q.qty!, department, recipients: { scope: "department" }, receivedById, notes: notesRaw || null } };
 }
 
 const fold = (s: string) => cleanText(s).toLowerCase();

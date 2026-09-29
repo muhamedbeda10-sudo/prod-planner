@@ -52,6 +52,7 @@ const NOT_LOGGED_IN = "You are not logged in — refresh the page.";
 const NOT_YOURS = "You can only correct the hand-outs you recorded yourself — ask the admin.";
 const STALE = "Someone changed this row since the page was loaded — refresh and try again.";
 const GONE = "That row no longer exists — refresh the page.";
+const SAVE_FAILED = "The hand-out could not be saved — nothing was recorded. Try again, and tell the admin if it keeps happening.";
 
 type Tx = Prisma.TransactionClient;
 
@@ -131,7 +132,8 @@ async function resolveRecipients(pick: RecipientPick, department: string): Promi
 /**
  * Write one change: the row, guarded by the version it was read at (so a
  * concurrent change loses cleanly instead of being overwritten), and its
- * revision. False when the row moved underneath.
+ * revision. "stale" when the row moved underneath, "failed" when the
+ * database refused it.
  */
 async function writeChange(
   id: number,
@@ -140,20 +142,26 @@ async function writeChange(
   revision: { action: "edit" | "delete" | "restore"; before: ConsumableSnapshot; after: ConsumableSnapshot | null },
   user: { id: number; name: string },
   where: { deletedAt?: null } = { deletedAt: null }
-): Promise<boolean> {
+): Promise<"ok" | "stale" | "failed"> {
   const at = new Date();
-  return prisma.$transaction(async (tx: Tx) => {
-    const res = await tx.consumableIssue.updateMany({ where: { id, updatedAt: readAt, ...where }, data });
-    if (res.count !== 1) return false;
-    await tx.consumableIssueRevision.create({
-      data: {
-        issueId: id, action: revision.action,
-        before: json(revision.before), after: revision.after ? json(revision.after) : Prisma.DbNull,
-        byId: user.id, by: user.name, at,
-      },
+  try {
+    return await prisma.$transaction(async (tx: Tx) => {
+      const res = await tx.consumableIssue.updateMany({ where: { id, updatedAt: readAt, ...where }, data });
+      if (res.count !== 1) return "stale" as const;
+      await tx.consumableIssueRevision.create({
+        data: {
+          issueId: id, action: revision.action,
+          before: json(revision.before), after: revision.after ? json(revision.after) : Prisma.DbNull,
+          byId: user.id, by: user.name, at,
+        },
+      });
+      return "ok" as const;
     });
-    return true;
-  });
+  } catch (e) {
+    // a refusal from the database comes back as a message, not a crash
+    console.error("consumables writeChange", e);
+    return "failed";
+  }
 }
 
 /** The item the form picked: a catalogue item (active, for a new hand-out)
@@ -199,6 +207,11 @@ export async function createConsumableIssue(formData: FormData): Promise<Consuma
   const who = await resolveRecipients(f.recipients, department);
   if (who.error) return { ok: false, error: who.error };
   const r = who.r!;
+  // who asked for it / collected it: on the list, active, and — for a worker
+  // section — registered in it
+  const receiver = await loadWorker(f.receivedById);
+  const badReceiver = workerProblem(receiver, department);
+  if (badReceiver) return { ok: false, error: badReceiver };
 
   // a per-person limit and a group: the number times the workers
   const breaches = await checkIssueLimits({ itemId: picked.itemId ?? null, department, workerIds: r.workerIds, qty: f.qty, dayISO: factoryDayISO(new Date()) });
@@ -206,23 +219,30 @@ export async function createConsumableIssue(formData: FormData): Promise<Consuma
   if (verdict.refuse) return { ...verdict.refuse, department };
 
   // issuedAt is the database's clock (the column default) — never the form's.
-  // The row and a group's workers are one insert.
-  await prisma.consumableIssue.create({
-    data: {
-      itemId: picked.itemId ?? null,
-      ...verdict.data!,
-      item: f.item,
-      qty: new Prisma.Decimal(f.qty),
-      department,
-      workerId: r.workerId,
-      recipientScope: r.scope,
-      recipientCount: r.workerIds.length || 0,
-      ...(r.workerId === null && r.workerIds.length > 0 ? { recipients: { create: r.workerIds.map((workerId) => ({ workerId })) } } : {}),
-      notes: f.notes,
-      recordedById: user.id,
-      recordedBy: user.name,
-    },
-  });
+  // The row and a group's workers are one insert. A refusal from the
+  // database comes back as a message, never as a page that will not load.
+  try {
+    await prisma.consumableIssue.create({
+      data: {
+        itemId: picked.itemId ?? null,
+        ...verdict.data!,
+        item: f.item,
+        qty: new Prisma.Decimal(f.qty),
+        department,
+        // the department's hand-out, naming who asked for it / collected it
+        workerId: r.workerId ?? receiver!.id,
+        recipientScope: r.scope,
+        recipientCount: r.workerIds.length || (r.scope === "worker" ? 1 : 0),
+        ...(r.workerId === null && r.workerIds.length > 0 ? { recipients: { create: r.workerIds.map((workerId) => ({ workerId })) } } : {}),
+        notes: f.notes,
+        recordedById: user.id,
+        recordedBy: user.name,
+      },
+    });
+  } catch (e) {
+    console.error("createConsumableIssue", e);
+    return { ok: false, error: SAVE_FAILED, department };
+  }
   revalidateConsumables();
   return { ok: true, department };
 }
@@ -245,8 +265,7 @@ export async function updateConsumableIssue(formData: FormData): Promise<Consuma
   if (prev.updatedAt.getTime() !== version.getTime()) return { ok: false, error: STALE };
 
   // an old row may keep a catalogue item that has since been retired; the
-  // item, quantity, department and notes are corrected — the worker an older
-  // row named stays as it was
+  // item, quantity, department, who asked for it and notes are corrected
   const picked = await pickItem(formData, { allowInactiveId: prev.itemId });
   if (picked.error) return { ok: false, error: picked.error };
   const read = readConsumableForm((n) => (n === "item" && picked.name ? picked.name : formData.get(n)));
@@ -257,7 +276,15 @@ export async function updateConsumableIssue(formData: FormData): Promise<Consuma
 
   const before = snapshotOf(prev);
   const department = resolveDepartment(f.department, await getCustomDepartments());
-  const after: ConsumableSnapshot = { ...before, item: f.item, qty: new Prisma.Decimal(f.qty).toNumber(), department, notes: f.notes, itemId: picked.itemId ?? null };
+  // the person the row already names passes as he is (deactivated or moved
+  // since — it is history) while the department stays
+  const receiver = await loadWorker(f.receivedById);
+  const badReceiver = workerProblem(receiver, department, { worker: f.receivedById === prev.workerId, department: department === prev.department });
+  if (badReceiver) return { ok: false, error: badReceiver };
+  const after: ConsumableSnapshot = {
+    ...before, item: f.item, qty: new Prisma.Decimal(f.qty).toNumber(), department, notes: f.notes, itemId: picked.itemId ?? null,
+    workerId: receiver!.id, workerEmpId: receiver!.empId, workerName: receiver!.name,
+  };
   if (sameSnapshot(before, after)) return { ok: false, error: "Nothing changed." };
 
   // checked on the day it was handed out, the row itself left out of the count
@@ -272,12 +299,14 @@ export async function updateConsumableIssue(formData: FormData): Promise<Consuma
     id, prev.updatedAt,
     {
       item: f.item, itemId: picked.itemId ?? null, ...verdict.data!,
-      qty: new Prisma.Decimal(f.qty), notes: f.notes, department, editedAt: new Date(), editedBy: user.name,
+      qty: new Prisma.Decimal(f.qty), notes: f.notes, department, workerId: receiver!.id,
+      // a one-worker row keeps its scope (the check wants its worker, and one)
+      editedAt: new Date(), editedBy: user.name,
     },
     { action: "edit", before, after },
     user
   );
-  if (!done) return { ok: false, error: STALE };
+  if (done !== "ok") return { ok: false, error: done === "stale" ? STALE : SAVE_FAILED };
 
   revalidateConsumables();
   return { ok: true };
@@ -304,7 +333,7 @@ export async function deleteConsumableIssue(formData: FormData): Promise<Consuma
     { action: "delete", before: snapshotOf(prev), after: null },
     user
   );
-  if (!done) return { ok: false, error: STALE };
+  if (done !== "ok") return { ok: false, error: done === "stale" ? STALE : SAVE_FAILED };
 
   revalidateConsumables();
   return { ok: true };
@@ -358,7 +387,7 @@ export async function restoreConsumableRevision(formData: FormData): Promise<Con
     user,
     {}
   );
-  if (!done) return { ok: false, error: STALE };
+  if (done !== "ok") return { ok: false, error: done === "stale" ? STALE : SAVE_FAILED };
 
   revalidateConsumables();
   return { ok: true };

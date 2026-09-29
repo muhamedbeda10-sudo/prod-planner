@@ -51,7 +51,7 @@ const admin = { id: 1, name: "Admin", isAdmin: true, perms: "" };
 const NO_PERM = { error: "You do not have permission for this action — ask the admin." };
 
 const sayed = { id: 7, empId: "1203", name: "Sayed", active: true, depts: "WeldingTX" };
-const valid = { item: "Welding wire 1.2mm", qty: "2", department: "WeldingTX", workerId: "7", notes: "" };
+const valid = { item: "Welding wire 1.2mm", qty: "2", department: "WeldingTX", workerId: "7", receivedById: "7", notes: "" };
 
 const version = new Date("2026-09-28T08:00:00.000Z");
 const saved = (over: Record<string, unknown> = {}) => ({
@@ -96,8 +96,8 @@ describe("createConsumableIssue", () => {
     const res = await createConsumableIssue(form({ ...valid, issuedAt: "2020-01-01T00:00:00Z" }));
     expect(res).toEqual({ ok: true, department: "WeldingTX" });
     const data = h.prisma.consumableIssue.create.mock.calls[0][0].data;
-    // the department's hand-out — no worker is named, whatever an older form sends
-    expect(data).toMatchObject({ item: "Welding wire 1.2mm", department: "WeldingTX", workerId: null, recipientScope: "department", notes: null, recordedById: 5, recordedBy: "Store Keeper" });
+    // the department's hand-out, naming who asked for it / collected it
+    expect(data).toMatchObject({ item: "Welding wire 1.2mm", department: "WeldingTX", workerId: 7, recipientScope: "department", recipientCount: 0, notes: null, recordedById: 5, recordedBy: "Store Keeper" });
     expect(data).not.toHaveProperty("recipients");
     expect(data.qty.toString()).toBe("2");
     expect(data).not.toHaveProperty("issuedAt");
@@ -117,11 +117,20 @@ describe("createConsumableIssue", () => {
     expect(h.prisma.consumableIssue.create).not.toHaveBeenCalled();
   });
 
-  it("never looks a worker up — the hand-out is the department's", async () => {
-    h.prisma.worker.findUnique.mockResolvedValue(null);
-    expect((await createConsumableIssue(form({ ...valid, department: "PaintingTX" }))).ok).toBe(true);
-    expect(h.prisma.worker.findUnique).not.toHaveBeenCalled();
-    expect(h.prisma.worker.findMany).not.toHaveBeenCalled();
+  it("checks who asked for it: on the list, active, and in the section", async () => {
+    h.prisma.worker.findUnique.mockResolvedValueOnce(null);
+    expect((await createConsumableIssue(form(valid))).error).toMatch(/not on the list/);
+    h.prisma.worker.findUnique.mockResolvedValueOnce({ ...sayed, active: false });
+    expect((await createConsumableIssue(form(valid))).error).toMatch(/deactivated/);
+    expect((await createConsumableIssue(form({ ...valid, department: "PaintingTX" }))).error).toMatch(/not registered in Transformer Painting/);
+    expect((await createConsumableIssue(form({ ...valid, receivedById: "" }))).error).toMatch(/who asked for it/);
+    expect(h.prisma.consumableIssue.create).not.toHaveBeenCalled();
+  });
+
+  it("answers a database refusal with a message, not a crash", async () => {
+    h.prisma.consumableIssue.create.mockRejectedValueOnce(new Error("violates check constraint"));
+    const res = await createConsumableIssue(form(valid));
+    expect(res).toMatchObject({ ok: false, error: expect.stringMatching(/could not be saved/) });
   });
 
   it("takes any active worker for a typed department", async () => {
@@ -194,13 +203,23 @@ describe("updateConsumableIssue", () => {
     expect(h.prisma.consumableIssue.updateMany).not.toHaveBeenCalled();
   });
 
-  it("corrects an older row's department, leaving the worker it named as it was", async () => {
-    expect((await updateConsumableIssue(edit({ department: "PaintingTX" }))).ok).toBe(true);
+  it("corrects the department and who collected it together", async () => {
+    const karim = { id: 9, empId: "2001", name: "Karim", active: true, depts: "PaintingTX" };
+    h.prisma.worker.findUnique.mockResolvedValue(karim);
+    expect((await updateConsumableIssue(edit({ department: "PaintingTX", receivedById: "9" }))).ok).toBe(true);
     const upd = h.prisma.consumableIssue.updateMany.mock.calls[0][0];
-    expect(upd.data).toMatchObject({ department: "PaintingTX" });
-    expect(upd.data).not.toHaveProperty("workerId");
+    expect(upd.data).toMatchObject({ department: "PaintingTX", workerId: 9 });
     const rev = h.prisma.consumableIssueRevision.create.mock.calls[0][0].data;
-    expect(rev.after).toMatchObject({ department: "PaintingTX", workerId: 7, workerName: "Sayed" });
+    expect(rev.after).toMatchObject({ department: "PaintingTX", workerId: 9, workerName: "Karim" });
+  });
+
+  it("will not keep someone outside the new department", async () => {
+    expect((await updateConsumableIssue(edit({ department: "PaintingTX" }))).error).toMatch(/not registered in Transformer Painting/);
+  });
+
+  it("answers a database refusal on a correction with a message", async () => {
+    h.prisma.consumableIssue.updateMany.mockRejectedValueOnce(new Error("violates check constraint"));
+    expect((await updateConsumableIssue(edit({ qty: "5" }))).error).toMatch(/could not be saved/);
   });
 });
 
@@ -377,16 +396,17 @@ describe("older group rows", () => {
 
   it("corrects a group row's quantity and department, keeping its workers as history", async () => {
     h.prisma.consumableIssue.findUnique.mockResolvedValue(group());
-    const res = await updateConsumableIssue(form({ id: "42", version: version.toISOString(), item: "Welding wire 1.2mm", qty: "24", notes: "", department: "PaintingTX" }));
+    h.prisma.worker.findUnique.mockResolvedValue({ id: 9, empId: "2001", name: "Karim", active: true, depts: "PaintingTX" });
+    const res = await updateConsumableIssue(form({ id: "42", version: version.toISOString(), item: "Welding wire 1.2mm", qty: "24", notes: "", department: "PaintingTX", receivedById: "9" }));
     expect(res).toEqual({ ok: true });
     const upd = h.prisma.consumableIssue.updateMany.mock.calls[0][0];
     expect(upd.data.qty.toString()).toBe("24");
     expect(upd.data.department).toBe("PaintingTX");
-    expect(upd.data).not.toHaveProperty("workerId");
+    expect(upd.data.workerId).toBe(9);
     expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ department: "PaintingTX", workerIds: [], excludeIssueId: 42 }));
     const rev = h.prisma.consumableIssueRevision.create.mock.calls[0][0].data;
     expect(rev.before).toMatchObject({ workerId: 0, workerName: "Whole Welding TX (3)", qty: 20 });
-    expect(rev.after).toMatchObject({ workerId: 0, department: "PaintingTX", qty: 24 });
+    expect(rev.after).toMatchObject({ workerId: 9, workerName: "Karim", department: "PaintingTX", qty: 24 });
   });
 
   it("restores a group row's quantity and department", async () => {
