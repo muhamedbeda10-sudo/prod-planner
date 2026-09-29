@@ -11,12 +11,13 @@ import { POWDER_DEPARTMENTS, SCRAP_LIMITS, type PowderFigures } from "@/lib/doma
 import { sectionLabel } from "@/lib/domain/tanks";
 import type { PowderView, ScrapEntryView } from "@/lib/server/powderScrap";
 import { createPowderScrap, deletePowderScrap, updatePowderScrap } from "@/app/consumables/powderActions";
+import { Modal } from "@/components/Modal";
 
 // POWDER SCRAP: the painting lines' powder scrap, weighed in kg, against the
 // powder the store handed out to them — the month's scrap rate per section
 // and together, the month before, six months of trend, and the weighings.
 
-const F = "px-2 py-1.5 text-sm font-semibold";
+const F = "px-2.5 py-2 text-sm font-semibold";
 const WITHDRAWN = CAT[0];
 const SCRAP = "var(--bad-fg)";
 const RATE = "var(--foreground)";
@@ -37,7 +38,7 @@ function RateChange({ now, prev, prevMonth }: { now: PowderFigures; prev: Powder
 
 function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
   return (
-    <label className={`inline-flex flex-col gap-0.5 ${className}`}>
+    <label className={`flex flex-col gap-1 min-w-0 ${className}`}>
       <span className="text-[11px] font-bold text-muted uppercase tracking-wide">{label}</span>
       {children}
     </label>
@@ -46,50 +47,50 @@ function Field({ label, className = "", children }: { label: string; className?:
 
 function ScrapFields({ entry, today, earliest, disabled }: { entry?: ScrapEntryView; today: string; earliest: string; disabled?: boolean }) {
   return (
-    <>
-      <Field label="Weighed on" className="w-40">
-        <input type="date" name="day" defaultValue={entry?.dayISO ?? today} max={today} min={earliest} required disabled={disabled} className={`${F} ltr tabnum w-full`} />
-      </Field>
-      <Field label="Painting section" className="w-full sm:w-52">
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Field label="Painting section">
         <select name="department" defaultValue={entry?.department ?? ""} required disabled={disabled} className={`${F} w-full`}>
           <option value="" disabled>Pick the section…</option>
           {POWDER_DEPARTMENTS.map((d) => <option key={d} value={d}>{sectionLabel(d)}</option>)}
         </select>
       </Field>
-      <Field label="Scrap (kg)" className="w-28">
+      <Field label="Weighed on">
+        <input type="date" name="day" defaultValue={entry?.dayISO ?? today} max={today} min={earliest} required disabled={disabled} className={`${F} ltr tabnum w-full`} />
+      </Field>
+      <Field label="Scrap (kg)">
         <input name="kg" type="number" inputMode="decimal" step="0.001" min="0.001" max={SCRAP_LIMITS.kgMax} defaultValue={entry?.kg ?? ""} required disabled={disabled} placeholder="0" className={`${F} ltr tabnum w-full font-extrabold`} />
       </Field>
-      <Field label="Notes (optional)" className="w-full sm:flex-1 sm:min-w-[12rem]">
+      <Field label="Notes (optional)">
         <input type="text" name="notes" defaultValue={entry?.notes ?? ""} maxLength={SCRAP_LIMITS.notes} disabled={disabled} autoComplete="off" placeholder="e.g. colour change, contaminated batch" className={`${F} w-full`} />
       </Field>
-    </>
+    </div>
   );
 }
 
-function RecordScrap({ today, earliest }: { today: string; earliest: string }) {
+function Foot({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-wrap items-center justify-end gap-2 pt-3 mt-1 border-t">{children}</div>;
+}
+
+/** Recording a weighing, in a popup. */
+function RecordScrapDialog({ today, earliest, onClose, onSaved }: { today: string; earliest: string; onClose: () => void; onSaved: () => void }) {
   const add = useAction();
   return (
-    <form
-      className="bg-surface border rounded-xl p-3 space-y-2 no-print"
-      onSubmit={(ev) => {
-        ev.preventDefault();
-        const form = ev.currentTarget;
-        add.run(createPowderScrap, new FormData(form), "Saved.", () => {
-          for (const n of ["kg", "notes"]) {
-            const el = form.elements.namedItem(n);
-            if (el instanceof HTMLInputElement) el.value = "";
-          }
-        });
-      }}
-    >
-      <div className="text-sm font-bold">Record powder scrap</div>
-      <div className="flex flex-wrap items-end gap-2">
+    <Modal title="➕ Record powder scrap" sub="The total scrap weighed for the section — the powder drawn comes from the hand-outs of “…Powder…” items on the log." onClose={onClose} busy={add.pending} width="max-w-xl">
+      <form
+        className="space-y-3"
+        onSubmit={(ev) => {
+          ev.preventDefault();
+          add.run(createPowderScrap, new FormData(ev.currentTarget), "Saved.", onSaved);
+        }}
+      >
         <ScrapFields today={today} earliest={earliest} disabled={add.pending} />
-        <button type="submit" className="btn btn-sm btn-primary shrink-0" disabled={add.pending}>{add.pending ? "Saving…" : "Record"}</button>
-      </div>
-      <p className="text-xs text-muted">The total scrap weighed for the section — the powder drawn comes from the hand-outs of “…Powder…” items on the log.</p>
-      <Msg msg={add.msg} />
-    </form>
+        <Msg msg={add.msg && !add.msg.ok ? add.msg : null} />
+        <Foot>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={onClose} disabled={add.pending}>Cancel</button>
+          <button type="submit" className="btn btn-sm btn-primary" disabled={add.pending}>{add.pending ? "Saving…" : "Record"}</button>
+        </Foot>
+      </form>
+    </Modal>
   );
 }
 
@@ -117,7 +118,7 @@ function ScrapRow({ e, isAdmin, today, earliest, showActions }: { e: ScrapEntryV
         </td>
         {showActions && (
           <td className="p-2 whitespace-nowrap no-print">
-            {e.canEdit && <button type="button" className="btn btn-sm" onClick={() => setEditing((v) => !v)} disabled={act.pending}>{editing ? "Close" : "Edit"}</button>}
+            {e.canEdit && <button type="button" className="btn btn-sm" onClick={() => setEditing(true)} disabled={act.pending}>Edit</button>}
             {isAdmin && (
               <button
                 type="button" className="btn btn-sm btn-danger ml-1" disabled={act.pending}
@@ -132,7 +133,7 @@ function ScrapRow({ e, isAdmin, today, earliest, showActions }: { e: ScrapEntryV
                 Delete
               </button>
             )}
-            <Msg msg={act.msg && !act.msg.ok ? act.msg : null} />
+            {!editing && <Msg msg={act.msg && !act.msg.ok ? act.msg : null} />}
           </td>
         )}
       </tr>
@@ -151,28 +152,25 @@ function ScrapRow({ e, isAdmin, today, earliest, showActions }: { e: ScrapEntryV
         </tr>
       )}
       {editing && e.canEdit && (
-        <tr className="bg-surface-2">
-          <td colSpan={showActions ? 6 : 5} className="p-2">
-            <form
-              className="space-y-2"
-              onSubmit={(ev) => {
-                ev.preventDefault();
-                const fd = new FormData(ev.currentTarget);
-                fd.set("id", String(e.id));
-                fd.set("version", e.version);
-                act.run(updatePowderScrap, fd, "Saved.", () => setEditing(false));
-              }}
-            >
-              <div className="flex flex-wrap items-end gap-2">
-                <ScrapFields entry={e} today={today} earliest={earliest} disabled={act.pending} />
-                <button type="submit" className="btn btn-sm btn-primary shrink-0" disabled={act.pending}>Save</button>
-                <button type="button" className="btn btn-sm btn-ghost shrink-0" onClick={() => setEditing(false)} disabled={act.pending}>Cancel</button>
-              </div>
-              <p className="text-xs text-muted">The weighing as it is now is kept for the admin.</p>
-              <Msg msg={act.msg} />
-            </form>
-          </td>
-        </tr>
+        <Modal title="Correct a weighing" sub={`Recorded ${e.recordedAtLabel} by ${e.recordedBy}. The weighing as it is now is kept for the admin.`} onClose={() => setEditing(false)} busy={act.pending} width="max-w-xl">
+          <form
+            className="space-y-3"
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              const fd = new FormData(ev.currentTarget);
+              fd.set("id", String(e.id));
+              fd.set("version", e.version);
+              act.run(updatePowderScrap, fd, "Saved.", () => setEditing(false));
+            }}
+          >
+            <ScrapFields entry={e} today={today} earliest={earliest} disabled={act.pending} />
+            <Msg msg={act.msg && !act.msg.ok ? act.msg : null} />
+            <Foot>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(false)} disabled={act.pending}>Cancel</button>
+              <button type="submit" className="btn btn-sm btn-primary" disabled={act.pending}>{act.pending ? "Saving…" : "Save"}</button>
+            </Foot>
+          </form>
+        </Modal>
       )}
     </Fragment>
   );
@@ -183,6 +181,8 @@ type TrendKey = "all" | (typeof POWDER_DEPARTMENTS)[number];
 export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: PowderView; canRecord: boolean; isAdmin: boolean; today: string; earliest: string }) {
   const router = useRouter();
   const [trendOf, setTrendOf] = useState<TrendKey>("all");
+  const [recording, setRecording] = useState(false);
+  const [saved, setSaved] = useState(false);
   const idx = r.months.indexOf(r.month);
   const older = idx >= 0 && idx < r.months.length - 1 ? r.months[idx + 1] : undefined;
   const newer = idx > 0 ? r.months[idx - 1] : undefined;
@@ -202,10 +202,12 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
           {r.months.map((m) => <option key={m} value={m}>{monthLong(m)}</option>)}
         </select>
         {newer ? <Link href={hrefOf(newer)} className="btn btn-sm" aria-label="Next month">▶</Link> : <span className="btn btn-sm opacity-40">▶</span>}
-        <span className="text-xs text-muted">Scrap rate = scrap ÷ powder drawn · net used = drawn − scrap · powder = hand-outs of items named “…Powder…”, in kg</span>
+        {canRecord && <button type="button" className="btn btn-primary" onClick={() => { setSaved(false); setRecording(true); }}>➕ Record scrap</button>}
+        {saved && <span className="text-sm font-semibold text-ok-fg" role="status">✓ Saved.</span>}
+        <span className="text-xs text-muted basis-full">Scrap rate = scrap ÷ powder drawn · net used = drawn − scrap · powder = hand-outs of items named “…Powder…”, in kg</span>
       </div>
 
-      {canRecord && <RecordScrap today={today} earliest={earliest} />}
+      {canRecord && recording && <RecordScrapDialog today={today} earliest={earliest} onClose={() => setRecording(false)} onSaved={() => { setRecording(false); setSaved(true); }} />}
 
       <div className="flex flex-wrap gap-3">
         <StatTile hero label={`Scrap rate · ${monthShort(r.month)}`} value={rateText(t)} delta={<RateChange now={t} prev={t.prev} prevMonth={r.prevMonth} />} spark={t.trend.map((x) => (x.rate ?? 0) * 100)} />

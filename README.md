@@ -244,7 +244,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
    undated ones after; click a block, then "→ code" sends a line to it in one click (the board on each
    worklist lists them the same way). Drawing needs
    `machines.manage`; working a queue needs the department's worklist permission; viewing is free.
-11. **Consumables** (`/consumables`) — the store's log of what it hands out to the floor: Item (typed
+11. **Consumables** (`/consumables`) — the store's log of what it hands out to the floor. **➕ New hand-out**
+   opens the form in a popup (**Record** saves and closes; **Record & next** keeps the department and the
+   people for the next item); a correction opens the same popup. Item (typed
    freely, earlier items suggested) · Qty (up to 3 decimals) · Department · Technician / worker · Notes. The
    **department** is a dropdown of the worker sections, plus any department typed before; "➕ New
    department…" opens a box for one that is not there (Maintenance, Store …) — typed in any case it is filed
