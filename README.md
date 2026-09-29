@@ -250,7 +250,13 @@ mobile drawer still lists every view flat, since it has the vertical room.
    department…" opens a box for one that is not there (Maintenance, Store …) — typed in any case it is filed
    under its first spelling, and a section typed by name is filed as the section. The **worker** is a
    dropdown from Production Workers, narrowed to the section picked (a typed department offers every active
-   worker). The date and time are the **server's clock at saving** — never typed, so a row cannot be
+   worker). **Hand-out for: One worker · Several workers · Whole department** — one storekeeper often draws a
+   section's week in one go: "Several workers" ticks names from the list; "Whole department" (worker sections
+   only) is the section's active workers **at work that day** (not on vacation), and the form shows the count.
+   A group row keeps the workers it was for (`ConsumableIssueRecipient`, fixed at saving — its department and
+   workers are never edited, only its item, qty and notes). The limits give each of them an **equal share**:
+   a **per-person** limit becomes the number × the workers (2 gloves each × 10 workers = 20), a shared limit
+   counts the hand-out whole. The date and time are the **server's clock at saving** — never typed, so a row cannot be
    back-dated. Recording needs `consumables.edit`; viewing is free. **A saved row is corrected by the person
    who recorded it, or by an admin** — a recorder cannot touch a colleague's rows; deleting is the admin's,
    and soft. Every change keeps the row **before and after** (`ConsumableIssueRevision`). The history is the
