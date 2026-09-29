@@ -1,41 +1,8 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { FINISHING_LABEL } from "@/lib/domain/constants";
-
-/** Remembers the dashboard's From→To range across sessions (localStorage, so
- *  it survives closing the browser). Opening the dashboard bare restores the
- *  last range; "Back to weekly ✕" (or any switch out of range mode) forgets
- *  it. Renders nothing. */
-export function DashboardPeriodMemory() {
-  const router = useRouter();
-  const sp = useSearchParams();
-  const didInit = useRef(false);
-  useEffect(() => {
-    const from = sp.get("from");
-    const to = sp.get("to");
-    const cur = from && to ? `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}` : "";
-    try {
-      if (!didInit.current) {
-        // entry: a bare dashboard gets the remembered range; an explicit URL
-        // (?w=… or ?from=…) is respected as-is
-        didInit.current = true;
-        if (cur) {
-          localStorage.setItem("dash.period", cur);
-        } else if (!sp.get("w")) {
-          const saved = localStorage.getItem("dash.period");
-          if (saved) router.replace(`/?${saved}`);
-        }
-        return;
-      }
-      // in-app change: keep the latest range, forget it when leaving range mode
-      if (cur) localStorage.setItem("dash.period", cur);
-      else localStorage.removeItem("dash.period");
-    } catch {}
-  }, [sp, router]);
-  return null;
-}
 
 function useSetParam() {
   const router = useRouter();

@@ -6,6 +6,7 @@ import { getFabAnalytics, resolveWindow, WINDOWS } from "@/lib/server/fabAnalyti
 import { getActiveLine } from "@/lib/server/line";
 import { FabAnalyticsView } from "@/components/FabAnalyticsView";
 import { ViewTabs, MATERIAL_VIEWS } from "@/components/ViewTabs";
+import { RememberLastVisit } from "@/components/RememberLastVisit";
 
 export const metadata = { title: "Analytics — ATC" };
 export const dynamic = "force-dynamic";
@@ -27,6 +28,7 @@ export default async function AnalyticsPage({
   if ((await getActiveLine()) === "LV") {
     return (
       <div>
+        <RememberLastVisit storageKey="analytics:last" />
         <PageHeader title="📊 Fabrication analytics — LV Panels">
           <ViewTabs views={MATERIAL_VIEWS} current="/analytics" label="Material view" />
         </PageHeader>
@@ -44,6 +46,7 @@ export default async function AnalyticsPage({
 
   return (
     <div>
+      <RememberLastVisit storageKey="analytics:last" />
       <PageHeader title="📊 Fabrication analytics">
         <ViewTabs views={MATERIAL_VIEWS} current="/analytics" label="Material view" />
         <nav className="seg" aria-label="Window">

@@ -9,6 +9,7 @@ import { ExportButton } from "@/components/ExportButton";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { ConsumablesClient } from "@/components/ConsumablesClient";
 import { ConsumableEdits } from "@/components/ConsumableEdits";
+import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { ConsumablesDashboard } from "@/components/LazyCharts";
 
 export const metadata = { title: "Consumables — ATC" };
@@ -70,6 +71,7 @@ export default async function ConsumablesPage({
     const exportRows = stats.items.map((i) => ({ Item: i.item, "Hand-outs": i.issues, Qty: i.qty, Workers: i.workers }));
     return (
       <div className="space-y-3">
+        <RememberLastVisit storageKey="consumables:last" />
         <PageHeader>
           {viewSwitch}
           <ExportButton rows={exportRows} filename={`consumables-summary-${period}.xlsx`} sheetName="Items" />
@@ -95,6 +97,7 @@ export default async function ConsumablesPage({
     }));
     return (
       <div className="space-y-3">
+        <RememberLastVisit storageKey="consumables:last" />
         <PageHeader>
           {viewSwitch}
           <ExportButton rows={exportRows} filename={`consumables-edits-${period}.xlsx`} sheetName="Edits" />
@@ -121,6 +124,7 @@ export default async function ConsumablesPage({
 
   return (
     <div className="space-y-3">
+      <RememberLastVisit storageKey="consumables:last" />
       <PageHeader>
         {viewSwitch}
         <ExportButton rows={exportRows} filename={`consumables-${period}.xlsx`} sheetName="Consumables" />

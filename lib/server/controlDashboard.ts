@@ -6,7 +6,7 @@ import { getMasterTracker } from "./masterTracker";
 import { getEtaBase, getOrderEtas } from "./eta";
 import { getStageCapacity } from "./standardTimes";
 import { getOtdStats } from "./otd";
-import { currentMonthLabel, toISODate } from "@/lib/domain/dates";
+import { currentMonthLabel, monthLabelSortKey, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import { TANK_ITEM } from "@/lib/domain/tanks";
 import {
@@ -23,6 +23,10 @@ import {
 export interface ControlDashboardData {
   todayISO: string;
   monthLabel: string;
+  /** The monthly plan the orders are narrowed to (the Plan filter), or null for every order. */
+  planMonth: string | null;
+  /** Every monthly plan an order appeared in, newest first — the filter's choices. */
+  planMonths: string[];
   plan: PlanSummary;
   pieces: StagePieces;
   backlog: Record<BacklogStage, number>;
@@ -60,7 +64,7 @@ const HISTORY_DAYS = 30; // calendar days the backlog curve covers
 
 const TRAIL_DAYS = 14; // calendar days behind today the pace is read over
 
-export async function getControlDashboard(): Promise<ControlDashboardData> {
+export async function getControlDashboard(opts: { planMonth?: string | null } = {}): Promise<ControlDashboardData> {
   const line = await getActiveLine();
   const now = new Date();
   const todayISO = toISODate(now);
@@ -97,12 +101,19 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
     prisma.returnEntry.findMany({ where: { status: "open" }, select: { qty: true } }),
   ]);
 
-  const openMos = tracker.filter((r) => r.status === "open").map((r) => r.mo);
+  // the Plan filter: every order-based figure below reads only the orders of
+  // that monthly plan (closed ones included, as the tracker's month view);
+  // the plant-level ones (Odoo, material, shifts, month vs month) stay whole
+  const planMonths = [...new Set(tracker.flatMap((r) => r.months))].sort((a, b) => monthLabelSortKey(b) - monthLabelSortKey(a) || b.localeCompare(a));
+  const planMonth = opts.planMonth && planMonths.includes(opts.planMonth) ? opts.planMonth : null;
+  const scoped = planMonth ? tracker.filter((r) => r.months.includes(planMonth)) : tracker;
+
+  const openMos = scoped.filter((r) => r.status === "open").map((r) => r.mo);
   const ledger = openMos.length === 0 ? [] : await prisma.handoverEntry.findMany({
     where: { mo: { in: openMos }, ...ledgerItemWhere(line) },
     select: { mo: true, item: true, dept: true, date: true, qty: true },
   });
-  const rows = tracker.map((r) => ({
+  const rows = scoped.map((r) => ({
     mo: r.mo, bom: r.bom, soi: r.soi, customer: r.customer, required: r.required, complete: r.complete,
     status: r.status, urgent: r.urgent, priority: r.priority, onHold: r.hold.onHold, months: r.months, items: r.items,
   }));
@@ -111,7 +122,7 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
   const backlog = backlogOf(pieces);
   // the month's plan, closed orders included — the same rows the tracker's
   // month view adds up, so the two screens agree
-  const plan = planSummaryOf(rows, monthLabel);
+  const plan = planSummaryOf(rows, planMonth ?? monthLabel);
   const finishedInWindow = finishedRows.reduce((s, e) => s + Math.max(0, e.qty), 0);
   const windowDays = workingDaysBetween(toISODate(trailStart), toISODate(new Date(today.getTime() - 86400000)), holidayISOs);
   const pace = paceOf(plan.remaining, finishedInWindow, windowDays, workingDaysLeft(todayISO, holidayISOs));
@@ -144,8 +155,10 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
   // load: the ETA's jobs already carry the std-hours each open order still
   // owes every stage (held orders and orders with no standard times excluded)
   const queued = { cut: 0, weld: 0, finish: 0 };
-  for (const j of etaBase.jobs) { queued.cut += j.hours.cut; queued.weld += j.hours.weld; queued.finish += j.hours.finish; }
-  const jobMos = new Set(etaBase.jobs.map((j) => j.mo));
+  const scopedMos = new Set(rows.map((r) => r.mo));
+  const jobs = planMonth ? etaBase.jobs.filter((j) => scopedMos.has(j.mo)) : etaBase.jobs;
+  for (const j of jobs) { queued.cut += j.hours.cut; queued.weld += j.hours.weld; queued.finish += j.hours.finish; }
+  const jobMos = new Set(jobs.map((j) => j.mo));
   const uncoveredOrders = rows.filter((r) => r.status === "open" && !r.onHold && !jobMos.has(r.mo)).length;
   const capOf = (depts: string[]) => { const v = depts.map((d) => capacity[d]).filter((x): x is number => typeof x === "number"); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
   // hours a day as the shift log has them — over the days it was actually
@@ -171,6 +184,8 @@ export async function getControlDashboard(): Promise<ControlDashboardData> {
   return {
     todayISO,
     monthLabel,
+    planMonth,
+    planMonths,
     plan,
     pieces,
     backlog,
