@@ -211,7 +211,7 @@ export default async function ConsumablesPage({
     UOM: e.uom ?? "",
     Department: e.departmentLabel,
     "Emp ID": e.worker?.empId ?? "",
-    Worker: e.worker?.name ?? e.group?.label ?? "",
+    "Requested / collected by": e.worker?.name ?? e.group?.label ?? "",
     "Group's workers": e.group ? e.group.workers.map((w) => `${w.empId} ${w.name}`).join(", ") : "",
     Notes: e.notes ?? "",
     "Over limit": e.overLimit ? "yes" : "",

@@ -247,7 +247,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
 11. **Consumables** (`/consumables`) — the store's log of what it hands out to the floor. **➕ New hand-out**
    opens the form in a popup (**Record** saves and closes; **Record & next** keeps the department and the
    people for the next item); a correction opens the same popup. Item (typed
-   freely, earlier items suggested) · Qty (up to 3 decimals) · Department · Technician / worker · Notes. The
+   freely, earlier items suggested) · Qty (up to 3 decimals) · Department · **Requested / collected by** (a worker of
+   that section, anyone on the list for a typed department — the hand-out still counts under the department) · Notes. The
    **department** is a dropdown of the worker sections, plus any department typed before; "➕ New
    department…" opens a box for one that is not there (Maintenance, Store …) — typed in any case it is filed
    under its first spelling, and a section typed by name is filed as the section. The **worker** is a

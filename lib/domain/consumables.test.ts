@@ -19,7 +19,7 @@ import {
 import { factoryDayISO, factoryDayStart } from "./dates";
 
 const form = (fields: Record<string, string>) => (name: string) => fields[name] ?? null;
-const valid = { item: "Welding wire 1.2mm", qty: "2", department: "WeldingTX", workerId: "7", notes: "" };
+const valid = { item: "Welding wire 1.2mm", qty: "2", department: "WeldingTX", workerId: "7", receivedById: "7", notes: "" };
 
 describe("parseQty", () => {
   it("takes whole and decimal quantities", () => {
@@ -48,7 +48,12 @@ describe("readConsumableForm", () => {
   it("reads a complete hand-out", () => {
     const r = readConsumableForm(form({ ...valid, item: "  Welding   wire\n1.2mm ", notes: " for tank 12 " }));
     expect(r.error).toBeUndefined();
-    expect(r.fields).toEqual({ item: "Welding wire 1.2mm", qty: 2, department: "WeldingTX", recipients: { scope: "department" }, notes: "for tank 12" });
+    expect(r.fields).toEqual({ item: "Welding wire 1.2mm", qty: 2, department: "WeldingTX", recipients: { scope: "department" }, receivedById: 7, notes: "for tank 12" });
+  });
+
+  it("wants who asked for it / collected it", () => {
+    expect(readConsumableForm(form({ ...valid, receivedById: "" })).error).toMatch(/who asked for it/);
+    expect(readConsumableForm(form({ ...valid, receivedById: "x" })).error).toMatch(/who asked for it/);
   });
 
   it("stores empty notes as null", () => {
