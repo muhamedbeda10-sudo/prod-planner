@@ -129,10 +129,13 @@ export function ControlDashboard({ c, d, controls }: { c: ControlDashboardData; 
     { name: "Fin", v: d.period.paint.total, t: d.paintTargetPeriod },
   ];
 
+  // the plan the figures are read over: the one picked, else this month's
+  const planLabel = c.planMonth ?? c.monthLabel;
+
   return (
     <div className="space-y-7">
       {/* ==== NOW: six figures ==== */}
-      <Band label={`Now · ${c.monthLabel}`}>
+      <Band label={c.planMonth ? `Plan · ${c.planMonth} · its orders only` : `Now · ${c.monthLabel}`}>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           <Kpi
             label="Plan completion"
@@ -140,14 +143,14 @@ export function ControlDashboard({ c, d, controls }: { c: ControlDashboardData; 
             meter={{ value: p.pct ?? 0, tone: "ok" }}
             sub={<><b className="text-foreground">{fmt(p.complete)}</b> of {fmt(p.required)} tanks · {fmt(p.orders)} orders, {fmt(p.openOrders)} open</>}
             href="/tracker"
-            title={`${fmt(p.complete)} tanks painted of ${fmt(p.required)} on ${c.monthLabel}'s plan, closed orders included — the unit closes on its tank · ${fmt(p.delivered)} units delivered in full`}
+            title={`${fmt(p.complete)} tanks painted of ${fmt(p.required)} on ${planLabel}'s plan, closed orders included — the unit closes on its tank · ${fmt(p.delivered)} units delivered in full`}
           />
           <Kpi
             label="Pace vs month"
             value={pace.actualPerDay === null ? "—" : `${one(pace.actualPerDay)}/day`}
             tone={paceTone}
             sub={pace.requiredPerDay === null ? "no working days left" : <>{paceWord} · needs <b className="text-foreground">{one(pace.requiredPerDay)}</b>/day</>}
-            title={`Tanks painted per working day over the last ${pace.windowDays} working days, against what the ${fmt(p.remaining)} tanks left on ${c.monthLabel}'s plan need by month end`}
+            title={`Tanks painted per working day over the last ${pace.windowDays} working days, against what the ${fmt(p.remaining)} tanks left on ${planLabel}'s plan need by month end`}
           />
           <Kpi
             label="Lands in"

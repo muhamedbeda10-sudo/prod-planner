@@ -6,7 +6,8 @@ import { getLvDashboard } from "@/lib/server/lvDashboard";
 import { LvDashboard } from "@/components/LvDashboard";
 import { ControlDashboard } from "@/components/ControlDashboard";
 import { SmartInsights } from "@/components/SmartInsights";
-import { DashboardPeriodMemory } from "@/components/controls";
+import { RememberLastVisit } from "@/components/RememberLastVisit";
+import { PlanMonthPicker } from "@/components/PlanMonthPicker";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO, presetRange } from "@/lib/domain/dateSlicer";
 import { factoryDayISO } from "@/lib/domain/dates";
@@ -19,16 +20,21 @@ export const dynamic = "force-dynamic";
 // this page fetches, and hands it the week / period controls that scope the
 // two throughput charts.
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ w?: string; from?: string; to?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ w?: string; from?: string; to?: string; plan?: string }> }) {
   // the panels have their own dashboard — one thing through four stages,
   // not six components against a target
   const sp = await searchParams;
   if ((await getActiveLine()) === "LV") {
-    return <LvDashboard today={factoryDayISO(new Date())} d={await getLvDashboard({ from: sp.from ? parseISODate(sp.from) : null, to: sp.to ? parseISODate(sp.to) : null })} />;
+    return (
+      <>
+        <RememberLastVisit storageKey="dashboard:last" />
+        <LvDashboard today={factoryDayISO(new Date())} d={await getLvDashboard({ from: sp.from ? parseISODate(sp.from) : null, to: sp.to ? parseISODate(sp.to) : null })} />
+      </>
+    );
   }
 
   const [c, d, ai] = await Promise.all([
-    getControlDashboard(),
+    getControlDashboard({ planMonth: sp.plan ?? null }),
     getTargetDashboard({ weekOf: sp.w ? parseISODate(sp.w) : null, from: sp.from ? parseISODate(sp.from) : null, to: sp.to ? parseISODate(sp.to) : null }),
     getSmartInsights(),
   ]);
@@ -42,6 +48,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
       <div className="flex flex-wrap items-center justify-between gap-2">
         <ViewTabs views={DASHBOARD_VIEWS} current="/" label="Dashboard view" />
         <div className="flex items-center gap-2">
+          <PlanMonthPicker plan={c.planMonth} months={c.planMonths} />
           {d.clamped && <span className="pill pill-warn">cut to 31 days</span>}
           <SmartInsights data={ai} />
         </div>
@@ -55,7 +62,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
 
   return (
     <>
-      <DashboardPeriodMemory />
+      {/* the period and the plan stay as they were left, across pages and visits */}
+      <RememberLastVisit storageKey="dashboard:last" />
       <ControlDashboard c={c} d={d} controls={controls} />
     </>
   );
