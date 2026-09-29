@@ -8,9 +8,8 @@ import { SheetsPerDayChart, ThicknessChart } from "@/components/LazyCharts";
 //
 // An order's material is booked on the day its MO is closed on Odoo (moved
 // to Done on the ODOO tab): the closed quantity × the sheets one unit takes
-// on the Material tab's lines of that same MO. The coverage figure is
-// deliberately loud: every reading here is only as good as the share of
-// closed units the material sheet describes.
+// on the Material tab's lines of that same MO. Closings of MOs the material
+// sheet does not carry (the older orders) stay off the page.
 
 const n1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
 const n2 = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -40,14 +39,12 @@ function Section({ title, sub, children }: { title: string; sub?: string; childr
 }
 
 export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
-  const cov = Math.round(a.coverage * 100);
-  const covTone = cov >= 80 ? "ok" : cov >= 50 ? "warn" : "bad";
   const windowWords = a.windowDays === 0 ? "everything on record" : `the last ${a.windowDays} days`;
 
   if (a.pieces === 0) {
     return (
       <p className="bg-surface border rounded-xl p-4 text-sm text-muted">
-        No MO was closed on Odoo in {windowWords}. The material is booked here the day an MO is moved to Done on the{" "}
+        No MO of the material sheet was closed on Odoo in {windowWords}. The material is booked here the day one of its MOs is moved to Done on the{" "}
         <Link href="/odoo" className="text-accent font-semibold hover:underline">ODOO tab</Link>.
       </p>
     );
@@ -63,12 +60,7 @@ export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
         <Tile head="Sheets consumed" value={n1(a.sheets)} sub={`${n1(a.sheetsPerDay)} a day over ${a.workedDays} closing day(s)`} />
         <Tile head="Steel consumed" value={n1(a.tons)} unit="t" sub={`${n2(a.tonsPerDay)} t a day`} />
         <Tile head="Units closed on Odoo" value={n1(a.pieces)} sub={`${a.closings.length} closing(s) · ${a.items.length} component(s)`} />
-        <Tile
-          head="Material coverage"
-          value={`${cov}%`}
-          tone={covTone}
-          sub={a.uncoveredPieces > 0 ? `${n1(a.uncoveredPieces)} closed units have no material lines` : "every closed MO is on the sheet"}
-        />
+        <Tile head="MOs closed" value={String(new Set(a.closings.map((c) => c.mo.toUpperCase())).size)} sub="of the material sheet's MOs" />
       </div>
 
       <Section
@@ -174,8 +166,8 @@ export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
                   <td className="p-1 ltr font-bold whitespace-nowrap">{c.mo}</td>
                   <td className="p-1">{c.item ?? "—"}</td>
                   <td className="p-1 text-end tabnum">{n1(c.qty)}</td>
-                  <td className="p-1 text-end tabnum">{c.covered ? n2(c.sheets) : <span className="pill pill-warn">not on the sheet</span>}</td>
-                  <td className="p-1 text-end tabnum text-muted">{c.covered ? n2(c.kg / 1000) : "—"}</td>
+                  <td className="p-1 text-end tabnum">{n2(c.sheets)}</td>
+                  <td className="p-1 text-end tabnum text-muted">{n2(c.kg / 1000)}</td>
                 </tr>
               ))}
             </tbody>
@@ -183,38 +175,11 @@ export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
         </div>
       </Section>
 
-      <Section title="How much of this is real" sub="Everything above rests on the Material tab's lines of each closed MO.">
-        <div className="grid sm:grid-cols-3 gap-3 text-xs">
-          <p>
-            <b className="tabnum text-sm">{cov}%</b> of the units closed in {windowWords} have their MO on the material sheet.
-            {a.uncoveredPieces > 0 && <> The other <b className="tabnum">{n1(a.uncoveredPieces)}</b> are counted as units and consume no sheets, so the rates read low rather than flattering.</>}
-          </p>
-          <p>
-            The tab holds <b className="tabnum">{a.nestingRows}</b> line(s) over <b className="tabnum">{a.nestingBoms}</b> MO(s).
-            Upload the sheet on the{" "}
-            <Link href="/material" className="text-accent font-semibold hover:underline">Material tab</Link> and its MOs join this page at once.
-          </p>
-          <p className="text-muted">
-            A unit takes the actual nesting&apos;s sheets where the sheet has them, else the BOM&apos;s. Tonnes use the sheet&apos;s own Weight(Kg),
-            else the sheet size, the thickness and the material&apos;s density.
-          </p>
-        </div>
-        {a.uncoveredBoms.length > 0 && (
-          <div className="mt-2">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-muted mb-1">Closed with no material lines, most units first</div>
-            <div className="flex flex-wrap gap-1">
-              {a.uncoveredBoms.slice(0, 24).map((b) => (
-                <span key={b.bom} className="pill pill-warn ltr" title={`${n1(b.pieces)} units closed with no line under this MO on the Material tab`}>
-                  {b.bom} <span className="tabnum opacity-75">×{n1(b.pieces)}</span>
-                </span>
-              ))}
-              {a.uncoveredBoms.length > 24 && (
-                <span className="pill pill-muted">+{a.uncoveredBoms.length - 24} more</span>
-              )}
-            </div>
-          </div>
-        )}
-      </Section>
+      <p className="text-[11px] text-muted">
+        Only the MOs on the{" "}
+        <Link href="/material" className="text-accent font-semibold hover:underline">material sheet</Link> are counted ({a.nestingBoms} MO(s), {a.nestingRows} line(s)).
+        A unit takes the actual nesting&apos;s sheets where the sheet has them, else the BOM&apos;s; tonnes use the sheet&apos;s Weight(Kg).
+      </p>
     </div>
   );
 }

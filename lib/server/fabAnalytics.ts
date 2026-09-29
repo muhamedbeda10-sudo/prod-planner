@@ -25,6 +25,8 @@ export interface FabAnalyticsData extends ClosedConsumption {
    *  the page says how much of the plant the tab actually describes. */
   nestingRows: number;
   nestingBoms: number;
+  /** Closings in the window whose MO is not on the material sheet — left out. */
+  leftOut: number;
 }
 
 /**
@@ -53,13 +55,18 @@ export async function getFabAnalytics(windowDays: Window): Promise<FabAnalyticsD
   ]);
 
   // a row moved back out of Done keeps no doneAt, but check the status too
-  const closings: ClosingRow[] = done
+  const lines: MoMaterialLine[] = material;
+  // only the MOs the material sheet carries: a closing of an older MO has
+  // nothing to book and stays off the page
+  const onSheet = new Set(lines.map((l) => l.mo.trim().toUpperCase()));
+  const all: ClosingRow[] = done
     .filter((r) => r.doneAt && isDoneStatus(r.status))
     .map((r) => ({ dateISO: factoryDayISO(r.doneAt!), mo: r.odooMo.trim(), qty: r.qty }));
-  const lines: MoMaterialLine[] = material;
+  const closings = all.filter((c) => onSheet.has(c.mo.toUpperCase()));
 
   return {
     ...buildClosedConsumption(closings, lines),
+    leftOut: all.length - closings.length,
     windowDays,
     fromISO: from ? toISODate(from) : null,
     nestingRows: lines.length,
