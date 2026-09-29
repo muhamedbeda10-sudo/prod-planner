@@ -1,23 +1,19 @@
 // CONSUMABLES — the month against the limits. The store reviews consumption
 // month by month: each catalogue item's hand-outs in a calendar month against
-// a monthly allowance made from its limits, graded over / near / under /
-// none, with the month before, the last six months, and — for a weekly or
-// daily limit — the weeks or days inside the month that went over.
+// its limits, graded over / near / under / none, with the month before and
+// the last six months.
 //
-// The monthly allowance of a limit is a FIXED multiple of its number, the
-// same every month: a week × 4, a month × 1. A quarterly limit
-// is not cut into thirds — one tin of glue a quarter handed out in July is
-// not "300% over" — it is counted over the quarter so far (the quarter's
-// first day to the month's last) against its whole number. A per-person
-// limit's allowance is per worker (a worker is over when he alone passes it). Pure and tested; the reads are lib/server/consumableMonthly.ts.
+// A monthly limit is the month's number. A limit of several months is not
+// cut into slices — one tin of glue a quarter handed out in July is not
+// "300% over" — it is counted over its window so far (the window's first day
+// to the month's last) against its whole number. Pure and tested; the reads
+// are lib/server/consumableMonthly.ts.
 
 import {
   coversDepartment, isMultiMonth, periodWindow, ruleLabel, usageIn, windowLabel, windowsOverlapping,
   type LimitBasis, type LimitPeriod, type LimitRule, type LimitUse,
 } from "./consumableLimits";
 
-/** The monthly multiple; a quarter's number stands whole over the quarter to date. */
-export const MONTHLY_FACTOR: Record<LimitPeriod, number> = { week: 4, month: 1, bimonth: 1, quarter: 1, fourmonth: 1, halfyear: 1, year: 1 };
 export const NEAR_RATIO = 0.8;
 
 export type MonthStatus = "over" | "near" | "under" | "unused" | "nolimit";
@@ -40,8 +36,10 @@ export function grade(used: number, allowance: number): Exclude<MonthStatus, "no
   return "under";
 }
 
+/** What the month is held to: a monthly limit's number; a limit of several
+ *  months, its whole number over its window to date. */
 export function monthlyAllowance(rule: Pick<LimitRule, "qty" | "period">): number {
-  return round3(rule.qty * MONTHLY_FACTOR[rule.period]);
+  return round3(rule.qty);
 }
 
 // ---------------------------------------------------------------- months
@@ -69,13 +67,13 @@ export function isMonthKey(s: string): boolean {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 }
 
-/** The days the report needs counted: six months back to the month's end,
- *  widened to whole work weeks at the month's edges. */
+/** The days the report needs counted: six months back — or the year's
+ *  start, where every multi-month window of the month begins — to the
+ *  month's end. */
 export function reportSpan(month: string, trendMonths = 6): { from: string; to: string } {
   const { from, to } = monthBounds(month);
   const first = monthBounds(shiftMonth(month, -(trendMonths - 1))).from;
-  // back to the year's start: every multi-month window of the month is inside it
-  return { from: [first, periodWindow("week", from).from, periodWindow("year", from).from].sort()[0], to: periodWindow("week", to).to };
+  return { from: [first, periodWindow("year", from).from].sort()[0], to };
 }
 
 // ---------------------------------------------------------------- the report
@@ -89,7 +87,6 @@ export interface ItemInput {
   rules: LimitRule[];
 }
 
-export interface WeekCheck { label: string; from: string; used: number; limit: number; over: boolean }
 export interface WorkerOver { workerId: number; used: number }
 
 export interface LimitMonthRow {
@@ -111,9 +108,6 @@ export interface LimitMonthRow {
   ratio: number;
   status: Exclude<MonthStatus, "nolimit">;
   prevUsed: number;
-  /** A weekly limit: every work week touching the month, counted whole. */
-  weeks: WeekCheck[];
-  /** A daily limit: the days of the month it went over. */
   /** A per-person limit: the workers over their monthly allowance. */
   workersOver: WorkerOver[];
 }
@@ -198,17 +192,10 @@ function limitMonth(rule: LimitRule, allUses: readonly LimitUse[], month: string
     prevUsed = usageIn(rule, prev, prevWindow);
   }
 
-  const weeks: WeekCheck[] = rule.period === "week"
-    ? windowsOverlapping("week", from, to).map((w) => {
-      const u = rule.basis === "person" ? Math.max(0, ...perWorker(rule, allUses.filter((x) => x.dayISO >= w.from && x.dayISO <= w.to)).values()) : usageIn(rule, allUses, w);
-      return { label: windowLabel("week", w), from: w.from, used: u, limit: rule.qty, over: u > rule.qty + 1e-9 };
-    })
-    : [];
-
   return {
     ruleId: rule.id, departmentsLabel: ruleLabel(rule), basis: rule.basis, period: rule.period, qty: rule.qty,
     allowance, toDate: quarterly ? `${windowLabel(rule.period, monthWindow)} to date` : null, used, usedAll, ratio: allowance > 0 ? used / allowance : 0, status: grade(used, allowance), prevUsed,
-    weeks, workersOver,
+    workersOver,
   };
 }
 

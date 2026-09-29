@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OTHER_KEY, REPEAT_THRESHOLD, consumablesStats, pctChange, previousPeriod, spanDays, type StatsRow } from "./consumablesStats";
+import { OTHER_KEY, consumablesStats, pctChange, previousPeriod, spanDays, type StatsRow } from "./consumablesStats";
 
 const row = (over: Partial<StatsRow>): StatsRow => ({
   item: "Gloves", qty: 1, department: "WeldingTX", departmentLabel: "Welding TX",
@@ -76,7 +76,7 @@ describe("the richer consumables dashboard", () => {
     expect(s.kpis.perActiveDay).toBe(1.3);
   });
 
-  it("counts hand-outs by weekday and hour, and names the busiest of each", () => {
+  it("counts hand-outs by weekday and hour, and names the busiest slot", () => {
     // 2026-09-28 is a Monday, 2026-09-27 a Sunday
     const s = consumablesStats([
       row({ dayISO: "2026-09-28", hour: 9 }), row({ dayISO: "2026-09-28", hour: 9 }), row({ dayISO: "2026-09-27", hour: 20 }),
@@ -85,8 +85,7 @@ describe("the richer consumables dashboard", () => {
     expect(s.weekHour.hours.at(-1)).toBe(20); // widened to the late hand-out
     expect(s.weekHour.counts[1][s.weekHour.hours.indexOf(9)]).toBe(2);
     expect(s.weekHour.counts[0][s.weekHour.hours.indexOf(20)]).toBe(1);
-    expect(s.kpis.busiestHour).toBe(9);
-    expect(s.kpis.busiestWeekday).toBe(1);
+    expect(s.kpis.busiestSlot).toEqual({ weekday: 1, hour: 9, issues: 2 });
   });
 
   it("folds departments past the fifth into Other, in the share and the trend", () => {
@@ -126,21 +125,28 @@ describe("the richer consumables dashboard", () => {
     expect(s.itemTiles[0]).toMatchObject({ item: "Paint", issues: 3, department: "PaintingTX", departmentLabel: "Painting TX" });
   });
 
-  it("flags a worker taking the same item again and again", () => {
+  it("names the busiest slot as one weekday and hour that actually happened", () => {
+    // Mon 09:00 ×2, Sun 20:00 ×1, Sun 09:00 — never — though 09:00 and Sunday are each "busiest" apart
+    const s = consumablesStats([
+      row({ dayISO: "2026-09-28", hour: 9 }), row({ dayISO: "2026-09-28", hour: 9 }),
+      row({ dayISO: "2026-09-27", hour: 20 }), row({ dayISO: "2026-09-27", hour: 21 }), row({ dayISO: "2026-09-27", hour: 22 }),
+    ], "2026-09-27", "2026-09-28", 0);
+    expect(s.kpis.busiestSlot).toEqual({ weekday: 1, hour: 9, issues: 2 });
+  });
+
+  it("counts each department once in the scatter", () => {
     const rows = [
-      ...Array.from({ length: REPEAT_THRESHOLD }, (_, i) => row({ item: i === 1 ? "gloves" : "Gloves", qty: 2, dayISO: `2026-09-2${i + 1}` })),
+      ...Array.from({ length: 3 }, (_, i) => row({ item: i === 1 ? "gloves" : "Gloves", qty: 2, dayISO: `2026-09-2${i + 1}` })),
       row({ item: "Wire", workerId: 2, workerName: "Omar" }),
     ];
     const s = consumablesStats(rows, "2026-09-21", "2026-09-28", 0);
-    expect(s.repeats).toEqual([{ workerId: 1, name: "Ali", empId: "E1", item: "Gloves", times: 3, qty: 6, firstDay: "2026-09-21", lastDay: "2026-09-23" }]);
-    expect(s.kpis.repeatPairs).toBe(1);
     expect(s.workerPoints.map((w) => [w.name, w.issues, w.items])).toEqual([["Ali", 3, 1], ["Omar", 1, 1]]);
     expect(s.kpis.perWorker).toBe(2);
   });
 
   it("gives an empty period empty figures", () => {
     const s = consumablesStats([], "2026-09-28", "2026-09-28", 0);
-    expect(s.kpis).toMatchObject({ activeDays: 0, perActiveDay: 0, perWorker: 0, vitalFew: 0, busiestHour: null, busiestWeekday: null, repeatPairs: 0 });
+    expect(s.kpis).toMatchObject({ activeDays: 0, perActiveDay: 0, perWorker: 0, vitalFew: 0, busiestSlot: null });
     expect(s.departmentShare).toEqual([]);
   });
 });

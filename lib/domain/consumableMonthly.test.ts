@@ -2,13 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildMonthlyReport, grade, monthBounds, monthlyAllowance, reportSpan, shiftMonth, type ItemInput } from "./consumableMonthly";
 import type { LimitRule, LimitUse } from "./consumableLimits";
 
-const rule = (over: Partial<LimitRule>): LimitRule => ({ id: 1, itemId: 10, departments: ["WeldingTX"], basis: "pool", period: "week", qty: 15, ...over });
+const rule = (over: Partial<LimitRule>): LimitRule => ({ id: 1, itemId: 10, departments: ["WeldingTX"], basis: "pool", period: "month", qty: 60, ...over });
 const use = (over: Partial<LimitUse>): LimitUse => ({ itemId: 10, department: "WeldingTX", workerId: 1, dayISO: "2026-09-10", qty: 1, ...over });
 const item = (over: Partial<ItemInput>): ItemInput => ({ id: 10, code: "C-1", name: "Grinding Disk", uom: "PC", active: true, rules: [rule({})], ...over });
 
 describe("the monthly allowance", () => {
-  it("is a fixed multiple of the limit", () => {
-    expect(monthlyAllowance({ qty: 15, period: "week" })).toBe(60);
+  it("is the month's number, or a longer limit's whole number", () => {
     expect(monthlyAllowance({ qty: 3, period: "month" })).toBe(3);
     expect(monthlyAllowance({ qty: 1, period: "quarter" })).toBe(1); // whole, over the quarter to date
   });
@@ -28,10 +27,9 @@ describe("months", () => {
     expect(shiftMonth("2026-01", -1)).toBe("2025-12");
     expect(shiftMonth("2026-12", 1)).toBe("2027-01");
     // back to the year's first day (every multi-month window of the month is
-    // inside it), to the month's end with its edge weeks counted whole
-    // (30 Sep 2026 is a Wednesday: its week runs to Friday 2 Oct)
-    expect(reportSpan("2026-09")).toEqual({ from: "2026-01-01", to: "2026-10-02" });
-    expect(reportSpan("2026-09", 1)).toEqual({ from: "2026-01-01", to: "2026-10-02" });
+    // inside it), to the month's own last day — nothing outside the month
+    expect(reportSpan("2026-09")).toEqual({ from: "2026-01-01", to: "2026-09-30" });
+    expect(reportSpan("2027-03", 6)).toEqual({ from: "2026-10-01", to: "2027-03-31" });
   });
 });
 
@@ -55,18 +53,13 @@ describe("the monthly report", () => {
     expect(row.limits.map((l) => [l.departmentsLabel, l.used, l.status])).toEqual([["Welding TX", 70, "over"], ["Welding USS/LV", 5, "under"]]);
   });
 
-  it("names the weeks of the month that went over, counted whole", () => {
-    // week of 29 Aug runs to 4 Sep: 10 in August + 10 in September = 20 of 15
-    const r = buildMonthlyReport([item({})], [use({ qty: 10, dayISO: "2026-08-31" }), use({ qty: 10, dayISO: "2026-09-02" }), use({ qty: 5, dayISO: "2026-09-08" })], "2026-09");
-    const weeks = r.rows[0].limits[0].weeks;
-    expect(weeks[0]).toMatchObject({ label: "week of 29 Aug", used: 20, over: true });
-    expect(weeks[1]).toMatchObject({ label: "week of 5 Sep", used: 5, over: false });
-    expect(weeks).toHaveLength(5);
+  it("counts only the month's own days — a draw on the 31st is last month's", () => {
+    const r = buildMonthlyReport([item({})], [use({ qty: 50, dayISO: "2026-08-31" }), use({ qty: 10, dayISO: "2026-09-01" })], "2026-09");
+    expect(r.rows[0].limits[0]).toMatchObject({ used: 10, prevUsed: 50, status: "under" });
   });
 
-
   it("grades a per-person limit by its workers, each against his own allowance", () => {
-    const i = item({ rules: [rule({ basis: "person", qty: 2 })] }); // 8 a month each
+    const i = item({ rules: [rule({ basis: "person", qty: 8 })] }); // 8 a month each
     const r = buildMonthlyReport([i], [use({ workerId: 1, qty: 9 }), use({ workerId: 2, qty: 3 })], "2026-09");
     const l = r.rows[0].limits[0];
     expect(l).toMatchObject({ allowance: 8, used: 9, usedAll: 12, status: "over", workersOver: [{ workerId: 1, used: 9 }] });

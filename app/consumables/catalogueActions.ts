@@ -115,9 +115,9 @@ function readLimit(formData: FormData): { error?: string; data?: { departments: 
   const departments = serializeDepartments(all ? ALL_DEPARTMENTS : picked);
   if (departments.length > 500) return { error: "Too many departments on one limit." };
   const basis = String(formData.get("basis") ?? "pool");
-  const period = String(formData.get("period") ?? "week");
+  const period = String(formData.get("period") ?? "month");
   if (!isLimitBasis(basis)) return { error: "Pick how the quantity counts: each department its own, shared, or per worker." };
-  if (!isLimitPeriod(period)) return { error: "Pick how often: a week, a month, or every few months." };
+  if (!isLimitPeriod(period)) return { error: "Pick how often: a month, or every few months." };
   const q = parseQty(formData.get("qty"));
   if (q.error) return { error: q.error };
   return { data: { departments, basis, period, qty: q.qty! } };

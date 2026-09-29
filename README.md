@@ -276,21 +276,20 @@ mobile drawer still lists every view flat, since it has the vertical room.
    drawn − scrap**, per section and both together, the month before in points, six months of trend
    (bars + rate line), what was drawn by item; print and Excel.
    **Catalogue & limits** (the **Limits** view, `consumables.edit`): the store's list — code, name, unit, remark — loaded
-   from its sheet (47 items), each with its limits: a number per **work week** (Saturday → Friday), **calendar month**, or every
-   **2, 3, 4 or 6 months** or a **year** — no daily limits: the store draws a week's stock at once — for the departments it names, **shared** by them or **per worker**. The sheet's weekly
-   number is split between its departments unless it is smaller than their count (then one shared pool); "All", "All
-   fabrication" and "All fabrication and welding" are one pool; its remarks set the period ("1 month", "3 Month"; the
-   sheet's "Every day" items were daily, and became weekly × 6 working days) or the basis ("Qty for one person"). Items, limits and retirements are edited in place and every change is
-   kept (who, when, before → after). The record form picks the item from the catalogue (the department's items first; "not
-   in the catalogue" is typed and has no limit), shows where the limit stands as the quantity is typed, and a hand-out
-   that would take a limit over is refused until the recorder gives a **reason** — then saved flagged "over limit" with
-   the reason and the breach. The Dashboard opens with the **alarms**: limits over or within 80% in their current period,
-   the periods on the slicer that ended over (per worker for per-person limits), and the hand-outs recorded over a limit.
-   **Monthly review** (the foot of the Dashboard, with its own month picker and its own Excel) — the month-end review: every catalogue item's calendar month against a monthly limit made from its
-   limits (a week's × 4, a month's as is; a quarter's is counted over the quarter to date against its whole
-   number), graded **over / close (80–100%) / under / not issued**, with the month before, the last six months (a
-   sparkline per item and a chart of how many items fell in each grade), and each item opening onto its departments: the
-   work weeks of a weekly limit that went over (counted whole), the workers past a per-person one.
+   from its sheet (47 items), each with its limits: a number per **calendar month**, or every **2, 3, 4 or 6 months** or a
+   **year** — nothing shorter: the store is tracked month by month and draws stock in bulk — for the departments it names,
+   each its own, **shared** by them, or **per worker** (× each department's workers). The sheet's weekly numbers became
+   monthly ones of four weeks, and its "Every day" items six working days a week before that (every conversion is in the
+   Limits history). Items, limits and retirements are edited in place and every change is kept (who, when, before → after).
+   The record form picks the item from the catalogue (the department's items first; "not in the catalogue" is typed and has
+   no limit), shows where the limit stands as the quantity is typed, and a hand-out that would take a limit over is refused
+   until the recorder gives a **reason** — then saved flagged "over limit" with the reason and the breach. The Dashboard
+   opens with the **alarms** — a limit **past its number** in the running month (or its months so far), nothing less —
+   then the finished months that ended over, and the hand-outs recorded over a limit.
+   **Monthly review** (the foot of the Dashboard, with its own month picker and its own Excel) — the month-end review: every
+   catalogue item's calendar month against its monthly limit (a limit of several months counted over its months so far
+   against its whole number), graded **over / close (80–100%) / under / not issued**, with the month before and the last six
+   months (a sparkline per item and a chart of how many items fell in each grade), each item opening onto its departments.
    Month picker, Excel export (item and limit lines) and a print / PDF with the company header.
 
 ## Validation against the workbook

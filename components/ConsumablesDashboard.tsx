@@ -5,10 +5,10 @@ import {
   ResponsiveContainer, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis, LabelList,
 } from "recharts";
 import {
-  CAT, OTHER, ChartCard, DataBar, Delta, HeatScale, Heatmap, Legend, StatTile, TipBox,
+  CAT, OTHER, ChartCard, Delta, HeatScale, Heatmap, Legend, StatTile, TipBox,
   catColor, catInk, compact, fmt, pct, type TableRow,
 } from "@/components/charts/kit";
-import { OTHER_KEY, REPEAT_THRESHOLD, WEEKDAYS, pctChange, type ConsumablesStats } from "@/lib/domain/consumablesStats";
+import { OTHER_KEY, WEEKDAYS, pctChange, type ConsumablesStats } from "@/lib/domain/consumablesStats";
 
 // The CONSUMABLES dashboard — what the store handed out in the period on the
 // slicer, read the way a Power BI page reads: headline tiles with their
@@ -23,7 +23,6 @@ import { OTHER_KEY, REPEAT_THRESHOLD, WEEKDAYS, pctChange, type ConsumablesStats
 //   how departments draw on it . scatter: how often × how varied, and
 //                                hand-outs per worker of each department
 //   where each item goes ....... item × department heatmap with totals
-//   what to look at ............ repeat hand-outs, the same department and item 3+ times
 //
 // A hand-out is recorded to a department — no worker is named — so every
 // "who" here is a department.
@@ -337,7 +336,7 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
         <div className="text-3xl mb-2">📦</div>
         <div className="font-bold">Nothing handed out {periodLabel}</div>
         <p className="text-sm text-muted mt-1">
-          Pick a longer period on the slicer above{s.previousIssues > 0 ? ` — the period before had ${fmt(s.previousIssues)} hand-out${s.previousIssues === 1 ? "" : "s"}` : ""}.
+          Pick a longer period on the slicer above{s.previousIssues !== null && s.previousIssues > 0 ? ` — the period before had ${fmt(s.previousIssues)} hand-out${s.previousIssues === 1 ? "" : "s"}` : ""}.
         </p>
       </div>
     );
@@ -366,23 +365,23 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
   const perHeadRows: TableRow[] = s.departments.map((d) => ({ Department: d.label, "Hand-outs": d.issues, "Workers on the list": d.people || "", "Hand-outs per worker": d.perPerson ?? "" }));
   const perHead = s.departments.filter((d) => d.perPerson !== null).sort((a, b) => b.perPerson! - a.perPerson!).slice(0, 12);
   const matrixRows: TableRow[] = s.matrix.items.map((item, i) => ({ Item: item, ...Object.fromEntries(s.matrix.departments.map((d, j) => [d.label, s.matrix.qty[i][j]])) }));
-  const repeatRows: TableRow[] = s.repeats.map((r) => ({ Department: r.name, Item: r.item, Times: r.times, Qty: r.qty, First: r.firstDay, Last: r.lastDay }));
 
   const weekMax = Math.max(0, ...s.weekHour.counts.flat());
-  const repeatMax = Math.max(0, ...s.repeats.map((r) => r.times));
+  const busiest = k.busiestSlot;
 
   return (
     <div className="space-y-3">
       {/* ---- headline tiles */}
       <div className="flex flex-wrap gap-3">
         <StatTile hero label="Hand-outs" value={compact(s.totals.issues)} spark={days > 1 ? s.daily.map((d) => d.issues) : undefined}
-          delta={<Delta pct={pctChange(s.totals.issues, s.previousIssues)} before={s.previousIssues} />} />
-        <StatTile label="Per working day" value={fmt(k.perActiveDay, 1)} sub={singleDay ? "one day on the slicer" : `${k.activeDays} of ${days} days with hand-outs`} meter={singleDay ? undefined : k.activeDays / days} />
+          delta={s.previousIssues === null ? undefined : <Delta pct={pctChange(s.totals.issues, s.previousIssues)} before={s.previousIssues} />}
+          sub={s.previousIssues === null ? "the log does not go back a whole period before — nothing to compare with yet" : undefined} />
+        <StatTile label="Per day with hand-outs" value={fmt(k.perActiveDay, 1)} sub={singleDay ? "one day on the slicer" : `${k.activeDays} of ${days} days with hand-outs`} meter={singleDay ? undefined : k.activeDays / days} />
         <StatTile label="Items" value={fmt(s.totals.items)} sub={`${k.vitalFew} make up 80% of hand-outs`} meter={s.totals.items ? k.vitalFew / s.totals.items : 0} />
         <StatTile label="Departments" value={fmt(s.totals.departments)} sub={`${fmt(k.perWorker, 1)} hand-outs each on average`} />
         <StatTile label="Top department" value={pct(k.topDepartmentShare)} sub={s.departments[0]?.label} meter={k.topDepartmentShare} />
-        <StatTile label="Busiest" value={k.busiestHour !== null ? hh(k.busiestHour) : "—"} sub={k.busiestWeekday !== null && !singleDay ? `on ${WEEKDAYS[k.busiestWeekday]}s` : "hour of the day"} />
-        <StatTile label="Repeat hand-outs" value={fmt(k.repeatPairs)} sub={`same department & item ×${REPEAT_THRESHOLD}+`} />
+        <StatTile label="Busiest hour" value={busiest ? (singleDay ? hh(busiest.hour) : `${WEEKDAYS[busiest.weekday]} ${hh(busiest.hour)}`) : "—"}
+          sub={busiest ? `${fmt(busiest.issues)} hand-out${busiest.issues === 1 ? "" : "s"} in that hour, ${periodLabel}` : "no hand-outs"} />
       </div>
 
       {/* ---- how much, over time · who, by share */}
@@ -440,7 +439,7 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
         <ChartCard title="Hand-outs per worker, by department"
           sub={perHead.length ? "A department's hand-outs over its workers on the workers list — a big crew is not a big spender" : "No department on the workers list took anything in the period"}
           table={{ rows: perHeadRows, filename: file("per-worker"), sheet: "Per worker" }}>
-          <RankedBars unit="Hand-outs per worker" color="var(--viz-2)" data={perHead.map((d) => ({ name: d.label, value: d.perPerson!, note: `${fmt(d.issues)} hand-outs · ${d.people} worker${d.people === 1 ? "" : "s"}` }))} />
+          <RankedBars unit="Hand-outs per worker" color="var(--viz-2)" data={perHead.map((d) => ({ name: d.label, value: Math.round(d.perPerson! * 10) / 10, note: `${fmt(d.issues)} hand-outs · ${d.people} worker${d.people === 1 ? "" : "s"}` }))} />
         </ChartCard>
       </div>
 
@@ -450,36 +449,6 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
         <Heatmap totals="rows" scale="row" rowHead="Item" rows={s.matrix.items} cols={s.matrix.departments.map((d) => d.label)} values={s.matrix.qty} />
       </ChartCard>
 
-      {/* ---- the watch list */}
-      <ChartCard title="Repeat hand-outs"
-        sub={s.repeats.length ? `The same department took the same item ${REPEAT_THRESHOLD} times or more ${periodLabel} — worth a look` : `No department took the same item ${REPEAT_THRESHOLD} times or more ${periodLabel}`}
-        table={s.repeats.length ? { rows: repeatRows, filename: file("repeats"), sheet: "Repeats" } : undefined}>
-        {s.repeats.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b">
-                <tr className="text-xs text-muted">
-                  <th className="px-2 py-1.5 text-left">Department</th><th className="px-2 py-1.5 text-left">Item</th>
-                  <th className="px-2 py-1.5 text-left">Times</th><th className="px-2 py-1.5 text-right">Qty</th><th className="px-2 py-1.5 text-left">First → last</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {s.repeats.slice(0, 25).map((r) => (
-                  <tr key={`${r.workerId}|${r.item}`}>
-                    <td className="px-2 py-1.5"><b>{r.name}</b></td>
-                    <td className="px-2 py-1.5">{r.item}</td>
-                    <td className="px-2 py-1.5"><DataBar value={r.times} max={repeatMax} label={`×${r.times}`} /></td>
-                    <td className="px-2 py-1.5 text-right tabnum">{fmt(r.qty)}</td>
-                    <td className="px-2 py-1.5 text-xs text-muted ltr whitespace-nowrap">{r.firstDay} → {r.lastDay}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-sm text-muted">✓ Nothing to look at.</p>
-        )}
-      </ChartCard>
     </div>
   );
 }

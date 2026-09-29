@@ -38,7 +38,7 @@ type LimitRow = { id: number; itemId: number; departments: string; basis: string
 export function toRule(l: LimitRow): LimitRule {
   return {
     id: l.id, itemId: l.itemId, departments: parseDepartments(l.departments),
-    basis: isLimitBasis(l.basis) ? l.basis : "pool", period: isLimitPeriod(l.period) ? l.period : "week", qty: l.qty.toNumber(),
+    basis: isLimitBasis(l.basis) ? l.basis : "pool", period: isLimitPeriod(l.period) ? l.period : "month", qty: l.qty.toNumber(),
   };
 }
 
@@ -116,7 +116,7 @@ export interface LimitHint {
 }
 
 /** The record form's hint: where each rule covering the item, department and
- *  workers stands today — "Welding TX · a week: 12 of 15 used". For a
+ *  workers stands today — "Welding TX · a month: 12 of 60 used". For a
  *  per-person rule and a group, what the workers had between them against
  *  the number times the workers; with no worker picked yet, nothing is
  *  counted against it. `excludeIssueId`: the row being corrected, which the
@@ -182,9 +182,11 @@ export interface OverLimitIssue {
 }
 
 export interface LimitDashboard {
-  /** Every rule in its current window (today's day, week, month, quarter). */
+  /** Every rule in its current window (this month, this quarter …). */
   board: AlarmRow[];
-  /** Windows in the slicer's period that ended (or stand) over a limit. */
+  /** Windows touching the slicer's period that are over and done — a month
+   *  (or longer limit) that closed over its number. The window still running
+   *  is the board's, not repeated here. */
   exceedances: ExceedanceRow[];
   /** Hand-outs in the slicer's period recorded over a limit, with the reason. */
   overLimitIssues: OverLimitIssue[];
@@ -241,7 +243,9 @@ export async function getLimitDashboard(fromISO: string, toISO: string, todayISO
     };
   }).sort((a, b) => b.ratio - a.ratio || a.item.localeCompare(b.item));
 
-  const ex: ExceedanceRow[] = exceedances(rules, uses.filter((u) => u.dayISO >= rangeFrom && u.dayISO <= rangeTo), fromISO, toISO).map((e) => {
+  const ex: ExceedanceRow[] = exceedances(rules, uses.filter((u) => u.dayISO >= rangeFrom && u.dayISO <= rangeTo), fromISO, toISO)
+    .filter((e) => e.window.to < todayISO)
+    .map((e) => {
     const it = itemOf.get(e.itemId);
     return {
       item: it?.name ?? "?", code: it?.code ?? null, period: e.period, basis: e.basis, departmentsLabel: e.departmentsLabel,
@@ -278,8 +282,8 @@ function describeLimitJson(raw: unknown): string {
   const l = (raw ?? {}) as { departments?: string; basis?: string; period?: string; qty?: number };
   if (!l.departments) return "—";
   const d = departmentsLabel(parseDepartments(l.departments));
-  // "day" survives only in the history, from before limits went weekly
-  const per = isLimitPeriod(l.period ?? "") ? PERIOD_LABEL[l.period as LimitPeriod] : l.period === "day" ? "a day" : l.period;
+  // "day" and "week" survive only in the history, from before limits went monthly
+  const per = isLimitPeriod(l.period ?? "") ? PERIOD_LABEL[l.period as LimitPeriod] : l.period === "day" ? "a day" : l.period === "week" ? "a week" : l.period;
   return `${l.qty} ${per} · ${d}${l.basis === "person" ? " (per worker)" : l.basis === "each" ? " (each department)" : ""}`;
 }
 

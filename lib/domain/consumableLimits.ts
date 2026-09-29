@@ -6,11 +6,11 @@
 //
 //   `qty` per `period` for `departments`, counted as a `basis`
 //
-//   period ..... week | month | every 2, 3, 4 or 6 months | a year —
-//                FIXED windows on the factory's
-//                calendar: the day; the work week Saturday → Friday; the
-//                calendar month; the calendar quarter. The count starts again
-//                at zero when a window starts.
+//   period ..... month | every 2, 3, 4 or 6 months | a year — FIXED
+//                windows of whole calendar months (Jan–Mar, Apr–Jun … for
+//                3 months). The count starts again at zero when a window
+//                starts. Nothing shorter than a month: the store is tracked
+//                month by month, and draws stock in bulk.
 //   departments  "*" = every department, else the departments (a worker
 //                section's code, or a typed department) the limit covers.
 //   basis ...... "pool": everything handed out to those departments counts
@@ -30,7 +30,7 @@
 import { addDaysISO } from "./dateSlicer";
 import { WORKER_SECTIONS, sectionLabel } from "./tanks";
 
-export const LIMIT_PERIODS = ["week", "month", "bimonth", "quarter", "fourmonth", "halfyear", "year"] as const;
+export const LIMIT_PERIODS = ["month", "bimonth", "quarter", "fourmonth", "halfyear", "year"] as const;
 export type LimitPeriod = (typeof LIMIT_PERIODS)[number];
 /** The calendar months a period spans — the windows run from January in steps of it. */
 export const PERIOD_MONTHS: Partial<Record<LimitPeriod, number>> = { month: 1, bimonth: 2, quarter: 3, fourmonth: 4, halfyear: 6, year: 12 };
@@ -43,11 +43,11 @@ export const LIMIT_BASES = ["pool", "each", "person"] as const;
 export type LimitBasis = (typeof LIMIT_BASES)[number];
 
 export const PERIOD_LABEL: Record<LimitPeriod, string> = {
-  week: "a week", month: "a month", bimonth: "every 2 months", quarter: "every 3 months",
+  month: "a month", bimonth: "every 2 months", quarter: "every 3 months",
   fourmonth: "every 4 months", halfyear: "every 6 months", year: "a year",
 };
 export const PERIOD_NOUN: Record<LimitPeriod, string> = {
-  week: "this week", month: "this month", bimonth: "these 2 months", quarter: "this quarter",
+  month: "this month", bimonth: "these 2 months", quarter: "this quarter",
   fourmonth: "these 4 months", halfyear: "this half-year", year: "this year",
 };
 export const ALL_DEPARTMENTS = "*";
@@ -214,29 +214,17 @@ const iso = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d))
 
 /** The fixed window of a period that holds a factory day, both ends included. */
 export function periodWindow(period: LimitPeriod, dayISO: string): { from: string; to: string } {
-  const [y, m, d] = ymd(dayISO);
-  switch (period) {
-    case "week": {
-      // the work week starts on Saturday (getUTCDay 6)
-      const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-      const back = (dow + 1) % 7;
-      const from = addDaysISO(dayISO, -back);
-      return { from, to: addDaysISO(from, 6) };
-    }
-    default: {
-      // a run of whole calendar months, stepping from January
-      const n = PERIOD_MONTHS[period] ?? 1;
-      const m0 = Math.floor((m - 1) / n) * n + 1;
-      return { from: iso(y, m0, 1), to: iso(y, m0 + n, 0) };
-    }
-  }
+  const [y, m] = ymd(dayISO);
+  // a run of whole calendar months, stepping from January
+  const n = PERIOD_MONTHS[period] ?? 1;
+  const m0 = Math.floor((m - 1) / n) * n + 1;
+  return { from: iso(y, m0, 1), to: iso(y, m0 + n, 0) };
 }
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** "week of 26 Sep", "Sep 2026", "Q3 2026" … */
+/** "Sep 2026", "Q3 2026", "Jul–Dec 2026", "2026". */
 export function windowLabel(period: LimitPeriod, w: { from: string; to: string }): string {
-  const [y, m, d] = ymd(w.from);
-  if (period === "week") return `week of ${d} ${MON[m - 1]}`;
+  const [y, m] = ymd(w.from);
   if (period === "month") return `${MON[m - 1]} ${y}`;
   if (period === "quarter") return `Q${Math.floor((m - 1) / 3) + 1} ${y}`;
   if (period === "year") return String(y);
