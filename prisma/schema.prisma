@@ -716,6 +716,7 @@ model Worker {
 
   shifts           ShiftEntry[]
   consumableIssues ConsumableIssue[]
+  consumableShares ConsumableIssueRecipient[]
 
   @@index([active])
 }
@@ -947,10 +948,17 @@ model ConsumableIssue {
   // WORKER_SECTIONS), or a department typed by the recorder that is not one
   // of them (Maintenance, Store …). Typed ones reappear in the dropdown.
   department String
-  workerId   Int
-  worker     Worker   @relation(fields: [workerId], references: [id], onDelete: Restrict)
-  notes      String?
-  issuedAt   DateTime @default(now())
+  // Who took it: one worker (workerId), or a group — several workers picked
+  // by name, or the whole department as it stood (the workers present in the
+  // section at recording). A group's people are ConsumableIssueRecipient;
+  // recipientCount is how many, kept as it was that day.
+  workerId       Int?
+  worker         Worker?  @relation(fields: [workerId], references: [id], onDelete: Restrict)
+  recipientScope String   @default("worker") // worker | workers | department
+  recipientCount Int      @default(1)
+  recipients     ConsumableIssueRecipient[]
+  notes          String?
+  issuedAt       DateTime @default(now())
 
   // The catalogue item it was handed out of; null for an item typed by hand
   // (not in the catalogue — no limit applies). `item` keeps the name either way.
@@ -1065,4 +1073,17 @@ model ConsumableCatalogueChange {
 
   @@index([itemId])
   @@index([at])
+}
+
+/// The people of a group hand-out — several workers picked by name, or the
+/// whole department as it stood. Each counts an equal share of the quantity
+/// against a per-person limit.
+model ConsumableIssueRecipient {
+  issueId  Int
+  issue    ConsumableIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  workerId Int
+  worker   Worker          @relation(fields: [workerId], references: [id], onDelete: Restrict)
+
+  @@id([issueId, workerId])
+  @@index([workerId])
 }

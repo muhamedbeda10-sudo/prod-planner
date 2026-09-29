@@ -52,13 +52,49 @@ export interface LimitRule {
   qty: number;
 }
 
-/** One hand-out as the limits read it. */
+/** One hand-out as the limits read it — for a hand-out to several workers
+ *  (or a whole department), one per worker, each his equal share. */
 export interface LimitUse {
   itemId: number;
   department: string;
   workerId: number;
   dayISO: string;
   qty: number;
+}
+
+/** A hand-out as stored, before the limits read it: to one worker, or to a
+ *  group of them (the department's workers as they were on the day). */
+export interface IssueForLimits {
+  itemId: number;
+  department: string;
+  dayISO: string;
+  qty: number;
+  workerId: number | null;
+  recipientIds: readonly number[];
+}
+
+/** The uses a hand-out counts as: the whole quantity against its worker, or
+ *  an equal share against each worker of a group — so a per-person limit
+ *  sees 20 gloves for a department of ten as 2 each. A group whose workers
+ *  were not kept (none in the snapshot) still counts, whole, against the
+ *  shared limits — under no worker (id 0). */
+export function issueUses(i: IssueForLimits): LimitUse[] {
+  const base = { itemId: i.itemId, department: i.department, dayISO: i.dayISO };
+  if (i.workerId !== null) return [{ ...base, workerId: i.workerId, qty: i.qty }];
+  const ids = [...new Set(i.recipientIds)];
+  if (ids.length === 0) return [{ ...base, workerId: 0, qty: i.qty }];
+  const share = i.qty / ids.length;
+  return ids.map((workerId) => ({ ...base, workerId, qty: share }));
+}
+
+/** The hand-out a limit check weighs: to one worker, or to several at once. */
+export interface LimitCandidate {
+  itemId: number;
+  department: string;
+  dayISO: string;
+  qty: number;
+  /** One id for a single worker; every recipient for a group. */
+  workerIds: readonly number[];
 }
 
 export function isLimitPeriod(x: string): x is LimitPeriod {
@@ -173,17 +209,22 @@ export interface LimitBreach {
   departmentsLabel: string;
   window: { from: string; to: string };
   windowLabel: string;
-  /** Already handed out in the window, before this one. */
+  /** Already handed out in the window, before this one — for a per-person
+   *  rule and a group, what the group's workers had between them. */
   used: number;
   /** This hand-out. */
   adding: number;
+  /** The number it went over — for a per-person rule and a group, the
+   *  per-person number times the workers. */
   limit: number;
+  /** The workers a per-person limit was multiplied by (1 otherwise). */
+  people: number;
 }
 
 /** One line for the warning and the record: "Welding TX · a week (week of
  *  26 Sep): 12 already + 5 now = 17 of 15". */
 export function describeBreach(b: LimitBreach): string {
-  const who = b.basis === "person" ? `${b.departmentsLabel}, per person` : b.departmentsLabel;
+  const who = b.basis === "person" ? `${b.departmentsLabel}, per person${b.people > 1 ? ` × ${b.people} workers` : ""}` : b.departmentsLabel;
   return `${who} · ${PERIOD_LABEL[b.period]} (${b.windowLabel}): ${b.used} already + ${b.adding} now = ${round3(b.used + b.adding)} of ${b.limit}`;
 }
 
@@ -194,21 +235,34 @@ export function windowsSpan(rules: readonly Pick<LimitRule, "period">[], dayISO:
   return { from: ws.map((w) => w.from).sort()[0], to: ws.map((w) => w.to).sort().at(-1)! };
 }
 
+/** Where a rule stands, in the window around the day, for a hand-out to these
+ *  workers: a shared rule counts everything; a per-person rule counts what
+ *  the workers had between them, against its number times the workers. */
+export function candidateStanding(rule: LimitRule, uses: readonly LimitUse[], dayISO: string, workerIds: readonly number[]): { window: { from: string; to: string }; used: number; limit: number; people: number } {
+  const w = periodWindow(rule.period, dayISO);
+  if (rule.basis !== "person") return { window: w, used: usageIn(rule, uses, w), limit: rule.qty, people: 1 };
+  const ids = [...new Set(workerIds)];
+  const people = Math.max(1, ids.length);
+  const used = round3(ids.reduce((n, id) => n + usageIn(rule, uses, w, id), 0));
+  return { window: w, used, limit: round3(rule.qty * people), people };
+}
+
 /**
  * Would this hand-out take a rule over its limit? Every rule of the item that
  * covers the department is checked in its own window around the day; `uses`
- * are the other hand-outs (the one being edited left out).
+ * are the other hand-outs (the one being edited left out). A per-person rule
+ * and a hand-out to several workers: the number times the workers, against
+ * what they had between them plus this one.
  */
-export function checkAgainstLimits(rules: readonly LimitRule[], uses: readonly LimitUse[], candidate: LimitUse): LimitBreach[] {
+export function checkAgainstLimits(rules: readonly LimitRule[], uses: readonly LimitUse[], candidate: LimitCandidate): LimitBreach[] {
   const out: LimitBreach[] = [];
   for (const rule of rules) {
     if (rule.itemId !== candidate.itemId || !coversDepartment(rule, candidate.department)) continue;
-    const w = periodWindow(rule.period, candidate.dayISO);
-    const used = usageIn(rule, uses, w, candidate.workerId);
-    if (round3(used + candidate.qty) > rule.qty + 1e-9) {
+    const { window: w, used, limit, people } = candidateStanding(rule, uses, candidate.dayISO, candidate.workerIds);
+    if (round3(used + candidate.qty) > limit + 1e-9) {
       out.push({
         ruleId: rule.id, period: rule.period, basis: rule.basis, departmentsLabel: departmentsLabel(rule.departments),
-        window: w, windowLabel: windowLabel(rule.period, w), used, adding: candidate.qty, limit: rule.qty,
+        window: w, windowLabel: windowLabel(rule.period, w), used, adding: candidate.qty, limit, people,
       });
     }
   }

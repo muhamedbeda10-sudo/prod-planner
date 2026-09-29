@@ -13,7 +13,7 @@ const h = vi.hoisted(() => {
       consumableIssue: { create: fn(), findUnique: fn(), findMany: fn(), updateMany: fn() },
       consumableIssueRevision: { create: fn(), findUnique: fn() },
       consumableItem: { findUnique: fn() },
-      worker: { findUnique: fn() },
+      worker: { findUnique: fn(), findMany: fn() },
       $transaction: fn(),
     },
     revalidatePath: vi.fn(),
@@ -297,7 +297,7 @@ describe("limits at recording", () => {
     expect(res.ok).toBe(true);
     const data = h.prisma.consumableIssue.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ itemId: 3, item: "Grinding Disk 115x6x22.23mm", overLimit: false, overLimitReason: null });
-    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3, department: "WeldingTX", workerId: 7, qty: 2 }));
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3, department: "WeldingTX", workerIds: [7], qty: 2 }));
   });
 
   it("records a typed item with no catalogue link, and no limit check to speak of", async () => {
@@ -360,5 +360,101 @@ describe("limits at recording", () => {
     const res = await updateConsumableIssue(form({ ...valid, itemId: "3", qty: "9", id: "42", version: version.toISOString() }));
     expect(res.needsReason).toBe(true);
     expect(h.prisma.consumableIssue.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("group hand-outs", () => {
+  // the workers list as getAllWorkers reads it
+  const person = (id: number, over: Record<string, unknown> = {}) => ({
+    id, empId: String(1200 + id), name: `W${id}`, jobTitle: null, stamp: null, depts: "WeldingTX", active: true, vacationUntil: null, ...over,
+  });
+  const roster = [
+    person(1), person(2), person(3),
+    person(4, { vacationUntil: new Date("2099-01-01T00:00:00Z") }), // away
+    person(5, { active: false }), // deactivated
+    person(6, { depts: "PaintingTX" }), // another section
+  ];
+  const group = (over: Record<string, unknown> = {}) => saved({
+    workerId: null, worker: null, recipientScope: "department", recipientCount: 3, qty: new Prisma.Decimal(20),
+    recipients: [1, 2, 3].map((id) => ({ workerId: id, worker: { name: `W${id}` } })),
+    ...over,
+  });
+
+  it("hands a whole department to its workers at work today, and multiplies a per-person limit by them", async () => {
+    h.prisma.worker.findMany.mockResolvedValue(roster);
+    const res = await createConsumableIssue(form({ ...valid, workerId: "", recipientScope: "department", qty: "20" }));
+    expect(res).toEqual({ ok: true, department: "WeldingTX" });
+    const data = h.prisma.consumableIssue.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({
+      workerId: null, recipientScope: "department", recipientCount: 3,
+      recipients: { create: [{ workerId: 1 }, { workerId: 2 }, { workerId: 3 }] },
+    });
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ workerIds: [1, 2, 3], qty: 20 }));
+  });
+
+  it("refuses a whole department with nobody at work, and a typed department", async () => {
+    h.prisma.worker.findMany.mockResolvedValue([person(4, { vacationUntil: new Date("2099-01-01T00:00:00Z") })]);
+    expect((await createConsumableIssue(form({ ...valid, recipientScope: "department" }))).error).toMatch(/Nobody in Welding TX is at work today/);
+    expect((await createConsumableIssue(form({ ...valid, department: "Maintenance", recipientScope: "department" }))).error).toMatch(/no workers of its own/);
+    expect(h.prisma.consumableIssue.create).not.toHaveBeenCalled();
+  });
+
+  it("hands out to several ticked workers, each checked against the section", async () => {
+    h.prisma.worker.findMany.mockResolvedValue([person(1), person(2)]);
+    const res = await createConsumableIssue(form({ ...valid, workerId: "", recipientScope: "workers", workerIds: "2,1" }));
+    expect(res.ok).toBe(true);
+    expect(h.prisma.consumableIssue.create.mock.calls[0][0].data).toMatchObject({
+      workerId: null, recipientScope: "workers", recipientCount: 2, recipients: { create: [{ workerId: 1 }, { workerId: 2 }] },
+    });
+
+    h.prisma.worker.findMany.mockResolvedValue([person(1), person(6, { depts: "PaintingTX" })]);
+    expect((await createConsumableIssue(form({ ...valid, recipientScope: "workers", workerIds: "1,6" }))).error).toMatch(/not registered in Welding TX/);
+    h.prisma.worker.findMany.mockResolvedValue([person(1)]);
+    expect((await createConsumableIssue(form({ ...valid, recipientScope: "workers", workerIds: "1,99" }))).error).toMatch(/no longer on the list/);
+  });
+
+  it("corrects only a group row's item, quantity and notes — its department and workers stay", async () => {
+    h.prisma.consumableIssue.findUnique.mockResolvedValue(group());
+    const res = await updateConsumableIssue(form({
+      id: "42", version: version.toISOString(), item: "Welding wire 1.2mm", qty: "24", notes: "", department: "PaintingTX", recipientScope: "worker", workerId: "7",
+    }));
+    expect(res).toEqual({ ok: true });
+    const upd = h.prisma.consumableIssue.updateMany.mock.calls[0][0];
+    expect(upd.data.qty.toString()).toBe("24");
+    expect(upd.data).not.toHaveProperty("department");
+    expect(upd.data).not.toHaveProperty("workerId");
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ department: "WeldingTX", workerIds: [1, 2, 3], excludeIssueId: 42 }));
+    const rev = h.prisma.consumableIssueRevision.create.mock.calls[0][0].data;
+    expect(rev.before).toMatchObject({ workerId: 0, workerEmpId: "", workerName: "Whole Welding TX (3)", qty: 20 });
+    expect(rev.after).toMatchObject({ workerId: 0, workerName: "Whole Welding TX (3)", qty: 24 });
+  });
+
+  it("will not turn a one-worker row into a group", async () => {
+    const res = await updateConsumableIssue(form({ id: "42", version: version.toISOString(), ...valid, recipientScope: "workers", workerIds: "1,2" }));
+    expect(res.error).toMatch(/cannot be turned into a group/);
+    expect(h.prisma.consumableIssue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("restores a group row's quantity, keeping its department and workers", async () => {
+    h.prisma.consumableIssue.findUnique.mockResolvedValue(group());
+    h.prisma.consumableIssueRevision.findUnique.mockResolvedValue({
+      issueId: 42, before: { item: "Welding wire 1.2mm", qty: 12, department: "WeldingTX", workerId: 0, workerEmpId: "", workerName: "Whole Welding TX (3)", notes: null },
+    });
+    h.requireAdmin.mockResolvedValue({ user: admin });
+    const res = await restoreConsumableRevision(form({ revisionId: "11", version: version.toISOString() }));
+    expect(res).toEqual({ ok: true });
+    const upd = h.prisma.consumableIssue.updateMany.mock.calls[0][0];
+    expect(upd.data.qty.toString()).toBe("12");
+    expect(upd.data).not.toHaveProperty("workerId");
+    expect(upd.data).not.toHaveProperty("department");
+    expect(h.prisma.worker.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("will not restore a one-worker version onto a group row", async () => {
+    h.prisma.consumableIssue.findUnique.mockResolvedValue(group());
+    h.prisma.consumableIssueRevision.findUnique.mockResolvedValue({
+      issueId: 42, before: { item: "Welding wire 1.2mm", qty: 12, department: "WeldingTX", workerId: 7, workerEmpId: "1203", workerName: "Sayed", notes: null },
+    });
+    expect((await restoreConsumableRevision(form({ revisionId: "11", version: version.toISOString() }))).error).toMatch(/cannot be read back/);
   });
 });

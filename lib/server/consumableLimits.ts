@@ -2,9 +2,10 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, factoryDayStart } from "@/lib/domain/dates";
+import { departmentLabel } from "@/lib/domain/consumables";
 import {
-  ALL_DEPARTMENTS, PERIOD_LABEL, checkAgainstLimits, coversDepartment, departmentsLabel, exceedances, isLimitBasis, isLimitPeriod,
-  parseDepartments, periodWindow, standings, windowsSpan, type LimitBasis, type LimitBreach, type LimitPeriod, type LimitRule, type LimitUse,
+  ALL_DEPARTMENTS, PERIOD_LABEL, candidateStanding, checkAgainstLimits, coversDepartment, departmentsLabel, exceedances, isLimitBasis, isLimitPeriod,
+  issueUses, parseDepartments, periodWindow, standings, windowsSpan, type LimitBasis, type LimitBreach, type LimitPeriod, type LimitRule, type LimitUse,
 } from "@/lib/domain/consumableLimits";
 
 // The CONSUMABLES catalogue and limits — the reads. The rules are pure in
@@ -64,7 +65,8 @@ export async function loadRules(itemIds?: number[]): Promise<LimitRule[]> {
 
 const CAIRO_DAY = (d: Date) => factoryDayISO(d);
 
-/** Catalogue hand-outs in factory days from..to, as the limits count them. */
+/** Catalogue hand-outs in factory days from..to, as the limits count them —
+ *  a group hand-out as an equal share for each of its workers. */
 export async function loadUses(fromISO: string, toISO: string, opts: { itemIds?: number[]; excludeIssueId?: number } = {}): Promise<LimitUse[]> {
   const gte = factoryDayStart(fromISO);
   const lt = factoryDayStart(addDaysISO(toISO, 1));
@@ -76,20 +78,24 @@ export async function loadUses(fromISO: string, toISO: string, opts: { itemIds?:
       issuedAt: { gte, lt },
       ...(opts.excludeIssueId ? { id: { not: opts.excludeIssueId } } : {}),
     },
-    select: { itemId: true, department: true, workerId: true, issuedAt: true, qty: true },
+    select: { itemId: true, department: true, workerId: true, issuedAt: true, qty: true, recipients: { select: { workerId: true } } },
   });
-  return rows.map((r) => ({ itemId: r.itemId!, department: r.department, workerId: r.workerId, dayISO: CAIRO_DAY(r.issuedAt), qty: r.qty.toNumber() }));
+  return rows.flatMap((r) => issueUses({
+    itemId: r.itemId!, department: r.department, dayISO: CAIRO_DAY(r.issuedAt), qty: r.qty.toNumber(),
+    workerId: r.workerId, recipientIds: r.recipients.map((x) => x.workerId),
+  }));
 }
 
 /** Would this hand-out break a limit? The rules of the item that cover the
- *  department, each counted in its own window around the day. */
-export async function checkIssueLimits(c: { itemId: number | null; department: string; workerId: number; qty: number; dayISO: string; excludeIssueId?: number }): Promise<LimitBreach[]> {
+ *  department, each counted in its own window around the day. `workerIds`:
+ *  the one worker, or every worker of a group hand-out. */
+export async function checkIssueLimits(c: { itemId: number | null; department: string; workerIds: readonly number[]; qty: number; dayISO: string; excludeIssueId?: number }): Promise<LimitBreach[]> {
   if (c.itemId === null) return [];
   const rules = (await loadRules([c.itemId])).filter((r) => coversDepartment(r, c.department));
   const span = windowsSpan(rules, c.dayISO);
   if (!span) return [];
   const uses = await loadUses(span.from, span.to, { itemIds: [c.itemId], excludeIssueId: c.excludeIssueId });
-  return checkAgainstLimits(rules, uses, { itemId: c.itemId, department: c.department, workerId: c.workerId, dayISO: c.dayISO, qty: c.qty });
+  return checkAgainstLimits(rules, uses, { itemId: c.itemId, department: c.department, workerIds: c.workerIds, dayISO: c.dayISO, qty: c.qty });
 }
 
 export interface LimitHint {
@@ -102,23 +108,23 @@ export interface LimitHint {
 }
 
 /** The record form's hint: where each rule covering the item, department and
- *  worker stands today — "Welding TX · a week: 12 of 15 used". */
-export async function limitHints(itemId: number, department: string, workerId: number | null, dayISO: string): Promise<LimitHint[]> {
+ *  workers stands today — "Welding TX · a week: 12 of 15 used". For a
+ *  per-person rule and a group, what the workers had between them against
+ *  the number times the workers; with no worker picked yet, nothing is
+ *  counted against it. `excludeIssueId`: the row being corrected, which the
+ *  quantity typed replaces. */
+export async function limitHints(itemId: number, department: string, workerIds: readonly number[], dayISO: string, excludeIssueId?: number): Promise<LimitHint[]> {
   const rules = (await loadRules([itemId])).filter((r) => coversDepartment(r, department));
   const span = windowsSpan(rules, dayISO);
   if (!span) return [];
-  const uses = await loadUses(span.from, span.to, { itemIds: [itemId] });
+  const uses = await loadUses(span.from, span.to, { itemIds: [itemId], excludeIssueId });
   return rules.map((r) => {
-    const w = periodWindow(r.period, dayISO);
-    let used = 0;
-    for (const u of uses) {
-      if (u.dayISO < w.from || u.dayISO > w.to || !coversDepartment(r, u.department)) continue;
-      if (r.basis === "person" && u.workerId !== workerId) continue;
-      used += u.qty;
-    }
-    used = Math.round(used * 1000) / 1000;
-    const who = r.basis === "person" ? `${departmentsLabel(r.departments)}, per person` : departmentsLabel(r.departments);
-    return { ruleId: r.id, label: `${who} · ${r.qty} ${PERIOD_LABEL[r.period]}`, used, limit: r.qty, left: Math.round((r.qty - used) * 1000) / 1000 };
+    const { used, limit, people } = candidateStanding(r, uses, dayISO, workerIds);
+    const who = r.basis === "person"
+      ? `${departmentsLabel(r.departments)}, per person${people > 1 ? ` × ${people} workers` : ""}`
+      : departmentsLabel(r.departments);
+    const each = r.basis === "person" && people > 1 ? ` (${r.qty} each)` : "";
+    return { ruleId: r.id, label: `${who} · ${limit} ${PERIOD_LABEL[r.period]}${each}`, used, limit, left: Math.round((limit - used) * 1000) / 1000 };
   });
 }
 
@@ -162,6 +168,7 @@ export interface OverLimitIssue {
   item: string;
   qty: number;
   department: string;
+  /** Who it went to: the worker, or the group's label ("Whole Welding TX (12)"). */
   worker: { name: string; empId: string };
   reason: string | null;
   note: string | null;
@@ -177,6 +184,11 @@ export interface LimitDashboard {
   overLimitIssues: OverLimitIssue[];
   /** Hand-outs in the period of items not in the catalogue — no limit counts them. */
   uncatalogued: number;
+}
+
+/** A group row's short name where its workers are not listed. */
+function groupName(scope: string, department: string, count: number): string {
+  return scope === "department" ? `Whole ${departmentLabel(department)} (${count})` : `${count} workers`;
 }
 
 export async function getLimitDashboard(fromISO: string, toISO: string, todayISO: string): Promise<LimitDashboard> {
@@ -202,12 +214,12 @@ export async function getLimitDashboard(fromISO: string, toISO: string, todayISO
       where: { deletedAt: null, overLimit: true, issuedAt: { gte, lt } },
       orderBy: { issuedAt: "desc" },
       take: 200,
-      select: { id: true, issuedAt: true, item: true, qty: true, department: true, overLimitReason: true, overLimitNote: true, recordedBy: true, worker: { select: { name: true, empId: true } } },
+      select: { id: true, issuedAt: true, item: true, qty: true, department: true, overLimitReason: true, overLimitNote: true, recordedBy: true, recipientScope: true, recipientCount: true, worker: { select: { name: true, empId: true } } },
     }),
     prisma.consumableIssue.count({ where: { deletedAt: null, itemId: null, issuedAt: { gte, lt } } }),
   ]);
 
-  const workerIds = [...new Set(uses.map((u) => u.workerId))];
+  const workerIds = [...new Set(uses.map((u) => u.workerId).filter((id) => id > 0))];
   const workers = await prisma.worker.findMany({ where: { id: { in: workerIds } }, select: { id: true, name: true, empId: true } });
   const workerOf = new Map(workers.map((w) => [w.id, { name: w.name, empId: w.empId }]));
   const unknown = { name: "?", empId: "" };
@@ -237,7 +249,7 @@ export async function getLimitDashboard(fromISO: string, toISO: string, todayISO
     exceedances: ex,
     overLimitIssues: flagged.map((f) => ({
       id: f.id, dayISO: CAIRO_DAY(f.issuedAt), item: f.item, qty: f.qty.toNumber(), department: f.department,
-      worker: f.worker, reason: f.overLimitReason, note: f.overLimitNote, recordedBy: f.recordedBy,
+      worker: f.worker ?? { name: groupName(f.recipientScope, f.department, f.recipientCount), empId: "" }, reason: f.overLimitReason, note: f.overLimitNote, recordedBy: f.recordedBy,
     })),
     uncatalogued,
   };

@@ -11,6 +11,7 @@ import {
   factoryDateTimeLabel,
   parseQty,
   readConsumableForm,
+  groupLabel,
   resolveDepartment,
   workerProblem,
   workersForDepartment,
@@ -47,7 +48,7 @@ describe("readConsumableForm", () => {
   it("reads a complete hand-out", () => {
     const r = readConsumableForm(form({ ...valid, item: "  Welding   wire\n1.2mm ", notes: " for tank 12 " }));
     expect(r.error).toBeUndefined();
-    expect(r.fields).toEqual({ item: "Welding wire 1.2mm", qty: 2, department: "WeldingTX", workerId: 7, notes: "for tank 12" });
+    expect(r.fields).toEqual({ item: "Welding wire 1.2mm", qty: 2, department: "WeldingTX", recipients: { scope: "worker", workerId: 7 }, notes: "for tank 12" });
   });
 
   it("stores empty notes as null", () => {
@@ -69,10 +70,36 @@ describe("readConsumableForm", () => {
     expect(readConsumableForm(form({ ...valid, workerId: "-1" })).error).toMatch(/worker/);
   });
 
+  it("reads several ticked workers, and one ticked as just that worker", () => {
+    const several = readConsumableForm(form({ ...valid, workerId: "", recipientScope: "workers", workerIds: "9, 3,9" }));
+    expect(several.fields?.recipients).toEqual({ scope: "workers", workerIds: [3, 9] });
+    const one = readConsumableForm(form({ ...valid, workerId: "", recipientScope: "workers", workerIds: "4" }));
+    expect(one.fields?.recipients).toEqual({ scope: "worker", workerId: 4 });
+    expect(readConsumableForm(form({ ...valid, recipientScope: "workers", workerIds: "" })).error).toMatch(/Tick the workers/);
+    expect(readConsumableForm(form({ ...valid, recipientScope: "workers", workerIds: "3,x" })).error).toMatch(/did not read/);
+    expect(readConsumableForm(form({ ...valid, recipientScope: "everyone" })).error).toMatch(/who the hand-out is for/);
+  });
+
+  it("takes a whole department only for a worker section", () => {
+    expect(readConsumableForm(form({ ...valid, workerId: "", recipientScope: "department" })).fields?.recipients).toEqual({ scope: "department" });
+    expect(readConsumableForm(form({ ...valid, department: "welding tx", recipientScope: "department" })).error).toBeUndefined();
+    const typed = readConsumableForm(form({ ...valid, department: NEW_DEPARTMENT, departmentNew: "Maintenance", recipientScope: "department" }));
+    expect(typed.error).toMatch(/Maintenance has no workers of its own/);
+  });
+
   it("refuses over-long text", () => {
     expect(readConsumableForm(form({ ...valid, item: "x".repeat(121) })).error).toMatch(/too long/);
     expect(readConsumableForm(form({ ...valid, department: NEW_DEPARTMENT, departmentNew: "x".repeat(61) })).error).toMatch(/too long/);
     expect(readConsumableForm(form({ ...valid, notes: "x".repeat(501) })).error).toMatch(/too long/);
+  });
+});
+
+describe("groupLabel", () => {
+  it("names a whole department with its count, and a few workers by name", () => {
+    const w = (n: number) => Array.from({ length: n }, (_, i) => ({ name: `W${i + 1}` }));
+    expect(groupLabel("department", "WeldingTX", w(12))).toBe("Whole Welding TX (12)");
+    expect(groupLabel("workers", "WeldingTX", w(2))).toBe("2 workers: W1, W2");
+    expect(groupLabel("workers", "WeldingTX", w(5))).toBe("5 workers: W1, W2, W3 +2");
   });
 });
 
@@ -202,6 +229,13 @@ describe("snapshots", () => {
     expect(parseSnapshot(null)).toBeNull();
     expect(parseSnapshot({ item: "x" })).toBeNull();
     expect(parseSnapshot({ ...a, qty: 0 })).toBeNull();
+    expect(parseSnapshot({ ...a, workerId: -1 })).toBeNull();
+  });
+
+  it("reads a group row's snapshot — no worker, its label as the name", () => {
+    const g = { ...a, workerId: 0, workerEmpId: "", workerName: "Whole Welding TX (12)" };
+    expect(parseSnapshot(JSON.parse(JSON.stringify(g)))).toEqual(g);
+    expect(describeSnapshot(g)).toContain("Whole Welding TX (12)");
   });
 
   it("says what changed, field by field", () => {

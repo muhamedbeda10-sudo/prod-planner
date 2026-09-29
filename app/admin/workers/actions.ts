@@ -105,13 +105,15 @@ export async function deleteWorker(formData: FormData): Promise<WorkerActionResu
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid worker." };
 
-  const [onTanks, onEvents, onConsumables] = await Promise.all([
+  const [onTanks, onEvents, onConsumables, inGroups] = await Promise.all([
     prisma.tankUnit.count({
       where: { OR: [{ weldedById: id }, { testedById: id }, { paintedById: id }, { qaById: id }] },
     }),
     prisma.tankEvent.count({ where: { workerId: id } }),
     // deleted hand-outs count too: the row is still in the table, keeping its worker
     prisma.consumableIssue.count({ where: { workerId: id } }),
+    // …and the group hand-outs (several workers, a whole department) he was one of
+    prisma.consumableIssueRecipient.count({ where: { workerId: id } }),
   ]);
   if (onTanks > 0 || onEvents > 0) {
     return {
@@ -119,10 +121,10 @@ export async function deleteWorker(formData: FormData): Promise<WorkerActionResu
       error: `Their name is on ${onTanks} tank(s) and ${onEvents} history entries — deactivate them instead of deleting, so the record survives.`,
     };
   }
-  if (onConsumables > 0) {
+  if (onConsumables + inGroups > 0) {
     return {
       ok: false,
-      error: `Their name is on ${onConsumables} consumables hand-out(s) — deactivate them instead of deleting, so the record survives.`,
+      error: `Their name is on ${onConsumables + inGroups} consumables hand-out(s) — deactivate them instead of deleting, so the record survives.`,
     };
   }
 

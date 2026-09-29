@@ -35,12 +35,86 @@ export function parseQty(raw: unknown): { qty?: number; error?: string } {
   return { qty };
 }
 
+// ---- who a hand-out is for ----
+//
+// One worker (the usual), several named workers at once, or a whole
+// department — the store handing a section its week's gloves in one go.
+// A group row keeps the workers it was for (the department's active workers
+// at work that day, for a whole department) so the per-person limits can
+// give each his share, and the count does not drift as people come and go.
+
+export const RECIPIENT_SCOPES = ["worker", "workers", "department"] as const;
+export type RecipientScope = (typeof RECIPIENT_SCOPES)[number];
+export const RECIPIENT_SCOPE_LABEL: Record<RecipientScope, string> = { worker: "One worker", workers: "Several workers", department: "Whole department" };
+/** More names than any section has — a bigger list is a script gone wrong. */
+export const MAX_GROUP_WORKERS = 300;
+
+export type RecipientPick =
+  | { scope: "worker"; workerId: number }
+  | { scope: "workers"; workerIds: number[] }
+  | { scope: "department" };
+
+export function isRecipientScope(x: string): x is RecipientScope {
+  return (RECIPIENT_SCOPES as readonly string[]).includes(x);
+}
+
+/** Read who the hand-out is for. "workerIds" is the ticked workers as a
+ *  comma-separated list; a form that sends no scope is an older one — one
+ *  worker. One worker ticked under "several" is simply that worker. */
+export function readRecipients(get: (name: string) => unknown): { recipients?: RecipientPick; error?: string } {
+  const rawScope = cleanText(get("recipientScope")) || "worker";
+  if (!isRecipientScope(rawScope)) return { error: "Pick who the hand-out is for." };
+  if (rawScope === "department") return { recipients: { scope: "department" } };
+  if (rawScope === "workers") {
+    const parts = cleanText(get("workerIds")).split(",").map((x) => x.trim()).filter(Boolean);
+    const ids = [...new Set(parts.map(Number))];
+    if (ids.some((id) => !Number.isInteger(id) || id <= 0)) return { error: "Tick the workers again — the list did not read." };
+    if (ids.length === 0) return { error: "Tick the workers the hand-out is for." };
+    if (ids.length > MAX_GROUP_WORKERS) return { error: `At most ${MAX_GROUP_WORKERS} workers in one hand-out.` };
+    return { recipients: ids.length === 1 ? { scope: "worker", workerId: ids[0] } : { scope: "workers", workerIds: ids.sort((a, b) => a - b) } };
+  }
+  const workerRaw = cleanText(get("workerId"));
+  const workerId = Number(workerRaw);
+  if (!workerRaw || !Number.isInteger(workerId) || workerId <= 0) return { error: "Pick the worker." };
+  return { recipients: { scope: "worker", workerId } };
+}
+
+/** How a group row reads in the log: "Whole Welding TX (12)", or "3 workers:
+ *  Sayed, Ali, Hassan" (the first names, then "+2"). */
+export function groupLabel(scope: Exclude<RecipientScope, "worker">, department: string, workers: readonly { name: string }[]): string {
+  if (scope === "department") return `Whole ${departmentLabel(department)} (${workers.length})`;
+  const names = workers.map((w) => w.name);
+  const shown = names.slice(0, 3).join(", ");
+  return `${workers.length} workers: ${shown}${names.length > 3 ? ` +${names.length - 3}` : ""}`;
+}
+
+/** Who "whole department" hands out to: the section's active workers who are
+ *  at work today (not away on vacation) — the headcount a per-person limit
+ *  is multiplied by. */
+export function departmentCrew<W extends { active: boolean; onVacation: boolean; sections: readonly string[] }>(workers: readonly W[], department: string): W[] {
+  if (!isSectionDepartment(department)) return [];
+  return workers.filter((w) => w.active && !w.onVacation && w.sections.includes(department));
+}
+
+/** Who a saved row went to, in the log's words: the worker, or the group's
+ *  label with no emp ID. */
+export function issueWho(r: {
+  department: string;
+  recipientScope: string;
+  worker: { empId: string; name: string } | null;
+  recipients: readonly { worker: { name: string } }[];
+}): { empId: string; name: string } {
+  if (r.worker) return { empId: r.worker.empId, name: r.worker.name };
+  const scope = r.recipientScope === "department" ? "department" : "workers";
+  return { empId: "", name: groupLabel(scope, r.department, r.recipients.map((x) => x.worker)) };
+}
+
 export interface ConsumableFields {
   item: string;
   qty: number;
   /** As typed or picked — resolveDepartment turns it into what is stored. */
   department: string;
-  workerId: number;
+  recipients: RecipientPick;
   notes: string | null;
 }
 
@@ -61,14 +135,18 @@ export function readConsumableForm(get: (name: string) => unknown): { fields?: C
   if (department.length > CONSUMABLE_LIMITS.department) return { error: `The department name is too long (at most ${CONSUMABLE_LIMITS.department} characters).` };
   if (department === NEW_DEPARTMENT) return { error: "Pick the department." };
 
-  const workerRaw = cleanText(get("workerId"));
-  const workerId = Number(workerRaw);
-  if (!workerRaw || !Number.isInteger(workerId) || workerId <= 0) return { error: "Pick the worker." };
+  const r = readRecipients(get);
+  if (r.error) return { error: r.error };
+  // a typed department (Maintenance, Store …) has no members on the workers
+  // list — "whole department" would be nobody
+  if (r.recipients!.scope === "department" && !isSectionDepartment(resolveDepartment(department, []))) {
+    return { error: `${departmentLabel(department)} has no workers of its own on the workers list — tick the workers instead.` };
+  }
 
   const notesRaw = String(get("notes") ?? "").trim();
   if (notesRaw.length > CONSUMABLE_LIMITS.notes) return { error: `The notes are too long (at most ${CONSUMABLE_LIMITS.notes} characters).` };
 
-  return { fields: { item, qty: q.qty!, department, workerId, notes: notesRaw || null } };
+  return { fields: { item, qty: q.qty!, department, recipients: r.recipients!, notes: notesRaw || null } };
 }
 
 const fold = (s: string) => cleanText(s).toLowerCase();
@@ -137,7 +215,9 @@ export function factoryDateTimeLabel(at: Date): string {
 
 // ---- who may change a saved row, and the versions kept of it ----
 
-/** The row as a revision keeps it — before and after each change. */
+/** The row as a revision keeps it — before and after each change. A group
+ *  row has workerId 0, no emp ID, and its label ("Whole Welding TX (12)") as
+ *  the name: its workers are fixed when it is recorded and never edited. */
 export interface ConsumableSnapshot {
   item: string;
   qty: number;
@@ -176,7 +256,8 @@ export function parseSnapshot(raw: unknown): ConsumableSnapshot | null {
   const qty = Number(s.qty);
   const workerId = Number(s.workerId);
   if (typeof s.item !== "string" || !s.item || !Number.isFinite(qty) || qty <= 0) return null;
-  if (typeof s.department !== "string" || !s.department || !Number.isInteger(workerId) || workerId <= 0) return null;
+  // 0 = a group row
+  if (typeof s.department !== "string" || !s.department || !Number.isInteger(workerId) || workerId < 0) return null;
   return {
     item: s.item, qty, department: s.department, workerId,
     workerEmpId: typeof s.workerEmpId === "string" ? s.workerEmpId : "",

@@ -9,6 +9,8 @@ import {
   departmentLabel,
   describeSnapshot,
   factoryDateTimeLabel,
+  groupLabel,
+  issueWho,
   parseSnapshot,
   snapshotChanges,
 } from "@/lib/domain/consumables";
@@ -45,7 +47,11 @@ export interface ConsumableIssueView {
   qty: number;
   department: string;
   departmentLabel: string;
-  worker: { id: number; empId: string; name: string; active: boolean };
+  /** The one worker it went to — null for a group hand-out. */
+  worker: { id: number; empId: string; name: string; active: boolean } | null;
+  /** A hand-out to several workers or a whole department: its label and the
+   *  workers it was for (fixed when it was recorded). */
+  group: { scope: "workers" | "department"; label: string; workers: { id: number; empId: string; name: string }[] } | null;
   notes: string | null;
   issuedAtLabel: string;
   recordedBy: string;
@@ -69,6 +75,18 @@ export interface ConsumableWorkerOption {
   empId: string;
   name: string;
   sections: string[];
+}
+
+const RECIPIENTS_SELECT = {
+  select: { worker: { select: { id: true, empId: true, name: true } } },
+  orderBy: { worker: { name: "asc" as const } },
+};
+
+function groupOf(r: { workerId: number | null; recipientScope: string; department: string; recipients: { worker: { id: number; empId: string; name: string } }[] }): ConsumableIssueView["group"] {
+  if (r.workerId !== null) return null;
+  const scope = r.recipientScope === "department" ? "department" : "workers";
+  const workers = r.recipients.map((x) => x.worker);
+  return { scope, label: groupLabel(scope, r.department, workers), workers };
 }
 
 export interface ConsumablesPageData {
@@ -162,6 +180,7 @@ export async function getConsumablesData(fromISO: string, toISO: string, viewer:
       orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
       include: {
         worker: { select: { id: true, empId: true, name: true, active: true } },
+        recipients: RECIPIENTS_SELECT,
         catalog: { select: { uom: true } },
         // the history is the admin's — not even fetched for anyone else
         ...(viewer.isAdmin ? { revisions: { orderBy: { id: "desc" as const } } } : {}),
@@ -201,6 +220,7 @@ export async function getConsumablesData(fromISO: string, toISO: string, viewer:
       department: r.department,
       departmentLabel: departmentLabel(r.department),
       worker: r.worker,
+      group: groupOf(r),
       notes: r.notes,
       issuedAtLabel: factoryDateTimeLabel(r.issuedAt),
       recordedBy: r.recordedBy,
@@ -232,13 +252,14 @@ export async function getConsumableEdits(fromISO: string, toISO: string): Promis
     where: { at: { gte, lt } },
     orderBy: [{ at: "desc" }, { id: "desc" }],
     take: 1000,
-    include: { issue: { include: { worker: { select: { empId: true, name: true } } } } },
+    include: { issue: { include: { worker: { select: { empId: true, name: true } }, recipients: RECIPIENTS_SELECT } } },
   });
   return revs.map((v) => {
     const i = v.issue;
+    const who = issueWho(i);
     const now = {
       item: i.item, qty: i.qty.toNumber(), department: i.department,
-      workerId: i.workerId, workerEmpId: i.worker.empId, workerName: i.worker.name, notes: i.notes,
+      workerId: i.workerId ?? 0, workerEmpId: who.empId, workerName: who.name, notes: i.notes,
     };
     return {
       ...revisionView(v),
@@ -257,7 +278,9 @@ export async function getConsumableEdits(fromISO: string, toISO: string): Promis
 const CAIRO_HOUR = new Intl.DateTimeFormat("en-US", { timeZone: "Africa/Cairo", hour: "2-digit", hourCycle: "h23" });
 
 /** The dashboard for factory days from..to: the period's hand-outs worked
- *  into cards, charts and tables, and the count of the period just before. */
+ *  into cards, charts and tables, and the count of the period just before.
+ *  A group hand-out is one hand-out, to "the group" of its department — one
+ *  entry among the workers, not a hand-out per man. */
 export async function getConsumablesDashboard(fromISO: string, toISO: string): Promise<ConsumablesStats> {
   const { gte, lt } = periodBounds(fromISO, toISO);
   const prev = previousPeriod(fromISO, toISO);
@@ -272,15 +295,21 @@ export async function getConsumablesDashboard(fromISO: string, toISO: string): P
     }),
     prisma.consumableIssue.count({ where: { deletedAt: null, issuedAt: { gte: prevBounds.gte, lt: prevBounds.lt } } }),
   ]);
+  // each department's groups under one stand-in, a negative id no worker has
+  const groupIds = new Map<string, number>();
+  const groupId = (department: string) => {
+    if (!groupIds.has(department)) groupIds.set(department, -(groupIds.size + 1));
+    return groupIds.get(department)!;
+  };
   return consumablesStats(
     rows.map((r) => ({
       item: r.item,
       qty: r.qty.toNumber(),
       department: r.department,
       departmentLabel: departmentLabel(r.department),
-      workerId: r.workerId,
-      workerName: r.worker.name,
-      empId: r.worker.empId,
+      workerId: r.workerId ?? groupId(r.department),
+      workerName: r.worker?.name ?? `${departmentLabel(r.department)} (group)`,
+      empId: r.worker?.empId ?? "group",
       dayISO: factoryDayISO(r.issuedAt),
       hour: Number(CAIRO_HOUR.format(r.issuedAt)) % 24,
     })),
