@@ -11,7 +11,7 @@ import { PlanMonthPicker } from "@/components/PlanMonthPicker";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO, presetRange } from "@/lib/domain/dateSlicer";
 import { factoryDayISO } from "@/lib/domain/dates";
-import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
+import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
 import { parseISODate } from "@/lib/domain/dates";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +46,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
   const controls = (
     <div className="no-print space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <ViewTabs views={DASHBOARD_VIEWS} current="/" label="Dashboard view" />
+        <ViewTabs views={TRACKER_VIEWS} current="/" label="Tracker view" />
         <div className="flex items-center gap-2">
           <PlanMonthPicker plan={c.planMonth} months={c.planMonths} />
           {d.clamped && <span className="pill pill-warn">cut to 31 days</span>}

@@ -36,9 +36,67 @@ export interface ConsumablesStats {
   items: ItemStat[];
   departments: DeptStat[];
   workers: WorkerStat[];
-  /** Where each item goes: the top items × the top departments, by quantity. */
+  /** Where each item goes: the top items × the top departments (the rest in
+   *  one "Other" column), by quantity. */
   matrix: { items: string[]; departments: { department: string; label: string }[]; qty: number[][] };
+
+  // ---- the richer dashboard ----
+  /** One point per day of the period (always days, even for a single day) —
+   *  the sparklines, and the trend with its 7-day moving average. */
+  daily: DailyPoint[];
+  /** Headline figures beyond the four counts. */
+  kpis: ConsumablesKpis;
+  /** Hand-outs by factory weekday (0 = Sunday … 6 = Saturday) × hour: when
+   *  the store is busy. `hours` is the span shown (the working day at least). */
+  weekHour: { hours: number[]; counts: number[][] };
+  /** Part-to-whole by department: the top five and the rest folded into
+   *  "Other", so the donut never needs a seventh colour. */
+  departmentShare: ShareSlice[];
+  /** The same departments over time — per day, or per week for a long period. */
+  departmentTrend: { unit: "day" | "week"; series: { key: string; label: string }[]; buckets: StackBucket[] };
+  /** Items in the 80/20 sense: share of hand-outs and the running total, the
+   *  heaviest first. `vitalFew` = how many items make up 80%. */
+  pareto: { rows: ParetoRow[]; vitalFew: number };
+  /** Every item with the department that takes it most — the treemap's tiles. */
+  itemTiles: ItemTile[];
+  /** Every worker served: how often and how varied — the scatter. */
+  workerPoints: WorkerPoint[];
+  /** The same worker taking the same item again and again in the period —
+   *  the store's watch list. */
+  repeats: RepeatRow[];
 }
+
+export interface DailyPoint { dayISO: string; label: string; issues: number; avg7: number | null }
+export interface ConsumablesKpis {
+  /** Days of the period with at least one hand-out. */
+  activeDays: number;
+  /** Hand-outs per active day. */
+  perActiveDay: number;
+  /** Hand-outs per worker served. */
+  perWorker: number;
+  /** The top department's share of hand-outs, 0..1. */
+  topDepartmentShare: number;
+  /** Items that make up 80% of hand-outs. */
+  vitalFew: number;
+  /** The hour and weekday with the most hand-outs (null when none). */
+  busiestHour: number | null;
+  busiestWeekday: number | null;
+  /** Worker × item pairs taken at least REPEAT_THRESHOLD times. */
+  repeatPairs: number;
+}
+export interface ShareSlice { key: string; label: string; issues: number; share: number }
+export interface StackBucket { key: string; label: string; total: number; values: Record<string, number> }
+export interface ParetoRow { item: string; issues: number; share: number; cumulative: number }
+export interface ItemTile { item: string; issues: number; qty: number; department: string; departmentLabel: string }
+export interface WorkerPoint { workerId: number; name: string; empId: string; issues: number; items: number; departments: number }
+export interface RepeatRow { workerId: number; name: string; empId: string; item: string; times: number; qty: number; firstDay: string; lastDay: string }
+
+/** How many times the same worker must take the same item to be flagged. */
+export const REPEAT_THRESHOLD = 3;
+/** Departments shown by name in the share and the trend; the rest are "Other". */
+export const SHARE_SLOTS = 5;
+export const OTHER_KEY = "__other__";
+export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 const fold = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
@@ -154,15 +212,141 @@ export function consumablesStats(
 
   // ---- matrix: top items × top departments, quantity handed out
   const mItems = items.slice(0, topItems);
-  const mDepts = departments.slice(0, topDepts);
+  // the departments past the top ones share one "Other" column, so an item's
+  // row always adds up to everything handed out of it
+  const mDepts: { department: string; label: string }[] = departments.slice(0, topDepts).map((d) => ({ department: d.department, label: d.label }));
+  if (departments.length > topDepts) mDepts.push({ department: OTHER_KEY, label: `Other (${departments.length - topDepts})` });
   const itemIndex = new Map(mItems.map((it, i) => [fold(it.item), i]));
   const deptIndex = new Map(mDepts.map((d, i) => [d.department, i]));
+  const otherCol = deptIndex.get(OTHER_KEY);
   const qty = mItems.map(() => mDepts.map(() => 0));
   for (const r of rows) {
     const i = itemIndex.get(fold(r.item));
-    const j = deptIndex.get(r.department);
+    const j = deptIndex.get(r.department) ?? otherCol;
     if (i !== undefined && j !== undefined) qty[i][j] += r.qty;
   }
+
+  // ---- daily series + 7-day moving average (the trailing week, days before
+  // the period count as unknown rather than zero)
+  const perDayAll = new Map<string, number>();
+  for (const r of rows) perDayAll.set(r.dayISO, (perDayAll.get(r.dayISO) ?? 0) + 1);
+  const longLabels = spanDays(fromISO, toISO) <= 14;
+  const daily: DailyPoint[] = [];
+  for (let d = fromISO; d <= toISO && daily.length < 400; d = addDaysISO(d, 1)) {
+    daily.push({ dayISO: d, label: dayLabel(d, longLabels), issues: perDayAll.get(d) ?? 0, avg7: null });
+  }
+  for (let i = 6; i < daily.length; i++) {
+    let sum = 0;
+    for (let k = i - 6; k <= i; k++) sum += daily[k].issues;
+    daily[i].avg7 = Math.round((sum / 7) * 10) / 10;
+  }
+
+  // ---- weekday × hour
+  const weekdayOf = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  };
+  const grid = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
+  for (const r of rows) grid[weekdayOf(r.dayISO)][r.hour] += 1;
+  const usedHours = [...new Set(rows.map((r) => r.hour))];
+  const hFirst = Math.min(7, ...usedHours);
+  const hLast = Math.max(17, ...usedHours);
+  const hours: number[] = [];
+  for (let h = hFirst; h <= hLast; h++) hours.push(h);
+  const weekHour = { hours, counts: grid.map((row) => hours.map((h) => row[h])) };
+  const byHour = new Array<number>(24).fill(0);
+  const byWeekday = new Array<number>(7).fill(0);
+  for (const r of rows) { byHour[r.hour] += 1; byWeekday[weekdayOf(r.dayISO)] += 1; }
+  const argMax = (a: number[]) => (a.some((n) => n > 0) ? a.indexOf(Math.max(...a)) : null);
+
+  // ---- department share: top SHARE_SLOTS + Other
+  const named = departments.slice(0, SHARE_SLOTS);
+  const restIssues = departments.slice(SHARE_SLOTS).reduce((n, d) => n + d.issues, 0);
+  const total = rows.length || 1;
+  const departmentShare: ShareSlice[] = [
+    ...named.map((d) => ({ key: d.department, label: d.label, issues: d.issues, share: d.issues / total })),
+    ...(restIssues > 0 ? [{ key: OTHER_KEY, label: `Other (${departments.length - SHARE_SLOTS})`, issues: restIssues, share: restIssues / total }] : []),
+  ];
+
+  // ---- departments over time: days, or weeks from the period's first day
+  const span = spanDays(fromISO, toISO);
+  const trendUnit: "day" | "week" = span > 31 ? "week" : "day";
+  const seriesKeys = new Set(named.map((d) => d.department));
+  const series = [...named.map((d) => ({ key: d.department, label: d.label })), ...(restIssues > 0 ? [{ key: OTHER_KEY, label: "Other" }] : [])];
+  const buckets: StackBucket[] = [];
+  const bucketOf = new Map<string, StackBucket>();
+  for (let d = fromISO, i = 0; d <= toISO && i < 400; d = addDaysISO(d, 1), i++) {
+    const start = trendUnit === "day" ? d : addDaysISO(fromISO, Math.floor(i / 7) * 7);
+    let b = bucketOf.get(start);
+    if (!b) {
+      b = { key: start, label: trendUnit === "day" ? dayLabel(start, longLabels) : `wk ${dayLabel(start, false)}`, total: 0, values: Object.fromEntries(series.map((x) => [x.key, 0])) };
+      bucketOf.set(start, b);
+      buckets.push(b);
+    }
+    bucketOf.set(d, b);
+  }
+  for (const r of rows) {
+    const b = bucketOf.get(r.dayISO);
+    if (!b) continue;
+    const k = seriesKeys.has(r.department) ? r.department : OTHER_KEY;
+    b.values[k] = (b.values[k] ?? 0) + 1;
+    b.total += 1;
+  }
+
+  // ---- pareto
+  let running = 0;
+  const pareto: ParetoRow[] = items.map((it) => {
+    running += it.issues;
+    return { item: it.item, issues: it.issues, share: it.issues / total, cumulative: running / total };
+  });
+  const vitalFew = rows.length === 0 ? 0 : pareto.findIndex((p) => p.cumulative >= 0.8 - 1e-9) + 1;
+
+  // ---- item tiles: each item's heaviest department (by hand-outs)
+  const itemDept = new Map<string, Map<string, number>>();
+  for (const r of rows) {
+    const k = fold(r.item);
+    const m = itemDept.get(k) ?? new Map<string, number>();
+    m.set(r.department, (m.get(r.department) ?? 0) + 1);
+    itemDept.set(k, m);
+  }
+  const deptLabelOf = new Map(departments.map((d) => [d.department, d.label]));
+  const itemTiles: ItemTile[] = items.map((it) => {
+    const m = itemDept.get(fold(it.item)) ?? new Map<string, number>();
+    const top = [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "";
+    return { item: it.item, issues: it.issues, qty: it.qty, department: top, departmentLabel: deptLabelOf.get(top) ?? top };
+  });
+
+  // ---- every worker, for the scatter
+  const workerPoints: WorkerPoint[] = [...workerAgg.entries()]
+    .map(([workerId, a]) => ({ workerId, name: a.name, empId: a.empId, issues: a.issues, items: a.items.size, departments: a.depts.size }))
+    .sort((a, b) => b.issues - a.issues || a.name.localeCompare(b.name));
+
+  // ---- repeats: worker × item taken REPEAT_THRESHOLD+ times
+  const pairAgg = new Map<string, RepeatRow>();
+  for (const r of rows) {
+    const k = `${r.workerId}|${fold(r.item)}`;
+    const a = pairAgg.get(k) ?? { workerId: r.workerId, name: r.workerName, empId: r.empId, item: nameOf(fold(r.item)), times: 0, qty: 0, firstDay: r.dayISO, lastDay: r.dayISO };
+    a.times += 1;
+    a.qty = round3(a.qty + r.qty);
+    if (r.dayISO < a.firstDay) a.firstDay = r.dayISO;
+    if (r.dayISO > a.lastDay) a.lastDay = r.dayISO;
+    pairAgg.set(k, a);
+  }
+  const repeats = [...pairAgg.values()]
+    .filter((p) => p.times >= REPEAT_THRESHOLD)
+    .sort((a, b) => b.times - a.times || b.qty - a.qty || a.name.localeCompare(b.name));
+
+  const activeDays = daily.filter((d) => d.issues > 0).length;
+  const kpis: ConsumablesKpis = {
+    activeDays,
+    perActiveDay: activeDays ? Math.round((rows.length / activeDays) * 10) / 10 : 0,
+    perWorker: workerAgg.size ? Math.round((rows.length / workerAgg.size) * 10) / 10 : 0,
+    topDepartmentShare: departments[0] ? departments[0].issues / total : 0,
+    vitalFew,
+    busiestHour: argMax(byHour),
+    busiestWeekday: argMax(byWeekday),
+    repeatPairs: repeats.length,
+  };
 
   return {
     fromISO,
@@ -175,8 +359,17 @@ export function consumablesStats(
     workers,
     matrix: {
       items: mItems.map((i) => i.item),
-      departments: mDepts.map((d) => ({ department: d.department, label: d.label })),
+      departments: mDepts,
       qty: qty.map((row) => row.map(round3)),
     },
+    daily,
+    kpis,
+    weekHour,
+    departmentShare,
+    departmentTrend: { unit: trendUnit, series, buckets },
+    pareto: { rows: pareto, vitalFew },
+    itemTiles,
+    workerPoints,
+    repeats,
   };
 }

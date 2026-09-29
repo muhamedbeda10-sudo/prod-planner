@@ -5,7 +5,8 @@ import { PageHeader } from "@/components/ui";
 import { getFabAnalytics, resolveWindow, WINDOWS } from "@/lib/server/fabAnalytics";
 import { getActiveLine } from "@/lib/server/line";
 import { FabAnalyticsView } from "@/components/FabAnalyticsView";
-import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
+import { ViewTabs, MATERIAL_VIEWS } from "@/components/ViewTabs";
+import { RememberLastVisit } from "@/components/RememberLastVisit";
 
 export const metadata = { title: "Analytics — ATC" };
 export const dynamic = "force-dynamic";
@@ -27,7 +28,10 @@ export default async function AnalyticsPage({
   if ((await getActiveLine()) === "LV") {
     return (
       <div>
-        <PageHeader title="📊 Fabrication analytics — LV Panels" />
+        <RememberLastVisit storageKey="analytics:last" />
+        <PageHeader title="📊 Fabrication analytics — LV Panels">
+          <ViewTabs views={MATERIAL_VIEWS} current="/analytics" label="Material view" />
+        </PageHeader>
         <p className="text-sm text-muted bg-surface border rounded-xl px-4 py-3">
           The sheet analytics are built on the nesting tracker and the cutting log, which the panels do not have yet — a panel is punched,
           not nested. When the panels get a nesting sheet, their sheets, tonnes and thicknesses read here the same way.
@@ -42,8 +46,9 @@ export default async function AnalyticsPage({
 
   return (
     <div>
+      <RememberLastVisit storageKey="analytics:last" />
       <PageHeader title="📊 Fabrication analytics">
-        <ViewTabs views={DASHBOARD_VIEWS} current="/analytics" label="Dashboard view" />
+        <ViewTabs views={MATERIAL_VIEWS} current="/analytics" label="Material view" />
         <nav className="seg" aria-label="Window">
           {WINDOWS.map((d) => (
             <Link key={d} href={`/analytics?days=${d}`} className={d === days ? "on" : ""}>

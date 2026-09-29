@@ -4,7 +4,7 @@ import { pctStyle, Num } from "@/components/ui";
 import { DeptPicker } from "@/components/controls";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
-import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
+import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
 import { countWorkingDays } from "@/lib/server/report";
 import { OutputByComponentChart } from "@/components/LazyCharts";
 import { PrintButton } from "@/components/PrintButton";
@@ -12,6 +12,7 @@ import { redirect } from "next/navigation";
 import { getActiveLine } from "@/lib/server/line";
 import { parseISODate, toISODate, toDisplayDate } from "@/lib/domain/dates";
 import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, STAGE_COLOR, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
+import { RememberLastVisit } from "@/components/RememberLastVisit";
 
 // display label for a report stage: Painting reads as "Painting & Shot Blast"
 const stageLabel = (dept: string) => (dept === "Painting" ? FINISHING_LABEL : deptLabel(dept));
@@ -114,10 +115,11 @@ export default async function ReportPage({
 
   return (
     <div className="space-y-6">
+      <RememberLastVisit storageKey="report:last" />
       {/* controls only — no on-screen title (the print masthead carries the name) */}
       <div className="no-print space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <ViewTabs views={DASHBOARD_VIEWS} current="/report" label="Dashboard view" />
+          <ViewTabs views={TRACKER_VIEWS} current="/report" label="Tracker view" />
           <DeptPicker value={sp.dept ?? ""} />
           <span className="ms-auto"><PrintButton /></span>
         </div>

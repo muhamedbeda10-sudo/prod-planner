@@ -4,7 +4,7 @@ import { dateFromDayNumber, dayNumber, toISODate } from "@/lib/domain/dates";
 import { LV_CHAIN, LV_ITEM, type LvChainStage } from "@/lib/domain/lv";
 import { getLvTracker } from "./lvTracker";
 
-// The LV panels' dashboard — the panels' side of the Dashboard tab.
+// The LV panels' dashboard — the panels' side of the plan's dashboard (a view of the Plan Tracker tab).
 //
 // A transformer's dashboard is six components against a daily target per
 // department; a panel is one thing through four stages, so its dashboard is

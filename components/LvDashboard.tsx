@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { LV_CHAIN, LV_STAGE_LABEL, LV_STAGE_SHORT } from "@/lib/domain/lv";
 import type { LvDashboardData } from "@/lib/server/lvDashboard";
-import { ViewTabs, DASHBOARD_VIEWS } from "@/components/ViewTabs";
+import { ViewTabs, trackerViews } from "@/components/ViewTabs";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { PrintButton } from "@/components/PrintButton";
@@ -31,16 +30,15 @@ export function LvDashboard({ d, today }: { d: LvDashboardData; today: string })
   const pct = (n: number) => (o.panels > 0 ? `${Math.round((n / o.panels) * 100)}%` : "—");
   return (
     <div className="space-y-6">
-      {/* The report lives inside the dashboard, as it does for the transformers:
-          pick a day (from = to) or a period and the table below is that
-          period, ready to print. */}
+      {/* The panels' dashboard is a view of the Plan Tracker tab, and carries
+          its own report: pick a day (from = to) or a period and the table
+          below is that period, ready to print. */}
       <div className="no-print space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <ViewTabs views={DASHBOARD_VIEWS.filter((v) => v.href === "/")} current="/" label="Dashboard view" />
+          <ViewTabs views={trackerViews("LV")} current="/" label="Tracker view" />
           {d.clamped && <span className="pill pill-warn">cut to {d.days.length} days</span>}
           <span className="ms-auto inline-flex items-center gap-2">
             <PrintButton />
-            <Link href="/tracker" className="btn btn-sm">Plan Tracker →</Link>
           </span>
         </div>
         <UrlDateSlicer

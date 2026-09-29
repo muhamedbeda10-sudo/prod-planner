@@ -9,6 +9,7 @@ import { MaterialClient, MaterialMonthPicker } from "@/components/MaterialClient
 import { getActiveLine } from "@/lib/server/line";
 import { LINE_LABEL } from "@/lib/domain/lines";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
+import { ViewTabs, MATERIAL_VIEWS } from "@/components/ViewTabs";
 
 export const metadata = { title: "Material — ATC" };
 export const dynamic = "force-dynamic";
@@ -71,6 +72,7 @@ export default async function MaterialPage({
     <div>
       <RememberLastVisit storageKey="material:last" />
       <PageHeader title={`🧱 MATERIAL — nesting project tracker · ${LINE_LABEL[line]}`}>
+        <ViewTabs views={MATERIAL_VIEWS} current="/material" label="Material view" />
         <MaterialMonthPicker month={month} months={months} />
         <ExportButton rows={exportRows} filename={`nesting-tracker-${month.replace(/\s+/g, "-")}.xlsx`} sheetName="Sheet1" />
       </PageHeader>

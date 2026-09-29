@@ -16,6 +16,8 @@ function Placeholder({ h }: { h: number }) {
 export const WeekTrendChart = dynamic(() => import("./DashboardCharts").then((m) => m.WeekTrendChart), { ssr: false, loading: () => <Placeholder h={260} /> });
 export const BacklogChart = dynamic(() => import("./DashboardCharts").then((m) => m.BacklogChart), { ssr: false, loading: () => <Placeholder h={260} /> });
 export const PromisesChart = dynamic(() => import("./DashboardCharts").then((m) => m.PromisesChart), { ssr: false, loading: () => <Placeholder h={220} /> });
+export const PipelineFunnel = dynamic(() => import("./DashboardCharts").then((m) => m.PipelineFunnel), { ssr: false, loading: () => <Placeholder h={210} /> });
+export const LoadRings = dynamic(() => import("./DashboardCharts").then((m) => m.LoadRings), { ssr: false, loading: () => <Placeholder h={150} /> });
 export const HistoryChart = dynamic(() => import("./DashboardCharts").then((m) => m.HistoryChart), { ssr: false, loading: () => <Placeholder h={260} /> });
 export const OutputByComponentChart = dynamic(() => import("./ReportCharts").then((m) => m.OutputByComponentChart), { ssr: false, loading: () => <Placeholder h={300} /> });
 export const PlannedVsWeldedChart = dynamic(() => import("./ReportCharts").then((m) => m.PlannedVsWeldedChart), { ssr: false, loading: () => <Placeholder h={300} /> });
