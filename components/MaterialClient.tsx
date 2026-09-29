@@ -3,7 +3,7 @@
 import type { ProductLine } from "@/lib/domain/lines";
 import type { LvOrderRef, MaterialPageData } from "@/lib/server/material";
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import {
   MATERIAL_PRESETS, PART_PRESETS, SHEET_SIZE_PRESETS, MATERIAL_STATUS_FILTERS, EMPTY_MATERIAL_FILTERS,
@@ -15,13 +15,12 @@ import { Modal } from "@/components/Modal";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
   createMaterialLine, createLvOrderLines, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, deleteMaterialLine, importMaterialAction,
-  deleteMaterialMonth,
 } from "@/app/material/actions";
 
 // The MATERIAL tab — the planner's material sheet as one living table: no
 // month, each row known by Odoo's MO (the one the ODOO tab's clerk types), so
 // uploading the sheet again simply updates it. Older sheets filed under a plan
-// month stay reachable from the archive picker.
+// month were cleared when the table started.
 //
 // The table is the sheet's row in the sheet's order — MO · BOM Ref · Quantity of
 // Units · Part Code · Part Name · Codes · Material · Thickness · Sheet Size ·
@@ -65,40 +64,6 @@ function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
 function Sheets({ v, className = "", digits = 4 }: { v: number | null; className?: string; digits?: 3 | 4 }) {
   if (v === null) return <span className="text-muted">—</span>;
   return <span className={`tabnum ltr ${className}`}>{Number.isInteger(v) ? v : Number(v.toFixed(digits))}</span>;
-}
-
-// ---- archive picker (drives ?month=; "" = the living table, the default) ----
-
-/** Shown only while older sheets filed under a plan month exist: the table
- *  itself has no month. */
-export function MaterialMonthPicker({ month, months }: { month: string; months: string[] }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
-  if (months.length === 0 && month === "") return null;
-  const options = months.includes(month) || month === "all" || month === "" ? months : [month, ...months];
-  return (
-    <label className="inline-flex items-center gap-2 text-sm font-semibold">
-      Showing:
-      <select
-        className="border rounded-md px-2 py-1.5 bg-surface font-bold"
-        value={month}
-        onChange={(e) => {
-          const p = new URLSearchParams(params.toString());
-          if (e.target.value) p.set("month", e.target.value); else p.delete("month");
-          router.push(`${pathname}${p.size ? `?${p}` : ""}`);
-        }}
-      >
-        <option value="">The material sheet</option>
-        {options.length > 0 && (
-          <optgroup label="Older sheets, by plan month">
-            {options.map((m) => <option key={m} value={m}>{m}</option>)}
-            <option value="all">Everything together</option>
-          </optgroup>
-        )}
-      </select>
-    </label>
-  );
 }
 
 // ---- the line form: one strip, the sheet's columns in the sheet's order ----
@@ -550,30 +515,6 @@ function ImportPanel({ product }: { product: ProductLine }) {
   );
 }
 
-// ---- delete an older sheet filed under a month ----
-
-function DeleteMonth({ month, count }: { month: string; count: number }) {
-  const del = useAction();
-  return (
-    <span className="inline-flex flex-col">
-      <button
-        type="button" className="btn btn-sm btn-danger" disabled={del.pending}
-        title="Delete every line filed under this month — cannot be undone"
-        onClick={() => {
-          if (!confirm(`Delete ALL ${count} line(s) of ${month} from the Material tab?\n\nThis cannot be undone. Export the month first if you might need it.`)) return;
-          if (prompt(`Type the month exactly — ${month} — to confirm:`) !== month) return;
-          const fd = new FormData();
-          fd.set("month", month);
-          fd.set("expected", String(count));
-          del.run(deleteMaterialMonth, fd, `Deleted ${month}.`);
-        }}
-      >
-        🗑 Delete {month}
-      </button>
-      <Msg msg={del.msg} />
-    </span>
-  );
-}
 
 // ---- totals ----
 
@@ -699,7 +640,6 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
             <ImportPanel product={product} />
             {lv ? <AddLvOrder orders={lvOrders} templates={lvTemplates} /> : <AddLine knownBoms={knownBoms} knownCodes={knownCodes} product={product} />}
           </span>
-          {month !== "" && !showMonth && lines.length > 0 && <DeleteMonth month={month} count={lines.length} />}
         </div>
       )}
       {lines.length > 0 && <FilterBar lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} />}
