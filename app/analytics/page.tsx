@@ -47,7 +47,7 @@ export default async function AnalyticsPage({
   return (
     <div>
       <RememberLastVisit storageKey="analytics:last" />
-      <PageHeader title="📊 Fabrication analytics">
+      <PageHeader title="📊 Material analytics — consumed when closed on Odoo">
         <ViewTabs views={MATERIAL_VIEWS} current="/analytics" label="Material view" />
         <nav className="seg" aria-label="Window">
           {WINDOWS.map((d) => (

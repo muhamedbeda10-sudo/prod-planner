@@ -1,13 +1,13 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { getActiveLine, ledgerItemWhere } from "./line";
-import { buildFabAnalytics, type FabAnalytics, type NestingRow, type OutputRow } from "@/lib/domain/fabAnalytics";
-import { toISODate } from "@/lib/domain/dates";
+import { getActiveLine } from "./line";
+import { buildClosedConsumption, type ClosedConsumption, type ClosingRow, type MoMaterialLine } from "@/lib/domain/fabAnalytics";
+import { factoryDayISO, toISODate } from "@/lib/domain/dates";
+import { isDoneStatus } from "@/lib/domain/odoo";
 
-// The Fabrication analytics page's one query pair: the daily log's cut rows
-// over a window, and every nesting line the Material tab holds. The nesting
-// lines are NOT windowed — a BOM cut last week was nested whenever it was
-// nested, and its bill of sheets is just as true today.
+// The material analytics page's one query pair: the MOs closed on Odoo over a
+// window, and every line the Material tab holds under an MO. The lines are
+// NOT windowed — an MO closed today was nested whenever it was nested.
 
 /** The windows the page offers, in days back from today. */
 export const WINDOWS = [30, 60, 90, 0] as const; // 0 = everything on record
@@ -18,15 +18,20 @@ export function resolveWindow(raw: string | undefined): Window {
   return (WINDOWS as readonly number[]).includes(n) ? (n as Window) : 90;
 }
 
-export interface FabAnalyticsData extends FabAnalytics {
+export interface FabAnalyticsData extends ClosedConsumption {
   windowDays: Window;
   fromISO: string | null;
-  /** Nesting lines on record, and the BOMs they cover — the page says how much
-   *  of the plant the Material tab actually describes. */
+  /** Lines on the Material tab filed under an MO, and the MOs they cover —
+   *  the page says how much of the plant the tab actually describes. */
   nestingRows: number;
   nestingBoms: number;
 }
 
+/**
+ * The window's material consumption, booked on the day each MO was closed
+ * (moved to Done) on the ODOO tab, through the Material tab's lines of the
+ * same MO.
+ */
 export async function getFabAnalytics(windowDays: Window): Promise<FabAnalyticsData> {
   let from: Date | null = null;
   if (windowDays > 0) {
@@ -35,40 +40,29 @@ export async function getFabAnalytics(windowDays: Window): Promise<FabAnalyticsD
     from.setUTCDate(from.getUTCDate() - windowDays);
   }
 
-  const line = await getActiveLine(); // the line on screen's sheets and cutting only
-  const [entries, nesting] = await Promise.all([
-    prisma.handoverEntry.findMany({
-      where: { dept: "Cut", ...ledgerItemWhere(line), ...(from ? { date: { gte: from } } : {}) },
-      select: { date: true, bom: true, item: true, qty: true },
+  const line = await getActiveLine(); // the line on screen's closings and sheet only
+  const [done, material] = await Promise.all([
+    prisma.odooEntry.findMany({
+      where: { line, odooMo: { not: "" }, doneAt: from ? { gte: from } : { not: null } },
+      select: { odooMo: true, qty: true, status: true, doneAt: true },
     }),
     prisma.materialUsage.findMany({
-      where: { line, partCode: { not: "" }, sheetsPerUnit: { gt: 0 } },
-      select: { month: true, bom: true, mo: true, partCode: true, material: true, thicknessMm: true, sheetSize: true, sheetsPerUnit: true },
+      where: { line, mo: { not: "" } },
+      select: { mo: true, partCode: true, material: true, thicknessMm: true, sheetSize: true, sheetsPerUnit: true, actualPerUnit: true, weightKg: true },
     }),
   ]);
 
-  const output: OutputRow[] = entries.map((e) => ({
-    dateISO: toISODate(e.date),
-    bom: e.bom,
-    item: e.item,
-    qty: e.qty,
-  }));
-  const rows: NestingRow[] = nesting.map((n) => ({
-    month: n.month,
-    bom: n.bom,
-    mo: n.mo,
-    partCode: n.partCode,
-    material: n.material,
-    thicknessMm: n.thicknessMm,
-    sheetSize: n.sheetSize,
-    sheetsPerUnit: n.sheetsPerUnit,
-  }));
+  // a row moved back out of Done keeps no doneAt, but check the status too
+  const closings: ClosingRow[] = done
+    .filter((r) => r.doneAt && isDoneStatus(r.status))
+    .map((r) => ({ dateISO: factoryDayISO(r.doneAt!), mo: r.odooMo.trim(), qty: r.qty }));
+  const lines: MoMaterialLine[] = material;
 
   return {
-    ...buildFabAnalytics(output, rows),
+    ...buildClosedConsumption(closings, lines),
     windowDays,
     fromISO: from ? toISODate(from) : null,
-    nestingRows: rows.length,
-    nestingBoms: new Set(rows.map((r) => r.bom.trim().toUpperCase())).size,
+    nestingRows: lines.length,
+    nestingBoms: new Set(lines.map((l) => l.mo.trim().toUpperCase())).size,
   };
 }

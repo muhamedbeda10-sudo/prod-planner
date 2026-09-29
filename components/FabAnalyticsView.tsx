@@ -4,14 +4,13 @@ import Link from "next/link";
 import type { FabAnalyticsData } from "@/lib/server/fabAnalytics";
 import { SheetsPerDayChart, ThicknessChart } from "@/components/LazyCharts";
 
-// 📊 Fabrication read in SHEETS.
+// 📊 Material consumed, read in SHEETS and tonnes.
 //
-// The plant counts pieces, and a piece is not a unit of work — a tank cut from
-// four sheets and one cut from half a sheet are both "1". Everything on this
-// page converts the daily log through the Material tab's bill of sheets, so
-// the floor's day reads in the thing a laser actually spends it on. The
-// coverage figure is deliberately loud: every reading here is only as good as
-// the share of pieces the nesting sheet describes.
+// An order's material is booked on the day its MO is closed on Odoo (moved
+// to Done on the ODOO tab): the closed quantity × the sheets one unit takes
+// on the Material tab's lines of that same MO. The coverage figure is
+// deliberately loud: every reading here is only as good as the share of
+// closed units the material sheet describes.
 
 const n1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
 const n2 = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -48,8 +47,8 @@ export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
   if (a.pieces === 0) {
     return (
       <p className="bg-surface border rounded-xl p-4 text-sm text-muted">
-        No fabrication output recorded in {windowWords}. Widen the window, or record a day on the{" "}
-        <Link href="/worklist/cut" className="text-accent font-semibold hover:underline">fabrication worklist</Link>.
+        No MO was closed on Odoo in {windowWords}. The material is booked here the day an MO is moved to Done on the{" "}
+        <Link href="/odoo" className="text-accent font-semibold hover:underline">ODOO tab</Link>.
       </p>
     );
   }
@@ -61,20 +60,20 @@ export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tile head="Sheets cut" value={n1(a.sheets)} sub={`${n1(a.sheetsPerDay)} a day over ${a.workedDays} working day(s)`} />
-        <Tile head="Steel cut" value={n1(a.tons)} unit="t" sub={`${n2(a.tonsPerDay)} t a day`} />
-        <Tile head="Pieces cut" value={n1(a.pieces)} sub={`${a.items.length} component(s) of the range`} />
+        <Tile head="Sheets consumed" value={n1(a.sheets)} sub={`${n1(a.sheetsPerDay)} a day over ${a.workedDays} closing day(s)`} />
+        <Tile head="Steel consumed" value={n1(a.tons)} unit="t" sub={`${n2(a.tonsPerDay)} t a day`} />
+        <Tile head="Units closed on Odoo" value={n1(a.pieces)} sub={`${a.closings.length} closing(s) · ${a.items.length} component(s)`} />
         <Tile
-          head="Nesting coverage"
+          head="Material coverage"
           value={`${cov}%`}
           tone={covTone}
-          sub={a.uncoveredPieces > 0 ? `${n1(a.uncoveredPieces)} pieces have no bill of sheets` : "every piece is nested"}
+          sub={a.uncoveredPieces > 0 ? `${n1(a.uncoveredPieces)} closed units have no material lines` : "every closed MO is on the sheet"}
         />
       </div>
 
       <Section
-        title="Sheets a day"
-        sub={`Every fabrication record of the window, converted through its BOM's bill of sheets. The dashed line is the plant's own pace over these days — ${n1(a.sheetsPerDay)} sheets.`}
+        title="Sheets consumed a day"
+        sub={`Booked on the day each MO was closed on Odoo, through the Material tab's lines of the same MO. The dashed line is the pace over these days — ${n1(a.sheetsPerDay)} sheets.`}
       >
         <SheetsPerDayChart days={a.days} avg={a.sheetsPerDay} />
       </Section>
@@ -84,7 +83,7 @@ export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
       <div className="grid lg:grid-cols-2 gap-4 items-start">
         <Section
           title="Where the sheets go"
-          sub="Sheets cut per thickness. This is what decides which machine a job can go to — the thin end and the thick end are not the same plant."
+          sub="Sheets consumed per thickness, over the MOs closed in the window."
         >
           <ThicknessChart rows={a.thicknesses} />
           <div className="overflow-x-auto mt-2">
@@ -113,7 +112,7 @@ export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
 
         <Section
           title="What one piece really costs"
-          sub="Sheets per piece, per component. The bar is the range across the BOMs actually produced; the mark on it is the average. Where the range is wide, two orders of the same component are not the same job."
+          sub="Sheets per unit, per component. The bar is the range across the MOs closed; the mark on it is the average. Where the range is wide, two orders of the same component are not the same job."
         >
           <div className="space-y-2">
             {a.items.map((i) => {
@@ -125,7 +124,7 @@ export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
                   <span className="w-8 shrink-0 font-extrabold">{i.item}</span>
                   <span
                     className="relative flex-1 h-6 rounded-md bg-surface-2"
-                    title={`${i.item}: ${n2(i.min)} to ${n2(i.max)} sheets a piece, ${n2(i.avg)} on average · ${n1(i.pieces)} pieces over ${i.boms} BOM(s)`}
+                    title={`${i.item}: ${n2(i.min)} to ${n2(i.max)} sheets a unit, ${n2(i.avg)} on average · ${n1(i.pieces)} units over ${i.boms} MO(s)`}
                   >
                     <span
                       className="absolute top-1.5 bottom-1.5 rounded-[3px]"
@@ -155,35 +154,59 @@ export function FabAnalyticsView({ a }: { a: FabAnalyticsData }) {
         </Section>
       </div>
 
-      <Section title="How much of this is real" sub="Everything above rests on the Material tab. This is how much of the floor it describes.">
+      <Section title="MOs closed" sub="Each closing and what it consumed — the sheets and tonnes are booked on its day.">
+        <div className="overflow-x-auto max-h-96 overflow-y-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead className="sticky top-0 bg-surface">
+              <tr className="text-left text-muted">
+                <th className="p-1">Closed</th>
+                <th className="p-1">MO</th>
+                <th className="p-1">Part</th>
+                <th className="p-1 text-end">Units</th>
+                <th className="p-1 text-end">Sheets</th>
+                <th className="p-1 text-end">Tonnes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {a.closings.map((c, i) => (
+                <tr key={`${c.mo}-${c.dateISO}-${i}`} className="border-t">
+                  <td className="p-1 tabnum whitespace-nowrap">{c.dateISO}</td>
+                  <td className="p-1 ltr font-bold whitespace-nowrap">{c.mo}</td>
+                  <td className="p-1">{c.item ?? "—"}</td>
+                  <td className="p-1 text-end tabnum">{n1(c.qty)}</td>
+                  <td className="p-1 text-end tabnum">{c.covered ? n2(c.sheets) : <span className="pill pill-warn">not on the sheet</span>}</td>
+                  <td className="p-1 text-end tabnum text-muted">{c.covered ? n2(c.kg / 1000) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      <Section title="How much of this is real" sub="Everything above rests on the Material tab's lines of each closed MO.">
         <div className="grid sm:grid-cols-3 gap-3 text-xs">
           <p>
-            <b className="tabnum text-sm">{cov}%</b> of the pieces cut in {windowWords} have a bill of sheets.
-            {a.uncoveredPieces > 0 && <> The other <b className="tabnum">{n1(a.uncoveredPieces)}</b> are counted as pieces and contribute no sheets, so the rates read low rather than flattering.</>}
+            <b className="tabnum text-sm">{cov}%</b> of the units closed in {windowWords} have their MO on the material sheet.
+            {a.uncoveredPieces > 0 && <> The other <b className="tabnum">{n1(a.uncoveredPieces)}</b> are counted as units and consume no sheets, so the rates read low rather than flattering.</>}
           </p>
           <p>
-            The tab holds <b className="tabnum">{a.nestingRows}</b> nesting line(s) over <b className="tabnum">{a.nestingBoms}</b> BOM(s).
-            Nest a BOM on the{" "}
-            <Link href="/material" className="text-accent font-semibold hover:underline">Material tab</Link> and it joins this page at once.
+            The tab holds <b className="tabnum">{a.nestingRows}</b> line(s) over <b className="tabnum">{a.nestingBoms}</b> MO(s).
+            Upload the sheet on the{" "}
+            <Link href="/material" className="text-accent font-semibold hover:underline">Material tab</Link> and its MOs join this page at once.
           </p>
           <p className="text-muted">
-            A BOM planned in several months takes its NEWEST nesting, never the sum of them. Tonnes come from the sheet
-            size, the thickness and the material&apos;s own density.
+            A unit takes the actual nesting&apos;s sheets where the sheet has them, else the BOM&apos;s. Tonnes use the sheet&apos;s own Weight(Kg),
+            else the sheet size, the thickness and the material&apos;s density.
           </p>
         </div>
         {a.uncoveredBoms.length > 0 && (
           <div className="mt-2">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-muted mb-1">Produced with no nesting, heaviest first</div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-muted mb-1">Closed with no material lines, most units first</div>
             <div className="flex flex-wrap gap-1">
               {a.uncoveredBoms.slice(0, 24).map((b) => (
-                <Link
-                  key={b.bom}
-                  href={`/material?bom=${encodeURIComponent(b.bom)}`}
-                  className="pill pill-warn ltr hover:underline"
-                  title={`${n1(b.pieces)} pieces cut with no bill of sheets — nest it on the Material tab`}
-                >
+                <span key={b.bom} className="pill pill-warn ltr" title={`${n1(b.pieces)} units closed with no line under this MO on the Material tab`}>
                   {b.bom} <span className="tabnum opacity-75">×{n1(b.pieces)}</span>
-                </Link>
+                </span>
               ))}
               {a.uncoveredBoms.length > 24 && (
                 <span className="pill pill-muted">+{a.uncoveredBoms.length - 24} more</span>

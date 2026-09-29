@@ -302,3 +302,141 @@ export function buildFabAnalytics(output: readonly OutputRow[], nesting: readonl
       .sort((a, b) => b.pieces - a.pieces),
   };
 }
+
+// ---- consumption booked when the MO is closed on Odoo ----
+//
+// The material an order eats is booked on the day the office closes its MO
+// on Odoo (the ODOO tab's row moved to Done), not when a piece is cut: that is
+// when the plant says the job used it. Each closing finds its lines on the
+// Material tab by the same MO — the sheet files every part under Odoo's MO —
+// and books the closed quantity × each line's sheets for one unit (the
+// actual nesting's where the sheet has it, else the BOM's).
+
+/** One MO moved to Done on the ODOO tab. */
+export interface ClosingRow {
+  /** The factory's day the row was moved to Done. */
+  dateISO: string;
+  mo: string;
+  qty: number;
+}
+
+/** One line of the Material tab, as the closings read it. */
+export interface MoMaterialLine {
+  mo: string;
+  partCode: string;
+  material: string;
+  thicknessMm: number;
+  sheetSize: string;
+  sheetsPerUnit: number;
+  actualPerUnit: number | null;
+  /** One sheet's weight off the sheet — worked out from its size when blank. */
+  weightKg: number | null;
+}
+
+/** One closing as the page lists it. */
+export interface ClosedMo {
+  dateISO: string;
+  mo: string;
+  qty: number;
+  item: Item | null;
+  sheets: number;
+  kg: number;
+  /** False when the Material tab has no line under this MO. */
+  covered: boolean;
+}
+
+export interface ClosedConsumption extends FabAnalytics {
+  closings: ClosedMo[];
+}
+
+const moKey = (mo: string) => mo.trim().toUpperCase();
+const ITEM_BY_PART = new Map(ITEMS.flatMap((i) => (ITEM_PRODUCT[i].partCode ? [[ITEM_PRODUCT[i].partCode!, i] as const] : [])));
+
+/**
+ * Read the closings of a window in sheets, tonnes and thicknesses — the same
+ * shape as the cutting reading, so the page draws either. A closing whose MO
+ * has no line on the Material tab still counts its units, and is listed as
+ * uncovered (in `uncoveredBoms`, by MO).
+ */
+export function buildClosedConsumption(closings: readonly ClosingRow[], lines: readonly MoMaterialLine[]): ClosedConsumption {
+  const byMo = new Map<string, MoMaterialLine[]>();
+  for (const l of lines) {
+    const rate = l.actualPerUnit ?? l.sheetsPerUnit;
+    if (!l.mo.trim() || !(rate > 0)) continue;
+    const k = moKey(l.mo);
+    const list = byMo.get(k) ?? [];
+    if (!byMo.has(k)) byMo.set(k, list);
+    list.push(l);
+  }
+
+  const byDay = new Map<string, DayPoint>();
+  const byItem = new Map<Item, { pieces: number; sheets: number; mos: Set<string>; min: number; max: number }>();
+  const byThickness = new Map<number, { sheets: number; kg: number }>();
+  const uncovered = new Map<string, number>();
+  const list: ClosedMo[] = [];
+  let pieces = 0, sheets = 0, kg = 0, uncoveredPieces = 0;
+
+  for (const c of closings) {
+    if (!(c.qty > 0)) continue;
+    pieces += c.qty;
+    const day = byDay.get(c.dateISO) ?? { dateISO: c.dateISO, pieces: 0, uncoveredPieces: 0, sheets: 0, kg: 0 };
+    if (!byDay.has(c.dateISO)) byDay.set(c.dateISO, day);
+    day.pieces += c.qty;
+
+    const mine = byMo.get(moKey(c.mo));
+    if (!mine) {
+      uncoveredPieces += c.qty;
+      day.uncoveredPieces += c.qty;
+      uncovered.set(c.mo, (uncovered.get(c.mo) ?? 0) + c.qty);
+      list.push({ dateISO: c.dateISO, mo: c.mo, qty: c.qty, item: null, sheets: 0, kg: 0, covered: false });
+      continue;
+    }
+    let s = 0, k = 0, perUnit = 0;
+    for (const l of mine) {
+      const rate = l.actualPerUnit ?? l.sheetsPerUnit;
+      const ls = rate * c.qty;
+      const each = l.weightKg ?? sheetKg(l.sheetSize, l.thicknessMm, l.material) ?? 0;
+      s += ls;
+      k += ls * each;
+      perUnit += rate;
+      const t = byThickness.get(l.thicknessMm) ?? { sheets: 0, kg: 0 };
+      if (!byThickness.has(l.thicknessMm)) byThickness.set(l.thicknessMm, t);
+      t.sheets += ls;
+      t.kg += ls * each;
+    }
+    sheets += s; kg += k; day.sheets += s; day.kg += k;
+    const item = ITEM_BY_PART.get(mine[0].partCode.trim().toUpperCase()) ?? null;
+    if (item) {
+      const f = byItem.get(item) ?? { pieces: 0, sheets: 0, mos: new Set<string>(), min: Infinity, max: 0 };
+      if (!byItem.has(item)) byItem.set(item, f);
+      f.pieces += c.qty; f.sheets += s; f.mos.add(moKey(c.mo));
+      f.min = Math.min(f.min, perUnit); f.max = Math.max(f.max, perUnit);
+    }
+    list.push({ dateISO: c.dateISO, mo: c.mo, qty: c.qty, item, sheets: round2(s), kg: Math.round(k), covered: true });
+  }
+
+  const days = [...byDay.values()].sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+    .map((d) => ({ ...d, pieces: round1(d.pieces), sheets: round1(d.sheets), kg: Math.round(d.kg) }));
+  const items = ITEMS.map((item) => {
+    const f = byItem.get(item);
+    if (!f || !(f.pieces > 0)) return null;
+    return { item, boms: f.mos.size, pieces: round1(f.pieces), sheets: round1(f.sheets), avg: round2(f.sheets / f.pieces), min: round2(f.min === Infinity ? 0 : f.min), max: round2(f.max) };
+  }).filter((x): x is ItemFactor => x !== null);
+  const thicknesses = [...byThickness.entries()]
+    .map(([thicknessMm, t]) => ({ thicknessMm, sheets: round1(t.sheets), kg: Math.round(t.kg), share: sheets > 0 ? t.sheets / sheets : 0 }))
+    .filter((t) => t.sheets > 0)
+    .sort((a, b) => a.thicknessMm - b.thicknessMm);
+  const workedDays = days.filter((d) => d.pieces !== 0).length;
+
+  return {
+    days, items, thicknesses,
+    pieces: round1(pieces), sheets: round1(sheets), tons: round1(kg / 1000),
+    workedDays,
+    sheetsPerDay: workedDays > 0 ? round1(sheets / workedDays) : 0,
+    tonsPerDay: workedDays > 0 ? round2(kg / 1000 / workedDays) : 0,
+    coverage: pieces > 0 ? Math.max(0, (pieces - uncoveredPieces) / pieces) : 0,
+    uncoveredPieces: round1(uncoveredPieces),
+    uncoveredBoms: [...uncovered.entries()].map(([bom, p]) => ({ bom, pieces: round1(p) })).sort((a, b) => b.pieces - a.pieces),
+    closings: list.sort((a, b) => b.dateISO.localeCompare(a.dateISO) || a.mo.localeCompare(b.mo)),
+  };
+}
