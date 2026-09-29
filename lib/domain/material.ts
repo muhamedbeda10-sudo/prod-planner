@@ -174,6 +174,10 @@ export interface MaterialLineInput {
   sheetsUsed: number | null; // No. of Sheets in Actual Nesting for Job
   producedQty: number | null; // units produced so far
   note: string | null;
+  /** The newer sheet's SOI column — "" on a line without one. */
+  soi: string;
+  weightKg: number | null; // Weight(Kg) — one sheet's
+  utilization: number | null; // Average Utilization, as the sheet writes it
 }
 
 export interface MaterialLineView extends MaterialLineInput {
@@ -189,8 +193,9 @@ export interface MaterialLineView extends MaterialLineInput {
   /** The rate was typed in the tab, not read off the sheet — a re-import
    *  leaves it alone. */
   actualPerUnitManual: boolean;
-  soi: string | null; // the BOM's orders' SOIs, joined
   forJob: number; // sheets for the job
+  /** Actual Weight (Kg): the pieces nested for the job × one sheet's weight. */
+  actualWeightKg: number | null;
   difference: number | null; // forJob − sheetsUsed
   forProduced: number | null; // actualPerUnit × producedQty
   updatedISO: string;
@@ -257,6 +262,9 @@ export interface NestingRow {
    *  the rate above × the units only where that column is blank. */
   sheetsUsed: number | null;
   note: string | null;
+  soi: string;
+  weightKg: number | null;
+  utilization: number | null;
 }
 
 export interface ParsedNesting {
@@ -286,9 +294,13 @@ const HEADERS = {
   perUnit: ["bom for one unit", "one unit", "per unit"],
   actual: ["actual nesting for job", "actual for job", "actual nesting", "actual"],
   note: ["notes", "note", "remark"],
+  // the newer sheet's — matched last, so none of them steals a column above
+  // ("Weight(Kg)" is one sheet's; "Actual Weight (Kg)" is worked out)
+  weight: ["weight"],
+  utilization: ["utilization", "utilisation"],
 } as const;
 
-const OPTIONAL_HEADERS: ReadonlySet<string> = new Set(["note", "actual", "actualPerUnit", "partCode", "partName", "code"]);
+const OPTIONAL_HEADERS: ReadonlySet<string> = new Set(["note", "actual", "actualPerUnit", "partCode", "partName", "code", "weight", "utilization"]);
 
 function cellText(v: unknown): string {
   return String(v ?? "").replace(/\s+/g, " ").trim();
@@ -344,6 +356,7 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
   // the newer sheet carries Odoo's MO per part: a column headed exactly "MO"
   // (a fragment match would catch other headers), found apart from the rest
   const moCol = (grid[headerIdx] ?? []).findIndex((c) => /^mo\s*(#|no\.?)?$/i.test(cellText(c)));
+  const soiCol = (grid[headerIdx] ?? []).findIndex((c) => /^soi\s*#?$/i.test(cellText(c)));
   const issues: string[] = [];
   for (const [key, idx] of Object.entries(col)) {
     if (idx < 0 && !OPTIONAL_HEADERS.has(key)) issues.push(`Column "${key}" was not found in the header row.`);
@@ -399,6 +412,9 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
       actualPerUnit: rate,
       sheetsUsed: used,
       note: note || null,
+      soi: soiCol >= 0 ? cellText(line[soiCol]).toUpperCase() : "",
+      weightKg: col.weight >= 0 ? parseSheetNumber(line[col.weight]) : null,
+      utilization: col.utilization >= 0 ? parseSheetNumber(line[col.utilization]) : null,
     });
   }
   if (rows.length === 0) issues.push("No material rows found under the header.");

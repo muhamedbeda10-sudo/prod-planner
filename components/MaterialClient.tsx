@@ -10,11 +10,10 @@ import {
   partNameFor, filterMaterialLines, summarizeMaterial,
   type MaterialLineView, type MaterialTotal, type MaterialFilters, type MaterialStatusFilter,
 } from "@/lib/domain/material";
-import { Soi } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
-  createMaterialLine, createLvOrderLines, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, deleteMaterialLine, importMaterialAction,
+  createMaterialLine, createLvOrderLines, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, setUtilization, deleteMaterialLine, importMaterialAction,
 } from "@/app/material/actions";
 
 // The MATERIAL tab — the planner's material sheet as one living table: no
@@ -88,6 +87,9 @@ function LineFields({ line, knownBoms, knownCodes, disabled, product = "TR" }: {
     <>
       {/* a new line joins the table; an archived sheet's line keeps its month */}
       <input type="hidden" name="month" value={line?.month ?? ""} />
+      <Field hint="SOI — as the sheet writes it" label="SOI" className="w-28">
+        <input name="soi" aria-label="SOI" defaultValue={line?.soi ?? ""} disabled={disabled} placeholder="S01194-12" className={`${F} ltr w-full`} />
+      </Field>
       <Field hint="Odoo's MO for this part — the ODOO tab finds the line by it" label="MO" className="w-40">
         <input name="mo" aria-label="MO" defaultValue={line?.mo ?? ""} disabled={disabled} placeholder="SF01/MO/20941" className={`${F} ltr w-full`} />
       </Field>
@@ -128,6 +130,9 @@ function LineFields({ line, knownBoms, knownCodes, disabled, product = "TR" }: {
         <input name="sheetSize" list="sheet-sizes" aria-label="Sheet size" defaultValue={line?.sheetSize ?? ""} required disabled={disabled} placeholder="1220*2440" className={`${F} ltr w-full`} />
         <datalist id="sheet-sizes">{SHEET_SIZE_PRESETS.map((s) => <option key={s} value={s} />)}</datalist>
       </Field>
+      <Field hint="Weight(Kg) — one sheet's" label="Weight (kg)" className="w-24">
+        <input name="weightKg" type="number" step="0.01" min="0" aria-label="Weight (kg)" defaultValue={line?.weightKg ?? ""} disabled={disabled} placeholder="kg" className={`${F} ltr tabnum w-full`} />
+      </Field>
       <Field hint="No. of Sheets in BOM for ONE unit" label="BOM / unit" className="w-24">
         <input name="sheetsPerUnit" type="number" step="0.0001" min="0" aria-label="Sheets per unit" defaultValue={line?.sheetsPerUnit ?? ""} required disabled={disabled} placeholder="per unit" className={`${F} ltr tabnum w-full`} />
       </Field>
@@ -136,6 +141,9 @@ function LineFields({ line, knownBoms, knownCodes, disabled, product = "TR" }: {
       </Field>
       <Field hint="No. of Sheets in Actual Nesting for the job — leave empty until nested" label="Actual / job" className="w-24">
         <input name="sheetsUsed" type="number" step="0.01" min="0" aria-label="Sheets actually nested" defaultValue={line?.sheetsUsed ?? ""} disabled={disabled} placeholder="actual" className={`${F} ltr tabnum w-full font-extrabold`} />
+      </Field>
+      <Field hint="Average utilization of the nesting" label="Utilization" className="w-24">
+        <input name="utilization" type="number" step="0.0001" min="0" aria-label="Average utilization" defaultValue={line?.utilization ?? ""} disabled={disabled} placeholder="0.85" className={`${F} ltr tabnum w-full`} />
       </Field>
       <Field hint="Units produced so far — the tab works out the sheets they really consumed" label="Produced" className="w-24">
         <input name="producedQty" type="number" step="1" min="0" aria-label="Units produced" defaultValue={line?.producedQty ?? ""} disabled={disabled} placeholder="produced" className={`${F} ltr tabnum w-full`} />
@@ -147,10 +155,16 @@ function LineFields({ line, knownBoms, knownCodes, disabled, product = "TR" }: {
   );
 }
 
+/** Average utilization as the sheet writes it: a fraction reads as a percent. */
+function Utilization({ v }: { v: number | null }) {
+  if (v === null) return <span className="text-muted">—</span>;
+  return <span className="tabnum ltr">{v <= 1 ? `${Number((v * 100).toFixed(1))}%` : Number(v.toFixed(2))}</span>;
+}
+
 // ---- one editable number cell (actual nested · units produced) ----
 
 function CellInput({ id, field, value, action, title, bold, step = "0.01", className = "w-20", placeholder = "—" }: {
-  id: number; field: "actualPerUnit" | "sheetsUsed" | "producedQty"; value: number | null;
+  id: number; field: "actualPerUnit" | "sheetsUsed" | "producedQty" | "utilization"; value: number | null;
   action: (fd: FormData) => Promise<{ ok: boolean; error?: string }>; title: string; bold?: boolean;
   step?: string; className?: string; placeholder?: string;
 }) {
@@ -199,7 +213,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
   const del = useAction();
   const diffCls = line.difference === null ? "" : line.difference < 0 ? "text-bad-fg" : line.difference > 0 ? "text-ok-fg" : "text-muted";
   const lv = product === "LV";
-  const cols = (lv ? 16 : 19) + (showMonth ? 1 : 0);
+  const cols = (lv ? 16 : 22) + (showMonth ? 1 : 0);
   const editor = (
     <>
       {del.msg?.ok === false && (
@@ -283,6 +297,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
   return (
     <>
       <tr className="border-t">
+        <td className="p-2 whitespace-nowrap ltr text-xs font-semibold">{line.soi || <span className="text-muted">—</span>}</td>
         {/* the sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
         <td className="p-2 font-bold whitespace-nowrap ltr text-xs"><MoCell mo={line.mo} odoo={odoo} /></td>
         <td className="p-2 whitespace-nowrap ltr text-xs">{line.bom}</td>
@@ -293,8 +308,8 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
         <td className="p-2 whitespace-nowrap">{line.material}</td>
         <td className="p-2 text-center tabnum ltr">{line.thicknessMm}</td>
         <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
+        <td className="p-2 text-center tabnum"><Sheets v={line.weightKg} digits={3} /></td>
         <td className="p-2 text-center"><Sheets v={line.sheetsPerUnit} digits={4} /></td>
-        <td className="p-2 text-center font-bold"><Sheets v={line.forJob} /></td>
         {/* Actual / unit — the sheet's own figure where it carries one, and
             typed here for the lines it leaves blank (most of them). What is
             typed outranks the sheet: a re-import fills the blanks and leaves
@@ -314,9 +329,14 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
             </span>
           )}
         </td>
+        <td className="p-2 text-center font-bold"><Sheets v={line.forJob} /></td>
         <td className="p-2 text-center">
-          {canEdit ? <CellInput id={line.id} field="sheetsUsed" value={line.sheetsUsed} action={setSheetsUsed} title="No. of Sheets in Actual Nesting for the job" bold /> : <Sheets v={line.sheetsUsed} className="font-extrabold" />}
+          {canEdit ? <CellInput id={line.id} field="sheetsUsed" value={line.sheetsUsed} action={setSheetsUsed} title="No. of Pieces in Actual Nesting for the job" bold /> : <Sheets v={line.sheetsUsed} className="font-extrabold" />}
         </td>
+        <td className="p-2 text-center">
+          {canEdit ? <CellInput id={line.id} field="utilization" value={line.utilization} action={setUtilization} step="0.0001" title="Average utilization of the nesting — as the sheet writes it (0.85 or 85)" /> : <Utilization v={line.utilization} />}
+        </td>
+        <td className="p-2 text-center tabnum font-semibold" title={line.actualWeightKg === null ? "Needs the pieces nested for the job and the weight" : `${line.sheetsUsed} × ${line.weightKg} kg`}><Sheets v={line.actualWeightKg} digits={3} /></td>
         <td className={`p-2 text-center font-extrabold ${diffCls}`}><Sheets v={line.difference} /></td>
         <td className="p-2 text-xs max-w-[200px]">{line.note}</td>
         <td className="p-2 text-center bg-brand-light/30">
@@ -326,7 +346,6 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
           <Sheets v={line.forProduced} />
         </td>
         {showMonth && <td className="p-2 whitespace-nowrap text-xs">{line.month || <span className="text-muted">—</span>}</td>}
-        <td className="p-2 whitespace-nowrap"><Soi soi={line.soi} /></td>
         {actions}
       </tr>
       {editor}
@@ -681,25 +700,28 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                   </tr>
                 ) : (
                 <tr className="bg-brand text-white text-left align-bottom">
+                  <th className={TH}>SOI</th>
                   <th className={TH} title="Odoo's MO for the part — the ODOO tab finds the line by it">MO</th>
                   <th className={TH}>BOM Ref</th>
                   <th className={`${TH} text-center`}>Quantity of Units</th>
                   <th className={TH}>Part Code</th>
                   <th className={TH}>Part Name</th>
-                  <th className={TH} title="The material's code on the sheet">Codes</th>
+                  <th className={TH}>Material Code</th>
                   <th className={TH}>Material</th>
                   <th className={`${TH} text-center`}>Thickness (mm)</th>
                   <th className={`${TH} text-center`}>Sheet Size</th>
-                  <th className={`${TH} text-center`}>No. of Sheets in BOM for one Unit</th>
-                  <th className={`${TH} text-center`} title="Per unit × units">No. of Sheets in BOM for Job</th>
-                  <th className={`${TH} text-center`} title="From the nesting sheet, or typed here for the lines it leaves blank">No. of Sheets in Actual Nesting for one Unit</th>
-                  <th className={`${TH} text-center`} title="Type here">No. of Sheets in Actual Nesting for Job</th>
-                  <th className={`${TH} text-center`} title="BOM for Job − Actual Nesting for Job. Red = ate more than the BOM allows">Difference</th>
+                  <th className={`${TH} text-center`} title="One sheet's weight">Weight(Kg)</th>
+                  <th className={`${TH} text-center`}>BOM Qty for one Unit</th>
+                  <th className={`${TH} text-center`} title="From the sheet, or typed here for the lines it leaves blank">No. of Pieces in Actual Nesting for one Unit</th>
+                  <th className={`${TH} text-center`} title="BOM Qty for one Unit × units">BOM Pieces for Job</th>
+                  <th className={`${TH} text-center`} title="Type here">No. of Pieces in Actual Nesting for Job</th>
+                  <th className={`${TH} text-center`}>Average Utilization</th>
+                  <th className={`${TH} text-center`} title="Pieces in Actual Nesting for Job × Weight(Kg)">Actual Weight (Kg)</th>
+                  <th className={`${TH} text-center`} title="BOM Pieces for Job − Actual Nesting for Job. Red = ate more than the BOM allows">Difference</th>
                   <th className={TH}>Notes</th>
                   <th className={`${TH} text-center bg-brand-dark`} title="Type the quantity you want costed — it does not have to be the whole job">Quantity</th>
-                  <th className={`${TH} text-center bg-brand-dark`} title="Actual Nesting for one Unit × the quantity beside it — the sheets that quantity really takes">Actual for Quantity</th>
+                  <th className={`${TH} text-center bg-brand-dark`} title="Actual Nesting for one Unit × the quantity beside it">Actual for Quantity</th>
                   {showMonth && <th className={TH}>Month</th>}
-                  <th className={TH} title="Sales order item — from the order registry, not from the sheet">SOI</th>
                   <th className="p-2 no-print" />
                 </tr>
                 )}
