@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
-import { getConsumableEdits, getConsumablesDashboard, getConsumablesData } from "@/lib/server/consumables";
+import { getConsumableEdits, getConsumablesDashboard, getConsumablesData, getCustomDepartments } from "@/lib/server/consumables";
+import { getCatalogue, getCatalogueChanges, getCurrentStandings, getLimitDashboard } from "@/lib/server/consumableLimits";
+import { factoryDateTimeLabel } from "@/lib/domain/consumables";
+import { WORKER_SECTIONS } from "@/lib/domain/tanks";
+import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
+import { ConsumableLimits } from "@/components/ConsumableLimits";
+import { ConsumableAlarms } from "@/components/ConsumableAlarms";
 import { addDaysISO, clampISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
@@ -41,9 +47,9 @@ export default async function ConsumablesPage({
   const period = from === to ? from : `${from}_to_${to}`;
 
   // the log and the dashboard are everyone's; the history of edits the admin's
-  const view = sp.view === "dashboard" ? "dashboard" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
+  const view = sp.view === "dashboard" ? "dashboard" : sp.view === "limits" ? "limits" : me.isAdmin && sp.view === "edits" ? "edits" : "log";
   // the switch keeps the period on screen
-  const hrefFor = (v: "log" | "dashboard" | "edits") => {
+  const hrefFor = (v: "log" | "dashboard" | "limits" | "edits") => {
     const p = new URLSearchParams();
     if (sp.from) p.set("from", from);
     if (sp.to) p.set("to", to);
@@ -55,6 +61,7 @@ export default async function ConsumablesPage({
     <nav className="seg" aria-label="View">
       <Link href={hrefFor("log")} className={view === "log" ? "on" : ""}>Log</Link>
       <Link href={hrefFor("dashboard")} className={view === "dashboard" ? "on" : ""}>Dashboard</Link>
+      <Link href={hrefFor("limits")} className={view === "limits" ? "on" : ""}>Limits</Link>
       {me.isAdmin && <Link href={hrefFor("edits")} className={view === "edits" ? "on" : ""}>Edits</Link>}
     </nav>
   );
@@ -66,8 +73,43 @@ export default async function ConsumablesPage({
     />
   );
 
+  if (view === "limits") {
+    // the catalogue and its limits are about now, not the slicer's period
+    const [items, standings, changes, custom] = await Promise.all([
+      getCatalogue(), getCurrentStandings(today), getCatalogueChanges(60, factoryDateTimeLabel), getCustomDepartments(),
+    ]);
+    const exportRows = items.flatMap((i) => (i.limits.length ? i.limits : [null]).map((l) => ({
+      Code: i.code ?? "",
+      Item: i.name,
+      UOM: i.uom,
+      Active: i.active ? "yes" : "retired",
+      Limit: l ? l.qty : "",
+      Per: l ? PERIOD_LABEL[l.period] : "",
+      Counted: l ? (l.basis === "person" ? "per person" : "shared") : "",
+      Departments: l ? l.departmentsLabel : "",
+      "Used now": l && standings[l.id] ? standings[l.id].used : "",
+      Remark: i.remark ?? "",
+    })));
+    return (
+      <div className="space-y-3">
+        <RememberLastVisit storageKey="consumables:last" />
+        <PageHeader>
+          {viewSwitch}
+          <ExportButton rows={exportRows} filename={`consumables-limits-${today}.xlsx`} sheetName="Limits" />
+        </PageHeader>
+        <ConsumableLimits
+          items={items}
+          standings={standings}
+          departments={{ sections: WORKER_SECTIONS.map((s) => ({ code: s.code, label: s.label, group: s.group })), custom }}
+          changes={changes}
+          canEdit={hasPerm(me, "consumables.edit")}
+        />
+      </div>
+    );
+  }
+
   if (view === "dashboard") {
-    const stats = await getConsumablesDashboard(from, to);
+    const [stats, limits] = await Promise.all([getConsumablesDashboard(from, to), getLimitDashboard(from, to, today)]);
     const exportRows = stats.items.map((i) => ({ Item: i.item, "Hand-outs": i.issues, Qty: i.qty, Workers: i.workers }));
     return (
       <div className="space-y-3">
@@ -77,6 +119,8 @@ export default async function ConsumablesPage({
           <ExportButton rows={exportRows} filename={`consumables-summary-${period}.xlsx`} sheetName="Items" />
         </PageHeader>
         {slicer}
+        {/* the limits first: an alarm is what the page is opened for */}
+        <ConsumableAlarms d={limits} periodLabel={periodLabel} period={period} />
         <ConsumablesDashboard s={stats} periodLabel={periodLabel} period={period} />
       </div>
     );
@@ -114,10 +158,13 @@ export default async function ConsumablesPage({
     "Date & time": e.issuedAtLabel,
     Item: e.item,
     Qty: e.qty,
+    UOM: e.uom ?? "",
     Department: e.departmentLabel,
     "Emp ID": e.worker.empId,
     Worker: e.worker.name,
     Notes: e.notes ?? "",
+    "Over limit": e.overLimit ? "yes" : "",
+    "Over-limit reason": e.overLimit?.reason ?? "",
     "Recorded by": e.recordedBy,
     "Edited by": e.edited ? `${e.edited.by} (${e.edited.atLabel})` : "",
   }));

@@ -13,6 +13,7 @@ import {
   snapshotChanges,
 } from "@/lib/domain/consumables";
 import { getAllWorkers } from "./workers";
+import { ALL_DEPARTMENTS, parseDepartments } from "@/lib/domain/consumableLimits";
 
 // The CONSUMABLES tab's reads. Writes are app/consumables/actions.ts.
 //
@@ -49,6 +50,11 @@ export interface ConsumableIssueView {
   issuedAtLabel: string;
   recordedBy: string;
   edited: { by: string; atLabel: string } | null;
+  /** The catalogue item; null for an item typed by hand. */
+  itemId: number | null;
+  uom: string | null;
+  /** Recorded over a limit: the reason the recorder gave and the breach as it read. */
+  overLimit: { reason: string | null; note: string | null } | null;
   /** Newest first — admin only (empty for everyone else). */
   revisions: ConsumableRevisionView[];
   /** The viewer may correct this row: his own, or any for an admin. */
@@ -74,6 +80,20 @@ export interface ConsumablesPageData {
   workers: ConsumableWorkerOption[];
   /** Items typed before — suggestions for the free-text item box. */
   knownItems: string[];
+  /** The catalogue the item dropdown offers: the active items, and any
+   *  retired one a row on screen still points at (so its edit shows it). */
+  catalogue: CatalogueOption[];
+}
+
+export interface CatalogueOption {
+  id: number;
+  code: string | null;
+  name: string;
+  uom: string;
+  active: boolean;
+  /** The departments its limits cover ("*" = all) — the dropdown lists the
+   *  items meant for the department picked first. */
+  departments: typeof ALL_DEPARTMENTS | string[];
 }
 
 /** One line of the admin's Edits view: a change and the row it was made to. */
@@ -136,12 +156,13 @@ function revisionView(v: { id: number; action: string; before: unknown; after: u
 export async function getConsumablesData(fromISO: string, toISO: string, viewer: ConsumablesViewer): Promise<ConsumablesPageData> {
   const { gte, lt } = periodBounds(fromISO, toISO);
 
-  const [rows, custom, workers, items] = await Promise.all([
+  const [rows, custom, workers, items, catalogue] = await Promise.all([
     prisma.consumableIssue.findMany({
       where: { deletedAt: null, issuedAt: { gte, lt } },
       orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
       include: {
         worker: { select: { id: true, empId: true, name: true, active: true } },
+        catalog: { select: { uom: true } },
         // the history is the admin's — not even fetched for anyone else
         ...(viewer.isAdmin ? { revisions: { orderBy: { id: "desc" as const } } } : {}),
       },
@@ -155,9 +176,24 @@ export async function getConsumablesData(fromISO: string, toISO: string, viewer:
       orderBy: { item: "asc" },
       take: 500,
     }),
+    prisma.consumableItem.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, code: true, name: true, uom: true, active: true, limits: { select: { departments: true } } },
+    }),
   ]);
 
+  // the dropdown: active items, and the retired ones a row on screen points at
+  const onScreen = new Set(rows.map((r) => r.itemId).filter((x): x is number => x !== null));
+  const catalogueOptions: CatalogueOption[] = catalogue
+    .filter((c) => c.active || onScreen.has(c.id))
+    .map((c) => {
+      const all = c.limits.some((l) => parseDepartments(l.departments) === ALL_DEPARTMENTS);
+      const depts = [...new Set(c.limits.flatMap((l) => { const d = parseDepartments(l.departments); return d === ALL_DEPARTMENTS ? [] : d; }))];
+      return { id: c.id, code: c.code, name: c.name, uom: c.uom, active: c.active, departments: all ? ALL_DEPARTMENTS : depts };
+    });
+
   return {
+    catalogue: catalogueOptions,
     entries: rows.map((r) => ({
       id: r.id,
       item: r.item,
@@ -169,6 +205,9 @@ export async function getConsumablesData(fromISO: string, toISO: string, viewer:
       issuedAtLabel: factoryDateTimeLabel(r.issuedAt),
       recordedBy: r.recordedBy,
       edited: r.editedAt && r.editedBy ? { by: r.editedBy, atLabel: factoryDateTimeLabel(r.editedAt) } : null,
+      itemId: r.itemId,
+      uom: r.catalog?.uom ?? null,
+      overLimit: r.overLimit ? { reason: r.overLimitReason, note: r.overLimitNote } : null,
       revisions: "revisions" in r && Array.isArray(r.revisions) ? r.revisions.map(revisionView) : [],
       canEdit: canEditIssue(viewer, r),
       version: r.updatedAt.toISOString(),
