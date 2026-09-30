@@ -18,7 +18,6 @@ import { entryMaterialNeed, type NeedContext, type NestingLookup } from "@/lib/d
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, setOdooFgCode, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
-import { checkOdooRows } from "@/app/odoo/alertActions";
 
 // The ODOO tab — the office's daily log of Odoo close attempts, one strip per
 // row, the columns of the sheet it replaces: Date · SOI# · FG-CODE · Product ·
@@ -259,37 +258,6 @@ function StatusCell({ e, canEdit, ids }: { e: OdooEntryView; canEdit: boolean; i
   );
 }
 
-/** The clerk's ✓ — closed on the main Odoo — on a row born from a closing:
- *  a button until it is ticked, then a ✓ (a click takes it back). Only then
- *  does the row wait for the Done. */
-function ClosedCheck({ e, canEdit, ids }: { e: OdooEntryView; canEdit: boolean; ids?: number[] }) {
-  const a = useAction();
-  if (!isBorn(e) || e.done) {
-    return e.checkedBy !== null ? <span className="text-ok-fg font-extrabold" title={`Closed on the main Odoo${e.checkedBy ? ` — ${e.checkedBy}` : ""}`}>✓</span> : null;
-  }
-  const targets = ids ?? [e.id];
-  const run = (undo: boolean) => {
-    const fd = new FormData();
-    for (const id of targets) fd.append("id", String(id));
-    if (undo) fd.set("undo", "true");
-    a.run(checkOdooRows, fd, "Saved.");
-  };
-  if (e.checkedBy !== null) {
-    const who = `Closed on the main Odoo${e.checkedBy ? ` — ${e.checkedBy}` : ""}${e.checkedAtISO ? `, ${stamp(e.checkedAtISO)}` : ""}`;
-    return canEdit ? (
-      <button type="button" disabled={a.pending} className="pill pill-ok font-extrabold" title={`${who} — click to take the ✓ back`}
-        onClick={() => { if (confirm("Take the ✓ back?")) run(true); }}>✓</button>
-    ) : <span className="pill pill-ok font-extrabold" title={who}>✓</span>;
-  }
-  if (!canEdit || !e.odooMo) return null;
-  return (
-    <span className="inline-flex flex-col">
-      <button type="button" disabled={a.pending} onClick={() => run(false)} className="btn btn-sm btn-secondary font-extrabold" title="Closed on the main Odoo" aria-label="Closed on the main Odoo">✓</button>
-      {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
-    </span>
-  );
-}
-
 // ---- Notes: a list per row, newest first, each deletable; add one below ----
 
 function stamp(iso: string): string {
@@ -418,9 +386,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
           )}
         </td>
         <td className="p-2 text-center tabnum font-extrabold cursor-pointer" onClick={open} title={rowTitle}>{e.qty}</td>
-        <td className="p-2 whitespace-nowrap text-xs align-top">
-          <span className="inline-flex items-start gap-1.5"><StatusCell e={e} canEdit={canEdit} /><ClosedCheck e={e} canEdit={canEdit} /></span>
-        </td>
+        <td className="p-2 whitespace-nowrap text-xs align-top"><StatusCell e={e} canEdit={canEdit} /></td>
         <td className="p-2 text-xs min-w-[18rem] max-w-[28rem] align-top">
           <NotesCell e={e} canEdit={canEdit} />
         </td>
@@ -556,10 +522,7 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
         </td>
         <td className="p-2 text-center tabnum font-extrabold cursor-pointer" onClick={toggle} title={`${parts} — the closings on this line`}>{g.qty}</td>
         <td className="p-2 whitespace-nowrap text-xs align-top">
-          <span className="inline-flex items-start gap-1.5">
-            <StatusCell e={head} canEdit={canEdit} ids={ids} />
-            <ClosedCheck e={{ ...head, checkedBy: g.rows.every((r) => r.checkedBy !== null) ? head.checkedBy ?? "" : null }} canEdit={canEdit} ids={ids} />
-          </span>
+          <StatusCell e={head} canEdit={canEdit} ids={ids} />
         </td>
         <td className="p-2 text-xs min-w-[18rem] max-w-[28rem] align-top font-normal">
           {noteCount > 0 ? (

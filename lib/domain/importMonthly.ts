@@ -321,3 +321,27 @@ export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): P
   }
   return { rows, issues, headerRow: hr + 1 };
 }
+
+/** The plan month a sheet names in its Plan_Month column ("10-2026",
+ *  "2026-10", "October 2026") as the app's label ("October 2026"); null when
+ *  the sheet has no such column or it is empty or unreadable. */
+export function sheetPlanMonth(grid: unknown[][]): string | null {
+  const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  for (let r = 0; r < Math.min(10, grid.length); r++) {
+    const i = (grid[r] ?? []).findIndex((c) => norm(S(c)) === "PLANMONTH");
+    if (i < 0) continue;
+    for (let rr = r + 1; rr < grid.length; rr++) {
+      const v = S((grid[rr] ?? [])[i]);
+      if (!v) continue;
+      let m = /^(\d{1,2})[-/.](\d{4})$/.exec(v);
+      if (m) return Number(m[1]) >= 1 && Number(m[1]) <= 12 ? `${MONTHS[Number(m[1]) - 1]} ${m[2]}` : null;
+      m = /^(\d{4})[-/.](\d{1,2})$/.exec(v);
+      if (m) return Number(m[2]) >= 1 && Number(m[2]) <= 12 ? `${MONTHS[Number(m[2]) - 1]} ${m[1]}` : null;
+      const named = MONTHS.findIndex((mn) => v.toLowerCase().startsWith(mn.toLowerCase().slice(0, 3)));
+      const y = /(\d{4})/.exec(v)?.[1];
+      return named >= 0 && y ? `${MONTHS[named]} ${y}` : null;
+    }
+    return null;
+  }
+  return null;
+}

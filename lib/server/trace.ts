@@ -5,7 +5,6 @@ import { getMasterTracker, type MasterTrackerRow } from "./masterTracker";
 import { ITEMS, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { groupKey } from "@/lib/domain/bom";
 import { toISODate } from "@/lib/domain/dates";
-import { isDoneStatus } from "@/lib/domain/odoo";
 
 // One project's whole life — the Trace page. Works on a single manufacturing
 // order (mo) OR a whole code (bom). Everything is netted (negative corrections
@@ -89,24 +88,6 @@ export interface TraceResult {
   }[];
   ledgerCount: number;
   orderPlans: string[]; // labels of the plans this code was planned in
-  /** The plan's child MOs — Odoo's MO per component — of the orders in view,
-   *  with what the ODOO tab booked on each. */
-  childMos: TraceChildMo[];
-}
-
-export interface TraceChildMo {
-  planMo: string;
-  component: string; // TANK | FINS | TOP_COVER …
-  item: string | null;
-  childMo: string;
-  parentMo: string | null;
-  productCode: string | null;
-  qty: number | null;
-  state: string | null; // Odoo's state when the plan was loaded
-  remarks: string | null;
-  /** On the ODOO tab: units booked on it (cancelled rows aside), and of those closed Done. */
-  booked: number;
-  closed: number;
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -255,32 +236,6 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
 
   const remarksByMo = new Map(masters.map((m) => [m.mo, (m.remarks ?? "").trim()]));
 
-  // ---- the plan's child MOs of these orders, and what the ODOO tab booked on them ----
-  const planMos = [...new Set([...(isMo ? [mo] : []), ...members.map((m) => m.mo)].map((m) => m.trim().toUpperCase()).filter(Boolean))];
-  const children = planMos.length
-    ? await prisma.childMo.findMany({ where: { planMo: { in: planMos } }, orderBy: [{ planMo: "asc" }, { id: "asc" }] })
-    : [];
-  const odoo = children.length
-    ? await prisma.odooEntry.findMany({
-        where: { odooMo: { in: [...new Set(children.map((c) => c.childMo))] }, status: { not: "Cancelled" } },
-        select: { odooMo: true, qty: true, status: true },
-      })
-    : [];
-  const bookedOn = new Map<string, { booked: number; closed: number }>();
-  for (const o of odoo) {
-    const b = bookedOn.get(o.odooMo) ?? { booked: 0, closed: 0 };
-    b.booked += o.qty;
-    if (isDoneStatus(o.status)) b.closed += o.qty;
-    bookedOn.set(o.odooMo, b);
-  }
-  const COMPONENT_ORDER = ["TANK", "FINS", "TOP_COVER", "CORE_FRAME", "CABLE_BOX", "ARRESTER", "MONOBLOC_BOX"];
-  const childMos: TraceChildMo[] = children
-    .map((c) => ({
-      planMo: c.planMo, component: c.component, item: c.item, childMo: c.childMo, parentMo: c.parentMo, productCode: c.productCode,
-      qty: c.qty, state: c.state, remarks: c.remarks, ...(bookedOn.get(c.childMo) ?? { booked: 0, closed: 0 }),
-    }))
-    .sort((a, b) => a.planMo.localeCompare(b.planMo) || COMPONENT_ORDER.indexOf(a.component) - COMPONENT_ORDER.indexOf(b.component));
-
   return {
     scope: isMo ? "mo" : "bom",
     key: isMo ? mo : bom,
@@ -310,6 +265,5 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
     })),
     ledgerCount: handover.length,
     orderPlans: [...new Set(orders.map((o) => o.planNo))].sort((a, b) => a - b).map(planLabel),
-    childMos,
   };
 }

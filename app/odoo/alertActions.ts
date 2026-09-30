@@ -54,30 +54,6 @@ export async function closeOdooReady(formData: FormData): Promise<{ ok: boolean;
   return { ok: true, closed: allowed.length };
 }
 
-/** The clerk's ✓: these rows are recorded on Odoo — they now wait for the
- *  planner's Done. Each row needs its MO and its line's Odoo permission; a
- *  row already ticked or closed is left as it is. `undo` takes the ✓ back. */
-export async function checkOdooRows(formData: FormData): Promise<{ ok: boolean; checked?: number; error?: string }> {
-  const me = await getCurrentUser();
-  if (!me) return { ok: false, error: "Sign in again." };
-  const ids = formData.getAll("id").map(Number).filter(Number.isInteger);
-  const undo = formData.get("undo") === "true";
-  if (ids.length === 0) return { ok: false, error: "Nothing to tick." };
-  const rows = await prisma.odooEntry.findMany({ where: { id: { in: ids } }, select: { id: true, line: true, status: true, odooMo: true, checkedAt: true } });
-  const allowed = rows.filter((r) => hasPerm(me, linePermKey(r.line, "odoo")) && !isDoneStatus(r.status)
-    && (undo ? r.checkedAt !== null : r.checkedAt === null && r.odooMo.trim() !== ""));
-  if (allowed.length === 0) {
-    const noMo = rows.some((r) => r.odooMo.trim() === "");
-    return { ok: false, error: noMo && !undo ? "Type the MO first." : rows.length ? "Nothing to change on these rows." : "Those rows no longer exist." };
-  }
-  await prisma.odooEntry.updateMany({
-    where: { id: { in: allowed.map((r) => r.id) } },
-    data: undo ? { checkedAt: null, checkedBy: null } : { checkedAt: new Date(), checkedBy: me.name },
-  });
-  revalidatePath("/odoo");
-  return { ok: true, checked: allowed.length };
-}
-
 /** Type Odoo's MO on a row that has none, from the popup. Needs the row's own
  *  line's Odoo permission; a row someone filled meanwhile is left alone. */
 export async function fillOdooMo(formData: FormData): Promise<{ ok: boolean; error?: string }> {
@@ -91,7 +67,7 @@ export async function fillOdooMo(formData: FormData): Promise<{ ok: boolean; err
   if (!row) return { ok: false, error: "That row no longer exists." };
   if (!hasPerm(me, linePermKey(row.line, "odoo"))) return { ok: false, error: "You cannot record on this line's ODOO tab." };
   if (row.odooMo.trim() !== "") return { ok: false, error: `Already has ${row.odooMo}.` };
-  await prisma.odooEntry.update({ where: { id }, data: { odooMo, autoMo: false, recordedBy: me.name } });
+  await prisma.odooEntry.update({ where: { id }, data: { odooMo, recordedBy: me.name } });
   revalidatePath("/odoo");
   return { ok: true };
 }
