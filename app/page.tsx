@@ -3,6 +3,7 @@ import { getControlDashboard } from "@/lib/server/controlDashboard";
 import { getSmartInsights } from "@/lib/server/insights";
 import { getActiveLine } from "@/lib/server/line";
 import { getLvDashboard } from "@/lib/server/lvDashboard";
+import { isMachinePlanningOn } from "@/lib/server/data";
 import { LvDashboard } from "@/components/LvDashboard";
 import { ControlDashboard } from "@/components/ControlDashboard";
 import { SmartInsights } from "@/components/SmartInsights";
@@ -33,10 +34,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
     );
   }
 
-  const [c, d, ai] = await Promise.all([
+  const [c, d, ai, worklists] = await Promise.all([
     getControlDashboard({ planMonth: sp.plan ?? null }),
     getTargetDashboard({ weekOf: sp.w ? parseISODate(sp.w) : null, from: sp.from ? parseISODate(sp.from) : null, to: sp.to ? parseISODate(sp.to) : null }),
     getSmartInsights(),
+    isMachinePlanningOn(),
   ]);
   // the week the dashboard opens on: Saturday to Thursday, the current one
   const today = factoryDayISO(new Date());
@@ -64,7 +66,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
     <>
       {/* the period and the plan stay as they were left, across pages and visits */}
       <RememberLastVisit storageKey="dashboard:last" />
-      <ControlDashboard c={c} d={d} controls={controls} />
+      <ControlDashboard c={c} d={d} controls={controls} worklists={worklists} />
     </>
   );
 }

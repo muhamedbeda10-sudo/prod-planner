@@ -141,7 +141,9 @@ export async function getSmartInsights(): Promise<SmartInsightsData> {
 
   return {
     todayISO,
-    insights: sortInsights(insights),
+    // with the worklists switched off (machine planning), an insight keeps
+    // its text but loses the link to a page that is not there
+    insights: sortInsights(settings.machinePlanning ? insights : insights.map((i) => (i.href?.startsWith("/worklist") ? { ...i, href: undefined } : i))),
     analyzedEntries: entries.length,
     analyzedLines: weldQueue.length + paintQueue.length + cutSheet.overdue.length + cutSheet.remarked.length + cutSheet.unscheduled.length,
   };
