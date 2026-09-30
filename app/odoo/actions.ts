@@ -103,7 +103,7 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
   const f = read(formData);
 
-  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { status: true, doneAt: true, ledgerId: true, fgCode: true, fgGuessed: true } });
+  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { status: true, doneAt: true, ledgerId: true, fgCode: true, fgGuessed: true, odooMo: true, autoMo: true } });
   if (!prev) return { ok: false, error: "That row no longer exists." };
   const bad = validate(f, prev.ledgerId !== null);
   if (bad) return { ok: false, error: bad };
@@ -115,6 +115,8 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
       // a corrected FG-CODE is a guess no more; an untouched one stays flagged
       // (this edit may have been about the qty)
       fgGuessed: prev.fgGuessed && f.fgCode === prev.fgCode,
+      // a changed MO is the editor's, no longer the plan's child MO
+      autoMo: prev.autoMo && f.odooMo === prev.odooMo,
     },
   });
   revalidateOdoo();
@@ -143,7 +145,8 @@ export async function setOdooMo(formData: FormData): Promise<OdooActionResult> {
   if (prev.length === 0) return { ok: false, error: "That row no longer exists." };
   // a typed row must keep an MO; a born one may be emptied back to "no MO yet"
   if (!odooMo && prev.some((p) => p.ledgerId === null)) return { ok: false, error: "Enter the Odoo MO number." };
-  await prisma.odooEntry.updateMany({ where: { id: { in: ids } }, data: { odooMo, recordedBy: guard.user?.name ?? null } });
+  // typed by a person: the MO is theirs now, no longer the plan's child MO
+  await prisma.odooEntry.updateMany({ where: { id: { in: ids } }, data: { odooMo, autoMo: false, recordedBy: guard.user?.name ?? null } });
   revalidateOdoo();
   return { ok: true };
 }

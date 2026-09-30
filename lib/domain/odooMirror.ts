@@ -51,11 +51,12 @@ export function sameProduct(a: string, b: string): boolean {
   return productSeries(a) === productSeries(b);
 }
 
-/** Nobody has worked a born row yet: no MO typed, status untouched, no notes.
- *  Such a row still belongs to its ledger entry and follows it. */
-export function isUntouched(e: { odooMo: string; status: string; notes?: { length: number } | number }): boolean {
+/** Nobody has worked a born row yet: no MO typed (an MO filled from the
+ *  plan's child MOs is not typed), status untouched, no notes. Such a row
+ *  still belongs to its ledger entry and follows it. */
+export function isUntouched(e: { odooMo: string; status: string; notes?: { length: number } | number; autoMo?: boolean }): boolean {
   const notes = typeof e.notes === "number" ? e.notes : (e.notes?.length ?? 0);
-  return e.odooMo.trim() === "" && e.status.trim() === MIRROR_STATUS && notes === 0;
+  return (e.odooMo.trim() === "" || e.autoMo === true) && e.status.trim() === MIRROR_STATUS && notes === 0;
 }
 
 /** How the source reads on the row. */
