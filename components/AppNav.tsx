@@ -136,7 +136,8 @@ export function AppNav({
   unreadChat?: number;
   /** With tracking off, the Leak Test and Barcode tabs are not part of the app. */
   tankTracking?: boolean;
-  /** With machine planning off, the Floor tab is the what-if simulator alone — it is named so. */
+  /** One switch for the worklists and machine planning: off, the Worklist tab is gone and the
+   *  Floor tab is the what-if simulator alone — it is named so. */
   machinePlanning?: boolean;
   /** The subscribed person's "ready to close in Odoo" alert: its count on the ODOO tab, and the popup. */
   odooAlerts?: { enabled: boolean; count: number };
@@ -167,7 +168,9 @@ export function AppNav({
   const named = (l: Item): Item => (l.href === "/simulate" && !machinePlanning ? { ...l, label: "Simulator" } : l);
   const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => tankTabs || !TANK_ONLY.has(d.href));
   const restTabs = REST.filter((l) => tankTabs || !TANK_ONLY.has(l.href)).map(named);
-  const drawerTabs = (line === "LV"
+  const drawerTabs = (!machinePlanning
+    ? DRAWER.filter((l) => !l.href.startsWith("/worklist/"))
+    : line === "LV"
     ? [...LV_WORKLIST_DEPTS.map((d): Item => ({ href: d.href, label: `${d.label} Worklist`, icon: d.icon })), ...DRAWER.filter((l) => !l.href.startsWith("/worklist/"))]
     : DRAWER
   ).filter((l) => tankTabs || !TANK_ONLY.has(l.href)).map(named);
@@ -280,6 +283,7 @@ export function AppNav({
                   They used to unroll sideways inside the bar, which shoved every
                   tab to its right along and left the bar a different width open
                   than closed. */}
+              {machinePlanning && (
               <li ref={wlRef} className="relative flex items-center">
                 {singleDeptHref ? (
                   <Link href={singleDeptHref} className={`nav-tab ${isActive("/worklist") ? "nav-tab-active" : ""}`}>
@@ -330,6 +334,7 @@ export function AppNav({
                   </>
                 )}
               </li>
+              )}
               {restTabs.map((l) => (
                 <li key={l.href}>
                   <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match, l.also) ? "nav-tab-active" : ""} ${l.href === "/odoo" && alerts.count > 0 ? "ring-2 ring-[#F2C94C]/70" : ""}`}>

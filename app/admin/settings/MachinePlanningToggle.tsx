@@ -4,8 +4,9 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setMachinePlanning } from "./actions";
 
-// The switch for planning work onto machines. Off, the worklists are plain
-// queues and the Floor tab opens the what-if simulator; nothing is deleted.
+// One switch for the worklists and planning work onto machines — they are
+// turned on together and off together. Off, the Worklist tab is gone and the
+// Floor tab opens the what-if simulator; nothing is deleted.
 
 export function MachinePlanningToggle({ initialOn }: { initialOn: boolean }) {
   const router = useRouter();
@@ -21,7 +22,7 @@ export function MachinePlanningToggle({ initialOn }: { initialOn: boolean }) {
       const res = await setMachinePlanning(fd);
       if (res.ok) {
         setOn(next);
-        setMsg({ ok: true, text: next ? "Machine planning is on." : "Machine planning is off." });
+        setMsg({ ok: true, text: next ? "Worklists and machine planning are on." : "Worklists and machine planning are off." });
         router.refresh();
       } else {
         setMsg({ ok: false, text: res.error ?? "Failed to save." });
@@ -34,12 +35,12 @@ export function MachinePlanningToggle({ initialOn }: { initialOn: boolean }) {
       <div className="flex flex-wrap items-start gap-4">
         <div className="flex-1 min-w-[260px]">
           <h2 className="text-sm font-extrabold flex items-center gap-2">
-            🏭 Machine planning
+            🏭 Worklists & machine planning
             <span className={`pill ${on ? "pill-ok" : "pill-muted"}`}>{on ? "ON" : "OFF"}</span>
           </h2>
           <p className="text-sm text-muted mt-1">
-            Spreads the worklists over the machines: which machine each line is on, its place in that machine&apos;s queue, and the
-            Floor view of every bay.
+            The department worklists and their spread over the machines: which machine each line is on, its place in that
+            machine&apos;s queue, and the Floor view of every bay. One switch turns them all on or off.
           </p>
         </div>
         <button
@@ -58,6 +59,7 @@ export function MachinePlanningToggle({ initialOn }: { initialOn: boolean }) {
         <div>
           <div className="font-bold mb-1">While it is ON</div>
           <ul className="text-muted space-y-0.5 list-disc pl-4">
+            <li>The Worklist tab is in the bar, with every department&apos;s worklist</li>
             <li>The Fabrication, Welding and Painting worklists show the machine board</li>
             <li>Every line carries a Machine picker and the on-machine / to-place filter</li>
             <li>The Floor tab opens the bay drawings with what each machine is on</li>
@@ -67,7 +69,7 @@ export function MachinePlanningToggle({ initialOn }: { initialOn: boolean }) {
         <div>
           <div className="font-bold mb-1">While it is OFF</div>
           <ul className="text-muted space-y-0.5 list-disc pl-4">
-            <li>The worklists are plain queues, with no machine board or Machine column</li>
+            <li>The Worklist tab is gone, and its pages open the plan tracker instead</li>
             <li>The Floor tab opens the what-if simulator</li>
             <li>The machine list and the shift log are not affected</li>
             <li>Assignments already made stay saved and come back when you turn it on</li>

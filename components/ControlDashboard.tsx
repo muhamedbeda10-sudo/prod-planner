@@ -104,7 +104,7 @@ function MeterCell({ value, max, color, label }: { value: number; max: number; c
   );
 }
 
-export function ControlDashboard({ c, d, controls }: { c: ControlDashboardData; d: TargetDashboard; controls?: React.ReactNode }) {
+export function ControlDashboard({ c, d, controls, worklists = true }: { c: ControlDashboardData; d: TargetDashboard; controls?: React.ReactNode; /** Off with machine planning — the links into the worklists go with them. */ worklists?: boolean }) {
   const p = c.plan;
   const pace = c.pace;
   const paceTone: Tone = pace.ratio === null ? "muted" : pace.ratio >= 1 ? "ok" : pace.ratio >= 0.8 ? "warn" : "bad";
@@ -394,13 +394,13 @@ export function ControlDashboard({ c, d, controls }: { c: ControlDashboardData; 
                 <div className="text-[11px] font-bold text-muted uppercase tracking-wide mb-1">Downtime · this week</div>
                 <div className={`text-[2rem] font-extrabold leading-none ${c.floor.downtime.hours > 0 ? "text-warn-fg" : "text-ok-fg"}`}>{one(c.floor.downtime.hours)} h</div>
                 <div className="text-[11px] text-muted mt-1">{c.floor.downtime.machines === 0 ? "no machine stood still" : `across ${fmt(c.floor.downtime.machines)} machine${c.floor.downtime.machines === 1 ? "" : "s"}`}</div>
-                <Link href="/worklist/machines" className="text-xs text-accent font-semibold hover:underline">machines →</Link>
+                {worklists && <Link href="/worklist/machines" className="text-xs text-accent font-semibold hover:underline">machines →</Link>}
               </div>
               <div>
                 <div className="text-[11px] font-bold text-muted uppercase tracking-wide mb-1">Returns open</div>
                 <div className={`text-[2rem] font-extrabold leading-none ${c.floor.openReturns.pieces > 0 ? "text-bad-fg" : "text-ok-fg"}`}>{fmt(c.floor.openReturns.pieces)}</div>
                 <div className="text-[11px] text-muted mt-1">{c.floor.openReturns.lines === 0 ? "nothing sent back" : `pieces on ${fmt(c.floor.openReturns.lines)} return${c.floor.openReturns.lines === 1 ? "" : "s"} — fix first, they re-enter the flow`}</div>
-                <Link href="/worklist/cut" className="text-xs text-accent font-semibold hover:underline">worklist →</Link>
+                {worklists && <Link href="/worklist/cut" className="text-xs text-accent font-semibold hover:underline">worklist →</Link>}
               </div>
             </div>
           </Card>
