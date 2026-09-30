@@ -46,7 +46,6 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
             name="month"
             type="month"
             required
-            defaultValue={new Date().toISOString().slice(0, 7)}
             className="border rounded-md px-2 py-1.5 bg-surface text-sm"
           />
         </label>
