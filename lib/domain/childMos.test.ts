@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChildMos, pickChildMo } from "./childMos";
+import { parseChildMos, pickChildMo, sheetPlanMonth } from "./childMos";
 
 const head = ["SN", "SOI", "MO", "BoM Ref.", "QTY", "Plan_Month", "Component_Type", "Child_MO", "Parent_MO", "Product_Code", "Child_Qty", "UoM", "State", "Link_Method", "Flag", "Child_Remarks"];
 const row = (mo: string, comp: string, child: string | null, qty: number | null, state: string | null, flag: string | null = null, remarks: string | null = null) =>
@@ -26,6 +26,15 @@ describe("parseChildMos", () => {
 
   it("is absent on a plain plan", () => {
     expect(parseChildMos([["MO", "BoM Ref.", "QTY"], ["PF01/MO/1", "B1", 3]]).present).toBe(false);
+  });
+});
+
+describe("sheetPlanMonth", () => {
+  it("reads the sheet's Plan_Month as the app's label", () => {
+    expect(sheetPlanMonth([head, row("PF01/MO/1", "TANK", "SF01/MO/1", 1, "confirmed")])).toBe("October 2026");
+    expect(sheetPlanMonth([["MO", "Plan_Month"], ["X", "2026-11"]])).toBe("November 2026");
+    expect(sheetPlanMonth([["MO", "Plan_Month"], ["X", "Dec 2026"]])).toBe("December 2026");
+    expect(sheetPlanMonth([["MO", "BoM Ref."], ["X", "B"]])).toBeNull();
   });
 });
 

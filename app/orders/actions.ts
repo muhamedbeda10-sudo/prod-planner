@@ -358,8 +358,8 @@ export async function importMonthlyAction(formData: FormData): Promise<MonthlyIm
   if (guard.error) return { ok: false, error: guard.error };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose an Excel file." };
+  // optional: a sheet with a Plan_Month column names its own month
   const label = monthLabel(String(formData.get("month") ?? ""));
-  if (!label) return { ok: false, error: "Pick the plan month." };
   try {
     const buffer = await file.arrayBuffer();
     const preview = formData.get("preview") === "on"; // dry-run: report only, write nothing

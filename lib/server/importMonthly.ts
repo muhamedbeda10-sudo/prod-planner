@@ -2,7 +2,7 @@ import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { parseMonthlyPlan, diffRevisionRow, type RevisionChange } from "@/lib/domain/importMonthly";
-import { parseChildMos } from "@/lib/domain/childMos";
+import { parseChildMos, sheetPlanMonth } from "@/lib/domain/childMos";
 import { fillBornRowsFromChildMos } from "@/lib/server/odooMirror";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
@@ -45,12 +45,14 @@ export interface MonthlyImportResult {
    *  rows the sheet flags with none (NOT_IN_BOM, UNRESOLVED …), and ODOO rows
    *  waiting for an MO that took one. */
   childMos?: { stored: number; added: number; flagged: Record<string, number>; filled: number };
+  /** The plan month the sheet was filed under — its own Plan_Month, else the one picked. */
+  month?: string;
 }
 
 /** Import one month's plan for ONE product line. Every order it adds is
  *  stamped with the line; an MO already filed under the OTHER line is a
  *  mistake in the sheet, not a revision, and is refused with its row. */
-export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string, preview = false, line: ProductLine = "TR"): Promise<MonthlyImportResult> {
+export async function importMonthlyPlan(buffer: ArrayBuffer, pickedLabel: string | null, preview = false, line: ProductLine = "TR"): Promise<MonthlyImportResult> {
   let wb: XLSX.WorkBook;
   try {
     wb = XLSX.read(new Uint8Array(buffer), { cellDates: false });
@@ -68,6 +70,10 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
   }
   const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, opts);
 
+  // the sheet names its own month (Plan_Month) — that wins; the picked month
+  // is for a sheet without the column
+  const sourceLabel = sheetPlanMonth(grid) ?? pickedLabel;
+  if (!sourceLabel) return { ok: false, error: "This sheet has no Plan_Month column — pick the plan month." };
   const parsed = parseMonthlyPlan(grid, line);
   const children = parseChildMos(grid);
   const issues = [...parsed.issues];
@@ -300,6 +306,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
 
   return {
     ok: true,
+    month: sourceLabel,
     childMos,
     added: toAdd.length,
     existing: rows.length - toAdd.length,
