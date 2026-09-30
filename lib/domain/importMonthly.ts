@@ -177,14 +177,9 @@ const HEADERS: Record<string, string> = {
   PRODUCT: "product",
   OSPENCLOSER: "ospEncloser",
   MATERIALSREMARKS: "materialsRemarks",
-  MATERIALREMARKS: "materialsRemarks", // the child-MO sheet's "Material Remarks"
   KV: "rating", // and label the rating column just "KV"
   REVREMARKS: "remarks",
   REMARKS: "remarks",
-  // the child-MO sheet splits the merged OSP group into one column each
-  OSPFINS: "ospFins",
-  OSPTANK: "ospTank",
-  OSPCORE: "ospCore",
 };
 
 /** Find the header row: the one that contains both an MO and a BOM header. */
@@ -260,9 +255,6 @@ export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): P
 
   const rows: MonthlyOrderRow[] = [];
   const seen = new Set<string>();
-  // the child-MO sheet repeats every plan row once per component — the
-  // repeats are the same order, not duplicates worth a note
-  const perComponent = header.some((h) => norm(S(h)) === "COMPONENTTYPE");
   // data starts after the header row; skip the sub-header row (component names,
   // no MO) and any banner rows — anything without an MO cell is not a data row.
   for (let r = hr + 1; r < grid.length; r++) {
@@ -275,7 +267,7 @@ export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): P
       continue;
     }
     if (seen.has(mo)) {
-      if (!perComponent) issues.push(`Row ${r + 1}: duplicate MO "${mo}" inside the file — first occurrence kept.`);
+      issues.push(`Row ${r + 1}: duplicate MO "${mo}" inside the file — first occurrence kept.`);
       continue;
     }
     seen.add(mo);
@@ -293,9 +285,6 @@ export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): P
       const c = sectionCols.osp[it];
       if (c !== undefined) osp[it] = N(row[c]);
     }
-    // the split OSP columns (OSP_Tank / OSP_Core) when there is no merged group
-    if (cols.ospTank !== undefined) osp.TN = Math.max(osp.TN, N(row[cols.ospTank]));
-    if (cols.ospCore !== undefined) osp.CF = Math.max(osp.CF, N(row[cols.ospCore]));
     // an outsourced tank comes WITH its top cover — the sheet only has a Tank
     // column, so TN's OSP share implies the same TC share
     osp.TC = Math.max(osp.TC, osp.TN);
@@ -320,28 +309,4 @@ export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): P
     });
   }
   return { rows, issues, headerRow: hr + 1 };
-}
-
-/** The plan month a sheet names in its Plan_Month column ("10-2026",
- *  "2026-10", "October 2026") as the app's label ("October 2026"); null when
- *  the sheet has no such column or it is empty or unreadable. */
-export function sheetPlanMonth(grid: unknown[][]): string | null {
-  const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  for (let r = 0; r < Math.min(10, grid.length); r++) {
-    const i = (grid[r] ?? []).findIndex((c) => norm(S(c)) === "PLANMONTH");
-    if (i < 0) continue;
-    for (let rr = r + 1; rr < grid.length; rr++) {
-      const v = S((grid[rr] ?? [])[i]);
-      if (!v) continue;
-      let m = /^(\d{1,2})[-/.](\d{4})$/.exec(v);
-      if (m) return Number(m[1]) >= 1 && Number(m[1]) <= 12 ? `${MONTHS[Number(m[1]) - 1]} ${m[2]}` : null;
-      m = /^(\d{4})[-/.](\d{1,2})$/.exec(v);
-      if (m) return Number(m[2]) >= 1 && Number(m[2]) <= 12 ? `${MONTHS[Number(m[2]) - 1]} ${m[1]}` : null;
-      const named = MONTHS.findIndex((mn) => v.toLowerCase().startsWith(mn.toLowerCase().slice(0, 3)));
-      const y = /(\d{4})/.exec(v)?.[1];
-      return named >= 0 && y ? `${MONTHS[named]} ${y}` : null;
-    }
-    return null;
-  }
-  return null;
 }

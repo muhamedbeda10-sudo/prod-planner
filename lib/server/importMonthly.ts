@@ -2,7 +2,6 @@ import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { parseMonthlyPlan, diffRevisionRow, type RevisionChange } from "@/lib/domain/importMonthly";
-import { sheetPlanMonth } from "@/lib/domain/importMonthly";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
 export type { RevisionChange };
@@ -40,14 +39,12 @@ export interface MonthlyImportResult {
    *  sheet — taken out (unless preview): deleted when nothing was ever
    *  recorded on them, closed when the daily log or a tank names them. */
   removed?: { mo: string; action: "deleted" | "closed" }[];
-  /** The plan month the sheet was filed under — its own Plan_Month, else the one picked. */
-  month?: string;
 }
 
 /** Import one month's plan for ONE product line. Every order it adds is
  *  stamped with the line; an MO already filed under the OTHER line is a
  *  mistake in the sheet, not a revision, and is refused with its row. */
-export async function importMonthlyPlan(buffer: ArrayBuffer, pickedLabel: string | null, preview = false, line: ProductLine = "TR"): Promise<MonthlyImportResult> {
+export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string, preview = false, line: ProductLine = "TR"): Promise<MonthlyImportResult> {
   let wb: XLSX.WorkBook;
   try {
     wb = XLSX.read(new Uint8Array(buffer), { cellDates: false });
@@ -65,10 +62,6 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, pickedLabel: string
   }
   const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, opts);
 
-  // the sheet names its own month (Plan_Month) — that wins; the picked month
-  // is for a sheet without the column
-  const sourceLabel = sheetPlanMonth(grid) ?? pickedLabel;
-  if (!sourceLabel) return { ok: false, error: "This sheet has no Plan_Month column — pick the plan month." };
   const parsed = parseMonthlyPlan(grid, line);
   const issues = [...parsed.issues];
   if (parsed.rows.length === 0) {
@@ -259,7 +252,6 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, pickedLabel: string
 
   return {
     ok: true,
-    month: sourceLabel,
     added: toAdd.length,
     existing: rows.length - toAdd.length,
     updatedMos: changedRows.length,

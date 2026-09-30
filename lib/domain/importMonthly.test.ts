@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseMonthlyPlan, sheetPlanMonth, applyCascade, diffRevisionRow, type DoneMatrix, type MonthlyOrderRow } from "./importMonthly";
+import { parseMonthlyPlan, applyCascade, diffRevisionRow, type DoneMatrix, type MonthlyOrderRow } from "./importMonthly";
 
 // Mirrors the real "Monthly plan.xlsx": title row, header row 2, sub-header row 3
 // (component names, no MO), data from row 4, "Total" footer.
@@ -251,14 +251,5 @@ describe("parseMonthlyPlan — the LV panels' sheet", () => {
     const [, uss] = parseMonthlyPlan(grid, "LV").rows; // the USS row: 8 panels, 7 enclosures outside
     const d = diffRevisionRow(uss, { ...uss, ospCF: 0, ospTC: 0, ospTN: 0, ospCB: 0, product: "LSS", ospEncloser: 0, materialsRemarks: null });
     expect(d.changes.map((c) => c.field)).toEqual(["Product", "OSP Encloser", "Materials Remarks"]);
-  });
-});
-
-describe("sheetPlanMonth", () => {
-  it("reads the sheet's Plan_Month as the app's label", () => {
-    expect(sheetPlanMonth([["MO", "Plan_Month"], ["X", "10-2026"]])).toBe("October 2026");
-    expect(sheetPlanMonth([["MO", "Plan_Month"], ["X", "2026-11"]])).toBe("November 2026");
-    expect(sheetPlanMonth([["MO", "Plan_Month"], ["X", "Dec 2026"]])).toBe("December 2026");
-    expect(sheetPlanMonth([["MO", "BoM Ref."], ["X", "B"]])).toBeNull();
   });
 });
