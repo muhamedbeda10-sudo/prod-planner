@@ -130,10 +130,10 @@ export async function syncMirroredOdoo(
 ): Promise<void> {
   const row = await tx.odooEntry.findUnique({
     where: { ledgerId },
-    select: { id: true, odooMo: true, autoMo: true, status: true, _count: { select: { notes: true } } },
+    select: { id: true, odooMo: true, autoMo: true, checkedAt: true, status: true, _count: { select: { notes: true } } },
   });
   if (!row) return;
-  const untouched = isUntouched({ odooMo: row.odooMo, autoMo: row.autoMo, status: row.status, notes: row._count.notes });
+  const untouched = isUntouched({ odooMo: row.odooMo, autoMo: row.autoMo, checkedAt: row.checkedAt, status: row.status, notes: row._count.notes });
   if (change === "delete") {
     if (untouched) await cancelMirror(tx, row.id, "The daily-log record this row was born from was deleted.");
     else await tx.odooEntry.update({ where: { id: row.id }, data: { ledgerId: null } });

@@ -916,6 +916,10 @@ model OdooEntry {
   // The MO was filled from the plan's child MOs when the row was born, not
   // typed — the row still follows its ledger entry until someone works it.
   autoMo     Boolean  @default(false)
+  // The clerk recorded it on Odoo (✓) — only then does it wait for the
+  // planner's Done. Rows typed or imported on the tab are not born waiting.
+  checkedAt  DateTime?
+  checkedBy  String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
