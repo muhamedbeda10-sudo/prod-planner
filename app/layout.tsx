@@ -49,7 +49,7 @@ export default async function RootLayout({
         <LineProvider line={line}>
         {user && (
           <AppNav
-            user={{ id: user.id, name: user.name, isAdmin: user.isAdmin, perms: [...userPerms(user)] }}
+            user={{ id: user.id, name: user.name, isAdmin: user.isAdmin, isOwner: user.isOwner, perms: [...userPerms(user)] }}
             unreadChat={unreadChat}
             tankTracking={!!settings?.tankTracking}
             machinePlanning={!!settings?.machinePlanning}

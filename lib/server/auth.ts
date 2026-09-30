@@ -3,7 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { parsePerms, deptPermKey, PERM_KEYS } from "@/lib/domain/permissions";
+import { parsePerms, deptPermKey, PERM_KEYS, ACCESS_PERM_KEYS } from "@/lib/domain/permissions";
 import type { User } from "@prisma/client";
 
 const SESSION_COOKIE = "atc_session";
@@ -62,8 +62,16 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
     include: { user: true },
   });
   if (!session || session.expiresAt < new Date() || !session.user.active) return null;
-  return session.user;
+  return asOwner(session.user);
 });
+
+/** The owner holds every right: every admin gate and every access tick pass.
+ *  The notification subscriptions stay theirs to tick. */
+function asOwner(user: User): User {
+  if (!user.isOwner) return user;
+  const notify = [...parsePerms(user.perms)].filter((k) => !ACCESS_PERM_KEYS.includes(k));
+  return { ...user, isAdmin: true, perms: [...ACCESS_PERM_KEYS, ...notify].join(",") };
+}
 
 export function userPerms(user: User): Set<string> {
   return parsePerms(user.perms);
@@ -96,6 +104,14 @@ export async function requirePerm(perm: string): Promise<{ user?: User; error?: 
 
 export async function requireDeptEdit(dept: string): Promise<{ user?: User; error?: string }> {
   return requirePerm(deptPermKey(dept));
+}
+
+/** Users & Permissions are the owner's alone — admins included out. */
+export async function requireOwner(): Promise<{ user?: User; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: NOT_LOGGED_IN };
+  if (!user.isOwner) return { error: "Only the owner manages users and permissions." };
+  return { user };
 }
 
 export async function requireAdmin(): Promise<{ user?: User; error?: string }> {
