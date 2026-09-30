@@ -40,14 +40,15 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
       <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-3">
         <input ref={inputRef} name="file" type="file" accept=".xlsx,.xlsm,.xls" required
           className="border rounded-md px-2 py-2 bg-surface text-sm w-full max-w-full sm:w-auto" />
-        <label className="inline-flex items-center gap-1.5 text-sm" title="A sheet with a Plan_Month column is filed under its own month — this is only for a sheet without one">
+        <label className="inline-flex items-center gap-1.5 text-sm">
           <span className="text-muted text-xs font-semibold">Plan month</span>
           <input
             name="month"
             type="month"
+            required
+            defaultValue={new Date().toISOString().slice(0, 7)}
             className="border rounded-md px-2 py-1.5 bg-surface text-sm"
           />
-          <span className="text-[11px] text-muted">only if the sheet has no Plan_Month</span>
         </label>
         {/* SAFE BY DEFAULT: preview is pre-ticked — nothing is ever written
             until the user unticks it and imports again */}
@@ -76,7 +77,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
             </div>
           )}
           <div className="bg-ok-bg text-ok-fg rounded-md px-3 py-2 text-sm font-semibold">
-            {res.month && <>Plan month: <b>{res.month}</b> · </>}New orders {res.preview ? "to add" : "added"}: <b>{res.added}</b> · revised MOs {res.preview ? "to update" : "updated"}: <b>{res.updatedMos ?? 0}</b> · unchanged: <b>{(res.existing ?? 0) - (res.updatedMos ?? 0)}</b> · registry total: <b>{res.totalOrders}</b>
+            New orders {res.preview ? "to add" : "added"}: <b>{res.added}</b> · revised MOs {res.preview ? "to update" : "updated"}: <b>{res.updatedMos ?? 0}</b> · unchanged: <b>{(res.existing ?? 0) - (res.updatedMos ?? 0)}</b> · registry total: <b>{res.totalOrders}</b>
           </div>
 
           {/* the revision diff — every field that changed, old → new */}
@@ -108,18 +109,6 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
-
-          {/* the sheet's child MOs — kept for the ODOO tab, never on the tracker */}
-          {res.childMos && (
-            <div className="bg-surface-2 border rounded-md px-3 py-2 text-xs space-y-0.5">
-              <b>Child MOs: {res.childMos.stored} in the sheet — {res.childMos.added} new{res.preview ? " (will be added)" : ""}, the rest already known and kept up to date.</b>
-              {Object.keys(res.childMos.flagged).length > 0 && (
-                <div className="text-muted">No child MO: {Object.entries(res.childMos.flagged).map(([f, n]) => `${n} ${f}`).join(" · ")} — those rows take their MO by hand on the ODOO tab, as before.</div>
-              )}
-              {!res.preview && res.childMos.filled > 0 && <div className="text-ok-fg font-semibold">{res.childMos.filled} ODOO row(s) that were waiting for an MO took their child MO.</div>}
-              <div className="text-muted">A closing born on the ODOO tab now takes its component&apos;s child MO and lands ready to close. Nothing already recorded was changed.</div>
             </div>
           )}
 

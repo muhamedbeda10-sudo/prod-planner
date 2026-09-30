@@ -90,8 +90,6 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     recordedBy: r.recordedBy,
     source: r.source,
     fgGuessed: r.fgGuessed,
-    checkedBy: r.checkedAt ? r.checkedBy ?? "" : null,
-    checkedAtISO: r.checkedAt ? r.checkedAt.toISOString() : null,
     notes: r.notes.map((n) => ({ id: n.id, text: n.text, atISO: n.at.toISOString(), by: n.recordedBy, blockedItem: blockedItem(n.text) })),
   }));
 
@@ -154,8 +152,6 @@ export async function getOdooRowMaterial(id: number): Promise<{ entry: OdooEntry
     recordedBy: r.recordedBy,
     source: r.source,
     fgGuessed: r.fgGuessed,
-    checkedBy: r.checkedAt ? r.checkedBy ?? "" : null,
-    checkedAtISO: r.checkedAt ? r.checkedAt.toISOString() : null,
     notes: r.notes.map((n) => ({ id: n.id, text: n.text, atISO: n.at.toISOString(), by: n.recordedBy, blockedItem: blockedItem(n.text) })),
   };
   return { entry, nesting: await nestingOf([entry], r.line, soiBoms, soiMos), needCtx: { lv: r.line === "LV", soiBoms, soiMos } };

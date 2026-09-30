@@ -63,9 +63,6 @@ export interface OdooEntryView {
   /** The FG-CODE was composed (part code + BOM), not copied from an earlier
    *  row — check it before booking. */
   fgGuessed: boolean;
-  /** The clerk's ✓ "recorded on Odoo": who, and when. */
-  checkedBy: string | null;
-  checkedAtISO: string | null;
   /** The planner's MO of the closing the row was born from, when it still
    *  links to one — how a panel row finds its material. */
   mo: string | null;

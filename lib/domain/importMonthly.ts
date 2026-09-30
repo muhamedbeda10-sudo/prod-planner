@@ -177,14 +177,9 @@ const HEADERS: Record<string, string> = {
   PRODUCT: "product",
   OSPENCLOSER: "ospEncloser",
   MATERIALSREMARKS: "materialsRemarks",
-  MATERIALREMARKS: "materialsRemarks", // the child-MO sheet's "Material Remarks"
   KV: "rating", // and label the rating column just "KV"
   REVREMARKS: "remarks",
   REMARKS: "remarks",
-  // the child-MO sheet splits the merged OSP group into one column each
-  OSPFINS: "ospFins",
-  OSPTANK: "ospTank",
-  OSPCORE: "ospCore",
 };
 
 /** Find the header row: the one that contains both an MO and a BOM header. */
@@ -260,9 +255,6 @@ export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): P
 
   const rows: MonthlyOrderRow[] = [];
   const seen = new Set<string>();
-  // the child-MO sheet repeats every plan row once per component — the
-  // repeats are the same order, not duplicates worth a note
-  const perComponent = header.some((h) => norm(S(h)) === "COMPONENTTYPE");
   // data starts after the header row; skip the sub-header row (component names,
   // no MO) and any banner rows — anything without an MO cell is not a data row.
   for (let r = hr + 1; r < grid.length; r++) {
@@ -275,7 +267,7 @@ export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): P
       continue;
     }
     if (seen.has(mo)) {
-      if (!perComponent) issues.push(`Row ${r + 1}: duplicate MO "${mo}" inside the file — first occurrence kept.`);
+      issues.push(`Row ${r + 1}: duplicate MO "${mo}" inside the file — first occurrence kept.`);
       continue;
     }
     seen.add(mo);
@@ -293,9 +285,6 @@ export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): P
       const c = sectionCols.osp[it];
       if (c !== undefined) osp[it] = N(row[c]);
     }
-    // the split OSP columns (OSP_Tank / OSP_Core) when there is no merged group
-    if (cols.ospTank !== undefined) osp.TN = Math.max(osp.TN, N(row[cols.ospTank]));
-    if (cols.ospCore !== undefined) osp.CF = Math.max(osp.CF, N(row[cols.ospCore]));
     // an outsourced tank comes WITH its top cover — the sheet only has a Tank
     // column, so TN's OSP share implies the same TC share
     osp.TC = Math.max(osp.TC, osp.TN);

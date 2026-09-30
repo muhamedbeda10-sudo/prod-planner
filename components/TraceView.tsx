@@ -8,7 +8,7 @@ import {
   ChevronRight, PanelRightClose, PanelRightOpen, LayoutGrid, Rows3,
   StickyNote, Undo2,
 } from "lucide-react";
-import type { TraceResult, TracePipelineRow, TraceChildMo } from "@/lib/server/trace";
+import type { TraceResult, TracePipelineRow } from "@/lib/server/trace";
 import { trackerHref, traceHref } from "@/lib/domain/links";
 import { deptLabel, FINISHING_LABEL } from "@/lib/domain/constants";
 import { TraceSearch } from "@/components/TraceSearch";
@@ -114,7 +114,6 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
         <div className="min-w-0 space-y-6">
           <StagePipeline stages={stages} totalReq={totalReq} pipeline={t.pipeline} />
           <ComponentProgress pipeline={t.pipeline} />
-          {t.childMos.length > 0 && <ChildMos rows={t.childMos} showPlanMo={t.scope === "bom"} />}
           <Records t={t} />
         </div>
 
@@ -539,71 +538,6 @@ function Card({ title, sub, actions, children }: { title: string; sub?: string; 
         {actions && <div className="ml-auto">{actions}</div>}
       </div>
       {children}
-    </section>
-  );
-}
-
-const COMPONENT_LABEL: Record<string, string> = {
-  TANK: "Tank", FINS: "Fins", TOP_COVER: "Top Cover", CORE_FRAME: "Core Frame", CABLE_BOX: "Cable Box", ARRESTER: "Arrester", MONOBLOC_BOX: "Monobloc Box",
-};
-
-function stateTone(state: string | null): "ok" | "warn" | "bad" | "muted" {
-  if (state === "done") return "ok";
-  if (state === "cancel" || state === "cancelled") return "bad";
-  if (state === "progress") return "warn";
-  return "muted";
-}
-
-/** The plan's child MOs — Odoo's MO per component — and what the ODOO tab
- *  booked and closed on each. A closing born on the ODOO tab takes one of
- *  these, so the office only closes it. */
-function ChildMos({ rows, showPlanMo }: { rows: TraceChildMo[]; showPlanMo: boolean }) {
-  const byComp = new Map<string, TraceChildMo[]>();
-  for (const r of rows) {
-    const k = showPlanMo ? `${r.planMo}|${r.component}` : r.component;
-    byComp.set(k, [...(byComp.get(k) ?? []), r]);
-  }
-  return (
-    <section className="rounded-2xl bg-surface border border-border/60 shadow-sm overflow-hidden">
-      <div className="px-5 py-3 border-b border-border/40">
-        <h2 className="text-sm font-extrabold uppercase tracking-wide">Child MOs</h2>
-        <p className="text-[11px] text-muted mt-0.5">Odoo&apos;s MO for each component, from the monthly plan — a closing on the ODOO tab takes its component&apos;s child MO.</p>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-muted border-b border-border/40">
-              {showPlanMo && <th className="px-4 py-2">Plan MO</th>}
-              <th className="px-4 py-2">Component</th>
-              <th className="px-4 py-2">Child MO</th>
-              <th className="px-4 py-2">Product code</th>
-              <th className="px-4 py-2 text-end">Qty</th>
-              <th className="px-4 py-2">Odoo state</th>
-              <th className="px-4 py-2 text-end" title="Units the ODOO tab booked on this child MO, and of those closed Done">On ODOO · closed</th>
-              <th className="px-4 py-2">Remarks</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...byComp.values()].map((list) => list.map((r, i) => (
-              <tr key={`${r.planMo}|${r.component}|${r.childMo}`} className={`${i === 0 ? "border-t border-border/40" : ""} hover:bg-brand-light/20`}>
-                {showPlanMo && <td className="px-4 py-2 ltr text-xs whitespace-nowrap text-muted">{i === 0 ? r.planMo : ""}</td>}
-                <td className="px-4 py-2 font-bold whitespace-nowrap">{i === 0 ? (COMPONENT_LABEL[r.component] ?? r.component) : ""}</td>
-                <td className="px-4 py-2 ltr font-bold whitespace-nowrap select-all">
-                  {r.childMo}
-                  {r.component === "FINS" && r.parentMo && <div className="text-[10px] text-muted font-normal">for tank {r.parentMo}</div>}
-                </td>
-                <td className="px-4 py-2 ltr text-xs text-muted whitespace-nowrap">{r.productCode ?? "—"}</td>
-                <td className="px-4 py-2 text-end tabnum">{r.qty ?? "—"}</td>
-                <td className="px-4 py-2">{r.state ? <Chip tone={stateTone(r.state)}>{r.state}</Chip> : <span className="text-muted">—</span>}</td>
-                <td className="px-4 py-2 text-end tabnum whitespace-nowrap">
-                  {r.booked > 0 ? <><b>{r.booked}</b><span className="text-muted"> · {r.closed}</span></> : <span className="text-muted">—</span>}
-                </td>
-                <td className="px-4 py-2 text-xs text-muted">{r.remarks ?? ""}</td>
-              </tr>
-            )))}
-          </tbody>
-        </table>
-      </div>
     </section>
   );
 }

@@ -108,8 +108,6 @@ beforeEach(() => {
         findMany: async () => [{ fgCode: "FB-022-12011E16M13", product: "Tank", fgGuessed: false }],
         create: async (a: { data: Record<string, unknown> }) => { writes.odoo.push(a.data); return { id: 1, ...a.data }; },
       },
-      // no child MOs from the plan for these orders
-      childMo: { findMany: async () => [] },
     })
   );
 });

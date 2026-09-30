@@ -7,17 +7,11 @@ describe("the ODOO alerts", () => {
     expect(isReadyToClose({ odooMo: "SF01/MO/06215", status: "Pending" })).toBe(true);
     expect(isReadyToClose({ odooMo: "  ", status: "MO to be close" })).toBe(false);
     expect(isReadyToClose({ odooMo: "SF01/MO/06215", status: "Done" })).toBe(false);
-    // a closing born on the log waits for the clerk's ✓ first
-    expect(isReadyToClose({ odooMo: "SF01/MO/06215", status: "MO to be close", source: "painting" })).toBe(false);
-    expect(isReadyToClose({ odooMo: "SF01/MO/06215", status: "MO to be close", source: "painting", checkedAt: new Date() })).toBe(true);
   });
   it("calls a row waiting for an MO while it has none and is still to be closed", () => {
     expect(needsMo({ odooMo: "", status: "MO to be close" })).toBe(true);
     expect(needsMo({ odooMo: " ", status: "Pending" })).toBe(true);
     expect(needsMo({ odooMo: "SF01/MO/1", status: "MO to be close" })).toBe(false);
-    // born with its child MO: still the clerk's, until ✓
-    expect(needsMo({ odooMo: "SF01/MO/1", status: "MO to be close", source: "shotblast" })).toBe(true);
-    expect(needsMo({ odooMo: "SF01/MO/1", status: "MO to be close", source: "shotblast", checkedAt: new Date() })).toBe(false);
     expect(needsMo({ odooMo: "", status: "Done" })).toBe(false);
     expect(needsMo({ odooMo: "", status: "Cancelled" })).toBe(false);
     expect(needsMo({ odooMo: "", status: "Blocked" })).toBe(false);

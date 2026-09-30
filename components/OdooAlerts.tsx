@@ -5,16 +5,15 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { armChime, playChime } from "@/lib/chime";
 import { appInBackground, onNotifyClick, systemNotify } from "@/lib/sysNotify";
-import { checkOdooRows, closeOdooReady, fillOdooMo, odooRowMaterial, pollOdooAlerts } from "@/app/odoo/alertActions";
+import { closeOdooReady, fillOdooMo, odooRowMaterial, pollOdooAlerts } from "@/app/odoo/alertActions";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { ODOO_CHANGED_EVENT, alertKey, pruneSeen, unseenKeys, type ReadyRow } from "@/lib/domain/odooAlerts";
 
 // 🔔 The ODOO alerts, for whoever is subscribed:
-// - "to record on Odoo" (odoo.needMo): every closing born on the log, with
-//   its child MO to copy (or a box to type one), and rows typed without an
-//   MO — the clerk ticks ✓ once it is recorded on Odoo;
-// - "ready to close" (odoo.alerts): a row has the MO, is still open and —
-//   born on the log — carries the clerk's ✓: the popup marks it Done.
+// - "needs an MO" (odoo.needMo): a row landed on the log without Odoo's MO —
+//   the popup has a box to type it in;
+// - "ready to close" (odoo.alerts): a row has the MO and is still open — the
+//   popup closes it.
 // The ODOO tab carries the count and the browser tab's title starts with it;
 // when a row not seen yet appears, the popup opens with both lists. "Later"
 // hides it until the next new row. Checked every minute, when the window
@@ -89,7 +88,7 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
     const newMo = m.filter((x) => newOnes.includes(alertKey("mo", x.id)));
     const newClose = c.filter((x) => newOnes.includes(alertKey("close", x.id)));
     const lead = newMo[0] ?? newClose[0];
-    const title = [m.length ? `${m.length} to close on Odoo` : "", c.length ? `${c.length} ready to close` : ""].filter(Boolean).join(" · ") + " — Odoo";
+    const title = [m.length ? `${m.length} need an MO` : "", c.length ? `${c.length} ready to close` : ""].filter(Boolean).join(" · ") + " — Odoo";
     void systemNotify({
       title,
       body: lead
@@ -165,19 +164,7 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
     start(async () => {
       const r = await fillOdooMo(fd);
       if (!r.ok) { setErr(r.error ?? "Could not save the MO."); return; }
-      // the row stays in the clerk's list, now with its MO and the ✓ button
-      setMo((cur) => cur.map((x) => (x.id === id ? { ...x, odooMo: value.toUpperCase() } : x)));
-      afterSave();
-    });
-  };
-  const checkRows = (ids: number[]) => {
-    const fd = new FormData();
-    for (const id of ids) fd.append("id", String(id));
-    setErr("");
-    start(async () => {
-      const r = await checkOdooRows(fd);
-      if (!r.ok) { setErr(r.error ?? "Could not tick them."); return; }
-      setMo((cur) => cur.filter((x) => !ids.includes(x.id)));
+      setMo((cur) => cur.filter((x) => x.id !== id));
       afterSave();
     });
   };
@@ -200,7 +187,7 @@ export function useOdooAlerts(enabled: boolean, initialCount: number, userId: nu
     <>
       <ReadyPopup
         close={close} mo={mo} fresh={fresh} canEdit={canEdit} pending={pending} err={err}
-        onClose={closeRows} onSaveMo={saveMo} onCheck={checkRows} onLater={later}
+        onClose={closeRows} onSaveMo={saveMo} onLater={later}
         onOpen={openMaterial} opening={opening} covered={material !== null}
       />
       {material && (
@@ -264,7 +251,6 @@ function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; 
       {r.soi && <span className="text-xs text-muted ltr">{r.soi}</span>}
       <span className="tabnum font-bold">× {r.qty}</span>
       {SOURCE_LABEL[r.source] && <span className="pill pill-muted text-[10px]">{SOURCE_LABEL[r.source]}</span>}
-      {r.checkedBy !== null && <span className="pill pill-ok text-[10px]" title={`Closed on the main Odoo${r.checkedBy ? ` — ${r.checkedBy}` : ""}`}>✓</span>}
       {isNew && <span className="pill pill-warn text-[10px]">new</span>}
       <button type="button" disabled={opening} onClick={(e) => { e.stopPropagation(); onOpen(r.id); }} className="text-xs text-accent font-semibold hover:underline">
         {opening ? "opening…" : "📦 material"}
@@ -292,9 +278,9 @@ function MoInput({ r, disabled, onSave }: { r: ReadyRow; disabled: boolean; onSa
   );
 }
 
-function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo, onCheck, onLater, onOpen, opening, covered }: {
+function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo, onLater, onOpen, opening, covered }: {
   close: ReadyRow[]; mo: ReadyRow[]; fresh: Set<string>; canEdit: { TR: boolean; LV: boolean }; pending: boolean; err: string;
-  onClose: (ids: number[]) => void; onSaveMo: (id: number, v: string) => void; onCheck: (ids: number[]) => void; onLater: () => void;
+  onClose: (ids: number[]) => void; onSaveMo: (id: number, v: string) => void; onLater: () => void;
   onOpen: (id: number) => void; opening: number | null;
   /** The material popup is open on top — Escape is its, not this one's. */
   covered: boolean;
@@ -307,8 +293,7 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
   }, [onLater, covered]);
   const can = (r: ReadyRow) => canEdit[r.line as "TR" | "LV"];
   const closable = close.filter(can);
-  const checkable = mo.filter((r) => can(r) && r.odooMo.trim() !== "");
-  const title = [mo.length ? `${mo.length} to close on Odoo` : "", close.length ? `${close.length} ready to close` : ""]
+  const title = [mo.length ? `${mo.length} need${mo.length === 1 ? "s" : ""} an MO` : "", close.length ? `${close.length} ready to close` : ""]
     .filter(Boolean).join(" · ");
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center p-3" role="dialog" aria-modal="true" aria-label="Odoo alerts">
@@ -319,7 +304,7 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
           <div className="min-w-0">
             <div className="font-extrabold text-lg">{title} — Odoo</div>
             <div className="text-xs text-muted mt-0.5">
-              {mo.length > 0 && "Close these on Odoo — copy the MO (or type it where there is none), then tick ✓ here. "}
+              {mo.length > 0 && "Type Odoo's MO number on what was recorded. "}
               {close.length > 0 && "Close the ready ones in Odoo, then here."}
             </div>
           </div>
@@ -328,23 +313,12 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
 
         {mo.length > 0 && (
           <section>
-            <h3 className="px-4 pt-3 pb-1 text-xs font-extrabold uppercase tracking-wide text-muted">To close on Odoo · {mo.length}</h3>
+            <h3 className="px-4 pt-3 pb-1 text-xs font-extrabold uppercase tracking-wide text-muted">Needs an MO · {mo.length}</h3>
             <ul className="divide-y">
               {mo.map((r) => (
                 <li key={`mo-${r.id}`} className={`flex flex-wrap items-center gap-3 px-5 py-3 text-base ${fresh.has(alertKey("mo", r.id)) ? "bg-warn-bg/40" : ""}`}>
                   <RowFacts r={r} isNew={fresh.has(alertKey("mo", r.id))} onOpen={onOpen} opening={opening === r.id} />
-                  {!can(r) ? (
-                    <span className="text-xs text-muted">No permission on this line</span>
-                  ) : r.odooMo.trim() === "" ? (
-                    <MoInput r={r} disabled={pending} onSave={onSaveMo} />
-                  ) : (
-                    <button
-                      type="button" className="shrink-0 btn btn-sm btn-secondary !text-lg !font-extrabold !px-3 text-ok-fg" disabled={pending} onClick={() => onCheck([r.id])} aria-label="Closed on Odoo"
-                      title="Closed on the main Odoo — it then waits for the planner's Done"
-                    >
-                      ✓
-                    </button>
-                  )}
+                  {can(r) ? <MoInput r={r} disabled={pending} onSave={onSaveMo} /> : <span className="text-xs text-muted">No permission on this line</span>}
                 </li>
               ))}
             </ul>
@@ -372,11 +346,6 @@ function ReadyPopup({ close, mo, fresh, canEdit, pending, err, onClose, onSaveMo
 
         {err && <p className="px-4 pt-2 text-sm font-semibold text-bad-fg">{err}</p>}
         <div className="flex flex-wrap items-center gap-2 p-4 border-t">
-          {checkable.length > 1 && (
-            <button type="button" className="btn btn-sm btn-secondary" disabled={pending} onClick={() => onCheck(checkable.map((r) => r.id))} title="All of them closed on the main Odoo">
-              ✓ ×{checkable.length}
-            </button>
-          )}
           {closable.length > 1 && (
             <button type="button" className="btn btn-sm btn-primary" disabled={pending} onClick={() => onClose(closable.map((r) => r.id))}>
               ✓ All {closable.length} done

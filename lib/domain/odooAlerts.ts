@@ -1,10 +1,9 @@
 // The ODOO alerts. Two people wait on the same log for different things:
-// - the clerk who records on Odoo (odoo.needMo) waits for every closing born
-//   on the log (painting / shot blast) — with its child MO to copy, or a box
-//   to type one — and for rows typed without an MO; they tick ✓ once it is
-//   recorded on Odoo;
-// - whoever closes the MOs (odoo.alerts) waits for rows that have the MO, are
-//   still open, and — when born on the log — carry the clerk's ✓.
+// - whoever types Odoo's MO number (odoo.needMo) waits for rows that landed
+//   on the log WITHOUT one — a painting / shot-blast closing, or a row typed
+//   in without it;
+// - whoever closes the MOs in Odoo (odoo.alerts) waits for rows that HAVE the
+//   MO and are still open.
 // Each is told the same way: a count on the ODOO tab and a popup when a row
 // they have not seen yet appears, workable from the popup. Pure, tested.
 
@@ -33,34 +32,18 @@ export interface ReadyRow {
   qty: number;
   status: string;
   source: string; // manual | import | painting | shotblast
-  /** Who ticked ✓ "recorded on Odoo", when they did. */
-  checkedBy: string | null;
 }
 
-interface AlertFacts {
-  odooMo: string;
-  status: string;
-  source?: string;
-  checkedAt?: Date | string | null;
+export function isReadyToClose(e: { odooMo: string; status: string }): boolean {
+  return e.odooMo.trim() !== "" && !isDoneStatus(e.status);
 }
 
-/** Born on the log from a closing — the rows the clerk records on Odoo. */
-export const isBornRow = (source?: string) => source === "painting" || source === "shotblast";
-
-/** Has the MO, is still open, and — born on the log — the clerk's ✓. */
-export function isReadyToClose(e: AlertFacts): boolean {
-  if (e.odooMo.trim() === "" || isDoneStatus(e.status)) return false;
-  return !isBornRow(e.source) || !!e.checkedAt;
-}
-
-/** Waiting on the clerk: still to be closed (Done, Blocked and Cancelled rows
- *  wait on nobody), not ticked ✓ yet, and either born on the log (MO filled
- *  from the plan or not) or typed without an MO. */
-export function needsMo(e: AlertFacts): boolean {
-  if (e.checkedAt) return false;
+/** No MO yet and still to be closed — Done, Blocked and Cancelled rows are
+ *  not waiting on anyone's MO. */
+export function needsMo(e: { odooMo: string; status: string }): boolean {
+  if (e.odooMo.trim() !== "") return false;
   const tone = statusTone(e.status);
-  if (tone !== "muted" && tone !== "warn") return false;
-  return e.odooMo.trim() === "" || isBornRow(e.source);
+  return tone === "muted" || tone === "warn";
 }
 
 /** The key a row is remembered by as "seen" — per kind, so a row seen while
