@@ -58,18 +58,21 @@ export function RingCard({
   note,
   done,
   need,
+  wide = false,
 }: {
   label: string;
   note: string;
   done: number;
   need: number;
+  /** Fill its cell of a full-width row instead of keeping the fixed width. */
+  wide?: boolean;
 }) {
   const pct = need > 0 ? done / need : null;
   const left = Math.max(0, need - done);
   return (
     // a fixed width so the cards tile evenly however many there are — the row
     // centres them rather than stretching them to fill
-    <div className="bg-surface border rounded-xl px-2.5 py-1.5 flex items-center gap-2 w-[9.5rem]">
+    <div className={`bg-surface border rounded-xl px-2.5 py-1.5 flex items-center gap-2 ${wide ? "w-full min-w-0" : "w-[9.5rem]"}`}>
       <Ring pct={pct} />
       <div className="min-w-0 leading-tight">
         <div className="text-xs font-extrabold">{label}</div>

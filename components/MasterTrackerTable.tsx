@@ -645,9 +645,10 @@ export function MasterTrackerTable({
       />
 
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
-      <div className="print-keep flex flex-wrap justify-center gap-2 mb-3">
+      {/* the cards share the page's width between them */}
+      <div className="print-keep grid gap-2 mb-3 grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]">
         {itemStats.map(({ it, doneWord, need, done }) => (
-          <RingCard key={it} label={it} note={doneWord} done={done} need={need} />
+          <RingCard key={it} label={it} note={doneWord} done={done} need={need} wide />
         ))}
       </div>
 

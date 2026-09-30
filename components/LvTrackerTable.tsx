@@ -260,9 +260,9 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
   return (
     <div className="space-y-4">
       {/* the month's plan at a glance: panels through each stage */}
-      <div className="print-keep flex flex-wrap justify-center gap-2">
+      <div className="print-keep grid gap-2 grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]">
         {cards.map((c) => (
-          <RingCard key={c.stage} label={LV_STAGE_SHORT[c.stage]} note={c.stage === "Delivered" ? "delivered" : `${c.stage.toLowerCase().replace(/ing$/, "ed")}`} done={c.done} need={c.need} />
+          <RingCard wide key={c.stage} label={LV_STAGE_SHORT[c.stage]} note={c.stage === "Delivered" ? "delivered" : `${c.stage.toLowerCase().replace(/ing$/, "ed")}`} done={c.done} need={c.need} />
         ))}
       </div>
 
