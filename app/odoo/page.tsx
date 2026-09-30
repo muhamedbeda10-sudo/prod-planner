@@ -25,7 +25,9 @@ export default async function OdooPage({
   searchParams: Promise<{ day?: string; view?: string; range?: string; from?: string; to?: string; basis?: string; bom?: string }>;
 }) {
   // viewing is free for every account, like the rest of the app; recording is
-  // gated on the line's Odoo key (odoo.edit / lv.odoo)
+  // gated on each row's own line's Odoo key (odoo.edit / lv.odoo). Both lines
+  // share the tab and its dashboard — the toggle only picks the default line
+  // for a new row or a sheet.
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   const line = await getActiveLine();
@@ -106,7 +108,8 @@ export default async function OdooPage({
         knownFgCodes={knownFgCodes}
         nesting={nesting}
         needCtx={{ lv, soiBoms, soiMos }}
-        canEdit={hasPerm(me, linePermKey(line, "odoo"))}
+        canEditLine={{ TR: hasPerm(me, linePermKey("TR", "odoo")), LV: hasPerm(me, linePermKey("LV", "odoo")) }}
+        defaultLine={line}
         totalRows={totalRows}
         openRows={openRows}
       />

@@ -5,6 +5,7 @@ import { getActiveLine } from "@/lib/server/line";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
+import { isProductLine, type ProductLine } from "@/lib/domain/lines";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import { importOdooSheet, type OdooImportResult } from "@/lib/server/odoo";
@@ -24,6 +25,27 @@ export interface OdooActionResult {
 
 function revalidateOdoo() {
   revalidatePath("/odoo");
+}
+
+// The tab shows both product lines at once: a write is guarded by the Odoo
+// permission of the line(s) it touches — the rows' own, or, for a new row
+// or a sheet, the line picked with it (the nav's toggle when none is).
+
+async function lineOf(formData: FormData): Promise<ProductLine> {
+  const v = String(formData.get("line") ?? "");
+  return isProductLine(v) ? v : await getActiveLine();
+}
+
+async function guardRows(ids: number[]) {
+  const rows = ids.length ? await prisma.odooEntry.findMany({ where: { id: { in: ids } }, select: { line: true } }) : [];
+  const lines = [...new Set(rows.map((r) => r.line))];
+  if (lines.length === 0) lines.push(await getActiveLine());
+  let guard: Awaited<ReturnType<typeof requirePerm>> = { error: "Nothing to change." };
+  for (const l of lines) {
+    guard = await requirePerm(linePermKey(l, "odoo"));
+    if (guard.error) return guard;
+  }
+  return guard;
 }
 
 interface Fields {
@@ -79,7 +101,8 @@ function doneAtFor(nextStatus: string, prev: { status: string; doneAt: Date | nu
 }
 
 export async function createOdooEntry(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
+  const line = await lineOf(formData);
+  const guard = await requirePerm(linePermKey(line, "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const f = read(formData);
   const bad = validate(f);
@@ -87,7 +110,7 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
 
   await prisma.odooEntry.create({
     data: {
-      line: await getActiveLine(),
+      line,
       date: f.date!, soi: f.soi, fgCode: f.fgCode, product: f.product, odooMo: f.odooMo,
       qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, null, f.date!), recordedBy: guard.user?.name ?? null,
     },
@@ -97,10 +120,10 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
 }
 
 export async function updateOdooEntry(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
-  if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
+  const guard = await guardRows([id]);
+  if (guard.error) return { ok: false, error: guard.error };
   const f = read(formData);
 
   const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { status: true, doneAt: true, ledgerId: true, fgCode: true, fgGuessed: true } });
@@ -134,10 +157,10 @@ function idsOf(formData: FormData): number[] {
 }
 
 export async function setOdooMo(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
-  if (guard.error) return { ok: false, error: guard.error };
   const ids = idsOf(formData);
   if (ids.length === 0) return { ok: false, error: "Invalid entry." };
+  const guard = await guardRows(ids);
+  if (guard.error) return { ok: false, error: guard.error };
   const odooMo = text(formData.get("odooMo")).toUpperCase();
   const prev = await prisma.odooEntry.findMany({ where: { id: { in: ids } }, select: { ledgerId: true } });
   if (prev.length === 0) return { ok: false, error: "That row no longer exists." };
@@ -150,10 +173,10 @@ export async function setOdooMo(formData: FormData): Promise<OdooActionResult> {
 
 /** Confirm or correct a guessed FG-CODE in place. */
 export async function setOdooFgCode(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
-  if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
+  const guard = await guardRows([id]);
+  if (guard.error) return { ok: false, error: guard.error };
   const fgCode = text(formData.get("fgCode")).toUpperCase();
   if (!fgCode) return { ok: false, error: "Enter the FG-CODE." };
   const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { id: true } });
@@ -165,10 +188,10 @@ export async function setOdooFgCode(formData: FormData): Promise<OdooActionResul
 
 /** Move just the Status of one row — the planner's column. */
 export async function setOdooStatus(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
-  if (guard.error) return { ok: false, error: guard.error };
   const ids = idsOf(formData);
   if (ids.length === 0) return { ok: false, error: "Invalid entry." };
+  const guard = await guardRows(ids);
+  if (guard.error) return { ok: false, error: guard.error };
   const status = text(formData.get("status"));
   if (!status) return { ok: false, error: "Pick a status." };
   const prev = await prisma.odooEntry.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, doneAt: true } });
@@ -187,10 +210,10 @@ export async function setOdooStatus(formData: FormData): Promise<OdooActionResul
 
 /** Add one note to a row. */
 export async function addOdooNote(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
-  if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
+  const guard = await guardRows([id]);
+  if (guard.error) return { ok: false, error: guard.error };
   const body = String(formData.get("text") ?? "").trim();
   if (!body) return { ok: false, error: "Type the note first." };
   const entry = await prisma.odooEntry.findUnique({ where: { id }, select: { id: true } });
@@ -202,20 +225,21 @@ export async function addOdooNote(formData: FormData): Promise<OdooActionResult>
 
 /** Delete one note — the row and its other notes stay. */
 export async function deleteOdooNote(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
-  if (guard.error) return { ok: false, error: guard.error };
   const noteId = Number(formData.get("noteId"));
   if (!Number.isInteger(noteId)) return { ok: false, error: "Invalid note." };
+  const note = await prisma.odooNote.findUnique({ where: { id: noteId }, select: { entryId: true } });
+  const guard = await guardRows(note ? [note.entryId] : []);
+  if (guard.error) return { ok: false, error: guard.error };
   await prisma.odooNote.deleteMany({ where: { id: noteId } });
   revalidateOdoo();
   return { ok: true };
 }
 
 export async function deleteOdooEntry(formData: FormData): Promise<OdooActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
-  if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
+  const guard = await guardRows([id]);
+  if (guard.error) return { ok: false, error: guard.error };
   await prisma.odooEntry.delete({ where: { id } });
   revalidateOdoo();
   return { ok: true };
@@ -223,7 +247,8 @@ export async function deleteOdooEntry(formData: FormData): Promise<OdooActionRes
 
 /** Import the clerk's sheet once — its first seven columns; notes are never read. */
 export async function importOdooAction(formData: FormData): Promise<OdooImportResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "odoo"));
+  const line = await lineOf(formData);
+  const guard = await requirePerm(linePermKey(line, "odoo"));
   if (guard.error) return { ok: false, error: guard.error };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose the Excel file." };
@@ -231,7 +256,7 @@ export async function importOdooAction(formData: FormData): Promise<OdooImportRe
   const fallbackDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
   const preview = formData.get("preview") === "true";
   try {
-    const res = await importOdooSheet(await file.arrayBuffer(), fallbackDay, guard.user?.name ?? null, preview);
+    const res = await importOdooSheet(await file.arrayBuffer(), fallbackDay, guard.user?.name ?? null, preview, line);
     if (res.ok && !preview) revalidateOdoo();
     return res;
   } catch (e) {
