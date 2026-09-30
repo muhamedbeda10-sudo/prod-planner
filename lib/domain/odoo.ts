@@ -63,6 +63,8 @@ export interface OdooEntryView {
   /** The FG-CODE was composed (part code + BOM), not copied from an earlier
    *  row — check it before booking. */
   fgGuessed: boolean;
+  /** TR (transformers) or LV (panels) — the tab shows both. */
+  line: string;
   /** The planner's MO of the closing the row was born from, when it still
    *  links to one — how a panel row finds its material. */
   mo: string | null;
@@ -229,9 +231,11 @@ export interface OdooFilters {
   mo: OdooMoFilter;
   /** Closed in Odoo, still open, or both. */
   closed: OdooClosedFilter;
+  /** "" = both product lines, else TR or LV. */
+  line: string;
 }
 
-export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "", notes: "all", mo: "all", closed: "all" };
+export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "", notes: "all", mo: "all", closed: "all", line: "" };
 
 /**
  * The BOM inside an FG code.
@@ -261,8 +265,9 @@ export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "",
  * that must never be added together. So is the status — a row still to close
  * and one already Done are not one line, however alike they read.
  */
-export function odooSameKey(e: Pick<OdooEntryView, "dateISO" | "soi" | "fgCode" | "product" | "odooMo" | "status">): string {
+export function odooSameKey(e: Pick<OdooEntryView, "dateISO" | "soi" | "fgCode" | "product" | "odooMo" | "status"> & { line?: string }): string {
   return [
+    e.line ?? "",
     e.dateISO,
     (e.soi ?? "").trim().toUpperCase(),
     e.fgCode.trim().toUpperCase(),
@@ -307,6 +312,7 @@ export function bomOfFgCode(fgCode: string | null | undefined): string {
 export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): OdooEntryView[] {
   const q = f.q.trim().toLowerCase();
   return entries.filter((e) => {
+    if (f.line && e.line !== f.line) return false;
     if (f.product && e.product !== f.product) return false;
     if (f.status && e.status !== f.status) return false;
     if (f.notes === "with" && e.notes.length === 0) return false;

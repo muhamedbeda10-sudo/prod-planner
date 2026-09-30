@@ -23,7 +23,8 @@ export interface OdooPageData {
   /** Panels: the registry's order MO(s) per SOI — the material is filed by
    *  MO, and the lookup carries those lines under "MO|<mo>". */
   soiMos: Record<string, string[]>;
-  /** Panels on screen: rows look their material up by MO, not part × BOM. */
+  /** Kept for the page's shape: the tab shows both lines, and each row's own
+   *  line says how its material is looked up (a panel by MO). */
   lv: boolean;
   /** The WHOLE log, not just the day on screen: how many rows it holds and how
    *  many are still not closed. The tab opens on one day, so without this a
@@ -39,20 +40,19 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
   const to = scope.kind === "day" ? parseISODate(scope.iso) : scope.kind === "range" ? parseISODate(scope.to) : null;
   const where = from && to ? { date: { gte: from, lt: new Date(to.getTime() + DAY_MS) } } : undefined;
 
-  // one product line at a time — the toggle in the nav decides which
-  const line = await getActiveLine();
+  // both product lines together — each row carries its own
   const [rows, dayRows, orders, totalRows, byStatus] = await Promise.all([
     prisma.odooEntry.findMany({
-      where: { ...where, line },
+      where,
       orderBy: [{ date: "desc" }, { id: "asc" }],
       include: { notes: { orderBy: { id: "desc" } } },
     }),
-    prisma.odooEntry.findMany({ where: { line }, select: { date: true }, distinct: ["date"], orderBy: { date: "desc" } }),
-    prisma.masterOrder.findMany({ where: { line }, select: { soi: true, fgCode: true, bom: true, mo: true } }),
-    prisma.odooEntry.count({ where: { line } }),
+    prisma.odooEntry.findMany({ select: { date: true }, distinct: ["date"], orderBy: { date: "desc" } }),
+    prisma.masterOrder.findMany({ select: { soi: true, fgCode: true, bom: true, mo: true, line: true } }),
+    prisma.odooEntry.count(),
     // grouped and judged in JS, so "off-screen, still open" counts a status
     // exactly the way the rows on screen are coloured
-    prisma.odooEntry.groupBy({ by: ["status"], where: { line }, _count: { _all: true } }),
+    prisma.odooEntry.groupBy({ by: ["status"], _count: { _all: true } }),
   ]);
 
   const soiBoms: Record<string, string[]> = {};
@@ -63,7 +63,7 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     const mo = o.mo.trim().toUpperCase();
     if (!soi) continue;
     if (bom) { const list = (soiBoms[soi] ??= []); if (!list.includes(bom)) list.push(bom); }
-    if (mo && line === "LV") { const list = (soiMos[soi] ??= []); if (!list.includes(mo)) list.push(mo); }
+    if (mo && o.line === "LV") { const list = (soiMos[soi] ??= []); if (!list.includes(mo)) list.push(mo); }
   }
 
   // the closing a row was born from names the planner's MO — the key a
@@ -76,6 +76,7 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
 
   const entries: OdooEntryView[] = rows.map((r) => ({
     mo: r.ledgerId !== null ? (moOfLedger.get(r.ledgerId) ?? null) : null,
+    line: r.line,
     id: r.id,
     dateISO: toISODate(r.date),
     soi: r.soi,
@@ -99,10 +100,16 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     days: [...new Set(dayRows.map((d) => toISODate(d.date)))],
     knownSois: uniq(orders.map((o) => o.soi)),
     knownFgCodes: uniq(orders.map((o) => o.fgCode)),
-    nesting: await nestingOf(entries, line, soiBoms, soiMos),
+    // each line's rows read their own material; the keys never collide (an
+    // MO belongs to one line)
+    nesting: Object.assign(
+      {},
+      await nestingOf(entries.filter((e) => e.line !== "LV"), "TR", soiBoms, soiMos),
+      await nestingOf(entries.filter((e) => e.line === "LV"), "LV", soiBoms, soiMos),
+    ),
     soiBoms,
     soiMos,
-    lv: line === "LV",
+    lv: false,
     totalRows,
     openRows: byStatus.reduce((n, g) => n + (isDoneStatus(g.status) ? 0 : g._count._all), 0),
   };
@@ -138,6 +145,7 @@ export async function getOdooRowMaterial(id: number): Promise<{ entry: OdooEntry
   const soiMos: Record<string, string[]> = soi && r.line === "LV" ? { [soi]: [...new Set(orders.map((o) => o.mo.trim().toUpperCase()).filter(Boolean))] } : {};
   const entry: OdooEntryView = {
     mo: (ledger?.mo ?? "").trim().toUpperCase() || null,
+    line: r.line,
     id: r.id,
     dateISO: toISODate(r.date),
     soi: r.soi,
@@ -214,7 +222,7 @@ async function statRows(fromISO: string | null, toISO: string): Promise<OdooInsi
   const to = parseISODate(toISO)!;
   const rows = await prisma.odooEntry.findMany({
     where: {
-      line: await getActiveLine(),
+      // both product lines together, like the log
       OR: [
         { date: { ...(from ? { gte: from } : {}), lt: new Date(to.getTime() + DAY) } },
         { doneAt: { ...(from ? { gte: new Date(from.getTime() - DAY) } : {}), lt: new Date(to.getTime() + 2 * DAY) } },
@@ -267,7 +275,7 @@ export interface OdooImportResult {
  * sheet. Rows whose Date cell is blank are filed under `fallbackDayISO`.
  */
 export async function importOdooSheet(
-  buffer: ArrayBuffer, fallbackDayISO: string | null, recordedBy: string | null, preview = false
+  buffer: ArrayBuffer, fallbackDayISO: string | null, recordedBy: string | null, preview = false, sheetLine: string | null = null
 ): Promise<OdooImportResult> {
   let wb: XLSX.WorkBook;
   try {
@@ -293,8 +301,8 @@ export async function importOdooSheet(
   if (dated.length === 0) return { ok: false, error: issues[0] ?? "No dated rows found.", issues, sheet: sheetName };
 
   const days = [...new Set(dated.map((d) => d.date.getTime()))].map((t) => new Date(t));
-  // the sheet is the line on screen's — its rows match and join that line only
-  const line = await getActiveLine();
+  // the sheet is one line's — picked with it — its rows match and join that line only
+  const line = sheetLine ?? await getActiveLine();
   const existing = await prisma.odooEntry.findMany({
     where: { date: { in: days }, line },
     orderBy: { id: "asc" },

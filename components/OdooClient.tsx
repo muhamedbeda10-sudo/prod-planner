@@ -123,7 +123,30 @@ function RowFields({
 // the columns that change from row to row on the same day; date stays
 const PER_ROW = ["soi", "fgCode", "product", "odooMo", "qty"] as const;
 
-function AddRow({ day, knownSois, knownFgCodes }: { day: string; knownSois: string[]; knownFgCodes: string[] }) {
+/** Which line a new row or a sheet goes to — only the lines this person may
+ *  record on; a single one is fixed and shown. */
+function LinePick({ lines, defaultLine }: { lines: readonly string[]; defaultLine: string }) {
+  const start = lines.includes(defaultLine) ? defaultLine : lines[0];
+  if (lines.length === 1) {
+    return (
+      <label className="inline-flex flex-col gap-0.5">
+        <span className="text-[11px] font-bold text-muted uppercase tracking-wide">Line</span>
+        <input type="hidden" name="line" value={start} />
+        <span className="pill pill-muted">{start === "LV" ? "LV Panels" : "Transformers"}</span>
+      </label>
+    );
+  }
+  return (
+    <label className="inline-flex flex-col gap-0.5">
+      <span className="text-[11px] font-bold text-muted uppercase tracking-wide">Line</span>
+      <select name="line" defaultValue={start} className={`${F} w-36`}>
+        {lines.map((l) => <option key={l} value={l}>{l === "LV" ? "LV Panels" : "Transformers"}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function AddRow({ day, knownSois, knownFgCodes, lines, defaultLine }: { day: string; knownSois: string[]; knownFgCodes: string[]; lines: readonly string[]; defaultLine: string }) {
   const add = useAction();
   const [open, setOpen] = useState(false);
   function clearForNext(form: HTMLFormElement) {
@@ -149,6 +172,7 @@ function AddRow({ day, knownSois, knownFgCodes }: { day: string; knownSois: stri
             }}
           >
             <div className="flex flex-wrap items-end gap-2">
+              <LinePick lines={lines} defaultLine={defaultLine} />
               <RowFields day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} disabled={add.pending} />
             </div>
             <Msg msg={add.msg} />
@@ -362,7 +386,10 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
       <tr className={`border-t hover:bg-surface-2/60 ${inGroup ? "bg-surface-2/40" : ""}`}>
         <td className={`${cell} tabnum ltr ${inGroup ? "ps-6" : ""}`} onClick={open} title={rowTitle}>
           <span className="inline-flex flex-col">
-            {inGroup ? <span className="text-muted">↳ {e.dateISO}</span> : e.dateISO}
+            <span className="inline-flex items-center gap-1">
+              {inGroup ? <span className="text-muted">↳ {e.dateISO}</span> : e.dateISO}
+              {!inGroup && <span className={`pill text-[10px] ${e.line === "LV" ? "pill-muted" : "pill-ok"}`} title={e.line === "LV" ? "LV Panels" : "Transformers"}>{e.line}</span>}
+            </span>
             {born && <span className="pill pill-muted text-[10px] mt-0.5" title="Written by the closing recorded in the daily log — the office fills in Odoo's MO">{sourceLabel(e.source)}</span>}
           </span>
         </td>
@@ -491,6 +518,7 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
             <span>
               <span className={`inline-block me-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>▶</span>
               {head.dateISO}
+              <span className={`pill text-[10px] ms-1 ${head.line === "LV" ? "pill-muted" : "pill-ok"}`} title={head.line === "LV" ? "LV Panels" : "Transformers"}>{head.line}</span>
             </span>
             <span className="pill pill-muted text-[10px] mt-0.5" title={born ? "Written by the closings recorded in the daily log" : "Rows that read the same"}>
               {g.rows.length} closings{born ? " · from the floor" : ""}
@@ -557,7 +585,7 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
 
 // ---- import: the sheet, once — its first seven columns ----
 
-function ImportPanel({ day }: { day: string }) {
+function ImportPanel({ day, lines, defaultLine }: { day: string; lines: readonly string[]; defaultLine: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
@@ -583,10 +611,13 @@ function ImportPanel({ day }: { day: string }) {
     {button}
     <Modal title="📥 Import Excel" onClose={() => setOpen(false)} busy={pending}>
     <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
-      <label className="block">
-        <span className="text-xs font-bold text-muted">Excel file</span>
-        <input type="file" name="file" accept=".xlsx,.xlsm,.xls,.csv" required className="block text-sm mt-1" />
-      </label>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block">
+          <span className="text-xs font-bold text-muted">Excel file</span>
+          <input type="file" name="file" accept=".xlsx,.xlsm,.xls,.csv" required className="block text-sm mt-1" />
+        </label>
+        <LinePick lines={lines} defaultLine={defaultLine} />
+      </div>
       <p className="text-xs text-muted">
         Reads the sheet&apos;s first seven columns — Date · SOI# · FG-CODE · Product · MO# · QTY · Status. Notes are
         never read. The same MO on the same day is updated, never doubled, and its Status stays as moved here
@@ -622,6 +653,7 @@ function readSavedFilters(raw: string): OdooFilters {
     notes: notes in ODOO_NOTE_FILTERS ? (notes as OdooNoteFilter) : "all",
     mo: mo in ODOO_MO_FILTERS ? (mo as OdooMoFilter) : "all",
     closed: closed in ODOO_CLOSED_FILTERS ? (closed as OdooClosedFilter) : "all",
+    line: ["TR", "LV"].includes(savedString(o, "line")) ? savedString(o, "line") : "",
   };
 }
 
@@ -654,6 +686,11 @@ function FilterBar({ entries, filters, onChange }: { entries: OdooEntryView[]; f
         placeholder="Search SOI, FG-CODE, MO, product, notes…" aria-label="Search"
         className={`${SEL} ltr w-72 font-normal`}
       />
+      <select aria-label="Line" title="Product line" className={SEL} value={filters.line} onChange={(e) => set({ line: e.target.value })}>
+        <option value="">Line: both</option>
+        <option value="TR">Transformers</option>
+        <option value="LV">LV Panels</option>
+      </select>
       <select aria-label="Status" title="Status" className={SEL} value={filters.status} onChange={(e) => set({ status: e.target.value })}>
         <option value="">Status: all</option>
         {statuses.map((st) => <option key={st} value={st}>{st}</option>)}
@@ -719,7 +756,8 @@ export function OdooClient({
   knownFgCodes,
   nesting,
   needCtx,
-  canEdit,
+  canEditLine,
+  defaultLine,
   totalRows,
   openRows,
 }: {
@@ -728,14 +766,19 @@ export function OdooClient({
   knownSois: string[];
   knownFgCodes: string[];
   nesting: NestingLookup;
-  /** How a row finds its material: by part × BOM (transformers) or by MO (panels). */
+  /** How a row finds its material — each row's own line decides: by part ×
+   *  BOM (transformers) or by MO (panels). */
   needCtx: NeedContext;
-  canEdit: boolean;
+  /** Both lines share the tab; a row is editable with its own line's Odoo right. */
+  canEditLine: Record<string, boolean>;
+  /** The line a new row or a sheet goes to unless another is picked — the nav's toggle. */
+  defaultLine: string;
   /** The whole log behind this day — see ElsewhereBanner. */
   totalRows: number;
   openRows: number;
 }) {
   const { filters, setFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_ODOO_FILTERS);
+  const editableLines = (["TR", "LV"] as const).filter((l) => canEditLine[l]);
   const shown = useMemo(() => filterOdooEntries(entries, filters), [entries, filters]);
   // the rows that are the same closing read as one line carrying the total
   const groups = useMemo(() => groupOdooEntries(shown), [shown]);
@@ -764,11 +807,14 @@ export function OdooClient({
       +{elsewhere} on other days{openRows > 0 ? ` (${openRows} open)` : ""} — show all
     </button>
   );
-  // the cards: every filter but the product one, so all items stay in view
-  const line = useActiveLine();
+  // the cards: every filter but the product one, so all items stay in view —
+  // the products of the line filtered to, or of both lines
   const itemTotals = useMemo(
-    () => odooItemTotals(filterOdooEntries(entries, { ...filters, product: "" }), productsOf(line)),
-    [entries, filters, line]
+    () => odooItemTotals(
+      filterOdooEntries(entries, { ...filters, product: "" }),
+      filters.line === "TR" || filters.line === "LV" ? productsOf(filters.line) : [...productsOf("TR"), ...productsOf("LV")],
+    ),
+    [entries, filters]
   );
   return (
     <div className="space-y-3">
@@ -859,20 +905,25 @@ export function OdooClient({
                 </tr>
               </thead>
               <tbody>
-                {groups.map((g) => (g.rows.length === 1 ? (
-                  <Row key={g.rows[0].id} e={g.rows[0]} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} needCtx={needCtx} canEdit={canEdit} />
-                ) : (
-                  <MergedRow key={g.key} g={g} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} needCtx={needCtx} canEdit={canEdit} />
-                )))}
+                {groups.map((g) => {
+                  const line = g.rows[0].line;
+                  const ctx = { ...needCtx, lv: line === "LV" };
+                  const can = !!canEditLine[line];
+                  return g.rows.length === 1 ? (
+                    <Row key={g.rows[0].id} e={g.rows[0]} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} needCtx={ctx} canEdit={can} />
+                  ) : (
+                    <MergedRow key={g.key} g={g} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} needCtx={ctx} canEdit={can} />
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </section>
-      {canEdit && (
+      {editableLines.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          <AddRow day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} />
-          <ImportPanel day={day} />
+          <AddRow day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} lines={editableLines} defaultLine={defaultLine} />
+          <ImportPanel day={day} lines={editableLines} defaultLine={defaultLine} />
         </div>
       )}
     </div>
