@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { hashPassword, requireAdmin } from "@/lib/server/auth";
+import { hashPassword, requireOwner } from "@/lib/server/auth";
 import { serializePerms } from "@/lib/domain/permissions";
 
 export interface UserActionResult {
@@ -18,7 +18,7 @@ function permsFromForm(formData: FormData): string {
 }
 
 export async function createUser(formData: FormData): Promise<UserActionResult> {
-  const guard = await requireAdmin();
+  const guard = await requireOwner();
   if (guard.error) return { ok: false, error: guard.error };
 
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -39,7 +39,7 @@ export async function createUser(formData: FormData): Promise<UserActionResult> 
 }
 
 export async function updateUserPerms(formData: FormData): Promise<UserActionResult> {
-  const guard = await requireAdmin();
+  const guard = await requireOwner();
   if (guard.error) return { ok: false, error: guard.error };
 
   const id = Number(formData.get("id"));
@@ -47,11 +47,8 @@ export async function updateUserPerms(formData: FormData): Promise<UserActionRes
   const target = await prisma.user.findUnique({ where: { id } });
   if (!target) return { ok: false, error: "User not found." };
 
-  const isAdmin = formData.get("isAdmin") === "on";
-  // an admin cannot remove their own admin flag — prevents locking everyone out
-  if (target.id === guard.user!.id && !isAdmin) {
-    return { ok: false, error: "You cannot remove your own admin access." };
-  }
+  // the owner's own account keeps its standing; only its subscriptions change
+  const isAdmin = target.isOwner ? target.isAdmin : formData.get("isAdmin") === "on";
 
   await prisma.user.update({ where: { id }, data: { isAdmin, perms: permsFromForm(formData) } });
   revalidatePath("/admin/users");
@@ -59,7 +56,7 @@ export async function updateUserPerms(formData: FormData): Promise<UserActionRes
 }
 
 export async function setUserActive(formData: FormData): Promise<UserActionResult> {
-  const guard = await requireAdmin();
+  const guard = await requireOwner();
   if (guard.error) return { ok: false, error: guard.error };
 
   const id = Number(formData.get("id"));
@@ -67,7 +64,7 @@ export async function setUserActive(formData: FormData): Promise<UserActionResul
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid user." };
   const target = await prisma.user.findUnique({ where: { id } });
   if (!target) return { ok: false, error: "User not found." };
-  if (target.id === guard.user!.id) return { ok: false, error: "You cannot deactivate your own account." };
+  if (target.id === guard.user!.id || target.isOwner) return { ok: false, error: "The owner's account cannot be deactivated." };
 
   await prisma.user.update({ where: { id }, data: { active } });
   if (!active) await prisma.session.deleteMany({ where: { userId: id } }); // kick them out now
@@ -76,14 +73,14 @@ export async function setUserActive(formData: FormData): Promise<UserActionResul
 }
 
 export async function deleteUser(formData: FormData): Promise<UserActionResult> {
-  const guard = await requireAdmin();
+  const guard = await requireOwner();
   if (guard.error) return { ok: false, error: guard.error };
 
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid user." };
   const target = await prisma.user.findUnique({ where: { id } });
   if (!target) return { ok: false, error: "User not found." };
-  if (target.id === guard.user!.id) return { ok: false, error: "You cannot delete your own account." };
+  if (target.id === guard.user!.id || target.isOwner) return { ok: false, error: "The owner's account cannot be deleted." };
 
   await prisma.user.delete({ where: { id } }); // sessions go with it (cascade)
   revalidatePath("/admin/users");
@@ -91,7 +88,7 @@ export async function deleteUser(formData: FormData): Promise<UserActionResult> 
 }
 
 export async function resetUserPassword(formData: FormData): Promise<UserActionResult> {
-  const guard = await requireAdmin();
+  const guard = await requireOwner();
   if (guard.error) return { ok: false, error: guard.error };
 
   const id = Number(formData.get("id"));

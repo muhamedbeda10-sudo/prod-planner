@@ -10,6 +10,7 @@ interface Row {
   email: string;
   name: string;
   isAdmin: boolean;
+  isOwner: boolean;
   perms: string;
   active: boolean;
   createdAt: Date;
@@ -107,7 +108,7 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
         <div className="flex-1 min-w-[220px]">
           <div className="font-bold flex items-center gap-2">
             {user.name}
-            {user.isAdmin && <span className="pill pill-ok">admin</span>}
+            {user.isOwner ? <span className="pill pill-ok">owner</span> : user.isAdmin && <span className="pill pill-ok">admin</span>}
             {!user.active && <span className="pill pill-bad">deactivated</span>}
             {user.id === myId && <span className="pill pill-muted">you</span>}
           </div>
@@ -188,7 +189,11 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
           }}
         >
           <input type="hidden" name="id" value={user.id} />
-          <AdminCheck defaultChecked={user.isAdmin} label="Admin" />
+          {user.isOwner ? (
+            <p className="text-sm text-muted">The owner holds every right — only the notifications below are yours to tick.</p>
+          ) : (
+            <AdminCheck defaultChecked={user.isAdmin} label="Admin" />
+          )}
           <PermChecks defaults={new Set(user.perms.split(",").map((s) => s.trim()))} />
           <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <Msg msg={perms.msg} />

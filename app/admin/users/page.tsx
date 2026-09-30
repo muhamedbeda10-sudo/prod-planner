@@ -10,11 +10,12 @@ export const dynamic = "force-dynamic";
 export default async function UsersPage() {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
-  if (!me.isAdmin) redirect("/");
+  // the owner's page alone — admins included out
+  if (!me.isOwner) redirect("/");
 
   const users = await prisma.user.findMany({
-    orderBy: [{ isAdmin: "desc" }, { name: "asc" }],
-    select: { id: true, email: true, name: true, isAdmin: true, perms: true, active: true, createdAt: true },
+    orderBy: [{ isOwner: "desc" }, { isAdmin: "desc" }, { name: "asc" }],
+    select: { id: true, email: true, name: true, isAdmin: true, isOwner: true, perms: true, active: true, createdAt: true },
   });
 
   return (

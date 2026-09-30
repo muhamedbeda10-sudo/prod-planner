@@ -299,7 +299,10 @@ model User {
   email        String    @unique // login identifier (their Gmail)
   name         String
   passwordHash String // scrypt: salt:hash hex
-  isAdmin      Boolean   @default(false) // full access + user management
+  isAdmin      Boolean   @default(false) // full access to the app's tools
+  // The one account that owns the app: every right, and the only one that
+  // sees and manages Users & Permissions — admins included.
+  isOwner      Boolean   @default(false)
   perms        String    @default("") // CSV of permission keys
   active       Boolean   @default(true) // deactivated users cannot log in
   createdAt    DateTime  @default(now())

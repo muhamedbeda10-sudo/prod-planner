@@ -106,6 +106,8 @@ export interface NavUser {
   id: number;
   name: string;
   isAdmin: boolean;
+  /** The app's owner — the only one who sees Users & Permissions. */
+  isOwner?: boolean;
   perms: string[];
 }
 
@@ -401,7 +403,7 @@ export function AppNav({
                       </span>
                     </Link>
                   )}
-                  {user.isAdmin && (
+                  {user.isOwner && (
                     <Link
                       href="/admin/users"
                       role="menuitem"
@@ -479,7 +481,7 @@ export function AppNav({
               </span>
               <div className="min-w-0">
                 <div className="text-sm font-bold truncate">{user.name}</div>
-                <div className="text-xs text-muted">{user.isAdmin ? "Administrator" : "Signed in"}</div>
+                <div className="text-xs text-muted">{user.isOwner ? "Owner" : user.isAdmin ? "Administrator" : "Signed in"}</div>
               </div>
             </div>
 
@@ -543,7 +545,7 @@ export function AppNav({
                   Standard Times & Capacity
                 </Link>
               )}
-              {user.isAdmin && (
+              {user.isOwner && (
                 <Link
                   href="/admin/users"
                   className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
