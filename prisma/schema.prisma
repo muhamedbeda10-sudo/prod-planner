@@ -910,6 +910,9 @@ model OdooEntry {
   // The FG-CODE was composed (part code + BOM) rather than copied from an
   // earlier row of the same SOI and product — worth a look before it is booked.
   fgGuessed  Boolean  @default(false)
+  // The MO was filled from the plan's child MOs when the row was born, not
+  // typed — the row still follows its ledger entry until someone works it.
+  autoMo     Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -1136,4 +1139,32 @@ model PowderScrapRevision {
 
   @@index([scrapId])
   @@index([at])
+}
+
+// ---- Child MOs: Odoo's MO per component of a plan order ----
+
+// The monthly plan sheet can carry, per plan MO, the Odoo child MO of each
+// component (tank, fins, top cover, core frame, cable box, arrester, monobloc
+// box). They are not shown on the tracker: when a component's closing is born
+// on the ODOO tab, its row takes the child MO from here, so the office only
+// closes it. A component may have several child MOs (split batches); a child
+// shared by several plan MOs is listed under each.
+model ChildMo {
+  id          Int      @id @default(autoincrement())
+  planMo      String // the plan's MO — MasterOrder.mo
+  component   String // TANK | FINS | TOP_COVER | CORE_FRAME | CABLE_BOX | ARRESTER | MONOBLOC_BOX
+  item        String? // CF | TC | TN | CB | AR | MB — null for fins
+  childMo     String // Odoo's child MO, e.g. SF01/MO/19515
+  parentMo    String?
+  productCode String?
+  qty         Float?
+  state       String? // Odoo's: draft | confirmed | progress | done | cancel
+  linkMethod  String?
+  remarks     String?
+  planMonth   String?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([planMo, component, childMo])
+  @@index([planMo, item])
+  @@index([childMo])
 }

@@ -2,6 +2,8 @@ import "server-only";
 import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { parseMonthlyPlan, diffRevisionRow, type RevisionChange } from "@/lib/domain/importMonthly";
+import { parseChildMos } from "@/lib/domain/childMos";
+import { fillBornRowsFromChildMos } from "@/lib/server/odooMirror";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
 export type { RevisionChange };
@@ -39,6 +41,10 @@ export interface MonthlyImportResult {
    *  sheet — taken out (unless preview): deleted when nothing was ever
    *  recorded on them, closed when the daily log or a tank names them. */
   removed?: { mo: string; action: "deleted" | "closed" }[];
+  /** The sheet's child MOs, when it carries them: stored (new or updated),
+   *  rows the sheet flags with none (NOT_IN_BOM, UNRESOLVED …), and ODOO rows
+   *  waiting for an MO that took one. */
+  childMos?: { stored: number; added: number; flagged: Record<string, number>; filled: number };
 }
 
 /** Import one month's plan for ONE product line. Every order it adds is
@@ -63,6 +69,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
   const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, opts);
 
   const parsed = parseMonthlyPlan(grid, line);
+  const children = parseChildMos(grid);
   const issues = [...parsed.issues];
   if (parsed.rows.length === 0) {
     return { ok: false, error: issues[0] ?? "No order rows found.", issues };
@@ -250,8 +257,50 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     });
   }
 
+  // ---- the child MOs: added or updated, never cleared — a plan MO keeps the
+  // children an earlier sheet gave it. Only the plan MOs of this line's rows.
+  let childMos: MonthlyImportResult["childMos"];
+  if (children.present) {
+    const mine = new Set(rows.map((r) => r.mo.trim().toUpperCase()));
+    const list = children.rows.filter((c) => mine.has(c.planMo));
+    const keyOf = (c: { planMo: string; component: string; childMo: string }) => `${c.planMo}|${c.component}|${c.childMo}`;
+    const existing = new Map(
+      (await prisma.childMo.findMany({ where: { planMo: { in: [...mine] } } })).map((c) => [keyOf(c), c]),
+    );
+    const dataOf = (c: (typeof list)[number]) => ({
+      item: c.item, parentMo: c.parentMo, productCode: c.productCode, qty: c.qty, state: c.state,
+      linkMethod: c.linkMethod, remarks: c.remarks, planMonth: c.planMonth ?? sourceLabel,
+    });
+    const creates = list.filter((c) => !existing.has(keyOf(c)));
+    // only the children whose details moved (their Odoo state, mostly)
+    const updates = list.flatMap((c) => {
+      const cur = existing.get(keyOf(c));
+      if (!cur) return [];
+      const d = dataOf(c);
+      const same = (Object.keys(d) as (keyof typeof d)[]).every((k) => cur[k] === d[k]);
+      return same ? [] : [{ id: cur.id, data: d }];
+    });
+    const added = creates.length;
+    let filled = 0;
+    if (!preview) {
+      // in bulk — a sheet of hundreds of children written one by one outlasts the request
+      if (creates.length) {
+        await prisma.childMo.createMany({
+          data: creates.map((c) => ({ planMo: c.planMo, component: c.component, childMo: c.childMo, ...dataOf(c) })),
+          skipDuplicates: true,
+        });
+      }
+      for (let i = 0; i < updates.length; i += 100) {
+        await prisma.$transaction(updates.slice(i, i + 100).map((u) => prisma.childMo.update({ where: { id: u.id }, data: u.data })));
+      }
+      filled = await prisma.$transaction((tx) => fillBornRowsFromChildMos(tx), { timeout: 60_000 });
+    }
+    childMos = { stored: list.length, added, flagged: children.flagged, filled };
+  }
+
   return {
     ok: true,
+    childMos,
     added: toAdd.length,
     existing: rows.length - toAdd.length,
     updatedMos: changedRows.length,

@@ -67,7 +67,7 @@ export async function fillOdooMo(formData: FormData): Promise<{ ok: boolean; err
   if (!row) return { ok: false, error: "That row no longer exists." };
   if (!hasPerm(me, linePermKey(row.line, "odoo"))) return { ok: false, error: "You cannot record on this line's ODOO tab." };
   if (row.odooMo.trim() !== "") return { ok: false, error: `Already has ${row.odooMo}.` };
-  await prisma.odooEntry.update({ where: { id }, data: { odooMo, recordedBy: me.name } });
+  await prisma.odooEntry.update({ where: { id }, data: { odooMo, autoMo: false, recordedBy: me.name } });
   revalidatePath("/odoo");
   return { ok: true };
 }

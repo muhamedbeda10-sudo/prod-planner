@@ -112,6 +112,18 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
             </div>
           )}
 
+          {/* the sheet's child MOs — kept for the ODOO tab, never on the tracker */}
+          {res.childMos && (
+            <div className="bg-surface-2 border rounded-md px-3 py-2 text-xs space-y-0.5">
+              <b>Child MOs: {res.childMos.stored} in the sheet — {res.childMos.added} new{res.preview ? " (will be added)" : ""}, the rest already known and kept up to date.</b>
+              {Object.keys(res.childMos.flagged).length > 0 && (
+                <div className="text-muted">No child MO: {Object.entries(res.childMos.flagged).map(([f, n]) => `${n} ${f}`).join(" · ")} — those rows take their MO by hand on the ODOO tab, as before.</div>
+              )}
+              {!res.preview && res.childMos.filled > 0 && <div className="text-ok-fg font-semibold">{res.childMos.filled} ODOO row(s) that were waiting for an MO took their child MO.</div>}
+              <div className="text-muted">A closing born on the ODOO tab now takes its component&apos;s child MO and lands ready to close. Nothing already recorded was changed.</div>
+            </div>
+          )}
+
           {/* a different qty on an order already in the registry — held, never
               applied by the import; the planner decides here or on the tracker */}
           {res.qtyProposals && res.qtyProposals.length > 0 && (
