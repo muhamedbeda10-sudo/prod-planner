@@ -7,7 +7,7 @@ import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { decidePlanQty, setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setGroupFins, setOrderPriority, setOrderHold, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Num, Soi } from "@/components/ui";
-import { RingCard } from "@/components/ProgressRing";
+import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { ExportButton } from "@/components/ExportButton";
 import { PrintButton } from "@/components/PrintButton";
 import { PrintScope } from "@/components/PrintHeader";
@@ -646,7 +646,7 @@ export function MasterTrackerTable({
 
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
       {/* the cards share the page's width between them */}
-      <div className="print-keep grid gap-2 mb-3 grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]">
+      <div className={`print-keep ${RING_GRID} mb-3`}>
         {itemStats.map(({ it, doneWord, need, done }) => (
           <RingCard key={it} label={it} note={doneWord} done={done} need={need} wide />
         ))}

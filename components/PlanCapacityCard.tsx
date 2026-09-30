@@ -20,30 +20,43 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
   const overloaded = check.stages.filter((s) => (s.load ?? 0) > 1);
 
   return (
-    <div className="print-keep bg-surface border rounded-xl px-3.5 py-2">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        <div className="text-[11px] font-bold uppercase tracking-wide text-muted">
-          Capacity check
-          <span className="block normal-case font-normal text-[10px]">
-            std hours vs capacity · {check.workingDays} working day{check.workingDays === 1 ? "" : "s"}
-          </span>
-        </div>
+    <div className="print-keep bg-surface border rounded-xl p-3 shadow-sm">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-2">
+        <h2 className="text-xs font-extrabold uppercase tracking-wide">Capacity check</h2>
+        <span className="text-[11px] text-muted">
+          standard hours the plan needs vs the stage&apos;s capacity · {check.workingDays} working day{check.workingDays === 1 ? "" : "s"}
+        </span>
+      </div>
+      {/* one tile per stage, the load as a bar against its capacity */}
+      <div className="grid gap-2 grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]">
         {check.stages.map((s) => {
           const tone = loadTone(s.load);
+          const f = s.load === null ? 0 : Math.min(1, s.load);
           return (
-            <div key={s.dept} className="flex items-center gap-1.5" title={`${deptLabel(s.dept)}: the plan needs ${fmt(s.required)} standard hours; capacity over this plan's window is ${s.available === null ? "not set (Admin → Standard Times)" : fmt(s.available) + " hours"}`}>
-              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: STAGE_COLOR[s.dept === "ShotBlast" ? "Painting" : s.dept] }} />
-              <span className="text-sm font-semibold text-muted">{deptLabel(s.dept)}</span>
-              <span className="text-sm font-extrabold tabnum">{fmt(s.required)}</span>
-              <span className="text-[10px] text-muted tabnum">/ {s.available === null ? "—" : fmt(s.available)} h</span>
-              <span className="pill tabnum" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
+            <div
+              key={s.dept}
+              className="rounded-lg border bg-surface-2/60 px-2.5 py-2"
+              title={`${deptLabel(s.dept)}: the plan needs ${fmt(s.required)} standard hours; capacity over this plan's window is ${s.available === null ? "not set (Admin → Standard Times)" : fmt(s.available) + " hours"}`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: STAGE_COLOR[s.dept === "ShotBlast" ? "Painting" : s.dept] }} />
+                <span className="text-xs font-bold">{deptLabel(s.dept)}</span>
+                <span className="ms-auto pill tabnum text-[10px]" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
+              </div>
+              <div className="mt-1 tabnum">
+                <span className="text-lg font-extrabold">{fmt(s.required)}</span>
+                <span className="text-[11px] text-muted font-semibold"> / {s.available === null ? "—" : fmt(s.available)} h</span>
+              </div>
+              <div className="mt-1 h-1.5 rounded-full bg-surface overflow-hidden border" aria-hidden>
+                <div className="h-full rounded-full" style={{ width: `${f * 100}%`, background: tone.fg }} />
+              </div>
             </div>
           );
         })}
       </div>
       {check.pace && (
         <p
-          className="mt-1.5 text-[11px] font-semibold tabnum"
+          className="mt-2 text-[11px] font-semibold tabnum"
           style={{ color: check.pace.projectedCoverage >= 1 ? "var(--ok-fg)" : check.pace.projectedCoverage >= 0.9 ? "var(--warn-fg)" : "var(--bad-fg)" }}
           title="Projection: the plan's earned standard hours so far, extended over the remaining working days at the same daily rate"
         >

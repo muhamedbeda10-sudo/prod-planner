@@ -10,7 +10,7 @@ import { PlanViewToggle, WeekPlanPicker } from "@/components/PlanViewToggle";
 import { ExportButton } from "@/components/ExportButton";
 import { PrintButton } from "@/components/PrintButton";
 import { PrintScope } from "@/components/PrintHeader";
-import { RingCard } from "@/components/ProgressRing";
+import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { ITEMS, isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 import { traceHref } from "@/lib/domain/links";
 import type { WeeklyPlanTracker, WeeklyPlanRow, WeeklyPlanCell, WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
@@ -228,20 +228,13 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
         ]}
       />
 
-      {/* one shared row: the capacity check and the component rings side by
-          side, wrapping on narrow screens — neither owns a whole line */}
-      {(capacityCard || itemStats.length > 0) && (
-        <div className="print-keep flex flex-wrap items-center justify-center gap-2">
-          {capacityCard}
-          {/* the rings travel as ONE group, so on a narrower screen the whole
-              group drops below the capacity card instead of splitting */}
-          {itemStats.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-2">
-              {itemStats.map(({ it, need, done }) => (
-                <RingCard key={it} label={it} note={doneWord(metric, it)} done={done} need={need} />
-              ))}
-            </div>
-          )}
+      {/* the capacity check, then the component cards — each a full-width row */}
+      {capacityCard}
+      {itemStats.length > 0 && (
+        <div className={`print-keep ${RING_GRID}`}>
+          {itemStats.map(({ it, need, done }) => (
+            <RingCard key={it} label={it} note={doneWord(metric, it)} done={done} need={need} wide />
+          ))}
         </div>
       )}
 

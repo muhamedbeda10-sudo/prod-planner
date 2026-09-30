@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Num, Soi } from "@/components/ui";
-import { RingCard } from "@/components/ProgressRing";
+import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { recordLvGroupTotal, recordLvTotal } from "@/app/lv/actions";
 import { closeDeliveredOrders, setOrderHold, setOrderStatus } from "@/app/orders/actions";
 import { holdLabel } from "@/lib/domain/hold";
@@ -260,7 +260,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
   return (
     <div className="space-y-4">
       {/* the month's plan at a glance: panels through each stage */}
-      <div className="print-keep grid gap-2 grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]">
+      <div className={`print-keep ${RING_GRID}`}>
         {cards.map((c) => (
           <RingCard wide key={c.stage} label={LV_STAGE_SHORT[c.stage]} note={c.stage === "Delivered" ? "delivered" : `${c.stage.toLowerCase().replace(/ing$/, "ed")}`} done={c.done} need={c.need} />
         ))}
