@@ -8,7 +8,7 @@ import {
   ChevronRight, PanelRightClose, PanelRightOpen, LayoutGrid, Rows3,
   StickyNote, Undo2,
 } from "lucide-react";
-import type { TraceResult, TracePipelineRow } from "@/lib/server/trace";
+import type { TraceResult, TracePipelineRow, TraceOdooRow } from "@/lib/server/trace";
 import { trackerHref, traceHref } from "@/lib/domain/links";
 import { deptLabel, FINISHING_LABEL } from "@/lib/domain/constants";
 import { TraceSearch } from "@/components/TraceSearch";
@@ -114,6 +114,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
         <div className="min-w-0 space-y-6">
           <StagePipeline stages={stages} totalReq={totalReq} pipeline={t.pipeline} />
           <ComponentProgress pipeline={t.pipeline} />
+          <OnOdoo rows={t.odoo} />
           <Records t={t} />
         </div>
 
@@ -133,6 +134,11 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
                 {monthsAll.length > 0 && <Prop k="Plan months">{monthsAll.join(" · ")}</Prop>}
                 <Prop k="Planned in">{t.orderPlans.join(" · ") || "—"}</Prop>
                 <Prop k="Ledger records">{t.ledgerCount}</Prop>
+                {t.odoo.length > 0 && (
+                  <Prop k="On ODOO">
+                    {t.odoo.filter((r) => r.done).reduce((n, r) => n + r.qty, 0)} / {t.odoo.reduce((n, r) => n + r.qty, 0)} closed
+                  </Prop>
+                )}
                 {t.siblings.length > 0 && (
                   <Prop k="Family">
                     <span className="flex flex-wrap justify-end gap-x-2">
@@ -538,6 +544,77 @@ function Card({ title, sub, actions, children }: { title: string; sub?: string; 
         {actions && <div className="ml-auto">{actions}</div>}
       </div>
       {children}
+    </section>
+  );
+}
+
+/** What of this order reached the ODOO tab: every row born from its
+ *  painting / shot-blast closings, with Odoo's MO the clerk typed (the child
+ *  MO), and whether it is closed. */
+function OnOdoo({ rows }: { rows: TraceOdooRow[] }) {
+  const total = rows.reduce((n, r) => n + r.qty, 0);
+  const closed = rows.filter((r) => r.done).reduce((n, r) => n + r.qty, 0);
+  const needMo = rows.filter((r) => !r.odooMo.trim() && !r.done).length;
+  // per component: closed of booked
+  const byItem = new Map<string, { qty: number; closed: number }>();
+  for (const r of rows) {
+    const k = r.item || r.product;
+    const v = byItem.get(k) ?? { qty: 0, closed: 0 };
+    v.qty += r.qty;
+    if (r.done) v.closed += r.qty;
+    byItem.set(k, v);
+  }
+  return (
+    <section className="rounded-2xl bg-surface border border-border/60 shadow-sm overflow-hidden">
+      <div className="px-5 py-3 border-b border-border/40 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div>
+          <h2 className="text-sm font-extrabold uppercase tracking-wide">On ODOO</h2>
+          <p className="text-[11px] text-muted mt-0.5">The rows this order&apos;s closings put on the ODOO tab — Odoo&apos;s MO for each, and whether it is closed.</p>
+        </div>
+        {rows.length > 0 && (
+          <div className="ms-auto flex flex-wrap items-center gap-1.5">
+            {[...byItem.entries()].map(([k, v]) => (
+              <Chip key={k} tone={v.closed >= v.qty ? "ok" : "muted"}>{k} {v.closed}/{v.qty}</Chip>
+            ))}
+            <Chip tone={closed >= total ? "ok" : "warn"}>closed {closed}/{total}</Chip>
+            {needMo > 0 && <Chip tone="bad">{needMo} need an MO</Chip>}
+          </div>
+        )}
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-5 py-6 text-sm text-muted text-center">Nothing of this order has reached the ODOO tab yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-wide text-muted border-b border-border/40">
+                <th className="px-4 py-2">Date</th>
+                <th className="px-4 py-2">Item</th>
+                <th className="px-4 py-2">Odoo MO</th>
+                <th className="px-4 py-2">FG-CODE</th>
+                <th className="px-4 py-2 text-end">Qty</th>
+                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2">Closed on</th>
+                <th className="px-4 py-2">By</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-border/40 hover:bg-brand-light/20">
+                  <td className="px-4 py-2 tabnum ltr whitespace-nowrap">{r.dateISO}</td>
+                  <td className="px-4 py-2 whitespace-nowrap"><b>{r.item || "—"}</b> <span className="text-muted text-xs">{r.product}</span></td>
+                  <td className="px-4 py-2 ltr font-bold whitespace-nowrap select-all">{r.odooMo || <Chip tone="warn">needs MO</Chip>}</td>
+                  <td className="px-4 py-2 ltr text-xs text-muted whitespace-nowrap">{r.fgCode || "—"}</td>
+                  <td className="px-4 py-2 text-end tabnum font-bold">{r.qty}</td>
+                  <td className="px-4 py-2"><Chip tone={r.done ? "ok" : r.status === "Blocked" ? "bad" : r.status === "Cancelled" ? "muted" : "warn"}>{r.status}</Chip></td>
+                  <td className="px-4 py-2 tabnum ltr whitespace-nowrap">{r.doneAtISO ?? "—"}</td>
+                  <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">{r.by ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

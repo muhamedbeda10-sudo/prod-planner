@@ -5,6 +5,7 @@ import { getMasterTracker, type MasterTrackerRow } from "./masterTracker";
 import { ITEMS, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { groupKey } from "@/lib/domain/bom";
 import { toISODate } from "@/lib/domain/dates";
+import { isDoneStatus } from "@/lib/domain/odoo";
 
 // One project's whole life — the Trace page. Works on a single manufacturing
 // order (mo) OR a whole code (bom). Everything is netted (negative corrections
@@ -88,6 +89,23 @@ export interface TraceResult {
   }[];
   ledgerCount: number;
   orderPlans: string[]; // labels of the plans this code was planned in
+  /** The ODOO tab's rows born from this order's closings (painting / shot
+   *  blast) — Odoo's MO the clerk typed, the qty, and whether it is closed. */
+  odoo: TraceOdooRow[];
+}
+
+export interface TraceOdooRow {
+  id: number;
+  dateISO: string;
+  item: string;
+  product: string;
+  odooMo: string; // "" = not typed yet
+  qty: number;
+  status: string;
+  done: boolean;
+  doneAtISO: string | null;
+  fgCode: string;
+  by: string | null;
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -236,6 +254,20 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
 
   const remarksByMo = new Map(masters.map((m) => [m.mo, (m.remarks ?? "").trim()]));
 
+  // ---- the ODOO tab's rows born from these closings ----
+  const itemOfLedger = new Map(handover.map((h) => [h.id, h.item]));
+  const odooRows = handover.length
+    ? await prisma.odooEntry.findMany({
+        where: { ledgerId: { in: handover.map((h) => h.id) } },
+        orderBy: [{ date: "asc" }, { id: "asc" }],
+        select: { id: true, date: true, product: true, odooMo: true, qty: true, status: true, doneAt: true, fgCode: true, recordedBy: true, ledgerId: true },
+      })
+    : [];
+  const odoo: TraceOdooRow[] = odooRows.map((r) => ({
+    id: r.id, dateISO: toISODate(r.date), item: itemOfLedger.get(r.ledgerId!) ?? "", product: r.product, odooMo: r.odooMo, qty: r.qty,
+    status: r.status, done: isDoneStatus(r.status), doneAtISO: r.doneAt ? toISODate(r.doneAt) : null, fgCode: r.fgCode, by: r.recordedBy,
+  }));
+
   return {
     scope: isMo ? "mo" : "bom",
     key: isMo ? mo : bom,
@@ -265,5 +297,6 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
     })),
     ledgerCount: handover.length,
     orderPlans: [...new Set(orders.map((o) => o.planNo))].sort((a, b) => a - b).map(planLabel),
+    odoo,
   };
 }
