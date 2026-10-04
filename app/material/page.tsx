@@ -47,6 +47,7 @@ export default async function MaterialPage({
     "Remaining units": l.remainingUnits ?? "",
     REMARKS: l.note ?? "",
   })) : lines.map((l) => ({
+    "MTR Request #": l.mtr,
     SOI: l.soi,
     MO: l.mo,
     "BOM Ref": l.bom,

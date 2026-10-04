@@ -35,7 +35,7 @@ interface LineFields {
   month: string; bom: string; mo: string; units: number | null; partCode: string; partName: string; materialCode: string;
   material: string; thicknessMm: number | null;
   sheetSize: string; sheetsPerUnit: number | null; actualPerUnit: number | null; sheetsUsed: number | null; producedQty: number | null; note: string | null;
-  soi: string; weightKg: number | null; utilization: number | null;
+  soi: string; mtr: string; weightKg: number | null; utilization: number | null;
 }
 
 function readLine(formData: FormData): LineFields {
@@ -58,6 +58,7 @@ function readLine(formData: FormData): LineFields {
     producedQty: parseSheetNumber(formData.get("producedQty")),
     note: note || null,
     soi: String(formData.get("soi") ?? "").trim().toUpperCase(),
+    mtr: String(formData.get("mtr") ?? "").trim().toUpperCase(),
     weightKg: parseSheetNumber(formData.get("weightKg")),
     utilization: parseSheetNumber(formData.get("utilization")),
   };
@@ -86,7 +87,7 @@ function dataOf(f: LineFields, by: string | null, rateTyped: boolean) {
     sheetsPerUnit: f.sheetsPerUnit!, actualPerUnit: f.actualPerUnit, actualPerUnitManual: rateTyped,
     sheetsUsed: f.sheetsUsed,
     producedQty: f.producedQty, note: f.note, recordedBy: by,
-    soi: f.soi, weightKg: f.weightKg, utilization: f.utilization,
+    soi: f.soi, mtr: f.mtr, weightKg: f.weightKg, utilization: f.utilization,
   };
 }
 

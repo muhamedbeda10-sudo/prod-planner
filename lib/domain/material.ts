@@ -176,6 +176,9 @@ export interface MaterialLineInput {
   note: string | null;
   /** The newer sheet's SOI column — "" on a line without one. */
   soi: string;
+  /** The newest sheet's "MTR Request #" — the material request the sheets
+   *  were drawn on; "" on a line without one. */
+  mtr: string;
   weightKg: number | null; // Weight(Kg) — one sheet's
   utilization: number | null; // Average Utilization, as the sheet writes it
 }
@@ -263,6 +266,7 @@ export interface NestingRow {
   sheetsUsed: number | null;
   note: string | null;
   soi: string;
+  mtr: string;
   weightKg: number | null;
   utilization: number | null;
 }
@@ -357,6 +361,9 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
   // (a fragment match would catch other headers), found apart from the rest
   const moCol = (grid[headerIdx] ?? []).findIndex((c) => /^mo\s*(#|no\.?)?$/i.test(cellText(c)));
   const soiCol = (grid[headerIdx] ?? []).findIndex((c) => /^soi\s*#?$/i.test(cellText(c)));
+  // "MTR Request #" — the newest sheet's first column; none of the fragments
+  // above can claim it
+  const mtrCol = (grid[headerIdx] ?? []).findIndex((c) => /^mtr\b/i.test(cellText(c)));
   const issues: string[] = [];
   for (const [key, idx] of Object.entries(col)) {
     if (idx < 0 && !OPTIONAL_HEADERS.has(key)) issues.push(`Column "${key}" was not found in the header row.`);
@@ -413,6 +420,7 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
       sheetsUsed: used,
       note: note || null,
       soi: soiCol >= 0 ? cellText(line[soiCol]).toUpperCase() : "",
+      mtr: mtrCol >= 0 ? cellText(line[mtrCol]).toUpperCase() : "",
       weightKg: col.weight >= 0 ? parseSheetNumber(line[col.weight]) : null,
       utilization: col.utilization >= 0 ? parseSheetNumber(line[col.utilization]) : null,
     });
@@ -460,7 +468,7 @@ export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilter
       case "within": if (l.difference === null || l.difference < 0) return false; break;
     }
     if (q) {
-      const hay = [l.bom, l.soi ?? "", l.partCode, l.partName, l.materialCode, l.note ?? "", l.mo].join(" ").toLowerCase();
+      const hay = [l.bom, l.soi ?? "", l.mtr ?? "", l.partCode, l.partName, l.materialCode, l.note ?? "", l.mo].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
