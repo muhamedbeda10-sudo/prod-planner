@@ -34,7 +34,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
     );
   }
 
-  const [c, d, ai, worklists] = await Promise.all([
+  const [c, d, ai, machinePlanning] = await Promise.all([
     getControlDashboard({ planMonth: sp.plan ?? null }),
     getTargetDashboard({ weekOf: sp.w ? parseISODate(sp.w) : null, from: sp.from ? parseISODate(sp.from) : null, to: sp.to ? parseISODate(sp.to) : null }),
     getSmartInsights(),
@@ -66,7 +66,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
     <>
       {/* the period and the plan stay as they were left, across pages and visits */}
       <RememberLastVisit storageKey="dashboard:last" />
-      <ControlDashboard c={c} d={d} controls={controls} worklists={worklists} />
+      <ControlDashboard c={c} d={d} controls={controls} machinePlanning={machinePlanning} />
     </>
   );
 }
