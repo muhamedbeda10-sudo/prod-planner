@@ -866,6 +866,8 @@ model MaterialUsage {
   // of one sheet (kg — the actual weight is that × the pieces nested for the
   // job), and the planner's average utilization of the nesting.
   soi           String   @default("")
+  // the newest sheet's first column: the MTR request the sheets were drawn on
+  mtr           String   @default("")
   weightKg      Float?
   utilization   Float?
   note          String?

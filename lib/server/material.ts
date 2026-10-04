@@ -46,7 +46,7 @@ type Row = {
   material: string; thicknessMm: number;
   sheetSize: string; sheetsPerUnit: number; actualPerUnit: number | null; actualPerUnitManual: boolean;
   sheetsUsed: number | null; producedQty: number | null;
-  soi: string; weightKg: number | null; utilization: number | null;
+  soi: string; mtr: string; weightKg: number | null; utilization: number | null;
   note: string | null; recordedBy: string | null; updatedAt: Date;
 };
 
@@ -62,7 +62,7 @@ function toView(r: Row, producedAuto: number | null = null): MaterialLineView {
     partCode: r.partCode, partName: r.partName, materialCode: r.materialCode, material: r.material,
     thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, sheetsPerUnit: r.sheetsPerUnit,
     sheetsUsed: r.sheetsUsed, producedQty: r.producedQty, note: r.note,
-    soi: r.soi, weightKg: r.weightKg, utilization: r.utilization,
+    soi: r.soi, mtr: r.mtr, weightKg: r.weightKg, utilization: r.utilization,
     actualWeightKg: r.sheetsUsed !== null && r.weightKg !== null ? Math.round(r.sheetsUsed * r.weightKg * 100) / 100 : null,
     forJob,
     difference: sheetsDifference(forJob, r.sheetsUsed),
@@ -224,7 +224,7 @@ export async function importNestingTracker(
     const keepsRate = cur?.actualPerUnitManual === true;
     const same = cur && cur.units === r.units && cur.sheetsPerUnit === r.sheetsPerUnit
       && (keepsRate || cur.actualPerUnit === r.actualPerUnit) && cur.sheetsUsed === r.sheetsUsed && cur.partName === r.partName && cur.materialCode === r.materialCode
-      && cur.sortOrder === r.rowNum && cur.soi === r.soi && cur.weightKg === r.weightKg && cur.utilization === r.utilization
+      && cur.sortOrder === r.rowNum && cur.soi === r.soi && cur.mtr === r.mtr && cur.weightKg === r.weightKg && cur.utilization === r.utilization
       && (cur.note ?? null) === (r.note ?? cur.note ?? null);
     if (!cur) added += 1; else if (same) unchanged += 1; else updated += 1;
     if (preview || same) continue;
@@ -232,7 +232,7 @@ export async function importNestingTracker(
     const data = {
       units: r.units, partName: r.partName, materialCode: r.materialCode,
       sheetsPerUnit: r.sheetsPerUnit, sheetsUsed: r.sheetsUsed,
-      soi: r.soi, weightKg: r.weightKg, utilization: r.utilization,
+      soi: r.soi, mtr: r.mtr, weightKg: r.weightKg, utilization: r.utilization,
       sortOrder: r.rowNum, // the sheet's row — the tab reads in this order
       ...(keepsRate ? {} : { actualPerUnit: r.actualPerUnit }),
       // a blank note in the sheet must not erase one typed in the tab

@@ -87,6 +87,9 @@ function LineFields({ line, knownBoms, knownCodes, disabled, product = "TR" }: {
     <>
       {/* a new line joins the table; an archived sheet's line keeps its month */}
       <input type="hidden" name="month" value={line?.month ?? ""} />
+      <Field hint="MTR Request # — the material request the sheets were drawn on" label="MTR Request #" className="w-32">
+        <input name="mtr" aria-label="MTR Request #" defaultValue={line?.mtr ?? ""} disabled={disabled} className={`${F} ltr w-full`} />
+      </Field>
       <Field hint="SOI — as the sheet writes it" label="SOI" className="w-28">
         <input name="soi" aria-label="SOI" defaultValue={line?.soi ?? ""} disabled={disabled} placeholder="S01194-12" className={`${F} ltr w-full`} />
       </Field>
@@ -213,7 +216,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
   const del = useAction();
   const diffCls = line.difference === null ? "" : line.difference < 0 ? "text-bad-fg" : line.difference > 0 ? "text-ok-fg" : "text-muted";
   const lv = product === "LV";
-  const cols = (lv ? 16 : 22) + (showMonth ? 1 : 0);
+  const cols = (lv ? 16 : 23) + (showMonth ? 1 : 0);
   const editor = (
     <>
       {del.msg?.ok === false && (
@@ -297,6 +300,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
   return (
     <>
       <tr className="border-t">
+        <td className="p-2 whitespace-nowrap ltr text-xs">{line.mtr || <span className="text-muted">—</span>}</td>
         <td className="p-2 whitespace-nowrap ltr text-xs font-semibold">{line.soi || <span className="text-muted">—</span>}</td>
         {/* the sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
         <td className="p-2 font-bold whitespace-nowrap ltr text-xs"><MoCell mo={line.mo} odoo={odoo} /></td>
@@ -700,6 +704,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                   </tr>
                 ) : (
                 <tr className="bg-brand text-white text-left align-bottom">
+                  <th className={TH} title="The material request the sheets were drawn on">MTR Request #</th>
                   <th className={TH}>SOI</th>
                   <th className={TH} title="Odoo's MO for the part — the ODOO tab finds the line by it">MO</th>
                   <th className={TH}>BOM Ref</th>
