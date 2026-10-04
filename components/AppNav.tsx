@@ -111,6 +111,11 @@ export interface NavUser {
   perms: string[];
 }
 
+// What only exists while machine planning is on — the worklists ride on it
+// too (see machinePlanning below): the shift log, the machine list and the
+// times per machine all serve that one job.
+const MACHINE_ONLY = new Set(["/shifts", "/admin/machines", "/admin/machine-times"]);
+
 // The two tabs that only exist while per-piece tank tracking is on.
 const TANK_ONLY = new Set(["/worklist/leak-test", "/barcode"]);
 
@@ -136,8 +141,9 @@ export function AppNav({
   unreadChat?: number;
   /** With tracking off, the Leak Test and Barcode tabs are not part of the app. */
   tankTracking?: boolean;
-  /** One switch for the worklists and machine planning: off, the Worklist tab is gone and the
-   *  Floor tab is the what-if simulator alone — it is named so. */
+  /** One switch for the worklists, the shift log, the machines and machine planning: off, the
+   *  Worklist and Shifts tabs and the two machine pages are gone, and the Floor tab is the
+   *  what-if simulator alone — it is named so. */
   machinePlanning?: boolean;
   /** The subscribed person's "ready to close in Odoo" alert: its count on the ODOO tab, and the popup. */
   odooAlerts?: { enabled: boolean; count: number };
@@ -167,13 +173,14 @@ export function AppNav({
   const tankTabs = tankTracking && line !== "LV";
   const named = (l: Item): Item => (l.href === "/simulate" && !machinePlanning ? { ...l, label: "Simulator" } : l);
   const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => tankTabs || !TANK_ONLY.has(d.href));
-  const restTabs = REST.filter((l) => tankTabs || !TANK_ONLY.has(l.href)).map(named);
+  const shown = (l: { href: string }) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href));
+  const restTabs = REST.filter(shown).map(named);
   const drawerTabs = (!machinePlanning
     ? DRAWER.filter((l) => !l.href.startsWith("/worklist/"))
     : line === "LV"
     ? [...LV_WORKLIST_DEPTS.map((d): Item => ({ href: d.href, label: `${d.label} Worklist`, icon: d.icon })), ...DRAWER.filter((l) => !l.href.startsWith("/worklist/"))]
     : DRAWER
-  ).filter((l) => tankTabs || !TANK_ONLY.has(l.href)).map(named);
+  ).filter(shown).map(named);
   // the printed report is the transformers' — the panels' dashboard carries its own
   const drawerViews = DRAWER_VIEWS.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && !(line === "LV" && l.href === "/report"));
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
@@ -245,7 +252,7 @@ export function AppNav({
   // what THIS account may open from the tools menu
   // a link with its own key follows the tick, admins included; one without
   // is an admin page
-  const adminLinks = ADMIN.filter((l) => (l.perm ? user.perms.includes(l.perm) : user.isAdmin));
+  const adminLinks = ADMIN.filter((l) => shown(l) && (l.perm ? user.perms.includes(l.perm) : user.isAdmin));
   const showTools = user.isAdmin || adminLinks.length > 0;
   const adminActive = adminLinks.some((l) => isActive(l.href, l.match, l.also)) || isActive("/admin/users") || isActive("/admin/standard-times");
 
