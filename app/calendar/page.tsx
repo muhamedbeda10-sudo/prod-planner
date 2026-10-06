@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import { HolidayManager } from "@/components/HolidayManager";
@@ -8,6 +8,7 @@ import { toISODate } from "@/lib/domain/dates";
 export const dynamic = "force-dynamic";
 
 export default async function CalendarPage() {
+  await guardTab("/calendar");
   // admin-only page: invisible in the nav for others, and a direct URL bounces
   const me = await getCurrentUser();
   if (!me?.isAdmin) redirect("/");

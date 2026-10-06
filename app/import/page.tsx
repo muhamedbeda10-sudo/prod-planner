@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { PageHead } from "@/components/ui";
 import { ImportForm } from "@/components/ImportForm";
 import { toISODate } from "@/lib/domain/dates";
@@ -10,6 +10,7 @@ import { getActiveLine } from "@/lib/server/line";
 export const dynamic = "force-dynamic";
 
 export default async function ImportPage() {
+  await guardTab("/import");
   // admin-only page: invisible in the nav for others, and a direct URL bounces
   const me = await getCurrentUser();
   if (!me?.isAdmin) redirect("/");

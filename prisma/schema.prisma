@@ -304,6 +304,9 @@ model User {
   // sees and manages Users & Permissions — admins included.
   isOwner      Boolean   @default(false)
   perms        String    @default("") // CSV of permission keys
+  // The screens this account does NOT see (CSV of tab ids — lib/domain/tabs.ts).
+  // Empty sees everything; the owner sets it per person, admins included.
+  hiddenTabs   String    @default("")
   active       Boolean   @default(true) // deactivated users cannot log in
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

@@ -1,5 +1,5 @@
 import { getFinishedTanks, getBaseUrl } from "@/lib/server/tanks";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getSettings } from "@/lib/server/data";
 import { PageHeader } from "@/components/ui";
 import { BarcodeSheet } from "@/components/BarcodeSheet";
@@ -24,6 +24,7 @@ function TrackingOff({ what }: { what: string }) {
 }
 
 export default async function BarcodePage() {
+  await guardTab("/barcode");
   const [tanks, baseUrl, user, settings] = await Promise.all([
     getFinishedTanks(),
     getBaseUrl(),

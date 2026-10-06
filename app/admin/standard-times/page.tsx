@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { PageHeader } from "@/components/ui";
 import { getCalibration, CALIBRATION_WINDOW_DAYS } from "@/lib/server/calibration";
 import { StandardTimesManager } from "./StandardTimesManager";
@@ -12,6 +12,7 @@ export const metadata = { title: "Standard Times & Capacity — ATC" };
 export const dynamic = "force-dynamic";
 
 export default async function StandardTimesPage() {
+  await guardTab("/admin/standard-times");
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   if (!me.isAdmin) redirect("/");

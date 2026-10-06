@@ -5,7 +5,7 @@ import { toISODate } from "@/lib/domain/dates";
 import { formatDate } from "@/lib/domain/format";
 import { LeakTestTable } from "@/components/LeakTestTable";
 import { PrintHeader } from "@/components/PrintHeader";
-import { getCurrentUser, canEditDept } from "@/lib/server/auth";
+import { getCurrentUser, canEditDept, guardTab } from "@/lib/server/auth";
 import { getSettings } from "@/lib/server/data";
 
 export const metadata = { title: "Leak Test — ATC" };
@@ -29,6 +29,7 @@ function TrackingOff({ what }: { what: string }) {
 }
 
 export default async function LeakTestPage() {
+  await guardTab("/worklist/leak-test");
   const today = new Date();
   const dayISO = toISODate(today);
   const [tanks, testers, user, settings] = await Promise.all([

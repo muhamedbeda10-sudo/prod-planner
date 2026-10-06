@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser, hasPerm } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { getActiveLine } from "@/lib/server/line";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getOdooData, getOdooDashboard } from "@/lib/server/odoo";
@@ -24,6 +24,7 @@ export default async function OdooPage({
 }: {
   searchParams: Promise<{ day?: string; view?: string; range?: string; from?: string; to?: string; basis?: string; bom?: string }>;
 }) {
+  await guardTab("/odoo");
   // viewing is free for every account, like the rest of the app; recording is
   // gated on each row's own line's Odoo key (odoo.edit / lv.odoo). Both lines
   // share the tab and its dashboard — the toggle only picks the default line

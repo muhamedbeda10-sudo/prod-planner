@@ -14,6 +14,7 @@ import { getActiveLine } from "@/lib/server/line";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, STAGE_COLOR, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
+import { guardTab } from "@/lib/server/auth";
 
 // display label for a report stage: Painting reads as "Painting & Shot Blast"
 const stageLabel = (dept: string) => (dept === "Painting" ? FINISHING_LABEL : deptLabel(dept));
@@ -67,6 +68,7 @@ export default async function ReportPage({
 }: {
   searchParams: Promise<{ day?: string; dept?: string; from?: string }>;
 }) {
+  await guardTab("/report");
   // the printed report is the transformers' shape (components against a
   // target); the panels' report is their dashboard with a day or a period
   if ((await getActiveLine()) === "LV") redirect("/");

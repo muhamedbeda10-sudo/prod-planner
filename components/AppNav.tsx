@@ -13,6 +13,7 @@ import {
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { InstallApp } from "@/components/InstallApp";
+import { useCanSee } from "@/components/TabAccess";
 import { ChatDock } from "@/components/ChatDock";
 import { useOdooAlerts } from "@/components/OdooAlerts";
 import { LineTabs } from "@/components/LineTabs";
@@ -172,9 +173,17 @@ export function AppNav({
   // panels on screen, they are not part of the app
   const tankTabs = tankTracking && line !== "LV";
   const named = (l: Item): Item => (l.href === "/simulate" && !machinePlanning ? { ...l, label: "Simulator" } : l);
-  const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => tankTabs || !TANK_ONLY.has(d.href));
-  const shown = (l: { href: string }) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href));
-  const restTabs = REST.filter(shown).map(named);
+  // the screens the owner switched off for this account leave the menus too
+  const canSee = useCanSee();
+  const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => (tankTabs || !TANK_ONLY.has(d.href)) && canSee(d.href));
+  const shown = (l: { href: string }) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)) && canSee(l.href);
+  // a tab whose own screen is off but one of its views is on opens on that view
+  const reachable = (l: Item): Item | null => {
+    const to = [l.href, ...(l.also ?? [])].find(canSee);
+    return to ? (to === l.href ? l : { ...l, href: to, match: l.match ?? l.href }) : null;
+  };
+  const restTabs = REST.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
+    .map(reachable).filter((l): l is Item => l !== null).map(named);
   const drawerTabs = (!machinePlanning
     ? DRAWER.filter((l) => !l.href.startsWith("/worklist/"))
     : line === "LV"
@@ -182,9 +191,9 @@ export function AppNav({
     : DRAWER
   ).filter(shown).map(named);
   // the printed report is the transformers' — the panels' dashboard carries its own
-  const drawerViews = DRAWER_VIEWS.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && !(line === "LV" && l.href === "/report"));
+  const drawerViews = DRAWER_VIEWS.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && !(line === "LV" && l.href === "/report") && canSee(l.href));
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
-  const singleDeptHref = !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;
+  const singleDeptHref = worklistDepts.length === 1 ? worklistDepts[0].href : !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;
 
   const [open, setOpen] = useState(false); // desktop admin dropdown
   const [worklistOpen, setWorklistOpen] = useState(false); // inline worklist dept expansion
@@ -253,7 +262,7 @@ export function AppNav({
   // a link with its own key follows the tick, admins included; one without
   // is an admin page
   const adminLinks = ADMIN.filter((l) => shown(l) && (l.perm ? user.perms.includes(l.perm) : user.isAdmin));
-  const showTools = user.isAdmin || adminLinks.length > 0;
+  const showTools = adminLinks.length > 0 || (user.isAdmin && canSee("/admin/standard-times")) || !!user.isOwner;
   const adminActive = adminLinks.some((l) => isActive(l.href, l.match, l.also)) || isActive("/admin/users") || isActive("/admin/standard-times");
 
   return (
@@ -290,7 +299,7 @@ export function AppNav({
                   They used to unroll sideways inside the bar, which shoved every
                   tab to its right along and left the bar a different width open
                   than closed. */}
-              {machinePlanning && (
+              {machinePlanning && worklistDepts.length > 0 && (
               <li ref={wlRef} className="relative flex items-center">
                 {singleDeptHref ? (
                   <Link href={singleDeptHref} className={`nav-tab ${isActive("/worklist") ? "nav-tab-active" : ""}`}>
@@ -360,7 +369,7 @@ export function AppNav({
             <LineTabs line={line} />
             {/* chat is a glance, not a destination — an icon here with its
                 unread badge, opening a panel over whatever page you are on */}
-            <div className="hidden md:block">
+            <div className={canSee("/chat") ? "hidden md:block" : "hidden"}>
               <ChatDock me={{ id: user.id, name: user.name }} unread={unreadChat} />
             </div>
 
@@ -400,7 +409,7 @@ export function AppNav({
                       </span>
                     </Link>
                   ))}
-                  {user.isAdmin && (
+                  {user.isAdmin && canSee("/admin/standard-times") && (
                     <Link
                       href="/admin/standard-times"
                       role="menuitem"
@@ -547,7 +556,7 @@ export function AppNav({
                   {l.label}
                 </Link>
               ))}
-              {user.isAdmin && (
+              {user.isAdmin && canSee("/admin/standard-times") && (
                 <Link
                   href="/admin/standard-times"
                   className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
-import { getCurrentUser, hasPerm } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { getAllMachines } from "@/lib/server/machines";
 import { getMachineItemTimes } from "@/lib/server/machineTimes";
 import { getMeasuredRates } from "@/lib/server/machineRates";
@@ -20,6 +20,7 @@ export const dynamic = "force-dynamic";
 const SHOWN_TIER = 1000;
 
 export default async function MachineTimesPage() {
+  await guardTab("/admin/machine-times");
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   if (!hasPerm(me, "machines.manage")) redirect("/");
