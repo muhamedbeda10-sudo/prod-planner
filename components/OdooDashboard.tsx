@@ -376,7 +376,7 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
   const title = periodLabel(d.period);
   // a narrowed dashboard must say so on the page, not only in the picker —
   // printed or screenshotted, the numbers are otherwise the whole plant's
-  const bomLabel = d.bom === null ? null : d.bom === "" ? "rows with no BOM in their code" : d.bom;
+  const bomLabel = d.bom === null ? null : d.bom === "" ? "rows with no known BOM" : d.bom;
   const prevTitle = d.previous ? periodLabel({ range: "custom", fromISO: d.previous.fromISO, toISO: d.previous.toISO }) : null;
   const closedBasis = d.basis === "closed";
   const word = closedBasis ? "closed" : "logged";
