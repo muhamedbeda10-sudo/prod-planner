@@ -47,7 +47,8 @@ describe("numbers", () => {
   });
   it("uses each field's own decimals", () => {
     expect(formatField(70.1, "weight")).toBe("70.10");
-    expect(formatField(0.79, "factor")).toBe("0.790");
+    expect(formatField(0.79, "factor")).toBe("0.7900");
+    expect(formatField(1.2874, "sheets")).toBe("1.287");
     expect(formatField(12, "count")).toBe("12");
   });
   it("writes consumables quantities with only the decimals they need", () => {

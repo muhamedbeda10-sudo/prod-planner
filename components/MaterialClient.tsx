@@ -11,8 +11,10 @@ import {
   type MaterialLineView, type MaterialTotal, type MaterialFilters, type MaterialStatusFilter,
 } from "@/lib/domain/material";
 import { Modal } from "@/components/Modal";
+import { FIELD_DP, formatNumber, formatQty } from "@/lib/domain/format";
 import { FilterSelect } from "@/components/FilterControls";
-import { Check, FilterX, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
+import { Check, FilterX, Plus, Search, Upload } from "lucide-react";
+import { CellEditor, DensityToggle, GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
   createMaterialLine, createLvOrderLines, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, setUtilization, deleteMaterialLine, importMaterialAction,
@@ -31,12 +33,11 @@ import {
 // rate). Sheets-for-job, actual-per-unit and Difference are computed, never
 // typed, so they can never disagree.
 
-const cellInput = "h-[26px] px-1.5 text-[12.5px] font-semibold tabnum ltr text-right";
+const cellInput = "font-semibold";
 
-/** The sheet's own column names are sentences ("No. of Sheets in Actual
- *  Nesting for one Unit"), so a header cell wraps to a few words wide instead
- *  of pushing the table off the screen. */
-const TH = "p-2 align-bottom max-w-[8.5rem] whitespace-normal leading-tight";
+/* The sheet's own column names are sentences ("No. of Sheets in Actual
+   Nesting for one Unit"): the headers carry a short label, and the sheet's
+   whole name sits in each one's tooltip (and stays the export's heading). */
 /** A numeric column's header and cells: right-aligned, so figures line up. */
 const NUM = "num";
 
@@ -71,11 +72,18 @@ function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
   return <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
 }
 
-/** Sheet counts read as fractions of a sheet — 1.287, not 1.3. A rate per
- *  unit is finer still: the sheet writes 0.2207. */
-function Sheets({ v, className = "", digits = 4 }: { v: number | null; className?: string; digits?: 3 | 4 }) {
+/** Sheet counts read as fractions of a sheet — 1.287, not 1.3 — at a fixed
+ *  number of decimals per column, so a column's figures line up on the point.
+ *  A rate per unit is finer still: the sheet writes 0.2207. */
+function Sheets({ v, className = "", digits = FIELD_DP.sheets }: { v: number | null; className?: string; digits?: number }) {
   if (v === null) return <span className="text-muted">—</span>;
-  return <span className={`tabnum ltr ${className}`}>{Number.isInteger(v) ? v : Number(v.toFixed(digits))}</span>;
+  return <span className={`tabnum ltr ${className}`} title={String(v)}>{formatNumber(v, digits)}</span>;
+}
+
+/** A count of units: whole as a rule, any fraction kept as typed. */
+function Units({ v }: { v: number | null }) {
+  if (v === null) return <span className="text-muted">—</span>;
+  return <span className="tabnum ltr">{formatQty(v)}</span>;
 }
 
 // ---- the line form: one strip, the sheet's columns in the sheet's order ----
@@ -179,27 +187,22 @@ function Utilization({ v }: { v: number | null }) {
 
 // ---- one editable number cell (actual nested · units produced) ----
 
-function CellInput({ id, field, value, action, title, bold, step = "0.01", className = "w-20", placeholder = "—" }: {
+function CellInput({ id, field, value, action, title, bold, step = "0.01", className = "", placeholder = "—" }: {
   id: number; field: "actualPerUnit" | "sheetsUsed" | "producedQty" | "utilization"; value: number | null;
   action: (fd: FormData) => Promise<{ ok: boolean; error?: string }>; title: string; bold?: boolean;
   step?: string; className?: string; placeholder?: string;
 }) {
   const a = useAction();
-  const [draft, setDraft] = useState(value === null ? "" : String(value));
-  function save() {
-    const current = value === null ? "" : String(value);
-    if (draft.trim() === current) return;
+  function save(v: string) {
     const fd = new FormData();
     fd.set("id", String(id));
-    fd.set(field, draft.trim());
+    fd.set(field, v);
     a.run(action, fd, "Saved.");
   }
   return (
-    <span className="inline-flex flex-col items-center">
-      <input
-        type="number" step={step} min="0" value={draft} disabled={a.pending}
-        onChange={(e) => setDraft(e.target.value)} onBlur={save}
-        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+    <span className="flex flex-col items-end">
+      <CellEditor
+        col={field} value={value === null ? "" : String(value)} onCommit={save} step={step} min="0" disabled={a.pending}
         placeholder={placeholder} title={title} className={`${cellInput} ${bold ? "font-extrabold" : ""} ${className}`.trim()}
       />
       {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
@@ -228,6 +231,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
   const [editing, setEditing] = useState(false);
   const edit = useAction();
   const del = useAction();
+  const [confirmDelete, confirmDialog] = useConfirm();
   const diffCls = line.difference === null ? "" : line.difference < 0 ? "text-bad-fg" : line.difference > 0 ? "text-ok-fg" : "text-muted";
   const lv = product === "LV";
   const cols = (lv ? 16 : 23) + (showMonth ? 1 : 0);
@@ -256,28 +260,40 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
       )}
     </>
   );
+  const name = `${line.partCode ? `${line.partCode} ` : ""}${line.material} ${line.thicknessMm} mm ${line.sheetSize}`;
+  const row = useRowMenu(() => [
+    { heading: `${line.mo || line.bom} · ${line.material} ${line.thicknessMm} mm` },
+    { key: "edit", label: "Edit line…", icon: "✏️", onSelect: () => setEditing(true) },
+    { sep: true },
+    {
+      key: "delete", label: "Delete line…", icon: "🗑", danger: true, disabled: del.pending,
+      onSelect: async () => {
+        const ok = await confirmDelete({
+          title: "Delete this material line?",
+          body: <>This line leaves the table for good. Its sheets drop out of the totals below.</>,
+          items: [`${line.mo || line.bom} · ${name}`],
+          confirmLabel: "Delete line",
+          danger: true,
+        });
+        if (!ok) return;
+        const fd = new FormData(); fd.set("id", String(line.id));
+        del.run(deleteMaterialLine, fd, "Deleted.");
+      },
+    },
+  ], `Actions for ${line.mo || line.bom} ${line.material} ${line.thicknessMm} mm`);
   const actions = (
     <td className="px-1 text-center whitespace-nowrap no-print">
-      {canEdit ? (
-        <span className="inline-flex gap-0.5">
-          <button type="button" className="icon-btn" onClick={() => setEditing(true)} title="Edit this line" aria-label={`Edit ${line.mo || line.bom} ${line.material} ${line.thicknessMm} mm`}><Pencil size={14} /></button>
-          <button type="button" className="icon-btn icon-btn-danger" disabled={del.pending} title="Delete this line" aria-label={`Delete ${line.mo || line.bom} ${line.material} ${line.thicknessMm} mm`}
-            onClick={() => {
-              if (!confirm(`Delete ${line.partCode ? `${line.partCode} ` : ""}${line.material} ${line.thicknessMm}mm ${line.sheetSize} from ${line.mo || line.bom}?`)) return;
-              const fd = new FormData(); fd.set("id", String(line.id));
-              del.run(deleteMaterialLine, fd, "Deleted.");
-            }}><Trash2 size={14} /></button>
-        </span>
-      ) : <span className="text-muted text-xs">—</span>}
+      {canEdit ? <>{row.button}{row.menu}{confirmDialog}</> : <span className="text-muted text-xs">—</span>}
     </td>
   );
+  const rowMenuProps = canEdit ? { onContextMenu: row.onContextMenu } : {};
   if (lv) {
     // the panels' sheet: the order's head, then the thickness row, then what
     // the tracker produced and what that consumed
     const done = line.remainingUnits === 0 && line.units > 0;
     return (
       <>
-        <tr className={`border-t ${done ? "bg-ok-bg/30" : ""}`}>
+        <tr className={`border-t ${done ? "bg-ok-bg/30" : ""}`} {...rowMenuProps}>
           <td className="p-2 font-bold whitespace-nowrap ltr text-xs"><MoCell mo={line.mo} odoo={odoo} /></td>
           <td className="p-2 text-center"><span className="pill pill-muted">{line.partName || "—"}</span></td>
           <td className="p-2 whitespace-nowrap ltr text-xs tabnum text-muted">{line.materialCode || "—"}</td>
@@ -286,17 +302,17 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
           <td className="p-2 whitespace-nowrap">{line.material}</td>
           <td className="p-2 text-center tabnum ltr">{line.thicknessMm}</td>
           <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
-          <td className="p-2 text-center"><Sheets v={line.sheetsPerUnit} digits={4} /></td>
+          <td className="p-2 text-center"><Sheets v={line.sheetsPerUnit} digits={FIELD_DP.factor} /></td>
           <td className="p-2 text-center font-bold"><Sheets v={line.forJob} /></td>
           <td className="p-2 text-center">
             {canEdit ? (
               <CellInput id={line.id} field="actualPerUnit" value={line.actualPerUnit} action={setActualPerUnit} step="0.0001" className={`w-24 ${line.actualPerUnitManual ? "font-semibold" : "text-muted font-normal"}`} title="Sheets ONE unit really takes — blank means the BOM's figure" />
-            ) : <Sheets v={line.actualPerUnit} digits={4} />}
+            ) : <Sheets v={line.actualPerUnit} digits={FIELD_DP.factor} />}
           </td>
           <td className="p-2 text-center bg-brand-light/30 whitespace-nowrap">
             {canEdit ? (
               <CellInput id={line.id} field="producedQty" value={line.producedQty} action={setProducedQty} placeholder={line.producedAuto === null ? "—" : String(line.producedAuto)} title={line.producedAuto === null ? "Units produced — type it" : `${line.producedAuto} painted on the tracker — type over it only to override`} />
-            ) : <Sheets v={line.producedUsed} />}
+            ) : <Units v={line.producedUsed} />}
             {line.producedQty === null && line.producedAuto !== null && <span className="block text-[10px] text-muted">tracker</span>}
           </td>
           <td className="p-2 text-center font-extrabold bg-brand-light/30" title={line.producedUsed === null ? "Nothing produced yet" : `${line.producedUsed} units × ${Number((line.actualPerUnit ?? line.sheetsPerUnit).toFixed(4))} sheets a unit`}>
@@ -313,7 +329,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
   }
   return (
     <>
-      <tr>
+      <tr {...rowMenuProps}>
         <td className={`p-2 whitespace-nowrap ltr text-xs ${stickCls(0)}`} style={stickStyle(0)}><span className="block truncate" title={line.mtr || undefined}>{line.mtr || <span className="text-muted">—</span>}</span></td>
         <td className={`p-2 whitespace-nowrap ltr text-xs font-semibold ${stickCls(1)}`} style={stickStyle(1)}><span className="block truncate" title={line.soi || undefined}>{line.soi || <span className="text-muted">—</span>}</span></td>
         {/* the sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
@@ -327,7 +343,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
         <td className={`p-2 ${NUM} tabnum ltr`}>{line.thicknessMm}</td>
         <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
         <td className={`p-2 ${NUM} tabnum`}><Sheets v={line.weightKg} digits={3} /></td>
-        <td className={`p-2 ${NUM}`}><Sheets v={line.sheetsPerUnit} digits={4} /></td>
+        <td className={`p-2 ${NUM}`}><Sheets v={line.sheetsPerUnit} digits={FIELD_DP.factor} /></td>
         {/* Actual / unit — the sheet's own figure where it carries one, and
             typed here for the lines it leaves blank (most of them). What is
             typed outranks the sheet: a re-import fills the blanks and leaves
@@ -343,7 +359,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
             />
           ) : (
             <span className={line.actualPerUnitManual ? "font-semibold" : "text-muted"} title={line.actualPerUnitManual ? "Typed in this tab" : "From the nesting sheet"}>
-              <Sheets v={line.actualPerUnit} digits={4} />
+              <Sheets v={line.actualPerUnit} digits={FIELD_DP.factor} />
             </span>
           )}
         </td>
@@ -358,7 +374,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
         <td className={`p-2 ${NUM} emph ${diffCls}`}><Sheets v={line.difference} /></td>
         <td className="p-2 text-xs min-w-[8rem] max-w-[200px]">{line.note}</td>
         <td className={`p-2 ${NUM}`}>
-          {canEdit ? <CellInput id={line.id} field="producedQty" value={line.producedQty} action={setProducedQty} title="The quantity to cost — the tab multiplies the actual rate by it" /> : <Sheets v={line.producedQty} />}
+          {canEdit ? <CellInput id={line.id} field="producedQty" value={line.producedQty} action={setProducedQty} title="The quantity to cost — the tab multiplies the actual rate by it" /> : <Units v={line.producedQty} />}
         </td>
         <td className={`p-2 ${NUM} font-semibold`} title={line.actualPerUnit === null ? "No rate yet — type one under Actual Nesting for one Unit, or nest the job" : `${Number(line.actualPerUnit.toFixed(4))} sheets a unit × the quantity beside it`}>
           <Sheets v={line.forProduced} />
@@ -642,8 +658,11 @@ function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineVie
         onChange={(v) => set({ status: v as MaterialStatusFilter })}
         options={(Object.keys(MATERIAL_STATUS_FILTERS) as MaterialStatusFilter[]).filter((k) => k !== "all").map((k) => ({ value: k, label: MATERIAL_STATUS_FILTERS[k] }))}
       />
-      <span className="ml-auto text-xs text-muted tabnum whitespace-nowrap">
+      <span className="ml-auto inline-flex items-center gap-3">
+      <DensityToggle />
+      <span className="text-xs text-muted tabnum whitespace-nowrap">
         {active ? <><b className="text-foreground font-semibold">{shown}</b> of {lines.length} lines</> : `${lines.length} lines`}
+      </span>
       </span>
       {active && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => onChange(EMPTY_MATERIAL_FILTERS)}><FilterX size={13} aria-hidden />Reset filters</button>}
     </div>
@@ -688,13 +707,20 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
       </div>
       <section className="bg-surface border rounded-[10px] overflow-hidden">
         {lines.length === 0 ? (
-          <p className="text-sm text-muted p-4">
-            {showMonth ? "No material recorded yet." : month ? `Nothing filed under ${month}.` : "The table is empty."} {lv ? "Upload the Consumption Details sheet, or add an order." : "Upload the material sheet, or add a line."}
-          </p>
+          <TableEmpty
+            title={showMonth ? "No material recorded yet" : month ? `Nothing filed under ${month}` : "The table is empty"}
+            hint={lv ? "Upload the Consumption Details sheet, or add an order." : "Upload the material sheet, or add a line."}
+            action={canEdit ? <><ImportPanel product={product} />{lv ? <AddLvOrder orders={lvOrders} templates={lvTemplates} /> : <AddLine knownBoms={knownBoms} knownCodes={knownCodes} product={product} />}</> : undefined}
+          />
         ) : shown.length === 0 ? (
-          <p className="text-sm text-muted p-4">No line matches these filters.</p>
+          <TableEmpty
+            title="No line matches these filters"
+            hint={`${lines.length} lines are hidden by the filters above.`}
+            action={<button type="button" className="btn btn-sm btn-secondary" onClick={() => changeFilters(EMPTY_MATERIAL_FILTERS)}><FilterX size={13} aria-hidden />Reset filters</button>}
+            filtered
+          />
         ) : (
-          <div className="overflow-x-auto erp-scroll">
+          <TableFrame>
             <table className="erp-table w-full border-collapse">
               <thead>
                 {/* The Nesting Tracker's OWN columns, in the sheet's order and
@@ -703,59 +729,82 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                     what it really costs — and last the app's own identity
                     columns, which the sheet has never carried. */}
                 {lv ? (
-                  <tr className="bg-brand text-white text-left align-bottom">
-                    <th className={TH}>MO</th>
-                    <th className={`${TH} text-center`}>Product</th>
-                    <th className={TH}>Sec Item</th>
-                    <th className={`${TH} text-center`}>Planned qty</th>
-                    <th className={TH}>BOM</th>
-                    <th className={TH}>Material</th>
-                    <th className={`${TH} text-center`}>Thickness (mm)</th>
-                    <th className={`${TH} text-center`}>Sheet Size</th>
-                    <th className={`${TH} text-center`}>No. of Sheets in BOM for one Unit</th>
-                    <th className={`${TH} text-center`} title="Per unit × planned qty">Sheets Qty as per BOM</th>
-                    <th className={`${TH} text-center`} title="Sheets one unit really takes — blank means the BOM's figure">Actual per Unit</th>
-                    <th className={`${TH} text-center bg-brand-dark`} title="Panels painted on the tracker; type here only to override">Produced</th>
-                    <th className={`${TH} text-center bg-brand-dark`} title="Sheets the produced panels consumed — per unit × produced">Actually Consumed</th>
-                    <th className={`${TH} text-center`}>Remaining units</th>
-                    <th className={TH}>Remarks</th>
-                    {showMonth && <th className={TH}>Month</th>}
-                    <th className="p-2 no-print" />
+                  <>
+                  <GroupBand spans={[
+                    { span: 9, group: "source", label: <GroupLegend /> },
+                    { span: 1, group: "computed" },
+                    { span: 2, group: "input" },
+                    { span: 2, group: "computed" },
+                    { span: 1 + (showMonth ? 1 : 0) + 1 },
+                  ]} />
+                  <tr className="text-left align-bottom">
+                    <Th label="MO" group="source" />
+                    <Th label="Product" group="source" center />
+                    <Th label="Sec item" full="Sec Item" group="source" />
+                    <Th label="Planned" unit="pcs" full="Planned qty" group="source" num />
+                    <Th label="BOM" group="source" />
+                    <Th label="Material" group="source" />
+                    <Th label="Thk" unit="mm" full="Thickness" group="source" num />
+                    <Th label="Sheet size" full="Sheet Size" group="source" center />
+                    <Th label="BOM / unit" unit="sheets" full="No. of Sheets in BOM for one Unit" group="source" num />
+                    <Th label="BOM qty" unit="sheets" full="Sheets Qty as per BOM" hint="Per unit × planned qty" group="computed" num />
+                    <Th label="Actual / unit" unit="sheets" full="Actual per Unit" hint="Sheets one unit really takes — blank means the BOM's figure" group="input" num />
+                    <Th label="Produced" unit="pcs" hint="Panels painted on the tracker; type here only to override" group="input" num />
+                    <Th label="Consumed" unit="sheets" full="Actually Consumed" hint="Sheets the produced panels consumed — per unit × produced" group="computed" num />
+                    <Th label="Remaining" unit="pcs" full="Remaining units" group="computed" num />
+                    <Th label="Remarks" group="source" />
+                    {showMonth && <Th label="Month" />}
+                    <th className="p-2 no-print"><span className="sr-only">Actions</span></th>
                   </tr>
+                  </>
                 ) : (
+                <>
+                <GroupBand spans={[
+                  { span: 3, label: <GroupLegend />, className: "stick stick-end", style: { "--stick-left": "0rem", "--stick-w": "26.75rem" } as React.CSSProperties },
+                  { span: 10, group: "source" },
+                  { span: 1, group: "input" },
+                  { span: 1, group: "computed" },
+                  { span: 2, group: "input" },
+                  { span: 2, group: "computed" },
+                  { span: 1, group: "source" },
+                  { span: 1, group: "input" },
+                  { span: 1, group: "computed" },
+                  { span: (showMonth ? 1 : 0) + 1 },
+                ]} />
                 <tr className="text-left align-bottom">
-                  <th className={`${TH} ${stickCls(0)}`} style={stickStyle(0)} title="The material request the sheets were drawn on">MTR Request #</th>
-                  <th className={`${TH} ${stickCls(1)}`} style={stickStyle(1)}>SOI</th>
-                  <th className={`${TH} ${stickCls(2)}`} style={stickStyle(2)} title="Odoo's MO for the part — the ODOO tab finds the line by it">MO</th>
-                  <th className={TH}>BOM Ref</th>
-                  <th className={`${TH} ${NUM}`}>Quantity of Units</th>
-                  <th className={TH}>Part Code</th>
-                  <th className={TH}>Part Name</th>
-                  <th className={TH}>Material Code</th>
-                  <th className={TH}>Material</th>
-                  <th className={`${TH} ${NUM}`}>Thickness (mm)</th>
-                  <th className={`${TH} text-center`}>Sheet Size</th>
-                  <th className={`${TH} ${NUM}`} title="One sheet's weight">Weight(Kg)</th>
-                  <th className={`${TH} ${NUM}`}>BOM Qty for one Unit</th>
-                  <th className={`${TH} ${NUM}`} title="From the sheet, or typed here for the lines it leaves blank">No. of Pieces in Actual Nesting for one Unit</th>
-                  <th className={`${TH} ${NUM} emph`} title="BOM Qty for one Unit × units">BOM Pieces for Job</th>
-                  <th className={`${TH} ${NUM} emph`} title="Type here">No. of Pieces in Actual Nesting for Job</th>
-                  <th className={`${TH} ${NUM}`}>Average Utilization</th>
-                  <th className={`${TH} ${NUM} emph`} title="Pieces in Actual Nesting for Job × Weight(Kg)">Actual Weight (Kg)</th>
-                  <th className={`${TH} ${NUM} emph`} title="BOM Pieces for Job − Actual Nesting for Job. Red = ate more than the BOM allows">Difference</th>
-                  <th className={TH}>Notes</th>
-                  <th className={`${TH} ${NUM}`} title="Type the quantity you want costed — it does not have to be the whole job">Quantity</th>
-                  <th className={`${TH} ${NUM}`} title="Actual Nesting for one Unit × the quantity beside it">Actual for Quantity</th>
-                  {showMonth && <th className={TH}>Month</th>}
+                  <Th label="MTR #" full="MTR Request #" hint="The material request the sheets were drawn on" group="source" className={stickCls(0)} style={stickStyle(0)} />
+                  <Th label="SOI" group="source" className={stickCls(1)} style={stickStyle(1)} />
+                  <Th label="MO" hint="Odoo's MO for the part — the ODOO tab finds the line by it" group="source" className={stickCls(2)} style={stickStyle(2)} />
+                  <Th label="BOM" full="BOM Ref" group="source" />
+                  <Th label="Units" unit="pcs" full="Quantity of Units" group="source" num />
+                  <Th label="Part code" full="Part Code" group="source" />
+                  <Th label="Part name" full="Part Name" group="source" />
+                  <Th label="Mat. code" full="Material Code" group="source" />
+                  <Th label="Material" group="source" />
+                  <Th label="Thk" unit="mm" full="Thickness" group="source" num />
+                  <Th label="Sheet size" full="Sheet Size" group="source" center />
+                  <Th label="Weight" unit="kg" full="Weight(Kg)" hint="One sheet's weight" group="source" num />
+                  <Th label="BOM / unit" full="BOM Qty for one Unit" group="source" num />
+                  <Th label="Actual / unit" full="No. of Pieces in Actual Nesting for one Unit" hint="From the sheet, or typed here for the lines it leaves blank" group="input" num />
+                  <Th label="BOM for job" full="BOM Pieces for Job" hint="BOM Qty for one Unit × units" group="computed" num className="emph" />
+                  <Th label="Actual for job" full="No. of Pieces in Actual Nesting for Job" hint="Type here" group="input" num className="emph" />
+                  <Th label="Utilization" full="Average Utilization" hint="As the sheet writes it — 0.85 or 85" group="input" num />
+                  <Th label="Actual weight" unit="kg" full="Actual Weight (Kg)" hint="Pieces in Actual Nesting for Job × Weight(Kg)" group="computed" num className="emph" />
+                  <Th label="Difference" hint="BOM Pieces for Job − Actual Nesting for Job. Red = ate more than the BOM allows" group="computed" num className="emph" />
+                  <Th label="Notes" group="source" />
+                  <Th label="Quantity" hint="Type the quantity you want costed — it does not have to be the whole job" group="input" num />
+                  <Th label="Actual for qty" full="Actual for Quantity" hint="Actual Nesting for one Unit × the quantity beside it" group="computed" num />
+                  {showMonth && <Th label="Month" />}
                   <th className="p-2 no-print"><span className="sr-only">Actions</span></th>
                 </tr>
+                </>
                 )}
               </thead>
               <tbody>
                 {shown.map((l) => <LineRow key={l.id} line={l} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} />)}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         )}
       </section>
       {shownTotals.length > 0 && (
