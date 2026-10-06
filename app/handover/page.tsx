@@ -3,7 +3,7 @@ import { getRecentHandover } from "@/lib/server/handover";
 import { HandoverLog } from "@/components/HandoverLog";
 import { toISODate } from "@/lib/domain/dates";
 import { guardLedger } from "@/lib/domain/ledgerGuard";
-import { getCurrentUser, canEditDept, hasPerm } from "@/lib/server/auth";
+import { getCurrentUser, canEditDept, hasPerm, guardTab } from "@/lib/server/auth";
 import { DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE } from "@/lib/domain/constants";
 import { ledgerPermKey, trackerPermKey } from "@/lib/domain/permissions";
 import { getActiveLine } from "@/lib/server/line";
@@ -14,6 +14,7 @@ import { PageHead } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 export default async function HandoverPage() {
+  await guardTab("/handover");
   const [recent, user, soi, line] = await Promise.all([getRecentHandover(2000), getCurrentUser(), getSoiLookup(), getActiveLine()]);
   // production depts follow the worklist permissions; the tracker-only stages
   // (Shot Blast / Delivered) follow their own tracker permissions. A panel's

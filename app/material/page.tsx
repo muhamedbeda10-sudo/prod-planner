@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser, hasPerm } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
 import { ExportMenu } from "@/components/ExportMenu";
@@ -18,6 +18,7 @@ export default async function MaterialPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  await guardTab("/material");
   // viewing is free for every account, like the rest of the app; recording is
   // gated on material.edit
   const me = await getCurrentUser();

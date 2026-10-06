@@ -1,7 +1,7 @@
 import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { getDeptBoardLines, getMachineBoard, type BoardDept } from "@/lib/server/machineBoard";
 import { getSoiLookup } from "@/lib/server/soi";
 import { isMachinePlanningOn } from "@/lib/server/data";
@@ -22,6 +22,7 @@ export const dynamic = "force-dynamic";
 // shift. Reached from the board's "Print sheet", the Floor's inspector, or
 // "Print all sheets" on the board.
 export default async function MachineSheetsPage({ searchParams }: { searchParams: Promise<{ dept?: string; machine?: string }> }) {
+  await guardTab("/worklist/machines");
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   const sp = await searchParams;

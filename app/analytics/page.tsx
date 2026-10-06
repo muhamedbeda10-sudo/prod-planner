@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { PageHead } from "@/components/ui";
 import { getMaterialDashboard, resolveWindow, WINDOWS } from "@/lib/server/fabAnalytics";
 import { getActiveLine } from "@/lib/server/line";
@@ -18,6 +18,7 @@ export default async function AnalyticsPage({
 }: {
   searchParams: Promise<{ days?: string }>;
 }) {
+  await guardTab("/analytics");
   // viewing is free for every account, like the rest of the app
   const me = await getCurrentUser();
   if (!me) redirect("/login");

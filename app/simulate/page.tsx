@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getCurrentUser, hasPerm, canEditDept } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, canEditDept, guardTab } from "@/lib/server/auth";
 import { getWhatIfInputs } from "@/lib/server/whatif";
 import { isMachinePlanningOn } from "@/lib/server/data";
 import { getFloorLayout } from "@/lib/server/floor";
@@ -22,6 +22,7 @@ export const dynamic = "force-dynamic";
 // the planner sees it, with what every machine is on right now, which is what
 // he opens this for daily. The what-if control room is the second view.
 export default async function SimulatePage({ searchParams }: { searchParams: Promise<{ view?: string; dept?: string }> }) {
+  await guardTab("/simulate");
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   const sp = await searchParams;

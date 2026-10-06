@@ -15,6 +15,7 @@ import { factoryDayISO } from "@/lib/domain/dates";
 import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
 import { PageHead } from "@/components/ui";
 import { parseISODate } from "@/lib/domain/dates";
+import { guardTab } from "@/lib/server/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ export const dynamic = "force-dynamic";
 // two throughput charts.
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ w?: string; from?: string; to?: string; plan?: string }> }) {
+  await guardTab("/");
   // the panels have their own dashboard — one thing through four stages,
   // not six components against a target
   const sp = await searchParams;

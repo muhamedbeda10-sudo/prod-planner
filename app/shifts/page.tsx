@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser, hasPerm } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { shiftPermKey } from "@/lib/domain/permissions";
 import { ROSTER_DEPTS } from "@/lib/domain/shifts";
 import { factoryDayISO } from "@/lib/domain/dates";
@@ -20,6 +20,7 @@ export const dynamic = "force-dynamic";
 // or section on top. Viewing is free; recording a department needs its
 // shifts.<dept> permission (shifts.lv for the panels).
 export default async function ShiftsPage({ searchParams }: { searchParams: Promise<{ day?: string; sec?: string }> }) {
+  await guardTab("/shifts");
   const me = await getCurrentUser();
   if (!me) redirect("/login");
 

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { PERM_CATEGORIES } from "@/lib/domain/permissions";
+import { TABS, TAB_GROUPS, parseHiddenTabs } from "@/lib/domain/tabs";
 import { createUser, updateUserPerms, setUserActive, resetUserPassword, deleteUser } from "./actions";
 import { Modal } from "@/components/Modal";
 
@@ -12,6 +13,7 @@ interface Row {
   isAdmin: boolean;
   isOwner: boolean;
   perms: string;
+  hiddenTabs: string;
   active: boolean;
   createdAt: Date;
 }
@@ -47,6 +49,41 @@ function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: 
         </fieldset>
       ))}
     </div>
+  );
+}
+
+/** The screens this account sees — ticked is shown. Admins and the owner
+ *  follow it too; Users & Permissions itself stays the owner's whatever is
+ *  ticked. Unticked screens leave the menus, and opening one by its address
+ *  sends the person to the first screen they do see. */
+function TabChecks({ hidden }: { hidden: Set<string> }) {
+  const setAll = (el: HTMLElement, on: boolean) =>
+    el.closest("fieldset")?.querySelectorAll<HTMLInputElement>('input[name="tabs"]').forEach((c) => (c.checked = on));
+  return (
+    <fieldset className="border rounded-lg p-3">
+      <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">Screens this account sees</legend>
+      <input type="hidden" name="tabsForm" value="1" />
+      <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+        <span className="text-muted flex-1 min-w-52">Ticked screens show in their menu. Admins included — untick what this person should not see.</span>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={(e) => setAll(e.currentTarget, true)}>All</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={(e) => setAll(e.currentTarget, false)}>None</button>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3">
+        {TAB_GROUPS.map((g) => (
+          <div key={g}>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-muted mb-1">{g}</div>
+            <div className="space-y-1">
+              {TABS.filter((t) => t.group === g).map((t) => (
+                <label key={t.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" name="tabs" value={t.id} defaultChecked={!hidden.has(t.id)} className="accent-[var(--brand,#1b7a43)]" />
+                  <span className="font-semibold">{t.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
@@ -115,6 +152,7 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
           <div className="text-sm text-muted ltr">{user.email}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {user.hiddenTabs && <span className="pill pill-muted" title="Screens switched off for this account">{parseHiddenTabs(user.hiddenTabs).size} screen(s) hidden</span>}
           <button type="button" className={btnCls} onClick={() => setExpanded(true)}>
             Permissions
           </button>
@@ -194,6 +232,7 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
           ) : (
             <AdminCheck defaultChecked={user.isAdmin} label="Admin" />
           )}
+          <TabChecks hidden={parseHiddenTabs(user.hiddenTabs)} />
           <PermChecks defaults={new Set(user.perms.split(",").map((s) => s.trim()))} />
           <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <Msg msg={perms.msg} />
@@ -215,7 +254,7 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted flex-1 min-w-52">
-          Every active account can <b>view</b> all screens. Permissions control who can <b>edit</b> what.
+          <b>Screens</b> set what each account sees — admins included. Permissions control who can <b>edit</b> what.
         </p>
         <button type="button" className={btnCls} onClick={() => setShowCreate(true)}>
           + Add account
@@ -247,6 +286,7 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
             </label>
           </div>
           <AdminCheck label="Admin" />
+          <TabChecks hidden={new Set()} />
           <PermChecks defaults={new Set()} />
           <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <Msg msg={create.msg} />

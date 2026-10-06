@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { hashPassword, requireOwner } from "@/lib/server/auth";
 import { serializePerms } from "@/lib/domain/permissions";
+import { TABS, serializeHiddenTabs } from "@/lib/domain/tabs";
 
 export interface UserActionResult {
   ok: boolean;
@@ -15,6 +16,14 @@ const MIN_PASSWORD = 8;
 
 function permsFromForm(formData: FormData): string {
   return serializePerms(formData.getAll("perms").map(String));
+}
+
+/** The screens left UNticked are the hidden ones. A form without the
+ *  screens section leaves them as they were (undefined). */
+function hiddenTabsFromForm(formData: FormData): string | undefined {
+  if (formData.get("tabsForm") !== "1") return undefined;
+  const seen = new Set(formData.getAll("tabs").map(String));
+  return serializeHiddenTabs(TABS.filter((t) => !seen.has(t.id)).map((t) => t.id));
 }
 
 export async function createUser(formData: FormData): Promise<UserActionResult> {
@@ -32,7 +41,7 @@ export async function createUser(formData: FormData): Promise<UserActionResult> 
   if (await prisma.user.findUnique({ where: { email } })) return { ok: false, error: "An account with this email already exists." };
 
   await prisma.user.create({
-    data: { email, name, passwordHash: hashPassword(password), isAdmin, perms: permsFromForm(formData) },
+    data: { email, name, passwordHash: hashPassword(password), isAdmin, perms: permsFromForm(formData), hiddenTabs: hiddenTabsFromForm(formData) ?? "" },
   });
   revalidatePath("/admin/users");
   return { ok: true };
@@ -50,7 +59,7 @@ export async function updateUserPerms(formData: FormData): Promise<UserActionRes
   // the owner's own account keeps its standing; only its subscriptions change
   const isAdmin = target.isOwner ? target.isAdmin : formData.get("isAdmin") === "on";
 
-  await prisma.user.update({ where: { id }, data: { isAdmin, perms: permsFromForm(formData) } });
+  await prisma.user.update({ where: { id }, data: { isAdmin, perms: permsFromForm(formData), hiddenTabs: hiddenTabsFromForm(formData) } });
   revalidatePath("/admin/users");
   return { ok: true };
 }

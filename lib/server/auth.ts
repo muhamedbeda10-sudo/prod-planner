@@ -5,6 +5,8 @@ import { randomBytes, scryptSync, timingSafeEqual, createHash } from "node:crypt
 import { prisma } from "@/lib/db";
 import { parsePerms, deptPermKey, PERM_KEYS, ACCESS_PERM_KEYS } from "@/lib/domain/permissions";
 import type { User } from "@prisma/client";
+import { redirect } from "next/navigation";
+import { canSeePath, firstVisiblePath, parseHiddenTabs } from "@/lib/domain/tabs";
 
 const SESSION_COOKIE = "atc_session";
 const SESSION_DAYS = 30;
@@ -119,4 +121,20 @@ export async function requireAdmin(): Promise<{ user?: User; error?: string }> {
   if (!user) return { error: NOT_LOGGED_IN };
   if (!user.isAdmin) return { error: NO_PERMISSION };
   return { user };
+}
+
+// ---- the screens an account sees (lib/domain/tabs.ts) ----
+
+export function hiddenTabsOf(user: User | null): Set<string> {
+  return parseHiddenTabs(user?.hiddenTabs);
+}
+
+/** First thing on every page: a screen switched off for this account sends
+ *  them to the first one they do see (or to /no-access when none is left). */
+export async function guardTab(pathname: string): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  const hidden = hiddenTabsOf(user);
+  if (canSeePath(hidden, pathname)) return;
+  redirect(firstVisiblePath(hidden) ?? "/no-access");
 }

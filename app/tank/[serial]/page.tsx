@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTankBySerial, getBaseUrl } from "@/lib/server/tanks";
 import { getWorkersFor } from "@/lib/server/workers";
-import { getCurrentUser, hasPerm } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { PageHeader, Card } from "@/components/ui";
 import { QrSvg } from "@/components/QrSvg";
 import { TankQaPanel } from "@/components/TankQaPanel";
@@ -30,6 +30,7 @@ export async function generateMetadata({ params }: { params: Promise<{ serial: s
 }
 
 export default async function TankPage({ params }: { params: Promise<{ serial: string }> }) {
+  await guardTab("/tank");
   const { serial: raw } = await params;
   const serial = decodeURIComponent(raw).trim().toUpperCase();
 

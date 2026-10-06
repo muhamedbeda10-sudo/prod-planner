@@ -7,7 +7,7 @@ import { PrintHeader } from "@/components/PrintHeader";
 import { PlanCapacityCard } from "@/components/PlanCapacityCard";
 import { getPlanCapacity } from "@/lib/server/planCapacity";
 import { getOrderEtas } from "@/lib/server/eta";
-import { getCurrentUser, hasPerm } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
 import { factoryDayISO } from "@/lib/domain/dates";
@@ -37,6 +37,7 @@ export default async function TrackerPage({
 }: {
   searchParams: Promise<{ view?: string; plan?: string }>;
 }) {
+  await guardTab("/tracker");
   const sp = await searchParams;
   // the paper header is rendered here (a server component) so the issue date is
   // fixed at render time — a `new Date()` inside the client tables would put a

@@ -17,7 +17,7 @@ import { HeldOrdersStrip } from "@/components/HeldOrdersStrip";
 import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { PrintHeader } from "@/components/PrintHeader";
-import { getCurrentUser, canEditDept, hasPerm } from "@/lib/server/auth";
+import { getCurrentUser, canEditDept, hasPerm, guardTab } from "@/lib/server/auth";
 import { getMachineBoard } from "@/lib/server/machineBoard";
 import { MachineBoard } from "@/components/MachineBoard";
 
@@ -28,6 +28,7 @@ import { LvWorklistPage } from "@/components/LvWorklistPage";
 // No page header on screen — every pixel goes to the queue (title lives in the
 // nav tab). The PrintHeader appears only on the printed/PDF sheet.
 export default async function WeldWorklistPage() {
+  await guardTab("/worklist/welding");
   // the panels have their own welding worklist — same route, the line decides
   if ((await getActiveLine()) === "LV") return <LvWorklistPage stage="Welding" />;
   const today = new Date();

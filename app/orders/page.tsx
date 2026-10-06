@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { prisma } from "@/lib/db";
 import { PageHead } from "@/components/ui";
 import { MonthlyImport } from "@/components/MonthlyImport";
@@ -11,6 +11,7 @@ import { LINE_LABEL } from "@/lib/domain/lines";
 export const dynamic = "force-dynamic";
 
 export default async function OrdersPage() {
+  await guardTab("/orders");
   // admin-only page: invisible in the nav for others, and a direct URL bounces
   const me = await getCurrentUser();
   if (!me?.isAdmin) redirect("/");

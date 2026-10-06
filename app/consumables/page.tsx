@@ -1,6 +1,6 @@
 import { formatDate } from "@/lib/domain/format";
 import { redirect } from "next/navigation";
-import { getCurrentUser, hasPerm } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { getConsumableEdits, getConsumablesDashboard, getConsumablesData, getCustomDepartments } from "@/lib/server/consumables";
 import { getCatalogue, getCatalogueChanges, getCurrentStandings, getLimitDashboard } from "@/lib/server/consumableLimits";
 import { factoryDateTimeLabel } from "@/lib/domain/consumables";
@@ -37,6 +37,7 @@ export default async function ConsumablesPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string; view?: string; month?: string }>;
 }) {
+  await guardTab("/consumables");
   // viewing the log is free for every account, like the rest of the app;
   // recording is consumables.edit (and correcting one's own rows); the
   // history of changes, deleting and restoring are the admin's

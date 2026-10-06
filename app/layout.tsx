@@ -4,6 +4,8 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { AppNav } from "@/components/AppNav";
 import { TouchLongPress } from "@/components/TouchLongPress";
+import { TabAccessProvider } from "@/components/TabAccess";
+import { parseHiddenTabs } from "@/lib/domain/tabs";
 import { LineProvider } from "@/components/LineContext";
 import { getCurrentUser, userPerms } from "@/lib/server/auth";
 import { getChatUnreadCount } from "@/lib/server/chat";
@@ -64,6 +66,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col antialiased">
         <TouchLongPress />
         <LineProvider line={line}>
+        <TabAccessProvider hidden={[...parseHiddenTabs(user?.hiddenTabs)]}>
         {user && (
           <AppNav
             user={{ id: user.id, name: user.name, isAdmin: user.isAdmin, isOwner: user.isOwner, perms: [...userPerms(user)] }}
@@ -78,6 +81,7 @@ export default async function RootLayout({
           {children}
         </main>
         <SpeedInsights />
+        </TabAccessProvider>
         </LineProvider>
       </body>
     </html>
