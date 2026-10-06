@@ -1161,3 +1161,20 @@ model PowderScrapRevision {
   @@index([scrapId])
   @@index([at])
 }
+
+// PHYSICAL MATERIAL — the store's count against SF01's stock in Odoo, one
+// row per Odoo product code. One living table: importing the store's sheet
+// again updates each code's row, never doubles it (lib/domain/physicalStock.ts).
+model PhysicalStock {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique // Odoo's product code, as the sheet writes it
+  name      String   @default("")
+  uom       String   @default("") // PC | KG …
+  physical  Float    @default(0) // counted in the internal store
+  odoo      Float    @default(0) // SF01's stock in Odoo
+  sortOrder Int      @default(0) // the sheet's own row order
+  note      String?
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
