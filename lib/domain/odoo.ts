@@ -334,6 +334,12 @@ export function odooRowBom(fgCode: string, closingBom: string | null | undefined
   return suffix ? { boms: [suffix], via: "fg" } : { boms: [], via: null };
 }
 
+/** The row's BOM as one label — the dashboard's key. Several BOMs the
+ *  FG-CODE could not pick between read as one "A / B" entry. */
+export function odooRowBomLabel(b: OdooRowBom): string {
+  return b.boms.join(" / ");
+}
+
 export function bomOfFgCode(fgCode: string | null | undefined): string {
   const m = /^[A-Za-z]+-\d+-(.+)$/.exec((fgCode ?? "").trim());
   return m ? m[1].trim().toUpperCase() : "";

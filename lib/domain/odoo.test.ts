@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groupOdooEntries, odooSameKey, bomOfFgCode, odooRowBom, blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView, odooItemTotals, odooScopeKey, odooScopeLabel, parseOdooScope, singleDayOf } from "./odoo";
+import { groupOdooEntries, odooSameKey, bomOfFgCode, odooRowBom, odooRowBomLabel, blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView, odooItemTotals, odooScopeKey, odooScopeLabel, parseOdooScope, singleDayOf } from "./odoo";
 
 const HEADER = ["Date", "SOI#", "FG-CODE", "Product", "MO#", "QTY", "Status", "Reason"];
 
@@ -338,6 +338,10 @@ describe("odooRowBom — the BOM a close-out row is for", () => {
   it("lets the FG-CODE pick between an SOI's BOMs, and lists them when it cannot", () => {
     expect(odooRowBom("FB-022-14003E11M11", null, ["14003E11M11", "14004E11M11"])).toEqual({ boms: ["14003E11M11"], via: "soi" });
     expect(odooRowBom("FB-051-1X", null, ["14003E11M11", "14004E11M11"])).toEqual({ boms: ["14003E11M11", "14004E11M11"], via: "soi" });
+  });
+  it("labels several BOMs as one entry, none as empty", () => {
+    expect(odooRowBomLabel({ boms: ["A1", "B2"], via: "soi" })).toBe("A1 / B2");
+    expect(odooRowBomLabel({ boms: [], via: null })).toBe("");
   });
   it("falls back to the FG-CODE's suffix, and to nothing", () => {
     expect(odooRowBom("FB-022-14003E11M11", null, [])).toEqual({ boms: ["14003E11M11"], via: "fg" });

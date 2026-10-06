@@ -50,7 +50,7 @@ export function OdooBomPicker({ bom, boms }: { bom: string | null; boms: OdooBom
   };
   const total = boms.reduce((s, b) => s + b.rows, 0);
   return (
-    <label className="inline-flex items-center gap-1.5 text-sm" title="Count only one BOM's rows — the BOM is read off each row's FG code">
+    <label className="inline-flex items-center gap-1.5 text-sm" title="Count only one BOM's rows — the BOM of the closing, else the SOI's order, else the FG code's suffix (as the log shows it)">
       <span className="text-xs font-bold text-muted uppercase tracking-wide">BOM</span>
       <select
         value={bom === null ? "all" : bom === "" ? "none" : bom}
@@ -61,7 +61,7 @@ export function OdooBomPicker({ bom, boms }: { bom: string | null; boms: OdooBom
         <option value="all">All BOMs{total > 0 ? ` (${total})` : ""}</option>
         {boms.map((b) => (
           <option key={b.bom || "none"} value={b.bom || "none"}>
-            {b.bom || "No BOM in the code"} ({b.rows})
+            {b.bom || "No known BOM"} ({b.rows})
           </option>
         ))}
       </select>

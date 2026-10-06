@@ -141,8 +141,9 @@ export interface OdooStatRow {
   product: string;
   qty: number;
   status: string;
-  /** The BOM read off the row's FG code — "" when the code does not carry
-   *  one. Absent on rows built before the dashboard could filter by it. */
+  /** The row's BOM, the way the log shows it (see odooRowBom): from the
+   *  closing, else the SOI's order, else the FG code's suffix — "" when none
+   *  is known. Absent on rows built before the dashboard could filter by it. */
   bom?: string;
   /** The day its status was moved to Done — the day the close counts on.
    *  Null (or absent) while it is not done. */
@@ -157,13 +158,13 @@ export interface OdooBomOption {
 }
 
 /** Does this row belong to the BOM the dashboard is narrowed to? `null` is
- *  every BOM; `""` is the rows whose FG code carries none. */
+ *  every BOM; `""` is the rows with no known BOM. */
 export function matchesBom(r: OdooStatRow, bom: string | null): boolean {
   return bom === null || (r.bom ?? "").trim().toUpperCase() === bom;
 }
 
 /** Read the BOM from the URL: absent or "all" is every BOM, "none" the rows
- *  whose FG code carries none, anything else that BOM. */
+ *  with no known BOM, anything else that BOM. */
 export function resolveBom(sp: { bom?: string }): string | null {
   const raw = (sp.bom ?? "").trim();
   if (!raw || raw.toLowerCase() === "all") return null;
@@ -172,7 +173,7 @@ export function resolveBom(sp: { bom?: string }): string | null {
 }
 
 /** The BOM picker's options: every BOM counted in the period on the basis,
- *  by name, with the rows whose code carries none last. Built from the whole
+ *  by name, with the rows with no known BOM last. Built from the whole
  *  period so narrowing to one BOM never empties the list it was chosen from. */
 export function bomOptions(rows: readonly OdooStatRow[], window: { fromISO: string | null; toISO: string }, basis: OdooBasis): OdooBomOption[] {
   const acc = new Map<string, OdooBomOption>();
