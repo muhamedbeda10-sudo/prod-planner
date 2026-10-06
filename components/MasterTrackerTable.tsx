@@ -1338,6 +1338,18 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     const added = editing && editVal !== "" ? Number(editVal) - value : 0;
     const err = errFor(k);
 
+    // no MO of this BOM needs the component: hatched, like the MO rows
+    if (eligibleMos.length === 0) {
+      return (
+        <td
+          className={`na-cell ${borderR ? "border-r border-border-strong" : ""}`}
+          title={`${it} is not required for any of the ${members.length} MOs of ${gBom}`}
+          aria-label={`${it} not required`}
+          onClick={(e) => e.stopPropagation()}
+        />
+      );
+    }
+
     function commit() {
       const typed = editVal;
       if (!closeCell(k)) return;
@@ -1425,6 +1437,9 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       const t = Math.max(0, m.required - c.osp);
       owed += t;
       made += Math.min(t, isPaintExempt(it) ? c.shp : c.paint);
+    }
+    if (!members.some((m) => m.items[it].eligible && !m.items[it].excluded)) {
+      return <td className="na-cell border-r border-border-strong" title={`${it} is not required for any of these ${members.length} MOs`} aria-label={`${it} not required`} />;
     }
     return shareCell(owed > 0 ? made / owed : null, it, `${members.length} MOs`);
   }
