@@ -1401,12 +1401,14 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     const added = editing && editVal !== "" ? Number(editVal) - value : 0;
     const err = errFor(k);
 
-    // no MO of this BOM needs the component: hatched, like the MO rows
-    if (eligibleMos.length === 0) {
+    // no MO of this BOM needs the component, or every piece it needs is
+    // bought out (OSP): hatched, like the MO rows
+    const allOsp = eligibleMos.length > 0 && target === 0 && members.some((m) => m.items[it].osp > 0);
+    if (eligibleMos.length === 0 || allOsp) {
       return (
         <td
           className={`na-cell ${borderR ? "border-r border-border-strong" : ""}`}
-          title={`${it} is not required for any of the ${members.length} MOs of ${gBom}`}
+          title={allOsp ? `${it}: every piece of the ${members.length} MOs of ${gBom} is outsourced (OSP)` : `${it} is not required for any of the ${members.length} MOs of ${gBom}`}
           aria-label={`${it} not required`}
           onClick={(e) => e.stopPropagation()}
         />
@@ -1501,7 +1503,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       owed += t;
       made += Math.min(t, isPaintExempt(it) ? c.shp : c.paint);
     }
-    if (!members.some((m) => m.items[it].eligible && !m.items[it].excluded)) {
+    if (!members.some((m) => m.items[it].eligible && !m.items[it].excluded) || owed === 0) {
       return <td className="na-cell border-r border-border-strong" title={`${it} is not required for any of these ${members.length} MOs`} aria-label={`${it} not required`} />;
     }
     return shareCell(owed > 0 ? made / owed : null, it, `${members.length} MOs`);
@@ -1700,6 +1702,20 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                         {Array.from({ length: n }, (_, i) => (
                           <td key={i} className={`na-cell ${i === n - 1 ? "border-r border-border-strong" : ""}`} title={why} aria-label={`${it} not required`}>
                             {i === 0 && <span className="sr-only">N/A</span>}
+                          </td>
+                        ))}
+                      </Fragment>
+                    );
+                  }
+                  // every piece bought out (OSP): nothing for our departments —
+                  // hatched like a component the order does not need
+                  if (c.osp > 0 && c.osp >= r.required) {
+                    const n = itemColsOf(it);
+                    return (
+                      <Fragment key={it}>
+                        {Array.from({ length: n }, (_, i) => (
+                          <td key={i} className={`na-cell ${i === n - 1 ? "border-r border-border-strong" : ""}`} title={`${it}: all ${c.osp} pcs outsourced (OSP) — nothing for our departments`} aria-label={`${it} outsourced`}>
+                            {i === 0 && <span className="sr-only">OSP</span>}
                           </td>
                         ))}
                       </Fragment>

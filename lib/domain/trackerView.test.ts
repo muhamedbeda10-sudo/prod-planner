@@ -25,6 +25,9 @@ describe("rowBottleneck", () => {
     }));
     expect(r).toEqual({ item: "CB", stage: "Cut" });
   });
+  it("is null for an order nothing has started on", () => {
+    expect(rowBottleneck(10, Object.fromEntries(ITEMS.map((it) => [it, none()])) as Record<Item, ItemProgress>)).toBeNull();
+  });
   it("counts outsourced pieces off the target", () => {
     expect(rowBottleneck(10, items({ TN: { ...none(), osp: 10 } }))).toBeNull();
   });
