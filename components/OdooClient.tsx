@@ -2,6 +2,7 @@
 
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
 import { FilterX } from "lucide-react";
+import { CellEditor, DensityToggle, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { ProductSwatch } from "@/components/Badge";
 import { productColor } from "@/lib/domain/productColors";
@@ -215,29 +216,18 @@ function InlineValue({ ids, name, value, placeholder, action, warn, hint, list }
   action: (fd: FormData) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const a = useAction();
-  const [draft, setDraft] = useState(value);
-  function submit() {
-    const v = draft.trim();
-    if (v === value.trim()) return;
+  function submit(v: string) {
     const fd = new FormData();
     fd.set("ids", ids.join(","));
     fd.set(name, v);
     a.run(action, fd, "Saved.");
   }
   return (
-    <span className="inline-flex flex-col">
-      <input
-        value={draft}
-        list={list}
-        disabled={a.pending}
-        onChange={(ev) => setDraft(ev.target.value)}
-        onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); submit(); } }}
-        onBlur={submit}
-        onClick={(ev) => ev.stopPropagation()}
-        placeholder={placeholder}
-        title={hint}
-        aria-label={name === "odooMo" ? "MO#" : "FG-CODE"}
-        className={`px-2 py-1 text-xs ltr font-bold no-print ${name === "fgCode" ? "w-48" : "w-40"} ${warn ? "border-warn-fg bg-warn-bg/60" : ""}`}
+    <span className="inline-flex flex-col no-print">
+      <CellEditor
+        type="text" col={name} value={value} onCommit={submit} list={list} disabled={a.pending} warn={warn}
+        placeholder={placeholder} title={hint} ariaLabel={name === "odooMo" ? "MO#" : "FG-CODE"}
+        className={`ltr font-bold ${name === "fgCode" ? "!w-48" : "!w-40"}`}
       />
       {a.msg?.ok === false && <span className="text-[10px] text-bad-fg">{a.msg.text}</span>}
     </span>
@@ -373,6 +363,30 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
   const [material, setMaterial] = useState(false);
   const edit = useAction();
   const del = useAction();
+  const [confirmDelete, confirmDialog] = useConfirm();
+  const what = `${e.odooMo || `${e.product} ×${e.qty}`} · ${formatDate(e.dateISO)}`;
+  const row = useRowMenu(() => [
+    { heading: what },
+    { key: "material", label: "Material for this row", icon: "🧱", onSelect: () => setMaterial(true) },
+    { key: "edit", label: "Edit row…", icon: "✏️", onSelect: () => setEditing(true) },
+    { sep: true },
+    {
+      key: "delete", label: "Delete row…", icon: "🗑", danger: true, disabled: del.pending,
+      onSelect: async () => {
+        const ok = await confirmDelete({
+          title: "Delete this ODOO row?",
+          body: <>The row leaves the log. A closing recorded on the floor that wrote it stays in the daily log.</>,
+          items: [`${what} · ${e.product} ×${e.qty}${e.soi ? ` · ${e.soi}` : ""}`],
+          confirmLabel: "Delete row",
+          danger: true,
+        });
+        if (!ok) return;
+        const fd = new FormData();
+        fd.set("id", String(e.id));
+        del.run(deleteOdooEntry, fd, "Deleted.");
+      },
+    },
+  ], `Actions for ${what}`);
   // the row's material, as a hint on the button — none when the tracker has
   // no lines for this part on this BOM
   const need = useMemo(() => entryMaterialNeed(nesting, e, e.qty, needCtx), [nesting, e, needCtx]);
@@ -385,7 +399,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
   const born = isBorn(e);
   return (
     <>
-      <tr className={`border-t hover:bg-surface-2/60 ${inGroup ? "bg-surface-2/40" : ""}`}>
+      <tr className={`border-t hover:bg-surface-2/60 ${inGroup ? "bg-surface-2/40" : ""}`} onContextMenu={canEdit ? row.onContextMenu : undefined}>
         <td className={`${cell} tabnum ltr ${inGroup ? "ps-6" : ""}`} onClick={open} title={rowTitle}>
           <span className="inline-flex flex-col">
             <span className="inline-flex items-center gap-1">
@@ -429,24 +443,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
             >
               🧱{need ? <span className="tabnum ms-1">{need.totalActual || need.totalBom}</span> : null}
             </button>
-          {canEdit && (
-            <>
-              <button type="button" className="btn btn-sm" onClick={() => setEditing(true)}>Edit</button>
-              <button
-                type="button"
-                className="btn btn-sm btn-danger"
-                disabled={del.pending}
-                onClick={() => {
-                  if (!confirm(`Delete ${e.odooMo || `${e.product} ×${e.qty}`} (${formatDate(e.dateISO)})?`)) return;
-                  const fd = new FormData();
-                  fd.set("id", String(e.id));
-                  del.run(deleteOdooEntry, fd, "Deleted.");
-                }}
-              >
-                Delete
-              </button>
-            </>
-          )}
+          {canEdit && <>{row.button}{row.menu}{confirmDialog}</>}
           </span>
         </td>
       </tr>
@@ -696,6 +693,7 @@ function FilterBar({ entries, filters, onChange }: { entries: OdooEntryView[]; f
         options={(Object.keys(ODOO_MO_FILTERS) as OdooMoFilter[]).filter((k) => k !== "all").map((k) => ({ value: k, label: ODOO_MO_FILTERS[k] }))}
       />
       {active && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => onChange(EMPTY_ODOO_FILTERS)}><FilterX size={13} aria-hidden />Reset filters</button>}
+      <span className="ms-auto"><DensityToggle /></span>
     </div>
   );
 }
@@ -877,29 +875,31 @@ export function OdooClient({
       )}
       <section className="bg-surface border rounded-xl overflow-hidden">
         {entries.length === 0 ? (
-          <p className="text-sm text-muted p-4">
-            {day === "all" ? "No rows logged yet." : singleDayOf(day) ? `Nothing logged on ${day}. Add the day's rows below or import the sheet.` : `Nothing logged ${odooScopeLabel(day)}.`}
-            {elsewhereLink && <> {elsewhereLink}</>}
-          </p>
+          <TableEmpty
+            title={day === "all" ? "No rows logged yet" : singleDayOf(day) ? `Nothing logged on ${formatDate(singleDayOf(day))}` : `Nothing logged ${odooScopeLabel(day)}`}
+            hint={day !== "all" && singleDayOf(day) ? "Add the day's rows below, or import the sheet." : undefined}
+            action={elsewhereLink || undefined}
+          />
         ) : shown.length === 0 ? (
-          <p className="text-sm text-muted p-4">
-            No row matches these filters{day !== "all" ? ` ${odooScopeLabel(day)}` : ""}.
-            {day !== "all" && ` The search only covers ${singleDayOf(day) ? "the day" : "the period"} on screen — switch to All days to search the whole log.`}
-          </p>
+          <TableEmpty
+            title={`No row matches these filters${day !== "all" ? ` ${odooScopeLabel(day)}` : ""}`}
+            hint={day !== "all" ? `The search only covers ${singleDayOf(day) ? "the day" : "the period"} on screen — switch to All days to search the whole log.` : undefined}
+            filtered
+          />
         ) : (
-          <div className="overflow-x-auto">
+          <TableFrame>
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-brand text-white text-left">
-                  <th className="p-2">Date</th>
-                  <th className="p-2">SOI#</th>
-                  <th className="p-2">FG-CODE</th>
-                  <th className="p-2">Product</th>
-                  <th className="p-2">MO#</th>
-                  <th className="p-2 text-center">QTY</th>
-                  <th className="p-2" title="Moved in place by the planner">Status</th>
-                  <th className="p-2" title="What Odoo said and what was done — one note at a time, newest first">Notes</th>
-                  <th className="p-2 no-print" title="Click a row (or 🧱) for the material its qty consumes, ready to copy into Odoo">🧱</th>
+                <tr className="text-left">
+                  <Th label="Date" />
+                  <Th label="SOI #" full="SOI#" />
+                  <Th label="FG-code" full="FG-CODE" />
+                  <Th label="Product" />
+                  <Th label="MO #" full="MO#" hint="Odoo's MO number — typed once the MO is printed from Odoo" />
+                  <Th label="Qty" unit="pcs" full="QTY" center />
+                  <Th label="Status" hint="Moved in place by the planner" />
+                  <Th label="Notes" hint="What Odoo said and what was done — one note at a time, newest first" />
+                  <Th label="🧱" full="Material" hint="Click a row (or 🧱) for the material its qty consumes, ready to copy into Odoo" className="no-print" />
                 </tr>
               </thead>
               <tbody>
@@ -915,7 +915,7 @@ export function OdooClient({
                 })}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         )}
       </section>
       {editableLines.length > 0 && (

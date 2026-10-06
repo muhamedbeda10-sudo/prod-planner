@@ -66,8 +66,8 @@ export function formatDayShort(day: string | Date | null | undefined, now: Date 
 export const FIELD_DP = {
   count: 0, // pieces, units, rows
   weight: 2, // kg
-  factor: 3, // per-unit factors (sheets per unit, actual per unit)
-  sheets: 2, // sheets for a job
+  factor: 4, // per-unit factors (sheets per unit, actual per unit) — the nesting sheet writes 0.2207
+  sheets: 3, // sheets for a job — fractions of a sheet: 1.287
   percent: 0,
   qty: 3, // consumables quantities (kg, L, m may be fractional)
 } as const;

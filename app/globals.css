@@ -1008,3 +1008,57 @@ main select.ctl { padding-right: 1.6rem; }
   color: var(--muted);
 }
 .filter-chip-x:hover { color: var(--foreground); background: var(--surface-3); }
+
+/* ---- the data-sheet toolkit (components/DataTable.tsx) ---- */
+
+/* row density: one choice for every sheet. Unlayered, like the table rules
+   above, so it outranks a cell's own padding utility. */
+.dt[data-density="compact"] > table > tbody > tr > td { height: 36px; padding-top: 3px; padding-bottom: 3px; }
+.dt[data-density="comfortable"] > table > tbody > tr > td { height: 44px; padding-top: 8px; padding-bottom: 8px; }
+
+/* a header: a short label (two lines as a rule), the unit after it in lower
+   case, a quiet ? when the tooltip explains the column */
+.dt-th { vertical-align: bottom; }
+.dt-th-label { display: inline-block; white-space: normal; max-width: 9rem; min-width: 3.5rem; border-radius: 3px; }
+.dt-th-label:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.dt-unit { margin-inline-start: 0.3em; text-transform: none; letter-spacing: 0; font-weight: 500; opacity: 0.8; }
+.dt-hint {
+  display: inline-grid; place-items: center; width: 13px; height: 13px; margin-inline-start: 0.3em; vertical-align: 1px;
+  border: 1px solid currentColor; border-radius: 999px; font-size: 9px; line-height: 1; letter-spacing: 0; opacity: 0.7;
+}
+
+/* where a column's figures come from: a hairline over its header, named in
+   the band above */
+:root { --grp-source: var(--border-strong); --grp-input: var(--info-fg); --grp-computed: #6e5fd0; }
+html.dark { --grp-computed: #a397f0; }
+[data-group="source"] { --grp: var(--grp-source); }
+[data-group="input"] { --grp: var(--grp-input); }
+[data-group="computed"] { --grp: var(--grp-computed); }
+main table thead tr.dt-band th {
+  padding-top: 4px; padding-bottom: 3px; border-bottom: 0; font-size: 10px; letter-spacing: 0.08em; text-align: left;
+}
+main table thead tr.dt-band th[data-group] { color: var(--grp) !important; box-shadow: inset 0 2px 0 var(--grp); }
+html:not(.dark) main table thead tr.dt-band th[data-group="source"] { color: var(--muted) !important; }
+
+/* a cell that edits in place: text until hovered, a field while edited.
+   Unlayered so it outranks the app's input look (above); it leaves font and
+   colour alone, so a cell's own weight / tone utilities still apply. */
+main input.cell-edit {
+  height: 26px; width: 100%; min-width: 4.5rem; padding: 0 6px;
+  border: 1px solid transparent; border-radius: var(--r-sm); background: transparent; box-shadow: none;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+main input.cell-edit::placeholder { color: var(--muted); opacity: 0.7; }
+main input.cell-edit:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface); }
+main input.cell-edit:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: transparent; background: var(--surface); box-shadow: none; }
+main input.cell-edit:disabled { opacity: 0.55; }
+main input.cell-edit.cell-edit-warn { border-color: var(--warn-fg); background: color-mix(in srgb, var(--warn-bg) 60%, transparent); }
+main input.cell-edit[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+main input.cell-edit[type="number"]::-webkit-inner-spin-button, main input.cell-edit[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+@layer components {
+/* empty / error: centred in the card, a line of why and what to do */
+.dt-state { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; text-align: center; padding: 2.5rem 1rem; }
+}
+/* a gap between runs, so two neighbouring groups read as two */
+main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--surface-2); }

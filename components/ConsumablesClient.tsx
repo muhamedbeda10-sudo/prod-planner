@@ -8,6 +8,8 @@ import type { LimitHint } from "@/lib/server/consumableLimits";
 import { consumableLimitHints, createConsumableIssue, deleteConsumableIssue, updateConsumableIssue } from "@/app/consumables/actions";
 import { ActionMsg as Msg, RevisionItem, useConsumableAction as useAction } from "@/components/consumablesUi";
 import { Modal } from "@/components/Modal";
+import { DensityToggle, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
+import { SearchBox } from "@/components/FilterControls";
 
 // The CONSUMABLES tab: the store's log of what it hands out — to a
 // department (the limits count it there), naming who asked for it or
@@ -379,9 +381,37 @@ function IssueRow({ e, data, isAdmin, showActions, colSpan }: { e: ConsumableIss
   const [editing, setEditing] = useState(false);
   const [history, setHistory] = useState(false);
   const del = useAction();
+  const [confirmDelete, confirmDialog] = useConfirm();
+  const what = `${e.qty}${e.uom ? ` ${e.uom}` : ""} × ${e.item} → ${e.departmentLabel}`;
+  const row = useRowMenu(() => [
+    { heading: `${e.issuedAtLabel} · ${e.item}` },
+    ...(e.canEdit ? [{ key: "edit", label: "Edit hand-out…", icon: "✏️", onSelect: () => setEditing(true), disabled: del.pending }] : []),
+    ...(isAdmin && e.edited ? [{ key: "history", label: history ? "Hide the history" : "Show the history", icon: "🕘", onSelect: () => setHistory((v) => !v) }] : []),
+    ...(isAdmin ? [
+      { sep: true } as const,
+      {
+        key: "delete", label: "Delete hand-out…", icon: "🗑", danger: true, disabled: del.pending,
+        onSelect: async () => {
+          const ok = await confirmDelete({
+            title: "Delete this hand-out?",
+            body: <>It leaves the log; you can restore it from the Edits view.</>,
+            items: [`${e.issuedAtLabel} · ${what}`],
+            confirmLabel: "Delete hand-out",
+            danger: true,
+          });
+          if (!ok) return;
+          const fd = new FormData();
+          fd.set("id", String(e.id));
+          fd.set("version", e.version);
+          del.run(deleteConsumableIssue, fd, "Deleted.");
+        },
+      },
+    ] : []),
+  ], `Actions for ${e.item} (${e.issuedAtLabel})`);
+  const hasMenu = e.canEdit || isAdmin;
   return (
     <Fragment>
-      <tr className="border-t align-top">
+      <tr className="border-t align-top" onContextMenu={hasMenu ? row.onContextMenu : undefined}>
         <td className="p-2 ltr tabnum whitespace-nowrap">{e.issuedAtLabel}</td>
         <td className="p-2 font-semibold">
           {e.item}
@@ -392,7 +422,7 @@ function IssueRow({ e, data, isAdmin, showActions, colSpan }: { e: ConsumableIss
           )}
           {e.overLimit?.reason && <div className="text-xs text-bad-fg font-normal">“{e.overLimit.reason}”</div>}
         </td>
-        <td className="p-2 text-center ltr tabnum font-extrabold whitespace-nowrap">{e.qty}{e.uom && <span className="text-[10px] text-muted font-semibold ms-0.5">{e.uom}</span>}</td>
+        <td className="p-2 text-right ltr tabnum font-extrabold whitespace-nowrap">{e.qty}{e.uom && <span className="text-[10px] text-muted font-semibold ms-0.5">{e.uom}</span>}</td>
         <td className="p-2">{e.departmentLabel}</td>
         <td className="p-2">
           {e.worker ? (
@@ -423,24 +453,8 @@ function IssueRow({ e, data, isAdmin, showActions, colSpan }: { e: ConsumableIss
           ))}
         </td>
         {showActions && (
-          <td className="p-2 whitespace-nowrap no-print">
-            {e.canEdit && (
-              <button type="button" className="btn btn-sm" onClick={() => setEditing(true)} disabled={del.pending}>Edit</button>
-            )}
-            {isAdmin && (
-              <button
-                type="button" className="btn btn-sm btn-danger ml-1" disabled={del.pending}
-                onClick={() => {
-                  if (!confirm(`Delete this hand-out?\n\n${e.qty} × ${e.item} → ${e.departmentLabel}\n\nIt leaves the log; you can restore it from the Edits view.`)) return;
-                  const fd = new FormData();
-                  fd.set("id", String(e.id));
-                  fd.set("version", e.version);
-                  del.run(deleteConsumableIssue, fd, "Deleted.");
-                }}
-              >
-                Delete
-              </button>
-            )}
+          <td className="p-2 whitespace-nowrap no-print text-center">
+            {hasMenu && <>{row.button}{row.menu}{confirmDialog}</>}
             <Msg msg={del.msg && !del.msg.ok ? del.msg : null} />
           </td>
         )}
@@ -491,11 +505,9 @@ export function ConsumablesClient({
 
       {canRecord && <RecordRow data={data} />}
 
-      <div className="flex flex-wrap items-center gap-2 no-print">
-        <input
-          type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item, department, notes…"
-          aria-label="Search the log" className={`${F} w-full sm:w-72`}
-        />
+      <div className="toolbar toolbar-row no-print !mb-0">
+        <SearchBox value={q} onChange={setQ} placeholder="Search item, department, notes…" wide />
+        <span className="ms-auto"><DensityToggle /></span>
         <span className="text-sm text-muted">
           <b className="text-foreground tabnum">{shown.length}</b>
           {shown.length !== data.entries.length && <> of <span className="tabnum">{data.entries.length}</span></>} hand-out{data.entries.length === 1 ? "" : "s"} {periodLabel}
@@ -505,29 +517,33 @@ export function ConsumablesClient({
 
       <section className="bg-surface border rounded-xl overflow-hidden">
         {data.entries.length === 0 ? (
-          <p className="text-sm text-muted p-4">Nothing handed out {periodLabel}.</p>
+          <TableEmpty title={`Nothing handed out ${periodLabel}`} hint={canRecord ? "Record a hand-out above — it shows here at once." : undefined} />
         ) : shown.length === 0 ? (
-          <p className="text-sm text-muted p-4">No hand-out {periodLabel} matches “{q}”.</p>
+          <TableEmpty
+            title={`No hand-out ${periodLabel} matches “${q}”`}
+            action={<button type="button" className="btn btn-sm btn-secondary" onClick={() => setQ("")}>Clear the search</button>}
+            filtered
+          />
         ) : (
-          <div className="overflow-x-auto">
+          <TableFrame>
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-brand text-white text-left">
-                  <th className="p-2">Date &amp; time</th>
-                  <th className="p-2">Item</th>
-                  <th className="p-2 text-center">Qty</th>
-                  <th className="p-2">Department</th>
-                  <th className="p-2">Requested / collected by</th>
-                  <th className="p-2">Notes</th>
-                  <th className="p-2">Recorded by</th>
-                  {showActions && <th className="p-2 no-print" title="Correct your own rows; deleting is the admin's">Actions</th>}
+                <tr className="text-left">
+                  <Th label="Date & time" />
+                  <Th label="Item" />
+                  <Th label="Qty" num />
+                  <Th label="Department" />
+                  <Th label="Collected by" full="Requested / collected by" />
+                  <Th label="Notes" />
+                  <Th label="Recorded by" />
+                  {showActions && <Th label="Actions" hint="Correct your own rows; deleting is the admin's" className="no-print" center />}
                 </tr>
               </thead>
               <tbody>
                 {shown.map((e) => <IssueRow key={e.id} e={e} data={data} isAdmin={isAdmin} showActions={showActions} colSpan={colSpan} />)}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         )}
       </section>
     </div>
