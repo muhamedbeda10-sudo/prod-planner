@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { getDailyReport, getDayOutputByProject, getEarnedHours } from "@/lib/server/report";
-import { pctStyle, Num } from "@/components/ui";
+import { pctStyle, Num, PageHead } from "@/components/ui";
 import { DeptPicker } from "@/components/controls";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
@@ -117,9 +117,9 @@ export default async function ReportPage({
     <div className="space-y-6">
       <RememberLastVisit storageKey="report:last" />
       {/* controls only — no on-screen title (the print masthead carries the name) */}
+      <PageHead title="Report" sub="Transformers · the daily log as one day or a period, ready to print" views={<ViewTabs views={TRACKER_VIEWS} current="/report" label="Tracker view" />} />
       <div className="no-print space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <ViewTabs views={TRACKER_VIEWS} current="/report" label="Tracker view" />
           <DeptPicker value={sp.dept ?? ""} />
           <span className="ms-auto"><PrintButton /></span>
         </div>

@@ -26,6 +26,35 @@ export function PageHeader({
   );
 }
 
+/**
+ * The head of a screen: its name, a quiet line under it, and — always in the
+ * same place, the top right — the switch to the tab's OTHER views. Every view
+ * of a tab carries it, so the switch never moves as you go between them.
+ * Off the paper: the printed sheets carry their own masthead.
+ */
+export function PageHead({
+  title,
+  sub,
+  views,
+  children,
+}: {
+  title: ReactNode;
+  sub?: ReactNode;
+  /** The tab's view switch (<ViewTabs>), pinned to the right. */
+  views?: ReactNode;
+  /** Anything that belongs beside the title (a window picker, a badge). */
+  children?: ReactNode;
+}) {
+  return (
+    <div className="page-head no-print">
+      <h1 className="page-title">{title}</h1>
+      {sub && <span className="page-sub">{sub}</span>}
+      {children}
+      {views && <span className="ml-auto">{views}</span>}
+    </div>
+  );
+}
+
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <div className={`bg-surface border rounded-xl overflow-hidden ${className}`}>{children}</div>

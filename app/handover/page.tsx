@@ -9,6 +9,7 @@ import { ledgerPermKey, trackerPermKey } from "@/lib/domain/permissions";
 import { getActiveLine } from "@/lib/server/line";
 import { LV_CHAIN, LV_ITEM } from "@/lib/domain/lv";
 import { ViewTabs, trackerViews } from "@/components/ViewTabs";
+import { PageHead } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -55,15 +56,10 @@ export default async function HandoverPage() {
     flags: flags.get(r.id)?.map((f) => f.detail) ?? null,
   }));
 
-  // No page header — every pixel goes to the log; the Tracker tab's switcher
-  // rides in the filter bar and names where you are.
   return (
-    <HandoverLog
-      rows={rows}
-      line={line}
-      editableDepts={editableDepts}
-      soi={soi}
-      viewTabs={<ViewTabs views={trackerViews(line)} current="/handover" label="Tracker view" />}
-    />
+    <>
+      <PageHead title="Daily log" sub={`${line === "LV" ? "LV Panels" : "Transformers"} · every entry the tracker adds up`} views={<ViewTabs views={trackerViews(line)} current="/handover" label="Tracker view" />} />
+      <HandoverLog rows={rows} line={line} editableDepts={editableDepts} soi={soi} />
+    </>
   );
 }

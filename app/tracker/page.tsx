@@ -11,6 +11,7 @@ import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants"
 import { trackerPermKey } from "@/lib/domain/permissions";
 import { toDisplayDate } from "@/lib/domain/dates";
 import { ViewTabs, TRACKER_VIEWS, trackerViews } from "@/components/ViewTabs";
+import { PageHead } from "@/components/ui";
 import { LvTrackerTable } from "@/components/LvTrackerTable";
 import { getActiveLine } from "@/lib/server/line";
 import { getLvTracker } from "@/lib/server/lvTracker";
@@ -47,8 +48,8 @@ export default async function TrackerPage({
     return (
       <>
         <PrintHeader title="Plan Tracker — LV Panels" date={issued} />
+        <PageHead title="Plan Tracker" sub="LV Panels · one row per panel order, every stage" views={<ViewTabs views={trackerViews("LV")} current="/tracker" label="Tracker view" />} />
         <LvTrackerTable
-          viewTabs={<ViewTabs views={trackerViews("LV")} current="/tracker" label="Tracker view" />}
           rows={rows}
           editableStages={user ? LV_CHAIN.filter((s) => hasPerm(user, lvPermKey(s))) : []}
           canStatus={!!user && hasPerm(user, "lv.status")}
@@ -68,6 +69,7 @@ export default async function TrackerPage({
           subtitle={data.planNo === null ? undefined : `Weekly plan ${data.planNo}`}
           date={issued}
         />
+        <PageHead title="Plan Tracker" sub={`Transformers · weekly plan${data.planNo === null ? "" : ` ${data.planNo}`}, day by day`} views={<ViewTabs views={TRACKER_VIEWS} current="/tracker" label="Tracker view" />} />
         <WeeklyPlanTrackerTable
           data={data}
           capacityCard={<PlanCapacityCard check={capacity} />}

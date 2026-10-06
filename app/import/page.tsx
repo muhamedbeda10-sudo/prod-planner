@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/server/auth";
-import { PageHeader } from "@/components/ui";
+import { PageHead } from "@/components/ui";
 import { ImportForm } from "@/components/ImportForm";
 import { toISODate } from "@/lib/domain/dates";
 import { getPlanNos } from "@/lib/server/data";
@@ -19,9 +19,7 @@ export default async function ImportPage() {
   const plans = await getPlanNos();
   return (
     <div className="space-y-5 max-w-3xl">
-      <PageHeader title="Import Weekly Plan">
-        <ViewTabs views={PLANS_VIEWS} current="/import" label="Plans view" />
-      </PageHeader>
+      <PageHead title="Import Weekly Plan" sub="The delivery schedule" views={<ViewTabs views={PLANS_VIEWS} current="/import" label="Plans view" />} />
       <p className="text-sm text-muted">
         <b>Delivery schedule only.</b> Dates per MO come from here; order quantities live in the monthly registry
         beside it, and progress in the daily logs.

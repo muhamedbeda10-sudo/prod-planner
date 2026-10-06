@@ -1,5 +1,6 @@
 import { LV_CHAIN, LV_STAGE_LABEL, LV_STAGE_SHORT } from "@/lib/domain/lv";
 import type { LvDashboardData } from "@/lib/server/lvDashboard";
+import { PageHead } from "@/components/ui";
 import { ViewTabs, trackerViews } from "@/components/ViewTabs";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
@@ -33,9 +34,9 @@ export function LvDashboard({ d, today }: { d: LvDashboardData; today: string })
       {/* The panels' dashboard is a view of the Plan Tracker tab, and carries
           its own report: pick a day (from = to) or a period and the table
           below is that period, ready to print. */}
+      <PageHead title="Dashboard" sub="LV Panels · the plan through four stages" views={<ViewTabs views={trackerViews("LV")} current="/" label="Tracker view" />} />
       <div className="no-print space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <ViewTabs views={trackerViews("LV")} current="/" label="Tracker view" />
           {d.clamped && <span className="pill pill-warn">cut to {d.days.length} days</span>}
           <span className="ms-auto inline-flex items-center gap-2">
             <PrintButton />

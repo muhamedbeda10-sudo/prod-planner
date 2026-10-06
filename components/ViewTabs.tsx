@@ -13,11 +13,15 @@ export interface View {
   title?: string;
 }
 
+/** The tab's OTHER views. The one on screen is not offered — the page's
+ *  title already says where you are — so the switch is only ever a way out. */
 export function ViewTabs({ views, current, label }: { views: View[]; current: string; label: string }) {
+  const others = views.filter((v) => v.href.split("?")[0] !== current);
+  if (others.length === 0) return null;
   return (
     <nav className="seg" aria-label={label}>
-      {views.map((v) => (
-        <Link key={v.href} href={v.href} className={v.href.split("?")[0] === current ? "on" : ""} title={v.title}>
+      {others.map((v) => (
+        <Link key={v.href} href={v.href} title={v.title}>
           {v.label}
         </Link>
       ))}
