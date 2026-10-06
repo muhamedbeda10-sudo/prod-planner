@@ -358,3 +358,48 @@ export function snapshotChanges(before: ConsumableSnapshot | null, after: Consum
   if ((before.notes ?? "") !== (after.notes ?? "")) out.push(`Notes: ${before.notes ? `“${before.notes}”` : "—"} → ${after.notes ? `“${after.notes}”` : "—"}`);
   return out;
 }
+
+// ---- the log's summary: what went out, per item and per department ----
+
+export interface HandoutLike {
+  item: string;
+  qty: number;
+  uom: string | null;
+  departmentLabel: string;
+}
+
+export interface HandoutSummary {
+  /** One line per item AND unit (a quantity in kg never adds to one in pcs),
+   *  most hand-outs first. */
+  items: { item: string; uom: string | null; qty: number; handouts: number }[];
+  /** One line per department, most hand-outs first. */
+  departments: { department: string; handouts: number; items: number }[];
+}
+
+/** Totals over the hand-outs on screen — display only, from the rows the page
+ *  already holds. Item names fold case and spacing ("Gloves " = "gloves"),
+ *  keeping the first spelling seen. */
+export function summarizeHandouts(rows: HandoutLike[]): HandoutSummary {
+  const items = new Map<string, { item: string; uom: string | null; qty: number; handouts: number }>();
+  const depts = new Map<string, { department: string; handouts: number; items: Set<string> }>();
+  for (const r of rows) {
+    const name = r.item.trim().replace(/\s+/g, " ");
+    const k = `${name.toLowerCase()}|${r.uom ?? ""}`;
+    const it = items.get(k) ?? { item: name, uom: r.uom, qty: 0, handouts: 0 };
+    it.qty += r.qty;
+    it.handouts += 1;
+    items.set(k, it);
+    const d = depts.get(r.departmentLabel) ?? { department: r.departmentLabel, handouts: 0, items: new Set<string>() };
+    d.handouts += 1;
+    d.items.add(name.toLowerCase());
+    depts.set(r.departmentLabel, d);
+  }
+  return {
+    items: [...items.values()]
+      .map((x) => ({ ...x, qty: Number(x.qty.toFixed(3)) }))
+      .sort((a, b) => b.handouts - a.handouts || b.qty - a.qty || a.item.localeCompare(b.item)),
+    departments: [...depts.values()]
+      .map((d) => ({ department: d.department, handouts: d.handouts, items: d.items.size }))
+      .sort((a, b) => b.handouts - a.handouts || a.department.localeCompare(b.department)),
+  };
+}

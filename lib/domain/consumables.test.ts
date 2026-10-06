@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   NEW_DEPARTMENT,
+  summarizeHandouts,
   canEditIssue,
   describeSnapshot,
   parseSnapshot,
@@ -270,5 +271,29 @@ describe("matchCatalogueItem", () => {
     expect(matchCatalogueItem("Spare fuse 10A", cat)).toBeNull();
     expect(matchCatalogueItem("Cleaning", cat)).toBeNull();
     expect(matchCatalogueItem("   ", cat)).toBeNull();
+  });
+});
+
+describe("summarizeHandouts", () => {
+  it("adds up per item and unit, and counts per department, most first", () => {
+    const s = summarizeHandouts([
+      { item: "Gloves", qty: 2, uom: "pair", departmentLabel: "Welding" },
+      { item: "gloves ", qty: 3, uom: "pair", departmentLabel: "Painting" },
+      { item: "Thinner", qty: 0.5, uom: "L", departmentLabel: "Painting" },
+      { item: "Thinner", qty: 1.25, uom: "L", departmentLabel: "Painting" },
+      { item: "Gloves", qty: 1, uom: null, departmentLabel: "Welding" },
+    ]);
+    expect(s.items).toEqual([
+      { item: "Gloves", uom: "pair", qty: 5, handouts: 2 },
+      { item: "Thinner", uom: "L", qty: 1.75, handouts: 2 },
+      { item: "Gloves", uom: null, qty: 1, handouts: 1 },
+    ]);
+    expect(s.departments).toEqual([
+      { department: "Painting", handouts: 3, items: 2 },
+      { department: "Welding", handouts: 2, items: 1 },
+    ]);
+  });
+  it("is empty for no rows", () => {
+    expect(summarizeHandouts([])).toEqual({ items: [], departments: [] });
   });
 });
