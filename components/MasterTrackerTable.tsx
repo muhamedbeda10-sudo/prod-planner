@@ -53,16 +53,18 @@ const STICK_LEFT = ["0rem", "11.5rem", "18.25rem", "25.75rem"] as const;
 // the identifiers freeze ("stick"); their edge shadow sits on Required,
 // which freezes beside them
 /** Required freezes too, right after the identifiers. */
-const REQ_STICK = { "--stick-left": "33.25rem", "--stick-w": "4.75rem" } as React.CSSProperties;
+const reqStick = (idOpen: boolean) => ({ "--stick-left": idOpen ? "33.25rem" : "14rem", "--stick-w": "7rem" }) as React.CSSProperties;
+/** Folded identifiers: BOM alone, frozen at the left edge. */
+const ID_FOLDED = { "--stick-left": "0rem", "--stick-w": "14rem" } as React.CSSProperties;
 const REQ_CLS = "stick stick-end";
 
 /** The columns the reader can hide (Columns ▾). The identifiers, Required,
  *  the components and Status always show. */
-type ColKey = "kva" | "color" | "crc" | "sfm" | "fins";
+type ColKey = "fins";
 const COL_LABEL: Record<ColKey, string> = {
-  kva: "KVA", color: "Color", crc: "CRC", sfm: "SFM", fins: "Fins",
+  fins: "Fins",
 };
-const SPEC_KEYS: ColKey[] = ["kva", "color", "crc", "sfm", "fins"];
+const SPEC_KEYS: ColKey[] = ["fins"];
 
 /** A set of keys remembered in this browser (the hidden columns, the folded
  *  components) — the same on every visit, read after hydration. */
@@ -81,6 +83,25 @@ function useStoredSet(key: string): [Set<string>, (k: string) => void] {
     storeListeners.forEach((l) => l());
   };
   return [set, toggle];
+}
+
+/** A header that folds the columns beside it: its label, then › (folded) or
+ *  ‹ (open). `back` points the arrow the other way, for a group that opens
+ *  to the label's left. */
+function FoldButton({ open, onClick, label, title, back = false }: { open: boolean; onClick: () => void; label: string; title: string; back?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      className="print-as-text inline-flex items-center gap-1 rounded px-1 py-0.5 uppercase hover:bg-surface-3"
+      title={title}
+    >
+      {back && <ChevronRight size={12} className={`shrink-0 transition-transform ${open ? "" : "rotate-180"}`} aria-hidden />}
+      {label}
+      {!back && <ChevronRight size={12} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />}
+    </button>
+  );
 }
 
 /** Columns ▾ — show or hide the optional columns, and fold a component's
@@ -302,6 +323,11 @@ export function MasterTrackerTable({
   const [opened, toggleOpened] = useStoredSet("tracker:open");
   const summaryOpen = opened.has("summary");
   const toggleSummary = () => toggleOpened("summary");
+  // the same for MO · SOI · Customer (folded: BOM alone) and for
+  // KVA · Color · CRC · SFM (folded: none — Required stays)
+  const idOpen = opened.has("ids");
+  const specsOpen = opened.has("specs");
+  const REQ_STICK = reqStick(idOpen);
   // every action that changes more than one record names them first
   const [confirmIt, confirmDialog] = useConfirm();
   // inline stage-cell editor: one cell at a time (mo|item|dept)
@@ -525,7 +551,7 @@ export function MasterTrackerTable({
   // MO · SOI · Customer · BOM · KVA · Fins · Color · CRC · SFM · Required, then the items
   const itemColsOf = (it: Item) => (folded(it) ? 1 : scoped ? stages.length : 4);
   const tableCols =
-    4 + 1 + SPEC_KEYS.filter(show).length + ITEMS.reduce((n, it) => n + itemColsOf(it), 0) +
+    (idOpen ? 4 : 1) + (specsOpen ? 4 : 0) + 1 + SPEC_KEYS.filter(show).length + ITEMS.reduce((n, it) => n + itemColsOf(it), 0) +
     (scoped ? 1 : summaryOpen ? 4 : 1) + 1;
 
   // shared BOMs: one summary row per BOM, expandable to its MOs
@@ -889,15 +915,27 @@ export function MasterTrackerTable({
         <table className="erp-table w-full border-collapse">
           <thead className="sticky top-0 z-10">
             <tr>
-              <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(0)}>MO</th>
-              <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(1)} title="Sales order item">SOI</th>
-              <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(2)} title="The plan sheet's customer column">Customer</th>
-              <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(3)}>BOM</th>
-              {show("kva") && <th rowSpan={2} className="p-2">KVA</th>}
-              {show("color") && <th rowSpan={2} className="p-2" title="Colour RAL — typed here; the import never writes it">Color</th>}
-              {show("crc") && <th rowSpan={2} className="p-2" title="CRC size — typed here; the import never writes it">CRC</th>}
-              {show("sfm") && <th rowSpan={2} className="p-2" title="SFM — typed here; the import never writes it">SFM</th>}
-              <th rowSpan={2} className={`p-2 ${REQ_CLS}`} style={REQ_STICK} title="Required — frozen beside the identifiers so it stays in view">Required</th>
+              {idOpen && (
+                <>
+                  <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(0)}>MO</th>
+                  <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(1)} title="Sales order item">SOI</th>
+                  <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(2)} title="The plan sheet's customer column">Customer</th>
+                </>
+              )}
+              <th rowSpan={2} className={`p-1 text-left stick`} style={idOpen ? stickStyle(3) : ID_FOLDED}>
+                <FoldButton open={idOpen} onClick={() => toggleOpened("ids")} label="BOM" title={idOpen ? "Fold MO, SOI and Customer away — BOM stays" : "Show MO, SOI and Customer"} />
+              </th>
+              {specsOpen && (
+                <>
+                  <th rowSpan={2} className="p-2">KVA</th>
+                  <th rowSpan={2} className="p-2" title="Colour RAL — typed here; the import never writes it">Color</th>
+                  <th rowSpan={2} className="p-2" title="CRC size — typed here; the import never writes it">CRC</th>
+                  <th rowSpan={2} className="p-2" title="SFM — typed here; the import never writes it">SFM</th>
+                </>
+              )}
+              <th rowSpan={2} className={`p-1 ${REQ_CLS}`} style={REQ_STICK}>
+                <FoldButton open={specsOpen} onClick={() => toggleOpened("specs")} label="Required" title={specsOpen ? "Fold KVA, Color, CRC and SFM away" : "Show KVA, Color, CRC and SFM"} back />
+              </th>
               {/* Fins belongs with the components, not with the specs: it is
                   welded onto the tank like the rest, so it reads immediately
                   before the Core Frame. Typed here, never imported. */}
@@ -925,16 +963,7 @@ export function MasterTrackerTable({
               )}
               {!scoped && (
                 <th rowSpan={2} className="p-1">
-                  <button
-                    type="button"
-                    onClick={toggleSummary}
-                    aria-expanded={summaryOpen}
-                    className="print-as-text inline-flex items-center gap-1 rounded px-1 py-0.5 uppercase hover:bg-surface-3"
-                    title={summaryOpen ? "Fold Complete, Left and ETA away — Achv. stays" : "Show Complete, Left and ETA beside Achv."}
-                  >
-                    Achv.
-                    <ChevronRight size={12} className={`shrink-0 transition-transform ${summaryOpen ? "rotate-180" : ""}`} aria-hidden />
-                  </button>
+                  <FoldButton open={summaryOpen} onClick={toggleSummary} label="Achv." title={summaryOpen ? "Fold Complete, Left and ETA away — Achv. stays" : "Show Complete, Left and ETA beside Achv."} />
                 </th>
               )}
               {(scoped || summaryOpen) && <th
@@ -991,32 +1020,49 @@ export function MasterTrackerTable({
                     style={allHeld ? { background: HOLD_TINT } : undefined}
                     title={open ? "Collapse MOs" : "Show the MOs inside this BOM · right-click for actions"}
                   >
-                    <td className={`p-2 font-bold text-xs stick`} style={stickStyle(0)}>
-                      <span className="flex flex-wrap items-center gap-1">
-                        <ChevronRight size={14} className={`shrink-0 text-muted transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden />
-                        <span className="pill pill-muted" title={`${members.length} MOs share this BOM`}>{members.length} MOs</span>
-                        {urgentCount > 0 && <span className="pill pill-bad" title={`${urgentCount} urgent`}>U×{urgentCount}</span>}
-                        {heldCount > 0 && <span className="pill pill-warn" title={allHeld ? "Every MO of this BOM is on hold" : `${heldCount} of ${members.length} MOs on hold — open the group`}><Pause size={10} aria-hidden />{allHeld ? "HOLD" : `${heldCount}/${members.length}`}</span>}
-                      </span>
-                    </td>
-                    {/* the group names its MOs by count, not by list — its SOIs
-                        read the same way: each one sits on its own MO row, which
-                        expanding the group reveals. A joined strip of a dozen
-                        SOIs here was unreadable and said nothing the rows
-                        below do not. */}
-                    <td className={`p-2 whitespace-nowrap stick`} style={stickStyle(1)}>
-                      <Soi soi={null} />
-                    </td>
-                    <td className={`p-2 text-xs stick`} style={stickStyle(2)} title={gCustomer === null ? `${members.length} MOs for more than one customer — open the group` : gCustomer || undefined}>
-                      <span className="block truncate">{gCustomer === null ? <span className="text-muted">…</span> : gCustomer || <span className="text-muted">—</span>}</span>
-                    </td>
-                    <td className={`p-2 font-bold whitespace-nowrap stick`} style={stickStyle(3)}>
-                      <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">{gBom}</Link>
-                    </td>
-                    {show("kva") && <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{gKva}</td>}
-                    {show("color") && groupSpecCell(gBom, members, "colorRal")}
-                    {show("crc") && groupSpecCell(gBom, members, "crcSize")}
-                    {show("sfm") && groupSpecCell(gBom, members, "sfm")}
+                    {(() => {
+                      const pills = (
+                        <>
+                          <span className="pill pill-muted" title={`${members.length} MOs share this BOM`}>{members.length} MOs</span>
+                          {urgentCount > 0 && <span className="pill pill-bad" title={`${urgentCount} urgent`}>U×{urgentCount}</span>}
+                          {heldCount > 0 && <span className="pill pill-warn" title={allHeld ? "Every MO of this BOM is on hold" : `${heldCount} of ${members.length} MOs on hold — open the group`}><Pause size={10} aria-hidden />{allHeld ? "HOLD" : `${heldCount}/${members.length}`}</span>}
+                        </>
+                      );
+                      const chevron = <ChevronRight size={14} className={`shrink-0 text-muted transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden />;
+                      const bomLink = <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline whitespace-nowrap">{gBom}</Link>;
+                      if (!idOpen) {
+                        return (
+                          <td className="p-2 font-bold text-xs stick" style={ID_FOLDED} title={gCustomer ? `${gBom} · ${gCustomer}` : gBom}>
+                            <span className="flex flex-wrap items-center gap-1">{chevron}{bomLink}{pills}</span>
+                          </td>
+                        );
+                      }
+                      return (
+                        <>
+                          <td className={`p-2 font-bold text-xs stick`} style={stickStyle(0)}>
+                            <span className="flex flex-wrap items-center gap-1">{chevron}{pills}</span>
+                          </td>
+                          {/* the group names its MOs by count, not by list — its SOIs
+                              read the same way: each one sits on its own MO row, which
+                              expanding the group reveals. */}
+                          <td className={`p-2 whitespace-nowrap stick`} style={stickStyle(1)}>
+                            <Soi soi={null} />
+                          </td>
+                          <td className={`p-2 text-xs stick`} style={stickStyle(2)} title={gCustomer === null ? `${members.length} MOs for more than one customer — open the group` : gCustomer || undefined}>
+                            <span className="block truncate">{gCustomer === null ? <span className="text-muted">…</span> : gCustomer || <span className="text-muted">—</span>}</span>
+                          </td>
+                          <td className={`p-2 font-bold whitespace-nowrap stick`} style={stickStyle(3)}>{bomLink}</td>
+                        </>
+                      );
+                    })()}
+                    {specsOpen && (
+                      <>
+                        <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{gKva}</td>
+                        {groupSpecCell(gBom, members, "colorRal")}
+                        {groupSpecCell(gBom, members, "crcSize")}
+                        {groupSpecCell(gBom, members, "sfm")}
+                      </>
+                    )}
                     <td className={`p-2 text-center font-bold ${REQ_CLS}`} style={REQ_STICK}><Num v={gReq} /></td>
                     {show("fins") && groupFinsCell(gBom, members)}
                     {ITEMS.map((it) =>
@@ -1513,13 +1559,9 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                 onContextMenu={(e) => rowMenu.open(e, { kind: "mo", row: r })}
                 title={r.hold.onHold ? `${holdLabel(r.hold)} · right-click for actions` : undefined}
               >
-                <td
-                  className={`p-2 font-bold text-xs ${inGroup ? "pl-5" : ""} stick`}
-                  style={{ ...stickStyle(0), ...(r.hold.onHold ? { boxShadow: "inset 3px 0 0 var(--warn-fg)" } : {}) }}
-                >
-                  <span className="flex flex-wrap items-center gap-1">
-                  {inGroup && <CornerDownRight size={12} className="text-muted shrink-0" aria-hidden />}
-                  <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline whitespace-nowrap">{r.mo}</Link>
+                {(() => {
+                  const badges = (
+                    <>
                   {r.priority && <Star size={12} className="shrink-0 fill-[var(--warn-fg)] text-[var(--warn-fg)]" aria-label="Priority order — shown on top of every dept worklist" />}
                   {r.months.length > 1 && (
                     can("admin") ? (
@@ -1551,23 +1593,57 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       OSP {it}×{r.items[it].osp}
                     </span>
                   ))}
-                  {/* a component the project does not need shows as hatched
-                      cells under its own columns, not as a badge here */}
-                  </span>
-                </td>
-                <td className={`p-2 whitespace-nowrap stick`} style={stickStyle(1)}>
-                  <Soi soi={r.soi} />
-                </td>
-                <td className={`p-2 text-xs stick`} style={stickStyle(2)} title={r.customer || undefined}>
-                  <span className="block truncate">{r.customer || <span className="text-muted">—</span>}</span>
-                </td>
-                <td className={`p-2 font-bold whitespace-nowrap stick`} style={stickStyle(3)}>
-                  <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
-                </td>
-                {show("kva") && <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>}
-                {show("color") && specCell(r, "colorRal")}
-                {show("crc") && specCell(r, "crcSize")}
-                {show("sfm") && specCell(r, "sfm")}
+                    </>
+                  );
+                  const holdEdge = r.hold.onHold ? { boxShadow: "inset 3px 0 0 var(--warn-fg)" } : {};
+                  if (!idOpen) {
+                    // folded: BOM alone — or, inside an opened BOM, the MO (the
+                    // BOM is already on the row above), with the order's marks
+                    return (
+                      <td className={`p-2 font-bold text-xs ${inGroup ? "pl-5" : ""} stick`} style={{ ...ID_FOLDED, ...holdEdge }} title={`${r.mo} · ${r.bom}${r.soi ? ` · SOI ${r.soi}` : ""}${r.customer ? ` · ${r.customer}` : ""}`}>
+                        <span className="flex flex-wrap items-center gap-1">
+                          {inGroup ? (
+                            <>
+                              <CornerDownRight size={12} className="text-muted shrink-0" aria-hidden />
+                              <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline whitespace-nowrap">{r.mo}</Link>
+                            </>
+                          ) : (
+                            <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline whitespace-nowrap">{r.bom}</Link>
+                          )}
+                          {badges}
+                        </span>
+                      </td>
+                    );
+                  }
+                  return (
+                    <>
+                      <td className={`p-2 font-bold text-xs ${inGroup ? "pl-5" : ""} stick`} style={{ ...stickStyle(0), ...holdEdge }}>
+                        <span className="flex flex-wrap items-center gap-1">
+                          {inGroup && <CornerDownRight size={12} className="text-muted shrink-0" aria-hidden />}
+                          <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline whitespace-nowrap">{r.mo}</Link>
+                          {badges}
+                        </span>
+                      </td>
+                      <td className={`p-2 whitespace-nowrap stick`} style={stickStyle(1)}>
+                        <Soi soi={r.soi} />
+                      </td>
+                      <td className={`p-2 text-xs stick`} style={stickStyle(2)} title={r.customer || undefined}>
+                        <span className="block truncate">{r.customer || <span className="text-muted">—</span>}</span>
+                      </td>
+                      <td className={`p-2 font-bold whitespace-nowrap stick`} style={stickStyle(3)}>
+                        <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
+                      </td>
+                    </>
+                  );
+                })()}
+                {specsOpen && (
+                  <>
+                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>
+                    {specCell(r, "colorRal")}
+                    {specCell(r, "crcSize")}
+                    {specCell(r, "sfm")}
+                  </>
+                )}
                 <td className={`p-2 text-center font-bold ${REQ_CLS}`} style={REQ_STICK}>
                   {qtyEditMo === r.mo ? (
                     <span className="inline-flex flex-col items-center gap-0.5">
