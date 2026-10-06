@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { EMPTY_MATERIAL_FILTERS, type MaterialFilters } from "@/lib/domain/material";
 import {
-  bookText, candidateBoms, candidateMos, entryMaterialNeed, materialNeedText, moKey, monthLabelOfISO, VARIANCE_BAD, VARIANCE_WARN, varianceText,
+  bookText, candidateBoms, candidateMos, entryMaterialNeed, materialNeedText, moKey, monthLabelOfISO, nestingKey, VARIANCE_BAD, VARIANCE_WARN, varianceText,
   type MaterialNeed, type NeedContext, type NeedVia, type NestingLookup, type VarianceTone,
 } from "@/lib/domain/odooMaterial";
 import type { OdooEntryView } from "@/lib/domain/odoo";
@@ -104,6 +104,7 @@ function useOpenInMaterial() {
 const VIA_TEXT: Record<NeedVia, string> = {
   soi: "via the SOI's order",
   fg: "from the row's code",
+  row: "the row's own BOM",
   ledger: "the closing this row came from",
   odoo: "the MO typed on the row",
   order: "one of the SOI's orders",
@@ -188,7 +189,7 @@ export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEnt
   const soiKey = (e.soi ?? "").trim().toUpperCase();
   const need = entryMaterialNeed(nesting, e, Number.isFinite(q) ? q : 0, needCtx);
   // transformers: the part × BOM pairs that were tried; panels: the orders
-  const cand = needCtx.lv ? null : candidateBoms(e.fgCode, needCtx.soiBoms[soiKey] ?? []);
+  const cand = needCtx.lv ? null : candidateBoms(e.fgCode, needCtx.soiBoms[soiKey] ?? [], e.bom.boms);
   const mos = needCtx.lv ? candidateMos(e, needCtx.soiMos[soiKey] ?? []) : [];
   const partCode = need?.partCode ?? cand?.partCode ?? "";
   const bom = need?.bom ?? cand?.boms[0]?.bom ?? e.fgCode;
@@ -201,6 +202,8 @@ export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEnt
     ? cand.boms.map((c) => ({
         ...c,
         parts: [...new Set(Object.keys(nesting).filter((k) => k.endsWith(`|${c.bom}`) && nesting[k].length > 0).map((k) => k.split("|")[0]))],
+        // the part IS nested on this BOM — for other orders, not this row's
+        others: [...new Set((nesting[nestingKey(cand?.partCode ?? "", c.bom)] ?? []).map((l) => l.soi || l.mo || "").filter(Boolean))],
       }))
     : [];
 
@@ -282,8 +285,8 @@ export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEnt
                 {bomsSeen.map((c, i) => (
                   <span key={c.bom}>
                     {i > 0 && " or "}
-                    BOM <b className="ltr">{c.bom}</b> ({c.via === "soi" ? "the SOI's order" : "the row's code"}
-                    {c.parts.length > 0 ? `, has ${c.parts.join(", ")}` : ", not in the tracker"})
+                    BOM <b className="ltr">{c.bom}</b> ({c.via === "row" ? "this row's BOM" : c.via === "soi" ? "the SOI's order" : "the row's code"}
+                    {c.others.length > 0 ? `, nested only for other orders: ${c.others.join(", ")}` : c.parts.length > 0 ? `, has ${c.parts.join(", ")}` : ", not in the tracker"})
                   </span>
                 ))}
                 {" "}— add it there or import the month&apos;s tracker.

@@ -119,13 +119,13 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
  *  transformer row by its own Odoo MO (the newer sheet files each part under
  *  it) and by its part × BOM (the older sheet, and the rows with no MO yet). */
 async function nestingOf(
-  entries: { fgCode: string; soi: string | null; odooMo: string; mo?: string | null }[],
+  entries: { fgCode: string; soi: string | null; odooMo: string; mo?: string | null; bom?: OdooRowBom }[],
   line: string, soiBoms: Record<string, string[]>, soiMos: Record<string, string[]>,
 ): Promise<NestingLookup> {
   const soi = (e: { soi: string | null }) => (e.soi ?? "").trim().toUpperCase();
   if (line === "LV") return linesByMo(entries.map((e) => candidateMos(e, soiMos[soi(e)] ?? []).map((c) => c.mo)), "LV");
   const [byPart, byMo] = await Promise.all([
-    nestingFor(entries.map((e) => ({ fgCode: e.fgCode, boms: soiBoms[soi(e)] ?? [] })), line),
+    nestingFor(entries.map((e) => ({ fgCode: e.fgCode, boms: soiBoms[soi(e)] ?? [], rowBoms: e.bom?.boms })), line),
     linesByMo(entries.map((e) => [e.odooMo.trim().toUpperCase()].filter(Boolean)), "TR"),
   ]);
   return { ...byPart, ...byMo };
@@ -168,10 +168,10 @@ export async function getOdooRowMaterial(id: number): Promise<{ entry: OdooEntry
 
 /** The tracker's lines for every part × BOM these rows may sit under
  *  (the SOI's BOM and the FG-CODE's), every month. */
-async function nestingFor(entries: { fgCode: string; boms: string[] }[], line: string): Promise<NestingLookup> {
+async function nestingFor(entries: { fgCode: string; boms: string[]; rowBoms?: readonly string[] }[], line: string): Promise<NestingLookup> {
   const keys = new Map<string, { partCode: string; bom: string }>();
   for (const r of entries) {
-    const cand = candidateBoms(r.fgCode, r.boms);
+    const cand = candidateBoms(r.fgCode, r.boms, r.rowBoms);
     if (!cand) continue;
     for (const c of cand.boms) keys.set(nestingKey(cand.partCode, c.bom), { partCode: cand.partCode, bom: c.bom });
   }
@@ -181,6 +181,7 @@ async function nestingFor(entries: { fgCode: string; boms: string[] }[], line: s
     select: {
       id: true, month: true, bom: true, partCode: true, partName: true, materialCode: true, material: true,
       thicknessMm: true, sheetSize: true, units: true, sheetsPerUnit: true, actualPerUnit: true, sheetsUsed: true, note: true,
+      soi: true, mo: true,
     },
     orderBy: [{ month: "desc" }, { material: "asc" }, { thicknessMm: "asc" }],
   });
