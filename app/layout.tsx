@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -20,6 +20,19 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "ATC — Steel Fabrication (ERP System)",
   description: "Arabian Transformers Co. — steel fabrication ERP system",
+  applicationName: "ATC ERP",
+  // installed from Safari's "Add to Home Screen" on an iPhone or iPad
+  appleWebApp: { capable: true, title: "ATC ERP", statusBarStyle: "black" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#1c2220" },
+    { media: "(prefers-color-scheme: light)", color: "#1a8150" },
+  ],
 };
 
 // Applied before paint so there is no light/dark flash on load. The dark
