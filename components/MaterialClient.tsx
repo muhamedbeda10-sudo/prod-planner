@@ -4,7 +4,7 @@ import type { ProductLine } from "@/lib/domain/lines";
 import type { LvOrderRef, MaterialPageData } from "@/lib/server/material";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useCallback, useMemo, useState, useTransition } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState, useTransition } from "react";
 import {
   MATERIAL_PRESETS, PART_PRESETS, SHEET_SIZE_PRESETS, MATERIAL_STATUS_FILTERS, EMPTY_MATERIAL_FILTERS,
   partNameFor, filterMaterialLines, summarizeMaterial, groupMaterialBySoi,
@@ -13,7 +13,7 @@ import {
 import { Modal } from "@/components/Modal";
 import { FIELD_DP, formatNumber, formatQty } from "@/lib/domain/format";
 import { FilterSelect } from "@/components/FilterControls";
-import { Check, ChevronRight, FilterX, Plus, Search, Upload } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FilterX, Plus, Search, Upload } from "lucide-react";
 import { CellEditor, GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
@@ -574,59 +574,71 @@ function ImportPanel({ product }: { product: ProductLine }) {
   const [pending, startTransition] = useTransition();
   const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
   const [issues, setIssues] = useState<string[]>([]);
-  const [open, setOpen] = useState(false);
-  function submit(form: HTMLFormElement, preview: boolean) {
-    const fd = new FormData(form); fd.set("preview", String(preview));
+  const [showIssues, setShowIssues] = useState(false);
+  const [menu, setMenu] = useState(false);
+  // picking the file IS the upload — no dialog, no preview; `prune` says
+  // whether rows no longer in the file leave the table (off unless asked)
+  const picker = useRef<HTMLInputElement>(null);
+  const prune = useRef(false);
+  function pick(withPrune: boolean) {
+    prune.current = withPrune;
+    setMenu(false);
+    picker.current?.click();
+  }
+  function upload(file: File) {
+    const fd = new FormData();
+    fd.set("file", file);
+    fd.set("preview", "false");
+    if (prune.current) fd.set("prune", "on");
+    setRes(null); setIssues([]); setShowIssues(false);
     startTransition(async () => {
       const r = await importMaterialAction(fd);
       setIssues(r.issues ?? []);
       if (!r.ok) { setRes({ ok: false, text: r.error ?? "Import failed." }); return; }
       const stale = r.recomputed ? ` · ${r.recomputed} row(s) where the sheet's “Actual Nesting for Job” disagrees with its own per-unit rate × units — kept as written, worth a look` : "";
-      const gone = r.missing
-        ? preview
-          ? ` · ${r.missing} row(s) on the tab are not in this file${fd.get("prune") ? " — they would be removed" : " — they stay"}`
-          : r.removed ? ` · ${r.removed} row(s) no longer in the file removed` : ` · ${r.missing} row(s) not in this file kept`
-        : "";
-      const tail = `${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}${gone}${stale}`;
-      setRes({ ok: true, text: preview ? `Preview only — nothing saved: ${tail}.` : `Table updated: ${tail}.` });
-      if (!preview) router.refresh();
+      const gone = r.missing ? (r.removed ? ` · ${r.removed} row(s) no longer in the file removed` : ` · ${r.missing} row(s) not in this file kept`) : "";
+      setRes({ ok: true, text: `Table updated: ${r.added} new, ${r.updated} updated, ${r.unchanged} unchanged${r.sheet ? ` (sheet “${r.sheet}”)` : ""}${gone}${stale}.` });
+      router.refresh();
     });
   }
+  const label = lv ? "Upload Consumption Details" : "Upload Material Sheet";
+  const reads = lv
+    ? "Reads the panels' Consumption Details sheet as it is — one row per thickness, matched on the MO. Uploading again updates the rows, never doubles them."
+    : "Reads the sheet by its headers, each row matched on its MO (with the BOM, part, material, thickness and size). Uploading again adds the new rows and updates the changed ones — never doubles them — and leaves your “Quantity” as typed.";
   return (
-    <>
-      <button type="button" className="btn btn-sm btn-primary" onClick={() => { setRes(null); setIssues([]); setOpen(true); }}>
-        <Upload size={14} aria-hidden />{lv ? "Upload Consumption Details" : "Upload Material Sheet"}
-      </button>
-      {open && (
-        <Modal title={lv ? "📥 Upload the Consumption Details sheet" : "📥 Upload the material sheet"} sub="No month to pick — each row is matched on its MO and the table is updated." onClose={() => setOpen(false)} busy={pending}>
-          <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
-            <label className="block">
-              <span className="text-xs font-bold text-muted">Excel file</span>
-              <input type="file" name="file" accept=".xlsx,.xlsm,.xls" required className="block text-sm mt-1" />
-            </label>
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" name="prune" className="mt-1" />
-              <span>Remove the rows that are no longer in the file <span className="text-muted">(lines typed in the tab stay)</span></span>
-            </label>
-            <p className="text-xs text-muted">
-              {lv ? (
-                <>Reads the panels&apos; Consumption Details sheet as it is — Product, Sec Item, Planned qty, MO, BOM, Material, then one row per Thickness with the sheets for one unit and what was actually consumed (“For 8 Units 14.4 Sheets Consumed”, or Done). Uploading it again updates the rows, never doubles them.</>
-              ) : (<>Reads the sheet by its headers — MO, BOM Ref, Quantity of Units, Part Code, Part Name, Codes, Material, Thickness, Sheet Size, Sheets in BOM for one Unit, Actual Nesting for Job, Notes. Each row is matched on its MO (with the BOM, part, material, thickness and size): uploading again adds the new rows and updates the
-              changed ones — never doubles them — and leaves your “Quantity” exactly as typed. The ODOO tab finds each MO&apos;s lines by the same MO.</>)}
-            </p>
-            <Msg msg={res} />
-            {issues.length > 0 && (
-              <ul className="text-xs text-warn-fg list-disc ps-5 space-y-0.5 max-h-40 overflow-y-auto">{issues.map((i, n) => <li key={n}>{i}</li>)}</ul>
-            )}
-            <div className="flex justify-end gap-2 pt-3 border-t">
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={pending}>Close</button>
-              <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, true)}>Preview</button>
-              <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={(e) => submit(e.currentTarget.form!, false)}>{pending ? "Working…" : "Upload"}</button>
-            </div>
-          </form>
-        </Modal>
+    <span className="relative inline-flex flex-wrap items-center gap-2">
+      <input
+        ref={picker} type="file" accept=".xlsx,.xlsm,.xls" className="hidden" aria-label={label}
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }}
+      />
+      <span className="inline-flex">
+        <button type="button" className="btn btn-sm btn-primary rounded-e-none" disabled={pending} onClick={() => pick(false)} title={`${reads} Rows no longer in the file stay.`}>
+          <Upload size={14} aria-hidden />{pending ? "Uploading…" : label}
+        </button>
+        <button type="button" className="btn btn-sm btn-primary rounded-s-none border-s border-white/25 !px-1.5" disabled={pending} aria-haspopup="true" aria-expanded={menu} onClick={() => setMenu((v) => !v)} title="More upload options">
+          <ChevronDown size={13} aria-hidden />
+        </button>
+      </span>
+      {menu && (
+        <span className="absolute top-full start-0 z-30 mt-1 w-72 rounded-[10px] border bg-surface shadow-xl p-1 text-sm">
+          <button type="button" className="w-full text-start rounded-md px-2 py-1.5 hover:bg-surface-2" onClick={() => pick(true)}>
+            Upload and remove the rows no longer in the file
+            <span className="block text-xs text-muted">Lines typed in the tab stay.</span>
+          </button>
+        </span>
       )}
-    </>
+      {res && <span className={`text-xs font-semibold ${res.ok ? "text-ok-fg" : "text-bad-fg"}`}>{res.text}</span>}
+      {issues.length > 0 && (
+        <button type="button" className="text-xs font-semibold text-warn-fg hover:underline" onClick={() => setShowIssues((v) => !v)}>
+          {issues.length} note{issues.length === 1 ? "" : "s"} from the file
+        </button>
+      )}
+      {showIssues && issues.length > 0 && (
+        <ul className="absolute top-full start-0 z-30 mt-1 w-[28rem] max-w-[90vw] max-h-56 overflow-y-auto rounded-[10px] border bg-surface shadow-xl p-2 ps-6 text-xs text-warn-fg list-disc space-y-0.5">
+          {issues.map((x, n) => <li key={n}>{x}</li>)}
+        </ul>
+      )}
+    </span>
   );
 }
 
