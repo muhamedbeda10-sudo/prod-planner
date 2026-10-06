@@ -1,7 +1,4 @@
-"use client";
-
-import Link from "next/link";
-import { useCanSee } from "@/components/TabAccess";
+import { ViewTabsNav } from "@/components/ViewTabsNav";
 
 // One tab in the strip can hold several screens: the pages stay separate
 // routes (each is big, and each deep-links), and this switcher reads them as
@@ -16,26 +13,12 @@ export interface View {
   title?: string;
 }
 
-/** The tab's OTHER views. The one on screen is not offered — the page's
- *  title already says where you are — so the switch is only ever a way out. */
-export function ViewTabs({ views: all, current, label }: { views: View[]; current: string; label: string }) {
-  // a view is "current" by its path — or, where a tab's views share one path
-  // and differ by ?view=, by its whole href
-  const canSee = useCanSee();
-  const views = all.filter((v) => canSee(v.href)); // a view switched off for this account is not offered
-  const exact = views.some((v) => v.href === current);
-  const isCurrent = (v: View) => (exact ? v.href === current : v.href.split("?")[0] === current);
-  const others = views.filter((v) => !isCurrent(v));
-  if (others.length === 0) return null;
-  return (
-    <nav className="seg" aria-label={label}>
-      {others.map((v) => (
-        <Link key={v.href} href={v.href} title={v.title}>
-          {v.label}
-        </Link>
-      ))}
-    </nav>
-  );
+/** The tab's OTHER views — those this account may see (see ViewTabsNav).
+ *  This module carries no "use client", so server pages can call the helpers
+ *  below; the switch itself renders on the client, where the account's
+ *  hidden screens are known. */
+export function ViewTabs(props: { views: View[]; current: string; label: string }) {
+  return <ViewTabsNav {...props} />;
 }
 
 /** The Plan Tracker tab's screens: the tracker, the plan's dashboard (how

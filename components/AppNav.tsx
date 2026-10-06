@@ -116,9 +116,9 @@ export interface NavUser {
 }
 
 // What only exists while machine planning is on — the worklists ride on it
-// too (see machinePlanning below): the shift log, the machine list and the
+// too (see machinePlanning below): the machine list and the
 // times per machine all serve that one job.
-const MACHINE_ONLY = new Set(["/shifts", "/admin/machines", "/admin/machine-times"]);
+const MACHINE_ONLY = new Set(["/admin/machines", "/admin/machine-times"]);
 
 // The two tabs that only exist while per-piece tank tracking is on.
 const TANK_ONLY = new Set(["/worklist/leak-test", "/barcode"]);
