@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { AlertTriangle, Inbox, MoreHorizontal, RotateCw } from "lucide-react";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { Modal } from "@/components/Modal";
@@ -9,7 +9,7 @@ import { Tooltip } from "@/components/Tooltip";
 // The pieces every data sheet is built from, so a table reads and behaves
 // the same on every page:
 //   · TableFrame — the scroll box (header pinned, wide sheets scroll sideways)
-//     at the reader's row density;
+//     at the compact row height;
 //   · Th — a header cell: a short label of two lines at most, its unit, and
 //     the full name / explanation in a tooltip;
 //   · GroupBand — the band over the headers that says which columns come from
@@ -22,43 +22,13 @@ import { Tooltip } from "@/components/Tooltip";
 //     besides its rows.
 // Display only: none of it computes, fetches or saves anything on its own.
 
-// ---- row density: one choice for the whole app, remembered in this browser ----
-
-export type Density = "compact" | "comfortable";
-const DENSITY_KEY = "table:density";
-const densityListeners = new Set<() => void>();
-
-export function useDensity(): [Density, (d: Density) => void] {
-  const density = useSyncExternalStore(
-    (cb) => { densityListeners.add(cb); return () => { densityListeners.delete(cb); }; },
-    () => { try { return localStorage.getItem(DENSITY_KEY) === "comfortable" ? "comfortable" : "compact"; } catch { return "compact"; } },
-    () => "compact" as const,
-  );
-  const set = (d: Density) => {
-    try { localStorage.setItem(DENSITY_KEY, d); } catch {}
-    densityListeners.forEach((l) => l());
-  };
-  return [density, set];
-}
-
-/** Rows 36px (compact, the default) or 44px (comfortable, for the floor's
- *  touch screens). Every table on every page follows the one choice. */
-export function DensityToggle() {
-  const [density, setDensity] = useDensity();
-  return (
-    <span className="inline-flex items-center gap-1 no-print" role="group" aria-label="Row height">
-      <button type="button" className="chip-toggle" aria-pressed={density === "compact"} onClick={() => setDensity("compact")} title="Compact rows — more on screen">Compact</button>
-      <button type="button" className="chip-toggle" aria-pressed={density === "comfortable"} onClick={() => setDensity("comfortable")} title="Comfortable rows — easier to hit on a touch screen">Comfortable</button>
-    </span>
-  );
-}
+// ---- row height: compact (36px) everywhere — one height, no switch ----
 
 /** The scroll box around a sheet: the header stays pinned while the rows
- *  scroll, a wide sheet scrolls sideways, rows follow the chosen density. */
+ *  scroll, a wide sheet scrolls sideways, rows sit at the compact height. */
 export function TableFrame({ children, className = "", style }: { children: ReactNode; className?: string; style?: CSSProperties }) {
-  const [density] = useDensity();
   return (
-    <div className={`overflow-x-auto erp-scroll dt ${className}`} data-density={density} style={style}>
+    <div className={`overflow-x-auto erp-scroll dt ${className}`} data-density="compact" style={style}>
       {children}
     </div>
   );
