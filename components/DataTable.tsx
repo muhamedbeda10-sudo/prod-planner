@@ -304,6 +304,79 @@ export function ConfirmDialog({ title, body, items, confirmLabel, danger = false
   );
 }
 
+// ---- a short form in a dialog, where window.prompt was ----
+
+export interface AskField {
+  name: string;
+  label: string;
+  type: "text" | "number" | "date" | "select";
+  defaultValue?: string;
+  placeholder?: string;
+  hint?: string;
+  required?: boolean;
+  min?: string;
+  max?: string;
+  step?: string;
+  options?: { value: string; label: string }[];
+}
+export interface AskRequest {
+  title: string;
+  body?: ReactNode;
+  fields: AskField[];
+  confirmLabel: string;
+  danger?: boolean;
+}
+
+/** `const [ask, dialog] = useAsk()` — render `dialog`, then
+ *  `const v = await ask({...}); if (!v) return;` — v holds each field's text
+ *  by name. The browser checks the fields (required, min, max) before it
+ *  answers; a date field is a date picker, not typed YYYY-MM-DD. */
+export function useAsk(): [(req: AskRequest) => Promise<Record<string, string> | null>, ReactNode] {
+  const [pending, setPending] = useState<{ req: AskRequest; resolve: (v: Record<string, string> | null) => void } | null>(null);
+  const ask = (req: AskRequest) => new Promise<Record<string, string> | null>((resolve) => setPending({ req, resolve }));
+  const answer = (v: Record<string, string> | null) => { pending?.resolve(v); setPending(null); };
+  return [ask, pending ? <AskDialog {...pending.req} onAnswer={answer} /> : null];
+}
+
+function AskDialog({ title, body, fields, confirmLabel, danger = false, onAnswer }: AskRequest & { onAnswer: (v: Record<string, string> | null) => void }) {
+  return (
+    <Modal title={title} onClose={() => onAnswer(null)} width="max-w-md">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const fd = new FormData(e.currentTarget);
+          onAnswer(Object.fromEntries(fields.map((f) => [f.name, String(fd.get(f.name) ?? "").trim()])));
+        }}
+      >
+        {body && <div className="text-sm mb-3">{body}</div>}
+        <div className="space-y-3">
+          {fields.map((f) => (
+            <label key={f.name} className="block">
+              <span className="filter-label block mb-1">{f.label}</span>
+              {f.type === "select" ? (
+                <select name={f.name} defaultValue={f.defaultValue ?? ""} required={f.required} className="ctl w-full">
+                  {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ) : (
+                <input
+                  name={f.name} type={f.type} defaultValue={f.defaultValue} placeholder={f.placeholder} required={f.required}
+                  min={f.min} max={f.max} step={f.step}
+                  className={`ctl w-full ${f.type === "number" || f.type === "date" ? "tabnum ltr" : ""}`}
+                />
+              )}
+              {f.hint && <span className="block text-xs text-muted mt-1">{f.hint}</span>}
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 pt-3 mt-4 border-t">
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => onAnswer(null)}>Cancel</button>
+          <button type="submit" className={`btn btn-sm ${danger ? "btn-danger" : "btn-primary"}`}>{confirmLabel}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 // ---- the states besides rows ----
 
 /** Nothing to show: say why, and what to do about it. */
