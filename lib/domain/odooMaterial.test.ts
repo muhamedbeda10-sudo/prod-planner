@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, materialNeed, materialNeedText, moKey, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup } from "./odooMaterial";
+import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, jobLines, materialNeed, materialNeedText, moKey, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup } from "./odooMaterial";
 
 function line(over: Partial<NestingLine> & { id: number }): NestingLine {
   return {
@@ -303,5 +303,37 @@ describe("a transformer row finds the lines filed under its own Odoo MO first", 
     const need = entryMaterialNeed(withMo, { ...row, odooMo: "SF01/MO/99999" }, 11, EMPTY_NEED_CONTEXT)!;
     expect(need.mo).toBeNull();
     expect(need.lines.map((l) => l.id)).toEqual([1, 3, 2]);
+  });
+});
+
+describe("a row's material is its own BOM's and its own job's", () => {
+  const job = (soi: string, mo: string, id: number, over: Partial<NestingLine> = {}) =>
+    line({ id, bom: "12008E14M14", soi, mo, units: 12, ...over });
+  const shared: NestingLookup = {
+    [nestingKey("FB-022", "12008E14M14")]: [
+      job("S01134-3", "", 1, { sheetsUsed: 4 }),
+      job("S01316-1", "SF01/MO/17036", 2, { sheetsUsed: null }),
+      job("S01317-2", "SF01/MO/17102", 3, { sheetsUsed: null }),
+    ],
+  };
+  const row = { fgCode: "FB-022-12008E23M14", dateISO: "2026-10-03", soi: "S01134-3", odooMo: "SF01/MO/15285" };
+  const ctx = { ...EMPTY_NEED_CONTEXT, soiBoms: { "S01134-3": ["12008E14M14", "12008E23M14"] } };
+
+  it("never borrows another BOM of the same SOI when the row knows its own", () => {
+    expect(entryMaterialNeed(shared, { ...row, bom: { boms: ["12008E23M14"] } }, 26, ctx)).toBeNull();
+    expect(candidateBoms(row.fgCode, ["12008E14M14", "12008E23M14"], ["12008E23M14"])?.boms).toEqual([{ bom: "12008E23M14", via: "row" }]);
+  });
+
+  it("shows only the lines of the row's own order, not every order of the BOM", () => {
+    const need = entryMaterialNeed(shared, { ...row, bom: { boms: ["12008E14M14"] } }, 26, ctx);
+    expect(need?.lines.map((l) => l.id)).toEqual([1]);
+    expect(need?.via).toBe("row");
+  });
+
+  it("matches the Odoo MO before the SOI, and falls back to lines that cover the whole BOM", () => {
+    expect(jobLines(shared[nestingKey("FB-022", "12008E14M14")], { soi: "S01134-3", odooMo: "SF01/MO/17102" }).map((l) => l.id)).toEqual([3]);
+    const bomWide = [line({ id: 7 }), line({ id: 8, soi: "S09999-1" })];
+    expect(jobLines(bomWide, { soi: "S01134-3", odooMo: "" }).map((l) => l.id)).toEqual([7]);
+    expect(jobLines(shared[nestingKey("FB-022", "12008E14M14")], { soi: "S04444-1", odooMo: "" })).toEqual([]);
   });
 });

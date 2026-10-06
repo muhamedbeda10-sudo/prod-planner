@@ -27,7 +27,13 @@ export function monthLabelOfISO(iso: string): string {
 export type NestingLine = Pick<
   MaterialLineInput,
   "month" | "bom" | "partCode" | "partName" | "materialCode" | "material" | "thicknessMm" | "sheetSize" | "units" | "sheetsPerUnit" | "actualPerUnit" | "sheetsUsed" | "note"
-> & { id: number };
+> & {
+  id: number;
+  /** The order the line was nested for, as the sheet files it — "" (or
+   *  absent) for a line that covers the BOM as a whole. */
+  soi?: string;
+  mo?: string;
+};
 
 /** Lines keyed "FB-022|14003E11M11" — the lookup the log page hands the rows. */
 export type NestingLookup = Record<string, NestingLine[]>;
@@ -79,7 +85,7 @@ export function varianceOf(actual: number | null, bom: number): { pct: number | 
  *  FG-CODE's suffix ("fg"). Panels, keyed by MO: the closing the row was born
  *  from ("ledger"), the MO typed on the row ("odoo"), or one of the SOI's
  *  orders in the registry ("order"). */
-export type NeedVia = "soi" | "fg" | "ledger" | "odoo" | "order";
+export type NeedVia = "soi" | "fg" | "row" | "ledger" | "odoo" | "order";
 
 export interface MaterialNeed {
   partCode: string;
@@ -111,12 +117,17 @@ export interface MaterialNeed {
 const actualRate = (stored: number | null, used: number | null, units: number) =>
   stored !== null && stored >= 0 ? stored : used === null || !(units > 0) ? null : used / units;
 
-/** The BOMs a row's material may sit under, in lookup order: the SOI's
- *  order(s) from the registry first, then the FG-CODE's own suffix. */
-export function candidateBoms(fgCode: string, soiBoms: readonly string[]): { partCode: string; boms: { bom: string; via: "soi" | "fg" }[] } | null {
+/** The BOMs a row's material may sit under, in lookup order: the row's own
+ *  BOM when it is known (see odooRowBom) and nothing else; otherwise the
+ *  SOI's order(s) from the registry first, then the FG-CODE's own suffix. */
+export function candidateBoms(fgCode: string, soiBoms: readonly string[], rowBoms: readonly string[] = []): { partCode: string; boms: { bom: string; via: "soi" | "fg" | "row" }[] } | null {
   const key = splitFgCode(fgCode);
   if (!key) return null;
-  const boms: { bom: string; via: "soi" | "fg" }[] = [];
+  // the row knows its own BOM (the closing's, the SOI's order …): that one
+  // only — never another transformer of the same SOI
+  const own = [...new Set(rowBoms.map((b) => b.trim().toUpperCase()).filter(Boolean))];
+  if (own.length > 0) return { partCode: key.partCode, boms: own.map((bom) => ({ bom, via: "row" as const })) };
+  const boms: { bom: string; via: "soi" | "fg" | "row" }[] = [];
   for (const b of soiBoms) {
     const bom = b.trim().toUpperCase();
     if (bom && !boms.some((x) => x.bom === bom)) boms.push({ bom, via: "soi" });
@@ -133,12 +144,33 @@ export function candidateBoms(fgCode: string, soiBoms: readonly string[]): { par
  * newest month that does — a BOM nested in August is the same BOM in
  * September. Null when the code cannot be split or no line exists for it.
  */
-export function materialNeed(lookup: NestingLookup, fgCode: string, qty: number, loggedMonth: string, soiBoms: readonly string[] = []): MaterialNeed | null {
-  const cand = candidateBoms(fgCode, soiBoms);
+export function materialNeed(
+  lookup: NestingLookup, fgCode: string, qty: number, loggedMonth: string, soiBoms: readonly string[] = [],
+  opts: { rowBoms?: readonly string[]; job?: { soi: string | null; odooMo: string } } = {}
+): MaterialNeed | null {
+  const cand = candidateBoms(fgCode, soiBoms, opts.rowBoms);
   if (!cand) return null;
-  const hit = cand.boms.map((c) => ({ ...c, lines: lookup[nestingKey(cand.partCode, c.bom)] ?? [] })).find((c) => c.lines.length > 0);
+  const hit = cand.boms
+    .map((c) => ({ ...c, lines: jobLines(lookup[nestingKey(cand.partCode, c.bom)] ?? [], opts.job) }))
+    .find((c) => c.lines.length > 0);
   if (!hit) return null;
   return buildNeed(hit.lines, { partCode: cand.partCode, bom: hit.bom, mo: null, via: hit.via }, qty, loggedMonth);
+}
+
+/** Of a part × BOM's lines, the ones of THIS row's job: the lines nested
+ *  for its Odoo MO, else for its SOI, else the lines that cover the BOM as a
+ *  whole (no SOI, no MO). Other orders of the same BOM are theirs, not this
+ *  row's — they never mix in. */
+export function jobLines(lines: readonly NestingLine[], job?: { soi: string | null; odooMo: string }): NestingLine[] {
+  if (!job) return [...lines];
+  const norm = (v: string | null | undefined) => (v ?? "").trim().toUpperCase();
+  const mo = norm(job.odooMo);
+  const soi = norm(job.soi);
+  const byMo = mo ? lines.filter((l) => norm(l.mo) === mo) : [];
+  if (byMo.length > 0) return byMo;
+  const bySoi = soi ? lines.filter((l) => norm(l.soi) === soi) : [];
+  if (bySoi.length > 0) return bySoi;
+  return lines.filter((l) => !norm(l.soi) && !norm(l.mo));
 }
 
 // ---- panels: the lines are the ORDER's, keyed by its MO ----
@@ -194,13 +226,18 @@ const soiOf = (soi: string | null) => (soi ?? "").trim().toUpperCase();
  *  the material sheet names Odoo's MO per part (SF01/MO/20941), the number
  *  typed on the ODOO row — and falls back to its part × BOM. */
 export function entryMaterialNeed(
-  lookup: NestingLookup, e: { fgCode: string; dateISO: string; soi: string | null; odooMo: string; mo?: string | null }, qty: number, ctx: NeedContext
+  lookup: NestingLookup,
+  e: { fgCode: string; dateISO: string; soi: string | null; odooMo: string; mo?: string | null; bom?: { boms: readonly string[] } },
+  qty: number, ctx: NeedContext
 ): MaterialNeed | null {
   const month = monthLabelOfISO(e.dateISO);
   if (ctx.lv) return materialNeedByMo(lookup, candidateMos(e, ctx.soiMos[soiOf(e.soi)] ?? []), qty, month);
   const odooMo = e.odooMo.trim().toUpperCase();
   const byMo = odooMo ? materialNeedByMo(lookup, [{ mo: odooMo, via: "odoo" }], qty, month) : null;
-  return byMo ?? materialNeed(lookup, e.fgCode, qty, month, ctx.soiBoms[soiOf(e.soi)] ?? []);
+  return byMo ?? materialNeed(lookup, e.fgCode, qty, month, ctx.soiBoms[soiOf(e.soi)] ?? [], {
+    rowBoms: e.bom?.boms ?? [],
+    job: { soi: e.soi, odooMo: e.odooMo },
+  });
 }
 
 function buildNeed(all: readonly NestingLine[], key: { partCode: string; bom: string; mo: string | null; via: NeedVia }, qty: number, loggedMonth: string): MaterialNeed {
