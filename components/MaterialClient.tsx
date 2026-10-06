@@ -4,16 +4,16 @@ import type { ProductLine } from "@/lib/domain/lines";
 import type { LvOrderRef, MaterialPageData } from "@/lib/server/material";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { Fragment, useCallback, useMemo, useState, useTransition } from "react";
 import {
   MATERIAL_PRESETS, PART_PRESETS, SHEET_SIZE_PRESETS, MATERIAL_STATUS_FILTERS, EMPTY_MATERIAL_FILTERS,
-  partNameFor, filterMaterialLines, summarizeMaterial,
-  type MaterialLineView, type MaterialTotal, type MaterialFilters, type MaterialStatusFilter,
+  partNameFor, filterMaterialLines, summarizeMaterial, groupMaterialBySoi,
+  type MaterialLineView, type MaterialTotal, type MaterialFilters, type MaterialStatusFilter, type MaterialSoiGroup,
 } from "@/lib/domain/material";
 import { Modal } from "@/components/Modal";
 import { FIELD_DP, formatNumber, formatQty } from "@/lib/domain/format";
 import { FilterSelect } from "@/components/FilterControls";
-import { Check, FilterX, Plus, Search, Upload } from "lucide-react";
+import { Check, ChevronRight, FilterX, Plus, Search, Upload } from "lucide-react";
 import { CellEditor, DensityToggle, GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
@@ -387,6 +387,68 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
   );
 }
 
+// ---- the SOI groups and the totals row ----
+
+/** The sticky identifier block (MTR · SOI · MO) as one cell, for the rows
+ *  that span it: a group's head, the totals. */
+const STICK_ALL = { "--stick-left": "0rem", "--stick-w": "26.75rem" } as React.CSSProperties;
+
+type Sums = Pick<MaterialSoiGroup, "forJob" | "sheetsUsed" | "actualWeightKg" | "difference" | "forProduced">;
+
+/** The figures of a group or of the table, each under its own column. */
+function SumCells({ s, showMonth }: { s: Sums; showMonth: boolean }) {
+  const diffCls = s.difference === null ? "" : s.difference < 0 ? "text-bad-fg" : s.difference > 0 ? "text-ok-fg" : "text-muted";
+  return (
+    <>
+      <td className={`p-2 ${NUM} emph`}><Sheets v={s.forJob} /></td>
+      <td className={`p-2 ${NUM} emph`}><Sheets v={s.sheetsUsed} /></td>
+      <td />
+      <td className={`p-2 ${NUM} emph`}><Sheets v={s.actualWeightKg} digits={3} /></td>
+      <td className={`p-2 ${NUM} emph ${diffCls}`}><Sheets v={s.difference} /></td>
+      <td />
+      <td />
+      <td className={`p-2 ${NUM}`}><Sheets v={s.forProduced} /></td>
+      {showMonth && <td />}
+      <td className="no-print" />
+    </>
+  );
+}
+
+function SoiGroupRow({ g, open, onToggle, odoo, showMonth }: { g: MaterialSoiGroup; open: boolean; onToggle: () => void; odoo: Record<string, string>; showMonth: boolean }) {
+  const onOdoo = g.mos.filter((mo) => odoo[mo.toUpperCase()]);
+  const shownMos = g.mos.slice(0, 4);
+  return (
+    <tr className="mat-group">
+      <td className="p-2 stick stick-end" colSpan={3} style={STICK_ALL}>
+        <button type="button" onClick={onToggle} aria-expanded={open} className="inline-flex items-center gap-1.5 font-bold ltr" title={open ? "Fold this SOI" : "Show this SOI's lines"}>
+          <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+          {g.soi || <span className="text-muted font-semibold">No SOI</span>}
+          <span className="text-xs text-muted font-semibold tabnum">· {g.mos.length} MO{g.mos.length === 1 ? "" : "s"} · {g.lines.length} line{g.lines.length === 1 ? "" : "s"}</span>
+        </button>
+      </td>
+      <td className="p-2" colSpan={11}>
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs ltr">
+          {g.mos.length > 0 && (
+            <span
+              className={`pill ${onOdoo.length === g.mos.length ? "pill-ok" : onOdoo.length ? "pill-warn" : "pill-muted"}`}
+              title={onOdoo.length ? `On the ODOO tab: ${onOdoo.join(", ")}` : "No ODOO row carries these MOs yet"}
+            >
+              {onOdoo.length > 0 && <Check size={10} aria-hidden />}ODOO {onOdoo.length}/{g.mos.length}
+            </span>
+          )}
+          {shownMos.map((mo) => (
+            <span key={mo} className="inline-flex items-center gap-1 text-muted">
+              {mo}{odoo[mo.toUpperCase()] && <Check size={11} className="text-ok-fg" aria-label="on the ODOO tab" />}
+            </span>
+          ))}
+          {g.mos.length > shownMos.length && <span className="text-muted" title={g.mos.slice(4).join(", ")}>+{g.mos.length - shownMos.length} more</span>}
+        </span>
+      </td>
+      <SumCells s={g} showMonth={showMonth} />
+    </tr>
+  );
+}
+
 // ---- add ----
 
 // A BOM is never one line: the sheet runs five to seven thicknesses under the
@@ -627,7 +689,7 @@ function Pick({ label, value, options, onChange, render }: {
   return <FilterSelect label={label} value={value} onChange={onChange} options={options.map((o) => ({ value: o, label: render ? render(o) : o }))} />;
 }
 
-function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineView[]; filters: MaterialFilters; onChange: (f: MaterialFilters) => void; shown: number }) {
+function FilterBar({ lines, filters, onChange, shown, extra }: { lines: MaterialLineView[]; filters: MaterialFilters; onChange: (f: MaterialFilters) => void; shown: number; extra?: React.ReactNode }) {
   const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))].sort();
   const parts = uniq(lines.map((l) => l.partCode));
   // the part's name as the lines carry it (FB-024 · CABLE BOX), else the preset's
@@ -659,6 +721,7 @@ function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineVie
         options={(Object.keys(MATERIAL_STATUS_FILTERS) as MaterialStatusFilter[]).filter((k) => k !== "all").map((k) => ({ value: k, label: MATERIAL_STATUS_FILTERS[k] }))}
       />
       <span className="ml-auto inline-flex items-center gap-3">
+      {extra}
       <DensityToggle />
       <span className="text-xs text-muted tabnum whitespace-nowrap">
         {active ? <><b className="text-foreground font-semibold">{shown}</b> of {lines.length} lines</> : `${lines.length} lines`}
@@ -689,6 +752,16 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
   const filtering = shown.length !== lines.length;
   // the totals follow the filter, so "Stainless steel 5 mm, tanks only" adds up on its own
   const shownTotals = filtering ? summarizeMaterial(shown) : totals;
+  // the transformers' sheet reads by SOI, its MOs under it; the switch puts
+  // the plain sheet order back. A folded SOI stays folded while the page is open.
+  const [bySoi, setBySoi] = useState(true);
+  const soiGroups = useMemo(() => groupMaterialBySoi(shown), [shown]);
+  const shownSums = useMemo(() => {
+    const all = groupMaterialBySoi(shown.map((l) => ({ ...l, soi: "" })))[0];
+    return all ?? { forJob: 0, sheetsUsed: null, actualWeightKg: null, difference: null, forProduced: null };
+  }, [shown]);
+  const [folded, setFolded] = useState<Set<string>>(() => new Set());
+  const toggleFold = (soi: string) => setFolded((f) => { const n = new Set(f); if (n.has(soi)) n.delete(soi); else n.add(soi); return n; });
   return (
     <div className="space-y-4">
       <div className="toolbar !mb-0">
@@ -703,7 +776,16 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
             {exportButton}
           </div>
         )}
-        {lines.length > 0 && <FilterBar lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} />}
+        {lines.length > 0 && (
+          <FilterBar
+            lines={lines} filters={filters} onChange={changeFilters} shown={shown.length}
+            extra={lv ? undefined : (
+              <button type="button" className="chip-toggle" aria-pressed={bySoi} onClick={() => setBySoi((v) => !v)} title="Group the lines by SOI, each order's MOs under it">
+                Group by SOI
+              </button>
+            )}
+          />
+        )}
       </div>
       <section className="bg-surface border rounded-[10px] overflow-hidden">
         {lines.length === 0 ? (
@@ -801,8 +883,27 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                 )}
               </thead>
               <tbody>
-                {shown.map((l) => <LineRow key={l.id} line={l} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} />)}
+                {lv || !bySoi
+                  ? shown.map((l) => <LineRow key={l.id} line={l} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} />)
+                  : soiGroups.map((g) => (
+                    <Fragment key={`soi-${g.soi}`}>
+                      <SoiGroupRow g={g} open={!folded.has(g.soi)} onToggle={() => toggleFold(g.soi)} odoo={odooByMo} showMonth={showMonth} />
+                      {!folded.has(g.soi) && g.lines.map((l) => <LineRow key={l.id} line={l} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} />)}
+                    </Fragment>
+                  ))}
               </tbody>
+              {!lv && (
+                // what the lines on screen add up to, pinned under the sheet
+                <tfoot className="mat-total">
+                  <tr>
+                    <td className="p-2 stick stick-end font-bold" colSpan={3} style={STICK_ALL}>
+                      Total <span className="text-xs text-muted font-semibold tabnum">· {shown.length} line{shown.length === 1 ? "" : "s"}{filtering ? " shown" : ""}</span>
+                    </td>
+                    <td colSpan={11} />
+                    <SumCells s={shownSums} showMonth={showMonth} />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </TableFrame>
         )}

@@ -239,12 +239,20 @@ function IssueFields({
         />
         <datalist id={ITEMS_LIST}>{suggestions.map((n) => <option key={n} value={n} />)}</datalist>
       </Field>
-      <Field label={picked ? `Qty (${picked.uom})` : "Qty"} className={span("sm:col-span-2")}>
-        <input
-          ref={qtyRef} name="qty" type="number" inputMode="decimal" step="0.001" min="0.001" max={CONSUMABLE_LIMITS.qtyMax}
-          defaultValue={entry?.qty ?? ""} required disabled={disabled} placeholder="0" className={`${F} ltr tabnum w-full font-extrabold`}
-          onInput={(e) => setQty(Number((e.target as HTMLInputElement).value) || 0)}
-        />
+      <Field label="Qty" className={span("sm:col-span-2")}>
+        {/* the box starts empty — a "0" would read as typed — and the item's
+            unit sits right beside the number */}
+        <span className="flex items-stretch">
+          <input
+            ref={qtyRef} name="qty" type="number" inputMode="decimal" step="0.001" min="0.001" max={CONSUMABLE_LIMITS.qtyMax}
+            defaultValue={entry?.qty ?? ""} required disabled={disabled} aria-label={picked ? `Qty in ${picked.uom}` : "Qty"}
+            className={`${F} ltr tabnum w-full min-w-0 font-extrabold !rounded-e-none`}
+            onInput={(e) => setQty(Number((e.target as HTMLInputElement).value) || 0)}
+          />
+          <span className="inline-flex items-center px-2 text-xs font-semibold text-muted bg-surface-2 border border-s-0 border-[var(--border-strong)] rounded-e-[var(--r-sm)] whitespace-nowrap" title={picked ? "The catalogue item's unit" : "Pick a catalogue item to see its unit"}>
+            {picked?.uom || "unit"}
+          </span>
+        </span>
       </Field>
       {!row && matchLine}
 
@@ -525,7 +533,8 @@ export function ConsumablesClient({
             filtered
           />
         ) : (
-          <TableFrame>
+          // the log takes the rest of the screen and scrolls inside it, header pinned
+          <TableFrame className="!max-h-[calc(100vh-17rem)] min-h-[16rem]">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="text-left">

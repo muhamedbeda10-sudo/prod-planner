@@ -81,7 +81,7 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
             ))}
           </div>
           <Box height={230}>
-            <BarChart data={lt.buckets} margin={{ top: 16, right: 8, left: -18, bottom: 0 }} barCategoryGap="18%">
+            <BarChart data={lt.buckets} margin={{ top: 16, right: 8, left: 0, bottom: 0 }} barCategoryGap="18%">
               <CartesianGrid vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />

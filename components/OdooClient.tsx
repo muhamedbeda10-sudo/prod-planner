@@ -1,7 +1,7 @@
 "use client";
 
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
-import { FilterX } from "lucide-react";
+import { FilterX, MessageSquarePlus } from "lucide-react";
 import { CellEditor, DensityToggle, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { ProductSwatch } from "@/components/Badge";
@@ -284,6 +284,7 @@ const stamp = (iso: string): string => formatDateTime(iso);
 
 function Note({ n, canEdit }: { n: OdooNoteView; canEdit: boolean }) {
   const del = useAction();
+  const [confirmDelete, confirmDialog] = useConfirm();
   return (
     <li className="group flex items-start gap-1">
       <div className="min-w-0 flex-1">
@@ -302,9 +303,16 @@ function Note({ n, canEdit }: { n: OdooNoteView; canEdit: boolean }) {
           type="button"
           className="btn btn-sm btn-ghost text-bad-fg shrink-0 opacity-40 group-hover:opacity-100 no-print"
           title="Delete this note"
+          aria-label="Delete this note"
           disabled={del.pending}
-          onClick={() => {
-            if (!confirm("Delete this note?")) return;
+          onClick={async () => {
+            const ok = await confirmDelete({
+              title: "Delete this note?",
+              items: [`${n.text}${n.by ? ` — ${n.by}` : ""}, ${stamp(n.atISO)}`],
+              confirmLabel: "Delete note",
+              danger: true,
+            });
+            if (!ok) return;
             const fd = new FormData();
             fd.set("noteId", String(n.id));
             del.run(deleteOdooNote, fd, "Deleted.");
@@ -313,37 +321,72 @@ function Note({ n, canEdit }: { n: OdooNoteView; canEdit: boolean }) {
           ✕
         </button>
       )}
+      {confirmDialog}
     </li>
   );
 }
 
+/**
+ * A row's notes in two lines at most: the newest, cut with an ellipsis (the
+ * whole text in its tooltip), and "+N earlier" to open the full list. A new
+ * note is typed in a field the + button opens; Enter keeps it, Escape drops it.
+ */
 function NotesCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
   const add = useAction();
   const [draft, setDraft] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   function submit() {
     const body = draft.trim();
-    if (!body) return;
+    if (!body) { setAdding(false); return; }
     const fd = new FormData();
     fd.set("id", String(e.id));
     fd.set("text", body);
-    add.run(addOdooNote, fd, "Added.", () => setDraft(""));
+    add.run(addOdooNote, fd, "Added.", () => { setDraft(""); setAdding(false); });
   }
+  const latest = e.notes[0];
+  const earlier = e.notes.length - 1;
   return (
     <div className="flex flex-col gap-1">
-      {e.notes.length > 0 && (
-        <ul className="space-y-1.5">
-          {e.notes.map((n) => <Note key={n.id} n={n} canEdit={canEdit} />)}
-        </ul>
-      )}
-      {e.notes.length === 0 && !canEdit && <span className="text-muted">—</span>}
-      {canEdit && (
+      <div className="flex items-start gap-1">
+        <div className="min-w-0 flex-1">
+          {expanded ? (
+            <ul className="space-y-1.5">
+              {e.notes.map((n) => <Note key={n.id} n={n} canEdit={canEdit} />)}
+            </ul>
+          ) : latest ? (
+            <p className="line-clamp-2 break-words" title={`${latest.text}\n— ${stamp(latest.atISO)}${latest.by ? ` · ${latest.by}` : ""}`}>
+              {latest.blockedItem && <span className="pill pill-bad ltr me-1">{latest.blockedItem}</span>}
+              {latest.text}
+              <span className="text-[11px] text-muted"> · <span className="tabnum ltr" suppressHydrationWarning>{stamp(latest.atISO)}</span>{latest.by && ` · ${latest.by}`}</span>
+            </p>
+          ) : (
+            !adding && <span className="text-muted">—</span>
+          )}
+          {e.notes.length > 0 && (earlier > 0 || expanded) && (
+            <button type="button" className="text-[11px] font-semibold text-accent hover:underline no-print" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
+              {expanded ? "Show the newest only" : `+${earlier} earlier`}
+            </button>
+          )}
+        </div>
+        {canEdit && !adding && (
+          <button type="button" className="icon-btn shrink-0 no-print" onClick={() => setAdding(true)} aria-label="Add a note" title="Add a note — kept with the time and your name">
+            <MessageSquarePlus size={14} />
+          </button>
+        )}
+      </div>
+      {canEdit && adding && (
         <input
+          autoFocus
           value={draft}
           disabled={add.pending}
           onChange={(ev) => setDraft(ev.target.value)}
-          onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); submit(); } }}
+          onKeyDown={(ev) => {
+            if (ev.key === "Enter") { ev.preventDefault(); submit(); }
+            else if (ev.key === "Escape") { ev.preventDefault(); setDraft(""); setAdding(false); }
+          }}
           onBlur={submit}
-          placeholder={e.notes.length === 0 ? "Add a note… (Enter)" : "Another note… (Enter)"}
+          placeholder="Type the note, Enter to keep it"
           title="Type a note and press Enter — it is kept with the time and your name"
           className="px-2 py-1 text-xs w-full no-print"
         />
@@ -351,6 +394,34 @@ function NotesCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
       {add.msg?.ok === false && <span className="text-[10px] text-bad-fg">{add.msg.text}</span>}
     </div>
   );
+}
+
+/** What the marks on a row mean — the one place they are spelled out. */
+function FlagLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 border-t text-xs text-muted no-print" aria-label="What the marks mean">
+      <span className="filter-label">Marks</span>
+      <span className="inline-flex items-center gap-1.5"><span className="pill pill-warn">check FG-CODE</span>guessed from the part and the BOM — confirm it</span>
+      <span className="inline-flex items-center gap-1.5"><span className="pill pill-warn">needs MO</span>waiting for Odoo&apos;s MO number</span>
+      <span className="inline-flex items-center gap-1.5"><span className="pill pill-info">from Painting</span>written by a closing on the floor</span>
+      <span className="inline-flex items-center gap-1.5"><span className="pill pill-muted">3 closings</span>rows of one closing, added up — click to open</span>
+      <span className="inline-flex items-center gap-1.5">🧱 the material the quantity takes</span>
+    </div>
+  );
+}
+
+/** The table's column count — the full-width rows (a message, a group head) span it. */
+const COLS = 11;
+
+function LinePill({ line }: { line: string }) {
+  return <span className={`pill ${line === "LV" ? "pill-info" : "pill-muted"}`}>{line}</span>;
+}
+
+/** Where the row came from: typed, imported, or written by a floor closing. */
+function SourceTag({ source }: { source: string }) {
+  const label = sourceLabel(source);
+  if (!label) return <span className="text-muted text-xs">typed</span>;
+  return <span className={`pill ${label === "imported" ? "pill-muted" : "pill-info"}`}>{label}</span>;
 }
 
 function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGroup = false }: {
@@ -401,13 +472,13 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
     <>
       <tr className={`border-t hover:bg-surface-2/60 ${inGroup ? "bg-surface-2/40" : ""}`} onContextMenu={canEdit ? row.onContextMenu : undefined}>
         <td className={`${cell} tabnum ltr ${inGroup ? "ps-6" : ""}`} onClick={open} title={rowTitle}>
-          <span className="inline-flex flex-col">
-            <span className="inline-flex items-center gap-1">
-              {inGroup ? <span className="text-muted">↳ {formatDate(e.dateISO)}</span> : formatDate(e.dateISO)}
-              {!inGroup && <span className={`pill text-[10px] ${e.line === "LV" ? "pill-muted" : "pill-ok"}`} title={e.line === "LV" ? "LV Panels" : "Transformers"}>{e.line}</span>}
-            </span>
-            {born && <span className="pill pill-muted text-[10px] mt-0.5" title="Written by the closing recorded in the daily log — the office fills in Odoo's MO">{sourceLabel(e.source)}</span>}
-          </span>
+          {inGroup ? <span className="text-muted">↳ {formatDate(e.dateISO)}</span> : formatDate(e.dateISO)}
+        </td>
+        <td className={cell} onClick={open} title={e.line === "LV" ? "LV Panels" : "Transformers"}>
+          {!inGroup && <LinePill line={e.line} />}
+        </td>
+        <td className={cell} onClick={open} title={born ? "Written by the closing recorded in the daily log — the office fills in Odoo's MO" : rowTitle}>
+          <SourceTag source={e.source} />
         </td>
         <td className={cell} onClick={open} title={rowTitle}><Soi soi={e.soi} /></td>
         <td className={`${cell} ltr text-xs font-semibold`} onClick={e.fgGuessed && canEdit ? undefined : open} title={e.fgGuessed ? "Composed from the part code and the transformer's BOM — no earlier row of this SOI and product to copy from. Confirm or correct it." : rowTitle}>
@@ -471,7 +542,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
       )}
       {del.msg?.ok === false && (
         <tr className="border-t-0">
-          <td colSpan={9} className="px-2 pb-3"><Msg msg={del.msg} /></td>
+          <td colSpan={COLS} className="px-2 pb-3"><Msg msg={del.msg} /></td>
         </tr>
       )}
     </>
@@ -513,16 +584,12 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
     <>
       <tr className={`border-t font-semibold ${open ? "bg-brand-light/40" : "bg-brand-light/20 hover:bg-brand-light/40"} transition-colors`}>
         <td className={`${cell} tabnum ltr`} onClick={toggle} title={open ? "Hide the closings" : "Show the closings this line adds up"}>
-          <span className="inline-flex flex-col">
-            <span>
-              <span className={`inline-block me-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>▶</span>
-              {formatDate(head.dateISO)}
-              <span className={`pill text-[10px] ms-1 ${head.line === "LV" ? "pill-muted" : "pill-ok"}`} title={head.line === "LV" ? "LV Panels" : "Transformers"}>{head.line}</span>
-            </span>
-            <span className="pill pill-muted text-[10px] mt-0.5" title={born ? "Written by the closings recorded in the daily log" : "Rows that read the same"}>
-              {g.rows.length} closings{born ? " · from the floor" : ""}
-            </span>
-          </span>
+          <span className={`inline-block me-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden>▶</span>
+          {formatDate(head.dateISO)}
+        </td>
+        <td className={cell} onClick={toggle} title={head.line === "LV" ? "LV Panels" : "Transformers"}><LinePill line={head.line} /></td>
+        <td className={cell} onClick={toggle} title={born ? "Written by the closings recorded in the daily log" : "Rows that read the same"}>
+          <span className="pill pill-muted">{g.rows.length} closings{born ? " · floor" : ""}</span>
         </td>
         <td className={cell} onClick={toggle}><Soi soi={head.soi} /></td>
         <td className={`${cell} ltr text-xs font-semibold`} onClick={toggle}>
@@ -658,6 +725,8 @@ function readSavedFilters(raw: string): OdooFilters {
 /** One of the day's counts, as a filter. Reads as the sentence it always was
  *  until it is hovered or picked — a count that filters must not look like a
  *  button parked in the middle of a line of prose. */
+/** A count that is also its filter — a chip: click it to narrow the log to
+ *  those rows, click it again to show them all. */
 function CountFilter({ n, label, tone, on, title, onClick }: { n: number; label: string; tone: string; on: boolean; title: string; onClick: () => void }) {
   return (
     <button
@@ -665,9 +734,9 @@ function CountFilter({ n, label, tone, on, title, onClick }: { n: number; label:
       onClick={onClick}
       title={`${title}${on ? " — click again to show them all" : ""}`}
       aria-pressed={on}
-      className={`font-bold rounded px-1 -mx-0.5 transition-colors hover:bg-surface-2 ${tone} ${on ? "ring-2 ring-brand bg-surface-2" : ""}`}
+      className="chip-toggle inline-flex items-center gap-1.5 tabnum"
     >
-      {n} {label}
+      <span className={`font-extrabold ${on ? "" : tone}`}>{n}</span>{label}
     </button>
   );
 }
@@ -710,17 +779,19 @@ function ItemCards({ totals, selected, onPick, periodLabel }: { totals: OdooItem
   const card = (key: string, label: string, t: { qty: number; rows: number; doneQty: number; openQty: number }, on: boolean, onClick: () => void, title: string) => (
     <button
       key={key} type="button" onClick={onClick} title={title} aria-pressed={on}
-      className={`text-start bg-surface border rounded-xl px-3 py-1.5 min-w-0 transition-colors hover:border-brand/60 ${on ? "border-brand ring-2 ring-brand/30" : ""}`}
+      className={`h-16 text-start bg-surface border rounded-[10px] px-3 py-1.5 min-w-0 flex flex-col justify-center transition-colors hover:border-brand/60 ${on ? "border-brand ring-2 ring-brand/30" : ""}`}
       style={key !== "all" ? { boxShadow: `inset 0 3px 0 ${productColor(key)}` } : undefined}
     >
       <div className="flex items-center gap-1.5 text-[11px] font-bold text-muted uppercase tracking-wide min-w-0">
         {key !== "all" && <ProductSwatch product={key} />}
         <span className="truncate">{label}</span>
       </div>
-      <div className="text-xl font-extrabold tabnum leading-tight">{t.qty.toLocaleString("en")}</div>
-      <div className="text-[11px] text-muted tabnum mt-0.5 whitespace-nowrap" title={`${t.rows} row${t.rows === 1 ? "" : "s"}`}>
-        <span className="text-ok-fg font-semibold">{t.doneQty.toLocaleString("en")} closed</span>
-        {t.openQty > 0 && <> · <span className="text-bad-fg font-semibold">{t.openQty.toLocaleString("en")} open</span></>}
+      <div className="flex items-baseline gap-2 min-w-0">
+        <span className="text-lg font-extrabold tabnum leading-tight">{t.qty.toLocaleString("en")}</span>
+        <span className="text-[11px] text-muted tabnum truncate" title={`${t.rows} row${t.rows === 1 ? "" : "s"} · ${t.doneQty} closed · ${t.openQty} open`}>
+          <span className="text-ok-fg font-semibold">{t.doneQty.toLocaleString("en")} closed</span>
+          {t.openQty > 0 && <> · <span className="text-bad-fg font-semibold">{t.openQty.toLocaleString("en")} open</span></>}
+        </span>
       </div>
     </button>
   );
@@ -820,12 +891,11 @@ export function OdooClient({
         // the planner reads "19 not closed" and the next thing he wants is
         // those nineteen. Clicking one narrows to it, clicking it again clears
         // it. The filters stay even when nothing matches, so they can be undone.
-        <div className="text-sm text-muted flex flex-wrap items-center gap-x-1 gap-y-1 no-print">
+        <div className="text-sm text-muted flex flex-wrap items-center gap-x-1.5 gap-y-1.5 no-print">
           <FilterBar entries={entries} filters={filters} onChange={setFilters} />
           {shown.length > 0 && (<>
           <span className="w-2" aria-hidden />
-          <span className="tabnum">{shown.length} row{shown.length === 1 ? "" : "s"}</span>
-          <span aria-hidden>·</span>
+          <span className="tabnum me-1">{shown.length} row{shown.length === 1 ? "" : "s"}</span>
           <CountFilter
             n={done}
             label="done"
@@ -834,7 +904,6 @@ export function OdooClient({
             title="Only the rows Odoo has closed"
             onClick={() => setFilters({ ...filters, closed: filters.closed === "done" ? "all" : "done" })}
           />
-          <span aria-hidden>·</span>
           <CountFilter
             n={open}
             label="not closed"
@@ -845,7 +914,6 @@ export function OdooClient({
           />
           {(ready > 0 || readyOn) && (
             <>
-              <span aria-hidden>·</span>
               <CountFilter
                 n={ready}
                 label="ready to close"
@@ -856,10 +924,9 @@ export function OdooClient({
               />
             </>
           )}
-          {elsewhereLink && <><span aria-hidden>·</span>{elsewhereLink}</>}
+          {elsewhereLink && <span className="ms-1">{elsewhereLink}</span>}
           {(needMo > 0 || filters.mo === "missing") && (
             <>
-              <span aria-hidden>·</span>
               <CountFilter
                 n={needMo}
                 label="need MO"
@@ -892,6 +959,8 @@ export function OdooClient({
               <thead>
                 <tr className="text-left">
                   <Th label="Date" />
+                  <Th label="Line" hint="TR = Transformers · LV = LV Panels" />
+                  <Th label="Source" hint="typed here · imported from the sheet · from Painting / Shot Blast = written by a closing on the floor" />
                   <Th label="SOI #" full="SOI#" />
                   <Th label="FG-code" full="FG-CODE" />
                   <Th label="Product" />
@@ -917,6 +986,7 @@ export function OdooClient({
             </table>
           </TableFrame>
         )}
+        {shown.length > 0 && <FlagLegend />}
       </section>
       {editableLines.length > 0 && (
         <div className="flex flex-wrap gap-2">

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetsForJob, sheetsDifference,
   actualPerUnit, rateIsTyped, sheetsForProduced, summarizeMaterial, parseNestingTracker, materialKey, round3, partNameFor,
-  filterMaterialLines, EMPTY_MATERIAL_FILTERS,
+  filterMaterialLines, EMPTY_MATERIAL_FILTERS, groupMaterialBySoi,
   type MaterialLineView,
 } from "./material";
 import { monthLabelFromInput, monthInputFromLabel, monthLabelSortKey } from "./dates";
@@ -387,5 +387,25 @@ describe("parseNestingTracker — the sheet that opens with MTR Request #", () =
     const blank = [head, [null, "S01194-12", "SF01/MO/20941", "00007S15", 11, "FB-024", "CABLE BOX", "C-SHR-003", "HR Sheet", 3, "1220x2440", 70.1, 0.79, null, 8.69, null, null, null, null, null]];
     expect(parseNestingTracker(blank).rows[0].mtr).toBe("");
     expect(parseNestingTracker(blank.map((r) => r.slice(1))).rows[0].mtr).toBe("");
+  });
+});
+
+describe("groupMaterialBySoi", () => {
+  it("groups by SOI in first-seen order, MOs together inside, every line exactly once", () => {
+    const ls = [
+      line({ id: 1, soi: "S1", mo: "MO-A", forJob: 2, sheetsUsed: 2, difference: 0 }),
+      line({ id: 2, soi: "S2", mo: "MO-C", forJob: 1, sheetsUsed: null, difference: null }),
+      line({ id: 3, soi: "S1", mo: "MO-B", forJob: 3, sheetsUsed: 4, difference: -1 }),
+      line({ id: 4, soi: "S1", mo: "MO-A", forJob: 1.5, sheetsUsed: 1, difference: 0.5 }),
+      line({ id: 5, soi: "", mo: "", forJob: 1 }),
+    ];
+    const g = groupMaterialBySoi(ls);
+    expect(g.map((x) => x.soi)).toEqual(["S1", "S2", ""]);
+    expect(g[0].lines.map((l) => l.id)).toEqual([1, 4, 3]);
+    expect(g[0].mos).toEqual(["MO-A", "MO-B"]);
+    expect(g[0]).toMatchObject({ forJob: 6.5, sheetsUsed: 7, difference: -0.5 });
+    expect(g[1]).toMatchObject({ sheetsUsed: null, difference: null });
+    expect(g[2].mos).toEqual([]);
+    expect(g.flatMap((x) => x.lines).length).toBe(ls.length);
   });
 });
