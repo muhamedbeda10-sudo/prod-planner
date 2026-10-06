@@ -56,3 +56,20 @@ export function itemFinishShare(required: number, it: Item, c: ItemProgress): nu
   if (target <= 0) return null;
   return Math.min(1, (isPaintExempt(it) ? c.shp : c.paint) / target);
 }
+
+/** The LV stages a panel is made through — delivery is the customer's pace. */
+const LV_MAKE = [["Punching", "punch"], ["Bending", "bend"], ["Welding", "weld"], ["Painting", "paint"]] as const;
+export type LvMakeStage = (typeof LV_MAKE)[number][0];
+
+/**
+ * An LV panel order's bottleneck: the first making stage that has not
+ * cleared what the order needs — the same reading as a transformer
+ * component's. Null when every panel is painted, and when nothing has been
+ * punched yet (an order not begun is waiting as a whole).
+ */
+export function lvBottleneck(s: { required: number; punch: number; bend: number; weld: number; paint: number }): LvMakeStage | null {
+  if (s.required <= 0) return null;
+  if (!LV_MAKE.some(([, f]) => s[f] > 0)) return null;
+  const at = LV_MAKE.find(([, f]) => s[f] < s.required);
+  return at ? at[0] : null;
+}

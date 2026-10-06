@@ -3,16 +3,21 @@
 import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Check, CheckCheck, ChevronRight, CornerDownRight, Pause } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Num, Soi } from "@/components/ui";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
+import { useConfirm } from "@/components/DataTable";
+import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stageWords, stickAt, useAccountSet, useColumns } from "@/components/TrackerColumns";
 import { recordLvGroupTotal, recordLvTotal } from "@/app/lv/actions";
 import { closeDeliveredOrders, setOrderHold, setOrderStatus } from "@/app/orders/actions";
 import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
 import { LV_CHAIN, LV_STAGE_LABEL, LV_STAGE_SHORT, lvGroupMembers, lvStageOf, type LvChainStage } from "@/lib/domain/lv";
+import { lvBottleneck } from "@/lib/domain/trackerView";
+import type { UserPrefs } from "@/lib/domain/userPrefs";
 import type { LvTrackerRow } from "@/lib/server/lvTracker";
 
 // The Plan Tracker's LV PANELS side.
@@ -22,27 +27,54 @@ import type { LvTrackerRow } from "@/lib/server/lvTracker";
 // is a grid. The cells record the way the transformer tracker's do: click,
 // type the NEW total, the difference lands in today's daily log; a merged
 // BOM row spreads a total over its MOs in order and shows which before it
-// is saved. Same ledger, same corrections, same guard.
+// is saved. Same ledger, same corrections, same guard. It reads the way the
+// transformer sheet does, too: frozen identifiers, quiet stage states, the
+// stage holding an order back outlined, and each person's own columns.
 
-const STAGE_TINT: Record<LvChainStage, string> = {
-  Punching: "var(--item-cf)",
-  Bending: "var(--item-tc)",
-  Welding: "var(--item-tn)",
-  Painting: "var(--item-cb)",
-  Delivered: "var(--item-ar)",
-};
+/** ⏸️ A held row wears one quiet wash end to end and a warn stripe on its first cell. */
+const HOLD_TINT = "var(--hold-row)";
+const HOLD_EDGE = { boxShadow: "inset 3px 0 0 var(--warn-fg)" };
 
-export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
+/** The frozen identifiers' widths — whichever of MO, SOI and Customer are
+ *  shown, then BoM (wider when MO is hidden: it then carries the marks),
+ *  then Required. */
+const ID_W: Record<"mo" | "soi" | "customer", number> = { mo: 11.5, soi: 6.75, customer: 7.5 };
+const BOM_W = 7.5;
+const BOM_W_ALONE = 14;
+const REQ_W = 7;
+
+/** Every column the reader can show or hide (Columns ▾), in the sheet's
+ *  order. BoM always shows — it is what the row is. */
+type ColKey = "mo" | "soi" | "customer" | "product" | "sec" | "required" | "left" | "pct" | "status";
+const COLS: { key: ColKey; label: string }[] = [
+  { key: "mo", label: "MO" }, { key: "soi", label: "SOI" }, { key: "customer", label: "Customer" },
+  { key: "product", label: "Product" }, { key: "sec", label: "SEC Item" },
+  { key: "required", label: "Required" }, { key: "left", label: "Left" }, { key: "pct", label: "%" },
+  { key: "status", label: "Status" },
+];
+/** What a first visit shows: BoM, Required, the stages, %, Status. */
+const DEFAULT_COLS: ColKey[] = ["required", "pct", "status"];
+const ID_GROUP: ColKey[] = ["mo", "soi", "customer"];
+const SPEC_GROUP: ColKey[] = ["product", "sec"];
+const SUMMARY_GROUP: ColKey[] = ["left"];
+
+type MenuTarget = { kind: "mo"; row: LvTrackerRow } | { kind: "group"; bom: string; members: LvTrackerRow[] };
+
+export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, head }: {
   rows: LvTrackerRow[];
   /** The stages this user may record — each behind its own tracker permission. */
   editableStages: LvChainStage[];
   canStatus: boolean;
-  viewTabs?: React.ReactNode;
+  /** This account's saved view settings (columns, hidden stages). */
+  prefs?: UserPrefs;
+  /** The page head — inside the sheet so only the table scrolls. */
+  head?: React.ReactNode;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   // the row's right-click menu — hold, close, trace; the next action is one more entry
-  const rowMenu = useContextMenu<{ kind: "mo"; row: LvTrackerRow } | { kind: "group"; bom: string; members: LvTrackerRow[] }>();
+  const rowMenu = useContextMenu<MenuTarget>();
+  const [confirmIt, confirmDialog] = useConfirm();
   const [q, setQ] = useSavedFilter("lvtracker.q");
   const [product, setProduct] = useSavedFilter("lvtracker.product");
   const [status, setStatus] = useSavedFilter("lvtracker.status");
@@ -54,6 +86,27 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
   const [cellErr, setCellErr] = useState("");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState("");
+
+  // the sheet each person keeps on their account: its columns and stages
+  const cols = useColumns("lvtracker:cols", prefs["lvtracker:cols"], DEFAULT_COLS);
+  const show = cols.isOn;
+  const [hiddenStages, toggleStage] = useAccountSet("lvtracker:hiddenStages", prefs["lvtracker:hiddenStages"]);
+  const stages = LV_CHAIN.filter((s) => !hiddenStages.has(s));
+  const moOn = show("mo");
+  const idLayout = (() => {
+    let left = 0;
+    const at: Partial<Record<"mo" | "soi" | "customer" | "bom", React.CSSProperties>> = {};
+    for (const k of ["mo", "soi", "customer"] as const) {
+      if (!show(k)) continue;
+      at[k] = stickAt(left, ID_W[k]);
+      left += ID_W[k];
+    }
+    const bomW = moOn ? BOM_W : BOM_W_ALONE;
+    at.bom = stickAt(left, bomW);
+    left += bomW;
+    return { at, req: stickAt(left, REQ_W) };
+  })();
+  const tableCols = 1 + COLS.filter((c) => show(c.key)).length + stages.length;
 
   const products = useMemo(() => [...new Set(rows.map((r) => r.product ?? ""))].filter(Boolean).sort(), [rows]);
   // "September 2026" → a sortable key, newest month first in the picker
@@ -107,7 +160,8 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
 
   const required = filtered.reduce((s, r) => s + r.state.required, 0);
   const complete = filtered.reduce((s, r) => s + r.complete, 0);
-  const doneCount = rows.filter((r) => r.status === "open" && r.state.required > 0 && r.state.delivered >= r.state.required).length;
+  const doneRows = rows.filter((r) => r.status === "open" && r.state.required > 0 && r.state.delivered >= r.state.required);
+  const doneCount = doneRows.length;
 
   const exportRows = filtered.map((r) => ({
     MO: r.mo, SOI: r.soi ?? "", Customer: r.customer ?? "", Product: r.product ?? "", BoM: r.bom, "SEC Item": r.secItem ?? "",
@@ -124,15 +178,59 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
     });
   }
 
+  const orderLine = (r: LvTrackerRow) => `${r.mo} · ${r.bom}${r.customer ? ` · ${r.customer}` : ""} — ${r.state.required} pcs`;
+
+  // every close names the orders first; a reopen just happens
+  async function changeStatus(r: LvTrackerRow, next: "open" | "closed") {
+    if (next === "closed") {
+      const ok = await confirmIt({
+        title: `Close order ${r.mo}?`,
+        body: <>It drops out of the daily screens; you can reopen it any time.</>,
+        items: [orderLine(r)],
+        confirmLabel: "Close order",
+      });
+      if (!ok) return;
+    }
+    const fd = new FormData();
+    fd.set("mo", r.mo);
+    fd.set("status", next);
+    run(setOrderStatus, fd);
+  }
+
+  async function closeDone() {
+    const ok = await confirmIt({
+      title: `Close ${doneCount} delivered order${doneCount === 1 ? "" : "s"}?`,
+      body: <>Every panel of these has been delivered. Closing is a display state — the logs are untouched, and a closed order can be reopened from the Closed filter. The server checks each one again before it closes it.</>,
+      items: doneRows.map(orderLine),
+      confirmLabel: `Close ${doneCount}`,
+    });
+    if (!ok) return;
+    setMsg("");
+    startTransition(async () => {
+      const res = await closeDeliveredOrders();
+      setMsg(res.ok ? `Closed ${res.closed} order(s).` : (res.error ?? "Failed"));
+      if (res.ok) router.refresh();
+    });
+  }
+
   const toggleGroup = (bom: string) => setOpenGroups((s) => { const n = new Set(s); if (n.has(bom)) n.delete(bom); else n.add(bom); return n; });
 
-  /** One stage cell — a single MO's, or a merged BOM row's (then `members`). */
-  function cell(key: string, value: number, stage: LvChainStage, save: (total: string) => void, preview?: (delta: number) => string) {
+  /** One stage cell — a single MO's, or a merged BOM row's (then `preview`). */
+  function cell(key: string, value: number, target: number, look: { held: boolean; urgent: boolean; bottleneck?: boolean }, stage: LvChainStage, save: (total: string) => void, preview?: (delta: number) => string) {
     const editing = editKey === key;
     const editable = editableStages.includes(stage);
     const added = editing ? Number(editVal) - value : 0;
+    const state = stageState(value, target, false, look.urgent, look.held);
+    const meter = editing ? undefined : meterStyle(value, target);
+    const words = `${LV_STAGE_LABEL[stage]}: ${stageWords(value, target)}${look.bottleneck ? " · the stage holding this order back" : ""}`;
     return (
-      <td key={key} className="p-1 text-center tabnum" style={{ background: STAGE_TINT[stage] }} onClick={(e) => e.stopPropagation()}>
+      <td
+        key={key}
+        className={`stage-cell ${state} ${meter ? "stage-meter" : ""} ${look.bottleneck ? "stage-bottleneck" : ""} p-1 text-center tabnum`}
+        style={meter}
+        title={editable ? undefined : words}
+        onClick={(e) => e.stopPropagation()}
+      >
         {editing ? (
           <span className="inline-flex flex-col items-center gap-0.5">
             <span className="inline-flex items-center gap-1">
@@ -151,17 +249,18 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
               </span>
             )}
             {cellErr && <span className="text-[10px] text-bad-fg whitespace-normal max-w-48 text-start leading-tight font-normal">{cellErr}</span>}
+            <span className="print-only tabnum">{value}</span>
           </span>
         ) : editable ? (
           <button
             type="button" disabled={pending}
             onClick={() => { setEditKey(key); setEditVal(String(value)); setCellErr(""); }}
             className="print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold transition-all cursor-text"
-            title={`${LV_STAGE_LABEL[stage]} — type the new total; the difference is recorded in today's Daily Log`}
+            title={`${words} — type the new total; the difference is recorded in today's Daily Log`}
           >
-            {value}
+            {value > 0 ? value : <span className="print-only">0</span>}
           </button>
-        ) : value}
+        ) : value > 0 ? value : ""}
       </td>
     );
   }
@@ -175,7 +274,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
     fd.set("note", note);
     run(setOrderHold, fd);
   }
-  function menuEntries(t: { kind: "mo"; row: LvTrackerRow } | { kind: "group"; bom: string; members: LvTrackerRow[] }): MenuEntry[] {
+  function menuEntries(t: MenuTarget): MenuEntry[] {
     if (t.kind === "group") {
       const open = t.members.filter((m) => m.status === "open");
       const held = open.filter((m) => m.hold.onHold);
@@ -198,77 +297,111 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
       if (r.hold.onHold) e.push({ key: "release", icon: "▶", label: "Release hold", hint: holdLabel(r.hold), onSelect: () => setHold([r.mo], false) });
       else e.push({ key: "hold", icon: "⏸️", label: "Put on hold", disabled: closed, hint: closed ? "A closed order cannot be held — reopen it first" : "Pauses the order: it stays here, yellow, and leaves every stage's worklist", prompt: { placeholder: "Reason (optional) — e.g. waiting for enclosure", submit: "Hold", onSubmit: (note) => setHold([r.mo], true, note) } });
       e.push({ sep: true });
-      const fd = new FormData(); fd.set("mo", r.mo); fd.set("status", closed ? "open" : "closed");
       e.push(closed
-        ? { key: "reopen", icon: "↩", label: "Reopen order", onSelect: () => run(setOrderStatus, fd) }
-        : { key: "close", icon: "✓", label: "Close order", hint: "It leaves the open screens; the log is untouched", onSelect: () => run(setOrderStatus, fd) });
+        ? { key: "reopen", icon: "↩", label: "Reopen order", onSelect: () => void changeStatus(r, "open") }
+        : { key: "close", icon: "✓", label: "Close order", hint: "It leaves the open screens; the log is untouched", onSelect: () => void changeStatus(r, "closed") });
       e.push({ sep: true });
     }
     e.push({ key: "trace", icon: "🔍", label: "Open trace", href: `/trace?mo=${encodeURIComponent(r.mo)}` });
     return e;
   }
 
-  function moRow(r: LvTrackerRow, inGroup: boolean) {
-    const pct = r.achievement === null ? "—" : `${Math.round(r.achievement * 100)}%`;
+  function moRow(r: LvTrackerRow, inGroup: boolean, lastInGroup = false) {
+    const held = r.hold.onHold;
+    const bn = held || r.status === "closed" ? null : lvBottleneck(r.state);
+    const edge = held ? HOLD_EDGE : {};
+    const frame = inGroup ? `border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
+    const badges = (
+      <>
+        {r.urgent && <span className="pill pill-bad" title="Urgent order">U</span>}
+        {held && <span className="pill pill-warn cursor-help max-w-full" title={holdLabel(r.hold)}><Pause size={10} className="shrink-0" aria-hidden /><span className="truncate">HOLD{r.hold.holdNote ? ` · ${r.hold.holdNote}` : ""}</span></span>}
+      </>
+    );
+    const moLink = <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline whitespace-nowrap">{r.mo}</Link>;
+    const bomLink = <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline whitespace-nowrap">{r.bom}</Link>;
     return (
       <tr
         key={r.mo}
-        className={`border-t ${r.status === "closed" ? "opacity-60" : ""} ${inGroup ? "bg-surface-2/40" : ""}`}
-        style={r.hold.onHold ? { background: "var(--warn-bg)" } : undefined}
+        className={`${frame} ${r.status === "closed" ? "opacity-60" : ""}`}
+        style={held ? { background: HOLD_TINT } : undefined}
         onContextMenu={(e) => rowMenu.open(e, { kind: "mo", row: r })}
-        title={r.hold.onHold ? `${holdLabel(r.hold)} · right-click for actions` : undefined}
+        title={held ? `${holdLabel(r.hold)} · right-click for actions` : undefined}
       >
-        <td className={`p-2 font-bold whitespace-nowrap text-xs ${inGroup ? "ps-6" : ""}`}>
-          {inGroup && <span className="text-muted me-1">↳</span>}{r.mo}
-          {r.urgent && <span className="pill pill-bad ms-1">U</span>}
-          {r.hold.onHold && <span className="pill pill-warn ms-1 cursor-help" title={holdLabel(r.hold)}>⏸️ HOLD{r.hold.holdNote ? ` · ${r.hold.holdNote}` : ""}</span>}
-        </td>
-        <td className="p-2 whitespace-nowrap"><Soi soi={r.soi} /></td>
-        <td className="p-2 text-xs whitespace-nowrap">{r.customer ?? "—"}</td>
-        <td className="p-2 text-center"><span className="pill pill-muted">{r.product ?? "—"}</span></td>
-        <td className="p-2 font-semibold whitespace-nowrap text-xs">
-          {inGroup ? <span className="text-muted">{r.bom}</span> : <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>}
-        </td>
-        <td className="p-2 text-xs whitespace-nowrap tabnum text-muted">{r.secItem ?? "—"}</td>
-        <td className="p-2 text-center font-bold tabnum">{r.state.required}</td>
-        {LV_CHAIN.map((stage) =>
-          cell(`${r.mo}|${stage}`, lvStageOf(r.state, stage), stage, (total) => {
+        {moOn && (
+          <td className={`p-2 font-bold text-xs ${inGroup ? "pl-5" : ""} stick`} style={{ ...idLayout.at.mo, ...edge }}>
+            <span className="flex flex-wrap items-center gap-1">
+              {inGroup && <CornerDownRight size={12} className="text-muted shrink-0" aria-hidden />}
+              {moLink}
+              {badges}
+            </span>
+          </td>
+        )}
+        {show("soi") && <td className="p-2 whitespace-nowrap stick" style={idLayout.at.soi}><Soi soi={r.soi} /></td>}
+        {show("customer") && (
+          <td className="p-2 text-xs stick" style={idLayout.at.customer} title={r.customer || undefined}>
+            <span className="block truncate">{r.customer || <span className="text-muted">—</span>}</span>
+          </td>
+        )}
+        {moOn ? (
+          <td className="p-2 font-bold text-xs whitespace-nowrap stick" style={idLayout.at.bom}>{inGroup ? <span className="text-muted">{r.bom}</span> : bomLink}</td>
+        ) : (
+          // without the MO column BoM carries the order's marks — and, inside
+          // an opened BoM, the MO (the BoM is on the row above)
+          <td className={`p-2 font-bold text-xs ${inGroup ? "pl-5" : ""} stick`} style={{ ...idLayout.at.bom, ...edge }} title={`${r.mo} · ${r.bom}${r.customer ? ` · ${r.customer}` : ""}`}>
+            <span className="flex flex-wrap items-center gap-1">
+              {inGroup ? <><CornerDownRight size={12} className="text-muted shrink-0" aria-hidden />{moLink}</> : bomLink}
+              {badges}
+            </span>
+          </td>
+        )}
+        {show("product") && <td className="p-2 text-center"><span className="pill pill-muted">{r.product ?? "—"}</span></td>}
+        {show("sec") && <td className="p-2 text-xs whitespace-nowrap tabnum text-muted">{r.secItem ?? "—"}</td>}
+        {show("required") && <td className="p-2 text-center font-bold tabnum stick stick-end" style={idLayout.req}>{r.state.required}</td>}
+        {stages.map((stage) =>
+          cell(`${r.mo}|${stage}`, lvStageOf(r.state, stage), r.state.required, { held, urgent: r.urgent, bottleneck: bn === stage }, stage, (total) => {
             const fd = new FormData();
             fd.set("mo", r.mo); fd.set("stage", stage); fd.set("total", total);
             run(recordLvTotal, fd);
           })
         )}
-        <td className="p-2 text-center font-bold tabnum">{r.remaining}</td>
-        <td className="p-2 text-center text-xs tabnum">{pct}</td>
-        <td className="p-2 text-center whitespace-nowrap no-print">
-          <button type="button" onClick={(e) => rowMenu.open(e, { kind: "mo", row: r })} className="text-muted px-1.5 hover:text-accent font-bold" title="Actions — hold, close… (or right-click the row)">⋯</button>
-          {canStatus ? (
-            <button
-              type="button" disabled={pending}
-              className={`pill ${r.status === "closed" ? "pill-muted" : "pill-ok"} cursor-pointer`}
-              title={r.status === "closed" ? "Reopen this order" : "Close this order — it leaves the open screens; the log is untouched"}
-              onClick={() => { const fd = new FormData(); fd.set("mo", r.mo); fd.set("status", r.status === "closed" ? "open" : "closed"); run(setOrderStatus, fd); }}
-            >
-              {r.status}
-            </button>
-          ) : <span className={`pill ${r.status === "closed" ? "pill-muted" : "pill-ok"}`}>{r.status}</span>}
-        </td>
+        {show("left") && (
+          <td className="p-2 text-center font-semibold tabnum border-l border-border-strong" style={{ color: r.remaining > 0 ? undefined : "var(--ok-fg)" }}>{r.remaining}</td>
+        )}
+        {show("pct") && <AchCell ach={r.achievement} />}
+        {show("status") && (
+          <td className="p-2 text-center whitespace-nowrap no-print">
+            {/* the row's actions live on right-click; the cell keeps only the
+                state, and the one call to action a delivered order earns */}
+            {r.status === "closed" ? (
+              <span className="pill pill-muted opacity-70" title="Right-click the row to reopen">Closed</span>
+            ) : canStatus && r.state.required > 0 && r.state.delivered >= r.state.required ? (
+              <button type="button" onClick={() => changeStatus(r, "closed")} disabled={pending} className="btn btn-primary btn-sm !py-0.5">
+                <Check size={12} aria-hidden />Close
+              </button>
+            ) : (
+              <span className="pill pill-muted">Open</span>
+            )}
+          </td>
+        )}
       </tr>
     );
   }
 
   return (
-    <div className="space-y-4">
+    // On desktop the page fills the viewport below the nav so the cards and
+    // filters stay put and ONLY the table scrolls (its header pinned).
+    <div className="print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
+      {head}
       {/* the month's plan at a glance: panels through each stage */}
-      <div className={`print-keep ${RING_GRID}`}>
+      <div className={`print-keep ${RING_GRID} mb-3`}>
         {cards.map((c) => (
           <RingCard wide key={c.stage} label={LV_STAGE_SHORT[c.stage]} note={c.stage === "Delivered" ? "delivered" : `${c.stage.toLowerCase().replace(/ing$/, "ed")}`} done={c.done} need={c.need} />
         ))}
       </div>
 
-      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProduct(""); setStatus(""); setMonth(""); setUrgent(""); setProgress(""); }} hasActive={!!(q || product || month || urgent || progress || (status && status !== "open"))}>
-        {viewTabs}
-        <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG / SEC…" />
+      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProduct(""); setStatus(""); setMonth(""); setUrgent(""); setProgress(""); }} hasActive={!!(q || product || month || urgent || progress || (status && status !== "open"))}
+        head={<SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG / SEC…" wide />}
+      >
         <SelectFilter label="Plan month" value={month} onChange={setMonth} options={months.map((m) => ({ value: m, label: m }))} />
         {products.length > 1 && <SelectFilter label="Product" value={product} onChange={setProduct} options={products.map((p) => ({ value: p, label: p }))} />}
         <SelectFilter label="Status" value={status || "open"} onChange={setStatus} options={[{ value: "open", label: "Open" }, { value: "hold", label: `On hold (${rows.filter((r) => r.hold.onHold).length})` }, { value: "closed", label: "Closed" }, { value: "all", label: "All" }]} />
@@ -279,43 +412,58 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
         </span>
         <ExportButton rows={exportRows} filename="lv-panels-tracker.xlsx" sheetName="LV Panels" />
         {canStatus && doneCount > 0 && (
-          <button
-            type="button" className="btn btn-sm" disabled={pending}
-            title="Close every open panel order whose panels have all been delivered"
-            onClick={() => startTransition(async () => {
-              const res = await closeDeliveredOrders();
-              setMsg(res.ok ? `Closed ${res.closed} order(s).` : (res.error ?? "Failed"));
-              if (res.ok) router.refresh();
-            })}
-          >
-            ✓ Close {doneCount} delivered
+          <button type="button" className="btn btn-sm btn-secondary normal-case" disabled={pending} onClick={closeDone} title="Close every open panel order whose panels have all been delivered">
+            <CheckCheck size={13} className="text-ok-fg" />
+            Close {doneCount} delivered
           </button>
         )}
         {msg && <span className="text-xs font-semibold text-ok-fg">{msg}</span>}
+        <ColumnMenu cols={cols} list={COLS} fixed="BoM" fixedTitle="BoM always shows — it is what the row is">
+          <div>
+            <div className="filter-label mb-1.5">Stages</div>
+            <div className="grid grid-cols-2 gap-x-3">
+              {LV_CHAIN.map((s) => (
+                <label key={s} className="flex items-center gap-2 py-0.5 cursor-pointer">
+                  <input type="checkbox" checked={!hiddenStages.has(s)} onChange={() => toggleStage(s)} className="accent-[var(--brand)]" />{LV_STAGE_LABEL[s]}
+                </label>
+              ))}
+            </div>
+          </div>
+        </ColumnMenu>
       </FilterBar>
 
-      <div className="bg-surface border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-brand text-white text-left">
-              <th className="p-2">MO</th>
-              <th className="p-2">SOI</th>
-              <th className="p-2">Customer</th>
-              <th className="p-2 text-center" title="LSS or USS">Product</th>
-              <th className="p-2">BoM</th>
-              <th className="p-2">SEC Item</th>
-              <th className="p-2 text-center">Required</th>
-              {LV_CHAIN.map((s) => (
-                <th key={s} className="p-2 text-center on-tint" style={{ background: STAGE_TINT[s] }} title={LV_STAGE_LABEL[s]}>{LV_STAGE_SHORT[s]}</th>
+      <div className="print-flow print-fit erp-scroll bg-surface border rounded-[10px] overflow-auto md:flex-1 md:min-h-0">
+        <table className="erp-table grid-lines w-full border-collapse">
+          <thead className="sticky top-0 z-10">
+            <tr>
+              {moOn && <th className="p-2 text-left stick" style={idLayout.at.mo}>MO</th>}
+              {show("soi") && <th className="p-2 text-left stick" style={idLayout.at.soi} title="Sales order item">SOI</th>}
+              {show("customer") && <th className="p-2 text-left stick" style={idLayout.at.customer}>Customer</th>}
+              <th className="p-1 text-left stick" style={idLayout.at.bom}>
+                <FoldButton open={cols.anyOn(ID_GROUP)} onClick={() => cols.toggle(ID_GROUP)} label="BoM" title={cols.anyOn(ID_GROUP) ? "Fold MO, SOI and Customer away — BoM stays" : "Show MO, SOI and Customer"} />
+              </th>
+              {show("product") && <th className="p-2" title="LSS or USS">Product</th>}
+              {show("sec") && <th className="p-2 text-left">SEC Item</th>}
+              {show("required") && (
+                <th className="p-1 stick stick-end" style={idLayout.req}>
+                  <FoldButton open={cols.anyOn(SPEC_GROUP)} onClick={() => cols.toggle(SPEC_GROUP)} label="Required" title={cols.anyOn(SPEC_GROUP) ? "Fold Product and SEC Item away" : "Show Product and SEC Item"} back />
+                </th>
+              )}
+              {stages.map((s) => (
+                <th key={s} className="p-2" title={LV_STAGE_LABEL[s]}>{LV_STAGE_SHORT[s]}</th>
               ))}
-              <th className="p-2 text-center" title="Required − painted">Left</th>
-              <th className="p-2 text-center" title="Painted ÷ required">%</th>
-              <th className="p-2 text-center no-print">Status</th>
+              {show("left") && <th className="p-2 border-l border-border-strong" title="Required − painted">Left</th>}
+              {show("pct") && (
+                <th className="p-1" title="Painted ÷ required">
+                  <FoldButton open={cols.anyOn(SUMMARY_GROUP)} onClick={() => cols.toggle(SUMMARY_GROUP)} label="%" title={cols.anyOn(SUMMARY_GROUP) ? "Fold Left away — % stays" : "Show Left beside %"} back />
+                </th>
+              )}
+              {show("status") && <th className="p-2 no-print">Status</th>}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={15} className="p-4 text-center text-muted">
+              <tr><td colSpan={tableCols} className="p-4 text-center text-muted">
                 {rows.length === 0 ? "No LV panel orders yet — import their monthly plan from Tools → Orders & plan imports." : "No rows match the filters."}
               </td></tr>
             )}
@@ -325,36 +473,50 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
               const sum = (f: (r: LvTrackerRow) => number) => members.reduce((s, r) => s + f(r), 0);
               const gReq = sum((r) => r.state.required);
               const gComplete = sum((r) => r.complete);
-              const urgent = members.filter((m) => m.urgent).length;
+              const urgentN = members.filter((m) => m.urgent).length;
               const heldCount = members.filter((m) => m.hold.onHold).length;
               const allHeld = heldCount === members.length;
+              const customers = [...new Set(members.map((m) => m.customer).filter(Boolean))];
+              const marks = (
+                <>
+                  {urgentN > 0 && <span className="pill pill-bad">U×{urgentN}</span>}
+                  {heldCount > 0 && <span className="pill pill-warn" title={allHeld ? "Every MO of this code is on hold" : `${heldCount} of ${members.length} MOs on hold — open the group`}><Pause size={10} aria-hidden />{allHeld ? "HOLD" : `${heldCount}/${members.length}`}</span>}
+                </>
+              );
+              const caret = <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden />;
+              const bomLink = <Link href={`/trace?bom=${encodeURIComponent(bom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline whitespace-nowrap">{bom}</Link>;
               return (
                 <Fragment key={`g|${bom}`}>
                   <tr
-                    className={`cursor-pointer bg-brand-light/30 hover:bg-brand-light/60 transition-colors font-semibold ${open ? "border-x-2 border-t-2 border-brand" : ""}`}
-                    style={allHeld ? { background: "var(--warn-bg)" } : undefined}
+                    className={`cursor-pointer font-semibold ${open ? "border-x-2 border-t-2 border-brand" : ""}`}
+                    style={allHeld ? { background: HOLD_TINT } : undefined}
                     onClick={() => toggleGroup(bom)}
                     onContextMenu={(e) => rowMenu.open(e, { kind: "group", bom, members })}
                     title={open ? "Collapse MOs" : "Show the MOs inside this BOM · right-click for actions"}
                   >
-                    <td className="p-2 font-bold whitespace-nowrap text-xs">
-                      <span className={`inline-block mr-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>▶</span>
-                      {members.length} MOs
-                      {urgent > 0 && <span className="pill pill-bad ml-1">U×{urgent}</span>}
-                      {heldCount > 0 && <span className="pill pill-warn ml-1" title={allHeld ? "Every MO of this code is on hold" : `${heldCount} of ${members.length} MOs on hold — open the group`}>⏸️ {allHeld ? "HOLD" : `${heldCount}/${members.length}`}</span>}
+                    {moOn && (
+                      <td className="p-2 font-bold text-xs stick" style={idLayout.at.mo}>
+                        <span className="flex flex-wrap items-center gap-1">{caret}{members.length} MOs{marks}</span>
+                      </td>
+                    )}
+                    {show("soi") && <td className="p-2 whitespace-nowrap stick" style={idLayout.at.soi}><Soi soi={null} /></td>}
+                    {show("customer") && (
+                      <td className="p-2 text-xs text-muted stick" style={idLayout.at.customer} title={customers.join(" · ") || undefined}>
+                        <span className="block truncate">{customers.join(" · ") || "—"}</span>
+                      </td>
+                    )}
+                    <td className="p-2 font-bold text-xs stick" style={idLayout.at.bom}>
+                      {moOn ? bomLink : <span className="flex flex-wrap items-center gap-1">{caret}{bomLink}<span className="text-muted font-normal">×{members.length}</span>{marks}</span>}
                     </td>
-                    <td className="p-2 whitespace-nowrap"><Soi soi={null} /></td>
-                    <td className="p-2 text-xs text-muted">{[...new Set(members.map((m) => m.customer).filter(Boolean))].join(" · ") || "—"}</td>
-                    <td className="p-2 text-center">{[...new Set(members.map((m) => m.product).filter(Boolean))].map((p) => <span key={p} className="pill pill-muted me-1">{p}</span>)}</td>
-                    <td className="p-2 font-bold whitespace-nowrap text-xs">
-                      <Link href={`/trace?bom=${encodeURIComponent(bom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">{bom}</Link>
-                    </td>
-                    <td className="p-2 text-xs text-muted tabnum">{[...new Set(members.map((m) => m.secItem).filter(Boolean))].join(", ") || "—"}</td>
-                    <td className="p-2 text-center font-bold"><Num v={gReq} /></td>
-                    {LV_CHAIN.map((stage) =>
+                    {show("product") && <td className="p-2 text-center">{[...new Set(members.map((m) => m.product).filter(Boolean))].map((p) => <span key={p} className="pill pill-muted me-1">{p}</span>)}</td>}
+                    {show("sec") && <td className="p-2 text-xs text-muted tabnum">{[...new Set(members.map((m) => m.secItem).filter(Boolean))].join(", ") || "—"}</td>}
+                    {show("required") && <td className="p-2 text-center font-bold stick stick-end" style={idLayout.req}><Num v={gReq} /></td>}
+                    {stages.map((stage) =>
                       cell(
                         `g|${bom}|${stage}`,
                         sum((r) => lvStageOf(r.state, stage)),
+                        gReq,
+                        { held: allHeld, urgent: urgentN > 0 },
                         stage,
                         (total) => {
                           const fd = new FormData();
@@ -366,13 +528,11 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
                         (delta) => spreadWords(spreadOverGroup(lvGroupMembers(members.map((m) => ({ mo: m.mo, state: m.state })), stage), delta))
                       )
                     )}
-                    <td className="p-2 text-center font-bold"><Num v={Math.max(0, gReq - gComplete)} /></td>
-                    <td className="p-2 text-center text-xs tabnum">{gReq > 0 ? `${Math.round((gComplete / gReq) * 100)}%` : "—"}</td>
-                    <td className="p-2 no-print text-center">
-                      <button type="button" onClick={(e) => { e.stopPropagation(); rowMenu.open(e, { kind: "group", bom, members }); }} className="text-muted px-1.5 hover:text-accent font-bold" title="Actions for the whole code (or right-click the row)">⋯</button>
-                    </td>
+                    {show("left") && <td className="p-2 text-center font-semibold border-l border-border-strong" style={{ color: gReq - gComplete > 0 ? undefined : "var(--ok-fg)" }}><Num v={Math.max(0, gReq - gComplete)} /></td>}
+                    {show("pct") && <AchCell ach={gReq > 0 ? gComplete / gReq : null} />}
+                    {show("status") && <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap">{open ? "collapse" : "open MOs"}</td>}
                   </tr>
-                  {open && members.map((m) => moRow(m, true))}
+                  {open && members.map((m, i) => moRow(m, true, i === members.length - 1))}
                 </Fragment>
               );
             })}
@@ -380,6 +540,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, viewTabs }: {
         </table>
       </div>
       {rowMenu.menu && <ContextMenu x={rowMenu.menu.x} y={rowMenu.menu.y} entries={menuEntries(rowMenu.menu.payload)} onClose={rowMenu.close} />}
+      {confirmDialog}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ITEMS, type Item } from "./constants";
-import { itemFinishShare, rowBottleneck, type ItemProgress } from "./trackerView";
+import { itemFinishShare, lvBottleneck, rowBottleneck, type ItemProgress } from "./trackerView";
 
 const none = (): ItemProgress => ({ eligible: true, excluded: false, osp: 0, cut: 0, weld: 0, paint: 0, shp: 0 });
 const done = (n: number): ItemProgress => ({ ...none(), cut: n, weld: n, paint: n, shp: n });
@@ -38,5 +38,19 @@ describe("itemFinishShare", () => {
     expect(itemFinishShare(10, "TN", { ...none(), paint: 5 })).toBe(0.5);
     expect(itemFinishShare(10, "CF", { ...none(), shp: 10, paint: 0 })).toBe(1);
     expect(itemFinishShare(10, "AR", { ...none(), eligible: false })).toBeNull();
+  });
+});
+
+describe("lvBottleneck", () => {
+  const st = (punch: number, bend: number, weld: number, paint: number, required = 10) => ({ required, punch, bend, weld, paint });
+  it("is the first making stage short of the order", () => {
+    expect(lvBottleneck(st(10, 6, 2, 0))).toBe("Bending");
+    expect(lvBottleneck(st(4, 0, 0, 0))).toBe("Punching");
+    expect(lvBottleneck(st(10, 10, 10, 3))).toBe("Painting");
+  });
+  it("is null when every panel is painted, before anything starts, and with nothing required", () => {
+    expect(lvBottleneck(st(10, 10, 10, 10))).toBeNull();
+    expect(lvBottleneck(st(0, 0, 0, 0))).toBeNull();
+    expect(lvBottleneck(st(0, 0, 0, 0, 0))).toBeNull();
   });
 });
