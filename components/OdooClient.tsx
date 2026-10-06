@@ -81,13 +81,11 @@ function RowFields({
   e,
   day,
   knownSois,
-  knownFgCodes,
   disabled,
 }: {
   e?: OdooEntryView;
   day: string;
   knownSois: string[];
-  knownFgCodes: string[];
   disabled?: boolean;
 }) {
   const line = useActiveLine();
@@ -101,10 +99,6 @@ function RowFields({
       <Field hint="SOI#" label="SOI#" className="w-28">
         <input name="soi" list="odoo-sois" aria-label="SOI" defaultValue={e?.soi ?? ""} disabled={disabled} placeholder="SOI#" className={`${F} ltr w-full`} />
         <datalist id="odoo-sois">{knownSois.map((s) => <option key={s} value={s} />)}</datalist>
-      </Field>
-      <Field hint="FG-CODE — Odoo's finished-good code" label="FG-CODE" className="w-48">
-        <input name="fgCode" list="odoo-fg" aria-label="FG-CODE" defaultValue={e?.fgCode ?? ""} required={!born} disabled={disabled} placeholder="FG-CODE" className={`${F} ltr w-full`} />
-        <datalist id="odoo-fg">{knownFgCodes.map((s) => <option key={s} value={s} />)}</datalist>
       </Field>
       <Field hint="Product" label="Product" className="w-32">
         <input name="product" list="odoo-products" aria-label="Product" defaultValue={e?.product ?? ""} required disabled={disabled} placeholder="Product" className={`${F} w-full`} />
@@ -126,7 +120,7 @@ function RowFields({
 }
 
 // the columns that change from row to row on the same day; date stays
-const PER_ROW = ["soi", "fgCode", "product", "odooMo", "qty"] as const;
+const PER_ROW = ["soi", "product", "odooMo", "qty"] as const;
 
 /** Which line a new row or a sheet goes to — only the lines this person may
  *  record on; a single one is fixed and shown. */
@@ -151,7 +145,7 @@ function LinePick({ lines, defaultLine }: { lines: readonly string[]; defaultLin
   );
 }
 
-function AddRow({ day, knownSois, knownFgCodes, lines, defaultLine }: { day: string; knownSois: string[]; knownFgCodes: string[]; lines: readonly string[]; defaultLine: string }) {
+function AddRow({ day, knownSois, lines, defaultLine }: { day: string; knownSois: string[]; lines: readonly string[]; defaultLine: string }) {
   const add = useAction();
   const [open, setOpen] = useState(false);
   function clearForNext(form: HTMLFormElement) {
@@ -178,7 +172,7 @@ function AddRow({ day, knownSois, knownFgCodes, lines, defaultLine }: { day: str
           >
             <div className="flex flex-wrap items-end gap-2">
               <LinePick lines={lines} defaultLine={defaultLine} />
-              <RowFields day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} disabled={add.pending} />
+              <RowFields day={day} knownSois={knownSois} disabled={add.pending} />
             </div>
             <Msg msg={add.msg} />
             <div className="flex justify-end gap-2 pt-3 mt-3 border-t">
@@ -221,7 +215,7 @@ function BomValue({ bom }: { bom: OdooEntryView["bom"] }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       {bom.boms.join(" / ")}
-      {bom.boms.length > 1 && <span className="pill pill-warn text-[10px]" title="The SOI has several BOMs and the FG-CODE does not say which">{bom.boms.length} BOMs</span>}
+      {bom.boms.length > 1 && <span className="pill pill-warn text-[10px]" title="The SOI has several BOMs — the row does not say which">{bom.boms.length} BOMs</span>}
     </span>
   );
 }
@@ -446,8 +440,8 @@ function SourceTag({ source }: { source: string }) {
   return <span className={`pill ${label === "imported" ? "pill-muted" : "pill-info"}`}>{label}</span>;
 }
 
-function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGroup = false }: {
-  e: OdooEntryView; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; needCtx: NeedContext; canEdit: boolean;
+function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: {
+  e: OdooEntryView; day: string; knownSois: string[]; nesting: NestingLookup; needCtx: NeedContext; canEdit: boolean;
   /** One of the closings under a merged line — indented, so the line above
    *  reads as the total of what follows it. */
   inGroup?: boolean;
@@ -488,7 +482,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
   // cells keep their own controls
   const cell = "p-2 whitespace-nowrap cursor-pointer";
   const open = () => setMaterial(true);
-  const rowTitle = need ? `Click for the material behind ${e.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "FG-CODE"} yet`;
+  const rowTitle = need ? `Click for the material behind ${e.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "row"} yet`;
   const born = isBorn(e);
   return (
     <>
@@ -524,7 +518,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
             <button
               type="button"
               className={`btn btn-sm ${need ? "btn-secondary" : "btn-ghost"}`}
-              title={need ? `Material for ${e.qty} units: ${need.lines.length} line(s), ${need.totalActual || need.totalBom} sheets` : "No nesting lines for this FG-CODE yet"}
+              title={need ? `Material for ${e.qty} units: ${need.lines.length} line(s), ${need.totalActual || need.totalBom} sheets` : "No nesting lines for this row yet"}
               onClick={open}
             >
               🧱{need ? <span className="tabnum ms-1">{need.totalActual || need.totalBom}</span> : null}
@@ -545,7 +539,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
             }}
           >
             <div className="flex flex-wrap items-end gap-2">
-              <RowFields e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} disabled={edit.pending} />
+              <RowFields e={e} day={day} knownSois={knownSois} disabled={edit.pending} />
             </div>
             <Msg msg={edit.msg} />
             <div className="flex justify-end gap-2 pt-3 mt-3 border-t">
@@ -577,8 +571,8 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
  * their links to the daily-log records that wrote them, and the line opens to
  * show them — that is where a single one is edited, noted or deleted.
  */
-function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit }: {
-  g: OdooGroup; day: string; knownSois: string[]; knownFgCodes: string[]; nesting: NestingLookup; needCtx: NeedContext; canEdit: boolean;
+function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
+  g: OdooGroup; day: string; knownSois: string[]; nesting: NestingLookup; needCtx: NeedContext; canEdit: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [material, setMaterial] = useState(false);
@@ -645,7 +639,7 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
             <button
               type="button"
               className={`btn btn-sm ${need ? "btn-secondary" : "btn-ghost"}`}
-              title={need ? `Material for all ${g.qty} units: ${need.lines.length} line(s), ${need.totalActual || need.totalBom} sheets` : "No nesting lines for this FG-CODE yet"}
+              title={need ? `Material for all ${g.qty} units: ${need.lines.length} line(s), ${need.totalActual || need.totalBom} sheets` : "No nesting lines for this row yet"}
               onClick={() => setMaterial(true)}
             >
               🧱{need ? <span className="tabnum ms-1">{need.totalActual || need.totalBom}</span> : null}
@@ -656,7 +650,7 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
       </tr>
       {material && <OdooMaterialPopup e={whole} nesting={nesting} needCtx={needCtx} onClose={closeMaterial} />}
       {open && g.rows.map((e) => (
-        <Row key={e.id} e={e} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} needCtx={needCtx} canEdit={canEdit} inGroup />
+        <Row key={e.id} e={e} day={day} knownSois={knownSois} nesting={nesting} needCtx={needCtx} canEdit={canEdit} inGroup />
       ))}
     </>
   );
@@ -749,7 +743,7 @@ function FilterBar({ entries, filters, onChange }: { entries: OdooEntryView[]; f
   const active = JSON.stringify(filters) !== JSON.stringify(DEFAULT_ODOO_FILTERS);
   return (
     <div className="toolbar toolbar-row no-print !mb-0">
-      <SearchBox value={filters.q} onChange={(v) => set({ q: v })} placeholder="Search SOI, BOM, FG-CODE, MO, product, notes…" wide />
+      <SearchBox value={filters.q} onChange={(v) => set({ q: v })} placeholder="Search SOI, BOM, MO, product, notes…" wide />
       <FilterSelect label="Line" title="Product line" value={filters.line} allLabel="both" onChange={(v) => set({ line: v })} options={[{ value: "TR", label: "Transformers" }, { value: "LV", label: "LV Panels" }]} />
       <FilterSelect label="Status" value={filters.status} onChange={(v) => set({ status: v })} options={statuses.map((st) => ({ value: st, label: st }))} />
       {active && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => onChange(DEFAULT_ODOO_FILTERS)} title="Back to the rows marked MO to be close"><FilterX size={13} aria-hidden />Reset</button>}
@@ -810,7 +804,6 @@ export function OdooClient({
   entries,
   day,
   knownSois,
-  knownFgCodes,
   nesting,
   needCtx,
   canEditLine,
@@ -821,7 +814,6 @@ export function OdooClient({
   entries: OdooEntryView[];
   day: string;
   knownSois: string[];
-  knownFgCodes: string[];
   nesting: NestingLookup;
   /** How a row finds its material — each row's own line decides: by part ×
    *  BOM (transformers) or by MO (panels). */
@@ -979,9 +971,9 @@ export function OdooClient({
                   const ctx = { ...needCtx, lv: line === "LV" };
                   const can = !!canEditLine[line];
                   return g.rows.length === 1 ? (
-                    <Row key={g.rows[0].id} e={g.rows[0]} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} needCtx={ctx} canEdit={can} />
+                    <Row key={g.rows[0].id} e={g.rows[0]} day={day} knownSois={knownSois} nesting={nesting} needCtx={ctx} canEdit={can} />
                   ) : (
-                    <MergedRow key={g.key} g={g} day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} nesting={nesting} needCtx={ctx} canEdit={can} />
+                    <MergedRow key={g.key} g={g} day={day} knownSois={knownSois} nesting={nesting} needCtx={ctx} canEdit={can} />
                   );
                 })}
               </tbody>
@@ -992,7 +984,7 @@ export function OdooClient({
       </section>
       {editableLines.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          <AddRow day={day} knownSois={knownSois} knownFgCodes={knownFgCodes} lines={editableLines} defaultLine={defaultLine} />
+          <AddRow day={day} knownSois={knownSois} lines={editableLines} defaultLine={defaultLine} />
           <ImportPanel day={day} lines={editableLines} defaultLine={defaultLine} />
         </div>
       )}

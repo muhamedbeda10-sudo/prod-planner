@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { getActiveLine } from "./line";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
-import { blockedItem, isDoneStatus, odooRowBom, odooRowBomLabel, parseOdooSheet, statusTone, type OdooEntryView, type OdooScope } from "@/lib/domain/odoo";
+import { blockedItem, isDoneStatus, odooRowBom, odooRowBomLabel, parseOdooSheet, statusTone, type OdooEntryView, type OdooRowBom, type OdooScope } from "@/lib/domain/odoo";
 import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod } from "@/lib/domain/odooStats";
 import { buildOdooInsights, type OdooInsightRow, type OdooInsights } from "@/lib/domain/odooInsights";
 import { candidateBoms, candidateMos, moKey, nestingKey, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
@@ -12,9 +12,8 @@ export interface OdooPageData {
   entries: OdooEntryView[];
   /** Every day that has at least one row — the day picker's quick jumps. */
   days: string[];
-  /** Typing aids from the orders registry: SOIs and FG codes it already knows. */
+  /** Typing aid from the orders registry: the SOIs it already knows. */
   knownSois: string[];
-  knownFgCodes: string[];
   /** The MATERIAL tab's nesting lines for every part × BOM the rows may sit
    *  under, keyed "FB-022|14003E11M11" — what a row's popup scales to its qty. */
   nesting: NestingLookup;
@@ -101,7 +100,6 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     entries,
     days: [...new Set(dayRows.map((d) => toISODate(d.date)))],
     knownSois: uniq(orders.map((o) => o.soi)),
-    knownFgCodes: uniq(orders.map((o) => o.fgCode)),
     // each line's rows read their own material; the keys never collide (an
     // MO belongs to one line)
     nesting: Object.assign(
@@ -214,6 +212,25 @@ async function linesByMo(mosPerRow: string[][], line: string): Promise<NestingLo
   return out;
 }
 
+/** Each row's BOM, the way the log reads it: the closing's, else the SOI's
+ *  order, else the FG code's suffix (a top cover's suffix is its drawing
+ *  code). One round trip for the orders and one for the closings. */
+export async function resolveRowBoms(rows: readonly { fgCode: string; soi: string | null; ledgerId: number | null }[]): Promise<OdooRowBom[]> {
+  const sois = [...new Set(rows.map((r) => (r.soi ?? "").trim()).filter(Boolean))];
+  const ledgerIds = rows.map((r) => r.ledgerId).filter((id): id is number => id !== null);
+  const [orders, ledgers] = await Promise.all([
+    sois.length ? prisma.masterOrder.findMany({ where: { soi: { in: sois, mode: "insensitive" } }, select: { soi: true, bom: true } }) : Promise.resolve([]),
+    ledgerIds.length ? prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, bom: true } }) : Promise.resolve([]),
+  ]);
+  const soiBoms: Record<string, string[]> = {};
+  for (const o of orders) {
+    const soi = (o.soi ?? "").trim().toUpperCase();
+    if (soi) (soiBoms[soi] ??= []).push(o.bom);
+  }
+  const bomOfLedger = new Map(ledgers.map((l) => [l.id, l.bom]));
+  return rows.map((r) => odooRowBom(r.fgCode, r.ledgerId !== null ? bomOfLedger.get(r.ledgerId) : null, soiBoms[(r.soi ?? "").trim().toUpperCase()] ?? []));
+}
+
 // ---- dashboard: what was logged, by day and product ----
 
 /** Rows logged in the window OR closed in it — a row logged before the period
@@ -233,24 +250,11 @@ async function statRows(fromISO: string | null, toISO: string): Promise<OdooInsi
     },
     select: { date: true, product: true, qty: true, status: true, doneAt: true, fgCode: true, odooMo: true, soi: true, ledgerId: true },
   });
-  // the BOM the way the log reads it: the closing's, else the SOI's order,
-  // else the FG code's suffix (a top cover's suffix is its drawing code)
-  const sois = [...new Set(rows.map((r) => (r.soi ?? "").trim()).filter(Boolean))];
-  const ledgerIds = rows.map((r) => r.ledgerId).filter((id): id is number => id !== null);
-  const [orders, ledgers] = await Promise.all([
-    sois.length ? prisma.masterOrder.findMany({ where: { soi: { in: sois, mode: "insensitive" } }, select: { soi: true, bom: true } }) : Promise.resolve([]),
-    ledgerIds.length ? prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, bom: true } }) : Promise.resolve([]),
-  ]);
-  const soiBoms: Record<string, string[]> = {};
-  for (const o of orders) {
-    const soi = (o.soi ?? "").trim().toUpperCase();
-    if (soi) (soiBoms[soi] ??= []).push(o.bom);
-  }
-  const bomOfLedger = new Map(ledgers.map((l) => [l.id, l.bom]));
-  return rows.map((r) => ({
+  const boms = await resolveRowBoms(rows);
+  return rows.map((r, i) => ({
     dateISO: toISODate(r.date), product: r.product, qty: r.qty, status: r.status,
     doneISO: r.doneAt ? factoryDayISO(r.doneAt) : null,
-    bom: odooRowBomLabel(odooRowBom(r.fgCode, r.ledgerId !== null ? bomOfLedger.get(r.ledgerId) : null, soiBoms[(r.soi ?? "").trim().toUpperCase()] ?? [])),
+    bom: odooRowBomLabel(boms[i]),
     hasMo: r.odooMo.trim() !== "",
   }));
 }

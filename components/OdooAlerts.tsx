@@ -248,7 +248,7 @@ function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; 
       <span className="tabnum text-xs text-muted ltr">{formatDate(r.dateISO)}</span>
       {r.odooMo && <CopyMo mo={r.odooMo} />}
       <span className={r.odooMo ? "text-muted" : "font-bold"}>{r.product}</span>
-      <span className="text-xs text-muted ltr truncate max-w-[18rem]" title={r.fgCode}>{r.fgCode}</span>
+      {r.bom && <span className="text-xs text-muted ltr truncate max-w-[18rem]" title={`BOM ${r.bom}`}>{r.bom}</span>}
       {r.soi && <span className="text-xs text-muted ltr">{r.soi}</span>}
       <span className="tabnum font-bold">× {r.qty}</span>
       {SOURCE_LABEL[r.source] && <span className="pill pill-muted text-[10px]">{SOURCE_LABEL[r.source]}</span>}

@@ -103,7 +103,7 @@ function useOpenInMaterial() {
 
 const VIA_TEXT: Record<NeedVia, string> = {
   soi: "via the SOI's order",
-  fg: "from the FG-CODE",
+  fg: "from the row's code",
   ledger: "the closing this row came from",
   odoo: "the MO typed on the row",
   order: "one of the SOI's orders",
@@ -210,10 +210,10 @@ export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEnt
       <div ref={box} tabIndex={-1} className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-surface text-foreground border rounded-xl shadow-lg p-4 outline-none focus-visible:outline-none">
         <div className="flex flex-wrap items-start gap-x-4 gap-y-2 mb-3">
           <div className="min-w-0">
-            <div className="font-extrabold text-base">🧱 Material for <span className="ltr">{e.odooMo || need?.mo || e.mo || e.fgCode}</span></div>
+            <div className="font-extrabold text-base">🧱 Material for <span className="ltr">{e.odooMo || need?.mo || e.mo || e.bom.boms.join(" / ") || e.product}</span></div>
             <div className="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
               <span>SOI <Soi soi={e.soi} className="text-foreground" /></span>
-              <span>FG <b className="ltr text-foreground">{e.fgCode}</b></span>
+              {e.bom.boms.length > 0 && <span>BOM <b className="ltr text-foreground">{e.bom.boms.join(" / ")}</b></span>}
               <span>{e.product}{need?.partName && need.partName.toLowerCase() !== e.product.toLowerCase() ? ` (${need.partName})` : ""}</span>
               <span>logged <b className="tabnum ltr text-foreground">{formatDate(e.dateISO)}</b> · qty <b className="tabnum text-foreground">{e.qty}</b></span>
             </div>
@@ -282,15 +282,15 @@ export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEnt
                 {bomsSeen.map((c, i) => (
                   <span key={c.bom}>
                     {i > 0 && " or "}
-                    BOM <b className="ltr">{c.bom}</b> ({c.via === "soi" ? "the SOI's order" : "the FG-CODE"}
+                    BOM <b className="ltr">{c.bom}</b> ({c.via === "soi" ? "the SOI's order" : "the row's code"}
                     {c.parts.length > 0 ? `, has ${c.parts.join(", ")}` : ", not in the tracker"})
                   </span>
                 ))}
                 {" "}— add it there or import the month&apos;s tracker.
-                {!e.soi && <> The row has no SOI, so only the FG-CODE could be tried.</>}
+                {!e.soi && <> The row has no SOI, so only its own code could be tried.</>}
               </>
             ) : (
-              <>FG-CODE <b className="ltr">{e.fgCode}</b> is not part-BOM shaped (FB-022-14003E11M11), so no material can be looked up.</>
+              <>The row carries no part code to look its material up by.</>
             )}
           </p>
         ) : (

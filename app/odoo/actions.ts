@@ -51,7 +51,9 @@ async function guardRows(ids: number[]) {
 interface Fields {
   date: Date | null;
   soi: string | null;
-  fgCode: string;
+  /** Null when the form does not carry it — the tab no longer asks for it;
+   *  an imported or born row keeps the one it has. */
+  fgCode: string | null;
   product: string;
   odooMo: string;
   qty: number | null;
@@ -66,7 +68,7 @@ function read(formData: FormData): Fields {
   return {
     date: parseISODate(text(formData.get("date"))),
     soi: text(formData.get("soi")).toUpperCase() || null,
-    fgCode: text(formData.get("fgCode")).toUpperCase(),
+    fgCode: formData.has("fgCode") ? text(formData.get("fgCode")).toUpperCase() : null,
     product: text(formData.get("product")),
     odooMo: text(formData.get("odooMo")).toUpperCase(),
     qty: Number.isFinite(qty as number) ? qty : NaN,
@@ -75,11 +77,10 @@ function read(formData: FormData): Fields {
 }
 
 /** `born`: a row that came from a painting / shot-blast record may keep an
- *  empty MO and FG-CODE until the office fills them — it is the ledger's row,
- *  not a typed one. */
+ *  empty MO until the office fills it — it is the ledger's row, not a typed
+ *  one. The FG-CODE is not asked for. */
 function validate(f: Fields, born = false): string | null {
   if (!f.date) return "Enter the date.";
-  if (!f.fgCode && !born) return "Enter the FG-CODE.";
   if (!f.product) return "Enter the product (Tank, Top Cover, …).";
   if (!f.odooMo && !born) return "Enter the Odoo MO number.";
   if (f.qty === null || Number.isNaN(f.qty)) return "Enter the quantity.";
@@ -111,7 +112,7 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
   await prisma.odooEntry.create({
     data: {
       line,
-      date: f.date!, soi: f.soi, fgCode: f.fgCode, product: f.product, odooMo: f.odooMo,
+      date: f.date!, soi: f.soi, fgCode: f.fgCode ?? "", product: f.product, odooMo: f.odooMo,
       qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, null, f.date!), recordedBy: guard.user?.name ?? null,
     },
   });
@@ -133,11 +134,11 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
   await prisma.odooEntry.update({
     where: { id },
     data: {
-      date: f.date!, soi: f.soi, fgCode: f.fgCode, product: f.product, odooMo: f.odooMo,
+      date: f.date!, soi: f.soi, fgCode: f.fgCode ?? prev.fgCode, product: f.product, odooMo: f.odooMo,
       qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, prev, f.date!), recordedBy: guard.user?.name ?? null,
       // a corrected FG-CODE is a guess no more; an untouched one stays flagged
       // (this edit may have been about the qty)
-      fgGuessed: prev.fgGuessed && f.fgCode === prev.fgCode,
+      fgGuessed: prev.fgGuessed && (f.fgCode ?? prev.fgCode) === prev.fgCode,
     },
   });
   revalidateOdoo();

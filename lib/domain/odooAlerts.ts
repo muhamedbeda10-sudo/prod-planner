@@ -26,7 +26,8 @@ export interface ReadyRow {
   line: string;
   dateISO: string;
   soi: string | null;
-  fgCode: string;
+  /** The row's BOM ("A / B" when the SOI has several), "" when none is known. */
+  bom: string;
   product: string;
   odooMo: string;
   qty: number;
