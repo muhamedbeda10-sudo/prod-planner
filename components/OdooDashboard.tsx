@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDate } from "@/lib/domain/format";
-import { useMemo, useState, type ComponentProps } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { productColor, productInk } from "@/lib/domain/productColors";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
@@ -9,8 +9,9 @@ import {
 import { ExportButton } from "@/components/ExportButton";
 import { OdooInsightsSection } from "@/components/OdooInsights";
 import type { OdooInsights } from "@/lib/domain/odooInsights";
+import { axisWidth, describeDelta, niceScale, DELTA_MIN_BASE } from "@/lib/domain/chartScale";
 import {
-  pctChange, periodLabel,
+  periodLabel,
   type OdooDashboardData, type OdooSeries,
 } from "@/lib/domain/odooStats";
 
@@ -45,11 +46,9 @@ function legendProps(items: LegendItem[]): ComponentProps<typeof Legend> {
   } as ComponentProps<typeof Legend>;
 }
 
-/** Room above the tallest column for its cap label: the next multiple of 5 past +12%. */
-const headroom = (max: number) => Math.max(5, Math.ceil((max * 1.12) / 5) * 5);
-
-/** Tick interval so at most `max` day labels show — the rest stay in the tooltip and table. */
-const tickEvery = (n: number, max: number) => (n > max ? Math.ceil(n / max) - 1 : 0);
+/** The day axis: recharts drops whichever labels would collide (keeping the
+ *  first and last), so a label is always readable and never overlaps. */
+const DAY_AXIS = { interval: "preserveStartEnd", minTickGap: 14 } as const;
 
 // ---- labels written on the marks ----
 
@@ -60,7 +59,8 @@ function segmentLabel(ink: string) {
   const SegLabel = (p: LabelBox) => {
     const v = Number(p.value ?? 0);
     const w = Number(p.width ?? 0), h = Number(p.height ?? 0);
-    if (!v || h < 13 || w < 16) return null;
+    // only where the number fits inside the segment, with a little air
+    if (!v || h < 13 || w < fmt(v).length * 6.5 + 4) return null;
     return (
       <text x={Number(p.x) + w / 2} y={Number(p.y) + h / 2} dy={3.5} textAnchor="middle" fontSize={10} fontWeight={700} fill={ink} pointerEvents="none">
         {fmt(v)}
@@ -97,13 +97,22 @@ function stackTotalAccessor(series: OdooSeries, present: readonly OdooSeries[]) 
 // ---- headline numbers and the product cards ----
 
 function Delta({ cur, prev, suffix = "" }: { cur: number; prev: number | null; suffix?: string }) {
-  const pct = pctChange(cur, prev);
-  if (pct === null) return prev === null ? null : <span className="text-xs text-muted">new — none before</span>;
-  const cls = pct > 0 ? "text-ok-fg" : pct < 0 ? "text-bad-fg" : "text-muted";
-  const arrow = pct > 0 ? "▲" : pct < 0 ? "▼" : "•";
+  const dv = describeDelta(cur, prev);
+  if (dv.kind === "none") return null;
+  const title = `Previous period: ${fmt(prev!)}${suffix}`;
+  if (dv.kind === "new") return <span className="text-xs text-muted" title={title}>new — none before</span>;
+  if (dv.kind === "same") return <span className="text-xs text-muted" title={title}>• same as previous</span>;
+  const up = dv.kind === "pct" ? dv.pct > 0 : dv.diff > 0;
+  const zero = dv.kind === "pct" && dv.pct === 0;
+  const cls = zero ? "text-muted" : up ? "text-ok-fg" : "text-bad-fg";
+  const arrow = zero ? "•" : up ? "▲" : "▼";
   return (
-    <span className={`text-xs font-bold ${cls}`} title={`Previous period: ${fmt(prev!)}${suffix}`}>
-      {arrow} {Math.abs(pct)}% <span className="font-normal text-muted">vs previous</span>
+    <span
+      className={`text-xs font-bold ${cls}`}
+      title={dv.kind === "abs" ? `${title} — under ${DELTA_MIN_BASE} before, so the change is shown in pieces, not %` : title}
+    >
+      {arrow} {dv.kind === "pct" ? `${Math.abs(dv.pct)}%` : `${dv.diff > 0 ? "+" : "−"}${fmt(Math.abs(dv.diff))}${suffix || " pcs"}`}{" "}
+      <span className="font-normal text-muted">vs {dv.kind === "abs" ? fmt(prev!) : "previous"}</span>
     </span>
   );
 }
@@ -124,17 +133,41 @@ function Sparkline({ values, color }: { values: number[]; color: string }) {
   );
 }
 
+const CARD_MIN = 176; // px — a card never gets narrower than its name and figure
+const CARD_GAP = 12;
+
+/** Equal cards that fill the row's whole width. When they need more than one
+ *  row the rows are balanced (9 cards → 5 + 4, not 7 + 2), so no row is left
+ *  with a long empty tail. */
+function useBalancedColumns(n: number) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState<number | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      const max = Math.max(1, Math.floor((el.clientWidth + CARD_GAP) / (CARD_MIN + CARD_GAP)));
+      const rows = Math.ceil(n / max);
+      setCols(Math.ceil(n / rows));
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [n]);
+  const style = cols ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined;
+  return [ref, style] as const;
+}
+
 function ProductCards({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
+  const [gridRef, gridStyle] = useBalancedColumns(present.length);
   return (
-    // a centred row of equal cards: a short row sits in the middle of the page
-    // instead of hugging the left edge
-    <div className="flex flex-wrap justify-center gap-3">
+    <div ref={gridRef} className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]" style={gridStyle}>
       {present.map((s) => {
         const t = d.totals.find((x) => x.series === s)!;
         const daily = d.days.map((p) => p.bySeries[s]);
         const best = Math.max(0, ...daily);
         return (
-          <div key={s} className="w-[12.5rem] max-w-full bg-surface border rounded-xl px-4 py-3 border-t-4" style={{ borderTopColor: pal.color(s) }}>
+          <div key={s} className="min-w-0 bg-surface border rounded-xl px-4 py-3 border-t-4" style={{ borderTopColor: pal.color(s) }}>
             <div className="flex items-center gap-2 text-xs font-bold text-muted">
               <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: pal.color(s) }} />
               {s}
@@ -212,12 +245,14 @@ function Card({ title, sub, children, right }: { title: string; sub?: string; ch
 function DailyByProduct({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
   const data = d.days.map((p) => ({ label: p.label, ...p.bySeries }));
   const n = d.days.length;
+  const top = Math.max(0, ...d.days.map((p) => present.reduce((a, s) => a + Number(p.bySeries[s] ?? 0), 0)));
+  const y = niceScale(top);
   return (
     <ChartScroller minWidth={Math.max(560, n * 34)} height={340}>
-      <BarChart data={data} margin={{ top: 18, right: 16, left: -12, bottom: 0 }} barCategoryGap="25%">
+      <BarChart data={data} margin={{ top: 18, right: 16, left: 0, bottom: 0 }} barCategoryGap="25%">
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={tickEvery(n, 16)} tickLine={false} />
-        <YAxis domain={[0, headroom]} tickCount={6} allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
+        <XAxis dataKey="label" tick={{ fontSize: 11 }} {...DAY_AXIS} tickLine={false} />
+        <YAxis domain={[0, y.max]} ticks={y.ticks} allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={axisWidth(y.max)} />
         <Tooltip content={<Tip total />} cursor={{ fill: "var(--surface-2)" }} />
         <Legend {...legendProps(present.map((s) => ({ value: s, color: pal.color(s) })))} />
         {present.map((s, i) => (
@@ -259,12 +294,13 @@ function LoggedVsClosed({ d }: { d: OdooDashboardData }) {
   const data = d.days.map((p) => ({ label: p.label, Logged: p.loggedQty, Closed: p.doneQty }));
   const n = d.days.length;
   const yMax = Math.max(1, ...d.days.map((p) => Math.max(p.loggedQty, p.doneQty)));
+  const y = niceScale(yMax);
   return (
     <ChartScroller minWidth={Math.max(420, n * 22)} height={240}>
-      <BarChart data={data} margin={{ top: 14, right: 16, left: -12, bottom: 0 }} barCategoryGap="25%" barGap={2}>
+      <BarChart data={data} margin={{ top: 14, right: 16, left: 0, bottom: 0 }} barCategoryGap="25%" barGap={2}>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={tickEvery(n, 10)} tickLine={false} />
-        <YAxis domain={[0, headroom(yMax)]} tickCount={5} allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
+        <XAxis dataKey="label" tick={{ fontSize: 11 }} {...DAY_AXIS} tickLine={false} />
+        <YAxis domain={[0, y.max]} ticks={y.ticks} allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={axisWidth(y.max)} />
         <Tooltip content={<Tip />} cursor={{ fill: "var(--surface-2)" }} />
         <Legend {...legendProps([{ value: "Logged", color: "var(--viz-other)" }, { value: "Closed", color: "var(--brand)" }])} />
         <Bar dataKey="Logged" fill="var(--viz-other)" maxBarSize={18} radius={[3, 3, 0, 0]} isAnimationActive={false}>

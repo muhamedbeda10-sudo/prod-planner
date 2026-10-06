@@ -474,3 +474,50 @@ export function filterMaterialLines(lines: MaterialLineView[], f: MaterialFilter
     return true;
   });
 }
+
+// ---- the table grouped by SOI, the MOs under it ----
+
+export interface MaterialSoiGroup {
+  /** The SOI as the lines write it; "" for lines without one. */
+  soi: string;
+  lines: MaterialLineView[];
+  /** The MOs under the SOI, in the order they first appear. */
+  mos: string[];
+  forJob: number;
+  /** Sums over the lines that carry the figure; null when none does. */
+  sheetsUsed: number | null;
+  actualWeightKg: number | null;
+  difference: number | null;
+  forProduced: number | null;
+}
+
+const sumOf = (xs: (number | null)[]): number | null => {
+  const ns = xs.filter((x): x is number => x !== null);
+  return ns.length ? Number(ns.reduce((a, b) => a + b, 0).toFixed(4)) : null;
+};
+
+/** Lines by SOI — groups in the order their first line appears, and inside a
+ *  group the lines of one MO together, MOs in the order they first appear.
+ *  Nothing is added or dropped: every line lands in exactly one group. */
+export function groupMaterialBySoi(lines: MaterialLineView[]): MaterialSoiGroup[] {
+  const bySoi = new Map<string, MaterialLineView[]>();
+  for (const l of lines) {
+    const k = l.soi.trim();
+    const g = bySoi.get(k);
+    if (g) g.push(l); else bySoi.set(k, [l]);
+  }
+  return [...bySoi.entries()].map(([soi, ls]) => {
+    const mos = [...new Set(ls.map((l) => l.mo.trim()))];
+    const ordered = mos.flatMap((mo) => ls.filter((l) => l.mo.trim() === mo));
+    return {
+      soi,
+      lines: ordered,
+      mos: mos.filter(Boolean),
+      forJob: Number(ordered.reduce((a, l) => a + l.forJob, 0).toFixed(4)),
+      sheetsUsed: sumOf(ordered.map((l) => l.sheetsUsed)),
+      actualWeightKg: sumOf(ordered.map((l) => l.actualWeightKg)),
+      difference: sumOf(ordered.map((l) => l.difference)),
+      forProduced: sumOf(ordered.map((l) => l.forProduced)),
+    };
+  });
+}

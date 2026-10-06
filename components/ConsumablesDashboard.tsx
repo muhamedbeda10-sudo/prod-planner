@@ -71,7 +71,7 @@ function TrendChart({ s }: { s: ConsumablesStats }) {
     const b = s.timeline.buckets;
     return (
       <Box height={H.trend} minWidth={Math.max(420, b.length * 34)}>
-        <BarChart data={b} margin={{ top: 18, right: 8, left: -18, bottom: 0 }} barCategoryGap="25%">
+        <BarChart data={b} margin={{ top: 18, right: 8, left: 0, bottom: 0 }} barCategoryGap="25%">
           <CartesianGrid vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} />
           <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
@@ -89,7 +89,7 @@ function TrendChart({ s }: { s: ConsumablesStats }) {
   return (
     <>
       <Box height={H.trend} minWidth={Math.max(420, Math.min(data.length, 40) * 22)}>
-        <ComposedChart data={data} margin={{ top: 18, right: 12, left: -18, bottom: 0 }}>
+        <ComposedChart data={data} margin={{ top: 18, right: 12, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="cons-area" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--viz-1)" stopOpacity={0.22} />
@@ -167,7 +167,7 @@ function DepartmentStack({ s, colorOf }: { s: ConsumablesStats; colorOf: (key: s
   return (
     <>
       <Box height={H.stack} minWidth={Math.max(420, data.length * 26)}>
-        <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }} barCategoryGap="22%">
+        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap="22%">
           <CartesianGrid vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={every} tickLine={false} />
           <YAxis allowDecimals={false} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
