@@ -112,7 +112,7 @@ function Sheet({ c, dept, dateLabel, soi, first }: { c: MachineCard; dept: strin
         <span className="text-xs text-muted tabnum">{c.pcs} pcs · {c.hours} std-h{c.availableH !== null ? ` · ${c.availableH} h available today` : ""}{c.days !== null ? ` · ≈ ${c.days} day(s)` : ""}</span>
         {c.crew.length > 0 && <span className="text-xs text-muted">👷 {c.crew.join(", ")}</span>}
       </div>
-      <div className="bg-surface border rounded-xl overflow-hidden mb-3">
+      <div className="bg-surface border rounded-xl overflow-x-auto mb-3">
         <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-brand bg-brand-light/40">▶ Running now{c.running.length > 1 ? ` — ${c.running.length} together` : ""}</div>
         <table className="w-full text-sm border-collapse">
           <thead>{head}</thead>
@@ -122,7 +122,7 @@ function Sheet({ c, dept, dateLabel, soi, first }: { c: MachineCard; dept: strin
         </table>
       </div>
       {c.waiting.length > 0 && (
-        <div className="bg-surface border rounded-xl overflow-hidden">
+        <div className="bg-surface border rounded-xl overflow-x-auto">
           <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-muted bg-surface-2">Next, in this order</div>
           <table className="w-full text-sm border-collapse">
             <thead>{head}</thead>

@@ -87,8 +87,7 @@ export function RingCard({
     const f = pct === null ? 0 : Math.max(0, Math.min(1, pct));
     const complete = pct !== null && pct >= 1;
     const title = `${label}${name ? ` · ${name}` : ""} — ${done.toLocaleString("en-US")} of ${need.toLocaleString("en-US")} ${note}`;
-    if (compact) {
-      return (
+    const small = (
         <div className="kpi w-full !py-2 !px-3" style={color ? { boxShadow: `inset 0 3px 0 ${color}` } : undefined} title={title}>
           <div className="flex items-baseline gap-1.5 min-w-0">
             <span className="kpi-code">{label}</span>
@@ -100,15 +99,19 @@ export function RingCard({
           <div className="kpi-bar mt-1.5" aria-hidden>
             <span style={{ width: `${f * 100}%`, background: ringColor(pct) }} />
           </div>
-          <div className="mt-1 flex items-baseline gap-2 text-[10.5px] tabnum whitespace-nowrap">
-            <span className="text-muted"><b className="text-foreground font-semibold">{done.toLocaleString("en-US")}</b> / {need.toLocaleString("en-US")} {note}</span>
-            <span className="ms-auto font-semibold" style={{ color: leftColor }}>{leftText}</span>
+          <div className="mt-1 flex items-baseline gap-2 text-[10.5px] tabnum whitespace-nowrap min-w-0">
+            <span className="text-muted truncate min-w-0"><b className="text-foreground font-semibold">{done.toLocaleString("en-US")}</b> / {need.toLocaleString("en-US")} {note}</span>
+            <span className="ms-auto shrink-0 font-semibold" style={{ color: leftColor }}>{leftText}</span>
           </div>
         </div>
-      );
-    }
+    );
+    if (compact) return small;
+    // a phone or tablet gets the compact card — six full ones would fill its
+    // screen before the table starts
     return (
-      <div className="kpi w-full" style={color ? { boxShadow: `inset 0 3px 0 ${color}` } : undefined} title={`${label}${name ? ` · ${name}` : ""} — ${done.toLocaleString("en-US")} of ${need.toLocaleString("en-US")} ${note}`}>
+      <>
+      <div className="contents xl:hidden">{small}</div>
+      <div className="kpi w-full max-xl:!hidden" style={color ? { boxShadow: `inset 0 3px 0 ${color}` } : undefined} title={`${label}${name ? ` · ${name}` : ""} — ${done.toLocaleString("en-US")} of ${need.toLocaleString("en-US")} ${note}`}>
         <div className="kpi-head">
           <span className="kpi-code">{label}</span>
           {name && <span className="kpi-name">{name}</span>}
@@ -127,6 +130,7 @@ export function RingCard({
         </div>
         <div className="mt-1 text-[10.5px] font-semibold tabnum" style={{ color: leftColor }}>{leftText}</div>
       </div>
+      </>
     );
   }
   return (
@@ -149,4 +153,4 @@ export function RingCard({
 }
 
 /** The full-width row the wide cards sit in. */
-export const RING_GRID = "grid gap-2 grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";
+export const RING_GRID = "grid gap-2 grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]";

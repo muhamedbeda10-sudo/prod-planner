@@ -266,7 +266,7 @@ export function AppNav({
             onClick={() => setDrawer(true)}
             aria-label="Open navigation menu"
             aria-expanded={drawer}
-            className="md:hidden -ml-1 rounded-lg p-2.5 hover:bg-white/15 active:bg-white/20 transition-colors"
+            className="xl:hidden -ml-1 rounded-lg p-2.5 hover:bg-white/15 active:bg-white/20 transition-colors"
           >
             <Menu size={22} />
           </button>
@@ -279,12 +279,12 @@ export function AppNav({
               width={266}
               height={32}
               priority
-              className="h-5 w-auto md:h-6 transition-opacity duration-150 group-hover:opacity-85"
+              className="h-5 w-auto max-[400px]:h-4 md:h-6 transition-opacity duration-150 group-hover:opacity-85"
             />
           </Link>
 
           {/* desktop: centered tabs */}
-          <nav ref={navRef} className="hidden md:block flex-1 overflow-x-auto overflow-y-hidden">
+          <nav ref={navRef} className="hidden xl:block flex-1 overflow-x-auto overflow-y-hidden">
             <ul className="flex items-center justify-center gap-1 w-max min-w-full">
               {/* Worklist — opens the three departments in a panel BELOW the tab.
                   They used to unroll sideways inside the bar, which shoved every
@@ -438,7 +438,7 @@ export function AppNav({
 
             {/* user + logout (desktop shows the name; mobile keeps it in the drawer) */}
             <div className="shrink-0 flex items-center gap-1 md:gap-2 md:border-l md:border-white/15 md:pl-3">
-              <span className="hidden md:block text-sm font-semibold max-w-[140px] truncate" title={user.name}>
+              <span className="hidden 2xl:block text-sm font-semibold max-w-[140px] truncate" title={user.name}>
                 {user.name}
               </span>
               <form action={logoutAction} className="hidden md:block">
@@ -460,7 +460,7 @@ export function AppNav({
 
       {/* ===== mobile navigation drawer ===== */}
       {drawer && (
-        <div className="md:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Navigation">
+        <div className="xl:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Navigation">
           <button
             type="button"
             aria-label="Close menu"

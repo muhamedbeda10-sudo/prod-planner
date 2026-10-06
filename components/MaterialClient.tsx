@@ -12,7 +12,7 @@ import {
 } from "@/lib/domain/material";
 import { Modal } from "@/components/Modal";
 import { FIELD_DP, formatNumber, formatQty } from "@/lib/domain/format";
-import { FilterSelect } from "@/components/FilterControls";
+import { FilterSelect, PhoneFold } from "@/components/FilterControls";
 import { Check, ChevronDown, ChevronRight, FilterX, Plus, Search, Upload } from "lucide-react";
 import { CellEditor, GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
@@ -715,14 +715,15 @@ function FilterBar({ lines, filters, onChange, shown, extra }: { lines: Material
   const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_MATERIAL_FILTERS);
   return (
     <div className="toolbar-row no-print">
-      <label className="relative">
+      <label className="relative max-sm:basis-full">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden />
         <input
           type="search" value={filters.q} onChange={(e) => set({ q: e.target.value })}
           placeholder="Search MTR, BOM, SOI, MO, part, code, note…" aria-label="Search"
-          className="ctl ltr w-64 pl-8"
+          className="ctl ltr w-full sm:w-64 pl-8"
         />
       </label>
+      <PhoneFold active={active}>
       <Pick label="Part" value={filters.partCode} options={parts} onChange={(v) => set({ partCode: v })} render={(c) => `${c}${nameOf(c) ? ` · ${nameOf(c)}` : ""}`} />
       <Pick label="Material" value={filters.material} options={materials} onChange={(v) => set({ material: v })} />
       <Pick label="Thickness" value={filters.thicknessMm} options={thicknesses} onChange={(v) => set({ thicknessMm: v })} render={(t) => `${t} mm`} />
@@ -732,6 +733,7 @@ function FilterBar({ lines, filters, onChange, shown, extra }: { lines: Material
         onChange={(v) => set({ status: v as MaterialStatusFilter })}
         options={(Object.keys(MATERIAL_STATUS_FILTERS) as MaterialStatusFilter[]).filter((k) => k !== "all").map((k) => ({ value: k, label: MATERIAL_STATUS_FILTERS[k] }))}
       />
+      </PhoneFold>
       <span className="ml-auto inline-flex items-center gap-3">
       {extra}
       <span className="text-xs text-muted tabnum whitespace-nowrap">

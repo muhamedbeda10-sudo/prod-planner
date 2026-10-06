@@ -24,7 +24,9 @@ export function LineTabs({ line }: { line: ProductLine }) {
     <div className={`seg ${pending ? "opacity-60" : ""}`} role="tablist" aria-label="Product line" title="Which of the plant's two products every tab shows">
       {PRODUCT_LINES.map((l) => (
         <button key={l} type="button" role="tab" aria-selected={l === line} className={l === line ? "on" : ""} onClick={() => go(l)} disabled={pending}>
-          {LINE_LABEL[l]}
+          {/* a phone keeps the bar to one line: TR / LV */}
+          <span className="sm:hidden">{l}</span>
+          <span className="hidden sm:inline">{LINE_LABEL[l]}</span>
         </button>
       ))}
     </div>

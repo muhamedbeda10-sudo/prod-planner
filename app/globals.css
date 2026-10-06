@@ -1110,3 +1110,16 @@ html.dark { --grid-line: #3e4844; --grid-strong: #606d68; }
 }
 main table.grid-lines tbody td { border-bottom-color: var(--grid-line); }
 main table.grid-lines td.border-border-strong, main table.grid-lines th.border-border-strong { border-right-color: var(--grid-strong); }
+
+/* Touch screens: a long press on a table row opens its menu (see
+   TouchLongPress) rather than the system's text-selection callout. */
+@media (hover: none) and (pointer: coarse) {
+  .erp-table tbody tr { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .erp-table tbody tr :is(input, textarea, select) { -webkit-user-select: text; user-select: text; }
+}
+
+/* iPhone / iPad: Safari zooms the page into any field under 16px when it is
+   tapped and leaves it zoomed. Only Safari on iOS supports touch-callout. */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea { font-size: max(16px, 1em); }
+}
