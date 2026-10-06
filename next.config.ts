@@ -1,6 +1,27 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // What each server function carries. Prisma ships a query engine for every
+  // database and runtime (MySQL, SQL Server, SQLite, CockroachDB, edge, wasm)
+  // and the file tracer copies all of them into every one of the ~35 page
+  // functions — ~60 MB each, a gigabyte per deployment on Vercel. The app runs
+  // the Node library engine against Postgres: runtime/library.js and the
+  // native .so.node are all it loads. The project's docs and reference files
+  // ride along only because the uploads routes read from process.cwd().
+  outputFileTracingExcludes: {
+    "*": [
+      "node_modules/@prisma/client/runtime/*.wasm-base64.*",
+      "node_modules/@prisma/client/runtime/*.map",
+      "node_modules/@prisma/client/runtime/{binary,client,edge,edge-esm,react-native,index-browser,wasm-compiler-edge,wasm-engine-edge}.*",
+      "node_modules/.prisma/client/query_engine_bg.*",
+      "node_modules/.prisma/client/{wasm,edge,index-browser}.js",
+      "node_modules/.prisma/client/wasm-*-loader.mjs",
+      "reference/**",
+      "*.md",
+      "tsconfig.tsbuildinfo",
+      "package-lock.json",
+    ],
+  },
   experimental: {
     serverActions: {
       // chat attachments (and note photos) go through server actions as
