@@ -11,6 +11,7 @@ import {
   type MaterialLineView, type MaterialTotal, type MaterialFilters, type MaterialStatusFilter,
 } from "@/lib/domain/material";
 import { Modal } from "@/components/Modal";
+import { Check, FilterX, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
   createMaterialLine, createLvOrderLines, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, setUtilization, deleteMaterialLine, importMaterialAction,
@@ -29,12 +30,23 @@ import {
 // rate). Sheets-for-job, actual-per-unit and Difference are computed, never
 // typed, so they can never disagree.
 
-const cellInput = "px-2 py-1 text-sm font-bold tabnum ltr text-center";
+const cellInput = "h-[26px] px-1.5 text-[12.5px] font-semibold tabnum ltr text-right";
 
 /** The sheet's own column names are sentences ("No. of Sheets in Actual
  *  Nesting for one Unit"), so a header cell wraps to a few words wide instead
  *  of pushing the table off the screen. */
-const TH = "p-2 align-bottom max-w-[7.5rem] whitespace-normal leading-tight";
+const TH = "p-2 align-bottom max-w-[8.5rem] whitespace-normal leading-tight";
+/** A numeric column's header and cells: right-aligned, so figures line up. */
+const NUM = "num";
+
+/** The identifiers stay on screen while the figures scroll past: MTR, SOI and
+ *  MO are pinned (from a laptop up) at fixed widths. */
+const STICK_W = ["6.5rem", "6.75rem", "13.5rem"] as const;
+const STICK_LEFT = ["0rem", "6.5rem", "13.25rem"] as const;
+const stickCls = (i: number) => `stick ${i === STICK_W.length - 1 ? "stick-end" : ""}`;
+// as CSS variables: the stylesheet applies them on screen only, so the printed
+// sheet keeps its natural column widths
+const stickStyle = (i: number) => ({ "--stick-left": STICK_LEFT[i], "--stick-w": STICK_W[i] }) as React.CSSProperties;
 
 function useAction() {
   const router = useRouter();
@@ -200,13 +212,14 @@ function CellInput({ id, field, value, action, title, bold, step = "0.01", class
 function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
   if (!mo) return <span className="text-muted">—</span>;
   const status = odoo[mo.trim().toUpperCase()];
+  // one line: the MO, then where it stands on the ODOO tab as a compact badge
   return (
-    <>
-      <div>{mo}</div>
+    <span className="flex items-center gap-1.5 min-w-0">
+      <span className="shrink-0">{mo}</span>
       {status
-        ? <span className="pill pill-ok text-[10px]" title={`On the ODOO tab — ${status}`}>✓ ODOO · {status}</span>
-        : <span className="pill pill-muted text-[10px]" title="No ODOO row carries this MO yet">not on ODOO</span>}
-    </>
+        ? <span className="pill pill-ok min-w-0 shrink" title={`On the ODOO tab — ${status}`}><Check size={10} className="shrink-0" aria-hidden /><span className="truncate">{status}</span></span>
+        : <span className="pill pill-muted shrink-0" title="No ODOO row carries this MO yet">no ODOO</span>}
+    </span>
   );
 }
 
@@ -243,16 +256,16 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
     </>
   );
   const actions = (
-    <td className="p-2 text-center whitespace-nowrap no-print">
+    <td className="px-1 text-center whitespace-nowrap no-print">
       {canEdit ? (
-        <span className="inline-flex gap-1">
-          <button type="button" className="btn btn-sm" onClick={() => setEditing(true)}>Edit</button>
-          <button type="button" className="btn btn-sm btn-danger" disabled={del.pending}
+        <span className="inline-flex gap-0.5">
+          <button type="button" className="icon-btn" onClick={() => setEditing(true)} title="Edit this line" aria-label={`Edit ${line.mo || line.bom} ${line.material} ${line.thicknessMm} mm`}><Pencil size={14} /></button>
+          <button type="button" className="icon-btn icon-btn-danger" disabled={del.pending} title="Delete this line" aria-label={`Delete ${line.mo || line.bom} ${line.material} ${line.thicknessMm} mm`}
             onClick={() => {
               if (!confirm(`Delete ${line.partCode ? `${line.partCode} ` : ""}${line.material} ${line.thicknessMm}mm ${line.sheetSize} from ${line.mo || line.bom}?`)) return;
               const fd = new FormData(); fd.set("id", String(line.id));
               del.run(deleteMaterialLine, fd, "Deleted.");
-            }}>Delete</button>
+            }}><Trash2 size={14} /></button>
         </span>
       ) : <span className="text-muted text-xs">—</span>}
     </td>
@@ -299,26 +312,26 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
   }
   return (
     <>
-      <tr className="border-t">
-        <td className="p-2 whitespace-nowrap ltr text-xs">{line.mtr || <span className="text-muted">—</span>}</td>
-        <td className="p-2 whitespace-nowrap ltr text-xs font-semibold">{line.soi || <span className="text-muted">—</span>}</td>
+      <tr>
+        <td className={`p-2 whitespace-nowrap ltr text-xs ${stickCls(0)}`} style={stickStyle(0)}><span className="block truncate" title={line.mtr || undefined}>{line.mtr || <span className="text-muted">—</span>}</span></td>
+        <td className={`p-2 whitespace-nowrap ltr text-xs font-semibold ${stickCls(1)}`} style={stickStyle(1)}><span className="block truncate" title={line.soi || undefined}>{line.soi || <span className="text-muted">—</span>}</span></td>
         {/* the sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
-        <td className="p-2 font-bold whitespace-nowrap ltr text-xs"><MoCell mo={line.mo} odoo={odoo} /></td>
+        <td className={`p-2 font-bold whitespace-nowrap ltr text-xs ${stickCls(2)}`} style={stickStyle(2)}><MoCell mo={line.mo} odoo={odoo} /></td>
         <td className="p-2 whitespace-nowrap ltr text-xs">{line.bom}</td>
-        <td className="p-2 text-center tabnum ltr">{line.units}</td>
+        <td className={`p-2 ${NUM} tabnum ltr`}>{line.units}</td>
         <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{line.partCode || <span className="text-muted">—</span>}</td>
         <td className="p-2 whitespace-nowrap text-xs">{line.partName || <span className="text-muted">—</span>}</td>
         <td className="p-2 whitespace-nowrap ltr text-xs">{line.materialCode || <span className="text-muted">—</span>}</td>
         <td className="p-2 whitespace-nowrap">{line.material}</td>
-        <td className="p-2 text-center tabnum ltr">{line.thicknessMm}</td>
+        <td className={`p-2 ${NUM} tabnum ltr`}>{line.thicknessMm}</td>
         <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
-        <td className="p-2 text-center tabnum"><Sheets v={line.weightKg} digits={3} /></td>
-        <td className="p-2 text-center"><Sheets v={line.sheetsPerUnit} digits={4} /></td>
+        <td className={`p-2 ${NUM} tabnum`}><Sheets v={line.weightKg} digits={3} /></td>
+        <td className={`p-2 ${NUM}`}><Sheets v={line.sheetsPerUnit} digits={4} /></td>
         {/* Actual / unit — the sheet's own figure where it carries one, and
             typed here for the lines it leaves blank (most of them). What is
             typed outranks the sheet: a re-import fills the blanks and leaves
             these standing. It is the rate everything below multiplies. */}
-        <td className="p-2 text-center">
+        <td className={`p-2 ${NUM}`}>
           {canEdit ? (
             <CellInput
               id={line.id} field="actualPerUnit" value={line.actualPerUnit} action={setActualPerUnit} step="0.0001"
@@ -333,20 +346,20 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
             </span>
           )}
         </td>
-        <td className="p-2 text-center font-bold"><Sheets v={line.forJob} /></td>
-        <td className="p-2 text-center">
-          {canEdit ? <CellInput id={line.id} field="sheetsUsed" value={line.sheetsUsed} action={setSheetsUsed} title="No. of Pieces in Actual Nesting for the job" bold /> : <Sheets v={line.sheetsUsed} className="font-extrabold" />}
+        <td className={`p-2 ${NUM} emph`}><Sheets v={line.forJob} /></td>
+        <td className={`p-2 ${NUM} emph`}>
+          {canEdit ? <CellInput id={line.id} field="sheetsUsed" value={line.sheetsUsed} action={setSheetsUsed} title="No. of Pieces in Actual Nesting for the job" bold /> : <Sheets v={line.sheetsUsed} className="font-bold" />}
         </td>
-        <td className="p-2 text-center">
+        <td className={`p-2 ${NUM}`}>
           {canEdit ? <CellInput id={line.id} field="utilization" value={line.utilization} action={setUtilization} step="0.0001" title="Average utilization of the nesting — as the sheet writes it (0.85 or 85)" /> : <Utilization v={line.utilization} />}
         </td>
-        <td className="p-2 text-center tabnum font-semibold" title={line.actualWeightKg === null ? "Needs the pieces nested for the job and the weight" : `${line.sheetsUsed} × ${line.weightKg} kg`}><Sheets v={line.actualWeightKg} digits={3} /></td>
-        <td className={`p-2 text-center font-extrabold ${diffCls}`}><Sheets v={line.difference} /></td>
-        <td className="p-2 text-xs max-w-[200px]">{line.note}</td>
-        <td className="p-2 text-center bg-brand-light/30">
+        <td className={`p-2 ${NUM} emph tabnum`} title={line.actualWeightKg === null ? "Needs the pieces nested for the job and the weight" : `${line.sheetsUsed} × ${line.weightKg} kg`}><Sheets v={line.actualWeightKg} digits={3} /></td>
+        <td className={`p-2 ${NUM} emph ${diffCls}`}><Sheets v={line.difference} /></td>
+        <td className="p-2 text-xs min-w-[8rem] max-w-[200px]">{line.note}</td>
+        <td className={`p-2 ${NUM}`}>
           {canEdit ? <CellInput id={line.id} field="producedQty" value={line.producedQty} action={setProducedQty} title="The quantity to cost — the tab multiplies the actual rate by it" /> : <Sheets v={line.producedQty} />}
         </td>
-        <td className="p-2 text-center font-extrabold bg-brand-light/30" title={line.actualPerUnit === null ? "No rate yet — type one under Actual Nesting for one Unit, or nest the job" : `${Number(line.actualPerUnit.toFixed(4))} sheets a unit × the quantity beside it`}>
+        <td className={`p-2 ${NUM} font-semibold`} title={line.actualPerUnit === null ? "No rate yet — type one under Actual Nesting for one Unit, or nest the job" : `${Number(line.actualPerUnit.toFixed(4))} sheets a unit × the quantity beside it`}>
           <Sheets v={line.forProduced} />
         </td>
         {showMonth && <td className="p-2 whitespace-nowrap text-xs">{line.month || <span className="text-muted">—</span>}</td>}
@@ -373,7 +386,7 @@ function AddLine({ knownBoms, knownCodes, product }: { knownBoms: string[]; know
   }
   return (
     <>
-      <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>➕ Add a material line</button>
+      <button type="button" className="btn btn-sm btn-secondary" onClick={() => setOpen(true)}><Plus size={14} aria-hidden />Add Material Line</button>
       {open && (
         <Modal title="➕ Add a material line" sub="Joins the table. After Add, the MO and BOM stay for the next line." onClose={() => setOpen(false)} busy={add.pending} width="max-w-4xl">
           <form onSubmit={(e) => {
@@ -503,7 +516,7 @@ function ImportPanel({ product }: { product: ProductLine }) {
   return (
     <>
       <button type="button" className="btn btn-sm btn-primary" onClick={() => { setRes(null); setIssues([]); setOpen(true); }}>
-        📥 {lv ? "Upload the Consumption Details sheet" : "Upload the material sheet"}
+        <Upload size={14} aria-hidden />{lv ? "Upload Consumption Details" : "Upload Material Sheet"}
       </button>
       {open && (
         <Modal title={lv ? "📥 Upload the Consumption Details sheet" : "📥 Upload the material sheet"} sub="No month to pick — each row is matched on its MO and the table is updated." onClose={() => setOpen(false)} busy={pending}>
@@ -544,9 +557,9 @@ function ImportPanel({ product }: { product: ProductLine }) {
 function TotalsTable({ totals, lv = false }: { totals: MaterialTotal[]; lv?: boolean }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
+      <table className="erp-table w-full border-collapse">
         <thead>
-          <tr className="bg-surface-2 text-left">
+          <tr className="text-left">
             <th className="p-2">Material</th><th className="p-2 text-center">Thk (mm)</th><th className="p-2 text-center">Sheet size</th>
             <th className="p-2 text-center" title="Sheets the BOMs call for">Sheets for job</th>
             <th className="p-2 text-center" title={lv ? "Sheets actually consumed" : "Sheets actually nested"}>{lv ? "Actual consumed" : "Actual nested"}</th>
@@ -590,16 +603,19 @@ function readSavedFilters(raw: string): MaterialFilters {
   };
 }
 
-const SEL = "border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold";
+const SEL = "ctl max-w-[11rem]";
 
 function Pick({ label, value, options, onChange, render }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void; render?: (v: string) => string;
 }) {
   return (
-    <select aria-label={label} title={label} className={SEL} value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">{label}: all</option>
-      {options.map((o) => <option key={o} value={o}>{render ? render(o) : o}</option>)}
-    </select>
+    <label className="flex items-center gap-1.5">
+      <span className="filter-label">{label}</span>
+      <select aria-label={label} className={`${SEL} ${value ? "!border-brand" : ""}`} value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">All</option>
+        {options.map((o) => <option key={o} value={o}>{render ? render(o) : o}</option>)}
+      </select>
+    </label>
   );
 }
 
@@ -616,29 +632,37 @@ function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineVie
   const set = (patch: Partial<MaterialFilters>) => onChange({ ...filters, ...patch });
   const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_MATERIAL_FILTERS);
   return (
-    <div className="flex flex-wrap items-center gap-2 no-print">
-      <input
-        type="search" value={filters.q} onChange={(e) => set({ q: e.target.value })}
-        placeholder="Search BOM, SOI, part, code, note…" aria-label="Search"
-        className={`${SEL} ltr w-64 font-normal`}
-      />
+    <div className="toolbar-row no-print">
+      <label className="relative">
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden />
+        <input
+          type="search" value={filters.q} onChange={(e) => set({ q: e.target.value })}
+          placeholder="Search MTR, BOM, SOI, MO, part, code, note…" aria-label="Search"
+          className="ctl ltr w-64 pl-8"
+        />
+      </label>
       <Pick label="Part" value={filters.partCode} options={parts} onChange={(v) => set({ partCode: v })} render={(c) => `${c}${nameOf(c) ? ` · ${nameOf(c)}` : ""}`} />
       <Pick label="Material" value={filters.material} options={materials} onChange={(v) => set({ material: v })} />
       <Pick label="Thickness" value={filters.thicknessMm} options={thicknesses} onChange={(v) => set({ thicknessMm: v })} render={(t) => `${t} mm`} />
       <Pick label="Sheet size" value={filters.sheetSize} options={sizes} onChange={(v) => set({ sheetSize: v })} />
-      <select aria-label="Status" title="Where the line stands" className={SEL} value={filters.status} onChange={(e) => set({ status: e.target.value as MaterialStatusFilter })}>
-        {(Object.keys(MATERIAL_STATUS_FILTERS) as MaterialStatusFilter[]).map((k) => <option key={k} value={k}>{MATERIAL_STATUS_FILTERS[k]}</option>)}
-      </select>
-      <span className="text-xs text-muted tabnum">
-        {active ? `${shown} of ${lines.length} line(s)` : `${lines.length} line(s)`}
+      <label className="flex items-center gap-1.5">
+        <span className="filter-label">Line status</span>
+        <select aria-label="Line status" title="Where the line stands" className={`${SEL} ${filters.status !== "all" ? "!border-brand" : ""}`} value={filters.status} onChange={(e) => set({ status: e.target.value as MaterialStatusFilter })}>
+          {(Object.keys(MATERIAL_STATUS_FILTERS) as MaterialStatusFilter[]).map((k) => <option key={k} value={k}>{MATERIAL_STATUS_FILTERS[k]}</option>)}
+        </select>
+      </label>
+      <span className="ml-auto text-xs text-muted tabnum whitespace-nowrap">
+        {active ? <><b className="text-foreground font-semibold">{shown}</b> of {lines.length} lines</> : `${lines.length} lines`}
       </span>
-      {active && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onChange(EMPTY_MATERIAL_FILTERS)}>✕ Clear</button>}
+      {active && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => onChange(EMPTY_MATERIAL_FILTERS)}><FilterX size={13} aria-hidden />Reset filters</button>}
     </div>
   );
 }
 
-export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR", lvOrders = [], lvTemplates = {}, odooByMo = {} }: {
+export function MaterialClient({ lines, totals, month, knownBoms, canEdit, product = "TR", lvOrders = [], lvTemplates = {}, odooByMo = {}, exportButton }: {
   lines: MaterialLineView[]; totals: MaterialTotal[]; month: string; knownBoms: string[]; canEdit: boolean;
+  /** The page's Export Excel, set in the action toolbar beside upload and add. */
+  exportButton?: React.ReactNode;
   /** MO (upper case) → its status on the ODOO tab. */
   odooByMo?: Record<string, string>;
   /** Which product line's nesting this is — the transformer part presets are only offered on theirs. */
@@ -656,17 +680,20 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
   // the totals follow the filter, so "Stainless steel 5 mm, tanks only" adds up on its own
   const shownTotals = filtering ? summarizeMaterial(shown) : totals;
   return (
-    <div className="space-y-5">
-      {canEdit && (
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <span className="flex flex-wrap gap-2">
-            <ImportPanel product={product} />
-            {lv ? <AddLvOrder orders={lvOrders} templates={lvTemplates} /> : <AddLine knownBoms={knownBoms} knownCodes={knownCodes} product={product} />}
-          </span>
+    <div className="space-y-4">
+      <div className="toolbar !mb-0">
+        <div className="toolbar-row no-print">
+          {canEdit && (
+            <>
+              <ImportPanel product={product} />
+              {lv ? <AddLvOrder orders={lvOrders} templates={lvTemplates} /> : <AddLine knownBoms={knownBoms} knownCodes={knownCodes} product={product} />}
+            </>
+          )}
+          {exportButton}
         </div>
-      )}
-      {lines.length > 0 && <FilterBar lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} />}
-      <section className="bg-surface border rounded-xl overflow-hidden">
+        {lines.length > 0 && <FilterBar lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} />}
+      </div>
+      <section className="bg-surface border rounded-[10px] overflow-hidden">
         {lines.length === 0 ? (
           <p className="text-sm text-muted p-4">
             {showMonth ? "No material recorded yet." : month ? `Nothing filed under ${month}.` : "The table is empty."} {lv ? "Upload the Consumption Details sheet, or add an order." : "Upload the material sheet, or add a line."}
@@ -674,8 +701,8 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
         ) : shown.length === 0 ? (
           <p className="text-sm text-muted p-4">No line matches these filters.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
+          <div className="overflow-x-auto erp-scroll">
+            <table className="erp-table w-full border-collapse">
               <thead>
                 {/* The Nesting Tracker's OWN columns, in the sheet's order and
                     under the sheet's own names, so the tab reads as the sheet
@@ -703,31 +730,31 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                     <th className="p-2 no-print" />
                   </tr>
                 ) : (
-                <tr className="bg-brand text-white text-left align-bottom">
-                  <th className={TH} title="The material request the sheets were drawn on">MTR Request #</th>
-                  <th className={TH}>SOI</th>
-                  <th className={TH} title="Odoo's MO for the part — the ODOO tab finds the line by it">MO</th>
+                <tr className="text-left align-bottom">
+                  <th className={`${TH} ${stickCls(0)}`} style={stickStyle(0)} title="The material request the sheets were drawn on">MTR Request #</th>
+                  <th className={`${TH} ${stickCls(1)}`} style={stickStyle(1)}>SOI</th>
+                  <th className={`${TH} ${stickCls(2)}`} style={stickStyle(2)} title="Odoo's MO for the part — the ODOO tab finds the line by it">MO</th>
                   <th className={TH}>BOM Ref</th>
-                  <th className={`${TH} text-center`}>Quantity of Units</th>
+                  <th className={`${TH} ${NUM}`}>Quantity of Units</th>
                   <th className={TH}>Part Code</th>
                   <th className={TH}>Part Name</th>
                   <th className={TH}>Material Code</th>
                   <th className={TH}>Material</th>
-                  <th className={`${TH} text-center`}>Thickness (mm)</th>
+                  <th className={`${TH} ${NUM}`}>Thickness (mm)</th>
                   <th className={`${TH} text-center`}>Sheet Size</th>
-                  <th className={`${TH} text-center`} title="One sheet's weight">Weight(Kg)</th>
-                  <th className={`${TH} text-center`}>BOM Qty for one Unit</th>
-                  <th className={`${TH} text-center`} title="From the sheet, or typed here for the lines it leaves blank">No. of Pieces in Actual Nesting for one Unit</th>
-                  <th className={`${TH} text-center`} title="BOM Qty for one Unit × units">BOM Pieces for Job</th>
-                  <th className={`${TH} text-center`} title="Type here">No. of Pieces in Actual Nesting for Job</th>
-                  <th className={`${TH} text-center`}>Average Utilization</th>
-                  <th className={`${TH} text-center`} title="Pieces in Actual Nesting for Job × Weight(Kg)">Actual Weight (Kg)</th>
-                  <th className={`${TH} text-center`} title="BOM Pieces for Job − Actual Nesting for Job. Red = ate more than the BOM allows">Difference</th>
+                  <th className={`${TH} ${NUM}`} title="One sheet's weight">Weight(Kg)</th>
+                  <th className={`${TH} ${NUM}`}>BOM Qty for one Unit</th>
+                  <th className={`${TH} ${NUM}`} title="From the sheet, or typed here for the lines it leaves blank">No. of Pieces in Actual Nesting for one Unit</th>
+                  <th className={`${TH} ${NUM} emph`} title="BOM Qty for one Unit × units">BOM Pieces for Job</th>
+                  <th className={`${TH} ${NUM} emph`} title="Type here">No. of Pieces in Actual Nesting for Job</th>
+                  <th className={`${TH} ${NUM}`}>Average Utilization</th>
+                  <th className={`${TH} ${NUM} emph`} title="Pieces in Actual Nesting for Job × Weight(Kg)">Actual Weight (Kg)</th>
+                  <th className={`${TH} ${NUM} emph`} title="BOM Pieces for Job − Actual Nesting for Job. Red = ate more than the BOM allows">Difference</th>
                   <th className={TH}>Notes</th>
-                  <th className={`${TH} text-center bg-brand-dark`} title="Type the quantity you want costed — it does not have to be the whole job">Quantity</th>
-                  <th className={`${TH} text-center bg-brand-dark`} title="Actual Nesting for one Unit × the quantity beside it">Actual for Quantity</th>
+                  <th className={`${TH} ${NUM}`} title="Type the quantity you want costed — it does not have to be the whole job">Quantity</th>
+                  <th className={`${TH} ${NUM}`} title="Actual Nesting for one Unit × the quantity beside it">Actual for Quantity</th>
                   {showMonth && <th className={TH}>Month</th>}
-                  <th className="p-2 no-print" />
+                  <th className="p-2 no-print"><span className="sr-only">Actions</span></th>
                 </tr>
                 )}
               </thead>

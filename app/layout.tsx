@@ -22,8 +22,10 @@ export const metadata: Metadata = {
   description: "Arabian Transformers Co. — steel fabrication ERP system",
 };
 
-// Applied before paint so there is no light/dark flash on load.
-const themeInit = `(function(){try{var t=localStorage.getItem("theme");if(t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark")}}catch(e){}})()`;
+// Applied before paint so there is no light/dark flash on load. The dark
+// industrial theme is the default; light stays one click away on the toggle,
+// and a choice made there is remembered.
+const themeInit = `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"){document.documentElement.classList.add("dark")}}catch(e){document.documentElement.classList.add("dark")}})()`;
 
 export default async function RootLayout({
   children,
@@ -57,7 +59,7 @@ export default async function RootLayout({
             line={line}
           />
         )}
-        <main className="flex-1 w-full px-4 py-5 md:px-6 md:py-6">
+        <main className="flex-1 w-full px-3 py-3 md:px-5 md:py-4">
           {children}
         </main>
         <SpeedInsights />

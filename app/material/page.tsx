@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
-import { PageHeader } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { MaterialClient } from "@/components/MaterialClient";
 import { getActiveLine } from "@/lib/server/line";
@@ -74,11 +73,16 @@ export default async function MaterialPage({
   return (
     <div>
       <RememberLastVisit storageKey="material:last" />
-      <PageHeader title={`🧱 MATERIAL — material sheet · ${LINE_LABEL[line]}`}>
-        <ViewTabs views={MATERIAL_VIEWS} current="/material" label="Material view" />
-        <ExportButton rows={exportRows} filename="material-sheet.xlsx" sheetName="Sheet1" />
-      </PageHeader>
-      <MaterialClient lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))} product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} odooByMo={odooByMo} />
+      <div className="page-head">
+        <h1 className="page-title">Material</h1>
+        <span className="page-sub">Nesting sheet · {LINE_LABEL[line]} · one living table, matched on the MO</span>
+        <span className="ml-auto"><ViewTabs views={MATERIAL_VIEWS} current="/material" label="Material view" /></span>
+      </div>
+      <MaterialClient
+        lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))}
+        product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} odooByMo={odooByMo}
+        exportButton={<ExportButton rows={exportRows} filename="material-sheet.xlsx" sheetName="Sheet1" />}
+      />
     </div>
   );
 }

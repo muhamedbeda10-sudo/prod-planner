@@ -50,22 +50,25 @@ export function Ring({ pct, size = 40 }: { pct: number | null; size?: number }) 
   );
 }
 
-/** One summary card: a ring, the done-of-required figure, and what is left.
+/** One summary card: the done-of-required figure and what is left.
  *  `note` names the stage the figures are measured at, so a card is never
  *  ambiguous about which department it is reporting. */
 export function RingCard({
   label,
+  name,
   note,
   done,
   need,
   wide = false,
 }: {
   label: string;
+  /** The component's full name beside its code (Core Frame, Top Cover …). */
+  name?: string;
   note: string;
   done: number;
   need: number;
-  /** Fill its cell of a full-width row, as a fuller card — a larger ring, the
-   *  stage it is measured at, and a bar of what is left. */
+  /** Fill its cell of a full-width row as a production KPI card: the
+   *  percentage leads, then done / required, a bar and what is left. */
   wide?: boolean;
 }) {
   const pct = need > 0 ? done / need : null;
@@ -74,23 +77,26 @@ export function RingCard({
   const leftColor = need === 0 ? "var(--muted)" : left > 0 ? "var(--warn-fg)" : "var(--ok-fg)";
   if (wide) {
     const f = pct === null ? 0 : Math.max(0, Math.min(1, pct));
+    const complete = pct !== null && pct >= 1;
     return (
-      <div className="bg-surface border rounded-xl px-3 py-2.5 flex items-center gap-3 w-full min-w-0 shadow-sm">
-        <Ring pct={pct} size={52} />
-        <div className="min-w-0 flex-1 leading-tight">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-sm font-extrabold">{label}</span>
-            <span className="text-[10px] font-bold uppercase tracking-wide text-muted truncate" title={note}>{note}</span>
-          </div>
-          <div className="mt-0.5 tabnum">
-            <span className="text-xl font-extrabold">{done.toLocaleString("en-US")}</span>
-            <span className="text-muted font-bold text-xs"> / {need.toLocaleString("en-US")}</span>
-          </div>
-          <div className="mt-1.5 h-1.5 rounded-full bg-surface-2 overflow-hidden" aria-hidden>
-            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${f * 100}%`, background: ringColor(pct) }} />
-          </div>
-          <div className="mt-1 text-[10px] font-semibold tabnum" style={{ color: leftColor }}>{leftText}</div>
+      <div className="kpi w-full" title={`${label}${name ? ` · ${name}` : ""} — ${done.toLocaleString("en-US")} of ${need.toLocaleString("en-US")} ${note}`}>
+        <div className="kpi-head">
+          <span className="kpi-code">{label}</span>
+          {name && <span className="kpi-name">{name}</span>}
+          <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-muted whitespace-nowrap">{note}</span>
         </div>
+        <div className="mt-1 flex items-baseline justify-between gap-2">
+          <span className="kpi-value" style={{ color: complete ? "var(--ok-fg)" : pct === null ? "var(--muted)" : "var(--foreground)" }}>
+            {pct === null ? "—" : `${Math.round(f * 100)}%`}
+          </span>
+          <span className="text-xs tabnum text-muted whitespace-nowrap">
+            <b className="text-foreground font-semibold">{done.toLocaleString("en-US")}</b> / {need.toLocaleString("en-US")}
+          </span>
+        </div>
+        <div className="kpi-bar mt-1.5" aria-hidden>
+          <span style={{ width: `${f * 100}%`, background: ringColor(pct) }} />
+        </div>
+        <div className="mt-1 text-[10.5px] font-semibold tabnum" style={{ color: leftColor }}>{leftText}</div>
       </div>
     );
   }
@@ -114,4 +120,4 @@ export function RingCard({
 }
 
 /** The full-width row the wide cards sit in. */
-export const RING_GRID = "grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]";
+export const RING_GRID = "grid gap-2 grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]";

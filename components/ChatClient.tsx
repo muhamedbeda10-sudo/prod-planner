@@ -505,7 +505,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
   );
 
   return (
-    <div className={`flex overflow-hidden bg-surface ${fill ? "h-full" : "h-[calc(100vh-7rem)] rounded-xl border shadow-md"}`}>
+    <div className={`flex overflow-hidden bg-surface ${fill ? "h-full" : "h-[calc(100vh-5rem)] rounded-xl border shadow-md"}`}>
       {/* ===== contacts ===== */}
       <aside className={`${active !== null ? "hidden md:flex" : "flex"} w-full md:w-72 lg:w-80 shrink-0 flex-col border-r`}>
         <div className="px-4 py-3 border-b flex items-center gap-2 bg-surface-2">

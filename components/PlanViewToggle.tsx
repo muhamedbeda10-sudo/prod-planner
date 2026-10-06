@@ -22,27 +22,23 @@ export function PlanViewToggle({ value }: { value: "monthly" | "weekly" }) {
   };
 
   return (
-    <div className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
-      <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Plan</span>
-      <div className="flex gap-1">
-        {(["monthly", "weekly"] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => go(v)}
-            className={`rounded-md border px-2 py-1 text-xs font-bold capitalize transition-colors ${
-              v === value ? "bg-brand text-white border-brand" : "bg-surface text-muted hover:text-foreground hover:border-brand/60"
-            }`}
-            title={
-              v === "monthly"
-                ? "Monthly plan — every order, progress capped at the order quantity"
-                : "Weekly plan — one week's promises day by day, cumulative progress"
-            }
-          >
-            {v}
-          </button>
-        ))}
-      </div>
+    <div className="seg" role="group" aria-label="Plan">
+      {(["monthly", "weekly"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => go(v)}
+          aria-pressed={v === value}
+          className={`capitalize ${v === value ? "on" : ""}`}
+          title={
+            v === "monthly"
+              ? "Monthly plan — every order, progress capped at the order quantity"
+              : "Weekly plan — one week's promises day by day, cumulative progress"
+          }
+        >
+          {v}
+        </button>
+      ))}
     </div>
   );
 }
@@ -54,9 +50,9 @@ export function WeekPlanPicker({ plans, value }: { plans: number[]; value: numbe
 
   return (
     <label className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
-      <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Week</span>
+      <span className="filter-label">Week</span>
       <select
-        className="select min-w-0 flex-1"
+        className="ctl min-w-0 flex-1"
         value={value ?? ""}
         onChange={(e) => {
           const next = new URLSearchParams(sp.toString());
