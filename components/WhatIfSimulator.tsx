@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDate, formatDateTime } from "@/lib/domain/format";
+import { formatDate, formatDateTime, formatDayShort } from "@/lib/domain/format";
 import { DateSlicer } from "@/components/DateSlicer";
 import { addDaysISO, slicerPresets } from "@/lib/domain/dateSlicer";
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -11,7 +11,12 @@ import {
 } from "@/lib/domain/whatif";
 import type { EtaStage, StageBlackout } from "@/lib/domain/eta";
 import { saveScenario, deleteScenario, applyRunOrder, clearRunOrder } from "@/app/simulate/actions";
-import { deptLabel, STAGE_COLOR } from "@/lib/domain/constants";
+import { deptLabel, STAGE_COLOR, type Item } from "@/lib/domain/constants";
+import { ITEM_PRODUCT, productColor } from "@/lib/domain/productColors";
+import { SearchBox, FilterSelect } from "@/components/FilterControls";
+import { TableEmpty, TableFrame, Th, useAsk, useConfirm } from "@/components/DataTable";
+import { Tooltip } from "@/components/Tooltip";
+import { Check, FilterX, Minus, Pin, Plus, RotateCcw, Save, Trash2, Wrench, Zap } from "lucide-react";
 
 /* The control room: turn the knobs — workers per stage, working Fridays, a
    hand-reordered (drag & drop) queue, split quantities, or one click of the
@@ -23,7 +28,9 @@ import { deptLabel, STAGE_COLOR } from "@/lib/domain/constants";
 
 const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-US");
 const dd = (iso: string | null) => formatDate(iso);
-const ddShort = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+const ddShort = (iso: string) => formatDayShort(iso);
+/** A component's colour: the product it is (TN → Tank's), the same on every page. */
+const itemTint = (item: string) => productColor(ITEM_PRODUCT[item as Item]);
 
 const SEG_COLOR: Record<string, string> = {
   cut: STAGE_COLOR.Cut,
@@ -92,11 +99,11 @@ function Kpi({ label, value, sub, pinned, tone }: {
 }) {
   const color = tone === "ok" ? "var(--ok-fg)" : tone === "warn" ? "var(--warn-fg)" : tone === "bad" ? "var(--bad-fg)" : undefined;
   return (
-    <div className="flex-1 min-w-40 bg-surface border rounded-xl px-4 py-3">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-muted">{label}</div>
-      <div className="text-2xl font-extrabold tabnum leading-tight" style={{ color }}>{value}</div>
-      {pinned !== undefined && <div className="text-[11px] font-semibold tabnum" style={{ color: "var(--accent)" }}>📌 A: {pinned}</div>}
-      {sub && <div className="text-[11px] text-muted mt-0.5">{sub}</div>}
+    <div className="kpi">
+      <div className="filter-label">{label}</div>
+      <div className="kpi-value mt-1" style={{ color }}>{value}</div>
+      {pinned !== undefined && <div className="text-xs font-semibold tabnum mt-0.5" style={{ color: "var(--accent)" }}>📌 A: {pinned}</div>}
+      {sub && <div className="text-xs text-muted mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -129,88 +136,111 @@ function Timeline({ result, baseline, inputs, workFridays, shownIds, blackouts }
 
   if (rows.length === 0) return null;
 
-  const LABEL_W = 176;
+  const LABEL_W = 184;
+  const ROW_H = 28;
   const axisDays = Math.max(1, Math.ceil(Math.max(result.makespan, ...rows.map((o) => o.dueOffset ?? 0))) + 1);
   const PX = Math.max(18, Math.floor((avail - LABEL_W - 90) / axisDays));
-  const tickEvery = Math.max(1, Math.ceil(56 / PX));
+  const tickEvery = Math.max(1, Math.ceil(64 / PX));
   const width = axisDays * PX + 90;
 
   return (
-    <section className="bg-surface border rounded-xl overflow-hidden">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-3 pb-1.5">
-        <h2 className="text-sm">Station timeline</h2>
-        <span className="text-[10px] text-muted">one row per component job · each bar = one station holding it · the axis counts WORKING days</span>
-        <span className="flex items-center gap-3 ml-auto text-[10px] text-muted">
+    <section className="bg-surface border rounded-[10px] overflow-hidden">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-3 pb-2 border-b">
+        <h2 className="!mb-0">Station timeline</h2>
+        <span className="text-xs text-muted">one row per component job · each bar is one station holding it · the axis counts working days</span>
+        <span className="flex flex-wrap items-center gap-3 ms-auto text-xs text-muted">
           {Object.entries(SEG_LABEL).map(([k, label]) => (
-            <span key={k} className="inline-flex items-center gap-1">
-              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: SEG_COLOR[k] }} />{label}
+            <span key={k} className="inline-flex items-center gap-1.5">
+              <span className="inline-block w-3 h-2.5 rounded-sm" style={{ background: SEG_COLOR[k] }} aria-hidden />{label}
             </span>
           ))}
-          <span className="inline-flex items-center gap-1"><span className="text-bad-fg font-bold">▼</span>due</span>
+          <span className="inline-flex items-center gap-1.5"><span className="text-bad-fg font-bold" aria-hidden>▼</span>due</span>
+          <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 h-1 rounded-full bg-muted/50" aria-hidden />today&apos;s plan</span>
         </span>
       </div>
-      <div ref={scrollRef} className="overflow-x-auto">
-        <div className="relative ml-44" style={{ width, minHeight: rows.length * 30 + 34 }}>
-          {Array.from({ length: axisDays + 1 }, (_, i) => (
-            <div key={i} className="absolute top-0 bottom-0 border-l" style={{ left: i * PX, borderColor: "var(--border)", opacity: i % tickEvery ? 0.25 : 0.7 }}>
-              {i % tickEvery === 0 && i < axisDays && (
-                <span className="absolute top-0.5 left-1 text-[9px] text-muted tabnum whitespace-nowrap">
+      {/* the rows scroll inside the card: the job names stay on the left,
+          the dates stay on top */}
+      <div ref={scrollRef} className="overflow-auto max-h-[70vh] overscroll-contain">
+        <div className="relative" style={{ width: LABEL_W + width }}>
+          {/* the date axis */}
+          <div className="sticky top-0 z-20 flex h-7 bg-surface-2 border-b">
+            <div className="sticky left-0 z-30 shrink-0 bg-surface-2 border-r px-3 flex items-center filter-label" style={{ width: LABEL_W }}>Job</div>
+            <div className="relative" style={{ width }}>
+              {Array.from({ length: axisDays }, (_, i) => i % tickEvery === 0 && (
+                <span key={i} className="absolute top-1.5 ps-1 text-[11px] text-muted tabnum whitespace-nowrap" style={{ left: i * PX }}>
                   {ddShort(dateForOffsetISO(i + 1, inputs.todayISO, holidays, workFridays))}
                 </span>
-              )}
+              ))}
             </div>
-          ))}
-          {/* station stoppages — the shaded strips nothing can run through */}
-          {(Object.entries(blackouts) as [EtaStage, StageBlackout[]][]).flatMap(([stage, bls]) =>
-            (bls ?? []).map((b, i) => (
-              <div
-                key={`bl-${stage}-${i}`}
-                className="absolute top-4 bottom-0 rounded"
-                style={{ left: b.start * PX, width: Math.max(2, (b.end - b.start) * PX), background: SEG_COLOR[stage], opacity: 0.13, border: `1px dashed ${SEG_COLOR[stage]}` }}
-                title={`${SEG_LABEL[stage]} stopped`}
-              />
-            ))
-          )}
-          {rows.map((o, r) => {
-            const top = 24 + r * 30;
-            const end = o.segments[o.segments.length - 1].end;
-            const bEnd = baseEnd.get(o.id) ?? baseEnd.get(o.baseId);
-            return (
-              <div key={o.id}>
-                <div className="absolute -ml-44 w-40 pr-2 text-right whitespace-nowrap overflow-hidden text-ellipsis" style={{ top: top + 2 }}>
-                  <span className="text-xs font-bold">{o.bom}</span>
-                  <span className="text-[10px] font-bold ml-1" style={{ color: "var(--accent)" }}>{o.item}</span>
-                  <span className="text-[9px] text-muted tabnum ml-0.5">×{o.qty}{o.batch !== null && ` b${o.batch}`}</span>
+          </div>
+          <div className="flex">
+            {/* the job names */}
+            <div className="sticky left-0 z-10 shrink-0 bg-surface border-r" style={{ width: LABEL_W }}>
+              {rows.map((o) => (
+                <div key={o.id} className="flex items-center gap-1.5 px-3 whitespace-nowrap overflow-hidden border-b border-[var(--border)]/50" style={{ height: ROW_H }} title={`${o.mo} · ${o.bom} ${o.item} ×${o.qty}`}>
+                  <span className="inline-block w-1 h-3.5 rounded-sm shrink-0" style={{ background: itemTint(o.item) }} aria-hidden />
+                  <span className="text-xs font-semibold truncate">{o.bom}</span>
+                  <span className="text-[11px] font-bold shrink-0">{o.item}</span>
+                  <span className="text-[11px] text-muted tabnum shrink-0">×{o.qty}{o.batch !== null && ` b${o.batch}`}</span>
                 </div>
-                {bEnd !== null && bEnd !== undefined && Math.abs(bEnd - end) > 0.05 && (
+              ))}
+            </div>
+            {/* the bars */}
+            <div className="relative" style={{ width, height: rows.length * ROW_H }}>
+              {Array.from({ length: axisDays + 1 }, (_, i) => (
+                <div key={i} className="absolute top-0 bottom-0 border-l" style={{ left: i * PX, borderColor: "var(--border)", opacity: i % tickEvery ? 0.3 : 0.8 }} />
+              ))}
+              {rows.map((o, r) => (
+                <div key={`z${o.id}`} className="absolute inset-x-0 border-b border-[var(--border)]/50" style={{ top: r * ROW_H, height: ROW_H }} />
+              ))}
+              {/* station stoppages — the shaded strips nothing can run through */}
+              {(Object.entries(blackouts) as [EtaStage, StageBlackout[]][]).flatMap(([stage, bls]) =>
+                (bls ?? []).map((b, i) => (
                   <div
-                    className="absolute h-1 rounded-full opacity-40"
-                    style={{ top: top + 19, left: 0, width: bEnd * PX, background: "var(--muted)" }}
-                    title={`baseline: clears in ${fmt(bEnd)} working days`}
+                    key={`bl-${stage}-${i}`}
+                    className="absolute top-0 bottom-0 rounded"
+                    style={{ left: b.start * PX, width: Math.max(2, (b.end - b.start) * PX), background: SEG_COLOR[stage], opacity: 0.13, border: `1px dashed ${SEG_COLOR[stage]}` }}
+                    title={`${SEG_LABEL[stage]} stopped`}
                   />
-                )}
-                {o.segments.map((s, i) => (
-                  <div
-                    key={i}
-                    className="absolute h-4 rounded"
-                    style={{ top: top + 3, left: s.start * PX, width: Math.max(2, (s.end - s.start) * PX), background: SEG_COLOR[s.stage] }}
-                    title={`${o.bom} ${o.item}: ${SEG_LABEL[s.stage]} day ${fmt(s.start)} → ${fmt(s.end)}`}
-                  />
-                ))}
-                <span
-                  className="absolute text-[9px] font-bold tabnum whitespace-nowrap"
-                  style={{ top: top + 4, left: end * PX + 4, color: o.late ? "var(--bad-fg)" : "var(--muted)" }}
-                >
-                  {o.late && "⚠ "}{dd(o.etaISO)}
-                </span>
-                {o.dueOffset !== null && o.dueOffset > 0 && (
-                  <span className="absolute text-bad-fg font-bold text-[10px]" style={{ top: top - 1, left: o.dueOffset * PX - 4 }} title={`due ${dd(o.dueISO)}`}>
-                    ▼
-                  </span>
-                )}
-              </div>
-            );
-          })}
+                ))
+              )}
+              {rows.map((o, r) => {
+                const top = r * ROW_H;
+                const end = o.segments[o.segments.length - 1].end;
+                const bEnd = baseEnd.get(o.id) ?? baseEnd.get(o.baseId);
+                return (
+                  <div key={o.id}>
+                    {bEnd !== null && bEnd !== undefined && Math.abs(bEnd - end) > 0.05 && (
+                      <div
+                        className="absolute h-1 rounded-full opacity-40"
+                        style={{ top: top + 21, left: 0, width: bEnd * PX, background: "var(--muted)" }}
+                        title={`today's plan: clears in ${fmt(bEnd)} working days`}
+                      />
+                    )}
+                    {o.segments.map((sg, i) => (
+                      <div
+                        key={i}
+                        className="absolute h-3.5 rounded-[3px]"
+                        style={{ top: top + 6, left: sg.start * PX, width: Math.max(3, (sg.end - sg.start) * PX - 1), background: SEG_COLOR[sg.stage] }}
+                        title={`${o.bom} ${o.item}: ${SEG_LABEL[sg.stage]} day ${fmt(sg.start)} → ${fmt(sg.end)}`}
+                      />
+                    ))}
+                    <span
+                      className="absolute text-[11px] font-semibold tabnum whitespace-nowrap"
+                      style={{ top: top + 5, left: end * PX + 5, color: o.late ? "var(--bad-fg)" : "var(--muted)" }}
+                    >
+                      {o.late && "⚠ "}{dd(o.etaISO)}
+                    </span>
+                    {o.dueOffset !== null && o.dueOffset > 0 && (
+                      <span className="absolute text-bad-fg font-bold text-[10px] leading-none" style={{ top: top + 1, left: o.dueOffset * PX - 4 }} title={`due ${dd(o.dueISO)}`}>
+                        ▼
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -319,35 +349,46 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
   );
 
   // ---- material holds & station stoppages ----
-  const setHold = (row: ResultJob) => {
+  const [ask, askDialog] = useAsk();
+  const [confirmIt, confirmDialog] = useConfirm();
+  const setHold = async (row: ResultJob) => {
     const cur = scenario.holds[row.baseId];
-    const raw = prompt(
-      `${row.bom} ${row.item}: material/parts arrive on which day? (YYYY-MM-DD, empty removes the hold)`,
-      cur ?? ""
-    );
-    if (raw === null) return;
-    const iso = raw.trim();
+    const v = await ask({
+      title: `Material hold — ${row.bom} ${row.item}`,
+      body: "The job cannot start before its material or parts arrive.",
+      fields: [{ name: "day", label: "Arrives on", type: "date", defaultValue: cur ?? "", min: inputs.todayISO, hint: cur ? "Clear the date to remove the hold." : undefined }],
+      confirmLabel: cur ? "Save hold" : "Set hold",
+    });
+    if (!v) return;
+    const iso = v.day;
     setScenario((sc) => {
       const holds = { ...sc.holds };
       if (!iso) delete holds[row.baseId];
       else {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) { alert("Use the YYYY-MM-DD format."); return sc; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return sc;
         holds[row.baseId] = iso;
       }
       return { ...sc, holds };
     });
   };
 
-  const addDowntime = (stage: WiStage) => {
+  const addDowntime = async (stage: WiStage) => {
     const es: EtaStage = stage === "Cut" ? "cut" : stage === "Welding" ? "weld" : "finish";
-    const from = prompt(`${deptLabel(stage)} stopped FROM which day? (YYYY-MM-DD)`);
-    if (!from?.trim()) return;
-    const to = prompt(`…until which day (inclusive)? (YYYY-MM-DD)`, from.trim());
-    if (!to?.trim()) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(from.trim()) || !/^\d{4}-\d{2}-\d{2}$/.test(to.trim()) || to.trim() < from.trim()) {
-      return alert("Use YYYY-MM-DD dates, with the end not before the start.");
+    const v = await ask({
+      title: `${deptLabel(stage)} stoppage`,
+      body: "Maintenance or a breakdown: nothing runs through this station on these days.",
+      fields: [
+        { name: "from", label: "From", type: "date", required: true, defaultValue: inputs.todayISO },
+        { name: "to", label: "Until (inclusive)", type: "date", required: true, defaultValue: inputs.todayISO },
+      ],
+      confirmLabel: "Add stoppage",
+    });
+    if (!v) return;
+    const { from, to } = v;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) {
+      return setActionMsg("The stoppage's end is before its start — nothing added.");
     }
-    setScenario((sc) => ({ ...sc, downtimes: [...sc.downtimes, { stage: es, fromISO: from.trim(), toISO: to.trim() }] }));
+    setScenario((sc) => ({ ...sc, downtimes: [...sc.downtimes, { stage: es, fromISO: from, toISO: to }] }));
   };
 
   const removeDowntime = (i: number) =>
@@ -366,46 +407,74 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
     });
   };
 
-  const saveCurrent = () => {
-    const name = prompt("Scenario name:", describeScenario(scenario, inputs).slice(0, 40));
-    if (!name?.trim()) return;
+  const saveCurrent = async () => {
+    const v = await ask({
+      title: "Save this scenario",
+      body: describeScenario(scenario, inputs),
+      fields: [{ name: "name", label: "Name", type: "text", required: true, defaultValue: describeScenario(scenario, inputs).slice(0, 40) }],
+      confirmLabel: "Save",
+    });
+    const name = v?.name;
+    if (!name) return;
     const fd = new FormData();
-    fd.set("name", name.trim());
+    fd.set("name", name);
     fd.set("data", JSON.stringify(scenario));
-    runAction(() => saveScenario(fd), `saved "${name.trim()}"`);
+    runAction(() => saveScenario(fd), `saved "${name}"`);
   };
 
-  const deleteSaved = () => {
-    const name = prompt(`Delete which scenario?\n${savedScenarios.map((s) => `· ${s.name}`).join("\n")}`);
-    if (!name?.trim()) return;
+  const deleteSaved = async () => {
+    const v = await ask({
+      title: "Delete a saved scenario",
+      fields: [{ name: "name", label: "Scenario", type: "select", required: true, options: savedScenarios.map((x) => ({ value: x.name, label: x.savedBy ? `${x.name} — ${x.savedBy}` : x.name })) }],
+      confirmLabel: "Delete scenario",
+      danger: true,
+    });
+    const name = v?.name;
+    if (!name) return;
     const fd = new FormData();
-    fd.set("name", name.trim());
-    runAction(() => deleteScenario(fd), `deleted "${name.trim()}"`);
+    fd.set("name", name);
+    runAction(() => deleteScenario(fd), `deleted "${name}"`);
   };
 
   // commit the CURRENT queue (as simulated) as the factory's run order
-  const applyCurrent = () => {
-    const entries = result.jobs
-      .filter((j) => !j.done)
-      .map((j) => ({ mo: j.mo, item: j.item, batchQty: j.batch !== null ? j.qty : null, batchNo: j.batch }));
+  const applyCurrent = async () => {
+    const open = result.jobs.filter((j) => !j.done);
+    const entries = open.map((j) => ({ mo: j.mo, item: j.item, batchQty: j.batch !== null ? j.qty : null, batchNo: j.batch }));
     if (entries.length === 0) return setActionMsg("Nothing open to commit.");
-    if (!confirm(`Commit this sequence of ${entries.length} jobs as THE run order? Every department worklist will show its slice of it, replacing any previous run order.`)) return;
+    const ok = await confirmIt({
+      title: `Make this the run order — ${entries.length} jobs?`,
+      body: <>Every department worklist will show its slice of this sequence, replacing {appliedRunOrder ? "the run order that is live now" : "the plain due-date order"}. In order:</>,
+      items: open.map((j, i) => `${i + 1}. ${j.bom} ${j.item} ×${j.qty}${j.batch !== null ? ` (batch ${j.batch})` : ""} — ${j.mo}`),
+      confirmLabel: `Apply ${entries.length} jobs`,
+    });
+    if (!ok) return;
     const fd = new FormData();
     fd.set("entries", JSON.stringify(entries));
     runAction(() => applyRunOrder(fd), "run order is live on the worklists");
   };
 
-  const clearApplied = () => {
-    if (!confirm("Remove the run order from all worklists?")) return;
+  const clearApplied = async () => {
+    const ok = await confirmIt({
+      title: "Remove the run order?",
+      body: <>Every worklist goes back to its plain due-date order. The run order set {appliedRunOrder ? formatDateTime(appliedRunOrder.atISO) : ""}{appliedRunOrder?.by ? ` by ${appliedRunOrder.by}` : ""} is dropped.</>,
+      confirmLabel: "Remove run order",
+      danger: true,
+    });
+    if (!ok) return;
     runAction(() => clearRunOrder(), "run order cleared");
   };
 
   // split an unsplit job: the FIRST batch takes the most-advanced pieces
-  const splitJob = (row: ResultJob) => {
-    const raw = prompt(`Rush how many of ${row.bom} ${row.item}'s ${row.qty} pcs ahead? (1–${row.qty - 1})`);
-    if (raw === null) return;
-    const q = Math.floor(Number(raw));
-    if (!Number.isFinite(q) || q < 1 || q >= row.qty) return alert(`Enter a number between 1 and ${row.qty - 1}.`);
+  const splitJob = async (row: ResultJob) => {
+    const v = await ask({
+      title: `Split ${row.bom} ${row.item} ×${row.qty}`,
+      body: "Rush part of the quantity ahead; the rushed batch takes the pieces closest to done.",
+      fields: [{ name: "q", label: `Pieces to rush (1–${row.qty - 1})`, type: "number", required: true, min: "1", max: String(row.qty - 1), step: "1" }],
+      confirmLabel: "Split",
+    });
+    if (!v) return;
+    const q = Math.floor(Number(v.q));
+    if (!Number.isFinite(q) || q < 1 || q >= row.qty) return;
     setScenario((sc) => {
       const queue = [...sc.queue];
       const at = queue.indexOf(row.id);
@@ -504,8 +573,10 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
         </div>
       )}
 
+      {askDialog}
+      {confirmDialog}
       {/* ================= KPI strip ================= */}
-      <div className="flex flex-wrap gap-3">
+      <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">
         <Kpi
           label="Orders on time"
           value={`${k.onTime} / ${k.active}`}
@@ -524,7 +595,7 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
               {(() => {
                 const early = kpisOf(fast).lastEta;
                 const late = kpisOf(slow).lastEta;
-                return early && late && early !== late ? <> · likely {ddShort(early)}–{ddShort(late)}</> : null;
+                return early && late && early !== late ? <> · likely {ddShort(early)} – {ddShort(late)}</> : null;
               })()}
             </>
           }
@@ -545,198 +616,161 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
         />
       </div>
 
-      {/* ================= control panel ================= */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-        {WI_STAGES.map((s) => {
-          const delta = scenario.workersDelta[s];
-          const base = inputs.capacity[s];
-          const now = base !== undefined ? Math.max(0, base + delta * scenario.shiftHours) : undefined;
-          return (
-            <div key={s} className="bg-surface border rounded-xl overflow-hidden">
-              <div className="h-1" style={{ background: STAGE_COLOR[s === "ShotBlast" ? "Painting" : s] }} />
-              <div className="px-3.5 py-2.5">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-sm font-bold">{deptLabel(s)}</span>
-                  <span className="text-[10px] text-muted tabnum">
-                    {base === undefined ? "no capacity set" : delta === 0 ? `${fmt(base)} h/day` : <><s className="opacity-60">{fmt(base)}</s> <b style={{ color: delta > 0 ? "var(--ok-fg)" : "var(--bad-fg)" }}>{fmt(now!)}</b> h/day</>}
-                  </span>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted">
-                    Workers
-                    <button onClick={() => addDowntime(s)} className="ml-1.5 opacity-60 hover:opacity-100" title="declare a stoppage (maintenance) at this station">🔧</button>
-                  </span>
-                  <span className="inline-flex items-center border rounded-lg overflow-hidden">
-                    <button onClick={() => bumpWorkers(s, -1)} className="px-3 py-1 text-sm font-bold hover:bg-surface-2 active:bg-surface-2" title="one worker fewer">−</button>
-                    <span className={`px-1.5 py-1 text-sm font-extrabold tabnum min-w-10 text-center ${delta > 0 ? "text-ok-fg" : delta < 0 ? "text-bad-fg" : "text-muted"}`}>
-                      {delta > 0 ? `+${delta}` : delta}
-                    </span>
-                    <button onClick={() => bumpWorkers(s, +1)} className="px-3 py-1 text-sm font-bold hover:bg-surface-2 active:bg-surface-2" title="one worker more">+</button>
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {/* the settings & actions card */}
-        <div className="bg-surface border rounded-xl overflow-hidden">
-          <div className="h-1 bg-brand" />
-          <div className="px-3.5 py-2.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-muted">Hours / worker / day</span>
-              <input
-                type="number" min={1} max={24} step="0.5"
-                value={scenario.shiftHours}
-                onChange={(e) => setScenario((sc) => ({ ...sc, shiftHours: Math.max(1, Number(e.target.value) || 1) }))}
-                className="w-16 border rounded-md px-2 py-0.5 text-center tabnum bg-surface text-sm"
-              />
-            </div>
-            <label className="flex items-center justify-between cursor-pointer">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-muted">Work Fridays</span>
-              <input
-                type="checkbox"
-                checked={scenario.workFridays}
-                onChange={(e) => setScenario((sc) => ({ ...sc, workFridays: e.target.checked }))}
-                className="accent-[var(--brand)] w-4 h-4"
-              />
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                onClick={runOptimizer}
-                className="btn btn-primary btn-sm"
-                title="reorder the queue to rescue as many due dates as this scenario's speed allows"
-              >
-                ⚡ Optimize queue
-              </button>
-              <button
-                onClick={() => setPinned(scenario)}
-                className="btn btn-secondary btn-sm"
-                title="freeze the current scenario as A and compare everything you try next against it"
-              >
-                📌 Pin as A
-              </button>
-              <button
-                onClick={() => setScenario(defaultScenario(inputs))}
-                disabled={!touched}
-                className="btn btn-secondary btn-sm col-span-2 disabled:opacity-40"
-              >
-                ↺ Reset to reality
-              </button>
-            </div>
-          </div>
+      {/* ================= the knobs: the scenario's settings, then capacity per station ================= */}
+      <section className="bg-surface border rounded-[10px] overflow-hidden">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 border-b">
+          <h2 className="!mb-0">Scenario</h2>
+          <span className="text-xs text-muted min-w-0 truncate">{describeScenario(scenario, inputs)}</span>
+          <span className="ms-auto flex flex-wrap items-center gap-2">
+            <button type="button" onClick={runOptimizer} className="btn btn-primary btn-sm" title="reorder the queue to rescue as many due dates as this scenario's speed allows">
+              <Zap size={14} aria-hidden />Optimize queue
+            </button>
+            <button type="button" onClick={() => setPinned(scenario)} className="btn btn-secondary btn-sm" title="freeze the current scenario as A and compare everything you try next against it">
+              <Pin size={14} aria-hidden />Pin as A
+            </button>
+            <button type="button" onClick={() => setScenario(defaultScenario(inputs))} disabled={!touched} className="btn btn-ghost btn-sm disabled:opacity-40">
+              <RotateCcw size={14} aria-hidden />Reset to reality
+            </button>
+          </span>
         </div>
-        {/* scenarios & commit card */}
-        <div className="bg-surface border rounded-xl overflow-hidden">
-          <div className="h-1" style={{ background: "var(--accent)" }} />
-          <div className="px-3.5 py-2.5 space-y-2">
-            <div className="flex items-center gap-1.5">
-              <select
-                value=""
-                onChange={(e) => {
-                  const s = savedScenarios.find((x) => x.name === e.target.value);
-                  if (s) setScenario(sanitize(s.data));
-                }}
-                className="flex-1 min-w-0 border rounded-md px-2 py-1 text-sm bg-surface"
-                disabled={pending}
-              >
-                <option value="">{savedScenarios.length ? "Load a saved scenario…" : "No saved scenarios yet"}</option>
-                {savedScenarios.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
-              </select>
-              <button onClick={saveCurrent} disabled={pending} className="btn btn-secondary btn-sm" title="save the current scenario under a name">💾</button>
-              {savedScenarios.length > 0 && (
-                <button onClick={deleteSaved} disabled={pending} className="btn btn-ghost btn-sm" title="delete a saved scenario">🗑</button>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 border-b bg-surface-2">
+          <label className="inline-flex items-center gap-2">
+            <span className="filter-label">Hours / worker / day</span>
+            <input
+              type="number" min={1} max={24} step="0.5"
+              value={scenario.shiftHours}
+              onChange={(e) => setScenario((sc) => ({ ...sc, shiftHours: Math.max(1, Number(e.target.value) || 1) }))}
+              className="ctl w-16 text-center tabnum"
+            />
+          </label>
+          <button
+            type="button" className="chip-toggle" aria-pressed={scenario.workFridays}
+            onClick={() => setScenario((sc) => ({ ...sc, workFridays: !sc.workFridays }))}
+          >
+            Work Fridays
+          </button>
+          <span className="toolbar-sep" aria-hidden />
+          <span className="inline-flex items-center gap-1.5">
+            <select
+              value=""
+              onChange={(e) => {
+                const sv = savedScenarios.find((x) => x.name === e.target.value);
+                if (sv) setScenario(sanitize(sv.data));
+              }}
+              className="ctl w-56"
+              disabled={pending || savedScenarios.length === 0}
+              aria-label="Load a saved scenario"
+            >
+              <option value="">{savedScenarios.length ? "Load a saved scenario…" : "No saved scenarios yet"}</option>
+              {savedScenarios.map((sv) => <option key={sv.name} value={sv.name}>{sv.name}</option>)}
+            </select>
+            <button type="button" onClick={saveCurrent} disabled={pending} className="icon-btn" aria-label="Save this scenario" title="save the current scenario under a name"><Save size={15} /></button>
+            {savedScenarios.length > 0 && (
+              <button type="button" onClick={deleteSaved} disabled={pending} className="icon-btn icon-btn-danger" aria-label="Delete a saved scenario" title="delete a saved scenario"><Trash2 size={15} /></button>
+            )}
+          </span>
+          {isAdmin && (
+            <button
+              type="button" onClick={applyCurrent} disabled={pending} className="btn btn-primary btn-sm"
+              title="commit this queue as THE run order — every department worklist will show its slice of it"
+            >
+              <Check size={14} aria-hidden />Apply as the run order
+            </button>
+          )}
+          {appliedRunOrder && (
+            <span className="text-xs text-muted">
+              Run order live since {formatDateTime(appliedRunOrder.atISO)}{appliedRunOrder.by ? ` · ${appliedRunOrder.by}` : ""}
+              {isAdmin && (
+                <button type="button" onClick={clearApplied} disabled={pending} className="text-bad-fg font-semibold hover:underline ms-1.5">Remove</button>
               )}
-            </div>
-            {isAdmin && (
-              <button
-                onClick={applyCurrent}
-                disabled={pending}
-                className="btn btn-primary btn-sm w-full"
-                title="commit this queue as THE run order — every department worklist will show its slice of it"
-              >
-                ✅ Apply as the run order
-              </button>
-            )}
-            {appliedRunOrder && (
-              <p className="text-[10px] text-muted leading-snug">
-                🎯 A run order is live on the worklists (set {formatDateTime(appliedRunOrder.atISO)}
-                {appliedRunOrder.by ? ` by ${appliedRunOrder.by}` : ""}).
-                {isAdmin && (
-                  <button onClick={clearApplied} disabled={pending} className="text-bad-fg font-semibold hover:underline ml-1">Clear it</button>
-                )}
-              </p>
-            )}
-            {actionMsg && <p className={`text-[11px] font-semibold ${actionMsg.startsWith("✓") ? "text-ok-fg" : "text-bad-fg"}`}>{actionMsg}</p>}
-          </div>
-        </div>
-      </div>
-
-      {/* ================= stoppage chips ================= */}
-      {scenario.downtimes.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-muted">🔧 Stoppages</span>
-          {scenario.downtimes.map((dwn, i) => (
-            <span key={i} className="pill pill-warn tabnum">
-              {SEG_LABEL[dwn.stage]} {ddShort(dwn.fromISO)}{dwn.toISO !== dwn.fromISO && `–${ddShort(dwn.toISO)}`}
-              <button onClick={() => removeDowntime(i)} className="ml-1 font-bold hover:opacity-70" title="remove">✕</button>
             </span>
-          ))}
+          )}
+          {actionMsg && <span className={`text-xs font-semibold ${actionMsg.startsWith("✓") ? "text-ok-fg" : "text-bad-fg"}`} role="status">{actionMsg}</span>}
+          {inputs.plan && (
+            <span className="text-xs text-muted ms-auto">
+              Weekly plan {inputs.plan.planNo} · <b className="text-foreground tabnum">{result.planWorkingDays}</b> working day{result.planWorkingDays === 1 ? "" : "s"} under this scenario
+            </span>
+          )}
         </div>
-      )}
-
-      {/* ================= weekly plan load ================= */}
-      {inputs.plan && (
-        <div className="bg-surface border rounded-xl px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-muted">
-            Weekly plan {inputs.plan.planNo}
-            <span className="block normal-case font-normal text-[10px]">{result.planWorkingDays} working day{result.planWorkingDays === 1 ? "" : "s"} under this scenario</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-px bg-[var(--border)]">
+            {WI_STAGES.map((st) => {
+              const delta = scenario.workersDelta[st];
+              const base = inputs.capacity[st];
+              const now = base !== undefined ? Math.max(0, base + delta * scenario.shiftHours) : undefined;
+              const load = result.stages.find((x) => x.dept === st);
+              const tone = load ? loadTone(load.load) : null;
+              const changed = load && load.available !== load.baselineAvailable;
+              return (
+                <div key={st} className="bg-surface px-4 py-3 space-y-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: STAGE_COLOR[st === "ShotBlast" ? "Painting" : st] }} aria-hidden />
+                    <span className="font-bold truncate">{deptLabel(st)}</span>
+                    <span className="ms-auto text-xs text-muted tabnum whitespace-nowrap">
+                      {base === undefined ? "no capacity set" : delta === 0 ? `${fmt(base)} h/day` : <><s className="opacity-60">{fmt(base)}</s> <b style={{ color: delta > 0 ? "var(--ok-fg)" : "var(--bad-fg)" }}>{fmt(now!)}</b> h/day</>}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="filter-label">Workers</span>
+                    <span className="inline-flex items-center border border-[var(--border-strong)] rounded-md overflow-hidden h-[30px]">
+                      <button type="button" onClick={() => bumpWorkers(st, -1)} className="w-8 h-full grid place-items-center hover:bg-surface-2" aria-label={`One ${deptLabel(st)} worker fewer`} title="one worker fewer"><Minus size={14} /></button>
+                      <span className={`min-w-10 px-1 text-center font-extrabold tabnum ${delta > 0 ? "text-ok-fg" : delta < 0 ? "text-bad-fg" : "text-muted"}`} aria-live="polite">
+                        {delta > 0 ? `+${delta}` : delta}
+                      </span>
+                      <button type="button" onClick={() => bumpWorkers(st, +1)} className="w-8 h-full grid place-items-center hover:bg-surface-2" aria-label={`One ${deptLabel(st)} worker more`} title="one worker more"><Plus size={14} /></button>
+                    </span>
+                    <button type="button" onClick={() => addDowntime(st)} className="btn btn-sm btn-ghost ms-auto" title="Declare a stoppage (maintenance) at this station">
+                      <Wrench size={13} aria-hidden />Stoppage
+                    </button>
+                  </div>
+                  {load && load.required > 0 && (
+                    <div
+                      className="flex items-center gap-2 text-xs"
+                      title={`${deptLabel(st)}: the weekly plan needs ${fmt(load.required)} std hours; this scenario offers ${load.available === null ? "no figure" : fmt(load.available) + " hours"} over its window`}
+                    >
+                      <span className="text-muted">Plan</span>
+                      <span className="tabnum"><b>{fmt(load.required)}</b> / {load.available === null ? "—" : fmt(load.available)} h</span>
+                      {changed && load.baselineAvailable !== null && <span className="text-muted tabnum">(was {fmt(load.baselineAvailable)})</span>}
+                      {tone && <span className="pill tabnum ms-auto" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          {result.stages.map((s) => {
-            const tone = loadTone(s.load);
-            const changed = s.available !== s.baselineAvailable;
-            return (
-              <div key={s.dept} className="flex items-center gap-1.5" title={`${deptLabel(s.dept)}: the plan needs ${fmt(s.required)} std hours; this scenario offers ${s.available === null ? "no figure" : fmt(s.available) + " hours"} over the window`}>
-                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: STAGE_COLOR[s.dept === "ShotBlast" ? "Painting" : s.dept] }} />
-                <span className="text-sm font-semibold text-muted">{deptLabel(s.dept)}</span>
-                <span className="text-sm font-extrabold tabnum">{fmt(s.required)}</span>
-                <span className="text-[10px] text-muted tabnum">/ {s.available === null ? "—" : fmt(s.available)} h{changed && s.baselineAvailable !== null && <> (was {fmt(s.baselineAvailable)})</>}</span>
-                <span className="pill tabnum" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+          {/* stoppages declared in this scenario */}
+          {scenario.downtimes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-t text-xs">
+              <span className="filter-label">Stoppages</span>
+              {scenario.downtimes.map((dwn, i) => (
+                <span key={i} className="pill pill-warn tabnum !h-6 gap-1.5">
+                  <Wrench size={12} aria-hidden />
+                  <span>{SEG_LABEL[dwn.stage]} · {ddShort(dwn.fromISO)}{dwn.toISO !== dwn.fromISO && ` – ${ddShort(dwn.toISO)}`}</span>
+                  <button type="button" onClick={() => removeDowntime(i)} className="font-bold hover:opacity-70 ms-0.5" aria-label={`Remove the ${SEG_LABEL[dwn.stage]} stoppage`} title="remove">✕</button>
+                </span>
+              ))}
+            </div>
+          )}
+      </section>
 
       {/* ================= view filters ================= */}
-      <div className="bg-surface border rounded-xl px-3.5 py-2 flex flex-wrap items-center gap-x-3 gap-y-2 no-print">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-muted">Filter view</span>
-        <input
-          value={fq}
-          onChange={(e) => setFq(e.target.value)}
-          placeholder="Search code…"
-          className="w-36 border rounded-md px-2.5 py-1.5 text-sm bg-surface"
+      <div className="toolbar toolbar-row no-print !mb-0">
+        <SearchBox value={fq} onChange={setFq} placeholder="Search code…" />
+        <FilterSelect label="Item" value={fItem} onChange={setFItem} options={[...new Set(inputs.jobs.map((j) => j.item))].map((it) => ({ value: it, label: it }))} />
+        <FilterSelect
+          label="Station" title="show jobs that still have work at this station" value={fStage} onChange={setFStage}
+          options={Object.entries(SEG_LABEL).map(([key, label]) => ({ value: key, label: `needs ${label}` }))}
         />
-        <select value={fItem} onChange={(e) => setFItem(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm bg-surface">
-          <option value="">All items</option>
-          {[...new Set(inputs.jobs.map((j) => j.item))].map((it) => <option key={it} value={it}>{it}</option>)}
-        </select>
-        <select value={fStage} onChange={(e) => setFStage(e.target.value)} className="border rounded-md px-2 py-1.5 text-sm bg-surface" title="show jobs that still have work at this station">
-          <option value="">All stations</option>
-          {Object.entries(SEG_LABEL).map(([k, label]) => <option key={k} value={k}>needs {label}</option>)}
-        </select>
-        <button
-          onClick={() => setFLate((v) => !v)}
-          className={`btn btn-sm ${fLate ? "btn-primary" : "btn-secondary"}`}
-          title="only jobs forecast to miss their due date"
-        >
+        <button type="button" onClick={() => setFLate((v) => !v)} className="chip-toggle" aria-pressed={fLate} title="only jobs forecast to miss their due date">
           ⚠ Late only
         </button>
-        <span className="text-xs text-muted tabnum">{shownJobs.length} of {result.jobs.length} jobs</span>
         {filterActive && (
-          <button onClick={resetFilters} className="btn btn-ghost btn-sm">✕ Clear</button>
+          <button type="button" onClick={resetFilters} className="btn btn-sm btn-ghost text-bad-fg"><FilterX size={13} aria-hidden />Reset filters</button>
         )}
-        <span className="text-[10px] text-muted ml-auto">
-          filters change what&apos;s SHOWN — every job still holds its place in the queue, so the dates stay honest
+        <span className="ms-auto inline-flex items-center gap-2 text-xs text-muted tabnum">
+          <span><b className="text-foreground">{shownJobs.length}</b> of {result.jobs.length} jobs</span>
+          <Tooltip content="Filters change what is SHOWN — every job still holds its place in the queue, so the dates stay honest.">
+            <span className="dt-hint cursor-help" tabIndex={0} aria-label="About the filters">?</span>
+          </Tooltip>
         </span>
       </div>
       {dueDays.length > 0 && (
@@ -751,48 +785,49 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
       <Timeline result={result} baseline={baseline} inputs={inputs} workFridays={scenario.workFridays} shownIds={shownIds} blackouts={blackouts} />
 
       {/* ================= queue ================= */}
-      <div className="bg-surface border rounded-xl overflow-x-auto">
-        <div className="flex items-center gap-3 px-4 pt-2.5 pb-1.5">
-          <h2 className="text-sm">Queue — one row per component job</h2>
-          <span className="text-[10px] text-muted">drag to reorder · ✂ rushes part of a quantity ahead</span>
-          <label className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer no-print">
-            <input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} className="accent-[var(--brand)]" />
-            Group by order
-          </label>
+      <section className="bg-surface border rounded-[10px] overflow-hidden">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pt-3 pb-2 border-b">
+          <h2 className="!mb-0">Queue</h2>
+          <span className="text-xs text-muted">one row per component job · drag (or ↑ ↓) to reorder · split rushes part of a quantity ahead</span>
+          <button type="button" className="chip-toggle ms-auto no-print" aria-pressed={grouped} onClick={() => setGrouped((v) => !v)}>Group by order</button>
         </div>
+        {result.jobs.length === 0 ? (
+          <TableEmpty title="No open jobs to simulate" hint="Every planned job is done, or nothing is planned yet." />
+        ) : shownJobs.length === 0 ? (
+          <TableEmpty
+            title="No jobs match the filters"
+            action={<button type="button" className="btn btn-sm btn-secondary" onClick={resetFilters}><FilterX size={13} aria-hidden />Reset filters</button>}
+            filtered
+          />
+        ) : (
+        <TableFrame>
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-center">
-              <th className="p-2 w-24 text-left">Queue</th>
-              <th className="p-2 text-left">BOM</th>
-              <th className="p-2 text-left">Job</th>
-              <th className="p-2">Due</th>
-              <th className="p-2">ETA now</th>
-              {pinned && <th className="p-2">ETA A 📌</th>}
-              <th className="p-2">ETA if…</th>
-              <th className="p-2">Shift</th>
-              <th className="p-2 w-16 no-print"></th>
+            <tr>
+              <Th label="Queue" className="w-28" />
+              <Th label="BOM" />
+              <Th label="Job" hint="The component and its quantity; hover for the MO" />
+              <Th label="Due" center />
+              <Th label="ETA now" hint="Today's reality, no knobs turned" center />
+              {pinned && <Th label="ETA A 📌" full="ETA under pinned scenario A" center />}
+              <Th label="ETA if…" hint="Under the scenario on screen" center />
+              <Th label="Shift" hint="How far the scenario moves this job's ETA" center />
+              <th className="p-2 no-print"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
-            {result.jobs.length === 0 && (
-              <tr><td colSpan={pinned ? 9 : 8} className="p-4 text-center text-muted">No open jobs to simulate.</td></tr>
-            )}
-            {result.jobs.length > 0 && shownJobs.length === 0 && (
-              <tr><td colSpan={pinned ? 9 : 8} className="p-4 text-center text-muted">No jobs match the filters.</td></tr>
-            )}
             {tableRows.map((row) => {
               if ("moHeader" in row) {
                 const worstIso = row.jobs.reduce<string | null>((m, j) => (j.etaISO && (!m || j.etaISO > m) ? j.etaISO : m), null);
                 const anyLate = row.jobs.some((j) => j.late);
                 return (
                   <Fragment key={`g-${row.moHeader}`}>
-                    <tr className="bg-surface-2/60">
+                    <tr className="bg-surface-2">
                       <td colSpan={pinned ? 9 : 8} className="px-3 py-1.5 text-xs">
                         <b title={row.moHeader}>{row.bom}</b>
-                        <span className="ml-3 text-muted">order clears</span>{" "}
+                        <span className="ms-3 text-muted">order clears</span>{" "}
                         <b className="tabnum" style={{ color: anyLate ? "var(--bad-fg)" : undefined }}>{anyLate && "⚠ "}{dd(worstIso)}</b>
-                        <span className="ml-3 text-[10px] text-muted">({row.jobs.length} jobs — switch off grouping to reorder)</span>
+                        <span className="ms-3 text-muted">({row.jobs.length} jobs — switch off grouping to reorder)</span>
                       </td>
                     </tr>
                     {row.jobs.map((j) => jobRow(j, -1))}
@@ -803,7 +838,9 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
             })}
           </tbody>
         </table>
-      </div>
+        </TableFrame>
+        )}
+      </section>
 
       <p className="text-[11px] text-muted">
         A sandbox — nothing here is saved or promised. Rates come from what the plant actually produced over the last {inputs.rateWindowDays} working
@@ -835,21 +872,22 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
         className={`${queueIndex % 2 ? "bg-zebra" : ""} ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
         style={dragOver === o.id ? { boxShadow: "inset 0 2px 0 var(--brand)" } : undefined}
       >
-        <td className="p-1.5 whitespace-nowrap">
+        <td className="px-2 whitespace-nowrap">
           {draggable ? (
-            <>
-              <span className="text-muted select-none mr-1" title="drag to reorder">⠿</span>
-              <button onClick={() => moveJob(o.id, -1)} disabled={queueIndex === 0} className="px-1 text-accent font-bold disabled:opacity-20" title="work it sooner">↑</button>
-              <span className="tabnum text-xs text-muted">{queueIndex + 1}</span>
-              <button onClick={() => moveJob(o.id, +1)} disabled={queueIndex === result.jobs.length - 1} className="px-1 text-accent font-bold disabled:opacity-20" title="work it later">↓</button>
-            </>
+            <span className="inline-flex items-center gap-0.5">
+              <span className="text-muted select-none me-1" title="drag to reorder" aria-hidden>⠿</span>
+              <button type="button" onClick={() => moveJob(o.id, -1)} disabled={queueIndex === 0} className="icon-btn !w-6 !h-6" aria-label={`Work ${o.bom} ${o.item} sooner`} title="work it sooner">↑</button>
+              <span className="tabnum text-xs text-muted w-7 text-center">{queueIndex + 1}</span>
+              <button type="button" onClick={() => moveJob(o.id, +1)} disabled={queueIndex === result.jobs.length - 1} className="icon-btn !w-6 !h-6" aria-label={`Work ${o.bom} ${o.item} later`} title="work it later">↓</button>
+            </span>
           ) : (
-            <span className="pl-4 text-[10px] text-muted tabnum">#{result.jobs.findIndex((x) => x.id === o.id) + 1}</span>
+            <span className="ps-4 text-xs text-muted tabnum">#{result.jobs.findIndex((x) => x.id === o.id) + 1}</span>
           )}
         </td>
         <td className="p-2 font-bold whitespace-nowrap">{o.bom}</td>
         <td className="p-2 whitespace-nowrap" title={o.mo}>
-          <b style={{ color: "var(--accent)" }}>{o.item}</b>
+          <span className="inline-block w-1 h-3.5 rounded-sm align-middle me-1.5" style={{ background: itemTint(o.item) }} aria-hidden />
+          <b>{o.item}</b>
           <span className="tabnum text-xs"> ×{o.qty}</span>
           {o.batch !== null && <span className="pill pill-muted ml-1 tabnum" title="batch of a split quantity">b{o.batch}</span>}
         </td>
@@ -889,22 +927,24 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
             </span>
           )}
         </td>
-        <td className="p-1.5 text-center no-print whitespace-nowrap">
+        <td className="px-2 text-end no-print whitespace-nowrap">
+          <span className="inline-flex items-center gap-1">
           {!o.done && o.batch === null && o.qty > 1 && (
-            <button onClick={() => splitJob(o)} className="text-accent text-xs font-semibold px-1 hover:underline" title="rush part of this quantity ahead">✂ split</button>
+            <button type="button" onClick={() => splitJob(o)} className="btn btn-sm btn-ghost" title="rush part of this quantity ahead">✂ Split</button>
           )}
           {o.batch !== null && (
-            <button onClick={() => unsplitJob(o.baseId)} className="text-muted text-xs font-semibold px-1 hover:underline" title="merge the batches back into one job">merge</button>
+            <button type="button" onClick={() => unsplitJob(o.baseId)} className="btn btn-sm btn-ghost" title="merge the batches back into one job">Merge</button>
           )}
           {!o.done && (
             scenario.holds[o.baseId] ? (
-              <button onClick={() => setHold(o)} className="pill pill-warn tabnum ml-0.5" title="material hold — click to change or remove">
+              <button type="button" onClick={() => setHold(o)} className="pill pill-warn tabnum" title="material hold — click to change or remove">
                 ⏳ {ddShort(scenario.holds[o.baseId])}
               </button>
             ) : (
-              <button onClick={() => setHold(o)} className="text-muted text-xs px-1 hover:underline opacity-60 hover:opacity-100" title="waiting for material/parts? set the day it arrives">⏳</button>
+              <button type="button" onClick={() => setHold(o)} className="btn btn-sm btn-ghost text-muted" title="waiting for material/parts? set the day it arrives">⏳ Hold</button>
             )
           )}
+          </span>
         </td>
       </tr>
     );
