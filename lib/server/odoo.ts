@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/db";
 import { getActiveLine } from "./line";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
-import { blockedItem, bomOfFgCode, isDoneStatus, parseOdooSheet, statusTone, type OdooEntryView, type OdooScope } from "@/lib/domain/odoo";
+import { blockedItem, bomOfFgCode, isDoneStatus, odooRowBom, parseOdooSheet, statusTone, type OdooEntryView, type OdooScope } from "@/lib/domain/odoo";
 import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod } from "@/lib/domain/odooStats";
 import { buildOdooInsights, type OdooInsightRow, type OdooInsights } from "@/lib/domain/odooInsights";
 import { candidateBoms, candidateMos, moKey, nestingKey, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
@@ -70,9 +70,10 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
   // panel row's material sits under
   const ledgerIds = rows.map((r) => r.ledgerId).filter((id): id is number => id !== null);
   const ledgers = ledgerIds.length
-    ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true } })
+    ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true, bom: true } })
     : [];
   const moOfLedger = new Map(ledgers.map((l) => [l.id, (l.mo ?? "").trim().toUpperCase() || null]));
+  const bomOfLedger = new Map(ledgers.map((l) => [l.id, l.bom]));
 
   const entries: OdooEntryView[] = rows.map((r) => ({
     mo: r.ledgerId !== null ? (moOfLedger.get(r.ledgerId) ?? null) : null,
@@ -91,6 +92,7 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
     recordedBy: r.recordedBy,
     source: r.source,
     fgGuessed: r.fgGuessed,
+    bom: odooRowBom(r.fgCode, r.ledgerId !== null ? bomOfLedger.get(r.ledgerId) : null, soiBoms[(r.soi ?? "").trim().toUpperCase()] ?? []),
     notes: r.notes.map((n) => ({ id: n.id, text: n.text, atISO: n.at.toISOString(), by: n.recordedBy, blockedItem: blockedItem(n.text) })),
   }));
 
@@ -138,7 +140,7 @@ export async function getOdooRowMaterial(id: number): Promise<{ entry: OdooEntry
   if (!r) return null;
   const soi = (r.soi ?? "").trim().toUpperCase();
   const [ledger, orders] = await Promise.all([
-    r.ledgerId !== null ? prisma.handoverEntry.findUnique({ where: { id: r.ledgerId }, select: { mo: true } }) : Promise.resolve(null),
+    r.ledgerId !== null ? prisma.handoverEntry.findUnique({ where: { id: r.ledgerId }, select: { mo: true, bom: true } }) : Promise.resolve(null),
     soi ? prisma.masterOrder.findMany({ where: { line: r.line, soi: { equals: soi, mode: "insensitive" } }, select: { bom: true, mo: true } }) : Promise.resolve([]),
   ]);
   const soiBoms: Record<string, string[]> = soi ? { [soi]: [...new Set(orders.map((o) => o.bom.trim().toUpperCase()).filter(Boolean))] } : {};
@@ -160,6 +162,7 @@ export async function getOdooRowMaterial(id: number): Promise<{ entry: OdooEntry
     recordedBy: r.recordedBy,
     source: r.source,
     fgGuessed: r.fgGuessed,
+    bom: odooRowBom(r.fgCode, ledger?.bom, soiBoms[soi] ?? []),
     notes: r.notes.map((n) => ({ id: n.id, text: n.text, atISO: n.at.toISOString(), by: n.recordedBy, blockedItem: blockedItem(n.text) })),
   };
   return { entry, nesting: await nestingOf([entry], r.line, soiBoms, soiMos), needCtx: { lv: r.line === "LV", soiBoms, soiMos } };

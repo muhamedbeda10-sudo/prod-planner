@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groupOdooEntries, odooSameKey, bomOfFgCode, blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView, odooItemTotals, odooScopeKey, odooScopeLabel, parseOdooScope, singleDayOf } from "./odoo";
+import { groupOdooEntries, odooSameKey, bomOfFgCode, odooRowBom, blockedItem, EMPTY_ODOO_FILTERS, filterOdooEntries, isDoneStatus, parseOdooDate, parseOdooSheet, statusTone, type OdooEntryView, odooItemTotals, odooScopeKey, odooScopeLabel, parseOdooScope, singleDayOf } from "./odoo";
 
 const HEADER = ["Date", "SOI#", "FG-CODE", "Product", "MO#", "QTY", "Status", "Reason"];
 
@@ -108,7 +108,7 @@ describe("status and notes helpers", () => {
 describe("filterOdooEntries", () => {
   const row = (over: Partial<OdooEntryView>): OdooEntryView => ({
     id: 1, dateISO: "2026-09-06", soi: "S01035-1", fgCode: "FB-022-14003E11M11", product: "Tank", odooMo: "SF01/MO/06234",
-    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, recordedBy: null, source: "manual", fgGuessed: false, mo: null, line: "TR", notes: [], ...over,
+    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, recordedBy: null, source: "manual", fgGuessed: false, mo: null, line: "TR", bom: { boms: [], via: null }, notes: [], ...over,
   });
   const rows = [
     row({ id: 1 }),
@@ -144,7 +144,7 @@ describe("filterOdooEntries — the day's own counts as filters", () => {
   const row = (over: Partial<OdooEntryView>): OdooEntryView => ({
     id: 1, dateISO: "2026-09-06", soi: "S1", fgCode: "FB-022-X", product: "Tank", odooMo: "SF01/MO/1",
     qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, recordedBy: null,
-    source: "manual", fgGuessed: false, mo: null, line: "TR", notes: [], ...over,
+    source: "manual", fgGuessed: false, mo: null, line: "TR", bom: { boms: [], via: null }, notes: [], ...over,
   });
   const rows = [
     row({ id: 1 }),
@@ -178,7 +178,7 @@ describe("filterOdooEntries — ready to close: open AND its MO is known", () =>
   const row = (over: Partial<OdooEntryView>): OdooEntryView => ({
     id: 1, dateISO: "2026-09-06", soi: "S1", fgCode: "FB-022-X", product: "Tank", odooMo: "SF01/MO/1",
     qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, recordedBy: null,
-    source: "manual", fgGuessed: false, mo: null, line: "TR", notes: [], ...over,
+    source: "manual", fgGuessed: false, mo: null, line: "TR", bom: { boms: [], via: null }, notes: [], ...over,
   });
   const rows = [
     row({ id: 1 }),                                               // open, has MO  → ready
@@ -231,7 +231,7 @@ describe("groupOdooEntries — the rows that are the same closing", () => {
   const e = (id: number, over: Partial<OdooEntryView> = {}): OdooEntryView => ({
     id, dateISO: "2026-09-15", soi: "S01264-1", fgCode: "FB-022-14002E14M14", product: "Tank",
     odooMo: "SF01/MO/16192-002", qty: 3, status: "MO to be close", tone: "muted", done: false,
-    doneAtISO: null, recordedBy: null, source: "painting", fgGuessed: false, mo: null, line: "TR", notes: [], ...over,
+    doneAtISO: null, recordedBy: null, source: "painting", fgGuessed: false, mo: null, line: "TR", bom: { boms: [], via: null }, notes: [], ...over,
   });
 
   it("folds three closings of the same MO onto one line carrying the total", () => {
@@ -251,8 +251,17 @@ describe("groupOdooEntries — the rows that are the same closing", () => {
     expect(g).toHaveLength(2);
   });
 
-  it("separates a different day, order, finished good or product", () => {
-    expect(groupOdooEntries([e(1), e(2, { dateISO: "2026-09-14" })])).toHaveLength(2);
+  it("adds up the same MO's closings across days", () => {
+    const g = groupOdooEntries([e(1, { qty: 23, dateISO: "2026-10-04" }), e(2, { qty: 26, dateISO: "2026-10-03" }), e(3, { qty: 3, dateISO: "2026-10-03" })]);
+    expect(g).toHaveLength(1);
+    expect(g[0].qty).toBe(52);
+  });
+
+  it("keeps the days apart while the rows still wait for their MO", () => {
+    expect(groupOdooEntries([e(1, { odooMo: "" }), e(2, { odooMo: "", dateISO: "2026-09-14" })])).toHaveLength(2);
+  });
+
+  it("separates a different order, finished good or product", () => {
     expect(groupOdooEntries([e(1), e(2, { soi: "S01263-1" })])).toHaveLength(2);
     expect(groupOdooEntries([e(1), e(2, { fgCode: "FB-051-14002E14M14" })])).toHaveLength(2);
     expect(groupOdooEntries([e(1), e(2, { product: "Top Cover" })])).toHaveLength(2);
@@ -316,5 +325,22 @@ describe("odooItemTotals", () => {
       { product: "Mystery", qty: 9, rows: 1, doneQty: 0, openQty: 9 },
       { product: "Bracket", qty: 2, rows: 1, doneQty: 0, openQty: 2 },
     ]);
+  });
+});
+
+describe("odooRowBom — the BOM a close-out row is for", () => {
+  it("takes the closing's own BOM first", () => {
+    expect(odooRowBom("FB-051-12011E12M12", "12011e16m13", ["99999X"])).toEqual({ boms: ["12011E16M13"], via: "closing" });
+  });
+  it("then the SOI's order — not the part's drawing code in the FG-CODE", () => {
+    expect(odooRowBom("FB-051-12011E12M12", null, ["12011E16M13"])).toEqual({ boms: ["12011E16M13"], via: "soi" });
+  });
+  it("lets the FG-CODE pick between an SOI's BOMs, and lists them when it cannot", () => {
+    expect(odooRowBom("FB-022-14003E11M11", null, ["14003E11M11", "14004E11M11"])).toEqual({ boms: ["14003E11M11"], via: "soi" });
+    expect(odooRowBom("FB-051-1X", null, ["14003E11M11", "14004E11M11"])).toEqual({ boms: ["14003E11M11", "14004E11M11"], via: "soi" });
+  });
+  it("falls back to the FG-CODE's suffix, and to nothing", () => {
+    expect(odooRowBom("FB-022-14003E11M11", null, [])).toEqual({ boms: ["14003E11M11"], via: "fg" });
+    expect(odooRowBom("", null, [])).toEqual({ boms: [], via: null });
   });
 });

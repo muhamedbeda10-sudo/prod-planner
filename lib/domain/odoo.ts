@@ -68,8 +68,21 @@ export interface OdooEntryView {
   /** The planner's MO of the closing the row was born from, when it still
    *  links to one — how a panel row finds its material. */
   mo: string | null;
+  /** The transformer (or panel) BOM the row is for — see odooRowBom. */
+  bom: OdooRowBom;
   /** Newest first. */
   notes: OdooNoteView[];
+}
+
+/** A row's BOM and how it is known: from the closing that wrote the row
+ *  (exact), from the SOI's order in the registry, or — when the registry has
+ *  no order for the SOI — read off the FG-CODE's suffix, which is the BOM for
+ *  a tank but the part's own drawing code for a top cover or core frame.
+ *  An SOI with several BOMs that the FG-CODE does not pick between lists
+ *  them all. */
+export interface OdooRowBom {
+  boms: string[];
+  via: "closing" | "soi" | "fg" | null;
 }
 
 // ---- import: the office's sheet, its first seven columns ----
@@ -264,11 +277,17 @@ export const EMPTY_ODOO_FILTERS: OdooFilters = { q: "", product: "", status: "",
  * against SF01/MO/16312, the next against 16323), and those are two closings
  * that must never be added together. So is the status — a row still to close
  * and one already Done are not one line, however alike they read.
+ *
+ * The day is NOT part of the key once the row carries its MO: the same Odoo
+ * MO painted on Saturday and again on Sunday is one MO to close, so its
+ * closings add up whatever day each was recorded. A row still waiting for its
+ * MO keeps its day — closings of different days may yet be booked against
+ * different MOs.
  */
 export function odooSameKey(e: Pick<OdooEntryView, "dateISO" | "soi" | "fgCode" | "product" | "odooMo" | "status"> & { line?: string }): string {
   return [
     e.line ?? "",
-    e.dateISO,
+    e.odooMo.trim() ? "" : e.dateISO,
     (e.soi ?? "").trim().toUpperCase(),
     e.fgCode.trim().toUpperCase(),
     e.product.trim().toLowerCase(),
@@ -304,6 +323,17 @@ export function groupOdooEntries(entries: readonly OdooEntryView[]): OdooGroup[]
   return out;
 }
 
+export function odooRowBom(fgCode: string, closingBom: string | null | undefined, soiBoms: readonly string[]): OdooRowBom {
+  const norm = (b: string | null | undefined) => (b ?? "").trim().toUpperCase();
+  const closing = norm(closingBom);
+  if (closing) return { boms: [closing], via: "closing" };
+  const fromSoi = [...new Set(soiBoms.map(norm).filter(Boolean))];
+  const suffix = bomOfFgCode(fgCode);
+  if (fromSoi.length === 1) return { boms: fromSoi, via: "soi" };
+  if (fromSoi.length > 1) return { boms: fromSoi.includes(suffix) ? [suffix] : fromSoi, via: "soi" };
+  return suffix ? { boms: [suffix], via: "fg" } : { boms: [], via: null };
+}
+
 export function bomOfFgCode(fgCode: string | null | undefined): string {
   const m = /^[A-Za-z]+-\d+-(.+)$/.exec((fgCode ?? "").trim());
   return m ? m[1].trim().toUpperCase() : "";
@@ -323,7 +353,7 @@ export function filterOdooEntries(entries: OdooEntryView[], f: OdooFilters): Odo
     if (f.closed === "open" && e.done) return false;
     if (f.closed === "done" && !e.done) return false;
     if (q) {
-      const hay = [e.soi ?? "", e.fgCode, e.odooMo, e.product, e.status, ...e.notes.map((n) => n.text)].join(" ").toLowerCase();
+      const hay = [e.soi ?? "", e.fgCode, ...e.bom.boms, e.odooMo, e.product, e.status, ...e.notes.map((n) => n.text)].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;

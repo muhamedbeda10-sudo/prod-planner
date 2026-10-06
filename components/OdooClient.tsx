@@ -207,6 +207,41 @@ function isBorn(e?: OdooEntryView | null): boolean {
   return e?.source === "painting" || e?.source === "shotblast";
 }
 
+/** A merged line's day — or its first and last day, when the same MO's
+ *  closings were recorded on several. */
+function dayRange(rows: OdooEntryView[]): string {
+  const days = rows.map((r) => r.dateISO).sort();
+  const first = days[0], last = days[days.length - 1];
+  return first === last ? formatDate(first) : `${formatDate(first)} – ${formatDate(last)}`;
+}
+
+/** The row's BOM, and a quiet mark when it is less than certain. */
+function BomValue({ bom }: { bom: OdooEntryView["bom"] }) {
+  if (bom.boms.length === 0) return <span className="text-muted">—</span>;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {bom.boms.join(" / ")}
+      {bom.via === "fg" && <span className="pill pill-muted text-[10px]" title="No order in the registry for this SOI — read off the FG-CODE, which for a top cover or core frame is the part's drawing code, not the BOM">from FG</span>}
+      {bom.boms.length > 1 && <span className="pill pill-warn text-[10px]" title="The SOI has several BOMs and the FG-CODE does not say which">{bom.boms.length} BOMs</span>}
+    </span>
+  );
+}
+
+function bomTitle(e: OdooEntryView): string {
+  const how = e.bom.via === "closing" ? "from the closing that wrote this row" : e.bom.via === "soi" ? "from the SOI's order" : e.bom.via === "fg" ? "read off the FG-CODE" : "unknown";
+  return `BOM ${how} · FG-CODE ${e.fgCode || "—"}${e.fgGuessed ? " (guessed — confirm it)" : ""}`;
+}
+
+/** A guessed FG-CODE: the warning, which opens the code to confirm or correct. */
+function GuessedFg({ e }: { e: OdooEntryView }) {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <InlineValue ids={[e.id]} name="fgCode" value={e.fgCode} placeholder="FG-CODE" action={setOdooFgCode} warn list="odoo-fg" hint="Guessed FG-CODE — Enter keeps it, or type the right one" />
+  ) : (
+    <button type="button" className="pill pill-warn text-[10px] mt-0.5 block" onClick={() => setOpen(true)} title={`Composed from the part code and the BOM: ${e.fgCode} — click to confirm or correct it`}>check FG-CODE</button>
+  );
+}
+
 /** One value typed straight into the row and saved on Enter or blur — Odoo's
  *  MO on a born row, or a guessed FG-CODE the office confirms or corrects. */
 function InlineValue({ ids, name, value, placeholder, action, warn, hint, list }: {
@@ -480,15 +515,11 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
           <SourceTag source={e.source} />
         </td>
         <td className={cell} onClick={open} title={rowTitle}><Soi soi={e.soi} /></td>
-        <td className={`${cell} ltr text-xs font-semibold`} onClick={e.fgGuessed && canEdit ? undefined : open} title={e.fgGuessed ? "Composed from the part code and the transformer's BOM — no earlier row of this SOI and product to copy from. Confirm or correct it." : rowTitle}>
-          {e.fgGuessed && canEdit ? (
-            <InlineValue ids={[e.id]} name="fgCode" value={e.fgCode} placeholder="FG-CODE" action={setOdooFgCode} warn list="odoo-fg" hint="Guessed FG-CODE — Enter keeps it, or type the right one" />
-          ) : (
-            <span className="inline-flex flex-col">
-              {e.fgCode || <span className="text-muted">—</span>}
-              {e.fgGuessed && <span className="pill pill-warn text-[10px] mt-0.5">check FG-CODE</span>}
-            </span>
-          )}
+        <td className={`${cell} ltr text-xs font-semibold`} onClick={e.fgGuessed && canEdit ? undefined : open} title={bomTitle(e)}>
+          <BomValue bom={e.bom} />
+          {/* a guessed FG-CODE is still the office's to confirm — behind its
+              warning, the code itself stays out of the way */}
+          {e.fgGuessed && (canEdit ? <GuessedFg e={e} /> : <span className="pill pill-warn text-[10px] mt-0.5">check FG-CODE</span>)}
         </td>
         <td className={cell} onClick={open} title={rowTitle}>{e.product}</td>
         <td className={`${cell} ltr text-xs font-bold`} onClick={!e.odooMo && canEdit ? undefined : open} title={e.odooMo ? rowTitle : "Odoo's MO is not known here — type it once the MO is printed from Odoo"}>
@@ -584,7 +615,7 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
       <tr className={`border-t font-semibold ${open ? "bg-brand-light/40" : "bg-brand-light/20 hover:bg-brand-light/40"} transition-colors`}>
         <td className={`${cell} tabnum ltr`} onClick={toggle} title={open ? "Hide the closings" : "Show the closings this line adds up"}>
           <span className={`inline-block me-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden>▶</span>
-          {formatDate(head.dateISO)}
+          {dayRange(g.rows)}
         </td>
         <td className={cell} onClick={toggle} title={head.line === "LV" ? "LV Panels" : "Transformers"}><LinePill line={head.line} /></td>
         <td className={cell} onClick={toggle} title={born ? "Written by the closings recorded in the daily log" : "Rows that read the same"}>
@@ -592,8 +623,8 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
         </td>
         <td className={cell} onClick={toggle}><Soi soi={head.soi} /></td>
         <td className={`${cell} ltr text-xs font-semibold`} onClick={toggle}>
-          <span className="inline-flex flex-col">
-            {head.fgCode || <span className="text-muted">—</span>}
+          <span className="inline-flex flex-col" title={bomTitle(head)}>
+            <BomValue bom={head.bom} />
             {guessed && <span className="pill pill-warn text-[10px] mt-0.5" title="Open the line to confirm the guessed code on its rows">check FG-CODE</span>}
           </span>
         </td>
@@ -735,7 +766,7 @@ function FilterBar({ entries, filters, onChange }: { entries: OdooEntryView[]; f
   const active = JSON.stringify(filters) !== JSON.stringify(DEFAULT_ODOO_FILTERS);
   return (
     <div className="toolbar toolbar-row no-print !mb-0">
-      <SearchBox value={filters.q} onChange={(v) => set({ q: v })} placeholder="Search SOI, FG-CODE, MO, product, notes…" wide />
+      <SearchBox value={filters.q} onChange={(v) => set({ q: v })} placeholder="Search SOI, BOM, FG-CODE, MO, product, notes…" wide />
       <FilterSelect label="Line" title="Product line" value={filters.line} allLabel="both" onChange={(v) => set({ line: v })} options={[{ value: "TR", label: "Transformers" }, { value: "LV", label: "LV Panels" }]} />
       <FilterSelect label="Status" value={filters.status} onChange={(v) => set({ status: v })} options={statuses.map((st) => ({ value: st, label: st }))} />
       {active && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => onChange(DEFAULT_ODOO_FILTERS)} title="Back to the rows marked MO to be close"><FilterX size={13} aria-hidden />Reset</button>}
@@ -961,7 +992,7 @@ export function OdooClient({
                   <Th label="Line" hint="TR = Transformers · LV = LV Panels" />
                   <Th label="Source" hint="typed here · imported from the sheet · from Painting / Shot Blast = written by a closing on the floor" />
                   <Th label="SOI #" full="SOI#" />
-                  <Th label="FG-code" full="FG-CODE" />
+                  <Th label="BOM" full="The transformer's BOM — from the closing, else the SOI's order; the FG-CODE is in the tooltip" />
                   <Th label="Product" />
                   <Th label="MO #" full="MO#" hint="Odoo's MO number — typed once the MO is printed from Odoo" />
                   <Th label="Qty" unit="pcs" full="QTY" center />
