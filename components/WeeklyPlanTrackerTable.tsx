@@ -233,7 +233,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
       {itemStats.length > 0 && (
         <div className={`print-keep ${RING_GRID}`}>
           {itemStats.map(({ it, need, done }) => (
-            <RingCard key={it} label={it} name={ITEM_NAME[it]} color={itemColor(it)} note={doneWord(metric, it)} done={done} need={need} wide />
+            <RingCard key={it} label={it} name={ITEM_NAME[it]} color={itemColor(it)} note={doneWord(metric, it)} done={done} need={need} wide compact />
           ))}
         </div>
       )}
@@ -369,8 +369,9 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
               if (!c) {
                 // this project owes nothing of this component today — say so once
                 return (
-                  <td key={it} colSpan={1 + stages.length} className="px-1 py-1 border-l text-[10px] text-muted opacity-30">
-                    not due
+                  // hatched, like a component an order does not need on the monthly tracker
+                  <td key={it} colSpan={1 + stages.length} className="na-cell px-1 py-1 border-l" title={`Nothing of ${it} is due from this project today`} aria-label={`${it} not due`}>
+                    <span className="sr-only">not due</span>
                   </td>
                 );
               }

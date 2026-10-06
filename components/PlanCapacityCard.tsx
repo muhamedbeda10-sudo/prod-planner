@@ -19,61 +19,62 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
   if (!check || check.totalPcs === 0) return null;
   const overloaded = check.stages.filter((s) => (s.load ?? 0) > 1);
 
+  // one row: the title, then one compact chip per stage (needed / capacity,
+  // a bar, the load); the pace and the warnings on one quiet line under it
   return (
-    <div className="print-keep bg-surface border rounded-xl p-3 shadow-sm">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-2">
-        <h2 className="text-xs font-extrabold uppercase tracking-wide">Capacity check</h2>
-        <span className="text-[11px] text-muted">
-          standard hours the plan needs vs the stage&apos;s capacity · {check.workingDays} working day{check.workingDays === 1 ? "" : "s"}
-        </span>
+    <div className="print-keep bg-surface border rounded-[10px] px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="leading-tight" title="Standard hours the plan needs vs the stage's capacity over the plan's working days">
+          <h2 className="!mb-0">Capacity check</h2>
+          <span className="text-[11px] text-muted">{check.workingDays} working day{check.workingDays === 1 ? "" : "s"}</span>
+        </div>
+        <div className="flex-1 min-w-0 grid gap-2 grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
+          {check.stages.map((s) => {
+            const tone = loadTone(s.load);
+            const f = s.load === null ? 0 : Math.min(1, s.load);
+            return (
+              <div
+                key={s.dept}
+                className="min-w-0"
+                title={`${deptLabel(s.dept)}: the plan needs ${fmt(s.required)} standard hours; capacity over this plan's window is ${s.available === null ? "not set (Admin → Standard Times)" : fmt(s.available) + " hours"}`}
+              >
+                <div className="flex items-center gap-1.5 text-xs min-w-0">
+                  <span className="inline-block w-2 h-2 rounded-sm shrink-0" style={{ background: STAGE_COLOR[s.dept === "ShotBlast" ? "Painting" : s.dept] }} aria-hidden />
+                  <span className="font-bold truncate">{deptLabel(s.dept)}</span>
+                  <span className="tabnum text-muted whitespace-nowrap"><b className="text-foreground">{fmt(s.required)}</b> / {s.available === null ? "—" : fmt(s.available)} h</span>
+                  <span className="ms-auto pill tabnum !h-[18px] text-[10px]" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
+                </div>
+                <div className="mt-1 h-1 rounded-full bg-surface-3 overflow-hidden" aria-hidden>
+                  <div className="h-full rounded-full" style={{ width: `${f * 100}%`, background: tone.fg }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
-      {/* one tile per stage, the load as a bar against its capacity */}
-      <div className="grid gap-2 grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]">
-        {check.stages.map((s) => {
-          const tone = loadTone(s.load);
-          const f = s.load === null ? 0 : Math.min(1, s.load);
-          return (
-            <div
-              key={s.dept}
-              className="rounded-lg border bg-surface-2/60 px-2.5 py-2"
-              title={`${deptLabel(s.dept)}: the plan needs ${fmt(s.required)} standard hours; capacity over this plan's window is ${s.available === null ? "not set (Admin → Standard Times)" : fmt(s.available) + " hours"}`}
+      {(check.pace || overloaded.length > 0 || check.uncoveredPcs > 0) && (
+        <p className="mt-1.5 text-[11px] font-semibold tabnum flex flex-wrap gap-x-4 gap-y-0.5">
+          {check.pace && (
+            <span
+              style={{ color: check.pace.projectedCoverage >= 1 ? "var(--ok-fg)" : check.pace.projectedCoverage >= 0.9 ? "var(--warn-fg)" : "var(--bad-fg)" }}
+              title="Projection: the plan's earned standard hours so far, extended over the remaining working days at the same daily rate"
             >
-              <div className="flex items-center gap-1.5">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: STAGE_COLOR[s.dept === "ShotBlast" ? "Painting" : s.dept] }} />
-                <span className="text-xs font-bold">{deptLabel(s.dept)}</span>
-                <span className="ms-auto pill tabnum text-[10px]" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
-              </div>
-              <div className="mt-1 tabnum">
-                <span className="text-lg font-extrabold">{fmt(s.required)}</span>
-                <span className="text-[11px] text-muted font-semibold"> / {s.available === null ? "—" : fmt(s.available)} h</span>
-              </div>
-              <div className="mt-1 h-1.5 rounded-full bg-surface overflow-hidden border" aria-hidden>
-                <div className="h-full rounded-full" style={{ width: `${f * 100}%`, background: tone.fg }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {check.pace && (
-        <p
-          className="mt-2 text-[11px] font-semibold tabnum"
-          style={{ color: check.pace.projectedCoverage >= 1 ? "var(--ok-fg)" : check.pace.projectedCoverage >= 0.9 ? "var(--warn-fg)" : "var(--bad-fg)" }}
-          title="Projection: the plan's earned standard hours so far, extended over the remaining working days at the same daily rate"
-        >
-          ⏱ Pace after {check.pace.elapsedWd} of {check.workingDays} working days: at this rate the week closes at {Math.round(check.pace.projectedCoverage * 100)}%
-          {check.pace.worstStage && check.pace.worstStage.coverage < 1 && (
-            <> — {deptLabel(check.pace.worstStage.dept)} at {Math.round(check.pace.worstStage.coverage * 100)}%</>
+              ⏱ Pace after {check.pace.elapsedWd} of {check.workingDays} working days: at this rate the week closes at {Math.round(check.pace.projectedCoverage * 100)}%
+              {check.pace.worstStage && check.pace.worstStage.coverage < 1 && (
+                <> — {deptLabel(check.pace.worstStage.dept)} at {Math.round(check.pace.worstStage.coverage * 100)}%</>
+              )}
+            </span>
           )}
-        </p>
-      )}
-      {overloaded.length > 0 && (
-        <p className="mt-1.5 text-[11px] font-semibold text-bad-fg">
-          ⚠ Over capacity: {overloaded.map((s) => `${deptLabel(s.dept)} needs ${fmt(s.required - (s.available ?? 0))} h more than the window holds`).join(" · ")}
-        </p>
-      )}
-      {check.uncoveredPcs > 0 && (
-        <p className="mt-1 text-[11px] text-warn-fg">
-          ⚠ {check.uncoveredPcs} of {check.totalPcs} pcs have no standard time (order missing FG code / KVA) — the required figures UNDERCOUNT the plan.
+          {overloaded.length > 0 && (
+            <span className="text-bad-fg">
+              ⚠ Over capacity: {overloaded.map((s) => `${deptLabel(s.dept)} needs ${fmt(s.required - (s.available ?? 0))} h more than the window holds`).join(" · ")}
+            </span>
+          )}
+          {check.uncoveredPcs > 0 && (
+            <span className="text-warn-fg font-normal" title="Orders missing an FG code or KVA have no standard time — the required figures undercount the plan">
+              ⚠ {check.uncoveredPcs} of {check.totalPcs} pcs have no standard time — the required figures undercount the plan
+            </span>
+          )}
         </p>
       )}
     </div>

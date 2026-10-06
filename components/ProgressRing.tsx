@@ -61,6 +61,7 @@ export function RingCard({
   done,
   need,
   wide = false,
+  compact = false,
 }: {
   label: string;
   /** The component's full name beside its code (Core Frame, Top Cover …). */
@@ -73,6 +74,10 @@ export function RingCard({
   /** Fill its cell of a full-width row as a production KPI card: the
    *  percentage leads, then done / required, a bar and what is left. */
   wide?: boolean;
+  /** With `wide`: the same card at two-thirds the height — the code, name
+   *  and percentage on one line, then the bar, then done / required and
+   *  what is left. */
+  compact?: boolean;
 }) {
   const pct = need > 0 ? done / need : null;
   const left = Math.max(0, need - done);
@@ -81,6 +86,27 @@ export function RingCard({
   if (wide) {
     const f = pct === null ? 0 : Math.max(0, Math.min(1, pct));
     const complete = pct !== null && pct >= 1;
+    const title = `${label}${name ? ` · ${name}` : ""} — ${done.toLocaleString("en-US")} of ${need.toLocaleString("en-US")} ${note}`;
+    if (compact) {
+      return (
+        <div className="kpi w-full !py-2 !px-3" style={color ? { boxShadow: `inset 0 3px 0 ${color}` } : undefined} title={title}>
+          <div className="flex items-baseline gap-1.5 min-w-0">
+            <span className="kpi-code">{label}</span>
+            {name && <span className="kpi-name">{name}</span>}
+            <span className="ms-auto text-lg font-bold leading-none tabnum" style={{ color: complete ? "var(--ok-fg)" : pct === null ? "var(--muted)" : "var(--foreground)" }}>
+              {pct === null ? "—" : `${Math.round(f * 100)}%`}
+            </span>
+          </div>
+          <div className="kpi-bar mt-1.5" aria-hidden>
+            <span style={{ width: `${f * 100}%`, background: ringColor(pct) }} />
+          </div>
+          <div className="mt-1 flex items-baseline gap-2 text-[10.5px] tabnum whitespace-nowrap">
+            <span className="text-muted"><b className="text-foreground font-semibold">{done.toLocaleString("en-US")}</b> / {need.toLocaleString("en-US")} {note}</span>
+            <span className="ms-auto font-semibold" style={{ color: leftColor }}>{leftText}</span>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="kpi w-full" style={color ? { boxShadow: `inset 0 3px 0 ${color}` } : undefined} title={`${label}${name ? ` · ${name}` : ""} — ${done.toLocaleString("en-US")} of ${need.toLocaleString("en-US")} ${note}`}>
         <div className="kpi-head">

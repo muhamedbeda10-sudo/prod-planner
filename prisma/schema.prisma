@@ -313,6 +313,22 @@ model User {
   chatGroups       ChatGroupMember[]
   consumableIssues ConsumableIssue[]
   powderScraps     PowderScrap[]
+  prefs            UserPref[]
+}
+
+// A person's own view settings — the Plan Tracker's columns, folded and
+// hidden components — kept on the account, so they follow them to any
+// computer and two people sharing one each keep their own. One row per
+// setting; the value is the setting's own short text (see lib/domain/userPrefs.ts).
+model UserPref {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  key       String
+  value     String   @default("")
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
 }
 
 // Chat message (the in-app chat) — either a DIRECT message (toId set) or a
