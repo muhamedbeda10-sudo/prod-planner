@@ -160,13 +160,14 @@
 
 /* ============ dark mode ============ */
 html.dark {
-  /* Industrial charcoal: neutral surfaces with the faintest green cast, so
-     the ATC green reads as the one colour on the screen. Three surface steps
+  /* A softer charcoal — slate-grey surfaces, not near-black, so the sheet
+     reads clearly without glare; the faintest green cast keeps the ATC
+     green the one colour on the screen. Three surface steps
      (page → card → header/well) and two borders carry the whole hierarchy. */
-  --background: #0b0e0d;
-  --surface: #121614;
-  --surface-2: #181d1b;
-  --surface-3: #1f2522;
+  --background: #1c2220;
+  --surface: #242b28;
+  --surface-2: #2b3330;
+  --surface-3: #343d39;
   /* the same ramp and series, stepped for the dark surface:
      the pipeline's later stages get lighter, the way "more" reads on dark */
   --stage-1: #2f8a58;
@@ -176,23 +177,23 @@ html.dark {
   --series-fab: #2f9a66;
   --series-weld: #4a8fd0;
   --series-fin: #c47a22;
-  --foreground: #e3e8e5;
-  --muted: #8e9a94;
-  --border: #232a27;
-  --border-strong: #333d38;
+  --foreground: #eef2f0;
+  --muted: #a5b0ab;
+  --border: #38423e;
+  --border-strong: #4c5853;
   --brand: #1f9660; /* ATC green, a step brighter for dark surfaces */
   --brand-dark: #187c4f;
-  --brand-light: #13261c;
+  --brand-light: #1d3628;
   --accent: #4cbf86;
   --accent-gray: #9aa39d;
-  --nav-bg: #090c0b;
-  --nav-border: #1d2421;
+  --nav-bg: #171c1a;
+  --nav-border: #2a322f;
   --nav-active: #4cbf86;
-  --info-bg: #122236;
+  --info-bg: #1c3149;
   --info-fg: #86b8f2;
-  --hold-row: #1f1c10;
-  --col-emph: #151a18;
-  --row-selected: #16261d;
+  --hold-row: #2e2a19;
+  --col-emph: #28302d;
+  --row-selected: #20382a;
 
   /* the same eight products, stepped for the dark surface */
   --prod-1: #3987e5; --prod-1-ink: #0b0e0d;
@@ -200,7 +201,7 @@ html.dark {
   --prod-3: #199e70; --prod-3-ink: #0b0e0d;
   --prod-4: #c98500; --prod-4-ink: #0b0e0d;
   --prod-5: #d55181; --prod-5-ink: #0b0e0d;
-  --prod-6: #008300; --prod-6-ink: #ffffff;
+  --prod-6: #149414; --prod-6-ink: #0b0e0d; /* a step brighter: 3:1 on the softer surface */
   --prod-7: #9085e9; --prod-7-ink: #0b0e0d;
   --prod-8: #e66767; --prod-8-ink: #0b0e0d;
   --prod-9: #26a6b3; --prod-9-ink: #0b0e0d;
@@ -220,29 +221,29 @@ html.dark {
   --viz-8: #199e70;
   --viz-other: #7c8782;
 
-  --ok-bg: #10261b;
+  --ok-bg: #1a3627;
   --ok-fg: #6fd19f;
-  --warn-bg: #29230f;
+  --warn-bg: #3a3218;
   --warn-fg: #e3c25d;
-  --bad-bg: #2d1613;
+  --bad-bg: #42231e;
   --bad-fg: #f08c78;
 
-  --cut-tint: #16241c;
-  --weld-tint: #152130;
-  --paint-tint: #262115;
-  --dlvd-tint: #211b2b;
-  --shp-tint: #262115; /* the core's finishing — same as Painting */
-  --fins-tint: #241820;
+  --cut-tint: #1f3228;
+  --weld-tint: #1e2d40;
+  --paint-tint: #352e1e;
+  --dlvd-tint: #2e263b;
+  --shp-tint: #352e1e; /* the core's finishing — same as Painting */
+  --fins-tint: #33232d;
   --fins-fg: #e9a6c6;
-  --zebra: #151a18;
+  --zebra: #28302d;
   /* the Plan Tracker's component headers: low-chroma washes, one hue each,
      only on the header — the numbers below sit on neutral ground */
-  --item-cf: #17212c;
-  --item-tc: #25221a;
-  --item-tn: #1e1e2a;
-  --item-cb: #271f1b;
-  --item-ar: #172520;
-  --item-mb: #261c22;
+  --item-cf: #213040;
+  --item-tc: #353025;
+  --item-tn: #2a2a3b;
+  --item-cb: #372c26;
+  --item-ar: #21352d;
+  --item-mb: #362830;
   --ramp-1: #29517f;
   --ramp-2: #3572ab;
   --ramp-3: #3987e5;
@@ -322,7 +323,7 @@ html, body {
 /* ---- data tables: neutral pinned headers, calm zebra + hover, generous
    rhythm. Green stays reserved for brand/actions — headers go quiet. ---- */
 :root { --row-hover: #eef3f0; }
-html.dark { --row-hover: #1a201d; }
+html.dark { --row-hover: #303935; }
 
 /* Table data reads at 12.8px with tabular figures — dense enough for
    hundreds of rows, still comfortable at arm's length on the floor PCs. */
@@ -1103,7 +1104,7 @@ main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--s
    follows a row and a column across the sheet; a stronger one between
    components. In print the sheet keeps its own lines. ---- */
 :root { --grid-line: #dbe1de; --grid-strong: #b3bfb9; }
-html.dark { --grid-line: #2c3531; --grid-strong: #4a5651; }
+html.dark { --grid-line: #3e4844; --grid-strong: #606d68; }
 @layer components {
   .grid-lines td, .grid-lines th { border-right: 1px solid var(--grid-line); }
 }
