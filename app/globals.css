@@ -1098,3 +1098,14 @@ main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--s
   .na-cell { background-image: repeating-linear-gradient(135deg, transparent 0 5px, #c9cfcc 5px 6px) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
+
+/* ---- grid lines (the Plan Tracker): a thin line round every cell so the eye
+   follows a row and a column across the sheet; a stronger one between
+   components. In print the sheet keeps its own lines. ---- */
+:root { --grid-line: #dbe1de; --grid-strong: #b3bfb9; }
+html.dark { --grid-line: #2c3531; --grid-strong: #4a5651; }
+@layer components {
+  .grid-lines td, .grid-lines th { border-right: 1px solid var(--grid-line); }
+}
+main table.grid-lines tbody td { border-bottom-color: var(--grid-line); }
+main table.grid-lines td.border-border-strong, main table.grid-lines th.border-border-strong { border-right-color: var(--grid-strong); }

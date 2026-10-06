@@ -912,7 +912,7 @@ export function MasterTrackerTable({
       </FilterBar>
 
       <div className={`print-flow print-fit print-tracker ${stageCols > 12 ? "print-tight" : ""} erp-scroll bg-surface border rounded-[10px] overflow-auto md:flex-1 md:min-h-0`}>
-        <table className="erp-table w-full border-collapse">
+        <table className="erp-table grid-lines w-full border-collapse">
           <thead className="sticky top-0 z-10">
             <tr>
               {idOpen && (
