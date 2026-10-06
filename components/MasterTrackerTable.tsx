@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
@@ -20,6 +20,8 @@ import { Modal } from "@/components/Modal";
 import { itemColor } from "@/lib/domain/productColors";
 import { AlertTriangle, Check, CheckCheck, ChevronRight, Columns3, CornerDownRight, Pause, Repeat, Star } from "lucide-react";
 import { useConfirm } from "@/components/DataTable";
+import { saveUserPref } from "@/app/prefs/actions";
+import type { UserPrefKey, UserPrefs } from "@/lib/domain/userPrefs";
 import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
 type Progress = "complete" | "inprogress" | "notstarted";
@@ -72,39 +74,53 @@ const ID_GROUP: ColKey[] = ["mo", "soi", "customer"];
 const SPEC_GROUP: ColKey[] = ["kva", "color", "crc", "sfm"];
 const SUMMARY_GROUP: ColKey[] = ["complete", "left", "eta"];
 
-/** A set of keys remembered in this browser (the hidden columns, the folded
- *  components) — the same on every visit, read after hydration. */
-const storeListeners = new Set<() => void>();
-function useStoredSet(key: string): [Set<string>, (k: string) => void] {
-  const raw = useSyncExternalStore(
-    (cb) => { storeListeners.add(cb); return () => { storeListeners.delete(cb); }; },
-    () => { try { return localStorage.getItem(key) ?? ""; } catch { return ""; } },
-    () => "",
-  );
-  const set = useMemo(() => new Set(raw.split(",").filter(Boolean)), [raw]);
+/** One of the person's view settings, kept on their ACCOUNT (UserPref) — so
+ *  it follows them to any computer, and two people sharing one keep their
+ *  own. The page hands the saved value in; a change shows at once and is
+ *  saved behind it. A setting this account never saved but this browser
+ *  still holds (from before settings moved to the account) is carried over
+ *  once, so nobody loses their sheet. */
+function useAccountPref(key: UserPrefKey, initial: string | null | undefined): [string | null, (v: string) => void] {
+  const [value, setValue] = useState<string | null>(initial ?? null);
+  // saves go out one after another, so a quick run of clicks lands in order
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const save = (v: string) => {
+    setValue(v);
+    queue.current = queue.current.then(() => saveUserPref(key, v)).catch(() => undefined);
+  };
+  useEffect(() => {
+    if (initial !== null && initial !== undefined) return;
+    let local: string | null = null;
+    try { local = localStorage.getItem(key); } catch { /* storage blocked */ }
+    if (!local) return;
+    const carried = local;
+    void saveUserPref(key, carried).then((r) => {
+      if (!r.ok) return;
+      setValue(carried);
+      try { localStorage.removeItem(key); } catch { /* storage blocked */ }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return [value, save];
+}
+
+/** A set of keys kept on the account (the folded and the hidden components). */
+function useAccountSet(key: UserPrefKey, initial: string | null | undefined): [Set<string>, (k: string) => void] {
+  const [raw, save] = useAccountPref(key, initial);
+  const set = useMemo(() => new Set((raw ?? "").split(",").filter(Boolean)), [raw]);
   const toggle = (k: string) => {
     const next = new Set(set);
     if (next.has(k)) next.delete(k); else next.add(k);
-    try { localStorage.setItem(key, [...next].join(",")); } catch {}
-    storeListeners.forEach((l) => l());
+    save([...next].join(","));
   };
   return [set, toggle];
 }
 
-/** The columns shown, remembered in this browser — each person's own sheet.
- *  Nothing saved yet reads as the defaults. */
-const COLS_KEY = "tracker:cols";
-function useColumns() {
-  const raw = useSyncExternalStore(
-    (cb) => { storeListeners.add(cb); return () => { storeListeners.delete(cb); }; },
-    () => { try { return localStorage.getItem(COLS_KEY) ?? ""; } catch { return ""; } },
-    () => "",
-  );
-  const shown = useMemo(() => new Set<string>(raw.startsWith("v1|") ? raw.slice(3).split(",").filter(Boolean) : DEFAULT_COLS), [raw]);
-  const save = (next: Set<string>) => {
-    try { localStorage.setItem(COLS_KEY, `v1|${[...next].join(",")}`); } catch {}
-    storeListeners.forEach((l) => l());
-  };
+/** The columns shown, kept on the account — each person's own sheet. Nothing
+ *  saved yet reads as the defaults. */
+function useColumns(initial: string | null | undefined) {
+  const [raw, saveRaw] = useAccountPref("tracker:cols", initial);
+  const shown = useMemo(() => new Set<string>(raw?.startsWith("v1|") ? raw.slice(3).split(",").filter(Boolean) : DEFAULT_COLS), [raw]);
+  const save = (next: Set<string>) => saveRaw(`v1|${[...next].join(",")}`);
   const isOn = (k: ColKey) => shown.has(k);
   const setOn = (keys: ColKey[], on: boolean) => {
     const next = new Set(shown);
@@ -156,7 +172,7 @@ function ColumnChooser({ cols, hiddenItems, onHideItem, collapsed, onCollapse }:
   const shownCount = COLS.filter((c) => cols.isOn(c.key)).length + 1;
   return (
     <div ref={box} className="relative no-print">
-      <button type="button" className="chip-toggle inline-flex items-center gap-1.5" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((v) => !v)} title="Pick the columns you want — remembered in this browser">
+      <button type="button" className="chip-toggle inline-flex items-center gap-1.5" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((v) => !v)} title="Pick the columns you want — kept on your account">
         <Columns3 size={13} aria-hidden />Columns
       </button>
       {open && (
@@ -203,7 +219,7 @@ function ColumnChooser({ cols, hiddenItems, onHideItem, collapsed, onCollapse }:
               })}
             </div>
           </div>
-          <p className="text-[11px] text-muted">Your choice is kept in this browser — everyone sets their own.</p>
+          <p className="text-[11px] text-muted">Kept on your account — the same on any computer you sign in on.</p>
         </div>
       )}
     </div>
@@ -349,7 +365,10 @@ export function MasterTrackerTable({
   etas = {},
   etaWindowDays = 0,
   viewTabs,
+  prefs = {},
 }: {
+  /** This person's saved view settings (columns, folded / hidden components). */
+  prefs?: UserPrefs;
   rows: MasterTrackerRow[];
   /** Completion forecast per MO (server-computed flow-shop ETA). */
   etas?: Record<string, RowEta>;
@@ -374,10 +393,10 @@ export function MasterTrackerTable({
   // what the sheet shows: optional columns, and components folded to a %
   // what this person's sheet shows: the columns (Columns ▾, remembered in
   // this browser), each component with its stages, folded to "made %", or hidden
-  const cols = useColumns();
+  const cols = useColumns(prefs["tracker:cols"]);
   const show = cols.isOn;
-  const [collapsed, toggleCollapsed] = useStoredSet("tracker:collapsed");
-  const [hiddenItems, toggleHiddenItem] = useStoredSet("tracker:hiddenItems");
+  const [collapsed, toggleCollapsed] = useAccountSet("tracker:collapsed", prefs["tracker:collapsed"]);
+  const [hiddenItems, toggleHiddenItem] = useAccountSet("tracker:hiddenItems", prefs["tracker:hiddenItems"]);
   const folded = (it: Item) => collapsed.has(it);
   const itemShown = (it: Item) => !hiddenItems.has(it);
   // the header arrows open and close a run of columns at once

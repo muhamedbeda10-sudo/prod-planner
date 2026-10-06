@@ -17,6 +17,8 @@ import { LvTrackerTable } from "@/components/LvTrackerTable";
 import { getActiveLine } from "@/lib/server/line";
 import { getLvTracker } from "@/lib/server/lvTracker";
 import { LV_CHAIN, lvPermKey } from "@/lib/domain/lv";
+import { getUserPrefs } from "@/lib/server/userPrefs";
+import { TRACKER_PREF_KEYS } from "@/lib/domain/userPrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +85,8 @@ export default async function TrackerPage({
   }
 
   const [rows, user, { byMo, windowDays }] = await Promise.all([getMasterTracker(), getCurrentUser(), getOrderEtas()]);
+  // this person's own sheet: columns, folded and hidden components
+  const prefs = await getUserPrefs(user?.id, TRACKER_PREF_KEYS);
   return (
     <>
       <PrintHeader title="Plan Tracker — Monthly" date={issued} />
@@ -91,6 +95,7 @@ export default async function TrackerPage({
         rows={rows}
         etas={Object.fromEntries(byMo)}
         etaWindowDays={windowDays}
+        prefs={prefs}
         features={user ? [...FEATURE_KEYS.filter((k) => hasPerm(user, k)), ...(user.isAdmin ? ["admin"] : [])] : []}
         // stage columns (Fab/Weld/Paint/SHB/Dlvd) each need their own tracker permission
         editableDepts={user ? [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE].filter((d) => hasPerm(user, trackerPermKey(d))) : []}
