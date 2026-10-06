@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
@@ -244,7 +245,7 @@ function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; 
       className={`flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md -mx-1.5 px-1.5 py-1 text-left hover:bg-surface-2 select-text ${opening ? "cursor-wait" : "cursor-pointer"}`}
     >
       <span className={`pill ${r.line === "LV" ? "pill-muted" : "pill-ok"} text-[10px]`}>{r.line}</span>
-      <span className="tabnum text-xs text-muted ltr">{r.dateISO}</span>
+      <span className="tabnum text-xs text-muted ltr">{formatDate(r.dateISO)}</span>
       {r.odooMo && <CopyMo mo={r.odooMo} />}
       <span className={r.odooMo ? "text-muted" : "font-bold"}>{r.product}</span>
       <span className="text-xs text-muted ltr truncate max-w-[18rem]" title={r.fgCode}>{r.fgCode}</span>

@@ -1,9 +1,9 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 import { DEFAULT_SHIFT_HOURS, SHIFT_CODES, dayTotals, lineHours, round1, shiftLabel, type RosterDept, type ShiftCode } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL, WORKER_GROUPS, WORKER_SECTIONS } from "@/lib/domain/tanks";
 import { rosterDepts, rosterLineMatches, type RosterFilter, rosterFilterLabel } from "@/lib/domain/roster";
@@ -290,7 +290,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
           <div className="flex flex-wrap gap-1.5">
             {history.map((h) => (
               <Link key={h.dateISO} href={`/shifts?day=${h.dateISO}${filter ? `&sec=${filter}` : ""}`} className={`pill ${h.dateISO === data.dateISO ? "pill-ok" : "pill-muted"} tabnum`} title="Open this day">
-                {toDisplayDate(parseISODate(h.dateISO)!)} · {h.people} × {h.hours} mh
+                {formatDate(h.dateISO)} · {h.people} × {h.hours} mh
               </Link>
             ))}
             {history[0].dateISO !== today && !allRecorded && data.dateISO === today && <span className="pill pill-warn">today not recorded</span>}

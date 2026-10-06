@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ReturnRowDTO } from "@/lib/server/returns";
@@ -52,7 +53,7 @@ export function ReturnsTable({ rows, dept, canEdit = false }: { rows: ReturnRowD
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
-                <td className="p-2 whitespace-nowrap tabnum">{r.dateISO}</td>
+                <td className="p-2 whitespace-nowrap tabnum">{formatDate(r.dateISO)}</td>
                 <td className="p-2 whitespace-nowrap text-xs font-semibold">{deptLabel(r.fromDept)}</td>
                 <td className="p-2 text-xs font-semibold whitespace-nowrap">{r.mo || "—"}</td>
                 <td className="p-2 font-bold whitespace-nowrap">{r.bom}</td>

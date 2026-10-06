@@ -1,10 +1,11 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
 import { useState, useTransition } from "react";
 import { WORKER_GROUPS, WORKER_SECTIONS, sectionLabel } from "@/lib/domain/tanks";
 import type { WorkerDTO } from "@/lib/server/workers";
 import { createWorker, updateWorker, setWorkerActive, deleteWorker, setWorkerVacation } from "./actions";
-import { parseISODate, toDisplayDate } from "@/lib/domain/dates";
+import { parseISODate } from "@/lib/domain/dates";
 import { Modal } from "@/components/Modal";
 
 // The list behind every "who did this?" dropdown. Kept deliberately plain: a
@@ -77,7 +78,7 @@ function WorkerCard({ worker, onClose }: { worker: WorkerDTO; onClose?: () => vo
             {worker.name}
             {worker.stamp && <span className="pill pill-muted ltr">stamp {worker.stamp}</span>}
             {!worker.active && <span className="pill pill-muted">Deactivated</span>}
-            {worker.onVacation && <span className="pill pill-warn">On vacation until {toDisplayDate(parseISODate(worker.vacationUntil!)!)}</span>}
+            {worker.onVacation && <span className="pill pill-warn">On vacation until {formatDate(parseISODate(worker.vacationUntil!)!)}</span>}
           </div>
           <div className="text-xs text-muted mt-0.5">
             {worker.jobTitle ? `${worker.jobTitle} · ` : ""}
@@ -205,7 +206,7 @@ function DeptColumn({ title, count, workers, selectedId, onPick, tone }: { title
               >
                 <span className="block font-semibold text-sm leading-tight">{w.name}</span>
                 <span className="block text-[11px] text-muted ltr tabnum">{w.empId}{w.jobTitle ? ` · ${w.jobTitle}` : ""}{w.stamp ? ` · ${w.stamp}` : ""}</span>
-                {w.onVacation && <span className="pill pill-warn mt-0.5">until {toDisplayDate(parseISODate(w.vacationUntil!)!)}</span>}
+                {w.onVacation && <span className="pill pill-warn mt-0.5">until {formatDate(parseISODate(w.vacationUntil!)!)}</span>}
               </button>
             </li>
           ))}

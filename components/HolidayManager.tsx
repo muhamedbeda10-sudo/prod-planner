@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addHoliday, deleteHoliday } from "@/app/calendar/actions";
@@ -81,7 +82,7 @@ export function HolidayManager({ rows }: { rows: HolidayRow[] }) {
             )}
             {rows.map((h, i) => (
               <tr key={h.id} className={i % 2 ? "bg-zebra" : ""}>
-                <td className="p-2 whitespace-nowrap font-bold tabnum">{h.date}</td>
+                <td className="p-2 whitespace-nowrap font-bold tabnum" title={h.date}>{formatDate(h.date)}</td>
                 <td className="p-2">{h.name}</td>
                 <td className="p-2 text-right">
                   <button onClick={() => remove(h.id, h.name)} disabled={pending} className="text-bad-fg text-xs px-2 hover:underline">Remove</button>

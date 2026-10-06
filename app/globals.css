@@ -3,11 +3,24 @@
 /* Arabian Transformers Co. (ATC) brand palette
    green #1a8150 · gray #717171 · clean white surfaces */
 :root {
+  /* ---- scales (theme-independent) ----
+     spacing on a 4px step; three radii; one type scale */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
+  --r-sm: 6px; /* controls, badges, buttons */
+  --r-md: 8px; /* cards, table frames, toolbars */
+  --r-lg: 12px; /* dialogs, panels */
+  --fs-label: 11px; /* table headers, filter labels — uppercase, tracked */
+  --fs-sm: 12px; /* secondary text, badges */
+  --fs-body: 13px; /* table body and controls — the floor for data */
+  --fs-md: 14px;
+  --fs-title: 20px; /* page titles */
+  --fs-kpi: 26px; /* KPI values */
+
   --background: #f6f7f7;
   --surface: #ffffff;
   --surface-2: #f2f4f3; /* table headers, filter bars, subtle wells */
   --foreground: #1a2420;
-  --muted: #64716b;
+  --muted: #5c6964; /* ≥ 4.5:1 on every light surface, surface-3 included */
   --border: #e4e8e6;
   --border-strong: #cdd5d1;
   --brand: #1a8150; /* ATC green */
@@ -30,6 +43,27 @@
   --col-emph: #f3f7f5;
   /* the row the cursor is working in */
   --row-selected: #e3f1e9;
+
+  /* ---- status semantics: kept apart from the brand ----
+     brand green = primary actions, the active tab, focus. success = a state.
+     (ok/warn/bad above are the same tokens under their older names.) */
+  --success-bg: var(--ok-bg); --success-fg: var(--ok-fg);
+  --warning-bg: var(--warn-bg); --warning-fg: var(--warn-fg);
+  --danger-bg: var(--bad-bg); --danger-fg: var(--bad-fg);
+  --neutral-bg: var(--surface-2); --neutral-fg: var(--muted);
+
+  /* ---- products: one colour each, the validated categorical set (see
+     lib/domain/productColors.ts for the order and the check) ---- */
+  --prod-1: #2a78d6; --prod-1-ink: #ffffff; /* Tank */
+  --prod-2: #eb6834; --prod-2-ink: #0b0e0d; /* Top Cover */
+  --prod-3: #1baf7a; --prod-3-ink: #0b0e0d; /* Core Frame */
+  --prod-4: #eda100; --prod-4-ink: #0b0e0d; /* Cable Box */
+  --prod-5: #e87ba4; --prod-5-ink: #0b0e0d; /* Mono Box */
+  --prod-6: #008300; --prod-6-ink: #ffffff; /* Arrester Bracket */
+  --prod-7: #4a3aa7; --prod-7-ink: #ffffff; /* USS */
+  --prod-8: #e34948; --prod-8-ink: #0b0e0d; /* Skid Base */
+  --prod-9: #008c9e; --prod-9-ink: #0b0e0d; /* LSS */
+  --prod-other: #8a938f; --prod-other-ink: #0b0e0d;
 
   /* elevation scale — soft, layered, enterprise-calm */
   --shadow-sm: 0 1px 2px rgb(18 26 22 / 0.05);
@@ -160,6 +194,18 @@ html.dark {
   --col-emph: #151a18;
   --row-selected: #16261d;
 
+  /* the same eight products, stepped for the dark surface */
+  --prod-1: #3987e5; --prod-1-ink: #0b0e0d;
+  --prod-2: #d95926; --prod-2-ink: #0b0e0d;
+  --prod-3: #199e70; --prod-3-ink: #0b0e0d;
+  --prod-4: #c98500; --prod-4-ink: #0b0e0d;
+  --prod-5: #d55181; --prod-5-ink: #0b0e0d;
+  --prod-6: #008300; --prod-6-ink: #ffffff;
+  --prod-7: #9085e9; --prod-7-ink: #0b0e0d;
+  --prod-8: #e66767; --prod-8-ink: #0b0e0d;
+  --prod-9: #26a6b3; --prod-9-ink: #0b0e0d;
+  --prod-other: #7c8782; --prod-other-ink: #0b0e0d;
+
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-md: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 14px rgb(0 0 0 / 0.4);
   --shadow-lg: 0 4px 8px rgb(0 0 0 / 0.45), 0 16px 40px rgb(0 0 0 / 0.55);
@@ -281,8 +327,14 @@ html.dark { --row-hover: #1a201d; }
 /* Table data reads at 12.8px with tabular figures — dense enough for
    hundreds of rows, still comfortable at arm's length on the floor PCs. */
 main table {
-  font-size: 0.8rem;
+  font-size: var(--fs-body);
   font-variant-numeric: tabular-nums;
+}
+/* the data in a cell never drops under the 13px floor, whatever size class a
+   page gave the cell; secondary lines inside it (a hint, a badge) keep theirs */
+main table td.text-xs,
+main table td.text-sm {
+  font-size: var(--fs-body);
 }
 
 main table thead tr {
@@ -290,10 +342,10 @@ main table thead tr {
   color: var(--muted) !important;
 }
 main table thead th {
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   line-height: 1.25;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   font-weight: 650;
   color: var(--muted) !important;
   border-bottom: 1px solid var(--border-strong);
@@ -345,7 +397,7 @@ main select,
 main textarea {
   background: var(--surface);
   border: 1px solid var(--border-strong);
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 main input:where([type="text"], [type="number"], [type="date"], [type="month"], [type="email"], [type="password"], [type="search"]):hover,
@@ -367,10 +419,10 @@ main textarea:focus {
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   border: 1px solid transparent;
   font-weight: 600;
-  font-size: 0.8125rem;
+  font-size: var(--fs-body);
   line-height: 1.25;
   padding: 0.42rem 0.8rem;
   cursor: pointer;
@@ -387,7 +439,7 @@ main textarea:focus {
 .btn-ghost:hover { background: var(--surface-2); color: var(--foreground); }
 .btn-danger { color: var(--bad-fg); }
 .btn-danger:hover { background: var(--bad-bg); }
-.btn-sm { padding: 0.28rem 0.6rem; font-size: 0.75rem; border-radius: 6px; }
+.btn-sm { padding: 0.28rem 0.6rem; font-size: var(--fs-sm); border-radius: var(--r-sm); }
 
 /* compact icon-only actions inside rows (edit / delete / more) — the label
    lives in title + aria-label, which the browser shows as the tooltip */
@@ -433,12 +485,12 @@ main textarea:focus {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  border-radius: 5px;
-  padding: 0 0.4rem;
-  min-height: 1.15rem;
-  font-size: 0.67rem;
+  border-radius: var(--r-sm);
+  padding: 0 0.45rem;
+  height: 20px;
+  font-size: var(--fs-label);
   font-weight: 650;
-  line-height: 1.15rem;
+  line-height: 18px;
   letter-spacing: 0.02em;
   white-space: nowrap;
   border: 1px solid transparent;
@@ -569,7 +621,6 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
     --surface: #ffffff;
     --surface-2: #f2f4f3;
     --foreground: #1a2420;
-    --muted: #64716b;
     --border: #e4e8e6;
     --border-strong: #cdd5d1;
     --brand: #1a8150;
@@ -609,6 +660,9 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
     --hold-row: #fff6d6;
     --col-emph: #f3f7f5;
     --row-selected: #e3f1e9;
+    --muted: #5c6964;
+    --prod-1: #2a78d6; --prod-2: #eb6834; --prod-3: #1baf7a; --prod-4: #eda100;
+    --prod-5: #e87ba4; --prod-6: #008300; --prod-7: #4a3aa7; --prod-8: #e34948; --prod-9: #008c9e;
     color-scheme: light;
   }
   html.dark .recharts-cartesian-grid line { stroke: #cdd5d1; }
@@ -668,7 +722,7 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
   .print-fit table { font-size: 10.5px !important; table-layout: auto; width: 100% !important; }
   .print-fit th, .print-fit td { padding: 4px 5px !important; white-space: normal !important; word-break: break-word; }
   .print-fit .text-xs { font-size: 10.5px !important; }
-  .pill { font-size: 8px !important; padding: 1px 4px !important; }
+  .pill { font-size: 8px !important; padding: 1px 4px !important; height: auto !important; line-height: 1.2 !important; }
 
   /* .print-fit's word-break:break-word drops a cell's min-content width to one
      CHARACTER, which is what lets a very wide table squeeze onto the page — but
@@ -825,18 +879,18 @@ div.overflow-x-auto > table thead {
 @layer components {
 /* ---- page head: title, a quiet line under it, actions on the right ---- */
 .page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-bottom: 0.75rem; }
-.page-title { font-size: 1.25rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em; color: var(--foreground); }
+.page-title { font-size: var(--fs-title); line-height: 1.2; font-weight: 700; letter-spacing: -0.01em; color: var(--foreground); }
 .page-sub { font-size: 0.75rem; color: var(--muted); font-weight: 500; }
 
 /* ---- toolbar: one surface holding the page's controls in rows ---- */
-.toolbar { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.75rem; }
-.toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding: 0.5rem 0.75rem; }
-.toolbar-row + .toolbar-row { border-top: 1px solid var(--border); background: var(--surface-2); border-radius: 0 0 10px 10px; }
+.toolbar { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); margin-bottom: var(--sp-3); }
+.toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); padding: var(--sp-2) var(--sp-3); }
+.toolbar-row + .toolbar-row { border-top: 1px solid var(--border); background: var(--surface-2); border-radius: 0 0 var(--r-md) var(--r-md); }
 .toolbar-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0.15rem 0.1rem; }
 
 /* ---- filter controls: a label and a compact field, the same everywhere ---- */
-.filter-label { font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); white-space: nowrap; }
-main .ctl { height: 30px; padding: 0 0.55rem; font-size: 0.8rem; font-weight: 550; }
+.filter-label { font-size: var(--fs-label); font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); white-space: nowrap; }
+main .ctl { height: 30px; padding: 0 var(--sp-2); font-size: var(--fs-body); font-weight: 550; }
 main select.ctl { padding-right: 1.6rem; }
 .chip-toggle {
   height: 26px; padding: 0 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600;
@@ -847,11 +901,11 @@ main select.ctl { padding-right: 1.6rem; }
 .chip-toggle[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #fff; }
 
 /* ---- KPI card: the figure dominates, the bar shows the distance left ---- */
-.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem 0.75rem 0.65rem; min-width: 0; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); min-width: 0; }
 .kpi-head { display: flex; align-items: baseline; gap: 0.4rem; min-width: 0; }
-.kpi-code { font-size: 0.8rem; font-weight: 750; letter-spacing: 0.02em; color: var(--foreground); }
-.kpi-name { font-size: 0.7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kpi-value { font-size: 1.6rem; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.kpi-code { font-size: var(--fs-body); font-weight: 750; letter-spacing: 0.02em; color: var(--foreground); }
+.kpi-name { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-value { font-size: var(--fs-kpi); line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .kpi-bar { height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
 .kpi-bar > span { display: block; height: 100%; border-radius: 4px; transition: width 0.4s ease; }
 
@@ -895,3 +949,28 @@ main select.ctl { padding-right: 1.6rem; }
 .stage-crit .stage-meter > span { background: var(--bad-fg); }
 @media print { .stage-meter { display: none; } }
 }
+
+/* ---- the one tooltip (components/Tooltip.tsx): drawn on the body, so no
+   scroll box clips it; high-contrast, compact, never wider than a column of
+   text ---- */
+.tooltip {
+  position: fixed;
+  z-index: 60;
+  max-width: 320px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  background: #1b211e;
+  color: #eef2ef;
+  border: 1px solid #333d38;
+  box-shadow: var(--shadow-md);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  pointer-events: none;
+  animation: tipfade 0.1s ease-out;
+}
+@keyframes tipfade { from { opacity: 0; } to { opacity: 1; } }
+@media print { .tooltip { display: none; } }

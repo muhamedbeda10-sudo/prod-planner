@@ -1,6 +1,8 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
 import { useMemo, useState, type ComponentProps } from "react";
+import { productColor, productInk } from "@/lib/domain/productColors";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts";
@@ -20,48 +22,12 @@ import {
 // product, totals and closed-vs-open, and the same numbers as a table with an
 // Excel export — the chart is never the only way to read a value.
 
-// The sheet's six products keep their fixed colours; a product logged beyond
-// them takes the next free slot of the palette in the order it appears in
-// the period's series, so a newcomer is coloured, named and legended like
-// the rest. "Other" (a row with no product) stays grey.
-const FIXED_VAR: Record<string, string> = {
-  Tank: "var(--viz-1)",
-  "Top Cover": "var(--viz-2)",
-  "Core Frame": "var(--viz-3)",
-  Encloser: "var(--viz-4)",
-  "Cable Box": "var(--viz-5)",
-  Conservator: "var(--viz-6)",
-  Other: "var(--viz-other)",
-};
-/** Ink for a number written INSIDE a segment: white on the dark hues, dark on the light ones. */
-const FIXED_INK: Record<string, string> = {
-  Tank: "#fff", "Top Cover": "#fff", "Core Frame": "#fff", Encloser: "#fff",
-  "Cable Box": "#1a2420", Conservator: "#1a2420", Other: "#fff",
-};
-const EXTRA: { color: string; ink: string }[] = [
-  { color: "var(--viz-7)", ink: "#fff" },
-  { color: "var(--viz-8)", ink: "#1a2420" },
-  { color: "var(--viz-1)", ink: "#fff" },
-  { color: "var(--viz-2)", ink: "#fff" },
-  { color: "var(--viz-3)", ink: "#fff" },
-  { color: "var(--viz-4)", ink: "#fff" },
-  { color: "var(--viz-5)", ink: "#1a2420" },
-  { color: "var(--viz-6)", ink: "#1a2420" },
-];
+// Every product wears its ONE colour from the app's product map
+// (lib/domain/productColors.ts) — the same here as on the Plan Tracker and
+// the KPI cards, whatever else the period holds. A name outside the map
+// (and "Other", a row with no product) reads grey.
 type Palette = { color: (s: OdooSeries) => string; ink: (s: OdooSeries) => string };
-function paletteFor(series: readonly OdooSeries[]): Palette {
-  const color: Record<string, string> = {};
-  const ink: Record<string, string> = {};
-  let extra = 0;
-  for (const s of series) {
-    if (FIXED_VAR[s]) { color[s] = FIXED_VAR[s]; ink[s] = FIXED_INK[s]; continue; }
-    const slot = EXTRA[extra % EXTRA.length];
-    extra += 1;
-    color[s] = slot.color;
-    ink[s] = slot.ink;
-  }
-  return { color: (s) => color[s] ?? "var(--viz-other)", ink: (s) => ink[s] ?? "#fff" };
-}
+const PAL: Palette = { color: (s) => productColor(s), ink: (s) => productInk(s) };
 
 const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: 1 }));
 
@@ -339,7 +305,7 @@ function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeri
         <tbody>
           {days.map((p) => (
             <tr key={p.dateISO} className="border-t">
-              <td className="p-2 whitespace-nowrap tabnum ltr">{p.dateISO}</td>
+              <td className="p-2 whitespace-nowrap tabnum ltr">{formatDate(p.dateISO)}</td>
               {present.map((s) => (
                 <td key={s} className="p-2 text-center tabnum">{p.bySeries[s] > 0 ? fmt(p.bySeries[s]) : <span className="text-muted">—</span>}</td>
               ))}
@@ -370,7 +336,7 @@ function DayTable({ d, present, pal }: { d: OdooDashboardData; present: OdooSeri
 export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insights: OdooInsights } }) {
   const [showTable, setShowTable] = useState(false);
   const present = d.series;
-  const pal = useMemo(() => paletteFor(present), [present]);
+  const pal = PAL;
   const title = periodLabel(d.period);
   // a narrowed dashboard must say so on the page, not only in the picker —
   // printed or screenshotted, the numbers are otherwise the whole plant's

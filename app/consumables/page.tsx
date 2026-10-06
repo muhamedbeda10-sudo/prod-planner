@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
@@ -16,7 +17,6 @@ import { getMonthlyReport } from "@/lib/server/consumableMonthly";
 import { MONTH_STATUS_LABEL, isMonthKey, monthLong } from "@/lib/domain/consumableMonthly";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PrintButton } from "@/components/PrintButton";
-import { toDisplayDate } from "@/lib/domain/dates";
 import { addDaysISO, clampISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { PageHeader } from "@/components/ui";
@@ -100,7 +100,7 @@ export default async function ConsumablesPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" />
-        <PrintHeader title="Powder scrap" subtitle={monthLong(month)} date={toDisplayDate(new Date())} />
+        <PrintHeader title="Powder scrap" subtitle={monthLong(month)} date={formatDate(factoryDayISO(new Date()))} />
         <PageHeader>
           {viewSwitch}
           <ExportButton rows={exportRows} filename={`powder-scrap-${month}.xlsx`} sheetName={month} />
@@ -157,7 +157,7 @@ export default async function ConsumablesPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" />
-        <PrintHeader title="Consumables — dashboard" subtitle={`${periodLabel} · monthly review ${monthLong(month)}`} date={toDisplayDate(new Date())} />
+        <PrintHeader title="Consumables — dashboard" subtitle={`${periodLabel} · monthly review ${monthLong(month)}`} date={formatDate(factoryDayISO(new Date()))} />
         <PageHeader>
           {viewSwitch}
           <ExportButton rows={exportRows} filename={`consumables-summary-${period}.xlsx`} sheetName="Items" />

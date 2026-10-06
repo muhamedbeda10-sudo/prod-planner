@@ -1,5 +1,8 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/domain/format";
+import { ProductSwatch } from "@/components/Badge";
+import { productColor } from "@/lib/domain/productColors";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import {
@@ -284,11 +287,8 @@ function StatusCell({ e, canEdit, ids }: { e: OdooEntryView; canEdit: boolean; i
 
 // ---- Notes: a list per row, newest first, each deletable; add one below ----
 
-function stamp(iso: string): string {
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
+// a moment on the factory clock, in the app's one date format
+const stamp = (iso: string): string => formatDateTime(iso);
 
 function Note({ n, canEdit }: { n: OdooNoteView; canEdit: boolean }) {
   const del = useAction();
@@ -387,7 +387,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
         <td className={`${cell} tabnum ltr ${inGroup ? "ps-6" : ""}`} onClick={open} title={rowTitle}>
           <span className="inline-flex flex-col">
             <span className="inline-flex items-center gap-1">
-              {inGroup ? <span className="text-muted">↳ {e.dateISO}</span> : e.dateISO}
+              {inGroup ? <span className="text-muted">↳ {formatDate(e.dateISO)}</span> : formatDate(e.dateISO)}
               {!inGroup && <span className={`pill text-[10px] ${e.line === "LV" ? "pill-muted" : "pill-ok"}`} title={e.line === "LV" ? "LV Panels" : "Transformers"}>{e.line}</span>}
             </span>
             {born && <span className="pill pill-muted text-[10px] mt-0.5" title="Written by the closing recorded in the daily log — the office fills in Odoo's MO">{sourceLabel(e.source)}</span>}
@@ -435,7 +435,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
                 className="btn btn-sm btn-danger"
                 disabled={del.pending}
                 onClick={() => {
-                  if (!confirm(`Delete ${e.odooMo || `${e.product} ×${e.qty}`} (${e.dateISO})?`)) return;
+                  if (!confirm(`Delete ${e.odooMo || `${e.product} ×${e.qty}`} (${formatDate(e.dateISO)})?`)) return;
                   const fd = new FormData();
                   fd.set("id", String(e.id));
                   del.run(deleteOdooEntry, fd, "Deleted.");
@@ -450,7 +450,7 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
       </tr>
       {material && <OdooMaterialPopup e={e} nesting={nesting} needCtx={needCtx} onClose={closeMaterial} />}
       {editing && (
-        <Modal title="Edit a row" sub={`${e.odooMo || e.product} · ${e.dateISO}`} onClose={() => setEditing(false)} busy={edit.pending} width="max-w-4xl">
+        <Modal title="Edit a row" sub={`${e.odooMo || e.product} · ${formatDate(e.dateISO)}`} onClose={() => setEditing(false)} busy={edit.pending} width="max-w-4xl">
           <form
             onSubmit={(ev) => {
               ev.preventDefault();
@@ -517,7 +517,7 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
           <span className="inline-flex flex-col">
             <span>
               <span className={`inline-block me-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>▶</span>
-              {head.dateISO}
+              {formatDate(head.dateISO)}
               <span className={`pill text-[10px] ms-1 ${head.line === "LV" ? "pill-muted" : "pill-ok"}`} title={head.line === "LV" ? "LV Panels" : "Transformers"}>{head.line}</span>
             </span>
             <span className="pill pill-muted text-[10px] mt-0.5" title={born ? "Written by the closings recorded in the daily log" : "Rows that read the same"}>
@@ -719,8 +719,12 @@ function ItemCards({ totals, selected, onPick, periodLabel }: { totals: OdooItem
     <button
       key={key} type="button" onClick={onClick} title={title} aria-pressed={on}
       className={`text-start bg-surface border rounded-xl px-3 py-1.5 min-w-0 transition-colors hover:border-brand/60 ${on ? "border-brand ring-2 ring-brand/30" : ""}`}
+      style={key !== "all" ? { boxShadow: `inset 0 3px 0 ${productColor(key)}` } : undefined}
     >
-      <div className="text-[11px] font-bold text-muted uppercase tracking-wide truncate">{label}</div>
+      <div className="flex items-center gap-1.5 text-[11px] font-bold text-muted uppercase tracking-wide min-w-0">
+        {key !== "all" && <ProductSwatch product={key} />}
+        <span className="truncate">{label}</span>
+      </div>
       <div className="text-xl font-extrabold tabnum leading-tight">{t.qty.toLocaleString("en")}</div>
       <div className="text-[11px] text-muted tabnum mt-0.5 whitespace-nowrap" title={`${t.rows} row${t.rows === 1 ? "" : "s"}`}>
         <span className="text-ok-fg font-semibold">{t.doneQty.toLocaleString("en")} closed</span>

@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTankBySerial, getBaseUrl } from "@/lib/server/tanks";
@@ -127,7 +128,7 @@ export default async function TankPage({ params }: { params: Promise<{ serial: s
           lastQa && (
             <Card className="p-4">
               <div className={`pill ${lastQa.result === "ok" ? "pill-ok" : "pill-bad"}`}>
-                Quality check: {lastQa.result === "ok" ? "OK" : "Not OK"} · {lastQa.dateISO}
+                Quality check: {lastQa.result === "ok" ? "OK" : "Not OK"} · {formatDate(lastQa.dateISO)}
                 {lastQa.by ? ` · ${lastQa.by}` : ""}
               </div>
               {lastQa.note && <p className="text-sm mt-2">{lastQa.note}</p>}

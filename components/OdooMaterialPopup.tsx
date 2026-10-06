@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { EMPTY_MATERIAL_FILTERS, type MaterialFilters } from "@/lib/domain/material";
@@ -214,7 +215,7 @@ export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEnt
               <span>SOI <Soi soi={e.soi} className="text-foreground" /></span>
               <span>FG <b className="ltr text-foreground">{e.fgCode}</b></span>
               <span>{e.product}{need?.partName && need.partName.toLowerCase() !== e.product.toLowerCase() ? ` (${need.partName})` : ""}</span>
-              <span>logged <b className="tabnum ltr text-foreground">{e.dateISO}</b> · qty <b className="tabnum text-foreground">{e.qty}</b></span>
+              <span>logged <b className="tabnum ltr text-foreground">{formatDate(e.dateISO)}</b> · qty <b className="tabnum text-foreground">{e.qty}</b></span>
             </div>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="ml-auto btn btn-sm btn-ghost">✕</button>

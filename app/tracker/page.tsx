@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/domain/format";
 import { getMasterTracker } from "@/lib/server/masterTracker";
 import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
 import { MasterTrackerTable } from "@/components/MasterTrackerTable";
@@ -9,7 +10,7 @@ import { getOrderEtas } from "@/lib/server/eta";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { DEPTS, DELIVERED_STAGE, SHOTBLAST_STAGE } from "@/lib/domain/constants";
 import { trackerPermKey } from "@/lib/domain/permissions";
-import { toDisplayDate } from "@/lib/domain/dates";
+import { factoryDayISO } from "@/lib/domain/dates";
 import { ViewTabs, TRACKER_VIEWS, trackerViews } from "@/components/ViewTabs";
 import { PageHead } from "@/components/ui";
 import { LvTrackerTable } from "@/components/LvTrackerTable";
@@ -38,7 +39,7 @@ export default async function TrackerPage({
   // the paper header is rendered here (a server component) so the issue date is
   // fixed at render time — a `new Date()` inside the client tables would put a
   // different day in the client HTML than the server's and trip hydration
-  const issued = toDisplayDate(new Date());
+  const issued = formatDate(factoryDayISO(new Date()));
 
   // The LV panels' side: one panel per row, its four stages and delivery,
   // recorded the way the transformer cells are — each stage behind the

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { Fragment, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -468,7 +469,7 @@ function Records({ t }: { t: TraceResult }) {
               )}
               {t.ledger.map((l, i) => (
                 <tr key={l.id} className={`border-b border-border/30 last:border-0 hover:bg-brand-light/25 transition-colors ${i % 2 ? "bg-brand-light/[0.06]" : ""}`}>
-                  <td className="px-4 py-2 whitespace-nowrap tabnum text-muted">{l.dateISO}</td>
+                  <td className="px-4 py-2 whitespace-nowrap tabnum text-muted">{formatDate(l.dateISO)}</td>
                   <td className="px-3 py-2 font-bold text-xs whitespace-nowrap">{l.planLabel}</td>
                   <td className="px-3 py-2">{deptLabel(l.dept)}</td>
                   <td className="px-3 py-2 text-center font-bold">{l.item}</td>
@@ -601,13 +602,13 @@ function OnOdoo({ rows }: { rows: TraceOdooRow[] }) {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-t border-border/40 hover:bg-brand-light/20">
-                  <td className="px-4 py-2 tabnum ltr whitespace-nowrap">{r.dateISO}</td>
+                  <td className="px-4 py-2 tabnum ltr whitespace-nowrap">{formatDate(r.dateISO)}</td>
                   <td className="px-4 py-2 whitespace-nowrap"><b>{r.item || "—"}</b> <span className="text-muted text-xs">{r.product}</span></td>
                   <td className="px-4 py-2 ltr font-bold whitespace-nowrap select-all">{r.odooMo || <Chip tone="warn">needs MO</Chip>}</td>
                   <td className="px-4 py-2 ltr text-xs text-muted whitespace-nowrap">{r.fgCode || "—"}</td>
                   <td className="px-4 py-2 text-end tabnum font-bold">{r.qty}</td>
                   <td className="px-4 py-2"><Chip tone={r.done ? "ok" : r.status === "Blocked" ? "bad" : r.status === "Cancelled" ? "muted" : "warn"}>{r.status}</Chip></td>
-                  <td className="px-4 py-2 tabnum ltr whitespace-nowrap">{r.doneAtISO ?? "—"}</td>
+                  <td className="px-4 py-2 tabnum ltr whitespace-nowrap">{formatDateTime(r.doneAtISO)}</td>
                   <td className="px-4 py-2 text-xs text-muted whitespace-nowrap">{r.by ?? "—"}</td>
                 </tr>
               ))}

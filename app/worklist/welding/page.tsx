@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/domain/format";
 import { getSoiLookup } from "@/lib/server/soi";
 import { getWeldingQueue } from "@/lib/server/execution";
 import { getSettings } from "@/lib/server/data";
@@ -7,7 +8,7 @@ import { getWorklistExtras, getRunOrderLines } from "@/lib/server/worklistExtras
 import { getRepairQueue } from "@/lib/server/tanks";
 import { getWorkersFor } from "@/lib/server/workers";
 import { TankRepairPanel } from "@/components/TankRepairPanel";
-import { toISODate, toDisplayDate } from "@/lib/domain/dates";
+import { toISODate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
 import { CascadeTable } from "@/components/CascadeTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
@@ -62,7 +63,7 @@ export default async function WeldWorklistPage() {
 
   return (
     <>
-      <PrintHeader title="Welding Worklist" date={toDisplayDate(today)} />
+      <PrintHeader title="Welding Worklist" date={formatDate(today)} />
       <WeldingQueueTable
         soi={soi}
         rows={queue}

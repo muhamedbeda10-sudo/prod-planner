@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { WorkerDTO } from "@/lib/server/workers";
@@ -64,7 +65,7 @@ export function TankQaPanel({
 
       {last && (
         <div className={`pill ${last.result === "ok" ? "pill-ok" : "pill-bad"}`}>
-          Last check: {last.result === "ok" ? "OK" : "Not OK"} · {last.dateISO}
+          Last check: {last.result === "ok" ? "OK" : "Not OK"} · {formatDate(last.dateISO)}
           {last.by ? ` · ${last.by}` : ""}
         </div>
       )}

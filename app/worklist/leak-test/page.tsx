@@ -1,6 +1,7 @@
 import { getLeakTestQueue } from "@/lib/server/tanks";
 import { getWorkersFor } from "@/lib/server/workers";
-import { toISODate, toDisplayDate } from "@/lib/domain/dates";
+import { toISODate } from "@/lib/domain/dates";
+import { formatDate } from "@/lib/domain/format";
 import { LeakTestTable } from "@/components/LeakTestTable";
 import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, canEditDept } from "@/lib/server/auth";
@@ -42,7 +43,7 @@ export default async function LeakTestPage() {
 
   return (
     <>
-      <PrintHeader title="Leak Test Worklist" date={toDisplayDate(today)} />
+      <PrintHeader title="Leak Test Worklist" date={formatDate(today)} />
       <LeakTestTable tanks={tanks} testers={testers} day={dayISO} canEdit={canEdit} />
     </>
   );

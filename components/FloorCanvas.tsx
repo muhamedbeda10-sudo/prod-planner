@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "@/lib/domain/format";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -249,7 +250,7 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
           : saving || dirty ? <span className="pill pill-warn">saving…</span>
           : <span className="pill pill-ok" title="The drawing is kept for everyone who opens this floor">saved</span>
         )}
-        {!dirty && !saving && updatedAtISO && <span className="text-[11px] text-muted">drawn {updatedAtISO.slice(0, 10)}{updatedBy ? ` by ${updatedBy}` : ""}</span>}
+        {!dirty && !saving && updatedAtISO && <span className="text-[11px] text-muted">drawn {formatDateTime(updatedAtISO)}{updatedBy ? ` by ${updatedBy}` : ""}</span>}
       </div>
 
       {/* ---- the floor: the whole width of the screen ---- */}

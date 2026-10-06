@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { DateSlicer } from "@/components/DateSlicer";
 import { addDaysISO, slicerPresets } from "@/lib/domain/dateSlicer";
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -11,7 +12,6 @@ import {
 import type { EtaStage, StageBlackout } from "@/lib/domain/eta";
 import { saveScenario, deleteScenario, applyRunOrder, clearRunOrder } from "@/app/simulate/actions";
 import { deptLabel, STAGE_COLOR } from "@/lib/domain/constants";
-import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 
 /* The control room: turn the knobs — workers per stage, working Fridays, a
    hand-reordered (drag & drop) queue, split quantities, or one click of the
@@ -22,7 +22,7 @@ import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
    Pin a scenario as "A" to compare against it. Nothing here is saved. */
 
 const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-US");
-const dd = (iso: string | null) => (iso ? toDisplayDate(parseISODate(iso)!) : "—");
+const dd = (iso: string | null) => formatDate(iso);
 const ddShort = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
 const SEG_COLOR: Record<string, string> = {
@@ -659,7 +659,7 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
             )}
             {appliedRunOrder && (
               <p className="text-[10px] text-muted leading-snug">
-                🎯 A run order is live on the worklists (set {dd(appliedRunOrder.atISO.slice(0, 10))}
+                🎯 A run order is live on the worklists (set {formatDateTime(appliedRunOrder.atISO)}
                 {appliedRunOrder.by ? ` by ${appliedRunOrder.by}` : ""}).
                 {isAdmin && (
                   <button onClick={clearApplied} disabled={pending} className="text-bad-fg font-semibold hover:underline ml-1">Clear it</button>
