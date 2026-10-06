@@ -18,7 +18,7 @@ import { getActiveLine } from "@/lib/server/line";
 import { getLvTracker } from "@/lib/server/lvTracker";
 import { LV_CHAIN, lvPermKey } from "@/lib/domain/lv";
 import { getUserPrefs } from "@/lib/server/userPrefs";
-import { TRACKER_PREF_KEYS } from "@/lib/domain/userPrefs";
+import { LV_TRACKER_PREF_KEYS, TRACKER_PREF_KEYS } from "@/lib/domain/userPrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -48,14 +48,16 @@ export default async function TrackerPage({
   // panels' own tracker key for that column.
   if ((await getActiveLine()) === "LV") {
     const [rows, user] = await Promise.all([getLvTracker(), getCurrentUser()]);
+    const lvPrefs = await getUserPrefs(user?.id, LV_TRACKER_PREF_KEYS);
     return (
       <>
         <PrintHeader title="Plan Tracker — LV Panels" date={issued} />
-        <PageHead title="Plan Tracker" sub="LV Panels · one row per panel order, every stage" views={<ViewTabs views={trackerViews("LV")} current="/tracker" label="Tracker view" />} />
         <LvTrackerTable
           rows={rows}
           editableStages={user ? LV_CHAIN.filter((s) => hasPerm(user, lvPermKey(s))) : []}
           canStatus={!!user && hasPerm(user, "lv.status")}
+          prefs={lvPrefs}
+          head={<PageHead title="Plan Tracker" sub="LV Panels · one row per panel order, every stage" views={<ViewTabs views={trackerViews("LV")} current="/tracker" label="Tracker view" />} />}
         />
       </>
     );

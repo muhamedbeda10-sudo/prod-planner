@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
@@ -18,10 +18,10 @@ import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { Modal } from "@/components/Modal";
 import { itemColor } from "@/lib/domain/productColors";
-import { AlertTriangle, Check, CheckCheck, ChevronRight, Columns3, CornerDownRight, Pause, Repeat, Star } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, ChevronRight, CornerDownRight, Pause, Repeat, Star } from "lucide-react";
 import { useConfirm } from "@/components/DataTable";
-import { saveUserPref } from "@/app/prefs/actions";
-import type { UserPrefKey, UserPrefs } from "@/lib/domain/userPrefs";
+import type { UserPrefs } from "@/lib/domain/userPrefs";
+import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stickAt, useAccountSet, useColumns, type Columns } from "@/components/TrackerColumns";
 import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
 type Progress = "complete" | "inprogress" | "notstarted";
@@ -56,7 +56,6 @@ const BOM_W = 7.5;
 const BOM_W_ALONE = 14;
 const REQ_W = 7;
 const REQ_CLS = "stick stick-end";
-const stickAt = (left: number, w: number) => ({ "--stick-left": `${left}rem`, "--stick-w": `${w}rem` }) as React.CSSProperties;
 
 /** Every column the reader can show or hide (Columns ▾), in the sheet's
  *  order. BOM always shows — it is what the row is. */
@@ -74,174 +73,45 @@ const ID_GROUP: ColKey[] = ["mo", "soi", "customer"];
 const SPEC_GROUP: ColKey[] = ["kva", "color", "crc", "sfm"];
 const SUMMARY_GROUP: ColKey[] = ["complete", "left", "eta"];
 
-/** One of the person's view settings, kept on their ACCOUNT (UserPref) — so
- *  it follows them to any computer, and two people sharing one keep their
- *  own. The page hands the saved value in; a change shows at once and is
- *  saved behind it. A setting this account never saved but this browser
- *  still holds (from before settings moved to the account) is carried over
- *  once, so nobody loses their sheet. */
-function useAccountPref(key: UserPrefKey, initial: string | null | undefined): [string | null, (v: string) => void] {
-  const [value, setValue] = useState<string | null>(initial ?? null);
-  // saves go out one after another, so a quick run of clicks lands in order
-  const queue = useRef<Promise<unknown>>(Promise.resolve());
-  const save = (v: string) => {
-    setValue(v);
-    queue.current = queue.current.then(() => saveUserPref(key, v)).catch(() => undefined);
-  };
-  useEffect(() => {
-    if (initial !== null && initial !== undefined) return;
-    let local: string | null = null;
-    try { local = localStorage.getItem(key); } catch { /* storage blocked */ }
-    if (!local) return;
-    const carried = local;
-    void saveUserPref(key, carried).then((r) => {
-      if (!r.ok) return;
-      setValue(carried);
-      try { localStorage.removeItem(key); } catch { /* storage blocked */ }
-    });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  return [value, save];
-}
-
-/** A set of keys kept on the account (the folded and the hidden components). */
-function useAccountSet(key: UserPrefKey, initial: string | null | undefined): [Set<string>, (k: string) => void] {
-  const [raw, save] = useAccountPref(key, initial);
-  const set = useMemo(() => new Set((raw ?? "").split(",").filter(Boolean)), [raw]);
-  const toggle = (k: string) => {
-    const next = new Set(set);
-    if (next.has(k)) next.delete(k); else next.add(k);
-    save([...next].join(","));
-  };
-  return [set, toggle];
-}
-
-/** The columns shown, kept on the account — each person's own sheet. Nothing
- *  saved yet reads as the defaults. */
-function useColumns(initial: string | null | undefined) {
-  const [raw, saveRaw] = useAccountPref("tracker:cols", initial);
-  const shown = useMemo(() => new Set<string>(raw?.startsWith("v1|") ? raw.slice(3).split(",").filter(Boolean) : DEFAULT_COLS), [raw]);
-  const save = (next: Set<string>) => saveRaw(`v1|${[...next].join(",")}`);
-  const isOn = (k: ColKey) => shown.has(k);
-  const setOn = (keys: ColKey[], on: boolean) => {
-    const next = new Set(shown);
-    for (const k of keys) { if (on) next.add(k); else next.delete(k); }
-    save(next);
-  };
-  const reset = () => save(new Set(DEFAULT_COLS));
-  return { isOn, setOn, reset };
-}
-
-/** A header that folds the columns beside it: its label, then › (folded) or
- *  ‹ (open). `back` points the arrow the other way, for a group that opens
- *  to the label's left. */
-function FoldButton({ open, onClick, label, title, back = false }: { open: boolean; onClick: () => void; label: string; title: string; back?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-expanded={open}
-      className="print-as-text inline-flex items-center gap-1 rounded px-1 py-0.5 uppercase hover:bg-surface-3"
-      title={title}
-    >
-      {back && <ChevronRight size={12} className={`shrink-0 transition-transform ${open ? "" : "rotate-180"}`} aria-hidden />}
-      {label}
-      {!back && <ChevronRight size={12} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />}
-    </button>
-  );
-}
-
 /** Columns ▾ — every column, each one on or off, and each component shown
  *  with its stages, folded to one "made %" column, or hidden. */
 function ColumnChooser({ cols, hiddenItems, onHideItem, collapsed, onCollapse }: {
-  cols: ReturnType<typeof useColumns>;
+  cols: Columns<ColKey>;
   hiddenItems: Set<string>;
   onHideItem: (it: Item) => void;
   collapsed: Set<string>;
   onCollapse: (it: Item) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
-  }, [open]);
-  const shownCount = COLS.filter((c) => cols.isOn(c.key)).length + 1;
   return (
-    <div ref={box} className="relative no-print">
-      <button type="button" className="chip-toggle inline-flex items-center gap-1.5" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((v) => !v)} title="Pick the columns you want — kept on your account">
-        <Columns3 size={13} aria-hidden />Columns
-      </button>
-      {open && (
-        <div className="absolute z-30 mt-1 end-0 w-[22rem] rounded-[10px] border bg-surface shadow-xl p-3 space-y-3 text-sm">
-          <div>
-            <div className="flex items-center mb-1.5">
-              <span className="filter-label">Columns · {shownCount} of {COLS.length + 1}</span>
-              <button type="button" className="ms-auto text-xs font-semibold text-accent hover:underline" onClick={cols.reset}>Defaults</button>
-            </div>
-            <div className="grid grid-cols-2 gap-x-3">
-              <label className="flex items-center gap-2 py-0.5 opacity-60" title="BOM always shows — it is what the row is">
-                <input type="checkbox" checked disabled className="accent-[var(--brand)]" />BOM
-              </label>
-              {COLS.map((c) => (
-                <label key={c.key} className="flex items-center gap-2 py-0.5 cursor-pointer">
-                  <input type="checkbox" checked={cols.isOn(c.key)} onChange={() => cols.setOn([c.key], !cols.isOn(c.key))} className="accent-[var(--brand)]" />{c.label}
-                </label>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="filter-label mb-1.5">Components</div>
-            <div className="space-y-0.5">
-              {ITEMS.map((it) => {
-                const mode = hiddenItems.has(it) ? "hide" : collapsed.has(it) ? "made" : "stages";
-                const pick = (m: "stages" | "made" | "hide") => {
-                  if ((m === "hide") !== hiddenItems.has(it)) onHideItem(it);
-                  if (m !== "hide" && (m === "made") !== collapsed.has(it)) onCollapse(it);
-                };
-                return (
-                  <div key={it} className="flex items-center gap-2">
-                    <span className="inline-block w-1 h-3.5 rounded-sm" style={{ background: itemColor(it) }} aria-hidden />
-                    <b className="w-7">{it}</b>
-                    <span className="text-muted truncate flex-1 min-w-0">{ITEM_NAME[it]}</span>
-                    <span className="inline-flex" role="group" aria-label={`${ITEM_NAME[it]} columns`}>
-                      {(["stages", "made", "hide"] as const).map((m) => (
-                        <button key={m} type="button" className="chip-toggle !h-6 !px-1.5 !text-[11px] -ms-px first:ms-0" aria-pressed={mode === m} onClick={() => pick(m)}>
-                          {m === "stages" ? "Stages" : m === "made" ? "Made %" : "Hide"}
-                        </button>
-                      ))}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <p className="text-[11px] text-muted">Kept on your account — the same on any computer you sign in on.</p>
+    <ColumnMenu cols={cols} list={COLS} fixed="BOM" fixedTitle="BOM always shows — it is what the row is">
+      <div>
+        <div className="filter-label mb-1.5">Components</div>
+        <div className="space-y-0.5">
+          {ITEMS.map((it) => {
+            const mode = hiddenItems.has(it) ? "hide" : collapsed.has(it) ? "made" : "stages";
+            const pick = (m: "stages" | "made" | "hide") => {
+              if ((m === "hide") !== hiddenItems.has(it)) onHideItem(it);
+              if (m !== "hide" && (m === "made") !== collapsed.has(it)) onCollapse(it);
+            };
+            return (
+              <div key={it} className="flex items-center gap-2">
+                <span className="inline-block w-1 h-3.5 rounded-sm" style={{ background: itemColor(it) }} aria-hidden />
+                <b className="w-7">{it}</b>
+                <span className="text-muted truncate flex-1 min-w-0">{ITEM_NAME[it]}</span>
+                <span className="inline-flex" role="group" aria-label={`${ITEM_NAME[it]} columns`}>
+                  {(["stages", "made", "hide"] as const).map((m) => (
+                    <button key={m} type="button" className="chip-toggle !h-6 !px-1.5 !text-[11px] -ms-px first:ms-0" aria-pressed={mode === m} onClick={() => pick(m)}>
+                      {m === "stages" ? "Stages" : m === "made" ? "Made %" : "Hide"}
+                    </button>
+                  ))}
+                </span>
+              </div>
+            );
+          })}
         </div>
-      )}
-    </div>
+      </div>
+    </ColumnMenu>
   );
-}
-
-/** Where a stage cell stands against what the order needs of it — the class
- *  that gives it its quiet wash. Late orders (the forecast lands after the
- *  delivery date) mark their unfinished cells; urgent AND late reads red. */
-function stageState(value: number, target: number, late: boolean, urgent: boolean, held: boolean): string {
-  if (held || value <= 0) return "stage-idle"; // nothing yet: an empty cell
-  if (target > 0 && value >= target) return "stage-done"; // quiet, in the success ink
-  if (late) return urgent ? "stage-crit" : "stage-late";
-  return "stage-part"; // started, not finished: the warning ink, what is left in the tooltip
-}
-
-/** A hairline of how far an unfinished stage is — under the number, never
- *  instead of it. Drawn as the cell's own background (see .stage-meter in
- *  globals.css), so nothing positioned can slide over the frozen columns. */
-function meterStyle(value: number, target: number): React.CSSProperties | undefined {
-  if (target <= 0 || value <= 0 || value >= target) return undefined;
-  return { "--meter": Math.min(1, value / target) } as React.CSSProperties;
 }
 
 type SpecField = "fins" | "colorRal" | "crcSize" | "sfm";
@@ -393,15 +263,15 @@ export function MasterTrackerTable({
   // what the sheet shows: optional columns, and components folded to a %
   // what this person's sheet shows: the columns (Columns ▾, remembered in
   // this browser), each component with its stages, folded to "made %", or hidden
-  const cols = useColumns(prefs["tracker:cols"]);
+  const cols = useColumns("tracker:cols", prefs["tracker:cols"], DEFAULT_COLS);
   const show = cols.isOn;
   const [collapsed, toggleCollapsed] = useAccountSet("tracker:collapsed", prefs["tracker:collapsed"]);
   const [hiddenItems, toggleHiddenItem] = useAccountSet("tracker:hiddenItems", prefs["tracker:hiddenItems"]);
   const folded = (it: Item) => collapsed.has(it);
   const itemShown = (it: Item) => !hiddenItems.has(it);
   // the header arrows open and close a run of columns at once
-  const anyOn = (g: ColKey[]) => g.some(show);
-  const toggleCols = (g: ColKey[]) => cols.setOn(g, !anyOn(g));
+  const anyOn = cols.anyOn;
+  const toggleCols = cols.toggle;
   // the frozen identifiers, left to right, and where each one sits
   const moOn = show("mo");
   const idLayout = (() => {
@@ -1959,16 +1829,6 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       </Fragment>
     );
   }
-}
-
-/** Achievement: the figure in its status colour — no filled cell. */
-function AchCell({ ach }: { ach: number | null }) {
-  const color = ach === null ? "var(--muted)" : ach >= 1 ? "var(--ok-fg)" : ach >= 0.5 ? "var(--foreground)" : "var(--warn-fg)";
-  return (
-    <td className="p-2 text-center font-semibold tabnum" style={{ color }}>
-      {ach === null ? "—" : `${(ach * 100).toFixed(0)}%`}
-    </td>
-  );
 }
 
 // stage sub-headers sit on the same tints as their data columns — readable
