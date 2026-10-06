@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { InstallApp } from "@/components/InstallApp";
 import { ChatDock } from "@/components/ChatDock";
 import { useOdooAlerts } from "@/components/OdooAlerts";
 import { LineTabs } from "@/components/LineTabs";
@@ -450,6 +451,7 @@ export function AppNav({
                   <LogOut size={16} />
                 </button>
               </form>
+              <span className="hidden md:inline-flex"><InstallApp /></span>
               <ThemeToggle />
             </div>
           </div>
@@ -570,7 +572,8 @@ export function AppNav({
             </nav>
 
             {/* drawer foot */}
-            <div className="border-t p-3">
+            <div className="border-t p-3 space-y-2">
+              <InstallApp wide />
               <form action={logoutAction}>
                 <button type="submit" className="btn btn-secondary w-full text-bad-fg">
                   <LogOut size={16} />
