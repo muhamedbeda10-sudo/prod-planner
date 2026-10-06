@@ -257,9 +257,9 @@ export function AppNav({
   const adminActive = adminLinks.some((l) => isActive(l.href, l.match, l.also)) || isActive("/admin/users") || isActive("/admin/standard-times");
 
   return (
-    <header className="no-print sticky top-0 z-30 bg-brand text-white shadow-md">
+    <header className="no-print sticky top-0 z-30 bg-[var(--nav-bg)] text-white border-b border-[var(--nav-border)] shadow-sm">
       <div className="w-full px-4 md:px-6">
-        <div className="flex items-center gap-2 md:gap-4 h-14 md:h-16">
+        <div className="flex items-center gap-2 md:gap-4 h-12">
           {/* mobile: drawer trigger */}
           <button
             type="button"
@@ -279,7 +279,7 @@ export function AppNav({
               width={266}
               height={32}
               priority
-              className="h-5 w-auto sm:h-6 md:h-8 transition-transform duration-300 group-hover:scale-[1.03]"
+              className="h-5 w-auto md:h-6 transition-opacity duration-150 group-hover:opacity-85"
             />
           </Link>
 
@@ -437,7 +437,7 @@ export function AppNav({
             )}
 
             {/* user + logout (desktop shows the name; mobile keeps it in the drawer) */}
-            <div className="shrink-0 flex items-center gap-1 md:gap-2 md:border-l md:border-white/20 md:pl-3">
+            <div className="shrink-0 flex items-center gap-1 md:gap-2 md:border-l md:border-white/15 md:pl-3">
               <span className="hidden md:block text-sm font-semibold max-w-[140px] truncate" title={user.name}>
                 {user.name}
               </span>
@@ -468,7 +468,7 @@ export function AppNav({
           />
           <div className="absolute left-0 top-0 h-full w-[300px] max-w-[85vw] bg-surface text-foreground shadow-2xl flex flex-col animate-[drawerslide_0.22s_ease-out]">
             {/* drawer head */}
-            <div className="bg-brand text-white px-4 py-3.5 flex items-center justify-between">
+            <div className="bg-[var(--nav-bg)] text-white px-4 py-3 flex items-center justify-between">
               <Image
                 src="/brand/atc-logo-horizontal-white.svg"
                 alt="ATC"

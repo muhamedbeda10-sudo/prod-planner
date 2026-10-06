@@ -11,7 +11,7 @@ import { ExportButton } from "@/components/ExportButton";
 import { PrintButton } from "@/components/PrintButton";
 import { PrintScope } from "@/components/PrintHeader";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
-import { ITEMS, isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
+import { ITEMS, ITEM_NAME, isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 import { traceHref } from "@/lib/domain/links";
 import type { WeeklyPlanTracker, WeeklyPlanRow, WeeklyPlanCell, WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
 
@@ -216,7 +216,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
     // itself never does, so the headline is always on screen. `print-flow`
     // hands the height back to the paper: a fixed-height scroller would print
     // one page and clip everything under it.
-    <div className="print-flow space-y-3 md:flex md:flex-col md:space-y-0 md:gap-3 md:h-[calc(100vh-7rem)]">
+    <div className="print-flow space-y-3 md:flex md:flex-col md:space-y-0 md:gap-3 md:h-[calc(100vh-5rem)]">
       {/* what the sheet is showing — filters don't survive onto paper otherwise */}
       <PrintScope
         parts={[
@@ -233,7 +233,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
       {itemStats.length > 0 && (
         <div className={`print-keep ${RING_GRID}`}>
           {itemStats.map(({ it, need, done }) => (
-            <RingCard key={it} label={it} note={doneWord(metric, it)} done={done} need={need} wide />
+            <RingCard key={it} label={it} name={ITEM_NAME[it]} note={doneWord(metric, it)} done={done} need={need} wide />
           ))}
         </div>
       )}

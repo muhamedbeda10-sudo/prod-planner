@@ -6,18 +6,19 @@ import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { decidePlanQty, setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setGroupFins, setOrderPriority, setOrderHold, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
-import { pctStyle, Num, Soi } from "@/components/ui";
+import { Num, Soi } from "@/components/ui";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { ExportButton } from "@/components/ExportButton";
 import { PrintButton } from "@/components/PrintButton";
 import { PrintScope } from "@/components/PrintHeader";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle } from "@/components/PlanViewToggle";
-import { ITEMS, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
+import { ITEMS, ITEM_NAME, DEPTS, isPaintExempt, deptLabel, FINISHING_LABEL, type Item, type Dept } from "@/lib/domain/constants";
 import { agreedSpec, capsFor, finsGroup, isFullyDelivered, spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
 import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { Modal } from "@/components/Modal";
+import { AlertTriangle, Check, CheckCheck, ChevronRight, CornerDownRight, MoreHorizontal, Pause, Repeat, Star } from "lucide-react";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -42,10 +43,37 @@ const ITEM_TINT: Record<Item, string> = {
   MB: "var(--item-mb)",
 };
 
-/** ⏸️ A held row wears ONE wash over every cell, the component tints
- *  included: the planner asked for the row to read yellow at a glance, and
- *  a paused order's stage numbers are not what anyone is scanning for. */
-const HOLD_TINT = "var(--warn-bg)";
+/** ⏸️ A held row wears ONE quiet wash end to end and a warn stripe on its
+ *  first cell: it reads as paused at a glance without flooding the sheet,
+ *  and its stage numbers step back (no progress colours on a paused order). */
+const HOLD_TINT = "var(--hold-row)";
+
+/** The identifiers stay on screen while the stages scroll past: MO, SOI,
+ *  customer and BOM are pinned (from a laptop up), each at a fixed width so
+ *  the next one knows where to sit. */
+const STICK_W = ["11.5rem", "6.75rem", "7.5rem", "7.5rem"] as const;
+const STICK_LEFT = ["0rem", "11.5rem", "18.25rem", "25.75rem"] as const;
+const stickCls = (i: number) => `stick ${i === STICK_W.length - 1 ? "stick-end" : ""}`;
+// as CSS variables: the stylesheet applies them on screen only, so the printed
+// sheet keeps its natural column widths
+const stickStyle = (i: number) => ({ "--stick-left": STICK_LEFT[i], "--stick-w": STICK_W[i] }) as React.CSSProperties;
+
+/** Where a stage cell stands against what the order needs of it — the class
+ *  that gives it its quiet wash. Late orders (the forecast lands after the
+ *  delivery date) mark their unfinished cells; urgent AND late reads red. */
+function stageState(value: number, target: number, late: boolean, urgent: boolean, held: boolean): string {
+  if (held || value <= 0) return "stage-idle";
+  if (target > 0 && value >= target) return "stage-done";
+  if (late) return urgent ? "stage-crit" : "stage-late";
+  return "stage-run";
+}
+
+/** A hairline of how far an unfinished stage is — under the number, never
+ *  instead of it. */
+function StageMeter({ value, target }: { value: number; target: number }) {
+  if (target <= 0 || value <= 0 || value >= target) return null;
+  return <span className="stage-meter" aria-hidden><span style={{ width: `${Math.min(100, (value / target) * 100)}%` }} /></span>;
+}
 
 type SpecField = "fins" | "colorRal" | "crcSize" | "sfm";
 /** Fins reads in its own colour down the whole column — header, MO rows and
@@ -628,7 +656,7 @@ export function MasterTrackerTable({
     // filters stay put and ONLY the table scrolls (with its header pinned).
     // `print-flow` hands the height back to the paper: a fixed-height scroller
     // would print one page and clip everything under it.
-    <div className="print-flow md:flex md:flex-col md:h-[calc(100vh-7rem)]">
+    <div className="print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
       {/* a plan import brought a different qty for these orders — waiting on the planner */}
       <PendingQtyBanner rows={rows} />
       {/* what the sheet is showing — filters don't survive onto paper otherwise */}
@@ -644,18 +672,38 @@ export function MasterTrackerTable({
         ]}
       />
 
+      <div className="page-head no-print">
+        <h1 className="page-title">Plan Tracker</h1>
+        <span className="page-sub">Transformers · one row per order, every stage</span>
+        <span className="ml-auto">{viewTabs}</span>
+      </div>
+
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
       {/* the cards share the page's width between them */}
       <div className={`print-keep ${RING_GRID} mb-3`}>
         {itemStats.map(({ it, doneWord, need, done }) => (
-          <RingCard key={it} label={it} note={doneWord} done={done} need={need} wide />
+          <RingCard key={it} label={it} name={ITEM_NAME[it]} note={doneWord} done={done} need={need} wide />
         ))}
       </div>
 
-      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus(""); setMonth(""); setStage(""); }} hasActive={hasActive}>
-        {viewTabs}
-        <PlanViewToggle value="monthly" />
-        <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / Customer / KVA…" />
+      <FilterBar
+        count={filtered.length}
+        total={rows.length}
+        onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus(""); setMonth(""); setStage(""); }}
+        hasActive={hasActive}
+        head={
+          <>
+            <PlanViewToggle value="monthly" />
+            <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / Customer / KVA…" wide />
+          </>
+        }
+        actions={
+          <>
+            <ExportButton rows={exportRows} filename={exportName} sheetName="Tracker" />
+            <PrintButton />
+          </>
+        }
+      >
         <SelectFilter
           label="Plan month"
           value={month}
@@ -667,7 +715,7 @@ export function MasterTrackerTable({
         />
         {/* multi-pick dept toggle: show only the ticked stages' columns */}
         <div className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
-          <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Dept</span>
+          <span className="filter-label">Dept</span>
           <div className="flex flex-wrap gap-1">
             {STAGE_OPTS.map((o) => {
               const on = stages.includes(o.value);
@@ -676,7 +724,8 @@ export function MasterTrackerTable({
                   key={o.value}
                   type="button"
                   onClick={() => toggleStage(o.value)}
-                  className={`rounded-md border px-2 py-1 text-xs font-bold transition-colors ${on ? "bg-brand text-white border-brand" : "bg-surface text-muted hover:text-foreground hover:border-brand/60"}`}
+                  aria-pressed={on}
+                  className="chip-toggle"
                   title={`${o.label} — pick one or more departments; the table and the cards scope to them`}
                 >
                   {o.label}
@@ -695,12 +744,6 @@ export function MasterTrackerTable({
             { value: "hold", label: `On hold (${holdCount})` },
           ]}
         />
-        {can("tracker.status") && doneCount > 0 && (
-          <button type="button" className="btn btn-sm btn-secondary normal-case" onClick={closeDone} disabled={pending} title="Close every open order whose components have all reached the customer — the ones with nothing left to follow">
-            ✓ Close {doneCount} delivered
-          </button>
-        )}
-        {closeMsg && <span className="text-xs font-semibold text-ok-fg">{closeMsg}</span>}
         <SelectFilter
           label="Progress"
           value={progress}
@@ -712,18 +755,23 @@ export function MasterTrackerTable({
           ]}
         />
         <SelectFilter label="Urgent" value={urgent} onChange={setUrgent} options={[{ value: "yes", label: "Urgent only" }]} />
-        <ExportButton rows={exportRows} filename={exportName} sheetName="Tracker" />
-        <PrintButton />
+        {can("tracker.status") && doneCount > 0 && (
+          <button type="button" className="btn btn-sm btn-secondary normal-case" onClick={closeDone} disabled={pending} title="Close every open order whose components have all reached the customer — the ones with nothing left to follow">
+            <CheckCheck size={13} className="text-ok-fg" />
+            Close {doneCount} delivered
+          </button>
+        )}
+        {closeMsg && <span className="text-xs font-semibold text-ok-fg">{closeMsg}</span>}
       </FilterBar>
 
-      <div className={`print-flow print-fit print-tracker ${stageCols > 12 ? "print-tight" : ""} bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0`}>
-        <table className="w-full text-sm border-collapse">
+      <div className={`print-flow print-fit print-tracker ${stageCols > 12 ? "print-tight" : ""} erp-scroll bg-surface border rounded-[10px] overflow-auto md:flex-1 md:min-h-0`}>
+        <table className="erp-table w-full border-collapse">
           <thead className="sticky top-0 z-10">
-            <tr className="bg-brand text-white">
-              <th rowSpan={2} className="p-2 text-left">MO</th>
-              <th rowSpan={2} className="p-2 text-left" title="Sales order item">SOI</th>
-              <th rowSpan={2} className="p-2 text-left" title="The plan sheet's customer column">Customer</th>
-              <th rowSpan={2} className="p-2 text-left">BOM</th>
+            <tr>
+              <th rowSpan={2} className={`p-2 text-left ${stickCls(0)}`} style={stickStyle(0)}>MO</th>
+              <th rowSpan={2} className={`p-2 text-left ${stickCls(1)}`} style={stickStyle(1)} title="Sales order item">SOI</th>
+              <th rowSpan={2} className={`p-2 text-left ${stickCls(2)}`} style={stickStyle(2)} title="The plan sheet's customer column">Customer</th>
+              <th rowSpan={2} className={`p-2 text-left ${stickCls(3)}`} style={stickStyle(3)}>BOM</th>
               <th rowSpan={2} className="p-2">KVA</th>
               <th rowSpan={2} className="p-2" title="Colour RAL — typed here; the import never writes it">Color</th>
               <th rowSpan={2} className="p-2" title="CRC size — typed here; the import never writes it">CRC</th>
@@ -734,7 +782,10 @@ export function MasterTrackerTable({
                   before the Core Frame. Typed here, never imported. */}
               <th rowSpan={2} className="p-2" style={FINS_HEAD} title="Fins — typed here; the import never writes it">Fins</th>
               {ITEMS.map((it) => (
-                <th key={it} colSpan={scoped ? stages.length : 4} className="p-2 border-r border-border-strong">{it}</th>
+                <th key={it} colSpan={scoped ? stages.length : 4} className="p-1.5 border-r border-border-strong on-tint" style={{ background: ITEM_TINT[it] }} title={ITEM_NAME[it]}>
+                  <span className="font-bold tracking-wider">{it}</span>
+                  <span className="ml-1.5 font-medium normal-case tracking-normal text-muted">{ITEM_NAME[it]}</span>
+                </th>
               ))}
               {!scoped && (
                 <>
@@ -752,7 +803,7 @@ export function MasterTrackerTable({
               </th>
               <th rowSpan={2} className="p-2 no-print">Status</th>
             </tr>
-            <tr className="bg-brand text-white text-xs">
+            <tr>
               {ITEMS.map((it) =>
                 scoped ? (
                   <Fragment key={it}>
@@ -789,30 +840,32 @@ export function MasterTrackerTable({
               return (
                 <Fragment key={`g|${gBom}`}>
                   <tr
-                    className={`cursor-pointer bg-brand-light/30 hover:bg-brand-light/60 transition-colors font-semibold ${open ? "border-x-2 border-t-2 border-brand" : ""}`}
+                    className={`cursor-pointer bg-surface-2 font-semibold ${open ? "border-x-2 border-t-2 border-brand" : ""}`}
                     onClick={() => toggleGroup(gBom)}
                     onContextMenu={(e) => rowMenu.open(e, { kind: "group", bom: gBom, members })}
                     style={allHeld ? { background: HOLD_TINT } : undefined}
                     title={open ? "Collapse MOs" : "Show the MOs inside this BOM · right-click for actions"}
                   >
-                    <td className="p-2 font-bold whitespace-nowrap text-xs">
-                      <span className={`inline-block mr-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>▶</span>
-                      {members.length} MOs
-                      {urgentCount > 0 && <span className="pill pill-bad ml-1">U×{urgentCount}</span>}
-                      {heldCount > 0 && <span className="pill pill-warn ml-1" title={allHeld ? "Every MO of this BOM is on hold" : `${heldCount} of ${members.length} MOs on hold — open the group`}>⏸️ {allHeld ? "HOLD" : `${heldCount}/${members.length}`}</span>}
+                    <td className={`p-2 font-bold text-xs ${stickCls(0)}`} style={stickStyle(0)}>
+                      <span className="flex flex-wrap items-center gap-1">
+                        <ChevronRight size={14} className={`shrink-0 text-muted transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden />
+                        <span className="pill pill-muted" title={`${members.length} MOs share this BOM`}>{members.length} MOs</span>
+                        {urgentCount > 0 && <span className="pill pill-bad" title={`${urgentCount} urgent`}>U×{urgentCount}</span>}
+                        {heldCount > 0 && <span className="pill pill-warn" title={allHeld ? "Every MO of this BOM is on hold" : `${heldCount} of ${members.length} MOs on hold — open the group`}><Pause size={10} aria-hidden />{allHeld ? "HOLD" : `${heldCount}/${members.length}`}</span>}
+                      </span>
                     </td>
                     {/* the group names its MOs by count, not by list — its SOIs
                         read the same way: each one sits on its own MO row, which
                         expanding the group reveals. A joined strip of a dozen
                         SOIs here was unreadable and said nothing the rows
                         below do not. */}
-                    <td className="p-2 whitespace-nowrap">
+                    <td className={`p-2 whitespace-nowrap ${stickCls(1)}`} style={stickStyle(1)}>
                       <Soi soi={null} />
                     </td>
-                    <td className="p-2 text-xs whitespace-nowrap" title={gCustomer === null ? `${members.length} MOs for more than one customer — open the group` : undefined}>
-                      {gCustomer === null ? <span className="text-muted">…</span> : gCustomer || <span className="text-muted">—</span>}
+                    <td className={`p-2 text-xs ${stickCls(2)}`} style={stickStyle(2)} title={gCustomer === null ? `${members.length} MOs for more than one customer — open the group` : gCustomer || undefined}>
+                      <span className="block truncate">{gCustomer === null ? <span className="text-muted">…</span> : gCustomer || <span className="text-muted">—</span>}</span>
                     </td>
-                    <td className="p-2 font-bold whitespace-nowrap">
+                    <td className={`p-2 font-bold whitespace-nowrap ${stickCls(3)}`} style={stickStyle(3)}>
                       <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">{gBom}</Link>
                     </td>
                     <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{gKva}</td>
@@ -839,19 +892,17 @@ export function MasterTrackerTable({
                     )}
                     {!scoped && (
                       <>
-                        <td className="p-2 text-center font-extrabold border-r"><Num v={gComplete} /></td>
-                        <td className="p-2 text-center font-bold" style={{ color: gLeft > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>
+                        <td className="p-2 text-center font-bold border-r"><Num v={gComplete} /></td>
+                        <td className="p-2 text-center font-semibold" style={{ color: gLeft > 0 ? undefined : "var(--ok-fg)" }}>
                           <Num v={gLeft} />
                         </td>
-                        <td className="p-2 text-center font-bold tabnum" style={pctStyle(gAch)}>
-                          {gAch === null ? "—" : `${(gAch * 100).toFixed(0)}%`}
-                        </td>
+                        <AchCell ach={gAch} />
                       </>
                     )}
                     {etaCell(groupEta(members), members.every((m) => m.hold.onHold))}
                     <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap">
-                      {open ? "▲ collapse" : "▼ open MOs"}
-                      <button type="button" onClick={(e) => { e.stopPropagation(); rowMenu.open(e, { kind: "group", bom: gBom, members }); }} className="text-muted px-1.5 hover:text-accent font-bold" title="Actions for the whole BOM (or right-click the row)">⋯</button>
+                      {open ? "collapse" : "open MOs"}
+                      <button type="button" onClick={(e) => { e.stopPropagation(); rowMenu.open(e, { kind: "group", bom: gBom, members }); }} className="icon-btn ml-1 align-middle" title="Actions for the whole BOM (or right-click the row)" aria-label={`Actions for ${gBom}`}><MoreHorizontal size={15} /></button>
                     </td>
                   </tr>
                   {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
@@ -1032,8 +1083,10 @@ export function MasterTrackerTable({
    *  difference is recorded in the Daily Log dated today (and flows to the
    *  dept's worklist). A LOWER total records a NEGATIVE correction entry —
    *  the chain guard (painted ≤ welded ≤ cut ≤ order) blocks contradictions. */
-  function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, tint: string, borderR = false) {
+  function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, borderR = false) {
     const k = `${r.mo}|${it}|${dept}`;
+    const target = Math.max(0, r.required - r.items[it].osp);
+    const state = stageState(value, target, !!etas[r.mo]?.late, r.urgent, r.hold.onHold);
     const col = `${it}|${dept}`;
     const editing = editKey === k;
     const editable = editableDepts.includes(dept);
@@ -1059,7 +1112,7 @@ export function MasterTrackerTable({
     }
 
     return (
-      <td className={`p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`} style={{ background: tint }}>
+      <td className={`stage-cell ${state} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`}>
         {editing ? (
           <span className="inline-flex flex-col items-center gap-0.5">
             <CellInput
@@ -1100,6 +1153,7 @@ export function MasterTrackerTable({
         ) : (
           value
         )}
+        {!editing && state !== "stage-idle" && <StageMeter value={value} target={target} />}
       </td>
     );
   }
@@ -1131,14 +1185,16 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
   function groupCell(gBom: string, members: MasterTrackerRow[], it: Item, stage: string, borderR: boolean) {
     // the core's Painting column is its SHOT BLAST — same as the MO rows
     const dept = stage === "Painting" && isPaintExempt(it) ? "ShotBlast" : stage;
-    const [value, itemTint] =
-      dept === "Cut" ? [members.reduce((s, r) => s + r.items[it].cut, 0), ITEM_TINT[it]]
-      : dept === "Welding" ? [members.reduce((s, r) => s + r.items[it].weld, 0), ITEM_TINT[it]]
-      : dept === "ShotBlast" ? [members.reduce((s, r) => s + r.items[it].shp, 0), ITEM_TINT[it]]
-      : dept === "Delivered" ? [members.reduce((s, r) => s + r.items[it].delivered, 0), ITEM_TINT[it]]
-      : [members.reduce((s, r) => s + r.items[it].paint, 0), ITEM_TINT[it]];
-    const tint = members.every((m) => m.hold.onHold) ? HOLD_TINT : itemTint;
+    const value =
+      dept === "Cut" ? members.reduce((s, r) => s + r.items[it].cut, 0)
+      : dept === "Welding" ? members.reduce((s, r) => s + r.items[it].weld, 0)
+      : dept === "ShotBlast" ? members.reduce((s, r) => s + r.items[it].shp, 0)
+      : dept === "Delivered" ? members.reduce((s, r) => s + r.items[it].delivered, 0)
+      : members.reduce((s, r) => s + r.items[it].paint, 0);
     const eligibleMos = members.filter((m) => m.items[it].eligible && !m.items[it].excluded).map((m) => m.mo);
+    // what the BOM's MOs need of this component, less what is bought out
+    const target = members.reduce((s, m) => s + (m.items[it].eligible && !m.items[it].excluded ? Math.max(0, m.required - m.items[it].osp) : 0), 0);
+    const state = stageState(value, target, members.some((m) => etas[m.mo]?.late), members.some((m) => m.urgent), members.every((m) => m.hold.onHold));
     const k = `g|${gBom}|${it}|${dept}`;
     const col = `${it}|${dept}`;
     const editing = editKey === k;
@@ -1165,7 +1221,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     }
 
     return (
-      <td className={`p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`} style={{ background: tint }} onClick={(e) => e.stopPropagation()}>
+      <td className={`stage-cell ${state} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`} onClick={(e) => e.stopPropagation()}>
         {editing ? (
           <span className="inline-flex flex-col items-center gap-0.5">
             <CellInput
@@ -1206,12 +1262,13 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
         ) : (
           value
         )}
+        {!editing && state !== "stage-idle" && <StageMeter value={value} target={target} />}
       </td>
     );
   }
 
   function etaCell(eta: RowEta | undefined, onHold = false) {
-    if (onHold) return <td className="p-2 text-center text-xs font-bold" style={{ color: "var(--warn-fg)" }} title="On hold — in no queue, so no forecast">⏸️</td>;
+    if (onHold) return <td className="p-2 text-center text-xs font-bold" style={{ color: "var(--warn-fg)" }} title="On hold — in no queue, so no forecast"><Pause size={13} className="inline" aria-label="On hold" /></td>;
     if (!eta) return <td className="p-2 text-center text-muted text-xs">—</td>;
     if (eta.done) return <td className="p-2 text-center text-ok-fg font-bold" title="Nothing left to make">✓</td>;
     if (!eta.etaISO) {
@@ -1228,7 +1285,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
         style={eta.late ? { color: "var(--bad-fg)" } : undefined}
         title={`Forecast ${eta.etaISO}${eta.dueISO ? ` · scheduled delivery ${eta.dueISO}` : " · never scheduled in a weekly plan"}${eta.late ? " — LATE" : ""}`}
       >
-        {eta.late && "⚠ "}{d}/{m}
+        {eta.late && <AlertTriangle size={11} className="inline mr-0.5 -mt-0.5" aria-label="Late" />}{d}/{m}
       </td>
     );
   }
@@ -1249,9 +1306,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
 
   function renderRow(r: MasterTrackerRow, inGroup = false, lastInGroup = false) {
     // frame: open groups get a clear border so their extent is obvious
-    const frame = inGroup ? `bg-brand-light/10 border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
-    // ⏸️ a held row is yellow end to end — the component tints step aside
-    const tintOf = (it: Item): string => (r.hold.onHold ? HOLD_TINT : ITEM_TINT[it]);
+    const frame = inGroup ? `border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
     return (
       <Fragment key={r.mo}>
               <tr
@@ -1260,10 +1315,14 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                 onContextMenu={(e) => rowMenu.open(e, { kind: "mo", row: r })}
                 title={r.hold.onHold ? `${holdLabel(r.hold)} · right-click for actions` : undefined}
               >
-                <td className={`p-2 font-bold whitespace-nowrap text-xs ${inGroup ? "pl-6" : ""}`}>
-                  {inGroup && <span className="text-muted mr-1">↳</span>}
-                  <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline">{r.mo}</Link>
-                  {r.priority && <span className="ml-1" title="Priority order — shown on top of every dept worklist">⭐</span>}
+                <td
+                  className={`p-2 font-bold text-xs ${inGroup ? "pl-5" : ""} ${stickCls(0)}`}
+                  style={{ ...stickStyle(0), ...(r.hold.onHold ? { boxShadow: "inset 3px 0 0 var(--warn-fg)" } : {}) }}
+                >
+                  <span className="flex flex-wrap items-center gap-1">
+                  {inGroup && <CornerDownRight size={12} className="text-muted shrink-0" aria-hidden />}
+                  <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline whitespace-nowrap">{r.mo}</Link>
+                  {r.priority && <Star size={12} className="shrink-0 fill-[var(--warn-fg)] text-[var(--warn-fg)]" aria-label="Priority order — shown on top of every dept worklist" />}
                   {r.months.length > 1 && (
                     can("admin") ? (
                       <button
@@ -1272,39 +1331,42 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                         disabled={pending}
                         // prints like the read-only span a non-admin sees, so
                         // the same MO reads the same on paper for everyone
-                        className="print-as-text pill pill-warn ml-1 cursor-pointer hover:ring-2 hover:ring-brand/60 transition-all"
+                        className="print-as-text pill pill-warn cursor-pointer hover:ring-2 hover:ring-brand/60 transition-all"
                         title={`Carried across ${r.months.length} monthly plans: ${r.months.join(" · ")} — click to fix a wrong tag`}
                       >
-                        🔁 ×{r.months.length}
+                        <Repeat size={10} aria-hidden />×{r.months.length}
                       </button>
                     ) : (
                       <span
-                        className="pill pill-warn ml-1"
+                        className="pill pill-warn"
                         title={`Carried across ${r.months.length} monthly plans: ${r.months.join(" · ")}`}
                       >
-                        🔁 ×{r.months.length}
+                        <Repeat size={10} aria-hidden />×{r.months.length}
                       </span>
                     )
                   )}
                   {r.pendingQty && <PendingQty r={r} canDecide={can("tracker.qty")} />}
-                  {r.urgent && <span className="pill pill-bad ml-1">U</span>}
-                  {r.hold.onHold && <span className="pill pill-warn ml-1 cursor-help" title={holdLabel(r.hold)}>⏸️ HOLD{r.hold.holdNote ? ` · ${r.hold.holdNote}` : ""}</span>}
+                  {r.urgent && <span className="pill pill-bad" title="Urgent order">U</span>}
+                  {r.hold.onHold && <span className="pill pill-warn cursor-help max-w-full" title={holdLabel(r.hold)}><Pause size={10} className="shrink-0" aria-hidden /><span className="truncate">HOLD{r.hold.holdNote ? ` · ${r.hold.holdNote}` : ""}</span></span>}
                   {ITEMS.filter((it) => r.items[it].osp > 0).map((it) => (
-                    <span key={it} className="pill ml-1" style={{ background: "#ece3f7", color: "#6b45a8" }} title={`${it}: ${r.items[it].osp} pcs outsourced (OSP) — not made by our departments`}>
+                    <span key={it} className="pill pill-info" title={`${it}: ${r.items[it].osp} pcs outsourced (OSP) — not made by our departments`}>
                       OSP {it}×{r.items[it].osp}
                     </span>
                   ))}
                   {ITEMS.filter((it) => r.items[it].excluded).map((it) => (
-                    <span key={`x${it}`} className="pill pill-muted ml-1" title={`${it} is not required for this project — it doesn't gate completion and never appears in the worklists`}>
+                    <span key={`x${it}`} className="pill pill-muted" title={`${it} is not required for this project — it doesn't gate completion and never appears in the worklists`}>
                       N/A {it}
                     </span>
                   ))}
+                  </span>
                 </td>
-                <td className="p-2 whitespace-nowrap">
+                <td className={`p-2 whitespace-nowrap ${stickCls(1)}`} style={stickStyle(1)}>
                   <Soi soi={r.soi} />
                 </td>
-                <td className="p-2 text-xs whitespace-nowrap">{r.customer || <span className="text-muted">—</span>}</td>
-                <td className="p-2 font-bold whitespace-nowrap">
+                <td className={`p-2 text-xs ${stickCls(2)}`} style={stickStyle(2)} title={r.customer || undefined}>
+                  <span className="block truncate">{r.customer || <span className="text-muted">—</span>}</span>
+                </td>
+                <td className={`p-2 font-bold whitespace-nowrap ${stickCls(3)}`} style={stickStyle(3)}>
                   <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>
@@ -1362,17 +1424,17 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       return (
                         <Fragment key={it}>
                           {stages.map((s, si) => (
-                            <td key={s} className={`p-2 text-center text-muted ${si === stages.length - 1 ? "border-r border-border-strong" : ""}`} style={{ background: tintOf(it) }}>—</td>
+                            <td key={s} className={`p-2 text-center text-muted ${si === stages.length - 1 ? "border-r border-border-strong" : ""}`}>—</td>
                           ))}
                         </Fragment>
                       );
                     }
                     return (
                       <Fragment key={it}>
-                        <td className="p-2 text-center text-muted" style={{ background: tintOf(it) }}>—</td>
-                        <td className="p-2 text-center text-muted" style={{ background: tintOf(it) }}>—</td>
-                        <td className="p-2 text-center text-muted" style={{ background: tintOf(it) }}>—</td>
-                        <td className="p-2 text-center text-muted border-r border-border-strong" style={{ background: tintOf(it) }}>—</td>
+                        <td className="p-2 text-center text-muted">—</td>
+                        <td className="p-2 text-center text-muted">—</td>
+                        <td className="p-2 text-center text-muted">—</td>
+                        <td className="p-2 text-center text-muted border-r border-border-strong">—</td>
                       </Fragment>
                     );
                   }
@@ -1385,12 +1447,12 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                           const last = si === stages.length - 1;
                           return (
                             <Fragment key={s}>
-                              {s === "Cut" && stageCell(r, it, "Cut", c.cut, tintOf(it), last)}
-                              {s === "Welding" && stageCell(r, it, "Welding", c.weld, tintOf(it), last)}
+                              {s === "Cut" && stageCell(r, it, "Cut", c.cut, last)}
+                              {s === "Welding" && stageCell(r, it, "Welding", c.weld, last)}
                               {s === "Painting" && (isPaintExempt(it)
-                                ? stageCell(r, it, "ShotBlast", c.shp, tintOf(it), last)
-                                : stageCell(r, it, "Painting", c.paint, tintOf(it), last))}
-                              {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, tintOf(it), last)}
+                                ? stageCell(r, it, "ShotBlast", c.shp, last)
+                                : stageCell(r, it, "Painting", c.paint, last))}
+                              {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, last)}
                             </Fragment>
                           );
                         })}
@@ -1399,42 +1461,40 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                   }
                   return (
                     <Fragment key={it}>
-                      {stageCell(r, it, "Cut", c.cut, tintOf(it))}
-                      {stageCell(r, it, "Welding", c.weld, tintOf(it))}
+                      {stageCell(r, it, "Cut", c.cut)}
+                      {stageCell(r, it, "Welding", c.weld)}
                       {isPaintExempt(it) ? (
-                        stageCell(r, it, "ShotBlast", c.shp, tintOf(it))
+                        stageCell(r, it, "ShotBlast", c.shp)
                       ) : (
-                        stageCell(r, it, "Painting", c.paint, tintOf(it))
+                        stageCell(r, it, "Painting", c.paint)
                       )}
-                      {stageCell(r, it, "Delivered", c.delivered, tintOf(it), true)}
+                      {stageCell(r, it, "Delivered", c.delivered, true)}
                     </Fragment>
                   );
                 })}
                 {!scoped && (
                   <>
-                    <td className="p-2 text-center font-extrabold border-r"><Num v={r.complete} /></td>
-                    <td className="p-2 text-center font-bold" style={{ color: r.remaining > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>
+                    <td className="p-2 text-center font-bold border-r"><Num v={r.complete} /></td>
+                    <td className="p-2 text-center font-semibold" style={{ color: r.remaining > 0 ? undefined : "var(--ok-fg)" }}>
                       <Num v={r.remaining} />
                     </td>
-                    <td className="p-2 text-center font-bold tabnum" style={pctStyle(r.achievement)}>
-                      {r.achievement === null ? "—" : `${(r.achievement * 100).toFixed(0)}%`}
-                    </td>
+                    <AchCell ach={r.achievement} />
                   </>
                 )}
                 {etaCell(etas[r.mo], r.hold.onHold)}
                 <td className="p-2 text-center no-print whitespace-nowrap">
-                  <button type="button" onClick={(e) => rowMenu.open(e, { kind: "mo", row: r })} className="text-muted px-1.5 hover:text-accent font-bold" title="Actions — hold, priority, close… (or right-click the row)">⋯</button>
+                  <button type="button" onClick={(e) => rowMenu.open(e, { kind: "mo", row: r })} className="icon-btn align-middle" title="Actions — hold, priority, close… (or right-click the row)" aria-label={`Actions for ${r.mo}`}><MoreHorizontal size={15} /></button>
                   {/* the row's actions live in the ⋯ menu (and on right-click);
                       the cell keeps only the state, and the one call to action
                       a finished order earns */}
                   {r.status === "closed" ? (
-                    <span className="pill pill-muted" title="Reopen from the ⋯ menu">Closed</span>
+                    <span className="pill pill-muted opacity-70" title="Reopen from the ⋯ menu">Closed</span>
                   ) : can("tracker.status") && r.required > 0 && r.complete >= r.required ? (
-                    <button onClick={() => changeStatus(r.mo, "closed")} disabled={pending} className="rounded-md px-2 py-0.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50">
-                      ✓ Close
+                    <button onClick={() => changeStatus(r.mo, "closed")} disabled={pending} className="btn btn-primary btn-sm !py-0.5">
+                      <Check size={12} aria-hidden />Close
                     </button>
                   ) : (
-                    <span className="pill pill-ok">Open</span>
+                    <span className="pill pill-muted">Open</span>
                   )}
                 </td>
               </tr>
@@ -1547,6 +1607,20 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
   }
 }
 
+/** A stage sub-header: its component's header wash, a step toward the
+ *  neutral header ground — one family, two levels. */
+const subTint = (tint: string) => `color-mix(in srgb, ${tint} 55%, var(--surface-2))`;
+
+/** Achievement: the figure in its status colour — no filled cell. */
+function AchCell({ ach }: { ach: number | null }) {
+  const color = ach === null ? "var(--muted)" : ach >= 1 ? "var(--ok-fg)" : ach >= 0.5 ? "var(--foreground)" : "var(--warn-fg)";
+  return (
+    <td className="p-2 text-center font-semibold tabnum" style={{ color }}>
+      {ach === null ? "—" : `${(ach * 100).toFixed(0)}%`}
+    </td>
+  );
+}
+
 // stage sub-headers sit on the same tints as their data columns — readable
 // in both themes (the old dark-green fill swallowed the muted header text)
 function StageHead({ tint, shp = false, only, borderR = true }: { tint: string; shp?: boolean; only?: string; borderR?: boolean }) {
@@ -1560,19 +1634,19 @@ function StageHead({ tint, shp = false, only, borderR = true }: { tint: string; 
       : only === "Delivered" ? ["Dlvd", "Delivered — received by the customer"]
       : shp ? ["SHB", "Shot Blast — the core's final stage after welding"]
       : ["Paint", undefined];
-    return <th className={`p-1 font-medium on-tint ${borderR ? "border-r border-border-strong" : ""}`} style={{ background: tint }} title={title}>{label}</th>;
+    return <th className={`p-1 font-semibold on-tint ${borderR ? "border-r border-border-strong" : ""}`} style={{ background: subTint(tint) }} title={title}>{label}</th>;
   }
   return (
     <>
-      <th className="p-1 font-medium on-tint" style={{ background: tint }}>Fab</th>
-      <th className="p-1 font-medium on-tint" style={{ background: tint }}>Weld</th>
+      <th className="p-1 font-semibold on-tint" style={{ background: subTint(tint) }}>Fab</th>
+      <th className="p-1 font-semibold on-tint" style={{ background: subTint(tint) }}>Weld</th>
       {/* the core (CF) is never painted — its final stage is SHOT BLAST */}
       {shp ? (
-        <th className="p-1 font-medium on-tint" style={{ background: tint }} title="Shot Blast — the core's final stage after welding">SHB</th>
+        <th className="p-1 font-semibold on-tint" style={{ background: subTint(tint) }} title="Shot Blast — the core's final stage after welding">SHB</th>
       ) : (
-        <th className="p-1 font-medium on-tint" style={{ background: tint }}>Paint</th>
+        <th className="p-1 font-semibold on-tint" style={{ background: subTint(tint) }}>Paint</th>
       )}
-      <th className="p-1 font-medium on-tint border-r border-border-strong" style={{ background: tint }} title="Delivered — received by the customer">Dlvd</th>
+      <th className="p-1 font-semibold on-tint border-r border-border-strong" style={{ background: subTint(tint) }} title="Delivered — received by the customer">Dlvd</th>
     </>
   );
 }

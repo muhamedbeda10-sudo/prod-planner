@@ -7,6 +7,16 @@
 export const ITEMS = ["CF", "TC", "TN", "CB", "AR", "MB"] as const;
 export type Item = (typeof ITEMS)[number];
 
+/** Each component's name in full, for the places that have room to say it. */
+export const ITEM_NAME: Record<Item, string> = {
+  CF: "Core Frame",
+  TC: "Top Cover",
+  TN: "Tank",
+  CB: "Cable Box",
+  AR: "Arrester Bracket",
+  MB: "Mono Box",
+};
+
 /** The components that appear as physical columns in the monthly & weekly plan
  *  sheets and in the balance file — every transformer has exactly one of each.
  *  AR/MB are DERIVED per order from KVA/rating and are never read from a sheet
