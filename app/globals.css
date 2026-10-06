@@ -1097,10 +1097,3 @@ main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--s
   .na-cell { background-image: repeating-linear-gradient(135deg, transparent 0 5px, #c9cfcc 5px 6px) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
-/* the last column (the row's actions and state) stays in view at the right
-   edge however far the sheet scrolls — from a laptop up, on screen only */
-@media screen and (min-width: 1024px) {
-  .erp-table .stick-right { position: sticky; right: 0; z-index: 3; background-color: inherit; box-shadow: inset 1px 0 0 var(--border-strong), -10px 0 12px -10px rgb(0 0 0 / 0.55); }
-  .erp-table thead .stick-right { z-index: 13; background-color: var(--surface-2); }
-  html:not(.dark) .erp-table .stick-right { box-shadow: inset 1px 0 0 var(--border-strong), -10px 0 12px -10px rgb(0 0 0 / 0.18); }
-}

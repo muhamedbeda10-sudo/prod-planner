@@ -18,7 +18,7 @@ import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { Modal } from "@/components/Modal";
 import { itemColor } from "@/lib/domain/productColors";
-import { AlertTriangle, Check, CheckCheck, ChevronRight, Columns3, CornerDownRight, MoreHorizontal, Pause, Repeat, Star } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, ChevronRight, Columns3, CornerDownRight, Pause, Repeat, Star } from "lucide-react";
 import { useConfirm } from "@/components/DataTable";
 import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
@@ -58,9 +58,9 @@ const REQ_CLS = "stick stick-end";
 
 /** The columns the reader can hide (Columns ▾). The identifiers, Required,
  *  the components and Status always show. */
-type ColKey = "kva" | "color" | "crc" | "sfm" | "fins" | "summary" | "eta";
+type ColKey = "kva" | "color" | "crc" | "sfm" | "fins";
 const COL_LABEL: Record<ColKey, string> = {
-  kva: "KVA", color: "Color", crc: "CRC", sfm: "SFM", fins: "Fins", summary: "Complete · Left · Achv.", eta: "ETA",
+  kva: "KVA", color: "Color", crc: "CRC", sfm: "SFM", fins: "Fins",
 };
 const SPEC_KEYS: ColKey[] = ["kva", "color", "crc", "sfm", "fins"];
 
@@ -297,6 +297,11 @@ export function MasterTrackerTable({
   const [collapsed, toggleCollapsed] = useStoredSet("tracker:collapsed");
   const show = (k: ColKey) => !hidden.has(k);
   const folded = (it: Item) => collapsed.has(it);
+  // Complete · Left · Achv. · ETA open and close together; folded (the
+  // default) only Achv. shows. Under a dept filter ETA stands alone, as before.
+  const [opened, toggleOpened] = useStoredSet("tracker:open");
+  const summaryOpen = opened.has("summary");
+  const toggleSummary = () => toggleOpened("summary");
   // every action that changes more than one record names them first
   const [confirmIt, confirmDialog] = useConfirm();
   // inline stage-cell editor: one cell at a time (mo|item|dept)
@@ -521,7 +526,7 @@ export function MasterTrackerTable({
   const itemColsOf = (it: Item) => (folded(it) ? 1 : scoped ? stages.length : 4);
   const tableCols =
     4 + 1 + SPEC_KEYS.filter(show).length + ITEMS.reduce((n, it) => n + itemColsOf(it), 0) +
-    (!scoped && show("summary") ? 3 : 0) + (show("eta") ? 1 : 0) + 1;
+    (scoped ? 1 : summaryOpen ? 4 : 1) + 1;
 
   // shared BOMs: one summary row per BOM, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -912,21 +917,34 @@ export function MasterTrackerTable({
                   </button>
                 </th>
               ))}
-              {!scoped && show("summary") && (
+              {!scoped && summaryOpen && (
                 <>
                   <th rowSpan={2} className="p-2 border-r border-border-strong">Complete</th>
                   <th rowSpan={2} className="p-2">Left</th>
-                  <th rowSpan={2} className="p-2">Achv.</th>
                 </>
               )}
-              {show("eta") && <th
+              {!scoped && (
+                <th rowSpan={2} className="p-1">
+                  <button
+                    type="button"
+                    onClick={toggleSummary}
+                    aria-expanded={summaryOpen}
+                    className="print-as-text inline-flex items-center gap-1 rounded px-1 py-0.5 uppercase hover:bg-surface-3"
+                    title={summaryOpen ? "Fold Complete, Left and ETA away — Achv. stays" : "Show Complete, Left and ETA beside Achv."}
+                  >
+                    Achv.
+                    <ChevronRight size={12} className={`shrink-0 transition-transform ${summaryOpen ? "rotate-180" : ""}`} aria-hidden />
+                  </button>
+                </th>
+              )}
+              {(scoped || summaryOpen) && <th
                 rowSpan={2}
                 className="p-2"
                 title={`Forecast completion date: the order's remaining work through Fabrication → Welding → Finishing at the plant's actual pace over the last ${etaWindowDays || 14} working days, queued by delivery date. Red = lands after the scheduled delivery.`}
               >
                 ETA
               </th>}
-              <th rowSpan={2} className="p-2 no-print stick-right">Status</th>
+              <th rowSpan={2} className="p-2 no-print">Status</th>
             </tr>
             <tr>
               {ITEMS.map((it) =>
@@ -1019,19 +1037,18 @@ export function MasterTrackerTable({
                         </Fragment>
                       )
                     )}
-                    {!scoped && show("summary") && (
+                    {!scoped && summaryOpen && (
                       <>
                         <td className="p-2 text-center font-bold border-r"><Num v={gComplete} /></td>
                         <td className="p-2 text-center font-semibold" style={{ color: gLeft > 0 ? undefined : "var(--ok-fg)" }}>
                           <Num v={gLeft} />
                         </td>
-                        <AchCell ach={gAch} />
                       </>
                     )}
-                    {show("eta") && etaCell(groupEta(members), members.every((m) => m.hold.onHold))}
-                    <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap stick-right">
+                    {!scoped && <AchCell ach={gAch} />}
+                    {(scoped || summaryOpen) && etaCell(groupEta(members), members.every((m) => m.hold.onHold))}
+                    <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap">
                       {open ? "collapse" : "open MOs"}
-                      <button type="button" onClick={(e) => { e.stopPropagation(); rowMenu.open(e, { kind: "group", bom: gBom, members }); }} className="icon-btn ml-1 align-middle" title="Actions for the whole BOM (or right-click the row)" aria-label={`Actions for ${gBom}`}><MoreHorizontal size={15} /></button>
                     </td>
                   </tr>
                   {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
@@ -1647,23 +1664,22 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                     </Fragment>
                   );
                 })}
-                {!scoped && show("summary") && (
+                {!scoped && summaryOpen && (
                   <>
                     <td className="p-2 text-center font-bold border-r"><Num v={r.complete} /></td>
                     <td className="p-2 text-center font-semibold" style={{ color: r.remaining > 0 ? undefined : "var(--ok-fg)" }}>
                       <Num v={r.remaining} />
                     </td>
-                    <AchCell ach={r.achievement} />
                   </>
                 )}
-                {show("eta") && etaCell(etas[r.mo], r.hold.onHold)}
-                <td className="p-2 text-center no-print whitespace-nowrap stick-right">
-                  <button type="button" onClick={(e) => rowMenu.open(e, { kind: "mo", row: r })} className="icon-btn align-middle" title="Actions — hold, priority, close… (or right-click the row)" aria-label={`Actions for ${r.mo}`}><MoreHorizontal size={15} /></button>
-                  {/* the row's actions live in the ⋯ menu (and on right-click);
-                      the cell keeps only the state, and the one call to action
-                      a finished order earns */}
+                {!scoped && <AchCell ach={r.achievement} />}
+                {(scoped || summaryOpen) && etaCell(etas[r.mo], r.hold.onHold)}
+                <td className="p-2 text-center no-print whitespace-nowrap">
+                  {/* the row's actions live on right-click; the cell keeps
+                      only the state, and the one call to action a finished
+                      order earns */}
                   {r.status === "closed" ? (
-                    <span className="pill pill-muted opacity-70" title="Reopen from the ⋯ menu">Closed</span>
+                    <span className="pill pill-muted opacity-70" title="Right-click the row to reopen">Closed</span>
                   ) : can("tracker.status") && r.required > 0 && r.complete >= r.required ? (
                     <button onClick={() => changeStatus(r.mo, "closed")} disabled={pending} className="btn btn-primary btn-sm !py-0.5">
                       <Check size={12} aria-hidden />Close
