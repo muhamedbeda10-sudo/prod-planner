@@ -233,7 +233,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
       {itemStats.length > 0 && (
         <div className={`print-keep ${RING_GRID}`}>
           {itemStats.map(({ it, need, done }) => (
-            <RingCard key={it} label={it} name={ITEM_NAME[it]} color={itemColor(it)} note={doneWord(metric, it)} done={done} need={need} wide />
+            <RingCard key={it} label={it} name={ITEM_NAME[it]} color={itemColor(it)} note={doneWord(metric, it)} done={done} need={need} wide compact />
           ))}
         </div>
       )}
