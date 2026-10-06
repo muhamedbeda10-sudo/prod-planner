@@ -10,7 +10,7 @@ import type { Item } from "@/lib/domain/constants";
  * transformers' six and the LV panels' three. Their colours are a validated
  * categorical set — colour-blind safe on neighbouring pairs (ΔE ≥ 8 under CVD
  * simulation, ≥ 15 for normal vision) in both themes, checked with the dataviz
- * validator against #ffffff and #121614. That guarantee holds for products
+ * validator against #ffffff and #242b28. That guarantee holds for products
  * shown side by side in PRODUCT_ORDER, which is why the charts order their
  * series by it.
  *
