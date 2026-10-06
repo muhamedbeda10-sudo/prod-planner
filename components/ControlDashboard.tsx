@@ -109,7 +109,7 @@ function MeterCell({ value, max, color, label }: { value: number; max: number; c
   );
 }
 
-export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c: ControlDashboardData; d: TargetDashboard; controls?: React.ReactNode; /** Off, the worklists, the shift log and the machines are not part of the app — what reads them goes with them. */ machinePlanning?: boolean }) {
+export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c: ControlDashboardData; d: TargetDashboard; controls?: React.ReactNode; /** Off, the worklists and the machines are not part of the app — what reads them goes with them. The shift log always stays. */ machinePlanning?: boolean }) {
   const p = c.plan;
   const pace = c.pace;
   const paceTone: Tone = pace.ratio === null ? "muted" : pace.ratio >= 1 ? "ok" : pace.ratio >= 0.8 ? "warn" : "bad";
@@ -387,10 +387,9 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
             title="Floor · today"
             sub={machinePlanning
               ? "Attendance as the shift log has it, machine downtime this work week, and pieces a downstream department sent back that are not re-delivered yet"
-              : "Pieces a downstream department sent back that are not re-delivered yet"}
+              : "Attendance as the shift log has it, and pieces a downstream department sent back that are not re-delivered yet"}
           >
-            <div className={`grid gap-3 text-sm ${machinePlanning ? "sm:grid-cols-3" : ""}`}>
-              {machinePlanning && <>
+            <div className={`grid gap-3 text-sm ${machinePlanning ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
               <div>
                 <div className="text-[11px] font-bold text-muted uppercase tracking-wide mb-1">Attendance</div>
                 {c.floor.attendance.map((a) => (
@@ -401,13 +400,13 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
                 ))}
                 <Link href="/shifts" className="text-xs text-accent font-semibold hover:underline">shift log →</Link>
               </div>
-              <div>
+              {/* downtime is the machines' — it goes with machine planning; the shift log stays */}
+              {machinePlanning && <div>
                 <div className="text-[11px] font-bold text-muted uppercase tracking-wide mb-1">Downtime · this week</div>
                 <div className={`text-[2rem] font-extrabold leading-none ${c.floor.downtime.hours > 0 ? "text-warn-fg" : "text-ok-fg"}`}>{one(c.floor.downtime.hours)} h</div>
                 <div className="text-[11px] text-muted mt-1">{c.floor.downtime.machines === 0 ? "no machine stood still" : `across ${fmt(c.floor.downtime.machines)} machine${c.floor.downtime.machines === 1 ? "" : "s"}`}</div>
                 <Link href="/worklist/machines" className="text-xs text-accent font-semibold hover:underline">machines →</Link>
-              </div>
-              </>}
+              </div>}
               <div>
                 <div className="text-[11px] font-bold text-muted uppercase tracking-wide mb-1">Returns open</div>
                 <div className={`text-[2rem] font-extrabold leading-none ${c.floor.openReturns.pieces > 0 ? "text-bad-fg" : "text-ok-fg"}`}>{fmt(c.floor.openReturns.pieces)}</div>
@@ -426,7 +425,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-muted border rounded-xl bg-surface px-4 py-2">
         <Link href="/odoo" className="hover:text-accent"><b className={c.closing.open > 0 ? "text-warn-fg" : "text-ok-fg"}>{fmt(c.closing.open)}</b> Odoo closings open · <b className="text-foreground">{fmt(c.closing.needMo)}</b> need an MO</Link>
         <Link href="/material" className="hover:text-accent"><b className={c.material.overBom > 0 ? "text-bad-fg" : "text-ok-fg"}>{fmt(c.material.overBom)}</b> material lines over BOM · {fmt(c.material.notNested)} not nested</Link>
-        {machinePlanning && <Link href="/shifts" className="hover:text-accent"><b className={shiftsIn === c.shifts.length ? "text-ok-fg" : "text-warn-fg"}>{shiftsIn}/{c.shifts.length}</b> shift logs in today · {c.shifts.map((s) => `${s.label} ${s.hours === null ? "—" : `${one(s.hours)}h`}`).join(" · ")}</Link>}
+        <Link href="/shifts" className="hover:text-accent"><b className={shiftsIn === c.shifts.length ? "text-ok-fg" : "text-warn-fg"}>{shiftsIn}/{c.shifts.length}</b> shift logs in today · {c.shifts.map((s) => `${s.label} ${s.hours === null ? "—" : `${one(s.hours)}h`}`).join(" · ")}</Link>
         <span className="ms-auto">{FINISHING_LABEL} = painting + the core&apos;s shot blast · <Link href="/report" className="text-accent hover:underline">printable report</Link></span>
       </div>
     </div>
