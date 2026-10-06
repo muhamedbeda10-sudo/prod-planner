@@ -8,8 +8,7 @@ import { decidePlanQty, setOrderStatus, setExcludedItems, setOrderQty, setOrderS
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { Num, PageHead, Soi } from "@/components/ui";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
-import { ExportButton } from "@/components/ExportButton";
-import { PrintButton } from "@/components/PrintButton";
+import { ExportMenu } from "@/components/ExportMenu";
 import { PrintScope } from "@/components/PrintHeader";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle } from "@/components/PlanViewToggle";
@@ -668,7 +667,7 @@ export function MasterTrackerTable({
         ]}
       />
 
-      <PageHead title="Plan Tracker" sub="Transformers · one row per order, every stage" views={viewTabs} />
+      <PageHead title="Plan Tracker" sub="Transformers · one row per order, every stage" views={viewTabs} actions={<ExportMenu excel={[{ rows: exportRows, filename: exportName, sheetName: "Tracker" }]} print />} />
 
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
       {/* the cards share the page's width between them */}
@@ -687,12 +686,6 @@ export function MasterTrackerTable({
           <>
             <PlanViewToggle value="monthly" />
             <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / Customer / KVA…" wide />
-          </>
-        }
-        actions={
-          <>
-            <ExportButton rows={exportRows} filename={exportName} sheetName="Tracker" />
-            <PrintButton />
           </>
         }
       >

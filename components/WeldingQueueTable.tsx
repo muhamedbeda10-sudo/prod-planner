@@ -692,7 +692,7 @@ export function WeldingQueueTable({
     // scroll itself: the filter bar stays put and everything else (priority /
     // pushed / returns + the queue) scrolls inside its own box, with the
     // queue's header row pinned — same pattern as the Plan Tracker.
-    <div className="md:flex md:flex-col md:h-[calc(100vh-5rem)]">
+    <div className="md:flex md:flex-col md:h-[calc(100vh-7.75rem)]">
       <FilterBar count={filtered.length} total={rows.length} showCount={false} onReset={() => { setQ(""); setItem(""); setPlace(""); }} hasActive={!!q || !!item || !!place}>
         <SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM…" />
         {/* per-component workload — tap a card to filter the queue to it */}

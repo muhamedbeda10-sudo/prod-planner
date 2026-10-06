@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/server/auth";
 import { getChatContacts } from "@/lib/server/chat";
 import { ChatClient } from "@/components/ChatClient";
+import { PageHead } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -15,5 +16,10 @@ export default async function ChatPage({ searchParams }: { searchParams: Promise
   // ?open=user-12 / ?open=group-3 — Reply on a message popup, on a phone
   const m = /^(user|group)-(\d+)$/.exec((await searchParams).open ?? "");
   const openOn = m ? { kind: m[1] as "user" | "group", id: Number(m[2]) } : null;
-  return <ChatClient me={{ id: user.id, name: user.name }} initialContacts={contacts} openOn={openOn} />;
+  return (
+    <>
+      <PageHead title="Chat" sub="Messages between the plant's accounts" />
+      <ChatClient me={{ id: user.id, name: user.name }} initialContacts={contacts} openOn={openOn} />
+    </>
+  );
 }

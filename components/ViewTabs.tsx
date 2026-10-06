@@ -16,7 +16,11 @@ export interface View {
 /** The tab's OTHER views. The one on screen is not offered — the page's
  *  title already says where you are — so the switch is only ever a way out. */
 export function ViewTabs({ views, current, label }: { views: View[]; current: string; label: string }) {
-  const others = views.filter((v) => v.href.split("?")[0] !== current);
+  // a view is "current" by its path — or, where a tab's views share one path
+  // and differ by ?view=, by its whole href
+  const exact = views.some((v) => v.href === current);
+  const isCurrent = (v: View) => (exact ? v.href === current : v.href.split("?")[0] === current);
+  const others = views.filter((v) => !isCurrent(v));
   if (others.length === 0) return null;
   return (
     <nav className="seg" aria-label={label}>

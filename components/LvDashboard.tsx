@@ -34,13 +34,10 @@ export function LvDashboard({ d, today }: { d: LvDashboardData; today: string })
       {/* The panels' dashboard is a view of the Plan Tracker tab, and carries
           its own report: pick a day (from = to) or a period and the table
           below is that period, ready to print. */}
-      <PageHead title="Dashboard" sub="LV Panels · the plan through four stages" views={<ViewTabs views={trackerViews("LV")} current="/" label="Tracker view" />} />
+      <PageHead title="Dashboard" sub="LV Panels · the plan through four stages" actions={<PrintButton />} views={<ViewTabs views={trackerViews("LV")} current="/" label="Tracker view" />} />
       <div className="no-print space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           {d.clamped && <span className="pill pill-warn">cut to {d.days.length} days</span>}
-          <span className="ms-auto inline-flex items-center gap-2">
-            <PrintButton />
-          </span>
         </div>
         <UrlDateSlicer
           encoding="fromTo" from={d.fromISO} to={d.toISO} min={addDaysISO(today, -90)} max={today} today={today}

@@ -7,10 +7,9 @@ import { recordGroupOutput } from "@/app/worklist/actions";
 import { pctStyle, Soi } from "@/components/ui";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle, WeekPlanPicker } from "@/components/PlanViewToggle";
-import { ExportButton } from "@/components/ExportButton";
-import { PrintButton } from "@/components/PrintButton";
 import { PrintScope } from "@/components/PrintHeader";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
+import { ExportMenu } from "@/components/ExportMenu";
 import { itemColor } from "@/lib/domain/productColors";
 import { ITEMS, ITEM_NAME, isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 import { traceHref } from "@/lib/domain/links";
@@ -272,8 +271,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
           <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Hide finished</span>
         </label>
         <div className="col-span-2 flex items-center gap-2 sm:col-span-1">
-          <ExportButton rows={exportRows} filename={`weekly-plan-${data.planNo ?? "none"}.csv`} />
-          <PrintButton />
+          <ExportMenu excel={[{ label: "CSV", rows: exportRows, filename: `weekly-plan-${data.planNo ?? "none"}.csv` }]} print />
         </div>
       </FilterBar>
 

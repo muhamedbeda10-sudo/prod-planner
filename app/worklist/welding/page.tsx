@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/ui";
 import { formatDate } from "@/lib/domain/format";
 import { getSoiLookup } from "@/lib/server/soi";
 import { getWeldingQueue } from "@/lib/server/execution";
@@ -64,6 +65,7 @@ export default async function WeldWorklistPage() {
   return (
     <>
       <PrintHeader title="Welding Worklist" date={formatDate(today)} />
+      <PageHead title="Welding Worklist" sub={`Transformers · ${formatDate(today)}`} />
       <WeldingQueueTable
         soi={soi}
         rows={queue}

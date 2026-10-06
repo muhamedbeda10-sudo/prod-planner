@@ -1,5 +1,7 @@
 "use client";
 
+import { FilterSelect, SearchBox } from "@/components/FilterControls";
+import { FilterX } from "lucide-react";
 import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { ProductSwatch } from "@/components/Badge";
 import { productColor } from "@/lib/domain/productColors";
@@ -641,7 +643,6 @@ function ImportPanel({ day, lines, defaultLine }: { day: string; lines: readonly
 // ---- filters: one row above the table, kept between visits ----
 
 const FILTERS_KEY = "odoo:filters";
-const SEL = "border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold";
 
 function readSavedFilters(raw: string): OdooFilters {
   const o = parseSaved(raw);
@@ -680,28 +681,21 @@ function FilterBar({ entries, filters, onChange }: { entries: OdooEntryView[]; f
   const set = (patch: Partial<OdooFilters>) => onChange({ ...filters, ...patch });
   const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_ODOO_FILTERS);
   return (
-    <div className="flex flex-wrap items-center gap-2 no-print">
-      <input
-        type="search" value={filters.q} onChange={(e) => set({ q: e.target.value })}
-        placeholder="Search SOI, FG-CODE, MO, product, notes…" aria-label="Search"
-        className={`${SEL} ltr w-72 font-normal`}
+    <div className="toolbar toolbar-row no-print !mb-0">
+      <SearchBox value={filters.q} onChange={(v) => set({ q: v })} placeholder="Search SOI, FG-CODE, MO, product, notes…" wide />
+      <FilterSelect label="Line" title="Product line" value={filters.line} allLabel="both" onChange={(v) => set({ line: v })} options={[{ value: "TR", label: "Transformers" }, { value: "LV", label: "LV Panels" }]} />
+      <FilterSelect label="Status" value={filters.status} onChange={(v) => set({ status: v })} options={statuses.map((st) => ({ value: st, label: st }))} />
+      <FilterSelect
+        label="Notes" title="Rows with or without notes" value={filters.notes} emptyValue="all" allLabel="any"
+        onChange={(v) => set({ notes: v as OdooNoteFilter })}
+        options={(Object.keys(ODOO_NOTE_FILTERS) as OdooNoteFilter[]).filter((k) => k !== "all").map((k) => ({ value: k, label: ODOO_NOTE_FILTERS[k] }))}
       />
-      <select aria-label="Line" title="Product line" className={SEL} value={filters.line} onChange={(e) => set({ line: e.target.value })}>
-        <option value="">Line: both</option>
-        <option value="TR">Transformers</option>
-        <option value="LV">LV Panels</option>
-      </select>
-      <select aria-label="Status" title="Status" className={SEL} value={filters.status} onChange={(e) => set({ status: e.target.value })}>
-        <option value="">Status: all</option>
-        {statuses.map((st) => <option key={st} value={st}>{st}</option>)}
-      </select>
-      <select aria-label="Notes" title="Rows with or without notes" className={SEL} value={filters.notes} onChange={(e) => set({ notes: e.target.value as OdooNoteFilter })}>
-        {(Object.keys(ODOO_NOTE_FILTERS) as OdooNoteFilter[]).map((k) => <option key={k} value={k}>{ODOO_NOTE_FILTERS[k]}</option>)}
-      </select>
-      <select aria-label="MO" title="Rows born from a closing that still need Odoo's MO, or whose FG-CODE was guessed" className={SEL} value={filters.mo} onChange={(e) => set({ mo: e.target.value as OdooMoFilter })}>
-        {(Object.keys(ODOO_MO_FILTERS) as OdooMoFilter[]).map((k) => <option key={k} value={k}>{ODOO_MO_FILTERS[k]}</option>)}
-      </select>
-      {active && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onChange(EMPTY_ODOO_FILTERS)}>✕ Clear</button>}
+      <FilterSelect
+        label="MO" title="Rows born from a closing that still need Odoo's MO, or whose FG-CODE was guessed" value={filters.mo} emptyValue="all" allLabel="any"
+        onChange={(v) => set({ mo: v as OdooMoFilter })}
+        options={(Object.keys(ODOO_MO_FILTERS) as OdooMoFilter[]).filter((k) => k !== "all").map((k) => ({ value: k, label: ODOO_MO_FILTERS[k] }))}
+      />
+      {active && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => onChange(EMPTY_ODOO_FILTERS)}><FilterX size={13} aria-hidden />Reset filters</button>}
     </div>
   );
 }

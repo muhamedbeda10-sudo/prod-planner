@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/ui";
 import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { getSoiLookup } from "@/lib/server/soi";
@@ -62,6 +63,7 @@ export default async function PaintingWorklistPage() {
   return (
     <>
       <PrintHeader title="Painting Worklist" date={formatDate(today)} />
+      <PageHead title="Painting Worklist" sub={`Transformers · ${formatDate(today)}`} />
       <WeldingQueueTable
         soi={soi}
         rows={queue}

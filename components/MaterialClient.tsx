@@ -11,6 +11,7 @@ import {
   type MaterialLineView, type MaterialTotal, type MaterialFilters, type MaterialStatusFilter,
 } from "@/lib/domain/material";
 import { Modal } from "@/components/Modal";
+import { FilterSelect } from "@/components/FilterControls";
 import { Check, FilterX, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
@@ -603,20 +604,11 @@ function readSavedFilters(raw: string): MaterialFilters {
   };
 }
 
-const SEL = "ctl max-w-[11rem]";
 
 function Pick({ label, value, options, onChange, render }: {
   label: string; value: string; options: string[]; onChange: (v: string) => void; render?: (v: string) => string;
 }) {
-  return (
-    <label className="flex items-center gap-1.5">
-      <span className="filter-label">{label}</span>
-      <select aria-label={label} className={`${SEL} ${value ? "!border-brand" : ""}`} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">All</option>
-        {options.map((o) => <option key={o} value={o}>{render ? render(o) : o}</option>)}
-      </select>
-    </label>
-  );
+  return <FilterSelect label={label} value={value} onChange={onChange} options={options.map((o) => ({ value: o, label: render ? render(o) : o }))} />;
 }
 
 function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineView[]; filters: MaterialFilters; onChange: (f: MaterialFilters) => void; shown: number }) {
@@ -645,12 +637,11 @@ function FilterBar({ lines, filters, onChange, shown }: { lines: MaterialLineVie
       <Pick label="Material" value={filters.material} options={materials} onChange={(v) => set({ material: v })} />
       <Pick label="Thickness" value={filters.thicknessMm} options={thicknesses} onChange={(v) => set({ thicknessMm: v })} render={(t) => `${t} mm`} />
       <Pick label="Sheet size" value={filters.sheetSize} options={sizes} onChange={(v) => set({ sheetSize: v })} />
-      <label className="flex items-center gap-1.5">
-        <span className="filter-label">Line status</span>
-        <select aria-label="Line status" title="Where the line stands" className={`${SEL} ${filters.status !== "all" ? "!border-brand" : ""}`} value={filters.status} onChange={(e) => set({ status: e.target.value as MaterialStatusFilter })}>
-          {(Object.keys(MATERIAL_STATUS_FILTERS) as MaterialStatusFilter[]).map((k) => <option key={k} value={k}>{MATERIAL_STATUS_FILTERS[k]}</option>)}
-        </select>
-      </label>
+      <FilterSelect
+        label="Line status" title="Where the line stands" value={filters.status} emptyValue="all" allLabel={MATERIAL_STATUS_FILTERS.all}
+        onChange={(v) => set({ status: v as MaterialStatusFilter })}
+        options={(Object.keys(MATERIAL_STATUS_FILTERS) as MaterialStatusFilter[]).filter((k) => k !== "all").map((k) => ({ value: k, label: MATERIAL_STATUS_FILTERS[k] }))}
+      />
       <span className="ml-auto text-xs text-muted tabnum whitespace-nowrap">
         {active ? <><b className="text-foreground font-semibold">{shown}</b> of {lines.length} lines</> : `${lines.length} lines`}
       </span>
@@ -682,15 +673,17 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
   return (
     <div className="space-y-4">
       <div className="toolbar !mb-0">
-        <div className="toolbar-row no-print">
-          {canEdit && (
-            <>
-              <ImportPanel product={product} />
-              {lv ? <AddLvOrder orders={lvOrders} templates={lvTemplates} /> : <AddLine knownBoms={knownBoms} knownCodes={knownCodes} product={product} />}
-            </>
-          )}
-          {exportButton}
-        </div>
+        {(canEdit || exportButton) && (
+          <div className="toolbar-row no-print">
+            {canEdit && (
+              <>
+                <ImportPanel product={product} />
+                {lv ? <AddLvOrder orders={lvOrders} templates={lvTemplates} /> : <AddLine knownBoms={knownBoms} knownCodes={knownCodes} product={product} />}
+              </>
+            )}
+            {exportButton}
+          </div>
+        )}
         {lines.length > 0 && <FilterBar lines={lines} filters={filters} onChange={changeFilters} shown={shown.length} />}
       </div>
       <section className="bg-surface border rounded-[10px] overflow-hidden">

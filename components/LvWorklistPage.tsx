@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/ui";
 import { formatDate } from "@/lib/domain/format";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { getLvWorklist } from "@/lib/server/lvWorklist";
@@ -18,10 +19,10 @@ export async function LvWorklistPage({ stage }: { stage: LvStage }) {
   return (
     <>
       <PrintHeader title={`${stage} Worklist — LV Panels`} date={formatDate(today)} />
-      <div className="mb-4 flex flex-wrap items-center gap-3 no-print">
-        <ViewTabs views={LV_WORKLISTS.map((w) => ({ href: w.href, label: w.label, title: `${w.label} — what the panels owe this stage` }))} current={LV_WORKLISTS.find((w) => w.stage === stage)!.href} label="LV stage" />
-        <span className="text-xs text-muted">LV panels · {formatDate(today)}</span>
-      </div>
+      <PageHead
+        title={`${stage} Worklist`} sub={`LV Panels · ${formatDate(today)}`}
+        views={<ViewTabs views={LV_WORKLISTS.map((w) => ({ href: w.href, label: w.label, title: `${w.label} — what the panels owe this stage` }))} current={LV_WORKLISTS.find((w) => w.stage === stage)!.href} label="LV stage" />}
+      />
       <LvWorklist data={data} canEdit={canEdit} todayISO={toISODate(today)} />
     </>
   );

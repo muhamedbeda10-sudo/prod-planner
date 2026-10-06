@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { getActiveLine } from "@/lib/server/line";
 import { linePermKey } from "@/lib/domain/permissions";
-import Link from "next/link";
 import { getOdooData, getOdooDashboard } from "@/lib/server/odoo";
 import { resolveBasis, resolveBom, resolvePeriod } from "@/lib/domain/odooStats";
 import { OdooBasisPicker, OdooBomPicker } from "@/components/OdooPickers";
@@ -10,8 +9,9 @@ import { OdooDashboard } from "@/components/LazyCharts";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { toISODate } from "@/lib/domain/dates";
 import { odooScopeKey, parseOdooScope } from "@/lib/domain/odoo";
-import { PageHeader } from "@/components/ui";
-import { ExportButton } from "@/components/ExportButton";
+import { PageHead } from "@/components/ui";
+import { ExportMenu } from "@/components/ExportMenu";
+import { ViewTabs } from "@/components/ViewTabs";
 import { OdooClient } from "@/components/OdooClient";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
@@ -38,11 +38,13 @@ export default async function OdooPage({
   const day = odooScopeKey(scope);
   const view = sp.view === "dashboard" ? "dashboard" : "log";
 
+  // the tab's other view, top right — the same switch every tab carries
   const viewSwitch = (
-    <nav className="seg" aria-label="View">
-      <Link href="/odoo?view=log" className={view === "log" ? "on" : ""}>Log</Link>
-      <Link href="/odoo?view=dashboard" className={view === "dashboard" ? "on" : ""}>Dashboard</Link>
-    </nav>
+    <ViewTabs
+      views={[{ href: "/odoo?view=log", label: "Log", title: "The daily close-out log" }, { href: "/odoo?view=dashboard", label: "Dashboard", title: "Closed quantities per product, close-out time" }]}
+      current={`/odoo?view=${view}`}
+      label="ODOO view"
+    />
   );
 
   if (view === "dashboard") {
@@ -53,11 +55,10 @@ export default async function OdooPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="odoo:last" />
-        <PageHeader title="📦 ODOO — dashboard">
-          {viewSwitch}
+        <PageHead title="ODOO" sub="Dashboard · both lines" views={viewSwitch}>
           <OdooBasisPicker basis={basis} />
           <OdooBomPicker bom={data.bom} boms={data.boms} />
-        </PageHeader>
+        </PageHead>
         <UrlDateSlicer
           encoding="odooDash" from={period.fromISO} to={period.fromISO ? period.toISO : null} min={addDaysISO(today, -120)} max={today} today={today}
           presets={["today", "yesterday", "last7", "thisMonth", "lastMonth", "last30", "last90"]} allLabel="All time"
@@ -93,10 +94,12 @@ export default async function OdooPage({
   return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="odoo:last" />
-      <PageHeader title="📦 ODOO — close-out log">
-        {viewSwitch}
-        <ExportButton rows={exportRows} filename={`odoo-${day.replace("..", "_to_")}.xlsx`} sheetName="Sheet1" />
-      </PageHeader>
+      <PageHead
+        title="ODOO"
+        sub="Close-out log · both lines"
+        views={viewSwitch}
+        actions={<ExportMenu excel={[{ rows: exportRows, filename: `odoo-${day.replace("..", "_to_")}.xlsx`, sheetName: "Sheet1" }]} />}
+      />
       <UrlDateSlicer
         encoding="odooDay" from={sel.from} to={sel.to} min={min} max={[today, days[0] ?? today].sort().reverse()[0]} today={today}
         presets={["today", "yesterday", "last3", "last7", "thisMonth", "lastMonth", "last30"]} allLabel="All days" marks={days}
