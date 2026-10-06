@@ -3,6 +3,16 @@
 import { useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
 
+/** Writes the rows to an .xlsx and hands it to the browser. SheetJS is
+ *  loaded on this first call (see below). */
+export async function downloadXlsx(rows: Record<string, unknown>[], filename: string, sheetName = "Sheet1") {
+  const XLSX = await import("xlsx");
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, filename);
+}
+
 // SheetJS is a quarter of a megabyte — far more than any page it sits on.
 // It is fetched the first time someone actually presses Export, never on
 // page load, so a dozen tabs open faster for a button most visits never use.
@@ -21,11 +31,7 @@ export function ExportButton({
   async function exportXlsx() {
     setBusy(true);
     try {
-      const XLSX = await import("xlsx");
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, sheetName);
-      XLSX.writeFile(wb, filename);
+      await downloadXlsx(rows, filename, sheetName);
     } finally {
       setBusy(false);
     }

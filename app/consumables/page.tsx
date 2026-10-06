@@ -1,5 +1,4 @@
 import { formatDate } from "@/lib/domain/format";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { getConsumableEdits, getConsumablesDashboard, getConsumablesData, getCustomDepartments } from "@/lib/server/consumables";
@@ -16,11 +15,11 @@ import { SCRAP_LIMITS } from "@/lib/domain/powderScrap";
 import { getMonthlyReport } from "@/lib/server/consumableMonthly";
 import { MONTH_STATUS_LABEL, isMonthKey, monthLong } from "@/lib/domain/consumableMonthly";
 import { PrintHeader } from "@/components/PrintHeader";
-import { PrintButton } from "@/components/PrintButton";
 import { addDaysISO, clampISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
-import { PageHeader } from "@/components/ui";
-import { ExportButton } from "@/components/ExportButton";
+import { PageHead } from "@/components/ui";
+import { ExportMenu } from "@/components/ExportMenu";
+import { ViewTabs } from "@/components/ViewTabs";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { ConsumablesClient } from "@/components/ConsumablesClient";
 import { ConsumableEdits } from "@/components/ConsumableEdits";
@@ -52,7 +51,7 @@ export default async function ConsumablesPage({
   let from = valid(sp.from) ?? today;
   let to = valid(sp.to) ?? today;
   if (from > to) [from, to] = [to, from];
-  const periodLabel = from === to ? (from === today ? "today" : `on ${from}`) : `from ${from} to ${to}`;
+  const periodLabel = from === to ? (from === today ? "today" : `on ${formatDate(from)}`) : `from ${formatDate(from)} to ${formatDate(to)}`;
   const period = from === to ? from : `${from}_to_${to}`;
 
   // the log and the dashboard are everyone's; the history of edits the admin's
@@ -67,14 +66,19 @@ export default async function ConsumablesPage({
     const q = p.toString();
     return q ? `/consumables?${q}` : "/consumables";
   };
+  // the tab's other views, top right — the same switch every tab carries
   const viewSwitch = (
-    <nav className="seg" aria-label="View">
-      <Link href={hrefFor("log")} className={view === "log" ? "on" : ""}>Log</Link>
-      <Link href={hrefFor("dashboard")} className={view === "dashboard" ? "on" : ""}>Dashboard</Link>
-      <Link href={hrefFor("powder")} className={view === "powder" ? "on" : ""}>Powder</Link>
-      <Link href={hrefFor("limits")} className={view === "limits" ? "on" : ""}>Limits</Link>
-      {me.isAdmin && <Link href={hrefFor("edits")} className={view === "edits" ? "on" : ""}>Edits</Link>}
-    </nav>
+    <ViewTabs
+      views={[
+        { href: hrefFor("log"), label: "Log", title: "Hand out and record" },
+        { href: hrefFor("dashboard"), label: "Dashboard", title: "What went out, to whom, against the limits" },
+        { href: hrefFor("powder"), label: "Powder", title: "Powder scrap" },
+        { href: hrefFor("limits"), label: "Limits", title: "Per-person limits" },
+        ...(me.isAdmin ? [{ href: hrefFor("edits"), label: "Edits", title: "Every change made to a recorded hand-out" }] : []),
+      ]}
+      current={hrefFor(view)}
+      label="Consumables view"
+    />
   );
   const slicer = (
     <UrlDateSlicer
@@ -101,11 +105,10 @@ export default async function ConsumablesPage({
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" />
         <PrintHeader title="Powder scrap" subtitle={monthLong(month)} date={formatDate(factoryDayISO(new Date()))} />
-        <PageHeader>
-          {viewSwitch}
-          <ExportButton rows={exportRows} filename={`powder-scrap-${month}.xlsx`} sheetName={month} />
-          <PrintButton />
-        </PageHeader>
+        <PageHead
+          title="Consumables" sub={`Powder scrap · ${monthLong(month)}`} views={viewSwitch}
+          actions={<ExportMenu excel={[{ rows: exportRows, filename: `powder-scrap-${month}.xlsx`, sheetName: month }]} print />}
+        />
         <PowderScrap r={r} canRecord={hasPerm(me, "consumables.edit")} isAdmin={me.isAdmin} today={today} earliest={addDaysISO(today, -SCRAP_LIMITS.daysBack)} />
       </div>
     );
@@ -131,10 +134,10 @@ export default async function ConsumablesPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" />
-        <PageHeader>
-          {viewSwitch}
-          <ExportButton rows={exportRows} filename={`consumables-limits-${today}.xlsx`} sheetName="Limits" />
-        </PageHeader>
+        <PageHead
+          title="Consumables" sub="Per-person limits" views={viewSwitch}
+          actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-limits-${today}.xlsx`, sheetName: "Limits" }]} />}
+        />
         <ConsumableLimits
           items={items}
           standings={standings}
@@ -158,12 +161,13 @@ export default async function ConsumablesPage({
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" />
         <PrintHeader title="Consumables — dashboard" subtitle={`${periodLabel} · monthly review ${monthLong(month)}`} date={formatDate(factoryDayISO(new Date()))} />
-        <PageHeader>
-          {viewSwitch}
-          <ExportButton rows={exportRows} filename={`consumables-summary-${period}.xlsx`} sheetName="Items" />
-          <ExportButton rows={monthlyExportRows(report)} filename={`consumables-monthly-${month}.xlsx`} sheetName={month} label="Monthly Excel" />
-          <PrintButton />
-        </PageHeader>
+        <PageHead
+          title="Consumables" sub={`Dashboard · ${periodLabel}`} views={viewSwitch}
+          actions={<ExportMenu excel={[
+            { label: "Items summary", rows: exportRows, filename: `consumables-summary-${period}.xlsx`, sheetName: "Items" },
+            { label: "Monthly review", rows: monthlyExportRows(report), filename: `consumables-monthly-${month}.xlsx`, sheetName: month },
+          ]} print />}
+        />
         {slicer}
         {/* the limits first: an alarm is what the page is opened for */}
         <ConsumableAlarms d={limits} periodLabel={periodLabel} period={period} />
@@ -192,10 +196,10 @@ export default async function ConsumablesPage({
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" />
-        <PageHeader>
-          {viewSwitch}
-          <ExportButton rows={exportRows} filename={`consumables-edits-${period}.xlsx`} sheetName="Edits" />
-        </PageHeader>
+        <PageHead
+          title="Consumables" sub={`Edits · ${periodLabel}`} views={viewSwitch}
+          actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-edits-${period}.xlsx`, sheetName: "Edits" }]} />}
+        />
         {slicer}
         <ConsumableEdits edits={edits} periodLabel={periodLabel} />
       </div>
@@ -223,10 +227,10 @@ export default async function ConsumablesPage({
   return (
     <div className="space-y-3">
       <RememberLastVisit storageKey="consumables:last" />
-      <PageHeader>
-        {viewSwitch}
-        <ExportButton rows={exportRows} filename={`consumables-${period}.xlsx`} sheetName="Consumables" />
-      </PageHeader>
+      <PageHead
+        title="Consumables" sub={`Log · ${periodLabel}`} views={viewSwitch}
+        actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-${period}.xlsx`, sheetName: "Consumables" }]} />}
+      />
       {slicer}
       <ConsumablesClient
         data={data}

@@ -1,56 +1,60 @@
 import type { ReactNode } from "react";
 
 /**
- * The page's toolbar row. Pages carry no title — the highlighted tab in the
- * nav already says where you are — so this is just the view switches and
- * buttons, packed at the top. `label` is for a page whose name IS data (a
- * tank's serial, the code being traced); a plain page name is not shown.
+ * The older page header, kept as an adapter so every page wears the ONE head:
+ * its title (an emoji in front is dropped — the title is words), its sub,
+ * and whatever it held as actions on the right. `label` (a tank's serial, a
+ * traced code) stands in as the title when there is none.
  */
 export function PageHeader({
+  title,
+  sub,
   label,
   children,
 }: {
-  /** @deprecated page titles were removed app-wide — accepted, not rendered */
   title?: string;
-  /** @deprecated headlines were removed app-wide — accepted but not rendered */
   sub?: string;
   label?: ReactNode;
   children?: ReactNode;
 }) {
-  if (!label && !children) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2 mb-3">
-      {label && <span className="text-base font-extrabold tracking-tight ltr">{label}</span>}
-      {children && <div className="flex flex-wrap items-center gap-2 no-print">{children}</div>}
-    </div>
-  );
+  const clean = title ? title.replace(/^[^\p{L}\p{N}]+/u, "").trim() : "";
+  return <PageHead title={clean || label || ""} sub={sub} actions={children} />;
 }
 
 /**
- * The head of a screen: its name, a quiet line under it, and — always in the
- * same place, the top right — the switch to the tab's OTHER views. Every view
- * of a tab carries it, so the switch never moves as you go between them.
- * Off the paper: the printed sheets carry their own masthead.
+ * The head of a screen — ONE row, never taller than 52px on a desktop: its
+ * name, a quiet line under it, anything that belongs beside the title (a
+ * picker), then on the right the page's actions (Export, Print …) and — always
+ * last, in the same place on every view of a tab — the switch to the tab's
+ * OTHER views. Off the paper: the printed sheets carry their own masthead.
  */
 export function PageHead({
   title,
   sub,
   views,
+  actions,
   children,
 }: {
   title: ReactNode;
   sub?: ReactNode;
-  /** The tab's view switch (<ViewTabs>), pinned to the right. */
+  /** The tab's view switch (<ViewTabs>), pinned to the right end. */
   views?: ReactNode;
+  /** The page's actions (an <ExportMenu>, a back link), right-aligned before the views. */
+  actions?: ReactNode;
   /** Anything that belongs beside the title (a window picker, a badge). */
   children?: ReactNode;
 }) {
   return (
     <div className="page-head no-print">
-      <h1 className="page-title">{title}</h1>
-      {sub && <span className="page-sub">{sub}</span>}
+      <h1 className="page-title ltr">{title}</h1>
+      {sub && <span className="page-sub truncate min-w-0">{sub}</span>}
       {children}
-      {views && <span className="ml-auto">{views}</span>}
+      {(actions || views) && (
+        <span className="ms-auto flex flex-wrap items-center gap-2">
+          {actions}
+          {views}
+        </span>
+      )}
     </div>
   );
 }

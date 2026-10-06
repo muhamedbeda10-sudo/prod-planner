@@ -230,7 +230,7 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
       >
         <MessagesSquare size={18} />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-bad-fg text-white text-[10px] font-extrabold grid place-items-center tabnum">
+          <span className="count-badge count-badge-alert absolute -top-1 -right-1">
             {unread > 99 ? "99+" : unread}
           </span>
         )}

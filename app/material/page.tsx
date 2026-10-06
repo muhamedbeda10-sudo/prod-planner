@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
-import { ExportButton } from "@/components/ExportButton";
+import { ExportMenu } from "@/components/ExportMenu";
 import { PageHead } from "@/components/ui";
 import { MaterialClient } from "@/components/MaterialClient";
 import { getActiveLine } from "@/lib/server/line";
@@ -78,11 +78,11 @@ export default async function MaterialPage({
         title="Material"
         sub={`Nesting sheet · ${LINE_LABEL[line]} · one living table, matched on the MO`}
         views={<ViewTabs views={MATERIAL_VIEWS} current="/material" label="Material view" />}
+        actions={<ExportMenu excel={[{ rows: exportRows, filename: "material-sheet.xlsx", sheetName: "Sheet1" }]} />}
       />
       <MaterialClient
         lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))}
         product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} odooByMo={odooByMo}
-        exportButton={<ExportButton rows={exportRows} filename="material-sheet.xlsx" sheetName="Sheet1" />}
       />
     </div>
   );

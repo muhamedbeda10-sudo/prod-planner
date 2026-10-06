@@ -1,7 +1,26 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { addDaysISO, clampISO, daysBetweenISO, slicerRangeLabel, slicerTicks, type SlicerPreset } from "@/lib/domain/dateSlicer";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { CalendarRange, ChevronLeft, ChevronRight } from "lucide-react";
+import { addDaysISO, clampISO, daysBetweenISO, slicerTicks, type SlicerPreset } from "@/lib/domain/dateSlicer";
+import { formatDate } from "@/lib/domain/format";
+
+/** Whether the timeline strip is open — one choice for the whole app,
+ *  remembered in this browser. Open until someone closes it. */
+const TIMELINE_KEY = "daterange:timeline";
+const timelineListeners = new Set<() => void>();
+function useTimelineOpen(): [boolean, (open: boolean) => void] {
+  const open = useSyncExternalStore(
+    (cb) => { timelineListeners.add(cb); return () => { timelineListeners.delete(cb); }; },
+    () => { try { return localStorage.getItem(TIMELINE_KEY) !== "closed"; } catch { return true; } },
+    () => true,
+  );
+  const set = (next: boolean) => {
+    try { localStorage.setItem(TIMELINE_KEY, next ? "open" : "closed"); } catch {}
+    timelineListeners.forEach((l) => l());
+  };
+  return [open, set];
+}
 
 // The one date filter of the app: quick filters on top (Today, Yesterday,
 // Last 7 days…), and under them a strip of the days with a handle at each end
@@ -32,6 +51,7 @@ const COMMIT_MS = 350;
 
 export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks, onChange, label }: DateSlicerProps) {
   const span = Math.max(1, daysBetweenISO(min, max));
+  const [timelineOpen, setTimelineOpen] = useTimelineOpen();
   const isAll = from === null || to === null;
   const propA = isAll ? min : clampISO(from!, min, max);
   const propB = isAll ? max : clampISO(mode === "day" ? from! : to!, min, max);
@@ -82,69 +102,79 @@ export function DateSlicer({ mode, from, to, min, max, presets, allLabel, marks,
   const ticks = slicerTicks(min, max);
   const markSet = marks ? [...new Set(marks)].filter((m) => m >= min && m <= max) : [];
 
+  const rangeText = showAll ? allLabel : a === b ? formatDate(a) : `${formatDate(a)} → ${formatDate(b)} · ${daysBetweenISO(a, b) + 1} days`;
+
   return (
-    <div className="no-print bg-surface border rounded-xl px-3 pt-2 pb-1.5 space-y-1.5 min-w-0">
+    <div className="no-print date-range min-w-0">
+      {/* one row: what it filters, the quick picks, then the period itself
+          with the steps either side and the timeline's own switch */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-        {label && <span className="text-[10px] font-bold uppercase tracking-wide text-muted shrink-0">{label}</span>}
-        {/* phones: the dates read on their own line, the quick filters scroll under them */}
+        {label && <span className="filter-label shrink-0">{label}</span>}
         <div className="order-2 sm:order-none w-full sm:w-auto sm:flex-1 flex gap-1 overflow-x-auto min-w-0 [scrollbar-width:none]" role="group" aria-label="Quick dates">
           {presets.map((p) => (
-            <button
-              key={p.key} type="button" onClick={() => onChange(p.from, p.to)} aria-pressed={activePreset === p.key}
-              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold whitespace-nowrap transition-colors ${activePreset === p.key ? "bg-brand text-white" : "bg-surface-2 text-muted hover:text-foreground"}`}
-            >
+            <button key={p.key} type="button" onClick={() => onChange(p.from, p.to)} aria-pressed={activePreset === p.key} className="chip-toggle shrink-0 whitespace-nowrap">
               {p.label}
             </button>
           ))}
           {allLabel && (
-            <button
-              type="button" onClick={() => onChange(null, null)} aria-pressed={showAll}
-              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold whitespace-nowrap transition-colors ${showAll ? "bg-brand text-white" : "bg-surface-2 text-muted hover:text-foreground"}`}
-            >
+            <button type="button" onClick={() => onChange(null, null)} aria-pressed={showAll} className="chip-toggle shrink-0 whitespace-nowrap">
               {allLabel}
             </button>
           )}
         </div>
-        <span className="order-1 sm:order-none ms-auto shrink-0 text-xs font-extrabold tabnum whitespace-nowrap" aria-live="polite">
-          {showAll ? allLabel : slicerRangeLabel(a, b)}
+        <span className="order-1 sm:order-none ms-auto shrink-0 inline-flex items-center gap-1">
+          <button type="button" className="icon-btn" onClick={() => step(-1)} disabled={showAll || a <= min} aria-label="Earlier" title={mode === "day" ? "Previous day" : `The ${len} days before`}>
+            <ChevronLeft size={15} />
+          </button>
+          <span className="text-[13px] font-semibold tabnum whitespace-nowrap" aria-live="polite">{rangeText}</span>
+          <button type="button" className="icon-btn" onClick={() => step(1)} disabled={showAll || b >= max} aria-label="Later" title={mode === "day" ? "Next day" : `The ${len} days after`}>
+            <ChevronRight size={15} />
+          </button>
+          <button
+            type="button" className="icon-btn" onClick={() => setTimelineOpen(!timelineOpen)} aria-expanded={timelineOpen}
+            aria-label={timelineOpen ? "Hide the timeline" : "Show the timeline"} title={timelineOpen ? "Hide the timeline" : "Show the timeline — drag a handle to pick any period"}
+          >
+            <CalendarRange size={15} />
+          </button>
         </span>
       </div>
 
-      <div className="flex items-center gap-1.5">
-        <button type="button" className="btn btn-sm btn-ghost px-1.5" onClick={() => step(-1)} disabled={a <= min} aria-label="Earlier" title={mode === "day" ? "Previous day" : `The ${len} days before`}>‹</button>
-        <div className="relative flex-1 h-8 slicer" ref={track} onClick={(e) => { if ((e.target as HTMLElement).tagName !== "INPUT") clickTrack(e.clientX); }}>
-          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-border" />
-          {markSet.map((m) => (
-            <span key={m} className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 size-1 rounded-full bg-muted/60" style={{ left: `${pct(m)}%` }} />
-          ))}
-          {!showAll && (
-            <div className="absolute top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-brand" style={{ left: `${pct(a)}%`, width: `${Math.max(0.6, pct(b) - pct(a))}%` }} />
-          )}
-          {mode === "range" ? (
-            <>
+      {timelineOpen && (
+        // the timeline: one strip and its labels, 40px in all
+        <div className="mt-1.5 px-1">
+          <div className="relative h-7 slicer" ref={track} onClick={(e) => { if ((e.target as HTMLElement).tagName !== "INPUT") clickTrack(e.clientX); }}>
+            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-border" />
+            {markSet.map((m) => (
+              <span key={m} className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 size-1 rounded-full bg-muted/60" style={{ left: `${pct(m)}%` }} />
+            ))}
+            {!showAll && (
+              <div className="absolute top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-brand" style={{ left: `${pct(a)}%`, width: `${Math.max(0.6, pct(b) - pct(a))}%` }} />
+            )}
+            {mode === "range" ? (
+              <>
+                <input
+                  type="range" min={0} max={span} value={idx(a)} aria-label="From" className="slicer-range"
+                  onChange={(e) => { const d = at(Number(e.target.value)); move([d > b ? b : d, b]); }}
+                />
+                <input
+                  type="range" min={0} max={span} value={idx(b)} aria-label="To" className="slicer-range"
+                  onChange={(e) => { const d = at(Number(e.target.value)); move([a, d < a ? a : d]); }}
+                />
+              </>
+            ) : (
               <input
-                type="range" min={0} max={span} value={idx(a)} aria-label="From" className="slicer-range"
-                onChange={(e) => { const d = at(Number(e.target.value)); move([d > b ? b : d, b]); }}
+                type="range" min={0} max={span} value={idx(a)} aria-label="Day" className="slicer-range slicer-single"
+                onChange={(e) => { const d = at(Number(e.target.value)); move([d, d]); }}
               />
-              <input
-                type="range" min={0} max={span} value={idx(b)} aria-label="To" className="slicer-range"
-                onChange={(e) => { const d = at(Number(e.target.value)); move([a, d < a ? a : d]); }}
-              />
-            </>
-          ) : (
-            <input
-              type="range" min={0} max={span} value={idx(a)} aria-label="Day" className="slicer-range slicer-single"
-              onChange={(e) => { const d = at(Number(e.target.value)); move([d, d]); }}
-            />
-          )}
+            )}
+          </div>
+          <div className="relative h-3 text-[11px] leading-3 text-muted" aria-hidden>
+            {ticks.map((t) => (
+              <span key={t.iso} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${t.pos * 100}%` }}>{t.label}</span>
+            ))}
+          </div>
         </div>
-        <button type="button" className="btn btn-sm btn-ghost px-1.5" onClick={() => step(1)} disabled={b >= max} aria-label="Later" title={mode === "day" ? "Next day" : `The ${len} days after`}>›</button>
-      </div>
-      <div className="relative h-3 mx-8 text-[10px] text-muted" aria-hidden>
-        {ticks.map((t) => (
-          <span key={t.iso} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${t.pos * 100}%` }}>{t.label}</span>
-        ))}
-      </div>
+      )}
     </div>
   );
 }

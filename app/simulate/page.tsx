@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm, canEditDept } from "@/lib/server/auth";
 import { getWhatIfInputs } from "@/lib/server/whatif";
@@ -10,7 +9,8 @@ import { factoryDayISO } from "@/lib/domain/dates";
 import { deptPermKey } from "@/lib/domain/permissions";
 import { isShiftDept, type ShiftDept } from "@/lib/domain/shifts";
 import { placeMachine } from "@/lib/domain/floor";
-import { PageHeader } from "@/components/ui";
+import { PageHead } from "@/components/ui";
+import { ViewTabs } from "@/components/ViewTabs";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { WhatIfSimulator } from "@/components/WhatIfSimulator";
 import { FloorCanvas, FloorDeptPicker } from "@/components/FloorCanvas";
@@ -30,11 +30,16 @@ export default async function SimulatePage({ searchParams }: { searchParams: Pro
   const machinePlanning = await isMachinePlanningOn();
   const view = !machinePlanning || sp.view === "whatif" ? "whatif" : "floor";
 
+  // the tab's other view, top right — the same switch every tab carries
   const viewSwitch = machinePlanning ? (
-    <nav className="seg" aria-label="View">
-      <Link href="/simulate?view=floor" className={view === "floor" ? "on" : ""} title="Each department's bay, and what every machine is on">Floor</Link>
-      <Link href="/simulate?view=whatif" className={view === "whatif" ? "on" : ""} title="What-if: move the dates and the capacity and see what lands">Simulator</Link>
-    </nav>
+    <ViewTabs
+      views={[
+        { href: "/simulate?view=floor", label: "Floor", title: "Each department's bay, and what every machine is on" },
+        { href: "/simulate?view=whatif", label: "Simulator", title: "What-if: move the dates and the capacity and see what lands" },
+      ]}
+      current={`/simulate?view=${view}`}
+      label="Floor view"
+    />
   ) : null;
 
   if (view === "floor") {
@@ -49,10 +54,9 @@ export default async function SimulatePage({ searchParams }: { searchParams: Pro
     return (
       <div>
         <RememberLastVisit storageKey="simulate:last" />
-        <PageHeader title="🗺 Floor — who is on what, where">
-          {viewSwitch}
+        <PageHead title="Floor" sub="Who is on what, where" views={viewSwitch}>
           <FloorDeptPicker dept={dept} />
-        </PageHeader>
+        </PageHead>
         <FloorCanvas
           key={dept}
           dept={dept}
@@ -76,7 +80,7 @@ export default async function SimulatePage({ searchParams }: { searchParams: Pro
   return (
     <div>
       <RememberLastVisit storageKey="simulate:last" />
-      <PageHeader title="🧪 What-if Simulator">{viewSwitch}</PageHeader>
+      <PageHead title="What-if Simulator" sub="Move the dates and the capacity and see what lands" views={viewSwitch} />
       <WhatIfSimulator
         inputs={inputs}
         isAdmin={me.isAdmin}

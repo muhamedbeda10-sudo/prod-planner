@@ -122,11 +122,7 @@ const TANK_ONLY = new Set(["/worklist/leak-test", "/barcode"]);
 /** Unread chat badge, shared by the desktop tab and the drawer entry. */
 function UnreadBadge({ count }: { count: number }) {
   if (count <= 0) return null;
-  return (
-    <span className="ml-0.5 grid place-items-center min-w-[18px] h-[18px] rounded-full bg-red-600 text-white text-[10px] font-extrabold px-1 leading-none">
-      {count > 99 ? "99+" : count}
-    </span>
-  );
+  return <span className="count-badge count-badge-alert">{count > 99 ? "99+" : count}</span>;
 }
 
 export function AppNav({
@@ -154,12 +150,15 @@ export function AppNav({
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
   // the ODOO tab lights up with the rows waiting to be closed; its badge
   // opens the popup rather than the page
-  const odooBadge = (size: "sm" | "md") => alerts.count > 0 && (
+  // the same count badge as every other count in the bar — it opens the popup
+  // rather than the page
+  const odooBadge = () => alerts.count > 0 && (
     <span
       role="button" tabIndex={0} title={`${alerts.count} ready to close in Odoo — show them`}
+      aria-label={`${alerts.count} ready to close in Odoo — show them`}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); alerts.show(); }}
-      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); alerts.show(); } }}
-      className={`ml-0.5 grid place-items-center rounded-full bg-[#F2C94C] text-[#14201A] font-extrabold leading-none px-1 cursor-pointer ${size === "sm" ? "min-w-[18px] h-[18px] text-[10px]" : "min-w-[22px] h-[22px] text-xs"}`}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); alerts.show(); } }}
+      className="count-badge count-badge-warn cursor-pointer"
     >
       {alerts.count > 99 ? "99+" : alerts.count}
     </span>
@@ -344,10 +343,10 @@ export function AppNav({
               )}
               {restTabs.map((l) => (
                 <li key={l.href}>
-                  <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match, l.also) ? "nav-tab-active" : ""} ${l.href === "/odoo" && alerts.count > 0 ? "ring-2 ring-[#F2C94C]/70" : ""}`}>
+                  <Link href={l.href} className={`nav-tab ${isActive(l.href, l.match, l.also) ? "nav-tab-active" : ""}`}>
                     <l.icon size={15} className="shrink-0" />
                     {l.label}
-                    {l.href === "/odoo" && odooBadge("sm")}
+                    {l.href === "/odoo" && odooBadge()}
                   </Link>
                 </li>
               ))}
@@ -510,7 +509,7 @@ export function AppNav({
                 >
                   <l.icon size={19} className={isActive(l.href, l.match) ? "text-brand" : "text-muted"} />
                   {l.label}
-                  {l.href === "/odoo" && odooBadge("md")}
+                  {l.href === "/odoo" && odooBadge()}
                 </Link>
               ))}
 

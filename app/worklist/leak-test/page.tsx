@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/ui";
 import { getLeakTestQueue } from "@/lib/server/tanks";
 import { getWorkersFor } from "@/lib/server/workers";
 import { toISODate } from "@/lib/domain/dates";
@@ -44,6 +45,7 @@ export default async function LeakTestPage() {
   return (
     <>
       <PrintHeader title="Leak Test Worklist" date={formatDate(today)} />
+      <PageHead title="Leak Test Worklist" sub={`Transformers · ${formatDate(today)}`} />
       <LeakTestTable tanks={tanks} testers={testers} day={dayISO} canEdit={canEdit} />
     </>
   );

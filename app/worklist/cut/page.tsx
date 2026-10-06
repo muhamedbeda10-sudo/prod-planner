@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/ui";
 import { formatDate } from "@/lib/domain/format";
 import { getSoiLookup } from "@/lib/server/soi";
 import { getRunOrderLines } from "@/lib/server/worklistExtras";
@@ -44,6 +45,7 @@ export default async function CutWorklistPage() {
   return (
     <>
       <PrintHeader title="Fabrication Worklist" date={formatDate(today)} />
+      <PageHead title="Fabrication Worklist" sub={`Transformers · ${formatDate(today)}`} />
       <CutWorklistView soi={soi} runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} pushed={pushed} priority={priority} held={held} hidden={hidden} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} canManage={!!user && hasPerm(user, "machines.manage")} board={board} />
     </>
   );

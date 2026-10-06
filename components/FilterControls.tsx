@@ -86,6 +86,51 @@ export function SearchBox({
   );
 }
 
+/**
+ * The one filter control: a select whose label sits INSIDE it ("Status: All"),
+ * so a row of filters reads as a sentence and takes no extra width for
+ * captions. When it is narrowing the rows it turns into an active chip with a
+ * ✕ that puts it back to "All".
+ */
+export function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+  emptyValue = "",
+  allLabel = "All",
+  title,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  /** The value that means "no filter" ("" by default; some filters use "all"). */
+  emptyValue?: string;
+  allLabel?: string;
+  title?: string;
+}) {
+  const active = value !== emptyValue;
+  return (
+    <span className={`filter-chip ${active ? "filter-chip-on" : ""}`} title={title}>
+      <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} className="ctl">
+        {!options.some((o) => o.value === emptyValue) && <option value={emptyValue}>{label}: {allLabel}</option>}
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {label}: {o.label}
+          </option>
+        ))}
+      </select>
+      {active && (
+        <button type="button" className="filter-chip-x" onClick={() => onChange(emptyValue)} aria-label={`Clear ${label}`} title={`Clear ${label}`}>
+          <X size={13} />
+        </button>
+      )}
+    </span>
+  );
+}
+
+/** A filter of the shared bar — the same control under its older name. */
 export function SelectFilter({
   value,
   onChange,
@@ -97,23 +142,7 @@ export function SelectFilter({
   options: { value: string; label: string }[];
   label: string;
 }) {
-  return (
-    <label className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-1.5">
-      <span className="filter-label">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`ctl w-full min-w-0 sm:w-auto sm:max-w-[13rem] ${value ? "!border-brand" : ""}`}
-      >
-        <option value="">All</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+  return <FilterSelect label={label} value={value} onChange={onChange} options={options} />;
 }
 
 export function FilterBar({
@@ -149,21 +178,17 @@ export function FilterBar({
     </button>
   );
   if (head || actions) {
-    // two rows in one surface: what you are looking at (view, search, the
-    // count and the page's actions), then how it is narrowed
+    // ONE row: what you are looking at (the view, the search), how it is
+    // narrowed, and on the right the count and any action
     return (
-      <div className="no-print toolbar">
-        <div className="toolbar-row">
-          {head}
-          <span className="sm:ml-auto flex flex-wrap items-center gap-2">
-            {showCount && countText}
-            {actions}
-          </span>
-        </div>
-        <div className="toolbar-row grid grid-cols-2 items-end sm:flex sm:items-center">
-          {children}
-          {reset}
-        </div>
+      <div className="no-print toolbar toolbar-row">
+        {head}
+        {children}
+        {reset}
+        <span className="ms-auto flex flex-wrap items-center gap-2">
+          {showCount && countText}
+          {actions}
+        </span>
       </div>
     );
   }
