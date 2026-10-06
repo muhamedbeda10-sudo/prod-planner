@@ -26,6 +26,7 @@ export const TABS: TabDef[] = [
 
   { id: "material", label: "Material", group: "Production", paths: ["/material"] },
   { id: "analytics", label: "Material dashboard", group: "Production", paths: ["/analytics"] },
+  { id: "physical", label: "Physical Material", group: "Production", paths: ["/physical"] },
   { id: "odoo", label: "ODOO", group: "Production", paths: ["/odoo"] },
   { id: "consumables", label: "Consumables", group: "Production", paths: ["/consumables"] },
   { id: "shifts", label: "Shifts", group: "Production", paths: ["/shifts"] },

@@ -51,6 +51,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
   {
     name: "Material",
     perms: [
+      { key: "stock.edit", label: "Physical material — count & import", desc: "Import the store's stock sheet on the PHYSICAL MATERIAL tab, correct a code's physical count or Odoo figure, add and remove items, and note why a count differs" },
       { key: "material.edit", label: "Material & nesting — record", desc: "Add and edit the material lines on the MATERIAL tab — the record of what each order actually consumed: which sheet (material, thickness, size) and how many of them were really used" },
     ],
   },

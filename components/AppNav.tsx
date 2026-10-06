@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
-  Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList,
+  Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   CalendarDays, Users, Timer,
   FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus,
@@ -59,6 +59,8 @@ const LV_WORKLIST_DEPTS = [
 const REST: Item[] = [
   // Material comes FIRST: nesting is decided before a single sheet is cut.
   { href: "/material", label: "Material", icon: Layers, also: ["/analytics"] },
+  // the store's count against Odoo's stock, code by code
+  { href: "/physical", label: "Physical Material", icon: Warehouse },
   { href: "/odoo", label: "ODOO", icon: Boxes },
   // what the store hands out to the floor — item, qty, department, worker
   { href: "/consumables", label: "Consumables", icon: PackageMinus },
