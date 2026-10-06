@@ -21,7 +21,8 @@ export interface ItemProgress {
  * painting, or shot blast for the core), at the first stage it has not
  * cleared. Ties go to the earlier stage, then to the tracker's item order.
  * Null when every needed component is made (delivery is the customer's pace,
- * not a bottleneck of the shop).
+ * not a bottleneck of the shop), and when nothing has started at all — an
+ * order not begun is waiting as a whole, not held back by one cell.
  */
 export function rowBottleneck(required: number, items: Record<Item, ItemProgress>): { item: Item; stage: MakeStage } | null {
   let best: { item: Item; stage: MakeStage; share: number; stageIdx: number } | null = null;
@@ -39,7 +40,12 @@ export function rowBottleneck(required: number, items: Record<Item, ItemProgress
       best = { item: it, stage: stages[stageIdx][0], share, stageIdx };
     }
   }
-  return best ? { item: best.item, stage: best.stage } : null;
+  if (!best) return null;
+  const started = ITEMS.some((it) => {
+    const c = items[it];
+    return !!c && c.eligible && !c.excluded && (c.cut > 0 || c.weld > 0 || c.paint > 0 || c.shp > 0);
+  });
+  return started ? { item: best.item, stage: best.stage } : null;
 }
 
 /** A component's progress through its last making stage, 0–1; null when the
