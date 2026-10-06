@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/server/auth";
 import { prisma } from "@/lib/db";
-import { PageHeader } from "@/components/ui";
+import { PageHead } from "@/components/ui";
 import { MonthlyImport } from "@/components/MonthlyImport";
 import { OrdersTable } from "@/components/OrdersTable";
 import { ViewTabs, PLANS_VIEWS } from "@/components/ViewTabs";
@@ -22,13 +22,12 @@ export default async function OrdersPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={`Orders Registry — ${LINE_LABEL[line]}`}
-        sub={`The master MO list, fed by the monthly plans — ${orders.length} orders · ${totalQty} pcs planned. Tick rows to take a wrong import back out.`}
-      >
-        {/* the weekly delivery schedule is the transformers' — the panels have the monthly plan only */}
-        <ViewTabs views={line === "LV" ? PLANS_VIEWS.filter((v) => v.href === "/orders") : PLANS_VIEWS} current="/orders" label="Plans view" />
-      </PageHeader>
+      {/* the weekly delivery schedule is the transformers' — the panels have the monthly plan only */}
+      <PageHead
+        title="Orders Registry"
+        sub={`${LINE_LABEL[line]} · ${orders.length} orders · ${totalQty} pcs planned · tick rows to take a wrong import back out`}
+        views={<ViewTabs views={line === "LV" ? PLANS_VIEWS.filter((v) => v.href === "/orders") : PLANS_VIEWS} current="/orders" label="Plans view" />}
+      />
       <MonthlyImport line={line} />
       <div>
         <h2>All {LINE_LABEL[line]} orders</h2>

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
 import { decidePlanQty, setOrderStatus, setExcludedItems, setOrderQty, setOrderSpec, setGroupOrderSpec, setGroupFins, setOrderPriority, setOrderHold, pushOrderToWorklist, removeOrderMonth, closeDeliveredOrders } from "@/app/orders/actions";
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
-import { Num, Soi } from "@/components/ui";
+import { Num, PageHead, Soi } from "@/components/ui";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
 import { ExportButton } from "@/components/ExportButton";
 import { PrintButton } from "@/components/PrintButton";
@@ -672,11 +672,7 @@ export function MasterTrackerTable({
         ]}
       />
 
-      <div className="page-head no-print">
-        <h1 className="page-title">Plan Tracker</h1>
-        <span className="page-sub">Transformers · one row per order, every stage</span>
-        <span className="ml-auto">{viewTabs}</span>
-      </div>
+      <PageHead title="Plan Tracker" sub="Transformers · one row per order, every stage" views={viewTabs} />
 
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
       {/* the cards share the page's width between them */}

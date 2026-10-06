@@ -13,6 +13,7 @@ import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO, presetRange } from "@/lib/domain/dateSlicer";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
+import { PageHead } from "@/components/ui";
 import { parseISODate } from "@/lib/domain/dates";
 
 export const dynamic = "force-dynamic";
@@ -47,8 +48,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
 
   const controls = (
     <div className="no-print space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <ViewTabs views={TRACKER_VIEWS} current="/" label="Tracker view" />
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2">
           <PlanMonthPicker plan={c.planMonth} months={c.planMonths} />
           {d.clamped && <span className="pill pill-warn">cut to 31 days</span>}
@@ -66,6 +66,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
     <>
       {/* the period and the plan stay as they were left, across pages and visits */}
       <RememberLastVisit storageKey="dashboard:last" />
+      <PageHead title="Dashboard" sub="Transformers · how the plan is doing" views={<ViewTabs views={TRACKER_VIEWS} current="/" label="Tracker view" />} />
       <ControlDashboard c={c} d={d} controls={controls} machinePlanning={machinePlanning} />
     </>
   );

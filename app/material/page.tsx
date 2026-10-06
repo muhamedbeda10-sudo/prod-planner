@@ -3,6 +3,7 @@ import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getMaterialData } from "@/lib/server/material";
 import { ExportButton } from "@/components/ExportButton";
+import { PageHead } from "@/components/ui";
 import { MaterialClient } from "@/components/MaterialClient";
 import { getActiveLine } from "@/lib/server/line";
 import { LINE_LABEL } from "@/lib/domain/lines";
@@ -73,11 +74,11 @@ export default async function MaterialPage({
   return (
     <div>
       <RememberLastVisit storageKey="material:last" />
-      <div className="page-head">
-        <h1 className="page-title">Material</h1>
-        <span className="page-sub">Nesting sheet · {LINE_LABEL[line]} · one living table, matched on the MO</span>
-        <span className="ml-auto"><ViewTabs views={MATERIAL_VIEWS} current="/material" label="Material view" /></span>
-      </div>
+      <PageHead
+        title="Material"
+        sub={`Nesting sheet · ${LINE_LABEL[line]} · one living table, matched on the MO`}
+        views={<ViewTabs views={MATERIAL_VIEWS} current="/material" label="Material view" />}
+      />
       <MaterialClient
         lines={lines} totals={totals} month={month} knownBoms={knownBoms} canEdit={hasPerm(me, linePermKey(line, "material"))}
         product={line} lvOrders={lvOrders} lvTemplates={lvTemplates} odooByMo={odooByMo}

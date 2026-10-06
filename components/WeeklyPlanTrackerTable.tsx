@@ -216,7 +216,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
     // itself never does, so the headline is always on screen. `print-flow`
     // hands the height back to the paper: a fixed-height scroller would print
     // one page and clip everything under it.
-    <div className="print-flow space-y-3 md:flex md:flex-col md:space-y-0 md:gap-3 md:h-[calc(100vh-5rem)]">
+    <div className="print-flow space-y-3 md:flex md:flex-col md:space-y-0 md:gap-3 md:h-[calc(100vh-7.75rem)]">
       {/* what the sheet is showing — filters don't survive onto paper otherwise */}
       <PrintScope
         parts={[
