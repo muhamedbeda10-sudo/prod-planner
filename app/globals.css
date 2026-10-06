@@ -938,16 +938,22 @@ main select.ctl { padding-right: 1.6rem; }
 /* ---- stage cells: the number leads, the state is a quiet wash + a hairline
    of progress under it — never a solid block of colour ---- */
 .stage-cell { position: relative; }
-.stage-done { background-color: color-mix(in srgb, var(--ok-bg) 70%, transparent); color: var(--ok-fg); }
 .stage-run { color: var(--foreground); }
 .stage-late { background-color: color-mix(in srgb, var(--warn-bg) 75%, transparent); color: var(--warn-fg); }
 .stage-crit { background-color: color-mix(in srgb, var(--bad-bg) 75%, transparent); color: var(--bad-fg); }
 .stage-idle { color: var(--muted); opacity: 0.75; }
-.stage-meter { position: absolute; left: 6px; right: 6px; bottom: 2px; height: 2px; border-radius: 2px; background: var(--surface-3); overflow: hidden; pointer-events: none; }
-.stage-meter > span { display: block; height: 100%; background: var(--info-fg); opacity: 0.8; }
-.stage-late .stage-meter > span { background: var(--warn-fg); }
-.stage-crit .stage-meter > span { background: var(--bad-fg); }
-@media print { .stage-meter { display: none; } }
+/* the progress hairline: two background layers (fill over track) at the
+   foot of the cell — --meter is the share done, set on the cell */
+.stage-meter {
+  --meter-fill: var(--info-fg);
+  background-image: linear-gradient(var(--meter-fill), var(--meter-fill)), linear-gradient(var(--surface-3), var(--surface-3));
+  background-size: calc((100% - 12px) * var(--meter, 0)) 2px, calc(100% - 12px) 2px;
+  background-position: 6px calc(100% - 2px), 6px calc(100% - 2px);
+  background-repeat: no-repeat;
+}
+.stage-late.stage-meter, .stage-part.stage-meter { --meter-fill: var(--warn-fg); }
+.stage-crit.stage-meter { --meter-fill: var(--bad-fg); }
+@media print { .stage-meter { background-image: none !important; } }
 }
 
 /* ---- the one tooltip (components/Tooltip.tsx): drawn on the body, so no
@@ -1011,10 +1017,9 @@ main select.ctl { padding-right: 1.6rem; }
 
 /* ---- the data-sheet toolkit (components/DataTable.tsx) ---- */
 
-/* row density: one choice for every sheet. Unlayered, like the table rules
+/* row height: compact (36px) on every sheet. Unlayered, like the table rules
    above, so it outranks a cell's own padding utility. */
 .dt[data-density="compact"] > table > tbody > tr > td { height: 36px; padding-top: 3px; padding-bottom: 3px; }
-.dt[data-density="comfortable"] > table > tbody > tr > td { height: 44px; padding-top: 8px; padding-bottom: 8px; }
 
 /* a header: a short label (two lines as a rule), the unit after it in lower
    case, a quiet ? when the tooltip explains the column */
@@ -1069,4 +1074,33 @@ main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--s
 @media screen {
   .erp-table tfoot.mat-total td { position: sticky; bottom: 0; z-index: 4; background-color: var(--surface-2); border-top: 1px solid var(--border-strong); font-weight: 700; padding-top: 6px; padding-bottom: 6px; }
   .erp-table tfoot.mat-total td.stick { z-index: 14; }
+}
+
+/* ---- Plan Tracker cell states ----
+   done: quiet, in the success ink · started: the warning ink, what is left in
+   its tooltip · nothing yet: an empty cell · not needed: hatched. The one cell
+   holding the order back carries an outline. */
+@layer components {
+.stage-done { background-color: transparent; color: var(--ok-fg); opacity: 0.8; font-weight: 500; }
+.stage-part { color: var(--warn-fg); font-weight: 650; }
+/* a frame drawn inside the cell, not an inset shadow: Chrome paints a table
+   cell's shadow over the frozen columns, and the frame keeps 1px off the
+   cell edge, where the seam between collapsed borders lets it through */
+.stage-bottleneck::after { content: ""; position: absolute; inset: 1px; border: 2px solid var(--warn-fg); border-radius: 2px; pointer-events: none; }
+.stage-crit.stage-bottleneck::after { border-color: var(--bad-fg); }
+.na-cell {
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--muted) 22%, transparent) 5px 6px);
+}
+}
+@media print {
+  .stage-bottleneck::after { border: 1.5px solid #7f6000; }
+  .na-cell { background-image: repeating-linear-gradient(135deg, transparent 0 5px, #c9cfcc 5px 6px) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* the last column (the row's actions and state) stays in view at the right
+   edge however far the sheet scrolls — from a laptop up, on screen only */
+@media screen and (min-width: 1024px) {
+  .erp-table .stick-right { position: sticky; right: 0; z-index: 3; background-color: inherit; box-shadow: inset 1px 0 0 var(--border-strong), -10px 0 12px -10px rgb(0 0 0 / 0.55); }
+  .erp-table thead .stick-right { z-index: 13; background-color: var(--surface-2); }
+  html:not(.dark) .erp-table .stick-right { box-shadow: inset 1px 0 0 var(--border-strong), -10px 0 12px -10px rgb(0 0 0 / 0.18); }
 }

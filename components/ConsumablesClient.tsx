@@ -8,7 +8,7 @@ import type { LimitHint } from "@/lib/server/consumableLimits";
 import { consumableLimitHints, createConsumableIssue, deleteConsumableIssue, updateConsumableIssue } from "@/app/consumables/actions";
 import { ActionMsg as Msg, RevisionItem, useConsumableAction as useAction } from "@/components/consumablesUi";
 import { Modal } from "@/components/Modal";
-import { DensityToggle, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
+import { TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { SearchBox } from "@/components/FilterControls";
 
 // The CONSUMABLES tab: the store's log of what it hands out — to a
@@ -515,8 +515,7 @@ export function ConsumablesClient({
 
       <div className="toolbar toolbar-row no-print !mb-0">
         <SearchBox value={q} onChange={setQ} placeholder="Search item, department, notes…" wide />
-        <span className="ms-auto"><DensityToggle /></span>
-        <span className="text-sm text-muted">
+        <span className="ms-auto text-sm text-muted">
           <b className="text-foreground tabnum">{shown.length}</b>
           {shown.length !== data.entries.length && <> of <span className="tabnum">{data.entries.length}</span></>} hand-out{data.entries.length === 1 ? "" : "s"} {periodLabel}
         </span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MasterTrackerRow } from "@/lib/server/masterTracker";
@@ -18,7 +18,9 @@ import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { Modal } from "@/components/Modal";
 import { itemColor } from "@/lib/domain/productColors";
-import { AlertTriangle, Check, CheckCheck, ChevronRight, CornerDownRight, MoreHorizontal, Pause, Repeat, Star } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, ChevronRight, Columns3, CornerDownRight, MoreHorizontal, Pause, Repeat, Star } from "lucide-react";
+import { useConfirm } from "@/components/DataTable";
+import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
 type Progress = "complete" | "inprogress" | "notstarted";
 
@@ -48,7 +50,83 @@ const HOLD_TINT = "var(--hold-row)";
  *  the next one knows where to sit. */
 const STICK_W = ["11.5rem", "6.75rem", "7.5rem", "7.5rem"] as const;
 const STICK_LEFT = ["0rem", "11.5rem", "18.25rem", "25.75rem"] as const;
-const stickCls = (i: number) => `stick ${i === STICK_W.length - 1 ? "stick-end" : ""}`;
+// the identifiers freeze ("stick"); their edge shadow sits on Required,
+// which freezes beside them
+/** Required freezes too, right after the identifiers. */
+const REQ_STICK = { "--stick-left": "33.25rem", "--stick-w": "4.75rem" } as React.CSSProperties;
+const REQ_CLS = "stick stick-end";
+
+/** The columns the reader can hide (Columns ▾). The identifiers, Required,
+ *  the components and Status always show. */
+type ColKey = "kva" | "color" | "crc" | "sfm" | "fins" | "summary" | "eta";
+const COL_LABEL: Record<ColKey, string> = {
+  kva: "KVA", color: "Color", crc: "CRC", sfm: "SFM", fins: "Fins", summary: "Complete · Left · Achv.", eta: "ETA",
+};
+const SPEC_KEYS: ColKey[] = ["kva", "color", "crc", "sfm", "fins"];
+
+/** A set of keys remembered in this browser (the hidden columns, the folded
+ *  components) — the same on every visit, read after hydration. */
+const storeListeners = new Set<() => void>();
+function useStoredSet(key: string): [Set<string>, (k: string) => void] {
+  const raw = useSyncExternalStore(
+    (cb) => { storeListeners.add(cb); return () => { storeListeners.delete(cb); }; },
+    () => { try { return localStorage.getItem(key) ?? ""; } catch { return ""; } },
+    () => "",
+  );
+  const set = useMemo(() => new Set(raw.split(",").filter(Boolean)), [raw]);
+  const toggle = (k: string) => {
+    const next = new Set(set);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    try { localStorage.setItem(key, [...next].join(",")); } catch {}
+    storeListeners.forEach((l) => l());
+  };
+  return [set, toggle];
+}
+
+/** Columns ▾ — show or hide the optional columns, and fold a component's
+ *  stages into one "made %" column. */
+function ColumnChooser({ hidden, onToggle, collapsed, onCollapse }: { hidden: Set<string>; onToggle: (k: ColKey) => void; collapsed: Set<string>; onCollapse: (it: Item) => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const changed = hidden.size + collapsed.size;
+  return (
+    <div ref={box} className="relative no-print">
+      <button type="button" className="chip-toggle inline-flex items-center gap-1.5" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((v) => !v)} title="Show or hide columns, fold a component to its made %">
+        <Columns3 size={13} aria-hidden />Columns{changed > 0 && <span className="count-badge count-badge-warn !h-4 !min-w-4 !text-[10px]">{changed}</span>}
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 end-0 w-64 rounded-[10px] border bg-surface shadow-xl p-3 space-y-3 text-sm">
+          <div>
+            <div className="filter-label mb-1.5">Columns</div>
+            {(Object.keys(COL_LABEL) as ColKey[]).map((k) => (
+              <label key={k} className="flex items-center gap-2 py-0.5 cursor-pointer">
+                <input type="checkbox" checked={!hidden.has(k)} onChange={() => onToggle(k)} className="accent-[var(--brand)]" />{COL_LABEL[k]}
+              </label>
+            ))}
+          </div>
+          <div>
+            <div className="filter-label mb-1.5">Components — all stages, or made %</div>
+            {ITEMS.map((it) => (
+              <label key={it} className="flex items-center gap-2 py-0.5 cursor-pointer">
+                <input type="checkbox" checked={!collapsed.has(it)} onChange={() => onCollapse(it)} className="accent-[var(--brand)]" />
+                <span className="inline-block w-1 h-3.5 rounded-sm" style={{ background: itemColor(it) }} aria-hidden />
+                <b>{it}</b> <span className="text-muted">{ITEM_NAME[it]}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 // as CSS variables: the stylesheet applies them on screen only, so the printed
 // sheet keeps its natural column widths
 const stickStyle = (i: number) => ({ "--stick-left": STICK_LEFT[i], "--stick-w": STICK_W[i] }) as React.CSSProperties;
@@ -57,17 +135,18 @@ const stickStyle = (i: number) => ({ "--stick-left": STICK_LEFT[i], "--stick-w":
  *  that gives it its quiet wash. Late orders (the forecast lands after the
  *  delivery date) mark their unfinished cells; urgent AND late reads red. */
 function stageState(value: number, target: number, late: boolean, urgent: boolean, held: boolean): string {
-  if (held || value <= 0) return "stage-idle";
-  if (target > 0 && value >= target) return "stage-done";
+  if (held || value <= 0) return "stage-idle"; // nothing yet: an empty cell
+  if (target > 0 && value >= target) return "stage-done"; // quiet, in the success ink
   if (late) return urgent ? "stage-crit" : "stage-late";
-  return "stage-run";
+  return "stage-part"; // started, not finished: the warning ink, what is left in the tooltip
 }
 
 /** A hairline of how far an unfinished stage is — under the number, never
- *  instead of it. */
-function StageMeter({ value, target }: { value: number; target: number }) {
-  if (target <= 0 || value <= 0 || value >= target) return null;
-  return <span className="stage-meter" aria-hidden><span style={{ width: `${Math.min(100, (value / target) * 100)}%` }} /></span>;
+ *  instead of it. Drawn as the cell's own background (see .stage-meter in
+ *  globals.css), so nothing positioned can slide over the frozen columns. */
+function meterStyle(value: number, target: number): React.CSSProperties | undefined {
+  if (target <= 0 || value <= 0 || value >= target) return undefined;
+  return { "--meter": Math.min(1, value / target) } as React.CSSProperties;
 }
 
 type SpecField = "fins" | "colorRal" | "crcSize" | "sfm";
@@ -213,6 +292,13 @@ export function MasterTrackerTable({
   // the row's right-click menu — every row action in one place, so the next
   // one is an entry here rather than another button in the Status cell
   const rowMenu = useContextMenu<MenuTarget>();
+  // what the sheet shows: optional columns, and components folded to a %
+  const [hidden, toggleHidden] = useStoredSet("tracker:hidden");
+  const [collapsed, toggleCollapsed] = useStoredSet("tracker:collapsed");
+  const show = (k: ColKey) => !hidden.has(k);
+  const folded = (it: Item) => collapsed.has(it);
+  // every action that changes more than one record names them first
+  const [confirmIt, confirmDialog] = useConfirm();
   // inline stage-cell editor: one cell at a time (mo|item|dept)
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
@@ -249,7 +335,26 @@ export function MasterTrackerTable({
   const [specEdit, setSpecEdit] = useState<string | null>(null);
   const [specVal, setSpecVal] = useState("");
 
-  // the same three cells on a merged BOM row, where one value covers every MO
+  // the same three cells on a merged BOM row, where one value covers every MO —
+  // it writes every MO underneath, so it names them and their values first
+  const askingRef = useRef(false);
+  async function commitGroupSpec(bom: string, members: MasterTrackerRow[], field: SpecField) {
+    if (askingRef.current) return; // the dialog taking focus blurs the field
+    const next = specVal.trim();
+    const changing = members.filter((m) => (m[field] ?? "").trim() !== next);
+    if (changing.length === 0) { setSpecEdit(null); return; }
+    askingRef.current = true;
+    const label = SPEC_TITLE[field].split(" —")[0];
+    const ok = await confirmIt({
+      title: `Set ${label} on ${changing.length} MO${changing.length === 1 ? "" : "s"} of ${bom}?`,
+      body: <>Every MO of this BOM takes the same {label}: <b>{next || "blank"}</b>.</>,
+      items: changing.map((m) => `${m.mo}: ${m[field] || "—"} → ${next || "—"}`),
+      confirmLabel: `Set ${label}`,
+    });
+    askingRef.current = false;
+    if (ok) saveGroupSpec(bom, field);
+    else setSpecEdit(null);
+  }
   function saveGroupSpec(bom: string, field: SpecField) {
     const fd = new FormData();
     fd.set("bom", bom);
@@ -344,17 +449,24 @@ export function MasterTrackerTable({
   // the only way, and a month's worth is a lot of clicking — this counts them
   // so the button can say how many, and the server recounts before it closes
   // anything (the page can be stale, filtered, or simply wrong).
-  const doneCount = useMemo(
+  const doneRows = useMemo(
     () =>
       rows.filter((r) =>
         r.status === "open" &&
         isFullyDelivered(r.required, ITEMS.map((it) => ({ counts: r.items[it].eligible && !r.items[it].excluded, delivered: r.items[it].delivered })))
-      ).length,
+      ),
     [rows]
   );
+  const doneCount = doneRows.length;
   const [closeMsg, setCloseMsg] = useState("");
-  function closeDone() {
-    if (!confirm(`Close ${doneCount} order(s) the customer has received in full?\n\nClosing is a display state — the logs are untouched, and a closed order can be reopened from the Closed filter.`)) return;
+  async function closeDone() {
+    const ok = await confirmIt({
+      title: `Close ${doneCount} delivered order${doneCount === 1 ? "" : "s"}?`,
+      body: <>The customer has received every component of these. Closing is a display state — the logs are untouched, and a closed order can be reopened from the Closed filter. The server checks each one again before it closes it.</>,
+      items: doneRows.map((r) => `${r.mo} · ${r.bom}${r.customer ? ` · ${r.customer}` : ""} — ${r.required} pcs`),
+      confirmLabel: `Close ${doneCount}`,
+    });
+    if (!ok) return;
     setCloseMsg("");
     startTransition(async () => {
       const res = await closeDeliveredOrders();
@@ -406,7 +518,10 @@ export function MasterTrackerTable({
   // +1 for Status, +1 for the ETA forecast column
   // MO, SOI, BOM, KVA, Required lead the row before the per-item stage columns
   // MO · SOI · Customer · BOM · KVA · Fins · Color · CRC · SFM · Required, then the items
-  const tableCols = scoped ? 10 + ITEMS.length * stages.length + 2 : 10 + ITEMS.length * 4 + 5;
+  const itemColsOf = (it: Item) => (folded(it) ? 1 : scoped ? stages.length : 4);
+  const tableCols =
+    4 + 1 + SPEC_KEYS.filter(show).length + ITEMS.reduce((n, it) => n + itemColsOf(it), 0) +
+    (!scoped && show("summary") ? 3 : 0) + (show("eta") ? 1 : 0) + 1;
 
   // shared BOMs: one summary row per BOM, expandable to its MOs
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -429,8 +544,14 @@ export function MasterTrackerTable({
   // 🔁 months editor: fix a wrongly-tagged plan month (admin)
   const [openMonths, setOpenMonths] = useState<string | null>(null);
 
-  function dropMonth(r: MasterTrackerRow, m: string) {
-    if (!confirm(`Remove "${m}" from ${r.mo}? It will stop showing under that month's filter.`)) return;
+  async function dropMonth(r: MasterTrackerRow, m: string) {
+    const ok = await confirmIt({
+      title: `Remove "${m}" from ${r.mo}?`,
+      body: <>It stops showing under that month&apos;s filter. It keeps {r.months.filter((x) => x !== m).join(", ")}.</>,
+      confirmLabel: "Remove month",
+      danger: true,
+    });
+    if (!ok) return;
     const fd = new FormData();
     fd.set("mo", r.mo);
     fd.set("month", m);
@@ -549,8 +670,17 @@ export function MasterTrackerTable({
     return e;
   }
 
-  function changeStatus(mo: string, next: "open" | "closed") {
-    if (next === "closed" && !confirm(`Close order ${mo}? It will drop out of the daily screens (you can reopen it any time).`)) return;
+  async function changeStatus(mo: string, next: "open" | "closed") {
+    if (next === "closed") {
+      const r = rows.find((x) => x.mo === mo);
+      const ok = await confirmIt({
+        title: `Close order ${mo}?`,
+        body: <>It drops out of the daily screens; you can reopen it any time.</>,
+        items: r ? [`${r.mo} · ${r.bom}${r.customer ? ` · ${r.customer}` : ""} — ${r.required} pcs`] : undefined,
+        confirmLabel: "Close order",
+      });
+      if (!ok) return;
+    }
     const fd = new FormData();
     fd.set("mo", mo);
     fd.set("status", next);
@@ -747,50 +877,62 @@ export function MasterTrackerTable({
           </button>
         )}
         {closeMsg && <span className="text-xs font-semibold text-ok-fg">{closeMsg}</span>}
+        <ColumnChooser hidden={hidden} onToggle={toggleHidden} collapsed={collapsed} onCollapse={toggleCollapsed} />
       </FilterBar>
 
       <div className={`print-flow print-fit print-tracker ${stageCols > 12 ? "print-tight" : ""} erp-scroll bg-surface border rounded-[10px] overflow-auto md:flex-1 md:min-h-0`}>
         <table className="erp-table w-full border-collapse">
           <thead className="sticky top-0 z-10">
             <tr>
-              <th rowSpan={2} className={`p-2 text-left ${stickCls(0)}`} style={stickStyle(0)}>MO</th>
-              <th rowSpan={2} className={`p-2 text-left ${stickCls(1)}`} style={stickStyle(1)} title="Sales order item">SOI</th>
-              <th rowSpan={2} className={`p-2 text-left ${stickCls(2)}`} style={stickStyle(2)} title="The plan sheet's customer column">Customer</th>
-              <th rowSpan={2} className={`p-2 text-left ${stickCls(3)}`} style={stickStyle(3)}>BOM</th>
-              <th rowSpan={2} className="p-2">KVA</th>
-              <th rowSpan={2} className="p-2" title="Colour RAL — typed here; the import never writes it">Color</th>
-              <th rowSpan={2} className="p-2" title="CRC size — typed here; the import never writes it">CRC</th>
-              <th rowSpan={2} className="p-2" title="SFM — typed here; the import never writes it">SFM</th>
-              <th rowSpan={2} className="p-2">Required</th>
+              <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(0)}>MO</th>
+              <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(1)} title="Sales order item">SOI</th>
+              <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(2)} title="The plan sheet's customer column">Customer</th>
+              <th rowSpan={2} className={`p-2 text-left stick`} style={stickStyle(3)}>BOM</th>
+              {show("kva") && <th rowSpan={2} className="p-2">KVA</th>}
+              {show("color") && <th rowSpan={2} className="p-2" title="Colour RAL — typed here; the import never writes it">Color</th>}
+              {show("crc") && <th rowSpan={2} className="p-2" title="CRC size — typed here; the import never writes it">CRC</th>}
+              {show("sfm") && <th rowSpan={2} className="p-2" title="SFM — typed here; the import never writes it">SFM</th>}
+              <th rowSpan={2} className={`p-2 ${REQ_CLS}`} style={REQ_STICK} title="Required — frozen beside the identifiers so it stays in view">Required</th>
               {/* Fins belongs with the components, not with the specs: it is
                   welded onto the tank like the rest, so it reads immediately
                   before the Core Frame. Typed here, never imported. */}
-              <th rowSpan={2} className="p-2" style={FINS_HEAD} title="Fins — typed here; the import never writes it">Fins</th>
+              {show("fins") && <th rowSpan={2} className="p-2" style={FINS_HEAD} title="Fins — typed here; the import never writes it">Fins</th>}
               {ITEMS.map((it) => (
-                <th key={it} colSpan={scoped ? stages.length : 4} className="p-1.5 border-r border-border-strong on-tint" style={{ boxShadow: `inset 0 3px 0 ${ITEM_TINT[it]}` }} title={ITEM_NAME[it]}>
-                  <span className="font-bold tracking-wider">{it}</span>
-                  <span className="ml-1.5 font-medium normal-case tracking-normal text-muted">{ITEM_NAME[it]}</span>
+                <th key={it} colSpan={itemColsOf(it)} className="p-1 border-r border-border-strong on-tint" style={{ boxShadow: `inset 0 3px 0 ${ITEM_TINT[it]}` }}>
+                  <button
+                    type="button"
+                    onClick={() => toggleCollapsed(it)}
+                    aria-expanded={!folded(it)}
+                    className="print-as-text inline-flex items-center gap-1 rounded px-1 hover:bg-surface-3"
+                    title={folded(it) ? `${ITEM_NAME[it]} — show its stages` : `${ITEM_NAME[it]} — fold its stages into one made % column`}
+                  >
+                    <ChevronRight size={12} className={`shrink-0 transition-transform ${folded(it) ? "" : "rotate-90"}`} aria-hidden />
+                    <span className="font-bold tracking-wider">{it}</span>
+                    {!folded(it) && <span className="ml-0.5 font-medium normal-case tracking-normal text-muted">{ITEM_NAME[it]}</span>}
+                  </button>
                 </th>
               ))}
-              {!scoped && (
+              {!scoped && show("summary") && (
                 <>
                   <th rowSpan={2} className="p-2 border-r border-border-strong">Complete</th>
                   <th rowSpan={2} className="p-2">Left</th>
                   <th rowSpan={2} className="p-2">Achv.</th>
                 </>
               )}
-              <th
+              {show("eta") && <th
                 rowSpan={2}
                 className="p-2"
                 title={`Forecast completion date: the order's remaining work through Fabrication → Welding → Finishing at the plant's actual pace over the last ${etaWindowDays || 14} working days, queued by delivery date. Red = lands after the scheduled delivery.`}
               >
                 ETA
-              </th>
-              <th rowSpan={2} className="p-2 no-print">Status</th>
+              </th>}
+              <th rowSpan={2} className="p-2 no-print stick-right">Status</th>
             </tr>
             <tr>
               {ITEMS.map((it) =>
-                scoped ? (
+                folded(it) ? (
+                  <th key={it} className="p-1 font-semibold on-tint border-r border-border-strong" title={`${ITEM_NAME[it]} made through its last stage (${isPaintExempt(it) ? "shot blast" : "painting"}), of what the order needs`}>Made %</th>
+                ) : scoped ? (
                   <Fragment key={it}>
                     {stages.map((s, si) => (
                       <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={si === stages.length - 1} />
@@ -831,7 +973,7 @@ export function MasterTrackerTable({
                     style={allHeld ? { background: HOLD_TINT } : undefined}
                     title={open ? "Collapse MOs" : "Show the MOs inside this BOM · right-click for actions"}
                   >
-                    <td className={`p-2 font-bold text-xs ${stickCls(0)}`} style={stickStyle(0)}>
+                    <td className={`p-2 font-bold text-xs stick`} style={stickStyle(0)}>
                       <span className="flex flex-wrap items-center gap-1">
                         <ChevronRight size={14} className={`shrink-0 text-muted transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden />
                         <span className="pill pill-muted" title={`${members.length} MOs share this BOM`}>{members.length} MOs</span>
@@ -844,23 +986,25 @@ export function MasterTrackerTable({
                         expanding the group reveals. A joined strip of a dozen
                         SOIs here was unreadable and said nothing the rows
                         below do not. */}
-                    <td className={`p-2 whitespace-nowrap ${stickCls(1)}`} style={stickStyle(1)}>
+                    <td className={`p-2 whitespace-nowrap stick`} style={stickStyle(1)}>
                       <Soi soi={null} />
                     </td>
-                    <td className={`p-2 text-xs ${stickCls(2)}`} style={stickStyle(2)} title={gCustomer === null ? `${members.length} MOs for more than one customer — open the group` : gCustomer || undefined}>
+                    <td className={`p-2 text-xs stick`} style={stickStyle(2)} title={gCustomer === null ? `${members.length} MOs for more than one customer — open the group` : gCustomer || undefined}>
                       <span className="block truncate">{gCustomer === null ? <span className="text-muted">…</span> : gCustomer || <span className="text-muted">—</span>}</span>
                     </td>
-                    <td className={`p-2 font-bold whitespace-nowrap ${stickCls(3)}`} style={stickStyle(3)}>
+                    <td className={`p-2 font-bold whitespace-nowrap stick`} style={stickStyle(3)}>
                       <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline">{gBom}</Link>
                     </td>
-                    <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{gKva}</td>
-                    {groupSpecCell(gBom, members, "colorRal")}
-                    {groupSpecCell(gBom, members, "crcSize")}
-                    {groupSpecCell(gBom, members, "sfm")}
-                    <td className="p-2 text-center font-bold"><Num v={gReq} /></td>
-                    {groupFinsCell(gBom, members)}
+                    {show("kva") && <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{gKva}</td>}
+                    {show("color") && groupSpecCell(gBom, members, "colorRal")}
+                    {show("crc") && groupSpecCell(gBom, members, "crcSize")}
+                    {show("sfm") && groupSpecCell(gBom, members, "sfm")}
+                    <td className={`p-2 text-center font-bold ${REQ_CLS}`} style={REQ_STICK}><Num v={gReq} /></td>
+                    {show("fins") && groupFinsCell(gBom, members)}
                     {ITEMS.map((it) =>
-                      scoped ? (
+                      folded(it) ? (
+                        <Fragment key={it}>{groupShareCell(members, it)}</Fragment>
+                      ) : scoped ? (
                         <Fragment key={it}>
                           {stages.map((s, si) => (
                             <Fragment key={s}>{groupCell(gBom, members, it, s, si === stages.length - 1)}</Fragment>
@@ -875,7 +1019,7 @@ export function MasterTrackerTable({
                         </Fragment>
                       )
                     )}
-                    {!scoped && (
+                    {!scoped && show("summary") && (
                       <>
                         <td className="p-2 text-center font-bold border-r"><Num v={gComplete} /></td>
                         <td className="p-2 text-center font-semibold" style={{ color: gLeft > 0 ? undefined : "var(--ok-fg)" }}>
@@ -884,8 +1028,8 @@ export function MasterTrackerTable({
                         <AchCell ach={gAch} />
                       </>
                     )}
-                    {etaCell(groupEta(members), members.every((m) => m.hold.onHold))}
-                    <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap">
+                    {show("eta") && etaCell(groupEta(members), members.every((m) => m.hold.onHold))}
+                    <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap stick-right">
                       {open ? "collapse" : "open MOs"}
                       <button type="button" onClick={(e) => { e.stopPropagation(); rowMenu.open(e, { kind: "group", bom: gBom, members }); }} className="icon-btn ml-1 align-middle" title="Actions for the whole BOM (or right-click the row)" aria-label={`Actions for ${gBom}`}><MoreHorizontal size={15} /></button>
                     </td>
@@ -898,6 +1042,7 @@ export function MasterTrackerTable({
         </table>
       </div>
       {rowMenu.menu && <ContextMenu x={rowMenu.menu.x} y={rowMenu.menu.y} entries={menuEntries(rowMenu.menu.payload)} onClose={rowMenu.close} />}
+      {confirmDialog}
     </div>
   );
 
@@ -957,9 +1102,9 @@ export function MasterTrackerTable({
             value={specVal}
             autoFocus
             onChange={(e) => setSpecVal(e.target.value)}
-            onBlur={() => saveGroupSpec(gBom, field)}
+            onBlur={() => commitGroupSpec(gBom, members, field)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") saveGroupSpec(gBom, field);
+              if (e.key === "Enter") commitGroupSpec(gBom, members, field);
               if (e.key === "Escape") setSpecEdit(null);
             }}
             className="w-20 border rounded-md px-1 py-0.5 text-center bg-surface"
@@ -1068,10 +1213,12 @@ export function MasterTrackerTable({
    *  difference is recorded in the Daily Log dated today (and flows to the
    *  dept's worklist). A LOWER total records a NEGATIVE correction entry —
    *  the chain guard (painted ≤ welded ≤ cut ≤ order) blocks contradictions. */
-  function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, borderR = false) {
+  function stageCell(r: MasterTrackerRow, it: Item, dept: string, value: number, borderR = false, bottleneck = false) {
     const k = `${r.mo}|${it}|${dept}`;
     const target = Math.max(0, r.required - r.items[it].osp);
     const state = stageState(value, target, !!etas[r.mo]?.late, r.urgent, r.hold.onHold);
+    const left = Math.max(0, target - value);
+    const status = value <= 0 ? `nothing yet of ${target}` : left > 0 ? `${value} of ${target} — ${left} left` : `all ${target} done`;
     const col = `${it}|${dept}`;
     const editing = editKey === k;
     const editable = editableDepts.includes(dept);
@@ -1097,7 +1244,11 @@ export function MasterTrackerTable({
     }
 
     return (
-      <td className={`stage-cell ${state} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`}>
+      <td
+        className={`stage-cell ${state} ${!editing && meterStyle(value, target) ? "stage-meter" : ""} ${bottleneck ? "stage-bottleneck" : ""} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`}
+        style={editing ? undefined : meterStyle(value, target)}
+        title={editable ? undefined : `${deptLabel(dept)} · ${it}: ${status}${bottleneck ? " · the stage holding this order back" : ""}`}
+      >
         {editing ? (
           <span className="inline-flex flex-col items-center gap-0.5">
             <CellInput
@@ -1129,16 +1280,16 @@ export function MasterTrackerTable({
               // print-as-text: the figure IS the cell — print CSS blanks buttons
               // inside tables, which would empty every editable stage cell
               className={`print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold focus:ring-2 focus:ring-brand focus:outline-none transition-all cursor-text ${err ? "ring-2 ring-bad-fg" : ""}`}
-              title={`${deptLabel(dept)} · ${r.mo} · ${it} — type the NEW total (a lower one records a correction in today's Daily Log); arrows move, Escape drops it`}
+              title={`${deptLabel(dept)} · ${r.mo} · ${it}: ${status}${bottleneck ? " · the stage holding this order back" : ""} — type the NEW total (a lower one records a correction in today's Daily Log); arrows move, Escape drops it`}
+              aria-label={`${deptLabel(dept)} ${it} for ${r.mo}: ${value}`}
             >
-              {value}
+              {value > 0 ? value : <span className="print-only">0</span>}
             </button>
             {err && <span className="no-print absolute top-full start-1/2 -translate-x-1/2 mt-0.5 z-20 whitespace-nowrap rounded-md bg-surface border border-bad-fg px-1.5 py-0.5 text-[10px] font-semibold text-bad-fg shadow-md">{err}</span>}
           </span>
         ) : (
-          value
+          value > 0 ? value : ""
         )}
-        {!editing && state !== "stage-idle" && <StageMeter value={value} target={target} />}
       </td>
     );
   }
@@ -1206,7 +1357,11 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     }
 
     return (
-      <td className={`stage-cell ${state} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <td
+        className={`stage-cell ${state} ${!editing && meterStyle(value, target) ? "stage-meter" : ""} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`}
+        style={editing ? undefined : meterStyle(value, target)}
+        onClick={(e) => e.stopPropagation()}
+      >
         {editing ? (
           <span className="inline-flex flex-col items-center gap-0.5">
             <CellInput
@@ -1238,18 +1393,40 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
               onClick={() => openCell(k, String(value), true)}
               onKeyDown={(e) => cellKeys(e, (d) => openCell(k, d, false))}
               className={`print-as-text w-full min-w-8 rounded px-1 py-1 tabnum hover:ring-2 hover:ring-brand/60 hover:font-bold focus:ring-2 focus:ring-brand focus:outline-none transition-all cursor-text ${err ? "ring-2 ring-bad-fg" : ""}`}
-              title={`${deptLabel(dept)} · ${gBom} · ${it} — record on the WHOLE BOM: type the new group total, the difference is distributed over its ${eligibleMos.length} MOs in order; arrows move, Escape drops it`}
+              title={`${deptLabel(dept)} · ${gBom} · ${it}: ${value} of ${target}${target > value ? ` — ${target - value} left` : ""} — record on the WHOLE BOM: type the new group total, the difference is distributed over its ${eligibleMos.length} MOs in order; arrows move, Escape drops it`}
+              aria-label={`${deptLabel(dept)} ${it} for every MO of ${gBom}: ${value}`}
             >
-              {value}
+              {value > 0 ? value : <span className="print-only">0</span>}
             </button>
             {err && <span className="no-print absolute top-full start-1/2 -translate-x-1/2 mt-0.5 z-20 whitespace-nowrap rounded-md bg-surface border border-bad-fg px-1.5 py-0.5 text-[10px] font-semibold text-bad-fg shadow-md">{err}</span>}
           </span>
         ) : (
-          value
+          value > 0 ? value : ""
         )}
-        {!editing && state !== "stage-idle" && <StageMeter value={value} target={target} />}
       </td>
     );
+  }
+
+  /** A folded component: how much of it is made through its last stage. */
+  function shareCell(share: number | null, it: Item, label: string) {
+    const pct = share === null ? null : Math.round(share * 100);
+    const cls = pct === null ? "" : pct >= 100 ? "stage-done" : pct > 0 ? "stage-part" : "stage-idle";
+    return (
+      <td className={`stage-cell ${cls} p-1 text-center tabnum font-semibold border-r border-border-strong`} title={`${label} · ${ITEM_NAME[it]}: ${pct === null ? "nothing owed" : `${pct}% made through ${isPaintExempt(it) ? "shot blast" : "painting"}`} — open the column for its stages`}>
+        {pct === null ? "" : `${pct}%`}
+      </td>
+    );
+  }
+  function groupShareCell(members: MasterTrackerRow[], it: Item) {
+    let made = 0, owed = 0;
+    for (const m of members) {
+      const c = m.items[it];
+      if (!c.eligible || c.excluded) continue;
+      const t = Math.max(0, m.required - c.osp);
+      owed += t;
+      made += Math.min(t, isPaintExempt(it) ? c.shp : c.paint);
+    }
+    return shareCell(owed > 0 ? made / owed : null, it, `${members.length} MOs`);
   }
 
   function etaCell(eta: RowEta | undefined, onHold = false) {
@@ -1292,6 +1469,10 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
   function renderRow(r: MasterTrackerRow, inGroup = false, lastInGroup = false) {
     // frame: open groups get a clear border so their extent is obvious
     const frame = inGroup ? `border-x-2 border-brand ${lastInGroup ? "border-b-2" : ""}` : "";
+    // the one cell holding the order back — none on a held or closed order
+    const bn = r.hold.onHold || r.status === "closed" ? null : rowBottleneck(r.required, r.items);
+    const isBn = (it: Item, dept: string) =>
+      !!bn && bn.item === it && (bn.stage === "Finish" ? dept === "Painting" || dept === "ShotBlast" : bn.stage === dept);
     return (
       <Fragment key={r.mo}>
               <tr
@@ -1301,7 +1482,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                 title={r.hold.onHold ? `${holdLabel(r.hold)} · right-click for actions` : undefined}
               >
                 <td
-                  className={`p-2 font-bold text-xs ${inGroup ? "pl-5" : ""} ${stickCls(0)}`}
+                  className={`p-2 font-bold text-xs ${inGroup ? "pl-5" : ""} stick`}
                   style={{ ...stickStyle(0), ...(r.hold.onHold ? { boxShadow: "inset 3px 0 0 var(--warn-fg)" } : {}) }}
                 >
                   <span className="flex flex-wrap items-center gap-1">
@@ -1338,27 +1519,24 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       OSP {it}×{r.items[it].osp}
                     </span>
                   ))}
-                  {ITEMS.filter((it) => r.items[it].excluded).map((it) => (
-                    <span key={`x${it}`} className="pill pill-muted" title={`${it} is not required for this project — it doesn't gate completion and never appears in the worklists`}>
-                      N/A {it}
-                    </span>
-                  ))}
+                  {/* a component the project does not need shows as hatched
+                      cells under its own columns, not as a badge here */}
                   </span>
                 </td>
-                <td className={`p-2 whitespace-nowrap ${stickCls(1)}`} style={stickStyle(1)}>
+                <td className={`p-2 whitespace-nowrap stick`} style={stickStyle(1)}>
                   <Soi soi={r.soi} />
                 </td>
-                <td className={`p-2 text-xs ${stickCls(2)}`} style={stickStyle(2)} title={r.customer || undefined}>
+                <td className={`p-2 text-xs stick`} style={stickStyle(2)} title={r.customer || undefined}>
                   <span className="block truncate">{r.customer || <span className="text-muted">—</span>}</span>
                 </td>
-                <td className={`p-2 font-bold whitespace-nowrap ${stickCls(3)}`} style={stickStyle(3)}>
+                <td className={`p-2 font-bold whitespace-nowrap stick`} style={stickStyle(3)}>
                   <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
                 </td>
-                <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>
-                {specCell(r, "colorRal")}
-                {specCell(r, "crcSize")}
-                {specCell(r, "sfm")}
-                <td className="p-2 text-center font-bold">
+                {show("kva") && <td className="p-2 text-xs whitespace-nowrap text-muted text-center">{r.kva ?? "—"}</td>}
+                {show("color") && specCell(r, "colorRal")}
+                {show("crc") && specCell(r, "crcSize")}
+                {show("sfm") && specCell(r, "sfm")}
+                <td className={`p-2 text-center font-bold ${REQ_CLS}`} style={REQ_STICK}>
                   {qtyEditMo === r.mo ? (
                     <span className="inline-flex flex-col items-center gap-0.5">
                       <span className="inline-flex items-center gap-1">
@@ -1399,30 +1577,27 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                     <Num v={r.required} />
                   )}
                 </td>
-                {specCell(r, "fins")}
+                {show("fins") && specCell(r, "fins")}
                 {ITEMS.map((it) => {
                   const c = r.items[it];
                   // AR/MB the order's KVA/rating rule doesn't match, or a manual
-                  // N/A, show as blank dashes and don't gate completion
+                  // N/A: hatched cells — not needed, not gating completion
                   if (!c.eligible || c.excluded) {
-                    if (scoped) {
-                      return (
-                        <Fragment key={it}>
-                          {stages.map((s, si) => (
-                            <td key={s} className={`p-2 text-center text-muted ${si === stages.length - 1 ? "border-r border-border-strong" : ""}`}>—</td>
-                          ))}
-                        </Fragment>
-                      );
-                    }
+                    const why = c.excluded
+                      ? `${it} is marked not required for this project — it doesn't gate completion and never appears in the worklists`
+                      : `${it} is not part of this order (the KVA / rating rule leaves it out)`;
+                    const n = itemColsOf(it);
                     return (
                       <Fragment key={it}>
-                        <td className="p-2 text-center text-muted">—</td>
-                        <td className="p-2 text-center text-muted">—</td>
-                        <td className="p-2 text-center text-muted">—</td>
-                        <td className="p-2 text-center text-muted border-r border-border-strong">—</td>
+                        {Array.from({ length: n }, (_, i) => (
+                          <td key={i} className={`na-cell ${i === n - 1 ? "border-r border-border-strong" : ""}`} title={why} aria-label={`${it} not required`}>
+                            {i === 0 && <span className="sr-only">N/A</span>}
+                          </td>
+                        ))}
                       </Fragment>
                     );
                   }
+                  if (folded(it)) return <Fragment key={it}>{shareCell(itemFinishShare(r.required, it, c), it, r.mo)}</Fragment>;
                   // stage scope: only the picked depts' columns (the core's
                   // Painting column is its SHOT BLAST — same as unfiltered)
                   if (scoped) {
@@ -1432,11 +1607,11 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                           const last = si === stages.length - 1;
                           return (
                             <Fragment key={s}>
-                              {s === "Cut" && stageCell(r, it, "Cut", c.cut, last)}
-                              {s === "Welding" && stageCell(r, it, "Welding", c.weld, last)}
+                              {s === "Cut" && stageCell(r, it, "Cut", c.cut, last, isBn(it, "Cut"))}
+                              {s === "Welding" && stageCell(r, it, "Welding", c.weld, last, isBn(it, "Welding"))}
                               {s === "Painting" && (isPaintExempt(it)
-                                ? stageCell(r, it, "ShotBlast", c.shp, last)
-                                : stageCell(r, it, "Painting", c.paint, last))}
+                                ? stageCell(r, it, "ShotBlast", c.shp, last, isBn(it, "ShotBlast"))
+                                : stageCell(r, it, "Painting", c.paint, last, isBn(it, "Painting")))}
                               {s === "Delivered" && stageCell(r, it, "Delivered", c.delivered, last)}
                             </Fragment>
                           );
@@ -1446,18 +1621,18 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                   }
                   return (
                     <Fragment key={it}>
-                      {stageCell(r, it, "Cut", c.cut)}
-                      {stageCell(r, it, "Welding", c.weld)}
+                      {stageCell(r, it, "Cut", c.cut, false, isBn(it, "Cut"))}
+                      {stageCell(r, it, "Welding", c.weld, false, isBn(it, "Welding"))}
                       {isPaintExempt(it) ? (
-                        stageCell(r, it, "ShotBlast", c.shp)
+                        stageCell(r, it, "ShotBlast", c.shp, false, isBn(it, "ShotBlast"))
                       ) : (
-                        stageCell(r, it, "Painting", c.paint)
+                        stageCell(r, it, "Painting", c.paint, false, isBn(it, "Painting"))
                       )}
                       {stageCell(r, it, "Delivered", c.delivered, true)}
                     </Fragment>
                   );
                 })}
-                {!scoped && (
+                {!scoped && show("summary") && (
                   <>
                     <td className="p-2 text-center font-bold border-r"><Num v={r.complete} /></td>
                     <td className="p-2 text-center font-semibold" style={{ color: r.remaining > 0 ? undefined : "var(--ok-fg)" }}>
@@ -1466,8 +1641,8 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                     <AchCell ach={r.achievement} />
                   </>
                 )}
-                {etaCell(etas[r.mo], r.hold.onHold)}
-                <td className="p-2 text-center no-print whitespace-nowrap">
+                {show("eta") && etaCell(etas[r.mo], r.hold.onHold)}
+                <td className="p-2 text-center no-print whitespace-nowrap stick-right">
                   <button type="button" onClick={(e) => rowMenu.open(e, { kind: "mo", row: r })} className="icon-btn align-middle" title="Actions — hold, priority, close… (or right-click the row)" aria-label={`Actions for ${r.mo}`}><MoreHorizontal size={15} /></button>
                   {/* the row's actions live in the ⋯ menu (and on right-click);
                       the cell keeps only the state, and the one call to action

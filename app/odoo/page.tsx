@@ -33,8 +33,8 @@ export default async function OdooPage({
   const line = await getActiveLine();
 
   const sp = await searchParams;
-  // one day (today by default), a from..to period, or every day
-  const scope = parseOdooScope(sp.day ?? "", toISODate(new Date()));
+  // every day by default (the log opens on the whole period), one day, or a from..to period
+  const scope = parseOdooScope(sp.day ?? "all", toISODate(new Date()));
   const day = odooScopeKey(scope);
   const view = sp.view === "dashboard" ? "dashboard" : "log";
 
@@ -93,7 +93,7 @@ export default async function OdooPage({
 
   return (
     <div className="space-y-3">
-      <RememberLastVisit storageKey="odoo:last" />
+      <RememberLastVisit storageKey="odoo:last" forget={["day"]} />
       <PageHead
         title="ODOO"
         sub="Close-out log · both lines"

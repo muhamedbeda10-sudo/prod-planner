@@ -2,16 +2,16 @@
 
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
 import { FilterX, MessageSquarePlus } from "lucide-react";
-import { CellEditor, DensityToggle, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
+import { CellEditor, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { ProductSwatch } from "@/components/Badge";
 import { productColor } from "@/lib/domain/productColors";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import {
-  ODOO_PRODUCTS, ODOO_STATUSES, ODOO_NOTE_FILTERS, ODOO_MO_FILTERS, ODOO_CLOSED_FILTERS, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
+  ODOO_PRODUCTS, ODOO_STATUSES, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
   odooItemTotals, odooScopeLabel, singleDayOf, type OdooItemTotal,
-  type OdooEntryView, type OdooGroup, type OdooNoteView, type OdooTone, type OdooFilters, type OdooNoteFilter, type OdooMoFilter, type OdooClosedFilter,
+  type OdooEntryView, type OdooGroup, type OdooNoteView, type OdooTone, type OdooFilters,
 } from "@/lib/domain/odoo";
 import { sourceLabel } from "@/lib/domain/odooMirror";
 import { LV_PRODUCTS } from "@/lib/domain/lv";
@@ -21,7 +21,6 @@ import { Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { Modal } from "@/components/Modal";
 import { entryMaterialNeed, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
-import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, setOdooFgCode, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
 
@@ -704,23 +703,11 @@ function ImportPanel({ day, lines, defaultLine }: { day: string; lines: readonly
   );
 }
 
-// ---- filters: one row above the table, kept between visits ----
-
-const FILTERS_KEY = "odoo:filters";
-
-function readSavedFilters(raw: string): OdooFilters {
-  const o = parseSaved(raw);
-  const notes = savedString(o, "notes");
-  const mo = savedString(o, "mo");
-  const closed = savedString(o, "closed");
-  return {
-    q: savedString(o, "q"), product: savedString(o, "product"), status: savedString(o, "status"),
-    notes: notes in ODOO_NOTE_FILTERS ? (notes as OdooNoteFilter) : "all",
-    mo: mo in ODOO_MO_FILTERS ? (mo as OdooMoFilter) : "all",
-    closed: closed in ODOO_CLOSED_FILTERS ? (closed as OdooClosedFilter) : "all",
-    line: ["TR", "LV"].includes(savedString(o, "line")) ? savedString(o, "line") : "",
-  };
-}
+// ---- filters: one row above the table ----
+// Every visit opens the same way: every day, the rows still marked "MO to be
+// close" — the office's to-do list. A filter changed here holds while the tab
+// is open; Reset comes back to this.
+const DEFAULT_ODOO_FILTERS: OdooFilters = { ...EMPTY_ODOO_FILTERS, status: "MO to be close" };
 
 /** One of the day's counts, as a filter. Reads as the sentence it always was
  *  until it is hovered or picked — a count that filters must not look like a
@@ -745,24 +732,13 @@ function FilterBar({ entries, filters, onChange }: { entries: OdooEntryView[]; f
   const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))];
   const statuses = uniq([...ODOO_STATUSES, ...entries.map((e) => e.status)]);
   const set = (patch: Partial<OdooFilters>) => onChange({ ...filters, ...patch });
-  const active = JSON.stringify(filters) !== JSON.stringify(EMPTY_ODOO_FILTERS);
+  const active = JSON.stringify(filters) !== JSON.stringify(DEFAULT_ODOO_FILTERS);
   return (
     <div className="toolbar toolbar-row no-print !mb-0">
       <SearchBox value={filters.q} onChange={(v) => set({ q: v })} placeholder="Search SOI, FG-CODE, MO, product, notes…" wide />
       <FilterSelect label="Line" title="Product line" value={filters.line} allLabel="both" onChange={(v) => set({ line: v })} options={[{ value: "TR", label: "Transformers" }, { value: "LV", label: "LV Panels" }]} />
       <FilterSelect label="Status" value={filters.status} onChange={(v) => set({ status: v })} options={statuses.map((st) => ({ value: st, label: st }))} />
-      <FilterSelect
-        label="Notes" title="Rows with or without notes" value={filters.notes} emptyValue="all" allLabel="any"
-        onChange={(v) => set({ notes: v as OdooNoteFilter })}
-        options={(Object.keys(ODOO_NOTE_FILTERS) as OdooNoteFilter[]).filter((k) => k !== "all").map((k) => ({ value: k, label: ODOO_NOTE_FILTERS[k] }))}
-      />
-      <FilterSelect
-        label="MO" title="Rows born from a closing that still need Odoo's MO, or whose FG-CODE was guessed" value={filters.mo} emptyValue="all" allLabel="any"
-        onChange={(v) => set({ mo: v as OdooMoFilter })}
-        options={(Object.keys(ODOO_MO_FILTERS) as OdooMoFilter[]).filter((k) => k !== "all").map((k) => ({ value: k, label: ODOO_MO_FILTERS[k] }))}
-      />
-      {active && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => onChange(EMPTY_ODOO_FILTERS)}><FilterX size={13} aria-hidden />Reset filters</button>}
-      <span className="ms-auto"><DensityToggle /></span>
+      {active && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => onChange(DEFAULT_ODOO_FILTERS)} title="Back to the rows marked MO to be close"><FilterX size={13} aria-hidden />Reset</button>}
     </div>
   );
 }
@@ -844,7 +820,7 @@ export function OdooClient({
   totalRows: number;
   openRows: number;
 }) {
-  const { filters, setFilters } = useStoredFilters(FILTERS_KEY, readSavedFilters, EMPTY_ODOO_FILTERS);
+  const [filters, setFilters] = useState<OdooFilters>(DEFAULT_ODOO_FILTERS);
   const editableLines = (["TR", "LV"] as const).filter((l) => canEditLine[l]);
   const shown = useMemo(() => filterOdooEntries(entries, filters), [entries, filters]);
   // the rows that are the same closing read as one line carrying the total
@@ -867,6 +843,9 @@ export function OdooClient({
     [entries, filters]
   );
   const readyOn = filters.closed === "open" && filters.mo === "has";
+  // what the Notes and MO dropdowns did, as two more counts
+  const withNotes = useMemo(() => filterOdooEntries(entries, { ...filters, notes: "all" }).filter((e) => e.notes.length > 0).length, [entries, filters]);
+  const guessed = useMemo(() => filterOdooEntries(entries, { ...filters, mo: "all" }).filter((e) => e.fgGuessed).length, [entries, filters]);
   const showAll = useShowAll();
   const elsewhere = day === "all" ? 0 : Math.max(0, totalRows - entries.length);
   const elsewhereLink = elsewhere > 0 && (
@@ -896,22 +875,22 @@ export function OdooClient({
           {shown.length > 0 && (<>
           <span className="w-2" aria-hidden />
           <span className="tabnum me-1">{shown.length} row{shown.length === 1 ? "" : "s"}</span>
-          <CountFilter
+          {(done > 0 || filters.closed === "done") && <CountFilter
             n={done}
             label="done"
             tone="text-ok-fg"
             on={filters.closed === "done"}
             title="Only the rows Odoo has closed"
             onClick={() => setFilters({ ...filters, closed: filters.closed === "done" ? "all" : "done" })}
-          />
-          <CountFilter
+          />}
+          {(open > 0 || filters.closed === "open") && <CountFilter
             n={open}
             label="not closed"
             tone="text-bad-fg"
             on={filters.closed === "open"}
             title="Only the rows still waiting to close, whatever status they carry"
             onClick={() => setFilters({ ...filters, closed: filters.closed === "open" ? "all" : "open" })}
-          />
+          />}
           {(ready > 0 || readyOn) && (
             <>
               <CountFilter
@@ -936,6 +915,26 @@ export function OdooClient({
                 onClick={() => setFilters({ ...filters, mo: filters.mo === "missing" ? "all" : "missing" })}
               />
             </>
+          )}
+          {(guessed > 0 || filters.mo === "guessed") && (
+            <CountFilter
+              n={guessed}
+              label="check FG-CODE"
+              tone="text-warn-fg"
+              on={filters.mo === "guessed"}
+              title="Rows whose FG-CODE was guessed from the part and the BOM — confirm them"
+              onClick={() => setFilters({ ...filters, mo: filters.mo === "guessed" ? "all" : "guessed" })}
+            />
+          )}
+          {(withNotes > 0 || filters.notes !== "all") && (
+            <CountFilter
+              n={filters.notes === "without" ? shown.length : withNotes}
+              label={filters.notes === "without" ? "without notes" : "with notes"}
+              tone="text-muted"
+              on={filters.notes !== "all"}
+              title="Only the rows that carry a note"
+              onClick={() => setFilters({ ...filters, notes: filters.notes === "all" ? "with" : "all" })}
+            />
           )}
           </>)}
         </div>

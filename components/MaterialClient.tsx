@@ -14,7 +14,7 @@ import { Modal } from "@/components/Modal";
 import { FIELD_DP, formatNumber, formatQty } from "@/lib/domain/format";
 import { FilterSelect } from "@/components/FilterControls";
 import { Check, ChevronRight, FilterX, Plus, Search, Upload } from "lucide-react";
-import { CellEditor, DensityToggle, GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
+import { CellEditor, GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
   createMaterialLine, createLvOrderLines, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, setUtilization, deleteMaterialLine, importMaterialAction,
@@ -722,7 +722,6 @@ function FilterBar({ lines, filters, onChange, shown, extra }: { lines: Material
       />
       <span className="ml-auto inline-flex items-center gap-3">
       {extra}
-      <DensityToggle />
       <span className="text-xs text-muted tabnum whitespace-nowrap">
         {active ? <><b className="text-foreground font-semibold">{shown}</b> of {lines.length} lines</> : `${lines.length} lines`}
       </span>
