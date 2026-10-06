@@ -213,7 +213,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
             {c.attention.length === 0 ? (
               <p className="text-sm text-muted">Nothing late, nothing due this week, nothing on hold.</p>
             ) : (
-              <table className="w-full text-sm border-collapse">
+              <div className="overflow-x-auto"><table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="text-left text-[11px] text-muted uppercase tracking-wide">
                     <th className="py-1 pe-2 font-bold">MO</th><th className="py-1 pe-2 font-bold">BOM</th><th className="py-1 pe-2 font-bold text-center">Left</th><th className="py-1 pe-2 font-bold">Promise</th><th className="py-1 font-bold">Why</th>
@@ -234,7 +234,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </Card>
           <Card
@@ -286,7 +286,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
             </div>
           </Card>
           <Card title="By component · now" sub="Each component's pieces through the stages over the open orders, and where the most of it waits" aside={<>{c.byItem.length} components</>}>
-            <table className="w-full border-collapse">
+            <div className="overflow-x-auto"><table className="w-full border-collapse">
               <thead>
                 <tr className="text-left text-[11px] text-muted uppercase tracking-wide">
                   <th className="py-1 px-2 font-bold">Item</th>
@@ -309,10 +309,10 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </Card>
           <Card title={`Output by component · ${periodWord}`} sub={`Pieces per component per department against its target for the period (${d.targetPerItem} a day; AR & MB ${itemDailyTarget("AR", d.targetPerItem)} a day only while an open order needs them) · ${d.workingDays} working days`}>
-            <table className="w-full border-collapse">
+            <div className="overflow-x-auto"><table className="w-full border-collapse">
               <thead>
                 <tr className="text-left text-[11px] text-muted uppercase tracking-wide">
                   <th className="py-1 px-2 font-bold">Item</th>
@@ -340,7 +340,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
           </Card>
           <Card title="By customer · now" sub="The open orders per customer: units finished (tanks painted) and delivered of required" aside={<>{c.customers.length} customer{c.customers.length === 1 ? "" : "s"}</>}>
             <div className="space-y-3">

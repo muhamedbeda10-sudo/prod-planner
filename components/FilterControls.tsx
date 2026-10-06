@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import { useLineKey } from "@/components/LineContext";
-import { Search, X, FilterX } from "lucide-react";
+import { Search, X, FilterX, SlidersHorizontal } from "lucide-react";
 
 /** Small consistent filter controls used by the filterable tables. */
 
@@ -61,7 +61,7 @@ export function SearchBox({
   wide?: boolean;
 }) {
   return (
-    <div className="relative col-span-2 sm:col-span-1">
+    <div className="relative col-span-2 sm:col-span-1 max-sm:w-full max-sm:basis-full">
       <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
       <input
         type="search"
@@ -145,6 +145,26 @@ export function SelectFilter({
   return <FilterSelect label={label} value={value} onChange={onChange} options={options} />;
 }
 
+/** On a phone, filters fold behind one "Filters" chip so the search and the
+ *  table stay in sight; from a small tablet up they show inline as before. */
+export function PhoneFold({ active, children }: { active: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="chip-toggle sm:hidden inline-flex items-center gap-1.5"
+        aria-expanded={open}
+        aria-pressed={open || active}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <SlidersHorizontal size={13} aria-hidden />Filters{active ? " · on" : ""}
+      </button>
+      <div className={open ? "contents" : "max-sm:hidden sm:contents"}>{children}</div>
+    </>
+  );
+}
+
 export function FilterBar({
   children,
   head,
@@ -179,12 +199,15 @@ export function FilterBar({
   );
   if (head || actions) {
     // ONE row: what you are looking at (the view, the search), how it is
-    // narrowed, and on the right the count and any action
+    // narrowed, and on the right the count and any action. A phone keeps the
+    // view and the search in sight and folds the rest behind "Filters".
     return (
       <div className="no-print toolbar toolbar-row">
         {head}
-        {children}
-        {reset}
+        <PhoneFold active={hasActive}>
+          {children}
+          {reset}
+        </PhoneFold>
         <span className="ms-auto flex flex-wrap items-center gap-2">
           {showCount && countText}
           {actions}

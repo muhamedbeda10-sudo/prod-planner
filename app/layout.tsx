@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { AppNav } from "@/components/AppNav";
+import { TouchLongPress } from "@/components/TouchLongPress";
 import { LineProvider } from "@/components/LineContext";
 import { getCurrentUser, userPerms } from "@/lib/server/auth";
 import { getChatUnreadCount } from "@/lib/server/chat";
@@ -61,6 +62,7 @@ export default async function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className="min-h-full flex flex-col antialiased">
+        <TouchLongPress />
         <LineProvider line={line}>
         {user && (
           <AppNav
