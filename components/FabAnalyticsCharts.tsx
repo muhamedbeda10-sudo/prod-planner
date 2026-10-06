@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LabelList, ReferenceLine, Pie, PieChart } from "recharts";
 import type { DayPoint, ThicknessSlice } from "@/lib/domain/fabAnalytics";
 
@@ -44,7 +45,7 @@ export function SheetsPerDayChart({ days, avg }: { days: DayPoint[]; avg: number
               if (!p) return null;
               return (
                 <TipBox>
-                  <b className="tabnum">{p.dateISO}</b>
+                  <b className="tabnum">{formatDate(p.dateISO)}</b>
                   <div className="tabnum"><b>{n1(p.sheets)}</b> sheets · {n1(p.tons)} t</div>
                   <div className="tabnum text-muted">{n1(p.pieces)} units closed</div>
                   {p.uncoveredPieces > 0 && (

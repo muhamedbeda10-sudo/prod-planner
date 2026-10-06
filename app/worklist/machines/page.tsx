@@ -1,10 +1,11 @@
+import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/server/auth";
 import { getDeptBoardLines, getMachineBoard, type BoardDept } from "@/lib/server/machineBoard";
 import { getSoiLookup } from "@/lib/server/soi";
 import { isMachinePlanningOn } from "@/lib/server/data";
-import { factoryDayISO, toDisplayDate, parseISODate } from "@/lib/domain/dates";
+import { factoryDayISO } from "@/lib/domain/dates";
 import { deptLabel } from "@/lib/domain/constants";
 import { isShiftDept, machineWord } from "@/lib/domain/shifts";
 import type { MachineCard, MachineQueueLine } from "@/lib/domain/machineBoard";
@@ -42,7 +43,7 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
   const board = await getMachineBoard(dept, lines, today);
   const cards = board.cards.filter((c) => (only ? c.machine.id === only : c.queue.length > 0));
   const word = machineWord(dept);
-  const dateLabel = toDisplayDate(parseISODate(today)!);
+  const dateLabel = formatDate(today);
   const back = dept === "ShotBlast" ? "/shifts?dept=ShotBlast" : `/worklist/${dept === "Cut" ? "cut" : dept.toLowerCase()}`;
 
   return (

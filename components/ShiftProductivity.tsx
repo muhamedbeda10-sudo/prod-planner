@@ -1,7 +1,7 @@
+import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { WORKER_DEPT_LABEL } from "@/lib/domain/tanks";
 import { efficiencyTone, type ProdStat } from "@/lib/domain/productivity";
-import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 import type { ShiftProductivity as Data } from "@/lib/server/productivity";
 
 // The rates the shift log feeds: man-hours per piece for every department,
@@ -10,7 +10,7 @@ import type { ShiftProductivity as Data } from "@/lib/server/productivity";
 
 const TONE = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" } as const;
 const fmt = (n: number) => n.toLocaleString("en");
-const dmy = (iso: string) => toDisplayDate(parseISODate(iso)!);
+const dmy = (iso: string) => formatDate(iso);
 
 function Cells({ s, priced }: { s: ProdStat | null; priced: boolean }) {
   if (!s || s.days === 0) {

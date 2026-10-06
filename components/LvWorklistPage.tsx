@@ -1,7 +1,8 @@
+import { formatDate } from "@/lib/domain/format";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { getLvWorklist } from "@/lib/server/lvWorklist";
 import { LV_WORKLISTS, lvDeptPermKey, type LvStage } from "@/lib/domain/lv";
-import { toISODate, toDisplayDate } from "@/lib/domain/dates";
+import { toISODate } from "@/lib/domain/dates";
 import { LvWorklist } from "@/components/LvWorklist";
 import { PrintHeader } from "@/components/PrintHeader";
 import { ViewTabs } from "@/components/ViewTabs";
@@ -16,10 +17,10 @@ export async function LvWorklistPage({ stage }: { stage: LvStage }) {
   const canEdit = !!user && hasPerm(user, lvDeptPermKey(stage));
   return (
     <>
-      <PrintHeader title={`${stage} Worklist — LV Panels`} date={toDisplayDate(today)} />
+      <PrintHeader title={`${stage} Worklist — LV Panels`} date={formatDate(today)} />
       <div className="mb-4 flex flex-wrap items-center gap-3 no-print">
         <ViewTabs views={LV_WORKLISTS.map((w) => ({ href: w.href, label: w.label, title: `${w.label} — what the panels owe this stage` }))} current={LV_WORKLISTS.find((w) => w.stage === stage)!.href} label="LV stage" />
-        <span className="text-xs text-muted">LV panels · {toDisplayDate(today)}</span>
+        <span className="text-xs text-muted">LV panels · {formatDate(today)}</span>
       </div>
       <LvWorklist data={data} canEdit={canEdit} todayISO={toISODate(today)} />
     </>

@@ -56,6 +56,7 @@ export function Ring({ pct, size = 40 }: { pct: number | null; size?: number }) 
 export function RingCard({
   label,
   name,
+  color,
   note,
   done,
   need,
@@ -64,6 +65,8 @@ export function RingCard({
   label: string;
   /** The component's full name beside its code (Core Frame, Top Cover …). */
   name?: string;
+  /** The product's colour from the app's product map — a thin line on top. */
+  color?: string;
   note: string;
   done: number;
   need: number;
@@ -79,7 +82,7 @@ export function RingCard({
     const f = pct === null ? 0 : Math.max(0, Math.min(1, pct));
     const complete = pct !== null && pct >= 1;
     return (
-      <div className="kpi w-full" title={`${label}${name ? ` · ${name}` : ""} — ${done.toLocaleString("en-US")} of ${need.toLocaleString("en-US")} ${note}`}>
+      <div className="kpi w-full" style={color ? { boxShadow: `inset 0 3px 0 ${color}` } : undefined} title={`${label}${name ? ` · ${name}` : ""} — ${done.toLocaleString("en-US")} of ${need.toLocaleString("en-US")} ${note}`}>
         <div className="kpi-head">
           <span className="kpi-code">{label}</span>
           {name && <span className="kpi-name">{name}</span>}

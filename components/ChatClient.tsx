@@ -1,5 +1,7 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
+import { factoryDayISO } from "@/lib/domain/dates";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -38,8 +40,7 @@ const POLL_MS = chatRealtimeConfigured ? 30000 : 5000;
 const timeOf = (iso: string) =>
   new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 const dayOf = (iso: string) => iso.slice(0, 10);
-const dayLabel = (iso: string) =>
-  new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "2-digit" });
+const dayLabel = (iso: string) => formatDate(factoryDayISO(new Date(iso)));
 
 const sizeLabel = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;

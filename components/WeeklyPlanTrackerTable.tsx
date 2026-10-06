@@ -11,6 +11,7 @@ import { ExportButton } from "@/components/ExportButton";
 import { PrintButton } from "@/components/PrintButton";
 import { PrintScope } from "@/components/PrintHeader";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
+import { itemColor } from "@/lib/domain/productColors";
 import { ITEMS, ITEM_NAME, isPaintExempt, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 import { traceHref } from "@/lib/domain/links";
 import type { WeeklyPlanTracker, WeeklyPlanRow, WeeklyPlanCell, WeeklyPlanDay } from "@/lib/server/weeklyPlanTracker";
@@ -233,7 +234,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
       {itemStats.length > 0 && (
         <div className={`print-keep ${RING_GRID}`}>
           {itemStats.map(({ it, need, done }) => (
-            <RingCard key={it} label={it} name={ITEM_NAME[it]} note={doneWord(metric, it)} done={done} need={need} wide />
+            <RingCard key={it} label={it} name={ITEM_NAME[it]} color={itemColor(it)} note={doneWord(metric, it)} done={done} need={need} wide />
           ))}
         </div>
       )}

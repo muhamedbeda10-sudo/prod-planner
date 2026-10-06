@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "@/lib/domain/format";
 import type { RunOrderLineDTO } from "@/lib/server/worklistExtras";
 
 /** 🎯 The approved run order — the sequence the admin committed from the
@@ -7,7 +8,7 @@ import type { RunOrderLineDTO } from "@/lib/server/worklistExtras";
  *  a line leaves this list when this dept's work on it is done. */
 export function RunOrderTable({ rows, deptWord }: { rows: RunOrderLineDTO[]; deptWord: string }) {
   if (rows.length === 0) return null;
-  const applied = rows[0].appliedAtISO.slice(0, 10);
+  const applied = formatDateTime(rows[0].appliedAtISO);
   return (
     <section className="mb-6">
       <h2>

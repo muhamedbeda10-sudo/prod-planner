@@ -18,6 +18,7 @@ import { agreedSpec, capsFor, finsGroup, isFullyDelivered, spreadOverGroup, spre
 import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { Modal } from "@/components/Modal";
+import { itemColor } from "@/lib/domain/productColors";
 import { AlertTriangle, Check, CheckCheck, ChevronRight, CornerDownRight, MoreHorizontal, Pause, Repeat, Star } from "lucide-react";
 
 type Progress = "complete" | "inprogress" | "notstarted";
@@ -34,14 +35,9 @@ type Progress = "complete" | "inprogress" | "notstarted";
  *  matter. Colour is never the only cue — the item's own header spans its
  *  columns and a strong divider closes each block, which is what carries the
  *  grouping for a colour-blind reader, where green and orange converge. */
-const ITEM_TINT: Record<Item, string> = {
-  CF: "var(--item-cf)",
-  TC: "var(--item-tc)",
-  TN: "var(--item-tn)",
-  CB: "var(--item-cb)",
-  AR: "var(--item-ar)",
-  MB: "var(--item-mb)",
-};
+/** Each component's colour from the app's ONE product map — drawn as a thin
+ *  line along the top of its header, never as a filled block of cells. */
+const ITEM_TINT: Record<Item, string> = Object.fromEntries(ITEMS.map((it) => [it, itemColor(it)])) as Record<Item, string>;
 
 /** ⏸️ A held row wears ONE quiet wash end to end and a warn stripe on its
  *  first cell: it reads as paused at a glance without flooding the sheet,
@@ -678,7 +674,7 @@ export function MasterTrackerTable({
       {/* the cards share the page's width between them */}
       <div className={`print-keep ${RING_GRID} mb-3`}>
         {itemStats.map(({ it, doneWord, need, done }) => (
-          <RingCard key={it} label={it} name={ITEM_NAME[it]} note={doneWord} done={done} need={need} wide />
+          <RingCard key={it} label={it} name={ITEM_NAME[it]} color={itemColor(it)} note={doneWord} done={done} need={need} wide />
         ))}
       </div>
 
@@ -778,7 +774,7 @@ export function MasterTrackerTable({
                   before the Core Frame. Typed here, never imported. */}
               <th rowSpan={2} className="p-2" style={FINS_HEAD} title="Fins — typed here; the import never writes it">Fins</th>
               {ITEMS.map((it) => (
-                <th key={it} colSpan={scoped ? stages.length : 4} className="p-1.5 border-r border-border-strong on-tint" style={{ background: ITEM_TINT[it] }} title={ITEM_NAME[it]}>
+                <th key={it} colSpan={scoped ? stages.length : 4} className="p-1.5 border-r border-border-strong on-tint" style={{ boxShadow: `inset 0 3px 0 ${ITEM_TINT[it]}` }} title={ITEM_NAME[it]}>
                   <span className="font-bold tracking-wider">{it}</span>
                   <span className="ml-1.5 font-medium normal-case tracking-normal text-muted">{ITEM_NAME[it]}</span>
                 </th>
@@ -804,11 +800,11 @@ export function MasterTrackerTable({
                 scoped ? (
                   <Fragment key={it}>
                     {stages.map((s, si) => (
-                      <StageHead key={s} tint={ITEM_TINT[it]} shp={isPaintExempt(it)} only={s} borderR={si === stages.length - 1} />
+                      <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={si === stages.length - 1} />
                     ))}
                   </Fragment>
                 ) : (
-                  <StageHead key={it} tint={ITEM_TINT[it]} shp={isPaintExempt(it)} />
+                  <StageHead key={it} shp={isPaintExempt(it)} />
                 )
               )}
             </tr>
@@ -1603,10 +1599,6 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
   }
 }
 
-/** A stage sub-header: its component's header wash, a step toward the
- *  neutral header ground — one family, two levels. */
-const subTint = (tint: string) => `color-mix(in srgb, ${tint} 55%, var(--surface-2))`;
-
 /** Achievement: the figure in its status colour — no filled cell. */
 function AchCell({ ach }: { ach: number | null }) {
   const color = ach === null ? "var(--muted)" : ach >= 1 ? "var(--ok-fg)" : ach >= 0.5 ? "var(--foreground)" : "var(--warn-fg)";
@@ -1619,7 +1611,7 @@ function AchCell({ ach }: { ach: number | null }) {
 
 // stage sub-headers sit on the same tints as their data columns — readable
 // in both themes (the old dark-green fill swallowed the muted header text)
-function StageHead({ tint, shp = false, only, borderR = true }: { tint: string; shp?: boolean; only?: string; borderR?: boolean }) {
+function StageHead({ shp = false, only, borderR = true }: { shp?: boolean; only?: string; borderR?: boolean }) {
   // The sub-header wears its ITEM's wash like the numbers under it, so the
   // whole column reads as one block. Which stage a column is stays in the
   // label — Fab / Weld / SHB / Paint / Dlvd — not in a colour of its own.
@@ -1630,19 +1622,19 @@ function StageHead({ tint, shp = false, only, borderR = true }: { tint: string; 
       : only === "Delivered" ? ["Dlvd", "Delivered — received by the customer"]
       : shp ? ["SHB", "Shot Blast — the core's final stage after welding"]
       : ["Paint", undefined];
-    return <th className={`p-1 font-semibold on-tint ${borderR ? "border-r border-border-strong" : ""}`} style={{ background: subTint(tint) }} title={title}>{label}</th>;
+    return <th className={`p-1 font-semibold on-tint ${borderR ? "border-r border-border-strong" : ""}`} title={title}>{label}</th>;
   }
   return (
     <>
-      <th className="p-1 font-semibold on-tint" style={{ background: subTint(tint) }}>Fab</th>
-      <th className="p-1 font-semibold on-tint" style={{ background: subTint(tint) }}>Weld</th>
+      <th className="p-1 font-semibold on-tint">Fab</th>
+      <th className="p-1 font-semibold on-tint">Weld</th>
       {/* the core (CF) is never painted — its final stage is SHOT BLAST */}
       {shp ? (
-        <th className="p-1 font-semibold on-tint" style={{ background: subTint(tint) }} title="Shot Blast — the core's final stage after welding">SHB</th>
+        <th className="p-1 font-semibold on-tint" title="Shot Blast — the core's final stage after welding">SHB</th>
       ) : (
-        <th className="p-1 font-semibold on-tint" style={{ background: subTint(tint) }}>Paint</th>
+        <th className="p-1 font-semibold on-tint">Paint</th>
       )}
-      <th className="p-1 font-semibold on-tint border-r border-border-strong" style={{ background: subTint(tint) }} title="Delivered — received by the customer">Dlvd</th>
+      <th className="p-1 font-semibold on-tint border-r border-border-strong" title="Delivered — received by the customer">Dlvd</th>
     </>
   );
 }

@@ -1,11 +1,11 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { applyCalibration } from "./actions";
 import { deptLabel } from "@/lib/domain/constants";
-import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
 
 /* Calibration: the supervisors' shift log says how many man-hours each stage
    ACTUALLY worked per day; against the std-hours the ledger says those days
@@ -136,7 +136,7 @@ export function CalibrationPanel({ rows, stages, windowDays }: { rows: DayRow[];
               <tbody>
                 {rows.slice(0, 14).map((r) => (
                   <tr key={r.dateISO} className="text-center">
-                    <td className="p-2 text-left font-bold tabnum">{toDisplayDate(parseISODate(r.dateISO)!)}</td>
+                    <td className="p-2 text-left font-bold tabnum">{formatDate(r.dateISO)}</td>
                     {STAGES.map((s) => (
                       <td key={s} className="p-2 tabnum">
                         {r.hours[s] !== undefined ? (

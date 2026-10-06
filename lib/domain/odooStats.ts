@@ -2,6 +2,7 @@
 // The server fetches the rows; this module turns them into what the charts
 // and the table draw, so the numbers can be tested without a database.
 
+import { PRODUCT_ORDER } from "@/lib/domain/productColors";
 import { parseISODate, toISODate } from "./dates";
 import { isDoneStatus, ODOO_PRODUCTS } from "./odoo";
 
@@ -36,11 +37,16 @@ export function productSeries(product: string | null | undefined): OdooSeries {
  *  rest by quantity, then name — so a new product's colour is stable within a
  *  period and the biggest newcomer sits nearest the known ones. */
 export function orderSeries(totals: ReadonlyMap<OdooSeries, { qty: number }>): OdooSeries[] {
-  const known = KNOWN_SERIES.filter((s) => totals.has(s));
+  // the colour map's products first, in ITS order (the order its colours are
+  // checked for telling neighbours apart in), then the sheet's other known
+  // names, then anything else by quantity, "Other" last
+  const mapped = PRODUCT_ORDER.filter((s) => totals.has(s));
+  const known = KNOWN_SERIES.filter((s) => totals.has(s) && !mapped.includes(s as (typeof PRODUCT_ORDER)[number]));
+  const listed = new Set<string>([...mapped, ...known]);
   const rest = [...totals.keys()]
-    .filter((s) => !KNOWN_SERIES.includes(s) && s !== OTHER_SERIES)
+    .filter((s) => !listed.has(s) && s !== OTHER_SERIES)
     .sort((a, b) => totals.get(b)!.qty - totals.get(a)!.qty || a.localeCompare(b));
-  return [...known, ...rest, ...(totals.has(OTHER_SERIES) ? [OTHER_SERIES] : [])];
+  return [...mapped, ...known, ...rest, ...(totals.has(OTHER_SERIES) ? [OTHER_SERIES] : [])];
 }
 
 export const ODOO_RANGES = ["today", "yesterday", "7d", "30d", "90d", "month", "all"] as const;

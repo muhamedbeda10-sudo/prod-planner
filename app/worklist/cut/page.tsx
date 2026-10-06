@@ -1,10 +1,11 @@
+import { formatDate } from "@/lib/domain/format";
 import { getSoiLookup } from "@/lib/server/soi";
 import { getRunOrderLines } from "@/lib/server/worklistExtras";
 import { getCutSheet } from "@/lib/server/execution";
 import { getSettings } from "@/lib/server/data";
 import { getReturnsFor } from "@/lib/server/returns";
 import { getQueueNotes } from "@/lib/server/queueNotes";
-import { toISODate, toDisplayDate } from "@/lib/domain/dates";
+import { toISODate } from "@/lib/domain/dates";
 import { CutWorklistView } from "@/components/CutWorklistView";
 import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, canEditDept, hasPerm } from "@/lib/server/auth";
@@ -42,7 +43,7 @@ export default async function CutWorklistPage() {
 
   return (
     <>
-      <PrintHeader title="Fabrication Worklist" date={toDisplayDate(today)} />
+      <PrintHeader title="Fabrication Worklist" date={formatDate(today)} />
       <CutWorklistView soi={soi} runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} pushed={pushed} priority={priority} held={held} hidden={hidden} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} canManage={!!user && hasPerm(user, "machines.manage")} board={board} />
     </>
   );

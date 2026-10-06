@@ -1,9 +1,10 @@
+import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import type { ControlDashboardData } from "@/lib/server/controlDashboard";
 import type { TargetDashboard } from "@/lib/server/dashboard";
 import { BACKLOG_LABEL, LOAD_LABEL, type BacklogStage } from "@/lib/domain/control";
-import { toDisplayDate, parseISODate } from "@/lib/domain/dates";
-import { FINISHING_LABEL, ITEMS, itemDailyTarget, type Item } from "@/lib/domain/constants";
+import { itemColor } from "@/lib/domain/productColors";
+import { FINISHING_LABEL, ITEMS, ITEM_NAME, itemDailyTarget, type Item } from "@/lib/domain/constants";
 import { BacklogChart, HistoryChart, LoadRings, PipelineFunnel, PromisesChart, WeekTrendChart } from "@/components/LazyCharts";
 import { Sparkline } from "@/components/charts/kit";
 
@@ -19,7 +20,7 @@ import { Sparkline } from "@/components/charts/kit";
 
 const fmt = (n: number) => n.toLocaleString();
 const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)}%`);
-const dmy = (iso: string | null) => (iso ? toDisplayDate(parseISODate(iso)!) : "—");
+const dmy = (iso: string | null) => formatDate(iso);
 const one = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 type Tone = "ok" | "warn" | "bad" | "muted";
@@ -84,13 +85,17 @@ function Bar({ label, value, max, color, badge, tip }: { label: string; value: n
 
 const pctOf = (v: number, t: number) => (t > 0 ? v / t : 0);
 
-const ITEM_NAME: Record<Item, string> = { CF: "Core Frame", TC: "Top Cover", TN: "Tank", CB: "Cable Box", AR: "Arrester", MB: "Mono Box" };
-const ITEM_TINT: Record<Item, string> = { CF: "var(--item-cf)", TC: "var(--item-tc)", TN: "var(--item-tn)", CB: "var(--item-cb)", AR: "var(--item-ar)", MB: "var(--item-mb)" };
+
 const attainTone = (f: number): Tone => (f >= 1 ? "ok" : f >= 0.5 ? "muted" : "bad");
 
-/** The component's chip — its code on its own wash, the name on hover. */
+/** The component's chip — its product colour as a swatch, its code, the name on hover. */
 function ItemChip({ item }: { item: Item }) {
-  return <span className="inline-block rounded-md px-1.5 py-0.5 text-xs font-extrabold" style={{ background: ITEM_TINT[item] }} title={ITEM_NAME[item]}>{item}</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold" title={ITEM_NAME[item]}>
+      <span className="inline-block w-2.5 h-2.5 rounded-[3px]" style={{ background: itemColor(item) }} aria-hidden />
+      {item}
+    </span>
+  );
 }
 
 /** A cell that is a figure over a small meter: done of need, coloured by the stage ramp or by attainment. */
