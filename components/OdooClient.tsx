@@ -22,7 +22,7 @@ import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { Modal } from "@/components/Modal";
 import { entryMaterialNeed, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
-import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, setOdooFgCode, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
+import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
 
 // The ODOO tab — the office's daily log of Odoo close attempts, one strip per
 // row, the columns of the sheet it replaces: Date · SOI# · FG-CODE · Product ·
@@ -221,25 +221,14 @@ function BomValue({ bom }: { bom: OdooEntryView["bom"] }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       {bom.boms.join(" / ")}
-      {bom.via === "fg" && <span className="pill pill-muted text-[10px]" title="No order in the registry for this SOI — read off the FG-CODE, which for a top cover or core frame is the part's drawing code, not the BOM">from FG</span>}
       {bom.boms.length > 1 && <span className="pill pill-warn text-[10px]" title="The SOI has several BOMs and the FG-CODE does not say which">{bom.boms.length} BOMs</span>}
     </span>
   );
 }
 
 function bomTitle(e: OdooEntryView): string {
-  const how = e.bom.via === "closing" ? "from the closing that wrote this row" : e.bom.via === "soi" ? "from the SOI's order" : e.bom.via === "fg" ? "read off the FG-CODE" : "unknown";
-  return `BOM ${how} · FG-CODE ${e.fgCode || "—"}${e.fgGuessed ? " (guessed — confirm it)" : ""}`;
-}
-
-/** A guessed FG-CODE: the warning, which opens the code to confirm or correct. */
-function GuessedFg({ e }: { e: OdooEntryView }) {
-  const [open, setOpen] = useState(false);
-  return open ? (
-    <InlineValue ids={[e.id]} name="fgCode" value={e.fgCode} placeholder="FG-CODE" action={setOdooFgCode} warn list="odoo-fg" hint="Guessed FG-CODE — Enter keeps it, or type the right one" />
-  ) : (
-    <button type="button" className="pill pill-warn text-[10px] mt-0.5 block" onClick={() => setOpen(true)} title={`Composed from the part code and the BOM: ${e.fgCode} — click to confirm or correct it`}>check FG-CODE</button>
-  );
+  const how = e.bom.via === "closing" ? "the closing recorded on the Plan Tracker" : e.bom.via === "soi" ? "the SOI's order" : "the row";
+  return e.bom.boms.length ? `BOM from ${how}` : "No BOM known for this row";
 }
 
 /** One value typed straight into the row and saved on Enter or blur — Odoo's
@@ -435,7 +424,6 @@ function FlagLegend() {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 border-t text-xs text-muted no-print" aria-label="What the marks mean">
       <span className="filter-label">Marks</span>
-      <span className="inline-flex items-center gap-1.5"><span className="pill pill-warn">check FG-CODE</span>guessed from the part and the BOM — confirm it</span>
       <span className="inline-flex items-center gap-1.5"><span className="pill pill-warn">needs MO</span>waiting for Odoo&apos;s MO number</span>
       <span className="inline-flex items-center gap-1.5"><span className="pill pill-info">from Painting</span>written by a closing on the floor</span>
       <span className="inline-flex items-center gap-1.5"><span className="pill pill-muted">3 closings</span>rows of one closing, added up — click to open</span>
@@ -515,11 +503,8 @@ function Row({ e, day, knownSois, knownFgCodes, nesting, needCtx, canEdit, inGro
           <SourceTag source={e.source} />
         </td>
         <td className={cell} onClick={open} title={rowTitle}><Soi soi={e.soi} /></td>
-        <td className={`${cell} ltr text-xs font-semibold`} onClick={e.fgGuessed && canEdit ? undefined : open} title={bomTitle(e)}>
+        <td className={`${cell} ltr text-xs font-semibold`} onClick={open} title={bomTitle(e)}>
           <BomValue bom={e.bom} />
-          {/* a guessed FG-CODE is still the office's to confirm — behind its
-              warning, the code itself stays out of the way */}
-          {e.fgGuessed && (canEdit ? <GuessedFg e={e} /> : <span className="pill pill-warn text-[10px] mt-0.5">check FG-CODE</span>)}
         </td>
         <td className={cell} onClick={open} title={rowTitle}>{e.product}</td>
         <td className={`${cell} ltr text-xs font-bold`} onClick={!e.odooMo && canEdit ? undefined : open} title={e.odooMo ? rowTitle : "Odoo's MO is not known here — type it once the MO is printed from Odoo"}>
@@ -605,7 +590,6 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
   const need = useMemo(() => entryMaterialNeed(nesting, head, g.qty, needCtx), [nesting, head, g.qty, needCtx]);
   const closeMaterial = useCallback(() => setMaterial(false), []);
   const noteCount = g.rows.reduce((n, r) => n + r.notes.length, 0);
-  const guessed = g.rows.some((r) => r.fgGuessed);
   const born = g.rows.every((r) => isBorn(r));
   const parts = g.rows.map((r) => r.qty).join(" + ");
   const cell = "p-2 whitespace-nowrap cursor-pointer";
@@ -625,7 +609,6 @@ function MergedRow({ g, day, knownSois, knownFgCodes, nesting, needCtx, canEdit 
         <td className={`${cell} ltr text-xs font-semibold`} onClick={toggle}>
           <span className="inline-flex flex-col" title={bomTitle(head)}>
             <BomValue bom={head.bom} />
-            {guessed && <span className="pill pill-warn text-[10px] mt-0.5" title="Open the line to confirm the guessed code on its rows">check FG-CODE</span>}
           </span>
         </td>
         <td className={cell} onClick={toggle}>{head.product}</td>
@@ -876,7 +859,6 @@ export function OdooClient({
   const readyOn = filters.closed === "open" && filters.mo === "has";
   // what the Notes and MO dropdowns did, as two more counts
   const withNotes = useMemo(() => filterOdooEntries(entries, { ...filters, notes: "all" }).filter((e) => e.notes.length > 0).length, [entries, filters]);
-  const guessed = useMemo(() => filterOdooEntries(entries, { ...filters, mo: "all" }).filter((e) => e.fgGuessed).length, [entries, filters]);
   const showAll = useShowAll();
   const elsewhere = day === "all" ? 0 : Math.max(0, totalRows - entries.length);
   const elsewhereLink = elsewhere > 0 && (
@@ -947,16 +929,6 @@ export function OdooClient({
               />
             </>
           )}
-          {(guessed > 0 || filters.mo === "guessed") && (
-            <CountFilter
-              n={guessed}
-              label="check FG-CODE"
-              tone="text-warn-fg"
-              on={filters.mo === "guessed"}
-              title="Rows whose FG-CODE was guessed from the part and the BOM — confirm them"
-              onClick={() => setFilters({ ...filters, mo: filters.mo === "guessed" ? "all" : "guessed" })}
-            />
-          )}
           {(withNotes > 0 || filters.notes !== "all") && (
             <CountFilter
               n={filters.notes === "without" ? shown.length : withNotes}
@@ -992,7 +964,7 @@ export function OdooClient({
                   <Th label="Line" hint="TR = Transformers · LV = LV Panels" />
                   <Th label="Source" hint="typed here · imported from the sheet · from Painting / Shot Blast = written by a closing on the floor" />
                   <Th label="SOI #" full="SOI#" />
-                  <Th label="BOM" full="The transformer's BOM — from the closing, else the SOI's order; the FG-CODE is in the tooltip" />
+                  <Th label="BOM" full="The BOM — from the closing recorded on the Plan Tracker, else the SOI's order" />
                   <Th label="Product" />
                   <Th label="MO #" full="MO#" hint="Odoo's MO number — typed once the MO is printed from Odoo" />
                   <Th label="Qty" unit="pcs" full="QTY" center />
