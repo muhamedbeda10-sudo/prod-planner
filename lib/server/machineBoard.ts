@@ -16,7 +16,7 @@ import { getSettings, getShiftHours } from "./data";
 import { withLine } from "./line";
 import { getLvWorklist } from "./lvWorklist";
 import { LV_ITEM } from "@/lib/domain/lv";
-import { sheetKeyOf, type LineMaterial } from "@/lib/domain/machineMaterial";
+import { fullyCutPieces, sheetKeyOf, type LineMaterial } from "@/lib/domain/machineMaterial";
 import { getLinesMaterial, type OrderRef } from "./machineMaterial";
 import { getManualJobs, manualBoardLines } from "./manualJobs";
 import { MANUAL_BOM, MANUAL_ITEM, manualIdOf, manualMaterial, manualMo, type ManualJobView } from "@/lib/domain/manualJob";
@@ -64,6 +64,21 @@ export interface MachineBoardData extends MachineBoard {
   /** The department's jobs from outside the plan — open ones on the board
    *  like any line, and the list kept to come back to. */
   manualJobs: ManualJobView[];
+  /** Items spread over machines by sheet whose every sheet is cut for some
+   *  pieces — whole pieces, ready to be recorded as cut in one click. */
+  readyCut: ReadyCut[];
+}
+
+export interface ReadyCut {
+  key: string;
+  bom: string;
+  mo: string;
+  item: string;
+  description: string;
+  /** Pieces cut on every sheet — what can be recorded. */
+  qty: number;
+  /** What each sheet has cut so far (pieces' worth). */
+  sheets: { sheet: string; cut: number }[];
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -209,7 +224,29 @@ export async function getMachineBoard(dept: BoardDept, planLines: readonly Board
       ...(missing.length > 0 ? { missing } : {}),
     };
   }
-  return { ...board, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), days, assigned, material, manualJobs };
+  // the items whose every sheet is cut for some pieces: those pieces are
+  // whole, and wait for one click to be recorded as cut
+  const remainingOf = new Map<string, { remaining: number; l: BoardLineInput }>();
+  for (const l of lines) {
+    const k = lineKey(l.bom, l.mo, l.item);
+    const cur = remainingOf.get(k);
+    remainingOf.set(k, { remaining: (cur?.remaining ?? 0) + l.remaining, l: cur?.l ?? l });
+  }
+  const readyCut: ReadyCut[] = [];
+  for (const key of bySheet) {
+    const open = remainingOf.get(key);
+    const specs = material[key]?.specs ?? [];
+    if (!open || open.remaining <= 0 || specs.length === 0) continue;
+    const rows = ctx.assignments.filter((x) => x.key === key && x.sheet).map((x) => ({ sheet: x.sheet!, sheetDone: x.sheetDone ?? 0 }));
+    const keys = specs.map(sheetKeyOf);
+    const qty = fullyCutPieces(rows, keys, open.remaining);
+    if (qty <= 0) continue;
+    readyCut.push({
+      key, bom: open.l.bom, mo: open.l.mo, item: open.l.item, description: open.l.description, qty,
+      sheets: keys.map((sh) => ({ sheet: sh, cut: rows.filter((r) => r.sheet === sh).reduce((n, r) => n + r.sheetDone, 0) })),
+    });
+  }
+  return { ...board, readyCut, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), days, assigned, material, manualJobs };
 }
 
 /** What the ⚡ optimizer plans from: the department's machines with the hours

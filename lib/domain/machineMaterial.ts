@@ -133,3 +133,32 @@ export function thicknessLabel(spec: Pick<LineSheetSpec, "thicknessMm" | "materi
 export function sheetSizeLabel(size: string): string {
   return size.replace(/\*/g, "×");
 }
+
+/** How many pieces of an item are cut on EVERY one of its sheets — the
+ *  pieces that are whole now and can be recorded as cut. A sheet nobody has
+ *  cut yet holds it at 0; the same sheet cut on two machines adds up. */
+export function fullyCutPieces(rows: readonly { sheet: string; sheetDone: number }[], sheets: readonly string[], remaining: number): number {
+  if (sheets.length === 0) return 0;
+  const cut = new Map<string, number>();
+  for (const r of rows) if (r.sheet) cut.set(r.sheet, (cut.get(r.sheet) ?? 0) + Math.max(0, r.sheetDone));
+  const n = Math.min(...sheets.map((s) => cut.get(s) ?? 0));
+  return Math.max(0, Math.min(Math.floor(n), Math.floor(remaining)));
+}
+
+/** Take `qty` pieces off a sheet's cut figures, row by row: the item was
+ *  recorded, so that many pieces of every sheet are accounted for. Returns
+ *  the new figure per row id. */
+export function consumeSheetDone(rows: readonly { id: number; sheet: string; sheetDone: number }[], qty: number): Map<number, number> {
+  const out = new Map<number, number>();
+  const bySheet = new Map<string, { id: number; sheetDone: number }[]>();
+  for (const r of rows) if (r.sheet) (bySheet.get(r.sheet) ?? bySheet.set(r.sheet, []).get(r.sheet)!).push(r);
+  for (const list of bySheet.values()) {
+    let left = Math.max(0, Math.round(qty));
+    for (const r of list) {
+      const take = Math.min(left, Math.max(0, r.sheetDone));
+      left -= take;
+      if (take > 0) out.set(r.id, r.sheetDone - take);
+    }
+  }
+  return out;
+}

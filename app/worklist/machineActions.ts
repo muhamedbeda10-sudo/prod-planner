@@ -7,7 +7,7 @@ import { getLinesMaterial, type OrderRef } from "@/lib/server/machineMaterial";
 import type { LineMaterial } from "@/lib/domain/machineMaterial";
 import { getOptimizerInputs } from "@/lib/server/machineBoard";
 import { optimizePlan } from "@/lib/domain/optimizePlan";
-import { factoryDayISO } from "@/lib/domain/dates";
+import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import { MANUAL_BOM, MANUAL_ITEM } from "@/lib/domain/manualJob";
 
@@ -180,7 +180,16 @@ export async function recordSheetDone(fd: FormData): Promise<MachineActionResult
   if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: "Enter whole pieces above 0." };
   const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
   if (!row) return { ok: false, error: "That sheet is not on this machine any more — reload the page." };
-  await prisma.worklistMachine.update({ where: { id: row.id }, data: { sheetDone: row.sheetDone + qty, setBy: guard.user?.name ?? null } });
+  const by = guard.user?.name ?? null;
+  const date = parseISODate(String(fd.get("date") ?? "")) ?? parseISODate(factoryDayISO(new Date()))!;
+  const thk = Number(line.sheet.split("|")[0]);
+  await prisma.$transaction([
+    prisma.worklistMachine.update({ where: { id: row.id }, data: { sheetDone: row.sheetDone + qty, setBy: by } }),
+    // kept for good: what this machine cuts, at what thickness
+    prisma.sheetCutLog.create({
+      data: { date, dept: line.dept, bom: line.bom, mo: line.mo, item: line.item, sheet: line.sheet, thicknessMm: Number.isFinite(thk) ? thk : null, machineId, qty, createdBy: by },
+    }),
+  ]);
   revalidate();
   return { ok: true };
 }

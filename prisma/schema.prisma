@@ -575,6 +575,7 @@ model Machine {
   itemTimes MachineItemTime[]
   output    HandoverEntry[]
   manualJobs ManualJob[]
+  sheetCuts  SheetCutLog[]
 
   @@index([dept])
 }
@@ -1225,4 +1226,29 @@ model ManualJob {
 
   @@index([dept])
   @@index([machineId])
+}
+
+// Every ✓ on a sheet's line on a machine card: which sheet (thickness,
+// material, size) of which item was cut on which machine, how many pieces'
+// worth, and when. The board's own figure (WorklistMachine.sheetDone) is
+// taken back off once the item is recorded; this log keeps it — the history
+// of what each machine cuts at what thickness, for planning machines from it.
+model SheetCutLog {
+  id         Int      @id @default(autoincrement())
+  at         DateTime @default(now())
+  date       DateTime // the factory day it was cut on
+  dept       String
+  bom        String
+  mo         String
+  item       String
+  sheet      String // "<thickness>|<material>|<size>"
+  thicknessMm Float?
+  machineId  Int?
+  machine    Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  qty        Int
+  createdBy  String?
+
+  @@index([machineId])
+  @@index([item])
+  @@index([date])
 }

@@ -227,6 +227,41 @@ function SheetChoice({ code, bom, item, material, defaultQty, busy, onClose, onP
   );
 }
 
+/** ✅ Items cut on EVERY one of their sheets: those pieces are whole. One
+ *  click records them as cut — the item's Cut record, the same one the
+ *  worklist writes — and takes them off the sheets' figures on the cards. */
+function ReadyCutPanel({ board, canEdit }: { board: MachineBoardData; canEdit: boolean }) {
+  const a = useAction();
+  const record = (r: MachineBoardData["readyCut"][number]) => {
+    if (!confirm(`Record ${r.qty} × ${r.bom} ${r.item} as cut?\n\nEvery sheet of it is cut for ${r.qty} piece(s).`)) return;
+    const fd = new FormData();
+    fd.set("date", board.dayISO); fd.set("dept", board.dept); fd.set("bom", r.bom); fd.set("mo", r.mo); fd.set("item", r.item);
+    fd.set("qty", String(r.qty)); fd.set("planNo", String(board.planNo));
+    a.run(recordOutput, fd);
+  };
+  return (
+    <div className="mb-3 rounded-xl border border-ok-fg/40 bg-ok-bg/40 px-3 py-2">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-ok-fg">✅ Cut on every sheet — ready to record</div>
+      <ul className="mt-1 space-y-1">
+        {board.readyCut.map((r) => (
+          <li key={r.key} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+            <b>{r.bom}</b><b>{r.item}</b>
+            <span className="text-xs text-muted">{r.mo}</span>
+            <span className="tabnum font-extrabold text-ok-fg">{r.qty} pcs whole</span>
+            <span className="text-xs text-muted tabnum">{r.sheets.map((x) => `${sheetKeyLabel(x.sheet)}: ${x.cut}`).join(" · ")}</span>
+            {canEdit && (
+              <button type="button" className="btn btn-sm btn-primary ms-auto no-print" disabled={a.pending} onClick={() => record(r)} title="Record these pieces as cut — the item's Cut record on the worklist">
+                Record {r.qty} as cut
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {a.err && <div className="text-xs text-bad-fg mt-1">{a.err}</div>}
+    </div>
+  );
+}
+
 /** ✓ Done straight off the card: the whole share in one click, or the pieces
  *  actually finished — the rest stays in the machine's queue. */
 export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardData; q: MachineQueueLine; machineId?: number; onErr: (m: string) => void }) {
@@ -264,7 +299,7 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
         className="border rounded-md px-1 py-0.5 bg-surface text-xs tabnum w-12 ltr"
-        title={q.sheet ? `Pieces' worth of this sheet cut — blank = all ${q.remaining}. The item itself is recorded on the worklist once all its sheets are cut.` : `Pieces finished — blank records all ${q.remaining}. What is left stays in the queue.`}
+        title={q.sheet ? `Pieces' worth of this sheet cut — blank = all ${q.remaining}. Once every sheet of the item is cut, the board offers to record the whole pieces.` : `Pieces finished — blank records all ${q.remaining}. What is left stays in the queue.`}
       />
       <button type="button" className="btn btn-sm btn-primary px-1.5" disabled={pending} title={`Record what is done (blank = all ${q.remaining}); the rest stays in the queue`} onClick={save}>✓</button>
     </span>
@@ -343,7 +378,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
               {q.deliveryISO && <span className={`pill tabnum ${q.deliveryISO < new Date().toISOString().slice(0, 10) ? "pill-bad" : "pill-muted"}`}>📅 {ddmm(q.deliveryISO)}</span>}
               <span className="text-[11px] text-muted truncate">{q.mo}{q.description ? ` · ${q.description}` : ""}</span>
               <LineMaterialChips m={board.material[q.key]} pcs={q.remaining} sheets={sheetsHere(board.dept, q)} sheet={q.sheet} />
-              {q.sheetDone > 0 && <span className="text-[10px] text-ok-fg tabnum whitespace-nowrap" title="Pieces' worth of this sheet already cut here — the item is counted once it is recorded on the worklist">✓ {q.sheetDone} cut</span>}
+              {q.sheetDone > 0 && <span className="text-[10px] text-ok-fg tabnum whitespace-nowrap" title="Pieces' worth of this sheet already cut here — once every sheet is cut, the board offers to record the whole pieces">✓ {q.sheetDone} cut</span>}
               {canEdit && (
                 <span className="ms-auto inline-flex items-center gap-1 no-print">
                   {done(q)}
@@ -372,7 +407,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
               {q.hours !== null && <span className="text-muted tabnum whitespace-nowrap">{q.hours} h</span>}
               {q.deliveryISO && <span className="text-muted tabnum whitespace-nowrap">📅 {ddmm(q.deliveryISO)}</span>}
               <LineMaterialChips m={board.material[q.key]} pcs={q.remaining} sheets={sheetsHere(board.dept, q)} sheet={q.sheet} />
-              {q.sheetDone > 0 && <span className="text-[10px] text-ok-fg tabnum whitespace-nowrap" title="Pieces' worth of this sheet already cut here — the item is counted once it is recorded on the worklist">✓ {q.sheetDone} cut</span>}
+              {q.sheetDone > 0 && <span className="text-[10px] text-ok-fg tabnum whitespace-nowrap" title="Pieces' worth of this sheet already cut here — once every sheet is cut, the board offers to record the whole pieces">✓ {q.sheetDone} cut</span>}
               {canEdit && (
                 <span className="ms-auto inline-flex items-center gap-1 no-print">
                   {done(q)}
@@ -544,6 +579,7 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
           {note.late && <div className="text-warn-fg font-semibold mt-0.5">⚠ {note.late}</div>}
         </div>
       )}
+      {board.readyCut.length > 0 && <ReadyCutPanel board={board} canEdit={canEdit} />}
       {timeline && <div className="mb-3"><MachineTimeline board={board} /></div>}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {board.cards.map((c) => <Card key={c.machine.id} c={c} board={board} canEdit={canEdit} />)}
