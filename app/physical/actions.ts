@@ -33,7 +33,8 @@ export async function importPhysicalAction(formData: FormData): Promise<Physical
   }
 }
 
-/** One cell typed on the table: the physical count, Odoo's figure, or the note. */
+/** One cell typed on the table — any column, the way the sheet is edited:
+ *  the code, the product's name, its UOM, the two counts, or the note. */
 export async function updatePhysicalCell(formData: FormData): Promise<PhysicalActionResult> {
   const guard = await requirePerm(PERM);
   if (guard.error) return { ok: false, error: guard.error };
@@ -41,7 +42,17 @@ export async function updatePhysicalCell(formData: FormData): Promise<PhysicalAc
   const field = String(formData.get("field") ?? "");
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid item." };
   const by = guard.user?.name ?? null;
-  if (field === "note") {
+  if (field === "code") {
+    const code = text(formData.get("value"));
+    if (!code) return { ok: false, error: "The product code cannot be empty." };
+    const clash = await prisma.physicalStock.findFirst({ where: { code: { equals: code, mode: "insensitive" }, NOT: { id } } });
+    if (clash) return { ok: false, error: `${clash.code} is already on the table.` };
+    await prisma.physicalStock.update({ where: { id }, data: { code, updatedBy: by } });
+  } else if (field === "name") {
+    await prisma.physicalStock.update({ where: { id }, data: { name: text(formData.get("value")).slice(0, 300), updatedBy: by } });
+  } else if (field === "uom") {
+    await prisma.physicalStock.update({ where: { id }, data: { uom: text(formData.get("value")).toUpperCase().slice(0, 20), updatedBy: by } });
+  } else if (field === "note") {
     const note = text(formData.get("value")).slice(0, 500);
     await prisma.physicalStock.update({ where: { id }, data: { note: note || null, updatedBy: by } });
   } else if (field === "physical" || field === "odoo") {

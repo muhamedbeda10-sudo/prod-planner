@@ -277,7 +277,7 @@ export function AppNav({
             onClick={() => setDrawer(true)}
             aria-label="Open navigation menu"
             aria-expanded={drawer}
-            className="xl:hidden -ml-1 rounded-lg p-2.5 hover:bg-white/15 active:bg-white/20 transition-colors"
+            className="min-[1440px]:hidden -ml-1 rounded-lg p-2.5 hover:bg-white/15 active:bg-white/20 transition-colors"
           >
             <Menu size={22} />
           </button>
@@ -295,7 +295,7 @@ export function AppNav({
           </Link>
 
           {/* desktop: centered tabs */}
-          <nav ref={navRef} className="hidden xl:block flex-1 overflow-x-auto overflow-y-hidden">
+          <nav ref={navRef} className="hidden min-[1440px]:block flex-1 overflow-x-auto overflow-y-hidden">
             <ul className="flex items-center justify-center gap-1 w-max min-w-full">
               {/* Worklist — opens the three departments in a panel BELOW the tab.
                   They used to unroll sideways inside the bar, which shoved every
@@ -471,7 +471,7 @@ export function AppNav({
 
       {/* ===== mobile navigation drawer ===== */}
       {drawer && (
-        <div className="xl:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Navigation">
+        <div className="min-[1440px]:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Navigation">
           <button
             type="button"
             aria-label="Close menu"

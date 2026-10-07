@@ -528,17 +528,17 @@ main textarea:focus {
   color: rgb(255 255 255 / 0.66);
   transition: color 0.15s ease, background-color 0.15s ease;
 }
-/* The strip has to hold every tab on a laptop: tighter tabs below 1800px,
-   icons dropped below 1600px — the labels are what people read. */
+/* The strip has to hold every tab on a laptop: below 1800px the tabs tighten
+   and drop their icons — the labels are what people read. */
 @media (max-width: 1799px) {
   .nav-tab { padding: 8px 8px; font-size: 13px; gap: 5px; }
+  /* a labelled tab's leading icon goes to buy width — but a tab that is ONLY
+     an icon (the chat dock, the admin gear) would vanish, which is what
+     silently happened to the gear. Those opt out. */
+  .nav-tab:not(.nav-tab-icon) > svg:first-child { display: none; }
 }
 @media (max-width: 1599px) {
   .nav-tab { padding: 8px 7px; letter-spacing: 0; }
-  /* narrow screens drop a labelled tab's leading icon to buy width — but a tab
-     that is ONLY an icon (the chat dock, the admin gear) would vanish, which is
-     what silently happened to the gear. Those opt out. */
-  .nav-tab:not(.nav-tab-icon) > svg:first-child { display: none; }
 }
 /* the active tab: white label, a soft lift and the ATC-green bar flush with
    the bottom of the app bar — visible at a glance without shouting */
