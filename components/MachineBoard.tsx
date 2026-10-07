@@ -15,7 +15,7 @@ import { AddManualJob, ManualJobsList } from "@/components/ManualJobs";
 import { recordManualDone } from "@/app/worklist/manualActions";
 import { manualIdOf } from "@/lib/domain/manualJob";
 import { runIdOf } from "@/lib/domain/nestRun";
-import { AddNestRun, EditNestRun, NestRunsList } from "@/components/NestRuns";
+import { AddNestRun, EditNestRun, NestRunLine, NestRunsList } from "@/components/NestRuns";
 import { recordNestRunSheets } from "@/app/worklist/nestRunActions";
 import { sheetKeyLabel, sheetKeyOf, thicknessLabel, sheetSizeLabel, type LineMaterial } from "@/lib/domain/machineMaterial";
 import { Modal } from "@/components/Modal";
@@ -339,8 +339,9 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
     a.run(setLineQty, fd);
   };
   const done = (q: MachineQueueLine) => (canEdit ? <DoneBox board={board} q={q} machineId={c.machine.id} onErr={a.setErr} /> : null);
+  const runOf = (q: MachineQueueLine) => board.nestRuns.find((r) => r.id === runIdOf(q.mo));
   const runEdit = (q: MachineQueueLine) => {
-    const run = board.nestRuns.find((r) => r.id === runIdOf(q.mo));
+    const run = runOf(q);
     return run && canEdit ? <EditNestRun run={run} machines={board.machines} options={board.runOptions} candidates={board.runCandidates} /> : null;
   };
   return (
@@ -378,7 +379,8 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
           <div className="text-[10px] font-bold uppercase tracking-wide text-brand">▶ Now{c.running.length > 1 ? ` · ${c.running.length} together` : ""}</div>
           {c.running.map((q) => (
             <div key={`${q.key}#${q.sheet}`} className="flex items-baseline gap-2 flex-wrap">
-              {manualIdOf(q.mo) !== null || runIdOf(q.mo) !== null ? <span className="font-extrabold">{q.description}</span> : <>
+              {runOf(q) ? <NestRunLine run={runOf(q)!} hours={q.hours} canEdit={canEdit} machines={board.machines} options={board.runOptions} candidates={board.runCandidates} /> : <>
+              {manualIdOf(q.mo) !== null ? <span className="font-extrabold">{q.description}</span> : <>
               <span className="font-extrabold">{q.bom}</span>
               <span className="font-bold">{q.item}</span></>}
               <span className="tabnum font-extrabold text-brand">×{q.remaining}</span>
@@ -388,6 +390,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
               <span className="text-[11px] text-muted truncate">{q.mo}{q.description ? ` · ${q.description}` : ""}</span>
               <LineMaterialChips m={board.material[q.key]} pcs={q.remaining} sheets={sheetsHere(board.dept, q)} sheet={q.sheet} />
               {q.sheetDone > 0 && <span className="text-[10px] text-ok-fg tabnum whitespace-nowrap" title="Pieces' worth of this sheet already cut here — once every sheet is cut, the board offers to record the whole pieces">✓ {q.sheetDone} cut</span>}
+              </>}
               {canEdit && (
                 <span className="ms-auto inline-flex items-center gap-1 no-print">
                   {done(q)}
@@ -409,7 +412,8 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
           {c.waiting.map((q, i) => (
             <li key={`${q.key}#${q.sheet}`} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
               <span className="w-5 text-center font-extrabold tabnum text-muted">{i + 1}</span>
-              {manualIdOf(q.mo) !== null || runIdOf(q.mo) !== null ? <span className="font-bold">{q.description}</span> : <>
+              {runOf(q) ? <NestRunLine run={runOf(q)!} hours={q.hours} canEdit={canEdit} size="sm" machines={board.machines} options={board.runOptions} candidates={board.runCandidates} /> : <>
+              {manualIdOf(q.mo) !== null ? <span className="font-bold">{q.description}</span> : <>
               <span className="font-bold">{q.bom}</span>
               <span className="font-semibold">{q.item}</span></>}
               <span className="tabnum font-bold">×{q.remaining}</span>
@@ -418,6 +422,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
               {q.deliveryISO && <span className="text-muted tabnum whitespace-nowrap">📅 {ddmm(q.deliveryISO)}</span>}
               <LineMaterialChips m={board.material[q.key]} pcs={q.remaining} sheets={sheetsHere(board.dept, q)} sheet={q.sheet} />
               {q.sheetDone > 0 && <span className="text-[10px] text-ok-fg tabnum whitespace-nowrap" title="Pieces' worth of this sheet already cut here — once every sheet is cut, the board offers to record the whole pieces">✓ {q.sheetDone} cut</span>}
+              </>}
               {canEdit && (
                 <span className="ms-auto inline-flex items-center gap-1 no-print">
                   {done(q)}

@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-07-run-details",
+    dateISO: "2026-10-07",
+    title: "Nest run details in one click",
+    where: "Cut worklist → a run on a machine card",
+    body: "A run on a machine now reads at a glance — its sheet, sheets cut of all with a bar, time left and the jobs on it. Click it for everything: sheets and pieces cut, the cutting time, sheet by sheet (cut, next, waiting, each with its minutes) and every job with its pieces cut and left. Every open job also shows in the run's job list now, not only the ones on today's worklist, and the search finds parts by name (Tank) and by MO.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-07-run-any-job",
     dateISO: "2026-10-07",
     title: "Any open job on a nest run — one sheet in place of another",
