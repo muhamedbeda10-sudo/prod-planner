@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { createNestRun, deleteNestRun, updateNestRun, type NestRunResult } from "@/app/worklist/nestRunActions";
 import { assignLineMachine } from "@/app/worklist/machineActions";
-import { RUN_BOM, RUN_ITEM, expectedSheets, minutesPerSheet, minutesText, runMo, runSheet, runTitle, type NestRunView } from "@/lib/domain/nestRun";
+import { RUN_BOM, RUN_ITEM, expectedSheets, minutesLeft, minutesPerSheet, minutesText, runMo, runSheet, runTitle, type NestRunView } from "@/lib/domain/nestRun";
 import { sheetKeyLabel } from "@/lib/domain/machineMaterial";
 import { MATERIAL_PRESETS, SHEET_SIZE_PRESETS } from "@/lib/domain/material";
 import { formatDate } from "@/lib/domain/format";
@@ -458,4 +458,158 @@ function groupParts(parts: NestRunView["parts"]) {
     by.set(k, cur);
   }
   return [...by.values()];
+}
+
+/** A run on a machine card: the sheet, how far it got, the jobs on it at a
+ *  glance — one click opens everything about it. */
+export function NestRunLine({ run, hours, canEdit, size = "md", ...props }: FormProps & { run: NestRunView; hours: number | null; canEdit: boolean; size?: "md" | "sm" }) {
+  const [open, setOpen] = useState(false);
+  const jobs = groupParts(run.parts);
+  const left = minutesLeft(run);
+  const pct = run.sheets > 0 ? Math.round((run.sheetsDone / run.sheets) * 100) : 0;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title="Show the run — its sheets, time and every job on it"
+        className={`group min-w-0 basis-full text-start rounded-lg border border-transparent hover:border-brand/40 hover:bg-brand-light/30 px-1.5 py-1 transition-colors ${size === "sm" ? "text-xs" : "text-sm"}`}
+      >
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="pill pill-muted text-[10px] tabnum">🧩 Run #{run.id}</span>
+          <b className="tabnum whitespace-nowrap">{sheetKeyLabel(runSheet(run))}</b>
+          <span className="inline-flex items-center gap-1.5 tabnum text-xs whitespace-nowrap">
+            <span className="inline-block w-14 h-1.5 rounded-full bg-surface-3 overflow-hidden"><span className="block h-full bg-brand" style={{ width: `${pct}%` }} /></span>
+            <b>{run.sheetsDone}</b><span className="text-muted">/ {run.sheets} sh</span>
+          </span>
+          {left !== null ? <span className="text-xs text-muted tabnum whitespace-nowrap">⏱ {minutesText(left)} left</span> : hours !== null ? <span className="text-xs text-muted tabnum">{hours} h</span> : null}
+        </span>
+        <span className="mt-0.5 flex flex-wrap gap-1">
+          {jobs.slice(0, 3).map((j) => (
+            <span key={`${j.bom}|${j.item}`} className="inline-flex items-baseline gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] tabnum">
+              <b>{j.bom}</b><span>{j.item}</span><span className="text-muted">×{j.pcs}</span>
+            </span>
+          ))}
+          {jobs.length > 3 && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] text-muted">+{jobs.length - 3} more</span>}
+        </span>
+      </button>
+      {open && <NestRunDetails run={run} canEdit={canEdit} onClose={() => setOpen(false)} {...props} />}
+    </>
+  );
+}
+
+/** Everything about one run, in one place: its sheet, the sheets cut and
+ *  left with their times, and each job's pieces — cut, left, and the sheet a
+ *  part stands in for. */
+function NestRunDetails({ run, canEdit, onClose, ...props }: FormProps & { run: NestRunView; canEdit: boolean; onClose: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const perSheet = minutesPerSheet(run);
+  const total = perSheet ? perSheet.reduce((s, m) => s + m, 0) : null;
+  const left = minutesLeft(run);
+  const pieces = run.parts.reduce((n, p) => n + p.pcs, 0);
+  const cut = run.parts.reduce((n, p) => n + p.donePcs, 0);
+  const done = !!run.doneAtISO;
+  // a job: its orders together; the sheet it stands in for, when not its own
+  const jobs = (() => {
+    const by = new Map<string, { bom: string; item: string; pcs: number; done: number; replaces: string }>();
+    for (const p of run.parts) {
+      const k = `${p.bom}|${p.item}`;
+      const cur = by.get(k) ?? { bom: p.bom, item: p.item, pcs: 0, done: 0, replaces: p.replaces };
+      cur.pcs += p.pcs; cur.done += p.donePcs;
+      by.set(k, cur);
+    }
+    return [...by.values()];
+  })();
+  if (editing) return <NestRunForm {...props} run={run} onClose={() => { setEditing(false); onClose(); }} />;
+  const stat = "rounded-xl border bg-surface-2/60 px-3 py-2.5";
+  const statLabel = "text-[11px] font-bold uppercase tracking-wide text-muted";
+  const bar = (v: number, of: number) => (
+    <span className="mt-1.5 block h-1.5 rounded-full bg-surface-3 overflow-hidden"><span className={`block h-full ${v >= of && of > 0 ? "bg-ok-fg" : "bg-brand"}`} style={{ width: `${of > 0 ? Math.min(100, Math.round((v / of) * 100)) : 0}%` }} /></span>
+  );
+  return (
+    <Modal
+      title={<span className="inline-flex items-center gap-2">🧩 Nest run #{run.id}{done ? <span className="pill pill-ok text-[10px]">done</span> : run.onMachines.length > 0 ? <span className="pill pill-muted text-[10px]">on {run.onMachines.join(", ")}</span> : <span className="pill pill-warn text-[10px]">on no laser</span>}</span>}
+      sub={`${sheetKeyLabel(runSheet(run))}${run.createdBy ? ` · put together by ${run.createdBy}` : ""} · ${formatDate(run.createdAtISO.slice(0, 10))}`}
+      onClose={onClose}
+      width="max-w-3xl"
+    >
+      <div className="space-y-4">
+        {/* the run at a glance */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className={stat}>
+            <div className={statLabel}>Sheets</div>
+            <div className="text-xl font-extrabold tabnum">{run.sheetsDone}<span className="text-sm font-semibold text-muted"> / {run.sheets} cut</span></div>
+            {bar(run.sheetsDone, run.sheets)}
+          </div>
+          <div className={stat}>
+            <div className={statLabel}>Pieces</div>
+            <div className="text-xl font-extrabold tabnum">{cut}<span className="text-sm font-semibold text-muted"> / {pieces}</span></div>
+            {bar(cut, pieces)}
+          </div>
+          <div className={stat}>
+            <div className={statLabel}>Cutting time</div>
+            <div className="text-xl font-extrabold tabnum">{total !== null ? minutesText(total) : "—"}</div>
+            <div className="text-xs text-muted tabnum mt-0.5">{total === null ? "not given — standard times used" : run.identical ? `${perSheet![0]} min a sheet` : "set sheet by sheet"}</div>
+          </div>
+          <div className={stat}>
+            <div className={statLabel}>Left</div>
+            <div className="text-xl font-extrabold tabnum">{run.sheets - run.sheetsDone}<span className="text-sm font-semibold text-muted"> sh</span></div>
+            <div className="text-xs text-muted tabnum mt-0.5">{left !== null ? `${minutesText(left)} of cutting` : `${jobs.length} job(s) on it`}</div>
+          </div>
+        </div>
+
+        {/* sheet by sheet */}
+        <div>
+          <div className={`${statLabel} mb-1.5`}>Sheet by sheet</div>
+          <div className="flex flex-wrap gap-1.5">
+            {Array.from({ length: run.sheets }, (_, i) => {
+              const isDone = i < run.sheetsDone;
+              return (
+                <div key={i} className={`w-14 rounded-lg border px-1.5 py-1 text-center ${isDone ? "border-ok-fg/50 bg-ok-bg/60" : i === run.sheetsDone && !done ? "border-brand bg-brand-light/40" : "bg-surface"}`} title={isDone ? "Cut" : i === run.sheetsDone ? "Next to cut" : "Waiting"}>
+                  <div className="text-[10px] font-bold text-muted">#{i + 1}</div>
+                  <div className="text-xs font-bold tabnum">{isDone ? "✓" : perSheet ? `${perSheet[i]}′` : "·"}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* the jobs on it */}
+        <div>
+          <div className={`${statLabel} mb-1.5`}>On the sheets — {jobs.length} job(s)</div>
+          <div className="overflow-x-auto rounded-xl border">
+            <table className="w-full text-sm border-collapse">
+              <thead className="bg-surface-2">
+                <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-muted">
+                  <th className="p-2">BOM ref</th><th className="p-2">Part</th><th className="p-2 text-right">Pieces</th><th className="p-2 text-right">Cut</th><th className="p-2 text-right">Left</th><th className="p-2 w-28">Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {jobs.map((j) => (
+                  <tr key={`${j.bom}|${j.item}`} className="border-t">
+                    <td className="p-2 font-bold whitespace-nowrap">{j.bom}</td>
+                    <td className="p-2">
+                      <span className="font-semibold">{j.item}</span> <span className="text-xs text-muted">{ITEM_NAME[j.item as Item] ?? ""}</span>
+                      {j.replaces && <span className="block text-[11px] text-warn-fg">instead of {sheetKeyLabel(j.replaces)}</span>}
+                    </td>
+                    <td className="p-2 text-right tabnum font-bold">{j.pcs}</td>
+                    <td className="p-2 text-right tabnum text-ok-fg">{j.done}</td>
+                    <td className="p-2 text-right tabnum">{j.pcs - j.done}</td>
+                    <td className="p-2">{bar(j.done, j.pcs)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {run.note && <div className="rounded-lg bg-surface-2 px-3 py-2 text-sm"><span className={statLabel}>Note</span><div>{run.note}</div></div>}
+
+        <div className="flex items-center justify-end gap-2">
+          {canEdit && !done && <button type="button" className="btn btn-sm btn-secondary" onClick={() => setEditing(true)}>✎ Edit run</button>}
+          <button type="button" className="btn btn-sm btn-primary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </Modal>
+  );
 }
