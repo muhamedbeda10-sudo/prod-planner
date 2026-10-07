@@ -15,7 +15,7 @@ import { closeDeliveredOrders, setOrderHold, setOrderStatus } from "@/app/orders
 import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
-import { LV_CHAIN, LV_STAGE_LABEL, LV_STAGE_SHORT, lvGroupMembers, lvStageOf, type LvChainStage } from "@/lib/domain/lv";
+import { LV_CHAIN, LV_FAMILIES, LV_FAMILY_LABEL, LV_STAGE_LABEL, LV_STAGE_SHORT, lvGroupMembers, lvStageOf, type LvChainStage } from "@/lib/domain/lv";
 import { lvBottleneck } from "@/lib/domain/trackerView";
 import type { UserPrefs } from "@/lib/domain/userPrefs";
 import type { LvTrackerRow } from "@/lib/server/lvTracker";
@@ -77,6 +77,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   const [confirmIt, confirmDialog] = useConfirm();
   const [q, setQ] = useSavedFilter("lvtracker.q");
   const [product, setProduct] = useSavedFilter("lvtracker.product");
+  const [family, setFamily] = useSavedFilter("lvtracker.family");
   const [status, setStatus] = useSavedFilter("lvtracker.status");
   const [month, setMonth] = useSavedFilter("lvtracker.month");
   const [urgent, setUrgent] = useSavedFilter("lvtracker.urgent");
@@ -108,7 +109,11 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   })();
   const tableCols = 1 + COLS.filter((c) => show(c.key)).length + stages.length;
 
-  const products = useMemo(() => [...new Set(rows.map((r) => r.product ?? ""))].filter(Boolean).sort(), [rows]);
+  // the products of the picked plan only — a meter box type is no panel's
+  const products = useMemo(
+    () => [...new Set(rows.filter((r) => !family || r.family === (family === "PNL" ? "" : family)).map((r) => r.product ?? ""))].filter(Boolean).sort(),
+    [rows, family]
+  );
   // "September 2026" → a sortable key, newest month first in the picker
   const monthKey = (label: string) => {
     const m = /^([A-Za-z]+)\s+(\d{4})$/.exec(label);
@@ -121,10 +126,17 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
     return [...seen].sort((a, b) => monthKey(b) - monthKey(a));
   }, [rows]);
 
-  // month scope — an order carried across plans belongs to EVERY month it
-  // appeared in. The cards follow THIS filter (each month's plan on its own);
-  // search, product, urgency and progress only narrow the table.
-  const monthRows = useMemo(() => (month ? rows.filter((r) => r.months.includes(month)) : rows), [rows, month]);
+  // the line's plans present — the panels' and the meter boxes'
+  const families = useMemo(() => LV_FAMILIES.filter((f) => rows.some((r) => r.family === f)), [rows]);
+
+  // month and plan scope — an order carried across plans belongs to EVERY
+  // month it appeared in. The cards follow THESE filters (each month's plan
+  // on its own, panels and meter boxes apart); search, product, urgency and
+  // progress only narrow the table.
+  const monthRows = useMemo(
+    () => rows.filter((r) => (!month || r.months.includes(month)) && (!family || r.family === (family === "PNL" ? "" : family))),
+    [rows, month, family]
+  );
   const filtered = useMemo(() => {
     const needle = q.trim().toUpperCase();
     const want = status || "open";
@@ -399,16 +411,17 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
         ))}
       </div>
 
-      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProduct(""); setStatus(""); setMonth(""); setUrgent(""); setProgress(""); }} hasActive={!!(q || product || month || urgent || progress || (status && status !== "open"))}
+      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProduct(""); setFamily(""); setStatus(""); setMonth(""); setUrgent(""); setProgress(""); }} hasActive={!!(q || product || family || month || urgent || progress || (status && status !== "open"))}
         head={<SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG / SEC…" wide />}
       >
         <SelectFilter label="Plan month" value={month} onChange={setMonth} options={months.map((m) => ({ value: m, label: m }))} />
+        {families.length > 1 && <SelectFilter label="Plan" value={family} onChange={(v) => { setFamily(v); setProduct(""); }} options={families.map((f) => ({ value: f || "PNL", label: LV_FAMILY_LABEL[f] }))} />}
         {products.length > 1 && <SelectFilter label="Product" value={product} onChange={setProduct} options={products.map((p) => ({ value: p, label: p }))} />}
         <SelectFilter label="Status" value={status || "open"} onChange={setStatus} options={[{ value: "open", label: "Open" }, { value: "hold", label: `On hold (${rows.filter((r) => r.hold.onHold).length})` }, { value: "closed", label: "Closed" }, { value: "all", label: "All" }]} />
         <SelectFilter label="Progress" value={progress} onChange={setProgress} options={[{ value: "none", label: "Not started" }, { value: "partial", label: "In progress" }, { value: "done", label: "Complete" }]} />
         <SelectFilter label="Urgent" value={urgent} onChange={setUrgent} options={[{ value: "yes", label: "Urgent only" }, { value: "no", label: "Not urgent" }]} />
         <span className="text-xs text-muted">
-          Panels: <b className="text-foreground tabnum">{complete}</b> / <b className="text-foreground tabnum">{required}</b> painted
+          {family === "MB" ? "Meter boxes" : family === "PNL" ? "Panels" : "Units"}: <b className="text-foreground tabnum">{complete}</b> / <b className="text-foreground tabnum">{required}</b> painted
         </span>
         <ExportButton rows={exportRows} filename="lv-panels-tracker.xlsx" sheetName="LV Panels" />
         {canStatus && doneCount > 0 && (
@@ -442,7 +455,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
               <th className="p-1 text-left stick" style={idLayout.at.bom}>
                 <FoldButton open={cols.anyOn(ID_GROUP)} onClick={() => cols.toggle(ID_GROUP)} label="BoM" title={cols.anyOn(ID_GROUP) ? "Fold MO, SOI and Customer away — BoM stays" : "Show MO, SOI and Customer"} />
               </th>
-              {show("product") && <th className="p-2" title="LSS or USS">Product</th>}
+              {show("product") && <th className="p-2" title="The panel or meter box type">Product</th>}
               {show("sec") && <th className="p-2 text-left">SEC Item</th>}
               {show("required") && (
                 <th className="p-1 stick stick-end" style={idLayout.req}>

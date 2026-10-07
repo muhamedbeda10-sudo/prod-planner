@@ -129,6 +129,10 @@ model MasterOrder {
   product          String?
   ospEncloser      Float     @default(0)
   materialsRemarks String?
+  // Which of the line's plans brought the order: "" the line's main plan
+  // (transformers / LV panels), "MB" the LV meter boxes' own sheet. A plan's
+  // import revises and takes off the month only the orders of its own plan.
+  family           String    @default("")
   planQty       Float     @default(0)
   // A plan import that brings a DIFFERENT qty for an order already in the
   // registry never overwrites planQty: the sheet's figure waits here, with the

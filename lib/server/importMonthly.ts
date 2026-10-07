@@ -43,8 +43,11 @@ export interface MonthlyImportResult {
 
 /** Import one month's plan for ONE product line. Every order it adds is
  *  stamped with the line; an MO already filed under the OTHER line is a
- *  mistake in the sheet, not a revision, and is refused with its row. */
-export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string, preview = false, line: ProductLine = "TR"): Promise<MonthlyImportResult> {
+ *  mistake in the sheet, not a revision, and is refused with its row.
+ *  `family` is which of the line's plans the sheet is (the LV meter boxes'
+ *  plan is "MB"): the orders it adds carry it, and only that plan's orders
+ *  are taken off the month when the sheet no longer lists them. */
+export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string, preview = false, line: ProductLine = "TR", family = ""): Promise<MonthlyImportResult> {
   let wb: XLSX.WorkBook;
   try {
     wb = XLSX.read(new Uint8Array(buffer), { cellDates: false });
@@ -92,6 +95,7 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
       data: toAdd.map((r) => ({
         mo: r.mo,
         line,
+        family,
         months: sourceLabel,
         soi: r.soi,
         urgent: r.urgent,
@@ -201,7 +205,9 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
   // as the registry's own delete does), closed when the daily log or a tank
   // already names them — history is never touched.
   const inSheet = new Set(rows.map((r) => r.mo));
-  const gone = registry.filter((o) => o.status === "open" && !inSheet.has(o.mo) && monthsOf(o.months || o.source || "").includes(sourceLabel));
+  // another plan of the same line (the meter boxes beside the panels) is not
+  // this sheet's to take off
+  const gone = registry.filter((o) => o.status === "open" && o.family === family && !inSheet.has(o.mo) && monthsOf(o.months || o.source || "").includes(sourceLabel));
   const removed: { mo: string; action: "deleted" | "closed" }[] = [];
   if (gone.length > 0) {
     const keys = gone.map((o) => o.mo);

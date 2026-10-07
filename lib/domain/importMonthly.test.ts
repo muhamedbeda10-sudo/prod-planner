@@ -253,3 +253,27 @@ describe("parseMonthlyPlan — the LV panels' sheet", () => {
     expect(d.changes.map((c) => c.field)).toEqual(["Product", "OSP Encloser", "Materials Remarks"]);
   });
 });
+
+describe("parseMonthlyPlan — the LV meter boxes' sheet", () => {
+  // Meter_Box_Production_Plan_10-2026.xlsx: no BOM column, the outside-bought
+  // quantity headed just "OSP" with "Product" under it, and a Total footer
+  const grid: unknown[][] = [
+    ["SN", "SOI", "Customer", "Urgent", "Product", "FG Code", "MO", "SEC Item", "Planned Qty", "OSP", "Remarks"],
+    [null, null, null, null, null, null, null, null, null, "Product", "Rev_0.0"],
+    [1, "S01340-1", "PRI", "Yes", "CTMB ", "FG-SDMB-8421036", "SF01/MO/19808-001", 908421036, 70, "-", null],
+    [9, "Mix", "SEC", null, "DMB GI V2.3", "FG-LV-B-DMB-000002", "SF01/MO/21031", 908421031, 8320, 8320, null],
+    ["Total", null, null, null, null, null, null, null, 8390, 8320, null],
+  ];
+
+  it("reads it on the LV line, the FG code standing in for the BOM", () => {
+    const { rows, issues } = parseMonthlyPlan(grid, "LV");
+    expect(issues).toEqual([]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ mo: "SF01/MO/19808-001", bom: "FG-SDMB-8421036", fgCode: "FG-SDMB-8421036", product: "CTMB", urgent: true, planQty: 70, ospEncloser: 0, secItem: "908421036" });
+    expect(rows[1]).toMatchObject({ mo: "SF01/MO/21031", soi: "Mix", urgent: false, planQty: 8320, ospEncloser: 8320 });
+  });
+
+  it("is still refused as a transformer sheet, which must have its BOM", () => {
+    expect(parseMonthlyPlan(grid, "TR").rows).toEqual([]);
+  });
+});

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { decidePlanQty, importMonthlyAction } from "@/app/orders/actions";
 import type { MonthlyImportResult, QtyProposal } from "@/lib/server/importMonthly";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
+import { LV_FAMILIES, LV_FAMILY_LABEL } from "@/lib/domain/lv";
 
 /** The plan import for the product line the toggle is on. The two lines'
  *  sheets differ (a transformer sheet carries KVA and rating, a panel sheet
@@ -49,6 +50,17 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
             className="border rounded-md px-2 py-1.5 bg-surface text-sm"
           />
         </label>
+        {/* the LV line plans two products, each on its own sheet — the
+            import revises (and takes off the month) only the picked plan's
+            orders, so importing one never touches the other */}
+        {line === "LV" && (
+          <label className="inline-flex items-center gap-1.5 text-sm">
+            <span className="text-muted text-xs font-semibold">Plan</span>
+            <select name="family" defaultValue="" className="border rounded-md px-2 py-1.5 bg-surface text-sm" title="Which sheet this is — each plan is revised on its own">
+              {LV_FAMILIES.map((f) => <option key={f} value={f}>{LV_FAMILY_LABEL[f]}</option>)}
+            </select>
+          </label>
+        )}
         {/* SAFE BY DEFAULT: preview is pre-ticked — nothing is ever written
             until the user unticks it and imports again */}
         <label className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer">
@@ -61,7 +73,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
         </button>
         <span className="text-xs text-muted">
           The sheet is filed under <b>{LINE_LABEL[line]}</b> — switch the toggle at the top of the page first if it is the other product&apos;s plan.
-          New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. A quantity that differs from the registry&apos;s is never changed by the import — it is flagged with the old and the new figure, and you choose which one stays. Columns are read by header name — any sheet layout month to month.
+          New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. A quantity that differs from the registry&apos;s is never changed by the import — it is flagged with the old and the new figure, and you choose which one stays. Columns are read by header name — any sheet layout month to month.{line === "LV" ? " The meter boxes' sheet has no BOM column: its FG Code stands in, and its OSP column is the quantity bought outside." : ""}
         </span>
       </form>
 
