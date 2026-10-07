@@ -30,6 +30,9 @@ export interface LineSheetSpec {
   perUnit: number;
   /** The rate is the nesting's own (true) or the BOM's, not nested yet. */
   actual: boolean;
+  /** The nesting's sheets for the whole job — actually nested where it was,
+   *  else the BOM's for its units. What the technician knows the job by. */
+  jobSheets?: number | null;
 }
 
 export interface LineMaterial {
@@ -85,6 +88,7 @@ export function lineMaterialOf(lines: readonly NestingLineLite[], orderMonths: r
     specs.push({
       material: l.material, materialCode: l.materialCode, thicknessMm: l.thicknessMm, sheetSize: l.sheetSize,
       perUnit: rate ?? l.sheetsPerUnit, actual: rate !== null,
+      jobSheets: l.sheetsUsed !== null ? l.sheetsUsed : l.units > 0 ? Math.round(l.sheetsPerUnit * l.units * 100) / 100 : null,
     });
   }
   specs.sort((a, b) => b.thicknessMm - a.thicknessMm || a.material.localeCompare(b.material));

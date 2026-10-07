@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { expectedSheets, partsDoneAt, runDescription, runIdOf, runMo, runSheet } from "./nestRun";
+import { expectedSheets, minutesLeft, minutesPerSheet, minutesText, partsDoneAt, runDescription, runIdOf, runMo, runSheet } from "./nestRun";
 
 describe("nestRun", () => {
   it("keys and words", () => {
@@ -18,5 +18,19 @@ describe("nestRun", () => {
   it("expected sheets from the nesting's rates", () => {
     expect(expectedSheets([{ pcs: 10, perUnit: 0.4 }, { pcs: 4, perUnit: null }])).toBe(4);
     expect(expectedSheets([{ pcs: 10, perUnit: null }])).toBeNull();
+  });
+});
+
+describe("nest run minutes", () => {
+  it("identical sheets repeat one figure; different ones carry their own", () => {
+    expect(minutesPerSheet({ sheets: 3, identical: true, sheetMinutes: [12] })).toEqual([12, 12, 12]);
+    expect(minutesPerSheet({ sheets: 3, identical: false, sheetMinutes: [10, 15] })).toEqual([10, 15, 0]);
+    expect(minutesPerSheet({ sheets: 3, identical: true, sheetMinutes: [] })).toBeNull();
+  });
+  it("what is left is the sheets not cut yet", () => {
+    expect(minutesLeft({ sheets: 3, sheetsDone: 1, identical: false, sheetMinutes: [10, 15, 20] })).toBe(35);
+    expect(minutesLeft({ sheets: 5, sheetsDone: 2, identical: true, sheetMinutes: [12] })).toBe(36);
+    expect(minutesText(95)).toBe("1 h 35 min");
+    expect(minutesText(40)).toBe("40 min");
   });
 });

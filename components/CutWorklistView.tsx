@@ -22,6 +22,10 @@ import type { PriorityLineDTO, HiddenLineDTO, RunOrderLineDTO } from "@/lib/serv
 import { ITEMS, DEFAULTS } from "@/lib/domain/constants";
 import { machineWord } from "@/lib/domain/shifts";
 
+// The cutting tables carry no Machine column: lines go on the lasers from the
+// board above — whole, by sheet, or inside a nest run.
+const NO_MACHINE_COLUMN: never[] = [];
+
 /** The fabrication page, top to bottom: DATED work (due today + overdue from
  *  ANY weekly plan, under its promised date), admin-postponed lines, this
  *  week's REMARKED date-less lines, in
@@ -173,7 +177,7 @@ export function CutWorklistView({
             No weekly plan covers today — import the new weekly schedule. The backlogs below still work.
           </p>
         ) : (
-          <CutTrancheTable soi={soi} rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
+          <CutTrancheTable soi={soi} rows={dueF} day={day} planNo={planNo} variant="due" hideFilter notes={notes} capacity={capacity} canEdit={canEdit} isAdmin={isAdmin} machines={NO_MACHINE_COLUMN} assigned={assigned} />
         )}
       </section>
 
@@ -183,7 +187,7 @@ export function CutWorklistView({
           Overdue backlog — missed delivery dates ({totalOverdue} pcs)
           {totalOverdue > 0 && <span className="pill pill-bad ml-2 normal-case">catch up first</span>}
         </h2>
-        <CutTrancheTable soi={soi} rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
+        <CutTrancheTable soi={soi} rows={overdueF} day={day} planNo={planNo ?? 0} variant="overdue" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={NO_MACHINE_COLUMN} assigned={assigned} />
       </section>
 
       {/* 3 — lines an admin re-dated into the FUTURE: they left today's list
@@ -193,7 +197,7 @@ export function CutWorklistView({
           <h2>
             Re-dated by admin — leaves this list on its new day ({totalPostponed} pcs)
           </h2>
-          <CutTrancheTable soi={soi} rows={postponedF} day={day} planNo={planNo ?? 0} variant="due" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
+          <CutTrancheTable soi={soi} rows={postponedF} day={day} planNo={planNo ?? 0} variant="due" hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={NO_MACHINE_COLUMN} assigned={assigned} />
         </section>
       )}
 
@@ -204,7 +208,7 @@ export function CutWorklistView({
           <h2>
             📥 Sent from the Plan Tracker — to be scheduled ({totalPushed} pcs)
           </h2>
-          <CascadeTable rows={pushedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
+          <CascadeTable rows={pushedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={NO_MACHINE_COLUMN} assigned={assigned} />
         </section>
       )}
 
@@ -216,7 +220,7 @@ export function CutWorklistView({
           <h2>
             Remarked in this week&apos;s plan — no date yet ({totalRemarked} pcs)
           </h2>
-          <CascadeTable rows={remarkedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={machines} assigned={assigned} />
+          <CascadeTable rows={remarkedF} day={day} planNo={planNo ?? 0} hideFilter notes={notes} canEdit={canEdit} isAdmin={isAdmin} machines={NO_MACHINE_COLUMN} assigned={assigned} />
         </section>
       )}
 

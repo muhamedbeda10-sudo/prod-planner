@@ -18,7 +18,7 @@ export async function getNestRuns(dept: string): Promise<NestRunView[]> {
     if (id !== null) (on.get(id) ?? on.set(id, []).get(id)!).push(r.machine.code);
   }
   return [...open, ...done].map((r) => ({
-    id: r.id, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, sheets: r.sheets, sheetsDone: r.sheetsDone, note: r.note,
+    id: r.id, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, sheets: r.sheets, sheetsDone: r.sheetsDone, identical: r.identical, sheetMinutes: r.sheetMinutes, note: r.note,
     parts: r.parts.map((p) => ({ id: p.id, bom: p.bom, mo: p.mo, item: p.item, pcs: p.pcs, donePcs: p.donePcs, consumedPcs: p.consumedPcs })),
     onMachines: on.get(r.id) ?? [],
     createdBy: r.createdBy, createdAtISO: r.createdAt.toISOString(), doneAtISO: r.doneAt ? r.doneAt.toISOString() : null,

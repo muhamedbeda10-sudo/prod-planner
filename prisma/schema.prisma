@@ -1267,6 +1267,12 @@ model NestRun {
   sheetSize   String        @default("")
   sheets      Int
   sheetsDone  Int           @default(0)
+  // The cutting time, in minutes: identical sheets carry ONE figure (a sheet's
+  // time, the run's being that × sheets); different sheets carry one per
+  // sheet, in the order they are cut. Empty = not given (the parts' standard
+  // times stand in).
+  identical    Boolean      @default(true)
+  sheetMinutes Float[]      @default([])
   note        String?
   createdBy   String?
   createdAt   DateTime      @default(now())

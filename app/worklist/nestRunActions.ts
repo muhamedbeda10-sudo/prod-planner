@@ -38,6 +38,19 @@ export async function createNestRun(fd: FormData): Promise<NestRunResult> {
   if (!Number.isFinite(thicknessMm) || thicknessMm <= 0) return { ok: false, error: "Thickness must be a number of mm above 0." };
   if (!Number.isInteger(sheets) || sheets <= 0) return { ok: false, error: "Sheets must be a whole number above 0." };
 
+  // the cutting time: one figure for identical sheets, one per sheet otherwise
+  const identical = text(fd, "identical") !== "false";
+  let minutes: number[] = [];
+  try { minutes = (JSON.parse(String(fd.get("minutes") ?? "[]")) as unknown[]).map((x) => (x === "" || x === null ? NaN : Number(x))); } catch { minutes = []; }
+  if (minutes.some((m) => Number.isFinite(m) && m < 0)) return { ok: false, error: "A sheet's time cannot be negative." };
+  if (identical) minutes = Number.isFinite(minutes[0]) ? [minutes[0]] : [];
+  else {
+    minutes = minutes.slice(0, sheets);
+    if (minutes.some((m) => Number.isFinite(m))) {
+      if (minutes.length < sheets || minutes.some((m) => !Number.isFinite(m))) return { ok: false, error: "Give every sheet its time — or none, to leave the time out." };
+    } else minutes = [];
+  }
+
   let raw: unknown;
   try { raw = JSON.parse(String(fd.get("parts") ?? "[]")); } catch { return { ok: false, error: "The parts list could not be read — reload the page." }; }
   if (!Array.isArray(raw) || raw.length === 0) return { ok: false, error: "Add at least one job's part to the run." };
@@ -69,7 +82,7 @@ export async function createNestRun(fd: FormData): Promise<NestRunResult> {
   const by = guard.user?.name ?? null;
   await prisma.$transaction(async (tx) => {
     const run = await tx.nestRun.create({
-      data: { dept: DEPT, material, thicknessMm, sheetSize, sheets, note: text(fd, "note", 500) || null, createdBy: by, parts: { create: parts } },
+      data: { dept: DEPT, material, thicknessMm, sheetSize, sheets, identical, sheetMinutes: minutes, note: text(fd, "note", 500) || null, createdBy: by, parts: { create: parts } },
     });
     if (machineId === null) return;
     const [last, runningNow] = await Promise.all([
