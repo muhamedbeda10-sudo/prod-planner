@@ -9,6 +9,7 @@ import { RUN_BOM, RUN_ITEM, expectedSheets, minutesPerSheet, minutesText, runMo,
 import { sheetKeyLabel } from "@/lib/domain/machineMaterial";
 import { MATERIAL_PRESETS, SHEET_SIZE_PRESETS } from "@/lib/domain/material";
 import { formatDate } from "@/lib/domain/format";
+import { ITEM_NAME, type Item } from "@/lib/domain/constants";
 import type { MachineDTO } from "@/lib/server/machines";
 import type { RunCandidate, RunSheetOption } from "@/lib/server/machineBoard";
 
@@ -181,8 +182,12 @@ function NestRunForm({ machines, options, candidates, run, onClose }: FormProps 
   const est = expectedSheets(parts.map((p) => ({ pcs: Number(p.pcs) || 0, perUnit: byJob.get(p.job)?.perUnit ?? null })));
   const off = est !== null && nSheets > 0 && Math.abs(nSheets - est) / Math.max(est, 1) > 0.25;
   const chosen = new Set(parts.map((p) => p.job));
-  const needle = q.trim().toUpperCase();
-  const browse = jobs.filter((j) => !chosen.has(j.key) && (!needle || `${j.bom} ${j.item} ${j.material} ${j.materialCode}`.toUpperCase().includes(needle)));
+  // search by anything the floor might type: the BOM, the part by code or
+  // name (TN / Tank), the material, the sheets, or an order's MO
+  const words = q.trim().toUpperCase().split(/\s+/).filter(Boolean);
+  const haystack = (j: JobChoice) =>
+    `${j.bom} ${j.item} ${ITEM_NAME[j.item as Item] ?? ""} ${j.material} ${j.materialCode} ${j.sheets.map(sheetKeyLabel).join(" ")} ${j.lines.map((l) => l.key.split("|")[1]).join(" ")}`.toUpperCase();
+  const browse = jobs.filter((j) => !chosen.has(j.key) && words.every((w) => haystack(j).includes(w)));
 
   const pickSheet = (v: string) => { setSheet(v); setParts([]); setQ(""); };
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -331,7 +336,7 @@ function NestRunForm({ machines, options, candidates, run, onClose }: FormProps 
             {!locked && <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Open jobs{opt ? ` — those that use ${sheetKeyLabel(opt.sheet)} first` : ""}</span>
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search BOM / item / material…" className={`${field} ms-auto w-64 py-1`} />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search BOM, part (TN / Tank), material, MO…" className={`${field} ms-auto w-64 py-1`} />
               </div>
               <div className="rounded-lg border max-h-64 overflow-y-auto">
                 {browse.length === 0 ? (
@@ -343,7 +348,7 @@ function NestRunForm({ machines, options, candidates, run, onClose }: FormProps 
                       {browse.map((j) => (
                         <tr key={j.key} className="border-t cursor-pointer hover:bg-brand-light/40" onClick={() => setParts([...parts, { job: j.key, pcs: String(j.free || ""), replaces: j.match ? "" : j.sheets[0] ?? "" }])} title="Add to the run">
                           <td className="p-1.5 font-bold whitespace-nowrap">{j.bom}</td>
-                          <td className="p-1.5 font-semibold">{j.item}</td>
+                          <td className="p-1.5 font-semibold whitespace-nowrap">{j.item} <span className="text-xs font-normal text-muted">{ITEM_NAME[j.item as Item] ?? ""}</span></td>
                           <td className="p-1.5 text-right tabnum">{fmt(j.required)}</td>
                           <td className="p-1.5 text-xs">{matCell(j)}</td>
                           <td className="p-1.5 text-right tabnum">{j.jobSheets !== null ? fmt(j.jobSheets) : "—"}</td>
