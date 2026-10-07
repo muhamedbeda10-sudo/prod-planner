@@ -12,6 +12,8 @@ import type { MachineCard, MachineQueueLine } from "@/lib/domain/machineBoard";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PrintButton } from "@/components/PrintButton";
 import { PageHeader } from "@/components/ui";
+import { LineMaterialChips } from "@/components/LineMaterialChips";
+import { sheetKeyOf, sheetSizeLabel, sheetsFor, thicknessLabel, type LineMaterial } from "@/lib/domain/machineMaterial";
 
 export const metadata = { title: "Machine sheets — ATC" };
 export const dynamic = "force-dynamic";
@@ -58,7 +60,7 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
       {cards.length === 0 ? (
         <p className="text-sm text-muted">Nothing is on {only ? `this ${word}` : `any ${word}`} yet — put lines on it from the worklist or the Floor first.</p>
       ) : (
-        cards.map((c, i) => <Sheet key={c.machine.id} c={c} dept={dept} dateLabel={dateLabel} soi={soi.byMo} first={i === 0} />)
+        cards.map((c, i) => <Sheet key={c.machine.id} c={c} dept={dept} dateLabel={dateLabel} soi={soi.byMo} material={board.material} first={i === 0} />)
       )}
     </div>
   );
@@ -68,17 +70,19 @@ function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
 
-function Rows({ lines, from = 1, soi, today }: { lines: MachineQueueLine[]; from?: number; soi: Record<string, string>; today: string }) {
+function Rows({ lines, from = 1, soi, today, material, dept }: { lines: MachineQueueLine[]; from?: number; soi: Record<string, string>; today: string; material: Record<string, LineMaterial>; dept: string }) {
   return (
     <>
       {lines.map((q, i) => (
-        <tr key={q.key} className="border-t">
+        <tr key={`${q.key}#${q.sheet}`} className="border-t">
           <td className="p-2 text-center font-extrabold tabnum">{from === 0 ? "▶" : from + i}</td>
           <td className="p-2 font-extrabold whitespace-nowrap">{q.bom}</td>
           <td className="p-2 text-center font-bold">{q.item}</td>
           <td className="p-2 whitespace-nowrap ltr">{q.mo || "—"}</td>
           <td className="p-2 whitespace-nowrap ltr">{(q.mo && soi[q.mo]) || "—"}</td>
           <td className="p-2 text-xs">{q.description}</td>
+          {/* the sheet it is cut from: thickness first — what the machine is set for */}
+          <td className="p-2">{material[q.key] || q.sheet ? <LineMaterialChips m={material[q.key]} pcs={q.remaining} sheets={dept === "Cut" && q.stepNo === 1} sheet={q.sheet} size="print" /> : <span className="text-muted text-xs">—</span>}</td>
           <td className="p-2 text-center font-extrabold tabnum text-lg whitespace-nowrap">{q.remaining}{q.split && <span className="block text-[10px] font-semibold text-muted">of {q.lineRemaining}</span>}</td>
           <td className="p-2 text-center tabnum">{q.hours !== null ? q.hours : "—"}</td>
           <td className={`p-2 text-center tabnum whitespace-nowrap ${q.deliveryISO && q.deliveryISO < today ? "text-bad-fg font-bold" : ""}`}>{q.deliveryISO ? ddmm(q.deliveryISO) : "—"}</td>
@@ -89,7 +93,7 @@ function Rows({ lines, from = 1, soi, today }: { lines: MachineQueueLine[]; from
   );
 }
 
-function Sheet({ c, dept, dateLabel, soi, first }: { c: MachineCard; dept: string; dateLabel: string; soi: Record<string, string>; first: boolean }) {
+function Sheet({ c, dept, dateLabel, soi, material, first }: { c: MachineCard; dept: string; dateLabel: string; soi: Record<string, string>; material: Record<string, LineMaterial>; first: boolean }) {
   const today = new Date().toISOString().slice(0, 10);
   const head = (
     <tr className="bg-brand text-white text-left">
@@ -99,6 +103,7 @@ function Sheet({ c, dept, dateLabel, soi, first }: { c: MachineCard; dept: strin
       <th className="p-2">MO</th>
       <th className="p-2">SOI</th>
       <th className="p-2">Description</th>
+      <th className="p-2" title="Thickness · sheet size · sheets the pieces take (* = BOM rate, not nested yet)">{dept === "Cut" ? "Thk · Sheet · Sheets" : "Thickness"}</th>
       <th className="p-2 text-center">Pcs</th>
       <th className="p-2 text-center">Std h</th>
       <th className="p-2 text-center">Deliver</th>
@@ -113,12 +118,13 @@ function Sheet({ c, dept, dateLabel, soi, first }: { c: MachineCard; dept: strin
         <span className="text-xs text-muted tabnum">{c.pcs} pcs · {c.hours} std-h{c.availableH !== null ? ` · ${c.availableH} h available today` : ""}{c.days !== null ? ` · ≈ ${c.days} day(s)` : ""}</span>
         {c.crew.length > 0 && <span className="text-xs text-muted">👷 {c.crew.join(", ")}</span>}
       </div>
+      <SheetTotals c={c} material={material} dept={dept} />
       <div className="bg-surface border rounded-xl overflow-x-auto mb-3">
         <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-brand bg-brand-light/40">▶ Running now{c.running.length > 1 ? ` — ${c.running.length} together` : ""}</div>
         <table className="w-full text-sm border-collapse">
           <thead>{head}</thead>
           <tbody>
-            {c.running.length === 0 ? <tr><td colSpan={10} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr> : <Rows lines={c.running} from={0} soi={soi} today={today} />}
+            {c.running.length === 0 ? <tr><td colSpan={11} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr> : <Rows lines={c.running} from={0} soi={soi} today={today} material={material} dept={dept} />}
           </tbody>
         </table>
       </div>
@@ -127,7 +133,7 @@ function Sheet({ c, dept, dateLabel, soi, first }: { c: MachineCard; dept: strin
           <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-muted bg-surface-2">Next, in this order</div>
           <table className="w-full text-sm border-collapse">
             <thead>{head}</thead>
-            <tbody><Rows lines={c.waiting} from={1} soi={soi} today={today} /></tbody>
+            <tbody><Rows lines={c.waiting} from={1} soi={soi} today={today} material={material} dept={dept} /></tbody>
           </table>
         </div>
       )}
@@ -137,5 +143,34 @@ function Sheet({ c, dept, dateLabel, soi, first }: { c: MachineCard; dept: strin
         <div className="border-t pt-1">Planner</div>
       </div>
     </section>
+  );
+}
+
+/** What the machine draws from the store for its whole queue: sheets per
+ *  thickness × material × size, added up over the lines it cuts — one look
+ *  for the technician (and the store) before the shift starts. */
+function SheetTotals({ c, material, dept }: { c: MachineCard; material: Record<string, LineMaterial>; dept: string }) {
+  if (dept !== "Cut") return null;
+  const tot = new Map<string, { label: string; size: string; sheets: number; estimated: boolean }>();
+  for (const q of c.queue) {
+    if (q.stepNo !== 1) continue;
+    // one sheet of the item on this machine counts that sheet alone
+    for (const s of (material[q.key]?.specs ?? []).filter((x) => !q.sheet || sheetKeyOf(x) === q.sheet)) {
+      const k = `${s.thicknessMm}|${s.material}|${s.sheetSize}`;
+      const cur = tot.get(k) ?? { label: thicknessLabel(s), size: sheetSizeLabel(s.sheetSize), sheets: 0, estimated: false };
+      cur.sheets += sheetsFor(s, q.remaining);
+      cur.estimated ||= !s.actual;
+      tot.set(k, cur);
+    }
+  }
+  if (tot.size === 0) return null;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-2 text-sm">
+      <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Sheets for the queue</span>
+      {[...tot.values()].map((t) => (
+        <span key={`${t.label}|${t.size}`} className="whitespace-nowrap"><b>{t.label}</b> <span className="text-muted">{t.size}</span> · <b className="tabnum">{Math.round(t.sheets * 100) / 100}</b>{t.estimated ? "*" : ""}</span>
+      ))}
+      <span className="text-[11px] text-muted">* part of it at the BOM rate — not nested yet</span>
+    </div>
   );
 }

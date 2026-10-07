@@ -7,9 +7,15 @@ import { CENTER_LABEL, machineWord, round1 } from "@/lib/domain/shifts";
 import type { MachineDTO } from "@/lib/server/machines";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import Link from "next/link";
-import { assignLineMachine, clearMachineQueue, moveLineRank, optimizeMachines, resetMachinePlan, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
+import { assignLineMachine, clearMachineQueue, getLineSheets, moveLineRank, optimizeMachines, recordSheetDone, resetMachinePlan, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
 import { recordOutput } from "@/app/worklist/actions";
 import { MachineTimeline } from "@/components/MachineTimeline";
+import { LineMaterialChips } from "@/components/LineMaterialChips";
+import { AddManualJob, ManualJobsList } from "@/components/ManualJobs";
+import { recordManualDone } from "@/app/worklist/manualActions";
+import { manualIdOf } from "@/lib/domain/manualJob";
+import { sheetKeyLabel, sheetKeyOf, thicknessLabel, sheetSizeLabel, type LineMaterial } from "@/lib/domain/machineMaterial";
+import { Modal } from "@/components/Modal";
 
 // 🏭 The machine load board on a department's worklist — one card per
 // machine: what it is on NOW, what waits behind it, and how many hours the
@@ -49,12 +55,18 @@ const TONE_INK: Record<"ok" | "warn" | "bad", string> = { ok: "text-ok-fg", warn
 
 /** The picker a table row carries: which machine this line is on, and a
  *  pieces box to put only some of it there. Saves at once. */
-export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, compact = false }: {
+export function MachinePick({ dept, bom, mo, item, sheet, machines, current, canEdit, compact = false }: {
   dept: string; bom: string; mo: string; item: string; machines: MachineDTO[];
   current: LinePlacement | undefined; canEdit: boolean; compact?: boolean;
+  /** The one sheet of the item still waiting — put on the machine as that sheet. */
+  sheet?: string;
 }) {
   const a = useAction();
   const qtyRef = useRef<HTMLInputElement>(null);
+  // a cutting machine picked for an item cut from several sheets: which sheet
+  // of it this machine takes (or the whole item), and how many pieces
+  const [choose, setChoose] = useState<{ machineId: string; material: LineMaterial; qty: string } | null>(null);
+  const [asking, startAsking] = useTransition();
   if (machines.length === 0) return null;
   const m = current ? machines.find((x) => x.id === current.machineId) : undefined;
   const share = current?.split ? ` ×${current.qty}` : "";
@@ -90,14 +102,24 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
       <span className="inline-flex items-center gap-1">
         <select
           value={current?.machineId ?? ""}
-          disabled={a.pending}
+          disabled={a.pending || asking}
           aria-label="Machine"
           title={m ? `On ${m.name} — ${state}. Pick another to move it there (with a number in the pieces box, only those pieces go), blank to take it off every ${machineWord(dept)}.` : `Put this line on a ${machineWord(dept)} — type pieces first to put only some of it`}
           onChange={(e) => {
-            const fd = base();
-            fd.set("machineId", e.target.value);
-            fd.set("qty", qtyRef.current?.value ?? "");
-            a.run(assignLineMachine, fd);
+            const machineId = e.target.value;
+            const put = () => {
+              const fd = base();
+              fd.set("machineId", machineId);
+              fd.set("qty", qtyRef.current?.value ?? "");
+              if (sheet) fd.set("sheet", sheet);
+              a.run(assignLineMachine, fd);
+            };
+            if (!machineId || sheet || dept !== "Cut") { put(); return; }
+            startAsking(async () => {
+              const r = await getLineSheets(base());
+              if (r.ok && r.material && r.material.specs.length >= 2) setChoose({ machineId, material: r.material, qty: qtyRef.current?.value ?? "" });
+              else put();
+            });
           }}
           className={`border rounded-md px-1.5 py-1 bg-surface text-xs font-bold ltr ${compact ? "max-w-[7rem]" : "max-w-[10rem]"} ${current ? "" : "text-muted"}`}
         >
@@ -142,7 +164,66 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
         {rest}
       </span>
       {a.err && <span className="text-[10px] text-bad-fg">{a.err}</span>}
+      {choose && (
+        <SheetChoice
+          code={machines.find((x) => String(x.id) === choose.machineId)?.code ?? ""}
+          bom={bom} item={item} material={choose.material} defaultQty={choose.qty}
+          busy={a.pending}
+          onClose={() => setChoose(null)}
+          onPick={(sheetKey, qty) => {
+            const fd = base();
+            fd.set("machineId", choose.machineId);
+            fd.set("qty", qty);
+            fd.set("sheet", sheetKey);
+            a.run(assignLineMachine, fd);
+            setChoose(null);
+          }}
+        />
+      )}
     </span>
+  );
+}
+
+/** Which sheet of the item goes on the machine picked: the BOM's sheets off
+ *  the MATERIAL tab's nesting, each with what one piece takes, or the whole
+ *  item. The same item can sit on several machines at once, each cutting its
+ *  own sheet — the same pieces or a different number of them. */
+function SheetChoice({ code, bom, item, material, defaultQty, busy, onClose, onPick }: {
+  code: string; bom: string; item: string; material: LineMaterial; defaultQty: string; busy: boolean;
+  onClose: () => void; onPick: (sheet: string, qty: string) => void;
+}) {
+  const [pick, setPick] = useState(sheetKeyOf(material.specs[0]));
+  const [qty, setQty] = useState(defaultQty);
+  return (
+    <Modal title={`${bom} ${item} → ${code}`} sub={`Which sheet does ${code} cut? ${material.partName ? `${material.partName} is` : "It is"} cut from ${material.specs.length} sheets (nesting ${material.month}).`} onClose={onClose} busy={busy} width="max-w-lg">
+      <div className="space-y-1.5">
+        {material.specs.map((s) => {
+          const k = sheetKeyOf(s);
+          return (
+            <label key={k} className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer ${pick === k ? "border-brand bg-brand-light/40" : ""}`}>
+              <input type="radio" name="sheet" checked={pick === k} onChange={() => setPick(k)} className="accent-[var(--brand)]" />
+              <b className="tabnum">{thicknessLabel(s)}</b>
+              <span className="text-muted tabnum">{sheetSizeLabel(s.sheetSize)}</span>
+              <span className="ms-auto text-xs text-muted tabnum">{s.perUnit} sheet/pc{s.actual ? "" : " (BOM)"}</span>
+            </label>
+          );
+        })}
+        <label className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer ${pick === "" ? "border-brand bg-brand-light/40" : ""}`}>
+          <input type="radio" name="sheet" checked={pick === ""} onChange={() => setPick("")} className="accent-[var(--brand)]" />
+          <b>Whole item</b><span className="text-xs text-muted">every sheet on {code}</span>
+        </label>
+      </div>
+      <label className="flex items-center gap-2 mt-3 text-sm">
+        <span className="text-muted text-xs font-semibold">Pieces</span>
+        <input type="number" min={1} step={1} value={qty} onChange={(e) => setQty(e.target.value)} placeholder="all" className="border rounded-md px-2 py-1 bg-surface text-sm tabnum w-24" />
+        <span className="text-[11px] text-muted">blank = all of it</span>
+      </label>
+      <div className="flex justify-end gap-2 mt-3">
+        <button type="button" className="btn btn-sm btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
+        <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => onPick(pick, qty)}>Put on {code}</button>
+      </div>
+      <p className="text-[11px] text-muted mt-2">Pick the machine again for another sheet — each machine cuts its own sheet of the item at the same time.</p>
+    </Modal>
   );
 }
 
@@ -165,8 +246,13 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
     fd.set("qty", String(qty)); fd.set("planNo", String(board.planNo));
     // what was finished on WHICH machine — the only place the app learns it
     if (machineId !== undefined) fd.set("machineId", String(machineId));
+    // a job from outside the plan records on itself, never in the plan's
+    // ledger; one sheet of an item records that sheet's cutting only
+    const manual = manualIdOf(q.mo);
+    if (manual !== null) fd.set("id", String(manual));
+    fd.set("sheet", q.sheet);
     startTransition(async () => {
-      const res = await recordOutput(fd);
+      const res = manual !== null ? await recordManualDone(fd) : q.sheet ? await recordSheetDone(fd) : await recordOutput(fd);
       if (res.ok) { setVal(""); router.refresh(); } else onErr(res.error ?? "Failed");
     });
   };
@@ -178,11 +264,17 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
         className="border rounded-md px-1 py-0.5 bg-surface text-xs tabnum w-12 ltr"
-        title={`Pieces finished — blank records all ${q.remaining}. What is left stays in the queue.`}
+        title={q.sheet ? `Pieces' worth of this sheet cut — blank = all ${q.remaining}. The item itself is recorded on the worklist once all its sheets are cut.` : `Pieces finished — blank records all ${q.remaining}. What is left stays in the queue.`}
       />
       <button type="button" className="btn btn-sm btn-primary px-1.5" disabled={pending} title={`Record what is done (blank = all ${q.remaining}); the rest stays in the queue`} onClick={save}>✓</button>
     </span>
   );
+}
+
+/** The sheets a line takes are counted where it is CUT — the first step of
+ *  the cutting route; a bend, a weld or a coat only needs the thickness. */
+function sheetsHere(dept: string, q: MachineQueueLine): boolean {
+  return dept === "Cut" && q.stepNo === 1;
 }
 
 function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; canEdit: boolean }) {
@@ -191,18 +283,18 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
   const tone = loadTone(c.load);
   // the bar reads as WORK AHEAD, five days wide — a full bar is a week of it
   const pct = c.days === null ? null : Math.min(100, Math.round((c.days / 5) * 100));
-  const line = (bom: string, mo: string, item: string) => {
+  const line = (bom: string, mo: string, item: string, sheet = "") => {
     const fd = new FormData();
-    fd.set("dept", dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item);
+    fd.set("dept", dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item); fd.set("sheet", sheet);
     fd.set("machineId", String(c.machine.id));
     return fd;
   };
   // ✂ — how many pieces of the line stay on this machine; the rest waits
   // for another machine (or goes back to it whole with a blank)
-  const resize = (q: { bom: string; mo: string; item: string; remaining: number; lineRemaining: number }) => {
+  const resize = (q: { bom: string; mo: string; item: string; sheet: string; remaining: number; lineRemaining: number }) => {
     const v = prompt(`Pieces of ${q.bom} ${q.item} on ${c.machine.code} — of ${q.lineRemaining} (blank = the rest of the line):`, String(q.remaining));
     if (v === null) return;
-    const fd = line(q.bom, q.mo, q.item);
+    const fd = line(q.bom, q.mo, q.item, q.sheet);
     fd.set("qty", v.trim());
     a.run(setLineQty, fd);
   };
@@ -241,20 +333,23 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
         <div className="rounded-lg border border-brand/40 bg-brand-light/30 px-2.5 py-2 space-y-1">
           <div className="text-[10px] font-bold uppercase tracking-wide text-brand">▶ Now{c.running.length > 1 ? ` · ${c.running.length} together` : ""}</div>
           {c.running.map((q) => (
-            <div key={q.key} className="flex items-baseline gap-2 flex-wrap">
+            <div key={`${q.key}#${q.sheet}`} className="flex items-baseline gap-2 flex-wrap">
+              {manualIdOf(q.mo) !== null ? <span className="font-extrabold">{q.description}</span> : <>
               <span className="font-extrabold">{q.bom}</span>
-              <span className="font-bold">{q.item}</span>
+              <span className="font-bold">{q.item}</span></>}
               <span className="tabnum font-extrabold text-brand">×{q.remaining}</span>
               {q.split && <span className="text-[11px] text-muted tabnum whitespace-nowrap" title="Part of the line — the rest is on another machine or waits">✂ of {q.lineRemaining}</span>}
               {q.hours !== null && <span className="text-xs text-muted tabnum whitespace-nowrap">{q.hours} h</span>}
               {q.deliveryISO && <span className={`pill tabnum ${q.deliveryISO < new Date().toISOString().slice(0, 10) ? "pill-bad" : "pill-muted"}`}>📅 {ddmm(q.deliveryISO)}</span>}
               <span className="text-[11px] text-muted truncate">{q.mo}{q.description ? ` · ${q.description}` : ""}</span>
+              <LineMaterialChips m={board.material[q.key]} pcs={q.remaining} sheets={sheetsHere(board.dept, q)} sheet={q.sheet} />
+              {q.sheetDone > 0 && <span className="text-[10px] text-ok-fg tabnum whitespace-nowrap" title="Pieces' worth of this sheet already cut here — the item is counted once it is recorded on the worklist">✓ {q.sheetDone} cut</span>}
               {canEdit && (
                 <span className="ms-auto inline-flex items-center gap-1 no-print">
                   {done(q)}
-                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
-                  <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item))}>✕</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item, q.sheet))}>✕</button>
                 </span>
               )}
             </div>
@@ -267,23 +362,26 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
       {c.waiting.length > 0 && (
         <ol className="space-y-1">
           {c.waiting.map((q, i) => (
-            <li key={q.key} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
+            <li key={`${q.key}#${q.sheet}`} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
               <span className="w-5 text-center font-extrabold tabnum text-muted">{i + 1}</span>
+              {manualIdOf(q.mo) !== null ? <span className="font-bold">{q.description}</span> : <>
               <span className="font-bold">{q.bom}</span>
-              <span className="font-semibold">{q.item}</span>
+              <span className="font-semibold">{q.item}</span></>}
               <span className="tabnum font-bold">×{q.remaining}</span>
               {q.split && <span className="text-[10px] text-muted tabnum whitespace-nowrap" title="Part of the line — the rest is on another machine or waits">✂ of {q.lineRemaining}</span>}
               {q.hours !== null && <span className="text-muted tabnum whitespace-nowrap">{q.hours} h</span>}
               {q.deliveryISO && <span className="text-muted tabnum whitespace-nowrap">📅 {ddmm(q.deliveryISO)}</span>}
+              <LineMaterialChips m={board.material[q.key]} pcs={q.remaining} sheets={sheetsHere(board.dept, q)} sheet={q.sheet} />
+              {q.sheetDone > 0 && <span className="text-[10px] text-ok-fg tabnum whitespace-nowrap" title="Pieces' worth of this sheet already cut here — the item is counted once it is recorded on the worklist">✓ {q.sheetDone} cut</span>}
               {canEdit && (
                 <span className="ms-auto inline-flex items-center gap-1 no-print">
                   {done(q)}
-                  <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>
-                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>
-                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Up" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "up"); a.run(moveLineRank, fd); }}>▲</button>
-                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Down" disabled={a.pending || i === c.waiting.length - 1} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "down"); a.run(moveLineRank, fd); }}>▼</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Up" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("dir", "up"); a.run(moveLineRank, fd); }}>▲</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1" title="Down" disabled={a.pending || i === c.waiting.length - 1} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("dir", "down"); a.run(moveLineRank, fd); }}>▼</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
-                  <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item))}>✕</button>
+                  <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item, q.sheet))}>✕</button>
                 </span>
               )}
             </li>
@@ -375,10 +473,11 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
       <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
       {multi && <span className="pill pill-muted shrink-0" title={`${CENTER_LABEL[u.center] ?? u.center} — step ${u.stepNo} of ${u.stepCount} on this line's route`}>{u.center}</span>}
       {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
+      {u.sheet && <span className="pill pill-warn shrink-0" title="This sheet of the item has no machine yet — its other sheets do">{sheetKeyLabel(u.sheet)}</span>}
       {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
       {u.deliveryISO ? <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span> : <span className="text-muted shrink-0">no date</span>}
       <span className="ms-auto shrink-0">
-        <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} machines={machinesAt(u.center)} current={undefined} canEdit={canEdit} compact />
+        <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} sheet={u.sheet} machines={machinesAt(u.center)} current={undefined} canEdit={canEdit} compact />
       </span>
     </li>
   );
@@ -429,6 +528,8 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
             📊 Timeline
           </button>
         )}
+        {canEdit && <AddManualJob dept={board.dept} machines={board.machines} />}
+        {(canEdit || board.manualJobs.length > 0) && <ManualJobsList dept={board.dept} jobs={board.manualJobs} machines={board.machines} canEdit={canEdit} />}
         <Link href={`/worklist/machines?dept=${board.dept}`} className="btn btn-sm btn-secondary ms-2 normal-case no-print" title={`One sheet per ${word}, each on its own page — hand them to the technicians`}>🖨 Print all sheets</Link>
         {canManage && (
           <>

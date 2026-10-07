@@ -17,6 +17,7 @@ import { useCanSee } from "@/components/TabAccess";
 import { ChatDock } from "@/components/ChatDock";
 import { useOdooAlerts } from "@/components/OdooAlerts";
 import { LineTabs } from "@/components/LineTabs";
+import { WhatsNew } from "@/components/WhatsNew";
 import type { ProductLine } from "@/lib/domain/lines";
 import { logoutAction } from "@/app/login/actions";
 
@@ -136,6 +137,7 @@ export function AppNav({
   machinePlanning = false,
   odooAlerts = { enabled: false, count: 0 },
   line = "TR",
+  whatsNewSeen = null,
 }: {
   user: NavUser;
   unreadChat?: number;
@@ -149,6 +151,8 @@ export function AppNav({
   odooAlerts?: { enabled: boolean; count: number };
   /** The product line every tab is showing — transformers or LV panels. */
   line?: ProductLine;
+  /** The newest "What's new" entry this person has seen. */
+  whatsNewSeen?: string | null;
 }) {
   const pathname = usePathname();
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
@@ -369,6 +373,8 @@ export function AppNav({
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
             {/* the plant's two products: one switch, inside every tab at once */}
             <LineTabs line={line} />
+            {/* what changed in the app — counted until opened */}
+            <WhatsNew seen={whatsNewSeen} />
             {/* chat is a glance, not a destination — an icon here with its
                 unread badge, opening a panel over whatever page you are on */}
             <div className={canSee("/chat") ? "hidden md:block" : "hidden"}>
