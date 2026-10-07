@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-07-nest-runs",
+    dateISO: "2026-10-07",
+    title: "Nest runs — one sheet, parts of several jobs",
+    where: "Cut worklist → machines board → 🧩 Nest run · 📋 Runs",
+    body: "Put sheets of one material and thickness on a laser as one run — e.g. 5 sheets of 3 mm MS — and say what the nesting put on them: the parts of each job with their pieces (the list offers only the open lines whose nesting uses that sheet, with a check against the sheets the nesting expects). The technician records the run by the sheets finished; each job's pieces follow, and once all of an item's sheets are cut it shows under ✅ ready to record.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-07-ready-cut",
     dateISO: "2026-10-07",
     title: "Whole pieces recorded in one click",

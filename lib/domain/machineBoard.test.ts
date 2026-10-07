@@ -244,3 +244,16 @@ describe("buildMachineBoard — one item on several machines, by sheet", () => {
     expect(b.unassigned).toEqual([]);
   });
 });
+
+describe("buildMachineBoard — a nest run covers its parts' sheet", () => {
+  const M = (id: number) => ({ id, code: `L${id}`, name: `Laser ${id}`, center: "Cutting", hoursPerDay: 8, active: true });
+  const line = { key: "B1|MO1|TN", bom: "B1", mo: "MO1", item: "TN", description: "", remaining: 12, hours: 12, deliveryISO: null, route: [{ center: "Cutting", hours: 12 }], sheets: ["3|Steel|1250*2500", "5|Steel|1500*3000"] };
+  it("the run's sheet is covered, the other sheet still waits", () => {
+    const b = buildMachineBoard([M(1)], [line], [], {}, {}, [{ key: line.key, sheet: "3|Steel|1250*2500", pcs: 12 }]);
+    expect(b.unassigned.map((u) => [u.sheet, u.remaining])).toEqual([["5|Steel|1500*3000", 12]]);
+  });
+  it("a run carrying part of the pieces leaves the rest of that sheet waiting", () => {
+    const b = buildMachineBoard([M(1)], [line], [], {}, {}, [{ key: line.key, sheet: "3|Steel|1250*2500", pcs: 8 }]);
+    expect(b.unassigned.map((u) => [u.sheet, u.remaining])).toEqual([["3|Steel|1250*2500", 4], ["5|Steel|1500*3000", 12]]);
+  });
+});

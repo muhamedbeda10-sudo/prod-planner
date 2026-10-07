@@ -1252,3 +1252,45 @@ model SheetCutLog {
   @@index([item])
   @@index([date])
 }
+
+// A NEST RUN — sheets of one material, thickness and size put on a cutting
+// machine, the nesting on them carrying parts of SEVERAL jobs at once (the
+// tank of one order beside the top cover of another, all 3 mm). On the
+// board it queues like any line (BOM "RUN", MO "RUN-<id>", item "SHEET" —
+// the key its machine-queue row carries); the technician records it by the
+// sheets finished, and each part's pieces follow pro rata.
+model NestRun {
+  id          Int           @id @default(autoincrement())
+  dept        String        @default("Cut")
+  material    String
+  thicknessMm Float
+  sheetSize   String        @default("")
+  sheets      Int
+  sheetsDone  Int           @default(0)
+  note        String?
+  createdBy   String?
+  createdAt   DateTime      @default(now())
+  doneAt      DateTime?
+  updatedAt   DateTime      @updatedAt
+  parts       NestRunPart[]
+
+  @@index([dept])
+}
+
+// One job's part inside a nest run: how many pieces of it the run's sheets
+// carry, how many are cut so far (from the sheets finished), and how many of
+// those the item's Cut record has already counted.
+model NestRunPart {
+  id          Int     @id @default(autoincrement())
+  runId       Int
+  run         NestRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  bom         String
+  mo          String
+  item        String
+  pcs         Int
+  donePcs     Int     @default(0)
+  consumedPcs Int     @default(0)
+
+  @@index([runId])
+  @@index([bom, mo, item])
+}

@@ -12,6 +12,7 @@ import type { MachineCard, MachineQueueLine } from "@/lib/domain/machineBoard";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PrintButton } from "@/components/PrintButton";
 import { PageHeader } from "@/components/ui";
+import { runIdOf } from "@/lib/domain/nestRun";
 import { LineMaterialChips } from "@/components/LineMaterialChips";
 import { sheetKeyOf, sheetSizeLabel, sheetsFor, thicknessLabel, type LineMaterial } from "@/lib/domain/machineMaterial";
 
@@ -83,7 +84,7 @@ function Rows({ lines, from = 1, soi, today, material, dept }: { lines: MachineQ
           <td className="p-2 text-xs">{q.description}</td>
           {/* the sheet it is cut from: thickness first — what the machine is set for */}
           <td className="p-2">{material[q.key] || q.sheet ? <LineMaterialChips m={material[q.key]} pcs={q.remaining} sheets={dept === "Cut" && q.stepNo === 1} sheet={q.sheet} size="print" /> : <span className="text-muted text-xs">—</span>}</td>
-          <td className="p-2 text-center font-extrabold tabnum text-lg whitespace-nowrap">{q.remaining}{q.split && <span className="block text-[10px] font-semibold text-muted">of {q.lineRemaining}</span>}</td>
+          <td className="p-2 text-center font-extrabold tabnum text-lg whitespace-nowrap">{q.remaining}{runIdOf(q.mo) !== null && <span className="text-xs font-semibold"> sh</span>}{q.split && <span className="block text-[10px] font-semibold text-muted">of {q.lineRemaining}</span>}</td>
           <td className="p-2 text-center tabnum">{q.hours !== null ? q.hours : "—"}</td>
           <td className={`p-2 text-center tabnum whitespace-nowrap ${q.deliveryISO && q.deliveryISO < today ? "text-bad-fg font-bold" : ""}`}>{q.deliveryISO ? ddmm(q.deliveryISO) : "—"}</td>
           <td className="p-2 w-28 border-l"></td>

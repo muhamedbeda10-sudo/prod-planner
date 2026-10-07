@@ -10,6 +10,7 @@ import { optimizePlan } from "@/lib/domain/optimizePlan";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import { MANUAL_BOM, MANUAL_ITEM } from "@/lib/domain/manualJob";
+import { RUN_BOM, RUN_ITEM } from "@/lib/domain/nestRun";
 
 // The machine board's writes: put a worklist line on a machine (or take it
 // off), move it up or down that machine's queue, empty a machine. The
@@ -313,7 +314,7 @@ export async function optimizeMachines(fd: FormData): Promise<MachineActionResul
     // the running work stays exactly where it is; everything else is re-planned
     // a job typed in from outside the plan stays on the machine it was put on
     // and so does a sheet of an item the planner put on a machine by hand
-    await tx.worklistMachine.deleteMany({ where: { dept, running: false, sheet: "", NOT: { bom: MANUAL_BOM, item: MANUAL_ITEM } } });
+    await tx.worklistMachine.deleteMany({ where: { dept, running: false, sheet: "", NOT: [{ bom: MANUAL_BOM, item: MANUAL_ITEM }, { bom: RUN_BOM, item: RUN_ITEM }] } });
     const running = await tx.worklistMachine.findMany({ where: { dept, running: true } });
     // only a whole-item row takes extra pieces — a sheet's row is that sheet alone
     const held = new Map(running.filter((r) => r.sheet === "").map((r) => [`${r.bom}|${r.mo}|${r.item}#${r.machineId}`, r]));
