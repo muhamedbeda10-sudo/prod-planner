@@ -2,11 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireDeptEdit } from "@/lib/server/auth";
+import { getCurrentUser, requireDeptEdit } from "@/lib/server/auth";
+import { getLinesMaterial, type OrderRef } from "@/lib/server/machineMaterial";
+import type { LineMaterial } from "@/lib/domain/machineMaterial";
 import { getOptimizerInputs } from "@/lib/server/machineBoard";
 import { optimizePlan } from "@/lib/domain/optimizePlan";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
+import { MANUAL_BOM, MANUAL_ITEM } from "@/lib/domain/manualJob";
 
 // The machine board's writes: put a worklist line on a machine (or take it
 // off), move it up or down that machine's queue, empty a machine. The
@@ -29,14 +32,16 @@ function revalidate() {
   for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
 }
 
-function readLine(fd: FormData): { dept: BoardDept; bom: string; mo: string; item: string } | { error: string } {
+function readLine(fd: FormData): { dept: BoardDept; bom: string; mo: string; item: string; sheet: string } | { error: string } {
   const dept = String(fd.get("dept") ?? "");
   if (!(BOARD_DEPTS as readonly string[]).includes(dept)) return { error: "This worklist has no machines." };
   const bom = String(fd.get("bom") ?? "").trim();
   const mo = String(fd.get("mo") ?? "").trim();
   const item = String(fd.get("item") ?? "").trim().toUpperCase();
   if (!bom || !item) return { error: "The line is incomplete — reload the page." };
-  return { dept: dept as BoardDept, bom, mo, item };
+  // the sheet of the item a machine cuts, when the item is spread by sheet
+  const sheet = String(fd.get("sheet") ?? "").trim().slice(0, 120);
+  return { dept: dept as BoardDept, bom, mo, item, sheet };
 }
 
 /** Renumber a machine's queue 1..n in its current order — running lines
@@ -48,8 +53,8 @@ async function renumber(dept: string, machineId: number) {
 
 /** The row of a line on one machine — the machine comes with the request
  *  now that a line can sit on several. */
-function rowKey(line: { dept: BoardDept; bom: string; mo: string; item: string }, machineId: number) {
-  return { dept_bom_mo_item_machineId: { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item, machineId } };
+function rowKey(line: { dept: BoardDept; bom: string; mo: string; item: string; sheet: string }, machineId: number) {
+  return { dept_bom_mo_item_machineId_sheet: { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item, machineId, sheet: line.sheet } };
 }
 
 function readQty(fd: FormData): number | null | { error: string } {
@@ -91,12 +96,14 @@ export async function assignLineMachine(fd: FormData): Promise<MachineActionResu
   if (!machine || machine.dept !== line.dept) return { ok: false, error: "That machine is not in this department." };
   if (!machine.active) return { ok: false, error: `${machine.code} is retired — bring it back in Tools → Machines first.` };
 
-  const here = existing.find((e) => e.machineId === machineId);
+  // a sheet of the item is its own share: the same machine may hold the
+  // whole item or one sheet of it, and other machines other sheets
+  const here = existing.find((e) => e.machineId === machineId && e.sheet === line.sheet);
   // a line has ONE "rest" row (no quantity) at most: giving this machine the
   // rest takes it off the machine that had it, while the machines holding a
   // fixed share keep it — so a whole line moves with the picker, and the
   // leftover of a split line lands on the machine picked for it
-  const displaced = qty === null ? existing.filter((e) => e.machineId !== machineId && e.qty === null) : [];
+  const displaced = qty === null ? existing.filter((e) => e.sheet === line.sheet && e.machineId !== machineId && e.qty === null) : [];
   const by = guard.user?.name ?? null;
   const dropDisplaced = async () => {
     if (displaced.length === 0) return;
@@ -119,7 +126,7 @@ export async function assignLineMachine(fd: FormData): Promise<MachineActionResu
   const rank = (last._max.rank ?? 0) + 1;
   // an idle machine starts on the line it is given; a busy one queues it
   const running = runningNow === 0;
-  await prisma.worklistMachine.create({ data: { ...key, machineId, rank, running, qty, setBy: by } });
+  await prisma.worklistMachine.create({ data: { ...key, sheet: line.sheet, machineId, rank, running, qty, setBy: by } });
   await dropDisplaced();
   revalidate();
   return { ok: true };
@@ -139,6 +146,41 @@ export async function setLineQty(fd: FormData): Promise<MachineActionResult> {
   const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
   if (!row) return { ok: false, error: "That line is not on this machine any more — reload the page." };
   await prisma.worklistMachine.update({ where: { id: row.id }, data: { qty, setBy: guard.user?.name ?? null } });
+  revalidate();
+  return { ok: true };
+}
+
+/** The sheets an item is cut from — the choice the picker offers when the
+ *  item goes on a cutting machine (one machine may take its 3 mm, another
+ *  its 5 mm, at the same time). */
+export async function getLineSheets(fd: FormData): Promise<{ ok: boolean; error?: string; material?: LineMaterial | null }> {
+  const line = readLine(fd);
+  if ("error" in line) return { ok: false, error: line.error };
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const order = line.mo ? await prisma.masterOrder.findUnique({ where: { mo: line.mo }, select: { soi: true, months: true, source: true } }) : null;
+  const ref: OrderRef | undefined = order ? { soi: order.soi, months: (order.months || order.source || "").split(",").map((x) => x.trim()).filter(Boolean) } : undefined;
+  const key = `${line.bom}|${line.mo}|${line.item}`;
+  const got = await getLinesMaterial([{ key, bom: line.bom, mo: line.mo, item: line.item }], () => ref);
+  return { ok: true, material: got[key] ?? null };
+}
+
+/** ✓ on a sheet's line on a card: pieces' worth of THAT sheet cut on this
+ *  machine. The item itself is not recorded here — it is counted once all
+ *  its sheets are cut, on the worklist, which takes these pieces back off. */
+export async function recordSheetDone(fd: FormData): Promise<MachineActionResult> {
+  const line = readLine(fd);
+  if ("error" in line) return { ok: false, error: line.error };
+  if (!line.sheet) return { ok: false, error: "Not a sheet's line — reload the page." };
+  const guard = await requireDeptEdit(line.dept);
+  if (guard.error) return { ok: false, error: guard.error };
+  const machineId = Number(fd.get("machineId"));
+  if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
+  const qty = Number(String(fd.get("qty") ?? "").trim());
+  if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: "Enter whole pieces above 0." };
+  const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
+  if (!row) return { ok: false, error: "That sheet is not on this machine any more — reload the page." };
+  await prisma.worklistMachine.update({ where: { id: row.id }, data: { sheetDone: row.sheetDone + qty, setBy: guard.user?.name ?? null } });
   revalidate();
   return { ok: true };
 }
@@ -260,9 +302,12 @@ export async function optimizeMachines(fd: FormData): Promise<MachineActionResul
 
   await prisma.$transaction(async (tx) => {
     // the running work stays exactly where it is; everything else is re-planned
-    await tx.worklistMachine.deleteMany({ where: { dept, running: false } });
+    // a job typed in from outside the plan stays on the machine it was put on
+    // and so does a sheet of an item the planner put on a machine by hand
+    await tx.worklistMachine.deleteMany({ where: { dept, running: false, sheet: "", NOT: { bom: MANUAL_BOM, item: MANUAL_ITEM } } });
     const running = await tx.worklistMachine.findMany({ where: { dept, running: true } });
-    const held = new Map(running.map((r) => [`${r.bom}|${r.mo}|${r.item}#${r.machineId}`, r]));
+    // only a whole-item row takes extra pieces — a sheet's row is that sheet alone
+    const held = new Map(running.filter((r) => r.sheet === "").map((r) => [`${r.bom}|${r.mo}|${r.item}#${r.machineId}`, r]));
     const base = new Map<number, number>();
     for (const r of running) base.set(r.machineId, (base.get(r.machineId) ?? 0) + 1);
 

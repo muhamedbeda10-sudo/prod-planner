@@ -104,7 +104,7 @@ export function buildTimeline(cards: readonly MachineCard[], days: readonly stri
         continue;
       }
       blocks.push({
-        key: `${q.key}#${q.step}`,
+        key: `${q.key}#${q.step}#${q.sheet}`,
         bom: q.bom, mo: q.mo, item: q.item,
         pieces: q.remaining,
         hours: q.hours,

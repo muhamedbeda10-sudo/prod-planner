@@ -16,6 +16,10 @@ import { getSettings, getShiftHours } from "./data";
 import { withLine } from "./line";
 import { getLvWorklist } from "./lvWorklist";
 import { LV_ITEM } from "@/lib/domain/lv";
+import { sheetKeyOf, type LineMaterial } from "@/lib/domain/machineMaterial";
+import { getLinesMaterial, type OrderRef } from "./machineMaterial";
+import { getManualJobs, manualBoardLines } from "./manualJobs";
+import { MANUAL_BOM, MANUAL_ITEM, manualIdOf, manualMaterial, manualMo, type ManualJobView } from "@/lib/domain/manualJob";
 
 // The machine load board for one worklist: the page hands over the open
 // lines it already computed (every section of the sheet), this prices them
@@ -53,6 +57,13 @@ export interface MachineBoardData extends MachineBoard {
   /** bom|mo|item → where the line sits, for the tables' pickers: its first
    *  machine (a running one first) and how many more it is split over. */
   assigned: Record<string, LinePlacement>;
+  /** bom|mo|item → the sheets the line is cut from (thickness, material,
+   *  size, sheets a piece), off the MATERIAL tab's nesting — what the
+   *  technician needs to know before starting it. Absent = not nested. */
+  material: Record<string, LineMaterial>;
+  /** The department's jobs from outside the plan — open ones on the board
+   *  like any line, and the list kept to come back to. */
+  manualJobs: ManualJobView[];
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -118,7 +129,7 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
       };
     });
 
-  const assignments: Assignment[] = rows.map((r) => ({ key: lineKey(r.bom, r.mo, r.item), machineId: r.machineId, rank: r.rank, running: r.running, qty: r.qty }));
+  const assignments: Assignment[] = rows.map((r) => ({ key: lineKey(r.bom, r.mo, r.item), machineId: r.machineId, rank: r.rank, running: r.running, qty: r.qty, sheet: r.sheet, sheetDone: r.sheetDone }));
   const downtimeH: Record<number, number> = {};
   for (const d of downtime) downtimeH[d.machineId] = (downtimeH[d.machineId] ?? 0) + d.hours;
   const crewH: Record<number, number> = {};
@@ -128,12 +139,32 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
     crewH[s.machineId] = (crewH[s.machineId] ?? 0) + hoursOfShift(isShiftCode(s.shift) ? s.shift : "S9", shiftHours) + Math.max(0, s.overtimeH);
     (crew[s.machineId] ??= []).push(s.worker.name);
   }
-  return { machines, assignments, price, perPiece, urgentByMo, downtimeH, crewH, crew, rates };
+  const orderByMo = new Map<string, OrderRef>(orders.map((o) => [o.mo, { soi: o.soi, months: (o.months || o.source || "").split(",").map((x) => x.trim()).filter(Boolean) }]));
+  return { machines, assignments, price, perPiece, urgentByMo, downtimeH, crewH, crew, rates, orderOf: (mo: string) => orderByMo.get(mo) };
 }
 
-export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
-  const [ctx, settings, holidays] = await Promise.all([loadBoardContext(dept, dayISO), getSettings(), loadHolidays()]);
-  const board = buildMachineBoard(ctx.machines, ctx.price(lines), ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew }, ctx.rates);
+export async function getMachineBoard(dept: BoardDept, planLines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
+  const [ctx, settings, holidays, manualJobs] = await Promise.all([loadBoardContext(dept, dayISO), getSettings(), loadHolidays(), getManualJobs(dept)]);
+  // the jobs typed in from outside the plan queue beside the plan's lines
+  const lines = [...planLines, ...manualBoardLines(manualJobs)];
+  // the sheets behind every line a machine holds (a plan line's off the
+  // MATERIAL tab's nesting, a manual job's as it was typed) — and, for an
+  // item spread over machines by sheet, the list of its sheets, so the board
+  // can say which of them still needs a machine
+  const placedKeys = new Set(ctx.assignments.map((a) => a.key));
+  const refs = new Map<string, { key: string; bom: string; mo: string; item: string }>();
+  for (const l of lines) {
+    const key = lineKey(l.bom, l.mo, l.item);
+    if (placedKeys.has(key) && manualIdOf(l.mo) === null) refs.set(key, { key, bom: l.bom, mo: l.mo, item: l.item });
+  }
+  const material = await getLinesMaterial([...refs.values()], ctx.orderOf);
+  for (const j of manualJobs) {
+    const m = manualMaterial(j);
+    if (m) material[lineKey(MANUAL_BOM, manualMo(j.id), MANUAL_ITEM)] = m;
+  }
+  const bySheet = new Set(ctx.assignments.filter((a) => a.sheet).map((a) => a.key));
+  const priced = ctx.price(lines).map((l) => (bySheet.has(l.key) && material[l.key] ? { ...l, sheets: material[l.key].specs.map(sheetKeyOf) } : l));
+  const board = buildMachineBoard(ctx.machines, priced, ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew }, ctx.rates);
   // the day each machine's queue is finished — Fridays and the calendar's days
   // off skipped, so "clears 18/09" is a date the floor can hold you to
   const holidaySet = new Set(holidays.map((h) => toISODate(h.date)));
@@ -178,7 +209,7 @@ export async function getMachineBoard(dept: BoardDept, lines: readonly BoardLine
       ...(missing.length > 0 ? { missing } : {}),
     };
   }
-  return { ...board, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), days, assigned };
+  return { ...board, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), days, assigned, material, manualJobs };
 }
 
 /** What the ⚡ optimizer plans from: the department's machines with the hours

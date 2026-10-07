@@ -212,3 +212,35 @@ describe("loadTone", () => {
     expect(loadTone(null)).toBeNull();
   });
 });
+
+describe("buildMachineBoard — one item on several machines, by sheet", () => {
+  const M = (id: number) => ({ id, code: `L${id}`, name: `Laser ${id}`, center: "Cutting", hoursPerDay: 8, active: true });
+  const line = { key: "B1|MO1|TN", bom: "B1", mo: "MO1", item: "TN", description: "", remaining: 10, hours: 10, deliveryISO: null, route: [{ center: "Cutting", hours: 10 }], sheets: ["3|Steel|1220*2440", "5|Steel|1500*3000"] };
+
+  it("gives each sheet the whole quantity on its own machine, and waits the sheet nobody took", () => {
+    const b = buildMachineBoard([M(1), M(2)], [line], [{ key: line.key, machineId: 1, rank: 1, sheet: "3|Steel|1220*2440" }]);
+    expect(b.cards[0].queue.map((q) => [q.sheet, q.remaining])).toEqual([["3|Steel|1220*2440", 10]]);
+    expect(b.unassigned.map((u) => [u.sheet, u.remaining])).toEqual([["5|Steel|1500*3000", 10]]);
+  });
+
+  it("covers the item once every sheet is placed — same or different quantities", () => {
+    const b = buildMachineBoard([M(1), M(2)], [line], [
+      { key: line.key, machineId: 1, rank: 1, sheet: "3|Steel|1220*2440" },
+      { key: line.key, machineId: 2, rank: 1, sheet: "5|Steel|1500*3000", qty: 6 },
+    ]);
+    expect(b.cards.map((c) => c.queue.map((q) => q.remaining))).toEqual([[10], [6]]);
+    expect(b.unassigned.map((u) => [u.sheet, u.remaining])).toEqual([["5|Steel|1500*3000", 4]]);
+  });
+
+  it("a sheet's pieces cut leave the queue but keep the sheet covered", () => {
+    const b = buildMachineBoard([M(1)], [line], [{ key: line.key, machineId: 1, rank: 1, sheet: "3|Steel|1220*2440", sheetDone: 4 }]);
+    expect(b.cards[0].queue[0]).toMatchObject({ remaining: 6, sheetDone: 4, split: true });
+    expect(b.unassigned.find((u) => u.sheet === "3|Steel|1220*2440")).toBeUndefined();
+  });
+
+  it("a whole-item row still covers every sheet as before", () => {
+    const b = buildMachineBoard([M(1)], [line], [{ key: line.key, machineId: 1, rank: 1 }]);
+    expect(b.cards[0].queue[0]).toMatchObject({ remaining: 10, sheet: "", split: false });
+    expect(b.unassigned).toEqual([]);
+  });
+});

@@ -574,6 +574,7 @@ model Machine {
   lines     WorklistMachine[]
   itemTimes MachineItemTime[]
   output    HandoverEntry[]
+  manualJobs ManualJob[]
 
   @@index([dept])
 }
@@ -660,10 +661,19 @@ model WorklistMachine {
   // Pieces of the line on THIS machine; null = whatever the other machines
   // do not take. A line split over two machines is two rows.
   qty       Int?
+  // The sheet of the item this machine cuts — "<thickness>|<material>|<size>"
+  // off the MATERIAL tab's nesting — when the item is spread over machines
+  // by sheet (its 3 mm on one laser, its 5 mm on another, at the same time).
+  // "" = the whole item, every sheet of it.
+  sheet     String   @default("")
+  // Pieces' worth of THAT sheet cut so far on this machine — ✓ on a sheet's
+  // card line. The item itself is counted when it is recorded on the
+  // worklist; that recording takes the same pieces back off this figure.
+  sheetDone Int      @default(0)
   setBy     String?
   updatedAt DateTime @default(now()) @updatedAt
 
-  @@unique([dept, bom, mo, item, machineId])
+  @@unique([dept, bom, mo, item, machineId, sheet])
   @@index([dept, bom, mo, item])
   @@index([machineId])
 }
@@ -1181,4 +1191,38 @@ model PhysicalStock {
   updatedBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// A job put on a machine that the plan does not carry — a repair, a sample,
+// a spare part, anything the floor is asked for outside the monthly plan.
+// Typed on the machine board, it queues on its machine like any plan line
+// (on the board as BOM "MANUAL", MO "MANUAL-<id>", item "JOB" — the key the
+// machine queue rows carry), and is KEPT: done or not, the list stays to come
+// back to. Its output is recorded here, never in the plan's ledger — it is
+// no order's work.
+model ManualJob {
+  id          Int       @id @default(autoincrement())
+  dept        String // Cut | Welding | Painting | ShotBlast — the board it was typed on
+  title       String // what it is, in the planner's words
+  bom         String    @default("") // a BOM it belongs to, when there is one
+  item        String    @default("") // the part, when there is one (Tank, bracket…)
+  qty         Int
+  doneQty     Int       @default(0)
+  // the sheet it is cut from, typed with it — the same facts the nesting
+  // gives a plan line: thickness, material, sheet size, sheets for the job
+  material    String    @default("")
+  thicknessMm Float?
+  sheetSize   String    @default("")
+  sheets      Float?
+  note        String?
+  // the machine it was last put on — kept when it comes off, for the record
+  machineId   Int?
+  machine     Machine?  @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  doneAt      DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([dept])
+  @@index([machineId])
 }

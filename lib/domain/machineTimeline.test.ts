@@ -7,7 +7,7 @@ const DAYS = ["2026-09-10", "2026-09-11", "2026-09-13", "2026-09-14", "2026-09-1
 const q = (bom: string, hours: number | null, over: Partial<MachineQueueLine> = {}): MachineQueueLine => ({
   key: `${bom}|MO-1|TN`, bom, mo: "MO-1", item: "TN", description: "", remaining: 4, hours,
   deliveryISO: null, route: [{ center: "Cutting", hours }],
-  rank: 1, running: false, lineRemaining: 4, split: false, center: "Cutting", step: "Cutting", stepNo: 1, stepCount: 1,
+  rank: 1, running: false, lineRemaining: 4, split: false, center: "Cutting", step: "Cutting", stepNo: 1, stepCount: 1, sheet: "", sheetDone: 0,
   ...over,
 });
 

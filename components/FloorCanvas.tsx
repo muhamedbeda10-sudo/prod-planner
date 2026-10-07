@@ -388,12 +388,12 @@ function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoa
               {target && target.center === u.center && (
                 <button
                   type="button" className="btn btn-sm btn-primary px-2" disabled={a.pending} title={`Put it on ${target.code}, at the back of its queue`}
-                  onClick={() => { const fd = new FormData(); fd.set("dept", board.dept); fd.set("bom", u.bom); fd.set("mo", u.mo); fd.set("item", u.item); fd.set("machineId", String(target.id)); a.run(assignLineMachine, fd); }}
+                  onClick={() => { const fd = new FormData(); fd.set("dept", board.dept); fd.set("bom", u.bom); fd.set("mo", u.mo); fd.set("item", u.item); fd.set("sheet", u.sheet ?? ""); fd.set("machineId", String(target.id)); a.run(assignLineMachine, fd); }}
                 >
                   → {target.code}
                 </button>
               )}
-              <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} machines={machinesAt(board, u.center)} current={undefined} canEdit={canAssign} compact />
+              <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} sheet={u.sheet} machines={machinesAt(board, u.center)} current={undefined} canEdit={canAssign} compact />
             </span>
           )}
         </li>
@@ -455,7 +455,7 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
       {card && card.running.length > 0 ? (
         <div className="mt-1 rounded-md bg-brand-light/40 border border-brand/30 px-1.5 py-1 min-w-0 space-y-0.5">
           {card.running.slice(0, compact ? 1 : 2).map((q) => (
-            <div key={q.key} className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
+            <div key={`${q.key}#${q.sheet}`} className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
               <span className="text-brand font-extrabold shrink-0">▶</span>
               <span className="font-extrabold truncate">{q.bom}</span>
               <span className="font-bold shrink-0">{q.item}</span>
@@ -485,18 +485,18 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
   const a = useAction();
   const [showAll, setShowAll] = useState(false);
   const m = card?.machine;
-  const line = (bom: string, mo: string, item: string) => {
+  const line = (bom: string, mo: string, item: string, sheet = "") => {
     const fd = new FormData();
-    fd.set("dept", board.dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item);
+    fd.set("dept", board.dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item); fd.set("sheet", sheet);
     fd.set("machineId", String(n.machineId ?? ""));
     return fd;
   };
   // ✂ — how many pieces of the line stay on this machine; the rest waits
   // for another machine (or comes back whole with a blank)
-  const resize = (q: { bom: string; mo: string; item: string; remaining: number; lineRemaining: number }) => {
+  const resize = (q: { bom: string; mo: string; item: string; sheet: string; remaining: number; lineRemaining: number }) => {
     const v = prompt(`Pieces of ${q.bom} ${q.item} on ${m?.code ?? "this machine"} — of ${q.lineRemaining} (blank = the rest of the line):`, String(q.remaining));
     if (v === null) return;
-    const fd = line(q.bom, q.mo, q.item);
+    const fd = line(q.bom, q.mo, q.item, q.sheet);
     fd.set("qty", v.trim());
     a.run(setLineQty, fd);
   };
@@ -556,7 +556,7 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
               </thead>
               <tbody>
                 {rows.map((q) => (
-                  <tr key={q.key} className={`border-t ${q.running ? "bg-brand-light/40" : ""}`}>
+                  <tr key={`${q.key}#${q.sheet}`} className={`border-t ${q.running ? "bg-brand-light/40" : ""}`}>
                     <td className="p-1 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</td>
                     <td className="p-1 font-extrabold ltr whitespace-nowrap">{q.bom}</td>
                     <td className="p-1 text-center font-bold">{q.item}</td>
@@ -572,11 +572,11 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                         <span className="flex items-center justify-end gap-0.5">
                           <DoneBox board={board} q={q} machineId={m.id} onErr={a.setErr} />
                           {q.running
-                            ? <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
-                            : <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>}
-                          {!q.running && card.waiting.indexOf(q) > 0 && <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>}
+                            ? <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
+                            : <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>}
+                          {!q.running && card.waiting.indexOf(q) > 0 && <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>}
                           <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
-                          <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item))}>✕</button>
+                          <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item, q.sheet))}>✕</button>
                         </span>
                       </td>
                     )}

@@ -44,6 +44,10 @@ export interface BoardLine {
    *  fabrication that is the department's one centre; a tank owes cutting,
    *  then bending, then fins — and the board queues it at each. */
   route: readonly BoardStep[];
+  /** The sheets the item is cut from ("<thk>|<material>|<size>"), when it is
+   *  spread over machines by sheet — what still needs a machine is then
+   *  counted sheet by sheet. */
+  sheets?: readonly string[];
 }
 
 export interface Assignment {
@@ -55,6 +59,10 @@ export interface Assignment {
   /** Pieces of the line on this machine; null/absent = whatever the other
    *  machines do not take. A line split over machines has one assignment each. */
   qty?: number | null;
+  /** The sheet of the item this machine cuts; "" / absent = the whole item. */
+  sheet?: string;
+  /** Pieces' worth of that sheet already cut here. */
+  sheetDone?: number;
 }
 
 export interface MachineQueueLine extends BoardLine {
@@ -73,6 +81,10 @@ export interface MachineQueueLine extends BoardLine {
   /** Which step of the route this is, and how many there are: "bending, 2 of 3". */
   stepNo: number;
   stepCount: number;
+  /** The sheet of the item this line is ("" = the whole item). */
+  sheet: string;
+  /** Pieces' worth of that sheet cut here so far; `remaining` is what is left of it. */
+  sheetDone: number;
 }
 
 export interface MachineCard {
@@ -114,6 +126,8 @@ export interface UnassignedLine extends BoardLine {
   center: string;
   stepNo: number;
   stepCount: number;
+  /** The sheet still to place, when the item is spread by sheet. */
+  sheet?: string;
 }
 
 /** Where a line sits, for the tables' pickers: its first machine (a running
@@ -198,47 +212,64 @@ export function buildMachineBoard(
   // tank owes its 12 pieces to cutting AND to bending AND to fins, so each
   // step fills up on its own. Explicit quantities are allocated first, then a
   // row with no quantity takes what is left of that step, and anything beyond
-  // that waits unassigned.
-  const given = new Map<string, number>();
+  // that waits unassigned. An item spread over machines BY SHEET fills each
+  // sheet on its own too: its 3 mm on one laser and its 5 mm on another are
+  // both the same 12 pieces. A whole-item row covers every sheet.
+  const given = new Map<string, number>(); // key#step → pieces given whole
+  const givenSheet = new Map<string, number>(); // key#step#sheet → pieces of that sheet
+  const sheetsAt = new Map<string, Set<string>>(); // key#step → sheets placed
   const seen = new Set<string>();
   // running lines first, then the waiting ones, each group in rank order
   const ordered = [...assignments].sort((x, y) => Number(!!y.running) - Number(!!x.running) || x.rank - y.rank);
   const explicit = ordered.filter((a) => a.qty !== null && a.qty !== undefined);
   const open_ = ordered.filter((a) => a.qty === null || a.qty === undefined);
+  const maxSheet = (pool: string) => Math.max(0, ...[...(sheetsAt.get(pool) ?? [])].map((sh) => givenSheet.get(`${pool}#${sh}`) ?? 0));
   const pending: { a: Assignment; pcs: number; step: string }[] = [];
   for (const a of [...explicit, ...open_]) {
     const l = open.get(a.key);
-    const pairKey = `${a.key}#${a.machineId}`;
+    const sheet = a.sheet ?? "";
+    const pairKey = `${a.key}#${a.machineId}#${sheet}`;
     if (!l || seen.has(pairKey)) continue;
     seen.add(pairKey);
     const step = stepFor(l, a.machineId);
     const pool = `${a.key}#${step}`;
-    const left = Math.max(0, l.remaining - (given.get(pool) ?? 0));
+    const left = Math.max(0, l.remaining - (given.get(pool) ?? 0) - (sheet ? givenSheet.get(`${pool}#${sheet}`) ?? 0 : maxSheet(pool)));
     const pcs = a.qty !== null && a.qty !== undefined ? Math.min(Math.max(0, Math.floor(a.qty)), left) : left;
     if (pcs <= 0) continue;
-    given.set(pool, (given.get(pool) ?? 0) + pcs);
+    if (sheet) {
+      givenSheet.set(`${pool}#${sheet}`, (givenSheet.get(`${pool}#${sheet}`) ?? 0) + pcs);
+      (sheetsAt.get(pool) ?? sheetsAt.set(pool, new Set()).get(pool)!).add(sheet);
+    } else given.set(pool, (given.get(pool) ?? 0) + pcs);
     pending.push({ a, pcs, step });
   }
   // back in queue order (the allocation walk above put explicit rows first)
   pending.sort((x, y) => ordered.indexOf(x.a) - ordered.indexOf(y.a));
   for (const { a, pcs, step } of pending) {
     const l = open.get(a.key)!;
+    const sheet = a.sheet ?? "";
+    // a sheet's pieces already cut here leave its queue; the share stays
+    // counted, so the sheet does not come back as waiting for a machine
+    const sheetDone = sheet ? Math.min(pcs, Math.max(0, Math.floor(a.sheetDone ?? 0))) : 0;
+    const left = pcs - sheetDone;
+    if (left <= 0) continue;
     if (!byMachine.has(a.machineId)) byMachine.set(a.machineId, []);
-    const share = pcs / l.remaining;
+    const share = left / l.remaining;
     const h = stepHours(l, step);
     const own = rates[a.machineId]?.[l.item];
     const stepNo = Math.max(0, l.route.findIndex((r) => r.center === step)) + 1;
     byMachine.get(a.machineId)!.push({
       ...l,
-      remaining: pcs,
-      hours: own !== undefined ? round1(own * pcs) : h === null ? null : round1(h * share),
+      remaining: left,
+      hours: own !== undefined ? round1(own * left) : h === null ? null : round1(h * share),
       rank: 0, running: !!a.running,
       lineRemaining: l.remaining,
-      split: pcs < l.remaining,
+      split: !!sheet || pcs < l.remaining,
       center: centerOf.get(a.machineId) ?? step,
       step,
       stepNo,
       stepCount: l.route.length,
+      sheet,
+      sheetDone,
     });
   }
 
@@ -278,18 +309,31 @@ export function buildMachineBoard(
   const unassigned: UnassignedLine[] = [];
   for (const l of open.values()) {
     l.route.forEach((r, i) => {
-      const leftPcs = l.remaining - (given.get(`${l.key}#${r.center}`) ?? 0);
-      if (leftPcs <= 0) return;
-      unassigned.push({
-        ...l,
-        remaining: leftPcs,
-        hours: r.hours === null ? null : round1((r.hours * leftPcs) / l.remaining),
-        lineRemaining: l.remaining,
-        partial: leftPcs < l.remaining,
-        center: r.center,
-        stepNo: i + 1,
-        stepCount: l.route.length,
-      });
+      const pool = `${l.key}#${r.center}`;
+      const whole = given.get(pool) ?? 0;
+      const push = (leftPcs: number, sheet?: string) => {
+        if (leftPcs <= 0) return;
+        unassigned.push({
+          ...l,
+          remaining: leftPcs,
+          hours: r.hours === null ? null : round1((r.hours * leftPcs) / l.remaining),
+          lineRemaining: l.remaining,
+          partial: leftPcs < l.remaining,
+          center: r.center,
+          stepNo: i + 1,
+          stepCount: l.route.length,
+          ...(sheet ? { sheet } : {}),
+        });
+      };
+      // spread by sheet: what each sheet still needs; the sheets nobody has
+      // started on wait as they are
+      const placed = sheetsAt.get(pool);
+      if (placed && placed.size > 0) {
+        const all = [...new Set([...(l.sheets ?? []), ...placed])];
+        for (const sh of all) push(l.remaining - whole - (givenSheet.get(`${pool}#${sh}`) ?? 0), sh);
+        return;
+      }
+      push(l.remaining - whole);
     });
   }
   unassigned.sort((a, b) => urgencyOrder(a, b) || a.stepNo - b.stepNo);

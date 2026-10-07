@@ -136,6 +136,12 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
       });
       // a painting record is a closing — it gets its row on the ODOO tab
       await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
+      // the item cut and counted: the sheets' pieces already cut for it on
+      // the machines are accounted for now, so they come off those figures
+      if (dept === "Cut" && qty > 0) {
+        const cutSheets = await tx.worklistMachine.findMany({ where: { dept: "Cut", bom, mo, item, sheet: { not: "" }, sheetDone: { gt: 0 } } });
+        for (const r of cutSheets) await tx.worklistMachine.update({ where: { id: r.id }, data: { sheetDone: Math.max(0, r.sheetDone - Math.round(qty)) } });
+      }
       if (!mintsTanks) return [];
       const minted = await mintTankSerials(tx, {
         bom, mo, planNo, count: qty, date, ledgerId: ledger.id,

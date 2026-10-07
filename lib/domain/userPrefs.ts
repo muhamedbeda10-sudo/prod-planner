@@ -7,7 +7,10 @@ export const TRACKER_PREF_KEYS = ["tracker:cols", "tracker:collapsed", "tracker:
 /** The LV Panels tracker's columns ("v1|mo,product,…") and its hidden
  *  stages ("Bending,Delivered"). */
 export const LV_TRACKER_PREF_KEYS = ["lvtracker:cols", "lvtracker:hiddenStages"] as const;
-const ALL_KEYS = [...TRACKER_PREF_KEYS, ...LV_TRACKER_PREF_KEYS] as const;
+/** The newest "What's new" entry this person has opened the list on — the
+ *  ones after it are counted on the button. */
+export const WHATS_NEW_PREF_KEYS = ["whatsnew:seen"] as const;
+const ALL_KEYS = [...TRACKER_PREF_KEYS, ...LV_TRACKER_PREF_KEYS, ...WHATS_NEW_PREF_KEYS] as const;
 export type UserPrefKey = (typeof ALL_KEYS)[number];
 
 export const USER_PREF_MAX = 1000;
