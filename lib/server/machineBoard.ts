@@ -20,7 +20,7 @@ import { fullyCutPieces, sheetKeyOf, type LineMaterial } from "@/lib/domain/mach
 import { getLinesMaterial, type OrderRef } from "./machineMaterial";
 import { getManualJobs, manualBoardLines } from "./manualJobs";
 import { getNestRuns, runCover, runCut } from "./nestRuns";
-import { RUN_BOM, RUN_ITEM, runDescription, runIdOf, runMo, type NestRunView } from "@/lib/domain/nestRun";
+import { RUN_BOM, RUN_ITEM, minutesLeft, runDescription, runIdOf, runMo, type NestRunView } from "@/lib/domain/nestRun";
 import { MANUAL_BOM, MANUAL_ITEM, manualIdOf, manualMaterial, manualMo, type ManualJobView } from "@/lib/domain/manualJob";
 
 // The machine load board for one worklist: the page hands over the open
@@ -82,12 +82,20 @@ export interface RunSheetOption {
   material: string;
   thicknessMm: number;
   sheetSize: string;
-  lines: { key: string; bom: string; mo: string; item: string; description: string; free: number; perUnit: number }[];
+  lines: {
+    key: string; bom: string; mo: string; item: string; description: string; free: number; perUnit: number;
+    /** The plan's Required for the whole BOM. */
+    required: number;
+    /** The nesting's material name and code, and its sheets for the job. */
+    material: string; materialCode: string; jobSheets: number | null;
+  }[];
 }
 
 /** Any open line, for a run cut from a sheet the nesting does not list. */
 export interface RunCandidate {
   key: string; bom: string; mo: string; item: string; description: string; remaining: number;
+  /** The plan's Required for the whole BOM. */
+  required: number;
 }
 
 export interface ReadyCut {
@@ -176,7 +184,11 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
     (crew[s.machineId] ??= []).push(s.worker.name);
   }
   const orderByMo = new Map<string, OrderRef>(orders.map((o) => [o.mo, { soi: o.soi, months: (o.months || o.source || "").split(",").map((x) => x.trim()).filter(Boolean) }]));
-  return { machines, assignments, price, perPiece, urgentByMo, downtimeH, crewH, crew, rates, orderOf: (mo: string) => orderByMo.get(mo) };
+  // the plan's Required for each BOM — every open order of it together; what
+  // the floor knows a job by
+  const requiredByBom = new Map<string, number>();
+  for (const o of orders) if (o.status === "open") requiredByBom.set(o.bom, (requiredByBom.get(o.bom) ?? 0) + o.planQty);
+  return { machines, assignments, price, perPiece, urgentByMo, downtimeH, crewH, crew, rates, orderOf: (mo: string) => orderByMo.get(mo), requiredByBom };
 }
 
 export async function getMachineBoard(dept: BoardDept, planLines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
@@ -225,7 +237,9 @@ export async function getMachineBoard(dept: BoardDept, planLines: readonly Board
         if (per === null) continue;
         hours = (hours ?? 0) + per * (centerShares(dept, p.item).Cutting ?? 1) * p.pcs;
       }
-      const h = hours === null ? null : round1((hours * left) / r.sheets);
+      // the run's own cutting time, where it was given, outranks the estimate
+      const own = minutesLeft(r);
+      const h = own !== null ? round1(own / 60) : hours === null ? null : round1((hours * left) / r.sheets);
       const key = lineKey(RUN_BOM, runMo(r.id), RUN_ITEM);
       material[key] = { partName: "", month: "nest run", specs: [{ material: r.material, materialCode: "", thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, perUnit: 1, actual: true }] };
       return { key, bom: RUN_BOM, mo: runMo(r.id), item: RUN_ITEM, description: runDescription(r), remaining: left, hours: h, deliveryISO: null, dueISO: null, route: [{ center: "Cutting", hours: h }] };
@@ -321,13 +335,16 @@ export async function getMachineBoard(dept: BoardDept, planLines: readonly Board
       seenLine.add(l.key);
       const open = remainingOf.get(l.key);
       if (!open || open.remaining <= 0) continue;
-      runCandidates.push({ key: l.key, bom: l.bom, mo: l.mo, item: l.item, description: l.description, remaining: open.remaining });
+      runCandidates.push({ key: l.key, bom: l.bom, mo: l.mo, item: l.item, description: l.description, remaining: open.remaining, required: ctx.requiredByBom.get(l.bom) ?? 0 });
       for (const sp of material[l.key]?.specs ?? []) {
         const sheet = sheetKeyOf(sp);
         const free = freeOn(l.key, sheet);
         if (free <= 0) continue;
         const opt = bySheetOpt.get(sheet) ?? { sheet, material: sp.material, thicknessMm: sp.thicknessMm, sheetSize: sp.sheetSize, lines: [] };
-        opt.lines.push({ key: l.key, bom: l.bom, mo: l.mo, item: l.item, description: l.description, free, perUnit: sp.perUnit });
+        opt.lines.push({
+          key: l.key, bom: l.bom, mo: l.mo, item: l.item, description: l.description, free, perUnit: sp.perUnit,
+          required: ctx.requiredByBom.get(l.bom) ?? 0, material: sp.material, materialCode: sp.materialCode, jobSheets: sp.jobSheets ?? null,
+        });
         bySheetOpt.set(sheet, opt);
       }
     }

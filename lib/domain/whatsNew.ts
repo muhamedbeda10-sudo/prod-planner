@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-07-run-time",
+    dateISO: "2026-10-07",
+    title: "Nest runs: cutting time, and jobs picked by BOM",
+    where: "Cut worklist → 🧩 Nest run",
+    body: "A run now takes its cutting time: identical sheets need one sheet's minutes, different sheets each their own — the machine's load is worked out from it. Jobs are picked from a searchable table by BOM ref, item, the plan's Required for the BOM, material and the nesting's No. of sheets (the orders of a BOM go together). The cutting worklist's Machine column is gone — lines go on the lasers from the board.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-07-nest-runs",
     dateISO: "2026-10-07",
     title: "Nest runs — one sheet, parts of several jobs",

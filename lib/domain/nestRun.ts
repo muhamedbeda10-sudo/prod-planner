@@ -34,6 +34,10 @@ export interface NestRunView {
   sheetSize: string;
   sheets: number;
   sheetsDone: number;
+  /** The sheets carry the same parts — one time stands for each. */
+  identical: boolean;
+  /** Cutting minutes: one figure for identical sheets, one per sheet otherwise; empty = not given. */
+  sheetMinutes: number[];
   note: string | null;
   parts: NestRunPartView[];
   /** The machines it sits on now (codes). */
@@ -53,7 +57,9 @@ export function runTitle(r: Pick<NestRunView, "sheets" | "thicknessMm" | "materi
 
 /** What the board writes for it: the sheets, then every job's part on them. */
 export function runDescription(r: Pick<NestRunView, "sheets" | "thicknessMm" | "material" | "sheetSize" | "parts">): string {
-  return `🧩 ${runTitle(r)} — ${r.parts.map((p) => `${p.bom} ${p.item} ×${p.pcs}`).join(" · ")}`;
+  const by = new Map<string, number>();
+  for (const p of r.parts) by.set(`${p.bom} ${p.item}`, (by.get(`${p.bom} ${p.item}`) ?? 0) + p.pcs);
+  return `🧩 ${runTitle(r)} — ${[...by].map(([k, n]) => `${k} ×${n}`).join(" · ")}`;
 }
 
 /** Each part's pieces cut once `sheetsDone` of the run's sheets are finished:
@@ -73,4 +79,26 @@ export function expectedSheets(parts: readonly { pcs: number; perUnit: number | 
   const rated = parts.filter((p) => p.perUnit !== null && p.perUnit > 0);
   if (rated.length === 0) return null;
   return Math.round(rated.reduce((s, p) => s + p.pcs * p.perUnit!, 0) * 100) / 100;
+}
+
+/** Every sheet's cutting minutes, in the order they are cut; null when the
+ *  run was saved without a time. Identical sheets repeat their one figure. */
+export function minutesPerSheet(r: Pick<NestRunView, "sheets" | "identical" | "sheetMinutes">): number[] | null {
+  const m = r.sheetMinutes.filter((x) => Number.isFinite(x) && x >= 0);
+  if (m.length === 0) return null;
+  if (r.identical) return Array.from({ length: r.sheets }, () => m[0]);
+  return Array.from({ length: r.sheets }, (_, i) => m[i] ?? 0);
+}
+
+/** Minutes of cutting the run still holds — the sheets not finished yet. */
+export function minutesLeft(r: Pick<NestRunView, "sheets" | "sheetsDone" | "identical" | "sheetMinutes">): number | null {
+  const all = minutesPerSheet(r);
+  return all === null ? null : all.slice(Math.max(0, r.sheetsDone)).reduce((s, x) => s + x, 0);
+}
+
+/** 95 → "1 h 35 min"; 40 → "40 min". */
+export function minutesText(min: number): string {
+  const m = Math.round(min);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
 }

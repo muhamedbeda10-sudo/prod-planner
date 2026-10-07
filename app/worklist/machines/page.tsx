@@ -12,7 +12,7 @@ import type { MachineCard, MachineQueueLine } from "@/lib/domain/machineBoard";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PrintButton } from "@/components/PrintButton";
 import { PageHeader } from "@/components/ui";
-import { runIdOf } from "@/lib/domain/nestRun";
+import { minutesLeft, minutesText, runIdOf, type NestRunView } from "@/lib/domain/nestRun";
 import { LineMaterialChips } from "@/components/LineMaterialChips";
 import { sheetKeyOf, sheetSizeLabel, sheetsFor, thicknessLabel, type LineMaterial } from "@/lib/domain/machineMaterial";
 
@@ -61,7 +61,7 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
       {cards.length === 0 ? (
         <p className="text-sm text-muted">Nothing is on {only ? `this ${word}` : `any ${word}`} yet — put lines on it from the worklist or the Floor first.</p>
       ) : (
-        cards.map((c, i) => <Sheet key={c.machine.id} c={c} dept={dept} dateLabel={dateLabel} soi={soi.byMo} material={board.material} first={i === 0} />)
+        cards.map((c, i) => <Sheet key={c.machine.id} c={c} dept={dept} dateLabel={dateLabel} soi={soi.byMo} material={board.material} runs={Object.fromEntries(board.nestRuns.map((r) => [r.id, r]))} first={i === 0} />)
       )}
     </div>
   );
@@ -71,10 +71,29 @@ function ddmm(iso: string) {
   return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
 
-function Rows({ lines, from = 1, soi, today, material, dept }: { lines: MachineQueueLine[]; from?: number; soi: Record<string, string>; today: string; material: Record<string, LineMaterial>; dept: string }) {
+function Rows({ lines, from = 1, soi, today, material, dept, runs }: { lines: MachineQueueLine[]; from?: number; soi: Record<string, string>; today: string; material: Record<string, LineMaterial>; dept: string; runs: Record<number, NestRunView> }) {
   return (
     <>
-      {lines.map((q, i) => (
+      {lines.map((q, i) => {
+        // a nest run reads as what it is: the sheets, and every job on them
+        const run = runs[runIdOf(q.mo) ?? -1];
+        if (run) return (
+          <tr key={`${q.key}#${q.sheet}`} className="border-t">
+            <td className="p-2 text-center font-extrabold tabnum">{from === 0 ? "▶" : from + i}</td>
+            <td className="p-2 font-extrabold whitespace-nowrap" colSpan={4}>🧩 Nest run #{run.id}{run.note ? <span className="block text-xs font-semibold text-muted">{run.note}</span> : null}</td>
+            <td className="p-2 text-xs">
+              <table className="w-full"><tbody>
+                {runJobs(run).map((p) => <tr key={`${p.bom}|${p.item}`}><td className="pe-2 font-bold whitespace-nowrap">{p.bom}</td><td className="pe-2 font-semibold">{p.item}</td><td className="text-right tabnum whitespace-nowrap">× {p.pcs}</td></tr>)}
+              </tbody></table>
+            </td>
+            <td className="p-2"><LineMaterialChips m={material[q.key]} pcs={q.remaining} sheets size="print" /></td>
+            <td className="p-2 text-center font-extrabold tabnum text-lg whitespace-nowrap">{q.remaining}<span className="text-xs font-semibold"> sh</span>{run.sheetsDone > 0 && <span className="block text-[10px] font-semibold text-muted">{run.sheetsDone} of {run.sheets} cut</span>}</td>
+            <td className="p-2 text-center tabnum whitespace-nowrap">{(() => { const m = minutesLeft(run); return m !== null ? minutesText(m) : q.hours !== null ? q.hours : "—"; })()}</td>
+            <td className="p-2 text-center">—</td>
+            <td className="p-2 w-28 border-l"></td>
+          </tr>
+        );
+        return (
         <tr key={`${q.key}#${q.sheet}`} className="border-t">
           <td className="p-2 text-center font-extrabold tabnum">{from === 0 ? "▶" : from + i}</td>
           <td className="p-2 font-extrabold whitespace-nowrap">{q.bom}</td>
@@ -89,12 +108,25 @@ function Rows({ lines, from = 1, soi, today, material, dept }: { lines: MachineQ
           <td className={`p-2 text-center tabnum whitespace-nowrap ${q.deliveryISO && q.deliveryISO < today ? "text-bad-fg font-bold" : ""}`}>{q.deliveryISO ? ddmm(q.deliveryISO) : "—"}</td>
           <td className="p-2 w-28 border-l"></td>
         </tr>
-      ))}
+        );
+      })}
     </>
   );
 }
 
-function Sheet({ c, dept, dateLabel, soi, material, first }: { c: MachineCard; dept: string; dateLabel: string; soi: Record<string, string>; material: Record<string, LineMaterial>; first: boolean }) {
+/** A run's jobs, one line per BOM's part — its orders together. */
+function runJobs(run: NestRunView) {
+  const by = new Map<string, { bom: string; item: string; pcs: number }>();
+  for (const p of run.parts) {
+    const k = `${p.bom}|${p.item}`;
+    const cur = by.get(k) ?? { bom: p.bom, item: p.item, pcs: 0 };
+    cur.pcs += p.pcs;
+    by.set(k, cur);
+  }
+  return [...by.values()];
+}
+
+function Sheet({ c, dept, dateLabel, soi, material, runs, first }: { c: MachineCard; dept: string; dateLabel: string; soi: Record<string, string>; material: Record<string, LineMaterial>; runs: Record<number, NestRunView>; first: boolean }) {
   const today = new Date().toISOString().slice(0, 10);
   const head = (
     <tr className="bg-brand text-white text-left">
@@ -125,7 +157,7 @@ function Sheet({ c, dept, dateLabel, soi, material, first }: { c: MachineCard; d
         <table className="w-full text-sm border-collapse">
           <thead>{head}</thead>
           <tbody>
-            {c.running.length === 0 ? <tr><td colSpan={11} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr> : <Rows lines={c.running} from={0} soi={soi} today={today} material={material} dept={dept} />}
+            {c.running.length === 0 ? <tr><td colSpan={11} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr> : <Rows lines={c.running} from={0} soi={soi} today={today} material={material} dept={dept} runs={runs} />}
           </tbody>
         </table>
       </div>
@@ -134,7 +166,7 @@ function Sheet({ c, dept, dateLabel, soi, material, first }: { c: MachineCard; d
           <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-muted bg-surface-2">Next, in this order</div>
           <table className="w-full text-sm border-collapse">
             <thead>{head}</thead>
-            <tbody><Rows lines={c.waiting} from={1} soi={soi} today={today} material={material} dept={dept} /></tbody>
+            <tbody><Rows lines={c.waiting} from={1} soi={soi} today={today} material={material} dept={dept} runs={runs} /></tbody>
           </table>
         </div>
       )}
