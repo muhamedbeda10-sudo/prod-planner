@@ -66,7 +66,7 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
   );
 }
 
-function Rows({ lines, from = 1, required, material, dept, runs }: { lines: MachineQueueLine[]; from?: number; required: Record<string, number>; material: Record<string, LineMaterial>; dept: string; runs: Record<number, NestRunView> }) {
+function Rows({ lines, from = 1, required, material, dept, runs, runsOnly }: { lines: MachineQueueLine[]; from?: number; required: Record<string, number>; material: Record<string, LineMaterial>; dept: string; runs: Record<number, NestRunView>; runsOnly: boolean }) {
   return (
     <>
       {lines.map((q, i) => {
@@ -75,7 +75,7 @@ function Rows({ lines, from = 1, required, material, dept, runs }: { lines: Mach
         if (run) return (
           <tr key={`${q.key}#${q.sheet}`} className="border-t">
             <td className="p-2 text-center font-extrabold tabnum">{from === 0 ? "▶" : from + i}</td>
-            <td className="p-2 font-extrabold whitespace-nowrap align-top" colSpan={2}>🧩 Nest run #{run.id}{run.note ? <span className="block text-xs font-semibold text-muted">{run.note}</span> : null}</td>
+            <td className="p-2 font-extrabold whitespace-nowrap align-top" colSpan={runsOnly ? 1 : 2}>🧩 Nest run #{run.id}{run.note ? <span className="block text-xs font-semibold text-muted">{run.note}</span> : null}</td>
             {/* the jobs on its sheets — by BOM ref and part, the plan's Required for
                 the BOM, and the pieces this run cuts of it */}
             <td className="p-2">
@@ -133,7 +133,19 @@ function runJobs(run: NestRunView) {
 }
 
 function Sheet({ c, dept, dateLabel, required, material, runs, first }: { c: MachineCard; dept: string; dateLabel: string; required: Record<string, number>; material: Record<string, LineMaterial>; runs: Record<number, NestRunView>; first: boolean }) {
-  const head = (
+  // a laser working only nest runs needs no BOM / Item columns — they would
+  // stand empty on every row; the run and the jobs on it say it all
+  const runsOnly = c.queue.length > 0 && c.queue.every((q) => runIdOf(q.mo) !== null);
+  const head = runsOnly ? (
+    <tr className="bg-brand text-white text-left">
+      <th className="p-2 w-10 text-center">#</th>
+      <th className="p-2">Nest run</th>
+      <th className="p-2">On the sheets</th>
+      <th className="p-2">Thk · Sheet</th>
+      <th className="p-2 text-center">Sheets</th>
+      <th className="p-2 w-28">Done ✓</th>
+    </tr>
+  ) : (
     <tr className="bg-brand text-white text-left">
       <th className="p-2 w-10 text-center">#</th>
       <th className="p-2">BOM</th>
@@ -158,7 +170,7 @@ function Sheet({ c, dept, dateLabel, required, material, runs, first }: { c: Mac
         <table className="w-full text-sm border-collapse">
           <thead>{head}</thead>
           <tbody>
-            {c.running.length === 0 ? <tr><td colSpan={7} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr> : <Rows lines={c.running} from={0} required={required} material={material} dept={dept} runs={runs} />}
+            {c.running.length === 0 ? <tr><td colSpan={runsOnly ? 6 : 7} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr> : <Rows lines={c.running} from={0} required={required} material={material} dept={dept} runs={runs} runsOnly={runsOnly} />}
           </tbody>
         </table>
       </div>
@@ -167,7 +179,7 @@ function Sheet({ c, dept, dateLabel, required, material, runs, first }: { c: Mac
           <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-muted bg-surface-2">Next, in this order</div>
           <table className="w-full text-sm border-collapse">
             <thead>{head}</thead>
-            <tbody><Rows lines={c.waiting} from={1} required={required} material={material} dept={dept} runs={runs} /></tbody>
+            <tbody><Rows lines={c.waiting} from={1} required={required} material={material} dept={dept} runs={runs} runsOnly={runsOnly} /></tbody>
           </table>
         </div>
       )}
