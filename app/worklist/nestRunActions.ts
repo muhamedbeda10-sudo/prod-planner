@@ -33,7 +33,7 @@ interface RunForm {
   identical: boolean;
   minutes: number[];
   note: string | null;
-  parts: { bom: string; mo: string; item: string; pcs: number }[];
+  parts: { bom: string; mo: string; item: string; pcs: number; replaces: string }[];
 }
 
 /** The run as the form sends it — the sheet, how many, the cutting time and
@@ -78,7 +78,9 @@ function readRunForm(fd: FormData, needParts = true): RunForm | { error: string 
       const k = `${bom}|${mo}|${item}`;
       if (seen.has(k)) return { error: `${bom} ${item} is in the run twice — put its pieces on one row.` };
       seen.add(k);
-      parts.push({ bom, mo, item, pcs });
+      // a part off a sheet its nesting does not use names the sheet it stands in for
+      const replaces = String(p?.replaces ?? "").trim().slice(0, 120);
+      parts.push({ bom, mo, item, pcs, replaces });
     }
   }
   return { material, thicknessMm, sheetSize, sheets, identical, minutes, note: text(fd, "note", 500) || null, parts };

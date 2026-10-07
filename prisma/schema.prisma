@@ -1296,6 +1296,10 @@ model NestRunPart {
   pcs         Int
   donePcs     Int     @default(0)
   consumedPcs Int     @default(0)
+  // A part cut from a sheet its nesting does not use — a 4 mm instead of its
+  // 3 mm: the item's sheet this one stands in for ("<thk>|<material>|<size>"),
+  // so the item counts as cut on it. "" = the run's own sheet is the item's.
+  replaces    String  @default("")
 
   @@index([runId])
   @@index([bom, mo, item])

@@ -96,6 +96,10 @@ export interface RunCandidate {
   key: string; bom: string; mo: string; item: string; description: string; remaining: number;
   /** The plan's Required for the whole BOM. */
   required: number;
+  /** Pieces no machine or run holds yet (the most any of its sheets lacks). */
+  free: number;
+  /** The sheets its own nesting cuts it from. */
+  sheets: string[];
 }
 
 export interface ReadyCut {
@@ -335,7 +339,12 @@ export async function getMachineBoard(dept: BoardDept, planLines: readonly Board
       seenLine.add(l.key);
       const open = remainingOf.get(l.key);
       if (!open || open.remaining <= 0) continue;
-      runCandidates.push({ key: l.key, bom: l.bom, mo: l.mo, item: l.item, description: l.description, remaining: open.remaining, required: ctx.requiredByBom.get(l.bom) ?? 0 });
+      const step1 = board.unassigned.filter((u) => u.key === l.key && u.stepNo === 1);
+      runCandidates.push({
+        key: l.key, bom: l.bom, mo: l.mo, item: l.item, description: l.description, remaining: open.remaining, required: ctx.requiredByBom.get(l.bom) ?? 0,
+        free: step1.reduce((n, u) => Math.max(n, u.remaining), 0),
+        sheets: (material[l.key]?.specs ?? []).map(sheetKeyOf),
+      });
       for (const sp of material[l.key]?.specs ?? []) {
         const sheet = sheetKeyOf(sp);
         const free = freeOn(l.key, sheet);

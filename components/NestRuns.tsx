@@ -50,17 +50,23 @@ interface JobChoice {
   free: number;
   /** The orders behind it, in the order their pieces are filled. */
   lines: { key: string; free: number }[];
+  /** Its nesting uses the run's sheet — else it is cut from it in place of its own. */
+  match: boolean;
+  /** The sheets its own nesting cuts it from. */
+  sheets: string[];
 }
 
-interface PartRow { job: string; pcs: string }
+/** A part on the run; `replaces` is the job's own sheet it stands in for
+ *  when the run's sheet is not one its nesting uses. */
+interface PartRow { job: string; pcs: string; replaces: string }
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100);
 
 function groupJobs(opt: RunSheetOption | undefined, candidates: RunCandidate[], run?: NestRunView): JobChoice[] {
   const by = new Map<string, JobChoice>();
-  const add = (l: { key: string; bom: string; item: string; required: number; free: number; material?: string; materialCode?: string; jobSheets?: number | null; perUnit?: number | null }) => {
+  const add = (l: { key: string; bom: string; item: string; required: number; free: number; material?: string; materialCode?: string; jobSheets?: number | null; perUnit?: number | null; match?: boolean; sheets?: string[] }) => {
     const k = `${l.bom}|${l.item}`;
-    const cur = by.get(k) ?? { key: k, bom: l.bom, item: l.item, required: l.required, material: l.material ?? "", materialCode: l.materialCode ?? "", jobSheets: l.jobSheets ?? null, perUnit: l.perUnit ?? null, free: 0, lines: [] };
+    const cur = by.get(k) ?? { key: k, bom: l.bom, item: l.item, required: l.required, material: l.material ?? "", materialCode: l.materialCode ?? "", jobSheets: l.jobSheets ?? null, perUnit: l.perUnit ?? null, free: 0, lines: [], match: l.match ?? true, sheets: l.sheets ?? [] };
     cur.free += l.free;
     const line = cur.lines.find((x) => x.key === l.key);
     if (line) line.free += l.free;
@@ -69,28 +75,39 @@ function groupJobs(opt: RunSheetOption | undefined, candidates: RunCandidate[], 
     by.set(k, cur);
   };
   if (opt) for (const l of opt.lines) add(l);
-  else for (const c of candidates) add({ key: c.key, bom: c.bom, item: c.item, required: c.required, free: c.remaining });
+  // every other open job can go on the sheets too — cut from them in place of
+  // its own (a 4 mm instead of its 3 mm)
+  const inOpt = new Set(by.keys());
+  for (const c of candidates) {
+    if (inOpt.has(`${c.bom}|${c.item}`)) continue;
+    add({ key: c.key, bom: c.bom, item: c.item, required: c.required, free: c.free, match: false, sheets: c.sheets });
+  }
   // a run being edited holds its own parts' pieces: they are its to keep
   // (an open line's free count leaves them out), and a part whose line has
   // nothing else free still shows
   if (run) {
-    const seen = new Set(opt ? [] : candidates.map((c) => c.key));
     for (const p of run.parts) {
       const key = `${p.bom}|${p.mo}|${p.item}`;
-      if (seen.has(key)) continue;
       const pcs = p.pcs - p.consumedPcs;
       if (pcs <= 0) continue;
-      add({ key, bom: p.bom, item: p.item, required: candidates.find((c) => c.bom === p.bom)?.required ?? 0, free: pcs, material: run.material });
+      const c = candidates.find((x) => x.key === key);
+      add({ key, bom: p.bom, item: p.item, required: c?.required ?? candidates.find((x) => x.bom === p.bom)?.required ?? 0, free: pcs, material: run.material, match: !p.replaces, sheets: c?.sheets ?? (p.replaces ? [p.replaces] : []) });
     }
   }
-  return [...by.values()];
+  // the jobs that use the sheet first, then the ones that would stand in
+  return [...by.values()].sort((a, b) => Number(b.match) - Number(a.match) || a.bom.localeCompare(b.bom) || a.item.localeCompare(b.item));
 }
 
 /** A run's parts back in the form's rows: one per BOM's part. */
 function rowsOf(run: NestRunView): PartRow[] {
-  const by = new Map<string, number>();
-  for (const p of run.parts) by.set(`${p.bom}|${p.item}`, (by.get(`${p.bom}|${p.item}`) ?? 0) + p.pcs);
-  return [...by].map(([job, pcs]) => ({ job, pcs: String(pcs) }));
+  const by = new Map<string, PartRow>();
+  for (const p of run.parts) {
+    const k = `${p.bom}|${p.item}`;
+    const cur = by.get(k) ?? { job: k, pcs: "0", replaces: p.replaces };
+    cur.pcs = String(Number(cur.pcs) + p.pcs);
+    by.set(k, cur);
+  }
+  return [...by.values()];
 }
 
 type FormProps = { machines: MachineDTO[]; options: RunSheetOption[]; candidates: RunCandidate[] };
@@ -175,11 +192,11 @@ function NestRunForm({ machines, options, candidates, run, onClose }: FormProps 
     fd.set("thicknessMm", spec.thicknessMm); fd.set("material", spec.material); fd.set("sheetSize", spec.sheetSize);
     fd.set("identical", identical ? "true" : "false");
     fd.set("minutes", JSON.stringify(mins));
-    const out: { bom: string; mo: string; item: string; pcs: number }[] = [];
+    const out: { bom: string; mo: string; item: string; pcs: number; replaces: string }[] = [];
     for (const p of parts) {
       const job = byJob.get(p.job);
       if (!job) continue;
-      for (const s of spread(job, Number(p.pcs) || 0)) { const [bom, mo, item] = s.key.split("|"); out.push({ bom, mo, item, pcs: s.pcs }); }
+      for (const s of spread(job, Number(p.pcs) || 0)) { const [bom, mo, item] = s.key.split("|"); out.push({ bom, mo, item, pcs: s.pcs, replaces: job.match ? "" : p.replaces }); }
     }
     fd.set("parts", JSON.stringify(out));
     if (run) fd.set("id", String(run.id));
@@ -188,7 +205,20 @@ function NestRunForm({ machines, options, candidates, run, onClose }: FormProps 
   const field = "border rounded-md px-2 py-1.5 bg-surface text-sm";
   const label = "block text-xs font-semibold text-muted mb-0.5";
   const th = "p-1.5 text-left text-[11px] font-bold uppercase tracking-wide text-muted";
-  const matCell = (j: JobChoice) => (j.material ? <span>{j.material}{j.materialCode && <span className="text-muted"> · {j.materialCode}</span>}</span> : <span className="text-muted">—</span>);
+  const matCell = (j: JobChoice) => (j.match
+    ? (j.material ? <span>{j.material}{j.materialCode && <span className="text-muted"> · {j.materialCode}</span>}</span> : <span className="text-muted">—</span>)
+    : <span><span className="pill pill-warn text-[10px] me-1" title="Its nesting does not use this sheet — it would be cut from it in place of its own">other sheet</span><span className="text-muted">{j.sheets.length ? `its own: ${j.sheets.map(sheetKeyLabel).join(", ")}` : "no nesting"}</span></span>);
+  // a substitute part names the job's own sheet it stands in for
+  const insteadCell = (p: PartRow, i: number, j: JobChoice) => (j.match ? matCell(j) : (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <span className="pill pill-warn text-[10px]">instead of</span>
+      {j.sheets.length > 1 ? (
+        <select value={p.replaces} disabled={locked} onChange={(e) => setParts(parts.map((x, k) => (k === i ? { ...x, replaces: e.target.value } : x)))} className="border rounded-md px-1.5 py-0.5 bg-surface text-xs">
+          {j.sheets.map((sh) => <option key={sh} value={sh}>{sheetKeyLabel(sh)}</option>)}
+        </select>
+      ) : <span className="text-xs">{j.sheets[0] ? sheetKeyLabel(j.sheets[0]) : "— (no nesting)"}</span>}
+    </span>
+  ));
   return (
         <Modal
           title={run ? `✎ Edit nest run #${run.id}` : "🧩 New nest run"}
@@ -278,7 +308,7 @@ function NestRunForm({ machines, options, candidates, run, onClose }: FormProps 
                             <td className="p-1.5 font-bold whitespace-nowrap">{j.bom}</td>
                             <td className="p-1.5 font-semibold">{j.item}</td>
                             <td className="p-1.5 text-right tabnum">{fmt(j.required)}</td>
-                            <td className="p-1.5 text-xs">{matCell(j)}</td>
+                            <td className="p-1.5 text-xs">{insteadCell(p, i, j)}</td>
                             <td className="p-1.5 text-right tabnum">{j.jobSheets !== null ? fmt(j.jobSheets) : "—"}</td>
                             <td className="p-1.5"><input type="number" min={1} step={1} disabled={locked} value={p.pcs} onChange={(e) => setParts(parts.map((x, k) => (k === i ? { ...x, pcs: e.target.value } : x)))} className={`${field} w-full tabnum`} title={`${j.free} free on this job`} /></td>
                             <td className="p-1.5 text-right tabnum text-muted">{sh !== null ? fmt(sh) : "—"}</td>
@@ -300,7 +330,7 @@ function NestRunForm({ machines, options, candidates, run, onClose }: FormProps 
             {/* the jobs that can go on them */}
             {!locked && <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Jobs that need {opt ? sheetKeyLabel(opt.sheet) : "a sheet"}</span>
+                <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Open jobs{opt ? ` — those that use ${sheetKeyLabel(opt.sheet)} first` : ""}</span>
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search BOM / item / material…" className={`${field} ms-auto w-64 py-1`} />
               </div>
               <div className="rounded-lg border max-h-64 overflow-y-auto">
@@ -311,7 +341,7 @@ function NestRunForm({ machines, options, candidates, run, onClose }: FormProps 
                     <thead className="sticky top-0 bg-surface-2 z-10"><tr><th className={th}>BOM ref</th><th className={th}>Item</th><th className={`${th} text-right`}>Required</th><th className={th}>Material</th><th className={`${th} text-right`}>No. of sheets</th><th className={`${th} text-right`}>Free</th><th className="w-10"></th></tr></thead>
                     <tbody>
                       {browse.map((j) => (
-                        <tr key={j.key} className="border-t cursor-pointer hover:bg-brand-light/40" onClick={() => setParts([...parts, { job: j.key, pcs: String(j.free) }])} title="Add to the run">
+                        <tr key={j.key} className="border-t cursor-pointer hover:bg-brand-light/40" onClick={() => setParts([...parts, { job: j.key, pcs: String(j.free || ""), replaces: j.match ? "" : j.sheets[0] ?? "" }])} title="Add to the run">
                           <td className="p-1.5 font-bold whitespace-nowrap">{j.bom}</td>
                           <td className="p-1.5 font-semibold">{j.item}</td>
                           <td className="p-1.5 text-right tabnum">{fmt(j.required)}</td>

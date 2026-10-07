@@ -148,7 +148,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
         // a machine's sheet figures and the nest runs' cut parts, sheet by sheet
         const rows = [
           ...cutSheets.map((r) => ({ id: `w${r.id}`, sheet: r.sheet, sheetDone: r.sheetDone })),
-          ...runParts.filter((p) => p.donePcs > p.consumedPcs).map((p) => ({ id: `p${p.id}`, sheet: runSheet(p.run), sheetDone: p.donePcs - p.consumedPcs })),
+          ...runParts.filter((p) => p.donePcs > p.consumedPcs).map((p) => ({ id: `p${p.id}`, sheet: p.replaces || runSheet(p.run), sheetDone: p.donePcs - p.consumedPcs })),
         ];
         for (const [id, left] of consumeSheetDone(rows, qty)) {
           const n = Number(id.slice(1));

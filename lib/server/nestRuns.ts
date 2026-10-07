@@ -19,7 +19,7 @@ export async function getNestRuns(dept: string): Promise<NestRunView[]> {
   }
   return [...open, ...done].map((r) => ({
     id: r.id, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, sheets: r.sheets, sheetsDone: r.sheetsDone, identical: r.identical, sheetMinutes: r.sheetMinutes, note: r.note,
-    parts: r.parts.map((p) => ({ id: p.id, bom: p.bom, mo: p.mo, item: p.item, pcs: p.pcs, donePcs: p.donePcs, consumedPcs: p.consumedPcs })),
+    parts: r.parts.map((p) => ({ id: p.id, bom: p.bom, mo: p.mo, item: p.item, pcs: p.pcs, donePcs: p.donePcs, consumedPcs: p.consumedPcs, replaces: p.replaces })),
     onMachines: on.get(r.id) ?? [],
     createdBy: r.createdBy, createdAtISO: r.createdAt.toISOString(), doneAtISO: r.doneAt ? r.doneAt.toISOString() : null,
   }));
@@ -31,7 +31,7 @@ export function runCover(runs: readonly NestRunView[]): { key: string; sheet: st
   const out: { key: string; sheet: string; pcs: number }[] = [];
   for (const r of runs) for (const p of r.parts) {
     const pcs = p.pcs - p.consumedPcs;
-    if (pcs > 0) out.push({ key: `${p.bom}|${p.mo}|${p.item}`, sheet: runSheet(r), pcs });
+    if (pcs > 0) out.push({ key: `${p.bom}|${p.mo}|${p.item}`, sheet: p.replaces || runSheet(r), pcs });
   }
   return out;
 }
@@ -42,7 +42,7 @@ export function runCut(runs: readonly NestRunView[]): { key: string; sheet: stri
   const out: { key: string; sheet: string; sheetDone: number }[] = [];
   for (const r of runs) for (const p of r.parts) {
     const n = p.donePcs - p.consumedPcs;
-    if (n > 0) out.push({ key: `${p.bom}|${p.mo}|${p.item}`, sheet: runSheet(r), sheetDone: n });
+    if (n > 0) out.push({ key: `${p.bom}|${p.mo}|${p.item}`, sheet: p.replaces || runSheet(r), sheetDone: n });
   }
   return out;
 }

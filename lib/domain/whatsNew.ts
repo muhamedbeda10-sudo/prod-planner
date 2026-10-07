@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-07-run-any-job",
+    dateISO: "2026-10-07",
+    title: "Any open job on a nest run — one sheet in place of another",
+    where: "Cut worklist → 🧩 Nest run",
+    body: "The job list now shows every open job: the ones whose nesting uses the run's sheet first, then the rest marked \"other sheet\". A job cut from a sheet in place of its own (a 4 mm instead of its 3 mm) says which of its sheets it stands in for — picked for you when it has only one — so the item still counts as cut on every sheet.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-07-run-edit",
     dateISO: "2026-10-07",
     title: "Edit a nest run",

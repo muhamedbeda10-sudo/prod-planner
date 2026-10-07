@@ -5,7 +5,7 @@ describe("nestRun", () => {
   it("keys and words", () => {
     expect(runIdOf(runMo(7))).toBe(7);
     expect(runIdOf("PF01/MO/1")).toBeNull();
-    const r = { sheets: 5, thicknessMm: 3, material: "Steel", sheetSize: "1250*2500", parts: [{ id: 1, bom: "B1", mo: "M1", item: "TN", pcs: 12, donePcs: 0, consumedPcs: 0 }] };
+    const r = { sheets: 5, thicknessMm: 3, material: "Steel", sheetSize: "1250*2500", parts: [{ id: 1, bom: "B1", mo: "M1", item: "TN", pcs: 12, donePcs: 0, consumedPcs: 0, replaces: "" }] };
     expect(runSheet(r)).toBe("3|Steel|1250*2500");
     expect(runDescription(r)).toBe("🧩 5 × 3 mm MS 1250×2500 — B1 TN ×12");
   });

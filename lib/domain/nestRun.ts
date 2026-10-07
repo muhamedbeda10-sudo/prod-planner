@@ -25,6 +25,9 @@ export interface NestRunPartView {
   pcs: number;
   donePcs: number;
   consumedPcs: number;
+  /** The item's own sheet this part stands in for, when the run's sheet is
+   *  not one its nesting uses; "" = the run's sheet is the item's. */
+  replaces: string;
 }
 
 export interface NestRunView {
