@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { itemHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
 import { buildMachineBoard, lineKey, type Assignment, type BoardLine, type LinePlacement, type MachineBoard } from "@/lib/domain/machineBoard";
 import { centerShares, hoursOfShift, isShiftCode, round1, routeFor } from "@/lib/domain/shifts";
+import { ITEM_NAME, applicableItems, ospOf } from "@/lib/domain/constants";
+import { isOnHold } from "@/lib/domain/hold";
 import { dateForOffsetISO, offsetForDateISO } from "@/lib/domain/whatif";
 import type { OptLine, OptMachine, OptPin } from "@/lib/domain/optimizePlan";
 import { getStdData } from "./standardTimes";
@@ -192,7 +194,7 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
   // the floor knows a job by
   const requiredByBom = new Map<string, number>();
   for (const o of orders) if (o.status === "open") requiredByBom.set(o.bom, (requiredByBom.get(o.bom) ?? 0) + o.planQty);
-  return { machines, assignments, price, perPiece, urgentByMo, downtimeH, crewH, crew, rates, orderOf: (mo: string) => orderByMo.get(mo), requiredByBom };
+  return { machines, assignments, price, perPiece, urgentByMo, downtimeH, crewH, crew, rates, orderOf: (mo: string) => orderByMo.get(mo), requiredByBom, orders };
 }
 
 export async function getMachineBoard(dept: BoardDept, planLines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
@@ -211,8 +213,10 @@ export async function getMachineBoard(dept: BoardDept, planLines: readonly Board
   // holds elsewhere. An item spread by sheet (over machines or runs) also
   // gets its list of sheets, so the board can say which still need a machine.
   const placedKeys = new Set(ctx.assignments.map((a) => a.key));
+  // the cutting board's nest runs can carry any part the plan still owes
+  const registry = dept === "Cut" ? await registryCutLines(ctx.orders) : [];
   const refs = new Map<string, { key: string; bom: string; mo: string; item: string }>();
-  for (const l of lines) {
+  for (const l of [...lines, ...registry]) {
     const key = lineKey(l.bom, l.mo, l.item);
     if (manualIdOf(l.mo) !== null) continue;
     if (dept === "Cut" || placedKeys.has(key) || coverKeys.has(key)) refs.set(key, { key, bom: l.bom, mo: l.mo, item: l.item });
@@ -305,6 +309,11 @@ export async function getMachineBoard(dept: BoardDept, planLines: readonly Board
     const cur = remainingOf.get(k);
     remainingOf.set(k, { remaining: (cur?.remaining ?? 0) + l.remaining, l: cur?.l ?? l });
   }
+  // a part the worklist does not show yet (its day has not come, or the line
+  // is hidden) can still sit in a run — the registry says what is left of it
+  const registryOf = new Map<string, BoardLineInput>();
+  for (const r of registry) registryOf.set(lineKey(r.bom, r.mo, r.item), r);
+  for (const [k, r] of registryOf) if (!remainingOf.has(k)) remainingOf.set(k, { remaining: r.remaining, l: r });
   const readyCut: ReadyCut[] = [];
   for (const key of bySheet) {
     const open = remainingOf.get(key);
@@ -328,26 +337,38 @@ export async function getMachineBoard(dept: BoardDept, planLines: readonly Board
   const runOptions: RunSheetOption[] = [];
   const runCandidates: RunCandidate[] = [];
   if (dept === "Cut") {
-    const freeOn = (key: string, sheet: string) => {
+    // what the board already holds of a line on a sheet: placed on machines
+    // (its worklist pieces less what still waits) or carried by a run
+    const boardRemaining = new Map<string, number>();
+    for (const l of priced) boardRemaining.set(l.key, (boardRemaining.get(l.key) ?? 0) + l.remaining);
+    const coverOf = (key: string, sheet: string) => cover.filter((c) => c.key === key && (!sheet || c.sheet === sheet)).reduce((n, c) => n + c.pcs, 0);
+    const placedOn = (key: string, sheet: string) => {
+      const onBoard = boardRemaining.get(key);
+      if (onBoard === undefined) return coverOf(key, sheet);
       const step1 = board.unassigned.filter((u) => u.key === key && u.stepNo === 1);
-      return (step1.find((u) => u.sheet === sheet) ?? step1.find((u) => !u.sheet))?.remaining ?? 0;
+      const waiting = (sheet ? step1.find((u) => u.sheet === sheet) : undefined) ?? step1.find((u) => !u.sheet);
+      // a line spread by sheet with nothing waiting on this one is fully placed on it
+      const left = waiting?.remaining ?? (sheet && step1.some((u) => u.sheet) ? 0 : step1.reduce((n, u) => Math.max(n, u.remaining), 0));
+      return Math.max(0, onBoard - left);
     };
     const bySheetOpt = new Map<string, RunSheetOption>();
     const seenLine = new Set<string>();
-    for (const l of priced) {
+    for (const l of [...priced, ...registry.map((r) => ({ ...r, key: lineKey(r.bom, r.mo, r.item) }))]) {
       if (seenLine.has(l.key) || manualIdOf(l.mo) !== null || runIdOf(l.mo) !== null) continue;
       seenLine.add(l.key);
-      const open = remainingOf.get(l.key);
-      if (!open || open.remaining <= 0) continue;
-      const step1 = board.unassigned.filter((u) => u.key === l.key && u.stepNo === 1);
+      // the plan's own figure where the registry has the line, else the board's
+      const remaining = registryOf.get(l.key)?.remaining ?? remainingOf.get(l.key)?.remaining ?? 0;
+      if (remaining <= 0) continue;
+      const specs = material[l.key]?.specs ?? [];
+      const freeOn = (sheet: string) => Math.max(0, remaining - placedOn(l.key, sheet));
       runCandidates.push({
-        key: l.key, bom: l.bom, mo: l.mo, item: l.item, description: l.description, remaining: open.remaining, required: ctx.requiredByBom.get(l.bom) ?? 0,
-        free: step1.reduce((n, u) => Math.max(n, u.remaining), 0),
-        sheets: (material[l.key]?.specs ?? []).map(sheetKeyOf),
+        key: l.key, bom: l.bom, mo: l.mo, item: l.item, description: l.description, remaining, required: ctx.requiredByBom.get(l.bom) ?? 0,
+        free: specs.length > 0 ? Math.max(...specs.map((sp) => freeOn(sheetKeyOf(sp)))) : freeOn(""),
+        sheets: specs.map(sheetKeyOf),
       });
-      for (const sp of material[l.key]?.specs ?? []) {
+      for (const sp of specs) {
         const sheet = sheetKeyOf(sp);
-        const free = freeOn(l.key, sheet);
+        const free = freeOn(sheet);
         if (free <= 0) continue;
         const opt = bySheetOpt.get(sheet) ?? { sheet, material: sp.material, thicknessMm: sp.thicknessMm, sheetSize: sp.sheetSize, lines: [] };
         opt.lines.push({
@@ -363,6 +384,26 @@ export async function getMachineBoard(dept: BoardDept, planLines: readonly Board
     ...board, readyCut, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), days, assigned, material, manualJobs,
     nestRuns, runOptions, runCandidates,
   };
+}
+
+/** Every transformer part the plan still owes cutting on, straight off the
+ *  registry — open orders not on hold, each applicable component, its order
+ *  qty less the OSP share less what is already cut. Wider than the cutting
+ *  worklist, which shows a line only once its day comes (or it is pushed,
+ *  remarked or date-less) and leaves the hidden ones out: a nest run can
+ *  carry any of them now. */
+async function registryCutLines(orders: readonly { mo: string; bom: string; line: string; status: string; holdAt: Date | null; planQty: number; ospCF: number; ospTC: number; ospTN: number; ospCB: number }[] & Parameters<typeof applicableItems>[0][]): Promise<BoardLineInput[]> {
+  const done = await prisma.handoverEntry.groupBy({ by: ["mo", "item"], where: { dept: "Cut", mo: { not: null } }, _sum: { qty: true } });
+  const doneOf = new Map(done.map((d) => [`${d.mo}|${d.item}`, d._sum.qty ?? 0]));
+  const out: BoardLineInput[] = [];
+  for (const o of orders) {
+    if (o.line !== "TR" || o.status !== "open" || isOnHold(o)) continue;
+    for (const item of applicableItems(o)) {
+      const left = Math.max(0, o.planQty - ospOf(o, item) - (doneOf.get(`${o.mo}|${item}`) ?? 0));
+      if (left > 0) out.push({ bom: o.bom, mo: o.mo, item, description: ITEM_NAME[item], remaining: left, deliveryISO: null });
+    }
+  }
+  return out;
 }
 
 /** What the ⚡ optimizer plans from: the department's machines with the hours

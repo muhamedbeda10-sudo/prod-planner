@@ -12,7 +12,7 @@ import type { MachineCard, MachineQueueLine } from "@/lib/domain/machineBoard";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PrintButton } from "@/components/PrintButton";
 import { PageHeader } from "@/components/ui";
-import { minutesLeft, minutesText, runIdOf, type NestRunView } from "@/lib/domain/nestRun";
+import { runIdOf, type NestRunView } from "@/lib/domain/nestRun";
 import { LineMaterialChips } from "@/components/LineMaterialChips";
 import { sheetKeyOf, sheetSizeLabel, sheetsFor, thicknessLabel, type LineMaterial } from "@/lib/domain/machineMaterial";
 
@@ -67,11 +67,7 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
   );
 }
 
-function ddmm(iso: string) {
-  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-}
-
-function Rows({ lines, from = 1, soi, today, material, dept, runs }: { lines: MachineQueueLine[]; from?: number; soi: Record<string, string>; today: string; material: Record<string, LineMaterial>; dept: string; runs: Record<number, NestRunView> }) {
+function Rows({ lines, from = 1, soi, material, dept, runs }: { lines: MachineQueueLine[]; from?: number; soi: Record<string, string>; material: Record<string, LineMaterial>; dept: string; runs: Record<number, NestRunView> }) {
   return (
     <>
       {lines.map((q, i) => {
@@ -86,10 +82,9 @@ function Rows({ lines, from = 1, soi, today, material, dept, runs }: { lines: Ma
                 {runJobs(run).map((p) => <tr key={`${p.bom}|${p.item}`}><td className="pe-2 font-bold whitespace-nowrap">{p.bom}</td><td className="pe-2 font-semibold">{p.item}</td><td className="text-right tabnum whitespace-nowrap">× {p.pcs}</td></tr>)}
               </tbody></table>
             </td>
-            <td className="p-2"><LineMaterialChips m={material[q.key]} pcs={q.remaining} sheets size="print" /></td>
+            {/* the sheets are counted in Pcs beside it — the thickness and size only here */}
+            <td className="p-2"><LineMaterialChips m={material[q.key]} pcs={q.remaining} sheets={false} size="print" /></td>
             <td className="p-2 text-center font-extrabold tabnum text-lg whitespace-nowrap">{q.remaining}<span className="text-xs font-semibold"> sh</span>{run.sheetsDone > 0 && <span className="block text-[10px] font-semibold text-muted">{run.sheetsDone} of {run.sheets} cut</span>}</td>
-            <td className="p-2 text-center tabnum whitespace-nowrap">{(() => { const m = minutesLeft(run); return m !== null ? minutesText(m) : q.hours !== null ? q.hours : "—"; })()}</td>
-            <td className="p-2 text-center">—</td>
             <td className="p-2 w-28 border-l"></td>
           </tr>
         );
@@ -104,8 +99,6 @@ function Rows({ lines, from = 1, soi, today, material, dept, runs }: { lines: Ma
           {/* the sheet it is cut from: thickness first — what the machine is set for */}
           <td className="p-2">{material[q.key] || q.sheet ? <LineMaterialChips m={material[q.key]} pcs={q.remaining} sheets={dept === "Cut" && q.stepNo === 1} sheet={q.sheet} size="print" /> : <span className="text-muted text-xs">—</span>}</td>
           <td className="p-2 text-center font-extrabold tabnum text-lg whitespace-nowrap">{q.remaining}{runIdOf(q.mo) !== null && <span className="text-xs font-semibold"> sh</span>}{q.split && <span className="block text-[10px] font-semibold text-muted">of {q.lineRemaining}</span>}</td>
-          <td className="p-2 text-center tabnum">{q.hours !== null ? q.hours : "—"}</td>
-          <td className={`p-2 text-center tabnum whitespace-nowrap ${q.deliveryISO && q.deliveryISO < today ? "text-bad-fg font-bold" : ""}`}>{q.deliveryISO ? ddmm(q.deliveryISO) : "—"}</td>
           <td className="p-2 w-28 border-l"></td>
         </tr>
         );
@@ -127,7 +120,6 @@ function runJobs(run: NestRunView) {
 }
 
 function Sheet({ c, dept, dateLabel, soi, material, runs, first }: { c: MachineCard; dept: string; dateLabel: string; soi: Record<string, string>; material: Record<string, LineMaterial>; runs: Record<number, NestRunView>; first: boolean }) {
-  const today = new Date().toISOString().slice(0, 10);
   const head = (
     <tr className="bg-brand text-white text-left">
       <th className="p-2 w-10 text-center">#</th>
@@ -138,8 +130,6 @@ function Sheet({ c, dept, dateLabel, soi, material, runs, first }: { c: MachineC
       <th className="p-2">Description</th>
       <th className="p-2" title="Thickness · sheet size · sheets the pieces take (* = BOM rate, not nested yet)">{dept === "Cut" ? "Thk · Sheet · Sheets" : "Thickness"}</th>
       <th className="p-2 text-center">Pcs</th>
-      <th className="p-2 text-center">Std h</th>
-      <th className="p-2 text-center">Deliver</th>
       <th className="p-2 w-28">Done ✓</th>
     </tr>
   );
@@ -157,7 +147,7 @@ function Sheet({ c, dept, dateLabel, soi, material, runs, first }: { c: MachineC
         <table className="w-full text-sm border-collapse">
           <thead>{head}</thead>
           <tbody>
-            {c.running.length === 0 ? <tr><td colSpan={11} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr> : <Rows lines={c.running} from={0} soi={soi} today={today} material={material} dept={dept} runs={runs} />}
+            {c.running.length === 0 ? <tr><td colSpan={9} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr> : <Rows lines={c.running} from={0} soi={soi} material={material} dept={dept} runs={runs} />}
           </tbody>
         </table>
       </div>
@@ -166,7 +156,7 @@ function Sheet({ c, dept, dateLabel, soi, material, runs, first }: { c: MachineC
           <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-muted bg-surface-2">Next, in this order</div>
           <table className="w-full text-sm border-collapse">
             <thead>{head}</thead>
-            <tbody><Rows lines={c.waiting} from={1} soi={soi} today={today} material={material} dept={dept} runs={runs} /></tbody>
+            <tbody><Rows lines={c.waiting} from={1} soi={soi} material={material} dept={dept} runs={runs} /></tbody>
           </table>
         </div>
       )}
