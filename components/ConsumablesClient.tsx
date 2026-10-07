@@ -11,6 +11,7 @@ import { ActionMsg as Msg, RevisionItem, useConsumableAction as useAction } from
 import { Modal } from "@/components/Modal";
 import { TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
 import { SearchBox } from "@/components/FilterControls";
+import { BarChart3 } from "lucide-react";
 
 // The CONSUMABLES tab: the store's log of what it hands out — to a
 // department (the limits count it there), naming who asked for it or
@@ -483,64 +484,87 @@ function IssueRow({ e, data, isAdmin, showActions, colSpan }: { e: ConsumableIss
   );
 }
 
-const SUMMARY_TOP = 8;
-
 /**
  * Beside the log: what the hand-outs on screen add up to — per item (in its
  * own unit) and per department. It follows the period and the search, and is
  * worked out from the rows the page already holds; nothing more is fetched.
  */
-function HandoutSummaryPanel({ rows, periodLabel }: { rows: ConsumableIssueView[]; periodLabel: string }) {
-  const s = useMemo(() => summarizeHandouts(rows), [rows]);
-  const [allItems, setAllItems] = useState(false);
-  const [allDepts, setAllDepts] = useState(false);
-  const items = allItems ? s.items : s.items.slice(0, SUMMARY_TOP);
-  const depts = allDepts ? s.departments : s.departments.slice(0, SUMMARY_TOP);
-  const topDept = Math.max(1, ...s.departments.map((d) => d.handouts));
-  const more = (n: number, open: boolean, toggle: () => void) =>
-    n > SUMMARY_TOP && (
-      <button type="button" className="text-xs font-semibold text-accent hover:underline mt-1" onClick={toggle} aria-expanded={open}>
-        {open ? "Show the top only" : `+${n - SUMMARY_TOP} more`}
-      </button>
-    );
+/** Summary ▸ — what the hand-outs on screen add up to, per item and per
+ *  department, in a popup over the log. Totals only; the log is the record. */
+function HandoutSummaryButton({ rows, periodLabel }: { rows: ConsumableIssueView[]; periodLabel: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <aside className="bg-surface border rounded-xl p-3 space-y-4 no-print" aria-label="Summary">
-      <div>
-        <h2 className="!mb-0">Summary</h2>
-        <p className="text-xs text-muted">{rows.length} hand-out{rows.length === 1 ? "" : "s"} {periodLabel}</p>
+    <>
+      <button type="button" className="btn btn-sm btn-secondary" onClick={() => setOpen(true)} disabled={rows.length === 0} title="What these hand-outs add up to, per item and per department">
+        <BarChart3 size={14} aria-hidden />Summary
+      </button>
+      {open && <HandoutSummary rows={rows} periodLabel={periodLabel} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function HandoutSummary({ rows, periodLabel, onClose }: { rows: ConsumableIssueView[]; periodLabel: string; onClose: () => void }) {
+  const s = useMemo(() => summarizeHandouts(rows), [rows]);
+  const topItem = Math.max(1, ...s.items.map((i) => i.handouts));
+  const topDept = Math.max(1, ...s.departments.map((d) => d.handouts));
+  const stat = (label: string, n: number) => (
+    <div className="kpi !py-2">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-muted">{label}</div>
+      <div className="text-2xl font-extrabold tabnum leading-tight">{n}</div>
+    </div>
+  );
+  const bar = (share: number) => (
+    <div className="h-1 rounded bg-surface-3 overflow-hidden mt-1" aria-hidden>
+      <span className="block h-full rounded bg-[var(--info-fg)] opacity-70" style={{ width: `${Math.max(4, share * 100)}%` }} />
+    </div>
+  );
+  return (
+    <Modal title="Summary" sub={`${rows.length} hand-out${rows.length === 1 ? "" : "s"} ${periodLabel}`} onClose={onClose} width="max-w-4xl">
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {stat("Hand-outs", rows.length)}
+        {stat("Items", s.items.length)}
+        {stat("Departments", s.departments.length)}
       </div>
-      <section>
-        <div className="filter-label mb-1">By item</div>
-        <ul className="space-y-0.5">
-          {items.map((it) => (
-            <li key={`${it.item}|${it.uom ?? ""}`} className="flex items-baseline gap-2 text-sm min-w-0">
-              <span className="truncate min-w-0 flex-1" title={it.item}>{it.item}</span>
-              <span className="tabnum font-bold whitespace-nowrap">{formatQty(it.qty)}{it.uom && <span className="text-[11px] text-muted font-semibold ms-0.5">{it.uom}</span>}</span>
-              <span className="tabnum text-xs text-muted w-8 text-end" title={`${it.handouts} hand-out${it.handouts === 1 ? "" : "s"}`}>×{it.handouts}</span>
-            </li>
-          ))}
-        </ul>
-        {more(s.items.length, allItems, () => setAllItems((v) => !v))}
-      </section>
-      <section>
-        <div className="filter-label mb-1">By department</div>
-        <ul className="space-y-1">
-          {depts.map((d) => (
-            <li key={d.department} className="text-sm" title={`${d.handouts} hand-out${d.handouts === 1 ? "" : "s"} · ${d.items} item${d.items === 1 ? "" : "s"}`}>
-              <div className="flex items-baseline gap-2 min-w-0">
-                <span className="truncate min-w-0 flex-1">{d.department}</span>
-                <span className="tabnum font-bold">{d.handouts}</span>
-                <span className="tabnum text-xs text-muted w-14 text-end">{d.items} item{d.items === 1 ? "" : "s"}</span>
-              </div>
-              <div className="h-1 rounded bg-surface-3 overflow-hidden mt-0.5" aria-hidden>
-                <span className="block h-full rounded bg-[var(--info-fg)] opacity-70" style={{ width: `${(d.handouts / topDept) * 100}%` }} />
-              </div>
-            </li>
-          ))}
-        </ul>
-        {more(s.departments.length, allDepts, () => setAllDepts((v) => !v))}
-      </section>
-    </aside>
+      <div className="grid gap-5 md:grid-cols-2">
+        <section>
+          <div className="flex items-baseline mb-2">
+            <h3 className="filter-label">By item</h3>
+            <span className="ms-auto text-[11px] text-muted">qty · hand-outs</span>
+          </div>
+          <ul className="space-y-2">
+            {s.items.map((it) => (
+              <li key={`${it.item}|${it.uom ?? ""}`} className="text-sm">
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <span className="truncate min-w-0 flex-1 font-semibold" title={it.item}>{it.item}</span>
+                  <span className="tabnum font-bold whitespace-nowrap">{formatQty(it.qty)}{it.uom && <span className="text-[11px] text-muted font-semibold ms-0.5">{it.uom}</span>}</span>
+                  <span className="tabnum text-xs text-muted w-9 text-end" title={`${it.handouts} hand-out${it.handouts === 1 ? "" : "s"}`}>×{it.handouts}</span>
+                </div>
+                {bar(it.handouts / topItem)}
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section>
+          <div className="flex items-baseline mb-2">
+            <h3 className="filter-label">By department</h3>
+            <span className="ms-auto text-[11px] text-muted">hand-outs · items</span>
+          </div>
+          <ul className="space-y-2">
+            {s.departments.map((d) => (
+              <li key={d.department} className="text-sm">
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <span className="truncate min-w-0 flex-1 font-semibold" title={d.department}>{d.department}</span>
+                  <span className="tabnum font-bold">{d.handouts}</span>
+                  <span className="tabnum text-xs text-muted w-14 text-end">{d.items} item{d.items === 1 ? "" : "s"}</span>
+                </div>
+                {bar(d.handouts / topDept)}
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+      <p className="text-[11px] text-muted mt-4 pt-3 border-t">Counts the hand-outs the log is showing — search narrows them. A quantity in one unit never adds to another (kg apart from pcs).</p>
+    </Modal>
   );
 }
 
@@ -581,11 +605,10 @@ export function ConsumablesClient({
           <b className="text-foreground tabnum">{shown.length}</b>
           {shown.length !== data.entries.length && <> of <span className="tabnum">{data.entries.length}</span></>} hand-out{data.entries.length === 1 ? "" : "s"} {periodLabel}
         </span>
+        <HandoutSummaryButton rows={shown} periodLabel={periodLabel} />
       </div>
       {!canRecord && <p className="text-xs text-muted">You can view the log. Recording hand-outs needs the “Consumables — record” permission — ask the admin.</p>}
 
-      {/* the log, and beside it (under it on a narrow screen) what it adds up to */}
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_19rem] items-start">
       <section className="bg-surface border rounded-xl overflow-hidden">
         {data.entries.length === 0 ? (
           <TableEmpty title={`Nothing handed out ${periodLabel}`} hint={canRecord ? "Record a hand-out above — it shows here at once." : undefined} />
@@ -618,8 +641,6 @@ export function ConsumablesClient({
           </TableFrame>
         )}
       </section>
-      {shown.length > 0 && <HandoutSummaryPanel rows={shown} periodLabel={periodLabel} />}
-      </div>
     </div>
   );
 }
