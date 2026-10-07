@@ -182,11 +182,13 @@ const HEADERS: Record<string, string> = {
   REMARKS: "remarks",
 };
 
-/** Find the header row: the one that contains both an MO and a BOM header. */
-function findHeaderRow(grid: unknown[][]): number {
+/** Find the header row: the one that contains both an MO and a BOM header.
+ *  An LV sheet may name the product by its FG code alone (the meter boxes'
+ *  plan has no BOM column), so there an FG Code header stands in. */
+function findHeaderRow(grid: unknown[][], line: ProductLine): number {
   for (let r = 0; r < Math.min(10, grid.length); r++) {
     const cells = (grid[r] ?? []).map((c) => norm(S(c)));
-    if (cells.includes("MO") && (cells.includes("BOMREF") || cells.includes("BOM"))) return r;
+    if (cells.includes("MO") && (cells.includes("BOMREF") || cells.includes("BOM") || (line === "LV" && cells.includes("FGCODE")))) return r;
   }
   return -1;
 }
@@ -200,7 +202,7 @@ function findHeaderRow(grid: unknown[][]): number {
  */
 export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): ParsedMonthly {
   const issues: string[] = [];
-  const hr = findHeaderRow(grid);
+  const hr = findHeaderRow(grid, line);
   if (hr < 0) {
     return { rows: [], issues: ['Could not find the header row (needs "MO." and "BoM Ref." columns).'], headerRow: -1 };
   }
@@ -211,6 +213,17 @@ export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): P
   for (let c = 0; c < header.length; c++) {
     const key = HEADERS[norm(S(header[c]))];
     if (key && cols[key] === undefined) cols[key] = c;
+  }
+  if (line === "LV") {
+    // the meter boxes' plan: no BOM column — its FG code is the product, as
+    // the panels' sheet writes the same code in both columns — and its
+    // outside-bought quantity headed just "OSP" (a transformer sheet's OSP
+    // is a section of components, read below)
+    if (cols.bom === undefined && cols.fgCode !== undefined) cols.bom = cols.fgCode;
+    if (cols.ospEncloser === undefined) {
+      const osp = header.findIndex((h) => norm(S(h)) === "OSP");
+      if (osp >= 0) cols.ospEncloser = osp;
+    }
   }
   if (cols.mo === undefined || cols.bom === undefined) {
     return { rows: [], issues: ["Header row found but MO/BOM columns could not be mapped."], headerRow: hr + 1 };

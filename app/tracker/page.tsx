@@ -58,7 +58,7 @@ export default async function TrackerPage({
           editableStages={user ? LV_CHAIN.filter((s) => hasPerm(user, lvPermKey(s))) : []}
           canStatus={!!user && hasPerm(user, "lv.status")}
           prefs={lvPrefs}
-          head={<PageHead title="Plan Tracker" sub="LV Panels · one row per panel order, every stage" views={<ViewTabs views={trackerViews("LV")} current="/tracker" label="Tracker view" />} />}
+          head={<PageHead title="Plan Tracker" sub="LV Panels · one row per panel or meter box order, every stage" views={<ViewTabs views={trackerViews("LV")} current="/tracker" label="Tracker view" />} />}
         />
       </>
     );

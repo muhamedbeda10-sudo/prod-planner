@@ -15,6 +15,8 @@ export interface LvTrackerRow {
   urgent: boolean;
   customer: string | null;
   product: string | null;
+  /** The plan it came from — "" the panels', "MB" the meter boxes'. */
+  family: string;
   fgCode: string | null;
   secItem: string | null;
   ospEncloser: number;
@@ -56,7 +58,7 @@ export async function getLvTracker(): Promise<LvTrackerRow[]> {
     };
     const complete = lvComplete(state);
     return {
-      mo: o.mo, bom: o.bom, soi: o.soi, urgent: o.urgent, customer: o.customer, product: o.product, fgCode: o.fgCode,
+      mo: o.mo, bom: o.bom, soi: o.soi, urgent: o.urgent, customer: o.customer, product: o.product, family: o.family, fgCode: o.fgCode,
       secItem: o.secItem, ospEncloser: o.ospEncloser, remarks: o.remarks, materialsRemarks: o.materialsRemarks,
       state, complete,
       remaining: Math.max(0, o.planQty - complete),

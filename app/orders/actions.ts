@@ -7,7 +7,7 @@ import { requirePerm, requireAdmin, getCurrentUser, hasPerm } from "@/lib/server
 import { applicableItems, ospOf, isDept, isPaintExempt, deptLabel, itemOverrides, isItem, ITEMS, DELIVERED_STAGE } from "@/lib/domain/constants";
 import { finsGroup, isFullyDelivered, spreadOverGroup } from "@/lib/domain/groupSpread";
 import { getActiveLine } from "@/lib/server/line";
-import { LV_ITEM } from "@/lib/domain/lv";
+import { LV_ITEM, isLvFamily } from "@/lib/domain/lv";
 import { linePermKey } from "@/lib/domain/permissions";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
@@ -364,7 +364,11 @@ export async function importMonthlyAction(formData: FormData): Promise<MonthlyIm
     const buffer = await file.arrayBuffer();
     const preview = formData.get("preview") === "on"; // dry-run: report only, write nothing
     // the toggle at the top says which product the sheet plans
-    const res = await importMonthlyPlan(buffer, label, preview, await getActiveLine());
+    const line = await getActiveLine();
+    // the LV line imports two plans — the panels' and the meter boxes'
+    const family = line === "LV" ? String(formData.get("family") ?? "") : "";
+    if (!isLvFamily(family)) return { ok: false, error: "Pick which plan the sheet is." };
+    const res = await importMonthlyPlan(buffer, label, preview, line, family);
     if (res.ok && !preview) revalidatePath("/orders");
     return res;
   } catch (e) {

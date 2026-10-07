@@ -22,6 +22,17 @@ export const LV_ITEM = "PNL";
  *  nothing. Free text is still accepted, so a new type needs no code change. */
 export const LV_PRODUCTS = ["USS", "LSS"] as const;
 
+/** The plans the LV line imports, each from its own sheet: the panels' plan
+ *  (the line's main one, "") and the meter boxes' plan ("MB"). They share the
+ *  tracker, the stages and the ledger; a plan's import only revises — and
+ *  takes off the month — the orders of its own plan. */
+export const LV_FAMILIES = ["", "MB"] as const;
+export type LvFamily = (typeof LV_FAMILIES)[number];
+export const LV_FAMILY_LABEL: Record<LvFamily, string> = { "": "LV panels", MB: "Meter boxes" };
+export function isLvFamily(x: string): x is LvFamily {
+  return (LV_FAMILIES as readonly string[]).includes(x);
+}
+
 export const LV_STAGES = ["Punching", "Bending", "Welding", "Painting"] as const;
 export type LvStage = (typeof LV_STAGES)[number];
 
