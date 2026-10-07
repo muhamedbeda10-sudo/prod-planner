@@ -20,6 +20,7 @@ import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
 import { capsFor, spreadOverGroup } from "@/lib/domain/groupSpread";
 import { LV_ITEM, LV_STAGES } from "@/lib/domain/lv";
 import { consumeSheetDone } from "@/lib/domain/machineMaterial";
+import { runSheet } from "@/lib/domain/nestRun";
 
 export interface RecordResult {
   ok: boolean;
@@ -140,8 +141,23 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
       // the item cut and counted: the sheets' pieces already cut for it on
       // the machines are accounted for now, so they come off those figures
       if (dept === "Cut" && qty > 0) {
-        const cutSheets = await tx.worklistMachine.findMany({ where: { dept: "Cut", bom, mo, item, sheet: { not: "" }, sheetDone: { gt: 0 } }, orderBy: { id: "asc" } });
-        for (const [id, sheetDone] of consumeSheetDone(cutSheets, qty)) await tx.worklistMachine.update({ where: { id }, data: { sheetDone } });
+        const [cutSheets, runParts] = await Promise.all([
+          tx.worklistMachine.findMany({ where: { dept: "Cut", bom, mo, item, sheet: { not: "" }, sheetDone: { gt: 0 } }, orderBy: { id: "asc" } }),
+          tx.nestRunPart.findMany({ where: { bom, mo, item }, orderBy: { id: "asc" }, include: { run: { select: { thicknessMm: true, material: true, sheetSize: true } } } }),
+        ]);
+        // a machine's sheet figures and the nest runs' cut parts, sheet by sheet
+        const rows = [
+          ...cutSheets.map((r) => ({ id: `w${r.id}`, sheet: r.sheet, sheetDone: r.sheetDone })),
+          ...runParts.filter((p) => p.donePcs > p.consumedPcs).map((p) => ({ id: `p${p.id}`, sheet: runSheet(p.run), sheetDone: p.donePcs - p.consumedPcs })),
+        ];
+        for (const [id, left] of consumeSheetDone(rows, qty)) {
+          const n = Number(id.slice(1));
+          if (id.startsWith("w")) await tx.worklistMachine.update({ where: { id: n }, data: { sheetDone: left } });
+          else {
+            const p = runParts.find((x) => x.id === n)!;
+            await tx.nestRunPart.update({ where: { id: n }, data: { consumedPcs: p.donePcs - left } });
+          }
+        }
       }
       if (!mintsTanks) return [];
       const minted = await mintTankSerials(tx, {

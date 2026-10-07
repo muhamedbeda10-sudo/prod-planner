@@ -14,6 +14,9 @@ import { LineMaterialChips } from "@/components/LineMaterialChips";
 import { AddManualJob, ManualJobsList } from "@/components/ManualJobs";
 import { recordManualDone } from "@/app/worklist/manualActions";
 import { manualIdOf } from "@/lib/domain/manualJob";
+import { runIdOf } from "@/lib/domain/nestRun";
+import { AddNestRun, NestRunsList } from "@/components/NestRuns";
+import { recordNestRunSheets } from "@/app/worklist/nestRunActions";
 import { sheetKeyLabel, sheetKeyOf, thicknessLabel, sheetSizeLabel, type LineMaterial } from "@/lib/domain/machineMaterial";
 import { Modal } from "@/components/Modal";
 
@@ -284,10 +287,12 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
     // a job from outside the plan records on itself, never in the plan's
     // ledger; one sheet of an item records that sheet's cutting only
     const manual = manualIdOf(q.mo);
+    const run = runIdOf(q.mo);
     if (manual !== null) fd.set("id", String(manual));
+    if (run !== null) fd.set("id", String(run));
     fd.set("sheet", q.sheet);
     startTransition(async () => {
-      const res = manual !== null ? await recordManualDone(fd) : q.sheet ? await recordSheetDone(fd) : await recordOutput(fd);
+      const res = manual !== null ? await recordManualDone(fd) : run !== null ? await recordNestRunSheets(fd) : q.sheet ? await recordSheetDone(fd) : await recordOutput(fd);
       if (res.ok) { setVal(""); router.refresh(); } else onErr(res.error ?? "Failed");
     });
   };
@@ -299,7 +304,7 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
         className="border rounded-md px-1 py-0.5 bg-surface text-xs tabnum w-12 ltr"
-        title={q.sheet ? `Pieces' worth of this sheet cut — blank = all ${q.remaining}. Once every sheet of the item is cut, the board offers to record the whole pieces.` : `Pieces finished — blank records all ${q.remaining}. What is left stays in the queue.`}
+        title={runIdOf(q.mo) !== null ? `Sheets of the run finished — blank = all ${q.remaining}. Each job's pieces follow.` : q.sheet ? `Pieces' worth of this sheet cut — blank = all ${q.remaining}. Once every sheet of the item is cut, the board offers to record the whole pieces.` : `Pieces finished — blank records all ${q.remaining}. What is left stays in the queue.`}
       />
       <button type="button" className="btn btn-sm btn-primary px-1.5" disabled={pending} title={`Record what is done (blank = all ${q.remaining}); the rest stays in the queue`} onClick={save}>✓</button>
     </span>
@@ -369,7 +374,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
           <div className="text-[10px] font-bold uppercase tracking-wide text-brand">▶ Now{c.running.length > 1 ? ` · ${c.running.length} together` : ""}</div>
           {c.running.map((q) => (
             <div key={`${q.key}#${q.sheet}`} className="flex items-baseline gap-2 flex-wrap">
-              {manualIdOf(q.mo) !== null ? <span className="font-extrabold">{q.description}</span> : <>
+              {manualIdOf(q.mo) !== null || runIdOf(q.mo) !== null ? <span className="font-extrabold">{q.description}</span> : <>
               <span className="font-extrabold">{q.bom}</span>
               <span className="font-bold">{q.item}</span></>}
               <span className="tabnum font-extrabold text-brand">×{q.remaining}</span>
@@ -399,7 +404,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
           {c.waiting.map((q, i) => (
             <li key={`${q.key}#${q.sheet}`} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
               <span className="w-5 text-center font-extrabold tabnum text-muted">{i + 1}</span>
-              {manualIdOf(q.mo) !== null ? <span className="font-bold">{q.description}</span> : <>
+              {manualIdOf(q.mo) !== null || runIdOf(q.mo) !== null ? <span className="font-bold">{q.description}</span> : <>
               <span className="font-bold">{q.bom}</span>
               <span className="font-semibold">{q.item}</span></>}
               <span className="tabnum font-bold">×{q.remaining}</span>
@@ -503,8 +508,9 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
   const undatedShown = showAll ? undated : undated.slice(0, 6);
   const row = (u: MachineBoardData["unassigned"][number]) => (
     <li key={`${u.key}#${u.center}`} className="flex items-center gap-2 text-xs min-w-0">
+      {manualIdOf(u.mo) !== null || runIdOf(u.mo) !== null ? <span className="font-bold truncate">{u.description}</span> : <>
       <span className="font-bold truncate">{u.bom}</span>
-      <span className="font-semibold shrink-0">{u.item}</span>
+      <span className="font-semibold shrink-0">{u.item}</span></>}
       <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
       {multi && <span className="pill pill-muted shrink-0" title={`${CENTER_LABEL[u.center] ?? u.center} — step ${u.stepNo} of ${u.stepCount} on this line's route`}>{u.center}</span>}
       {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
@@ -563,6 +569,8 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
             📊 Timeline
           </button>
         )}
+        {canEdit && board.dept === "Cut" && <AddNestRun machines={board.machines} options={board.runOptions} candidates={board.runCandidates} />}
+        {board.dept === "Cut" && (canEdit || board.nestRuns.length > 0) && <NestRunsList runs={board.nestRuns} machines={board.machines} canEdit={canEdit} />}
         {canEdit && <AddManualJob dept={board.dept} machines={board.machines} />}
         {(canEdit || board.manualJobs.length > 0) && <ManualJobsList dept={board.dept} jobs={board.manualJobs} machines={board.machines} canEdit={canEdit} />}
         <Link href={`/worklist/machines?dept=${board.dept}`} className="btn btn-sm btn-secondary ms-2 normal-case no-print" title={`One sheet per ${word}, each on its own page — hand them to the technicians`}>🖨 Print all sheets</Link>

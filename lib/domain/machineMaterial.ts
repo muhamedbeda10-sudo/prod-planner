@@ -148,9 +148,9 @@ export function fullyCutPieces(rows: readonly { sheet: string; sheetDone: number
 /** Take `qty` pieces off a sheet's cut figures, row by row: the item was
  *  recorded, so that many pieces of every sheet are accounted for. Returns
  *  the new figure per row id. */
-export function consumeSheetDone(rows: readonly { id: number; sheet: string; sheetDone: number }[], qty: number): Map<number, number> {
-  const out = new Map<number, number>();
-  const bySheet = new Map<string, { id: number; sheetDone: number }[]>();
+export function consumeSheetDone<I>(rows: readonly { id: I; sheet: string; sheetDone: number }[], qty: number): Map<I, number> {
+  const out = new Map<I, number>();
+  const bySheet = new Map<string, { id: I; sheetDone: number }[]>();
   for (const r of rows) if (r.sheet) (bySheet.get(r.sheet) ?? bySheet.set(r.sheet, []).get(r.sheet)!).push(r);
   for (const list of bySheet.values()) {
     let left = Math.max(0, Math.round(qty));

@@ -174,7 +174,11 @@ export function buildMachineBoard(
   today: { downtimeH?: Record<number, number>; crewH?: Record<number, number>; crew?: Record<number, string[]> } = {},
   /** machine id → item → hours ONE piece costs THAT machine. The planner's own
    *  figure: where it is set it outranks the estimate for that machine's queue. */
-  rates: Record<number, Record<string, number>> = {}
+  rates: Record<number, Record<string, number>> = {},
+  /** Pieces of a line's sheet already on a machine inside a NEST RUN (sheets
+   *  shared by several jobs' parts) — that sheet of the line is covered for
+   *  them, though the run is its own line on the board. */
+  cover: readonly { key: string; sheet: string; pcs: number }[] = []
 ): MachineBoard {
   const open = new Map<string, BoardLine>();
   // a line with nothing left is off the board however it was assigned;
@@ -223,6 +227,14 @@ export function buildMachineBoard(
   const ordered = [...assignments].sort((x, y) => Number(!!y.running) - Number(!!x.running) || x.rank - y.rank);
   const explicit = ordered.filter((a) => a.qty !== null && a.qty !== undefined);
   const open_ = ordered.filter((a) => a.qty === null || a.qty === undefined);
+  for (const c of cover) {
+    const l = open.get(c.key);
+    const step = l?.route[0]?.center;
+    if (!l || !step || !c.sheet || !(c.pcs > 0)) continue;
+    const pool = `${c.key}#${step}`;
+    givenSheet.set(`${pool}#${c.sheet}`, (givenSheet.get(`${pool}#${c.sheet}`) ?? 0) + c.pcs);
+    (sheetsAt.get(pool) ?? sheetsAt.set(pool, new Set()).get(pool)!).add(c.sheet);
+  }
   const maxSheet = (pool: string) => Math.max(0, ...[...(sheetsAt.get(pool) ?? [])].map((sh) => givenSheet.get(`${pool}#${sh}`) ?? 0));
   const pending: { a: Assignment; pcs: number; step: string }[] = [];
   for (const a of [...explicit, ...open_]) {
