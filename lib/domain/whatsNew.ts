@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-07-run-edit",
+    dateISO: "2026-10-07",
+    title: "Edit a nest run",
+    where: "Cut worklist → ✎ on the run's card line · 📋 Runs → ✎ Edit",
+    body: "A run opens again in its form. Before any of its sheets is cut, everything changes — the sheet, how many, the time, the jobs on it. Once sheets are cut, what was cut stays: the number of sheets (never below those cut), the time and the note still change.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-07-run-time",
     dateISO: "2026-10-07",
     title: "Nest runs: cutting time, and jobs picked by BOM",

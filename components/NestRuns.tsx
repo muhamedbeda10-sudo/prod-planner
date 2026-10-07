@@ -3,9 +3,9 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
-import { createNestRun, deleteNestRun, type NestRunResult } from "@/app/worklist/nestRunActions";
+import { createNestRun, deleteNestRun, updateNestRun, type NestRunResult } from "@/app/worklist/nestRunActions";
 import { assignLineMachine } from "@/app/worklist/machineActions";
-import { RUN_BOM, RUN_ITEM, expectedSheets, minutesPerSheet, minutesText, runMo, runTitle, type NestRunView } from "@/lib/domain/nestRun";
+import { RUN_BOM, RUN_ITEM, expectedSheets, minutesPerSheet, minutesText, runMo, runSheet, runTitle, type NestRunView } from "@/lib/domain/nestRun";
 import { sheetKeyLabel } from "@/lib/domain/machineMaterial";
 import { MATERIAL_PRESETS, SHEET_SIZE_PRESETS } from "@/lib/domain/material";
 import { formatDate } from "@/lib/domain/format";
@@ -56,20 +56,44 @@ interface PartRow { job: string; pcs: string }
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100);
 
-function groupJobs(opt: RunSheetOption | undefined, candidates: RunCandidate[]): JobChoice[] {
+function groupJobs(opt: RunSheetOption | undefined, candidates: RunCandidate[], run?: NestRunView): JobChoice[] {
   const by = new Map<string, JobChoice>();
   const add = (l: { key: string; bom: string; item: string; required: number; free: number; material?: string; materialCode?: string; jobSheets?: number | null; perUnit?: number | null }) => {
     const k = `${l.bom}|${l.item}`;
     const cur = by.get(k) ?? { key: k, bom: l.bom, item: l.item, required: l.required, material: l.material ?? "", materialCode: l.materialCode ?? "", jobSheets: l.jobSheets ?? null, perUnit: l.perUnit ?? null, free: 0, lines: [] };
     cur.free += l.free;
-    cur.lines.push({ key: l.key, free: l.free });
+    const line = cur.lines.find((x) => x.key === l.key);
+    if (line) line.free += l.free;
+    else cur.lines.push({ key: l.key, free: l.free });
     if (cur.jobSheets === null && l.jobSheets != null) cur.jobSheets = l.jobSheets;
     by.set(k, cur);
   };
   if (opt) for (const l of opt.lines) add(l);
   else for (const c of candidates) add({ key: c.key, bom: c.bom, item: c.item, required: c.required, free: c.remaining });
+  // a run being edited holds its own parts' pieces: they are its to keep
+  // (an open line's free count leaves them out), and a part whose line has
+  // nothing else free still shows
+  if (run) {
+    const seen = new Set(opt ? [] : candidates.map((c) => c.key));
+    for (const p of run.parts) {
+      const key = `${p.bom}|${p.mo}|${p.item}`;
+      if (seen.has(key)) continue;
+      const pcs = p.pcs - p.consumedPcs;
+      if (pcs <= 0) continue;
+      add({ key, bom: p.bom, item: p.item, required: candidates.find((c) => c.bom === p.bom)?.required ?? 0, free: pcs, material: run.material });
+    }
+  }
   return [...by.values()];
 }
+
+/** A run's parts back in the form's rows: one per BOM's part. */
+function rowsOf(run: NestRunView): PartRow[] {
+  const by = new Map<string, number>();
+  for (const p of run.parts) by.set(`${p.bom}|${p.item}`, (by.get(`${p.bom}|${p.item}`) ?? 0) + p.pcs);
+  return [...by].map(([job, pcs]) => ({ job, pcs: String(pcs) }));
+}
+
+type FormProps = { machines: MachineDTO[]; options: RunSheetOption[]; candidates: RunCandidate[] };
 
 /** A job's pieces over the orders behind it: each takes what it has free,
  *  in turn; anything past that lands on the last. */
@@ -86,18 +110,46 @@ function spread(job: JobChoice, pcs: number): { key: string; pcs: number }[] {
 }
 
 /** "🧩 Nest run" — sheets of one thickness, carrying parts of several jobs. */
-export function AddNestRun({ machines, options, candidates }: { machines: MachineDTO[]; options: RunSheetOption[]; candidates: RunCandidate[] }) {
+export function AddNestRun(props: FormProps) {
   const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="btn btn-sm btn-secondary ms-1 normal-case no-print" onClick={() => setOpen(true)} title="Sheets of one thickness carrying parts of several jobs — put them on a laser as one run">
+        🧩 Nest run
+      </button>
+      {open && <NestRunForm {...props} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/** ✎ on a run's line on a machine card — the same form, on that run. */
+export function EditNestRun({ run, ...props }: FormProps & { run: NestRunView }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="btn btn-sm btn-ghost px-1" onClick={() => setOpen(true)} title="Edit the run">✎</button>
+      {open && <NestRunForm {...props} run={run} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/** The run's form — a new run, or one to edit. Once some of a run's sheets
+ *  are cut, the sheet and what is on it are what was cut: they stay, and only
+ *  the number of sheets (never below those cut), the time and the note change. */
+function NestRunForm({ machines, options, candidates, run, onClose }: FormProps & { run?: NestRunView; onClose: () => void }) {
   const a = useRun();
-  const [sheet, setSheet] = useState(options[0]?.sheet ?? OTHER);
-  const [other, setOther] = useState({ thicknessMm: "", material: "Steel", sheetSize: "" });
-  const [sheets, setSheets] = useState("");
-  const [identical, setIdentical] = useState(true);
-  const [minutes, setMinutes] = useState<string[]>([]);
-  const [parts, setParts] = useState<PartRow[]>([]);
+  const runKey = run ? runSheet(run) : null;
+  const locked = !!run && run.sheetsDone > 0;
+  const [sheet, setSheet] = useState(run ? (options.some((o) => o.sheet === runKey) ? runKey! : OTHER) : options[0]?.sheet ?? OTHER);
+  const [other, setOther] = useState(run ? { thicknessMm: String(run.thicknessMm), material: run.material, sheetSize: run.sheetSize } : { thicknessMm: "", material: "Steel", sheetSize: "" });
+  const [sheets, setSheets] = useState(run ? String(run.sheets) : "");
+  const [identical, setIdentical] = useState(run ? run.identical : true);
+  const [minutes, setMinutes] = useState<string[]>(run ? run.sheetMinutes.map(String) : []);
+  const [parts, setParts] = useState<PartRow[]>(run ? rowsOf(run) : []);
   const [q, setQ] = useState("");
   const opt = options.find((o) => o.sheet === sheet);
-  const jobs = useMemo(() => groupJobs(opt, candidates), [opt, candidates]);
+  // the run's own parts belong to it only on its own sheet
+  const jobs = useMemo(() => groupJobs(opt, candidates, run && (sheet === runKey || (!opt && sheet === OTHER)) ? run : undefined), [opt, candidates, run, sheet, runKey]);
   const byJob = new Map(jobs.map((j) => [j.key, j]));
   const nSheets = Number(sheets);
   const sheetCount = Number.isInteger(nSheets) && nSheets > 0 ? Math.min(nSheets, MAX_SHEET_TIMES) : 0;
@@ -130,38 +182,38 @@ export function AddNestRun({ machines, options, candidates }: { machines: Machin
       for (const s of spread(job, Number(p.pcs) || 0)) { const [bom, mo, item] = s.key.split("|"); out.push({ bom, mo, item, pcs: s.pcs }); }
     }
     fd.set("parts", JSON.stringify(out));
-    a.run(createNestRun, fd, () => { setOpen(false); setParts([]); setSheets(""); setMinutes([]); setQ(""); });
+    if (run) fd.set("id", String(run.id));
+    a.run(run ? updateNestRun : createNestRun, fd, onClose);
   };
   const field = "border rounded-md px-2 py-1.5 bg-surface text-sm";
   const label = "block text-xs font-semibold text-muted mb-0.5";
   const th = "p-1.5 text-left text-[11px] font-bold uppercase tracking-wide text-muted";
   const matCell = (j: JobChoice) => (j.material ? <span>{j.material}{j.materialCode && <span className="text-muted"> · {j.materialCode}</span>}</span> : <span className="text-muted">—</span>);
   return (
-    <>
-      <button type="button" className="btn btn-sm btn-secondary ms-1 normal-case no-print" onClick={() => setOpen(true)} title="Sheets of one thickness carrying parts of several jobs — put them on a laser as one run">
-        🧩 Nest run
-      </button>
-      {open && (
-        <Modal title="🧩 New nest run" sub="Sheets of one material and thickness, the nesting on them carrying parts of several jobs. The technician records it by the sheets finished." onClose={() => setOpen(false)} busy={a.pending} width="max-w-5xl">
+        <Modal
+          title={run ? `✎ Edit nest run #${run.id}` : "🧩 New nest run"}
+          sub={locked ? `${run!.sheetsDone} of its ${run!.sheets} sheets are cut — the sheet and what is on it stay as cut; the number of sheets (not below ${run!.sheetsDone}), the time and the note can change.` : "Sheets of one material and thickness, the nesting on them carrying parts of several jobs. The technician records it by the sheets finished."}
+          onClose={onClose} busy={a.pending} width="max-w-5xl"
+        >
           <form onSubmit={submit} className="space-y-4">
             {/* the sheet */}
             <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
               <label className="col-span-2 sm:col-span-3"><span className={label}>Sheet</span>
-                <select value={sheet} onChange={(e) => pickSheet(e.target.value)} className={`${field} w-full`}>
+                <select value={sheet} onChange={(e) => pickSheet(e.target.value)} disabled={locked} className={`${field} w-full`}>
                   {options.map((o) => <option key={o.sheet} value={o.sheet}>{sheetKeyLabel(o.sheet)} — {new Set(o.lines.map((l) => `${l.bom}|${l.item}`)).size} job(s)</option>)}
                   <option value={OTHER}>Another sheet — type it</option>
                 </select>
               </label>
               <label><span className={label}>Sheets *</span>
-                <input name="sheets" type="number" min={1} step={1} required value={sheets} onChange={(e) => setSheets(e.target.value)} className={`${field} w-full tabnum`} />
+                <input name="sheets" type="number" min={locked ? run!.sheetsDone : 1} step={1} required value={sheets} onChange={(e) => setSheets(e.target.value)} className={`${field} w-full tabnum`} />
               </label>
-              <label className="col-span-1 sm:col-span-2"><span className={label}>Laser</span>
+              {!run && <label className="col-span-1 sm:col-span-2"><span className={label}>Laser</span>
                 <select name="machineId" defaultValue={machines[0]?.id ?? ""} className={`${field} w-full`}>
                   <option value="">— none yet —</option>
                   {machines.map((m) => <option key={m.id} value={m.id}>{m.code} · {m.name}</option>)}
                 </select>
-              </label>
-              {!opt && (
+              </label>}
+              {!opt && !locked && (
                 <>
                   <label className="col-span-1 sm:col-span-2"><span className={label}>Thickness (mm) *</span>
                     <input type="number" min={0} step="0.1" required value={other.thicknessMm} onChange={(e) => setOther({ ...other, thicknessMm: e.target.value })} className={`${field} w-full tabnum`} />
@@ -228,9 +280,9 @@ export function AddNestRun({ machines, options, candidates }: { machines: Machin
                             <td className="p-1.5 text-right tabnum">{fmt(j.required)}</td>
                             <td className="p-1.5 text-xs">{matCell(j)}</td>
                             <td className="p-1.5 text-right tabnum">{j.jobSheets !== null ? fmt(j.jobSheets) : "—"}</td>
-                            <td className="p-1.5"><input type="number" min={1} step={1} value={p.pcs} onChange={(e) => setParts(parts.map((x, k) => (k === i ? { ...x, pcs: e.target.value } : x)))} className={`${field} w-full tabnum`} title={`${j.free} free on this job`} /></td>
+                            <td className="p-1.5"><input type="number" min={1} step={1} disabled={locked} value={p.pcs} onChange={(e) => setParts(parts.map((x, k) => (k === i ? { ...x, pcs: e.target.value } : x)))} className={`${field} w-full tabnum`} title={`${j.free} free on this job`} /></td>
                             <td className="p-1.5 text-right tabnum text-muted">{sh !== null ? fmt(sh) : "—"}</td>
-                            <td className="p-1.5"><button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => setParts(parts.filter((_, k) => k !== i))} aria-label="Remove">✕</button></td>
+                            <td className="p-1.5">{!locked && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={() => setParts(parts.filter((_, k) => k !== i))} aria-label="Remove">✕</button>}</td>
                           </tr>
                         );
                       })}
@@ -246,7 +298,7 @@ export function AddNestRun({ machines, options, candidates }: { machines: Machin
             </div>
 
             {/* the jobs that can go on them */}
-            <div>
+            {!locked && <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Jobs that need {opt ? sheetKeyLabel(opt.sheet) : "a sheet"}</span>
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search BOM / item / material…" className={`${field} ms-auto w-64 py-1`} />
@@ -273,28 +325,28 @@ export function AddNestRun({ machines, options, candidates }: { machines: Machin
                   </table>
                 )}
               </div>
-            </div>
+            </div>}
 
             <label className="block"><span className={label}>Note</span>
-              <input name="note" maxLength={500} className={`${field} w-full`} placeholder="Nest no., program…" />
+              <input name="note" maxLength={500} defaultValue={run?.note ?? ""} className={`${field} w-full`} placeholder="Nest no., program…" />
             </label>
 
             {a.err && <p className="text-sm font-semibold text-bad-fg">{a.err}</p>}
             <div className="flex justify-end gap-2">
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={a.pending}>Cancel</button>
-              <button type="submit" className="btn btn-sm btn-primary" disabled={a.pending || parts.length === 0}>{a.pending ? "Saving…" : "Save run"}</button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={onClose} disabled={a.pending}>Cancel</button>
+              <button type="submit" className="btn btn-sm btn-primary" disabled={a.pending || parts.length === 0}>{a.pending ? "Saving…" : run ? "Save changes" : "Save run"}</button>
             </div>
           </form>
         </Modal>
-      )}
-    </>
   );
 }
 
 /** 📋 The nest runs — open ones first, then the finished — with what each
  *  carried and how far it got. */
-export function NestRunsList({ runs, machines, canEdit }: { runs: NestRunView[]; machines: MachineDTO[]; canEdit: boolean }) {
+export function NestRunsList({ runs, machines, canEdit, options, candidates }: FormProps & { runs: NestRunView[]; canEdit: boolean }) {
   const [open, setOpen] = useState(false);
+  // ✎ — the run opens in its form, the list closed behind it
+  const [editing, setEditing] = useState<NestRunView | null>(null);
   const a = useRun();
   const openCount = runs.filter((r) => !r.doneAtISO).length;
   const putOn = (r: NestRunView, machineId: string) => {
@@ -337,6 +389,7 @@ export function NestRunsList({ runs, machines, canEdit }: { runs: NestRunView[];
                             <option value="">{r.onMachines.length > 0 ? "Move to…" : "Put on…"}</option>
                             {machines.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}
                           </select>
+                          <button type="button" className="btn btn-sm btn-secondary" disabled={a.pending} onClick={() => { setOpen(false); setEditing(r); }} title={r.sheetsDone > 0 ? "Edit — the sheets, the time and the note (what is cut stays)" : "Edit the run"}>✎ Edit</button>
                           {r.sheetsDone === 0 && <button type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={a.pending} onClick={() => del(r)} title="Delete — put together by mistake">✕</button>}
                         </span>
                       )}
@@ -354,6 +407,7 @@ export function NestRunsList({ runs, machines, canEdit }: { runs: NestRunView[];
           {a.err && <p className="text-sm font-semibold text-bad-fg mt-2">{a.err}</p>}
         </Modal>
       )}
+      {editing && <NestRunForm machines={machines} options={options} candidates={candidates} run={editing} onClose={() => setEditing(null)} />}
     </>
   );
 }

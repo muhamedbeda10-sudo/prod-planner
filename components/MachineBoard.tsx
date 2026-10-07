@@ -15,7 +15,7 @@ import { AddManualJob, ManualJobsList } from "@/components/ManualJobs";
 import { recordManualDone } from "@/app/worklist/manualActions";
 import { manualIdOf } from "@/lib/domain/manualJob";
 import { runIdOf } from "@/lib/domain/nestRun";
-import { AddNestRun, NestRunsList } from "@/components/NestRuns";
+import { AddNestRun, EditNestRun, NestRunsList } from "@/components/NestRuns";
 import { recordNestRunSheets } from "@/app/worklist/nestRunActions";
 import { sheetKeyLabel, sheetKeyOf, thicknessLabel, sheetSizeLabel, type LineMaterial } from "@/lib/domain/machineMaterial";
 import { Modal } from "@/components/Modal";
@@ -339,6 +339,10 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
     a.run(setLineQty, fd);
   };
   const done = (q: MachineQueueLine) => (canEdit ? <DoneBox board={board} q={q} machineId={c.machine.id} onErr={a.setErr} /> : null);
+  const runEdit = (q: MachineQueueLine) => {
+    const run = board.nestRuns.find((r) => r.id === runIdOf(q.mo));
+    return run && canEdit ? <EditNestRun run={run} machines={board.machines} options={board.runOptions} candidates={board.runCandidates} /> : null;
+  };
   return (
     <div className={`bg-surface border rounded-xl p-3 flex flex-col gap-2 ${c.machine.active ? "" : "opacity-70"}`}>
       <div className="flex items-start gap-2">
@@ -387,6 +391,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
               {canEdit && (
                 <span className="ms-auto inline-flex items-center gap-1 no-print">
                   {done(q)}
+                  {runEdit(q)}
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item, q.sheet))}>✕</button>
@@ -416,6 +421,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
               {canEdit && (
                 <span className="ms-auto inline-flex items-center gap-1 no-print">
                   {done(q)}
+                  {runEdit(q)}
                   <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Up" disabled={a.pending || i === 0} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("dir", "up"); a.run(moveLineRank, fd); }}>▲</button>
@@ -570,7 +576,7 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
           </button>
         )}
         {canEdit && board.dept === "Cut" && <AddNestRun machines={board.machines} options={board.runOptions} candidates={board.runCandidates} />}
-        {board.dept === "Cut" && (canEdit || board.nestRuns.length > 0) && <NestRunsList runs={board.nestRuns} machines={board.machines} canEdit={canEdit} />}
+        {board.dept === "Cut" && (canEdit || board.nestRuns.length > 0) && <NestRunsList runs={board.nestRuns} machines={board.machines} canEdit={canEdit} options={board.runOptions} candidates={board.runCandidates} />}
         {canEdit && <AddManualJob dept={board.dept} machines={board.machines} />}
         {(canEdit || board.manualJobs.length > 0) && <ManualJobsList dept={board.dept} jobs={board.manualJobs} machines={board.machines} canEdit={canEdit} />}
         <Link href={`/worklist/machines?dept=${board.dept}`} className="btn btn-sm btn-secondary ms-2 normal-case no-print" title={`One sheet per ${word}, each on its own page — hand them to the technicians`}>🖨 Print all sheets</Link>
