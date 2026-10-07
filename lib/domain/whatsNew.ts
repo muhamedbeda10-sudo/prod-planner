@@ -16,11 +16,19 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-07-ready-cut",
+    dateISO: "2026-10-07",
+    title: "Whole pieces recorded in one click",
+    where: "Cut worklist → machines board → ✅ Cut on every sheet",
+    body: "When an item is cut by sheet on several machines, the board watches every sheet: once all of them are cut for some pieces, it lists them as whole and one click records them as cut. Every sheet's ✓ is also kept in a log — which thickness each machine cut, for which item — to plan the machines from later.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-07-sheet-split",
     dateISO: "2026-10-07",
     title: "One item on several machines — each on its own sheet",
     where: "Cut worklist → the machine picker",
-    body: "Picking a cutting machine for an item cut from more than one sheet asks which sheet that machine cuts (from the BOM's nesting on the Material tab) and how many pieces. Pick another machine for the next sheet: the same item runs on several machines at once, the same or different quantities. ✓ on a sheet's card line counts that sheet's cutting; the item is counted when it is recorded on the worklist as before.",
+    body: "Picking a cutting machine for an item cut from more than one sheet asks which sheet that machine cuts (from the BOM's nesting on the Material tab) and how many pieces. Pick another machine for the next sheet: the same item runs on several machines at once, the same or different quantities. ✓ on a sheet's card line counts that sheet's cutting.",
     href: "/worklist/cut",
   },
   {

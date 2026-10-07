@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lineMaterialOf, pickJobLines, sheetsFor, thicknessLabel, type NestingLineLite } from "./machineMaterial";
+import { consumeSheetDone, fullyCutPieces, lineMaterialOf, pickJobLines, sheetsFor, thicknessLabel, type NestingLineLite } from "./machineMaterial";
 
 const L = (o: Partial<NestingLineLite>): NestingLineLite => ({
   month: "October 2026", soi: "", mo: "", partName: "TANK", material: "Steel", materialCode: "", thicknessMm: 3,
@@ -44,5 +44,18 @@ describe("sheetsFor / thicknessLabel", () => {
   it("scales the rate to the pieces on the machine", () => {
     expect(sheetsFor({ material: "Steel", materialCode: "", thicknessMm: 3, sheetSize: "", perUnit: 0.333, actual: true }, 7)).toBe(2.33);
     expect(thicknessLabel({ thicknessMm: 2.5, material: "Galvanized steel" })).toBe("2.5 mm GI");
+  });
+});
+
+describe("fullyCutPieces / consumeSheetDone", () => {
+  const S3 = "3|Steel|1250*2500", S5 = "5|Steel|1500*3000";
+  it("an item is whole as far as its least-cut sheet", () => {
+    expect(fullyCutPieces([{ sheet: S3, sheetDone: 10 }, { sheet: S5, sheetDone: 6 }], [S3, S5], 12)).toBe(6);
+    expect(fullyCutPieces([{ sheet: S3, sheetDone: 10 }], [S3, S5], 12)).toBe(0);
+    expect(fullyCutPieces([{ sheet: S3, sheetDone: 5 }, { sheet: S3, sheetDone: 5 }, { sheet: S5, sheetDone: 12 }], [S3, S5], 8)).toBe(8);
+  });
+  it("recording the item takes the pieces off every sheet once", () => {
+    const m = consumeSheetDone([{ id: 1, sheet: S3, sheetDone: 5 }, { id: 2, sheet: S3, sheetDone: 5 }, { id: 3, sheet: S5, sheetDone: 9 }], 6);
+    expect([...m.entries()]).toEqual([[1, 0], [2, 4], [3, 3]]);
   });
 });

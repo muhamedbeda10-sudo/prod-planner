@@ -19,6 +19,7 @@ import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
 import { capsFor, spreadOverGroup } from "@/lib/domain/groupSpread";
 import { LV_ITEM, LV_STAGES } from "@/lib/domain/lv";
+import { consumeSheetDone } from "@/lib/domain/machineMaterial";
 
 export interface RecordResult {
   ok: boolean;
@@ -139,8 +140,8 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
       // the item cut and counted: the sheets' pieces already cut for it on
       // the machines are accounted for now, so they come off those figures
       if (dept === "Cut" && qty > 0) {
-        const cutSheets = await tx.worklistMachine.findMany({ where: { dept: "Cut", bom, mo, item, sheet: { not: "" }, sheetDone: { gt: 0 } } });
-        for (const r of cutSheets) await tx.worklistMachine.update({ where: { id: r.id }, data: { sheetDone: Math.max(0, r.sheetDone - Math.round(qty)) } });
+        const cutSheets = await tx.worklistMachine.findMany({ where: { dept: "Cut", bom, mo, item, sheet: { not: "" }, sheetDone: { gt: 0 } }, orderBy: { id: "asc" } });
+        for (const [id, sheetDone] of consumeSheetDone(cutSheets, qty)) await tx.worklistMachine.update({ where: { id }, data: { sheetDone } });
       }
       if (!mintsTanks) return [];
       const minted = await mintTankSerials(tx, {
