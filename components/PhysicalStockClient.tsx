@@ -184,7 +184,7 @@ function StockRow({ i, canEdit }: { i: PhysicalStockItem; canEdit: boolean }) {
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
   const [confirmIt, confirmDialog] = useConfirm();
-  const save = (field: "physical" | "odoo" | "note", value: string) => {
+  const save = (field: "code" | "name" | "uom" | "physical" | "odoo" | "note", value: string) => {
     const fd = new FormData();
     fd.set("id", String(i.id)); fd.set("field", field); fd.set("value", value);
     setErr("");
@@ -211,9 +211,19 @@ function StockRow({ i, canEdit }: { i: PhysicalStockItem; canEdit: boolean }) {
     ) : <span className="tabnum">{qty(v)}</span>;
   return (
     <tr className={pending ? "opacity-60" : ""} onContextMenu={canEdit ? row.onContextMenu : undefined}>
-      <td className="p-2 font-semibold ltr whitespace-nowrap text-xs">{i.code}</td>
-      <td className="p-2 text-sm min-w-[16rem]">{i.name || <span className="text-muted">—</span>}</td>
-      <td className="p-2 text-center text-xs text-muted">{i.uom || "—"}</td>
+      {canEdit ? (
+        <>
+          <td className="p-1"><CellEditor value={i.code} col="code" type="text" onCommit={(x) => save("code", x)} disabled={pending} ariaLabel={`Product code ${i.code}`} className="!w-44 font-semibold ltr text-xs" /></td>
+          <td className="p-1 min-w-[16rem]"><CellEditor value={i.name} col="name" type="text" onCommit={(x) => save("name", x)} disabled={pending} ariaLabel={`Product name for ${i.code}`} className="!w-full" /></td>
+          <td className="p-1 text-center"><CellEditor value={i.uom} col="uom" type="text" onCommit={(x) => save("uom", x)} disabled={pending} ariaLabel={`UOM for ${i.code}`} className="!w-14 text-center text-xs" /></td>
+        </>
+      ) : (
+        <>
+          <td className="p-2 font-semibold ltr whitespace-nowrap text-xs">{i.code}</td>
+          <td className="p-2 text-sm min-w-[16rem]">{i.name || <span className="text-muted">—</span>}</td>
+          <td className="p-2 text-center text-xs text-muted">{i.uom || "—"}</td>
+        </>
+      )}
       <td className="p-1 text-end">{num("physical", i.physical)}</td>
       <td className="p-1 text-end">{num("odoo", i.odoo)}</td>
       <td className="p-2 text-end tabnum"><Gap n={i.diff} /></td>
