@@ -326,8 +326,9 @@ export function moMaterialState(lookup: NestingLookup, odooMo: string | null | u
   return lines.every(nested) ? "ok" : "partial";
 }
 
-/** The row's tint and the words behind it, for a state worth flagging. */
-export const MO_MATERIAL_FLAG: Record<"missing" | "partial", { cls: string; edge: string; text: string }> = {
+/** The row's tint and the words behind it — red, yellow, or green when all is nested. */
+export const MO_MATERIAL_FLAG: Record<"missing" | "partial" | "ok", { cls: string; edge: string; text: string }> = {
+  ok: { cls: "bg-ok-bg/70", edge: "inset 4px 0 0 var(--ok-fg)", text: "This MO is on the Material tab and every line of it is nested" },
   missing: { cls: "bg-bad-bg/70", edge: "inset 4px 0 0 var(--bad-fg)", text: "This MO is not on the Material tab — no nesting is filed under it" },
   partial: { cls: "bg-warn-bg/70", edge: "inset 4px 0 0 var(--warn-fg)", text: "This MO is on the Material tab, but some of its lines have no actual nested sheets yet" },
 };

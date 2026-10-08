@@ -424,6 +424,7 @@ function FlagLegend() {
       <span className="inline-flex items-center gap-1.5">🧱 the material the quantity takes</span>
       <span className="inline-flex items-center gap-1.5"><span aria-hidden style={{ display: "inline-block", width: 18, height: 12, borderRadius: 2, background: "var(--bad-bg)", borderLeft: "4px solid var(--bad-fg)" }} />MO not on the Material tab</span>
       <span className="inline-flex items-center gap-1.5"><span aria-hidden style={{ display: "inline-block", width: 18, height: 12, borderRadius: 2, background: "var(--warn-bg)", borderLeft: "4px solid var(--warn-fg)" }} />MO on the Material tab, not all of it nested yet</span>
+      <span className="inline-flex items-center gap-1.5"><span aria-hidden style={{ display: "inline-block", width: 18, height: 12, borderRadius: 2, background: "var(--ok-bg)", borderLeft: "4px solid var(--ok-fg)" }} />MO on the Material tab, all nested</span>
     </div>
   );
 }
@@ -487,9 +488,10 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
   const rowTitle = need ? `Click for the material behind ${e.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "row"} yet`;
   const born = isBorn(e);
   // the MO typed for it, against the Material tab: red when no nesting is
-  // filed under it, yellow when some of its lines are not nested yet
+  // filed under it, yellow when some of its lines are not nested yet, green
+  // when every line is
   const moState = moMaterialState(nesting, e.odooMo);
-  const flag = moState === "missing" || moState === "partial" ? MO_MATERIAL_FLAG[moState] : null;
+  const flag = moState === "none" ? null : MO_MATERIAL_FLAG[moState];
   return (
     <>
       <tr
@@ -603,7 +605,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
   // closings underneath
   const details = () => setMaterial(true);
   const moState = moMaterialState(nesting, head.odooMo);
-  const flag = moState === "missing" || moState === "partial" ? MO_MATERIAL_FLAG[moState] : null;
+  const flag = moState === "none" ? null : MO_MATERIAL_FLAG[moState];
   const rowTitle = need ? `Click for the material behind all ${g.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "line"} yet`;
   return (
     <>
