@@ -350,3 +350,20 @@ describe("moMaterialState", () => {
     expect(moMaterialState(lookup, " SF01/MO/1 ")).toBe("ok");
   });
 });
+
+describe("a nested 0 is a value, a blank is none", () => {
+  it("books 0 for a line nested at 0 sheets, the BOM for a blank one", () => {
+    const lk: NestingLookup = {
+      [nestingKey("FB-022", "B0")]: [
+        line({ id: 1, bom: "B0", units: 10, sheetsPerUnit: 0.5, sheetsUsed: 0, actualPerUnit: 0 }),
+        line({ id: 2, bom: "B0", units: 10, sheetsPerUnit: 0.2, sheetsUsed: null, actualPerUnit: null, thicknessMm: 5 }),
+      ],
+    };
+    const need = materialNeed(lk, "FB-022-B0", 4, "September 2026")!;
+    const [zero, blank] = [need.lines.find((l) => l.id === 1)!, need.lines.find((l) => l.id === 2)!];
+    expect(zero).toMatchObject({ forQtyActual: 0, book: 0, bookIsActual: true });
+    expect(blank).toMatchObject({ forQtyActual: null, book: 0.8, bookIsActual: false });
+    expect(need.totalBook).toBe(0.8);
+    expect(need.notNested).toBe(1);
+  });
+});
