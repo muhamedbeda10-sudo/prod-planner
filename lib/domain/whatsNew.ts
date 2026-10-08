@@ -18,9 +18,9 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
     id: "2026-10-08-odoo-mo-material",
     dateISO: "2026-10-08",
-    title: "ODOO log: rows flag their MO against the Material tab",
+    title: "ODOO log: rows coloured by their MO on the Material tab",
     where: "ODOO → the log",
-    body: "A row whose Odoo MO has no nesting filed under it on the Material tab is tinted red; one whose MO is there but has lines with no actual nested sheets yet is tinted yellow. A merged line reads its MO the same way, and clicking a merged line opens the material behind its total.",
+    body: "A row whose Odoo MO has no nesting filed under it on the Material tab is tinted red; one whose MO is there but has lines with no actual nested sheets yet is tinted yellow; one whose every line is nested is tinted green. A merged line reads its MO the same way, and clicking a merged line opens the material behind its total.",
     href: "/odoo",
   },
   {
