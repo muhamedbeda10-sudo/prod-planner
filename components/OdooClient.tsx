@@ -588,25 +588,38 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
   const parts = g.rows.map((r) => r.qty).join(" + ");
   const cell = "p-2 whitespace-nowrap cursor-pointer";
   const toggle = () => setOpen((v) => !v);
+  // the line's own cells open its details — the material of everything it
+  // adds up — the way a single row does; the ▶ and the rows button open the
+  // closings underneath
+  const details = () => setMaterial(true);
+  const rowTitle = need ? `Click for the material behind all ${g.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "line"} yet`;
   return (
     <>
       <tr className={`border-t font-semibold ${open ? "bg-brand-light/40" : "bg-brand-light/20 hover:bg-brand-light/40"} transition-colors`}>
-        <td className={`${cell} tabnum ltr`} onClick={toggle} title={open ? "Hide the closings" : "Show the closings this line adds up"}>
-          <span className={`inline-block me-1 transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden>▶</span>
+        <td className={`${cell} tabnum ltr`} onClick={details} title={rowTitle}>
+          <button
+            type="button"
+            className="me-1 px-0.5 rounded hover:bg-surface-3"
+            onClick={(ev) => { ev.stopPropagation(); toggle(); }}
+            aria-expanded={open}
+            title={open ? "Hide the closings" : "Show the closings this line adds up"}
+          >
+            <span className={`inline-block transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden>▶</span>
+          </button>
           {dayRange(g.rows)}
         </td>
-        <td className={cell} onClick={toggle} title={head.line === "LV" ? "LV Panels" : "Transformers"}><LinePill line={head.line} /></td>
-        <td className={cell} onClick={toggle} title={born ? "Written by the closings recorded in the daily log" : "Rows that read the same"}>
+        <td className={cell} onClick={details} title={head.line === "LV" ? "LV Panels" : "Transformers"}><LinePill line={head.line} /></td>
+        <td className={cell} onClick={details} title={born ? "Written by the closings recorded in the daily log" : "Rows that read the same"}>
           <span className="pill pill-muted">{g.rows.length} closings{born ? " · floor" : ""}</span>
         </td>
-        <td className={cell} onClick={toggle}><Soi soi={head.soi} /></td>
-        <td className={`${cell} ltr text-xs font-semibold`} onClick={toggle}>
+        <td className={cell} onClick={details} title={rowTitle}><Soi soi={head.soi} /></td>
+        <td className={`${cell} ltr text-xs font-semibold`} onClick={details}>
           <span className="inline-flex flex-col" title={bomTitle(head)}>
             <BomValue bom={head.bom} />
           </span>
         </td>
-        <td className={cell} onClick={toggle}>{head.product}</td>
-        <td className={`${cell} ltr text-xs font-bold`}>
+        <td className={cell} onClick={details} title={rowTitle}>{head.product}</td>
+        <td className={`${cell} ltr text-xs font-bold`} onClick={!head.odooMo && canEdit ? undefined : details}>
           {head.odooMo ? head.odooMo : canEdit ? (
             <InlineValue
               ids={ids}
@@ -621,7 +634,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
             <span className="pill pill-warn text-[10px]">needs MO</span>
           )}
         </td>
-        <td className="p-2 text-center tabnum font-extrabold cursor-pointer" onClick={toggle} title={`${parts} — the closings on this line`}>{g.qty}</td>
+        <td className="p-2 text-center tabnum font-extrabold cursor-pointer" onClick={details} title={`${parts} — the closings on this line. Click for the material behind all ${g.qty}`}>{g.qty}</td>
         <td className="p-2 whitespace-nowrap text-xs align-top">
           <StatusCell e={head} canEdit={canEdit} ids={ids} />
         </td>
