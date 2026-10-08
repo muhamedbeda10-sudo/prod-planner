@@ -530,10 +530,10 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
             <button
               type="button"
               className={`btn btn-sm ${need ? "btn-secondary" : "btn-ghost"}`}
-              title={need ? `Material for ${e.qty} units: ${need.lines.length} line(s), ${need.totalActual || need.totalBom} sheets` : "No nesting lines for this row yet"}
+              title={need ? `Material for ${e.qty} units: ${need.lines.length} line(s), ${need.totalBook} sheets` : "No nesting lines for this row yet"}
               onClick={open}
             >
-              🧱{need ? <span className="tabnum ms-1">{need.totalActual || need.totalBom}</span> : null}
+              🧱{need ? <span className="tabnum ms-1">{need.totalBook}</span> : null}
             </button>
           {canEdit && <>{row.button}{row.menu}{confirmDialog}</>}
           </span>
@@ -669,10 +669,10 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
             <button
               type="button"
               className={`btn btn-sm ${need ? "btn-secondary" : "btn-ghost"}`}
-              title={need ? `Material for all ${g.qty} units: ${need.lines.length} line(s), ${need.totalActual || need.totalBom} sheets` : "No nesting lines for this row yet"}
+              title={need ? `Material for all ${g.qty} units: ${need.lines.length} line(s), ${need.totalBook} sheets` : "No nesting lines for this row yet"}
               onClick={() => setMaterial(true)}
             >
-              🧱{need ? <span className="tabnum ms-1">{need.totalActual || need.totalBom}</span> : null}
+              🧱{need ? <span className="tabnum ms-1">{need.totalBook}</span> : null}
             </button>
             <button type="button" className="btn btn-sm" onClick={toggle}>{open ? "Close" : `${g.rows.length} rows`}</button>
           </span>

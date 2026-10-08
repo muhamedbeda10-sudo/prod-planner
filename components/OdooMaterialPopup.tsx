@@ -162,7 +162,7 @@ function NeedTable({ need, copied, copy, lv }: { need: MaterialNeed; copied: str
               Total sheets{need.notNested > 0 && <span className="text-muted font-normal"> · {need.notNested} line(s) {none} yet</span>}
             </td>
             <td className="p-2 text-right tabnum">{bookText(need.totalBom)}</td>
-            <td className={`p-2 text-right tabnum ${need.totalVarianceTone ? TONE_INK[need.totalVarianceTone] : ""}`}>{bookText(need.totalActual)}</td>
+            <td className={`p-2 text-right tabnum ${need.totalVarianceTone ? TONE_INK[need.totalVarianceTone] : ""}`}>{need.notNested === need.lines.length ? <span className="text-muted font-semibold text-xs">{none}</span> : bookText(need.totalActual)}</td>
             <td className="p-2 text-center"><VariancePill pct={need.totalVariancePct} tone={need.totalVarianceTone} /></td>
             <td />
           </tr>

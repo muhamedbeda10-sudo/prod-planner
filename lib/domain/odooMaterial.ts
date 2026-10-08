@@ -102,6 +102,9 @@ export interface MaterialNeed {
   lines: MaterialNeedLine[];
   totalBom: number;
   totalActual: number;
+  /** The total to book: each line's actual where it was nested — a nested
+   *  0 is 0 — and its BOM figure where it was not (blank). */
+  totalBook: number;
   notNested: number;
   /** Lines whose actual is off the BOM past the warn line. */
   offBom: number;
@@ -275,6 +278,7 @@ function buildNeed(all: readonly NestingLine[], key: { partCode: string; bom: st
     lines,
     totalBom: round3(lines.reduce((s, l) => s + l.forQtyBom, 0)),
     totalActual: round3(lines.reduce((s, l) => s + (l.forQtyActual ?? 0), 0)),
+    totalBook: round3(lines.reduce((s, l) => s + l.book, 0)),
     notNested: lines.filter((l) => l.forQtyActual === null).length,
     offBom: lines.filter((l) => l.varianceTone === "warn" || l.varianceTone === "bad").length,
     ...(() => {

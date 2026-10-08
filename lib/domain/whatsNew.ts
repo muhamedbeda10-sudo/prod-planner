@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-08-nested-zero",
+    dateISO: "2026-10-08",
+    title: "A nested 0 counts as 0 — only a blank is \"not nested\"",
+    where: "ODOO → 🧱 material · Material tab",
+    body: "A line whose actual nested sheets are written as 0 is now booked as 0 everywhere; only an empty box means \"not nested yet\" and falls back to the BOM figure. The 🧱 button on an ODOO row used to show the BOM total when the actual came to 0 — it now shows the real figure to book.",
+    href: "/odoo",
+  },
+  {
     id: "2026-10-08-odoo-mo-material",
     dateISO: "2026-10-08",
     title: "ODOO log: rows coloured by their MO on the Material tab",
