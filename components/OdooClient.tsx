@@ -766,6 +766,25 @@ function CountFilter({ n, label, tone, on, title, onClick }: { n: number; label:
   );
 }
 
+/** One colour of the MO-on-Material tint, as a count that filters to it. */
+function MatChip({ state, n, on, onClick }: { state: "missing" | "partial" | "ok"; n: number; on: boolean; onClick: () => void }) {
+  const label = state === "missing" ? "MO not on Material" : state === "partial" ? "not all nested" : "all nested";
+  const ink = state === "missing" ? "var(--bad-fg)" : state === "partial" ? "var(--warn-fg)" : "var(--ok-fg)";
+  const bg = state === "missing" ? "var(--bad-bg)" : state === "partial" ? "var(--warn-bg)" : "var(--ok-bg)";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      title={`${MO_MATERIAL_FLAG[state].text}${on ? " — click again to show them all" : " — show only these rows"}`}
+      className="chip-toggle inline-flex items-center gap-1.5 tabnum"
+    >
+      <span aria-hidden style={{ display: "inline-block", width: 14, height: 11, borderRadius: 2, background: bg, borderLeft: `4px solid ${ink}` }} />
+      <span className="font-extrabold" style={on ? undefined : { color: ink }}>{n}</span>{label}
+    </button>
+  );
+}
+
 function FilterBar({ entries, filters, onChange }: { entries: OdooEntryView[]; filters: OdooFilters; onChange: (f: OdooFilters) => void }) {
   const uniq = (xs: string[]) => [...new Set(xs.filter(Boolean))];
   const statuses = uniq([...ODOO_STATUSES, ...entries.map((e) => e.status)]);
@@ -857,30 +876,47 @@ export function OdooClient({
   openRows: number;
 }) {
   const [filters, setFilters] = useState<OdooFilters>(DEFAULT_ODOO_FILTERS);
+  // the colour a row's MO reads on the Material tab — red / yellow / green —
+  // as one more filter over the rest
+  const [matState, setMatState] = useState<"" | "missing" | "partial" | "ok">("");
   const editableLines = (["TR", "LV"] as const).filter((l) => canEditLine[l]);
-  const shown = useMemo(() => filterOdooEntries(entries, filters), [entries, filters]);
+  const byMat = useCallback(
+    (rows: OdooEntryView[], st: typeof matState = matState) => (st ? rows.filter((e) => moMaterialState(nesting, e.odooMo) === st) : rows),
+    [nesting, matState]
+  );
+  const pick = useCallback((f: OdooFilters) => byMat(filterOdooEntries(entries, f)), [byMat, entries]);
+  const shown = useMemo(() => pick(filters), [pick, filters]);
   // the rows that are the same closing read as one line carrying the total
   const groups = useMemo(() => groupOdooEntries(shown), [shown]);
   // Each count is taken with its OWN filter lifted, so the numbers hold still
   // while they are toggled — a count that collapses to 0 the moment you use it
   // cannot be clicked back off.
-  const byClosing = useMemo(() => filterOdooEntries(entries, { ...filters, closed: "all" }), [entries, filters]);
+  const byClosing = useMemo(() => pick({ ...filters, closed: "all" }), [pick, filters]);
   const done = byClosing.filter((e) => e.done).length;
   const open = byClosing.length - done;
   const needMo = useMemo(
-    () => filterOdooEntries(entries, { ...filters, mo: "all" }).filter((e) => !e.odooMo).length,
-    [entries, filters]
+    () => pick({ ...filters, mo: "all" }).filter((e) => !e.odooMo).length,
+    [pick, filters]
   );
   // The office's own queue: still open AND Odoo's MO already on the row, so
   // nothing stands between it and a closing but someone doing it. Faceted on
   // both filters it controls, so its number holds while it is toggled.
   const ready = useMemo(
-    () => filterOdooEntries(entries, { ...filters, closed: "all", mo: "all" }).filter((e) => !e.done && !!e.odooMo.trim()).length,
-    [entries, filters]
+    () => pick({ ...filters, closed: "all", mo: "all" }).filter((e) => !e.done && !!e.odooMo.trim()).length,
+    [pick, filters]
   );
   const readyOn = filters.closed === "open" && filters.mo === "has";
   // what the Notes and MO dropdowns did, as two more counts
-  const withNotes = useMemo(() => filterOdooEntries(entries, { ...filters, notes: "all" }).filter((e) => e.notes.length > 0).length, [entries, filters]);
+  const withNotes = useMemo(() => pick({ ...filters, notes: "all" }).filter((e) => e.notes.length > 0).length, [pick, filters]);
+  // the colours, each counted with the colour filter lifted
+  const matCounts = useMemo(() => {
+    const out = { missing: 0, partial: 0, ok: 0 };
+    for (const e of byMat(filterOdooEntries(entries, filters), "")) {
+      const st = moMaterialState(nesting, e.odooMo);
+      if (st !== "none") out[st] += 1;
+    }
+    return out;
+  }, [byMat, entries, filters, nesting]);
   const showAll = useShowAll();
   const elsewhere = day === "all" ? 0 : Math.max(0, totalRows - entries.length);
   const elsewhereLink = elsewhere > 0 && (
@@ -892,10 +928,10 @@ export function OdooClient({
   // the products of the line filtered to, or of both lines
   const itemTotals = useMemo(
     () => odooItemTotals(
-      filterOdooEntries(entries, { ...filters, product: "" }),
+      pick({ ...filters, product: "" }),
       filters.line === "TR" || filters.line === "LV" ? productsOf(filters.line) : [...productsOf("TR"), ...productsOf("LV")],
     ),
-    [entries, filters]
+    [pick, filters]
   );
   return (
     <div className="space-y-3">
@@ -962,6 +998,14 @@ export function OdooClient({
             />
           )}
           </>)}
+          {(matCounts.missing + matCounts.partial + matCounts.ok > 0 || matState) && (
+            <span className="inline-flex flex-wrap items-center gap-1.5 ms-1" role="group" aria-label="The row's MO on the Material tab">
+              <span className="filter-label">Material</span>
+              {(["missing", "partial", "ok"] as const).map((st) => (matCounts[st] > 0 || matState === st) && (
+                <MatChip key={st} state={st} n={matCounts[st]} on={matState === st} onClick={() => setMatState(matState === st ? "" : st)} />
+              ))}
+            </span>
+          )}
         </div>
       )}
       <section className="bg-surface border rounded-xl overflow-hidden">
