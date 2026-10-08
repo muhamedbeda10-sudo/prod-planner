@@ -274,10 +274,12 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
   // a welded tank carries a serial and the welder's name — that recording
   // belongs on the queue table, not on a card
   if (board.tankSerials && q.item === "TN") return null;
+  // a nest run is counted in SHEETS — its jobs' pieces follow from them
+  const isRun = runIdOf(q.mo) !== null;
   const save = () => {
     const qty = Number(val.trim() || q.remaining);
-    if (!Number.isFinite(qty) || qty <= 0) { onErr("Enter pieces above 0."); return; }
-    if (qty > q.remaining) { onErr(`Only ${q.remaining} left on this ${board.dept === "Welding" ? "partition" : "machine"}.`); return; }
+    if (!Number.isFinite(qty) || qty <= 0) { onErr(isRun ? "Enter the sheets cut — above 0." : "Enter pieces above 0."); return; }
+    if (qty > q.remaining) { onErr(isRun ? `Only ${q.remaining} sheet(s) left on this run.` : `Only ${q.remaining} left on this ${board.dept === "Welding" ? "partition" : "machine"}.`); return; }
     onErr("");
     const fd = new FormData();
     fd.set("date", board.dayISO); fd.set("dept", board.dept); fd.set("bom", q.bom); fd.set("mo", q.mo); fd.set("item", q.item);
@@ -296,6 +298,20 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
       if (res.ok) { setVal(""); router.refresh(); } else onErr(res.error ?? "Failed");
     });
   };
+  if (isRun) return (
+    <span className="inline-flex items-center no-print rounded-md border border-brand/50 bg-surface overflow-hidden" title={`Sheets of the run cut — blank = all ${q.remaining} left. Each job's pieces follow.`}>
+      <span className="ps-1.5 pe-1 text-[10px] font-bold uppercase text-muted">Sheets</span>
+      <input
+        type="number" min={1} max={q.remaining} step={1} inputMode="numeric" placeholder={String(q.remaining)}
+        value={val} disabled={pending} aria-label="Sheets cut"
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
+        className="w-10 border-x px-1 py-0.5 bg-surface text-xs tabnum ltr text-center outline-none"
+      />
+      <span className="px-1 text-[10px] text-muted tabnum">/ {q.remaining}</span>
+      <button type="button" className="bg-brand text-white px-1.5 py-0.5 text-xs font-bold disabled:opacity-50" disabled={pending} onClick={save} title="Record the sheets cut">✓</button>
+    </span>
+  );
   return (
     <span className="inline-flex items-center gap-0.5 no-print">
       <input
@@ -304,7 +320,7 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
         className="border rounded-md px-1 py-0.5 bg-surface text-xs tabnum w-12 ltr"
-        title={runIdOf(q.mo) !== null ? `Sheets of the run finished — blank = all ${q.remaining}. Each job's pieces follow.` : q.sheet ? `Pieces' worth of this sheet cut — blank = all ${q.remaining}. Once every sheet of the item is cut, the board offers to record the whole pieces.` : `Pieces finished — blank records all ${q.remaining}. What is left stays in the queue.`}
+        title={q.sheet ? `Pieces' worth of this sheet cut — blank = all ${q.remaining}. Once every sheet of the item is cut, the board offers to record the whole pieces.` : `Pieces finished — blank records all ${q.remaining}. What is left stays in the queue.`}
       />
       <button type="button" className="btn btn-sm btn-primary px-1.5" disabled={pending} title={`Record what is done (blank = all ${q.remaining}); the rest stays in the queue`} onClick={save}>✓</button>
     </span>
