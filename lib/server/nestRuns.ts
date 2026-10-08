@@ -10,17 +10,21 @@ export async function getNestRuns(dept: string): Promise<NestRunView[]> {
   const [open, done, rows] = await Promise.all([
     prisma.nestRun.findMany({ where: { dept, doneAt: null }, orderBy: { id: "desc" }, include: { parts: { orderBy: { id: "asc" } } } }),
     prisma.nestRun.findMany({ where: { dept, doneAt: { not: null } }, orderBy: { doneAt: "desc" }, take: DONE_SHOWN, include: { parts: { orderBy: { id: "asc" } } } }),
-    prisma.worklistMachine.findMany({ where: { dept, bom: RUN_BOM, item: RUN_ITEM }, select: { mo: true, machine: { select: { code: true } } } }),
+    prisma.worklistMachine.findMany({ where: { dept, bom: RUN_BOM, item: RUN_ITEM }, select: { mo: true, machineId: true, machine: { select: { code: true } } } }),
   ]);
   const on = new Map<number, string[]>();
+  const onIds = new Map<number, number[]>();
   for (const r of rows) {
     const id = runIdOf(r.mo);
-    if (id !== null) (on.get(id) ?? on.set(id, []).get(id)!).push(r.machine.code);
+    if (id === null) continue;
+    (on.get(id) ?? on.set(id, []).get(id)!).push(r.machine.code);
+    (onIds.get(id) ?? onIds.set(id, []).get(id)!).push(r.machineId);
   }
   return [...open, ...done].map((r) => ({
     id: r.id, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, sheets: r.sheets, sheetsDone: r.sheetsDone, identical: r.identical, sheetMinutes: r.sheetMinutes, note: r.note,
     parts: r.parts.map((p) => ({ id: p.id, bom: p.bom, mo: p.mo, item: p.item, pcs: p.pcs, donePcs: p.donePcs, consumedPcs: p.consumedPcs, replaces: p.replaces })),
     onMachines: on.get(r.id) ?? [],
+    machineIds: onIds.get(r.id) ?? [],
     createdBy: r.createdBy, createdAtISO: r.createdAt.toISOString(), doneAtISO: r.doneAt ? r.doneAt.toISOString() : null,
   }));
 }

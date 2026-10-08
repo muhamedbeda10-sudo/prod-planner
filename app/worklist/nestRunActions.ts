@@ -138,6 +138,18 @@ export async function updateNestRun(fd: FormData): Promise<NestRunResult> {
   if ("error" in form) return { ok: false, error: form.error };
   if (form.sheets < run.sheetsDone) return { ok: false, error: `${run.sheetsDone} sheet(s) are already cut — the run cannot have fewer.` };
   const finished = form.sheets === run.sheetsDone;
+  // the laser: the form names the one it should be on ("" = none) — a
+  // different one moves the run there, at the back of its queue
+  const key = { dept: run.dept, bom: RUN_BOM, mo: runMo(id), item: RUN_ITEM };
+  const wantsMachine = fd.has("machineId");
+  const target = text(fd, "machineId") ? Number(text(fd, "machineId")) : null;
+  if (wantsMachine && target !== null) {
+    const machine = Number.isInteger(target) ? await prisma.machine.findUnique({ where: { id: target } }) : null;
+    if (!machine || machine.dept !== run.dept) return { ok: false, error: "That machine is not a cutting machine." };
+    if (!machine.active) return { ok: false, error: `${machine.code} is retired.` };
+  }
+  const current = wantsMachine ? await prisma.worklistMachine.findMany({ where: key, select: { machineId: true } }) : [];
+  const moves = wantsMachine && !finished && !(current.length === 1 && current[0].machineId === target) && !(current.length === 0 && target === null);
   await prisma.$transaction(async (tx) => {
     await tx.nestRun.update({
       where: { id },
@@ -151,6 +163,18 @@ export async function updateNestRun(fd: FormData): Promise<NestRunResult> {
     if (!locked) {
       await tx.nestRunPart.deleteMany({ where: { runId: id } });
       await tx.nestRunPart.createMany({ data: form.parts.map((p) => ({ ...p, runId: id })) });
+    }
+    if (moves) {
+      await tx.worklistMachine.deleteMany({ where: key });
+      if (target !== null) {
+        const [last, runningNow] = await Promise.all([
+          tx.worklistMachine.aggregate({ where: { dept: run.dept, machineId: target }, _max: { rank: true } }),
+          tx.worklistMachine.count({ where: { dept: run.dept, machineId: target, running: true } }),
+        ]);
+        await tx.worklistMachine.create({
+          data: { ...key, machineId: target, rank: (last._max.rank ?? 0) + 1, running: runningNow === 0, qty: null, setBy: guard.user?.name ?? null },
+        });
+      }
     }
     if (finished) {
       // the sheets it was cut down to carried what they cut — no more

@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-08-run-move",
+    dateISO: "2026-10-08",
+    title: "Move a nest run to another laser · record it in sheets",
+    where: "Cut worklist → ✎ Edit run · the run's line on the card",
+    body: "Editing a run now has its laser: pick another and the run moves there, at the back of its queue — even with some of its sheets already cut. On the card, a run's ✓ box is a sheets counter (Sheets [ ] / left), so nobody types pieces into it.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-07-run-details",
     dateISO: "2026-10-07",
     title: "Nest run details in one click",

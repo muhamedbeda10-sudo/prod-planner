@@ -227,7 +227,7 @@ function NestRunForm({ machines, options, candidates, run, onClose }: FormProps 
   return (
         <Modal
           title={run ? `✎ Edit nest run #${run.id}` : "🧩 New nest run"}
-          sub={locked ? `${run!.sheetsDone} of its ${run!.sheets} sheets are cut — the sheet and what is on it stay as cut; the number of sheets (not below ${run!.sheetsDone}), the time and the note can change.` : "Sheets of one material and thickness, the nesting on them carrying parts of several jobs. The technician records it by the sheets finished."}
+          sub={locked ? `${run!.sheetsDone} of its ${run!.sheets} sheets are cut — the sheet and what is on it stay as cut; the number of sheets (not below ${run!.sheetsDone}), the time, the note and the laser can change.` : "Sheets of one material and thickness, the nesting on them carrying parts of several jobs. The technician records it by the sheets finished."}
           onClose={onClose} busy={a.pending} width="max-w-5xl"
         >
           <form onSubmit={submit} className="space-y-4">
@@ -242,12 +242,12 @@ function NestRunForm({ machines, options, candidates, run, onClose }: FormProps 
               <label><span className={label}>Sheets *</span>
                 <input name="sheets" type="number" min={locked ? run!.sheetsDone : 1} step={1} required value={sheets} onChange={(e) => setSheets(e.target.value)} className={`${field} w-full tabnum`} />
               </label>
-              {!run && <label className="col-span-1 sm:col-span-2"><span className={label}>Laser</span>
-                <select name="machineId" defaultValue={machines[0]?.id ?? ""} className={`${field} w-full`}>
-                  <option value="">— none yet —</option>
+              <label className="col-span-1 sm:col-span-2"><span className={label}>{run ? "Laser — pick another to move it" : "Laser"}</span>
+                <select name="machineId" defaultValue={run ? run.machineIds[0] ?? "" : machines[0]?.id ?? ""} className={`${field} w-full`}>
+                  <option value="">{run ? "— on no laser —" : "— none yet —"}</option>
                   {machines.map((m) => <option key={m.id} value={m.id}>{m.code} · {m.name}</option>)}
                 </select>
-              </label>}
+              </label>
               {!opt && !locked && (
                 <>
                   <label className="col-span-1 sm:col-span-2"><span className={label}>Thickness (mm) *</span>

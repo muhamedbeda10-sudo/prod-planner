@@ -45,6 +45,8 @@ export interface NestRunView {
   parts: NestRunPartView[];
   /** The machines it sits on now (codes). */
   onMachines: string[];
+  /** …and their ids — the machine a run is moved from. */
+  machineIds: number[];
   createdBy: string | null;
   createdAtISO: string;
   doneAtISO: string | null;
