@@ -20,7 +20,7 @@ import { useActiveLine } from "@/components/LineContext";
 import { Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { Modal } from "@/components/Modal";
-import { entryMaterialNeed, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { MO_MATERIAL_FLAG, entryMaterialNeed, moMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
 
@@ -422,6 +422,8 @@ function FlagLegend() {
       <span className="inline-flex items-center gap-1.5"><span className="pill pill-info">from Painting</span>written by a closing on the floor</span>
       <span className="inline-flex items-center gap-1.5"><span className="pill pill-muted">3 closings</span>rows of one closing, added up — click to open</span>
       <span className="inline-flex items-center gap-1.5">🧱 the material the quantity takes</span>
+      <span className="inline-flex items-center gap-1.5"><span aria-hidden style={{ display: "inline-block", width: 18, height: 12, borderRadius: 2, background: "var(--bad-bg)", borderLeft: "4px solid var(--bad-fg)" }} />MO not on the Material tab</span>
+      <span className="inline-flex items-center gap-1.5"><span aria-hidden style={{ display: "inline-block", width: 18, height: 12, borderRadius: 2, background: "var(--warn-bg)", borderLeft: "4px solid var(--warn-fg)" }} />MO on the Material tab, not all of it nested yet</span>
     </div>
   );
 }
@@ -484,9 +486,17 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
   const open = () => setMaterial(true);
   const rowTitle = need ? `Click for the material behind ${e.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "row"} yet`;
   const born = isBorn(e);
+  // the MO typed for it, against the Material tab: red when no nesting is
+  // filed under it, yellow when some of its lines are not nested yet
+  const moState = moMaterialState(nesting, e.odooMo);
+  const flag = moState === "missing" || moState === "partial" ? MO_MATERIAL_FLAG[moState] : null;
   return (
     <>
-      <tr className={`border-t hover:bg-surface-2/60 ${inGroup ? "bg-surface-2/40" : ""}`} onContextMenu={canEdit ? row.onContextMenu : undefined}>
+      <tr
+        className={`border-t ${flag ? `${flag.cls} hover:brightness-95` : `hover:bg-surface-2/60 ${inGroup ? "bg-surface-2/40" : ""}`}`}
+        style={flag ? { boxShadow: flag.edge } : undefined}
+        onContextMenu={canEdit ? row.onContextMenu : undefined}
+      >
         <td className={`${cell} tabnum ltr ${inGroup ? "ps-6" : ""}`} onClick={open} title={rowTitle}>
           {inGroup ? <span className="text-muted">↳ {formatDate(e.dateISO)}</span> : formatDate(e.dateISO)}
         </td>
@@ -501,7 +511,7 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
           <BomValue bom={e.bom} />
         </td>
         <td className={cell} onClick={open} title={rowTitle}>{e.product}</td>
-        <td className={`${cell} ltr text-xs font-bold`} onClick={!e.odooMo && canEdit ? undefined : open} title={e.odooMo ? rowTitle : "Odoo's MO is not known here — type it once the MO is printed from Odoo"}>
+        <td className={`${cell} ltr text-xs font-bold`} onClick={!e.odooMo && canEdit ? undefined : open} title={flag ? flag.text : e.odooMo ? rowTitle : "Odoo's MO is not known here — type it once the MO is printed from Odoo"}>
           {e.odooMo ? e.odooMo : canEdit ? (
             <InlineValue ids={[e.id]} name="odooMo" value="" placeholder="SF01/MO/… (Enter)" action={setOdooMo} warn={false} hint="Type Odoo's MO number for this closing — Enter saves" />
           ) : (
@@ -592,10 +602,15 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
   // adds up — the way a single row does; the ▶ and the rows button open the
   // closings underneath
   const details = () => setMaterial(true);
+  const moState = moMaterialState(nesting, head.odooMo);
+  const flag = moState === "missing" || moState === "partial" ? MO_MATERIAL_FLAG[moState] : null;
   const rowTitle = need ? `Click for the material behind all ${g.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "line"} yet`;
   return (
     <>
-      <tr className={`border-t font-semibold ${open ? "bg-brand-light/40" : "bg-brand-light/20 hover:bg-brand-light/40"} transition-colors`}>
+      <tr
+        className={`border-t font-semibold ${flag ? `${flag.cls} hover:brightness-95` : open ? "bg-brand-light/40" : "bg-brand-light/20 hover:bg-brand-light/40"} transition-colors`}
+        style={flag ? { boxShadow: flag.edge } : undefined}
+      >
         <td className={`${cell} tabnum ltr`} onClick={details} title={rowTitle}>
           <button
             type="button"
@@ -619,7 +634,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
           </span>
         </td>
         <td className={cell} onClick={details} title={rowTitle}>{head.product}</td>
-        <td className={`${cell} ltr text-xs font-bold`} onClick={!head.odooMo && canEdit ? undefined : details}>
+        <td className={`${cell} ltr text-xs font-bold`} onClick={!head.odooMo && canEdit ? undefined : details} title={flag?.text}>
           {head.odooMo ? head.odooMo : canEdit ? (
             <InlineValue
               ids={ids}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, jobLines, materialNeed, materialNeedText, moKey, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup } from "./odooMaterial";
+import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, jobLines, materialNeed, materialNeedText, moKey, moMaterialState, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup } from "./odooMaterial";
 
 function line(over: Partial<NestingLine> & { id: number }): NestingLine {
   return {
@@ -335,5 +335,18 @@ describe("a row's material is its own BOM's and its own job's", () => {
     const bomWide = [line({ id: 7 }), line({ id: 8, soi: "S09999-1" })];
     expect(jobLines(bomWide, { soi: "S01134-3", odooMo: "" }).map((l) => l.id)).toEqual([7]);
     expect(jobLines(shared[nestingKey("FB-022", "12008E14M14")], { soi: "S04444-1", odooMo: "" })).toEqual([]);
+  });
+});
+
+describe("moMaterialState", () => {
+  it("red when the MO is not on the Material tab, yellow when some line is not nested, clear when all are", () => {
+    const lookup: NestingLookup = {
+      [moKey("SF01/MO/1")]: [line({ id: 1, sheetsUsed: 4 }), line({ id: 2, sheetsUsed: null, actualPerUnit: 0.3 })],
+      [moKey("SF01/MO/2")]: [line({ id: 1, sheetsUsed: 4 }), line({ id: 2, sheetsUsed: null, actualPerUnit: null })],
+    };
+    expect(moMaterialState(lookup, "")).toBe("none");
+    expect(moMaterialState(lookup, "SF01/MO/9")).toBe("missing");
+    expect(moMaterialState(lookup, "sf01/mo/2")).toBe("partial");
+    expect(moMaterialState(lookup, " SF01/MO/1 ")).toBe("ok");
   });
 });

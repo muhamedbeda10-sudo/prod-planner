@@ -310,3 +310,24 @@ export function varianceText(pct: number | null): string {
   if (pct === null) return "";
   return pct > 0 ? `+${pct}%` : pct < 0 ? `−${Math.abs(pct)}%` : "0%";
 }
+
+/** Where a row's Odoo MO stands on the MATERIAL tab: "missing" when the tab
+ *  files no line under it, "partial" when some of its lines carry no actual
+ *  nesting yet (no sheets nested for the job, no actual rate), "ok" when every
+ *  line does, "none" when the row has no MO to look for. */
+export type MoMaterialState = "none" | "missing" | "partial" | "ok";
+
+export function moMaterialState(lookup: NestingLookup, odooMo: string | null | undefined): MoMaterialState {
+  const mo = (odooMo ?? "").trim();
+  if (!mo) return "none";
+  const lines = lookup[moKey(mo)] ?? [];
+  if (lines.length === 0) return "missing";
+  const nested = (l: NestingLine) => l.sheetsUsed !== null || (l.actualPerUnit !== null && l.actualPerUnit >= 0);
+  return lines.every(nested) ? "ok" : "partial";
+}
+
+/** The row's tint and the words behind it, for a state worth flagging. */
+export const MO_MATERIAL_FLAG: Record<"missing" | "partial", { cls: string; edge: string; text: string }> = {
+  missing: { cls: "bg-bad-bg/70", edge: "inset 4px 0 0 var(--bad-fg)", text: "This MO is not on the Material tab — no nesting is filed under it" },
+  partial: { cls: "bg-warn-bg/70", edge: "inset 4px 0 0 var(--warn-fg)", text: "This MO is on the Material tab, but some of its lines have no actual nested sheets yet" },
+};
