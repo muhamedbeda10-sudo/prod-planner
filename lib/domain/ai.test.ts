@@ -1,0 +1,118 @@
+import { describe, it, expect } from "vitest";
+import {
+  aiDecision, aiVisible, conversationTitle, costUsd, displayTurns, formatRows, jsonSafe, monthStart, prepareSql, readerUrl, usdText, type AiGate,
+} from "./ai";
+
+const gate = (o: Partial<AiGate>): AiGate => ({
+  isOwner: false, hasKey: true, enabled: true, access: { enabled: true, monthlyUsd: 0 }, userSpent: 0, plantSpent: 0, plantCap: 0, ...o,
+});
+
+describe("costUsd / usdText", () => {
+  it("prices every kind of token on the model's rates", () => {
+    // Opus 5.5: $4 in, $20 out, $0.20 cache read, $5 cache write per million
+    expect(costUsd("claude-opus-5-5", { inputTokens: 1_000_000, outputTokens: 100_000, cacheReadTokens: 2_000_000, cacheWriteTokens: 200_000 })).toBeCloseTo(4 + 2 + 0.4 + 1, 6);
+    expect(costUsd("claude-haiku-5-5", { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 })).toBeCloseTo(0.6, 6);
+    // an unknown model is priced as the default one, never as free
+    expect(costUsd("nope", { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 })).toBe(4);
+  });
+  it("keeps the cents that matter", () => {
+    expect([usdText(0), usdText(0.0042), usdText(0.42), usdText(12.5)]).toEqual(["$0", "$0.0042", "$0.420", "$12.50"]);
+  });
+  it("counts the month from the 1st, UTC", () => {
+    expect(monthStart(new Date("2026-10-10T22:00:00Z")).toISOString()).toBe("2026-10-01T00:00:00.000Z");
+  });
+});
+
+describe("aiDecision / aiVisible", () => {
+  it("needs a key, the switch and the person's tick", () => {
+    expect(aiDecision(gate({ hasKey: false }))).toEqual({ ok: false, reason: "noKey" });
+    expect(aiDecision(gate({ enabled: false }))).toEqual({ ok: false, reason: "off" });
+    expect(aiDecision(gate({ access: null }))).toEqual({ ok: false, reason: "noAccess" });
+    expect(aiDecision(gate({ access: { enabled: false, monthlyUsd: 5 } }))).toEqual({ ok: false, reason: "noAccess" });
+    expect(aiDecision(gate({}))).toEqual({ ok: true });
+  });
+  it("stops a person at their own allowance and everyone at the plant's cap", () => {
+    expect(aiDecision(gate({ access: { enabled: true, monthlyUsd: 5 }, userSpent: 5 }))).toEqual({ ok: false, reason: "userCap" });
+    expect(aiDecision(gate({ access: { enabled: true, monthlyUsd: 5 }, userSpent: 4.99 }))).toEqual({ ok: true });
+    expect(aiDecision(gate({ plantCap: 20, plantSpent: 20 }))).toEqual({ ok: false, reason: "plantCap" });
+  });
+  it("the owner needs no tick or switch, but the plant's cap holds for them too", () => {
+    expect(aiDecision(gate({ isOwner: true, enabled: false, access: null }))).toEqual({ ok: true });
+    expect(aiDecision(gate({ isOwner: true, plantCap: 10, plantSpent: 12 }))).toEqual({ ok: false, reason: "plantCap" });
+  });
+  it("shows the button to the owner always, to others only when open to them", () => {
+    expect(aiVisible({ isOwner: true, hasKey: false, enabled: false, access: null })).toBe(true);
+    expect(aiVisible({ isOwner: false, hasKey: false, enabled: true, access: { enabled: true, monthlyUsd: 0 } })).toBe(false);
+    expect(aiVisible({ isOwner: false, hasKey: true, enabled: false, access: { enabled: true, monthlyUsd: 0 } })).toBe(false);
+    expect(aiVisible({ isOwner: false, hasKey: true, enabled: true, access: { enabled: true, monthlyUsd: 0 } })).toBe(true);
+  });
+});
+
+describe("prepareSql", () => {
+  it("wraps one query so it stays a query and stops at the limit", () => {
+    const r = prepareSql(`SELECT "mo" FROM "MasterOrder";`, 200);
+    expect(r).toEqual({ sql: `SELECT * FROM (\nSELECT "mo" FROM "MasterOrder"\n) AS ai_q LIMIT 201` });
+    expect("sql" in prepareSql("  -- late ones\n with x as (select 1) select * from x")).toBe(true);
+    expect("sql" in prepareSql("/* c */ SELECT 1")).toBe(true);
+  });
+  it("refuses anything that is not a single SELECT", () => {
+    for (const bad of ["", "   ", "DELETE FROM \"User\"", "update x set y = 1", "SELECT 1; DROP TABLE x", "-- only a comment", "SET ROLE postgres", "RESET ROLE"]) {
+      expect("error" in prepareSql(bad)).toBe(true);
+    }
+  });
+});
+
+describe("formatRows / jsonSafe", () => {
+  it("sends columns once and each row as a list", () => {
+    const t = JSON.parse(formatRows([{ mo: "MO1", qty: BigInt(3), at: new Date("2026-10-01T00:00:00Z") }]));
+    expect(t).toEqual({ columns: ["mo", "qty", "at"], rowCount: 1, rows: [["MO1", 3, "2026-10-01T00:00:00.000Z"]] });
+  });
+  it("says when it was cut at the row limit or for size", () => {
+    const rows = Array.from({ length: 5 }, (_, i) => ({ i, text: "x".repeat(50) }));
+    const cut = JSON.parse(formatRows(rows, 3));
+    expect([cut.rowCount, cut.truncated, cut.rows.length]).toEqual([3, true, 3]);
+    expect(cut.note).toMatch(/More than 3 rows/);
+    const small = JSON.parse(formatRows(rows, 200, 200));
+    expect(small.truncated).toBe(true);
+    expect(small.rows.length).toBeLessThan(5);
+    expect(JSON.stringify(small).length).toBeLessThanOrEqual(200);
+  });
+  it("turns decimals and huge bigints into something JSON carries", () => {
+    expect(jsonSafe({ toNumber: () => 1.5 })).toBe(1.5);
+    expect(jsonSafe(BigInt(2) ** BigInt(70))).toBe((BigInt(2) ** BigInt(70)).toString());
+    expect(jsonSafe(Number.NaN)).toBe("NaN");
+  });
+});
+
+describe("readerUrl", () => {
+  it("logs in as ai_reader on the same pooler, project suffix kept", () => {
+    const u = new URL(readerUrl("postgresql://postgres.abc123:secret@aws-0-eu.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=5", "pw0123"));
+    expect([u.username, u.password, u.host, u.pathname]).toEqual(["ai_reader.abc123", "pw0123", "aws-0-eu.pooler.supabase.com:6543", "/postgres"]);
+    expect(u.searchParams.get("pgbouncer")).toBe("true");
+    expect(u.searchParams.get("connection_limit")).toBe("1");
+  });
+  it("a direct connection's plain user becomes ai_reader", () => {
+    expect(new URL(readerUrl("postgresql://postgres:x@localhost:5432/atc", "p")).username).toBe("ai_reader");
+  });
+});
+
+describe("conversationTitle / displayTurns", () => {
+  it("names a chat after the first line of its question", () => {
+    expect(conversationTitle("  إيه الأوردرات المتأخرة؟\nوكمان…")).toBe("إيه الأوردرات المتأخرة؟");
+    expect(conversationTitle("x".repeat(80))).toHaveLength(58);
+  });
+  it("reads the kept API messages back as questions and answers", () => {
+    const turns = displayTurns([
+      { role: "user", content: [{ type: "text", text: "(Asked by M on …)" }, { type: "text", text: "Late orders?" }] },
+      { role: "assistant", content: [{ type: "thinking", thinking: "", signature: "s" }, { type: "tool_use", id: "t1", name: "query_database", input: { purpose: "Late orders", sql: "select 1" } }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "{}" }] },
+      { role: "assistant", content: [{ type: "text", text: "There are **3**." }] },
+      { role: "user", content: [{ type: "text", text: "(ctx)" }, { type: "text", text: "Which?" }] },
+    ]);
+    expect(turns).toEqual([
+      { role: "user", text: "Late orders?", lookups: [] },
+      { role: "assistant", text: "There are **3**.", lookups: ["Late orders"] },
+      { role: "user", text: "Which?", lookups: [] },
+    ]);
+  });
+});

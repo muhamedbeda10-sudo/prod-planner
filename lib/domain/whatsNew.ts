@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-10-ai-assistant",
+    dateISO: "2026-10-10",
+    title: "AI assistant — ask about the plant in your own words",
+    where: "The 🤖 button in the bar (for the people the owner opens it to)",
+    body: "Ask in Arabic or English — late orders, yesterday's output, the load on a machine, what is waiting in Odoo — and Claude answers from the app's live data, read-only, with tables, charts, headline figures and suggestions. Your chats are kept on the side to come back to. The owner decides who may use it and each person's monthly limit (AI assistant settings, or Users & Permissions).",
+    href: "/ai",
+  },
+  {
     id: "2026-10-08-nested-zero",
     dateISO: "2026-10-08",
     title: "A nested 0 counts as 0 — only a blank is \"not nested\"",

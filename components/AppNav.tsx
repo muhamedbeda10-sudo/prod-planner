@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   CalendarDays, Users, Timer,
-  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus,
+  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -138,6 +138,7 @@ export function AppNav({
   odooAlerts = { enabled: false, count: 0 },
   line = "TR",
   whatsNewSeen = null,
+  ai = false,
 }: {
   user: NavUser;
   unreadChat?: number;
@@ -153,6 +154,8 @@ export function AppNav({
   line?: ProductLine;
   /** The newest "What's new" entry this person has seen. */
   whatsNewSeen?: string | null;
+  /** The AI assistant is open to this person (lib/server/ai/access). */
+  ai?: boolean;
 }) {
   const pathname = usePathname();
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
@@ -269,7 +272,7 @@ export function AppNav({
   // is an admin page
   const adminLinks = ADMIN.filter((l) => shown(l) && (l.perm ? user.perms.includes(l.perm) : user.isAdmin));
   const showTools = adminLinks.length > 0 || (user.isAdmin && canSee("/admin/standard-times")) || !!user.isOwner;
-  const adminActive = adminLinks.some((l) => isActive(l.href, l.match, l.also)) || isActive("/admin/users") || isActive("/admin/standard-times");
+  const adminActive = adminLinks.some((l) => isActive(l.href, l.match, l.also)) || isActive("/admin/users") || isActive("/admin/ai") || isActive("/admin/standard-times");
 
   return (
     <header className="no-print sticky top-0 z-30 bg-[var(--nav-bg)] text-white border-b border-[var(--nav-border)] shadow-sm">
@@ -373,6 +376,17 @@ export function AppNav({
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
             {/* the plant's two products: one switch, inside every tab at once */}
             <LineTabs line={line} />
+            {/* the AI assistant — for the people the owner opened it to */}
+            {ai && (
+              <Link
+                href="/ai"
+                className={`nav-tab nav-tab-icon flex items-center ${isActive("/ai") ? "nav-tab-active" : ""}`}
+                aria-label="AI assistant"
+                title="AI assistant — ask about the plant's data"
+              >
+                <Bot size={18} />
+              </Link>
+            )}
             {/* what changed in the app — counted until opened */}
             <WhatsNew seen={whatsNewSeen} />
             {/* chat is a glance, not a destination — an icon here with its
@@ -444,6 +458,21 @@ export function AppNav({
                       <span>
                         <span className={`block text-sm font-bold ${isActive("/admin/users") ? "text-brand" : ""}`}>Users & Permissions</span>
                         <span className="block text-xs text-muted mt-0.5">Accounts, passwords & what each can edit</span>
+                      </span>
+                    </Link>
+                  )}
+                  {user.isOwner && (
+                    <Link
+                      href="/admin/ai"
+                      role="menuitem"
+                      className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors ${
+                        isActive("/admin/ai") ? "bg-brand-light" : "hover:bg-surface-2"
+                      }`}
+                    >
+                      <Bot size={17} className={`mt-0.5 shrink-0 ${isActive("/admin/ai") ? "text-brand" : "text-muted"}`} />
+                      <span>
+                        <span className={`block text-sm font-bold ${isActive("/admin/ai") ? "text-brand" : ""}`}>AI assistant settings</span>
+                        <span className="block text-xs text-muted mt-0.5">The Claude key, who may use it & monthly limits</span>
                       </span>
                     </Link>
                   )}
@@ -548,6 +577,17 @@ export function AppNav({
                   {l.href === "/chat" && <UnreadBadge count={unreadChat} />}
                 </Link>
               ))}
+              {ai && (
+                <Link
+                  href="/ai"
+                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
+                    isActive("/ai") ? "bg-brand-light text-brand" : "hover:bg-surface-2"
+                  }`}
+                >
+                  <Bot size={19} className={isActive("/ai") ? "text-brand" : "text-muted"} />
+                  AI assistant
+                </Link>
+              )}
 
               {showTools && (
                 <p className="px-4 pt-4 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">Admin tools</p>
@@ -584,6 +624,17 @@ export function AppNav({
                 >
                   <Users size={19} className={isActive("/admin/users") ? "text-brand" : "text-muted"} />
                   Users & Permissions
+                </Link>
+              )}
+              {user.isOwner && (
+                <Link
+                  href="/admin/ai"
+                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
+                    isActive("/admin/ai") ? "bg-brand-light text-brand" : "hover:bg-surface-2"
+                  }`}
+                >
+                  <Bot size={19} className={isActive("/admin/ai") ? "text-brand" : "text-muted"} />
+                  AI assistant settings
                 </Link>
               )}
             </nav>

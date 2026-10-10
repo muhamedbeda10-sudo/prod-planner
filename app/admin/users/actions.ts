@@ -14,6 +14,21 @@ export interface UserActionResult {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
 
+/** The AI assistant's tick and monthly allowance from the form — undefined
+ *  for a form without that section. */
+function aiFromForm(formData: FormData): { enabled: boolean; monthlyUsd: number } | undefined | "bad" {
+  if (formData.get("aiForm") !== "1") return undefined;
+  const raw = String(formData.get("aiUsd") ?? "").trim();
+  const usd = raw === "" ? 0 : Number(raw);
+  if (!Number.isFinite(usd) || usd < 0 || usd > 100_000) return "bad";
+  return { enabled: formData.get("aiEnabled") === "on", monthlyUsd: Math.round(usd * 100) / 100 };
+}
+
+async function saveAi(userId: number, ai: { enabled: boolean; monthlyUsd: number } | undefined): Promise<void> {
+  if (!ai) return;
+  await prisma.aiAccess.upsert({ where: { userId }, create: { userId, ...ai }, update: ai });
+}
+
 function permsFromForm(formData: FormData): string {
   return serializePerms(formData.getAll("perms").map(String));
 }
@@ -39,10 +54,13 @@ export async function createUser(formData: FormData): Promise<UserActionResult> 
   if (!name) return { ok: false, error: "Enter the person's name." };
   if (password.length < MIN_PASSWORD) return { ok: false, error: `Password must be at least ${MIN_PASSWORD} characters.` };
   if (await prisma.user.findUnique({ where: { email } })) return { ok: false, error: "An account with this email already exists." };
+  const ai = aiFromForm(formData);
+  if (ai === "bad") return { ok: false, error: "Enter the AI monthly limit in dollars (empty = none)." };
 
-  await prisma.user.create({
+  const created = await prisma.user.create({
     data: { email, name, passwordHash: hashPassword(password), isAdmin, perms: permsFromForm(formData), hiddenTabs: hiddenTabsFromForm(formData) ?? "" },
   });
+  await saveAi(created.id, ai);
   revalidatePath("/admin/users");
   return { ok: true };
 }
@@ -58,9 +76,14 @@ export async function updateUserPerms(formData: FormData): Promise<UserActionRes
 
   // the owner's own account keeps its standing; only its subscriptions change
   const isAdmin = target.isOwner ? target.isAdmin : formData.get("isAdmin") === "on";
+  // the owner always has the assistant — nothing of theirs to save there
+  const ai = target.isOwner ? undefined : aiFromForm(formData);
+  if (ai === "bad") return { ok: false, error: "Enter the AI monthly limit in dollars (empty = none)." };
 
   await prisma.user.update({ where: { id }, data: { isAdmin, perms: permsFromForm(formData), hiddenTabs: hiddenTabsFromForm(formData) } });
+  await saveAi(id, ai);
   revalidatePath("/admin/users");
+  if (ai) revalidatePath("/admin/ai");
   return { ok: true };
 }
 

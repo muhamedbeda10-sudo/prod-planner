@@ -321,6 +321,9 @@ model User {
   consumableIssues ConsumableIssue[]
   powderScraps     PowderScrap[]
   prefs            UserPref[]
+  aiAccess         AiAccess?
+  aiConversations  AiConversation[]
+  aiUsage          AiUsage[]
 }
 
 // A person's own view settings — the Plan Tracker's columns, folded and
@@ -1303,4 +1306,95 @@ model NestRunPart {
 
   @@index([runId])
   @@index([bom, mo, item])
+}
+
+// ---- The AI assistant (the AI tab): Claude answering from this database ----
+//
+// It reads the database through its own Postgres login, ai_reader, which can
+// only SELECT — and not from the accounts, sessions, chat, preferences or the
+// assistant's own tables (see the ai_assistant migration). A table added
+// later is readable by it automatically; one holding anything private must be
+// revoked from ai_reader in the migration that creates it.
+
+// The assistant's settings — one row (id = 1), the owner's alone: the Claude
+// API key, the switch that opens it to the team, the model, and the plant's
+// monthly spend cap.
+model AiSettings {
+  id         Int      @id @default(1)
+  // On for the people the owner ticked; the owner can use it either way.
+  enabled    Boolean  @default(false)
+  // The Claude API key, AES-256-GCM encrypted (lib/server/ai/secret.ts) —
+  // never sent to a browser; the hint is its last four characters.
+  apiKeyEnc  String   @default("")
+  apiKeyHint String   @default("")
+  model      String   @default("claude-opus-5-5")
+  // The plant's spend cap for a calendar month, in US dollars (0 = none).
+  monthlyUsd Float    @default(0)
+  // ai_reader's password, made by the migration that created the login and
+  // never written anywhere else.
+  dbPassword String   @default("")
+  updatedBy  String?
+  updatedAt  DateTime @updatedAt
+}
+
+// Who besides the owner may use the assistant, and how much of the month's
+// spend is theirs (0 = no cap of their own — the plant's cap still holds).
+model AiAccess {
+  userId     Int      @id
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enabled    Boolean  @default(true)
+  monthlyUsd Float    @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
+// One conversation with the assistant. Its messages are kept exactly as the
+// API sent and took them — tool calls, results and thinking blocks included
+// — because a conversation is only ever appended to, never rewritten.
+model AiConversation {
+  id        Int         @id @default(autoincrement())
+  userId    Int
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  model     String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  messages  AiMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model AiMessage {
+  id             Int            @id @default(autoincrement())
+  conversationId Int
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // user | assistant
+  content        Json // the API's content blocks
+  createdAt      DateTime       @default(now())
+
+  @@index([conversationId, id])
+}
+
+// Every question asked and what it cost: the tokens of all the calls it took
+// (one per database look-up) and their price in US dollars. What the monthly
+// caps are counted against; kept when a conversation or an account is deleted.
+model AiUsage {
+  id               Int      @id @default(autoincrement())
+  at               DateTime @default(now())
+  // kept (unnamed) when the account is deleted — the month's spend stands
+  userId           Int?
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  conversationId   Int?
+  model            String
+  question         String
+  calls            Int      @default(0)
+  queries          Int      @default(0)
+  inputTokens      Int      @default(0)
+  outputTokens     Int      @default(0)
+  cacheReadTokens  Int      @default(0)
+  cacheWriteTokens Int      @default(0)
+  costUsd          Float    @default(0)
+  error            String?
+
+  @@index([at])
+  @@index([userId, at])
 }
