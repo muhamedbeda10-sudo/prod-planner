@@ -5,6 +5,7 @@ import { PERM_CATEGORIES } from "@/lib/domain/permissions";
 import { TABS, TAB_GROUPS, parseHiddenTabs } from "@/lib/domain/tabs";
 import { createUser, updateUserPerms, setUserActive, resetUserPassword, deleteUser } from "./actions";
 import { Modal } from "@/components/Modal";
+import { usdText } from "@/lib/domain/ai";
 
 interface Row {
   id: number;
@@ -16,6 +17,8 @@ interface Row {
   hiddenTabs: string;
   active: boolean;
   createdAt: Date;
+  /** The AI assistant: may they use it, their monthly allowance, this month's spend. */
+  ai: { enabled: boolean; monthlyUsd: number; spent: number };
 }
 
 const inputCls = "px-2.5 py-1.5 text-sm font-semibold w-full";
@@ -87,6 +90,37 @@ function TabChecks({ hidden }: { hidden: Set<string> }) {
   );
 }
 
+/** The AI assistant for this account: whether they may use it and how much
+ *  they may spend a month (the plant's cap, on AI assistant settings, still
+ *  holds over everyone). The owner always has it. */
+function AiChecks({ ai, owner }: { ai: Row["ai"] | null; owner?: boolean }) {
+  return (
+    <fieldset className="border rounded-lg p-3">
+      <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">AI assistant</legend>
+      {owner ? (
+        <p className="text-sm text-muted">The owner always has the assistant — the plant&apos;s monthly cap is set on AI assistant settings.{ai ? ` Spent this month: ${usdText(ai.spent)}.` : ""}</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <input type="hidden" name="aiForm" value="1" />
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input type="checkbox" name="aiEnabled" defaultChecked={ai?.enabled} className="mt-0.5 accent-[var(--brand,#1b7a43)]" />
+            <span>
+              <span className="font-semibold">Can use the AI assistant</span>
+              <span className="block text-xs text-muted">Ask Claude about the plant&apos;s data — read-only — from the AI button in the bar (while it is open to the team).</span>
+            </span>
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="font-semibold">Monthly limit</span>
+            <span className="font-bold">$</span>
+            <input name="aiUsd" type="number" min={0} step="0.5" defaultValue={ai && ai.monthlyUsd > 0 ? ai.monthlyUsd : ""} placeholder="none" className="w-24 px-2 py-1 text-sm tabnum" />
+          </label>
+          {ai && <span className="text-xs text-muted">Spent this month: <b className="tabnum">{usdText(ai.spent)}</b></span>}
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
 /** The admin switch. Ticking it ticks every access right in the form below
  *  (not the notifications) — an admin starts with everything and the owner
  *  unticks what this one does not do. */
@@ -153,6 +187,11 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {user.hiddenTabs && <span className="pill pill-muted" title="Screens switched off for this account">{parseHiddenTabs(user.hiddenTabs).size} screen(s) hidden</span>}
+          {user.ai.enabled && !user.isOwner && (
+            <span className="pill pill-info" title={`AI assistant — spent ${usdText(user.ai.spent)} this month`}>
+              AI{user.ai.monthlyUsd > 0 ? ` · ${usdText(user.ai.monthlyUsd)}/mo` : ""}
+            </span>
+          )}
           <button type="button" className={btnCls} onClick={() => setExpanded(true)}>
             Permissions
           </button>
@@ -233,6 +272,7 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
             <AdminCheck defaultChecked={user.isAdmin} label="Admin" />
           )}
           <TabChecks hidden={parseHiddenTabs(user.hiddenTabs)} />
+          <AiChecks ai={user.ai} owner={user.isOwner} />
           <PermChecks defaults={new Set(user.perms.split(",").map((s) => s.trim()))} />
           <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <Msg msg={perms.msg} />
@@ -287,6 +327,7 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
           </div>
           <AdminCheck label="Admin" />
           <TabChecks hidden={new Set()} />
+          <AiChecks ai={null} />
           <PermChecks defaults={new Set()} />
           <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <Msg msg={create.msg} />

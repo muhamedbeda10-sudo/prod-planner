@@ -1,0 +1,249 @@
+// The AI assistant's rules that need no database: the models the owner can
+// pick and what they cost, what one question cost, who may ask right now,
+// and what the assistant's SQL may be and how its rows go back to it.
+
+export interface AiModelDef {
+  id: string;
+  label: string;
+  note: string;
+  /** US dollars per million tokens. */
+  inUsd: number;
+  outUsd: number;
+  cacheReadUsd: number;
+  /** A five-minute cache write — 1.25× the input price. */
+  cacheWriteUsd: number;
+  /** The API re-runs a declined request on another model (server-side fallback). */
+  fallbacks: boolean;
+}
+
+export const AI_MODELS: AiModelDef[] = [
+  { id: "claude-opus-5-5", label: "Claude Opus 5.5", note: "The most capable — the best answers and suggestions", inUsd: 4, outUsd: 20, cacheReadUsd: 0.2, cacheWriteUsd: 5, fallbacks: true },
+  { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", note: "Half the price and quick — good for everyday questions", inUsd: 2, outUsd: 10, cacheReadUsd: 0.2, cacheWriteUsd: 2.5, fallbacks: true },
+  { id: "claude-haiku-5-5", label: "Claude Haiku 5.5", note: "The cheapest — simple look-ups", inUsd: 0.1, outUsd: 0.5, cacheReadUsd: 0.01, cacheWriteUsd: 0.125, fallbacks: false },
+];
+
+export const DEFAULT_AI_MODEL = AI_MODELS[0].id;
+
+export function aiModel(id: string | null | undefined): AiModelDef {
+  return AI_MODELS.find((m) => m.id === id) ?? AI_MODELS[0];
+}
+
+export interface AiTokens {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+export const NO_TOKENS: AiTokens = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+
+export function addTokens(a: AiTokens, b: AiTokens): AiTokens {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
+  };
+}
+
+/** What the tokens cost on a model, in US dollars. */
+export function costUsd(model: string, t: AiTokens): number {
+  const m = aiModel(model);
+  const usd = (t.inputTokens * m.inUsd + t.outputTokens * m.outUsd + t.cacheReadTokens * m.cacheReadUsd + t.cacheWriteTokens * m.cacheWriteUsd) / 1_000_000;
+  return Math.round(usd * 1_000_000) / 1_000_000;
+}
+
+/** "$0.042", "$1.20", "$12" — small sums keep the cents that matter. */
+export function usdText(v: number): string {
+  if (v === 0) return "$0";
+  if (Math.abs(v) < 0.01) return `$${v.toFixed(4)}`;
+  if (Math.abs(v) < 1) return `$${v.toFixed(3)}`;
+  return `$${v.toFixed(2)}`;
+}
+
+/** The first instant of the calendar month a moment falls in (UTC — how the
+ *  API bills). The monthly caps count from here. */
+export function monthStart(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+export type AiDeny = "noKey" | "off" | "noAccess" | "userCap" | "plantCap";
+
+export interface AiGate {
+  isOwner: boolean;
+  hasKey: boolean;
+  /** Open to the team (the owner can use it either way). */
+  enabled: boolean;
+  access: { enabled: boolean; monthlyUsd: number } | null;
+  userSpent: number;
+  plantSpent: number;
+  plantCap: number;
+}
+
+export const AI_DENY_TEXT: Record<AiDeny, string> = {
+  noKey: "The assistant has no Claude API key yet — the owner adds it on AI assistant settings.",
+  off: "The assistant is switched off for now.",
+  noAccess: "The assistant is not opened for your account — ask the owner.",
+  userCap: "You have used this month's AI allowance — ask the owner to raise it.",
+  plantCap: "The plant's AI budget for this month is used up — the owner can raise it.",
+};
+
+/** Whether a person may ask now, and why not. The owner holds no allowance
+ *  of their own, but the plant's cap holds for them too — it is what guards
+ *  the account's credit. */
+export function aiDecision(g: AiGate): { ok: true } | { ok: false; reason: AiDeny } {
+  if (!g.hasKey) return { ok: false, reason: "noKey" };
+  if (!g.isOwner) {
+    if (!g.enabled) return { ok: false, reason: "off" };
+    if (!g.access?.enabled) return { ok: false, reason: "noAccess" };
+    if (g.access.monthlyUsd > 0 && g.userSpent >= g.access.monthlyUsd) return { ok: false, reason: "userCap" };
+  }
+  if (g.plantCap > 0 && g.plantSpent >= g.plantCap) return { ok: false, reason: "plantCap" };
+  return { ok: true };
+}
+
+/** Whether the AI tab shows for someone at all — a cap reached still shows
+ *  it (the page says why it cannot answer). */
+export function aiVisible(g: Pick<AiGate, "isOwner" | "hasKey" | "enabled" | "access">): boolean {
+  if (!g.hasKey) return g.isOwner;
+  return g.isOwner || (g.enabled && !!g.access?.enabled);
+}
+
+/** A conversation's name: the first line of its first question. */
+export function conversationTitle(question: string): string {
+  const line = question.trim().split(/\r?\n/)[0].replace(/\s+/g, " ");
+  return line.length > 60 ? `${line.slice(0, 57).trimEnd()}…` : line || "New chat";
+}
+
+// ---- the assistant's SQL ----
+
+/** The tables the assistant may not read (revoked from ai_reader by the
+ *  ai_assistant migration); of User it reads these columns alone. */
+export const AI_PRIVATE_TABLES = [
+  "Session", "UserPref", "ChatMessage", "ChatGroup", "ChatGroupMember", "ChatMessageHide", "ChatReaction",
+  "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage",
+] as const;
+export const AI_USER_COLUMNS = ["id", "name", "active"] as const;
+
+/** Rows handed back per query — anything bigger is for SQL to aggregate. */
+export const AI_ROW_LIMIT = 200;
+/** How much of a result goes back to the model, in characters. */
+export const AI_RESULT_CHARS = 30_000;
+
+/** Leading whitespace and comments off, so the first keyword can be read. */
+function stripLead(sql: string): string {
+  let s = sql;
+  for (;;) {
+    const t = s.replace(/^\s+/, "");
+    if (t.startsWith("--")) { const nl = t.indexOf("\n"); s = nl < 0 ? "" : t.slice(nl + 1); continue; }
+    if (t.startsWith("/*")) { const end = t.indexOf("*/"); s = end < 0 ? "" : t.slice(end + 2); continue; }
+    return t;
+  }
+}
+
+/** One read-only statement, wrapped so it can only ever be a query and never
+ *  return more than the limit (+1, to tell a full result from a cut one).
+ *  The database login is what really keeps it read-only; this keeps the
+ *  statement to one SELECT. */
+export function prepareSql(raw: string, limit = AI_ROW_LIMIT): { sql: string } | { error: string } {
+  const body = (raw ?? "").trim().replace(/;\s*$/, "");
+  const head = stripLead(body);
+  if (!head) return { error: "Empty query." };
+  if (!/^(select|with)\b/i.test(head)) return { error: "Only a SELECT (or WITH … SELECT) query can run." };
+  if (body.includes(";")) return { error: "One statement only — remove the semicolons." };
+  return { sql: `SELECT * FROM (\n${body}\n) AS ai_q LIMIT ${limit + 1}` };
+}
+
+/** A value as JSON can carry it: whole-number bigints as numbers, dates as
+ *  ISO text, Prisma decimals as numbers. */
+export function jsonSafe(v: unknown): unknown {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "bigint") return Number.isSafeInteger(Number(v)) ? Number(v) : v.toString();
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString();
+  if (typeof v === "number") return Number.isFinite(v) ? v : String(v);
+  if (Array.isArray(v)) return v.map(jsonSafe);
+  if (typeof v === "object") {
+    const o = v as { toNumber?: () => number; constructor?: { name?: string } };
+    if (typeof o.toNumber === "function") return o.toNumber();
+    if (v instanceof Uint8Array) return `<${v.length} bytes>`;
+    return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, jsonSafe(x)]));
+  }
+  return v;
+}
+
+/** The rows as the model reads them: the columns once, then each row as a
+ *  list — about half the tokens of a list of objects. Cut to the limit and
+ *  to a size the conversation can carry, and say so when cut. */
+export function formatRows(rows: readonly Record<string, unknown>[], limit = AI_ROW_LIMIT, maxChars = AI_RESULT_CHARS): string {
+  const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+  const all = rows.slice(0, limit).map((r) => columns.map((c) => jsonSafe(r[c])));
+  const render = (n: number, note?: string) =>
+    JSON.stringify({ columns, rowCount: n, ...(n < rows.length ? { truncated: true } : {}), ...(note ? { note } : {}), rows: all.slice(0, n) });
+  let n = all.length;
+  let text = render(n, rows.length > limit ? `More than ${limit} rows — only the first ${limit} are here; aggregate or filter in SQL for the rest.` : undefined);
+  // too big for the conversation: halve until it fits, and say so
+  while (text.length > maxChars && n > 1) {
+    n = Math.floor(n / 2);
+    text = render(n, `The result was too large — only the first ${n} rows are here; select fewer columns or aggregate in SQL.`);
+  }
+  if (text.length <= maxChars) return text;
+  return JSON.stringify({ columns, rowCount: 0, truncated: true, note: "One row alone is too large — select fewer or shorter columns.", rows: [] });
+}
+
+/** The read-only login's connection string, made from the app's own: the
+ *  same host, port, database and options, the user swapped for ai_reader
+ *  (kept with the pooler's ".<project>" suffix) and one connection. */
+export function readerUrl(base: string, password: string): string {
+  const u = new URL(base);
+  const user = decodeURIComponent(u.username);
+  const dot = user.indexOf(".");
+  u.username = dot >= 0 ? `ai_reader${user.slice(dot)}` : "ai_reader";
+  u.password = password;
+  u.searchParams.set("connection_limit", "1");
+  return u.toString();
+}
+
+// ---- the chat as people read it ----
+
+export interface AiChatTurn {
+  role: "user" | "assistant";
+  text: string;
+  /** What the assistant looked up on the way (each query's purpose). */
+  lookups: string[];
+}
+
+type Block = { type?: string; text?: string; input?: { purpose?: unknown } };
+
+/** The kept API messages as a chat: each question (the last text block of
+ *  its message — the one before it says who asked and when), then one answer
+ *  gathering every assistant message and look-up up to the next question. */
+export function displayTurns(rows: readonly { role: string; content: unknown }[]): AiChatTurn[] {
+  const out: AiChatTurn[] = [];
+  for (const r of rows) {
+    const blocks: Block[] = Array.isArray(r.content) ? (r.content as Block[]) : typeof r.content === "string" ? [{ type: "text", text: r.content }] : [];
+    if (r.role === "user") {
+      // tool results belong to the answer being worked out
+      if (blocks.some((b) => b.type === "tool_result")) continue;
+      const texts = blocks.filter((b) => b.type === "text");
+      out.push({ role: "user", text: texts[texts.length - 1]?.text ?? "", lookups: [] });
+      continue;
+    }
+    let cur = out[out.length - 1];
+    if (!cur || cur.role !== "assistant") {
+      cur = { role: "assistant", text: "", lookups: [] };
+      out.push(cur);
+    }
+    for (const b of blocks) {
+      if (b.type === "text" && b.text) cur.text += (cur.text ? "\n\n" : "") + b.text;
+      const purpose = b.type === "tool_use" ? b.input?.purpose : undefined;
+      if (typeof purpose === "string" && purpose.trim()) cur.lookups.push(purpose.trim());
+    }
+  }
+  return out;
+}
+
+/** A conversation longer than this many kept messages takes a new chat —
+ *  every question re-reads the whole of it. */
+export const AI_MAX_MESSAGES = 120;
+/** The longest question taken, in characters. */
+export const AI_MAX_QUESTION = 4000;
