@@ -36,7 +36,7 @@ export interface AiAdminData {
   lastMonthSpent: number;
   updatedBy: string | null;
   users: AiAdminUser[];
-  recent: { id: number; at: string; who: string; question: string; model: string; queries: number; tokens: number; costUsd: number; error: string | null }[];
+  recent: { id: number; at: string; who: string; question: string; model: string; queries: number; tokens: number; costUsd: number; error: string | null; running: boolean }[];
 }
 
 type Msg = { ok: boolean; text: string } | null;
@@ -353,7 +353,7 @@ function RecentCard({ data }: { data: AiAdminData }) {
                   <td className="py-1.5 px-2 whitespace-nowrap">{r.who}</td>
                   <td className="py-1.5 px-2 max-w-[420px]">
                     <div className="truncate" dir="auto" title={r.question}>{r.question}</div>
-                    <div className="text-[11px] text-muted">{aiModel(r.model).label}{r.error && <span className="text-bad-fg"> · {r.error}</span>}</div>
+                    <div className="text-[11px] text-muted">{aiModel(r.model).label}{r.running && <span className="text-warn-fg"> · being answered</span>}{r.error && <span className="text-bad-fg"> · {r.error}</span>}</div>
                   </td>
                   <td className="py-1.5 px-2 text-end tabnum">{r.queries}</td>
                   <td className="py-1.5 px-2 text-end tabnum text-muted">{r.tokens.toLocaleString("en")}</td>

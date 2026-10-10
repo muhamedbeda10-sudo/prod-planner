@@ -7,7 +7,8 @@ import { AiChart } from "@/components/AiChart";
 // An AI answer as it reads: Markdown (tables, lists, bold) in the app's own
 // type, every paragraph and cell finding its own direction (Arabic reads
 // right to left, an MO number left to right), and a ```chart block drawn as
-// a chart. No raw HTML is rendered — only Markdown.
+// a chart. No raw HTML is rendered — only Markdown — and nothing in an
+// answer is fetched from outside: no images, and outside links are text.
 
 type HastNode = { type: string; tagName?: string; value?: string; properties?: { className?: unknown }; children?: HastNode[] };
 
@@ -23,7 +24,16 @@ function components(streaming: boolean): Components {
     h2: ({ children }) => <h3 dir="auto" className="mt-4 mb-1.5 text-base font-extrabold">{children}</h3>,
     h3: ({ children }) => <h4 dir="auto" className="mt-3 mb-1 text-sm font-extrabold">{children}</h4>,
     h4: ({ children }) => <h4 dir="auto" className="mt-3 mb-1 text-sm font-bold">{children}</h4>,
-    a: ({ children, href }) => <a href={href} className="text-brand underline" target={href?.startsWith("/") ? undefined : "_blank"} rel="noreferrer">{children}</a>,
+    // a link into the app is a link; anything outside is shown, not followed —
+    // a row of data could tell the model to put figures in an address
+    a: ({ children, href }) =>
+      href && href.startsWith("/") && !href.startsWith("//") ? (
+        <a href={href} className="text-brand underline">{children}</a>
+      ) : (
+        <span>{children}{href ? <span className="text-muted text-xs ltr"> ({href})</span> : null}</span>
+      ),
+    // nothing in an answer loads from anywhere
+    img: () => null,
     blockquote: ({ children }) => <blockquote dir="auto" className="my-2 border-s-4 ps-3 text-muted">{children}</blockquote>,
     hr: () => <hr className="my-3 border-[var(--border)]" />,
     table: ({ children }) => (
