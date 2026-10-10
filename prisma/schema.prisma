@@ -1394,6 +1394,9 @@ model AiUsage {
   cacheWriteTokens Int      @default(0)
   costUsd          Float    @default(0)
   error            String?
+  // Null while the question is being answered: one at a time per person,
+  // so a burst of questions cannot run past the caps before they are counted.
+  finishedAt       DateTime?
 
   @@index([at])
   @@index([userId, at])

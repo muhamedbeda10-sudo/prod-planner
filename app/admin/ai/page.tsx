@@ -73,6 +73,7 @@ export default async function AiAdminPage() {
             tokens: r.inputTokens + r.cacheReadTokens + r.cacheWriteTokens + r.outputTokens,
             costUsd: r.costUsd,
             error: r.error,
+            running: !r.finishedAt,
           })),
         }}
       />

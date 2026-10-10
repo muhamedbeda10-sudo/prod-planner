@@ -46,7 +46,16 @@ export async function POST(request: Request) {
     : null;
   if (Number.isInteger(wanted) && wanted > 0 && !existing) return fail(404, "That conversation is not there any more.");
   if (existing && existing.messages.length >= AI_MAX_MESSAGES) return fail(400, "This chat has grown long — start a new one (every question re-reads the whole chat).");
+  // one question at a time: one still being answered (started inside the
+  // route's own time limit) blocks the next, so a burst cannot run past the
+  // caps before its cost is counted
+  const running = await prisma.aiUsage.count({ where: { userId: user.id, finishedAt: null, at: { gte: new Date(Date.now() - (maxDuration + 30) * 1000) } } });
+  if (running > 0) return fail(429, "One question at a time — wait for the answer, then ask again.");
+
   const conversation = existing ?? (await prisma.aiConversation.create({ data: { userId: user.id, title: conversationTitle(question), model: settings.model } }));
+  // logged before the first call, finished after the last — what the caps
+  // and the one-at-a-time rule read
+  const usage = await prisma.aiUsage.create({ data: { userId: user.id, conversationId: conversation.id, model: conversation.model, question: question.slice(0, 500) } });
   const history: AiMessageParam[] = (existing?.messages ?? []).map((m) => ({ role: m.role as "user" | "assistant", content: m.content as unknown as AiMessageParam["content"] }));
 
   const enc = new TextEncoder();
@@ -78,22 +87,14 @@ export async function POST(request: Request) {
             prisma.aiMessage.create({ data: { conversationId: conversation.id, role: m.role, content: m.content as unknown as Prisma.InputJsonValue } }),
           ),
           prisma.aiConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
-          prisma.aiUsage.create({
-            data: {
-              userId: user.id,
-              conversationId: conversation.id,
-              model: conversation.model,
-              question: question.slice(0, 500),
-              calls: result.calls,
-              queries: result.queries,
-              ...result.tokens,
-              costUsd: cost,
-              error: result.error?.slice(0, 1000) ?? null,
-            },
+          prisma.aiUsage.update({
+            where: { id: usage.id },
+            data: { calls: result.calls, queries: result.queries, ...result.tokens, costUsd: cost, error: result.error?.slice(0, 1000) ?? null, finishedAt: new Date() },
           }),
         ]);
       } catch (e) {
         console.error("AI: could not keep the conversation", e);
+        await prisma.aiUsage.update({ where: { id: usage.id }, data: { costUsd: cost, error: "could not be saved", finishedAt: new Date() } }).catch(() => {});
       }
 
       send({ type: "done", costUsd: cost, ...(result.error ? { error: result.error } : {}) });
