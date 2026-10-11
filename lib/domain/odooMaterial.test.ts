@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, jobLines, materialNeed, materialNeedText, moKey, moMaterialState, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup } from "./odooMaterial";
+import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, jobLines, materialNeed, materialNeedText, moKey, moMaterialState, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup, linesOfMo, moParent } from "./odooMaterial";
 
 function line(over: Partial<NestingLine> & { id: number }): NestingLine {
   return {
@@ -271,8 +271,15 @@ describe("panels — the material is the order's, keyed by MO", () => {
     expect(need.lines[0].forQtyActual).toBe(3.2);
   });
 
+  it("a backorder of an order with lines reads them — the same panels, the same sheets", () => {
+    const need = entryMaterialNeed(lookup, { fgCode: "FG-SUA-AS-AA-000004", dateISO: "2026-09-21", soi: "S01060-1", odooMo: "SF01/MO/03673-003", mo: null }, 2, ctx)!;
+    expect(need.mo).toBe("SF01/MO/03673-003");
+    expect(need.via).toBe("odoo");
+    expect(need.lines.length).toBeGreaterThan(0);
+  });
+
   it("is null when none of the row's orders has lines yet — the FG code alone finds nothing", () => {
-    expect(entryMaterialNeed(lookup, { fgCode: "FG-SUA-AS-AA-000004", dateISO: "2026-09-21", soi: "S01060-1", odooMo: "SF01/MO/03673-003", mo: null }, 2, ctx)).toBeNull();
+    expect(entryMaterialNeed(lookup, { fgCode: "FG-SUA-AS-AA-000004", dateISO: "2026-09-21", soi: "S01060-1", odooMo: "SF01/MO/09999-003", mo: null }, 2, ctx)).toBeNull();
   });
 
   it("still finds a transformer part the old way when the context is not the panels'", () => {
@@ -338,6 +345,25 @@ describe("a row's material is its own BOM's and its own job's", () => {
   });
 });
 
+describe("linesOfMo / moParent", () => {
+  it("a backorder MO reads its parent's lines, then a sibling's", () => {
+    const lookup: NestingLookup = {
+      [moKey("SF01/MO/15337")]: [line({ id: 1, sheetsUsed: 4 })],
+      [moKey("SF01/MO/15975-001")]: [line({ id: 2, sheetsUsed: 2 })],
+      [moKey("SF01/MO/15975-002")]: [line({ id: 3, sheetsUsed: 3 })],
+      [moKey("SF01/MO/20928-003")]: [line({ id: 4, sheetsUsed: 1 })],
+      [moKey("SF01/MO/20928")]: [line({ id: 5, sheetsUsed: 9 })],
+    };
+    expect(moParent(" sf01/mo/15337-002 ")).toBe("SF01/MO/15337");
+    expect(moParent("SF01/MO/15337")).toBe("SF01/MO/15337");
+    expect(linesOfMo(lookup, "SF01/MO/15337-002").map((l) => l.id)).toEqual([1]); // the parent's
+    expect(linesOfMo(lookup, "SF01/MO/15975-003").map((l) => l.id)).toEqual([2]); // the first sibling's
+    expect(linesOfMo(lookup, "SF01/MO/20928-003").map((l) => l.id)).toEqual([4]); // its own before its parent's
+    expect(linesOfMo(lookup, "SF01/MO/153370")).toEqual([]); // not a backorder of 15337
+    expect(linesOfMo(lookup, "SF01/MO/99")).toEqual([]);
+  });
+});
+
 describe("moMaterialState", () => {
   it("red when the MO is not on the Material tab, yellow when some line is not nested, clear when all are", () => {
     const lookup: NestingLookup = {
@@ -348,6 +374,9 @@ describe("moMaterialState", () => {
     expect(moMaterialState(lookup, "SF01/MO/9")).toBe("missing");
     expect(moMaterialState(lookup, "sf01/mo/2")).toBe("partial");
     expect(moMaterialState(lookup, " SF01/MO/1 ")).toBe("ok");
+    // Odoo closes a backorder of the MO the nesting was filed under
+    expect(moMaterialState(lookup, "SF01/MO/1-002")).toBe("ok");
+    expect(moMaterialState(lookup, "SF01/MO/2-003")).toBe("partial");
   });
 });
 

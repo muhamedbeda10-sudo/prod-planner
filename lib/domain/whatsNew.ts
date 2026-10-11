@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-11-odoo-backorder-mo",
+    dateISO: "2026-10-11",
+    title: "ODOO log: a backorder MO (…-002) reads its parent's material",
+    where: "ODOO → the log's colours · 🧱 material",
+    body: "An Odoo MO closed as a backorder — SF01/MO/15337-002 — used to show red although the nesting was filed on the Material tab under SF01/MO/15337. It now reads the lines of the MO it came from (or of a sibling backorder), so the colour and the 🧱 figures follow the job.",
+    href: "/odoo",
+  },
+  {
     id: "2026-10-10-ai-assistant",
     dateISO: "2026-10-10",
     title: "AI assistant — ask about the plant in your own words",

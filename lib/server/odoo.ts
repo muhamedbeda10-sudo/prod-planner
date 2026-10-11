@@ -6,7 +6,7 @@ import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, isDoneStatus, odooRowBom, odooRowBomLabel, parseOdooSheet, statusTone, type OdooEntryView, type OdooRowBom, type OdooScope } from "@/lib/domain/odoo";
 import { buildOdooDashboard, previousPeriod, type OdooBasis, type OdooDashboardData, type OdooPeriod } from "@/lib/domain/odooStats";
 import { buildOdooInsights, type OdooInsightRow, type OdooInsights } from "@/lib/domain/odooInsights";
-import { candidateBoms, candidateMos, moKey, nestingKey, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { candidateBoms, candidateMos, moKey, moParent, nestingKey, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 
 export interface OdooPageData {
   entries: OdooEntryView[];
@@ -200,8 +200,11 @@ async function nestingFor(entries: { fgCode: string; boms: string[]; rowBoms?: r
 async function linesByMo(mosPerRow: string[][], line: string): Promise<NestingLookup> {
   const mos = [...new Set(mosPerRow.flat())];
   if (mos.length === 0) return {};
+  // a backorder (…-002) reads the lines of the MO it came from and of its
+  // sibling backorders — fetch the whole family (linesOfMo picks within it)
+  const parents = [...new Set(mos.map(moParent))];
   const rows = await prisma.materialUsage.findMany({
-    where: { line, mo: { in: mos, mode: "insensitive" } },
+    where: { line, OR: [{ mo: { in: mos, mode: "insensitive" } }, { mo: { in: parents, mode: "insensitive" } }, ...parents.map((p) => ({ mo: { startsWith: `${p}-`, mode: "insensitive" as const } }))] },
     select: {
       id: true, month: true, bom: true, mo: true, partCode: true, partName: true, materialCode: true, material: true,
       thicknessMm: true, sheetSize: true, units: true, sheetsPerUnit: true, actualPerUnit: true, sheetsUsed: true, note: true,

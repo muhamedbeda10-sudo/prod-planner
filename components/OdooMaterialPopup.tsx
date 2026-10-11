@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { EMPTY_MATERIAL_FILTERS, type MaterialFilters } from "@/lib/domain/material";
 import {
-  bookText, candidateBoms, candidateMos, entryMaterialNeed, materialNeedText, moKey, monthLabelOfISO, nestingKey, VARIANCE_BAD, VARIANCE_WARN, varianceText,
+  bookText, candidateBoms, candidateMos, entryMaterialNeed, linesOfMo, materialNeedText, monthLabelOfISO, nestingKey, VARIANCE_BAD, VARIANCE_WARN, varianceText,
   type MaterialNeed, type NeedContext, type NeedVia, type NestingLookup, type VarianceTone,
 } from "@/lib/domain/odooMaterial";
 import type { OdooEntryView } from "@/lib/domain/odoo";
@@ -268,7 +268,7 @@ export function OdooMaterialPopup({ e, nesting, needCtx, onClose }: { e: OdooEnt
                   {mos.map((c, i) => (
                     <span key={c.mo}>
                       {i > 0 && " or "}
-                      MO <b className="ltr">{c.mo}</b> ({VIA_TEXT[c.via]}{nesting[moKey(c.mo)] ? "" : ", not in the tab"})
+                      MO <b className="ltr">{c.mo}</b> ({VIA_TEXT[c.via]}{linesOfMo(nesting, c.mo).length > 0 ? "" : ", not in the tab"})
                     </span>
                   ))}
                   {" "}— add the order there (its thickness rows come from the BOM&apos;s template) or import the Consumption Details sheet.
