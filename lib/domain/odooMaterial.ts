@@ -183,6 +183,27 @@ export function jobLines(lines: readonly NestingLine[], job?: { soi: string | nu
  *  its material is filed by MO, not part × BOM. */
 export const moKey = (mo: string) => `MO|${mo.trim().toUpperCase()}`;
 
+/** Odoo's backorder suffix: "SF01/MO/15337-002" is the second remainder of
+ *  "SF01/MO/15337" — the same job, the same nesting. */
+const BACKORDER = /-\d{3}$/;
+/** The MO an Odoo MO is a backorder of ("SF01/MO/15337-002" → "SF01/MO/15337"); itself when it is not one. */
+export const moParent = (mo: string) => mo.trim().toUpperCase().replace(BACKORDER, "");
+
+/** The Material tab's lines for an MO: its own, else its parent's (the
+ *  material sheet files the job under the MO the nesting was made for, and
+ *  Odoo closes it as a backorder of it), else a sibling backorder's — the
+ *  same job cut from the same sheets. */
+export function linesOfMo(lookup: NestingLookup, mo: string): NestingLine[] {
+  const own = lookup[moKey(mo)];
+  if (own && own.length > 0) return own;
+  const parent = moParent(mo);
+  const base = lookup[moKey(parent)];
+  if (base && base.length > 0) return base;
+  const prefix = `${moKey(parent)}-`;
+  const sibling = Object.keys(lookup).filter((k) => k.startsWith(prefix) && BACKORDER.test(k) && lookup[k].length > 0).sort()[0];
+  return sibling ? lookup[sibling] : [];
+}
+
 export interface MoCandidate { mo: string; via: "ledger" | "odoo" | "order" }
 
 /** The MOs a panel row's material may be filed under, in lookup order: the
@@ -203,7 +224,7 @@ export function candidateMos(e: { mo?: string | null; odooMo: string; soi: strin
 /** A panel row's material: the lines of the first candidate order that has
  *  any, scaled to the row's qty. Null when no order carries lines yet. */
 export function materialNeedByMo(lookup: NestingLookup, cands: readonly MoCandidate[], qty: number, loggedMonth: string): MaterialNeed | null {
-  const hit = cands.map((c) => ({ ...c, lines: lookup[moKey(c.mo)] ?? [] })).find((c) => c.lines.length > 0);
+  const hit = cands.map((c) => ({ ...c, lines: linesOfMo(lookup, c.mo) })).find((c) => c.lines.length > 0);
   if (!hit) return null;
   const bom = hit.lines.find((l) => l.bom)?.bom ?? "";
   const partCode = hit.lines.find((l) => l.partCode)?.partCode ?? "";
@@ -324,7 +345,7 @@ export type MoMaterialState = "none" | "missing" | "partial" | "ok";
 export function moMaterialState(lookup: NestingLookup, odooMo: string | null | undefined): MoMaterialState {
   const mo = (odooMo ?? "").trim();
   if (!mo) return "none";
-  const lines = lookup[moKey(mo)] ?? [];
+  const lines = linesOfMo(lookup, mo);
   if (lines.length === 0) return "missing";
   const nested = (l: NestingLine) => l.sheetsUsed !== null || (l.actualPerUnit !== null && l.actualPerUnit >= 0);
   return lines.every(nested) ? "ok" : "partial";
@@ -333,6 +354,6 @@ export function moMaterialState(lookup: NestingLookup, odooMo: string | null | u
 /** The row's tint and the words behind it — red, yellow, or green when all is nested. */
 export const MO_MATERIAL_FLAG: Record<"missing" | "partial" | "ok", { cls: string; edge: string; text: string }> = {
   ok: { cls: "bg-ok-bg/70", edge: "inset 4px 0 0 var(--ok-fg)", text: "This MO is on the Material tab and every line of it is nested" },
-  missing: { cls: "bg-bad-bg/70", edge: "inset 4px 0 0 var(--bad-fg)", text: "This MO is not on the Material tab — no nesting is filed under it" },
+  missing: { cls: "bg-bad-bg/70", edge: "inset 4px 0 0 var(--bad-fg)", text: "This MO is not on the Material tab — no nesting is filed under it (nor under the MO it is a backorder of)" },
   partial: { cls: "bg-warn-bg/70", edge: "inset 4px 0 0 var(--warn-fg)", text: "This MO is on the Material tab, but some of its lines have no actual nested sheets yet" },
 };
