@@ -23,7 +23,7 @@ export function ImportForm({ defaultDate }: { defaultDate: string }) {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={submit} className="bg-surface border rounded-xl p-4 grid gap-4 md:grid-cols-2">
+      <form onSubmit={submit} className="bg-surface border rounded-xl p-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         <label className="block md:col-span-2">
           <span className="block text-xs font-semibold text-muted mb-1">Plan file (Excel) — data starts on row 6</span>
           <input name="file" type="file" accept=".xlsx,.xlsm,.xls" required className="w-full border rounded-md px-2 py-2 bg-surface" />

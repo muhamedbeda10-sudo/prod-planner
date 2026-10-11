@@ -34,7 +34,7 @@ export default async function AiAdminPage() {
 
   return (
     <div className="max-w-6xl">
-      <PageHead title="AI assistant settings" sub="The Claude API key, who may use the assistant and how much — yours alone" />
+      <PageHead title="AI assistant settings" />
       <AiAdmin
         data={{
           hasKey: !!s.apiKeyEnc,

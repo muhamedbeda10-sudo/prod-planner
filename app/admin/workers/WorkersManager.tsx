@@ -147,7 +147,7 @@ function WorkerCard({ worker, onClose }: { worker: WorkerDTO; onClose?: () => vo
             edit.run(updateWorker, fd, "Saved.", () => (onClose ? onClose() : setEditing(false)));
           }}
         >
-          <div className="grid sm:grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <label className="block">
               <span className="text-xs font-bold text-muted">ID</span>
               <input name="empId" defaultValue={worker.empId} required inputMode="numeric" className={`${inputCls} ltr tabnum`} />
@@ -271,7 +271,7 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
               add.run(createWorker, new FormData(form), "Added.", () => form.reset());
             }}
           >
-            <div className="grid sm:grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <label className="block">
                 <span className="text-xs font-bold text-muted">ID</span>
                 <input name="empId" required inputMode="numeric" placeholder="Badge number, e.g. 100058" className={`${inputCls} ltr tabnum`} />
@@ -322,7 +322,7 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
                 {g.label}
                 <span className="text-sm font-normal text-muted tabnum">{activeCount(g.people)} people</span>
               </h2>
-              <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]">
+              <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(min(11rem,100%),1fr))]">
                 {g.sections.map((sec) => (
                   <DeptColumn key={sec.code} title={sec.label} count={activeCount(sec.list)} workers={sec.list} selectedId={selectedId} onPick={setSelectedId} />
                 ))}
@@ -334,7 +334,7 @@ export function WorkersManager({ workers }: { workers: WorkerDTO[] }) {
               Away
               <span className="text-sm font-normal text-muted tabnum">{away.length} on vacation</span>
             </h2>
-            <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]">
+            <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(min(11rem,100%),1fr))]">
               <DeptColumn title="On vacation" count={away.length} workers={away} selectedId={selectedId} onPick={setSelectedId} tone="warn" />
               {unassigned.length > 0 && (
                 <DeptColumn title="No section" count={activeCount(unassigned)} workers={unassigned} selectedId={selectedId} onPick={setSelectedId} />

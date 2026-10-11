@@ -329,7 +329,7 @@ function AddItem() {
               });
             }}
           >
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block text-sm"><span className="filter-label">Product code</span><input name="code" required className={`${F} ltr`} placeholder="C-SHR-005" /></label>
               <label className="block text-sm"><span className="filter-label">UOM</span><input name="uom" className={F} placeholder="PC or KG" /></label>
               <label className="block text-sm sm:col-span-2"><span className="filter-label">Product name</span><input name="name" className={F} placeholder="HR Sheet 5mm- 1220x2440mm" /></label>

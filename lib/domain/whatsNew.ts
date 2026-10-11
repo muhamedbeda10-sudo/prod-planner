@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-11-phones-tablets",
+    dateISO: "2026-10-11",
+    title: "Tidier on phones and tablets — and less text everywhere",
+    where: "Every page · the AI assistant",
+    body: "Nothing runs off the side of a phone any more: the bar keeps its buttons on screen (dark/light mode moved into the ☰ menu), cards and charts fit the width, and the line under each page title is hidden on a phone. The AI chat keeps its chats in a drawer on phones and tablets, with a bigger box to type in. The long explanations on the AI settings, Users & Permissions, Settings and the dashboards' cards were cut to the labels — hover one to read more.",
+  },
+  {
     id: "2026-10-11-odoo-compare",
     dateISO: "2026-10-11",
     title: "ODOO dashboard: choose what to compare with",

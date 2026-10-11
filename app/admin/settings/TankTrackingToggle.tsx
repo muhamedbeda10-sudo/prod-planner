@@ -43,17 +43,13 @@ export function TankTrackingToggle({ initialOn }: { initialOn: boolean }) {
   }
 
   return (
-    <div className="border rounded-xl p-5 space-y-4">
+    <div className="border rounded-xl p-4 sm:p-5 space-y-3">
       <div className="flex flex-wrap items-start gap-4">
-        <div className="flex-1 min-w-[260px]">
-          <h2 className="text-sm font-extrabold flex items-center gap-2">
+        <div className="flex-1 min-w-[200px]">
+          <h2 className="text-sm font-extrabold flex items-center gap-2" title="Every tank as its own piece: a serial at welding, a leak test before painting, painting by picking the tanks, and a barcode sticker.">
             🛢 Tank tracking (per piece)
             <span className={`pill ${on ? "pill-ok" : "pill-muted"}`}>{on ? "ON" : "OFF"}</span>
           </h2>
-          <p className="text-sm text-muted mt-1">
-            Tracks every tank as its own piece: a serial minted at welding, a leak test between welding
-            and painting, painting recorded by picking the tanks, and a barcode sticker at the end.
-          </p>
         </div>
         <button
           type="button"
@@ -71,7 +67,9 @@ export function TankTrackingToggle({ initialOn }: { initialOn: boolean }) {
         <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 border-t pt-3 text-sm">
+      <details className="border-t pt-3 text-sm">
+        <summary className="cursor-pointer text-xs font-bold text-muted">What it changes</summary>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mt-2">
         <div>
           <div className="font-bold mb-1">While it is ON</div>
           <ul className="text-muted space-y-0.5 list-disc pl-4">
@@ -90,7 +88,8 @@ export function TankTrackingToggle({ initialOn }: { initialOn: boolean }) {
             <li>Tanks already recorded stay saved and resume when you turn it back on</li>
           </ul>
         </div>
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

@@ -30,7 +30,7 @@ function BulletBar({ used, limit }: { used: number; limit: number }) {
 function AlarmLine({ a }: { a: AlarmRow }) {
   const over = a.basis === "person" ? a.over.length > 0 : a.used > a.limit + 1e-9;
   return (
-    <li className="py-2 grid gap-1 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-center">
+    <li className="py-2 grid grid-cols-1 gap-1 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-center">
       <div className="min-w-0">
         <div className="font-semibold truncate" title={a.item}>
           {over ? "⚠ " : ""}{a.item} <span className="text-xs text-muted ltr font-normal">{a.code ?? ""}</span>
@@ -89,7 +89,7 @@ export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard
         )}
       </ChartCard>
 
-      <div className="grid gap-3 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <ChartCard
           title="Past months over the limit"
           sub={d.exceedances.length ? `Each finished month (or longer limit) on the slicer that ended over its number — the running month is under Alarms now` : `No finished month went over a limit ${periodLabel}`}

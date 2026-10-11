@@ -47,7 +47,7 @@ function Field({ label, className = "", children }: { label: string; className?:
 
 function ScrapFields({ entry, today, earliest, disabled }: { entry?: ScrapEntryView; today: string; earliest: string; disabled?: boolean }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <Field label="Painting section">
         <select name="department" defaultValue={entry?.department ?? ""} required disabled={disabled} className={`${F} w-full`}>
           <option value="" disabled>Pick the section…</option>
@@ -75,7 +75,7 @@ function Foot({ children }: { children: React.ReactNode }) {
 function RecordScrapDialog({ today, earliest, onClose, onSaved }: { today: string; earliest: string; onClose: () => void; onSaved: () => void }) {
   const add = useAction();
   return (
-    <Modal title="➕ Record powder scrap" sub="The total scrap weighed for the section — the powder drawn comes from the hand-outs of “…Powder…” items on the log." onClose={onClose} busy={add.pending} width="max-w-xl">
+    <Modal title="➕ Record powder scrap" sub="Scrap weighed against the powder drawn" onClose={onClose} busy={add.pending} width="max-w-xl">
       <form
         className="space-y-3"
         onSubmit={(ev) => {
@@ -303,7 +303,7 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
         <div className="mt-2"><Legend items={[{ label: "Powder drawn", color: WITHDRAWN }, { label: "Scrap", color: SCRAP }, { label: "Scrap rate", color: RATE, line: true }]} /></div>
       </ChartCard>
 
-      <div className="grid gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
         <section className="bg-surface border rounded-xl overflow-hidden lg:col-span-3">
           <h2 className="font-bold px-3 pt-3">Weighings · {monthLong(r.month)}</h2>
           {r.entries.length === 0 ? (

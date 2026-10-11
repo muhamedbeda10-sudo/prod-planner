@@ -33,7 +33,7 @@ export default async function UsersPage() {
   return (
     <div>
       <PageHeader title="👥 Users & Permissions" />
-      <Card className="p-5">
+      <Card className="p-3 sm:p-5">
         <UsersManager users={rows} myId={me.id} />
       </Card>
     </div>

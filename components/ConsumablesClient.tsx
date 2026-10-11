@@ -525,7 +525,7 @@ function HandoutSummary({ rows, periodLabel, onClose }: { rows: ConsumableIssueV
         {stat("Items", s.items.length)}
         {stat("Departments", s.departments.length)}
       </div>
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <section>
           <div className="flex items-baseline mb-2">
             <h3 className="filter-label">By item</h3>

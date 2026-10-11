@@ -408,7 +408,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
               {q.sheetDone > 0 && <span className="text-[10px] text-ok-fg tabnum whitespace-nowrap" title="Pieces' worth of this sheet already cut here — once every sheet is cut, the board offers to record the whole pieces">✓ {q.sheetDone} cut</span>}
               </>}
               {canEdit && (
-                <span className="ms-auto inline-flex items-center gap-1 no-print">
+                <span className="ms-auto inline-flex flex-wrap justify-end items-center gap-1 no-print">
                   {done(q)}
                   {runEdit(q)}
                   <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
@@ -440,7 +440,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
               {q.sheetDone > 0 && <span className="text-[10px] text-ok-fg tabnum whitespace-nowrap" title="Pieces' worth of this sheet already cut here — once every sheet is cut, the board offers to record the whole pieces">✓ {q.sheetDone} cut</span>}
               </>}
               {canEdit && (
-                <span className="ms-auto inline-flex items-center gap-1 no-print">
+                <span className="ms-auto inline-flex flex-wrap justify-end items-center gap-1 no-print">
                   {done(q)}
                   {runEdit(q)}
                   <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>
@@ -616,7 +616,7 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
       )}
       {board.readyCut.length > 0 && <ReadyCutPanel board={board} canEdit={canEdit} />}
       {timeline && <div className="mb-3"><MachineTimeline board={board} /></div>}
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {board.cards.map((c) => <Card key={c.machine.id} c={c} board={board} canEdit={canEdit} />)}
       </div>
       {open && board.unassigned.length > 0 && (
@@ -628,7 +628,7 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
                 <span className="text-[11px] font-bold uppercase tracking-wide text-brand">📅 Weekly plan — dated, earliest first</span>
                 {dated.length > 12 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAllDated((v) => !v)}>{showAllDated ? "Show fewer" : `Show all ${dated.length}`}</button>}
               </div>
-              <ul className="mt-0.5 grid gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">{datedShown.map(row)}</ul>
+              <ul className="mt-0.5 grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">{datedShown.map(row)}</ul>
             </>
           )}
           {undated.length > 0 && (
@@ -637,7 +637,7 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
                 <span className="text-[11px] font-bold uppercase tracking-wide text-muted">Open orders — no date yet (the month)</span>
                 {undated.length > 6 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAll((v) => !v)}>{showAll ? "Show fewer" : `Show all ${undated.length}`}</button>}
               </div>
-              <ul className="mt-0.5 grid gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">{undatedShown.map(row)}</ul>
+              <ul className="mt-0.5 grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">{undatedShown.map(row)}</ul>
             </>
           )}
         </div>

@@ -829,7 +829,7 @@ function ItemCards({ totals, selected, onPick, periodLabel }: { totals: OdooItem
     </button>
   );
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] no-print" aria-label="Quantity per item">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(min(8.5rem,100%),1fr))] no-print" aria-label="Quantity per item">
       {card("all", "All items", all, selected === "", () => onPick(""), `Everything the rows ${periodLabel || "in the whole log"} carry, with the other filters applied`)}
       {totals.map((t) => card(t.product, t.product, t, selected === t.product, () => onPick(selected === t.product ? "" : t.product), `${t.product}: ${t.qty} ${periodLabel} — click to show only these rows`))}
     </div>

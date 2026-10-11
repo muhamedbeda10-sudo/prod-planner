@@ -30,7 +30,7 @@ function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: 
       {PERM_CATEGORIES.map((cat) => (
         <fieldset key={cat.name} className="border rounded-lg p-3">
           <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">{cat.name}</legend>
-          <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1.5">
             {cat.perms.map((p) => (
               <label key={p.key} className="flex items-start gap-2 text-sm cursor-pointer" title={p.desc}>
                 <input
@@ -42,10 +42,7 @@ function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: 
                   data-access={p.notify ? undefined : "1"}
                   className="mt-0.5 accent-[var(--brand,#1b7a43)]"
                 />
-                <span>
-                  <span className="font-semibold">{p.label}</span>
-                  <span className="block text-xs text-muted">{p.desc}</span>
-                </span>
+                <span className="font-semibold">{p.label}</span>
               </label>
             ))}
           </div>
@@ -66,12 +63,11 @@ function TabChecks({ hidden }: { hidden: Set<string> }) {
     <fieldset className="border rounded-lg p-3">
       <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">Screens this account sees</legend>
       <input type="hidden" name="tabsForm" value="1" />
-      <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
-        <span className="text-muted flex-1 min-w-52">Ticked screens show in their menu. Admins included — untick what this person should not see.</span>
+      <div className="flex flex-wrap items-center justify-end gap-2 mb-2 text-xs">
         <button type="button" className="btn btn-sm btn-ghost" onClick={(e) => setAll(e.currentTarget, true)}>All</button>
         <button type="button" className="btn btn-sm btn-ghost" onClick={(e) => setAll(e.currentTarget, false)}>None</button>
       </div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3">
         {TAB_GROUPS.map((g) => (
           <div key={g}>
             <div className="text-[11px] font-bold uppercase tracking-wide text-muted mb-1">{g}</div>
@@ -98,21 +94,18 @@ function AiChecks({ ai, owner }: { ai: Row["ai"] | null; owner?: boolean }) {
     <fieldset className="border rounded-lg p-3">
       <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">AI assistant</legend>
       {owner ? (
-        <p className="text-sm text-muted">The owner always has the assistant — the plant&apos;s monthly cap is set on AI assistant settings.{ai ? ` Spent this month: ${usdText(ai.spent)}.` : ""}</p>
+        <p className="text-sm text-muted">Always on for the owner.{ai ? ` Spent this month: ${usdText(ai.spent)}.` : ""}</p>
       ) : (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <input type="hidden" name="aiForm" value="1" />
-          <label className="flex items-start gap-2 text-sm cursor-pointer">
-            <input type="checkbox" name="aiEnabled" defaultChecked={ai?.enabled} className="mt-0.5 accent-[var(--brand,#1b7a43)]" />
-            <span>
-              <span className="font-semibold">Can use the AI assistant</span>
-              <span className="block text-xs text-muted">Ask Claude about the plant&apos;s data — read-only — from the AI button in the bar (while it is open to the team).</span>
-            </span>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" name="aiEnabled" defaultChecked={ai?.enabled} className="accent-[var(--brand,#1b7a43)]" />
+            <span className="font-semibold">Can use the AI assistant</span>
           </label>
           <label className="flex items-center gap-2 text-sm">
             <span className="font-semibold">Monthly limit</span>
             <span className="font-bold">$</span>
-            <input name="aiUsd" type="number" min={0} step="0.5" defaultValue={ai && ai.monthlyUsd > 0 ? ai.monthlyUsd : ""} placeholder="none" className="w-24 px-2 py-1 text-sm tabnum" />
+            <input name="aiUsd" type="number" inputMode="decimal" min={0} step="0.5" defaultValue={ai && ai.monthlyUsd > 0 ? ai.monthlyUsd : ""} placeholder="no limit" className="w-24 px-2 py-1 text-sm tabnum" />
           </label>
           {ai && <span className="text-xs text-muted">Spent this month: <b className="tabnum">{usdText(ai.spent)}</b></span>}
         </div>
@@ -126,7 +119,7 @@ function AiChecks({ ai, owner }: { ai: Row["ai"] | null; owner?: boolean }) {
  *  unticks what this one does not do. */
 function AdminCheck({ defaultChecked, label }: { defaultChecked?: boolean; label: string }) {
   return (
-    <label className="flex items-start gap-2 text-sm cursor-pointer">
+    <label className="flex items-start gap-2 text-sm cursor-pointer" title="Manages accounts, Settings and the admin pages. Everything else follows the ticks below.">
       <input
         type="checkbox"
         name="isAdmin"
@@ -137,12 +130,7 @@ function AdminCheck({ defaultChecked, label }: { defaultChecked?: boolean; label
           e.currentTarget.form?.querySelectorAll<HTMLInputElement>('input[name="perms"][data-access]').forEach((c) => (c.checked = true));
         }}
       />
-      <span>
-        <span className="font-bold">{label}</span>
-        <span className="block text-xs text-muted">
-          Manages accounts, Settings and the admin pages. Everything else follows the ticks below, admins included — untick what this admin does not do.
-        </span>
-      </span>
+      <span className="font-bold">{label}</span>
     </label>
   );
 }
@@ -292,10 +280,7 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted flex-1 min-w-52">
-          <b>Screens</b> set what each account sees — admins included. Permissions control who can <b>edit</b> what.
-        </p>
+      <div className="flex justify-end">
         <button type="button" className={btnCls} onClick={() => setShowCreate(true)}>
           + Add account
         </button>
@@ -311,7 +296,7 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
             create.run(createUser, new FormData(form), "Account created.", () => { form.reset(); setShowCreate(false); });
           }}
         >
-          <div className="grid sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="block text-sm">
               <span className="text-xs font-semibold uppercase tracking-wide text-muted">Name</span>
               <input name="name" required className={inputCls} placeholder="e.g. Ahmed — Welding" />

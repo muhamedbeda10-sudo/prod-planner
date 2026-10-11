@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Check, Copy, Loader2, MessageSquare, PanelLeft, Plus, Search, Send, Trash2 } from "lucide-react";
+import { Bot, Check, Copy, Loader2, MessageSquare, PanelLeft, Plus, Search, Send, Trash2, X } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { deleteAiConversation, loadAiConversation } from "@/app/ai/actions";
 import { AI_MAX_QUESTION, usdText, type AiChatTurn } from "@/lib/domain/ai";
 
-// The AI assistant's chat: the person's conversations on the side, the open
-// one in the middle, the answer streaming in as it is written — what it is
-// looking up shown while it looks — and the month's spend under the box.
+// The AI assistant's chat: the person's conversations on the side (a drawer
+// below a laptop's width), the open one in the middle, the answer streaming
+// in as it is written — what it is looking up shown while it looks — and the
+// month's spend under the box.
 
 interface Turn extends AiChatTurn {
   error?: string;
@@ -48,13 +49,11 @@ const ago = (iso: string) => {
 };
 
 export function AiChat({
-  meName,
   isOwner,
   status,
   conversations,
   initial,
 }: {
-  meName: string;
   isOwner: boolean;
   status: AiChatStatus;
   conversations: Conv[];
@@ -200,24 +199,30 @@ export function AiChat({
   }
 
   const meter = status.userCap > 0
-    ? `${usdText(spent.user)} of your ${usdText(status.userCap)} this month`
-    : `${usdText(spent.user)} used this month${isOwner && status.plantCap > 0 ? ` · plant ${usdText(spent.plant)} of ${usdText(status.plantCap)}` : ""}`;
+    ? `${usdText(spent.user)} / ${usdText(status.userCap)} this month`
+    : `${usdText(spent.user)} this month${isOwner && status.plantCap > 0 ? ` · plant ${usdText(spent.plant)} / ${usdText(status.plantCap)}` : ""}`;
+  const activeTitle = convs.find((c) => c.id === activeId)?.title ?? null;
 
   return (
-    <div className="ai-chat flex gap-3 h-[calc(100dvh-8.5rem)] min-h-[420px]">
-      {/* the conversations */}
-      <aside className={`${sideOpen ? "fixed inset-x-3 top-16 bottom-3 z-40 shadow-2xl" : "hidden"} md:static md:flex md:shadow-none w-auto md:w-60 shrink-0 flex-col bg-surface border rounded-xl overflow-hidden`}>
+    <div className="ai-chat flex gap-3 h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-8.5rem)] min-h-[380px]">
+      {/* below a laptop's width the chats are a drawer over the page */}
+      {sideOpen && <button type="button" aria-label="Close the chats" className="lg:hidden fixed inset-0 z-40 bg-black/45" onClick={() => setSideOpen(false)} />}
+      <aside
+        className={`${sideOpen ? "flex fixed z-50 inset-y-0 start-0 w-[min(20rem,85vw)] shadow-2xl" : "hidden"} lg:static lg:z-auto lg:flex lg:w-64 lg:shadow-none lg:border lg:rounded-xl shrink-0 flex-col bg-surface overflow-hidden`}
+      >
         <div className="p-2 border-b flex gap-2">
           <button type="button" className="btn btn-primary btn-sm flex-1" onClick={newChat} disabled={busy}>
             <Plus size={15} /> New chat
           </button>
           {/* .btn sets its own display, so the hiding goes on a wrapper */}
-          <span className="md:hidden"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setSideOpen(false)}>Close</button></span>
+          <span className="lg:hidden">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSideOpen(false)} aria-label="Close the chats"><X size={16} /></button>
+          </span>
         </div>
         <nav className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
-          {convs.length === 0 && <p className="text-xs text-muted p-2">Your chats will be listed here.</p>}
+          {convs.length === 0 && <p className="text-xs text-muted p-2">No chats yet.</p>}
           {convs.map((c) => (
-            <div key={c.id} className={`group flex items-center gap-1 rounded-lg ${c.id === activeId ? "bg-brand-light" : "hover:bg-surface-2"}`}>
+            <div key={c.id} className={`flex items-center gap-1 rounded-lg ${c.id === activeId ? "bg-brand-light" : "hover:bg-surface-2"}`}>
               <button type="button" onClick={() => open(c.id)} className="flex-1 min-w-0 text-start px-2.5 py-2" disabled={busy}>
                 <div className={`text-sm font-semibold truncate ${c.id === activeId ? "text-brand" : ""}`} dir="auto">{c.title}</div>
                 <div className="text-[11px] text-muted">{ago(c.updatedAt)}</div>
@@ -226,7 +231,7 @@ export function AiChat({
                 type="button"
                 onClick={() => remove(c)}
                 disabled={busy}
-                className="p-1.5 me-1 rounded-md text-muted opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-bad-fg hover:bg-bad-bg"
+                className="p-2 me-0.5 rounded-md text-muted opacity-60 hover:opacity-100 hover:text-bad-fg hover:bg-bad-bg"
                 title="Delete this chat"
                 aria-label={`Delete the chat ${c.title}`}
               >
@@ -239,25 +244,26 @@ export function AiChat({
 
       {/* the open conversation */}
       <section className="flex-1 min-w-0 flex flex-col bg-surface border rounded-xl overflow-hidden">
-        <div className="md:hidden flex items-center gap-2 p-2 border-b">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSideOpen(true)}>
-            <PanelLeft size={15} /> Chats
+        <div className="lg:hidden flex items-center gap-1 px-1.5 py-1 border-b">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSideOpen(true)} aria-label="Chats" title="Chats">
+            <PanelLeft size={17} />
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={newChat} disabled={busy}>
-            <Plus size={15} /> New
+          <div className="flex-1 min-w-0 text-sm font-bold truncate" dir="auto">{activeTitle ?? "New chat"}</div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={newChat} disabled={busy} aria-label="New chat" title="New chat">
+            <Plus size={17} />
           </button>
         </div>
 
-        <div ref={scroller} className="flex-1 overflow-y-auto px-3 py-4 md:px-6">
+        <div ref={scroller} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4 md:px-6 md:py-4">
           {loadErr && <p className="text-sm font-semibold text-bad-fg mb-3">{loadErr}</p>}
           {turns.length === 0 ? (
-            <Welcome name={meName} onPick={(q) => (canAsk ? ask(q) : setInput(q))} disabled={!canAsk || busy} />
+            <Welcome onPick={(q) => (canAsk ? ask(q) : setInput(q))} disabled={!canAsk || busy} />
           ) : (
-            <div className="max-w-4xl mx-auto space-y-5">
+            <div className="max-w-4xl mx-auto space-y-4 md:space-y-5">
               {turns.map((t, i) =>
                 t.role === "user" ? (
                   <div key={i} className="flex justify-end">
-                    <div dir="auto" className="max-w-[85%] rounded-2xl rounded-ee-md bg-brand-light px-3.5 py-2 text-[15px] whitespace-pre-wrap">{t.text}</div>
+                    <div dir="auto" className="max-w-[88%] sm:max-w-[80%] rounded-2xl rounded-ee-md bg-brand-light px-3.5 py-2 text-[15px] whitespace-pre-wrap break-words">{t.text}</div>
                   </div>
                 ) : (
                   <Answer key={i} turn={t} live={busy && i === turns.length - 1 ? live : null} streaming={busy && i === turns.length - 1} />
@@ -268,16 +274,16 @@ export function AiChat({
         </div>
 
         <form
-          className="border-t p-2.5 md:p-3"
+          className="border-t px-2.5 pt-2.5 pb-2 md:px-3 md:pt-3"
           onSubmit={(e) => {
             e.preventDefault();
             ask(input);
           }}
         >
           {!canAsk && (
-            <p className="text-sm font-semibold text-warn-fg mb-2">
+            <p className="max-w-4xl mx-auto text-sm font-semibold text-warn-fg mb-2">
               {status.reason ?? "You have used this month's AI allowance — ask the owner to raise it."}
-              {isOwner && <> <a href="/admin/ai" className="underline text-brand">Open AI assistant settings</a></>}
+              {isOwner && <> <a href="/admin/ai" className="underline text-brand">Settings</a></>}
             </p>
           )}
           <div className="max-w-4xl mx-auto flex items-end gap-2">
@@ -291,42 +297,46 @@ export function AiChat({
                   ask(input);
                 }
               }}
-              rows={Math.min(6, Math.max(1, input.split("\n").length))}
+              rows={Math.min(5, Math.max(1, input.split("\n").length))}
               maxLength={AI_MAX_QUESTION}
               dir="auto"
+              enterKeyHint="send"
               disabled={!canAsk}
-              placeholder={canAsk ? "Ask about orders, output, machines, material… (Enter to send, Shift+Enter for a new line)" : ""}
-              className="flex-1 resize-none px-3 py-2 text-[15px] rounded-xl"
+              placeholder={canAsk ? "Ask about the plant…" : ""}
+              // 16px: a phone zooms the page into a smaller box
+              className="flex-1 min-w-0 resize-none px-3 py-2 text-base rounded-xl"
             />
             <button type="submit" className="btn btn-primary h-10 w-10 !p-0 shrink-0" disabled={!canAsk || busy || !input.trim()} aria-label="Send" title="Send">
               {busy ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
           </div>
-          <div className="max-w-4xl mx-auto flex flex-wrap justify-between gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-muted">
-            <span>Read-only answers from the app&apos;s data — check the figures that matter.</span>
-            <span className="tabnum">{meter}</span>
-          </div>
+          <div className="max-w-4xl mx-auto text-end mt-1 text-[11px] text-muted tabnum">{meter}</div>
         </form>
       </section>
     </div>
   );
 }
 
-function Welcome({ name, onPick, disabled }: { name: string; onPick: (q: string) => void; disabled: boolean }) {
+function Welcome({ onPick, disabled }: { onPick: (q: string) => void; disabled: boolean }) {
   return (
-    <div className="max-w-2xl mx-auto text-center pt-6 md:pt-14">
-      <div className="mx-auto w-12 h-12 rounded-2xl bg-brand-light text-brand grid place-items-center">
-        <Bot size={26} />
+    <div className="max-w-2xl mx-auto pt-2 sm:pt-8 md:pt-14">
+      <div className="flex items-center justify-center gap-2.5">
+        <span className="w-9 h-9 rounded-xl bg-brand-light text-brand grid place-items-center shrink-0">
+          <Bot size={20} />
+        </span>
+        <p className="text-lg font-extrabold">Ask about the plant</p>
       </div>
-      <p className="mt-3 text-lg font-extrabold">Hi {name.split(" ")[0]} — ask me about the plant</p>
-      <p className="text-sm text-muted mt-1">
-        I read the app&apos;s live data — orders, plans, the daily log, machines, material, Odoo, shifts, consumables — and answer with
-        tables, charts and suggestions. Arabic or English.
-      </p>
-      <div className="grid sm:grid-cols-2 gap-2 mt-5 text-start">
-        {SUGGESTIONS.map((q) => (
-          <button key={q} type="button" disabled={disabled} onClick={() => onPick(q)} dir="auto"
-            className="border rounded-xl px-3 py-2.5 text-sm hover:bg-surface-2 hover:border-[var(--border-strong)] transition-colors disabled:opacity-60 flex items-start gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 sm:mt-6">
+        {SUGGESTIONS.map((q, i) => (
+          <button
+            key={q}
+            type="button"
+            disabled={disabled}
+            onClick={() => onPick(q)}
+            dir="auto"
+            // a phone shows the first four
+            className={`${i >= 4 ? "hidden sm:flex" : "flex"} text-start border rounded-xl px-3 py-2.5 text-sm hover:bg-surface-2 hover:border-[var(--border-strong)] transition-colors disabled:opacity-60 items-start gap-2`}
+          >
             <MessageSquare size={15} className="text-muted mt-0.5 shrink-0" />
             <span>{q}</span>
           </button>
@@ -340,7 +350,7 @@ function Answer({ turn, live, streaming }: { turn: Turn; live: string | null; st
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex gap-2.5">
-      <div className="w-8 h-8 rounded-full bg-brand-light text-brand grid place-items-center shrink-0 mt-0.5">
+      <div className="hidden sm:grid w-8 h-8 rounded-full bg-brand-light text-brand place-items-center shrink-0 mt-0.5">
         <Bot size={17} />
       </div>
       <div className="flex-1 min-w-0">

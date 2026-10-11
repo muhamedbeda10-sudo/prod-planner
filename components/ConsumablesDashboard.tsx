@@ -385,7 +385,7 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
       </div>
 
       {/* ---- how much, over time · who, by share */}
-      <div className="grid gap-3 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
         <ChartCard className="xl:col-span-2"
           title={singleDay ? "Hand-outs by hour" : "Hand-outs per day"}
           sub={singleDay ? "When in the day the store was busy" : `Area = the day's hand-outs · line = the trailing 7-day average${days < 7 ? " (from a week on)" : ""}`}
@@ -401,7 +401,7 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
       {/* ---- when · how departments move (a period only: one day has one
           column to stack, and the donut already splits it by department) */}
       {!singleDay && (
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           <ChartCard title="When the store is busy" sub="Hand-outs by weekday and hour — the darker, the busier"
             table={{ rows: weekRows, filename: file("weekday-hour"), sheet: "Weekday x hour" }}>
             <Heatmap compactCells rowHead="" rows={WEEK_ORDER.map((d) => WEEKDAYS[d])} cols={s.weekHour.hours.map((h) => String(h).padStart(2, "0"))}
@@ -418,7 +418,7 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
       )}
 
       {/* ---- which items matter · the whole range */}
-      <div className="grid gap-3 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <ChartCard title="Items — the 80/20 view"
           sub={`${k.vitalFew} of ${s.totals.items} item${s.totals.items === 1 ? "" : "s"} make up 80% of hand-outs${s.pareto.rows.length > 15 ? " · top 15 shown" : ""}`}
           table={{ rows: paretoRows, filename: file("pareto"), sheet: "Pareto" }}>
@@ -431,7 +431,7 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
       </div>
 
       {/* ---- departments: how they draw on it, and for their size */}
-      <div className="grid gap-3 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <ChartCard title="How departments draw on the store" sub="Each bubble: how often × how many different items"
           table={{ rows: workerRows, filename: file("departments-draw"), sheet: "Departments" }}>
           <WorkerScatter s={s} />
@@ -444,7 +444,7 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
       </div>
 
       {/* ---- where each item goes */}
-      <ChartCard title="Where each item goes" sub="Quantity handed out, item by department · each row is shaded on its own (its darkest cell = where most of it went) and totalled in its own unit"
+      <ChartCard title="Where each item goes" sub="Quantity handed out, item by department"
         table={{ rows: matrixRows, filename: file("item-by-department"), sheet: "Item x department" }}>
         <Heatmap totals="rows" scale="row" rowHead="Item" rows={s.matrix.items} cols={s.matrix.departments.map((d) => d.label)} values={s.matrix.qty} />
       </ChartCard>

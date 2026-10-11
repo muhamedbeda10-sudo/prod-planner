@@ -18,7 +18,7 @@ export default async function CalendarPage() {
     <div className="space-y-5">
       <PageHeader
         title="Factory Calendar"
-        sub="Non-working days besides Fridays — holidays and planned shutdowns carry no production target, so efficiency stays honest"
+        sub="Holidays and shutdowns besides Fridays"
       />
       <HolidayManager rows={holidays.map((h) => ({ id: h.id, date: toISODate(h.date), name: h.name }))} />
     </div>

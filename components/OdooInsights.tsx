@@ -72,7 +72,7 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
     <section className="space-y-3">
       <h2 className="font-bold">How the close-out is going <span className="text-muted font-normal text-sm">· the rows logged in the period, and the closings in it</span></h2>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <ChartCard title="How long a close takes" sub={lt.rows ? `From the day a row was logged to the day it went Done — ${fmt(lt.rows)} row(s) closed in the period` : "No row closed in the period"}
           table={{ rows: tables.lead, filename: file("lead-time"), sheet: "Lead time" }}>
           <div className="flex flex-wrap gap-2 mb-2 text-xs">
@@ -117,7 +117,7 @@ export function OdooInsightsSection({ ins, colorOf, file }: { ins: Insights; col
         </ChartCard>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <ChartCard title="Close rate" sub="Of the rows logged in the period, how many are Done by now" table={{ rows: tables.funnel, filename: file("close-rate"), sheet: "Close rate" }}>
           <Gauge value={ins.closeRate} label="Close rate" sub={`${fmt(f.done)} of ${fmt(f.logged)} rows Done`} />
           <div className="mt-3 grid grid-cols-3 text-center text-xs">

@@ -198,7 +198,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
       {/* ==== THE FLOOR: six cards, two to a row ==== */}
       <Band label="The floor">
         {controls}
-        <div className="grid lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card
             title={`Daily output vs target · ${periodWord}`}
             sub={`Pieces per department per day · dashed line = ${d.targetPerDeptDay} pcs a department a working day`}
@@ -206,10 +206,10 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
           >
             <WeekTrendChart days={d.days} targetPerDeptDay={d.targetPerDeptDay} />
           </Card>
-          <Card title="Backlog · last 30 days" sub="Pieces waiting at each stage, day by day, for the orders open today — a line that climbs is a stage falling behind the one before it">
+          <Card title="Backlog · last 30 days" sub="Pieces waiting at each stage, day by day">
             <BacklogChart history={c.backlogHistory} />
           </Card>
-          <Card title="Needs a hand today" sub="Late forecasts first (most late on top), then promises due this week, then orders with no forecast, then holds · Left = tanks still to paint" aside={<Link href="/tracker" className="text-accent font-semibold hover:underline">tracker →</Link>}>
+          <Card title="Needs a hand today" sub="Late first, then due this week · Left = tanks to paint" aside={<Link href="/tracker" className="text-accent font-semibold hover:underline">tracker →</Link>}>
             {c.attention.length === 0 ? (
               <p className="text-sm text-muted">Nothing late, nothing due this week, nothing on hold.</p>
             ) : (
@@ -239,7 +239,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
           </Card>
           <Card
             title="Promises · next 14 days"
-            sub="Tanks promised per day (the latest scheduled delivery of every open order with tanks left); the at-risk share is what the forecast says lands late, has no forecast, or is on hold"
+            sub="Tanks promised per day · at risk = late, no forecast or on hold"
             aside={<>{c.promises.overdue.orders > 0 ? <span className="text-bad-fg font-bold">{fmt(c.promises.overdue.units)} units on {fmt(c.promises.overdue.orders)} overdue promise{c.promises.overdue.orders === 1 ? "" : "s"}</span> : <span className="text-ok-fg">no overdue promises</span>}{c.promises.unscheduled > 0 && <> · {fmt(c.promises.unscheduled)} unscheduled</>}</>}
           >
             <PromisesChart days={c.promises.days} />
@@ -285,7 +285,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
               })}
             </div>
           </Card>
-          <Card title="By component · now" sub="Each component's pieces through the stages over the open orders, and where the most of it waits" aside={<>{c.byItem.length} components</>}>
+          <Card title="By component · now" sub="Each component through the stages" aside={<>{c.byItem.length} components</>}>
             <div className="overflow-x-auto"><table className="w-full border-collapse">
               <thead>
                 <tr className="text-left text-[11px] text-muted uppercase tracking-wide">
@@ -342,7 +342,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
               </tbody>
             </table></div>
           </Card>
-          <Card title="By customer · now" sub="The open orders per customer: units finished (tanks painted) and delivered of required" aside={<>{c.customers.length} customer{c.customers.length === 1 ? "" : "s"}</>}>
+          <Card title="By customer · now" sub="Finished and delivered of required, per customer" aside={<>{c.customers.length} customer{c.customers.length === 1 ? "" : "s"}</>}>
             <div className="space-y-3">
               {c.customers.map((k) => (
                 <div key={k.customer} title={`${k.customer}: ${fmt(k.complete)} finished and ${fmt(k.delivered)} delivered of ${fmt(k.required)} units on ${fmt(k.orders)} open orders`}>

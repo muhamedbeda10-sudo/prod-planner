@@ -106,7 +106,7 @@ export function TankPaintPicker({
         </button>
       </div>
 
-      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
         {tanks.map((t) => (
           <div key={t.serial} className="border rounded-lg px-2 py-1.5">
             <label className="flex items-center gap-2 cursor-pointer">

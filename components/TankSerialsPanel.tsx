@@ -63,7 +63,7 @@ export function TankSerialsPanel({
         All of them were recorded under <b>{batchWelder ?? "—"}</b>. If someone else welded one, change the name beside it.
       </p>
 
-      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
         {serials.map((s) => (
           <div key={s} className="flex items-center gap-2 border rounded-lg px-2 py-1.5 bg-brand-light/20">
             <code className="ltr font-extrabold tabnum text-sm tracking-wide">{s}</code>
