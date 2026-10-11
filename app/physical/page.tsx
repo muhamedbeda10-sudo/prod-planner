@@ -32,7 +32,7 @@ export default async function PhysicalMaterialPage() {
     <div>
       <PageHead
         title="Physical Material"
-        sub="The store's count against SF01's stock in Odoo · one row per product code"
+        sub="Store count against Odoo's SF01 stock"
         actions={<ExportMenu excel={[{ rows: exportRows, filename: "physical-material.xlsx", sheetName: "Stock" }]} />}
       />
       <PhysicalStockClient items={items} lastUpdate={lastUpdate} canEdit={hasPerm(me, "stock.edit")} />

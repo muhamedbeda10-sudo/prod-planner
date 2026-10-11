@@ -32,18 +32,13 @@ export function MachinePlanningToggle({ initialOn }: { initialOn: boolean }) {
   }
 
   return (
-    <div className="border rounded-xl p-5 space-y-4 mt-4">
+    <div className="border rounded-xl p-4 sm:p-5 space-y-3 mt-4">
       <div className="flex flex-wrap items-start gap-4">
-        <div className="flex-1 min-w-[260px]">
-          <h2 className="text-sm font-extrabold flex items-center gap-2">
+        <div className="flex-1 min-w-[200px]">
+          <h2 className="text-sm font-extrabold flex items-center gap-2" title="The department worklists, the machines with their times per piece, and which machine each line is on — one switch for all of it. The Shifts tab stays either way.">
             🏭 Worklists & machine planning
             <span className={`pill ${on ? "pill-ok" : "pill-muted"}`}>{on ? "ON" : "OFF"}</span>
           </h2>
-          <p className="text-sm text-muted mt-1">
-            The department worklists, the machines with their times per piece, and the spread of the work over
-            them: which machine each line is on, its place in that machine&apos;s queue, and the Floor view of every bay. One
-            switch turns them all on or off. The Shifts tab stays either way.
-          </p>
         </div>
         <button
           type="button"
@@ -57,7 +52,9 @@ export function MachinePlanningToggle({ initialOn }: { initialOn: boolean }) {
 
       {msg && <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>}
 
-      <div className="grid gap-3 sm:grid-cols-2 border-t pt-3 text-sm">
+      <details className="border-t pt-3 text-sm">
+        <summary className="cursor-pointer text-xs font-bold text-muted">What it changes</summary>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mt-2">
         <div>
           <div className="font-bold mb-1">While it is ON</div>
           <ul className="text-muted space-y-0.5 list-disc pl-4">
@@ -78,7 +75,8 @@ export function MachinePlanningToggle({ initialOn }: { initialOn: boolean }) {
             <li>Assignments already made stay saved and come back when you turn it on</li>
           </ul>
         </div>
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

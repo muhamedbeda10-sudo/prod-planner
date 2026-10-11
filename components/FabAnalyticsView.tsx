@@ -172,7 +172,7 @@ export function FabAnalyticsView({ a }: { a: MaterialDashboardData }) {
         {a.days.length ? <SheetsPerDayChart days={a.days} avg={a.consumedPerDay.sheets} /> : <p className="text-xs text-muted">No MO of the sheet was closed on Odoo in {windowWords} yet.</p>}
       </Section>
 
-      <div className="grid lg:grid-cols-3 gap-4 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
         <Section title="By thickness" sub="Sheets consumed in the window.">
           {a.thicknesses.length ? <ThicknessChart rows={a.thicknesses} /> : <p className="text-xs text-muted">Nothing consumed in the window yet.</p>}
         </Section>
@@ -184,7 +184,7 @@ export function FabAnalyticsView({ a }: { a: MaterialDashboardData }) {
         </Section>
       </div>
 
-      <Section title="By part" sub="Per part of the range: the plan, the nesting, what was consumed and the scrap. Sheets per unit are averaged over the part's MOs.">
+      <Section title="By part" sub="Plan, nesting, consumption and scrap per part">
         <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
@@ -226,8 +226,8 @@ export function FabAnalyticsView({ a }: { a: MaterialDashboardData }) {
         </div>
       </Section>
 
-      <div className="grid lg:grid-cols-2 gap-4 items-start">
-        <Section title="Most scrap" sub="The MOs whose nesting leaves the most steel unused — nested weight × (1 − utilization).">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <Section title="Most scrap" sub="The MOs leaving the most steel unused">
           <MoTable rows={a.topScrap} value={(m) => m.scrapKg} head="Scrap" />
         </Section>
         <Section title="Most over the BOM" sub="The MOs whose nesting took more steel than the BOM allows.">

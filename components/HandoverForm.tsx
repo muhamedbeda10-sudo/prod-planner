@@ -54,7 +54,7 @@ export function HandoverForm({
   }
 
   return (
-    <form onSubmit={submit} className="bg-surface border rounded-xl p-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+    <form onSubmit={submit} className="bg-surface border rounded-xl p-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
       <Field label="Date">
         <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full border rounded-md px-2 py-2" />
       </Field>

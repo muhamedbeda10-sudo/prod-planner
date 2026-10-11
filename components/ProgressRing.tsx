@@ -153,4 +153,4 @@ export function RingCard({
 }
 
 /** The full-width row the wide cards sit in. */
-export const RING_GRID = "grid gap-2 grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]";
+export const RING_GRID = "grid gap-2 grid-cols-[repeat(auto-fit,minmax(min(9.5rem,100%),1fr))]";

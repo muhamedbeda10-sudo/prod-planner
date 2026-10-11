@@ -31,9 +31,8 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
 
   return (
     <>
-      <PageHead title="AI assistant" sub={`Answers from the app's data · ${aiModel(status.model).label}`} />
+      <PageHead title="AI assistant" sub={aiModel(status.model).label} />
       <AiChat
-        meName={user.name}
         isOwner={user.isOwner}
         status={{ ok: status.ok, reason: status.reason ? AI_DENY_TEXT[status.reason] : null, userSpent: status.userSpent, userCap: status.userCap, plantSpent: status.plantSpent, plantCap: status.plantCap }}
         conversations={conversations.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt.toISOString() }))}

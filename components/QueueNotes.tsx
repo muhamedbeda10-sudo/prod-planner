@@ -106,7 +106,7 @@ export function NotesPanelRow({
         <div className="space-y-3">
 
           {lineNotes.length > 0 && (
-            <div className="grid gap-2.5 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
               {lineNotes.map((n) => (
                 <div
                   key={n.id}

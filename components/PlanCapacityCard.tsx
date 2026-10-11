@@ -24,11 +24,11 @@ export function PlanCapacityCard({ check }: { check: PlanCapacityCheck | null })
   return (
     <div className="print-keep bg-surface border rounded-[10px] px-3 py-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="leading-tight" title="Standard hours the plan needs vs the stage's capacity over the plan's working days">
+        <div className="leading-tight basis-full sm:basis-auto" title="Standard hours the plan needs vs the stage's capacity over the plan's working days">
           <h2 className="!mb-0">Capacity check</h2>
           <span className="text-[11px] text-muted">{check.workingDays} working day{check.workingDays === 1 ? "" : "s"}</span>
         </div>
-        <div className="flex-1 min-w-0 grid gap-2 grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
+        <div className="flex-1 min-w-0 grid gap-2 grid-cols-[repeat(auto-fit,minmax(min(13rem,100%),1fr))]">
           {check.stages.map((s) => {
             const tone = loadTone(s.load);
             const f = s.load === null ? 0 : Math.min(1, s.load);

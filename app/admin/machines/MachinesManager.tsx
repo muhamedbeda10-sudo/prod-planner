@@ -35,7 +35,7 @@ function Fields({ m, disabled }: { m?: MachineDTO; disabled?: boolean }) {
   const [dept, setDept] = useState<ShiftDept>((m?.dept as ShiftDept) ?? "Cut");
   const centers = CENTERS[dept];
   return (
-    <div className="grid gap-2.5 md:grid-cols-6">
+    <div className="grid grid-cols-1 gap-2.5 md:grid-cols-6">
       <label className="text-xs font-semibold">
         <span className="block mb-1 text-muted">Code</span>
         <input name="code" defaultValue={m?.code ?? ""} required placeholder="B4-10" disabled={disabled} className={`${inputCls} ltr`} />

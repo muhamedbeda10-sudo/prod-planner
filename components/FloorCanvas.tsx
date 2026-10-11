@@ -373,7 +373,7 @@ const machinesAt = (board: MachineBoardData, center: string) => {
 function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoardData["unassigned"]; board: MachineBoardData; canAssign: boolean; target: { id: number; code: string; center: string } | null }) {
   const a = useAction();
   return (
-    <ul className="grid gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
+    <ul className="grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
       {lines.map((u) => (
         <li key={`${u.key}#${u.center}`} className="flex items-center gap-2 text-xs min-w-0">
           <span className="font-bold truncate">{u.bom}</span>

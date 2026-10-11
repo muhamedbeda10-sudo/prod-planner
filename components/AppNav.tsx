@@ -124,6 +124,21 @@ const MACHINE_ONLY = new Set(["/admin/machines", "/admin/machine-times"]);
 // The two tabs that only exist while per-piece tank tracking is on.
 const TANK_ONLY = new Set(["/worklist/leak-test", "/barcode"]);
 
+/** One entry of the tools menu: its name, with what it holds as the tooltip. */
+function ToolLink({ href, label, title, icon: Icon, active }: { href: string; label: string; title?: string; icon: Item["icon"]; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      role="menuitem"
+      title={title}
+      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold transition-colors ${active ? "bg-brand-light text-brand" : "hover:bg-surface-2"}`}
+    >
+      <Icon size={17} className={`shrink-0 ${active ? "text-brand" : "text-muted"}`} />
+      {label}
+    </Link>
+  );
+}
+
 /** Unread chat badge, shared by the desktop tab and the drawer entry. */
 function UnreadBadge({ count }: { count: number }) {
   if (count <= 0) return null;
@@ -276,7 +291,7 @@ export function AppNav({
 
   return (
     <header className="no-print sticky top-0 z-30 bg-[var(--nav-bg)] text-white border-b border-[var(--nav-border)] shadow-sm">
-      <div className="w-full px-4 md:px-6">
+      <div className="w-full px-2.5 sm:px-4 md:px-6">
         <div className="flex items-center gap-2 md:gap-4 h-12">
           {/* mobile: drawer trigger */}
           <button
@@ -413,68 +428,20 @@ export function AppNav({
               {open && (
                 <div
                   role="menu"
-                  className="nav-drop absolute right-0 top-[calc(100%+10px)] w-80 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
+                  className="nav-drop absolute right-0 top-[calc(100%+10px)] w-64 bg-surface text-foreground border rounded-xl shadow-xl p-1.5 z-40"
                 >
                   {adminLinks.map((l) => (
-                    <Link
-                      key={l.href}
-                      href={l.href}
-                      role="menuitem"
-                      className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors ${
-                        isActive(l.href, l.match, l.also) ? "bg-brand-light" : "hover:bg-surface-2"
-                      }`}
-                    >
-                      <l.icon size={17} className={`mt-0.5 shrink-0 ${isActive(l.href, l.match, l.also) ? "text-brand" : "text-muted"}`} />
-                      <span>
-                        <span className={`block text-sm font-bold ${isActive(l.href, l.match, l.also) ? "text-brand" : ""}`}>{l.label}</span>
-                        <span className="block text-xs text-muted mt-0.5">{l.desc}</span>
-                      </span>
-                    </Link>
+                    <ToolLink key={l.href} href={l.href} label={l.label} title={l.desc} icon={l.icon} active={isActive(l.href, l.match, l.also)} />
                   ))}
                   {user.isAdmin && canSee("/admin/standard-times") && (
-                    <Link
-                      href="/admin/standard-times"
-                      role="menuitem"
-                      className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors border-t mt-1 pt-2.5 ${
-                        isActive("/admin/standard-times") ? "bg-brand-light" : "hover:bg-surface-2"
-                      }`}
-                    >
-                      <Timer size={17} className={`mt-0.5 shrink-0 ${isActive("/admin/standard-times") ? "text-brand" : "text-muted"}`} />
-                      <span>
-                        <span className={`block text-sm font-bold ${isActive("/admin/standard-times") ? "text-brand" : ""}`}>Standard Times & Capacity</span>
-                        <span className="block text-xs text-muted mt-0.5">Man-hours per KVA class, stage capacity & FG map</span>
-                      </span>
-                    </Link>
+                    <ToolLink href="/admin/standard-times" label="Standard Times & Capacity" title="Man-hours per KVA class, stage capacity & FG map" icon={Timer} active={isActive("/admin/standard-times")} />
                   )}
                   {user.isOwner && (
-                    <Link
-                      href="/admin/users"
-                      role="menuitem"
-                      className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors ${
-                        isActive("/admin/users") ? "bg-brand-light" : "hover:bg-surface-2"
-                      }`}
-                    >
-                      <Users size={17} className={`mt-0.5 shrink-0 ${isActive("/admin/users") ? "text-brand" : "text-muted"}`} />
-                      <span>
-                        <span className={`block text-sm font-bold ${isActive("/admin/users") ? "text-brand" : ""}`}>Users & Permissions</span>
-                        <span className="block text-xs text-muted mt-0.5">Accounts, passwords & what each can edit</span>
-                      </span>
-                    </Link>
-                  )}
-                  {user.isOwner && (
-                    <Link
-                      href="/admin/ai"
-                      role="menuitem"
-                      className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors ${
-                        isActive("/admin/ai") ? "bg-brand-light" : "hover:bg-surface-2"
-                      }`}
-                    >
-                      <Bot size={17} className={`mt-0.5 shrink-0 ${isActive("/admin/ai") ? "text-brand" : "text-muted"}`} />
-                      <span>
-                        <span className={`block text-sm font-bold ${isActive("/admin/ai") ? "text-brand" : ""}`}>AI assistant settings</span>
-                        <span className="block text-xs text-muted mt-0.5">The Claude key, who may use it & monthly limits</span>
-                      </span>
-                    </Link>
+                    <>
+                      <div className="border-t my-1" />
+                      <ToolLink href="/admin/users" label="Users & Permissions" title="Accounts, passwords & what each can edit" icon={Users} active={isActive("/admin/users")} />
+                      <ToolLink href="/admin/ai" label="AI assistant settings" title="The Claude key, who may use it & monthly limits" icon={Bot} active={isActive("/admin/ai")} />
+                    </>
                   )}
                 </div>
               )}
@@ -498,7 +465,7 @@ export function AppNav({
                 </button>
               </form>
               <span className="hidden md:inline-flex"><InstallApp /></span>
-              <ThemeToggle />
+              <span className="hidden sm:inline-flex"><ThemeToggle /></span>
             </div>
           </div>
         </div>
@@ -641,6 +608,7 @@ export function AppNav({
 
             {/* drawer foot */}
             <div className="border-t p-3 space-y-2">
+              <span className="sm:hidden block"><ThemeToggle wide /></span>
               <InstallApp wide />
               <form action={logoutAction}>
                 <button type="submit" className="btn btn-secondary w-full text-bad-fg">

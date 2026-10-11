@@ -162,7 +162,7 @@ function useBalancedColumns(n: number) {
 function ProductCards({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
   const [gridRef, gridStyle] = useBalancedColumns(present.length);
   return (
-    <div ref={gridRef} className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(11rem,1fr))]" style={gridStyle}>
+    <div ref={gridRef} className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(min(11rem,100%),1fr))]" style={gridStyle}>
       {present.map((s) => {
         const t = d.totals.find((x) => x.series === s)!;
         const daily = d.days.map((p) => p.bySeries[s]);
@@ -437,11 +437,11 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
         file={(name) => `odoo-${name}-${d.bom ? `${d.bom}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`}
       />
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <Card title="Totals per product" sub={`Quantity ${word} and share of the period.`}>
           <ProductTotals d={d} />
         </Card>
-        <Card title="Logged vs closed, per day" sub="Logged on the day the row was entered; closed on the day its status went to Done.">
+        <Card title="Logged vs closed, per day" sub="Logged on entry · closed when Done">
           <LoggedVsClosed d={d} />
         </Card>
       </div>

@@ -57,7 +57,7 @@ export default async function TankPage({ params }: { params: Promise<{ serial: s
         </Link>
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto]">
         <Card className="p-5 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`pill ${tankStatusTone(tank.status)}`}>{TANK_STATUS_LABEL[tank.status]}</span>

@@ -401,7 +401,7 @@ export function NestRunsList({ runs, machines, canEdit, options, candidates }: F
         📋 Runs{openCount > 0 ? ` (${openCount})` : ""}
       </button>
       {open && (
-        <Modal title="📋 Nest runs" sub="Sheets of one thickness carrying parts of several jobs — what each carried and how far it got." onClose={() => setOpen(false)} busy={a.pending} width="max-w-5xl">
+        <Modal title="📋 Nest runs" sub="What each run carried and how far it got" onClose={() => setOpen(false)} busy={a.pending} width="max-w-5xl">
           {runs.length === 0 ? (
             <p className="text-sm text-muted">None yet — 🧩 Nest run puts one together.</p>
           ) : (
@@ -429,7 +429,7 @@ export function NestRunsList({ runs, machines, canEdit, options, candidates }: F
                         </span>
                       )}
                     </div>
-                    <ul className="mt-1 grid gap-x-4 sm:grid-cols-2 text-xs">
+                    <ul className="mt-1 grid grid-cols-1 gap-x-4 sm:grid-cols-2 text-xs">
                       {groupParts(r.parts).map((p) => (
                         <li key={`${p.bom}|${p.item}`} className="flex gap-2"><b>{p.bom}</b><span className="font-semibold">{p.item}</span><span className="ms-auto tabnum">{p.donePcs} / {p.pcs} cut</span></li>
                       ))}
