@@ -112,6 +112,45 @@ export function resolvePeriod(sp: { range?: string; from?: string; to?: string }
   return { range, fromISO: toISODate(new Date(t.getTime() - (days - 1) * 86_400_000)), toISO };
 }
 
+/** What the period is compared with. */
+export const ODOO_COMPARES = ["prev", "lastMonth", "lastWeek", "lastYear", "none"] as const;
+export type OdooCompare = (typeof ODOO_COMPARES)[number];
+export const ODOO_COMPARE_LABEL: Record<OdooCompare, string> = {
+  prev: "The days just before",
+  lastMonth: "Same days last month",
+  lastWeek: "Same days last week",
+  lastYear: "Same days last year",
+  none: "No comparison",
+};
+
+export function resolveCompare(sp: { compare?: string }): OdooCompare {
+  return (ODOO_COMPARES as readonly string[]).includes(sp.compare ?? "") ? (sp.compare as OdooCompare) : "prev";
+}
+
+/** A day moved back by whole months, kept inside the month it lands in
+ *  (31 Mar a month back is 28/29 Feb). */
+function monthsBack(iso: string, months: number): string {
+  const d = parseISODate(iso)!;
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() - months;
+  const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return toISODate(new Date(Date.UTC(y, m, Math.min(d.getUTCDate(), last))));
+}
+
+/** The window the period is compared with: the days just before it (as many),
+ *  the same days a week / a month / a year earlier, or none. None for an
+ *  unbounded period. */
+export function comparePeriod(p: OdooPeriod, mode: OdooCompare = "prev"): { fromISO: string; toISO: string } | null {
+  if (!p.fromISO || mode === "none") return null;
+  if (mode === "prev") return previousPeriod(p);
+  if (mode === "lastWeek") {
+    const back = (iso: string) => toISODate(new Date(parseISODate(iso)!.getTime() - 7 * 86_400_000));
+    return { fromISO: back(p.fromISO), toISO: back(p.toISO) };
+  }
+  const n = mode === "lastMonth" ? 1 : 12;
+  return { fromISO: monthsBack(p.fromISO, n), toISO: monthsBack(p.toISO, n) };
+}
+
 /** The same number of days immediately before the period — what "vs previous
  *  period" compares against. None for an unbounded period. */
 export function previousPeriod(p: OdooPeriod): { fromISO: string; toISO: string } | null {
@@ -224,6 +263,8 @@ export interface OdooDashboardData {
   boms: OdooBomOption[];
   /** The comparison window, when the period is bounded. */
   previous: { fromISO: string; toISO: string } | null;
+  /** What the period is compared with. */
+  compare: OdooCompare;
   /** Every product counted in the period on the basis, in drawing order —
    *  every day point carries a number for each of these. */
   series: OdooSeries[];
@@ -321,7 +362,7 @@ function tally(rows: readonly OdooStatRow[], window: { fromISO: string | null; t
  * and closed can sit side by side. `prevRows` are the previous period's
  * rows, for the comparisons; pass null when there is no previous period.
  */
-export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prevRows: OdooStatRow[] | null = null, basis: OdooBasis = "logged", bom: string | null = null): OdooDashboardData {
+export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prevRows: OdooStatRow[] | null = null, basis: OdooBasis = "logged", bom: string | null = null, compare: OdooCompare = "prev"): OdooDashboardData {
   // the picker lists what the PERIOD holds, not what survives the narrowing —
   // otherwise choosing a BOM would leave the list with one entry and no way
   // back to the others
@@ -337,7 +378,7 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
   const series = orderSeries(main.totals);
 
   // the previous period, per product, for the comparisons — on the same basis
-  const prevWindow = previousPeriod(period);
+  const prevWindow = comparePeriod(period, compare);
   const prev = keptPrev && prevWindow ? tally(keptPrev, prevWindow, basis) : null;
 
   const point = (iso: string): OdooDayPoint => {
@@ -373,6 +414,7 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
     bom,
     boms,
     previous: prevRows ? prevWindow : null,
+    compare,
     series,
     days,
     totals: series.map((s) => {

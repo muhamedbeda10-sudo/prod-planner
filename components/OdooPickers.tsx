@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ODOO_BASES, ODOO_BASIS_LABEL, type OdooBasis, type OdooBomOption } from "@/lib/domain/odooStats";
+import { ODOO_BASES, ODOO_BASIS_LABEL, ODOO_COMPARES, ODOO_COMPARE_LABEL, type OdooBasis, type OdooBomOption, type OdooCompare } from "@/lib/domain/odooStats";
 
 // The dashboard's period and basis pickers. They live apart from the charts
 // so the log view, which shows the pickers' neighbours but no chart, never
@@ -63,6 +63,29 @@ export function OdooBomPicker({ bom, boms }: { bom: string | null; boms: OdooBom
           <option key={b.bom || "none"} value={b.bom || "none"}>
             {b.bom || "No known BOM"} ({b.rows})
           </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** What the period's figures are compared with: the days just before it, or
+ *  the same days a week, a month or a year earlier — or nothing. */
+export function OdooComparePicker({ compare }: { compare: OdooCompare }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const go = (v: string) => {
+    const p = new URLSearchParams(params.toString());
+    if (v === "prev") p.delete("compare"); else p.set("compare", v);
+    router.push(`${pathname}?${p}`);
+  };
+  return (
+    <label className="inline-flex items-center gap-1.5 text-sm" title="What the ▲▼ changes compare the period with">
+      <span className="text-xs font-bold text-muted uppercase tracking-wide">Compare with</span>
+      <select value={compare} onChange={(e) => go(e.target.value)} aria-label="Compare with" className="border rounded-md px-2 py-1.5 bg-surface font-bold text-sm">
+        {ODOO_COMPARES.map((c) => (
+          <option key={c} value={c}>{ODOO_COMPARE_LABEL[c]}</option>
         ))}
       </select>
     </label>

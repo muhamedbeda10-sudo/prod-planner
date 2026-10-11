@@ -12,6 +12,7 @@ import type { OdooInsights } from "@/lib/domain/odooInsights";
 import { axisWidth, describeDelta, niceScale, DELTA_MIN_BASE } from "@/lib/domain/chartScale";
 import {
   periodLabel,
+  ODOO_COMPARE_LABEL,
   type OdooDashboardData, type OdooSeries,
 } from "@/lib/domain/odooStats";
 
@@ -99,7 +100,7 @@ function stackTotalAccessor(series: OdooSeries, present: readonly OdooSeries[]) 
 function Delta({ cur, prev, suffix = "" }: { cur: number; prev: number | null; suffix?: string }) {
   const dv = describeDelta(cur, prev);
   if (dv.kind === "none") return null;
-  const title = `Previous period: ${fmt(prev!)}${suffix}`;
+  const title = `Compared period: ${fmt(prev!)}${suffix}`;
   if (dv.kind === "new") return <span className="text-xs text-muted" title={title}>new — none before</span>;
   if (dv.kind === "same") return <span className="text-xs text-muted" title={title}>• same as previous</span>;
   const up = dv.kind === "pct" ? dv.pct > 0 : dv.diff > 0;
@@ -415,7 +416,7 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
         <div className="text-sm">
           <span className="font-bold">{title}</span>
           {bomLabel && <span> · BOM <b className="text-accent">{bomLabel}</b></span>}
-          {prevTitle && <span className="text-muted"> · compared with {prevTitle}</span>}
+          {prevTitle && <span className="text-muted"> · compared with {prevTitle}{d.compare !== "prev" ? ` (${ODOO_COMPARE_LABEL[d.compare].toLowerCase()})` : ""}</span>}
         </div>
         <ExportButton rows={exportRows} filename={`odoo-dashboard-${d.bom ? `${d.bom}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`} sheetName="By day" />
       </div>

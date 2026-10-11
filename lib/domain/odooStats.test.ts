@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bomOptions, buildOdooDashboard, matchesBom, pctChange, periodLabel, previousPeriod, productSeries, resolveBasis, resolveBom, resolvePeriod, shortDayLabel, type OdooStatRow } from "./odooStats";
+import { bomOptions, buildOdooDashboard, matchesBom, pctChange, periodLabel, previousPeriod, productSeries, resolveBasis, resolveBom, resolvePeriod, shortDayLabel, type OdooStatRow, comparePeriod } from "./odooStats";
 
 describe("productSeries", () => {
   it("folds the sheet's product names however typed, keeps any other product by name, Other only for none", () => {
@@ -294,5 +294,25 @@ describe("narrowing the dashboard to one BOM", () => {
     const d = buildOdooDashboard(rows, period, null, "closed");
     expect(d.kpi.qty).toBe(14);
     expect(d.bom).toBeNull();
+  });
+});
+
+describe("comparePeriod", () => {
+  const p = (fromISO: string, toISO: string) => ({ range: "custom" as const, fromISO, toISO });
+  it("the days just before, as many", () => {
+    expect(comparePeriod(p("2026-10-01", "2026-10-11"), "prev")).toEqual({ fromISO: "2026-09-20", toISO: "2026-09-30" });
+  });
+  it("the same days last month, kept inside the shorter month", () => {
+    expect(comparePeriod(p("2026-10-01", "2026-10-11"), "lastMonth")).toEqual({ fromISO: "2026-09-01", toISO: "2026-09-11" });
+    expect(comparePeriod(p("2026-03-29", "2026-03-31"), "lastMonth")).toEqual({ fromISO: "2026-02-28", toISO: "2026-02-28" });
+    expect(comparePeriod(p("2026-01-05", "2026-01-10"), "lastMonth")).toEqual({ fromISO: "2025-12-05", toISO: "2025-12-10" });
+  });
+  it("the same days last week and last year", () => {
+    expect(comparePeriod(p("2026-10-05", "2026-10-11"), "lastWeek")).toEqual({ fromISO: "2026-09-28", toISO: "2026-10-04" });
+    expect(comparePeriod(p("2026-10-01", "2026-10-11"), "lastYear")).toEqual({ fromISO: "2025-10-01", toISO: "2025-10-11" });
+  });
+  it("none, or an unbounded period, compares with nothing", () => {
+    expect(comparePeriod(p("2026-10-01", "2026-10-11"), "none")).toBeNull();
+    expect(comparePeriod({ range: "all", fromISO: null, toISO: "2026-10-11" }, "lastMonth")).toBeNull();
   });
 });

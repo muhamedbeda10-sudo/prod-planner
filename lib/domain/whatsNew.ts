@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-11-odoo-compare",
+    dateISO: "2026-10-11",
+    title: "ODOO dashboard: choose what to compare with",
+    where: "ODOO → Dashboard → Compare with",
+    body: "The ▲▼ changes on the dashboard can now compare the period with the days just before it (as before), the same days last month, last week or last year — e.g. 1–11 Oct against 1–11 Sep — or with nothing.",
+    href: "/odoo?view=dashboard",
+  },
+  {
     id: "2026-10-11-odoo-backorder-mo",
     dateISO: "2026-10-11",
     title: "ODOO log: a backorder MO (…-002) reads its parent's material",
