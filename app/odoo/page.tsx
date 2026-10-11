@@ -3,8 +3,8 @@ import { getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { getActiveLine } from "@/lib/server/line";
 import { linePermKey } from "@/lib/domain/permissions";
 import { getOdooData, getOdooDashboard } from "@/lib/server/odoo";
-import { resolveBasis, resolveBom, resolvePeriod } from "@/lib/domain/odooStats";
-import { OdooBasisPicker, OdooBomPicker } from "@/components/OdooPickers";
+import { resolveBasis, resolveBom, resolveCompare, resolvePeriod } from "@/lib/domain/odooStats";
+import { OdooBasisPicker, OdooBomPicker, OdooComparePicker } from "@/components/OdooPickers";
 import { OdooDashboard } from "@/components/LazyCharts";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { toISODate } from "@/lib/domain/dates";
@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 export default async function OdooPage({
   searchParams,
 }: {
-  searchParams: Promise<{ day?: string; view?: string; range?: string; from?: string; to?: string; basis?: string; bom?: string }>;
+  searchParams: Promise<{ day?: string; view?: string; range?: string; from?: string; to?: string; basis?: string; bom?: string; compare?: string }>;
 }) {
   await guardTab("/odoo");
   // viewing is free for every account, like the rest of the app; recording is
@@ -51,7 +51,7 @@ export default async function OdooPage({
   if (view === "dashboard") {
     const period = resolvePeriod(sp);
     const basis = resolveBasis(sp);
-    const data = await getOdooDashboard(period, basis, resolveBom(sp));
+    const data = await getOdooDashboard(period, basis, resolveBom(sp), resolveCompare(sp));
     const today = toISODate(new Date());
     return (
       <div className="space-y-3">
@@ -59,6 +59,7 @@ export default async function OdooPage({
         <PageHead title="ODOO" sub="Dashboard · both lines" views={viewSwitch}>
           <OdooBasisPicker basis={basis} />
           <OdooBomPicker bom={data.bom} boms={data.boms} />
+          <OdooComparePicker compare={data.compare} />
         </PageHead>
         <UrlDateSlicer
           encoding="odooDash" from={period.fromISO} to={period.fromISO ? period.toISO : null} min={addDaysISO(today, -120)} max={today} today={today}
