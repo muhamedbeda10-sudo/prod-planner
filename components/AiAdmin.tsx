@@ -208,7 +208,7 @@ export function AiAdmin({ data, clock, automations }: { data: AiAdminData; clock
         <Kpi label="People" value={String(people)} sub={data.enabled ? undefined : "closed — only you"} />
       </div>
 
-      <div role="tablist" aria-label="AI settings" className="flex items-center gap-0.5 border-b overflow-x-auto">
+      <div role="tablist" aria-label="AI settings" className="tab-strip no-scrollbar flex items-center gap-0.5">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -216,7 +216,7 @@ export function AiAdmin({ data, clock, automations }: { data: AiAdminData; clock
             role="tab"
             aria-selected={tab === t.id}
             onClick={() => pick(t.id)}
-            className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-bold border-b-2 -mb-px whitespace-nowrap transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${
               tab === t.id ? "border-[var(--brand)] text-brand" : "border-transparent text-muted hover:text-foreground"
             }`}
           >
