@@ -9,10 +9,13 @@ name: Database backup
 # private repository, and opening it needs the passphrase as well.
 #
 # Two repository secrets (Settings → Secrets and variables → Actions):
-#   BACKUP_DATABASE_URL — the Session pooler connection string from Supabase
-#     (Connect → Session pooler: …pooler.supabase.com:5432). Not the direct
-#     db.<ref>.supabase.co address — it is IPv6-only and GitHub's runners are
-#     not — and not the transaction pooler on 6543, which pg_dump cannot use.
+#   BACKUP_DATABASE_URL — the address the app makes for its owner on Settings
+#     → Database backup: the backup's own login, backup_reader, which reads
+#     every table and changes nothing, through Supabase's Session pooler
+#     (…pooler.supabase.com:5432). Any Session pooler address works too. Not
+#     the direct db.<ref>.supabase.co address — it is IPv6-only and GitHub's
+#     runners are not — and not the transaction pooler on 6543, which pg_dump
+#     cannot use.
 #   BACKUP_PASSPHRASE — a long passphrase kept somewhere other than GitHub.
 #
 # Restoring is in DEPLOY.md ("النسخ الاحتياطي").
@@ -68,12 +71,27 @@ jobs:
           # own schemas are Supabase's to restore. The files attached in the
           # assistant's chat are kept a fortnight and are no record: their
           # table comes back empty.
-          docker run --rm --network host \
-            -e BACKUP_DATABASE_URL \
-            -e SKIP_DATA='public."AiFile"' \
-            -v "$PWD/out:/out" \
-            "postgres:${PG_MAJOR}" \
-            sh -c 'pg_dump "$BACKUP_DATABASE_URL" --schema=public --exclude-table-data="$SKIP_DATA" --format=custom --compress=9 --no-owner --file=/out/atc.dump'
+          #
+          # A few tries, spaced out: right after a login's password changes,
+          # Supabase's pooler can still check it against the old one for a
+          # moment — and many failed logins in a row would shut it out.
+          for try in 1 2 3; do
+            if docker run --rm --network host \
+              -e BACKUP_DATABASE_URL \
+              -e SKIP_DATA='public."AiFile"' \
+              -v "$PWD/out:/out" \
+              "postgres:${PG_MAJOR}" \
+              sh -c 'pg_dump "$BACKUP_DATABASE_URL" --schema=public --exclude-table-data="$SKIP_DATA" --format=custom --compress=9 --no-owner --file=/out/atc.dump'; then
+              break
+            fi
+            if [ "$try" -eq 3 ]; then
+              echo "::error::pg_dump failed three times — see its message above."
+              exit 1
+            fi
+            echo "pg_dump failed (try $try of 3) — trying again in $((try * 30)) seconds."
+            rm -f out/atc.dump
+            sleep $((try * 30))
+          done
           # an archive pg_restore cannot list is not a backup
           docker run --rm -v "$PWD/out:/out" "postgres:${PG_MAJOR}" \
             pg_restore --list /out/atc.dump > out/contents.txt

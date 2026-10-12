@@ -303,7 +303,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
      live chat only — Users & Permissions (an account it makes has a password nobody knows; the owner sets the first one).
      A write tool never writes by itself: `describe` shows the card (before → after) and keeps a
      snapshot of the data; on Approve it runs only if the data still reads the same, through the screen's own server action
-     as the person (`runAsActor` — the audit names "Sara (AI)"). Undo runs only while nothing changed since; where an
+     as the person (`runAsActor` — the audit names "Sara (AI)"). The snapshot is what the change relies on, not the whole
+     screen: a machine-board card keeps where its own line is (a move, its machine's queue), so cards approved one after
+     another do not put each other out of date, and a distribution of many lines is one card (`assign_lines_to_machines`
+     — one approval, one board refresh, one undo). Undo runs only while nothing changed since; where an
      action stamps things as it goes, the undo writes the rows back exactly from the snapshot (`lib/server/rowSnapshots.ts`,
      reachable only from an undo). Deletions need their own key and always wait; "small changes without asking" is a
      per-person opt-in. The owner can pause every change, or every automation, at once (AI assistant settings).
