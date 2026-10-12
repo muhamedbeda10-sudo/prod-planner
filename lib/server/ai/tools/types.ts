@@ -63,6 +63,9 @@ interface ToolBase<I> {
   schema: ObjectSchema;
   /** The screens whose data it reads or changes — hidden ones close it. */
   tabs?: readonly string[];
+  /** Not offered to the model: a tool only the app itself calls — the undo
+   *  of another change. */
+  internal?: true;
   /** Further checks and normalising after the schema: the typed input, or what is wrong. */
   parse?(raw: Record<string, unknown>): I | string;
 }

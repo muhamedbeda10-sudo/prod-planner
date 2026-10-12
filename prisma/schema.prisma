@@ -580,8 +580,43 @@ model Machine {
   output    HandoverEntry[]
   manualJobs ManualJob[]
   sheetCuts  SheetCutLog[]
+  rules      MachineRule[]
 
   @@index([dept])
+}
+
+// What one machine takes — the planner's own knowledge of the floor, written
+// down so ⚡ Plan follows it: "the 6 kW laser takes 6 mm and up", "the punch
+// does top covers only", "keep stainless off B4-09", "tanks of 1000 kVA and up
+// go first to B4-10". `effect`:
+//   only   — the machine takes ONLY work matching one of its "only" rules;
+//   never  — it never takes work matching this rule;
+//   prefer — among the machines allowed, it goes first for matching work.
+// Every field given must match; a rule with none matches all work. Thickness
+// and material are read off the line's nesting (the MATERIAL tab): a line
+// matches a thickness range only when every sheet it is cut from is inside it,
+// and a line with no nesting yet does not match a thickness or material rule.
+// A rule taken off stays (inactive), with who took it off.
+model MachineRule {
+  id             Int      @id @default(autoincrement())
+  machineId      Int
+  machine        Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  effect         String // only | never | prefer
+  item           String? // CF | TC | TN | CB | AR | MB | PNL
+  line           String? // TR | LV
+  minThicknessMm Float?
+  maxThicknessMm Float?
+  material       String? // as the MATERIAL tab names it: Steel, Stainless steel …
+  minKva         Int?
+  maxKva         Int?
+  note           String? // the planner's own words for it
+  active         Boolean  @default(true)
+  createdBy      String?
+  updatedBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([machineId, active])
 }
 
 // What ONE piece of an item really costs on ONE machine, in hours — the

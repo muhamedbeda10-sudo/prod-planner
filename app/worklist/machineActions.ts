@@ -11,6 +11,7 @@ import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
 import { MANUAL_BOM, MANUAL_ITEM } from "@/lib/domain/manualJob";
 import { RUN_BOM, RUN_ITEM } from "@/lib/domain/nestRun";
+import type { QueueRowSnapshot } from "@/lib/server/machineQueues";
 
 // The machine board's writes: put a worklist line on a machine (or take it
 // off), move it up or down that machine's queue, empty a machine. The
@@ -342,8 +343,10 @@ export async function optimizeMachines(fd: FormData): Promise<MachineActionResul
   const bits = [`${plan.linesPlaced} line(s) over ${plan.machinesUsed} ${machineWord(dept, plan.machinesUsed !== 1)}`];
   if (plan.spanDays > 0) bits.push(`clears in ${plan.spanDays} day(s)`);
   if (plan.unpriced > 0) bits.push(`${plan.unpriced} with no standard time, queued last`);
-  const centresShort = [...new Set(plan.skipped.map((x) => x.center))];
+  const centresShort = [...new Set(plan.skipped.filter((x) => x.reason === "no machine").map((x) => x.center))];
   if (centresShort.length > 0) bits.push(`no ${word} for ${centresShort.map((c) => CENTER_LABEL[c] ?? c).join(", ")}`);
+  const ruledOut = new Set(plan.skipped.filter((x) => x.reason === "not allowed").map((x) => x.key));
+  if (ruledOut.size > 0) bits.push(`${ruledOut.size} line(s) no ${word}'s rules allow — left to place by hand`);
   const late = plan.late.length > 0
     ? `${plan.late.length} line(s) cannot make their date — worst by ${plan.late[0].byDays} day(s). Add hours, or move the date.`
     : undefined;
@@ -361,4 +364,62 @@ export async function resetMachinePlan(fd: FormData): Promise<MachineActionResul
   const { count } = await prisma.worklistMachine.deleteMany({ where: { dept } });
   revalidate();
   return { ok: true, summary: count === 0 ? `Nothing was on a ${machineWord(dept)}.` : `Cleared — ${count} line(s) taken off the ${machineWord(dept, true)}.` };
+}
+
+const MAX_RESTORE_ROWS = 3000;
+
+/** The snapshot's rows, checked one by one, or what is wrong with them. */
+function readSnapshotRows(raw: unknown, machineIds: ReadonlySet<number>): QueueRowSnapshot[] | { error: string } {
+  if (!Array.isArray(raw)) return { error: "The snapshot is not a list of rows." };
+  if (raw.length > MAX_RESTORE_ROWS) return { error: `A snapshot holds at most ${MAX_RESTORE_ROWS} rows.` };
+  const out: QueueRowSnapshot[] = [];
+  const seen = new Set<string>();
+  for (const r of raw as Record<string, unknown>[]) {
+    const s = (v: unknown, max: number) => (typeof v === "string" && v.length <= max ? v : null);
+    const bom = s(r?.bom, 80);
+    const mo = s(r?.mo, 80);
+    const item = s(r?.item, 20);
+    const sheet = s(r?.sheet, 120);
+    const machineId = Number(r?.machineId);
+    const rank = Number(r?.rank);
+    const sheetDone = Number(r?.sheetDone);
+    const qty = r?.qty === null ? null : Number(r?.qty);
+    if (bom === null || mo === null || item === null || sheet === null || !bom || !item) return { error: "A row of the snapshot is incomplete." };
+    if (!machineIds.has(machineId)) return { error: "A row of the snapshot is on a machine of another department, or one that is gone." };
+    if (!Number.isInteger(rank) || rank < 0 || !Number.isInteger(sheetDone) || sheetDone < 0) return { error: "A row of the snapshot has a bad rank or count." };
+    if (qty !== null && (!Number.isInteger(qty) || qty <= 0)) return { error: "A row of the snapshot has a bad quantity." };
+    if (typeof r?.running !== "boolean") return { error: "A row of the snapshot has no running state." };
+    const k = `${bom}|${mo}|${item}|${machineId}|${sheet}`;
+    if (seen.has(k)) return { error: "The snapshot holds the same row twice." };
+    seen.add(k);
+    out.push({ bom, mo, item, machineId, rank, running: r.running, qty, sheet, sheetDone });
+  }
+  return out;
+}
+
+/** Put a department's machine queues back exactly as a snapshot of them —
+ *  how a board-wide change made through the assistant (⚡ Plan, ⟲ Reset,
+ *  Empty, a move) is undone. The dept's worklist permission, like every
+ *  other write on the board. */
+export async function restoreMachineQueues(fd: FormData): Promise<MachineActionResult> {
+  const dept = String(fd.get("dept") ?? "");
+  if (!(BOARD_DEPTS as readonly string[]).includes(dept)) return { ok: false, error: "This worklist has no machines." };
+  const guard = await requireDeptEdit(dept);
+  if (guard.error) return { ok: false, error: guard.error };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(String(fd.get("rows") ?? ""));
+  } catch {
+    return { ok: false, error: "The snapshot cannot be read." };
+  }
+  const machines = await prisma.machine.findMany({ where: { dept }, select: { id: true } });
+  const rows = readSnapshotRows(raw, new Set(machines.map((m) => m.id)));
+  if ("error" in rows) return { ok: false, error: rows.error };
+  const by = guard.user?.name ?? null;
+  await prisma.$transaction([
+    prisma.worklistMachine.deleteMany({ where: { dept } }),
+    prisma.worklistMachine.createMany({ data: rows.map((r) => ({ dept, ...r, setBy: by })) }),
+  ]);
+  revalidate();
+  return { ok: true, summary: `The ${machineWord(dept, true)}' queues are back as they were (${rows.length} line${rows.length === 1 ? "" : "s"}).` };
 }

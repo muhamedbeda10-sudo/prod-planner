@@ -6,6 +6,7 @@ import { validateInput } from "@/lib/domain/aiInput";
 import { queryDatabase } from "./sql";
 import { TRACKER_TOOLS } from "./tracker";
 import { DAILY_LOG_TOOLS } from "./dailyLog";
+import { MACHINE_TOOLS } from "./machines";
 import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 
 // Every tool the assistant has, in the one fixed order the API sees them in
@@ -14,7 +15,7 @@ import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 // a write tool only for someone the owner gave the assistant's key for its
 // area — and none while the owner has paused the assistant's changes.
 
-export const AI_TOOLS: readonly AiTool[] = [queryDatabase, ...TRACKER_TOOLS, ...DAILY_LOG_TOOLS];
+export const AI_TOOLS: readonly AiTool[] = [queryDatabase, ...TRACKER_TOOLS, ...DAILY_LOG_TOOLS, ...MACHINE_TOOLS];
 
 const BY_NAME = new Map<string, AiTool>(AI_TOOLS.map((t) => [t.name, t]));
 
@@ -64,6 +65,7 @@ export function callDenied(user: User, hidden: ReadonlySet<string>, tool: AiTool
 /** The tools this person's assistant gets, in the fixed order. */
 export function toolsFor(user: User, o: { hidden: ReadonlySet<string>; actionsPaused: boolean }): AiTool[] {
   return AI_TOOLS.filter((t) => {
+    if (t.internal) return false;
     if (t.tabs?.some((x) => o.hidden.has(x))) return false;
     if (t.kind === "read") return true;
     if (o.actionsPaused) return false;
