@@ -18,9 +18,9 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
     id: "2026-10-12-floor-sheet-line",
     dateISO: "2026-10-12",
-    title: "Floor: one sheet of an item goes on a machine as that sheet",
-    where: "Floor → Cut → a machine → ＋ Put a line on it…",
-    body: "Picking one sheet of an item from a machine's ＋ Put a line on it… list — its 5 mm, say, while its 3 mm is on another laser — put the WHOLE item on that machine. It now goes on as that sheet only, as the → button in the \"to place\" list always did. A whole item already placed this way stays whole until it is taken off and the sheet placed again.",
+    title: "Floor: each sheet of an item is named, and goes on a machine as that sheet",
+    where: "Floor → Cut → ▸ to place · a machine's ＋ Put a line on it…",
+    body: "Picking one sheet of an item from a machine's ＋ Put a line on it… list — its 5 mm, say, while its 3 mm is on another laser — put the WHOLE item on that machine. It now goes on as that sheet only, as the → button in the \"to place\" list always did; a whole item already placed this way stays whole until it is taken off and the sheet placed again. Both lists now also name the sheet of each waiting line — 3 mm MS 1220×2440 — so two sheets of one item no longer look alike.",
     href: "/simulate?view=floor&dept=Cut",
   },
   {

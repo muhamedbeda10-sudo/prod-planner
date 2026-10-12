@@ -9,11 +9,12 @@ import {
   FLOOR_COLORS, GRID, addNode, drawOrder, moveNode, placeMachine, removeNode, resizeNode, updateNode,
   type FloorColor, type FloorLayoutData, type FloorNode,
 } from "@/lib/domain/floor";
-import { clearWords, loadTone, type MachineCard } from "@/lib/domain/machineBoard";
+import { clearWords, loadTone, unassignedKey, type MachineCard } from "@/lib/domain/machineBoard";
+import { sheetKeyLabel } from "@/lib/domain/machineMaterial";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { assignLineMachine, moveLineRank, optimizeMachines, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
-import { DoneBox, MachinePick } from "@/components/MachineBoard";
+import { DoneBox, MachinePick, SheetToPlace } from "@/components/MachineBoard";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 
 // 🗺 The Floor canvas — a department's bay as the planner draws it: the
@@ -375,12 +376,13 @@ function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoa
   return (
     <ul className="grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
       {lines.map((u) => (
-        <li key={`${u.key}#${u.center}`} className="flex items-center gap-2 text-xs min-w-0">
+        <li key={unassignedKey(u)} className="flex items-center gap-2 text-xs min-w-0">
           <span className="font-bold truncate">{u.bom}</span>
           <span className="font-semibold shrink-0">{u.item}</span>
           <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
           {multiCentre(board) && <span className="pill pill-muted shrink-0" title={`${CENTER_LABEL[u.center] ?? u.center} — step ${u.stepNo} of ${u.stepCount} on this line's route`}>{u.center}</span>}
           {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
+          <SheetToPlace sheet={u.sheet} />
           {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
           {u.deliveryISO && <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span>}
           {canAssign && (
@@ -599,7 +601,7 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
           onChange={(e) => { const u = mine[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item, u.sheet ?? ""); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
         >
           <option value="">＋ Put a line on it… ({mine.length} waiting{multiCentre(board) ? ` for ${CENTER_LABEL[m.center] ?? m.center}` : ""})</option>
-          {mine.map((u, i) => <option key={`${u.key}#${u.center}`} value={i}>{u.bom} {u.item} ×{u.remaining}{u.partial ? ` (rest of ${u.lineRemaining})` : ""}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
+          {mine.map((u, i) => <option key={unassignedKey(u)} value={i}>{u.bom} {u.item} ×{u.remaining}{u.partial ? ` (rest of ${u.lineRemaining})` : ""}{u.sheet ? ` · ${sheetKeyLabel(u.sheet)}` : ""}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
         </select>
       )}
       {a.err && <div className="text-[11px] text-bad-fg">{a.err}</div>}

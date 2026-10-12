@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
-import { clearWords, loadTone, type LinePlacement, type MachineCard, type MachineQueueLine } from "@/lib/domain/machineBoard";
+import { clearWords, loadTone, unassignedKey, type LinePlacement, type MachineCard, type MachineQueueLine } from "@/lib/domain/machineBoard";
 import { CENTER_LABEL, machineWord, round1 } from "@/lib/domain/shifts";
 import type { MachineDTO } from "@/lib/server/machines";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
@@ -55,6 +55,14 @@ function ddmm(iso: string) {
 
 const TONE_BAR: Record<"ok" | "warn" | "bad", string> = { ok: "bg-ok-fg", warn: "bg-warn-fg", bad: "bg-bad-fg" };
 const TONE_INK: Record<"ok" | "warn" | "bad", string> = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" };
+
+/** Which sheet of the item a waiting line is, when the item is spread by
+ *  sheet — its 3 mm and its 5 mm wait as two lines that read the same
+ *  without it. Nothing for a whole item. */
+export function SheetToPlace({ sheet }: { sheet?: string }) {
+  if (!sheet) return null;
+  return <span className="pill pill-warn shrink-0" title="This sheet of the item has no machine yet — its other sheets do">{sheetKeyLabel(sheet)}</span>;
+}
 
 /** The picker a table row carries: which machine this line is on, and a
  *  pieces box to put only some of it there. Saves at once. */
@@ -534,14 +542,14 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
   const datedShown = showAllDated ? dated : dated.slice(0, 12);
   const undatedShown = showAll ? undated : undated.slice(0, 6);
   const row = (u: MachineBoardData["unassigned"][number]) => (
-    <li key={`${u.key}#${u.center}`} className="flex items-center gap-2 text-xs min-w-0">
+    <li key={unassignedKey(u)} className="flex items-center gap-2 text-xs min-w-0">
       {manualIdOf(u.mo) !== null || runIdOf(u.mo) !== null ? <span className="font-bold truncate">{u.description}</span> : <>
       <span className="font-bold truncate">{u.bom}</span>
       <span className="font-semibold shrink-0">{u.item}</span></>}
       <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
       {multi && <span className="pill pill-muted shrink-0" title={`${CENTER_LABEL[u.center] ?? u.center} — step ${u.stepNo} of ${u.stepCount} on this line's route`}>{u.center}</span>}
       {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
-      {u.sheet && <span className="pill pill-warn shrink-0" title="This sheet of the item has no machine yet — its other sheets do">{sheetKeyLabel(u.sheet)}</span>}
+      <SheetToPlace sheet={u.sheet} />
       {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
       {u.deliveryISO ? <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span> : <span className="text-muted shrink-0">no date</span>}
       <span className="ms-auto shrink-0">
