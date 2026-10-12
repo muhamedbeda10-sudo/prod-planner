@@ -1,9 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { automationFor, configOf, prepareAutomation } from "@/lib/server/automations/store";
-import { testAutomation } from "@/lib/server/automations/runner";
 import { automationViews } from "@/lib/server/automations/views";
-import { deleteAutomation, restoreAutomation, saveAutomation, setAutomationEnabled } from "@/app/automations/actions";
+import { deleteAutomation, restoreAutomation, runAutomationNow, saveAutomation, setAutomationEnabled } from "@/app/automations/actions";
 import { retractInboxMessages, sendInboxMessage } from "@/app/inbox/actions";
 import { AUTOMATION_ACTIONS, AUTOMATION_LIMITS, CHECK_EVERY, describeAction, describeTrigger, SCHEDULE_DAYS, type AutomationConfig, type AutomationInput } from "@/lib/domain/automations";
 import { formatDateTime } from "@/lib/domain/format";
@@ -391,7 +390,7 @@ export const testAutomationTool: WriteTool<{ id: number }> = {
   async execute(i, ctx) {
     const a = await automationFor(ctx.user, i.id);
     if (!a || a.ownerId !== ctx.user.id) return { ok: false, error: `No automation #${i.id} of ${ctx.user.name}'s.` };
-    const r = await testAutomation(a, ctx.user);
+    const r = await runAutomationNow(formOf({ id: a.id }));
     return r.ok ? { ok: true, message: `"${a.name}" ran as a test — the result is in ${ctx.user.name}'s inbox.` } : { ok: false, error: r.error };
   },
 };

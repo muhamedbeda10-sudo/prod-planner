@@ -24,7 +24,7 @@ const h = vi.hoisted(() => {
     chat: { sendChatMessage: fn(), createChatGroup: fn(), addChatGroupMembers: fn() },
     floorActions: { saveFloorLayout: fn() },
     automationFor: fn(),
-    testAutomation: fn(),
+    runAutomationNow: fn(),
   };
 });
 
@@ -45,9 +45,8 @@ vi.mock("@/lib/server/automations/store", () => ({
   configOf: (a: { config: unknown }) => a.config,
   prepareAutomation: vi.fn(),
 }));
-vi.mock("@/lib/server/automations/runner", () => ({ testAutomation: h.testAutomation }));
 vi.mock("@/lib/server/automations/views", () => ({ automationViews: vi.fn() }));
-vi.mock("@/app/automations/actions", () => ({ deleteAutomation: vi.fn(), restoreAutomation: vi.fn(), saveAutomation: vi.fn(), setAutomationEnabled: vi.fn() }));
+vi.mock("@/app/automations/actions", () => ({ deleteAutomation: vi.fn(), restoreAutomation: vi.fn(), runAutomationNow: h.runAutomationNow, saveAutomation: vi.fn(), setAutomationEnabled: vi.fn() }));
 vi.mock("@/app/inbox/actions", () => ({ retractInboxMessages: vi.fn(), sendInboxMessage: vi.fn() }));
 
 import type { User } from "@prisma/client";
@@ -204,8 +203,8 @@ describe("test_automation", () => {
     expect(await testAutomationTool.describe({ id: 4 }, ctx())).toEqual({ error: "No automation #4 of Sara's." });
     h.automationFor.mockResolvedValue({ id: 4, ownerId: 1, name: "Late orders", config: { trigger: "schedule", times: ["07:30"], days: "working", action: "notify" } });
     expect(await testAutomationTool.describe({ id: 4 }, ctx())).toMatchObject({ summary: expect.stringContaining("the result comes to Sara alone") });
-    h.testAutomation.mockResolvedValue({ ok: true });
+    h.runAutomationNow.mockResolvedValue({ ok: true, id: 4 });
     expect(await testAutomationTool.execute({ id: 4 }, ctx())).toEqual({ ok: true, message: '"Late orders" ran as a test — the result is in Sara\'s inbox.' });
-    expect(h.testAutomation).toHaveBeenCalledWith(expect.objectContaining({ id: 4 }), expect.objectContaining({ id: 1 }));
+    expect(fd(h.runAutomationNow)).toEqual({ id: "4" });
   });
 });
