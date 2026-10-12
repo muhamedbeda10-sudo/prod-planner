@@ -12,6 +12,9 @@ import { AiChat } from "@/components/AiChat";
 
 export const metadata = { title: "AI assistant — ATC" };
 export const dynamic = "force-dynamic";
+// an approved change runs in this page's action — an import or a plan for
+// every machine can take a while
+export const maxDuration = 300;
 
 // The AI assistant: ask about the plant in your own words and Claude answers
 // from the app's data with tables, charts and suggestions — and prepares the

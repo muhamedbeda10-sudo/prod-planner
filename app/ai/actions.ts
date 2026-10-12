@@ -3,9 +3,10 @@
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
 import { aiStatusFor } from "@/lib/server/ai/access";
+import { discardFile, storeAiFile, type StoreResult } from "@/lib/server/ai/files";
 import { actionsOfConversation, approveAction, rejectAction, undoAction, type DecideResult } from "@/lib/server/ai/changes";
 import { READ_TOOL_TITLES } from "@/lib/server/ai/tools";
-import { displayTurns, type AiChatTurn } from "@/lib/domain/ai";
+import { AI_DENY_TEXT, displayTurns, type AiChatTurn } from "@/lib/domain/ai";
 import type { AiActionView } from "@/lib/domain/aiActions";
 
 // A person's own AI conversations — read and deleted by them alone — and
@@ -62,4 +63,30 @@ export async function undoAiAction(id: number): Promise<DecideResult> {
   if (!a.user) return { ok: false, error: a.error };
   if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Invalid change." };
   return undoAction(id, a.user);
+}
+
+/** A file attached in the chat — checked and kept for the question it goes
+ *  with. Only for someone the assistant answers now. */
+export async function uploadAiFile(fd: FormData): Promise<StoreResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: NOT_LOGGED_IN };
+  const status = await aiStatusFor(user);
+  if (!status.ok) return { ok: false, error: status.reason ? AI_DENY_TEXT[status.reason] : "The assistant is not available to you right now." };
+  const file = fd.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "Choose a file." };
+  try {
+    return await storeAiFile(user, file);
+  } catch (e) {
+    console.error("AI: could not keep an attached file", e);
+    return { ok: false, error: "The file could not be kept — try again." };
+  }
+}
+
+/** Take back a file attached but not sent yet. */
+export async function discardAiFile(id: number): Promise<{ ok: boolean; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: NOT_LOGGED_IN };
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Invalid file." };
+  await discardFile(user.id, id);
+  return { ok: true };
 }

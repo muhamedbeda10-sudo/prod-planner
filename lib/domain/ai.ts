@@ -2,6 +2,7 @@
 // pick and what they cost, what one question cost, who may ask right now,
 // and what the assistant's SQL may be and how its rows go back to it.
 
+import { filesOfNote, isAttachmentNote } from "./aiFiles";
 import type { AiArea } from "./aiActions";
 
 export interface AiModelDef {
@@ -124,7 +125,7 @@ export function conversationTitle(question: string): string {
 export const AI_PRIVATE_TABLES = [
   "Session", "UserPref", "ChatMessage", "ChatGroup", "ChatGroupMember", "ChatMessageHide", "ChatReaction",
   "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage", "AiAction",
-  "AiPlaybookEntry", "AiPlaybookRevision", "AiInboxItem", "PushSubscription", "PushKeys", "Automation", "AutomationRun",
+  "AiPlaybookEntry", "AiPlaybookRevision", "AiInboxItem", "PushSubscription", "PushKeys", "Automation", "AutomationRun", "AiFile",
 ] as const;
 export const AI_USER_COLUMNS = ["id", "name", "active"] as const;
 
@@ -248,16 +249,18 @@ export interface AiChatTurn {
   lookups: string[];
   /** The tool calls that prepared changes — the cards shown under the answer. */
   actionIds?: string[];
+  /** The files sent with a question. */
+  files?: { id: number; name: string; kind: string }[];
 }
 
 type Block = { type?: string; text?: string; id?: string; name?: string; input?: { purpose?: unknown } };
 
 /** The kept API messages as a chat: each question (the last text block of
- *  its message), then one answer gathering every assistant message, look-up
- *  and prepared change up to the next question. The app's own context
- *  messages (role "system") are not part of what people read. `readTitles`
- *  names the read tools, whose calls show as look-ups; any other tool call
- *  prepared a change. */
+ *  its message, with the files its note names), then one answer gathering
+ *  every assistant message, look-up and prepared change up to the next
+ *  question. The app's own context messages (role "system") are not part of
+ *  what people read. `readTitles` names the read tools, whose calls show as
+ *  look-ups; any other tool call prepared a change. */
 export function displayTurns(rows: readonly { role: string; content: unknown }[], readTitles: Readonly<Record<string, string>> = {}): AiChatTurn[] {
   const out: AiChatTurn[] = [];
   for (const r of rows) {
@@ -267,7 +270,10 @@ export function displayTurns(rows: readonly { role: string; content: unknown }[]
       // tool results belong to the answer being worked out
       if (blocks.some((b) => b.type === "tool_result")) continue;
       const texts = blocks.filter((b) => b.type === "text");
-      out.push({ role: "user", text: texts[texts.length - 1]?.text ?? "", lookups: [] });
+      const note = texts.find((b) => typeof b.text === "string" && isAttachmentNote(b.text));
+      const own = texts.filter((b) => b !== note);
+      const files = note ? filesOfNote(note.text!) : [];
+      out.push({ role: "user", text: own[own.length - 1]?.text ?? "", lookups: [], ...(files.length ? { files } : {}) });
       continue;
     }
     let cur = out[out.length - 1];

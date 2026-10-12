@@ -21,6 +21,7 @@ import { SHIFT_TOOLS } from "./shifts";
 import { CATALOGUE_TOOLS } from "./catalogue";
 import { SETUP_TOOLS } from "./setup";
 import { USER_TOOLS } from "./users";
+import { IMPORT_TOOLS } from "./imports";
 import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 
 // Every tool the assistant has, in the one fixed order the API sees them in
@@ -47,6 +48,7 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...SHIFT_TOOLS,
   ...CATALOGUE_TOOLS,
   ...SETUP_TOOLS,
+  ...IMPORT_TOOLS,
   ...USER_TOOLS,
 ];
 

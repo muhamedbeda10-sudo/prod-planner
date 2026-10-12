@@ -65,12 +65,15 @@ jobs:
           # the official image pins pg_dump to the server's major version;
           # only the public schema: the app's tables, its migration history
           # and the grants of the assistant's read-only login — Supabase's
-          # own schemas are Supabase's to restore
+          # own schemas are Supabase's to restore. The files attached in the
+          # assistant's chat are kept a fortnight and are no record: their
+          # table comes back empty.
           docker run --rm --network host \
             -e BACKUP_DATABASE_URL \
+            -e SKIP_DATA='public."AiFile"' \
             -v "$PWD/out:/out" \
             "postgres:${PG_MAJOR}" \
-            sh -c 'pg_dump "$BACKUP_DATABASE_URL" --schema=public --format=custom --compress=9 --no-owner --file=/out/atc.dump'
+            sh -c 'pg_dump "$BACKUP_DATABASE_URL" --schema=public --exclude-table-data="$SKIP_DATA" --format=custom --compress=9 --no-owner --file=/out/atc.dump'
           # an archive pg_restore cannot list is not a backup
           docker run --rm -v "$PWD/out:/out" "postgres:${PG_MAJOR}" \
             pg_restore --list /out/atc.dump > out/contents.txt

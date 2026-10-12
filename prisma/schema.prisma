@@ -329,6 +329,7 @@ model User {
   aiInboxSent      AiInboxItem[] @relation("inboxSent")
   pushDevices      PushSubscription[]
   automations      Automation[]
+  aiFiles          AiFile[]
 }
 
 // A person's own view settings — the Plan Tracker's columns, folded and
@@ -1412,6 +1413,7 @@ model AiConversation {
   updatedAt DateTime    @updatedAt
   messages  AiMessage[]
   actions   AiAction[]
+  files     AiFile[]
 
   @@index([userId, updatedAt])
 }
@@ -1425,6 +1427,30 @@ model AiMessage {
   createdAt      DateTime       @default(now())
 
   @@index([conversationId, id])
+}
+
+/// A file a person attached in the assistant's chat — a sheet the assistant
+/// reads, and the app's own importer runs on once its import is approved.
+/// The person's alone and their chat's; kept a fortnight (lib/domain/
+/// aiFiles.ts), then cleared — and left out of the nightly backup.
+model AiFile {
+  id             Int             @id @default(autoincrement())
+  userId         Int
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // the chat it was sent in — null until it goes with a question
+  conversationId Int?
+  conversation   AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  name           String
+  kind           String // excel | csv
+  type           String // the media type it is kept as
+  size           Int
+  sha256         String
+  data           Bytes
+  createdAt      DateTime        @default(now())
+
+  @@index([userId, createdAt])
+  @@index([conversationId])
+  @@index([createdAt])
 }
 
 // Every question asked and what it cost: the tokens of all the calls it took

@@ -1,18 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Check, Copy, Loader2, MessageSquare, PanelLeft, Plus, Search, Send, Trash2, X } from "lucide-react";
+import { Bot, Check, Copy, FileSpreadsheet, Loader2, MessageSquare, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
-import { deleteAiConversation, loadAiConversation } from "@/app/ai/actions";
+import { deleteAiConversation, discardAiFile, loadAiConversation, uploadAiFile } from "@/app/ai/actions";
 import { AI_MAX_QUESTION, usdText, type AiChatTurn } from "@/lib/domain/ai";
+import { AI_FILE_ACCEPT, AI_FILE_LIMITS, fileSizeText } from "@/lib/domain/aiFiles";
 import type { AiActionView } from "@/lib/domain/aiActions";
 
 // The AI assistant's chat: the person's conversations on the side (a drawer
 // below a laptop's width), the open one in the middle, the answer streaming
 // in as it is written — what it is looking up shown while it looks, the
 // changes it prepares as cards to approve — and the month's spend under the
-// box.
+// box. A sheet can go with a question: the paperclip sends it to the app
+// first, and the question carries its number.
 
 interface Turn extends AiChatTurn {
   error?: string;
@@ -22,6 +24,14 @@ interface Conv {
   id: number;
   title: string;
   updatedAt: string;
+}
+
+/** A file attached and kept, waiting for the question it goes with. */
+interface Pending {
+  id: number;
+  name: string;
+  kind: string;
+  size: number;
 }
 
 export interface AiChatStatus {
@@ -74,10 +84,14 @@ export function AiChat({
   const [spent, setSpent] = useState({ user: status.userSpent, plant: status.plantSpent });
   const [sideOpen, setSideOpen] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [pending, setPending] = useState<Pending[]>([]);
+  const [uploading, setUploading] = useState(0);
+  const [fileErr, setFileErr] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
   // deltas arrive token by token — gathered and drawn a few times a second
-  const pending = useRef("");
+  const delta = useRef("");
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const capReached = (status.userCap > 0 && spent.user >= status.userCap) || (status.plantCap > 0 && spent.plant >= status.plantCap);
@@ -99,8 +113,8 @@ export function AiChat({
 
   const flush = () => {
     flushTimer.current = null;
-    const d = pending.current;
-    pending.current = "";
+    const d = delta.current;
+    delta.current = "";
     if (d) patchLast((t) => ({ ...t, text: t.text + d }));
   };
 
@@ -155,7 +169,7 @@ export function AiChat({
       patchLast((t) => ({ ...t, lookups: [...t.lookups, text] }));
     } else if (ev.type === "text") {
       setLive(null);
-      pending.current += String(ev.delta ?? "");
+      delta.current += String(ev.delta ?? "");
       if (!flushTimer.current) flushTimer.current = setTimeout(flush, 60);
     } else if (ev.type === "action") {
       const v = ev.action as AiActionView;
@@ -172,20 +186,62 @@ export function AiChat({
     }
   }
 
+  /** Send picked files to the app, one by one — each kept as it arrives. */
+  async function attach(list: FileList | null) {
+    const picked = [...(list ?? [])];
+    if (picker.current) picker.current.value = "";
+    if (picked.length === 0) return;
+    setFileErr(null);
+    const room = AI_FILE_LIMITS.perQuestion - pending.length;
+    if (picked.length > room) setFileErr(`At most ${AI_FILE_LIMITS.perQuestion} files with one question.`);
+    for (const f of picked.slice(0, Math.max(0, room))) {
+      if (f.size > AI_FILE_LIMITS.maxBytes) {
+        setFileErr(`"${f.name}" is ${fileSizeText(f.size)} — at most ${fileSizeText(AI_FILE_LIMITS.maxBytes)} a file.`);
+        continue;
+      }
+      setUploading((n) => n + 1);
+      try {
+        const fd = new FormData();
+        fd.set("file", f);
+        const r = await uploadAiFile(fd);
+        if (r.ok) setPending((all) => [...all, r.file]);
+        else setFileErr(r.error);
+      } catch {
+        setFileErr(`"${f.name}" could not be sent — try again.`);
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
+  }
+
+  function unattach(id: number) {
+    setPending((all) => all.filter((f) => f.id !== id));
+    void discardAiFile(id);
+  }
+
   async function ask(text: string) {
     const question = text.trim();
-    if (!question || busy || !canAsk) return;
+    if (!question || busy || !canAsk || uploading > 0) return;
+    const sent = pending;
     setInput("");
+    setPending([]);
+    setFileErr(null);
     setBusy(true);
     setLive("Reading the question…");
-    setTurns((all) => [...all, { role: "user", text: question, lookups: [] }, { role: "assistant", text: "", lookups: [] }]);
+    setTurns((all) => [
+      ...all,
+      { role: "user", text: question, lookups: [], ...(sent.length ? { files: sent.map(({ id, name, kind }) => ({ id, name, kind })) } : {}) },
+      { role: "assistant", text: "", lookups: [] },
+    ]);
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: activeId, question }),
+        body: JSON.stringify({ conversationId: activeId, question, fileIds: sent.map((f) => f.id) }),
       });
       if (!res.ok || !res.body) {
+        // refused before it began: the files wait for the next try
+        setPending(sent);
         const j = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(j?.error ?? `The request failed (${res.status}).`);
       }
@@ -277,7 +333,16 @@ export function AiChat({
             <div className="max-w-4xl mx-auto space-y-4 md:space-y-5">
               {turns.map((t, i) =>
                 t.role === "user" ? (
-                  <div key={i} className="flex justify-end">
+                  <div key={i} className="flex flex-col items-end gap-1">
+                    {t.files && t.files.length > 0 && (
+                      <div className="flex flex-wrap justify-end gap-1.5 max-w-[88%] sm:max-w-[80%]">
+                        {t.files.map((f) => (
+                          <span key={f.id} className="pill pill-muted text-[11px]" dir="auto" title={`File #${f.id}`}>
+                            <FileSpreadsheet size={12} /> {f.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div dir="auto" className="max-w-[88%] sm:max-w-[80%] rounded-2xl rounded-ee-md bg-brand-light px-3.5 py-2 text-[15px] whitespace-pre-wrap break-words">{t.text}</div>
                   </div>
                 ) : (
@@ -308,7 +373,34 @@ export function AiChat({
               {isOwner && <> <a href="/admin/ai" className="underline text-brand">Settings</a></>}
             </p>
           )}
+          {(pending.length > 0 || uploading > 0 || fileErr) && (
+            <div className="max-w-4xl mx-auto flex flex-wrap items-center gap-1.5 mb-2">
+              {pending.map((f) => (
+                <span key={f.id} className="pill pill-muted text-xs gap-1" dir="auto">
+                  <FileSpreadsheet size={13} /> {f.name} <span className="text-muted">{fileSizeText(f.size)}</span>
+                  <button type="button" onClick={() => unattach(f.id)} disabled={busy} className="-me-1 p-0.5 rounded hover:bg-surface-2" aria-label={`Remove ${f.name}`} title="Remove">
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+              {uploading > 0 && (
+                <span className="text-xs text-muted inline-flex items-center gap-1"><Loader2 size={13} className="animate-spin" /> Sending the file…</span>
+              )}
+              {fileErr && <span className="text-xs font-semibold text-bad-fg" dir="auto">{fileErr}</span>}
+            </div>
+          )}
           <div className="max-w-4xl mx-auto flex items-end gap-2">
+            <input ref={picker} type="file" accept={AI_FILE_ACCEPT} multiple hidden onChange={(e) => attach(e.target.files)} />
+            <button
+              type="button"
+              className="btn btn-ghost h-10 w-10 !p-0 shrink-0"
+              onClick={() => picker.current?.click()}
+              disabled={!canAsk || busy || pending.length >= AI_FILE_LIMITS.perQuestion}
+              aria-label="Attach a sheet"
+              title="Attach a sheet (Excel or CSV) — to read it or import it"
+            >
+              <Paperclip size={18} />
+            </button>
             <textarea
               ref={box}
               value={input}
@@ -328,7 +420,7 @@ export function AiChat({
               // 16px: a phone zooms the page into a smaller box
               className="flex-1 min-w-0 resize-none px-3 py-2 text-base rounded-xl"
             />
-            <button type="submit" className="btn btn-primary h-10 w-10 !p-0 shrink-0" disabled={!canAsk || busy || !input.trim()} aria-label="Send" title="Send">
+            <button type="submit" className="btn btn-primary h-10 w-10 !p-0 shrink-0" disabled={!canAsk || busy || uploading > 0 || !input.trim()} aria-label="Send" title="Send">
               {busy ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
           </div>

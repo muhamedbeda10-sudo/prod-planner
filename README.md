@@ -297,13 +297,21 @@ mobile drawer still lists every view flat, since it has the vertical room.
    read-only login that cannot see the private tables, nor the tables of a screen hidden from the person. What it may do
    is the owner's call per person (Users & Permissions → AI assistant), and never more than the person may do themselves.
    - **Changes** (`lib/server/ai/changes.ts`, `lib/server/ai/tools/*`): the Plan Tracker and Daily log, the machine board
-     and ⚡ Plan, the Simulator and the run order, the ODOO log, Material, physical stock, consumables, the calendar,
-     workers and machines. A write tool never writes by itself: `describe` shows the card (before → after) and keeps a
+     and ⚡ Plan, the Simulator and the run order, the ODOO log, Material, physical stock, consumables with their catalogue,
+     limits and powder scrap, the shift roster, the calendar, workers and machines, the standard times, capacity,
+     calibration, times per machine and settings (key "AI — standard times and settings"), and — for the owner alone, in a
+     live chat only — Users & Permissions (an account it makes has a password nobody knows; the owner sets the first one).
+     A write tool never writes by itself: `describe` shows the card (before → after) and keeps a
      snapshot of the data; on Approve it runs only if the data still reads the same, through the screen's own server action
      as the person (`runAsActor` — the audit names "Sara (AI)"). Undo runs only while nothing changed since; where an
      action stamps things as it goes, the undo writes the rows back exactly from the snapshot (`lib/server/rowSnapshots.ts`,
      reachable only from an undo). Deletions need their own key and always wait; "small changes without asking" is a
      per-person opt-in. The owner can pause every change, or every automation, at once (AI assistant settings).
+   - **Attached sheets and imports** (`lib/server/ai/files.ts`, `lib/server/ai/tools/imports.ts`): an Excel or CSV sheet
+     attached with the 📎 is checked by its bytes, kept in `AiFile` for 14 days (out of the nightly backup, closed to
+     `ai_reader`) and opened only in its own chat. The assistant reads it, and imports it through the screen's own importer
+     — the card is the importer's dry run, and the import runs only while a fresh dry run reads the same. No undo for an
+     import; key "AI — imports" plus the person's own import permission.
    - **Machine rules** (Tools → Machines & lines): only / never / prefer, by item, line, sheet thickness and material, kVA —
      ⚡ Plan follows them (`lib/domain/machineRules.ts`, `optimizePlan`'s `allowed` / `preferred`).
    - **Automations** (`/automations`, `lib/domain/automations.ts`, `lib/server/automations/*`): on a schedule (Cairo times on

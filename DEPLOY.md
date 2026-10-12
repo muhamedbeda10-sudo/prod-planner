@@ -65,6 +65,8 @@ npm run seed -- "C:\المسار\إلى\Production_Master_Excel.xlsm"
 القديمة على `D:\SYS` بس. الباك أب الحقيقي للداتا الحية هو الـ workflow
 `.github/workflows/backup.yml`: كل ليلة (03:40 صيفي / 02:40 شتوي بتوقيت القاهرة) بياخد `pg_dump`
 للـ schema بتاعة الأبلكيشن، ويقفله في ملف 7-Zip بباسورد (AES-256)، ويحفظه 30 يوم في GitHub.
+الملفات اللي بتترفع في شات الـ AI (جدول `AiFile`) مش بتدخل الباك أب: بتتمسح لوحدها بعد 14 يوم،
+والجدول بيرجع فاضي مع الاسترجاع.
 
 ### التجهيز (مرة واحدة)
 في GitHub: **Settings → Secrets and variables → Actions → New repository secret**:

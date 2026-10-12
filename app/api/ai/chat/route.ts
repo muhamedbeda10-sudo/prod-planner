@@ -6,6 +6,8 @@ import { ask, questionMessages, type AiMessageParam } from "@/lib/server/ai/agen
 import { markOutcomesTold, pendingOutcomes } from "@/lib/server/ai/changes";
 import { toolsFor } from "@/lib/server/ai/tools";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
+import { linkFiles, questionFiles } from "@/lib/server/ai/files";
+import { AI_FILE_LIMITS, attachmentNote } from "@/lib/domain/aiFiles";
 import { AI_DENY_TEXT, AI_MAX_MESSAGES, AI_MAX_QUESTION, conversationTitle, costUsd, questionContext } from "@/lib/domain/ai";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
 import { factoryDayISO } from "@/lib/domain/dates";
@@ -29,7 +31,7 @@ export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return fail(401, "You are not logged in — refresh the page.");
 
-  let body: { conversationId?: unknown; question?: unknown };
+  let body: { conversationId?: unknown; question?: unknown; fileIds?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -38,6 +40,9 @@ export async function POST(request: Request) {
   const question = typeof body.question === "string" ? body.question.trim() : "";
   if (!question) return fail(400, "Type a question.");
   if (question.length > AI_MAX_QUESTION) return fail(400, `The question is too long (at most ${AI_MAX_QUESTION} characters).`);
+  const fileIds: unknown[] = Array.isArray(body.fileIds) ? body.fileIds : [];
+  if (!fileIds.every((x): x is number => Number.isInteger(x) && (x as number) > 0)) return fail(400, "Bad request.");
+  if (fileIds.length > AI_FILE_LIMITS.perQuestion) return fail(400, `Attach at most ${AI_FILE_LIMITS.perQuestion} files to one question.`);
 
   const status = await aiStatusFor(user);
   if (!status.ok) return fail(403, AI_DENY_TEXT[status.reason!]);
@@ -58,8 +63,12 @@ export async function POST(request: Request) {
   // (no conversation) does not hold the chat up.
   const running = await prisma.aiUsage.count({ where: { userId: user.id, finishedAt: null, conversationId: { not: null }, at: { gte: new Date(Date.now() - (maxDuration + 30) * 1000) } } });
   if (running > 0) return fail(429, "One question at a time — wait for the answer, then ask again.");
+  // the files sent with it: the person's own, and this chat's (or none's yet)
+  const files = await questionFiles(user.id, fileIds, existing?.id ?? null);
+  if (!files.ok) return fail(400, files.error);
 
   const conversation = existing ?? (await prisma.aiConversation.create({ data: { userId: user.id, title: conversationTitle(question), model: settings.model } }));
+  await linkFiles(user.id, fileIds, conversation.id);
   // logged before the first call, finished after the last — what the caps
   // and the one-at-a-time rule read
   const usage = await prisma.aiUsage.create({ data: { userId: user.id, conversationId: conversation.id, model: conversation.model, question: question.slice(0, 500) } });
@@ -99,7 +108,7 @@ export async function POST(request: Request) {
         apiKey,
         model: conversation.model,
         history,
-        question: questionMessages(question, context),
+        question: questionMessages(question, context, files.files.length ? attachmentNote(files.files) : undefined),
         tools,
         ctx: { user, hidden, now, todayISO: factoryDayISO(now), conversationId: conversation.id, automationId: null },
         settings,

@@ -6,6 +6,7 @@ import { aiStatusFor, apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
 import { ask, questionMessages } from "@/lib/server/ai/agent";
 import { expireProposals } from "@/lib/server/ai/changes";
 import { toolsFor } from "@/lib/server/ai/tools";
+import { pruneAiFiles } from "@/lib/server/ai/files";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { deliverToInbox } from "@/lib/server/inbox";
 import { configOf, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
@@ -92,6 +93,7 @@ async function pruneOld(now: Date): Promise<void> {
   const ago = (days: number) => new Date(now.getTime() - days * 86_400_000);
   await prisma.automationRun.deleteMany({ where: { startedAt: { lt: ago(KEEP_RUNS_DAYS) } } });
   await prisma.aiInboxItem.deleteMany({ where: { OR: [{ readAt: { not: null }, createdAt: { lt: ago(KEEP_READ_DAYS) } }, { createdAt: { lt: ago(KEEP_UNREAD_DAYS) } }] } });
+  await pruneAiFiles(now);
 }
 
 interface RunOptions {

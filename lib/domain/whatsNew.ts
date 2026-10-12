@@ -16,6 +16,22 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-ai-imports",
+    dateISO: "2026-10-12",
+    title: "Attach a sheet in the AI chat — it reads it, or imports it",
+    where: "AI assistant → 📎",
+    body: "Attach an Excel or CSV sheet to your question with the paperclip: the assistant reads it and answers from it, or — when you ask — imports it as the screen's own import would: a monthly or weekly plan, a Daily-log sheet, an ODOO sheet, the MATERIAL sheet or the store's stock sheet. The card shows the importer's own dry run (what it adds, changes and takes away) before you approve; an import cannot be undone from the chat. Files are kept two weeks. For the people the owner gives \"AI — imports\", each within their own import permission.",
+    href: "/ai",
+  },
+  {
+    id: "2026-10-12-ai-setup-users",
+    dateISO: "2026-10-12",
+    title: "The assistant keeps the roster, the catalogue, the standard times — and, for the owner, Users & Permissions",
+    where: "AI assistant",
+    body: "It can now record a department's day on the shift roster, keep the consumables catalogue, its limits and the powder scrap, and change the standard times, the capacity and calibration, the times per machine, the shift hours and the master switches — each as a card you approve, within your own permissions, with Undo. The owner can also have it change people's keys, screens and AI allowance, or make and deactivate accounts (passwords are never handled by the assistant). Standard times and settings need the new \"AI — standard times and settings\" key.",
+    href: "/ai",
+  },
+  {
     id: "2026-10-12-ai-review-playbook",
     dateISO: "2026-10-12",
     title: "The assistant's morning review, and the plant's playbook",
