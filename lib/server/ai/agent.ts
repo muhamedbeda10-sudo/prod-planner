@@ -29,6 +29,7 @@ type ContentBlockParam = Anthropic.Beta.Messages.BetaContentBlockParam;
 type ToolResult = Anthropic.Beta.Messages.BetaToolResultBlockParam;
 type Message = Anthropic.Beta.Messages.BetaMessage;
 type ApiTool = Anthropic.Beta.Messages.BetaTool;
+type ApiToolUnion = Anthropic.Beta.Messages.BetaToolUnion;
 
 const RULES = `You are the assistant inside the production-planning app of ATC (Arabian Transformers Co.) — the steel-fabrication plant that makes the steel parts of distribution transformers (tanks, top covers, core frames, cable boxes …) and LV panels. Planners, supervisors and managers ask you about the plant's orders, plans, output, machines, material and nesting, Odoo close-outs, shifts and consumables. You answer from the app's live PostgreSQL database, help them decide what to do — and, where they have given you the right, do it for them.
 
@@ -36,6 +37,7 @@ How you work
 - Look facts up with your read tools: query_database for anything in the database, and the dedicated tools where they exist — they compute what the app's screens show (what an order still owes, the machine queues, a simulated week), which SQL alone often gets wrong. Every number, order, date or name you give must come from a tool result in this conversation — never guess or invent one. If the data cannot answer the question, say so plainly and say what is missing.
 - Prefer a few well-aimed queries: aggregate and filter in SQL (GROUP BY, SUM, COUNT, date ranges), select only the columns you need, ORDER BY what matters. Results come back as {columns, rows}, at most 200 rows.
 - If a tool call fails, read the error, fix the call and try again.
+- Two of your tools are always at hand: query_database and get_machine_board. Every other one — the Plan Tracker and Daily log, orders, the worklists and tanks, the machines, nest runs and manual jobs, the Simulator and the floor, the ODOO log, Material, stock, consumables, shifts, the calendar, workers and machines, standard times and settings, automations and messages, imports of attached files, users — you find with tool_search_tool_bm25: search in plain English for what you want to do ("record output", "nest run", "tank leak test", "put lines on machines", "read attached file"), then call what it finds. A tool these rules name is found by its name. Search before you say you cannot do something.
 
 Changing things
 - Your write tools change the plant's data for the person, through the app's own actions and under the person's own permissions — never more than they could do themselves. The system message after each question says which kinds of change you may make for this person. If you have no write tool for what they want, you cannot change it: say where in the app it is done.
@@ -165,22 +167,76 @@ function withoutThinking(messages: MessageParam[]): MessageParam[] {
   );
 }
 
-function apiTools(tools: readonly AiTool[], eager: boolean): ApiTool[] {
-  // tool inputs stream as they are written (a long query shows up sooner);
-  // the input is then the app's to check, which it does before running anything
-  return tools.map((t) => ({
+/** The tool search: the model finds the tools it was not given up front by
+ *  plain words ("record output", "nest run") — a search, run by the API, of
+ *  their names and descriptions, whose finds load into its context. */
+const TOOL_SEARCH = { type: "tool_search_tool_bm25_20251119", name: "tool_search_tool_bm25" } as const;
+
+function apiTools(tools: readonly AiTool[], eager: boolean, loaded: ReadonlySet<string>): ApiToolUnion[] {
+  const defs: ApiTool[] = tools.map((t) => ({
     name: t.name,
     description: t.description,
     input_schema: t.schema as unknown as ApiTool["input_schema"],
+    // tool inputs stream as they are written (a long query shows up sooner);
+    // the input is then the app's to check, which it does before running anything
     ...(eager ? { eager_input_streaming: true } : {}),
+    // the rest wait for the tool search: their definitions stay out of the
+    // context, and out of the cached prefix, until a question needs them
+    ...(loaded.has(t.name) ? {} : { defer_loading: true }),
   }));
+  return defs.some((d) => d.defer_loading) ? [TOOL_SEARCH, ...defs] : defs;
+}
+
+/** The tools a conversation's searches have found. */
+function foundTools(messages: readonly MessageParam[]): Set<string> {
+  const found = new Set<string>();
+  for (const m of messages) {
+    if (typeof m.content === "string") continue;
+    for (const b of m.content) {
+      if (b.type === "tool_search_tool_result" && b.content.type === "tool_search_tool_search_result") for (const r of b.content.tool_references) found.add(r.tool_name);
+    }
+  }
+  return found;
+}
+
+/** The tools loaded from the first request: those marked so, and any tool
+ *  the conversation already called without a search finding it — a chat from
+ *  before the tools were searched for, whose calls the API reads against the
+ *  definitions it was given. */
+function loadedTools(tools: readonly AiTool[], messages: readonly MessageParam[]): Set<string> {
+  const have = new Set(tools.map((t) => t.name));
+  const found = foundTools(messages);
+  const loaded = new Set(tools.filter((t) => t.loaded).map((t) => t.name));
+  for (const m of messages) {
+    if (typeof m.content === "string") continue;
+    for (const b of m.content) if (b.type === "tool_use" && have.has(b.name) && !found.has(b.name)) loaded.add(b.name);
+  }
+  return loaded;
+}
+
+/** A search's finds that name a tool this person no longer has (a key taken
+ *  away, a tool retired) are left out — the API refuses a reference to a tool
+ *  it was not given. Every other message goes as it was kept. */
+function withKnownFinds(messages: MessageParam[], names: ReadonlySet<string>): MessageParam[] {
+  return messages.map((m) => {
+    if (typeof m.content === "string") return m;
+    let changed = false;
+    const content = m.content.map((b) => {
+      if (b.type !== "tool_search_tool_result" || b.content.type !== "tool_search_tool_search_result") return b;
+      const refs = b.content.tool_references.filter((r) => names.has(r.tool_name));
+      if (refs.length === b.content.tool_references.length) return b;
+      changed = true;
+      return { ...b, content: { ...b.content, tool_references: refs } };
+    });
+    return changed ? { ...m, content } : m;
+  });
 }
 
 async function callModel(
   client: Anthropic,
   m: AiModelDef,
   system: Anthropic.Beta.Messages.BetaTextBlockParam[],
-  tools: { full: ApiTool[]; plain: ApiTool[] },
+  tools: { full: ApiToolUnion[]; plain: ApiToolUnion[] },
   messages: MessageParam[],
   opts: { plain: boolean; answerNow: boolean; effort: AiEffort },
   events: AskEvents,
@@ -213,6 +269,9 @@ async function callModel(
         { signal },
       );
   stream.on("text", (d) => events.text(d));
+  stream.on("streamEvent", (e) => {
+    if (e.type === "content_block_start" && e.content_block.type === "server_tool_use") events.status("Finding the tools for it");
+  });
   return stream.finalMessage();
 }
 
@@ -257,8 +316,8 @@ export async function ask(opts: {
   const m = aiModel(opts.model);
   const effort = aiEffort(opts.effort);
   const system = systemBlocks(opts.playbook ?? "");
-  const tools = { full: apiTools(opts.tools, true), plain: apiTools(opts.tools, false) };
   const byName = new Map(opts.tools.map((t) => [t.name, t]));
+  const names: ReadonlySet<string> = new Set(byName.keys());
   const maxCalls = Math.max(2, opts.maxCalls ?? MAX_CALLS);
   const history = sendableHistory(opts.history);
   const turn: MessageParam[] = [...opts.question];
@@ -273,6 +332,7 @@ export async function ask(opts: {
   let wroteText = false;
   let answer = "";
   let badRequest = false;
+  let resumed = false;
   const expand = opts.expand ?? (async (msgs: MessageParam[]) => msgs);
 
   const events: AskEvents = {
@@ -288,10 +348,15 @@ export async function ask(opts: {
   try {
     for (let step = 0; step < maxCalls; step++) {
       // a second stretch of answer after a look-up starts on its own paragraph
-      if (wroteText && step > 0) events.text("\n\n");
+      // (a paused turn picked up again carries straight on)
+      if (wroteText && step > 0 && !resumed) events.text("\n\n");
+      resumed = false;
       let msg: Message;
       try {
-        msg = await callModel(client, m, system, tools, await expand([...history, ...turn]), { plain, answerNow: step === maxCalls - 1, effort }, events, opts.signal);
+        const sent = withKnownFinds(await expand([...history, ...turn]), names);
+        const loaded = loadedTools(opts.tools, sent);
+        const tools = { full: apiTools(opts.tools, true, loaded), plain: apiTools(opts.tools, false, loaded) };
+        msg = await callModel(client, m, system, tools, sent, { plain, answerNow: step === maxCalls - 1, effort }, events, opts.signal);
         jsonRetries = 0;
       } catch (e) {
         // a 400 on the full request: the plain one, once, for the rest of the
@@ -328,6 +393,12 @@ export async function ask(opts: {
         break;
       }
       turn.push({ role: "assistant", content: msg.content as ContentBlockParam[] });
+      // a turn the API paused (a search of its own running long): sent back
+      // as it is, the model carries on from there
+      if (msg.stop_reason === "pause_turn") {
+        resumed = true;
+        continue;
+      }
       if (msg.stop_reason !== "tool_use" || uses.length === 0) break;
 
       const results: ContentBlockParam[] = [];
