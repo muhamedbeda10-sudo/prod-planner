@@ -4,11 +4,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
 import { requirePerm, requireAdmin, getCurrentUser, hasPerm } from "@/lib/server/auth";
-import { applicableItems, ospOf, isDept, isPaintExempt, deptLabel, itemOverrides, isItem, ITEMS, DELIVERED_STAGE } from "@/lib/domain/constants";
-import { finsGroup, isFullyDelivered, spreadOverGroup } from "@/lib/domain/groupSpread";
+import { applicableItems, ospOf, isDept, isPaintExempt, deptLabel, itemOverrides, isItem } from "@/lib/domain/constants";
+import { finsGroup, spreadOverGroup } from "@/lib/domain/groupSpread";
 import { getActiveLine } from "@/lib/server/line";
-import { LV_ITEM, isLvFamily } from "@/lib/domain/lv";
+import { isLvFamily } from "@/lib/domain/lv";
 import { linePermKey } from "@/lib/domain/permissions";
+import { fullyDeliveredOpenOrders } from "@/lib/server/deliveredOrders";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
@@ -512,28 +513,7 @@ export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: str
   const guard = await requirePerm(linePermKey(line, "status"));
   if (guard.error) return { ok: false, error: guard.error };
 
-  const open = await prisma.masterOrder.findMany({ where: { status: "open", line } });
-  if (open.length === 0) return { ok: true, closed: 0, mos: [] };
-
-  const delivered = await prisma.handoverEntry.groupBy({
-    by: ["mo", "item"],
-    where: { dept: DELIVERED_STAGE, mo: { in: open.map((o) => o.mo) } },
-    _sum: { qty: true },
-  });
-  const got = new Map(delivered.map((d) => [`${d.mo}|${d.item}`, d._sum.qty ?? 0]));
-
-  const done = open.filter((o) => {
-    // an LV panel is one item on the ledger; a transformer is its components
-    if (o.line === "LV") return isFullyDelivered(o.planQty, [{ counts: true, delivered: got.get(`${o.mo}|${LV_ITEM}`) ?? 0 }]);
-    const needed = applicableItems(o);
-    return isFullyDelivered(
-      o.planQty,
-      ITEMS.map((it) => ({
-        counts: needed.includes(it),
-        delivered: got.get(`${o.mo}|${it}`) ?? 0,
-      }))
-    );
-  });
+  const done = await fullyDeliveredOpenOrders(line);
   if (done.length === 0) return { ok: true, closed: 0, mos: [] };
 
   const at = new Date();

@@ -4,6 +4,8 @@ import { hasPerm } from "@/lib/server/auth";
 import { AI_AREA_KEY, AI_DELETE_KEY, type AiRisk } from "@/lib/domain/aiActions";
 import { validateInput } from "@/lib/domain/aiInput";
 import { queryDatabase } from "./sql";
+import { TRACKER_TOOLS } from "./tracker";
+import { DAILY_LOG_TOOLS } from "./dailyLog";
 import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 
 // Every tool the assistant has, in the one fixed order the API sees them in
@@ -12,7 +14,7 @@ import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 // a write tool only for someone the owner gave the assistant's key for its
 // area — and none while the owner has paused the assistant's changes.
 
-export const AI_TOOLS: readonly AiTool[] = [queryDatabase];
+export const AI_TOOLS: readonly AiTool[] = [queryDatabase, ...TRACKER_TOOLS, ...DAILY_LOG_TOOLS];
 
 const BY_NAME = new Map<string, AiTool>(AI_TOOLS.map((t) => [t.name, t]));
 
