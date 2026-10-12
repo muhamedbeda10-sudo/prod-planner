@@ -92,7 +92,7 @@ describe("record_lv_bom_total", () => {
 
   it("spreads the group's new total over its MOs in order, as the LV tracker's group row does", async () => {
     expect(await recordLvBomTotalTool.describe(input, ctx)).toEqual({ error: expect.stringContaining("permission") });
-    h.perms.add("lv.tracker.weld");
+    h.perms.add("lv.welding");
     const p = await recordLvBomTotalTool.describe(input, ctx);
     expect(p).toMatchObject({
       title: "LVB LV Welding: 3 → 7",
@@ -107,7 +107,7 @@ describe("record_lv_bom_total", () => {
   });
 
   it("runs the group row's own action and is undone MO by MO", async () => {
-    h.perms.add("lv.tracker.weld");
+    h.perms.add("lv.welding");
     h.prisma.handoverEntry.groupBy.mockResolvedValueOnce(sums).mockResolvedValueOnce([
       ...sums.filter((x) => x.dept !== "Welding"), { mo: "P1", dept: "Welding", _sum: { qty: 5 } }, { mo: "P2", dept: "Welding", _sum: { qty: 2 } },
     ]);
