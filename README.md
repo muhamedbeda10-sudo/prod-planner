@@ -297,7 +297,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
    read-only login that cannot see the private tables, nor the tables of a screen hidden from the person. What it may do
    is the owner's call per person (Users & Permissions → AI assistant), and never more than the person may do themselves.
    - **Changes** (`lib/server/ai/changes.ts`, `lib/server/ai/tools/*`): the Plan Tracker and Daily log, the machine board
-     and ⚡ Plan, the Simulator and the run order, the ODOO log, Material, physical stock, consumables with their catalogue,
+     and ⚡ Plan (a line's share on a machine too), the cutting floor — nest runs (several jobs' parts on the same sheets,
+     their pieces taken off what the machines cut of those lines), manual jobs and the sheets cut — the Simulator and the
+     run order, the ODOO log, Material, physical stock, consumables with their catalogue,
      limits and powder scrap, the shift roster, the calendar, workers and machines, the standard times, capacity,
      calibration, times per machine and settings (key "AI — standard times and settings"), and — for the owner alone, in a
      live chat only — Users & Permissions (an account it makes has a password nobody knows; the owner sets the first one).

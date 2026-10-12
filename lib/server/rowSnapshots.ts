@@ -2,7 +2,9 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdmin, requireOwner, requirePerm } from "@/lib/server/auth";
-import { linePermKey, shiftPermKey } from "@/lib/domain/permissions";
+import { deptPermKey, linePermKey, shiftPermKey } from "@/lib/domain/permissions";
+import { RUN_BOM, RUN_ITEM, runMo } from "@/lib/domain/nestRun";
+import { MANUAL_BOM, MANUAL_ITEM, manualMo } from "@/lib/domain/manualJob";
 import type { RosterDept } from "@/lib/domain/shifts";
 
 // Rows of the ODOO log, the MATERIAL tab, the physical stock, the shift
@@ -434,5 +436,150 @@ export async function restoreUserAccess(s: UserAccessSnapshot): Promise<RestoreR
   }
   revalidatePath("/admin/users");
   revalidatePath("/admin/ai");
+  return { ok: true };
+}
+
+// ------------------------------------------------------- THE CUTTING FLOOR
+
+/** A run's or a manual job's own rows in the machine queues — its line on
+ *  each machine it sits on. */
+export interface QueueRowOfJob {
+  id: number;
+  machineId: number;
+  rank: number;
+  running: boolean;
+  qty: number | null;
+  sheet: string;
+  sheetDone: number;
+  setBy: string | null;
+}
+
+const queueRowsOf = (dept: string, bom: string, mo: string, item: string) =>
+  prisma.worklistMachine.findMany({ where: { dept, bom, mo, item }, orderBy: { id: "asc" } }).then((rows) =>
+    rows.map((r) => ({ id: r.id, machineId: r.machineId, rank: r.rank, running: r.running, qty: r.qty, sheet: r.sheet, sheetDone: r.sheetDone, setBy: r.setBy })));
+
+type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+/** A job's queue rows put back as snapshotted — the rows it has now that the
+ *  snapshot does not are taken off. */
+async function putQueueRowsBack(tx: Tx, dept: string, key: { bom: string; mo: string; item: string }, rows: readonly QueueRowOfJob[]) {
+  // a machine taken out of the plant since cannot take its row back
+  const live = new Set((await tx.machine.findMany({ where: { id: { in: rows.map((r) => r.machineId) } }, select: { id: true } })).map((m) => m.id));
+  const back = rows.filter((r) => live.has(r.machineId));
+  await tx.worklistMachine.deleteMany({ where: { dept, ...key, id: { notIn: back.map((r) => r.id) } } });
+  for (const r of back) {
+    const data = { dept, ...key, machineId: r.machineId, rank: r.rank, running: r.running, qty: r.qty, sheet: r.sheet, sheetDone: r.sheetDone, setBy: r.setBy };
+    await tx.worklistMachine.upsert({ where: { id: r.id }, create: { id: r.id, ...data }, update: data });
+  }
+}
+
+export interface NestRunSnapshot {
+  id: number;
+  dept: string;
+  material: string;
+  thicknessMm: number;
+  sheetSize: string;
+  sheets: number;
+  sheetsDone: number;
+  identical: boolean;
+  sheetMinutes: number[];
+  note: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  doneAt: string | null;
+  parts: { id: number; bom: string; mo: string; item: string; pcs: number; donePcs: number; consumedPcs: number; replaces: string }[];
+  queue: QueueRowOfJob[];
+}
+
+/** A nest run as it stands: its sheet, its parts and where it is queued —
+ *  null once it is gone. */
+export async function readNestRun(id: number): Promise<NestRunSnapshot | null> {
+  const r = await prisma.nestRun.findUnique({ where: { id }, include: { parts: { orderBy: { id: "asc" } } } });
+  if (!r) return null;
+  return {
+    id: r.id, dept: r.dept, material: r.material, thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, sheets: r.sheets, sheetsDone: r.sheetsDone,
+    identical: r.identical, sheetMinutes: r.sheetMinutes, note: r.note, createdBy: r.createdBy, createdAt: r.createdAt.toISOString(), doneAt: iso(r.doneAt),
+    parts: r.parts.map((p) => ({ id: p.id, bom: p.bom, mo: p.mo, item: p.item, pcs: p.pcs, donePcs: p.donePcs, consumedPcs: p.consumedPcs, replaces: p.replaces })),
+    queue: await queueRowsOf(r.dept, RUN_BOM, runMo(r.id), RUN_ITEM),
+  };
+}
+
+/** Put a nest run back exactly as snapshotted — deleted since, it comes back
+ *  under its own number with its parts, on the machines it was queued on. */
+export async function restoreNestRun(s: NestRunSnapshot): Promise<RestoreResult> {
+  const guard = await requirePerm(deptPermKey(s.dept));
+  if (guard.error) return { ok: false, error: guard.error };
+  try {
+    await prisma.$transaction(async (tx) => {
+      const data = {
+        dept: s.dept, material: s.material, thicknessMm: s.thicknessMm, sheetSize: s.sheetSize, sheets: s.sheets, sheetsDone: s.sheetsDone,
+        identical: s.identical, sheetMinutes: s.sheetMinutes, note: s.note, createdBy: s.createdBy, doneAt: date(s.doneAt),
+      };
+      await tx.nestRun.upsert({ where: { id: s.id }, create: { id: s.id, ...data, createdAt: date(s.createdAt)! }, update: data });
+      await tx.nestRunPart.deleteMany({ where: { runId: s.id, id: { notIn: s.parts.map((p) => p.id) } } });
+      for (const p of s.parts) {
+        const part = { runId: s.id, bom: p.bom, mo: p.mo, item: p.item, pcs: p.pcs, donePcs: p.donePcs, consumedPcs: p.consumedPcs, replaces: p.replaces };
+        await tx.nestRunPart.upsert({ where: { id: p.id }, create: { id: p.id, ...part }, update: part });
+      }
+      await putQueueRowsBack(tx, s.dept, { bom: RUN_BOM, mo: runMo(s.id), item: RUN_ITEM }, s.queue);
+    });
+  } catch (e) {
+    return { ok: false, error: `The run could not be put back: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  for (const path of ["/worklist/cut", "/worklist/machines", "/simulate"]) revalidatePath(path);
+  return { ok: true };
+}
+
+export interface ManualJobSnapshot {
+  id: number;
+  dept: string;
+  title: string;
+  bom: string;
+  item: string;
+  qty: number;
+  doneQty: number;
+  material: string;
+  thicknessMm: number | null;
+  sheetSize: string;
+  sheets: number | null;
+  note: string | null;
+  machineId: number | null;
+  createdBy: string | null;
+  createdAt: string;
+  doneAt: string | null;
+  queue: QueueRowOfJob[];
+}
+
+/** A manual job as it stands, with where it is queued — null once it is gone. */
+export async function readManualJob(id: number): Promise<ManualJobSnapshot | null> {
+  const j = await prisma.manualJob.findUnique({ where: { id } });
+  if (!j) return null;
+  return {
+    id: j.id, dept: j.dept, title: j.title, bom: j.bom, item: j.item, qty: j.qty, doneQty: j.doneQty, material: j.material, thicknessMm: j.thicknessMm,
+    sheetSize: j.sheetSize, sheets: j.sheets, note: j.note, machineId: j.machineId, createdBy: j.createdBy, createdAt: j.createdAt.toISOString(), doneAt: iso(j.doneAt),
+    queue: await queueRowsOf(j.dept, MANUAL_BOM, manualMo(j.id), MANUAL_ITEM),
+  };
+}
+
+/** Put a manual job back exactly as snapshotted — deleted since, it comes back
+ *  under its own number, on the machines it was queued on. */
+export async function restoreManualJob(s: ManualJobSnapshot): Promise<RestoreResult> {
+  const guard = await requirePerm(deptPermKey(s.dept));
+  if (guard.error) return { ok: false, error: guard.error };
+  try {
+    await prisma.$transaction(async (tx) => {
+      // a machine gone since is not one to put it back on
+      const machineId = s.machineId !== null && (await tx.machine.count({ where: { id: s.machineId } })) > 0 ? s.machineId : null;
+      const data = {
+        dept: s.dept, title: s.title, bom: s.bom, item: s.item, qty: s.qty, doneQty: s.doneQty, material: s.material, thicknessMm: s.thicknessMm,
+        sheetSize: s.sheetSize, sheets: s.sheets, note: s.note, machineId, createdBy: s.createdBy, doneAt: date(s.doneAt),
+      };
+      await tx.manualJob.upsert({ where: { id: s.id }, create: { id: s.id, ...data, createdAt: date(s.createdAt)! }, update: data });
+      await putQueueRowsBack(tx, s.dept, { bom: MANUAL_BOM, mo: manualMo(s.id), item: MANUAL_ITEM }, s.queue);
+    });
+  } catch (e) {
+    return { ok: false, error: `The job could not be put back: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  for (const path of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate", "/shifts"]) revalidatePath(path);
   return { ok: true };
 }

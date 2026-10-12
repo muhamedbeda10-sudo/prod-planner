@@ -12,6 +12,8 @@ import { normalizeMaterialType, normalizeSheetSize } from "@/lib/domain/material
 export interface ManualActionResult {
   ok: boolean;
   error?: string;
+  /** The job made (createManualJob). */
+  id?: number;
 }
 
 const DEPTS = ["Cut", "Welding", "Painting", "ShotBlast"] as const;
@@ -54,7 +56,7 @@ export async function createManualJob(fd: FormData): Promise<ManualActionResult>
   }
 
   const by = guard.user?.name ?? null;
-  await prisma.$transaction(async (tx) => {
+  const id = await prisma.$transaction(async (tx) => {
     const job = await tx.manualJob.create({
       data: {
         dept, title, qty, machineId, createdBy: by,
@@ -64,7 +66,7 @@ export async function createManualJob(fd: FormData): Promise<ManualActionResult>
         note: text(fd, "note", 500) || null,
       },
     });
-    if (machineId === null) return;
+    if (machineId === null) return job.id;
     const [last, runningNow] = await Promise.all([
       tx.worklistMachine.aggregate({ where: { dept, machineId }, _max: { rank: true } }),
       tx.worklistMachine.count({ where: { dept, machineId, running: true } }),
@@ -72,9 +74,10 @@ export async function createManualJob(fd: FormData): Promise<ManualActionResult>
     await tx.worklistMachine.create({
       data: { dept, bom: MANUAL_BOM, mo: manualMo(job.id), item: MANUAL_ITEM, machineId, rank: (last._max.rank ?? 0) + 1, running: runningNow === 0, qty: null, setBy: by },
     });
+    return job.id;
   });
   revalidate();
-  return { ok: true };
+  return { ok: true, id };
 }
 
 /** ✓ on a manual job's card: the pieces finished go on the job, never in the

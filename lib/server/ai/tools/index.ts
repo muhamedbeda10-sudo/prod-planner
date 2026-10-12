@@ -7,6 +7,7 @@ import { queryDatabase } from "./sql";
 import { TRACKER_TOOLS } from "./tracker";
 import { DAILY_LOG_TOOLS } from "./dailyLog";
 import { MACHINE_TOOLS } from "./machines";
+import { CUT_FLOOR_TOOLS } from "./cutFloor";
 import { SIMULATOR_TOOLS } from "./simulator";
 import { ODOO_TOOLS } from "./odoo";
 import { MATERIAL_TOOLS } from "./material";
@@ -35,6 +36,7 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...TRACKER_TOOLS,
   ...DAILY_LOG_TOOLS,
   ...MACHINE_TOOLS,
+  ...CUT_FLOOR_TOOLS,
   ...SIMULATOR_TOOLS,
   ...ODOO_TOOLS,
   ...MATERIAL_TOOLS,

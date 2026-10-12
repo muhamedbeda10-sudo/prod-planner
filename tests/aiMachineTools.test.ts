@@ -17,7 +17,7 @@ const h = vi.hoisted(() => {
     readQueueSnapshot: fn(),
     getAllMachineRules: fn(),
     actions: {
-      assignLineMachine: fn(), unassignLineMachine: fn(), moveLineRank: fn(), setLineRunning: fn(),
+      assignLineMachine: fn(), unassignLineMachine: fn(), moveLineRank: fn(), setLineRunning: fn(), setLineQty: fn(),
       optimizeMachines: fn(), clearMachineQueue: fn(), resetMachinePlan: fn(), restoreMachineQueues: fn(),
     },
     ruleActions: { createMachineRule: fn(), setMachineRuleOn: fn() },
@@ -48,7 +48,8 @@ import type { User } from "@prisma/client";
 import type { QueueRowSnapshot } from "@/lib/server/machineQueues";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import {
-  addMachineRuleTool, assignLinesTool, assignLineTool, getMachineBoardTool, moveLineTool, planMachinesTool, resetMachinePlanTool, restoreQueuesTool, setMachineRuleActiveTool, unassignLineTool,
+  addMachineRuleTool, assignLinesTool, assignLineTool, getMachineBoardTool, moveLineTool, planMachinesTool, resetMachinePlanTool, restoreQueuesTool, setLineShareTool, setMachineRuleActiveTool,
+  unassignLineTool,
 } from "@/lib/server/ai/tools/machines";
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
 import { sameSnapshot } from "@/lib/domain/aiActions";
@@ -241,6 +242,42 @@ describe("unassign_line", () => {
     expect(await unassignLineTool.describe({ ...line, machine: "L2" }, ctx)).toEqual({ error: "M1 TN is not on L2." });
     const p = await unassignLineTool.describe(line, ctx);
     expect("summary" in p && p.summary).toContain("it is running there now");
+  });
+});
+
+describe("set_line_share", () => {
+  it("resizes the share where the line is, and says what the machine gives up", async () => {
+    h.perms.add("cut.edit");
+    const before = [row({ machineId: 1, qty: null }), row({ machineId: 2, qty: 5 })];
+    h.readQueueSnapshot.mockResolvedValue(before);
+    const p = await setLineShareTool.describe({ ...line, qty: 12 }, ctx);
+    expect(p).toMatchObject({
+      title: "M1 TN on L1: ×12",
+      summary: "L1 keeps 12 pcs of M1 TN (now the rest of the line); what it gives up waits for a machine.",
+      changes: [{ label: "L1 M1 TN", before: "the rest", after: "×12" }],
+      snapshot: [
+        { bom: "B1", mo: "M1", item: "TN", machineId: 1, sheet: "", qty: null, running: false, sheetDone: 0 },
+        { bom: "B1", mo: "M1", item: "TN", machineId: 2, sheet: "", qty: 5, running: false, sheetDone: 0 },
+      ],
+    });
+    // a fixed share back to the rest, when no other machine holds the rest
+    expect(await setLineShareTool.describe({ ...line, machine: "L2", qty: null }, ctx)).toEqual({ error: expect.stringContaining("L1 takes the rest of M1 TN") });
+    h.readQueueSnapshot.mockResolvedValue([row({ machineId: 2, qty: 5 })]);
+    expect(await setLineShareTool.describe({ ...line, machine: "L2", qty: null }, ctx)).toMatchObject({ changes: [{ before: "×5", after: "the rest" }] });
+    const out = await setLineShareTool.execute({ ...line, machine: "L2", qty: null }, ctx);
+    expect(fdOf(h.actions.setLineQty)).toEqual({ dept: "Cut", bom: "B1", mo: "M1", item: "TN", sheet: "", machineId: "2", qty: "" });
+    expect(out).toEqual({ ok: true, message: "done", undo: { tool: "restore_machine_queues", input: { dept: "Cut", rows: [row({ machineId: 2, qty: 5 })] } } });
+  });
+
+  it("is refused where the line is not, at the share it has, and without the line's key", async () => {
+    h.readQueueSnapshot.mockResolvedValue([row({ machineId: 1, qty: 4 })]);
+    expect(await setLineShareTool.describe({ ...line, qty: 3 }, ctx)).toEqual({ error: expect.stringContaining("needs its own key") });
+    h.perms.add("cut.edit");
+    expect(await setLineShareTool.describe({ ...line, machine: "L2", qty: 3 }, ctx)).toEqual({ error: expect.stringContaining("is not on L2") });
+    expect(await setLineShareTool.describe({ ...line, qty: 4 }, ctx)).toEqual({ error: "L1 keeps 4 pcs of M1 TN already." });
+    // qty is said, a number or null for the rest
+    expect(checkToolInput(setLineShareTool, { dept: "Cut", bom: "B1", mo: "M1", item: "TN", machine: "L1" })).toMatchObject({ ok: false });
+    expect(checkToolInput(setLineShareTool, { dept: "Cut", bom: "B1", mo: "M1", item: "TN", machine: "L1", qty: null })).toMatchObject({ ok: true });
   });
 });
 

@@ -7,7 +7,7 @@ import { getDeptBoardLines, getMachineBoard, getOptimizerInputs } from "@/lib/se
 import { readQueueSnapshot, type QueueRowSnapshot } from "@/lib/server/machineQueues";
 import { getAllMachineRules } from "@/lib/server/machineRules";
 import {
-  assignLineMachine, clearMachineQueue, moveLineRank, optimizeMachines, resetMachinePlan, restoreMachineQueues, setLineRunning, unassignLineMachine,
+  assignLineMachine, clearMachineQueue, moveLineRank, optimizeMachines, resetMachinePlan, restoreMachineQueues, setLineQty, setLineRunning, unassignLineMachine,
 } from "@/app/worklist/machineActions";
 import { createMachineRule, setMachineRuleOn } from "@/app/admin/machines/ruleActions";
 import { optimizePlan } from "@/lib/domain/optimizePlan";
@@ -439,6 +439,61 @@ export const unassignLineTool: WriteTool<LineInput> = {
   },
 };
 
+interface ShareInput extends LineInput {
+  qty: number | null;
+}
+
+const shareWord = (qty: number | null) => (qty === null ? "the rest of the line" : `${qty} pcs`);
+
+/** The ✎ on a line's share: how many of its pieces ONE machine keeps. What a
+ *  smaller share gives up waits for a machine; it is not handed to another. */
+export const setLineShareTool: WriteTool<ShareInput> = {
+  kind: "write",
+  name: "set_line_share",
+  title: "Resize a line's share on a machine",
+  description:
+    "Change how many pieces of a line ONE machine keeps (\"keep 12 of the 20 here\") — what it gives up waits for a machine, on none; qty null = this machine takes the rest of the line. The line must be on that machine already (see get_machine_board); to put it on one use assign_line_to_machine.",
+  area: "machines",
+  risk: "low",
+  schema: {
+    type: "object",
+    properties: { ...LINE_FIELDS, qty: { type: ["integer", "null"], minimum: 1, maximum: 100000, description: "Pieces this machine keeps; null for the rest of the line." } },
+    required: ["dept", "bom", "mo", "item", "machine", "qty"],
+    additionalProperties: false,
+  },
+  parse: (r) => ({ ...parseLine(r), qty: r.qty as number | null }),
+  async describe(i, ctx) {
+    const c = await lineEditCheck(i, ctx);
+    if (!c.ok) return { error: c.error };
+    const before = await readQueueSnapshot(i.dept);
+    const sheet = i.sheet ?? "";
+    const row = before.find((r) => sameLine(r, i) && r.machineId === c.machine.id && r.sheet === sheet);
+    if (!row) return { error: `${lineLabel(i)} is not on ${c.machine.code} — put it there with assign_line_to_machine.` };
+    if (row.qty === i.qty) return { error: `${c.machine.code} keeps ${shareWord(i.qty)} of ${lineLabel(i)} already.` };
+    if (i.qty === null) {
+      // a line has one "rest" at most — the screen's picker moves it, this does not
+      const rest = before.find((r) => sameLine(r, i) && r.sheet === sheet && r.machineId !== c.machine.id && r.qty === null);
+      if (rest) {
+        const other = (await codes(i.dept)).get(rest.machineId) ?? String(rest.machineId);
+        return { error: `${other} takes the rest of ${lineLabel(i)}. To give it to ${c.machine.code} instead use assign_line_to_machine without qty — it takes it off ${other}.` };
+      }
+    }
+    return {
+      title: `${lineName(i.bom, i.mo, i.item)} on ${c.machine.code}: ${i.qty === null ? "the rest" : `×${i.qty}`}`,
+      summary: `${c.machine.code} keeps ${shareWord(i.qty)} of ${lineLabel(i)} (now ${shareWord(row.qty)})${i.qty !== null && (row.qty === null || i.qty < row.qty) ? "; what it gives up waits for a machine" : ""}.`,
+      changes: [{ label: `${c.machine.code} ${lineLabel(i)}`, before: row.qty === null ? "the rest" : `×${row.qty}`, after: i.qty === null ? "the rest" : `×${i.qty}` }],
+      snapshot: linesNow(before, [i]),
+    };
+  },
+  async execute(i) {
+    const m = await machineByCode(i.dept, i.machine);
+    if (!m) return { ok: false, error: `No machine ${i.machine} in ${i.dept}.` };
+    const before = await readQueueSnapshot(i.dept);
+    const r = await setLineQty(formOf({ dept: i.dept, bom: i.bom, mo: i.mo, item: i.item, sheet: i.sheet ?? "", machineId: m.id, qty: i.qty ?? "" }));
+    return done(r, `${m.code} keeps ${shareWord(i.qty)} of ${lineLabel(i)}.`, i.dept, before);
+  },
+};
+
 interface MoveInput extends LineInput {
   dir: "up" | "down" | "top";
 }
@@ -792,6 +847,7 @@ export const MACHINE_TOOLS = [
   assignLinesTool,
   assignLineTool,
   unassignLineTool,
+  setLineShareTool,
   moveLineTool,
   setLineRunningTool,
   planMachinesTool,
