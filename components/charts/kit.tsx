@@ -1,5 +1,8 @@
 "use client";
 
+import { Table2 } from "lucide-react";
+import { EmptyState } from "@/components/primitives";
+
 import { useState } from "react";
 import { ExportButton } from "@/components/ExportButton";
 
@@ -75,7 +78,7 @@ export function ChartCard({
 
 /** A plain table of records: numbers right-aligned in tabular figures. */
 export function DataTable({ rows, max = 400 }: { rows: TableRow[]; max?: number }) {
-  if (rows.length === 0) return <p className="text-sm text-muted">Nothing to show.</p>;
+  if (rows.length === 0) return <EmptyState compact icon={Table2} title="Nothing to show" />;
   const cols = Object.keys(rows[0]);
   const numeric = cols.map((c) => rows.every((r) => typeof r[c] === "number"));
   return (

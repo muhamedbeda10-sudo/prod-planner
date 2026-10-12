@@ -1,5 +1,7 @@
 "use client";
 
+import { Pencil, Trash2 } from "lucide-react";
+
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateHandover, deleteHandover, bulkDeleteHandover, bulkSetHandoverDate } from "@/app/handover/actions";
@@ -367,15 +369,15 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
                 <td className="p-2 no-print text-right">
                   <span className="whitespace-nowrap">
                     {editing === r.id ? (
-                      <>
-                        <button onClick={() => save(r.id)} disabled={pending} className="text-ok-fg font-bold text-xs px-2">Save</button>
-                        <button onClick={() => { setEditing(null); setRowErr((s) => ({ ...s, [r.id]: "" })); }} className="text-muted text-xs px-2">Cancel</button>
-                      </>
+                      <span className="inline-flex items-center gap-1">
+                        <button type="button" onClick={() => save(r.id)} disabled={pending} className="btn btn-primary btn-sm">Save</button>
+                        <button type="button" onClick={() => { setEditing(null); setRowErr((s) => ({ ...s, [r.id]: "" })); }} className="btn btn-ghost btn-sm">Cancel</button>
+                      </span>
                     ) : canEditRow(r) ? (
-                      <>
-                        <button onClick={() => { setEditing(r.id); setQty(String(r.qty)); setDate(r.date); }} className="text-accent text-xs px-2">Edit</button>
-                        <button onClick={() => remove(r.id)} disabled={pending} className="text-bad-fg text-xs px-2">Delete</button>
-                      </>
+                      <span className="inline-flex items-center gap-0.5">
+                        <button type="button" onClick={() => { setEditing(r.id); setQty(String(r.qty)); setDate(r.date); }} className="icon-btn" title="Edit" aria-label="Edit this entry"><Pencil size={14} /></button>
+                        <button type="button" onClick={() => remove(r.id)} disabled={pending} className="icon-btn icon-btn-danger" title="Delete" aria-label="Delete this entry"><Trash2 size={14} /></button>
+                      </span>
                     ) : null}
                   </span>
                   {rowErr[r.id] && <div className="text-[11px] text-bad-fg mt-0.5 max-w-72 whitespace-normal text-left">{rowErr[r.id]}</div>}
