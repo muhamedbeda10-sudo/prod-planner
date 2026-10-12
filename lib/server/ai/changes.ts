@@ -237,7 +237,7 @@ export async function undoAction(id: number, user: User): Promise<DecideResult> 
   const now = new Date();
   const ctx = ctxFor(user, { conversationId: row.conversationId, automationId: row.automationId, now });
   const checked = tool ? checkToolInput(tool, plan.input) : null;
-  const denied = !tool ? "This kind of change is no longer available." : !checked!.ok ? checked!.error : callDenied(user, ctx.hidden, tool, checked!.input);
+  const denied = !tool ? "This kind of change is no longer available." : !checked!.ok ? checked!.error : callDenied(user, ctx.hidden, tool, checked!.input, { undo: true });
   if (denied) return { ok: false, error: denied, view: toView(row) };
   const input = (checked as { ok: true; input: unknown }).input;
 

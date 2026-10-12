@@ -207,4 +207,14 @@ describe("an undo", () => {
     expect(r.error).toContain("changed again");
     expect(data.qty).toBe(30);
   });
+
+  it("needs no deletions key: undoing an addition removes only what was added", async () => {
+    data.qty = 0;
+    const u = user("ai.act.tracker");
+    const id = (await handleWriteCall(setQty, { qty: 5 }, ctx(u), { toolUseId: "t1", settings: h.settings })).view!.id;
+    expect((await approveAction(id, u)).ok).toBe(true);
+    expect(data.qty).toBe(5);
+    expect(await undoAction(id, u)).toMatchObject({ ok: true, undoView: { status: "executed", risk: "destructive" } });
+    expect(data.qty).toBe(0);
+  });
 });

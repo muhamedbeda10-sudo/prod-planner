@@ -8,6 +8,13 @@ import { TRACKER_TOOLS } from "./tracker";
 import { DAILY_LOG_TOOLS } from "./dailyLog";
 import { MACHINE_TOOLS } from "./machines";
 import { SIMULATOR_TOOLS } from "./simulator";
+import { ODOO_TOOLS } from "./odoo";
+import { MATERIAL_TOOLS } from "./material";
+import { PHYSICAL_TOOLS } from "./physical";
+import { CONSUMABLE_TOOLS } from "./consumables";
+import { CALENDAR_TOOLS } from "./calendar";
+import { WORKER_TOOLS } from "./workers";
+import { MACHINE_LIST_TOOLS } from "./machineList";
 import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 
 // Every tool the assistant has, in the one fixed order the API sees them in
@@ -16,7 +23,20 @@ import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 // a write tool only for someone the owner gave the assistant's key for its
 // area — and none while the owner has paused the assistant's changes.
 
-export const AI_TOOLS: readonly AiTool[] = [queryDatabase, ...TRACKER_TOOLS, ...DAILY_LOG_TOOLS, ...MACHINE_TOOLS, ...SIMULATOR_TOOLS];
+export const AI_TOOLS: readonly AiTool[] = [
+  queryDatabase,
+  ...TRACKER_TOOLS,
+  ...DAILY_LOG_TOOLS,
+  ...MACHINE_TOOLS,
+  ...SIMULATOR_TOOLS,
+  ...ODOO_TOOLS,
+  ...MATERIAL_TOOLS,
+  ...PHYSICAL_TOOLS,
+  ...CONSUMABLE_TOOLS,
+  ...CALENDAR_TOOLS,
+  ...WORKER_TOOLS,
+  ...MACHINE_LIST_TOOLS,
+];
 
 const BY_NAME = new Map<string, AiTool>(AI_TOOLS.map((t) => [t.name, t]));
 
@@ -51,13 +71,18 @@ export function areaDenied(user: User, tool: AnyWriteTool): string | null {
 }
 
 /** Why this call may not go ahead for this person, or null: the area's key,
- *  the deletions key for a deletion, and the screens behind it. */
-export function callDenied(user: User, hidden: ReadonlySet<string>, tool: AiTool, input: unknown): string | null {
+ *  the deletions key for a deletion, and the screens behind it.
+ *
+ *  An undo needs no deletions key: it only puts the data back as it was
+ *  before a change the person approved, and runs only while the data still
+ *  reads as that change left it — so it never removes anything that was
+ *  there before (undoing an addition removes just what was added). */
+export function callDenied(user: User, hidden: ReadonlySet<string>, tool: AiTool, input: unknown, o: { undo?: boolean } = {}): string | null {
   if (tool.tabs?.some((t) => hidden.has(t))) return "That screen is not opened for you, so the assistant cannot work on it for you.";
   if (tool.kind === "read") return null;
   const area = areaDenied(user, tool);
   if (area) return area;
-  if (riskOf(tool, input) === "destructive" && !hasPerm(user, AI_DELETE_KEY)) {
+  if (!o.undo && riskOf(tool, input) === "destructive" && !hasPerm(user, AI_DELETE_KEY)) {
     return "The assistant may not delete anything for you — the owner can allow it on Users & Permissions (AI — deletions).";
   }
   return null;

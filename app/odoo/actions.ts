@@ -21,6 +21,8 @@ import { importOdooSheet, type OdooImportResult } from "@/lib/server/odoo";
 export interface OdooActionResult {
   ok: boolean;
   error?: string;
+  /** createOdooEntry: the new row's id; addOdooNote: the new note's. */
+  id?: number;
 }
 
 function revalidateOdoo() {
@@ -109,15 +111,16 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
   const bad = validate(f);
   if (bad) return { ok: false, error: bad };
 
-  await prisma.odooEntry.create({
+  const created = await prisma.odooEntry.create({
     data: {
       line,
       date: f.date!, soi: f.soi, fgCode: f.fgCode ?? "", product: f.product, odooMo: f.odooMo,
       qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, null, f.date!), recordedBy: guard.user?.name ?? null,
     },
+    select: { id: true },
   });
   revalidateOdoo();
-  return { ok: true };
+  return { ok: true, id: created.id };
 }
 
 export async function updateOdooEntry(formData: FormData): Promise<OdooActionResult> {
@@ -219,9 +222,9 @@ export async function addOdooNote(formData: FormData): Promise<OdooActionResult>
   if (!body) return { ok: false, error: "Type the note first." };
   const entry = await prisma.odooEntry.findUnique({ where: { id }, select: { id: true } });
   if (!entry) return { ok: false, error: "That row no longer exists." };
-  await prisma.odooNote.create({ data: { entryId: id, text: body, recordedBy: guard.user?.name ?? null } });
+  const note = await prisma.odooNote.create({ data: { entryId: id, text: body, recordedBy: guard.user?.name ?? null }, select: { id: true } });
   revalidateOdoo();
-  return { ok: true };
+  return { ok: true, id: note.id };
 }
 
 /** Delete one note — the row and its other notes stay. */

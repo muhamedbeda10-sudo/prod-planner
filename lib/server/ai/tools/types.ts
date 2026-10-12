@@ -99,6 +99,16 @@ export interface ActionAnswer {
   error?: string;
 }
 
+/** A server action's answer, with a throw turned into a refusal — so a change
+ *  made of several steps knows where it stopped. */
+export async function answerOf<T extends ActionAnswer>(fn: () => Promise<T>): Promise<T | ActionAnswer> {
+  try {
+    return await fn();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** FormData for one of the app's server actions, built from plain values —
  *  null and undefined leave the field out, as an empty form field would. */
 export function formOf(fields: Record<string, string | number | boolean | null | undefined>): FormData {
