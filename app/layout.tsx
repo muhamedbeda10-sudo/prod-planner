@@ -74,7 +74,7 @@ export default async function RootLayout({
         <TabAccessProvider hidden={[...parseHiddenTabs(user?.hiddenTabs)]}>
         {user && (
           <AppNav
-            user={{ id: user.id, name: user.name, isAdmin: user.isAdmin, isOwner: user.isOwner, perms: [...userPerms(user)] }}
+            user={{ id: user.id, name: user.name, isAdmin: user.isAdmin, isOwner: user.isOwner, perms: [...userPerms(user)], avatarUrl: user.avatarUrl }}
             unreadChat={unreadChat}
             tankTracking={!!settings?.tankTracking}
             machinePlanning={!!settings?.machinePlanning}

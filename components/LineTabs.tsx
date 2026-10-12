@@ -21,12 +21,11 @@ export function LineTabs({ line }: { line: ProductLine }) {
     });
   };
   return (
-    <div className={`seg ${pending ? "opacity-60" : ""}`} role="tablist" aria-label="Product line" title="Which of the plant's two products every tab shows">
+    <div className={`seg seg-sm ${pending ? "opacity-60" : ""}`} role="tablist" aria-label="Product line">
+      {/* short — TR / LV — so the bar keeps its room; the name is the tooltip */}
       {PRODUCT_LINES.map((l) => (
-        <button key={l} type="button" role="tab" aria-selected={l === line} className={l === line ? "on" : ""} onClick={() => go(l)} disabled={pending}>
-          {/* a phone keeps the bar to one line: TR / LV */}
-          <span className="sm:hidden">{l}</span>
-          <span className="hidden sm:inline">{LINE_LABEL[l]}</span>
+        <button key={l} type="button" role="tab" aria-selected={l === line} aria-label={LINE_LABEL[l]} title={`${LINE_LABEL[l]} — every tab shows this line`} className={l === line ? "on" : ""} onClick={() => go(l)} disabled={pending}>
+          {l}
         </button>
       ))}
     </div>
