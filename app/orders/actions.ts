@@ -10,6 +10,7 @@ import { getActiveLine } from "@/lib/server/line";
 import { isLvFamily } from "@/lib/domain/lv";
 import { linePermKey } from "@/lib/domain/permissions";
 import { fullyDeliveredOpenOrders } from "@/lib/server/deliveredOrders";
+import { orderDeletePreview, type OrderDeletePreview } from "@/lib/server/orderDelete";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
@@ -382,63 +383,15 @@ export async function importMonthlyAction(formData: FormData): Promise<MonthlyIm
 
 // ---- Deleting orders out of the registry ----
 
-/** What a delete would take with it, and what it would leave behind. An order
- *  that has RECORDED WORK against it is not a mistaken import — deleting it
- *  would orphan the ledger, so the registry says so and refuses unless the
- *  planner confirms it deliberately. */
-export interface OrderDeletePreview {
-  mo: string;
-  bom: string;
-  planQty: number;
-  /** Pieces already recorded against the MO in the daily log. */
-  loggedQty: number;
-  loggedRows: number;
-  /** Serial-tracked tanks born from it. */
-  tanks: number;
-  /** Planning rows that go with it (worklist dates, hides, pushes, machine
-   *  placements, run order, queue notes) — none of them is history. */
-  planningRows: number;
-}
-
 /** Count what hangs off each MO, so the delete button can say it out loud. */
 export async function previewOrderDelete(formData: FormData): Promise<{ ok: boolean; error?: string; rows?: OrderDeletePreview[] }> {
   const guard = await requireAdmin();
   if (guard.error) return { ok: false, error: guard.error };
   const mos = parseMos(formData.get("mos"));
   if (mos.length === 0) return { ok: false, error: "Pick at least one order." };
-  const orders = await prisma.masterOrder.findMany({ where: { mo: { in: mos } } });
-  if (orders.length === 0) return { ok: false, error: "None of those MOs is in the registry." };
-
-  const [ledger, tanks, dates, hides, pushes, machines, runOrder, notes] = await Promise.all([
-    prisma.handoverEntry.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _sum: { qty: true }, _count: { _all: true } }),
-    prisma.tankUnit.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
-    prisma.worklistDateOverride.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
-    prisma.worklistLineHide.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
-    prisma.worklistPush.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
-    prisma.worklistMachine.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
-    prisma.runOrderEntry.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
-    prisma.queueNote.groupBy({ by: ["mo"], where: { mo: { in: mos } }, _count: { _all: true } }),
-  ]);
-  const count = (g: { mo: string | null; _count: { _all: number } }[], mo: string) =>
-    g.find((x) => x.mo === mo)?._count._all ?? 0;
-
-  return {
-    ok: true,
-    rows: orders.map((o) => {
-      const l = ledger.find((x) => x.mo === o.mo);
-      return {
-        mo: o.mo,
-        bom: o.bom,
-        planQty: o.planQty,
-        loggedQty: l?._sum.qty ?? 0,
-        loggedRows: l?._count._all ?? 0,
-        tanks: count(tanks, o.mo),
-        planningRows:
-          count(dates, o.mo) + count(hides, o.mo) + count(pushes, o.mo) +
-          count(machines, o.mo) + count(runOrder, o.mo) + count(notes, o.mo),
-      };
-    }),
-  };
+  const rows = await orderDeletePreview(mos);
+  if (rows.length === 0) return { ok: false, error: "None of those MOs is in the registry." };
+  return { ok: true, rows };
 }
 
 /**

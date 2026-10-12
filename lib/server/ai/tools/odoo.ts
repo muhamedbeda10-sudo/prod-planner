@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
 import { withLine } from "@/lib/server/line";
 import { readOdooRows, restoreOdooRows, type OdooRowSnapshot } from "@/lib/server/rowSnapshots";
-import { addOdooNote, createOdooEntry, deleteOdooEntry, deleteOdooNote, setOdooMo, setOdooStatus, updateOdooEntry } from "@/app/odoo/actions";
+import { addOdooNote, createOdooEntry, deleteOdooEntry, deleteOdooNote, setOdooFgCode, setOdooMo, setOdooStatus, updateOdooEntry, updateOdooGroup } from "@/app/odoo/actions";
 import { linePermKey } from "@/lib/domain/permissions";
 import { ODOO_STATUSES } from "@/lib/domain/odoo";
 import { cell } from "@/lib/domain/aiActions";
@@ -333,10 +333,125 @@ export function snapshotRows(raw: unknown): { id: number }[] | null {
   }
 }
 
+export const setOdooFgCodeTool: WriteTool<{ ids: number[]; fgCode: string }> = {
+  kind: "write",
+  name: "set_odoo_fg_code",
+  title: "Set the FG-CODE of ODOO rows",
+  description: "Type the FG-CODE on one or more ODOO log rows, as the tab's FG cell does — a code the app guessed from an earlier row of the SOI becomes a typed one.",
+  area: "data",
+  risk: "low",
+  tabs: TABS,
+  schema: { type: "object", properties: { ids: IDS, fgCode: { type: "string", minLength: 1, maxLength: 40, description: "The FG-CODE, e.g. FB-022-12011E16M13." } }, required: ["ids", "fgCode"], additionalProperties: false },
+  parse: (r) => ({ ids: [...new Set(r.ids as number[])], fgCode: String(r.fgCode).replace(/[\r\n]+/g, " ").trim().toUpperCase() }),
+  async describe(i, ctx) {
+    const got = await rowsFor(i.ids, ctx.user);
+    if ("error" in got) return got;
+    const moving = got.rows.filter((r) => r.fgCode !== i.fgCode || r.fgGuessed);
+    if (moving.length === 0) return { error: `Every row has ${i.fgCode} typed already.` };
+    return {
+      title: `FG-CODE ${i.fgCode} on ${moving.length} row(s)`,
+      summary: `Put the FG-CODE ${i.fgCode} on ${moving.length} ODOO row(s).`,
+      changes: moving.map((r) => ({ label: rowLabel(r), before: `${cell(r.fgCode)}${r.fgGuessed ? " (guessed)" : ""}`, after: i.fgCode })),
+      snapshot: got.rows,
+    };
+  },
+  async execute(i) {
+    const before = await readOdooRows(i.ids);
+    const moving = before.filter((r) => r.fgCode !== i.fgCode || r.fgGuessed);
+    let done = 0;
+    for (const r of moving) {
+      const res = await answerOf(() => setOdooFgCode(formOf({ id: r.id, fgCode: i.fgCode })));
+      if (!res.ok) {
+        if (done === 0) return { ok: false, error: res.error ?? "Refused." };
+        return { ok: true, message: `FG-CODE on ${done} of ${moving.length} row(s) — stopped at #${r.id}: ${res.error ?? "refused"}.`, undo: restoreUndo(before) };
+      }
+      done += 1;
+    }
+    return { ok: true, message: `FG-CODE ${i.fgCode} is on ${done} row(s).`, undo: restoreUndo(before) };
+  },
+};
+
+interface GroupInput {
+  ids: number[];
+  soi?: string | null;
+  product?: string;
+  odooMo?: string;
+  status?: string;
+}
+
+type GroupField = "soi" | "product" | "odooMo" | "status";
+const GROUP_FIELDS: { k: GroupField; label: string }[] = [{ k: "soi", label: "SOI" }, { k: "product", label: "Product" }, { k: "odooMo", label: "Odoo MO" }, { k: "status", label: "Status" }];
+
+/** The four values the head writes to every row: as given, else the one the rows share. */
+function groupValues(rows: readonly OdooRowSnapshot[], i: GroupInput): Record<GroupField, string | null> | { error: string } {
+  const out = {} as Record<GroupField, string | null>;
+  for (const { k, label } of GROUP_FIELDS) {
+    if (i[k] !== undefined) {
+      const v = i[k] === null ? "" : String(i[k]).replace(/[\r\n]+/g, " ").trim();
+      out[k] = k === "soi" ? v.toUpperCase() || null : k === "odooMo" ? v.toUpperCase() : v;
+      continue;
+    }
+    const seen = [...new Set(rows.map((r) => r[k] ?? ""))];
+    if (seen.length > 1) return { error: `The rows differ in ${label} (${seen.slice(0, 4).map((x) => x || "—").join(", ")}) — the head writes one to all of them, so say which.` };
+    out[k] = k === "soi" ? seen[0] || null : seen[0];
+  }
+  if (!out.product) return { error: "The product cannot be empty (Tank, Top Cover, …)." };
+  if (!out.status) return { error: "The status cannot be empty." };
+  if (!out.odooMo && rows.some((r) => r.ledgerId === null)) return { error: "Typed rows need their Odoo MO number." };
+  return out;
+}
+
+export const updateOdooGroupTool: WriteTool<GroupInput> = {
+  kind: "write",
+  name: "update_odoo_group",
+  title: "Edit a merged ODOO line",
+  description:
+    "A merged ODOO line's head, edited as the tab does: the SOI, product, Odoo MO and status land on EVERY row of the line; each row keeps its own day and quantity. A field not given must read the same on every row — it is written to all of them. Undo puts the rows back.",
+  area: "data",
+  risk: "low",
+  tabs: TABS,
+  schema: {
+    type: "object",
+    properties: { ids: IDS, soi: { type: ["string", "null"], maxLength: 40 }, product: { type: "string", minLength: 1, maxLength: 60 }, odooMo: { type: "string", maxLength: 60 }, status: STATUS },
+    required: ["ids"],
+    additionalProperties: false,
+  },
+  parse(r) {
+    const i = r as unknown as GroupInput;
+    if (GROUP_FIELDS.every(({ k }) => i[k] === undefined)) return "Say what changes on the line.";
+    return { ...i, ids: [...new Set(i.ids)] };
+  },
+  async describe(i, ctx) {
+    const got = await rowsFor(i.ids, ctx.user);
+    if ("error" in got) return got;
+    const v = groupValues(got.rows, i);
+    if ("error" in v) return v;
+    const changes = got.rows.flatMap((r) =>
+      GROUP_FIELDS.filter(({ k }) => (r[k] ?? null) !== (v[k] ?? null)).map(({ k, label }) => ({ label: `${rowLabel(r)} · ${label}`, before: cell(r[k]), after: cell(v[k]) })),
+    );
+    if (changes.length === 0) return { error: "The line reads so already." };
+    return {
+      title: `Edit a merged ODOO line of ${got.rows.length} row(s)`,
+      summary: `On ${got.rows.length} ODOO row(s): ${GROUP_FIELDS.filter(({ k }) => i[k] !== undefined).map(({ k, label }) => `${label} → ${cell(v[k])}`).join("; ")}.`,
+      changes,
+      snapshot: got.rows,
+    };
+  },
+  async execute(i) {
+    const before = await readOdooRows(i.ids);
+    const v = groupValues(before, i);
+    if ("error" in v) return { ok: false, error: v.error };
+    const r = await updateOdooGroup(formOf({ ids: i.ids.join(","), soi: v.soi ?? "", product: v.product, odooMo: v.odooMo, status: v.status }));
+    return r.ok ? { ok: true, message: `${before.length} ODOO row(s) edited.`, undo: restoreUndo(before) } : { ok: false, error: r.error };
+  },
+};
+
 export const ODOO_TOOLS = [
   setOdooStatusTool,
   setOdooMoTool,
+  setOdooFgCodeTool,
   updateOdooEntryTool,
+  updateOdooGroupTool,
   addOdooEntryTool,
   addOdooNoteTool,
   deleteOdooNoteTool,

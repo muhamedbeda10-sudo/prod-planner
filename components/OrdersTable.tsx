@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
-import { deleteOrders, previewOrderDelete, updateOrder, type OrderDeletePreview } from "@/app/orders/actions";
+import { deleteOrders, previewOrderDelete, updateOrder } from "@/app/orders/actions";
+import type { OrderDeletePreview } from "@/lib/server/orderDelete";
 import { LINE_LABEL, type ProductLine } from "@/lib/domain/lines";
 
 export interface OrderRow {

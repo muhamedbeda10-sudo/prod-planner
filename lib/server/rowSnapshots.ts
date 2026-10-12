@@ -794,3 +794,41 @@ export async function restoreTanks(stage: TankStage, snaps: readonly TankSnapsho
   for (const p of ["/worklist/welding", "/worklist/leak-test", "/worklist/painting", "/barcode", "/trace", ...snaps.map((s) => `/tank/${s.serial}`)]) revalidatePath(p);
   return { ok: true };
 }
+
+// ----------------------------------------------------------------- ORDERS
+
+/** Put an order's plan months back as they were (the undo of taking one off). */
+export async function restoreOrderMonths(mo: string, months: string): Promise<RestoreResult> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const r = await prisma.masterOrder.updateMany({ where: { mo }, data: { months } });
+  if (r.count === 0) return { ok: false, error: `${mo} is not in the registry any more.` };
+  for (const p of ["/tracker", "/orders"]) revalidatePath(p);
+  return { ok: true };
+}
+
+// ------------------------------------------------------------------ FLOOR
+
+export interface FloorLayoutSnapshot {
+  data: unknown;
+  updatedBy: string | null;
+}
+
+/** A department's drawn floor as stored — null while nobody has drawn it. */
+export async function readFloorLayout(dept: string): Promise<FloorLayoutSnapshot | null> {
+  const row = await prisma.floorLayout.findUnique({ where: { dept } });
+  return row ? { data: row.data, updatedBy: row.updatedBy } : null;
+}
+
+/** Put a department's floor back exactly — not drawn at all, if it was not. */
+export async function restoreFloorLayout(dept: string, s: FloorLayoutSnapshot | null): Promise<RestoreResult> {
+  const guard = await requirePerm("machines.manage");
+  if (guard.error) return { ok: false, error: guard.error };
+  if (s === null) await prisma.floorLayout.deleteMany({ where: { dept } });
+  else {
+    const data = s.data as object;
+    await prisma.floorLayout.upsert({ where: { dept }, create: { dept, data, updatedBy: s.updatedBy }, update: { data, updatedBy: s.updatedBy } });
+  }
+  for (const p of ["/simulate", "/shifts", "/worklist/welding", "/admin/machines"]) revalidatePath(p);
+  return { ok: true };
+}

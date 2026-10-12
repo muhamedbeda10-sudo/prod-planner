@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { automationFor, configOf, prepareAutomation } from "@/lib/server/automations/store";
+import { testAutomation } from "@/lib/server/automations/runner";
 import { automationViews } from "@/lib/server/automations/views";
 import { deleteAutomation, restoreAutomation, saveAutomation, setAutomationEnabled } from "@/app/automations/actions";
 import { retractInboxMessages, sendInboxMessage } from "@/app/inbox/actions";
@@ -58,7 +59,7 @@ interface ConfigInput {
 }
 
 /** People by their names on the users list — each one active and unmistakable. */
-async function peopleNamed(names: readonly string[]): Promise<{ ids: number[]; names: string[] } | { error: string }> {
+export async function peopleNamed(names: readonly string[]): Promise<{ ids: number[]; names: string[] } | { error: string }> {
   const ids: number[] = [];
   const shown: string[] = [];
   for (const n of names) {
@@ -366,12 +367,42 @@ export const retractMessageTool: WriteTool<{ ids: number[] }> = {
   },
 };
 
+export const testAutomationTool: WriteTool<{ id: number }> = {
+  kind: "write",
+  name: "test_automation",
+  title: "Test-run an automation",
+  description:
+    "Run one of the person's automations once now, as the Automations page's ▶ does — a test: what it would send comes to the person alone, marked [Test] (its recipients get nothing), an act automation's changes wait for approval as usual, and its schedule and what its condition has seen stay as they are. A report or act run is an assistant run and counts against the month.",
+  area: "automations",
+  risk: "low",
+  liveOnly: true,
+  schema: { type: "object", properties: { id: { type: "integer", minimum: 1 } }, required: ["id"], additionalProperties: false },
+  async describe(i, ctx) {
+    const a = await automationFor(ctx.user, i.id);
+    if (!a || a.ownerId !== ctx.user.id) return { error: `No automation #${i.id} of ${ctx.user.name}'s.` };
+    const c = configOf(a);
+    return {
+      title: `Test "${a.name}"`,
+      summary: `Run "${a.name}" once now as a test (${describeAction(c, [ctx.user.name])}) — the result comes to ${ctx.user.name} alone.`,
+      changes: [{ label: a.name, before: describeTrigger(c), after: "one test run now" }],
+      snapshot: { id: a.id, config: c },
+    };
+  },
+  async execute(i, ctx) {
+    const a = await automationFor(ctx.user, i.id);
+    if (!a || a.ownerId !== ctx.user.id) return { ok: false, error: `No automation #${i.id} of ${ctx.user.name}'s.` };
+    const r = await testAutomation(a, ctx.user);
+    return r.ok ? { ok: true, message: `"${a.name}" ran as a test — the result is in ${ctx.user.name}'s inbox.` } : { ok: false, error: r.error };
+  },
+};
+
 export const AUTOMATION_TOOLS = [
   listAutomationsTool,
   createAutomationTool,
   updateAutomationTool,
   setAutomationEnabledTool,
   deleteAutomationTool,
+  testAutomationTool,
   sendMessageTool,
   restoreAutomationTool,
   retractMessageTool,
