@@ -25,6 +25,8 @@ export interface TankActionResult {
   error?: string;
   /** How many tanks the action actually moved (bulk painting says so). */
   count?: number;
+  /** The Daily log rows painting wrote, one per MO (paintTanks). */
+  ledgerIds?: number[];
 }
 
 const TANK_PATHS = [
@@ -292,7 +294,8 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
       if (chainError) return { ok: false, error: chainError };
     }
 
-    await prisma.$transaction(async (tx) => {
+    const ledgerIds = await prisma.$transaction(async (tx) => {
+      const ids: number[] = [];
       for (const [mo, list] of byMo) {
         const planNo = list[0].planNo;
         await tx.plan.upsert({ where: { planNo }, create: { planNo, startDate: date }, update: {} });
@@ -305,6 +308,7 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
           },
         });
         await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
+        ids.push(ledger.id);
         for (const t of list) {
           await tx.tankUnit.update({
             where: { id: t.id },
@@ -328,9 +332,10 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
           });
         }
       }
+      return ids;
     });
     revalidateTanks();
-    return { ok: true, count: tanks.length };
+    return { ok: true, count: tanks.length, ledgerIds };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }

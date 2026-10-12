@@ -2,6 +2,7 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdmin, requireOwner, requirePerm } from "@/lib/server/auth";
+import { checkOutputChain } from "@/lib/server/outputGuard";
 import { deptPermKey, linePermKey, shiftPermKey } from "@/lib/domain/permissions";
 import { RUN_BOM, RUN_ITEM, runMo } from "@/lib/domain/nestRun";
 import { MANUAL_BOM, MANUAL_ITEM, manualMo } from "@/lib/domain/manualJob";
@@ -581,5 +582,215 @@ export async function restoreManualJob(s: ManualJobSnapshot): Promise<RestoreRes
     return { ok: false, error: `The job could not be put back: ${e instanceof Error ? e.message : String(e)}` };
   }
   for (const path of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate", "/shifts"]) revalidatePath(path);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------- THE WORKLISTS
+
+const QUEUE_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting"];
+
+export interface QueueNoteSnapshot {
+  id: number;
+  bom: string;
+  mo: string | null;
+  item: string;
+  dept: string;
+  text: string;
+  photos: string | null;
+  status: string;
+  createdAt: string;
+}
+
+/** A queue note as it stands — null once it is gone. */
+export async function readQueueNote(id: number): Promise<QueueNoteSnapshot | null> {
+  const n = await prisma.queueNote.findUnique({ where: { id } });
+  return n ? snapshotOf(n) : null;
+}
+
+/** Put a queue note back as snapshotted. A note deleted since comes back
+ *  under its own number without its photos — they were deleted with it. */
+export async function restoreQueueNote(s: QueueNoteSnapshot): Promise<RestoreResult> {
+  const guard = await requirePerm(deptPermKey(s.dept));
+  if (guard.error) return { ok: false, error: guard.error };
+  const there = await prisma.queueNote.findUnique({ where: { id: s.id }, select: { id: true } });
+  const data = { bom: s.bom, mo: s.mo, item: s.item, dept: s.dept, text: s.text, photos: there ? s.photos : null, status: s.status };
+  await prisma.queueNote.upsert({ where: { id: s.id }, create: { id: s.id, ...data, createdAt: new Date(s.createdAt) }, update: data });
+  for (const p of QUEUE_PATHS) revalidatePath(p);
+  return { ok: true };
+}
+
+const RETURN_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"];
+
+export interface ReturnSnapshot {
+  id: number;
+  date: string;
+  fromDept: string;
+  toDept: string;
+  bom: string;
+  mo: string | null;
+  item: string;
+  qty: number;
+  reason: string;
+  status: string;
+  handoverId: number | null;
+  createdAt: string;
+}
+
+/** A return to the upstream department as it stands — null once it is gone. */
+export async function readReturn(id: number): Promise<ReturnSnapshot | null> {
+  const r = await prisma.returnEntry.findUnique({ where: { id } });
+  return r ? { ...snapshotOf(r), date: r.date.toISOString() } : null;
+}
+
+/** The undo of sending pieces back upstream: the return and the Daily log
+ *  row that took them off the upstream department gone, as if never sent. */
+export async function cancelReturn(id: number): Promise<RestoreResult> {
+  const ret = await prisma.returnEntry.findUnique({ where: { id } });
+  if (!ret) return { ok: false, error: "That return is gone." };
+  if (ret.status !== "open") return { ok: false, error: "Those pieces were re-delivered since — the return stays." };
+  const guard = await requirePerm(deptPermKey(ret.fromDept));
+  if (guard.error) return { ok: false, error: guard.error };
+  await prisma.$transaction(async (tx) => {
+    if (ret.handoverId !== null) await tx.handoverEntry.deleteMany({ where: { id: ret.handoverId, source: "return" } });
+    await tx.returnEntry.delete({ where: { id } });
+  });
+  for (const p of RETURN_PATHS) revalidatePath(p);
+  return { ok: true };
+}
+
+/** The undo of a re-delivery: the Daily log row that put the pieces back on
+ *  the upstream department gone, and the return open again — refused when
+ *  the department after it has used those pieces since. */
+export async function reopenReturn(id: number, ledgerId: number): Promise<RestoreResult> {
+  const ret = await prisma.returnEntry.findUnique({ where: { id } });
+  if (!ret) return { ok: false, error: "That return is gone." };
+  if (ret.status !== "resolved") return { ok: false, error: "That return is open already." };
+  const guard = await requirePerm(deptPermKey(ret.toDept));
+  if (guard.error) return { ok: false, error: guard.error };
+  const row = await prisma.handoverEntry.findUnique({ where: { id: ledgerId } });
+  if (!row || row.source !== "return" || row.dept !== ret.toDept || row.qty !== ret.qty || row.item !== ret.item || (row.mo ?? null) !== (ret.mo ?? null)) {
+    return { ok: false, error: "The re-delivery's Daily log row is not as it was written." };
+  }
+  const chain = await checkOutputChain({ dept: row.dept, bom: row.bom, mo: row.mo, item: row.item, qty: 0, excludeId: row.id });
+  if (chain) return { ok: false, error: chain };
+  await prisma.$transaction(async (tx) => {
+    await tx.handoverEntry.delete({ where: { id: row.id } });
+    await tx.returnEntry.update({ where: { id }, data: { status: "open" } });
+  });
+  for (const p of RETURN_PATHS) revalidatePath(p);
+  return { ok: true };
+}
+
+export interface WorklistDateSnapshot {
+  id: number;
+  origISO: string;
+  newDate: string;
+  qty: number | null;
+  baseDone: number;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface WorklistLineKey {
+  bom: string;
+  mo: string;
+  item: string;
+}
+
+/** A fabrication line's admin dates — every override of it, in id order. */
+export async function readWorklistDates(line: WorklistLineKey): Promise<WorklistDateSnapshot[]> {
+  const rows = await prisma.worklistDateOverride.findMany({ where: { bom: line.bom, mo: line.mo, item: line.item }, orderBy: { id: "asc" } });
+  return rows.map((r) => ({ id: r.id, origISO: r.origISO, newDate: r.newDate.toISOString(), qty: r.qty, baseDone: r.baseDone, createdBy: r.createdBy, createdAt: r.createdAt.toISOString() }));
+}
+
+/** Put a line's admin dates back exactly: its overrides now replaced by the
+ *  snapshotted ones, under their own numbers. */
+export async function restoreWorklistDates(line: WorklistLineKey, rows: readonly WorklistDateSnapshot[]): Promise<RestoreResult> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const key = { bom: line.bom, mo: line.mo, item: line.item };
+  await prisma.$transaction(async (tx) => {
+    await tx.worklistDateOverride.deleteMany({ where: key });
+    if (rows.length > 0) {
+      await tx.worklistDateOverride.createMany({
+        data: rows.map((r) => ({ id: r.id, ...key, origISO: r.origISO, newDate: new Date(r.newDate), qty: r.qty, baseDone: r.baseDone, createdBy: r.createdBy, createdAt: new Date(r.createdAt) })),
+      });
+    }
+  });
+  revalidatePath("/worklist/cut");
+  return { ok: true };
+}
+
+// ------------------------------------------------------------------ TANKS
+
+/** Who may put tanks back: the stage whose record is undone. */
+export type TankStage = "Welding" | "LeakTest" | "Painting" | "Quality";
+
+export interface TankSnapshot {
+  id: number;
+  serial: string;
+  status: string;
+  weldLedgerId: number | null;
+  paintLedgerId: number | null;
+  weldedAt: string;
+  weldedById: number | null;
+  weldedBy: string | null;
+  weldedStamp: string | null;
+  weldedLogBy: string | null;
+  testedAt: string | null;
+  testedById: number | null;
+  testedBy: string | null;
+  testResult: string | null;
+  testNote: string | null;
+  paintedAt: string | null;
+  paintedById: number | null;
+  paintedBy: string | null;
+  qaAt: string | null;
+  qaById: number | null;
+  qaBy: string | null;
+  qaResult: string | null;
+  qaNote: string | null;
+  /** Its history as it stood: the events' numbers. */
+  events: number[];
+}
+
+/** These tanks as they stand, in serial order — the ones gone are not there. */
+export async function readTanks(serials: readonly string[]): Promise<TankSnapshot[]> {
+  if (serials.length === 0) return [];
+  const rows = await prisma.tankUnit.findMany({ where: { serial: { in: [...serials] } }, orderBy: { serial: "asc" }, include: { events: { select: { id: true }, orderBy: { id: "asc" } } } });
+  return rows.map((t) => ({
+    id: t.id, serial: t.serial, status: t.status, weldLedgerId: t.weldLedgerId, paintLedgerId: t.paintLedgerId,
+    weldedAt: t.weldedAt.toISOString(), weldedById: t.weldedById, weldedBy: t.weldedBy, weldedStamp: t.weldedStamp, weldedLogBy: t.weldedLogBy,
+    testedAt: iso(t.testedAt), testedById: t.testedById, testedBy: t.testedBy, testResult: t.testResult, testNote: t.testNote,
+    paintedAt: iso(t.paintedAt), paintedById: t.paintedById, paintedBy: t.paintedBy,
+    qaAt: iso(t.qaAt), qaById: t.qaById, qaBy: t.qaBy, qaResult: t.qaResult, qaNote: t.qaNote,
+    events: t.events.map((e) => e.id),
+  }));
+}
+
+/** Put tanks back exactly as snapshotted — their record and their history
+ *  without what the undone step wrote into it. A tank deleted since is not
+ *  made again. */
+export async function restoreTanks(stage: TankStage, snaps: readonly TankSnapshot[]): Promise<RestoreResult> {
+  const guard = await requirePerm(stage === "Quality" ? "quality.qa" : deptPermKey(stage));
+  if (guard.error) return { ok: false, error: guard.error };
+  const there = await prisma.tankUnit.findMany({ where: { id: { in: snaps.map((s) => s.id) } }, select: { id: true } });
+  if (there.length !== snaps.length) return { ok: false, error: "A tank was deleted since — it cannot be put back." };
+  await prisma.$transaction(async (tx) => {
+    for (const s of snaps) {
+      await tx.tankUnit.update({
+        where: { id: s.id },
+        data: {
+          status: s.status, weldLedgerId: s.weldLedgerId, paintLedgerId: s.paintLedgerId,
+          weldedAt: new Date(s.weldedAt), weldedById: s.weldedById, weldedBy: s.weldedBy, weldedStamp: s.weldedStamp, weldedLogBy: s.weldedLogBy,
+          testedAt: date(s.testedAt), testedById: s.testedById, testedBy: s.testedBy, testResult: s.testResult, testNote: s.testNote,
+          paintedAt: date(s.paintedAt), paintedById: s.paintedById, paintedBy: s.paintedBy,
+          qaAt: date(s.qaAt), qaById: s.qaById, qaBy: s.qaBy, qaResult: s.qaResult, qaNote: s.qaNote,
+        },
+      });
+      await tx.tankEvent.deleteMany({ where: { tankId: s.id, id: { notIn: s.events } } });
+    }
+  });
+  for (const p of ["/worklist/welding", "/worklist/leak-test", "/worklist/painting", "/barcode", "/trace", ...snaps.map((s) => `/tank/${s.serial}`)]) revalidatePath(p);
   return { ok: true };
 }
