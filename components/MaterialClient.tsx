@@ -46,7 +46,7 @@ const NUM = "num";
 
 /** The identifiers stay on screen while the figures scroll past: MTR, SOI and
  *  MO are pinned (from a laptop up) at fixed widths. */
-const STICK_W = ["6.5rem", "6.75rem", "13.5rem"] as const;
+const STICK_W = ["6.5rem", "6.75rem", "16rem"] as const;
 const STICK_LEFT = ["0rem", "6.5rem", "13.25rem"] as const;
 const stickCls = (i: number) => `stick ${i === STICK_W.length - 1 ? "stick-end" : ""}`;
 // as CSS variables: the stylesheet applies them on screen only, so the printed
@@ -221,16 +221,21 @@ function MoCell({ mo, odoo }: { mo: string; odoo: Record<string, string> }) {
   const status = odoo[mo.trim().toUpperCase()];
   // one line: the MO, then where it stands on the ODOO tab as a compact badge
   return (
-    <span className="flex items-center gap-1.5 min-w-0">
-      <span className="shrink-0">{mo}</span>
+    // the badge gives way to the MO (cut to an ellipsis), and both stay inside the cell
+    <span className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+      <span className="shrink-0" title={mo}>{mo}</span>
       {status
-        ? <span className="pill pill-ok min-w-0 shrink" title={`On the ODOO tab — ${status}`}><Check size={10} className="shrink-0" aria-hidden /><span className="truncate">{status}</span></span>
-        : <span className="pill pill-muted shrink-0" title="No ODOO row carries this MO yet">no ODOO</span>}
+        ? <span className="pill pill-ok min-w-0" title={`On the ODOO tab — ${status}`}><Check size={10} className="shrink-0" aria-hidden /><span className="truncate">{status}</span></span>
+        : <span className="pill pill-muted min-w-0" title="No ODOO row carries this MO yet"><span className="truncate">no ODOO</span></span>}
     </span>
   );
 }
 
-function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odoo }: { line: MaterialLineView; knownBoms: string[]; knownCodes: string[]; canEdit: boolean; showMonth: boolean; product: ProductLine; odoo: Record<string, string> }) {
+function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odoo, inGroup }: {
+  line: MaterialLineView; knownBoms: string[]; knownCodes: string[]; canEdit: boolean; showMonth: boolean; product: ProductLine; odoo: Record<string, string>;
+  /** A line under an opened SOI's head — framed with it; "last" closes the frame. */
+  inGroup?: "child" | "last";
+}) {
   const [editing, setEditing] = useState(false);
   const edit = useAction();
   const del = useAction();
@@ -332,8 +337,8 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
   }
   return (
     <>
-      <tr {...rowMenuProps}>
-        <td className={`p-2 whitespace-nowrap ltr text-xs ${stickCls(0)}`} style={stickStyle(0)}><span className="block truncate" title={line.mtr || undefined}>{line.mtr || <span className="text-muted">—</span>}</span></td>
+      <tr {...rowMenuProps} className={inGroup ? `mat-child ${inGroup === "last" ? "mat-child-last" : ""}` : undefined}>
+        <td className={`p-2 whitespace-nowrap ltr text-xs ${inGroup ? "ps-4" : ""} ${stickCls(0)}`} style={stickStyle(0)}><span className="block truncate" title={line.mtr || undefined}>{line.mtr || <span className="text-muted">—</span>}</span></td>
         <td className={`p-2 whitespace-nowrap ltr text-xs font-semibold ${stickCls(1)}`} style={stickStyle(1)}><span className="block truncate" title={line.soi || undefined}>{line.soi || <span className="text-muted">—</span>}</span></td>
         {/* the sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
         <td className={`p-2 font-bold whitespace-nowrap ltr text-xs ${stickCls(2)}`} style={stickStyle(2)}><MoCell mo={line.mo} odoo={odoo} /></td>
@@ -394,7 +399,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
 
 /** The sticky identifier block (MTR · SOI · MO) as one cell, for the rows
  *  that span it: a group's head, the totals. */
-const STICK_ALL = { "--stick-left": "0rem", "--stick-w": "26.75rem" } as React.CSSProperties;
+const STICK_ALL = { "--stick-left": "0rem", "--stick-w": "29.25rem" } as React.CSSProperties;
 
 type Sums = Pick<MaterialSoiGroup, "forJob" | "sheetsUsed" | "actualWeightKg" | "difference" | "forProduced">;
 
@@ -507,11 +512,11 @@ function SoiGroupRow({ g, open, onToggle, odoo, showMonth, canEdit }: { g: Mater
   const sharedMonth = sharedOf(g.lines.map((l) => l.month));
   return (
     <>
-      <tr className="mat-group" {...(canEdit ? { onContextMenu: row.onContextMenu } : {})}>
+      <tr className={`mat-group ${open ? "is-open" : ""}`} {...(canEdit ? { onContextMenu: row.onContextMenu } : {})}>
         <td className={`p-2 ltr text-xs ${stickCls(0)}`} style={stickStyle(0)}>
           <span className="flex items-center gap-1">
-            <button type="button" onClick={onToggle} aria-expanded={open} className="icon-btn !p-0.5 shrink-0" title={open ? "Fold this SOI" : "Show this SOI's lines"} aria-label={open ? `Fold ${label}` : `Show the lines of ${label}`}>
-              <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+            <button type="button" onClick={onToggle} aria-expanded={open} className="icon-btn !inline-flex items-center !w-auto !h-auto px-0.5 py-0.5 gap-0.5 shrink-0 font-bold tabnum text-foreground" title={open ? `Fold this SOI's ${n} lines` : `Show this SOI's ${n} lines`} aria-label={open ? `Fold the ${n} lines of ${label}` : `Show the ${n} lines of ${label}`}>
+              <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />{n}
             </button>
             {canEdit ? <GroupInput ids={ids} field="mtr" type="text" values={g.lines.map((l) => l.mtr)} title="MTR Request #" className="w-full" />
               : <span className="block truncate">{sharedOf(g.lines.map((l) => l.mtr)) || <span className="text-muted">—</span>}</span>}
@@ -1027,7 +1032,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                 ) : (
                 <>
                 <GroupBand spans={[
-                  { span: 3, label: <GroupLegend />, className: "stick stick-end", style: { "--stick-left": "0rem", "--stick-w": "26.75rem" } as React.CSSProperties },
+                  { span: 3, label: <GroupLegend />, className: "stick stick-end", style: { "--stick-left": "0rem", "--stick-w": "29.25rem" } as React.CSSProperties },
                   { span: 10, group: "source" },
                   { span: 1, group: "input" },
                   { span: 1, group: "computed" },
@@ -1075,7 +1080,7 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                     g.lines.length === 1 ? <LineRow key={g.lines[0].id} line={g.lines[0]} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} /> : (
                     <Fragment key={`soi-${g.soi}`}>
                       <SoiGroupRow g={g} open={!folded.has(g.soi)} onToggle={() => toggleFold(g.soi)} odoo={odooByMo} showMonth={showMonth} canEdit={canEdit} />
-                      {!folded.has(g.soi) && g.lines.map((l) => <LineRow key={l.id} line={l} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} />)}
+                      {!folded.has(g.soi) && g.lines.map((l, i) => <LineRow key={l.id} line={l} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} inGroup={i === g.lines.length - 1 ? "last" : "child"} />)}
                     </Fragment>
                   )))}
               </tbody>

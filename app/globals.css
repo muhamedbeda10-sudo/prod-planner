@@ -1077,6 +1077,15 @@ main table thead tr.dt-band th + th[data-group] { border-left: 3px solid var(--s
 /* ---- the Material sheet: an SOI's head row, and the totals pinned under it ---- */
 .erp-table tbody tr.mat-group { background-color: var(--surface-3); }
 .erp-table tbody tr.mat-group > td { border-top: 1px solid var(--border-strong); font-weight: 600; }
+/* an opened SOI: its head and its lines framed in the brand colour, the
+   lines tinted, so where the group starts and ends reads at a glance */
+.erp-table tbody tr.mat-group.is-open > td { border-top: 2px solid var(--brand); }
+.erp-table tbody tr:is(.mat-group.is-open, .mat-child) > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
+.erp-table tbody tr:is(.mat-group.is-open, .mat-child) > td:last-child { box-shadow: inset -3px 0 0 var(--brand); }
+.erp-table tbody tr.mat-child { background-color: color-mix(in srgb, var(--brand) 5%, var(--surface)); }
+.erp-table tbody tr.mat-child:nth-child(even) { background-color: color-mix(in srgb, var(--brand) 9%, var(--surface)); }
+.erp-table tbody tr.mat-child:focus-within { background-color: var(--row-selected); }
+.erp-table tbody tr.mat-child-last > td { border-bottom: 2px solid var(--brand); }
 @media screen {
   .erp-table tfoot.mat-total td { position: sticky; bottom: 0; z-index: 4; background-color: var(--surface-2); border-top: 1px solid var(--border-strong); font-weight: 700; padding-top: 6px; padding-bottom: 6px; }
   .erp-table tfoot.mat-total td.stick { z-index: 14; }
