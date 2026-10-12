@@ -18,7 +18,7 @@ import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
 import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
 import { capsFor, spreadOverGroup } from "@/lib/domain/groupSpread";
-import { LV_ITEM, LV_STAGES } from "@/lib/domain/lv";
+import { LV_ITEM, LV_STAGES, lvStageAt } from "@/lib/domain/lv";
 import { consumeSheetDone } from "@/lib/domain/machineMaterial";
 import { runSheet } from "@/lib/domain/nestRun";
 
@@ -74,7 +74,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     // names. The row's own key records it — a panel's the LV stage's, never
     // the transformer bay's whose machine it ran on.
     const lvPanel = item === LV_ITEM;
-    if (lvPanel && dept === "Cut") dept = "Punching";
+    if (lvPanel) dept = lvStageAt(dept) ?? dept;
     if (lvPanel ? !(LV_STAGES as readonly string[]).includes(dept) : !isDept(dept)) return { ok: false, error: "Invalid department." };
     const guard = await requirePerm(ledgerPermKey(dept, item));
     if (guard.error) return { ok: false, error: guard.error };

@@ -7,7 +7,7 @@
 // Plan-Tracker cell editing are DELIBERATELY separate: holding a dept's
 // worklist permission does not open its tracker column, and vice-versa.
 
-import { LV_ITEM } from "./lv";
+import { LV_ITEM, lvStageAt } from "./lv";
 
 export interface PermDef {
   key: string;
@@ -153,6 +153,33 @@ export function ledgerPermKey(dept: string, item: string): string {
     return `lv.${dept.toLowerCase()}`;
   }
   return deptPermKey(dept);
+}
+
+/** The keys that schedule a bay's shared machines, one per line: the
+ *  transformers' (the bay's own) and the panels' (the LV stage the bay
+ *  works) — null where the bay takes no panels. */
+export function bayPermKeys(bay: string): { tr: string; lv: string | null } {
+  const stage = lvStageAt(bay);
+  return { tr: deptPermKey(bay), lv: stage ? ledgerPermKey(stage, LV_ITEM) : null };
+}
+
+/** The key that schedules one line on a bay's machines — puts it on, moves,
+ *  starts, splits, takes it off, ticks it done. The machines are shared, so
+ *  the LINE decides, never the bay: a panel's line the LV key, anything
+ *  else the bay's. Null for a panel on a bay that takes none. */
+export function machineLinePermKey(bay: string, item: string): string | null {
+  const keys = bayPermKeys(bay);
+  return item === LV_ITEM ? keys.lv : keys.tr;
+}
+
+/** What one account may schedule on a bay's shared machines, line by line. */
+export interface BayAccess {
+  tr: boolean;
+  lv: boolean;
+}
+
+export function mayScheduleLine(access: BayAccess, item: string): boolean {
+  return item === LV_ITEM ? access.lv : access.tr;
 }
 
 /** The line's key for the same job: closing and holding orders, importing

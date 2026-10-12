@@ -3,7 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { parsePerms, deptPermKey, PERM_KEYS, ACCESS_PERM_KEYS } from "@/lib/domain/permissions";
+import { parsePerms, deptPermKey, bayPermKeys, machineLinePermKey, PERM_KEYS, ACCESS_PERM_KEYS, type BayAccess } from "@/lib/domain/permissions";
 import type { User } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { canSeePath, firstVisiblePath, parseHiddenTabs } from "@/lib/domain/tabs";
@@ -106,6 +106,34 @@ export async function requirePerm(perm: string): Promise<{ user?: User; error?: 
 
 export async function requireDeptEdit(dept: string): Promise<{ user?: User; error?: string }> {
   return requirePerm(deptPermKey(dept));
+}
+
+/** One line on a bay's shared machines: the line's own key, never the bay's
+ *  (machineLinePermKey). A panel on a bay that takes none is no one's. */
+export async function requireMachineLineEdit(bay: string, item: string): Promise<{ user?: User; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: NOT_LOGGED_IN };
+  const key = machineLinePermKey(bay, item);
+  if (key === null || !hasPerm(user, key)) return { error: NO_PERMISSION };
+  return { user };
+}
+
+/** What the account may schedule on a bay's shared machines, line by line. */
+export function bayAccess(user: User | null, bay: string): BayAccess {
+  if (!user) return { tr: false, lv: false };
+  const keys = bayPermKeys(bay);
+  return { tr: hasPerm(user, keys.tr), lv: keys.lv !== null && hasPerm(user, keys.lv) };
+}
+
+/** A write over a bay's machines as a whole — ⚡ plan, reset, empty a
+ *  machine — acts on the lines the account may schedule there and leaves
+ *  the other line's work where it is. Refused when it may schedule neither. */
+export async function requireBayAccess(bay: string): Promise<{ user?: User; access?: BayAccess; error?: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: NOT_LOGGED_IN };
+  const access = bayAccess(user, bay);
+  if (!access.tr && !access.lv) return { error: NO_PERMISSION };
+  return { user, access };
 }
 
 /** Users & Permissions are the owner's alone — admins included out. */

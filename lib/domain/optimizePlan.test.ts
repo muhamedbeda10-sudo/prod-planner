@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { optimizePlan, type OptLine, type OptMachine, type OptStep } from "./optimizePlan";
+import { boardPins, optimizePlan, type OptLine, type OptMachine, type OptStep } from "./optimizePlan";
 
 const m = (id: number, center: string, availableH: number): OptMachine => ({ id, code: `M${id}`, center, availableH });
 /** A one-step line, priced as a whole batch — the module works per piece. */
@@ -141,5 +141,33 @@ describe("optimizePlan", () => {
   it("ignores a machine nobody gave hours to", () => {
     const r = optimizePlan([m(1, "Cutting", 0), m(2, "Cutting", 8)], [cut("a", 4, 8, 1)]);
     expect(r.placements.map((p) => p.machineId)).toEqual([2]);
+  });
+});
+
+describe("boardPins — the work a plan is built around", () => {
+  const q = (key: string, item: string, running: boolean, hours: number | null = 2) => ({ key, item, step: "Cutting", remaining: 4, hours, running });
+  const punch = [{ machine: { id: 1 }, queue: [q("tr-running", "CF", true), q("panel-waiting", "PNL", false), q("tr-waiting", "CF", false)] }];
+  const notPanels = (item: string) => item !== "PNL";
+
+  it("keeps what runs now, and nothing more when the planner plans every line", () => {
+    expect(boardPins(punch).map((p) => p.key)).toEqual(["tr-running"]);
+    expect(boardPins(punch)[0]).toEqual({ key: "tr-running", center: "Cutting", machineId: 1, pieces: 4, hours: 2 });
+  });
+
+  it("keeps the other line's waiting work too when only one line is planned", () => {
+    expect(boardPins(punch, notPanels).map((p) => p.key)).toEqual(["tr-running", "panel-waiting"]);
+    expect(boardPins(punch, (item) => item === "PNL").map((p) => p.key)).toEqual(["tr-running", "tr-waiting"]);
+  });
+
+  it("counts a line with no standard time as taking no hours", () => {
+    expect(boardPins([{ machine: { id: 1 }, queue: [q("unpriced", "CF", true, null)] }])[0].hours).toBe(0);
+  });
+
+  it("so the line planned queues behind the other line's work on the shared machine", () => {
+    // a panel batch already waits 6 h on the punch; the transformer part comes after it
+    const pins = boardPins([{ machine: { id: 1 }, queue: [q("panel-waiting", "PNL", false, 6)] }], notPanels);
+    const r = optimizePlan([m(1, "Cutting", 8)], [cut("tr", 4, 4, 5)], pins);
+    expect(r.placements).toHaveLength(1);
+    expect(r.placements[0]).toMatchObject({ machineId: 1, startDay: 0.8 }); // 6 h of an 8 h day, rounded
   });
 });
