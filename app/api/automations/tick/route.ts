@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
 import { tickSecretOk } from "@/lib/server/automations/scheduler";
 import { runDueAutomations } from "@/lib/server/automations/runner";
+import { REVIEW_KEY } from "@/lib/server/automations/review";
 
 // The automations' clock ticks here (lib/server/automations/scheduler.ts):
 // every minute from the database's own scheduler, with its secret — or, when
@@ -23,12 +24,14 @@ async function claimMinute(now: Date): Promise<boolean> {
   return r.count === 1;
 }
 
-/** Whether pages still need to tick: no scheduler, and something to run. A
- *  page told no asks again only rarely. */
+/** Whether pages still need to tick: no scheduler, and something to run —
+ *  an automation on, or someone's morning review. A page told no asks again
+ *  only rarely. */
 async function pagesNeeded(): Promise<boolean> {
   const s = await prisma.aiSettings.findUnique({ where: { id: 1 }, select: { tickSecretHash: true } });
   if (s?.tickSecretHash) return false;
-  return (await prisma.automation.count({ where: { enabled: true, deletedAt: null } })) > 0;
+  if ((await prisma.automation.count({ where: { enabled: true, deletedAt: null } })) > 0) return true;
+  return (await prisma.user.count({ where: { active: true, perms: { contains: REVIEW_KEY } } })) > 0;
 }
 
 export async function POST(request: Request) {

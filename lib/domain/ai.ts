@@ -350,6 +350,32 @@ export function automationContext(o: {
   return lines.join("\n");
 }
 
+/** The morning review's instruction and context (lib/server/automations/
+ *  review.ts): what to look at for this person, what to prepare, and that
+ *  every change waits for them. */
+export function reviewQuestion(name: string, language: "Arabic" | "English"): string {
+  return [
+    `Morning review for ${name}. Look at the plant as it stands now, from ${name}'s side — what they work on and may change: orders late or about to be late, work blocked or on hold, machines overloaded or idle, figures that look wrong or missing.`,
+    "1. Lead with the two or three things that matter most today, each in a line with its figures.",
+    `2. For each concrete fix you can make with your tools, prepare it — it waits for ${name}'s approval. At most five, the most important first; nothing speculative.`,
+    "3. End with what they should look at themselves, outside your tools, if anything.",
+    "If nothing needs attention, say so in one line and prepare nothing.",
+    `Write it in ${language === "Arabic" ? "Egyptian Arabic" : "English"}; keep MO numbers, BOMs and codes as they are.`,
+  ].join("\n");
+}
+
+export function reviewContext(o: { name: string; now: Date; areas: readonly AiArea[]; canDelete: boolean }): string {
+  const lines = [`This is ${o.name}'s morning review, which the owner set up for them, running by itself on ${FACTORY_CLOCK.format(o.now)}, Cairo time. Nobody is reading live and nobody can answer a question: do not ask one. Your final answer goes to ${o.name}'s inbox with the changes you prepare.`];
+  if (o.areas.length === 0) lines.push(`You may not change anything for ${o.name}: advise only.`);
+  else lines.push(`You may prepare changes for ${o.name} on: ${o.areas.map((a) => AI_AREA_LABEL[a]).join("; ")}.${o.canDelete ? "" : " No deletions."} Every one waits for their approval — none runs by itself.`);
+  return lines.join("\n");
+}
+
+/** Arabic letters in a text — what tells the language a person asks in. */
+export function writesArabic(text: string): boolean {
+  return /[\u0600-\u06FF]/.test(text);
+}
+
 /** A conversation longer than this many kept messages takes a new chat —
  *  every question re-reads the whole of it. */
 export const AI_MAX_MESSAGES = 120;

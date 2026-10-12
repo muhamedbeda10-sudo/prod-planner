@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   prisma: {
     aiSettings: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     automation: { count: vi.fn() },
+    user: { count: vi.fn() },
     $executeRawUnsafe: vi.fn(),
     $queryRawUnsafe: vi.fn(),
   },
@@ -22,6 +23,7 @@ vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/server/auth", () => ({ getCurrentUser: async () => h.me }));
 vi.mock("next/server", () => ({ after: (f: () => Promise<void>) => h.after.push(f) }));
 vi.mock("@/lib/server/automations/runner", () => ({ runDueAutomations: h.runDue }));
+vi.mock("@/lib/server/automations/review", () => ({ REVIEW_KEY: "ai.suggestions" }));
 
 import { removeScheduler, setupScheduler, sha256, tickSecretOk, tickUrlFor } from "@/lib/server/automations/scheduler";
 import { POST } from "@/app/api/automations/tick/route";
@@ -38,6 +40,7 @@ beforeEach(() => {
   h.prisma.$queryRawUnsafe.mockResolvedValue([]);
   h.prisma.$executeRawUnsafe.mockResolvedValue(0);
   h.prisma.automation.count.mockResolvedValue(1);
+  h.prisma.user.count.mockResolvedValue(0);
 });
 
 describe("the tick's secret", () => {
@@ -130,5 +133,8 @@ describe("the tick route", () => {
     h.prisma.aiSettings.findUnique.mockResolvedValue({ tickSecretHash: "" });
     h.prisma.automation.count.mockResolvedValue(0);
     expect(await (await post()).json()).toMatchObject({ pages: false });
+    // …but someone's morning review still needs the pages
+    h.prisma.user.count.mockResolvedValue(1);
+    expect(await (await post()).json()).toMatchObject({ pages: true });
   });
 });

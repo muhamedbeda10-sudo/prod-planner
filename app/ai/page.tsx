@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Bell, Clock } from "lucide-react";
+import { Bell, BookOpen, Clock } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { aiStatusFor } from "@/lib/server/ai/access";
@@ -47,6 +47,7 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
               <Link href="/automations" className="btn btn-sm" title="What the assistant does by itself for you"><Clock size={14} aria-hidden /> Automations</Link>
             )}
             <Link href="/inbox" className="btn btn-sm" title="Reports, messages and suggestions"><Bell size={14} aria-hidden /> Inbox</Link>
+            <Link href="/ai/playbook" className="btn btn-sm" title="How this plant works — what the assistant is told"><BookOpen size={14} aria-hidden /> Playbook</Link>
           </span>
         }
       />

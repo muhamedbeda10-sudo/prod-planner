@@ -9,6 +9,7 @@ import { toolsFor } from "@/lib/server/ai/tools";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { deliverToInbox } from "@/lib/server/inbox";
 import { configOf, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
+import { runDailyReviews } from "./review";
 import { AI_DENY_TEXT, automationContext, costUsd } from "@/lib/domain/ai";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
 import { AUTOMATION_LIMITS, freshRows, recipientsOf, renderMessage, rowsTable, type AutomationConfig } from "@/lib/domain/automations";
@@ -51,6 +52,16 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
     take: MAX_PER_TICK,
   });
   const result: TickResult = { ran: 0, checked: 0 };
+  try {
+    await runAll(due, deadline, result);
+  } finally {
+    // the morning reviews, with what time is left
+    if (Date.now() < deadline) await runDailyReviews({ now, deadline }).catch((e) => console.error("review: failed", e));
+  }
+  return result;
+}
+
+async function runAll(due: Automation[], deadline: number, result: TickResult): Promise<void> {
   for (const a of due) {
     if (Date.now() > deadline) break;
     const claim = await prisma.automation.updateMany({
@@ -68,7 +79,6 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
       await prisma.automation.update({ where: { id: a.id }, data: { lockedUntil: null } }).catch(() => {});
     }
   }
-  return result;
 }
 
 /** How long a run's record, and an inbox item, are kept. */
