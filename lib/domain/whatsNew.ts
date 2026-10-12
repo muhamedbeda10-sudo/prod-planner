@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-material-soi-frame",
+    dateISO: "2026-10-12",
+    title: "Material: an opened SOI is framed, and the ODOO badge stays in its cell",
+    where: "Material → Group by SOI",
+    body: "An opened SOI and its lines now sit inside a green frame with a light tint, so where the group ends is plain. The SOI's head shows how many lines it holds next to its arrow. The MO column is a little wider: the MO always reads in full, and the ODOO badge beside it is cut short instead of spilling into the BOM column.",
+    href: "/material",
+  },
+  {
     id: "2026-10-12-cascade-heads-editable",
     dateISO: "2026-10-12",
     title: "A group's head row is edited like the rows under it",
