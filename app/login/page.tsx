@@ -5,6 +5,8 @@ import { LoginForm } from "./LoginForm";
 
 export const metadata = { title: "Sign in — ATC Steel Fabrication (ERP System)" };
 
+// The door: the company's own green behind one card — the logo, what this
+// is, and the form. Nothing else to read.
 export default async function LoginPage() {
   const user = await getCurrentUser();
   if (user) redirect("/");
@@ -29,19 +31,14 @@ export default async function LoginPage() {
           backgroundPosition: "0 0, 125px 95px",
         }}
       />
-      <div className="w-full max-w-sm bg-surface border rounded-2xl p-8" style={{ boxShadow: "var(--shadow-lg)" }}>
+      <div className="login-card">
         <div className="flex justify-center mb-6">
-          <Image
-            src="/brand/atc-logo-horizontal.svg"
-            alt="ATC — Arabian Transformers Co."
-            width={220}
-            height={48}
-            priority
-          />
+          <Image src="/brand/atc-logo-horizontal.svg" alt="ATC — Arabian Transformers Co." width={220} height={48} priority />
         </div>
-        <h1 className="text-lg font-bold text-center mb-1">Steel Fabrication <span className="text-muted font-semibold">(ERP System)</span></h1>
-        <p className="text-sm text-muted text-center mb-6">Sign in with your account</p>
+        <h1 className="text-lg font-bold text-center leading-tight">Steel Fabrication</h1>
+        <p className="text-sm text-muted text-center mt-1 mb-6">ERP System · sign in with your account</p>
         <LoginForm />
+        <p className="mt-6 text-center text-[11px] text-muted">Arabian Transformers Co. · Steel Fabrication</p>
       </div>
     </div>
   );

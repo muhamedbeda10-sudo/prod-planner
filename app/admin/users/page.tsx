@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
-import { PageHeader, Card } from "@/components/ui";
 import { monthStart } from "@/lib/domain/ai";
 import { UsersManager } from "./UsersManager";
 
@@ -30,12 +29,5 @@ export default async function UsersPage() {
     ai: { enabled: u.isOwner || !!accessOf.get(u.id)?.enabled, monthlyUsd: accessOf.get(u.id)?.monthlyUsd ?? 0, spent: spentOf.get(u.id) ?? 0 },
   }));
 
-  return (
-    <div>
-      <PageHeader title="👥 Users & Permissions" />
-      <Card className="p-3 sm:p-5">
-        <UsersManager users={rows} myId={me.id} />
-      </Card>
-    </div>
-  );
+  return <UsersManager users={rows} myId={me.id} />;
 }

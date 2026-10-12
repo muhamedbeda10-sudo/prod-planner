@@ -4,8 +4,10 @@ import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Activity, Clock } from "lucide-react";
 import { applyCalibration } from "./actions";
 import { deptLabel } from "@/lib/domain/constants";
+import { EmptyState, SectionCard } from "@/components/primitives";
 
 /* Calibration: the supervisors' shift log says how many man-hours each stage
    ACTUALLY worked per day; against the std-hours the ledger says those days
@@ -46,45 +48,44 @@ export function CalibrationPanel({ rows, stages, windowDays }: { rows: DayRow[];
   };
 
   return (
-    <div className="space-y-6">
-      {err && <p className="text-sm font-semibold text-bad-fg bg-bad-bg rounded-lg px-3 py-2">{err}</p>}
+    <div className="space-y-4">
+      {err && <p className="alert alert-bad">{err}</p>}
 
       {/* ================= calibration readings ================= */}
-      <section>
-        <div className="flex flex-wrap items-center gap-3 mb-2">
-          <h2>Calibration — are the standard times this plant&apos;s real pace?</h2>
-          <span className="text-[11px] text-muted">
-            recorded hours vs earned std-hours over the last {windowDays} days · apply rescales that stage across every KVA class
-          </span>
-        </div>
-        <div className="bg-surface border rounded-xl overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+      <SectionCard
+        icon={Activity}
+        title="Calibration — are the standard times this plant's real pace?"
+        description={`Recorded hours against earned standard hours over the last ${windowDays} days. Applying a factor rescales that stage across every KVA class.`}
+        padded={false}
+      >
+        <div className="overflow-x-auto border-t">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="bg-brand text-white text-center">
-                <th className="p-2 text-left">Stage</th>
-                <th className="p-2">Recorded days</th>
-                <th className="p-2">Worked (mh)</th>
-                <th className="p-2">Earned (std-h)</th>
-                <th className="p-2">Efficiency</th>
-                <th className="p-2">Suggested factor</th>
-                <th className="p-2 w-40"></th>
+              <tr>
+                <th className="text-start ps-4 md:ps-5">Stage</th>
+                <th className="text-center">Recorded days</th>
+                <th className="text-center">Worked (mh)</th>
+                <th className="text-center">Earned (std-h)</th>
+                <th className="text-center">Efficiency</th>
+                <th className="text-center">Suggested factor</th>
+                <th className="text-end pe-4 md:pe-5 w-44"></th>
               </tr>
             </thead>
             <tbody>
               {stages.map((s) => (
                 <tr key={s.dept} className="text-center">
-                  <td className="p-2 text-left font-bold">{deptLabel(s.dept)}</td>
-                  <td className="p-2 tabnum">{s.days}</td>
-                  <td className="p-2 tabnum">{s.days ? fmt(s.actualH) : "—"}</td>
-                  <td className="p-2 tabnum">{s.days ? fmt(s.earnedH) : "—"}</td>
-                  <td className={`p-2 tabnum font-bold ${s.efficiency === null ? "" : s.efficiency >= 0.95 && s.efficiency <= 1.05 ? "text-ok-fg" : "text-warn-fg"}`}>
+                  <td className="text-start ps-4 md:ps-5 font-bold">{deptLabel(s.dept)}</td>
+                  <td className="tabnum">{s.days}</td>
+                  <td className="tabnum">{s.days ? fmt(s.actualH) : "—"}</td>
+                  <td className="tabnum">{s.days ? fmt(s.earnedH) : "—"}</td>
+                  <td className={`tabnum font-bold ${s.efficiency === null ? "" : s.efficiency >= 0.95 && s.efficiency <= 1.05 ? "text-ok-fg" : "text-warn-fg"}`}>
                     {s.efficiency === null ? "—" : `${Math.round(s.efficiency * 100)}%`}
                   </td>
-                  <td className="p-2 tabnum">{s.factor === null ? "—" : `× ${(Math.round(s.factor * 1000) / 1000).toFixed(3)}`}</td>
-                  <td className="p-2">
+                  <td className="tabnum">{s.factor === null ? "—" : `× ${(Math.round(s.factor * 1000) / 1000).toFixed(3)}`}</td>
+                  <td className="text-end pe-4 md:pe-5">
                     {s.ready && s.factor !== null ? (
                       Math.abs(s.factor - 1) < 0.005 ? (
-                        <span className="text-xs text-ok-fg font-semibold">calibrated ✓</span>
+                        <span className="pill pill-ok">Calibrated</span>
                       ) : (
                         <button
                           onClick={() => {
@@ -108,37 +109,40 @@ export function CalibrationPanel({ rows, stages, windowDays }: { rows: DayRow[];
             </tbody>
           </table>
         </div>
-        <p className="mt-1.5 text-[11px] text-muted">
+        <p className="px-4 md:px-5 py-3 border-t text-xs text-muted">
           Efficiency 80% means the crews worked 100 hours for every 80 standard hours earned — the standards are tighter than this plant&apos;s pace. Applying the factor makes future earned hours track the real effort; after applying, the reading here converges to 100%.
         </p>
-      </section>
+      </SectionCard>
 
       {/* ================= daily recordings ================= */}
-      <section>
-        <div className="flex flex-wrap items-center gap-3 mb-2">
-          <h2>Actual work-hours — from the shift log</h2>
-          <span className="text-[11px] text-muted">
-            summed per stage from what each department&apos;s supervisor records on the{" "}
-            <Link href="/shifts" className="text-accent font-semibold hover:underline">Shift log</Link> — present workers × their shift + overtime
-          </span>
-        </div>
+      <SectionCard
+        icon={Clock}
+        title="Actual work-hours — from the shift log"
+        description={
+          <>
+            Summed per stage from what each department&apos;s supervisor records on the{" "}
+            <Link href="/shifts" className="text-brand font-semibold hover:underline">Shift log</Link> — present workers × their shift + overtime.
+          </>
+        }
+        padded={false}
+      >
         {rows.length === 0 ? (
-          <p className="text-sm text-muted">No day recorded yet — the shift log fills this in.</p>
+          <EmptyState compact icon={Clock} title="No day recorded yet" hint="The shift log fills this in." />
         ) : (
-          <div className="bg-surface border rounded-xl overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
+          <div className="overflow-x-auto border-t">
+            <table className="w-full text-sm">
               <thead>
-                <tr className="bg-brand text-white text-center">
-                  <th className="p-2 text-left">Day</th>
-                  {STAGES.map((s) => <th key={s} className="p-2">{deptLabel(s)}</th>)}
+                <tr>
+                  <th className="text-start ps-4 md:ps-5">Day</th>
+                  {STAGES.map((s) => <th key={s} className="text-center">{deptLabel(s)}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {rows.slice(0, 14).map((r) => (
                   <tr key={r.dateISO} className="text-center">
-                    <td className="p-2 text-left font-bold tabnum">{formatDate(r.dateISO)}</td>
+                    <td className="text-start ps-4 md:ps-5 font-bold tabnum">{formatDate(r.dateISO)}</td>
                     {STAGES.map((s) => (
-                      <td key={s} className="p-2 tabnum">
+                      <td key={s} className="tabnum">
                         {r.hours[s] !== undefined ? (
                           <Link href={`/shifts?dept=${s}&day=${r.dateISO}`} className="hover:underline" title="Open this day on the shift log">{fmt(r.hours[s]!)}</Link>
                         ) : "—"}
@@ -150,8 +154,8 @@ export function CalibrationPanel({ rows, stages, windowDays }: { rows: DayRow[];
             </table>
           </div>
         )}
-        {rows.length > 14 && <p className="mt-1 text-[11px] text-muted">Showing the latest 14 of {rows.length} recorded days — older days still count in the calibration.</p>}
-      </section>
+        {rows.length > 14 && <p className="px-4 md:px-5 py-2.5 border-t text-xs text-muted">Showing the latest 14 of {rows.length} recorded days — older days still count in the calibration.</p>}
+      </SectionCard>
     </div>
   );
 }

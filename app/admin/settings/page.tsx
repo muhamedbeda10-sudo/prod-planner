@@ -4,7 +4,7 @@ import { getSettings } from "@/lib/server/data";
 import { backupLoginState } from "@/lib/server/backupLogin";
 import { backupLinks } from "@/lib/domain/backup";
 import { formatDateTime } from "@/lib/domain/format";
-import { PageHeader } from "@/components/ui";
+import { PageHead } from "@/components/ui";
 import { TankTrackingToggle } from "./TankTrackingToggle";
 import { MachinePlanningToggle } from "./MachinePlanningToggle";
 import { BackupLogin } from "./BackupLogin";
@@ -28,8 +28,8 @@ export default async function SettingsPage() {
   const backup = me.isOwner ? await backupLoginState() : null;
 
   return (
-    <div className="max-w-4xl">
-      <PageHeader title="⚙️ Settings" />
+    <div className="max-w-4xl space-y-4">
+      <PageHead title="Settings" sub="Plant-wide switches — what changes how several screens behave at once" />
       <TankTrackingToggle initialOn={settings.tankTracking} />
       <MachinePlanningToggle initialOn={settings.machinePlanning} />
       {backup && (

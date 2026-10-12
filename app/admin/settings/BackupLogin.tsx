@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Database } from "lucide-react";
+import { Note, SectionCard, SettingRow } from "@/components/primitives";
 import { makeBackupLogin, turnOffBackup } from "./backupActions";
 
 // The nightly backup's own read-only login, on the owner's Settings: make its
@@ -72,73 +73,70 @@ export function BackupLogin({ exists, on, changed, links }: Props) {
     });
   }
 
-  const status = !exists ? "NOT SET UP" : on ? "ON" : "OFF";
+  const status = !exists ? <span className="pill pill-muted">Not set up</span> : on ? <span className="pill pill-ok">On</span> : <span className="pill pill-muted">Off</span>;
+  const state = !exists
+    ? "The database update that makes this login has not run yet."
+    : changed
+      ? `${on ? "Password made" : "Turned off"} ${changed}.`
+      : "No password yet.";
 
   return (
-    <div className="border rounded-xl p-4 sm:p-5 space-y-3 mt-4">
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="flex-1 min-w-[200px] space-y-1">
-          <h2 className="text-sm font-extrabold flex items-center gap-2">
-            🗄 Database backup — its own login
-            <span className={`pill ${on ? "pill-ok" : "pill-muted"}`}>{status}</span>
-          </h2>
-          <p className="text-sm text-muted">
-            Every night GitHub takes a sealed copy of the database (Actions → Database backup). It logs in as{" "}
-            <code className="text-xs">backup_reader</code>: it can read every table and change nothing.
-          </p>
-          <p className="text-xs text-muted">
-            {!exists
-              ? "The database update that makes this login has not run yet."
-              : changed
-                ? `${on ? "Password made" : "Turned off"} ${changed}.`
-                : "No password yet."}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={make}
-            disabled={pending || !exists}
-            className="rounded-md px-4 py-2 text-sm font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
-          >
-            {pending ? "Working…" : on ? "Make a new password" : "Make the password"}
+    <SectionCard
+      icon={Database}
+      title="Database backup — its own login"
+      description={
+        <>
+          Every night GitHub takes a sealed copy of the database (Actions → Database backup). It logs in as{" "}
+          <code className="text-xs">backup_reader</code>: it can read every table and change nothing.
+        </>
+      }
+      end={status}
+    >
+      <SettingRow
+        title="The backup's password"
+        hint={
+          <>
+            {state}
+            <Note msg={msg} className="mt-1" />
+          </>
+        }
+      >
+        <button type="button" onClick={make} disabled={pending || !exists} className={`btn btn-sm ${on ? "btn-secondary" : "btn-primary"}`}>
+          {pending ? "Working…" : on ? "Make a new password" : "Make the password"}
+        </button>
+        {on && (
+          <button type="button" onClick={turnOff} disabled={pending} className="btn btn-ghost btn-sm text-bad-fg">
+            Turn off
           </button>
-          {on && (
-            <button type="button" onClick={turnOff} disabled={pending} className="btn btn-ghost btn-sm text-bad-fg">
-              Turn off
-            </button>
-          )}
-        </div>
-      </div>
-
-      {msg && <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>}
+        )}
+      </SettingRow>
 
       {made && (
-        <div className="rounded-lg border bg-surface-2 p-3 space-y-3">
+        <div className="mt-4 rounded-lg border bg-surface-2 p-3 space-y-3">
           <p className="text-sm font-bold">The backup&apos;s address — copy it now: it is shown only this once.</p>
           <div className="flex items-start gap-2">
             <code dir="ltr" className="flex-1 block text-xs break-all select-all rounded border bg-surface p-2">
               {made.url}
             </code>
-            <button type="button" onClick={() => copy(made.url)} className="btn btn-ghost btn-sm shrink-0" aria-label="Copy the address">
-              {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
+            <button type="button" onClick={() => copy(made.url)} className="btn btn-secondary btn-sm shrink-0" aria-label="Copy the address">
+              {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />} {copied ? "Copied" : "Copy"}
             </button>
           </div>
           {made.tested === "ok" ? (
-            <p className="text-sm text-ok-fg font-semibold">✓ It logged in with this address just now.</p>
+            <p className="alert alert-ok">It logged in with this address just now.</p>
           ) : (
-            <p className="text-sm text-bad-fg">
+            <p className="alert alert-bad">
               It could not log in with this address just now ({made.tested}). Supabase&apos;s pooler can take a minute to take a new
               password: put it in GitHub and run the backup once; if that fails too, make a new password.
             </p>
           )}
           {!made.pooler && (
-            <p className="text-sm text-bad-fg">
+            <p className="alert alert-warn">
               This is not Supabase&apos;s Session pooler address, and GitHub can reach only that one. In Supabase → Connect → Direct →
               Session pooler, take its host (…pooler.supabase.com) and put it in place of this one&apos;s, port 5432.
             </p>
           )}
-          <ol className="text-sm list-decimal pl-5 space-y-1">
+          <ol className="text-sm list-decimal ps-5 space-y-1.5">
             <li>
               On GitHub, open{" "}
               {links ? (
@@ -169,6 +167,6 @@ export function BackupLogin({ exists, on, changed, links }: Props) {
           </ol>
         </div>
       )}
-    </div>
+    </SectionCard>
   );
 }
