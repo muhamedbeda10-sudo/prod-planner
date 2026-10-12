@@ -6,6 +6,7 @@ import { AiChat } from "@/components/AiChat";
 import { InboxView } from "@/components/InboxView";
 import { AutomationsView } from "@/components/AutomationsView";
 import { PlaybookView } from "@/components/PlaybookView";
+import { Tabs } from "@/components/primitives";
 import { loadAiChat, loadAutomations, loadInbox, loadPlaybook } from "@/app/ai/panel/actions";
 import type { AiChatTurn } from "@/lib/domain/ai";
 import type { AiActionView } from "@/lib/domain/aiActions";
@@ -67,8 +68,8 @@ function Loading({ error, onRetry }: { error: string | null; onRetry: () => void
     );
   }
   return (
-    <div className="p-6 grid place-items-center text-muted">
-      <Loader2 size={20} className="animate-spin" aria-label="Loading" />
+    <div className="p-10 flex items-center justify-center gap-2 text-sm text-muted">
+      <Loader2 size={16} className="animate-spin" aria-hidden /> Loading…
     </div>
   );
 }
@@ -98,19 +99,12 @@ function AutomationsTab({ active }: { active: boolean }) {
   if (!t.data) return <Loading error={t.error} onRetry={t.reload} />;
   const d = t.data;
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        {d.paused ? (
-          <span className="pill pill-warn">Paused by the owner</span>
-        ) : (
-          <span className={`pill ${d.inHours ? "pill-ok" : "pill-muted"}`}>{d.inHours ? "Running" : "Outside hours"}</span>
-        )}
-        <span className="text-muted">{d.hours}</span>
-        {!d.paused && d.stale && <span className="pill pill-muted" title="No scheduler is set up: they run only while the app is open somewhere.">No scheduler</span>}
-        {!d.allowed && <span className="pill pill-warn">Stopped — no permission</span>}
-      </div>
-      <AutomationsView automations={d.automations} canTime={d.allowed} onChanged={t.reload} />
-    </div>
+    <AutomationsView
+      automations={d.automations}
+      canTime={d.allowed}
+      onChanged={t.reload}
+      status={{ paused: d.paused, inHours: d.inHours, hours: d.hours, stale: d.stale, allowed: d.allowed }}
+    />
   );
 }
 
@@ -148,42 +142,29 @@ export function AiWorkspace({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="tab-strip flex items-center gap-1 px-1.5 shrink-0 bg-surface">
-        <div role="tablist" aria-label="AI assistant" className="no-scrollbar flex items-center gap-0.5 min-w-0">
-          {tabs.map((t) => {
-            const { label, icon: Icon } = AI_TAB_META[t];
-            const on = t === tab;
-            return (
-              <button
-                key={t}
-                type="button"
-                role="tab"
-                aria-selected={on}
-                onClick={() => onTab(t)}
-                title={label}
-                className={`inline-flex items-center gap-1.5 ${compact && !on ? "px-2.5" : "px-3"} py-2.5 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${
-                  on ? "border-[var(--brand)] text-brand" : "border-transparent text-muted hover:text-foreground"
-                }`}
-              >
-                <Icon size={15} aria-hidden />
-                {/* the docked panel is narrow: only the open tab is named, the rest are icons with their name on hover */}
-                <span className={compact && !on ? "sr-only" : ""}>{label}</span>
-              </button>
-            );
-          })}
-        </div>
-        {toolbar && <div className="ms-auto flex items-center gap-0.5 shrink-0">{toolbar}</div>}
-      </div>
+      <Tabs
+        label="AI assistant"
+        className="px-1.5 shrink-0 bg-surface"
+        items={tabs.map((t) => ({ id: t, label: AI_TAB_META[t].label, icon: AI_TAB_META[t].icon }))}
+        value={tab}
+        onChange={(id) => onTab(id as AiTab)}
+        iconsOnly={compact}
+        end={toolbar}
+      />
       <div className="flex-1 min-h-0 relative">
         {tabs.map((t) => {
           if (!visited.has(t)) return null;
           const active = visible && t === tab;
+          const pane = t === "chat" ? "" : compact ? "overflow-y-auto p-3" : "overflow-y-auto px-4 py-5 md:px-8";
           return (
-            <div key={t} role="tabpanel" hidden={t !== tab} className={`absolute inset-0 ${t === "chat" ? "" : "overflow-y-auto p-3"}`}>
-              {t === "chat" && <ChatTab active={active} compact={compact} initial={initialChat} syncUrl={syncUrl} />}
-              {t === "inbox" && <InboxTab active={active} />}
-              {t === "automations" && <AutomationsTab active={active} />}
-              {t === "playbook" && <PlaybookTab active={active} />}
+            <div key={t} role="tabpanel" hidden={t !== tab} className={`absolute inset-0 ${pane}`}>
+              {/* a reading width for the lists; the chat keeps its own */}
+              <div className={t === "chat" ? "h-full" : compact ? "" : "max-w-3xl mx-auto"}>
+                {t === "chat" && <ChatTab active={active} compact={compact} initial={initialChat} syncUrl={syncUrl} />}
+                {t === "inbox" && <InboxTab active={active} />}
+                {t === "automations" && <AutomationsTab active={active} />}
+                {t === "playbook" && <PlaybookTab active={active} />}
+              </div>
             </div>
           );
         })}
@@ -196,7 +177,7 @@ export function AiWorkspace({
 export function AiWorkspacePage({ tabs, initialChat, settings }: { tabs: AiTab[]; initialChat: InitialChat; settings: boolean }) {
   const [tab, setTab] = useState<AiTab>("chat");
   return (
-    <div className="h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-6.5rem)] min-h-[420px] bg-surface border rounded-xl overflow-hidden">
+    <div className="h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-6.5rem)] min-h-[420px] bg-surface border rounded-xl overflow-hidden shadow-[var(--shadow-sm)]">
       <AiWorkspace
         tabs={tabs}
         tab={tab}
@@ -206,7 +187,7 @@ export function AiWorkspacePage({ tabs, initialChat, settings }: { tabs: AiTab[]
         syncUrl
         toolbar={
           settings ? (
-            <a href="/admin/ai" className="grid place-items-center w-8 h-8 rounded-md text-muted hover:text-foreground hover:bg-surface-2" title="AI settings" aria-label="AI settings">
+            <a href="/admin/ai" className="icon-btn icon-btn-md" title="AI settings" aria-label="AI settings">
               <Settings size={16} />
             </a>
           ) : undefined

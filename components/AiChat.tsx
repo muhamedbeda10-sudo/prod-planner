@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Check, Copy, FileSpreadsheet, FileText, Image as ImageIcon, Loader2, MessageSquare, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X } from "lucide-react";
+import {
+  AlertCircle, BarChart3, Bot, Boxes, Check, ChevronDown, Clock, Copy, Factory, FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks, Loader2, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X,
+} from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
+import { EmptyState } from "@/components/primitives";
 import { deleteAiConversation, discardAiFile, loadAiConversation, uploadAiFile } from "@/app/ai/actions";
 import { AI_MAX_QUESTION, usdText, type AiChatTurn } from "@/lib/domain/ai";
 import { AI_FILE_ACCEPT, AI_FILE_LIMITS, AI_IMAGE_MAX_SIDE, AI_IMAGE_QUALITY, fileSizeText } from "@/lib/domain/aiFiles";
@@ -12,12 +15,13 @@ import type { AiActionView } from "@/lib/domain/aiActions";
 import type { AiChatStatus } from "@/lib/server/ai/panel";
 
 // The AI assistant's chat: the person's conversations on the side (a drawer
-// below a laptop's width, and always in the narrow side panel), the open one in the middle, the answer streaming
-// in as it is written — what it is looking up shown while it looks, the
-// changes it prepares as cards to approve — and the month's spend under the
-// box. A photo, a PDF or a sheet can go with a question: the paperclip sends
-// it to the app first (a photo shrunk to what reads well), and the question
-// carries its number; the photo shows on the question after.
+// below a laptop's width, and always in the narrow side panel), the open one
+// in the middle, the answer streaming in as it is written — what it looked up
+// in one quiet line, the changes it prepares as cards to approve — and the
+// allowance under the box. A photo, a PDF or a sheet can go with a question:
+// the paperclip sends it to the app first (a photo shrunk to what reads
+// well), and the question carries its number; the photo shows on the
+// question after.
 
 interface Turn extends AiChatTurn {
   error?: string;
@@ -39,23 +43,28 @@ interface Pending {
 
 export type { AiChatStatus };
 
-const SUGGESTIONS = [
-  "إيه الأوردرات المتأخرة دلوقتي، وواقفة في أنهي قسم؟",
-  "اعملي رسم بياني لإنتاج كل قسم في آخر 7 أيام",
-  "أنهي ماكينة عليها أكبر حمل شغل دلوقتي؟",
-  "إيه الـ MOs اللي مستنية تتقفل في الأودو؟",
-  "لخصلي إنتاج امبارح واقترح أولويات النهارده",
-  "Which open orders still have no nesting on the Material tab?",
+const SUGGESTIONS: { q: string; icon: typeof Clock }[] = [
+  { q: "إيه الأوردرات المتأخرة دلوقتي، وواقفة في أنهي قسم؟", icon: Clock },
+  { q: "اعملي رسم بياني لإنتاج كل قسم في آخر 7 أيام", icon: BarChart3 },
+  { q: "أنهي ماكينة عليها أكبر حمل شغل دلوقتي؟", icon: Factory },
+  { q: "إيه الـ MOs اللي مستنية تتقفل في الأودو؟", icon: Boxes },
+  { q: "لخصلي إنتاج امبارح واقترح أولويات النهارده", icon: ListChecks },
+  { q: "Which open orders still have no nesting on the Material tab?", icon: Layers },
 ];
 
-const ago = (iso: string) => {
-  const d = new Date(iso);
-  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
-  if (days <= 0) return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  if (days === 1) return "Yesterday";
-  if (days < 7) return `${days} days ago`;
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-};
+const DAY = 86_400_000;
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+/** Which group of the list a conversation sits in, by when it was last used. */
+function groupOf(iso: string, now: Date): string {
+  const t = new Date(iso).getTime();
+  const today = startOfDay(now);
+  if (t >= today) return "Today";
+  if (t >= today - DAY) return "Yesterday";
+  if (t >= today - 7 * DAY) return "Previous 7 days";
+  return "Earlier";
+}
+const GROUPS = ["Today", "Yesterday", "Previous 7 days", "Earlier"];
 
 export function AiChat({
   isOwner,
@@ -279,9 +288,9 @@ export function AiChat({
 
   const of = (v: number, cap: number) => (cap > 0 ? `${usdText(v)} / ${usdText(cap)}` : usdText(v));
   const meter = [
-    status.userDayCap > 0 && `Today ${of(spent.userToday, status.userDayCap)}`,
-    `Month ${of(spent.user, status.userCap)}`,
-    isOwner && (status.plantCap > 0 || status.plantDayCap > 0) && `Plant ${status.plantDayCap > 0 ? `today ${of(spent.plantToday, status.plantDayCap)}` : of(spent.plant, status.plantCap)}`,
+    status.userDayCap > 0 && `today ${of(spent.userToday, status.userDayCap)}`,
+    `month ${of(spent.user, status.userCap)}`,
+    isOwner && (status.plantCap > 0 || status.plantDayCap > 0) && `plant ${status.plantDayCap > 0 ? `today ${of(spent.plantToday, status.plantDayCap)}` : of(spent.plant, status.plantCap)}`,
   ].filter(Boolean).join(" · ");
   const activeTitle = convs.find((c) => c.id === activeId)?.title ?? null;
 
@@ -289,11 +298,13 @@ export function AiChat({
   // the side panel and below a laptop's width
   const drawerCls = compact
     ? `${sideOpen ? "flex absolute z-20 inset-y-0 start-0 w-[min(18rem,85%)] shadow-2xl border-e" : "hidden"}`
-    : `${sideOpen ? "flex fixed z-50 inset-y-0 start-0 w-[min(20rem,85vw)] shadow-2xl" : "hidden"} lg:static lg:z-auto lg:flex lg:w-64 lg:shadow-none lg:border lg:rounded-xl`;
+    : `${sideOpen ? "flex fixed z-50 inset-y-0 start-0 w-[min(20rem,85vw)] shadow-2xl" : "hidden"} lg:static lg:z-auto lg:flex lg:w-64 lg:shadow-none lg:border-e`;
   const narrowOnly = compact ? "" : "lg:hidden";
+  const now = new Date();
+  const grouped = GROUPS.map((g) => ({ g, items: convs.filter((c) => groupOf(c.updatedAt, now) === g) })).filter((x) => x.items.length > 0);
 
   return (
-    <div className={`ai-chat relative flex h-full min-h-[380px] ${compact ? "" : "gap-3"}`}>
+    <div className="ai-chat relative flex h-full min-h-[380px]">
       {sideOpen && (
         <button
           type="button"
@@ -303,7 +314,7 @@ export function AiChat({
         />
       )}
       <aside className={`${drawerCls} shrink-0 flex-col bg-surface overflow-hidden`}>
-        <div className="p-2 border-b flex gap-2">
+        <div className="p-2 flex gap-1.5">
           <button type="button" className="btn btn-primary btn-sm flex-1" onClick={newChat} disabled={busy}>
             <Plus size={15} /> New chat
           </button>
@@ -312,56 +323,60 @@ export function AiChat({
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSideOpen(false)} aria-label="Close the chats"><X size={16} /></button>
           </span>
         </div>
-        <nav className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
-          {convs.length === 0 && <p className="text-xs text-muted p-2">No chats yet.</p>}
-          {convs.map((c) => (
-            <div key={c.id} className={`flex items-center gap-1 rounded-lg ${c.id === activeId ? "bg-brand-light" : "hover:bg-surface-2"}`}>
-              <button type="button" onClick={() => open(c.id)} className="flex-1 min-w-0 text-start px-2.5 py-2" disabled={busy}>
-                <div className={`text-sm font-semibold truncate ${c.id === activeId ? "text-brand" : ""}`} dir="auto">{c.title}</div>
-                <div className="text-[11px] text-muted">{ago(c.updatedAt)}</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => remove(c)}
-                disabled={busy}
-                className="p-2 me-0.5 rounded-md text-muted opacity-60 hover:opacity-100 hover:text-bad-fg hover:bg-bad-bg"
-                title="Delete this chat"
-                aria-label={`Delete the chat ${c.title}`}
-              >
-                <Trash2 size={14} />
-              </button>
+        <nav className="flex-1 overflow-y-auto px-1.5 pb-2">
+          {convs.length === 0 && <EmptyState icon={Bot} title="No chats yet" hint="Your questions will be kept here." compact />}
+          {grouped.map(({ g, items }) => (
+            <div key={g}>
+              <div className="conv-group">{g}</div>
+              {items.map((c) => (
+                <div key={c.id} className={`conv-item ${c.id === activeId ? "conv-item-active" : ""}`}>
+                  <button type="button" onClick={() => open(c.id)} className="flex-1 min-w-0 text-start px-2.5 py-1.5" disabled={busy}>
+                    <div className={`text-[13px] truncate ${c.id === activeId ? "font-semibold text-brand" : "font-medium"}`} dir="auto">{c.title}</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(c)}
+                    disabled={busy}
+                    className="conv-del icon-btn icon-btn-danger me-1"
+                    title="Delete this chat"
+                    aria-label={`Delete the chat ${c.title}`}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
             </div>
           ))}
         </nav>
       </aside>
 
       {/* the open conversation */}
-      <section className={`flex-1 min-w-0 flex flex-col bg-surface overflow-hidden ${compact ? "" : "border rounded-xl"}`}>
+      <section className="flex-1 min-w-0 flex flex-col bg-surface overflow-hidden">
         <div className={`${narrowOnly} flex items-center gap-1 px-1.5 py-1 border-b`}>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSideOpen(true)} aria-label="Chats" title="Chats">
-            <PanelLeft size={17} />
+          <button type="button" className="icon-btn" onClick={() => setSideOpen(true)} aria-label="Chats" title="Chats">
+            <PanelLeft size={16} />
           </button>
-          <div className="flex-1 min-w-0 text-sm font-bold truncate" dir="auto">{activeTitle ?? "New chat"}</div>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={newChat} disabled={busy} aria-label="New chat" title="New chat">
-            <Plus size={17} />
+          <div className="flex-1 min-w-0 text-[13px] font-semibold truncate px-1" dir="auto">{activeTitle ?? "New chat"}</div>
+          <button type="button" className="icon-btn" onClick={newChat} disabled={busy} aria-label="New chat" title="New chat">
+            <Plus size={16} />
           </button>
         </div>
 
-        <div ref={scroller} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4 md:px-6 md:py-4">
+        <div ref={scroller} className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">
           {loadErr && <p className="text-sm font-semibold text-bad-fg mb-3">{loadErr}</p>}
           {turns.length === 0 ? (
             <Welcome onPick={(q) => (canAsk ? ask(q) : setInput(q))} disabled={!canAsk || busy} compact={compact} />
           ) : (
-            <div className="max-w-4xl mx-auto space-y-4 md:space-y-5">
+            <div className="max-w-3xl mx-auto space-y-6">
               {turns.map((t, i) =>
                 t.role === "user" ? (
-                  <div key={i} className="flex flex-col items-end gap-1">
+                  <div key={i} className="flex flex-col items-end gap-1.5">
                     {t.files && t.files.length > 0 && (
-                      <div className="flex flex-wrap justify-end gap-1.5 max-w-[88%] sm:max-w-[80%]">
+                      <div className="flex flex-wrap justify-end gap-1.5 max-w-[88%] sm:max-w-[78%]">
                         {t.files.map((f) => <SentFile key={f.id} file={f} />)}
                       </div>
                     )}
-                    <div dir="auto" className="max-w-[88%] sm:max-w-[80%] rounded-2xl rounded-ee-md bg-brand-light px-3.5 py-2 text-[15px] whitespace-pre-wrap break-words">{t.text}</div>
+                    <div dir="auto" className="ai-bubble">{t.text}</div>
                   </div>
                 ) : (
                   <Answer
@@ -379,70 +394,77 @@ export function AiChat({
         </div>
 
         <form
-          className="border-t px-2.5 pt-2.5 pb-2 md:px-3 md:pt-3"
+          className="px-3 pb-3 pt-1 sm:px-5 md:px-8"
           onSubmit={(e) => {
             e.preventDefault();
             ask(input);
           }}
         >
-          {!canAsk && (
-            <p className="max-w-4xl mx-auto text-sm font-semibold text-warn-fg mb-2">
-              {status.reason ?? "The AI allowance is used up."}
-              {isOwner && <> <a href="/admin/ai" className="underline text-brand">Settings</a></>}
-            </p>
-          )}
-          {(pending.length > 0 || uploading > 0 || fileErr) && (
-            <div className="max-w-4xl mx-auto flex flex-wrap items-center gap-1.5 mb-2">
-              {pending.map((f) => (
-                <span key={f.id} className="pill pill-muted text-xs gap-1" dir="auto">
-                  <FileKindIcon kind={f.kind} size={13} /> {f.name} <span className="text-muted">{fileSizeText(f.size)}</span>
-                  <button type="button" onClick={() => unattach(f.id)} disabled={busy} className="-me-1 p-0.5 rounded hover:bg-surface-2" aria-label={`Remove ${f.name}`} title="Remove">
-                    <X size={12} />
-                  </button>
+          <div className="max-w-3xl mx-auto">
+            {!canAsk && (
+              <div className="mb-2 flex items-start gap-2 rounded-lg border bg-surface-2 px-3 py-2 text-xs">
+                <AlertCircle size={14} className="text-warn-fg mt-0.5 shrink-0" aria-hidden />
+                <span className="min-w-0">
+                  {status.reason ?? "The AI allowance is used up."}
+                  {isOwner && <> <a href="/admin/ai" className="font-semibold text-brand underline underline-offset-2">Settings</a></>}
                 </span>
-              ))}
-              {uploading > 0 && (
-                <span className="text-xs text-muted inline-flex items-center gap-1"><Loader2 size={13} className="animate-spin" /> Sending the file…</span>
-              )}
-              {fileErr && <span className="text-xs font-semibold text-bad-fg" dir="auto">{fileErr}</span>}
+              </div>
+            )}
+            <div className={`composer ${!canAsk ? "opacity-60" : ""}`}>
+              <textarea
+                ref={box}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    ask(input);
+                  }
+                }}
+                rows={Math.min(6, Math.max(1, input.split("\n").length))}
+                maxLength={AI_MAX_QUESTION}
+                dir="auto"
+                enterKeyHint="send"
+                disabled={!canAsk}
+                placeholder={canAsk ? "Ask about the plant…" : ""}
+                // 16px: a phone zooms the page into a smaller box
+                className="w-full min-w-0 resize-none text-base leading-relaxed"
+              />
+              <div className="flex items-center gap-1.5 px-2 pb-2">
+                <input ref={picker} type="file" accept={AI_FILE_ACCEPT} multiple hidden onChange={(e) => attach(e.target.files)} />
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => picker.current?.click()}
+                  disabled={!canAsk || busy || pending.length >= AI_FILE_LIMITS.perQuestion}
+                  aria-label="Attach a photo, a PDF or a sheet"
+                  title="Attach a photo, a PDF or a sheet (Excel, CSV) — to read it, take figures off it, or import it"
+                >
+                  <Paperclip size={16} />
+                </button>
+                <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1.5">
+                  {pending.map((f) => (
+                    <span key={f.id} className="pill pill-muted gap-1 max-w-full" dir="auto">
+                      <FileKindIcon kind={f.kind} size={12} /> <span className="truncate">{f.name}</span> <span className="text-muted">{fileSizeText(f.size)}</span>
+                      <button type="button" onClick={() => unattach(f.id)} disabled={busy} className="-me-1 p-0.5 rounded hover:bg-surface-3" aria-label={`Remove ${f.name}`} title="Remove">
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                  {uploading > 0 && (
+                    <span className="text-xs text-muted inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Sending…</span>
+                  )}
+                  {fileErr && <span className="text-xs font-semibold text-bad-fg" dir="auto">{fileErr}</span>}
+                  {!fileErr && uploading === 0 && pending.length === 0 && (
+                    <span className="hidden sm:inline text-[11px] text-muted tabnum ms-auto" title="What the assistant cost you">{meter}</span>
+                  )}
+                </div>
+                <button type="submit" className="composer-send shrink-0" disabled={!canAsk || busy || uploading > 0 || !input.trim()} aria-label="Send" title="Send (Enter)">
+                  {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                </button>
+              </div>
             </div>
-          )}
-          <div className="max-w-4xl mx-auto flex items-end gap-2">
-            <input ref={picker} type="file" accept={AI_FILE_ACCEPT} multiple hidden onChange={(e) => attach(e.target.files)} />
-            <button
-              type="button"
-              className="btn btn-ghost h-10 w-10 !p-0 shrink-0"
-              onClick={() => picker.current?.click()}
-              disabled={!canAsk || busy || pending.length >= AI_FILE_LIMITS.perQuestion}
-              aria-label="Attach a photo, a PDF or a sheet"
-              title="Attach a photo, a PDF or a sheet (Excel, CSV) — to read it, take figures off it, or import it"
-            >
-              <Paperclip size={18} />
-            </button>
-            <textarea
-              ref={box}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  ask(input);
-                }
-              }}
-              rows={Math.min(5, Math.max(1, input.split("\n").length))}
-              maxLength={AI_MAX_QUESTION}
-              dir="auto"
-              enterKeyHint="send"
-              disabled={!canAsk}
-              placeholder={canAsk ? "Ask about the plant…" : ""}
-              // 16px: a phone zooms the page into a smaller box
-              className="flex-1 min-w-0 resize-none px-3 py-2 text-base rounded-xl"
-            />
-            <button type="submit" className="btn btn-primary h-10 w-10 !p-0 shrink-0" disabled={!canAsk || busy || uploading > 0 || !input.trim()} aria-label="Send" title="Send">
-              {busy ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-            </button>
           </div>
-          <div className="max-w-4xl mx-auto text-end mt-1 text-[11px] text-muted tabnum">{meter}</div>
         </form>
       </section>
     </div>
@@ -451,15 +473,16 @@ export function AiChat({
 
 function Welcome({ onPick, disabled, compact }: { onPick: (q: string) => void; disabled: boolean; compact: boolean }) {
   return (
-    <div className={`max-w-2xl mx-auto ${compact ? "pt-4" : "pt-2 sm:pt-8 md:pt-14"}`}>
-      <div className="flex items-center justify-center gap-2.5">
-        <span className="w-9 h-9 rounded-xl bg-brand-light text-brand grid place-items-center shrink-0">
-          <Bot size={20} />
+    <div className={`max-w-2xl mx-auto ${compact ? "pt-6" : "pt-4 sm:pt-10 md:pt-16"}`}>
+      <div className="flex flex-col items-center text-center gap-2">
+        <span className="w-12 h-12 rounded-2xl bg-brand-light text-brand grid place-items-center shrink-0">
+          <Bot size={24} />
         </span>
-        <p className="text-lg font-extrabold">Ask about the plant</p>
+        <h2 className="!text-xl !font-bold !normal-case !tracking-normal !text-foreground !mb-0">Ask about the plant</h2>
+        <p className="text-sm text-muted max-w-md">Orders, output, machines, material, Odoo, shifts — answered from the live data. Changes it prepares wait for your approval.</p>
       </div>
-      <div className={`grid grid-cols-1 ${compact ? "" : "sm:grid-cols-2"} gap-2 mt-4 sm:mt-6`}>
-        {SUGGESTIONS.map((q, i) => (
+      <div className={`grid grid-cols-1 ${compact ? "" : "sm:grid-cols-2"} gap-2 mt-6`}>
+        {SUGGESTIONS.map(({ q, icon: Icon }, i) => (
           <button
             key={q}
             type="button"
@@ -467,10 +490,10 @@ function Welcome({ onPick, disabled, compact }: { onPick: (q: string) => void; d
             onClick={() => onPick(q)}
             dir="auto"
             // a phone and the side panel show the first four
-            className={`${i >= 4 ? (compact ? "hidden" : "hidden sm:flex") : "flex"} text-start border rounded-xl px-3 py-2.5 text-sm hover:bg-surface-2 hover:border-[var(--border-strong)] transition-colors disabled:opacity-60 items-start gap-2`}
+            className={`${i >= 4 ? (compact ? "hidden" : "hidden sm:flex") : "flex"} text-start border rounded-xl px-3 py-2.5 text-sm bg-surface hover:bg-surface-2 hover:border-[var(--border-strong)] transition-colors disabled:opacity-60 items-start gap-2.5`}
           >
-            <MessageSquare size={15} className="text-muted mt-0.5 shrink-0" />
-            <span>{q}</span>
+            <span className="w-7 h-7 rounded-lg bg-surface-2 text-muted grid place-items-center shrink-0"><Icon size={14} /></span>
+            <span className="leading-snug pt-1">{q}</span>
           </button>
         ))}
       </div>
@@ -485,46 +508,61 @@ function byCall(list: readonly AiActionView[]): Record<string, AiActionView> {
   return out;
 }
 
+/** What the assistant looked up on the way — one quiet line, the long
+ *  ones folded. */
+function Lookups({ items }: { items: string[] }) {
+  const [all, setAll] = useState(false);
+  if (items.length === 0) return null;
+  const shown = all ? items : items.slice(0, 3);
+  return (
+    <div className="ai-lookups mb-2">
+      <Search size={12} className="shrink-0 opacity-70" aria-hidden />
+      {shown.map((l, i) => <span key={i} dir="auto">{l}</span>)}
+      {items.length > 3 && !all && (
+        <button type="button" className="inline-flex items-center gap-0.5 font-semibold hover:text-foreground" onClick={() => setAll(true)}>
+          +{items.length - 3} more <ChevronDown size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Answer({ turn, live, streaming, actions, onAction }: { turn: Turn; live: string | null; streaming: boolean; actions: AiActionView[]; onAction: (v: AiActionView) => void }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex gap-2.5">
-      <div className="hidden sm:grid w-8 h-8 rounded-full bg-brand-light text-brand place-items-center shrink-0 mt-0.5">
-        <Bot size={17} />
+    <div className="flex gap-3">
+      <div className="hidden sm:grid w-7 h-7 rounded-lg bg-brand-light text-brand place-items-center shrink-0 mt-0.5">
+        <Bot size={15} />
       </div>
       <div className="flex-1 min-w-0">
-        {turn.lookups.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-1.5">
-            {turn.lookups.map((l, i) => (
-              <span key={i} className="pill pill-muted text-[11px]" dir="auto" title="Looked up in the database">
-                <Search size={11} /> {l}
-              </span>
-            ))}
-          </div>
-        )}
+        <Lookups items={turn.lookups} />
         {turn.text && <AiMarkdown text={turn.text} streaming={streaming} />}
         {live && (
           <div className="flex items-center gap-2 text-sm text-muted mt-1" dir="auto">
-            <Loader2 size={15} className="animate-spin shrink-0" />
+            <Loader2 size={14} className="animate-spin shrink-0" />
             {live}
           </div>
         )}
         {actions.map((v) => <AiActionCard key={v.id} view={v} onChange={onAction} />)}
         {!streaming && <ApproveAll views={actions} onChange={onAction} />}
-        {turn.error && <p className="text-sm font-semibold text-bad-fg mt-1">{turn.error}</p>}
+        {turn.error && (
+          <p className="text-sm font-semibold text-bad-fg mt-2 flex items-start gap-1.5"><AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden /> {turn.error}</p>
+        )}
         {!streaming && turn.text && (
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm mt-1 -ms-2 text-xs"
-            onClick={() => {
-              navigator.clipboard?.writeText(turn.text).then(() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              });
-            }}
-          >
-            {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
-          </button>
+          <div className="mt-1.5 -ms-1">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm text-xs"
+              onClick={() => {
+                navigator.clipboard?.writeText(turn.text).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                });
+              }}
+            >
+              {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -552,7 +590,7 @@ function SentFile({ file }: { file: { id: number; name: string; kind: string } }
   }
   return (
     // a tab of its own: a file cleared since must not take the chat's place
-    <a href={gone ? undefined : href} target="_blank" rel="noopener" className="pill pill-muted text-[11px]" dir="auto" title={gone ? "No longer kept" : `File #${file.id}`}>
+    <a href={gone ? undefined : href} target="_blank" rel="noopener" className="pill pill-muted" dir="auto" title={gone ? "No longer kept" : `File #${file.id}`}>
       <FileKindIcon kind={file.kind} size={12} /> {file.name}{gone ? " — no longer kept" : ""}
     </a>
   );

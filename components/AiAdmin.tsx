@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useSyncExternalStore, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Activity, Bot, Clock, Cpu, Gauge, KeyRound, ListChecks, PlugZap, Save, Settings2, Trash2, Users,
+  Activity, Bot, ChevronDown, Clock, Cpu, Gauge, KeyRound, ListChecks, MessageSquare, PlugZap, Save, Settings2, Trash2, Users,
 } from "lucide-react";
 import { AI_CALLS_RANGE, AI_EFFORTS, AI_EFFORT_LABEL, AI_MODELS, aiModel, usdText, type AiEffort } from "@/lib/domain/ai";
 import { WEEKDAY_NAMES, describeWindow } from "@/lib/domain/automations";
@@ -14,16 +14,19 @@ import {
   setAutomationHours, setupAutomationClock, testAi, type AiActionResult,
 } from "@/app/admin/ai/actions";
 import { AutomationsView } from "@/components/AutomationsView";
+import { EmptyState, Note, SectionCard, SettingRow, Switch, Tabs } from "@/components/primitives";
 import type { AutomationView } from "@/lib/server/automations/views";
 import type { SchedulerStatus } from "@/lib/server/automations/scheduler";
 
-// The owner's page for the AI assistant, in tabs across the whole page:
-// General (the key and the main switches), Models (the chat's and the
-// automations' model and effort), Limits (the plant's caps per day and month,
-// steps per question), Automations (on/off, the hours they may run in, the
-// morning review, the scheduler, everyone's automations), People (who may use
-// it, what it may do for each — never more than they may themselves — each
-// one's caps and spend) and Activity (what it changed, what it was asked).
+// The owner's page for the AI assistant: the figures for the day and the
+// month across the top, then its settings in sections — down the side on a
+// wide screen, as tabs on a small one. General (the key and the main
+// switches), Models (the chat's and the automations' model and effort),
+// Limits (the plant's caps per day and month, steps per question),
+// Automations (on/off, the hours they may run in, the morning review, the
+// scheduler, everyone's automations), People (who may use it, what it may do
+// for each — never more than they may themselves — each one's caps and
+// spend) and Activity (what it changed, what it was asked).
 
 export interface AiAdminUser {
   id: number;
@@ -70,6 +73,7 @@ export interface AiAdminData {
 
 type Msg = { ok: boolean; text: string } | null;
 
+/** Runs one server action: pending while it runs, its answer under the control, the page re-read when it worked. */
 function useRun() {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -92,11 +96,6 @@ function useRun() {
   return { pending, msg, run };
 }
 
-function Note({ msg }: { msg: Msg }) {
-  if (!msg) return null;
-  return <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
-}
-
 const fd = (o: Record<string, string>) => {
   const f = new FormData();
   for (const [k, v] of Object.entries(o)) f.set(k, v);
@@ -106,80 +105,92 @@ const fd = (o: Record<string, string>) => {
 const when = (iso: string) => formatDateTime(iso);
 const usdInput = (v: number) => (v > 0 ? String(v) : "");
 
-const CARD = "bg-surface border rounded-xl p-4 md:p-5";
+const INPUT = "px-2.5 py-1.5 text-base sm:text-sm";
 
-function CardHead({ icon: Icon, title, children }: { icon: typeof Bot; title: string; children?: React.ReactNode }) {
+/** A dollar amount — empty for no cap. */
+function UsdInput({ value, onChange, label, onEnter }: { value: string; onChange: (v: string) => void; label: string; onEnter?: () => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 mb-3">
-      <h3 className="text-sm font-extrabold flex items-center gap-2 flex-1 min-w-0"><Icon size={16} aria-hidden /> {title}</h3>
-      {children}
-    </div>
+    <span className="inline-flex items-center gap-1.5">
+      <span className="text-sm font-bold text-muted">$</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        min={0}
+        step="0.5"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && onEnter) {
+            e.preventDefault();
+            onEnter();
+          }
+        }}
+        placeholder="no cap"
+        aria-label={label}
+        className={`w-28 tabnum ${INPUT}`}
+      />
+    </span>
   );
 }
 
-/** An on/off switch. */
-function Switch({ on, disabled, onChange, label }: { on: boolean; disabled?: boolean; onChange: (v: boolean) => void; label: string }) {
+/** One switch with its answer under it. */
+function SwitchRow({ title, hint, on, onChange, pending, msg }: { title: string; hint?: ReactNode; on: boolean; onChange: (v: boolean) => void; pending: boolean; msg: Msg }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!on)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${on ? "bg-[var(--brand)]" : "bg-[var(--border-strong)]"}`}
+    <SettingRow
+      title={title}
+      hint={
+        <>
+          {hint}
+          <Note msg={msg} className="mt-1" />
+        </>
+      }
     >
-      <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? "translate-x-[22px]" : "translate-x-0.5"}`} />
-    </button>
+      <span className={`text-xs font-bold ${on ? "text-ok-fg" : "text-muted"}`}>{on ? "On" : "Off"}</span>
+      <Switch on={on} disabled={pending} onChange={onChange} label={title} />
+    </SettingRow>
   );
 }
 
-/** One row of switches: a title, its state, the switch. */
-function SwitchRow({ title, sub, on, onChange, pending, msg }: { title: string; sub?: string; on: boolean; onChange: (v: boolean) => void; pending: boolean; msg: Msg }) {
+/** A form's foot: the answer, then Save at the end. */
+function SaveBar({ msg, pending, disabled = false, label = "Save" }: { msg: Msg; pending: boolean; disabled?: boolean; label?: string }) {
   return (
-    <div className="py-3 first:pt-0 last:pb-0">
-      <div className="flex items-center gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold">{title}</div>
-          {sub && <div className="text-xs text-muted">{sub}</div>}
-        </div>
-        <span className={`text-xs font-bold ${on ? "text-ok-fg" : "text-muted"}`}>{on ? "ON" : "OFF"}</span>
-        <Switch on={on} disabled={pending} onChange={onChange} label={title} />
-      </div>
+    <div className="flex flex-wrap items-center gap-2 pt-4 mt-3 border-t">
       <Note msg={msg} />
+      <button type="submit" className="btn btn-primary btn-sm ms-auto" disabled={pending || disabled}>
+        <Save size={14} aria-hidden /> {pending ? "Saving…" : label}
+      </button>
     </div>
   );
 }
 
-function Meter({ share }: { share: number | null }) {
-  if (share === null) return null;
-  return (
-    <div className="h-1.5 mt-1 rounded-full overflow-hidden" style={{ background: "color-mix(in srgb, var(--viz-1) 16%, var(--surface))" }}>
-      <div className="h-full rounded-full" style={{ width: `${Math.min(1, share) * 100}%`, background: share >= 1 ? "var(--bad-fg)" : "var(--viz-1)" }} />
-    </div>
-  );
-}
+// ---- The figures ----
 
 function Kpi({ label, value, sub, share }: { label: string; value: string; sub?: string; share?: number | null }) {
   return (
-    <div className="bg-surface border rounded-xl px-3 py-2.5 md:px-4 md:py-3 min-w-0">
-      <div className="text-xs font-bold text-muted truncate">{label}</div>
-      <div className="text-2xl md:text-[28px] font-semibold leading-tight ltr tabnum">{value}</div>
-      <Meter share={share ?? null} />
-      {sub && <div className="text-xs text-muted mt-0.5 truncate">{sub}</div>}
+    <div className="kpi">
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value ltr">{value}</div>
+      {share !== null && share !== undefined && (
+        <div className={`kpi-meter ${share >= 1 ? "kpi-meter-over" : ""}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, share) * 100)} aria-label={label}>
+          <span style={{ width: `${Math.min(1, share) * 100}%` }} />
+        </div>
+      )}
+      {sub && <div className="kpi-sub">{sub}</div>}
     </div>
   );
 }
 
-const TABS = [
-  { id: "general", label: "General", icon: Settings2 },
-  { id: "models", label: "Models", icon: Cpu },
-  { id: "limits", label: "Limits", icon: Gauge },
-  { id: "automations", label: "Automations", icon: Clock },
-  { id: "people", label: "People", icon: Users },
-  { id: "activity", label: "Activity", icon: Activity },
+// ---- The sections ----
+
+const SECTIONS = [
+  { id: "general", label: "General", desc: "The key and the main switches", icon: Settings2 },
+  { id: "models", label: "Models", desc: "Which Claude, how hard it thinks", icon: Cpu },
+  { id: "limits", label: "Limits", desc: "Spend caps, steps per question", icon: Gauge },
+  { id: "automations", label: "Automations", desc: "Hours, the morning review, the scheduler", icon: Clock },
+  { id: "people", label: "People", desc: "Access, caps and rights", icon: Users },
+  { id: "activity", label: "Activity", desc: "What it changed and was asked", icon: Activity },
 ] as const;
-type TabId = (typeof TABS)[number]["id"];
+type SectionId = (typeof SECTIONS)[number]["id"];
 
 function subscribeHash(cb: () => void) {
   window.addEventListener("hashchange", cb);
@@ -187,88 +198,119 @@ function subscribeHash(cb: () => void) {
 }
 
 export function AiAdmin({ data, clock, automations }: { data: AiAdminData; clock: SchedulerStatus; automations: AutomationView[] }) {
-  // the tab lives in the address (#models …), so a refresh stays on it
+  // the section lives in the address (#models …), so a refresh stays on it
   const hash = useSyncExternalStore(subscribeHash, () => window.location.hash.slice(1), () => "");
-  const tab: TabId = TABS.find((t) => t.id === hash)?.id ?? "general";
-  const pick = (t: TabId) => {
+  const section: SectionId = SECTIONS.find((t) => t.id === hash)?.id ?? "general";
+  const pick = (t: SectionId) => {
     window.history.replaceState(null, "", `#${t}`);
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   };
 
   const people = data.users.filter((u) => u.enabled && u.active).length;
   return (
-    <div className="space-y-3 md:space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="page-title ltr flex items-center gap-2"><Bot size={20} aria-hidden /> AI settings</h1>
+    <div className="space-y-4">
+      <div className="page-head">
+        <h1 className="page-title flex items-center gap-2">
+          <Bot size={20} className="text-brand" aria-hidden /> AI settings
+        </h1>
         <span className={`pill ${data.enabled ? "pill-ok" : "pill-muted"}`}>{data.enabled ? "Open to the team" : "Only you"}</span>
         {data.updatedBy && <span className="text-xs text-muted ms-auto">Last change by {data.updatedBy}</span>}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2 md:gap-3">
-        <Kpi label="Today" value={usdText(data.plantSpentToday)} sub={data.plantDayCap > 0 ? `of ${usdText(data.plantDayCap)}` : `${data.plantQuestionsToday} question(s)`} share={data.plantDayCap > 0 ? data.plantSpentToday / data.plantDayCap : null} />
-        <Kpi label="This month" value={usdText(data.plantSpent)} sub={data.plantCap > 0 ? `of ${usdText(data.plantCap)}` : "no cap"} share={data.plantCap > 0 ? data.plantSpent / data.plantCap : null} />
-        <Kpi label="Questions this month" value={String(data.plantQuestions)} sub={data.plantQuestions > 0 ? `${usdText(data.plantSpent / data.plantQuestions)} each` : undefined} />
+      <div className="kpi-strip">
+        <Kpi label="Today" value={usdText(data.plantSpentToday)} sub={data.plantDayCap > 0 ? `of ${usdText(data.plantDayCap)} · ${data.plantQuestionsToday} question${data.plantQuestionsToday === 1 ? "" : "s"}` : `${data.plantQuestionsToday} question${data.plantQuestionsToday === 1 ? "" : "s"} · no daily cap`} share={data.plantDayCap > 0 ? data.plantSpentToday / data.plantDayCap : null} />
+        <Kpi label="This month" value={usdText(data.plantSpent)} sub={data.plantCap > 0 ? `of ${usdText(data.plantCap)}` : "no monthly cap"} share={data.plantCap > 0 ? data.plantSpent / data.plantCap : null} />
+        <Kpi label="Questions this month" value={String(data.plantQuestions)} sub={data.plantQuestions > 0 ? `${usdText(data.plantSpent / data.plantQuestions)} each` : "none yet"} />
         <Kpi label="Last month" value={usdText(data.lastMonthSpent)} />
-        <Kpi label="People" value={String(people)} sub={data.enabled ? undefined : "closed — only you"} />
+        <Kpi label="People" value={String(people)} sub={data.enabled ? "with the assistant" : "closed — only you"} />
       </div>
 
-      <div role="tablist" aria-label="AI settings" className="tab-strip no-scrollbar flex items-center gap-0.5">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => pick(t.id)}
-            className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${
-              tab === t.id ? "border-[var(--brand)] text-brand" : "border-transparent text-muted hover:text-foreground"
-            }`}
-          >
-            <t.icon size={15} aria-hidden /> {t.label}
-          </button>
-        ))}
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="AI settings sections">
+          {SECTIONS.map((s) => {
+            const on = s.id === section;
+            return (
+              <button key={s.id} type="button" onClick={() => pick(s.id)} className={`settings-nav-item ${on ? "settings-nav-active" : ""}`} aria-current={on ? "page" : undefined}>
+                <span className="settings-nav-icon"><s.icon size={15} aria-hidden /></span>
+                <span className="min-w-0">
+                  <span className="settings-nav-label block">{s.label}</span>
+                  <span className="settings-nav-desc block truncate">{s.desc}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+        <Tabs
+          className="settings-tabs"
+          label="AI settings sections"
+          items={SECTIONS.map((s) => ({ id: s.id, label: s.label, icon: s.icon }))}
+          value={section}
+          onChange={(id) => pick(id as SectionId)}
+        />
+        <div className="min-w-0 space-y-4">
+          {section === "general" && <GeneralSection data={data} />}
+          {section === "models" && (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+              <ModelCard scope="chat" title="Chat" description="Answers the questions people ask it." current={data.chat} />
+              <ModelCard scope="auto" title="Automations & morning review" description="Runs by itself — reports, watches, the morning review." current={data.auto} />
+            </div>
+          )}
+          {section === "limits" && <LimitsCard data={data} />}
+          {section === "automations" && <AutomationsSection data={data} clock={clock} automations={automations} />}
+          {section === "people" && <PeopleCard data={data} />}
+          {section === "activity" && (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+              <ChangesCard data={data} />
+              <RecentCard data={data} />
+            </div>
+          )}
+        </div>
       </div>
-
-      {tab === "general" && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 items-start">
-          <KeyCard data={data} />
-          <SwitchesCard data={data} />
-        </div>
-      )}
-      {tab === "models" && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 items-start">
-          <ModelCard scope="chat" title="Chat" current={data.chat} />
-          <ModelCard scope="auto" title="Automations & morning review" current={data.auto} />
-        </div>
-      )}
-      {tab === "limits" && <LimitsCard data={data} />}
-      {tab === "automations" && <AutomationsTab data={data} clock={clock} automations={automations} />}
-      {tab === "people" && <PeopleCard data={data} />}
-      {tab === "activity" && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 items-start">
-          <ChangesCard data={data} />
-          <RecentCard data={data} />
-        </div>
-      )}
     </div>
   );
 }
 
 // ---- General ----
 
+function GeneralSection({ data }: { data: AiAdminData }) {
+  const team = useRun();
+  const act = useRun();
+  return (
+    <>
+      <KeyCard data={data} />
+      <SectionCard icon={Bot} title="Assistant" description="The main switches. Who exactly may use it, and what it may do for each, is under People.">
+        <SwitchRow
+          title="Open to the team"
+          hint="Off: only you can use it. The people it is open to keep their settings for when it opens again."
+          on={data.enabled}
+          pending={team.pending}
+          msg={team.msg}
+          onChange={(v) => team.run(() => setAiEnabled(fd({ on: String(v) })))}
+        />
+        <SwitchRow
+          title="Changes by the assistant"
+          hint="Off: it only reads and advises — nothing can be prepared or approved, in a chat or by an automation."
+          on={!data.actionsPaused}
+          pending={act.pending}
+          msg={act.msg}
+          onChange={(v) => act.run(() => setAiPause(fd({ what: "actions", paused: String(!v) })))}
+        />
+      </SectionCard>
+    </>
+  );
+}
+
 function KeyCard({ data }: { data: AiAdminData }) {
   const save = useRun();
   const test = useRun();
   const [key, setKey] = useState("");
+  const status = data.hasKey ? (
+    data.keyReadable ? <span className="pill pill-ok ltr">••••{data.keyHint}</span> : <span className="pill pill-bad">Enter it again</span>
+  ) : (
+    <span className="pill pill-muted">Not set</span>
+  );
   return (
-    <section className={CARD}>
-      <CardHead icon={KeyRound} title="Claude API key">
-        {data.hasKey ? (
-          data.keyReadable ? <span className="pill pill-ok">••••{data.keyHint}</span> : <span className="pill pill-bad">Enter it again</span>
-        ) : (
-          <span className="pill pill-muted">Not set</span>
-        )}
-      </CardHead>
+    <SectionCard icon={KeyRound} title="Claude API key" description="What the assistant calls Claude with. Kept encrypted — only its last characters are ever shown." end={status}>
       <form
         className="flex flex-col sm:flex-row gap-2"
         onSubmit={(e) => {
@@ -281,8 +323,9 @@ function KeyCard({ data }: { data: AiAdminData }) {
           autoComplete="off"
           value={key}
           onChange={(e) => setKey(e.target.value)}
-          placeholder={data.hasKey ? "New key to replace it" : "sk-ant-…"}
-          className="flex-1 min-w-0 px-2.5 py-1.5 text-base sm:text-sm ltr"
+          placeholder={data.hasKey ? "A new key to replace it" : "sk-ant-…"}
+          aria-label="Claude API key"
+          className={`flex-1 min-w-0 ltr ${INPUT}`}
         />
         <div className="flex gap-2">
           <button type="submit" className="btn btn-primary btn-sm flex-1 sm:flex-none" disabled={save.pending || !key.trim()}>
@@ -295,7 +338,7 @@ function KeyCard({ data }: { data: AiAdminData }) {
               </button>
               <button
                 type="button"
-                className="btn btn-danger btn-sm"
+                className="btn btn-secondary btn-sm text-bad-fg"
                 disabled={save.pending}
                 onClick={() => confirm("Remove the API key? The assistant stops for everyone until a key is added.") && save.run(() => removeAiKey())}
                 aria-label="Remove the key"
@@ -307,39 +350,13 @@ function KeyCard({ data }: { data: AiAdminData }) {
           )}
         </div>
       </form>
-      <div className="mt-2 space-y-1">
-        <Note msg={save.msg} />
-        <Note msg={test.msg} />
-      </div>
-    </section>
-  );
-}
-
-function SwitchesCard({ data }: { data: AiAdminData }) {
-  const team = useRun();
-  const act = useRun();
-  return (
-    <section className={CARD}>
-      <CardHead icon={Bot} title="Assistant" />
-      <div className="divide-y">
-        <SwitchRow
-          title="Open to the team"
-          sub="Off: only you."
-          on={data.enabled}
-          pending={team.pending}
-          msg={team.msg}
-          onChange={(v) => team.run(() => setAiEnabled(fd({ on: String(v) })))}
-        />
-        <SwitchRow
-          title="Changes by the assistant"
-          sub="Off: it only reads and advises."
-          on={!data.actionsPaused}
-          pending={act.pending}
-          msg={act.msg}
-          onChange={(v) => act.run(() => setAiPause(fd({ what: "actions", paused: String(!v) })))}
-        />
-      </div>
-    </section>
+      {(save.msg || test.msg) && (
+        <div className="mt-2 space-y-1">
+          <Note msg={save.msg} />
+          <Note msg={test.msg} />
+        </div>
+      )}
+    </SectionCard>
   );
 }
 
@@ -350,62 +367,61 @@ const EFFORT_HINT: Record<AiEffort, string> = {
   medium: "Balanced — everyday questions.",
   high: "Thinks harder — plans and analysis.",
   xhigh: "Deep work — slower, costs more.",
-  max: "Hardest problems — slowest, costs the most.",
+  max: "The hardest problems — slowest, costs the most.",
 };
 
-function ModelCard({ scope, title, current }: { scope: "chat" | "auto"; title: string; current: { model: string; effort: string } }) {
+function ModelCard({ scope, title, description, current }: { scope: "chat" | "auto"; title: string; description: string; current: { model: string; effort: string } }) {
   const r = useRun();
   const [model, setModel] = useState(current.model);
   const [effort, setEffort] = useState<AiEffort>((AI_EFFORTS as readonly string[]).includes(current.effort) ? (current.effort as AiEffort) : "medium");
   const dirty = model !== current.model || effort !== current.effort;
   return (
-    <section className={CARD}>
-      <CardHead icon={Cpu} title={title}>
-        <span className="text-xs text-muted">{aiModel(current.model).label} · {AI_EFFORT_LABEL[(current.effort as AiEffort)] ?? current.effort}</span>
-      </CardHead>
-      <fieldset className="space-y-1.5">
-        <legend className="text-xs font-bold text-muted mb-1.5">Model</legend>
-        {AI_MODELS.map((m) => (
-          <label key={m.id} className={`flex items-center gap-3 text-sm cursor-pointer rounded-lg border px-3 py-2 ${model === m.id ? "border-[var(--brand)] bg-brand-light/40" : "hover:bg-surface-2"}`}>
-            <input type="radio" name={`model-${scope}`} checked={model === m.id} onChange={() => setModel(m.id)} className="accent-[var(--brand)]" />
-            <span className="flex-1 min-w-0">
-              <span className="font-bold block truncate">{m.label}</span>
-              <span className="text-xs text-muted block truncate">{m.note}</span>
-            </span>
-            <span className="text-xs text-muted tabnum shrink-0" title="US dollars per million tokens, in / out">${m.inUsd} / ${m.outUsd}</span>
-          </label>
-        ))}
-      </fieldset>
-      <fieldset className="mt-4">
-        <legend className="text-xs font-bold text-muted mb-1.5">Effort</legend>
-        <div className="grid grid-cols-5 gap-1 rounded-lg border p-1 bg-surface-2">
-          {AI_EFFORTS.map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => setEffort(e)}
-              aria-pressed={effort === e}
-              className={`rounded-md px-1 py-1.5 text-xs sm:text-sm font-bold transition-colors ${effort === e ? "bg-[var(--brand)] text-white shadow-sm" : "text-muted hover:text-foreground"}`}
-            >
-              {AI_EFFORT_LABEL[e]}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-muted mt-1.5">{EFFORT_HINT[effort]}</p>
-      </fieldset>
-      <div className="flex flex-wrap items-center gap-2 mt-4">
-        <Note msg={r.msg} />
-        <button
-          type="button"
-          className="btn btn-primary btn-sm ms-auto"
-          disabled={!dirty || r.pending}
-          onClick={() => r.run(() => setAiModel(fd({ scope, model, effort })))}
-        >
-          <Save size={14} aria-hidden /> {r.pending ? "Saving…" : "Save"}
-        </button>
-      </div>
-      {scope === "chat" && <p className="text-[11px] text-muted mt-2">An open chat keeps its model; effort applies from the next question.</p>}
-    </section>
+    <SectionCard
+      icon={scope === "chat" ? MessageSquare : Clock}
+      title={title}
+      description={description}
+      end={<span className="text-xs text-muted whitespace-nowrap">{aiModel(current.model).label} · {AI_EFFORT_LABEL[current.effort as AiEffort] ?? current.effort}</span>}
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          r.run(() => setAiModel(fd({ scope, model, effort })));
+        }}
+      >
+        <fieldset>
+          <legend className="filter-label mb-2">Model</legend>
+          <div className="space-y-1.5">
+            {AI_MODELS.map((m) => (
+              <label key={m.id} className={`option ${model === m.id ? "option-on" : ""}`}>
+                <input type="radio" name={`model-${scope}`} value={m.id} checked={model === m.id} onChange={() => setModel(m.id)} className="sr-only" />
+                <span className="option-radio" aria-hidden />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-bold truncate">{m.label}</span>
+                  <span className="block text-xs text-muted truncate">{m.note}</span>
+                </span>
+                <span className="text-xs text-muted tabnum ltr shrink-0 text-end" title="US dollars per million tokens — in / out">
+                  ${m.inUsd} / ${m.outUsd}
+                  <span className="block text-[10px] opacity-80">per 1M tokens</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset className="mt-4">
+          <legend className="filter-label mb-2">Effort</legend>
+          <div className="segmented w-full">
+            {AI_EFFORTS.map((e) => (
+              <button key={e} type="button" onClick={() => setEffort(e)} aria-pressed={effort === e}>
+                {AI_EFFORT_LABEL[e]}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted mt-2">{EFFORT_HINT[effort]}</p>
+        </fieldset>
+        <SaveBar msg={r.msg} pending={r.pending} disabled={!dirty} />
+      </form>
+      {scope === "chat" && <p className="text-xs text-muted mt-3">An open chat keeps its model; the effort applies from the next question.</p>}
+    </SectionCard>
   );
 }
 
@@ -416,68 +432,53 @@ function LimitsCard({ data }: { data: AiAdminData }) {
   const [daily, setDaily] = useState(usdInput(data.plantDayCap));
   const [monthly, setMonthly] = useState(usdInput(data.plantCap));
   const [calls, setCalls] = useState(String(data.maxCalls));
-  const field = (label: string, value: string, set: (v: string) => void, spent: string, sub: string) => (
-    <label className="block">
-      <span className="text-xs font-bold text-muted">{label}</span>
-      <span className="mt-1 flex items-center gap-1.5">
-        <span className="text-sm font-bold">$</span>
-        <input type="number" inputMode="decimal" min={0} step="0.5" value={value} onChange={(e) => set(e.target.value)} placeholder="no cap" className="w-full px-2.5 py-1.5 text-base sm:text-sm tabnum" />
-      </span>
-      <span className="text-xs text-muted mt-1 block tabnum">{spent} · {sub}</span>
-    </label>
-  );
   return (
-    <section className={CARD}>
-      <CardHead icon={Gauge} title="Plant limits" />
+    <SectionCard icon={Gauge} title="Plant limits" description="Everyone together, you included. When a cap is reached the assistant answers no one until it resets. Each person's own caps are under People.">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           r.run(() => setAiLimits(fd({ dailyUsd: daily, monthlyUsd: monthly, maxCalls: calls })));
         }}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {field("Daily cap", daily, setDaily, `${usdText(data.plantSpentToday)} today`, "Cairo day")}
-          {field("Monthly cap", monthly, setMonthly, `${usdText(data.plantSpent)} this month`, "from the 1st")}
-          <label className="block">
-            <span className="text-xs font-bold text-muted">Steps per question</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={AI_CALLS_RANGE.min}
-              max={AI_CALLS_RANGE.max}
-              step={1}
-              value={calls}
-              onChange={(e) => setCalls(e.target.value)}
-              className="mt-1 w-full px-2.5 py-1.5 text-base sm:text-sm tabnum"
-            />
-            <span className="text-xs text-muted mt-1 block">{AI_CALLS_RANGE.min}–{AI_CALLS_RANGE.max} look-ups or changes before it must answer</span>
-          </label>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 mt-4">
-          <Note msg={r.msg} />
-          <button type="submit" className="btn btn-primary btn-sm ms-auto" disabled={r.pending}><Save size={14} aria-hidden /> {r.pending ? "Saving…" : "Save"}</button>
-        </div>
+        <SettingRow title="Daily cap" hint={<>{usdText(data.plantSpentToday)} spent today · a Cairo day, from midnight</>}>
+          <UsdInput value={daily} onChange={setDaily} label="Daily cap in dollars" />
+        </SettingRow>
+        <SettingRow title="Monthly cap" hint={<>{usdText(data.plantSpent)} spent this month · from the 1st</>}>
+          <UsdInput value={monthly} onChange={setMonthly} label="Monthly cap in dollars" />
+        </SettingRow>
+        <SettingRow title="Steps per question" hint={<>{AI_CALLS_RANGE.min}–{AI_CALLS_RANGE.max} look-ups or changes before it must answer. More steps answer harder questions, and cost more.</>}>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={AI_CALLS_RANGE.min}
+            max={AI_CALLS_RANGE.max}
+            step={1}
+            value={calls}
+            onChange={(e) => setCalls(e.target.value)}
+            aria-label="Steps per question"
+            className={`w-28 tabnum ${INPUT}`}
+          />
+        </SettingRow>
+        <SaveBar msg={r.msg} pending={r.pending} />
       </form>
-      <p className="text-[11px] text-muted mt-3">Everyone together, you included. Each person&apos;s own caps are on the People tab.</p>
-    </section>
+    </SectionCard>
   );
 }
 
 // ---- Automations ----
 
-function AutomationsTab({ data, clock, automations }: { data: AiAdminData; clock: SchedulerStatus; automations: AutomationView[] }) {
+function AutomationsSection({ data, clock, automations }: { data: AiAdminData; clock: SchedulerStatus; automations: AutomationView[] }) {
   const onOff = useRun();
   const review = useRun();
+  const live = automations.filter((a) => !a.deleted).length;
   return (
-    <div className="space-y-3 md:space-y-4">
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4 items-start">
-        <div className="space-y-3 md:space-y-4">
-        <section className={CARD}>
-          <CardHead icon={Clock} title="Automations" />
-          <div className="divide-y">
+    <>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <div className="space-y-4">
+          <SectionCard icon={Clock} title="Automations" description="What the assistant does by itself: reports on a schedule, watches that act, the morning review.">
             <SwitchRow
               title="Automations"
-              sub={describeWindow({ from: data.hours.from, to: data.hours.to, weekdays: data.hours.weekdays })}
+              hint={<>Off: none runs, for anyone. {describeWindow({ from: data.hours.from, to: data.hours.to, weekdays: data.hours.weekdays })}.</>}
               on={!data.automationsPaused}
               pending={onOff.pending}
               msg={onOff.msg}
@@ -485,25 +486,26 @@ function AutomationsTab({ data, clock, automations }: { data: AiAdminData; clock
             />
             <SwitchRow
               title="Morning review"
-              sub={`Working days from ${data.reviewAt}`}
+              hint={<>Its own look at the plant each working day, from {data.reviewAt} — suggestions land in the inbox.</>}
               on={!data.reviewPaused}
               pending={review.pending}
               msg={review.msg}
               onChange={(v) => review.run(() => setAiPause(fd({ what: "review", paused: String(!v) })))}
             />
-          </div>
-        </section>
-        <SchedulerCard clock={clock} />
+          </SectionCard>
+          <SchedulerCard clock={clock} />
         </div>
         <HoursCard data={data} />
       </div>
-      <section className={CARD}>
-        <CardHead icon={ListChecks} title="Everyone's automations">
-          <span className="text-xs text-muted">{automations.filter((a) => !a.deleted).length}</span>
-        </CardHead>
+      <SectionCard
+        icon={ListChecks}
+        title="Everyone's automations"
+        description="Every automation in the plant, whose it is, and when it last ran. Each is timed, paused, tested and deleted here."
+        end={<span className="pill pill-muted tabnum">{live}</span>}
+      >
         <AutomationsView automations={automations} showOwner canTime />
-      </section>
-    </div>
+      </SectionCard>
+    </>
   );
 }
 
@@ -515,32 +517,27 @@ function HoursCard({ data }: { data: AiAdminData }) {
   const [days, setDays] = useState<number[]>(data.hours.weekdays.length ? data.hours.weekdays : [0, 1, 2, 3, 4, 5, 6]);
   const [reviewAt, setReviewAt] = useState(data.reviewAt);
   return (
-    <section className={CARD}>
-      <CardHead icon={Clock} title="When they run" />
+    <SectionCard icon={Clock} title="When they run" description="Cairo time. Outside these hours a scheduled run is skipped; a watch catches up at its next check inside them.">
       <form
-        className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           r.run(() => setAutomationHours(fd({ allDay: String(allDay), from, to, weekdays: days.join(","), reviewAt })));
         }}
       >
-        <div>
-          <p className="text-xs font-bold text-muted mb-1.5">Hours (Cairo)</p>
-          <label className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer mb-2">
-            <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} className="accent-[var(--brand)] w-4 h-4" />
-            All day
-          </label>
-          <div className={`flex flex-wrap items-center gap-2 text-sm ${allDay ? "opacity-50" : ""}`}>
-            <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} disabled={allDay} className="w-36 px-2 py-1 text-sm tabnum" aria-label="From" />
-            <span>to</span>
-            <input type="time" value={to} onChange={(e) => setTo(e.target.value)} disabled={allDay} className="w-36 px-2 py-1 text-sm tabnum" aria-label="To" />
-          </div>
-        </div>
-        <div>
-          <p className="text-xs font-bold text-muted mb-1.5">Days</p>
-          <div className="flex flex-wrap gap-1.5">
+        <SettingRow title="All day" hint="Off: only between the hours below.">
+          <Switch on={allDay} onChange={setAllDay} label="All day" />
+        </SettingRow>
+        <SettingRow title="Hours" hint={allDay ? "Any time of day." : "From the first to the last minute they may start in."}>
+          <span className={`inline-flex items-center gap-2 text-sm ${allDay ? "opacity-50" : ""}`}>
+            <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} disabled={allDay} className="w-32 px-2 py-1.5 text-sm tabnum" aria-label="From" />
+            <span className="text-muted">to</span>
+            <input type="time" value={to} onChange={(e) => setTo(e.target.value)} disabled={allDay} className="w-32 px-2 py-1.5 text-sm tabnum" aria-label="To" />
+          </span>
+        </SettingRow>
+        <SettingRow title="Days" hint="The days of the week they may run on." stack>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Days">
             {WEEKDAY_NAMES.map((n, d) => (
-              <label key={n} className={`pill cursor-pointer select-none ${days.includes(d) ? "pill-ok" : "pill-muted"}`}>
+              <label key={n} className={`chip ${days.includes(d) ? "chip-on" : ""}`}>
                 <input
                   type="checkbox"
                   className="sr-only"
@@ -551,18 +548,13 @@ function HoursCard({ data }: { data: AiAdminData }) {
               </label>
             ))}
           </div>
-        </div>
-        <label className="block">
-          <span className="text-xs font-bold text-muted">Morning review at</span>
-          <input type="time" value={reviewAt} onChange={(e) => setReviewAt(e.target.value)} className="mt-1 block w-36 px-2 py-1 text-sm tabnum" />
-        </label>
-        <div className="flex flex-wrap items-center gap-2">
-          <Note msg={r.msg} />
-          <button type="submit" className="btn btn-primary btn-sm ms-auto" disabled={r.pending}><Save size={14} aria-hidden /> {r.pending ? "Saving…" : "Save"}</button>
-        </div>
+        </SettingRow>
+        <SettingRow title="Morning review at" hint="Each working day. It waits for the hours above.">
+          <input type="time" value={reviewAt} onChange={(e) => setReviewAt(e.target.value)} className="w-32 px-2 py-1.5 text-sm tabnum" aria-label="Morning review at" />
+        </SettingRow>
+        <SaveBar msg={r.msg} pending={r.pending} disabled={!allDay && (!from || !to)} />
       </form>
-      <p className="text-[11px] text-muted mt-3">Outside these hours a scheduled run is skipped; a watch catches up at its next check inside them.</p>
-    </section>
+    </SectionCard>
   );
 }
 
@@ -570,35 +562,36 @@ function SchedulerCard({ clock }: { clock: SchedulerStatus }) {
   const r = useRun();
   const failing = clock.lastJobRuns.find((x) => x.status !== "succeeded");
   return (
-    <section className={CARD}>
-      <CardHead icon={PlugZap} title="Scheduler">
-        <span className={`pill ${clock.scheduled ? "pill-ok" : "pill-warn"}`}>{clock.scheduled ? "On time" : "Not set up"}</span>
-      </CardHead>
-      <div className="text-sm space-y-1">
-        <p className="text-muted">
-          {clock.scheduled ? "The database calls the app every minute." : "Automations run only while the app is open somewhere."}
-          {clock.lastTickAt ? ` Last tick ${when(clock.lastTickAt)}.` : ""}
-        </p>
-        {failing && <p className="text-bad-fg">Last run: {failing.status}{failing.message ? ` — ${failing.message}` : ""}</p>}
-        {clock.error && <p className="text-bad-fg">{clock.error}</p>}
-      </div>
-      <div className="flex flex-wrap gap-2 items-center mt-3">
+    <SectionCard
+      icon={PlugZap}
+      title="Scheduler"
+      description={clock.scheduled ? "The database calls the app every minute, so automations run with the app closed." : "Without it, automations run only while the app is open somewhere."}
+      end={<span className={`pill ${clock.scheduled ? "pill-ok" : "pill-warn"}`}>{clock.scheduled ? "On time" : "Not set up"}</span>}
+    >
+      {(clock.lastTickAt || failing || clock.error) && (
+        <div className="text-sm space-y-1 mb-3">
+          {clock.lastTickAt && <p className="text-muted">Last tick {when(clock.lastTickAt)}.</p>}
+          {failing && <p className="text-bad-fg font-semibold">Last run {failing.status}{failing.message ? ` — ${failing.message}` : ""}</p>}
+          {clock.error && <p className="text-bad-fg font-semibold">{clock.error}</p>}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2 items-center">
         <button
           type="button"
-          className="btn btn-primary btn-sm"
+          className={`btn btn-sm ${clock.scheduled ? "btn-secondary" : "btn-primary"}`}
           disabled={r.pending}
           onClick={() => (!clock.scheduled || confirm("Set the scheduler up again? It gets a new secret; the old one stops at once.")) && r.run(() => setupAutomationClock())}
         >
-          {clock.scheduled ? "Set up again" : "Set up"}
+          {r.pending ? "Working…" : clock.scheduled ? "Set up again" : "Set up"}
         </button>
         {clock.scheduled && (
-          <button type="button" className="btn btn-sm" disabled={r.pending} onClick={() => confirm("Remove the scheduler? Automations will then run only while the app is open.") && r.run(() => removeAutomationClock())}>
+          <button type="button" className="btn btn-sm btn-ghost" disabled={r.pending} onClick={() => confirm("Remove the scheduler? Automations will then run only while the app is open.") && r.run(() => removeAutomationClock())}>
             Remove
           </button>
         )}
+        <Note msg={r.msg} />
       </div>
-      <div className="mt-2"><Note msg={r.msg} /></div>
-    </section>
+    </SectionCard>
   );
 }
 
@@ -608,25 +601,30 @@ function PeopleCard({ data }: { data: AiAdminData }) {
   const [onlyActive, setOnlyActive] = useState(true);
   const rows = data.users.filter((u) => !onlyActive || u.active);
   return (
-    <section className={CARD}>
-      <CardHead icon={Users} title="Who may use it">
-        <label className="text-xs flex items-center gap-1.5 cursor-pointer">
-          <input type="checkbox" checked={onlyActive} onChange={(e) => setOnlyActive(e.target.checked)} className="accent-[var(--brand)]" />
-          Active only
+    <SectionCard
+      icon={Users}
+      title="Who may use it"
+      description="Each person's access, their own caps, and what the assistant may do for them — never more than they may do themselves."
+      padded={false}
+      end={
+        <label className="chip">
+          <input type="checkbox" className="sr-only" checked={onlyActive} onChange={(e) => setOnlyActive(e.target.checked)} />
+          {onlyActive ? "Active only" : "Everyone"}
         </label>
-      </CardHead>
-      <div className="overflow-x-auto -mx-4 md:-mx-5">
-        <table className="w-full min-w-[860px]">
+      }
+    >
+      <div className="overflow-x-auto border-t">
+        <table className="w-full min-w-[880px]">
           <thead>
             <tr>
-              <th className="text-start px-4 md:px-5">Person</th>
+              <th className="text-start ps-4 md:ps-5">Person</th>
               <th className="text-start">Access</th>
               <th className="text-start">Daily cap</th>
               <th className="text-start">Monthly cap</th>
               <th className="text-end">Today</th>
               <th className="text-end">This month</th>
               <th className="text-end">Questions</th>
-              <th className="text-end px-4 md:px-5">What it may do</th>
+              <th className="text-end pe-4 md:pe-5">What it may do</th>
             </tr>
           </thead>
           <tbody>
@@ -634,7 +632,7 @@ function PeopleCard({ data }: { data: AiAdminData }) {
           </tbody>
         </table>
       </div>
-    </section>
+    </SectionCard>
   );
 }
 
@@ -647,82 +645,67 @@ function PersonRow({ u }: { u: AiAdminUser }) {
   const [dayUsd, setDayUsd] = useState(usdInput(u.dailyUsd));
   const dirty = (Number(usd) || 0) !== u.monthlyUsd || (Number(dayUsd) || 0) !== u.dailyUsd;
   const save = (enabled: boolean, okText: string) => r.run(() => setAiUserAccess(fd({ userId: String(u.id), enabled: String(enabled), usd, dayUsd })), okText);
-  const cap = (value: string, set: (v: string) => void, label: string) => (
-    <span className="inline-flex items-center gap-1">
-      <span className="text-xs font-bold text-muted">$</span>
-      <input
-        type="number"
-        inputMode="decimal"
-        min={0}
-        step="0.5"
-        value={value}
-        onChange={(e) => set(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && dirty) save(on, "Saved.");
-        }}
-        placeholder="none"
-        aria-label={`${u.name}'s ${label} in dollars`}
-        className="w-20 px-2 py-1 text-sm tabnum"
-      />
-    </span>
-  );
+  const saveCaps = () => dirty && save(on, "Saved.");
   return (
     <>
-    <tr className={u.active ? "" : "opacity-60"}>
-      <td className="px-4 md:px-5">
-        <div className="font-semibold flex items-center gap-1.5">
-          <span className="truncate">{u.name}</span>
-          {u.isOwner && <span className="pill pill-ok text-[10px]">owner</span>}
-        </div>
-        <div className="text-xs text-muted ltr truncate max-w-[16rem]">{u.email}</div>
-        {r.msg && <div className={`text-xs font-semibold ${r.msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{r.msg.text}</div>}
-      </td>
-      {u.isOwner ? (
-        <td colSpan={3} className="text-xs text-muted">Always — the plant&apos;s limits apply</td>
-      ) : (
-        <>
-          <td>
-            <Switch
-              on={on}
-              disabled={r.pending}
-              label={`AI for ${u.name}`}
-              onChange={(next) => {
-                setOn(next);
-                save(next, next ? "Opened." : "Closed.");
-              }}
-            />
-          </td>
-          <td>{cap(dayUsd, setDayUsd, "daily cap")}</td>
-          <td>
-            <span className="inline-flex items-center gap-2">
-              {cap(usd, setUsd, "monthly cap")}
-              {dirty && <button type="button" className="btn btn-primary btn-sm" disabled={r.pending} onClick={() => save(on, "Saved.")}>{r.pending ? "…" : "Save"}</button>}
-            </span>
-          </td>
-        </>
-      )}
-      <td className="text-end tabnum">
-        {usdText(u.spentToday)}
-        {u.dailyUsd > 0 && <span className="text-xs text-muted"> / {usdText(u.dailyUsd)}</span>}
-      </td>
-      <td className="text-end tabnum">
-        {usdText(u.spent)}
-        {u.monthlyUsd > 0 && <span className="text-xs text-muted"> / {usdText(u.monthlyUsd)}</span>}
-      </td>
-      <td className="text-end tabnum" title={u.lastAt ? `Last asked ${when(u.lastAt)}` : undefined}>{u.questions || "—"}</td>
-      <td className="text-end px-4 md:px-5">
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRights((v) => !v)} aria-expanded={rights}>
-          {u.isOwner ? "Everything" : `${shownKeys.length} right${shownKeys.length === 1 ? "" : "s"}`} {rights ? "▴" : "▾"}
-        </button>
-      </td>
-    </tr>
-    {rights && (
-      <tr>
-        <td colSpan={8} className="px-4 md:px-5 !pt-0 bg-surface-2/50">
-          <RightsEditor u={u} onDone={() => setRights(false)} />
+      <tr className={u.active ? "" : "opacity-60"}>
+        <td className="ps-4 md:ps-5">
+          <div className="font-semibold flex items-center gap-1.5">
+            <span className="truncate">{u.name}</span>
+            {u.isOwner && <span className="pill pill-ok text-[10px]">owner</span>}
+            {!u.active && <span className="pill pill-muted text-[10px]">inactive</span>}
+          </div>
+          <div className="text-xs text-muted ltr truncate max-w-[16rem]">{u.email}</div>
+          <Note msg={r.msg} />
+        </td>
+        {u.isOwner ? (
+          <td colSpan={3} className="text-xs text-muted">Always — the plant&apos;s limits apply</td>
+        ) : (
+          <>
+            <td>
+              <Switch
+                size="sm"
+                on={on}
+                disabled={r.pending}
+                label={`AI for ${u.name}`}
+                onChange={(next) => {
+                  setOn(next);
+                  save(next, next ? "Opened." : "Closed.");
+                }}
+              />
+            </td>
+            <td><UsdInput value={dayUsd} onChange={setDayUsd} label={`${u.name}'s daily cap in dollars`} onEnter={saveCaps} /></td>
+            <td>
+              <span className="inline-flex items-center gap-2">
+                <UsdInput value={usd} onChange={setUsd} label={`${u.name}'s monthly cap in dollars`} onEnter={saveCaps} />
+                {dirty && <button type="button" className="btn btn-primary btn-sm" disabled={r.pending} onClick={saveCaps}>{r.pending ? "…" : "Save"}</button>}
+              </span>
+            </td>
+          </>
+        )}
+        <td className="text-end tabnum">
+          {usdText(u.spentToday)}
+          {u.dailyUsd > 0 && <span className="text-xs text-muted"> / {usdText(u.dailyUsd)}</span>}
+        </td>
+        <td className="text-end tabnum">
+          {usdText(u.spent)}
+          {u.monthlyUsd > 0 && <span className="text-xs text-muted"> / {usdText(u.monthlyUsd)}</span>}
+        </td>
+        <td className="text-end tabnum" title={u.lastAt ? `Last asked ${when(u.lastAt)}` : undefined}>{u.questions || "—"}</td>
+        <td className="text-end pe-4 md:pe-5">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRights((v) => !v)} aria-expanded={rights}>
+            {u.isOwner ? "Everything" : `${shownKeys.length} right${shownKeys.length === 1 ? "" : "s"}`}
+            <ChevronDown size={14} className={`transition-transform ${rights ? "rotate-180" : ""}`} aria-hidden />
+          </button>
         </td>
       </tr>
-    )}
+      {rights && (
+        <tr>
+          <td colSpan={8} className="px-4 md:px-5 !pt-0 bg-surface-2/50">
+            <RightsEditor u={u} onDone={() => setRights(false)} />
+          </td>
+        </tr>
+      )}
     </>
   );
 }
@@ -739,7 +722,13 @@ function RightsEditor({ u, onDone }: { u: AiAdminUser; onDone: () => void }) {
   const r = useRun();
   const [keys, setKeys] = useState<Set<string>>(() => new Set(u.aiKeys));
   const groups = u.isOwner ? AI_PERM_GROUPS.filter((g) => g.title === "Choices") : AI_PERM_GROUPS;
-  const toggle = (k: string, on: boolean) => setKeys((s) => { const n = new Set(s); if (on) n.add(k); else n.delete(k); return n; });
+  const toggle = (k: string, on: boolean) =>
+    setKeys((s) => {
+      const n = new Set(s);
+      if (on) n.add(k);
+      else n.delete(k);
+      return n;
+    });
   return (
     <div className="py-3 space-y-3">
       {!u.enabled && !u.isOwner && <p className="text-xs font-semibold text-warn-fg">The assistant is closed to {u.name} — these apply once it is opened.</p>}
@@ -747,7 +736,7 @@ function RightsEditor({ u, onDone }: { u: AiAdminUser; onDone: () => void }) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {groups.map((g) => (
           <fieldset key={g.title} className="border rounded-lg p-3 bg-surface">
-            <legend className="px-1 text-xs font-extrabold uppercase tracking-wide text-muted">{g.title}</legend>
+            <legend className="px-1 filter-label">{g.title}</legend>
             <div className="space-y-1.5">
               {g.keys.map((k) => {
                 const d = permDef(k);
@@ -802,19 +791,24 @@ function ChangesCard({ data }: { data: AiAdminData }) {
   const [status, setStatus] = useState("");
   const rows = data.changes.filter((c) => !status || c.status === status);
   return (
-    <section className={CARD}>
-      <CardHead icon={ListChecks} title="Changes by the assistant">
+    <SectionCard
+      icon={ListChecks}
+      title="Changes by the assistant"
+      description="Everything it prepared or made, newest first — in a chat or by an automation."
+      padded={false}
+      end={
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-2 py-1 text-sm" aria-label="Filter by status">
           <option value="">All</option>
           {Object.keys(CHANGE_TONE).map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-      </CardHead>
+      }
+    >
       {rows.length === 0 ? (
-        <p className="text-sm text-muted">None yet.</p>
+        <EmptyState compact icon={ListChecks} title={data.changes.length === 0 ? "No changes yet" : "None with that status"} />
       ) : (
-        <ul className="divide-y max-h-[640px] overflow-y-auto">
+        <ul className="divide-y max-h-[640px] overflow-y-auto border-t">
           {rows.map((c) => (
-            <li key={c.id} className="py-2">
+            <li key={c.id} className="px-4 md:px-5 py-2.5">
               <div className="text-sm font-semibold flex flex-wrap items-center gap-1.5" dir="auto">
                 <span className="truncate">{c.title}</span>
                 <span className={`pill ${CHANGE_TONE[c.status] ?? "pill-muted"} text-[10px]`}>{c.status}</span>
@@ -823,7 +817,7 @@ function ChangesCard({ data }: { data: AiAdminData }) {
                 {c.automationId && <span className="pill pill-muted text-[10px]">automation #{c.automationId}</span>}
               </div>
               <div className="text-xs text-muted truncate" dir="auto" title={c.summary}>{c.summary}</div>
-              <div className="text-[11px] text-muted">
+              <div className="text-[11px] text-muted tabnum">
                 #{c.id} · {c.who} · {when(c.at)}
                 {c.error && <span className="text-bad-fg"> · {c.error}</span>}
               </div>
@@ -831,23 +825,22 @@ function ChangesCard({ data }: { data: AiAdminData }) {
           ))}
         </ul>
       )}
-    </section>
+    </SectionCard>
   );
 }
 
 function RecentCard({ data }: { data: AiAdminData }) {
   return (
-    <section className={CARD}>
-      <CardHead icon={Activity} title="Latest questions" />
+    <SectionCard icon={Activity} title="Latest questions" description="What people asked it, and what each answer cost." padded={false}>
       {data.recent.length === 0 ? (
-        <p className="text-sm text-muted">None yet.</p>
+        <EmptyState compact icon={MessageSquare} title="No questions yet" />
       ) : (
-        <ul className="divide-y max-h-[640px] overflow-y-auto">
+        <ul className="divide-y max-h-[640px] overflow-y-auto border-t">
           {data.recent.map((r) => (
-            <li key={r.id} className="py-2 flex items-start gap-3">
+            <li key={r.id} className="px-4 md:px-5 py-2.5 flex items-start gap-3">
               <div className="flex-1 min-w-0">
                 <div className="text-sm truncate" dir="auto" title={r.question}>{r.question}</div>
-                <div className="text-[11px] text-muted">
+                <div className="text-[11px] text-muted tabnum">
                   {r.who} · {when(r.at)} · {aiModel(r.model).label}
                   {r.queries > 0 && ` · ${r.queries} look-up${r.queries === 1 ? "" : "s"}`}
                   {r.running && <span className="text-warn-fg"> · running</span>}
@@ -859,6 +852,6 @@ function RecentCard({ data }: { data: AiAdminData }) {
           ))}
         </ul>
       )}
-    </section>
+    </SectionCard>
   );
 }

@@ -101,7 +101,7 @@ export default async function PaintingWorklistPage() {
             )}
           </>
         }
-        after={isAdmin ? <HiddenLinesPanel rows={extras.hidden} /> : undefined}
+        after={isAdmin ? <HiddenLinesPanel key="hidden" rows={extras.hidden} /> : undefined}
       />
     </>
   );
