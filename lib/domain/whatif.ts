@@ -357,6 +357,24 @@ const better = (a: QueueScore, b: QueueScore) =>
  *  Deterministic, and never returns something worse than the due-date queue.
  *  Splits are respected — batches are moved like any other job. */
 export function optimizeQueue(inputs: WhatIfInputs, scenario: Scenario): string[] {
+  return searchQueue(inputs, scenario, Infinity, () => 0).queue;
+}
+
+/** The same search with a time limit — for a caller that cannot wait as long
+ *  as a person at the screen does (the assistant, inside one request). Past
+ *  the limit it stops and returns the best queue found so far, still never
+ *  worse than the due-date order; `complete` says whether it got to the end. */
+export function optimizeQueueWithin(
+  inputs: WhatIfInputs,
+  scenario: Scenario,
+  budgetMs: number,
+  now: () => number = Date.now,
+): { queue: string[]; complete: boolean } {
+  return searchQueue(inputs, scenario, budgetMs, now);
+}
+
+function searchQueue(inputs: WhatIfInputs, scenario: Scenario, budgetMs: number, now: () => number): { queue: string[]; complete: boolean } {
+  const until = now() + budgetMs;
   const { rates } = scenarioPhysics(inputs, scenario);
   const holidays = new Set(inputs.holidayISOs);
   const derived = deriveJobs(inputs, scenario);
@@ -406,6 +424,8 @@ export function optimizeQueue(inputs: WhatIfInputs, scenario: Scenario): string[
   for (let pass = 0; pass < 6; pass++) {
     let improved = false;
     for (let i = 0; i < queue.length; i++) {
+      // the clock is read once per job moved — cheap next to the n tries
+      if (now() > until) return { queue, complete: false };
       for (let j = 0; j < queue.length; j++) {
         if (i === j) continue;
         const cand = [...queue];
@@ -421,5 +441,5 @@ export function optimizeQueue(inputs: WhatIfInputs, scenario: Scenario): string[
     }
     if (!improved) break;
   }
-  return queue;
+  return { queue, complete: true };
 }

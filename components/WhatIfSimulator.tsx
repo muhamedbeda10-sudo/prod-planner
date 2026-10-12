@@ -9,6 +9,7 @@ import {
   simulate, defaultScenario, optimizeQueue, dateForOffsetISO, blackoutsOf, WI_STAGES,
   type WhatIfInputs, type Scenario, type WiStage, type WhatIfResult,
 } from "@/lib/domain/whatif";
+import { describeScenario, kpisOf, loadScenario, scenarioCost } from "@/lib/domain/whatifScenario";
 import type { EtaStage, StageBlackout } from "@/lib/domain/eta";
 import { saveScenario, deleteScenario, applyRunOrder, clearRunOrder } from "@/app/simulate/actions";
 import { deptLabel, STAGE_COLOR, type Item } from "@/lib/domain/constants";
@@ -48,45 +49,6 @@ function loadTone(load: number | null): { bg: string; fg: string; label: string 
 }
 
 type ResultJob = WhatIfResult["jobs"][number];
-
-/** MO-level readings: an ORDER is on time only when every job in it is. */
-function kpisOf(result: WhatIfResult) {
-  const byMo = new Map<string, { late: boolean; blocked: boolean; anyActive: boolean }>();
-  for (const j of result.jobs) {
-    const cur = byMo.get(j.mo) ?? { late: false, blocked: false, anyActive: false };
-    if (j.blockedBy) cur.blocked = true;
-    else if (!j.done) {
-      cur.anyActive = true;
-      if (j.late) cur.late = true;
-    }
-    byMo.set(j.mo, cur);
-  }
-  const active = [...byMo.values()].filter((m) => m.anyActive && !m.blocked);
-  const late = active.filter((m) => m.late).length;
-  const activeJobs = result.jobs.filter((j) => !j.done && !j.blockedBy);
-  const lastEta = activeJobs.reduce<string | null>((m, j) => (j.etaISO && (!m || j.etaISO > m) ? j.etaISO : m), null);
-  const worst = result.stages
-    .filter((s) => s.required > 0 && s.load !== null)
-    .reduce<(typeof result.stages)[number] | null>((w, s) => (!w || s.load! > w.load! ? s : w), null);
-  return { active: active.length, late, onTime: active.length - late, lastEta, worst };
-}
-
-const scenarioCost = (sc: Scenario) => WI_STAGES.reduce((a, s) => a + sc.workersDelta[s] * sc.shiftHours, 0);
-
-/** One line that names a scenario: "+2 Welding · Fridays · queue edited · 1 split". */
-function describeScenario(sc: Scenario, inputs: WhatIfInputs): string {
-  const parts: string[] = [];
-  for (const s of WI_STAGES) if (sc.workersDelta[s] !== 0) parts.push(`${sc.workersDelta[s] > 0 ? "+" : ""}${sc.workersDelta[s]} ${deptLabel(s)}`);
-  if (sc.shiftHours !== 11) parts.push(`${sc.shiftHours}h shifts`);
-  if (sc.workFridays) parts.push("Fridays on");
-  if (sc.queue.some((id, i) => inputs.jobs[i]?.id !== id)) parts.push("queue edited");
-  const splits = Object.keys(sc.splits).length;
-  if (splits) parts.push(`${splits} split${splits === 1 ? "" : "s"}`);
-  const holds = Object.keys(sc.holds).length;
-  if (holds) parts.push(`${holds} hold${holds === 1 ? "" : "s"}`);
-  if (sc.downtimes.length) parts.push(`${sc.downtimes.length} stoppage${sc.downtimes.length === 1 ? "" : "s"}`);
-  return parts.length ? parts.join(" · ") : "reality as-is";
-}
 
 /* ================================ KPI strip ================================ */
 
@@ -257,28 +219,17 @@ export interface SavedScenarioDTO {
   savedBy: string | null;
 }
 
-export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], appliedRunOrder = null }: {
+export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, savedScenarios = [], appliedRunOrder = null }: {
   inputs: WhatIfInputs;
   isAdmin?: boolean;
+  /** Simulator — save and delete scenarios (simulator.edit). */
+  canSave?: boolean;
   savedScenarios?: SavedScenarioDTO[];
   appliedRunOrder?: { atISO: string; by: string | null } | null;
 }) {
   // anything unknown in a restored/loaded scenario falls back to reality —
   // simulate() itself is defensive about stale job ids
-  const sanitize = (raw: unknown): Scenario => {
-    const d = defaultScenario(inputs);
-    if (!raw || typeof raw !== "object") return d;
-    const r = raw as Partial<Scenario>;
-    return {
-      workersDelta: { ...d.workersDelta, ...(typeof r.workersDelta === "object" ? r.workersDelta : {}) },
-      shiftHours: typeof r.shiftHours === "number" && r.shiftHours >= 1 ? r.shiftHours : d.shiftHours,
-      workFridays: !!r.workFridays,
-      queue: Array.isArray(r.queue) && r.queue.length ? r.queue.filter((x): x is string => typeof x === "string") : d.queue,
-      splits: r.splits && typeof r.splits === "object" ? (r.splits as Scenario["splits"]) : {},
-      holds: r.holds && typeof r.holds === "object" ? (r.holds as Scenario["holds"]) : {},
-      downtimes: Array.isArray(r.downtimes) ? (r.downtimes as Scenario["downtimes"]) : [],
-    };
-  };
+  const sanitize = (raw: unknown): Scenario => loadScenario(inputs, raw);
 
   // the work in progress survives a refresh — restored from this browser
   const [scenario, setScenario] = useState<Scenario>(() => {
@@ -664,8 +615,10 @@ export function WhatIfSimulator({ inputs, isAdmin = false, savedScenarios = [], 
               <option value="">{savedScenarios.length ? "Load a saved scenario…" : "No saved scenarios yet"}</option>
               {savedScenarios.map((sv) => <option key={sv.name} value={sv.name}>{sv.name}</option>)}
             </select>
-            <button type="button" onClick={saveCurrent} disabled={pending} className="icon-btn" aria-label="Save this scenario" title="save the current scenario under a name"><Save size={15} /></button>
-            {savedScenarios.length > 0 && (
+            {canSave && (
+              <button type="button" onClick={saveCurrent} disabled={pending} className="icon-btn" aria-label="Save this scenario" title="save the current scenario under a name"><Save size={15} /></button>
+            )}
+            {canSave && savedScenarios.length > 0 && (
               <button type="button" onClick={deleteSaved} disabled={pending} className="icon-btn icon-btn-danger" aria-label="Delete a saved scenario" title="delete a saved scenario"><Trash2 size={15} /></button>
             )}
           </span>
