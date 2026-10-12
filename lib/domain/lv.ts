@@ -36,6 +36,14 @@ export function isLvFamily(x: string): x is LvFamily {
 export const LV_STAGES = ["Punching", "Bending", "Welding", "Painting"] as const;
 export type LvStage = (typeof LV_STAGES)[number];
 
+/** The panel stage a bay of the shared floor works — the fabrication bay's
+ *  punches punch, the welding and painting bays weld and paint; shot blast
+ *  takes no panels, and bending is one centre the floor never draws. */
+export function lvStageAt(bay: string): LvStage | null {
+  if (bay === "Cut") return "Punching";
+  return bay === "Welding" || bay === "Painting" ? bay : null;
+}
+
 export const LV_DELIVERED = "Delivered";
 /** The whole chain a cell can sit on: the stages, then delivery. */
 export const LV_CHAIN = [...LV_STAGES, LV_DELIVERED] as const;

@@ -107,9 +107,10 @@ describe("recordOutput — validation guards run before any DB write", () => {
     expect(res).toEqual({ ok: false, error: "Invalid department." });
   });
 
-  it("surfaces the permission error from the dept guard", async () => {
-    h.requireDeptEdit.mockResolvedValue({ error: "You do not have permission for this action — ask the admin." });
+  it("surfaces the permission error from the row's key — a transformer's is its dept's", async () => {
+    h.requirePerm.mockResolvedValue({ error: "You do not have permission for this action — ask the admin." });
     const res = await recordOutput(form({ date: DATE, dept: "Cut", bom: "B", item: "CF", qty: "1", planNo: "0" }));
+    expect(h.requirePerm).toHaveBeenCalledExactlyOnceWith("cut.edit");
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/permission/);
     expect(h.prisma.handoverEntry.create).not.toHaveBeenCalled();
@@ -163,6 +164,43 @@ describe("recordOutput — validation guards run before any DB write", () => {
     const res = await recordOutput(form({ date: DATE, dept: "Cut", bom: "B", mo: "MO-1", item: "CF", qty: "3", planNo: "0" }));
     expect(res).toEqual({ ok: false, error: "Cut 3 would exceed the order quantity." });
     expect(h.prisma.handoverEntry.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("recordOutput — a panel off a machine card takes the LV stage's key, not the bay's", () => {
+  const NO = { error: "You do not have permission for this action — ask the admin." };
+  /** The guard's answer for an account holding exactly these keys. */
+  const holding = (...keys: string[]) => h.requirePerm.mockImplementation(async (k: string) => (keys.includes(k) ? OK_GUARD : NO));
+  const panel = (dept: string) => form({ date: DATE, dept, bom: "FG-LV-1", mo: "MO-LV", item: "PNL", qty: "2", planNo: "0" });
+
+  it.each([
+    ["Cut", "lv.punching"], // the fabrication bay's punches: a panel there is punched
+    ["Punching", "lv.punching"],
+    ["Bending", "lv.bending"],
+    ["Welding", "lv.welding"],
+    ["Painting", "lv.painting"],
+  ])("a panel recorded at %s asks for %s", async (dept, key) => {
+    h.requirePerm.mockResolvedValue(NO);
+    expect(await recordOutput(panel(dept))).toEqual({ ok: false, error: NO.error });
+    expect(h.requirePerm).toHaveBeenCalledExactlyOnceWith(key);
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("the transformer welder's key no longer records a panel; the LV welder's does", async () => {
+    h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "MO-LV" });
+    holding("welding.edit");
+    expect(await recordOutput(panel("Welding"))).toEqual({ ok: false, error: NO.error });
+    expect(txWrites).toEqual([]);
+    holding("lv.welding");
+    expect(await recordOutput(panel("Welding"))).toEqual({ ok: true });
+    expect(txWrites).toEqual([expect.objectContaining({ dept: "Welding", mo: "MO-LV", item: "PNL", qty: 2, source: "worklist" })]);
+  });
+
+  it("and the LV key records nothing on the transformers", async () => {
+    holding("lv.welding");
+    const res = await recordOutput(form({ date: DATE, dept: "Welding", bom: "B", mo: "MO-1", item: "CF", qty: "1", planNo: "0" }));
+    expect(res).toEqual({ ok: false, error: NO.error });
+    expect(h.requirePerm).toHaveBeenCalledExactlyOnceWith("welding.edit");
   });
 });
 

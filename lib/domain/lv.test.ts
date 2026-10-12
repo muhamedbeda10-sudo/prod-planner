@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spreadOverGroup } from "./groupSpread";
-import { LV_CHAIN, LV_STAGES, LV_WORKLISTS, lvCaps, lvChainError, lvChainViolation, lvComplete, lvDeptPermKey, lvGroupMembers, lvPermKey, lvWaiting, type LvState } from "./lv";
+import { LV_CHAIN, LV_STAGES, LV_WORKLISTS, lvCaps, lvChainError, lvChainViolation, lvComplete, lvDeptPermKey, lvGroupMembers, lvPermKey, lvStageAt, lvWaiting, type LvState } from "./lv";
 
 const st = (over: Partial<LvState> = {}): LvState => ({ required: 10, punch: 0, bend: 0, weld: 0, paint: 0, delivered: 0, ...over });
 
@@ -80,6 +80,13 @@ describe("an LV stage's worklist", () => {
     expect(lvDeptPermKey("Bending")).toBe("lv.bending");
     expect(lvDeptPermKey("Welding")).toBe("lv.welding");
     expect(lvDeptPermKey("Painting")).toBe("lv.painting");
+  });
+
+  it("knows the stage each bay of the shared floor works on a panel", () => {
+    expect(lvStageAt("Cut")).toBe("Punching"); // the fabrication bay's punches
+    expect(lvStageAt("Welding")).toBe("Welding");
+    expect(lvStageAt("Painting")).toBe("Painting");
+    expect(lvStageAt("ShotBlast")).toBeNull(); // takes no panels
   });
 
   it("lists the four worklists in the order a panel passes them", () => {
