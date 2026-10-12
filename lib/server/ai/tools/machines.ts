@@ -52,6 +52,26 @@ const queueOf = (rows: readonly QueueRowSnapshot[], codeOf: Map<number, string>)
 /** The undo of any queue change: the whole department back as it was. */
 const restoreUndo = (dept: string, before: QueueRowSnapshot[]) => ({ tool: "restore_machine_queues", input: { dept, rows: before } });
 
+type LineId = { bom: string; mo: string; item: string };
+const sameLine = (r: LineId, l: LineId) => r.bom === l.bom && r.mo === l.mo && r.item === l.item;
+
+/** What a change to one line relies on: where THAT line is now, machine by
+ *  machine — not the rest of the department's queues. A line goes on at the
+ *  back of a queue wherever the others stand, so a change to another line
+ *  (another card approved first) leaves this one as good as when it was
+ *  proposed; a change to this line itself (moved, resized, put on by hand)
+ *  makes it out of date. Its place in a queue is left out: others moving
+ *  round it do not change what this change does. */
+function linesNow(rows: readonly QueueRowSnapshot[], lines: readonly LineId[]) {
+  return rows
+    .filter((r) => lines.some((l) => sameLine(r, l)))
+    .map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, machineId: r.machineId, sheet: r.sheet, qty: r.qty, running: r.running, sheetDone: r.sheetDone }))
+    .sort((a, b) => `${a.bom}|${a.mo}|${a.item}|${a.machineId}|${a.sheet}`.localeCompare(`${b.bom}|${b.mo}|${b.item}|${b.machineId}|${b.sheet}`));
+}
+
+/** What a move within one machine's queue relies on: that queue, in order. */
+const machineQueue = (rows: readonly QueueRowSnapshot[], machineId: number) => rows.filter((r) => r.machineId === machineId);
+
 // ------------------------------------------------------------------ board
 
 interface DeptInput {
@@ -222,7 +242,7 @@ export const assignLineTool: WriteTool<AssignInput> = {
   name: "assign_line_to_machine",
   title: "Put a line on a machine",
   description:
-    "Put a worklist line on a machine, at the back of its queue. With qty only those pieces go there (the line is split, the rest stays where it is); without qty the machine takes the rest of the line. The line must be one the department still owes (see get_machine_board).",
+    "Put ONE worklist line on a machine, at the back of its queue. With qty only those pieces go there (the line is split, the rest stays where it is); without qty the machine takes the rest of the line. The line must be one the department still owes (see get_machine_board). For more than one line use assign_lines_to_machines — one change for all of them.",
   area: "machines",
   risk: "low",
   schema: {
@@ -246,7 +266,7 @@ export const assignLineTool: WriteTool<AssignInput> = {
       title: `${lineName(i.bom, i.mo, i.item)} → ${c.machine.code}`,
       summary: `Put ${i.qty ? `${i.qty} pcs of ` : ""}${lineName(i.bom, i.mo, i.item)}${i.sheet ? ` (${i.sheet})` : ""} on ${c.machine.code}, at the back of its queue${i.qty ? "" : " — the rest of the line"}.`,
       changes: [{ label: lineName(i.bom, i.mo, i.item), before: now.length ? queueOf(now, codeOf).join("; ") : "not on a machine", after: `${c.machine.code}${i.qty ? ` ×${i.qty}` : " (the rest)"}` }],
-      snapshot: before,
+      snapshot: linesNow(before, [i]),
     };
   },
   async execute(i) {
@@ -255,6 +275,136 @@ export const assignLineTool: WriteTool<AssignInput> = {
     const before = await readQueueSnapshot(i.dept);
     const r = await assignLineMachine(formOf({ dept: i.dept, bom: i.bom, mo: i.mo, item: i.item, sheet: i.sheet ?? "", machineId: m.id, qty: i.qty ?? "" }));
     return done(r, `${lineName(i.bom, i.mo, i.item)} is on ${m.code}.`, i.dept, before);
+  },
+};
+
+interface ManyInput {
+  dept: BoardDept;
+  lines: (Omit<LineInput, "dept"> & { qty?: number | null })[];
+}
+
+const ASSIGN_MANY_MAX = 80;
+const lineLabel = (l: { bom: string; mo: string; item: string; sheet?: string }) => `${lineName(l.bom, l.mo, l.item)}${l.sheet ? ` (${l.sheet})` : ""}`;
+
+/** Many lines onto the machines as ONE change: one card, one approval, one
+ *  undo. Approved one by one, a distribution of single assignments refreshed
+ *  the board after each and left it half done when one of them failed. */
+export const assignLinesTool: WriteTool<ManyInput> = {
+  kind: "write",
+  name: "assign_lines_to_machines",
+  title: "Put lines on machines",
+  description:
+    "Put several worklist lines on the machines in one change — one card, one approval, one undo. Each goes at the back of its machine's queue, in the order given (an idle machine starts on the first line it is given). With qty only those pieces go on that machine (split a line over machines with one entry per machine); without qty the machine takes the rest of the line. Use it for any distribution of more than one line; assign_line_to_machine is for a single line.",
+  area: "machines",
+  risk: (i) => (i.lines.length > 1 ? "high" : "low"),
+  schema: {
+    type: "object",
+    properties: {
+      dept: DEPT,
+      lines: {
+        type: "array",
+        minItems: 1,
+        maxItems: ASSIGN_MANY_MAX,
+        items: {
+          type: "object",
+          properties: {
+            bom: LINE_FIELDS.bom,
+            mo: LINE_FIELDS.mo,
+            item: LINE_FIELDS.item,
+            sheet: LINE_FIELDS.sheet,
+            machine: LINE_FIELDS.machine,
+            qty: { type: ["integer", "null"], minimum: 1, maximum: 100000, description: "Pieces for this machine; leave out for the rest of the line." },
+          },
+          required: ["bom", "mo", "item", "machine"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["dept", "lines"],
+    additionalProperties: false,
+  },
+  parse(r) {
+    const dept = r.dept as BoardDept;
+    const lines = (r.lines as Record<string, unknown>[]).map((x) => {
+      const l = parseLine({ ...x, dept });
+      return { bom: l.bom, mo: l.mo, item: l.item, sheet: l.sheet, machine: l.machine, qty: (x.qty as number | null | undefined) ?? null };
+    });
+    const places = new Set<string>();
+    const rests = new Map<string, string>();
+    for (const l of lines) {
+      const at = `${l.bom}|${l.mo}|${l.item}|${l.sheet}|${l.machine.toLowerCase()}`;
+      if (places.has(at)) return `${lineLabel(l)} is listed twice for ${l.machine} — give it once.`;
+      places.add(at);
+      if (l.qty === null) {
+        // a line's rest sits on one machine: a second would take it off the first
+        const share = `${l.bom}|${l.mo}|${l.item}|${l.sheet}`;
+        const other = rests.get(share);
+        if (other) return `The rest of ${lineLabel(l)} goes on one machine only — ${other} and ${l.machine} both take it. Give the other a qty.`;
+        rests.set(share, l.machine);
+      }
+    }
+    return { dept, lines };
+  },
+  async describe(i, ctx) {
+    if (!(await isMachinePlanningOn())) return { error: OFF };
+    const machines = new Map<string, Machine>();
+    for (const code of new Set(i.lines.map((l) => l.machine.toLowerCase()))) {
+      const m = await machineByCode(i.dept, code);
+      if (!m) return { error: `No machine ${code.toUpperCase()} in ${i.dept}.` };
+      if (!m.active) return { error: `${m.code} is retired — bring it back in Tools → Machines first.` };
+      machines.set(code, m);
+    }
+    const open = new Set((await getDeptBoardLines(i.dept, ctx.todayISO)).map((l) => lineKey(l.bom, l.mo, l.item)));
+    for (const l of i.lines) {
+      const key = machineLinePermKey(i.dept, l.item);
+      if (key === null) return { error: `${lineLabel(l)}: no panel goes on ${i.dept}'s machines.` };
+      if (!hasPerm(ctx.user, key)) return { error: `${lineLabel(l)}: ${NO_LINE_RIGHT}` };
+      if (l.bom !== "MANUAL" && l.bom !== "RUN" && !open.has(lineKey(l.bom, l.mo, l.item))) {
+        return { error: `${lineLabel(l)} is not an open line of ${i.dept} — read get_machine_board for the lines it owes.` };
+      }
+    }
+    const before = await readQueueSnapshot(i.dept);
+    const codeOf = await codes(i.dept);
+    const per = new Map<string, number>();
+    for (const l of i.lines) {
+      const code = machines.get(l.machine.toLowerCase())!.code;
+      per.set(code, (per.get(code) ?? 0) + 1);
+    }
+    return {
+      title: `${i.lines.length} line(s) → ${per.size} machine(s) of ${i.dept}`,
+      summary: `Put ${i.lines.length} line(s) on ${i.dept}'s machines — ${[...per].map(([code, n]) => `${code} ${n}`).join(", ")} — each at the back of its machine's queue, in this order. An idle machine starts on the first line it is given.`,
+      changes: i.lines.map((l) => {
+        const now = before.filter((r) => sameLine(r, l));
+        return {
+          label: lineLabel(l),
+          before: now.length ? queueOf(now, codeOf).join("; ") : "not on a machine",
+          after: `${machines.get(l.machine.toLowerCase())!.code}${l.qty ? ` ×${l.qty}` : " (the rest)"}`,
+        };
+      }),
+      snapshot: linesNow(before, i.lines),
+    };
+  },
+  async execute(i) {
+    const machines = new Map<string, Machine>();
+    for (const code of new Set(i.lines.map((l) => l.machine.toLowerCase()))) {
+      const m = await machineByCode(i.dept, code);
+      if (!m) return { ok: false, error: `No machine ${code.toUpperCase()} in ${i.dept}.` };
+      machines.set(code, m);
+    }
+    const before = await readQueueSnapshot(i.dept);
+    let placed = 0;
+    for (const l of i.lines) {
+      const m = machines.get(l.machine.toLowerCase())!;
+      const r = await assignLineMachine(formOf({ dept: i.dept, bom: l.bom, mo: l.mo, item: l.item, sheet: l.sheet ?? "", machineId: m.id, qty: l.qty ?? "" }));
+      if (!r.ok) {
+        const why = `${lineLabel(l)} → ${m.code}: ${r.error ?? "refused"}`;
+        // nothing done: nothing to undo; part done: the undo puts it all back
+        if (placed === 0) return { ok: false, error: why };
+        return { ok: true, message: `Put ${placed} of ${i.lines.length} line(s) on the machines — stopped at ${why}`, undo: restoreUndo(i.dept, before) };
+      }
+      placed += 1;
+    }
+    return { ok: true, message: `Put ${placed} line(s) on ${machines.size} machine(s) of ${i.dept}.`, undo: restoreUndo(i.dept, before) };
   },
 };
 
@@ -277,7 +427,7 @@ export const unassignLineTool: WriteTool<LineInput> = {
       title: `Take ${lineName(i.bom, i.mo, i.item)} off ${c.machine.code}`,
       summary: `Take ${lineName(i.bom, i.mo, i.item)}${row.qty ? ` (×${row.qty})` : ""} off ${c.machine.code}${row.running ? " — it is running there now" : ""}.`,
       changes: queueChanges([row], `${c.machine.code} #${row.rank}`, "off the machine"),
-      snapshot: before,
+      snapshot: linesNow(before, [i]),
     };
   },
   async execute(i) {
@@ -317,7 +467,7 @@ export const moveLineTool: WriteTool<MoveInput> = {
       title: `${lineName(i.bom, i.mo, i.item)} ${i.dir === "top" ? "to the top" : i.dir} on ${c.machine.code}`,
       summary: `Move ${lineName(i.bom, i.mo, i.item)} ${i.dir === "top" ? "to the top of" : `${i.dir} one place in`} ${c.machine.code}'s queue.`,
       changes: [{ label: `${c.machine.code} ${lineName(i.bom, i.mo, i.item)}`, before: `#${row.rank}`, after: i.dir === "top" ? "next" : i.dir === "up" ? `#${Math.max(1, row.rank - 1)}` : `#${row.rank + 1}` }],
-      snapshot: before,
+      snapshot: machineQueue(before, c.machine.id),
     };
   },
   async execute(i) {
@@ -358,7 +508,7 @@ export const setLineRunningTool: WriteTool<RunningInput> = {
       title: `${i.running ? "Start" : "Pause"} ${lineName(i.bom, i.mo, i.item)} on ${c.machine.code}`,
       summary: `${i.running ? "Mark" : "Put"} ${lineName(i.bom, i.mo, i.item)} ${i.running ? "as running now on" : "back to waiting on"} ${c.machine.code}.`,
       changes: [{ label: `${c.machine.code} ${lineName(i.bom, i.mo, i.item)}`, before: row.running ? "running" : "waiting", after: i.running ? "running" : "waiting" }],
-      snapshot: before,
+      snapshot: linesNow(before, [i]),
     };
   },
   async execute(i) {
@@ -639,6 +789,7 @@ export const setMachineRuleActiveTool: WriteTool<{ id: number; active: boolean }
 export const MACHINE_TOOLS = [
   getMachineBoardTool,
   previewMachinePlanTool,
+  assignLinesTool,
   assignLineTool,
   unassignLineTool,
   moveLineTool,
