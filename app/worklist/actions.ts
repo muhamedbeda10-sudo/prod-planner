@@ -795,7 +795,9 @@ export async function deleteQueueNote(formData: FormData): Promise<RecordResult>
       if (p.startsWith("http")) {
         await del(p); // Vercel Blob photo
       } else {
-        await rm(path.join(process.cwd(), p)); // legacy local-disk photo
+        // legacy local-disk photo; the hint keeps the bundler from tracing the
+        // whole project into every function that imports these actions
+        await rm(path.join(/*turbopackIgnore: true*/ process.cwd(), p));
       }
     } catch {
       /* photo file already gone — fine */

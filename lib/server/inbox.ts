@@ -24,12 +24,15 @@ export interface InboxDelivery {
 const TITLE_MAX = 200;
 const BODY_MAX = 60_000;
 
+/** People pushed to at once — a slow push service holds up only its own. */
+const PUSH_AT_ONCE = 5;
+
 /** Deliver each item, then push them; the ids of the rows made. Only active
- *  accounts receive anything. */
+ *  accounts receive anything. Every row is in before the first push goes. */
 export async function deliverToInbox(items: readonly InboxDelivery[]): Promise<number[]> {
   if (items.length === 0) return [];
   const active = new Set((await prisma.user.findMany({ where: { id: { in: [...new Set(items.map((i) => i.userId))] }, active: true }, select: { id: true } })).map((u) => u.id));
-  const ids: number[] = [];
+  const made: { id: number; item: InboxDelivery }[] = [];
   for (const i of items) {
     if (!active.has(i.userId)) continue;
     const row = await prisma.aiInboxItem.create({
@@ -39,11 +42,17 @@ export async function deliverToInbox(items: readonly InboxDelivery[]): Promise<n
       },
       select: { id: true },
     });
-    ids.push(row.id);
-    const pushed = await pushTo(i.userId, { title: i.title, body: inboxPreview(i.body), url: `/inbox?item=${row.id}`, tag: `inbox-${row.id}` });
-    if (pushed.sent > 0) await prisma.aiInboxItem.update({ where: { id: row.id }, data: { pushedAt: new Date() } });
+    made.push({ id: row.id, item: i });
   }
-  return ids;
+  for (let k = 0; k < made.length; k += PUSH_AT_ONCE) {
+    await Promise.all(
+      made.slice(k, k + PUSH_AT_ONCE).map(async ({ id, item }) => {
+        const pushed = await pushTo(item.userId, { title: item.title, body: inboxPreview(item.body), url: `/inbox?item=${id}`, tag: `inbox-${id}` });
+        if (pushed.sent > 0) await prisma.aiInboxItem.update({ where: { id }, data: { pushedAt: new Date() } });
+      }),
+    );
+  }
+  return made.map((m) => m.id);
 }
 
 /** How many unread items a person has. */

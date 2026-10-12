@@ -90,6 +90,8 @@ export async function removeInboxDevice(endpoint: string): Promise<InboxActionRe
 const MESSAGE_TO = 20;
 const MESSAGE_TITLE = 120;
 const MESSAGE_BODY = 4000;
+/** Messages one person may send in an hour — each one reaches phones. */
+const MESSAGES_AN_HOUR = 60;
 
 /** A message to colleagues' inboxes (and their devices) — what the assistant
  *  sends for a person who asked it to. The same key as automations: telling
@@ -105,6 +107,8 @@ export async function sendInboxMessage(fd: FormData): Promise<InboxActionResult 
   if (!body || body.length > MESSAGE_BODY) return { ok: false, error: `Write the message (at most ${MESSAGE_BODY} characters).` };
   const people = await prisma.user.findMany({ where: { id: { in: to }, active: true }, select: { id: true } });
   if (people.length !== new Set(to).size) return { ok: false, error: "One of them is not an active user." };
+  const lastHour = await prisma.aiInboxItem.count({ where: { fromUserId: guard.user!.id, createdAt: { gte: new Date(Date.now() - 3_600_000) } } });
+  if (lastHour + people.length > MESSAGES_AN_HOUR) return { ok: false, error: `That is more than ${MESSAGES_AN_HOUR} messages in an hour — wait a while.` };
   const ids = await deliverToInbox(people.map((p) => ({ userId: p.id, kind: "message" as const, title, body, fromName: guard.user!.name, fromUserId: guard.user!.id })));
   return { ok: true, ids };
 }
