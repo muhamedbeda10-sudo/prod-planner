@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Download, Share, X } from "lucide-react";
+import { MENU_ROW } from "@/components/ui";
 
 // "Install app" — puts the ERP on the home screen of a phone or tablet (or
 // the desktop) as its own app. Android / Chrome / Edge offer the install
@@ -28,7 +29,7 @@ const standalone = () =>
   window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
-export function InstallApp({ wide = false }: { wide?: boolean }) {
+export function InstallApp({ wide = false, row = false }: { wide?: boolean; row?: boolean }) {
   const [prompt, setPrompt] = useState<InstallPrompt | null>(null);
   const [ios, setIos] = useState(false);
   const [hint, setHint] = useState(false);
@@ -59,19 +60,20 @@ export function InstallApp({ wide = false }: { wide?: boolean }) {
   }
 
   return (
-    <span className={`relative ${wide ? "block" : "inline-flex"}`}>
+    <span className={`relative ${wide || row ? "block" : "inline-flex"}`}>
       <button
         type="button"
         onClick={install}
         title="Install the app on this device"
         aria-label="Install app"
-        className={wide ? "btn btn-secondary w-full" : "shrink-0 inline-flex items-center gap-1.5 rounded-md p-2 hover:bg-white/15 transition-colors text-sm font-semibold"}
+        role={row ? "menuitem" : undefined}
+        className={row ? MENU_ROW : wide ? "btn btn-secondary w-full" : "shrink-0 inline-flex items-center gap-1.5 rounded-md p-2 hover:bg-white/15 transition-colors text-sm font-semibold"}
       >
-        <Download size={16} aria-hidden />
-        <span className={wide ? "" : "hidden lg:inline"}>Install app</span>
+        <Download size={row ? 17 : 16} className={row ? "shrink-0 text-muted" : undefined} aria-hidden />
+        <span className={wide || row ? "" : "hidden lg:inline"}>Install app</span>
       </button>
       {hint && (
-        <span className={`absolute z-50 ${wide ? "bottom-full mb-2 inset-x-0" : "top-full mt-2 end-0 w-64"} rounded-[10px] border bg-surface text-foreground shadow-xl p-3 text-sm`} role="dialog" aria-label="How to install">
+        <span className={`absolute z-50 ${wide ? "bottom-full mb-2 inset-x-0" : row ? "top-full mt-1 inset-x-0" : "top-full mt-2 end-0 w-64"} rounded-[10px] border bg-surface text-foreground shadow-xl p-3 text-sm`} role="dialog" aria-label="How to install">
           <button type="button" onClick={() => setHint(false)} className="absolute top-1.5 end-1.5 p-1 text-muted hover:text-foreground" aria-label="Close"><X size={14} /></button>
           <b className="block mb-1">Install on iPhone / iPad</b>
           <span className="block text-muted">
