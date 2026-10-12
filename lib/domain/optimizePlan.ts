@@ -73,6 +73,24 @@ export interface OptPin {
   hours: number;
 }
 
+/** The work a plan is built around, read off the board as it stands: every
+ *  line running now — and, when the planner may plan only some lines (one
+ *  line's keys on the shared floor), the waiting lines he may not. Each keeps
+ *  its machine and its place; the plan queues behind it. */
+export function boardPins(
+  cards: readonly { machine: { id: number }; queue: readonly { key: string; item: string; step: string; remaining: number; hours: number | null; running: boolean }[] }[],
+  mayPlan: (item: string) => boolean = () => true
+): OptPin[] {
+  const pins: OptPin[] = [];
+  for (const c of cards) {
+    for (const q of c.queue) {
+      if (!q.running && mayPlan(q.item)) continue;
+      pins.push({ key: q.key, center: q.step, machineId: c.machine.id, pieces: q.remaining, hours: q.hours ?? 0 });
+    }
+  }
+  return pins;
+}
+
 export interface OptPlacement {
   key: string;
   /** The centre this batch is worked at — the machine's own. */

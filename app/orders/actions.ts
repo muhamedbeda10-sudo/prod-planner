@@ -14,17 +14,20 @@ import { fullyDeliveredOpenOrders } from "@/lib/server/deliveredOrders";
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
 export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  const mo = String(formData.get("mo") ?? "").trim();
+  // one MO, or the `mos` of a merged BOM row — its head closes / reopens them all
+  const mos = String(formData.get("mos") ?? formData.get("mo") ?? "").split(",").map((m) => m.trim()).filter(Boolean);
   const status = String(formData.get("status") ?? "");
-  if (!mo) return { ok: false, error: "Missing MO." };
+  if (mos.length === 0) return { ok: false, error: "Missing MO." };
   if (status !== "open" && status !== "closed") return { ok: false, error: "Invalid status." };
-  const order = await prisma.masterOrder.findUnique({ where: { mo } });
-  if (!order) return { ok: false, error: `MO ${mo} not found.` };
+  const orders = await prisma.masterOrder.findMany({ where: { mo: { in: mos } }, select: { mo: true, line: true } });
+  if (orders.length === 0) return { ok: false, error: `MO ${mos[0]} not found.` };
   // a panel order closes behind the LV key, a transformer's behind the tracker's
-  const guard = await requirePerm(linePermKey(order.line, "status"));
-  if (guard.error) return { ok: false, error: guard.error };
-  await prisma.masterOrder.update({
-    where: { mo },
+  for (const line of new Set(orders.map((o) => o.line))) {
+    const guard = await requirePerm(linePermKey(line, "status"));
+    if (guard.error) return { ok: false, error: guard.error };
+  }
+  await prisma.masterOrder.updateMany({
+    where: { mo: { in: orders.map((o) => o.mo) } },
     data: { status, closedAt: status === "closed" ? new Date() : null },
   });
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/report", "/trace"]) revalidatePath(p);
@@ -208,12 +211,12 @@ export async function setGroupOrderSpec(formData: FormData): Promise<{ ok: boole
 export async function setOrderPriority(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const guard = await requirePerm("tracker.priority");
   if (guard.error) return { ok: false, error: guard.error };
-  const mo = String(formData.get("mo") ?? "").trim();
+  // one MO, or the `mos` of a merged BOM row
+  const mos = String(formData.get("mos") ?? formData.get("mo") ?? "").split(",").map((m) => m.trim()).filter(Boolean);
   const priority = String(formData.get("priority") ?? "") === "true";
-  if (!mo) return { ok: false, error: "Missing MO." };
-  const order = await prisma.masterOrder.findUnique({ where: { mo } });
-  if (!order) return { ok: false, error: `MO ${mo} not found.` };
-  await prisma.masterOrder.update({ where: { mo }, data: { priority } });
+  if (mos.length === 0) return { ok: false, error: "Missing MO." };
+  const res = await prisma.masterOrder.updateMany({ where: { mo: { in: mos } }, data: { priority } });
+  if (res.count === 0) return { ok: false, error: `MO ${mos[0]} not found.` };
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
   return { ok: true };
 }

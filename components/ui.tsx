@@ -155,3 +155,6 @@ export function soiOf(
   if (b && lookup.byBom[b]) return lookup.byBom[b];
   return null;
 }
+
+/** One row of a dropdown menu — the account menu's. */
+export const MENU_ROW = "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold text-start transition-colors hover:bg-surface-2 disabled:opacity-50";

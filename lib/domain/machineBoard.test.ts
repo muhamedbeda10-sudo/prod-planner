@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMachineBoard, clearWords, lineKey, loadTone, urgencyOrder, type BoardLine, type BoardMachine } from "./machineBoard";
+import { buildMachineBoard, clearWords, lineKey, loadTone, unassignedKey, urgencyOrder, type BoardLine, type BoardMachine } from "./machineBoard";
 
 const m = (id: number, over: Partial<BoardMachine> = {}): BoardMachine => ({ id, code: `B4-${id}`, name: `Laser ${id}`, center: "Cutting", hoursPerDay: 9, active: true, ...over });
 const l = (bom: string, item: string, remaining: number, hours: number | null, deliveryISO: string | null = "2026-09-12", mo = "MO-1"): BoardLine => ({
@@ -242,6 +242,13 @@ describe("buildMachineBoard — one item on several machines, by sheet", () => {
     const b = buildMachineBoard([M(1)], [line], [{ key: line.key, machineId: 1, rank: 1 }]);
     expect(b.cards[0].queue[0]).toMatchObject({ remaining: 10, sheet: "", split: false });
     expect(b.unassigned).toEqual([]);
+  });
+
+  it("keys each waiting sheet of the item apart — same line, same centre", () => {
+    const b = buildMachineBoard([M(1), M(2)], [line], [{ key: line.key, machineId: 1, rank: 1, sheet: "3|Steel|1220*2440", qty: 6 }]);
+    expect(b.unassigned.map((u) => [u.center, u.sheet, u.remaining])).toEqual([["Cutting", "3|Steel|1220*2440", 4], ["Cutting", "5|Steel|1500*3000", 10]]);
+    const keys = b.unassigned.map(unassignedKey);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
 

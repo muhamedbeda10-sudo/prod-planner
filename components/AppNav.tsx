@@ -18,7 +18,7 @@ import { ChatDock } from "@/components/ChatDock";
 import { InboxBell } from "@/components/InboxBell";
 import { useOdooAlerts } from "@/components/OdooAlerts";
 import { LineTabs } from "@/components/LineTabs";
-import { WhatsNew } from "@/components/WhatsNew";
+import { Avatar, UserMenu } from "@/components/UserMenu";
 import type { ProductLine } from "@/lib/domain/lines";
 import { logoutAction } from "@/app/login/actions";
 
@@ -115,6 +115,8 @@ export interface NavUser {
   /** The app's owner — the only one who sees Users & Permissions. */
   isOwner?: boolean;
   perms: string[];
+  /** Their own photo for the round button; none shows their initials. */
+  avatarUrl?: string | null;
 }
 
 // What only exists while machine planning is on — the worklists ride on it
@@ -408,8 +410,6 @@ export function AppNav({
             )}
             {/* what the assistant and the automations sent this person */}
             {(ai || inbox.any) && <InboxBell initial={inbox.unread} active={isActive("/inbox")} />}
-            {/* what changed in the app — counted until opened */}
-            <WhatsNew seen={whatsNewSeen} />
             {/* chat is a glance, not a destination — an icon here with its
                 unread badge, opening a panel over whatever page you are on */}
             <div className={canSee("/chat") ? "hidden md:block" : "hidden"}>
@@ -455,23 +455,10 @@ export function AppNav({
 
             )}
 
-            {/* user + logout (desktop shows the name; mobile keeps it in the drawer) */}
-            <div className="shrink-0 flex items-center gap-1 md:gap-2 md:border-l md:border-white/15 md:pl-3">
-              <span className="hidden 2xl:block text-sm font-semibold max-w-[140px] truncate" title={user.name}>
-                {user.name}
-              </span>
-              <form action={logoutAction} className="hidden md:block">
-                <button
-                  type="submit"
-                  title="Sign out"
-                  aria-label="Sign out"
-                  className="rounded-md p-2 hover:bg-white/15 transition-colors"
-                >
-                  <LogOut size={16} />
-                </button>
-              </form>
-              <span className="hidden md:inline-flex"><InstallApp /></span>
-              <span className="hidden sm:inline-flex"><ThemeToggle /></span>
+            {/* the account: one round button — the person's photo — opening
+                their name, photo, what's new, dark mode, install and sign out */}
+            <div className="shrink-0 flex items-center md:border-l md:border-white/15 md:pl-3">
+              <UserMenu user={user} whatsNewSeen={whatsNewSeen} />
             </div>
           </div>
         </div>
@@ -508,9 +495,7 @@ export function AppNav({
 
             {/* signed-in user */}
             <div className="px-4 py-3 border-b flex items-center gap-3">
-              <span className="w-9 h-9 rounded-full bg-brand-light text-brand font-extrabold grid place-items-center text-sm">
-                {user.name.trim().charAt(0).toUpperCase()}
-              </span>
+              <Avatar id={user.id} name={user.name} url={user.avatarUrl} size={36} />
               <div className="min-w-0">
                 <div className="text-sm font-bold truncate">{user.name}</div>
                 <div className="text-xs text-muted">{user.isOwner ? "Owner" : user.isAdmin ? "Administrator" : "Signed in"}</div>

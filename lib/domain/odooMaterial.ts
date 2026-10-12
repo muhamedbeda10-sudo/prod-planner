@@ -351,9 +351,42 @@ export function moMaterialState(lookup: NestingLookup, odooMo: string | null | u
   return lines.every(nested) ? "ok" : "partial";
 }
 
+/** The colour of one logged row: the lines filed under its MO (or the MO it
+ *  is a backorder of); when there are none, the material its ORDER carries
+ *  for the same part — Odoo often closes a job under another MO of the order
+ *  than the one the material sheet names (the sheet's Top Cover of S01328-35
+ *  under SF01/MO/20227, the closing under SF01/MO/20218), and the 🧱 popup
+ *  already reads those lines. A panel tries its order's other MOs. Only the
+ *  row's own order counts — another order of the same BOM never colours it. */
+export function rowMaterialState(
+  lookup: NestingLookup,
+  e: { odooMo: string; fgCode: string; soi: string | null; mo?: string | null; bom?: { boms: readonly string[] } },
+  ctx: NeedContext,
+): MoMaterialState {
+  const mo = (e.odooMo ?? "").trim();
+  if (!mo) return "none";
+  let lines = linesOfMo(lookup, mo);
+  const soi = soiOf(e.soi);
+  if (lines.length === 0 && ctx.lv) {
+    for (const c of candidateMos(e, ctx.soiMos[soi] ?? [])) {
+      lines = linesOfMo(lookup, c.mo);
+      if (lines.length > 0) break;
+    }
+  } else if (lines.length === 0 && soi) {
+    const cand = candidateBoms(e.fgCode, ctx.soiBoms[soi] ?? [], e.bom?.boms ?? []);
+    for (const c of cand?.boms ?? []) {
+      lines = (lookup[nestingKey(cand!.partCode, c.bom)] ?? []).filter((l) => soiOf(l.soi ?? null) === soi);
+      if (lines.length > 0) break;
+    }
+  }
+  if (lines.length === 0) return "missing";
+  const nested = (l: NestingLine) => l.sheetsUsed !== null || (l.actualPerUnit !== null && l.actualPerUnit >= 0);
+  return lines.every(nested) ? "ok" : "partial";
+}
+
 /** The row's tint and the words behind it — red, yellow, or green when all is nested. */
 export const MO_MATERIAL_FLAG: Record<"missing" | "partial" | "ok", { cls: string; edge: string; text: string }> = {
   ok: { cls: "bg-ok-bg/70", edge: "inset 4px 0 0 var(--ok-fg)", text: "This MO is on the Material tab and every line of it is nested" },
-  missing: { cls: "bg-bad-bg/70", edge: "inset 4px 0 0 var(--bad-fg)", text: "This MO is not on the Material tab — no nesting is filed under it (nor under the MO it is a backorder of)" },
+  missing: { cls: "bg-bad-bg/70", edge: "inset 4px 0 0 var(--bad-fg)", text: "Nothing on the Material tab for this MO or for this part of its order (SOI)" },
   partial: { cls: "bg-warn-bg/70", edge: "inset 4px 0 0 var(--warn-fg)", text: "This MO is on the Material tab, but some of its lines have no actual nested sheets yet" },
 };

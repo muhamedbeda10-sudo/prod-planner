@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { getCurrentUser, requireDeptEdit } from "@/lib/server/auth";
+import { bayAccess, getCurrentUser, requireBayAccess, requireMachineLineEdit } from "@/lib/server/auth";
+import { mayScheduleLine, type BayAccess } from "@/lib/domain/permissions";
+import { ledgerItemWhere } from "@/lib/server/line";
 import { getLinesMaterial, type OrderRef } from "@/lib/server/machineMaterial";
 import type { LineMaterial } from "@/lib/domain/machineMaterial";
 import { getOptimizerInputs } from "@/lib/server/machineBoard";
@@ -14,9 +16,12 @@ import { RUN_BOM, RUN_ITEM } from "@/lib/domain/nestRun";
 import type { QueueRowSnapshot } from "@/lib/server/machineQueues";
 
 // The machine board's writes: put a worklist line on a machine (or take it
-// off), move it up or down that machine's queue, empty a machine. The
-// dept's worklist permission covers them — deciding what runs where is the
-// same job as recording what ran.
+// off), move it up or down that machine's queue, empty a machine. Deciding
+// what runs where is the same job as recording what ran, so the LINE's key
+// covers them: the machines are shared, and a panel on a punch is the panel
+// clerk's (the LV stage's key), a transformer part the bay's. A write over a
+// whole machine or bay acts on the lines the account's keys cover and leaves
+// the other line's work where it is.
 
 export interface MachineActionResult {
   ok: boolean;
@@ -33,6 +38,20 @@ type BoardDept = (typeof BOARD_DEPTS)[number];
 function revalidate() {
   for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
 }
+
+/** A bay's machine rows the account may plan, and the other line's it may
+ *  not, as `where` fragments — a row's line is its item, as in the ledger —
+ *  with the words the summaries name them by. Holding both lines' keys,
+ *  every row is its own and the summaries read as they always did. */
+function rowsOf(access: BayAccess) {
+  if (access.tr && access.lv) return { mine: {}, theirs: null, kind: "", other: "" };
+  return access.lv
+    ? { mine: ledgerItemWhere("LV"), theirs: ledgerItemWhere("TR"), kind: "panel", other: "transformer" }
+    : { mine: ledgerItemWhere("TR"), theirs: ledgerItemWhere("LV"), kind: "transformer", other: "panel" };
+}
+
+/** "line", or "panel line" / "transformer line" when only one line is planned. */
+const lineWord = (kind: string) => (kind ? `${kind} line` : "line");
 
 function readLine(fd: FormData): { dept: BoardDept; bom: string; mo: string; item: string; sheet: string } | { error: string } {
   const dept = String(fd.get("dept") ?? "");
@@ -76,7 +95,7 @@ function readQty(fd: FormData): number | null | { error: string } {
 export async function assignLineMachine(fd: FormData): Promise<MachineActionResult> {
   const line = readLine(fd);
   if ("error" in line) return { ok: false, error: line.error };
-  const guard = await requireDeptEdit(line.dept);
+  const guard = await requireMachineLineEdit(line.dept, line.item);
   if (guard.error) return { ok: false, error: guard.error };
   const raw = String(fd.get("machineId") ?? "").trim();
   const qty = readQty(fd);
@@ -139,7 +158,7 @@ export async function assignLineMachine(fd: FormData): Promise<MachineActionResu
 export async function setLineQty(fd: FormData): Promise<MachineActionResult> {
   const line = readLine(fd);
   if ("error" in line) return { ok: false, error: line.error };
-  const guard = await requireDeptEdit(line.dept);
+  const guard = await requireMachineLineEdit(line.dept, line.item);
   if (guard.error) return { ok: false, error: guard.error };
   const machineId = Number(fd.get("machineId"));
   if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
@@ -174,7 +193,7 @@ export async function recordSheetDone(fd: FormData): Promise<MachineActionResult
   const line = readLine(fd);
   if ("error" in line) return { ok: false, error: line.error };
   if (!line.sheet) return { ok: false, error: "Not a sheet's line — reload the page." };
-  const guard = await requireDeptEdit(line.dept);
+  const guard = await requireMachineLineEdit(line.dept, line.item);
   if (guard.error) return { ok: false, error: guard.error };
   const machineId = Number(fd.get("machineId"));
   if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
@@ -200,7 +219,7 @@ export async function recordSheetDone(fd: FormData): Promise<MachineActionResult
 export async function unassignLineMachine(fd: FormData): Promise<MachineActionResult> {
   const line = readLine(fd);
   if ("error" in line) return { ok: false, error: line.error };
-  const guard = await requireDeptEdit(line.dept);
+  const guard = await requireMachineLineEdit(line.dept, line.item);
   if (guard.error) return { ok: false, error: guard.error };
   const machineId = Number(fd.get("machineId"));
   if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
@@ -218,7 +237,7 @@ export async function unassignLineMachine(fd: FormData): Promise<MachineActionRe
 export async function moveLineRank(fd: FormData): Promise<MachineActionResult> {
   const line = readLine(fd);
   if ("error" in line) return { ok: false, error: line.error };
-  const guard = await requireDeptEdit(line.dept);
+  const guard = await requireMachineLineEdit(line.dept, line.item);
   if (guard.error) return { ok: false, error: guard.error };
   const dir = String(fd.get("dir") ?? "");
   if (!["up", "down", "top"].includes(dir)) return { ok: false, error: "Invalid move." };
@@ -228,18 +247,24 @@ export async function moveLineRank(fd: FormData): Promise<MachineActionResult> {
   const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
   if (!row) return { ok: false, error: "That line is not on this machine any more — reload the page." };
   // moves happen within the line's own group: the running lines keep the
-  // front, the waiting ones are reordered among themselves
+  // front, the waiting ones are reordered among themselves — on a shared
+  // machine, among the rows this account may schedule: the other line's rows
+  // keep their places, and the line moves through the slots that are its own
   const queue = await prisma.worklistMachine.findMany({ where: { dept: line.dept, machineId: row.machineId, running: row.running }, orderBy: [{ rank: "asc" }, { updatedAt: "asc" }] });
-  const i = queue.findIndex((q) => q.id === row.id);
-  const order = queue.map((q) => q.id);
+  const access = bayAccess(guard.user ?? null, line.dept);
+  const slots = queue.flatMap((q, n) => (mayScheduleLine(access, q.item) ? [n] : []));
+  const own = slots.map((n) => queue[n].id);
+  const i = own.indexOf(row.id);
   if (dir === "top") {
-    order.splice(i, 1);
-    order.unshift(row.id);
+    own.splice(i, 1);
+    own.unshift(row.id);
   } else {
     const j = dir === "up" ? i - 1 : i + 1;
-    if (j < 0 || j >= order.length) return { ok: true };
-    [order[i], order[j]] = [order[j], order[i]];
+    if (j < 0 || j >= own.length) return { ok: true };
+    [own[i], own[j]] = [own[j], own[i]];
   }
+  const order = queue.map((q) => q.id);
+  slots.forEach((n, k) => { order[n] = own[k]; });
   const base = row.running ? 0 : await prisma.worklistMachine.count({ where: { dept: line.dept, machineId: row.machineId, running: true } });
   await prisma.$transaction(order.map((id, n) => prisma.worklistMachine.update({ where: { id }, data: { rank: base + n + 1 } })));
   revalidate();
@@ -251,7 +276,7 @@ export async function moveLineRank(fd: FormData): Promise<MachineActionResult> {
 export async function setLineRunning(fd: FormData): Promise<MachineActionResult> {
   const line = readLine(fd);
   if ("error" in line) return { ok: false, error: line.error };
-  const guard = await requireDeptEdit(line.dept);
+  const guard = await requireMachineLineEdit(line.dept, line.item);
   if (guard.error) return { ok: false, error: guard.error };
   const running = String(fd.get("running") ?? "") === "true";
   const machineId = Number(fd.get("machineId"));
@@ -267,15 +292,16 @@ export async function setLineRunning(fd: FormData): Promise<MachineActionResult>
   return { ok: true };
 }
 
-/** Take every line off one machine. */
+/** Take every line off one machine — every line the account's keys cover:
+ *  the other line's work on a shared machine stays. */
 export async function clearMachineQueue(fd: FormData): Promise<MachineActionResult> {
   const dept = String(fd.get("dept") ?? "");
   if (!(BOARD_DEPTS as readonly string[]).includes(dept)) return { ok: false, error: "This worklist has no machines." };
-  const guard = await requireDeptEdit(dept);
-  if (guard.error) return { ok: false, error: guard.error };
+  const guard = await requireBayAccess(dept);
+  if (!guard.access) return { ok: false, error: guard.error };
   const machineId = Number(fd.get("machineId"));
   if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
-  await prisma.worklistMachine.deleteMany({ where: { dept, machineId } });
+  await prisma.worklistMachine.deleteMany({ where: { dept, machineId, ...rowsOf(guard.access).mine } });
   revalidate();
   return { ok: true };
 }
@@ -289,17 +315,19 @@ export async function clearMachineQueue(fd: FormData): Promise<MachineActionResu
 export async function optimizeMachines(fd: FormData): Promise<MachineActionResult> {
   const dept = String(fd.get("dept") ?? "");
   if (!(BOARD_DEPTS as readonly string[]).includes(dept)) return { ok: false, error: "This worklist has no machines." };
-  const guard = await requireDeptEdit(dept);
-  if (guard.error) return { ok: false, error: guard.error };
+  const guard = await requireBayAccess(dept);
+  if (!guard.access) return { ok: false, error: guard.error };
+  const access = guard.access;
+  const rows = rowsOf(access);
   const word = machineWord(dept);
   const dayISO = factoryDayISO(new Date());
-  const { machines, lines, pins } = await getOptimizerInputs(dept as BoardDept, dayISO);
+  const { machines, lines, pins } = await getOptimizerInputs(dept as BoardDept, dayISO, (item) => mayScheduleLine(access, item));
   if (machines.every((m) => m.availableH <= 0)) {
     return { ok: false, error: `No ${word} has its hours a day set — put them in Tools → Machines first, then plan.` };
   }
   const plan = optimizePlan(machines, lines, pins);
   if (plan.placements.length === 0) {
-    return { ok: true, summary: `Nothing to plan — every open line is already running on a ${word}.` };
+    return { ok: true, summary: `Nothing to plan — every open ${lineWord(rows.kind)} is already running on a ${word}.` };
   }
 
   // how many pieces of a step the plan gives out, so a share that covers the
@@ -311,16 +339,20 @@ export async function optimizeMachines(fd: FormData): Promise<MachineActionResul
   const pinnedStep = new Set(pins.map((p) => `${p.key}#${p.center}`));
   const by = guard.user?.name ?? null;
 
-  await prisma.$transaction(async (tx) => {
+  const keptTheirs = await prisma.$transaction(async (tx) => {
     // the running work stays exactly where it is; everything else is re-planned
     // a job typed in from outside the plan stays on the machine it was put on
-    // and so does a sheet of an item the planner put on a machine by hand
-    await tx.worklistMachine.deleteMany({ where: { dept, running: false, sheet: "", NOT: [{ bom: MANUAL_BOM, item: MANUAL_ITEM }, { bom: RUN_BOM, item: RUN_ITEM }] } });
+    // and so does a sheet of an item the planner put on a machine by hand —
+    // and so does the other line's waiting work, which only its own keys plan
+    await tx.worklistMachine.deleteMany({ where: { dept, running: false, sheet: "", NOT: [{ bom: MANUAL_BOM, item: MANUAL_ITEM }, { bom: RUN_BOM, item: RUN_ITEM }], ...rows.mine } });
     const running = await tx.worklistMachine.findMany({ where: { dept, running: true } });
     // only a whole-item row takes extra pieces — a sheet's row is that sheet alone
     const held = new Map(running.filter((r) => r.sheet === "").map((r) => [`${r.bom}|${r.mo}|${r.item}#${r.machineId}`, r]));
     const base = new Map<number, number>();
     for (const r of running) base.set(r.machineId, (base.get(r.machineId) ?? 0) + 1);
+    // the plan queues behind the other line's waiting work, as behind what runs
+    const theirs = rows.theirs ? await tx.worklistMachine.findMany({ where: { dept, running: false, ...rows.theirs }, select: { machineId: true, rank: true } }) : [];
+    for (const r of theirs) base.set(r.machineId, Math.max(base.get(r.machineId) ?? 0, r.rank));
 
     for (const p of plan.placements) {
       const [bom, mo, item] = p.key.split("|");
@@ -337,10 +369,11 @@ export async function optimizeMachines(fd: FormData): Promise<MachineActionResul
         data: { dept, bom, mo, item, machineId: p.machineId, rank: (base.get(p.machineId) ?? 0) + p.rank, running: false, qty: whole ? null : p.pieces, setBy: by },
       });
     }
+    return theirs.length > 0;
   });
   revalidate();
 
-  const bits = [`${plan.linesPlaced} line(s) over ${plan.machinesUsed} ${machineWord(dept, plan.machinesUsed !== 1)}`];
+  const bits = [`${plan.linesPlaced} ${lineWord(rows.kind)}(s) over ${plan.machinesUsed} ${machineWord(dept, plan.machinesUsed !== 1)}`];
   if (plan.spanDays > 0) bits.push(`clears in ${plan.spanDays} day(s)`);
   if (plan.unpriced > 0) bits.push(`${plan.unpriced} with no standard time, queued last`);
   const centresShort = [...new Set(plan.skipped.filter((x) => x.reason === "no machine").map((x) => x.center))];
@@ -350,20 +383,27 @@ export async function optimizeMachines(fd: FormData): Promise<MachineActionResul
   const late = plan.late.length > 0
     ? `${plan.late.length} line(s) cannot make their date — worst by ${plan.late[0].byDays} day(s). Add hours, or move the date.`
     : undefined;
-  return { ok: true, summary: `Planned: ${bits.join(" · ")}.`, lateNote: late };
+  const kept = keptTheirs ? ` The ${rows.other} lines kept their places — these queue behind them.` : "";
+  return { ok: true, summary: `Planned: ${bits.join(" · ")}.${kept}`, lateNote: late };
 }
 
 /** ⟲ Reset: take every line off every machine of the department — the board
  *  goes back to empty and nothing is running. The work itself is untouched;
- *  only the plan of what runs where is cleared, ready to be planned again. */
+ *  only the plan of what runs where is cleared, ready to be planned again.
+ *  Every line the account's keys cover, that is: the other line's stay. */
 export async function resetMachinePlan(fd: FormData): Promise<MachineActionResult> {
   const dept = String(fd.get("dept") ?? "");
   if (!(BOARD_DEPTS as readonly string[]).includes(dept)) return { ok: false, error: "This worklist has no machines." };
-  const guard = await requireDeptEdit(dept);
-  if (guard.error) return { ok: false, error: guard.error };
-  const { count } = await prisma.worklistMachine.deleteMany({ where: { dept } });
+  const guard = await requireBayAccess(dept);
+  if (!guard.access) return { ok: false, error: guard.error };
+  const rows = rowsOf(guard.access);
+  const { count } = await prisma.worklistMachine.deleteMany({ where: { dept, ...rows.mine } });
+  const kept = rows.theirs ? await prisma.worklistMachine.count({ where: { dept, ...rows.theirs } }) : 0;
   revalidate();
-  return { ok: true, summary: count === 0 ? `Nothing was on a ${machineWord(dept)}.` : `Cleared — ${count} line(s) taken off the ${machineWord(dept, true)}.` };
+  const cleared = count > 0
+    ? `Cleared — ${count} ${lineWord(rows.kind)}(s) taken off the ${machineWord(dept, true)}.`
+    : rows.kind ? `No ${rows.kind} line was on a ${machineWord(dept)}.` : `Nothing was on a ${machineWord(dept)}.`;
+  return { ok: true, summary: kept > 0 ? `${cleared} The ${rows.other} lines stay where they are.` : cleared };
 }
 
 const MAX_RESTORE_ROWS = 3000;
@@ -399,13 +439,15 @@ function readSnapshotRows(raw: unknown, machineIds: ReadonlySet<number>): QueueR
 
 /** Put a department's machine queues back exactly as a snapshot of them —
  *  how a board-wide change made through the assistant (⚡ Plan, ⟲ Reset,
- *  Empty, a move) is undone. The dept's worklist permission, like every
- *  other write on the board. */
+ *  Empty, a move) is undone. Like every write over the bay, it acts on the
+ *  lines the account may schedule there and leaves the other line's work
+ *  where it is. */
 export async function restoreMachineQueues(fd: FormData): Promise<MachineActionResult> {
   const dept = String(fd.get("dept") ?? "");
   if (!(BOARD_DEPTS as readonly string[]).includes(dept)) return { ok: false, error: "This worklist has no machines." };
-  const guard = await requireDeptEdit(dept);
-  if (guard.error) return { ok: false, error: guard.error };
+  const guard = await requireBayAccess(dept);
+  if (!guard.access) return { ok: false, error: guard.error };
+  const access = guard.access;
   let raw: unknown;
   try {
     raw = JSON.parse(String(fd.get("rows") ?? ""));
@@ -415,11 +457,12 @@ export async function restoreMachineQueues(fd: FormData): Promise<MachineActionR
   const machines = await prisma.machine.findMany({ where: { dept }, select: { id: true } });
   const rows = readSnapshotRows(raw, new Set(machines.map((m) => m.id)));
   if ("error" in rows) return { ok: false, error: rows.error };
+  const back = rows.filter((r) => mayScheduleLine(access, r.item));
   const by = guard.user?.name ?? null;
   await prisma.$transaction([
-    prisma.worklistMachine.deleteMany({ where: { dept } }),
-    prisma.worklistMachine.createMany({ data: rows.map((r) => ({ dept, ...r, setBy: by })) }),
+    prisma.worklistMachine.deleteMany({ where: { dept, ...rowsOf(access).mine } }),
+    prisma.worklistMachine.createMany({ data: back.map((r) => ({ dept, ...r, setBy: by })) }),
   ]);
   revalidate();
-  return { ok: true, summary: `The ${machineWord(dept, true)}' queues are back as they were (${rows.length} line${rows.length === 1 ? "" : "s"}).` };
+  return { ok: true, summary: `The ${machineWord(dept, true)}' queues are back as they were (${back.length} line${back.length === 1 ? "" : "s"}).` };
 }

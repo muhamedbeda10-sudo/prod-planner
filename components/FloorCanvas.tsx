@@ -9,11 +9,14 @@ import {
   FLOOR_COLORS, GRID, addNode, drawOrder, moveNode, placeMachine, removeNode, resizeNode, updateNode,
   type FloorColor, type FloorLayoutData, type FloorNode,
 } from "@/lib/domain/floor";
-import { clearWords, loadTone, type MachineCard } from "@/lib/domain/machineBoard";
+import { clearWords, loadTone, unassignedKey, type MachineCard } from "@/lib/domain/machineBoard";
+import { sheetKeyLabel } from "@/lib/domain/machineMaterial";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
+import { mayScheduleLine, type BayAccess } from "@/lib/domain/permissions";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { assignLineMachine, moveLineRank, optimizeMachines, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
-import { DoneBox, MachinePick } from "@/components/MachineBoard";
+import { DoneBox, MachinePick, SheetToPlace } from "@/components/MachineBoard";
+import { LineSheet } from "@/components/LineMaterialChips";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 
 // 🗺 The Floor canvas — a department's bay as the planner draws it: the
@@ -69,7 +72,10 @@ export function FloorDeptPicker({ dept }: { dept: ShiftDept }) {
 }
 
 export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedBy, updatedAtISO }: {
-  dept: ShiftDept; initial: FloorLayoutData; board: MachineBoardData; canDraw: boolean; canAssign: boolean;
+  dept: ShiftDept; initial: FloorLayoutData; board: MachineBoardData; canDraw: boolean;
+  /** The lines this account schedules here — the machines are shared: a
+   *  panel by its LV key, a transformer part by the bay's. */
+  canAssign: BayAccess;
   updatedBy: string | null; updatedAtISO: string | null;
 }) {
   const [layout, setLayout] = useState<FloorLayoutData>(initial);
@@ -100,6 +106,9 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
   const placedIds = new Set(layout.nodes.filter((n) => n.kind === "machine").map((n) => n.machineId!));
   const unplaced = [...allMachines.values()].filter((m) => !placedIds.has(m.id) && m.active);
   const word = machineWord(dept);
+  const assignsAny = canAssign.tr || canAssign.lv;
+  // one line's keys only: ⚡ plans that line, around the other's work
+  const onlyKind = canAssign.tr && canAssign.lv ? null : canAssign.lv ? "panel" : "transformer";
 
   // the drawing saves itself: a moment after the last change (a drag fires
   // dozens of changes — only the settled one is written), so switching tab
@@ -208,14 +217,16 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
             {part.err && <span className="text-xs text-bad-fg">{part.err}</span>}
           </>
         )}
-        {canAssign && (
+        {assignsAny && (
           <button
             type="button"
             className="btn btn-sm btn-primary ms-auto"
             disabled={planning}
             title={`Work out what every ${word} should run and in what order, from the weekly plan — earliest date first, each line on the ${word} that finishes it soonest. What is running now stays.`}
             onClick={() => {
-              if (!confirm(`Plan every ${word} from the weekly plan?\n\nEvery waiting line is re-ordered. What is RUNNING now stays where it is.`)) return;
+              if (!confirm(onlyKind
+                ? `Plan the ${onlyKind} lines on every ${word} from the weekly plan?\n\nThey are re-ordered. What is RUNNING now stays where it is, and so do the other lines — these queue behind them.`
+                : `Plan every ${word} from the weekly plan?\n\nEvery waiting line is re-ordered. What is RUNNING now stays where it is.`)) return;
               setPlanNote("");
               startPlanning(async () => {
                 const fd = new FormData();
@@ -232,14 +243,14 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
         {board.unassigned.length > 0 && (
           <button
             type="button"
-            className={`btn btn-sm ${showQueue ? "btn-secondary" : "btn-ghost"} ${canAssign ? "" : "ms-auto"}`}
+            className={`btn btn-sm ${showQueue ? "btn-secondary" : "btn-ghost"} ${assignsAny ? "" : "ms-auto"}`}
             title={showQueue ? "Back to the floor alone" : `Open the ${board.unassigned.length} line(s) no ${word} has yet, to place them from here`}
             onClick={() => setShowQueue((v) => !v)}
           >
             {showQueue ? "▾" : "▸"} {board.unassigned.length} to place
           </button>
         )}
-        <span className={`${board.unassigned.length > 0 || canAssign ? "" : "ms-auto "}inline-flex items-center gap-1 text-xs text-muted`}>
+        <span className={`${board.unassigned.length > 0 || assignsAny ? "" : "ms-auto "}inline-flex items-center gap-1 text-xs text-muted`}>
           zoom
           <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="border rounded-md px-1.5 py-1 bg-surface text-xs font-semibold" aria-label="Zoom">
             {ZOOMS.map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
@@ -334,8 +345,8 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
           <div className="flex flex-wrap items-center gap-2 text-xs mb-1">
             <span className="font-bold">Not on a {word} yet</span>
             <span className="text-muted">— {dated.length} from the weekly plan, {undated.length} open with no date.</span>
-            {canAssign && selCard && <span className="pill pill-ok">click → to put a line on {selCard.machine.code}</span>}
-            {canAssign && !selCard && <span className="text-muted">Click a {word} block first to send lines to it in one click, or pick the {word} on each line.</span>}
+            {assignsAny && selCard && <span className="pill pill-ok">click → to put a line on {selCard.machine.code}</span>}
+            {assignsAny && !selCard && <span className="text-muted">Click a {word} block first to send lines to it in one click, or pick the {word} on each line.</span>}
           </div>
           {dated.length > 0 && (
             <>
@@ -370,20 +381,21 @@ const machinesAt = (board: MachineBoardData, center: string) => {
   return at.length > 0 ? at : board.machines;
 };
 
-function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoardData["unassigned"]; board: MachineBoardData; canAssign: boolean; target: { id: number; code: string; center: string } | null }) {
+function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoardData["unassigned"]; board: MachineBoardData; canAssign: BayAccess; target: { id: number; code: string; center: string } | null }) {
   const a = useAction();
   return (
     <ul className="grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
       {lines.map((u) => (
-        <li key={`${u.key}#${u.center}`} className="flex items-center gap-2 text-xs min-w-0">
+        <li key={unassignedKey(u)} className="flex items-center gap-2 text-xs min-w-0">
           <span className="font-bold truncate">{u.bom}</span>
           <span className="font-semibold shrink-0">{u.item}</span>
           <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
           {multiCentre(board) && <span className="pill pill-muted shrink-0" title={`${CENTER_LABEL[u.center] ?? u.center} — step ${u.stepNo} of ${u.stepCount} on this line's route`}>{u.center}</span>}
           {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
+          <SheetToPlace sheet={u.sheet} />
           {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
           {u.deliveryISO && <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span>}
-          {canAssign && (
+          {mayScheduleLine(canAssign, u.item) && (
             <span className="ms-auto inline-flex items-center gap-1 shrink-0">
               {target && target.center === u.center && (
                 <button
@@ -393,7 +405,7 @@ function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoa
                   → {target.code}
                 </button>
               )}
-              <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} sheet={u.sheet} machines={machinesAt(board, u.center)} current={undefined} canEdit={canAssign} compact />
+              <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} sheet={u.sheet} machines={machinesAt(board, u.center)} current={undefined} canEdit compact />
             </span>
           )}
         </li>
@@ -435,6 +447,10 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
   }
   const m = card?.machine ?? machineName;
   const compact = n.h < 100;
+  // a running line cut from one sheet takes a second row for the sheet: a
+  // block of the usual height then shows that one line and counts the rest;
+  // a compact block keeps the sheet to its line's tooltip
+  const runShown = compact ? 1 : n.h < 140 && card?.running.slice(0, 2).some((q) => q.sheet) ? 1 : 2;
   return (
     <div
       data-node={m?.code ?? n.id}
@@ -454,16 +470,19 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
       </div>
       {card && card.running.length > 0 ? (
         <div className="mt-1 rounded-md bg-brand-light/40 border border-brand/30 px-1.5 py-1 min-w-0 space-y-0.5">
-          {card.running.slice(0, compact ? 1 : 2).map((q) => (
-            <div key={`${q.key}#${q.sheet}`} className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
-              <span className="text-brand font-extrabold shrink-0">▶</span>
-              <span className="font-extrabold truncate">{q.bom}</span>
-              <span className="font-bold shrink-0">{q.item}</span>
-              <span className="font-extrabold tabnum text-brand shrink-0">×{q.remaining}</span>
-              {!compact && q.deliveryISO && <span className="text-[10px] text-muted shrink-0">📅 {ddmm(q.deliveryISO)}</span>}
+          {card.running.slice(0, runShown).map((q) => (
+            <div key={`${q.key}#${q.sheet}`} className="min-w-0" title={compact && q.sheet ? sheetKeyLabel(q.sheet) : undefined}>
+              <div className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
+                <span className="text-brand font-extrabold shrink-0">▶</span>
+                <span className="font-extrabold truncate">{q.bom}</span>
+                <span className="font-bold shrink-0">{q.item}</span>
+                <span className="font-extrabold tabnum text-brand shrink-0">×{q.remaining}</span>
+                {!compact && q.deliveryISO && <span className="text-[10px] text-muted shrink-0">📅 {ddmm(q.deliveryISO)}</span>}
+              </div>
+              {!compact && <LineSheet sheet={q.sheet} className="block ps-3 text-[10px] font-semibold leading-tight text-muted truncate" />}
             </div>
           ))}
-          {card.running.length > (compact ? 1 : 2) && <div className="text-[10px] text-brand font-bold">+{card.running.length - (compact ? 1 : 2)} more running</div>}
+          {card.running.length > runShown && <div className="text-[10px] text-brand font-bold">+{card.running.length - runShown} more running</div>}
         </div>
       ) : (
         <div className="mt-1 text-[11px] text-muted">{card && card.waiting.length > 0 ? "nothing running yet" : "idle — nothing on it"}</div>
@@ -480,12 +499,14 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
 }
 
 function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
-  n: FloorNode; card: MachineCard | null; board: MachineBoardData; canAssign: boolean; canDraw: boolean; onRemove: () => void;
+  n: FloorNode; card: MachineCard | null; board: MachineBoardData; canAssign: BayAccess; canDraw: boolean; onRemove: () => void;
 }) {
   const a = useAction();
   const [showAll, setShowAll] = useState(false);
   const m = card?.machine;
-  const line = (bom: string, mo: string, item: string, sheet = "") => {
+  // the sheet always goes along: "" is the whole item, so a line spread by
+  // sheet that left it out would land on the machine whole
+  const line = (bom: string, mo: string, item: string, sheet: string) => {
     const fd = new FormData();
     fd.set("dept", board.dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item); fd.set("sheet", sheet);
     fd.set("machineId", String(n.machineId ?? ""));
@@ -511,8 +532,13 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
   }
   const tone = loadTone(card.load);
   // the lines this machine's own work centre still owes — a bender is never
-  // offered a job that wants a laser
-  const mine = board.unassigned.filter((u) => u.center === m.center || board.machines.every((x) => x.center !== u.center));
+  // offered a job that wants a laser — of the ones this account schedules
+  const mine = board.unassigned.filter((u) => (u.center === m.center || board.machines.every((x) => x.center !== u.center)) && mayScheduleLine(canAssign, u.item));
+  const assignsAny = canAssign.tr || canAssign.lv;
+  // ⏫ passes this account's own lines only — on a shared machine the other
+  // line's keep their places
+  const waiting = card.waiting;
+  const canGoNext = (q: (typeof waiting)[number]) => waiting.slice(0, waiting.indexOf(q)).some((x) => mayScheduleLine(canAssign, x.item));
   const today = new Date().toISOString().slice(0, 10);
   const rows = showAll ? card.queue : card.queue.slice(0, 30);
   return (
@@ -551,7 +577,7 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                   <th className="p-1 text-center">Hours</th>
                   <th className="p-1 text-center">Deliver</th>
                   <th className="p-1 text-start">MO · description</th>
-                  {canAssign && <th className="p-1 text-end">Do</th>}
+                  {assignsAny && <th className="p-1 text-end">Do</th>}
                 </tr>
               </thead>
               <tbody>
@@ -559,7 +585,10 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                   <tr key={`${q.key}#${q.sheet}`} className={`border-t ${q.running ? "bg-brand-light/40" : ""}`}>
                     <td className="p-1 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</td>
                     <td className="p-1 font-extrabold ltr whitespace-nowrap">{q.bom}</td>
-                    <td className="p-1 text-center font-bold">{q.item}</td>
+                    <td className="p-1 text-center font-bold">
+                      {q.item}
+                      <LineSheet sheet={q.sheet} className="block text-[10px] font-semibold text-muted whitespace-nowrap" />
+                    </td>
                     <td className="p-1 text-center tabnum font-extrabold whitespace-nowrap">
                       {q.remaining}
                       {q.split && <span className="block text-[10px] font-semibold text-muted" title="Part of the line — the rest is on another machine or waits">of {q.lineRemaining}</span>}
@@ -567,17 +596,17 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                     <td className="p-1 text-center tabnum">{q.hours !== null ? q.hours : "—"}</td>
                     <td className={`p-1 text-center tabnum whitespace-nowrap ${q.deliveryISO && q.deliveryISO < today ? "text-bad-fg font-bold" : ""}`}>{q.deliveryISO ? ddmm(q.deliveryISO) : "—"}</td>
                     <td className="p-1 text-muted truncate max-w-[18rem]" title={`${q.mo}${q.description ? ` · ${q.description}` : ""}`}>{q.mo || "—"}{q.description ? ` · ${q.description}` : ""}</td>
-                    {canAssign && (
+                    {assignsAny && (
                       <td className="p-1">
-                        <span className="flex items-center justify-end gap-0.5">
+                        {mayScheduleLine(canAssign, q.item) && <span className="flex items-center justify-end gap-0.5">
                           <DoneBox board={board} q={q} machineId={m.id} onErr={a.setErr} />
                           {q.running
                             ? <button type="button" className="btn btn-sm btn-ghost px-1" title="Put it back to waiting" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("running", "false"); a.run(setLineRunning, fd); }}>⏸</button>
                             : <button type="button" className="btn btn-sm btn-ghost px-1 text-ok-fg" title="Start it now, alongside what runs" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("running", "true"); a.run(setLineRunning, fd); }}>▶</button>}
-                          {!q.running && card.waiting.indexOf(q) > 0 && <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>}
+                          {!q.running && canGoNext(q) && <button type="button" className="btn btn-sm btn-ghost px-1" title="Next in line" disabled={a.pending} onClick={() => { const fd = line(q.bom, q.mo, q.item, q.sheet); fd.set("dir", "top"); a.run(moveLineRank, fd); }}>⏫</button>}
                           <button type="button" className="btn btn-sm btn-ghost px-1" title="Split — keep only some pieces here" disabled={a.pending} onClick={() => resize(q)}>✂</button>
                           <button type="button" className="btn btn-sm btn-ghost px-1 text-bad-fg" title="Take off this machine" disabled={a.pending} onClick={() => a.run(unassignLineMachine, line(q.bom, q.mo, q.item, q.sheet))}>✕</button>
-                        </span>
+                        </span>}
                       </td>
                     )}
                   </tr>
@@ -591,13 +620,13 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
         )}
       </div>
 
-      {canAssign && mine.length > 0 && (
+      {mine.length > 0 && (
         <select
           className="w-full border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold" value="" disabled={a.pending} aria-label="Put a line on it"
-          onChange={(e) => { const u = mine[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
+          onChange={(e) => { const u = mine[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item, u.sheet ?? ""); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
         >
           <option value="">＋ Put a line on it… ({mine.length} waiting{multiCentre(board) ? ` for ${CENTER_LABEL[m.center] ?? m.center}` : ""})</option>
-          {mine.map((u, i) => <option key={`${u.key}#${u.center}`} value={i}>{u.bom} {u.item} ×{u.remaining}{u.partial ? ` (rest of ${u.lineRemaining})` : ""}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
+          {mine.map((u, i) => <option key={unassignedKey(u)} value={i}>{u.bom} {u.item} ×{u.remaining}{u.partial ? ` (rest of ${u.lineRemaining})` : ""}{u.sheet ? ` · ${sheetKeyLabel(u.sheet)}` : ""}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
         </select>
       )}
       {a.err && <div className="text-[11px] text-bad-fg">{a.err}</div>}

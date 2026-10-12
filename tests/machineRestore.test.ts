@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Putting a department's machine queues back from a snapshot — the undo of a
 // board change made through the assistant. Every row is checked before the
-// department's queues are replaced, in one transaction.
+// department's queues are replaced, in one transaction — the lines the person
+// schedules on the shared machines, never the other line's.
 
 const h = vi.hoisted(() => ({
   prisma: {
@@ -10,12 +11,14 @@ const h = vi.hoisted(() => ({
     worklistMachine: { deleteMany: vi.fn(), createMany: vi.fn() },
     $transaction: vi.fn(),
   },
-  requireDeptEdit: vi.fn(),
+  requireBayAccess: vi.fn(),
 }));
+
+vi.mock("server-only", () => ({}));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
-vi.mock("@/lib/server/auth", () => ({ getCurrentUser: vi.fn(), requireDeptEdit: h.requireDeptEdit }));
+vi.mock("@/lib/server/auth", () => ({ getCurrentUser: vi.fn(), bayAccess: vi.fn(), requireBayAccess: h.requireBayAccess, requireMachineLineEdit: vi.fn() }));
 vi.mock("@/lib/server/machineMaterial", () => ({ getLinesMaterial: vi.fn() }));
 vi.mock("@/lib/server/machineBoard", () => ({ getOptimizerInputs: vi.fn() }));
 
@@ -31,7 +34,7 @@ const fd = (dept: string, rows: unknown) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.requireDeptEdit.mockResolvedValue({ user: { name: "Sara (AI)" } });
+  h.requireBayAccess.mockResolvedValue({ user: { name: "Sara (AI)" }, access: { tr: true, lv: true } });
   h.prisma.machine.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }]);
   h.prisma.worklistMachine.deleteMany.mockReturnValue("delete");
   h.prisma.worklistMachine.createMany.mockReturnValue("create");
@@ -48,10 +51,18 @@ describe("restoreMachineQueues", () => {
     expect(h.prisma.$transaction).toHaveBeenCalledWith(["delete", "create"]);
   });
 
-  it("needs the department's worklist permission", async () => {
-    h.requireDeptEdit.mockResolvedValue({ error: "No permission." });
+  it("needs a key for the bay's machines", async () => {
+    h.requireBayAccess.mockResolvedValue({ error: "No permission." });
     expect(await restoreMachineQueues(fd("Cut", [row()]))).toEqual({ ok: false, error: "No permission." });
     expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("puts back only the lines the person schedules, and leaves the other line's work as it is", async () => {
+    h.requireBayAccess.mockResolvedValue({ user: { name: "Lina (AI)" }, access: { tr: false, lv: true } });
+    const rows = [row(), row({ machineId: 2, item: "PNL", mo: "M7" })];
+    expect(await restoreMachineQueues(fd("Cut", rows))).toEqual({ ok: true, summary: expect.stringContaining("(1 line)") });
+    expect(h.prisma.worklistMachine.deleteMany).toHaveBeenCalledWith({ where: { dept: "Cut", item: "PNL" } });
+    expect(h.prisma.worklistMachine.createMany).toHaveBeenCalledWith({ data: [{ dept: "Cut", ...rows[1], setBy: "Lina (AI)" }] });
   });
 
   it("refuses a snapshot it cannot trust, and changes nothing", async () => {

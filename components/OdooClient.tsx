@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
 import { FilterX, MessageSquarePlus } from "lucide-react";
 import { CellEditor, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
@@ -7,7 +9,7 @@ import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { ProductSwatch } from "@/components/Badge";
 import { productColor } from "@/lib/domain/productColors";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition, Fragment } from "react";
 import {
   ODOO_PRODUCTS, ODOO_STATUSES, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
   odooItemTotals, odooScopeLabel, singleDayOf, type OdooItemTotal,
@@ -20,9 +22,9 @@ import { useActiveLine } from "@/components/LineContext";
 import { Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { Modal } from "@/components/Modal";
-import { MO_MATERIAL_FLAG, entryMaterialNeed, moMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { MO_MATERIAL_FLAG, entryMaterialNeed, rowMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
-import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
+import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote, updateOdooGroup, deleteOdooEntries } from "@/app/odoo/actions";
 
 // The ODOO tab — the office's daily log of Odoo close attempts, one strip per
 // row, the columns of the sheet it replaces: Date · SOI# · FG-CODE · Product ·
@@ -82,20 +84,25 @@ function RowFields({
   day,
   knownSois,
   disabled,
+  shared = false,
 }: {
   e?: OdooEntryView;
   day: string;
   knownSois: string[];
   disabled?: boolean;
+  /** A merged line's fields: what its rows share — no date, no quantity. */
+  shared?: boolean;
 }) {
   const line = useActiveLine();
   const today = new Date().toISOString().slice(0, 10);
   const born = isBorn(e);
   return (
     <>
-      <Field hint="Date of the close attempt" label="Date" className="w-[8.5rem]">
-        <input name="date" type="date" aria-label="Date" defaultValue={e?.dateISO ?? singleDayOf(day) ?? today} required disabled={disabled} className={`${F} ltr tabnum w-full`} />
-      </Field>
+      {!shared && (
+        <Field hint="Date of the close attempt" label="Date" className="w-[8.5rem]">
+          <input name="date" type="date" aria-label="Date" defaultValue={e?.dateISO ?? singleDayOf(day) ?? today} required disabled={disabled} className={`${F} ltr tabnum w-full`} />
+        </Field>
+      )}
       <Field hint="SOI#" label="SOI#" className="w-28">
         <input name="soi" list="odoo-sois" aria-label="SOI" defaultValue={e?.soi ?? ""} disabled={disabled} placeholder="SOI#" className={`${F} ltr w-full`} />
         <datalist id="odoo-sois">{knownSois.map((s) => <option key={s} value={s} />)}</datalist>
@@ -107,9 +114,11 @@ function RowFields({
       <Field hint="Odoo MO number (SF01/MO/…)" label="MO#" className="w-44">
         <input name="odooMo" aria-label="MO#" defaultValue={e?.odooMo ?? ""} required={!born} disabled={disabled} placeholder="SF01/MO/…" className={`${F} ltr w-full`} />
       </Field>
-      <Field hint="Quantity" label="QTY" className="w-20">
-        <input name="qty" type="number" step="1" min="0" aria-label="QTY" defaultValue={e?.qty ?? ""} required disabled={disabled} placeholder="QTY" className={`${F} ltr tabnum w-full font-extrabold`} />
-      </Field>
+      {!shared && (
+        <Field hint="Quantity" label="QTY" className="w-20">
+          <input name="qty" type="number" step="1" min="0" aria-label="QTY" defaultValue={e?.qty ?? ""} required disabled={disabled} placeholder="QTY" className={`${F} ltr tabnum w-full font-extrabold`} />
+        </Field>
+      )}
       <Field hint="Status" label="Status" className="w-40">
         <select name="status" aria-label="Status" defaultValue={e?.status ?? "MO to be close"} disabled={disabled} className={`${F} w-full`}>
           {statusOptions(e?.status).map((s) => <option key={s} value={s}>{s}</option>)}
@@ -214,7 +223,13 @@ function BomValue({ bom }: { bom: OdooEntryView["bom"] }) {
   if (bom.boms.length === 0) return <span className="text-muted">—</span>;
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      {bom.boms.join(" / ")}
+      {/* each BOM opens its order's page — the row's own click stays the material */}
+      {bom.boms.map((b, i) => (
+        <Fragment key={b}>
+          {i > 0 && " / "}
+          <Link href={`/trace?bom=${encodeURIComponent(b)}`} onClick={(ev) => ev.stopPropagation()} className="text-accent hover:underline" title="Open the order's details">{b}</Link>
+        </Fragment>
+      ))}
       {bom.boms.length > 1 && <span className="pill pill-warn text-[10px]" title="The SOI has several BOMs — the row does not say which">{bom.boms.length} BOMs</span>}
     </span>
   );
@@ -490,7 +505,7 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
   // the MO typed for it, against the Material tab: red when no nesting is
   // filed under it, yellow when some of its lines are not nested yet, green
   // when every line is
-  const moState = moMaterialState(nesting, e.odooMo);
+  const moState = rowMaterialState(nesting, e, needCtx);
   const flag = moState === "none" ? null : MO_MATERIAL_FLAG[moState];
   return (
     <>
@@ -580,22 +595,53 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
  * every row underneath, so the MO is typed once.
  *
  * Nothing is merged in the database: the rows keep their own quantities and
- * their links to the daily-log records that wrote them, and the line opens to
- * show them — that is where a single one is edited, noted or deleted.
+ * their links to the daily-log records that wrote them. The line is edited
+ * like a row — its notes, its ⋯ menu — and what is done there lands on every
+ * row under it; the line opens to show them for a single one.
  */
 function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
   g: OdooGroup; day: string; knownSois: string[]; nesting: NestingLookup; needCtx: NeedContext; canEdit: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [material, setMaterial] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const edit = useAction();
+  const del = useAction();
+  const [confirmDelete, confirmDialog] = useConfirm();
   const head = g.rows[0];
   const ids = g.rows.map((r) => r.id);
+  // the notes of every row, newest first — a note typed on the line is kept on its first row
+  const notes = useMemo(() => g.rows.flatMap((r) => r.notes).sort((a, b) => b.atISO.localeCompare(a.atISO)), [g.rows]);
+  const noted = useMemo(() => ({ ...head, notes }), [head, notes]);
+  const what = `${head.odooMo || `${head.product} ×${g.qty}`} · ${g.rows.length} closings`;
+  const row = useRowMenu(() => [
+    { heading: what },
+    { key: "material", label: "Material for this line", icon: "🧱", onSelect: () => setMaterial(true) },
+    { key: "edit", label: `Edit all ${g.rows.length} rows…`, icon: "✏️", onSelect: () => setEditing(true) },
+    { key: "open", label: open ? "Hide the closings" : "Show the closings", icon: open ? "▴" : "▾", onSelect: () => setOpen((v) => !v) },
+    { sep: true },
+    {
+      key: "delete", label: `Delete all ${g.rows.length} rows…`, icon: "🗑", danger: true, disabled: del.pending,
+      onSelect: async () => {
+        const ok = await confirmDelete({
+          title: `Delete the ${g.rows.length} rows of this line?`,
+          body: <>The rows leave the log. A closing recorded on the floor that wrote one stays in the daily log.</>,
+          items: g.rows.map((r) => `${r.odooMo || r.product} · ${formatDate(r.dateISO)} · ×${r.qty}${r.soi ? ` · ${r.soi}` : ""}`),
+          confirmLabel: `Delete ${g.rows.length} rows`,
+          danger: true,
+        });
+        if (!ok) return;
+        const fd = new FormData();
+        fd.set("ids", ids.join(","));
+        del.run(deleteOdooEntries, fd, "Deleted.");
+      },
+    },
+  ], `Actions for ${what}`);
   // the line's material is the material of what it closed in TOTAL — the
   // whole point of the line is that the office reads one figure, not three
   const whole = useMemo(() => ({ ...head, qty: g.qty }), [head, g.qty]);
   const need = useMemo(() => entryMaterialNeed(nesting, head, g.qty, needCtx), [nesting, head, g.qty, needCtx]);
   const closeMaterial = useCallback(() => setMaterial(false), []);
-  const noteCount = g.rows.reduce((n, r) => n + r.notes.length, 0);
   const born = g.rows.every((r) => isBorn(r));
   const parts = g.rows.map((r) => r.qty).join(" + ");
   const cell = "p-2 whitespace-nowrap cursor-pointer";
@@ -604,7 +650,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
   // adds up — the way a single row does; the ▶ and the rows button open the
   // closings underneath
   const details = () => setMaterial(true);
-  const moState = moMaterialState(nesting, head.odooMo);
+  const moState = rowMaterialState(nesting, head, needCtx);
   const flag = moState === "none" ? null : MO_MATERIAL_FLAG[moState];
   const rowTitle = need ? `Click for the material behind all ${g.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "line"} yet`;
   return (
@@ -612,6 +658,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
       <tr
         className={`border-t font-semibold ${flag ? `${flag.cls} hover:brightness-95` : open ? "bg-brand-light/40" : "bg-brand-light/20 hover:bg-brand-light/40"} transition-colors`}
         style={flag ? { boxShadow: flag.edge } : undefined}
+        onContextMenu={canEdit ? row.onContextMenu : undefined}
       >
         <td className={`${cell} tabnum ltr`} onClick={details} title={rowTitle}>
           <button
@@ -656,13 +703,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
           <StatusCell e={head} canEdit={canEdit} ids={ids} />
         </td>
         <td className="p-2 text-xs min-w-[18rem] max-w-[28rem] align-top font-normal">
-          {noteCount > 0 ? (
-            <button type="button" className="text-xs text-accent hover:underline" onClick={toggle}>
-              {noteCount} note(s) — open the line to read them
-            </button>
-          ) : (
-            <span className="text-muted text-xs">—</span>
-          )}
+          <NotesCell e={noted} canEdit={canEdit} />
         </td>
         <td className="p-2 text-center whitespace-nowrap no-print">
           <span className="inline-flex gap-1">
@@ -675,10 +716,37 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
               🧱{need ? <span className="tabnum ms-1">{need.totalBook}</span> : null}
             </button>
             <button type="button" className="btn btn-sm" onClick={toggle}>{open ? "Close" : `${g.rows.length} rows`}</button>
+            {canEdit && <>{row.button}{row.menu}{confirmDialog}</>}
           </span>
         </td>
       </tr>
       {material && <OdooMaterialPopup e={whole} nesting={nesting} needCtx={needCtx} onClose={closeMaterial} />}
+      {editing && (
+        <Modal title={`Edit all ${g.rows.length} rows of this line`} sub={`${parts} · each row keeps its own date and quantity`} onClose={() => setEditing(false)} busy={edit.pending} width="max-w-3xl">
+          <form
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              const fd = new FormData(ev.currentTarget);
+              fd.set("ids", ids.join(","));
+              edit.run(updateOdooGroup, fd, "Saved.", () => setEditing(false));
+            }}
+          >
+            <div className="flex flex-wrap items-end gap-2">
+              <RowFields e={head} day={day} knownSois={knownSois} disabled={edit.pending} shared />
+            </div>
+            <Msg msg={edit.msg} />
+            <div className="flex justify-end gap-2 pt-3 mt-3 border-t">
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(false)} disabled={edit.pending}>Cancel</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={edit.pending}>{edit.pending ? "Saving…" : `Save ${g.rows.length} rows`}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {del.msg?.ok === false && (
+        <tr className="border-t-0">
+          <td colSpan={COLS} className="px-2 pb-3"><Msg msg={del.msg} /></td>
+        </tr>
+      )}
       {open && g.rows.map((e) => (
         <Row key={e.id} e={e} day={day} knownSois={knownSois} nesting={nesting} needCtx={needCtx} canEdit={canEdit} inGroup />
       ))}
@@ -881,8 +949,8 @@ export function OdooClient({
   const [matState, setMatState] = useState<"" | "missing" | "partial" | "ok">("");
   const editableLines = (["TR", "LV"] as const).filter((l) => canEditLine[l]);
   const byMat = useCallback(
-    (rows: OdooEntryView[], st: typeof matState = matState) => (st ? rows.filter((e) => moMaterialState(nesting, e.odooMo) === st) : rows),
-    [nesting, matState]
+    (rows: OdooEntryView[], st: typeof matState = matState) => (st ? rows.filter((e) => rowMaterialState(nesting, e, { ...needCtx, lv: e.line === "LV" }) === st) : rows),
+    [nesting, matState, needCtx]
   );
   const pick = useCallback((f: OdooFilters) => byMat(filterOdooEntries(entries, f)), [byMat, entries]);
   const shown = useMemo(() => pick(filters), [pick, filters]);
@@ -912,11 +980,11 @@ export function OdooClient({
   const matCounts = useMemo(() => {
     const out = { missing: 0, partial: 0, ok: 0 };
     for (const e of byMat(filterOdooEntries(entries, filters), "")) {
-      const st = moMaterialState(nesting, e.odooMo);
+      const st = rowMaterialState(nesting, e, { ...needCtx, lv: e.line === "LV" });
       if (st !== "none") out[st] += 1;
     }
     return out;
-  }, [byMat, entries, filters, nesting]);
+  }, [byMat, entries, filters, nesting, needCtx]);
   const showAll = useShowAll();
   const elsewhere = day === "all" ? 0 : Math.max(0, totalRows - entries.length);
   const elsewhereLink = elsewhere > 0 && (

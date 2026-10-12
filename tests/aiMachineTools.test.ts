@@ -26,7 +26,17 @@ const h = vi.hoisted(() => {
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
-vi.mock("@/lib/server/auth", () => ({ hasPerm: (_u: unknown, k: string) => h.perms.has(k) }));
+vi.mock("@/lib/server/auth", async () => {
+  // the board's own rule on the shared machines, read off the stubbed keys
+  const { bayPermKeys } = await import("@/lib/domain/permissions");
+  return {
+    hasPerm: (_u: unknown, k: string) => h.perms.has(k),
+    bayAccess: (_u: unknown, bay: string) => {
+      const k = bayPermKeys(bay);
+      return { tr: h.perms.has(k.tr), lv: k.lv !== null && h.perms.has(k.lv) };
+    },
+  };
+});
 vi.mock("@/lib/server/data", () => ({ isMachinePlanningOn: async () => h.planningOn, getSettings: async () => ({}) }));
 vi.mock("@/lib/server/machineBoard", () => h.board);
 vi.mock("@/lib/server/machineQueues", () => ({ readQueueSnapshot: h.readQueueSnapshot }));
@@ -66,8 +76,14 @@ describe("assign_line_to_machine", () => {
     expect(await assignLineTool.describe(line, ctx)).toEqual({ error: expect.stringContaining("switched off") });
   });
 
-  it("needs the department's worklist permission", async () => {
-    expect(await assignLineTool.describe(line, ctx)).toEqual({ error: expect.stringContaining("worklist permission") });
+  it("needs the line's own key: the bay's for a transformer part, the LV stage's for a panel", async () => {
+    expect(await assignLineTool.describe(line, ctx)).toEqual({ error: expect.stringContaining("needs its own key") });
+    // a panel clerk schedules a panel on the punches, never a transformer part
+    h.perms.add("lv.punching");
+    expect(await assignLineTool.describe(line, ctx)).toEqual({ error: expect.stringContaining("needs its own key") });
+    h.board.getDeptBoardLines.mockResolvedValue([{ bom: "B1", mo: "M1", item: "PNL" }]);
+    h.readQueueSnapshot.mockResolvedValue([]);
+    expect(await assignLineTool.describe({ ...line, item: "PNL" }, ctx)).toMatchObject({ title: "M1 PNL → L1" });
   });
 
   it("refuses a retired machine, an unknown one, and a line the department does not owe", async () => {
@@ -135,6 +151,17 @@ describe("plan_machines", () => {
     expect(out.undo).toEqual({ tool: "restore_machine_queues", input: { dept: "Cut", rows: [row({ machineId: 1 })] } });
   });
 
+  it("plans only the lines the person schedules on the shared machines, as ⚡ Plan does for them", async () => {
+    h.perms.add("lv.punching");
+    h.board.getOptimizerInputs.mockResolvedValue(inputs([{ key: "B1|M1|PNL", pieces: 2, route: [{ center: "Cutting", hoursPerPiece: 1 }], dueDay: 1 }]));
+    h.readQueueSnapshot.mockResolvedValue([row({ machineId: 1 }), row({ machineId: 1, item: "PNL", mo: "M2", rank: 2 })]);
+    const p = await planMachinesTool.describe({ dept: "Cut" }, ctx);
+    const mayPlan = h.board.getOptimizerInputs.mock.calls[0][2] as (item: string) => boolean;
+    expect([mayPlan("PNL"), mayPlan("TN")]).toEqual([true, false]);
+    // the waiting transformer part is not the panel clerk's to re-plan
+    expect(p).toMatchObject({ changes: expect.arrayContaining([{ label: "L1", before: "1 waiting", after: "M1 PNL ×2" }]) });
+  });
+
   it("says so when nothing is left to plan, or no machine has hours", async () => {
     h.perms.add("cut.edit");
     h.board.getOptimizerInputs.mockResolvedValueOnce(inputs([]));
@@ -149,7 +176,12 @@ describe("reset and restore", () => {
     h.perms.add("cut.edit");
     expect(resetMachinePlanTool.risk).toBe("destructive");
     h.readQueueSnapshot.mockResolvedValue([]);
-    expect(await resetMachinePlanTool.describe({ dept: "Cut" }, ctx)).toEqual({ error: "Nothing is on Cut's machines." });
+    expect(await resetMachinePlanTool.describe({ dept: "Cut" }, ctx)).toEqual({ error: "Nothing you schedule is on Cut's machines." });
+    // only the other line's work on the machines: nothing of the person's to reset
+    h.readQueueSnapshot.mockResolvedValue([row({ item: "PNL" })]);
+    expect(await resetMachinePlanTool.describe({ dept: "Cut" }, ctx)).toEqual({ error: "Nothing you schedule is on Cut's machines." });
+    h.readQueueSnapshot.mockResolvedValue([row(), row({ item: "PNL", rank: 2 })]);
+    expect(await resetMachinePlanTool.describe({ dept: "Cut" }, ctx)).toMatchObject({ summary: expect.stringContaining("the other product line's 1 stay") });
   });
 
   it("the restore is never offered to the model, and an undo's rows pass its own schema", () => {

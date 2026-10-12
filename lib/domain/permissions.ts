@@ -7,6 +7,8 @@
 // Plan-Tracker cell editing are DELIBERATELY separate: holding a dept's
 // worklist permission does not open its tracker column, and vice-versa.
 
+import { LV_ITEM, lvStageAt } from "./lv";
+
 export interface PermDef {
   key: string;
   label: string;
@@ -168,14 +170,42 @@ export function deptPermKey(dept: string): string {
   return `${dept.toLowerCase()}.edit`;
 }
 
-/** The key that edits one ledger row: a panel's row (item USS/LSS) follows
- *  the LV keys whatever its department; a transformer's the department's. */
+/** The key that edits one ledger row: a panel's row (item PNL) follows the
+ *  LV keys whatever its department; a transformer's the department's. The
+ *  panel's TYPE (USS / LSS) sits on its order, never on a ledger row. */
 export function ledgerPermKey(dept: string, item: string): string {
-  if (item === "USS" || item === "LSS") {
+  if (item === LV_ITEM) {
     if (dept === "Delivered") return "lv.tracker.delivered";
     return `lv.${dept.toLowerCase()}`;
   }
   return deptPermKey(dept);
+}
+
+/** The keys that schedule a bay's shared machines, one per line: the
+ *  transformers' (the bay's own) and the panels' (the LV stage the bay
+ *  works) — null where the bay takes no panels. */
+export function bayPermKeys(bay: string): { tr: string; lv: string | null } {
+  const stage = lvStageAt(bay);
+  return { tr: deptPermKey(bay), lv: stage ? ledgerPermKey(stage, LV_ITEM) : null };
+}
+
+/** The key that schedules one line on a bay's machines — puts it on, moves,
+ *  starts, splits, takes it off, ticks it done. The machines are shared, so
+ *  the LINE decides, never the bay: a panel's line the LV key, anything
+ *  else the bay's. Null for a panel on a bay that takes none. */
+export function machineLinePermKey(bay: string, item: string): string | null {
+  const keys = bayPermKeys(bay);
+  return item === LV_ITEM ? keys.lv : keys.tr;
+}
+
+/** What one account may schedule on a bay's shared machines, line by line. */
+export interface BayAccess {
+  tr: boolean;
+  lv: boolean;
+}
+
+export function mayScheduleLine(access: BayAccess, item: string): boolean {
+  return item === LV_ITEM ? access.lv : access.tr;
 }
 
 /** The line's key for the same job: closing and holding orders, importing

@@ -311,6 +311,9 @@ model User {
   // The screens this account does NOT see (CSV of tab ids — lib/domain/tabs.ts).
   // Empty sees everything; the owner sets it per person, admins included.
   hiddenTabs   String    @default("")
+  // The person's own photo, in the bar's round button — a Vercel Blob URL,
+  // or /uploads/avatars/<file> where there is no Blob store. Null = initials.
+  avatarUrl    String?
   active       Boolean   @default(true) // deactivated users cannot log in
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

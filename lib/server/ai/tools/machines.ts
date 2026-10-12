@@ -1,7 +1,7 @@
 import "server-only";
 import type { Machine } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { hasPerm } from "@/lib/server/auth";
+import { bayAccess, hasPerm } from "@/lib/server/auth";
 import { isMachinePlanningOn } from "@/lib/server/data";
 import { getDeptBoardLines, getMachineBoard, getOptimizerInputs } from "@/lib/server/machineBoard";
 import { readQueueSnapshot, type QueueRowSnapshot } from "@/lib/server/machineQueues";
@@ -12,7 +12,7 @@ import {
 import { createMachineRule, setMachineRuleOn } from "@/app/admin/machines/ruleActions";
 import { optimizePlan } from "@/lib/domain/optimizePlan";
 import { checkRule, machineVerdict, ruleSentence, RULE_EFFECTS, RULE_ITEMS, type MachineRuleLike } from "@/lib/domain/machineRules";
-import { deptPermKey } from "@/lib/domain/permissions";
+import { machineLinePermKey, mayScheduleLine, type BayAccess } from "@/lib/domain/permissions";
 import { lineKey } from "@/lib/domain/machineBoard";
 import { cell, type AiChange } from "@/lib/domain/aiActions";
 import type { MachineActionResult } from "@/app/worklist/machineActions";
@@ -22,14 +22,18 @@ import { formOf, type ReadTool, type ToolCtx, type WriteTool } from "./types";
 // of ⚡ Plan, and every move the board itself makes — put a line on a machine,
 // take it off, move it in the queue, start or pause it, plan the whole
 // department, empty a machine, reset — plus the machines' rules that ⚡ Plan
-// follows. Every queue change runs the board's own action as the person (the
-// department's worklist permission), and is undone by putting the whole
-// department's queues back exactly as they were.
+// follows. Every queue change runs the board's own action as the person, under
+// the board's own rule: the machines are shared, so a line is scheduled with
+// ITS key (a panel's the LV stage's, a transformer part's the bay's), and a
+// write over the whole bay acts on the lines the person's keys cover, leaving
+// the other line's work where it is. Undone by putting the department's
+// queues back exactly as they were — those same lines.
 
 type BoardDept = "Cut" | "Welding" | "Painting" | "ShotBlast";
 const DEPT = { type: "string", enum: ["Cut", "Welding", "Painting", "ShotBlast"], description: "The department: Cut (Fabrication — lasers, punch, bending, fins), Welding (bay partitions), Painting (lines), ShotBlast." } as const;
 const OFF = "Machine planning is switched off for the plant (Settings) — the machine board is not in use.";
-const NO_RIGHT = "You do not have this department's worklist permission — the owner ticks it on Users & Permissions.";
+const NO_RIGHT = "You may schedule neither line on this department's machines — the owner ticks its worklist key (transformer parts) or the LV stage's key (panels) on Users & Permissions.";
+const NO_LINE_RIGHT = "Scheduling this line needs its own key — the department's worklist key for a transformer part, the LV stage's key for a panel.";
 
 const lineName = (bom: string, mo: string, item: string) => `${mo || bom} ${item}`;
 
@@ -107,7 +111,7 @@ export const previewMachinePlanTool: ReadTool<DeptInput> = {
   status: (i) => `Working out a plan for ${i.dept}`,
   async run(i, ctx) {
     if (!(await isMachinePlanningOn())) return { ok: false, text: OFF };
-    const inp = await getOptimizerInputs(i.dept, ctx.todayISO);
+    const inp = await getOptimizerInputs(i.dept, ctx.todayISO, planFor(bayAccess(ctx.user, i.dept)));
     if (inp.machines.every((m) => m.availableH <= 0)) return { ok: false, text: "No machine of the department has its hours a day set (Tools → Machines) — nothing can be planned." };
     const plan = optimizePlan(inp.machines, inp.lines, inp.pins);
     const codeOf = new Map(inp.machines.map((m) => [m.id, m.code]));
@@ -171,23 +175,32 @@ const parseLine = (r: Record<string, unknown>) => ({
 });
 
 type EditCheck = { ok: false; error: string } | { ok: true; machine: Machine };
+type BayCheck = { ok: false; error: string } | { ok: true; access: BayAccess };
 
-/** The checks every queue edit shares: the board in use, and the person's
- *  worklist permission for the department. */
-async function deptEditCheck(dept: string, ctx: ToolCtx): Promise<string | null> {
-  if (!(await isMachinePlanningOn())) return OFF;
-  if (!hasPerm(ctx.user, deptPermKey(dept))) return NO_RIGHT;
-  return null;
+/** A write over the bay — ⚡ Plan, reset, empty a machine, an undo: the board
+ *  in use, and which lines the person may schedule on its machines. */
+async function bayCheck(dept: string, ctx: ToolCtx): Promise<BayCheck> {
+  if (!(await isMachinePlanningOn())) return { ok: false, error: OFF };
+  const access = bayAccess(ctx.user, dept);
+  if (!access.tr && !access.lv) return { ok: false, error: NO_RIGHT };
+  return { ok: true, access };
 }
 
-/** The department checks, and the machine of that department by its code. */
-async function machineEditCheck(i: { dept: string; machine: string }, ctx: ToolCtx): Promise<EditCheck> {
-  const denied = await deptEditCheck(i.dept, ctx);
-  if (denied) return { ok: false, error: denied };
+/** One line on the bay's machines: the board in use, the line's own key, and
+ *  the machine of that department by its code. */
+async function lineEditCheck(i: { dept: string; machine: string; item: string }, ctx: ToolCtx): Promise<EditCheck> {
+  if (!(await isMachinePlanningOn())) return { ok: false, error: OFF };
+  const key = machineLinePermKey(i.dept, i.item);
+  if (key === null) return { ok: false, error: `No panel goes on ${i.dept}'s machines.` };
+  if (!hasPerm(ctx.user, key)) return { ok: false, error: NO_LINE_RIGHT };
   const m = await machineByCode(i.dept, i.machine);
   if (!m) return { ok: false, error: `No machine ${i.machine} in ${i.dept}.` };
   return { ok: true, machine: m };
 }
+
+/** What ⚡ Plan plans for the person: the lines their keys cover — or, for a
+ *  look at the plan by someone who schedules neither, every line. */
+const planFor = (access: BayAccess) => (access.tr || access.lv ? (item: string) => mayScheduleLine(access, item) : () => true);
 
 async function codes(dept: string): Promise<Map<number, string>> {
   return new Map((await machinesOf(dept)).map((m) => [m.id, m.code]));
@@ -220,7 +233,7 @@ export const assignLineTool: WriteTool<AssignInput> = {
   },
   parse: (r) => ({ ...parseLine(r), qty: (r.qty as number | null | undefined) ?? null }),
   async describe(i, ctx) {
-    const c = await machineEditCheck(i, ctx);
+    const c = await lineEditCheck(i, ctx);
     if (!c.ok) return { error: c.error };
     if (!c.machine.active) return { error: `${c.machine.code} is retired.` };
     const key = lineKey(i.bom, i.mo, i.item);
@@ -255,7 +268,7 @@ export const unassignLineTool: WriteTool<LineInput> = {
   schema: { type: "object", properties: { ...LINE_FIELDS }, required: ["dept", "bom", "mo", "item", "machine"], additionalProperties: false },
   parse: parseLine,
   async describe(i, ctx) {
-    const c = await machineEditCheck(i, ctx);
+    const c = await lineEditCheck(i, ctx);
     if (!c.ok) return { error: c.error };
     const before = await readQueueSnapshot(i.dept);
     const row = before.find((r) => r.bom === i.bom && r.mo === i.mo && r.item === i.item && r.machineId === c.machine.id && r.sheet === (i.sheet ?? ""));
@@ -295,7 +308,7 @@ export const moveLineTool: WriteTool<MoveInput> = {
   },
   parse: (r) => ({ ...parseLine(r), dir: r.dir as MoveInput["dir"] }),
   async describe(i, ctx) {
-    const c = await machineEditCheck(i, ctx);
+    const c = await lineEditCheck(i, ctx);
     if (!c.ok) return { error: c.error };
     const before = await readQueueSnapshot(i.dept);
     const row = before.find((r) => r.bom === i.bom && r.mo === i.mo && r.item === i.item && r.machineId === c.machine.id && r.sheet === (i.sheet ?? ""));
@@ -335,7 +348,7 @@ export const setLineRunningTool: WriteTool<RunningInput> = {
   },
   parse: (r) => ({ ...parseLine(r), running: r.running as boolean }),
   async describe(i, ctx) {
-    const c = await machineEditCheck(i, ctx);
+    const c = await lineEditCheck(i, ctx);
     if (!c.ok) return { error: c.error };
     const before = await readQueueSnapshot(i.dept);
     const row = before.find((r) => r.bom === i.bom && r.mo === i.mo && r.item === i.item && r.machineId === c.machine.id && r.sheet === (i.sheet ?? ""));
@@ -364,21 +377,22 @@ export const planMachinesTool: WriteTool<DeptInput> = {
   name: "plan_machines",
   title: "Plan the machines (⚡)",
   description:
-    "Run ⚡ Plan for a department: every waiting whole line is taken off and the open lines are planned onto the machines again (what runs now stays, manual jobs and nest runs stay), following the machines' rules. Look at preview_machine_plan first. The card lists each machine's new queue.",
+    "Run ⚡ Plan for a department: every waiting whole line the person schedules is taken off and their open lines are planned onto the machines again (what runs now stays, manual jobs and nest runs stay, and so does the other product line's work on shared machines), following the machines' rules. Look at preview_machine_plan first. The card lists each machine's new queue.",
   area: "machines",
   risk: "high",
   schema: { type: "object", properties: { dept: DEPT }, required: ["dept"], additionalProperties: false },
   async describe(i, ctx) {
-    const denied = await deptEditCheck(i.dept, ctx);
-    if (denied) return { error: denied };
-    const inp = await getOptimizerInputs(i.dept, ctx.todayISO);
+    const c = await bayCheck(i.dept, ctx);
+    if (!c.ok) return { error: c.error };
+    const inp = await getOptimizerInputs(i.dept, ctx.todayISO, planFor(c.access));
     if (inp.machines.every((m) => m.availableH <= 0)) return { error: "No machine of the department has its hours a day set (Tools → Machines)." };
     const plan = optimizePlan(inp.machines, inp.lines, inp.pins);
-    if (plan.placements.length === 0) return { error: "Nothing to plan — every open line is running already." };
+    if (plan.placements.length === 0) return { error: "Nothing to plan — every open line you schedule is running already." };
     const before = await readQueueSnapshot(i.dept);
     const codeOf = new Map(inp.machines.map((m) => [m.id, m.code]));
+    // the waiting lines the plan replaces — the person's own lines alone
     const waitingNow = new Map<number, number>();
-    for (const r of before) if (!r.running) waitingNow.set(r.machineId, (waitingNow.get(r.machineId) ?? 0) + 1);
+    for (const r of before) if (!r.running && mayScheduleLine(c.access, r.item)) waitingNow.set(r.machineId, (waitingNow.get(r.machineId) ?? 0) + 1);
     const planned = new Map<number, string[]>();
     for (const p of [...plan.placements].sort((a, b) => a.rank - b.rank)) (planned.get(p.machineId) ?? planned.set(p.machineId, []).get(p.machineId)!).push(`${p.key.split("|")[1] || p.key.split("|")[0]} ${p.key.split("|")[2]} ×${p.pieces}`);
     const changes: AiChange[] = [...new Set([...waitingNow.keys(), ...planned.keys()])].map((id) => ({
@@ -409,15 +423,19 @@ export const clearMachineTool: WriteTool<{ dept: BoardDept; machine: string }> =
   risk: "destructive",
   schema: { type: "object", properties: { dept: DEPT, machine: LINE_FIELDS.machine }, required: ["dept", "machine"], additionalProperties: false },
   async describe(i, ctx) {
-    const c = await machineEditCheck(i, ctx);
+    const c = await bayCheck(i.dept, ctx);
     if (!c.ok) return { error: c.error };
+    const machine = await machineByCode(i.dept, i.machine);
+    if (!machine) return { error: `No machine ${i.machine} in ${i.dept}.` };
     const before = await readQueueSnapshot(i.dept);
-    const mine = before.filter((r) => r.machineId === c.machine.id);
-    if (mine.length === 0) return { error: `${c.machine.code} has nothing on it.` };
+    const on = before.filter((r) => r.machineId === machine.id);
+    const mine = on.filter((r) => mayScheduleLine(c.access, r.item));
+    if (mine.length === 0) return { error: on.length ? `Only the other product line's work is on ${machine.code} — it is not yours to take off.` : `${machine.code} has nothing on it.` };
+    const theirs = on.length - mine.length;
     return {
-      title: `Empty ${c.machine.code}`,
-      summary: `Take all ${mine.length} line(s) off ${c.machine.code}${mine.some((r) => r.running) ? ", the running ones too" : ""}.`,
-      changes: queueOf(mine, new Map([[c.machine.id, c.machine.code]])).map((l) => ({ label: l, before: "on the machine", after: "off" })),
+      title: `Empty ${machine.code}`,
+      summary: `Take all ${mine.length} line(s) you schedule off ${machine.code}${mine.some((r) => r.running) ? ", the running ones too" : ""}${theirs ? ` — the other line's ${theirs} stay` : ""}.`,
+      changes: queueOf(mine, new Map([[machine.id, machine.code]])).map((l) => ({ label: l, before: "on the machine", after: "off" })),
       snapshot: before,
     };
   },
@@ -434,21 +452,23 @@ export const resetMachinePlanTool: WriteTool<DeptInput> = {
   kind: "write",
   name: "reset_machine_plan",
   title: "Reset the department's machine plan",
-  description: "⟲ Reset: take every line off every machine of the department, running ones included — the board goes back to empty, ready to be planned again. The work itself is untouched.",
+  description: "⟲ Reset: take every line the person schedules off every machine of the department, running ones included — ready to be planned again (the other product line's work on shared machines stays). The work itself is untouched.",
   area: "machines",
   risk: "destructive",
   schema: { type: "object", properties: { dept: DEPT }, required: ["dept"], additionalProperties: false },
   async describe(i, ctx) {
-    const denied = await deptEditCheck(i.dept, ctx);
-    if (denied) return { error: denied };
+    const c = await bayCheck(i.dept, ctx);
+    if (!c.ok) return { error: c.error };
     const before = await readQueueSnapshot(i.dept);
-    if (before.length === 0) return { error: `Nothing is on ${i.dept}'s machines.` };
+    const mine = before.filter((r) => mayScheduleLine(c.access, r.item));
+    if (mine.length === 0) return { error: `Nothing you schedule is on ${i.dept}'s machines.` };
     const codeOf = await codes(i.dept);
     const per = new Map<number, number>();
-    for (const r of before) per.set(r.machineId, (per.get(r.machineId) ?? 0) + 1);
+    for (const r of mine) per.set(r.machineId, (per.get(r.machineId) ?? 0) + 1);
+    const theirs = before.length - mine.length;
     return {
       title: `⟲ Reset ${i.dept}'s machines`,
-      summary: `Take all ${before.length} line(s) off ${per.size} machine(s) of ${i.dept}, running ones included.`,
+      summary: `Take all ${mine.length} line(s) you schedule off ${per.size} machine(s) of ${i.dept}, running ones included${theirs ? ` — the other product line's ${theirs} stay` : ""}.`,
       changes: [...per].map(([id, n]) => ({ label: codeOf.get(id) ?? String(id), before: `${n} line(s)`, after: "empty" })),
       snapshot: before,
     };
@@ -503,8 +523,8 @@ export const restoreQueuesTool: WriteTool<RestoreInput> = {
     additionalProperties: false,
   },
   async describe(i, ctx) {
-    const denied = await deptEditCheck(i.dept, ctx);
-    if (denied) return { error: denied };
+    const c = await bayCheck(i.dept, ctx);
+    if (!c.ok) return { error: c.error };
     const now = await readQueueSnapshot(i.dept);
     return {
       title: `Put ${i.dept}'s machine queues back`,

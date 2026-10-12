@@ -6,7 +6,7 @@ import { centerShares, hoursOfShift, isShiftCode, round1, routeFor } from "@/lib
 import { ITEM_NAME, applicableItems, ospOf } from "@/lib/domain/constants";
 import { isOnHold } from "@/lib/domain/hold";
 import { dateForOffsetISO, offsetForDateISO } from "@/lib/domain/whatif";
-import type { OptLine, OptMachine, OptPin } from "@/lib/domain/optimizePlan";
+import { boardPins, type OptLine, type OptMachine, type OptPin } from "@/lib/domain/optimizePlan";
 import { machineVerdict, type MachineRuleLike, type WorkFacts } from "@/lib/domain/machineRules";
 import { getStdData } from "./standardTimes";
 import { getAllMachines, type MachineDTO } from "./machines";
@@ -18,7 +18,7 @@ import { loadHolidays, loadMasterOrdersOf } from "./loads";
 import { getSettings, getShiftHours } from "./data";
 import { withLine } from "./line";
 import { getLvWorklist } from "./lvWorklist";
-import { LV_ITEM } from "@/lib/domain/lv";
+import { LV_ITEM, lvStageAt } from "@/lib/domain/lv";
 import { fullyCutPieces, sheetKeyOf, type LineMaterial } from "@/lib/domain/machineMaterial";
 import { getLinesMaterial, type OrderRef } from "./machineMaterial";
 import { getManualJobs, manualBoardLines } from "./manualJobs";
@@ -414,7 +414,8 @@ async function registryCutLines(orders: readonly { mo: string; bom: string; line
 
 /** What the ⚡ optimizer plans from: the department's machines with the hours
  *  they really have today, every open line with its route and the day the plan
- *  promises it, and the work already running (which keeps its machine). */
+ *  promises it, the work already running (which keeps its machine), and the
+ *  machines' rules with what each line is as they read it. */
 export interface OptimizerInputs {
   machines: OptMachine[];
   lines: OptLine[];
@@ -425,7 +426,10 @@ export interface OptimizerInputs {
   rules: MachineRuleLike[];
 }
 
-export async function getOptimizerInputs(dept: BoardDept, dayISO: string): Promise<OptimizerInputs> {
+/** The optimizer's inputs for a department. `mayPlan` narrows them to the
+ *  lines the planner's keys cover on the shared floor; the other line's
+ *  waiting work then keeps its machine and its place too, like running work. */
+export async function getOptimizerInputs(dept: BoardDept, dayISO: string, mayPlan: (item: string) => boolean = () => true): Promise<OptimizerInputs> {
   const [ctx, allInputs, holidays, runs, rules] = await Promise.all([
     loadBoardContext(dept, dayISO), getDeptBoardLines(dept, dayISO), loadHolidays(), dept === "Cut" ? getNestRuns(dept) : Promise.resolve([] as NestRunView[]),
     getActiveMachineRules(dept),
@@ -434,23 +438,21 @@ export async function getOptimizerInputs(dept: BoardDept, dayISO: string): Promi
   // leaves it to him rather than put the item on a machine a second time
   const inRun = new Set(runCover(runs).map((c) => c.key));
   const inputs = allInputs.filter((l) => !inRun.has(lineKey(l.bom, l.mo, l.item)));
+  // the board of BOTH lines, whoever plans: the work the plan keeps has to
+  // be on it to be kept
   const board = buildMachineBoard(ctx.machines, ctx.price(inputs), ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew }, ctx.rates);
 
   // what runs now holds its machine, and covers that many pieces of its step
-  const pins: OptPin[] = [];
+  // — and so does the other line's waiting work, when only one line is planned
+  const pins = boardPins(board.cards, mayPlan);
   const pinned = new Map<string, number>();
-  for (const c of board.cards) {
-    for (const q of c.running) {
-      pins.push({ key: q.key, center: q.step, machineId: c.machine.id, pieces: q.remaining, hours: q.hours ?? 0 });
-      pinned.set(`${q.key}#${q.step}`, (pinned.get(`${q.key}#${q.step}`) ?? 0) + q.remaining);
-    }
-  }
+  for (const p of pins) pinned.set(`${p.key}#${p.center}`, (pinned.get(`${p.key}#${p.center}`) ?? 0) + p.pieces);
 
   // one row per line — the same line can arrive as several tranches
   const holidaySet = new Set(holidays.map((h) => toISODate(h.date)));
   const merged = new Map<string, { key: string; item: string; pieces: number; perPiece: number | null; dueISO: string | null; urgent: boolean }>();
   for (const l of inputs) {
-    if (!(l.remaining > 0)) continue;
+    if (!(l.remaining > 0) || !mayPlan(l.item)) continue;
     const key = lineKey(l.bom, l.mo, l.item);
     const due = l.dueISO ?? l.deliveryISO ?? null;
     const prev = merged.get(key);
@@ -550,7 +552,8 @@ async function transformerBoardLines(dept: BoardDept, dayISO: string): Promise<B
 /** The panels on a bay: punching on the fabrication bay's punches, welding
  *  and painting on those bays. Bending is one centre and is not drawn. */
 async function lvBoardLines(dept: BoardDept): Promise<BoardLineInput[]> {
-  if (dept === "ShotBlast") return [];
-  const list = await getLvWorklist(dept === "Cut" ? "Punching" : dept);
+  const stage = lvStageAt(dept);
+  if (!stage) return [];
+  const list = await getLvWorklist(stage);
   return list.rows.map((r) => ({ bom: r.bom, mo: r.mo, item: LV_ITEM, description: `LV ${r.product ?? "panel"} · ${r.customer ?? ""}`.trim(), remaining: r.waiting, deliveryISO: null, dueISO: null }));
 }

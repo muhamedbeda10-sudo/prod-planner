@@ -178,6 +178,75 @@ export async function setUtilization(formData: FormData): Promise<MaterialAction
   return setCell(formData, "utilization", "average utilization");
 }
 
+/** The fields an SOI group's head row writes to EVERY line under it. They
+ *  are the order's, not the sheet's per-material figures — those stay on
+ *  each line. */
+const GROUP_FIELDS = ["mtr", "soi", "mo", "bom", "units", "utilization", "producedQty", "note"] as const;
+type GroupField = (typeof GROUP_FIELDS)[number];
+
+function readIds(v: FormDataEntryValue | null): number[] | null {
+  const ids = String(v ?? "").split(",").map((x) => Number(x.trim())).filter((x) => Number.isInteger(x) && x > 0);
+  return ids.length > 0 && ids.length <= 2000 ? [...new Set(ids)] : null;
+}
+
+/** The head row of an SOI group, edited like any line: what is typed there
+ *  lands on every line of the group. Only the fields sent change; an empty
+ *  box clears the field (a number "not typed yet", a blank MTR / SOI / note),
+ *  except the keys and the units a line cannot be without. */
+export async function updateMaterialGroup(formData: FormData): Promise<MaterialActionResult> {
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
+  if (guard.error) return { ok: false, error: guard.error };
+  const ids = readIds(formData.get("ids"));
+  if (!ids) return { ok: false, error: "Invalid material lines." };
+  const data: Record<string, unknown> = {};
+  for (const field of GROUP_FIELDS as readonly GroupField[]) {
+    if (!formData.has(field)) continue;
+    const raw = String(formData.get(field) ?? "").trim();
+    switch (field) {
+      case "mtr": case "soi": data[field] = raw.toUpperCase(); break;
+      case "note": data.note = raw || null; break;
+      case "mo": data.mo = raw; break;
+      case "bom": {
+        const bom = raw.replace(/[\r\n]/g, "").toUpperCase();
+        if (!bom) return { ok: false, error: "Enter the BOM reference." };
+        data.bom = bom;
+        break;
+      }
+      default: {
+        const v = raw === "" ? null : parseSheetNumber(raw);
+        if (raw !== "" && v === null) return { ok: false, error: "Enter a number, or clear the box." };
+        if (v !== null && v < 0) return { ok: false, error: "A quantity cannot be negative." };
+        if (field === "units" && v === null) return { ok: false, error: "Enter the quantity of units." };
+        data[field] = v;
+      }
+    }
+  }
+  if (Object.keys(data).length === 0) return { ok: true };
+  data.recordedBy = guard.user?.name ?? null;
+  const line = await getActiveLine();
+  try {
+    const res = await prisma.materialUsage.updateMany({ where: { id: { in: ids }, line }, data });
+    if (res.count === 0) return { ok: false, error: "Those material lines are gone — refresh the page." };
+  } catch (e) {
+    // a new MO / BOM can collide with a line already recorded under it
+    if ((e as { code?: string }).code === "P2002") return { ok: false, error: "A line with the same part, material, thickness and size is already on that MO / BOM — edit or delete it first." };
+    throw e;
+  }
+  revalidateMaterial();
+  return { ok: true };
+}
+
+/** Delete every line of an SOI group at once (its head row's menu). */
+export async function deleteMaterialLines(formData: FormData): Promise<MaterialActionResult> {
+  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
+  if (guard.error) return { ok: false, error: guard.error };
+  const ids = readIds(formData.get("ids"));
+  if (!ids) return { ok: false, error: "Invalid material lines." };
+  await prisma.materialUsage.deleteMany({ where: { id: { in: ids }, line: await getActiveLine() } });
+  revalidateMaterial();
+  return { ok: true };
+}
+
 export async function deleteMaterialLine(formData: FormData): Promise<MaterialActionResult> {
   const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
   if (guard.error) return { ok: false, error: guard.error };

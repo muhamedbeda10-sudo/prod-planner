@@ -11,14 +11,14 @@ import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { checkOutputChain } from "@/lib/server/outputGuard";
 import { requireDeptEdit, requireAdmin, requirePerm } from "@/lib/server/auth";
-import { trackerPermKey } from "@/lib/domain/permissions";
+import { ledgerPermKey, trackerPermKey } from "@/lib/domain/permissions";
 import { DELIVERED_STAGE, SHOTBLAST_STAGE, isPaintExempt } from "@/lib/domain/constants";
 import { TANK_ITEM } from "@/lib/domain/tanks";
 import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
 import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
 import { loadGroupMembers, groupTotal, spreadGroupChange } from "@/lib/server/groupRecord";
-import { LV_ITEM, LV_STAGES } from "@/lib/domain/lv";
+import { LV_ITEM, LV_STAGES, lvStageAt } from "@/lib/domain/lv";
 import { consumeSheetDone } from "@/lib/domain/machineMaterial";
 import { runSheet } from "@/lib/domain/nestRun";
 
@@ -71,11 +71,12 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     if (!date) return { ok: false, error: "Invalid date." };
     // An LV panel off a machine card: the fabrication bay's punches punch it,
     // so a panel recorded under "Cut" is punching; the other bays keep their
-    // names. The department's own permission records it either way.
+    // names. The row's own key records it — a panel's the LV stage's, never
+    // the transformer bay's whose machine it ran on.
     const lvPanel = item === LV_ITEM;
-    if (lvPanel && dept === "Cut") dept = "Punching";
+    if (lvPanel) dept = lvStageAt(dept) ?? dept;
     if (lvPanel ? !(LV_STAGES as readonly string[]).includes(dept) : !isDept(dept)) return { ok: false, error: "Invalid department." };
-    const guard = await requireDeptEdit(dept);
+    const guard = await requirePerm(ledgerPermKey(dept, item));
     if (guard.error) return { ok: false, error: guard.error };
     if (!bom) return { ok: false, error: "Missing BOM." };
     if (!lvPanel && !isItem(item)) return { ok: false, error: "Invalid component." };
