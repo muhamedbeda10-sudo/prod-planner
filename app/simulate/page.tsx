@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getCurrentUser, hasPerm, canEditDept, guardTab } from "@/lib/server/auth";
+import { bayAccess, getCurrentUser, hasPerm, guardTab } from "@/lib/server/auth";
 import { getWhatIfInputs } from "@/lib/server/whatif";
 import { isMachinePlanningOn } from "@/lib/server/data";
 import { getFloorLayout } from "@/lib/server/floor";
 import { getDeptBoardLines, getMachineBoard } from "@/lib/server/machineBoard";
 import { factoryDayISO } from "@/lib/domain/dates";
-import { deptPermKey } from "@/lib/domain/permissions";
 import { isShiftDept, type ShiftDept } from "@/lib/domain/shifts";
 import { placeMachine } from "@/lib/domain/floor";
 import { PageHead } from "@/components/ui";
@@ -64,7 +63,7 @@ export default async function SimulatePage({ searchParams }: { searchParams: Pro
           initial={layout}
           board={board}
           canDraw={hasPerm(me, "machines.manage")}
-          canAssign={dept === "ShotBlast" ? hasPerm(me, deptPermKey("ShotBlast")) : canEditDept(me, dept)}
+          canAssign={bayAccess(me, dept)}
           updatedBy={updatedBy}
           updatedAtISO={updatedAtISO}
         />

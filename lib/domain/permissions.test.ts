@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ACCESS_PERM_KEYS, PERMISSIONS, PERM_KEYS, deptPermKey, ledgerPermKey, linePermKey, parsePerms, shiftPermKey, trackerPermKey } from "./permissions";
+import { ACCESS_PERM_KEYS, PERMISSIONS, PERM_KEYS, bayPermKeys, deptPermKey, ledgerPermKey, linePermKey, machineLinePermKey, mayScheduleLine, parsePerms, shiftPermKey, trackerPermKey } from "./permissions";
+import { DELIVERED_STAGE, DEPTS, ITEMS, SHOTBLAST_STAGE } from "./constants";
+import { LV_CHAIN, LV_PRODUCTS } from "./lv";
+import { MANUAL_ITEM } from "./manualJob";
+import { RUN_ITEM } from "./nestRun";
 
 describe("the panels' own keys", () => {
   it("are all registered, so the Users page offers them and parsePerms keeps them", () => {
@@ -17,12 +21,69 @@ describe("the panels' own keys", () => {
     expect(deptPermKey("Welding")).toBe("welding.edit");
   });
 
-  it("govern a panel's ledger row whatever its department", () => {
-    expect(ledgerPermKey("Welding", "USS")).toBe("lv.welding");
-    expect(ledgerPermKey("Painting", "LSS")).toBe("lv.painting");
-    expect(ledgerPermKey("Delivered", "USS")).toBe("lv.tracker.delivered");
+  it("govern a panel's ledger row (item PNL) at every stage, whatever its department", () => {
+    // "PNL" written out, not LV_ITEM: it is what the panels' rows already in
+    // the ledger carry, so this fails if the constant ever drifts from them
+    expect(ledgerPermKey("Punching", "PNL")).toBe("lv.punching");
+    expect(ledgerPermKey("Bending", "PNL")).toBe("lv.bending");
+    expect(ledgerPermKey("Welding", "PNL")).toBe("lv.welding");
+    expect(ledgerPermKey("Painting", "PNL")).toBe("lv.painting");
+    expect(ledgerPermKey("Delivered", "PNL")).toBe("lv.tracker.delivered");
+    // each a key the Users page can tick — one outside the catalog would
+    // quietly make the row admin-only
+    for (const d of LV_CHAIN) expect(PERM_KEYS.has(ledgerPermKey(d, "PNL")), d).toBe(true);
+  });
+
+  it("leave a transformer's row on its department's key — neither line opens the other's", () => {
+    expect(ledgerPermKey("Cut", "CF")).toBe("cut.edit");
     expect(ledgerPermKey("Welding", "TN")).toBe("welding.edit");
+    expect(ledgerPermKey("Painting", "TC")).toBe("painting.edit");
+    expect(ledgerPermKey("ShotBlast", "CF")).toBe("tracker.shp");
     expect(ledgerPermKey("Delivered", "TN")).toBe("tracker.delivered");
+    for (const d of [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE]) {
+      for (const item of ITEMS) expect(ledgerPermKey(d, item), `${d} ${item}`).not.toMatch(/^lv\./);
+    }
+  });
+
+  it("go by the ledger's panel item, not the panel type the plan names", () => {
+    // USS / LSS is the order's type (MasterOrder.product) — no ledger row
+    // carries it, so it opens nothing on the panels' keys
+    for (const type of LV_PRODUCTS) expect(ledgerPermKey("Welding", type)).toBe("welding.edit");
+  });
+
+  it("schedule a panel on the shared machines by the stage the bay works, never by the bay's key", () => {
+    expect(machineLinePermKey("Cut", "PNL")).toBe("lv.punching"); // the punches punch it
+    expect(machineLinePermKey("Welding", "PNL")).toBe("lv.welding");
+    expect(machineLinePermKey("Painting", "PNL")).toBe("lv.painting");
+    expect(machineLinePermKey("ShotBlast", "PNL")).toBeNull(); // takes no panels: no one's
+    // a transformer part, and the bay's own jobs and nest runs, stay the bay's
+    expect(machineLinePermKey("Cut", "CF")).toBe("cut.edit");
+    expect(machineLinePermKey("Welding", "TN")).toBe("welding.edit");
+    expect(machineLinePermKey("Painting", "TC")).toBe("painting.edit");
+    expect(machineLinePermKey("ShotBlast", "CF")).toBe("tracker.shp");
+    expect(machineLinePermKey("Cut", MANUAL_ITEM)).toBe("cut.edit");
+    expect(machineLinePermKey("Cut", RUN_ITEM)).toBe("cut.edit");
+  });
+
+  it("give each bay one key per line, every one of them tickable", () => {
+    expect(bayPermKeys("Cut")).toEqual({ tr: "cut.edit", lv: "lv.punching" });
+    expect(bayPermKeys("Welding")).toEqual({ tr: "welding.edit", lv: "lv.welding" });
+    expect(bayPermKeys("Painting")).toEqual({ tr: "painting.edit", lv: "lv.painting" });
+    expect(bayPermKeys("ShotBlast")).toEqual({ tr: "tracker.shp", lv: null });
+    for (const bay of ["Cut", "Welding", "Painting", "ShotBlast"]) {
+      for (const key of Object.values(bayPermKeys(bay))) if (key) expect(PERM_KEYS.has(key), key).toBe(true);
+    }
+  });
+
+  it("let one line's keys schedule that line's work and none of the other's", () => {
+    const transformers = { tr: true, lv: false };
+    const panels = { tr: false, lv: true };
+    expect(mayScheduleLine(transformers, "CF")).toBe(true);
+    expect(mayScheduleLine(transformers, MANUAL_ITEM)).toBe(true);
+    expect(mayScheduleLine(transformers, "PNL")).toBe(false);
+    expect(mayScheduleLine(panels, "PNL")).toBe(true);
+    expect(mayScheduleLine(panels, "CF")).toBe(false);
+    expect(mayScheduleLine(panels, RUN_ITEM)).toBe(false);
   });
 
   it("follow the line for closing, importing, Odoo and material", () => {
