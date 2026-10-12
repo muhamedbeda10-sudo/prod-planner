@@ -86,6 +86,8 @@ export interface TraceResult {
   ledger: {
     id: number; dateISO: string; planNo: number; planLabel: string; dept: string;
     item: string; qty: number; source: string; by: string | null; corrected: string | null;
+    /** The order the record was written against, when it says. */
+    mo: string | null;
   }[];
   ledgerCount: number;
   orderPlans: string[]; // labels of the plans this code was planned in
@@ -294,6 +296,7 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
     ledger: handover.map((h) => ({
       id: h.id, dateISO: toISODate(h.date), planNo: h.planNo, planLabel: planLabel(h.planNo), dept: h.dept,
       item: h.item, qty: h.qty, source: h.source, by: h.createdBy, corrected: h.bomRaw && h.bomRaw !== h.bom ? h.bomRaw : null,
+      mo: h.mo ?? null,
     })),
     ledgerCount: handover.length,
     orderPlans: [...new Set(orders.map((o) => o.planNo))].sort((a, b) => a - b).map(planLabel),

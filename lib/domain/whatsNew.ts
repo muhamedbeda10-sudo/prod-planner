@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-order-page-links",
+    dateISO: "2026-10-12",
+    title: "Open an order's page from the ODOO and Material tabs",
+    where: "ODOO → BOM · Material → BOM · the order's page",
+    body: "The BOM on an ODOO row and on a Material line is now a link to that order's page — its stages, components, Odoo closings and every record. The page's records now show the newest first, say which MO each record belongs to, and drop the plan column; the long captions under its cards are gone.",
+    href: "/odoo",
+  },
+  {
     id: "2026-10-12-odoo-order-material",
     dateISO: "2026-10-12",
     title: "ODOO log: a row closed under another MO of its order is no longer red",

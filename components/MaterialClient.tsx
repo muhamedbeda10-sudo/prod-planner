@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import type { ProductLine } from "@/lib/domain/lines";
 import type { LvOrderRef, MaterialPageData } from "@/lib/server/material";
 
@@ -298,7 +300,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
           <td className="p-2 text-center"><span className="pill pill-muted">{line.partName || "—"}</span></td>
           <td className="p-2 whitespace-nowrap ltr text-xs tabnum text-muted">{line.materialCode || "—"}</td>
           <td className="p-2 text-center tabnum font-bold">{line.units}</td>
-          <td className="p-2 whitespace-nowrap ltr text-xs">{line.bom}</td>
+          <td className="p-2 whitespace-nowrap ltr text-xs"><BomLink bom={line.bom} /></td>
           <td className="p-2 whitespace-nowrap">{line.material}</td>
           <td className="p-2 text-center tabnum ltr">{line.thicknessMm}</td>
           <td className="p-2 text-center whitespace-nowrap ltr tabnum">{line.sheetSize}</td>
@@ -334,7 +336,7 @@ function LineRow({ line, knownBoms, knownCodes, canEdit, showMonth, product, odo
         <td className={`p-2 whitespace-nowrap ltr text-xs font-semibold ${stickCls(1)}`} style={stickStyle(1)}><span className="block truncate" title={line.soi || undefined}>{line.soi || <span className="text-muted">—</span>}</span></td>
         {/* the sheet files each part under Odoo's MO — the key an ODOO row finds it by */}
         <td className={`p-2 font-bold whitespace-nowrap ltr text-xs ${stickCls(2)}`} style={stickStyle(2)}><MoCell mo={line.mo} odoo={odoo} /></td>
-        <td className="p-2 whitespace-nowrap ltr text-xs">{line.bom}</td>
+        <td className="p-2 whitespace-nowrap ltr text-xs"><BomLink bom={line.bom} /></td>
         <td className={`p-2 ${NUM} tabnum ltr`}>{line.units}</td>
         <td className="p-2 whitespace-nowrap ltr text-xs font-bold">{line.partCode || <span className="text-muted">—</span>}</td>
         <td className="p-2 whitespace-nowrap text-xs">{line.partName || <span className="text-muted">—</span>}</td>
@@ -932,4 +934,10 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
       )}
     </div>
   );
+}
+
+/** A line's BOM, opening its order's page (the trace: pipeline, orders, log). */
+function BomLink({ bom }: { bom: string }) {
+  if (!bom) return <span className="text-muted">—</span>;
+  return <Link href={`/trace?bom=${encodeURIComponent(bom)}`} className="text-accent hover:underline" title="Open the order's details">{bom}</Link>;
 }
