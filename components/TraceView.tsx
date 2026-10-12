@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDate, formatDateTime } from "@/lib/domain/format";
-import { Fragment, useState } from "react";
+import { Fragment, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -133,7 +133,13 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
                 {t.kva && <Prop k="KVA">{t.kva}</Prop>}
                 {t.rating && <Prop k="Rating">{t.rating}</Prop>}
                 {monthsAll.length > 0 && <Prop k="Plan months">{monthsAll.join(" · ")}</Prop>}
-                <Prop k="Planned in">{t.orderPlans.join(" · ") || "—"}</Prop>
+                <Prop k="Planned in">
+                  {t.orderPlans.length === 0 ? "—" : (
+                    <span className="flex flex-wrap justify-end gap-1">
+                      {t.orderPlans.map((p) => <span key={p} className="pill pill-muted text-[10px]">{p}</span>)}
+                    </span>
+                  )}
+                </Prop>
                 <Prop k="Ledger records">{t.ledgerCount}</Prop>
                 {t.odoo.length > 0 && (
                   <Prop k="On ODOO">
@@ -238,7 +244,7 @@ function StagePipeline({ stages, totalReq, pipeline }: {
     key === "Cut" ? p.cut : key === "Welding" ? p.weld : key === "Painting" ? p.finished : p.delivered;
 
   return (
-    <Card title="Production pipeline" sub={`${totalReq} pcs per stage across the required components`}>
+    <Card title="Production pipeline">
       <div className="p-4">
         <div className="flex flex-col md:flex-row md:items-stretch gap-2">
           {stages.map((s, i) => {
@@ -322,7 +328,6 @@ function ComponentProgress({ pipeline }: { pipeline: TracePipelineRow[] }) {
   return (
     <Card
       title="Component progress"
-      sub="net totals vs order quantity — OSP counts as covered"
       actions={
         <div className="inline-flex rounded-lg border border-border/60 overflow-hidden">
           {(["grid", "table"] as const).map((v) => (
@@ -423,8 +428,12 @@ function Records({ t }: { t: TraceResult }) {
   // the plan rows name an MO; its SOI already sits on the linked order card
   const soiOfMo = (mo: string) => t.members.find((m) => m.mo === mo)?.soi ?? null;
   const [tab, setTab] = useState<"ledger" | "orders">("ledger");
+  // newest first — what happened last is what the page is opened for
+  const ledger = useMemo(() => [...t.ledger].reverse(), [t.ledger]);
+  // a code's page spans several orders: each record says which
+  const byOrder = t.scope === "bom";
   const exportLedger = t.ledger.map((l) => ({
-    Date: l.dateISO, Plan: l.planLabel, Dept: deptLabel(l.dept), Item: l.item, Qty: l.qty,
+    Date: l.dateISO, MO: l.mo ?? "", Plan: l.planLabel, Dept: deptLabel(l.dept), Item: l.item, Qty: l.qty,
     Source: l.source, By: l.by ?? "", "Corrected from": l.corrected ?? "",
   }));
   const TABS = [
@@ -435,7 +444,6 @@ function Records({ t }: { t: TraceResult }) {
   return (
     <Card
       title="Records"
-      sub="the full handover ledger and the underlying plan lines"
       actions={
         <div className="flex items-center gap-2">
           {tab === "ledger" && <ExportButton rows={exportLedger} filename={`trace-${t.key}.xlsx`} sheetName="Trace" />}
@@ -455,25 +463,28 @@ function Records({ t }: { t: TraceResult }) {
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="text-left text-[11px] uppercase tracking-wide text-muted bg-surface/95 backdrop-blur border-b border-border/60">
-                <th className="px-4 py-2.5 font-bold">Date</th><th className="px-3 py-2.5 font-bold">Plan</th>
-                <th className="px-3 py-2.5 font-bold">Stage</th><th className="px-3 py-2.5 font-bold text-center">Item</th>
-                <th className="px-3 py-2.5 font-bold text-center">Qty</th><th className="px-3 py-2.5 font-bold">Source</th>
-                <th className="px-3 py-2.5 font-bold pr-4">By</th>
+                <th className="px-4 py-2 font-bold">Date</th>
+                {byOrder && <th className="px-3 py-2 font-bold">MO</th>}
+                <th className="px-3 py-2 font-bold">Stage</th><th className="px-3 py-2 font-bold text-center">Item</th>
+                <th className="px-3 py-2 font-bold text-center">Qty</th><th className="px-3 py-2 font-bold">Source</th>
+                <th className="px-3 py-2 font-bold pr-4">By</th>
               </tr>
             </thead>
             <tbody>
-              {t.ledger.length === 0 && (
-                <tr><td colSpan={7} className="p-10 text-center text-muted">
-                  <div className="text-2xl mb-1">📭</div>No handover records yet.
-                </td></tr>
+              {ledger.length === 0 && (
+                <tr><td colSpan={byOrder ? 7 : 6} className="p-8 text-center text-muted">No records yet.</td></tr>
               )}
-              {t.ledger.map((l, i) => (
+              {ledger.map((l, i) => (
                 <tr key={l.id} className={`border-b border-border/30 last:border-0 hover:bg-brand-light/25 transition-colors ${i % 2 ? "bg-brand-light/[0.06]" : ""}`}>
-                  <td className="px-4 py-2 whitespace-nowrap tabnum text-muted">{formatDate(l.dateISO)}</td>
-                  <td className="px-3 py-2 font-bold text-xs whitespace-nowrap">{l.planLabel}</td>
-                  <td className="px-3 py-2">{deptLabel(l.dept)}</td>
-                  <td className="px-3 py-2 text-center font-bold">{l.item}</td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="px-4 py-1.5 whitespace-nowrap tabnum text-muted">{formatDate(l.dateISO)}</td>
+                  {byOrder && (
+                    <td className="px-3 py-1.5 text-xs whitespace-nowrap ltr">
+                      {l.mo ? <Link href={`/trace?mo=${encodeURIComponent(l.mo)}`} className="text-accent hover:underline">{l.mo}</Link> : <span className="text-muted">—</span>}
+                    </td>
+                  )}
+                  <td className="px-3 py-1.5">{deptLabel(l.dept)}</td>
+                  <td className="px-3 py-1.5 text-center font-bold">{l.item}</td>
+                  <td className="px-3 py-1.5 text-center">
                     <span className="inline-block min-w-9 rounded-md px-1.5 py-0.5 font-bold tabnum text-xs"
                       style={l.qty < 0
                         ? { background: "var(--bad-bg)", color: "var(--bad-fg)" }
@@ -481,11 +492,11 @@ function Records({ t }: { t: TraceResult }) {
                       {l.qty > 0 ? `+${l.qty}` : l.qty}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-xs text-muted">
+                  <td className="px-3 py-1.5 text-xs text-muted">
                     {l.source}
                     {l.corrected && <Chip tone="ok" className="ml-1">fixed</Chip>}
                   </td>
-                  <td className="px-3 py-2 pr-4 text-xs whitespace-nowrap">
+                  <td className="px-3 py-1.5 pr-4 text-xs whitespace-nowrap">
                     {l.by ? <span className="inline-flex items-center gap-1.5"><Avatar name={l.by} />{l.by}</span> : <span className="text-muted">—</span>}
                   </td>
                 </tr>
@@ -570,7 +581,6 @@ function OnOdoo({ rows }: { rows: TraceOdooRow[] }) {
       <div className="px-5 py-3 border-b border-border/40 flex flex-wrap items-center gap-x-3 gap-y-1">
         <div>
           <h2 className="text-sm font-extrabold uppercase tracking-wide">On ODOO</h2>
-          <p className="text-[11px] text-muted mt-0.5">The rows this order&apos;s closings put on the ODOO tab — Odoo&apos;s MO for each, and whether it is closed.</p>
         </div>
         {rows.length > 0 && (
           <div className="ms-auto flex flex-wrap items-center gap-1.5">
@@ -583,7 +593,7 @@ function OnOdoo({ rows }: { rows: TraceOdooRow[] }) {
         )}
       </div>
       {rows.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-muted text-center">Nothing of this order has reached the ODOO tab yet.</p>
+        <p className="px-5 py-4 text-sm text-muted text-center">Not on the ODOO tab yet.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">

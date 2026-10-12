@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
 import { FilterX, MessageSquarePlus } from "lucide-react";
 import { CellEditor, TableEmpty, TableFrame, Th, useConfirm, useRowMenu } from "@/components/DataTable";
@@ -7,7 +9,7 @@ import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { ProductSwatch } from "@/components/Badge";
 import { productColor } from "@/lib/domain/productColors";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition, Fragment } from "react";
 import {
   ODOO_PRODUCTS, ODOO_STATUSES, EMPTY_ODOO_FILTERS, filterOdooEntries, groupOdooEntries,
   odooItemTotals, odooScopeLabel, singleDayOf, type OdooItemTotal,
@@ -214,7 +216,13 @@ function BomValue({ bom }: { bom: OdooEntryView["bom"] }) {
   if (bom.boms.length === 0) return <span className="text-muted">—</span>;
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      {bom.boms.join(" / ")}
+      {/* each BOM opens its order's page — the row's own click stays the material */}
+      {bom.boms.map((b, i) => (
+        <Fragment key={b}>
+          {i > 0 && " / "}
+          <Link href={`/trace?bom=${encodeURIComponent(b)}`} onClick={(ev) => ev.stopPropagation()} className="text-accent hover:underline" title="Open the order's details">{b}</Link>
+        </Fragment>
+      ))}
       {bom.boms.length > 1 && <span className="pill pill-warn text-[10px]" title="The SOI has several BOMs — the row does not say which">{bom.boms.length} BOMs</span>}
     </span>
   );
