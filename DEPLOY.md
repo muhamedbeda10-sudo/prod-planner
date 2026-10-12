@@ -69,14 +69,21 @@ npm run seed -- "C:\المسار\إلى\Production_Master_Excel.xlsm"
 والجدول بيرجع فاضي مع الاسترجاع.
 
 ### التجهيز (مرة واحدة)
-في GitHub: **Settings → Secrets and variables → Actions → New repository secret**:
-1. `BACKUP_DATABASE_URL` — من Supabase: **Connect → Session pooler** (العنوان اللي فيه
-   `pooler.supabase.com:5432`)، مش الـ direct (`db.<ref>.supabase.co`) ولا الـ transaction pooler (6543).
-2. `BACKUP_PASSPHRASE` — باسورد طويل (16 حرف على الأقل). **احفظه في مكان تاني غير GitHub** —
-   من غيره الباك أب مايتفتحش.
+الباك أب بيدخل الداتابيز بحساب لوحده، `backup_reader`: بيقرا كل الجداول ومايقدرش يغيّر أي حاجة، فالعنوان
+اللي في GitHub مايقدرش يكتب ولا يمسح.
+1. من الأبلكيشن (لصاحب الأبلكيشن بس): **Settings → 🗄 Database backup → Make the password**. العنوان بيظهر
+   **مرة واحدة بس** — انسخه. الأبلكيشن بيجرّب يدخل بيه الأول ويقولك نجح ولا لأ.
+2. في GitHub: **Settings → Secrets and variables → Actions → New repository secret**:
+   - `BACKUP_DATABASE_URL` — العنوان من الخطوة 1.
+   - `BACKUP_PASSPHRASE` — باسورد طويل (16 حرف على الأقل). **احفظه في مكان تاني غير GitHub** —
+     من غيره الباك أب مايتفتحش.
+3. من تاب **Actions → Database backup → Run workflow** شغّله مرة يدوي وتأكد إنه أخضر.
+   الـ schedule بيشتغل من الفرع `master` بس.
 
-بعدها من تاب **Actions → Database backup → Run workflow** شغّله مرة يدوي وتأكد إنه أخضر.
-الـ schedule بيشتغل من الفرع `master` بس.
+- العنوان ضاع أو اتسرّب؟ **Make a new password** (القديم بيبطل فوراً) وحدّث `BACKUP_DATABASE_URL` في GitHub.
+- **Turn off** بيقفل الحساب خالص؛ الباك أبات اللي اتعملت قبل كده مابتتأثرش.
+- أي عنوان Session pooler تاني (`…pooler.supabase.com:5432`، زي اللي بباسورد `postgres`) بينفع برضه، بس ده
+  بيقدر يكتب ويمسح — حساب الباك أب أأمن.
 
 ### الاسترجاع
 1. من **Actions → Database backup** افتح التشغيلة وحمّل الـ artifact (`atc-db-<التاريخ>`).

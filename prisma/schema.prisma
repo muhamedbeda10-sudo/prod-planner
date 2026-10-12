@@ -488,6 +488,12 @@ model Settings {
   shiftShortH Float @default(9)
   shiftLongH  Float @default(11)
   overtimeH   Float @default(3)
+
+  // The nightly backup's own read-only login (backup_reader): when its
+  // password was last made, or the login turned off, and by whom. The
+  // password itself is kept nowhere but in GitHub's secret.
+  backupLoginAt DateTime?
+  backupLoginBy String?
 }
 
 // ---- Standard man-hours (the engineering timings sheet, editable in Admin →
