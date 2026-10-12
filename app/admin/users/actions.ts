@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { hashPassword, requireOwner } from "@/lib/server/auth";
-import { serializePerms } from "@/lib/domain/permissions";
+import { isAiPerm, serializePerms, withoutAiChange } from "@/lib/domain/permissions";
 import { TABS, serializeHiddenTabs } from "@/lib/domain/tabs";
 
 export interface UserActionResult {
@@ -29,8 +29,14 @@ async function saveAi(userId: number, ai: { enabled: boolean; monthlyUsd: number
   await prisma.aiAccess.upsert({ where: { userId }, create: { userId, ...ai }, update: ai });
 }
 
-function permsFromForm(formData: FormData): string {
-  return serializePerms(formData.getAll("perms").map(String));
+/** The keys ticked on the form. The assistant's keys are kept on AI
+ *  assistant settings, so this form leaves them as they are — unless it says
+ *  it carries them ("aiKeys": the assistant's own users tool, which sends a
+ *  person's whole set). */
+function permsFromForm(formData: FormData, stored = ""): string {
+  const ticked = formData.getAll("perms").map(String);
+  if (formData.get("aiKeys") === "1") return serializePerms(ticked);
+  return withoutAiChange(stored, ticked.filter((k) => !isAiPerm(k)));
 }
 
 /** The screens left UNticked are the hidden ones. A form without the
@@ -80,10 +86,10 @@ export async function updateUserPerms(formData: FormData): Promise<UserActionRes
   const ai = target.isOwner ? undefined : aiFromForm(formData);
   if (ai === "bad") return { ok: false, error: "Enter the AI monthly limit in dollars (empty = none)." };
 
-  await prisma.user.update({ where: { id }, data: { isAdmin, perms: permsFromForm(formData), hiddenTabs: hiddenTabsFromForm(formData) } });
+  await prisma.user.update({ where: { id }, data: { isAdmin, perms: permsFromForm(formData, target.perms), hiddenTabs: hiddenTabsFromForm(formData) } });
   await saveAi(id, ai);
   revalidatePath("/admin/users");
-  if (ai) revalidatePath("/admin/ai");
+  revalidatePath("/admin/ai");
   return { ok: true };
 }
 

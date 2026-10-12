@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { PERM_CATEGORIES } from "@/lib/domain/permissions";
+import { PERM_ALERTS, PERM_OTHER, PERM_TABLES, parsePerms, permDef } from "@/lib/domain/permissions";
 import { TABS, TAB_GROUPS, parseHiddenTabs } from "@/lib/domain/tabs";
 import { createUser, updateUserPerms, setUserActive, resetUserPassword, deleteUser } from "./actions";
 import { Modal } from "@/components/Modal";
@@ -24,30 +24,79 @@ interface Row {
 const inputCls = "px-2.5 py-1.5 text-sm font-semibold w-full";
 const btnCls = "btn btn-primary btn-sm";
 
+/** One key's box. Access rights carry data-access, so ticking Admin ticks
+ *  them; notifications are never ticked in bulk. */
+function PermBox({ k, on, disabled, label }: { k: string; on: boolean; disabled?: boolean; label?: string }) {
+  const d = permDef(k);
+  return (
+    <input
+      type="checkbox"
+      name="perms"
+      value={k}
+      defaultChecked={on}
+      disabled={disabled}
+      title={d?.desc}
+      aria-label={label ?? d?.label ?? k}
+      data-access={d?.notify || d?.optIn ? undefined : "1"}
+      className="w-4 h-4 accent-[var(--brand,#1b7a43)]"
+    />
+  );
+}
+
+/** The permissions as tables — a department across the two lines and its
+ *  shift log, an order's job across the two lines — then the rest, then the
+ *  notifications. The assistant's own rights are on AI assistant settings. */
 function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: boolean }) {
+  const box = (k: string, label?: string) => <PermBox k={k} on={defaults.has(k)} disabled={disabled} label={label} />;
   return (
     <div className="space-y-3">
-      {PERM_CATEGORIES.map((cat) => (
-        <fieldset key={cat.name} className="border rounded-lg p-3">
-          <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">{cat.name}</legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1.5">
-            {cat.perms.map((p) => (
-              <label key={p.key} className="flex items-start gap-2 text-sm cursor-pointer" title={p.desc}>
-                <input
-                  type="checkbox"
-                  name="perms"
-                  value={p.key}
-                  defaultChecked={defaults.has(p.key)}
-                  disabled={disabled}
-                  data-access={p.notify || p.optIn ? undefined : "1"}
-                  className="mt-0.5 accent-[var(--brand,#1b7a43)]"
-                />
-                <span className="font-semibold">{p.label}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      ))}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+        {PERM_TABLES.map((t) => (
+          <fieldset key={t.title} className="border rounded-lg p-3">
+            <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">{t.title}</legend>
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
+                  <th className="text-start font-bold">&nbsp;</th>
+                  {t.columns.map((c) => <th key={c} className="text-center font-bold w-24">{c}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {t.rows.map((r) => (
+                  <tr key={r.label}>
+                    <td className="font-semibold py-1.5">{r.label}</td>
+                    {r.cells.map((k, i) => (
+                      <td key={i} className="text-center">{k ? box(k, `${r.label} — ${t.columns[i]}`) : <span className="text-muted">—</span>}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </fieldset>
+        ))}
+      </div>
+      <fieldset className="border rounded-lg p-3">
+        <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">Other</legend>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-1.5">
+          {PERM_OTHER.map((k) => (
+            <label key={k} className="flex items-center gap-2 text-sm cursor-pointer" title={permDef(k)?.desc}>
+              {box(k)}
+              <span className="font-semibold">{permDef(k)?.label ?? k}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset className="border rounded-lg p-3">
+        <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">Notifications</legend>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+          {PERM_ALERTS.map((k) => (
+            <label key={k} className="flex items-center gap-2 text-sm cursor-pointer" title={permDef(k)?.desc}>
+              {box(k)}
+              <span className="font-semibold">{permDef(k)?.label ?? k}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
     </div>
   );
 }
@@ -86,31 +135,15 @@ function TabChecks({ hidden }: { hidden: Set<string> }) {
   );
 }
 
-/** The AI assistant for this account: whether they may use it and how much
- *  they may spend a month (the plant's cap, on AI assistant settings, still
- *  holds over everyone). The owner always has it. */
-function AiChecks({ ai, owner }: { ai: Row["ai"] | null; owner?: boolean }) {
+/** The assistant is managed on its own page — access, caps and what it may
+ *  do for this person. */
+function AiNote({ ai, owner }: { ai: Row["ai"] | null; owner?: boolean }) {
   return (
-    <fieldset className="border rounded-lg p-3">
-      <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">AI assistant</legend>
-      {owner ? (
-        <p className="text-sm text-muted">Always on for the owner.{ai ? ` Spent this month: ${usdText(ai.spent)}.` : ""}</p>
-      ) : (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <input type="hidden" name="aiForm" value="1" />
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" name="aiEnabled" defaultChecked={ai?.enabled} className="accent-[var(--brand,#1b7a43)]" />
-            <span className="font-semibold">Can use the AI assistant</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <span className="font-semibold">Monthly limit</span>
-            <span className="font-bold">$</span>
-            <input name="aiUsd" type="number" inputMode="decimal" min={0} step="0.5" defaultValue={ai && ai.monthlyUsd > 0 ? ai.monthlyUsd : ""} placeholder="no limit" className="w-24 px-2 py-1 text-sm tabnum" />
-          </label>
-          {ai && <span className="text-xs text-muted">Spent this month: <b className="tabnum">{usdText(ai.spent)}</b></span>}
-        </div>
-      )}
-    </fieldset>
+    <p className="text-sm border rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
+      <span className="font-bold">AI assistant:</span>
+      <span className="text-muted">{owner ? "always on for the owner" : ai?.enabled ? `on${ai.monthlyUsd > 0 ? ` · ${usdText(ai.monthlyUsd)}/month` : ""}` : "off"}</span>
+      <a href="/admin/ai#people" className="ms-auto underline text-brand font-semibold">Manage on AI settings</a>
+    </p>
   );
 }
 
@@ -260,8 +293,9 @@ function EditUserCard({ user, myId }: { user: Row; myId: number }) {
             <AdminCheck defaultChecked={user.isAdmin} label="Admin" />
           )}
           <TabChecks hidden={parseHiddenTabs(user.hiddenTabs)} />
-          <AiChecks ai={user.ai} owner={user.isOwner} />
-          <PermChecks defaults={new Set(user.perms.split(",").map((s) => s.trim()))} />
+          <AiNote ai={user.ai} owner={user.isOwner} />
+          {/* read as the server reads them: an old key shows as the one it became */}
+          <PermChecks defaults={parsePerms(user.perms)} />
           <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <Msg msg={perms.msg} />
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => setExpanded(false)} disabled={perms.pending}>Close</button>
@@ -312,7 +346,7 @@ export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
           </div>
           <AdminCheck label="Admin" />
           <TabChecks hidden={new Set()} />
-          <AiChecks ai={null} />
+          <AiNote ai={null} />
           <PermChecks defaults={new Set()} />
           <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <Msg msg={create.msg} />

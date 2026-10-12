@@ -22,9 +22,8 @@ import { LV_TRACKER_PREF_KEYS, TRACKER_PREF_KEYS } from "@/lib/domain/userPrefs"
 
 export const dynamic = "force-dynamic";
 
-// Tracker features each carry their OWN permission key — deliberately separate
-// from the worklist permissions (a Cut-worklist user can't touch the tracker's
-// Fab column unless given tracker.cut explicitly).
+// A stage column is typed with its department's own key (the one that records
+// its worklist); the order-level features each carry their own.
 const FEATURE_KEYS = ["tracker.status", "tracker.components", "tracker.qty", "tracker.priority", "tracker.push"];
 
 // No page header — the plan-level KPI cards (progress + OTD) live on the
