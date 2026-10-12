@@ -2,9 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Layers, Plus } from "lucide-react";
 import { upsertLvStdTime, deleteLvStdTime } from "./actions";
 import type { LvRate } from "@/lib/domain/lvStd";
 import { Modal } from "@/components/Modal";
+import { SectionCard } from "@/components/primitives";
 
 /* The LV panels' standard hours per unit, from the timings sheet's LV tab.
    Each open panel order shows which row prices it — by its FG code, or
@@ -21,7 +23,8 @@ const FIELDS = [
 ] as const;
 
 const fmt = (v: number | null) => (v === null ? "—" : String(Math.round(v * 1000) / 1000));
-const INPUT = "border rounded px-1.5 py-1 w-20 text-right tabnum bg-surface";
+const INPUT = "px-1.5 py-1 w-20 text-right tabnum";
+const KIND_LABEL: Record<string, string> = { USS: "USS", MB: "Meter box", FP: "Feeder pillar" };
 
 export function LvStdTimesManager({ rates, orders }: { rates: LvRate[]; orders: LvOrderRateRow[] }) {
   const router = useRouter();
@@ -61,110 +64,122 @@ export function LvStdTimesManager({ rates, orders }: { rates: LvRate[]; orders: 
   const pricedUnits = open.reduce((s, o) => s + (o.fg ? o.planQty : 0), 0);
 
   const editRow = (key: string) => (
-    <tr key={`edit-${key}`} className="border-t bg-surface-2">
-      <td className="p-1.5">
-        {key === "" ? <input value={draft.fg} onChange={(e) => setDraft({ ...draft, fg: e.target.value })} placeholder="FG-SUSA-8569105" className="border rounded px-1.5 py-1 w-44 ltr bg-surface" aria-label="FG code" /> : <b className="ltr">{key}</b>}
-        <input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Description" className="border rounded px-1.5 py-1 w-44 mt-1 block bg-surface text-xs" aria-label="Description" />
+    <tr key={`edit-${key}`} className="bg-surface-2/50">
+      <td className="ps-4 md:ps-5 py-1.5">
+        {key === "" ? <input value={draft.fg} onChange={(e) => setDraft({ ...draft, fg: e.target.value })} placeholder="FG-SUSA-8569105" className="px-1.5 py-1 w-44 ltr" aria-label="FG code" /> : <b className="ltr">{key}</b>}
+        <input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Description" className="px-1.5 py-1 w-44 mt-1 block text-xs" aria-label="Description" />
       </td>
-      <td className="p-1.5">
-        <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="border rounded px-1 py-1 bg-surface text-xs" aria-label="Kind">
+      <td className="py-1.5">
+        <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="px-1 py-1 text-xs" aria-label="Kind">
           <option value="USS">USS</option><option value="MB">Meter box</option><option value="FP">Feeder pillar</option>
         </select>
       </td>
       {FIELDS.map(([f]) => (
-        <td key={f} className="p-1.5 text-right"><input type="number" step="0.01" min="0" value={draft[f]} onChange={(e) => setDraft({ ...draft, [f]: e.target.value })} className={INPUT} aria-label={f} /></td>
+        <td key={f} className="py-1.5 text-end"><input type="number" step="0.01" min="0" value={draft[f]} onChange={(e) => setDraft({ ...draft, [f]: e.target.value })} className={INPUT} aria-label={f} /></td>
       ))}
       <td />
-      <td className="p-1.5 text-right whitespace-nowrap">
-        <button type="button" className="btn btn-sm btn-primary" disabled={pending} onClick={save}>Save</button>{" "}
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+      <td className="py-1.5 pe-4 md:pe-5 text-end whitespace-nowrap">
+        <span className="inline-flex gap-1">
+          <button type="button" className="btn btn-sm btn-primary" disabled={pending} onClick={save}>Save</button>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(null)}>Cancel</button>
+        </span>
       </td>
     </tr>
   );
 
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-baseline gap-3">
-        <h2 className="!mb-0">LV panels — standard hours per unit</h2>
-        <span className="text-[11px] text-muted">from the timings sheet&apos;s LV tab · an order finds its row by FG code, or through its SEC item (908569105 → FG-SUSA-8569105)</span>
+    <SectionCard
+      icon={Layers}
+      title="LV panels — standard hours per unit"
+      description="From the timings sheet's LV tab. An order finds its row by FG code, or through its SEC item (908569105 → FG-SUSA-8569105)."
+      padded={false}
+      end={
+        <button type="button" className="btn btn-sm btn-secondary" disabled={editing !== null} onClick={() => start(null)}>
+          <Plus size={14} aria-hidden /> Panel
+        </button>
+      }
+    >
+      <div className="px-4 md:px-5 pb-3 space-y-2">
+        {err && <p className="alert alert-bad">{err}</p>}
+        <div className={`alert ${unpriced.length ? "alert-warn" : "alert-ok"}`}>
+          <span>
+            <b className="tabnum">{pricedUnits}</b> of <b className="tabnum">{openUnits}</b> units on the open panel orders have a row.
+            {unpriced.length > 0 && (
+              <> Not priced: {unpriced.map((o, i) => (
+                <span key={o.mo}>{i > 0 && ", "}<b className="ltr">{o.mo}</b> ({o.fgCode ?? "no FG"}{o.secItem ? ` · SEC ${o.secItem}` : ""}, {o.planQty} units)</span>
+              ))} — add its row below.</>
+            )}
+          </span>
+        </div>
       </div>
-      {err && <p className="text-sm font-semibold text-bad-fg bg-bad-bg rounded-lg px-3 py-2">{err}</p>}
 
-      <div className={`text-sm rounded-lg px-3 py-2 ${unpriced.length ? "bg-warn-bg text-warn-fg" : "bg-ok-bg text-ok-fg"}`}>
-        <b className="tabnum">{pricedUnits}</b> of <b className="tabnum">{openUnits}</b> units on the open panel orders have a row.
-        {unpriced.length > 0 && (
-          <> Not priced: {unpriced.map((o, i) => (
-            <span key={o.mo}>{i > 0 && ", "}<b className="ltr">{o.mo}</b> ({o.fgCode ?? "no FG"}{o.secItem ? ` · SEC ${o.secItem}` : ""}, {o.planQty} units)</span>
-          ))} — add its row below.</>
-        )}
-      </div>
-
-      <div className="bg-surface border rounded-xl overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+      <div className="overflow-x-auto border-t">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="bg-brand text-white text-center">
-              <th className="p-2 text-left">FG code</th>
-              <th className="p-2">Kind</th>
-              {FIELDS.map(([f, label, tip]) => <th key={f} className="p-2 text-right" title={tip}>{label}</th>)}
-              <th className="p-2 text-right" title="The sheet's full per-unit figure, assembly and wiring included">Sheet total</th>
-              <th className="p-2 w-36" />
+            <tr>
+              <th className="text-start ps-4 md:ps-5">FG code</th>
+              <th className="text-center">Kind</th>
+              {FIELDS.map(([f, label, tip]) => <th key={f} className="text-end" title={tip}>{label}</th>)}
+              <th className="text-end" title="The sheet's full per-unit figure, assembly and wiring included">Sheet total</th>
+              <th className="text-end pe-4 md:pe-5 w-32" />
             </tr>
           </thead>
           <tbody>
             {rates.map((r) => editing === r.fg ? editRow(r.fg) : (
-              <tr key={r.fg} className="border-t">
-                <td className="p-2">
+              <tr key={r.fg}>
+                <td className="ps-4 md:ps-5">
                   <div className="font-bold ltr text-xs">{r.fg}</div>
                   {r.description && <div className="text-[11px] text-muted truncate max-w-[18rem]" title={r.description}>{r.description}</div>}
                   {usedBy.has(r.fg) && <span className="pill pill-ok text-[10px]">{usedBy.get(r.fg)} units open</span>}
                 </td>
-                <td className="p-2 text-center text-xs">{r.kind === "MB" ? "Meter box" : r.kind === "FP" ? "Feeder pillar" : "USS"}</td>
-                {FIELDS.map(([f]) => <td key={f} className="p-2 text-right tabnum">{fmt(r[f])}</td>)}
-                <td className="p-2 text-right tabnum text-muted">{fmt(r.totalH)}</td>
-                <td className="p-2 text-right whitespace-nowrap">
-                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => start(r)}>Edit</button>
-                  <button
-                    type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={pending}
-                    onClick={() => {
-                      if (!confirm(`Delete ${r.fg}?${usedBy.has(r.fg) ? ` ${usedBy.get(r.fg)} open units are priced by it.` : ""}`)) return;
-                      const fd = new FormData(); fd.set("fg", r.fg); run(deleteLvStdTime, fd);
-                    }}
-                  >Delete</button>
+                <td className="text-center text-xs">{KIND_LABEL[r.kind] ?? r.kind}</td>
+                {FIELDS.map(([f]) => <td key={f} className="text-end tabnum">{fmt(r[f])}</td>)}
+                <td className="text-end tabnum text-muted">{fmt(r.totalH)}</td>
+                <td className="text-end pe-4 md:pe-5 whitespace-nowrap">
+                  <span className="inline-flex gap-1">
+                    <button type="button" className="btn btn-sm btn-ghost" onClick={() => start(r)}>Edit</button>
+                    <button
+                      type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={pending}
+                      onClick={() => {
+                        if (!confirm(`Delete ${r.fg}?${usedBy.has(r.fg) ? ` ${usedBy.get(r.fg)} open units are priced by it.` : ""}`)) return;
+                        const fd = new FormData(); fd.set("fg", r.fg); run(deleteLvStdTime, fd);
+                      }}
+                    >Delete</button>
+                  </span>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <button type="button" className="btn btn-sm btn-secondary" disabled={editing !== null} onClick={() => start(null)}>＋ Add a panel</button>
       {editing === "" && (
-        <Modal title="＋ Add a panel" sub="Standard hours for one unit, by stage." onClose={() => setEditing(null)} busy={pending} width="max-w-3xl">
+        <Modal title="Add a panel" sub="Standard hours for one unit, by stage." onClose={() => setEditing(null)} busy={pending} width="max-w-3xl">
           <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save(); }}>
             <div className="flex flex-wrap items-end gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-bold text-muted uppercase tracking-wide">FG code</span>
-                <input value={draft.fg} onChange={(e) => setDraft({ ...draft, fg: e.target.value })} required placeholder="FG-SUSA-8569105" className="border rounded px-1.5 py-1 w-48 ltr bg-surface" />
+              <label className="block">
+                <span className="field-label">FG code</span>
+                <input value={draft.fg} onChange={(e) => setDraft({ ...draft, fg: e.target.value })} required placeholder="FG-SUSA-8569105" className="px-1.5 py-1 w-48 ltr" />
               </label>
-              <label className="flex flex-col gap-1 flex-1 min-w-48">
-                <span className="text-[11px] font-bold text-muted uppercase tracking-wide">Description</span>
-                <input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Description" className="border rounded px-1.5 py-1 w-full bg-surface" />
+              <label className="block flex-1 min-w-48">
+                <span className="field-label">Description</span>
+                <input value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Description" className="px-1.5 py-1 w-full" />
               </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-bold text-muted uppercase tracking-wide">Kind</span>
-                <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="border rounded px-1 py-1 bg-surface">
+              <label className="block">
+                <span className="field-label">Kind</span>
+                <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className="px-1 py-1">
                   <option value="USS">USS</option><option value="MB">Meter box</option><option value="FP">Feeder pillar</option>
                 </select>
               </label>
             </div>
             <div className="flex flex-wrap items-end gap-3">
               {FIELDS.map(([f, label, tip]) => (
-                <label key={f} className="flex flex-col gap-1" title={tip}>
-                  <span className="text-[11px] font-bold text-muted uppercase tracking-wide">{label}</span>
+                <label key={f} className="block" title={tip}>
+                  <span className="field-label">{label}</span>
                   <input type="number" step="0.01" min="0" value={draft[f]} onChange={(e) => setDraft({ ...draft, [f]: e.target.value })} className={INPUT} />
                 </label>
               ))}
             </div>
-            {err && <p className="text-sm font-semibold text-bad-fg">{err}</p>}
+            {err && <p className="alert alert-bad">{err}</p>}
             <div className="flex justify-end gap-2 pt-3 border-t">
               <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(null)} disabled={pending}>Cancel</button>
               <button type="submit" className="btn btn-sm btn-primary" disabled={pending}>Save</button>
@@ -172,7 +187,6 @@ export function LvStdTimesManager({ rates, orders }: { rates: LvRate[]; orders: 
           </form>
         </Modal>
       )}
-    </section>
+    </SectionCard>
   );
 }
-

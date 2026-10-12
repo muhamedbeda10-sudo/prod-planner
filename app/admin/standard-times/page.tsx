@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
-import { PageHeader } from "@/components/ui";
+import { PageHead } from "@/components/ui";
 import { getCalibration, CALIBRATION_WINDOW_DAYS } from "@/lib/server/calibration";
 import { StandardTimesManager } from "./StandardTimesManager";
 import { CalibrationPanel } from "./CalibrationPanel";
@@ -27,8 +27,8 @@ export default async function StandardTimesPage() {
   const lvOrders = await getLvOrderRates(lvRates);
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="⏱ Standard Times & Capacity" />
+    <div className="space-y-4">
+      <PageHead title="Standard Times & Capacity" sub="Man-hours per KVA class, stage capacity and the FG map — what every earned hour and capacity check is priced from" />
       <StandardTimesManager
         tiers={tiers.map((t) => ({ kva: t.kva, cutMh: t.cutMh, weldMh: t.weldMh, shbMh: t.shbMh, paintMh: t.paintMh }))}
         capacity={Object.fromEntries(capacity.map((c) => [c.dept, c.mhPerDay]))}

@@ -143,6 +143,17 @@ function ToolLink({ href, label, title, icon: Icon, active }: { href: string; la
   );
 }
 
+/** One row of the phone's drawer: an icon, its name, a count when it has one. */
+function DrawerLink({ href, label, icon: Icon, active, badge }: { href: string; label: string; icon: Item["icon"]; active: boolean; badge?: React.ReactNode }) {
+  return (
+    <Link href={href} className={`drawer-link ${active ? "drawer-link-active" : ""}`}>
+      <Icon size={19} />
+      {label}
+      {badge}
+    </Link>
+  );
+}
+
 /** Unread chat badge, shared by the desktop tab and the drawer entry. */
 function UnreadBadge({ count }: { count: number }) {
   if (count <= 0) return null;
@@ -523,37 +534,17 @@ export function AppNav({
             </div>
 
             {/* links */}
-            <nav className="flex-1 overflow-y-auto py-2">
-              <p className="px-4 pt-2 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">Production</p>
+            <nav className="flex-1 overflow-y-auto py-1">
+              <p className="drawer-label">Production</p>
               {drawerTabs.map((l) => (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
-                    isActive(l.href, l.match) ? "bg-brand-light text-brand" : "hover:bg-surface-2"
-                  }`}
-                >
-                  <l.icon size={19} className={isActive(l.href, l.match) ? "text-brand" : "text-muted"} />
-                  {l.label}
-                  {l.href === "/odoo" && odooBadge()}
-                </Link>
+                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} badge={l.href === "/odoo" ? odooBadge() : null} />
               ))}
 
               {/* on desktop these sit behind a tab's own switcher; the drawer
                   has the room to list them, so a phone reaches them in one tap */}
-              <p className="px-4 pt-4 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">More</p>
+              <p className="drawer-label">More</p>
               {drawerViews.map((l) => (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
-                    isActive(l.href, l.match) ? "bg-brand-light text-brand" : "hover:bg-surface-2"
-                  }`}
-                >
-                  <l.icon size={19} className={isActive(l.href, l.match) ? "text-brand" : "text-muted"} />
-                  {l.label}
-                  {l.href === "/chat" && <UnreadBadge count={unreadChat} />}
-                </Link>
+                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href, l.match)} badge={l.href === "/chat" ? <UnreadBadge count={unreadChat} /> : null} />
               ))}
               {ai && (
                 <button
@@ -562,62 +553,25 @@ export function AppNav({
                     setDrawer(false);
                     if (panel) panel.openTab("chat");
                   }}
-                  className={`w-[calc(100%-1rem)] text-start flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
-                    aiOn ? "bg-brand-light text-brand" : "hover:bg-surface-2"
-                  }`}
+                  className={`drawer-link ${aiOn ? "drawer-link-active" : ""}`}
                 >
-                  <Bot size={19} className={aiOn ? "text-brand" : "text-muted"} />
+                  <Bot size={19} />
                   AI assistant
                 </button>
               )}
 
-              {showTools && (
-                <p className="px-4 pt-4 pb-1 text-[11px] font-extrabold uppercase tracking-wider text-muted">Admin tools</p>
-              )}
+              {showTools && <p className="drawer-label">Admin tools</p>}
               {adminLinks.map((l) => (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
-                    isActive(l.href) ? "bg-brand-light text-brand" : "hover:bg-surface-2"
-                  }`}
-                >
-                  <l.icon size={19} className={isActive(l.href) ? "text-brand" : "text-muted"} />
-                  {l.label}
-                </Link>
+                <DrawerLink key={l.href} href={l.href} label={l.label} icon={l.icon} active={isActive(l.href)} />
               ))}
               {user.isAdmin && canSee("/admin/standard-times") && (
-                <Link
-                  href="/admin/standard-times"
-                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
-                    isActive("/admin/standard-times") ? "bg-brand-light text-brand" : "hover:bg-surface-2"
-                  }`}
-                >
-                  <Timer size={19} className={isActive("/admin/standard-times") ? "text-brand" : "text-muted"} />
-                  Standard Times & Capacity
-                </Link>
+                <DrawerLink href="/admin/standard-times" label="Standard Times & Capacity" icon={Timer} active={isActive("/admin/standard-times")} />
               )}
               {user.isOwner && (
-                <Link
-                  href="/admin/users"
-                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
-                    isActive("/admin/users") ? "bg-brand-light text-brand" : "hover:bg-surface-2"
-                  }`}
-                >
-                  <Users size={19} className={isActive("/admin/users") ? "text-brand" : "text-muted"} />
-                  Users & Permissions
-                </Link>
-              )}
-              {user.isOwner && (
-                <Link
-                  href="/admin/ai"
-                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
-                    isActive("/admin/ai") ? "bg-brand-light text-brand" : "hover:bg-surface-2"
-                  }`}
-                >
-                  <Bot size={19} className={isActive("/admin/ai") ? "text-brand" : "text-muted"} />
-                  AI assistant settings
-                </Link>
+                <>
+                  <DrawerLink href="/admin/users" label="Users & Permissions" icon={Users} active={isActive("/admin/users")} />
+                  <DrawerLink href="/admin/ai" label="AI assistant settings" icon={Bot} active={isActive("/admin/ai")} />
+                </>
               )}
             </nav>
 

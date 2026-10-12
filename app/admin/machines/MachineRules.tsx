@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Plus } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { ITEM_NAME } from "@/lib/domain/constants";
 import { factoryDayISO } from "@/lib/domain/dates";
@@ -67,55 +68,57 @@ function RuleForm({ machine, onClose }: { machine: MachineDTO; onClose: () => vo
   return (
     <Modal title={`Rule for ${machine.code}`} sub={machine.name} onClose={onClose} busy={add.pending}>
       <form className="space-y-3" onSubmit={submit}>
-        <fieldset className="flex flex-wrap gap-2" disabled={add.pending}>
-          <legend className="text-xs font-semibold text-muted mb-1">The machine…</legend>
-          {RULE_EFFECTS.map((eff) => (
-            <label key={eff} className={`btn btn-sm ${d.effect === eff ? "btn-primary" : ""}`}>
-              <input type="radio" name="effect" value={eff} checked={d.effect === eff} onChange={set("effect")} className="sr-only" />
-              {EFFECT_TEXT[eff].label}
-            </label>
-          ))}
+        <fieldset disabled={add.pending}>
+          <legend className="field-label">The machine…</legend>
+          <div className="segmented">
+            {RULE_EFFECTS.map((eff) => (
+              <button key={eff} type="button" aria-pressed={d.effect === eff} onClick={() => setD((x) => ({ ...x, effect: eff }))}>
+                {EFFECT_TEXT[eff].label}
+              </button>
+            ))}
+          </div>
+          <input type="hidden" name="effect" value={d.effect} />
         </fieldset>
         <p className="text-xs text-muted">{EFFECT_TEXT[d.effect].help} Every field you fill must match; leave the rest empty.</p>
         <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
-          <label className="text-xs font-semibold">
-            <span className="block mb-1 text-muted">Item</span>
+          <label className="block">
+            <span className="field-label">Item</span>
             <select name="item" value={d.item} onChange={set("item")} disabled={add.pending} className={inputCls}>
               <option value="">Any item</option>
               {RULE_ITEMS.map((i) => <option key={i} value={i}>{i} — {itemLabel(i)}</option>)}
             </select>
           </label>
-          <label className="text-xs font-semibold">
-            <span className="block mb-1 text-muted">Line</span>
+          <label className="block">
+            <span className="field-label">Line</span>
             <select name="line" value={d.line} onChange={set("line")} disabled={add.pending} className={inputCls}>
               <option value="">Both</option>
               <option value="TR">Transformers</option>
               <option value="LV">LV panels</option>
             </select>
           </label>
-          <label className="text-xs font-semibold">
-            <span className="block mb-1 text-muted">Thickness from (mm)</span>
+          <label className="block">
+            <span className="field-label">Thickness from (mm)</span>
             <input name="minThicknessMm" type="number" min={0.1} max={200} step={0.1} value={d.minThicknessMm} onChange={set("minThicknessMm")} disabled={add.pending} className={`${inputCls} tabnum`} />
           </label>
-          <label className="text-xs font-semibold">
-            <span className="block mb-1 text-muted">Thickness to (mm)</span>
+          <label className="block">
+            <span className="field-label">Thickness to (mm)</span>
             <input name="maxThicknessMm" type="number" min={0.1} max={200} step={0.1} value={d.maxThicknessMm} onChange={set("maxThicknessMm")} disabled={add.pending} className={`${inputCls} tabnum`} />
           </label>
-          <label className="text-xs font-semibold md:col-span-2">
-            <span className="block mb-1 text-muted">Sheet material</span>
+          <label className="block md:col-span-2">
+            <span className="field-label">Sheet material</span>
             <input name="material" list="rule-materials" maxLength={60} value={d.material} onChange={set("material")} placeholder="Any" disabled={add.pending} className={inputCls} />
             <datalist id="rule-materials">{MATERIAL_PRESETS.map((x) => <option key={x} value={x} />)}</datalist>
           </label>
-          <label className="text-xs font-semibold">
-            <span className="block mb-1 text-muted">kVA from</span>
+          <label className="block">
+            <span className="field-label">kVA from</span>
             <input name="minKva" type="number" min={1} step={1} value={d.minKva} onChange={set("minKva")} disabled={add.pending} className={`${inputCls} tabnum`} />
           </label>
-          <label className="text-xs font-semibold">
-            <span className="block mb-1 text-muted">kVA to</span>
+          <label className="block">
+            <span className="field-label">kVA to</span>
             <input name="maxKva" type="number" min={1} step={1} value={d.maxKva} onChange={set("maxKva")} disabled={add.pending} className={`${inputCls} tabnum`} />
           </label>
-          <label className="text-xs font-semibold col-span-2 md:col-span-4">
-            <span className="block mb-1 text-muted">Why (your own words, optional)</span>
+          <label className="block col-span-2 md:col-span-4">
+            <span className="field-label">Why (your own words, optional)</span>
             <input name="note" maxLength={300} value={d.note} onChange={set("note")} placeholder="The old laser cannot cut over 12 mm" disabled={add.pending} className={inputCls} />
           </label>
         </div>
@@ -152,7 +155,7 @@ function RuleLine({ machine, rule }: { machine: MachineDTO; rule: MachineRuleVie
       <span className="text-xs text-muted">
         {rule.active ? `by ${rule.createdBy ?? "?"} · ${dayOf(rule.createdAt)}` : `taken off by ${rule.updatedBy ?? "?"} · ${dayOf(rule.updatedAt)}`}
       </span>
-      <button type="button" className="btn btn-sm ms-auto" disabled={act.pending} onClick={toggle}>{rule.active ? "Take off" : "Put back"}</button>
+      <button type="button" className="btn btn-sm btn-ghost ms-auto" disabled={act.pending} onClick={toggle}>{rule.active ? "Take off" : "Put back"}</button>
       <Msg msg={act.msg} />
     </li>
   );
@@ -164,10 +167,11 @@ export function MachineRules({ machine, rules, planningOn }: { machine: MachineD
   const active = rules.filter((r) => r.active);
   const retired = rules.filter((r) => !r.active);
   return (
-    <div className="mt-2 border-t pt-2 space-y-1.5">
+    <div className="border-t px-3 py-2 sm:px-4 space-y-1.5 bg-surface-2/40">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-muted">
-          Rules for ⚡ Plan{active.length === 0 ? " — none: it takes any work of its centre" : ""}
+        <span className="text-xs text-muted">
+          <span className="font-semibold">Rules for ⚡ Plan</span>
+          {active.length === 0 ? " — none: it takes any work of its centre" : ` — ${active.length}`}
           {!planningOn && " · machine planning is off (Settings), so nothing follows them yet"}
         </span>
         {retired.length > 0 && (
@@ -175,7 +179,11 @@ export function MachineRules({ machine, rules, planningOn }: { machine: MachineD
             {showRetired ? "Hide" : "Show"} {retired.length} taken off
           </button>
         )}
-        {machine.active && <button type="button" className="btn btn-sm ms-auto" onClick={() => setAdding(true)}>＋ Rule</button>}
+        {machine.active && (
+          <button type="button" className="btn btn-sm btn-ghost ms-auto" onClick={() => setAdding(true)}>
+            <Plus size={14} aria-hidden /> Rule
+          </button>
+        )}
       </div>
       {(active.length > 0 || showRetired) && (
         <ul className="space-y-1">

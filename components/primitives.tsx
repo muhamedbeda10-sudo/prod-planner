@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType, ReactNode } from "react";
+import { isValidElement, type ComponentType, type ReactElement, type ReactNode } from "react";
 import type { LucideProps } from "lucide-react";
 
 // The small shared pieces every screen is built from: an empty state, a
@@ -9,12 +9,16 @@ import type { LucideProps } from "lucide-react";
 // app read as one product. Styles live in globals.css under the same names.
 
 type Icon = ComponentType<LucideProps>;
+/** An icon as a component, or already rendered — a server component cannot
+ *  hand a client component a function, so it passes the element instead. */
+type IconProp = Icon | ReactElement;
+const drawIcon = (icon: IconProp, size: number) => (isValidElement(icon) ? icon : (() => { const I = icon as Icon; return <I size={size} aria-hidden />; })());
 
 /** Nothing here yet — an icon, a line that says so, and what to do about it. */
-export function EmptyState({ icon: Icon, title, hint, action, compact = false }: { icon: Icon; title: string; hint?: ReactNode; action?: ReactNode; compact?: boolean }) {
+export function EmptyState({ icon, title, hint, action, compact = false }: { icon: IconProp; title: string; hint?: ReactNode; action?: ReactNode; compact?: boolean }) {
   return (
     <div className={`empty ${compact ? "empty-compact" : ""}`}>
-      <span className="empty-icon"><Icon size={compact ? 18 : 22} aria-hidden /></span>
+      <span className="empty-icon">{drawIcon(icon, compact ? 18 : 22)}</span>
       <p className="empty-title">{title}</p>
       {hint && <p className="empty-hint">{hint}</p>}
       {action && <div className="mt-2">{action}</div>}
@@ -93,8 +97,8 @@ export function SettingRow({ title, hint, children, stack = false, align = "cent
 
 /** A card with a titled head: an icon, the title, a line under it, and
  *  whatever sits at the end of the head (a pill, a button). */
-export function SectionCard({ icon: Icon, title, description, end, children, className = "", padded = true }: {
-  icon?: Icon;
+export function SectionCard({ icon, title, description, end, children, className = "", padded = true }: {
+  icon?: IconProp;
   title: ReactNode;
   description?: ReactNode;
   end?: ReactNode;
@@ -105,7 +109,7 @@ export function SectionCard({ icon: Icon, title, description, end, children, cla
   return (
     <section className={`section-card ${className}`}>
       <header className="section-head">
-        {Icon && <span className="section-icon"><Icon size={16} aria-hidden /></span>}
+        {icon && <span className="section-icon">{drawIcon(icon, 16)}</span>}
         <div className="min-w-0 flex-1">
           <h3 className="section-title">{title}</h3>
           {description && <p className="section-desc">{description}</p>}

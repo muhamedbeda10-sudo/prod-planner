@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { Save } from "lucide-react";
 import { ITEMS } from "@/lib/domain/constants";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
 import { deptLabel } from "@/lib/domain/constants";
+import { EmptyState, Note, Tabs } from "@/components/primitives";
 import { saveMachineItemTimes } from "./actions";
 
 // The planner's own time per piece: one row per machine, one column per item.
@@ -70,47 +71,42 @@ export function TimesGrid({ machines, times, estimates, measured = {}, canEdit }
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {SHIFT_DEPTS.map((d) => (
-          <Link
-            key={d}
-            href={`${path}?dept=${d}`}
-            className={`btn btn-sm ${d === dept ? "btn-primary" : "btn-ghost"}`}
-            scroll={false}
-          >
-            {deptLabel(d)}
-          </Link>
-        ))}
-        <span className="text-xs text-muted ms-auto">
-          Hours ONE piece takes on that {machineWord(dept)}. Empty = the standard time (which follows the kVA class).
-        </span>
-      </div>
+    <div>
+      <Tabs
+        label="Department"
+        className="px-2"
+        items={SHIFT_DEPTS.map((d) => ({ id: d, label: deptLabel(d), count: machines.filter((m) => m.dept === d && m.active).length }))}
+        value={dept}
+        onChange={(id) => router.push(`${path}?dept=${id}`, { scroll: false })}
+        end={<span className="text-xs text-muted pe-2 hidden md:inline">Hours one piece takes on that {machineWord(dept)} · empty = the standard time</span>}
+      />
 
       {rows.length === 0 ? (
-        <p className="text-sm text-muted">No {machineWord(dept, true)} on the list for {deptLabel(dept)} yet — add them in Tools → Machines.</p>
+        <EmptyState compact icon={Save} title={`No ${machineWord(dept, true)} for ${deptLabel(dept)} yet`} hint="Add them under Machines & lines." />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-start text-[11px] uppercase tracking-wide text-muted border-b">
-                <th className="p-2 text-start">{machineWord(dept)}</th>
-                <th className="p-2 text-start">Work centre</th>
-                <th className="p-2 text-center">h / day</th>
-                {ITEMS.map((item) => <th key={item} className="p-2 text-center">{item}</th>)}
+              <tr>
+                <th className="text-start ps-4 md:ps-5">{machineWord(dept)}</th>
+                <th className="text-start">Work centre</th>
+                <th className="text-center">h / day</th>
+                {ITEMS.map((item) => <th key={item} className="text-center">{item}</th>)}
               </tr>
             </thead>
             <tbody>
               {rows.map((m) => (
-                <tr key={m.id} className="border-t">
-                  <td className="p-2 whitespace-nowrap"><b className="ltr tabnum">{m.code}</b> <span className="text-muted">{m.name}</span></td>
-                  <td className="p-2 text-xs text-muted whitespace-nowrap">{CENTER_LABEL[m.center] ?? m.center}</td>
-                  <td className="p-2 text-center tabnum text-xs">{m.hoursPerDay ?? "—"}</td>
+                <tr key={m.id}>
+                  <td className="ps-4 md:ps-5 whitespace-nowrap"><span className="code-chip">{m.code}</span> <span className="text-muted ms-1">{m.name}</span></td>
+                  <td className="text-xs text-muted whitespace-nowrap">{CENTER_LABEL[m.center] ?? m.center}</td>
+                  <td className="text-center tabnum text-xs">{m.hoursPerDay ?? "—"}</td>
                   {ITEMS.map((item) => {
                     const est = estimates[m.id]?.[item];
                     const v = valueOf(m.id, item);
+                    const mm = measured[m.id]?.[item];
+                    const same = !!mm && !!v && Math.abs(Number(v) - mm.hoursPerPc) < 0.005;
                     return (
-                      <td key={item} className="p-1 text-center">
+                      <td key={item} className="p-1 text-center align-top">
                         <input
                           type="number" min={0} step={0.05} inputMode="decimal"
                           value={v}
@@ -118,25 +114,20 @@ export function TimesGrid({ machines, times, estimates, measured = {}, canEdit }
                           placeholder={est ? String(Math.round(est * 100) / 100) : "—"}
                           title={est ? `The estimate for a mid-size tank is ${Math.round(est * 100) / 100} h (${minutes(est)} min) a piece` : "No standard time for this item — a figure here is the only one there is"}
                           onChange={(e) => setDraft((d) => ({ ...d, [key(m.id, item)]: e.target.value }))}
-                          className={`border rounded-md px-1 py-1 bg-surface text-sm tabnum w-20 text-center ltr ${v ? "font-bold" : "text-muted"}`}
+                          className={`px-1 py-1 text-sm tabnum w-20 text-center ltr ${v ? "font-bold" : "text-muted"}`}
                         />
                         {v && Number(v) > 0 && <div className="text-[10px] text-muted tabnum">{minutes(Number(v))} min</div>}
-                        {(() => {
-                          const mm = measured[m.id]?.[item];
-                          if (!mm) return null;
-                          const same = v && Math.abs(Number(v) - mm.hoursPerPc) < 0.005;
-                          return (
-                            <button
-                              type="button"
-                              disabled={!canEdit || pending || !!same}
-                              onClick={() => setDraft((d) => ({ ...d, [key(m.id, item)]: String(mm.hoursPerPc) }))}
-                              title={`Measured: ${mm.pieces} pcs over ${mm.hours} man-hours on ${mm.days} day(s) — ${minutes(mm.hoursPerPc)} min a piece. Click to take it as the figure.`}
-                              className={`block w-full text-[10px] tabnum ${same ? "text-ok-fg" : "text-accent hover:underline cursor-pointer"}`}
-                            >
-                              {same ? "✓ " : "≈ "}{mm.hoursPerPc} <span className="text-muted">({mm.pieces} pcs)</span>
-                            </button>
-                          );
-                        })()}
+                        {mm && (
+                          <button
+                            type="button"
+                            disabled={!canEdit || pending || same}
+                            onClick={() => setDraft((d) => ({ ...d, [key(m.id, item)]: String(mm.hoursPerPc) }))}
+                            title={`Measured: ${mm.pieces} pcs over ${mm.hours} man-hours on ${mm.days} day(s) — ${minutes(mm.hoursPerPc)} min a piece. Click to take it as the figure.`}
+                            className={`block w-full text-[10px] tabnum ${same ? "text-ok-fg" : "text-brand hover:underline cursor-pointer"}`}
+                          >
+                            {same ? "✓ " : "≈ "}{mm.hoursPerPc} <span className="text-muted">({mm.pieces} pcs)</span>
+                          </button>
+                        )}
                       </td>
                     );
                   })}
@@ -148,12 +139,12 @@ export function TimesGrid({ machines, times, estimates, measured = {}, canEdit }
       )}
 
       {canEdit && rows.length > 0 && (
-        <div className="flex items-center gap-2">
-          <button type="button" className="btn btn-primary" disabled={pending || !dirty} onClick={save}>
-            {pending ? "Saving…" : "Save times"}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 md:px-5 border-t">
+          <Note msg={msg} />
+          {dirty && <button type="button" className="btn btn-ghost btn-sm ms-auto" disabled={pending} onClick={() => { setDraft({}); setMsg(null); }}>Undo changes</button>}
+          <button type="button" className={`btn btn-primary btn-sm ${dirty ? "" : "ms-auto"}`} disabled={pending || !dirty} onClick={save}>
+            <Save size={14} aria-hidden /> {pending ? "Saving…" : "Save times"}
           </button>
-          {dirty && <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => { setDraft({}); setMsg(null); }}>Undo changes</button>}
-          {msg && <span className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</span>}
         </div>
       )}
     </div>

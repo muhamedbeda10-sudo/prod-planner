@@ -1,11 +1,20 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { KeyRound, Plus, ShieldCheck, Trash2, UserCheck, Users, UserX } from "lucide-react";
 import { PERM_ALERTS, PERM_OTHER, PERM_TABLES, parsePerms, permDef } from "@/lib/domain/permissions";
 import { TABS, TAB_GROUPS, parseHiddenTabs } from "@/lib/domain/tabs";
 import { createUser, updateUserPerms, setUserActive, resetUserPassword, deleteUser } from "./actions";
 import { Modal } from "@/components/Modal";
+import { PageHead } from "@/components/ui";
+import { Note, SectionCard } from "@/components/primitives";
+import { Avatar } from "@/components/UserMenu";
 import { usdText } from "@/lib/domain/ai";
+import { formatDate } from "@/lib/domain/format";
+
+// The accounts as one table: who, their role, whether they are active, the
+// screens and the assistant they have, and what to do with each — the
+// permissions (a popup of their own), a new password, deactivating, deleting.
 
 interface Row {
   id: number;
@@ -22,7 +31,6 @@ interface Row {
 }
 
 const inputCls = "px-2.5 py-1.5 text-sm font-semibold w-full";
-const btnCls = "btn btn-primary btn-sm";
 
 /** One key's box. Access rights carry data-access, so ticking Admin ticks
  *  them; notifications are never ticked in bulk. */
@@ -53,7 +61,7 @@ function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
         {PERM_TABLES.map((t) => (
           <fieldset key={t.title} className="border rounded-lg p-3">
-            <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">{t.title}</legend>
+            <legend className="px-1.5 filter-label">{t.title}</legend>
             <table className="w-full text-sm">
               <thead>
                 <tr>
@@ -76,7 +84,7 @@ function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: 
         ))}
       </div>
       <fieldset className="border rounded-lg p-3">
-        <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">Other</legend>
+        <legend className="px-1.5 filter-label">Other</legend>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-1.5">
           {PERM_OTHER.map((k) => (
             <label key={k} className="flex items-center gap-2 text-sm cursor-pointer" title={permDef(k)?.desc}>
@@ -87,7 +95,7 @@ function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: 
         </div>
       </fieldset>
       <fieldset className="border rounded-lg p-3">
-        <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">Notifications</legend>
+        <legend className="px-1.5 filter-label">Notifications</legend>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
           {PERM_ALERTS.map((k) => (
             <label key={k} className="flex items-center gap-2 text-sm cursor-pointer" title={permDef(k)?.desc}>
@@ -110,7 +118,7 @@ function TabChecks({ hidden }: { hidden: Set<string> }) {
     el.closest("fieldset")?.querySelectorAll<HTMLInputElement>('input[name="tabs"]').forEach((c) => (c.checked = on));
   return (
     <fieldset className="border rounded-lg p-3">
-      <legend className="px-1.5 text-xs font-extrabold uppercase tracking-wide text-muted">Screens this account sees</legend>
+      <legend className="px-1.5 filter-label">Screens this account sees</legend>
       <input type="hidden" name="tabsForm" value="1" />
       <div className="flex flex-wrap items-center justify-end gap-2 mb-2 text-xs">
         <button type="button" className="btn btn-sm btn-ghost" onClick={(e) => setAll(e.currentTarget, true)}>All</button>
@@ -119,7 +127,7 @@ function TabChecks({ hidden }: { hidden: Set<string> }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3">
         {TAB_GROUPS.map((g) => (
           <div key={g}>
-            <div className="text-[11px] font-bold uppercase tracking-wide text-muted mb-1">{g}</div>
+            <div className="filter-label mb-1">{g}</div>
             <div className="space-y-1">
               {TABS.filter((t) => t.group === g).map((t) => (
                 <label key={t.id} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -181,187 +189,217 @@ function useAction() {
   return { pending, msg, run, setMsg };
 }
 
-function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
-  if (!msg) return null;
-  return <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
-}
-
-function EditUserCard({ user, myId }: { user: Row; myId: number }) {
+function UserRow({ user, myId }: { user: Row; myId: number }) {
   const [expanded, setExpanded] = useState(false);
   const [showReset, setShowReset] = useState(false);
   const perms = useAction();
   const pw = useAction();
   const act = useAction();
   const del = useAction();
+  const hidden = user.hiddenTabs ? parseHiddenTabs(user.hiddenTabs).size : 0;
+  const me = user.id === myId;
+
+  const toggleActive = () => {
+    const fd = new FormData();
+    fd.set("id", String(user.id));
+    fd.set("active", user.active ? "false" : "true");
+    act.run(setUserActive, fd, user.active ? "Deactivated." : "Reactivated.");
+  };
+  const remove = () => {
+    if (!confirm(`Delete ${user.name} (${user.email}) permanently? They are signed out immediately and the account cannot be recovered.`)) return;
+    const fd = new FormData();
+    fd.set("id", String(user.id));
+    del.run(deleteUser, fd, "Account deleted.");
+  };
 
   return (
-    <div className={`border rounded-xl p-4 ${user.active ? "" : "opacity-60"}`}>
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[220px]">
-          <div className="font-bold flex items-center gap-2">
-            {user.name}
-            {user.isOwner ? <span className="pill pill-ok">owner</span> : user.isAdmin && <span className="pill pill-ok">admin</span>}
-            {!user.active && <span className="pill pill-bad">deactivated</span>}
-            {user.id === myId && <span className="pill pill-muted">you</span>}
+    <>
+      <tr className={user.active ? "" : "opacity-60"}>
+        <td className="ps-4 md:ps-5">
+          <div className="flex items-center gap-3 min-w-0">
+            <Avatar id={user.id} name={user.name} size={32} />
+            <div className="min-w-0">
+              <div className="font-semibold flex items-center gap-1.5">
+                <span className="truncate">{user.name}</span>
+                {me && <span className="pill pill-muted">you</span>}
+              </div>
+              <div className="text-xs text-muted ltr truncate">{user.email}</div>
+            </div>
           </div>
-          <div className="text-sm text-muted ltr">{user.email}</div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {user.hiddenTabs && <span className="pill pill-muted" title="Screens switched off for this account">{parseHiddenTabs(user.hiddenTabs).size} screen(s) hidden</span>}
-          {user.ai.enabled && !user.isOwner && (
-            <span className="pill pill-info" title={`AI assistant — spent ${usdText(user.ai.spent)} this month`}>
-              AI{user.ai.monthlyUsd > 0 ? ` · ${usdText(user.ai.monthlyUsd)}/mo` : ""}
-            </span>
+          <Note msg={act.msg} className="mt-1" />
+          <Note msg={del.msg} className="mt-1" />
+        </td>
+        <td>
+          {user.isOwner ? <span className="pill pill-ok">Owner</span> : user.isAdmin ? <span className="pill pill-info">Admin</span> : <span className="pill pill-muted">Member</span>}
+        </td>
+        <td>{user.active ? <span className="pill pill-ok">Active</span> : <span className="pill pill-bad">Deactivated</span>}</td>
+        <td className="text-sm tabnum" title="Screens switched off for this account">{hidden ? <span className="text-warn-fg font-semibold">{hidden} hidden</span> : <span className="text-muted">All</span>}</td>
+        <td className="text-sm whitespace-nowrap" title={user.ai.enabled && !user.isOwner ? `Spent ${usdText(user.ai.spent)} this month` : undefined}>
+          {user.isOwner ? (
+            <span className="text-muted">Always</span>
+          ) : user.ai.enabled ? (
+            <span className="text-ok-fg font-semibold">On{user.ai.monthlyUsd > 0 ? <span className="text-muted font-normal"> · {usdText(user.ai.monthlyUsd)}/mo</span> : null}</span>
+          ) : (
+            <span className="text-muted">Off</span>
           )}
-          <button type="button" className={btnCls} onClick={() => setExpanded(true)}>
-            Permissions
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setShowReset(true)}
-          >
-            Reset password
-          </button>
-          {user.id !== myId && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                act.run(setUserActive, new FormData(e.currentTarget), user.active ? "Deactivated." : "Reactivated.");
-              }}
-            >
-              <input type="hidden" name="id" value={user.id} />
-              <input type="hidden" name="active" value={user.active ? "false" : "true"} />
+        </td>
+        <td className="text-xs text-muted tabnum whitespace-nowrap">{formatDate(user.createdAt)}</td>
+        <td className="text-end pe-4 md:pe-5">
+          <div className="inline-flex items-center gap-1">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setExpanded(true)}>
+              <ShieldCheck size={14} aria-hidden /> Permissions
+            </button>
+            <button type="button" className="icon-btn icon-btn-md" onClick={() => setShowReset(true)} title="Reset the password" aria-label={`Reset ${user.name}'s password`}>
+              <KeyRound size={16} />
+            </button>
+            {!me && (
               <button
-                type="submit"
+                type="button"
+                className="icon-btn icon-btn-md"
                 disabled={act.pending}
-                className={user.active ? "btn btn-secondary btn-sm text-bad-fg" : btnCls}
+                onClick={toggleActive}
+                title={user.active ? "Deactivate — they can no longer sign in" : "Reactivate"}
+                aria-label={user.active ? `Deactivate ${user.name}` : `Reactivate ${user.name}`}
               >
-                {user.active ? "Deactivate" : "Reactivate"}
+                {user.active ? <UserX size={16} /> : <UserCheck size={16} />}
               </button>
-            </form>
-          )}
-          {user.id !== myId && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!confirm(`Delete ${user.name} (${user.email}) permanently? They are signed out immediately and the account cannot be recovered.`)) return;
-                del.run(deleteUser, new FormData(e.currentTarget), "Account deleted.");
-              }}
-            >
-              <input type="hidden" name="id" value={user.id} />
-              <button type="submit" disabled={del.pending} className="btn btn-danger btn-sm">
-                🗑 Delete
+            )}
+            {!me && (
+              <button type="button" className="icon-btn icon-btn-md icon-btn-danger" disabled={del.pending} onClick={remove} title="Delete the account" aria-label={`Delete ${user.name}`}>
+                <Trash2 size={16} />
               </button>
-            </form>
-          )}
-        </div>
-      </div>
-      <Msg msg={act.msg} />
-      <Msg msg={del.msg} />
+            )}
+          </div>
+        </td>
+      </tr>
 
       {showReset && (
         <Modal title="Reset password" sub={`${user.name} · ${user.email}`} onClose={() => setShowReset(false)} busy={pw.pending} width="max-w-lg">
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            pw.run(resetUserPassword, new FormData(e.currentTarget), "Password changed — their old sessions were signed out.", () => setShowReset(false));
-          }}
-        >
-          <input type="hidden" name="id" value={user.id} />
-          <input name="password" type="text" required minLength={8} placeholder="New password (min 8 chars)" className={`${inputCls} max-w-xs ltr`} />
-          <button type="submit" disabled={pw.pending} className={btnCls}>Save password</button>
-          <Msg msg={pw.msg} />
-        </form>
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              pw.run(resetUserPassword, new FormData(e.currentTarget), "Password changed — their old sessions were signed out.", () => setShowReset(false));
+            }}
+          >
+            <input type="hidden" name="id" value={user.id} />
+            <input name="password" type="text" required minLength={8} placeholder="New password (min 8 chars)" className={`${inputCls} max-w-xs ltr`} />
+            <button type="submit" disabled={pw.pending} className="btn btn-primary btn-sm">Save password</button>
+            <Note msg={pw.msg} />
+          </form>
         </Modal>
       )}
 
       {expanded && (
         <Modal title={`Permissions — ${user.name}`} sub={user.email} onClose={() => setExpanded(false)} busy={perms.pending} width="max-w-4xl">
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            perms.run(updateUserPerms, new FormData(e.currentTarget), "Permissions saved.");
-          }}
-        >
-          <input type="hidden" name="id" value={user.id} />
-          {user.isOwner ? (
-            <p className="text-sm text-muted">The owner holds every right — only the notifications below are yours to tick.</p>
-          ) : (
-            <AdminCheck defaultChecked={user.isAdmin} label="Admin" />
-          )}
-          <TabChecks hidden={parseHiddenTabs(user.hiddenTabs)} />
-          <AiNote ai={user.ai} owner={user.isOwner} />
-          {/* read as the server reads them: an old key shows as the one it became */}
-          <PermChecks defaults={parsePerms(user.perms)} />
-          <div className="flex items-center justify-end gap-3 pt-3 border-t">
-            <Msg msg={perms.msg} />
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setExpanded(false)} disabled={perms.pending}>Close</button>
-            <button type="submit" disabled={perms.pending} className={btnCls}>Save permissions</button>
-          </div>
-        </form>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              perms.run(updateUserPerms, new FormData(e.currentTarget), "Permissions saved.");
+            }}
+          >
+            <input type="hidden" name="id" value={user.id} />
+            {user.isOwner ? (
+              <p className="text-sm text-muted">The owner holds every right — only the notifications below are yours to tick.</p>
+            ) : (
+              <AdminCheck defaultChecked={user.isAdmin} label="Admin" />
+            )}
+            <TabChecks hidden={parseHiddenTabs(user.hiddenTabs)} />
+            <AiNote ai={user.ai} owner={user.isOwner} />
+            {/* read as the server reads them: an old key shows as the one it became */}
+            <PermChecks defaults={parsePerms(user.perms)} />
+            <div className="flex items-center justify-end gap-3 pt-3 border-t">
+              <Note msg={perms.msg} />
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setExpanded(false)} disabled={perms.pending}>Close</button>
+              <button type="submit" disabled={perms.pending} className="btn btn-primary btn-sm">Save permissions</button>
+            </div>
+          </form>
         </Modal>
       )}
-    </div>
+    </>
   );
 }
 
 export function UsersManager({ users, myId }: { users: Row[]; myId: number }) {
   const create = useAction();
   const [showCreate, setShowCreate] = useState(false);
+  const active = users.filter((u) => u.active).length;
 
   return (
-    <div className="space-y-5">
-      <div className="flex justify-end">
-        <button type="button" className={btnCls} onClick={() => setShowCreate(true)}>
-          + Add account
-        </button>
-      </div>
+    <div className="space-y-4">
+      <PageHead
+        title="Users & Permissions"
+        sub={`${active} active account${active === 1 ? "" : "s"}${users.length > active ? ` · ${users.length - active} deactivated` : ""}`}
+        actions={
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>
+            <Plus size={14} aria-hidden /> Add account
+          </button>
+        }
+      />
 
       {showCreate && (
-        <Modal title="+ Add account" onClose={() => setShowCreate(false)} busy={create.pending} width="max-w-4xl">
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const form = e.currentTarget;
-            create.run(createUser, new FormData(form), "Account created.", () => { form.reset(); setShowCreate(false); });
-          }}
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <label className="block text-sm">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Name</span>
-              <input name="name" required className={inputCls} placeholder="e.g. Ahmed — Welding" />
-            </label>
-            <label className="block text-sm">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Email (Gmail)</span>
-              <input name="email" type="email" required className={`${inputCls} ltr`} placeholder="person@gmail.com" />
-            </label>
-            <label className="block text-sm">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Password (min 8)</span>
-              <input name="password" type="text" required minLength={8} className={`${inputCls} ltr`} placeholder="give them this password" />
-            </label>
-          </div>
-          <AdminCheck label="Admin" />
-          <TabChecks hidden={new Set()} />
-          <AiNote ai={null} />
-          <PermChecks defaults={new Set()} />
-          <div className="flex items-center justify-end gap-3 pt-3 border-t">
-            <Msg msg={create.msg} />
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowCreate(false)} disabled={create.pending}>Cancel</button>
-            <button type="submit" disabled={create.pending} className={btnCls}>Create account</button>
-          </div>
-        </form>
+        <Modal title="Add account" onClose={() => setShowCreate(false)} busy={create.pending} width="max-w-4xl">
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const form = e.currentTarget;
+              create.run(createUser, new FormData(form), "Account created.", () => { form.reset(); setShowCreate(false); });
+            }}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="block text-sm">
+                <span className="field-label">Name</span>
+                <input name="name" required className={inputCls} placeholder="e.g. Ahmed — Welding" />
+              </label>
+              <label className="block text-sm">
+                <span className="field-label">Email (Gmail)</span>
+                <input name="email" type="email" required className={`${inputCls} ltr`} placeholder="person@gmail.com" />
+              </label>
+              <label className="block text-sm">
+                <span className="field-label">Password (min 8)</span>
+                <input name="password" type="text" required minLength={8} className={`${inputCls} ltr`} placeholder="give them this password" />
+              </label>
+            </div>
+            <AdminCheck label="Admin" />
+            <TabChecks hidden={new Set()} />
+            <AiNote ai={null} />
+            <PermChecks defaults={new Set()} />
+            <div className="flex items-center justify-end gap-3 pt-3 border-t">
+              <Note msg={create.msg} />
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowCreate(false)} disabled={create.pending}>Cancel</button>
+              <button type="submit" disabled={create.pending} className="btn btn-primary btn-sm">Create account</button>
+            </div>
+          </form>
         </Modal>
       )}
 
-      <div className="space-y-3">
-        {users.map((u) => (
-          <EditUserCard key={u.id} user={u} myId={myId} />
-        ))}
-      </div>
+      <SectionCard
+        icon={Users}
+        title="Accounts"
+        description="Who may sign in, their role, the screens they see and the assistant they have. Permissions open in their own window."
+        padded={false}
+      >
+        <div className="overflow-x-auto border-t">
+          <table className="w-full min-w-[880px]">
+            <thead>
+              <tr>
+                <th className="text-start ps-4 md:ps-5">Person</th>
+                <th className="text-start">Role</th>
+                <th className="text-start">Status</th>
+                <th className="text-start">Screens</th>
+                <th className="text-start">AI assistant</th>
+                <th className="text-start">Added</th>
+                <th className="text-end pe-4 md:pe-5">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => <UserRow key={u.id} user={u} myId={myId} />)}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
     </div>
   );
 }

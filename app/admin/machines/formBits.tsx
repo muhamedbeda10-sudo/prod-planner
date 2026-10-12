@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Note } from "@/components/primitives";
 
 // What the machines page's forms share: the input style, a server action run
 // in a transition with its answer kept for display, and that answer's line.
@@ -26,6 +27,5 @@ export function useAction() {
 }
 
 export function Msg({ msg }: { msg: ActionMsg | null }) {
-  if (!msg) return null;
-  return <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
+  return <Note msg={msg} />;
 }
