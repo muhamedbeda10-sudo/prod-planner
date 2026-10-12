@@ -1,10 +1,17 @@
 import { describe, it, expect } from "vitest";
 import {
-  aiDecision, aiVisible, blockedTableIn, blockedTablesFor, conversationTitle, costUsd, displayTurns, formatRows, jsonSafe, monthStart, prepareSql, questionContext, readerUrl, usdText, type AiGate,
+  aiDecision, aiEffort, aiVisible, blockedTableIn, blockedTablesFor, conversationTitle, costUsd, displayTurns, formatRows, jsonSafe, monthStart, prepareSql, questionContext, readerUrl, usdText, type AiGate,
 } from "./ai";
 
 const gate = (o: Partial<AiGate>): AiGate => ({
   isOwner: false, hasKey: true, enabled: true, access: { enabled: true, monthlyUsd: 0 }, userSpent: 0, plantSpent: 0, plantCap: 0, ...o,
+});
+
+describe("aiEffort", () => {
+  it("takes the five levels and falls back to medium", () => {
+    expect(["low", "max", "xhigh"].map(aiEffort)).toEqual(["low", "max", "xhigh"]);
+    expect([aiEffort("turbo"), aiEffort(null), aiEffort("")]).toEqual(["medium", "medium", "medium"]);
+  });
 });
 
 describe("costUsd / usdText", () => {
@@ -35,6 +42,14 @@ describe("aiDecision / aiVisible", () => {
     expect(aiDecision(gate({ access: { enabled: true, monthlyUsd: 5 }, userSpent: 5 }))).toEqual({ ok: false, reason: "userCap" });
     expect(aiDecision(gate({ access: { enabled: true, monthlyUsd: 5 }, userSpent: 4.99 }))).toEqual({ ok: true });
     expect(aiDecision(gate({ plantCap: 20, plantSpent: 20 }))).toEqual({ ok: false, reason: "plantCap" });
+  });
+  it("holds the caps of the day, the person's before the plant's", () => {
+    expect(aiDecision(gate({ access: { enabled: true, monthlyUsd: 0, dailyUsd: 2 }, userSpentToday: 2 }))).toEqual({ ok: false, reason: "userDayCap" });
+    expect(aiDecision(gate({ access: { enabled: true, monthlyUsd: 0, dailyUsd: 2 }, userSpentToday: 1.99 }))).toEqual({ ok: true });
+    expect(aiDecision(gate({ plantDayCap: 5, plantSpentToday: 5 }))).toEqual({ ok: false, reason: "plantDayCap" });
+    expect(aiDecision(gate({ isOwner: true, plantDayCap: 5, plantSpentToday: 6 }))).toEqual({ ok: false, reason: "plantDayCap" });
+    // the owner holds no allowance of their own, by the day either
+    expect(aiDecision(gate({ isOwner: true, access: { enabled: false, monthlyUsd: 0, dailyUsd: 1 }, userSpentToday: 3 }))).toEqual({ ok: true });
   });
   it("the owner needs no tick or switch, but the plant's cap holds for them too", () => {
     expect(aiDecision(gate({ isOwner: true, enabled: false, access: null }))).toEqual({ ok: true });

@@ -107,6 +107,8 @@ export async function POST(request: Request) {
       const result = await ask({
         apiKey,
         model: conversation.model,
+        effort: settings.effort,
+        maxCalls: settings.maxCalls,
         history,
         question: questionMessages(question, context, files.files.length ? attachmentNote(files.files) : undefined),
         tools,

@@ -1137,3 +1137,11 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 @supports (-webkit-touch-callout: none) {
   input, select, textarea { font-size: max(16px, 1em); }
 }
+
+/* ---- the AI assistant's side panel (components/AiPanel): docked on the
+   right of a wide screen, the page narrows beside it ---- */
+:root { --ai-panel-w: 460px; }
+@media (min-width: 1536px) { :root { --ai-panel-w: 520px; } }
+@media screen and (min-width: 1024px) {
+  html.ai-docked main { padding-right: calc(var(--ai-panel-w) + 1.25rem); }
+}

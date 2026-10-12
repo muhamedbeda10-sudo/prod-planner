@@ -1371,9 +1371,28 @@ model AiSettings {
   // never sent to a browser; the hint is its last four characters.
   apiKeyEnc  String   @default("")
   apiKeyHint String   @default("")
+  // The chat's model and effort (low … max — how hard it thinks; lib/domain/ai AI_EFFORTS).
   model      String   @default("claude-opus-5-5")
+  effort     String   @default("medium")
+  // The automations' and the morning review's own model and effort.
+  autoModel  String   @default("claude-opus-5-5")
+  autoEffort String   @default("medium")
   // The plant's spend cap for a calendar month, in US dollars (0 = none).
   monthlyUsd Float    @default(0)
+  // …and for a factory day (Cairo), in US dollars (0 = none).
+  dailyUsd   Float    @default(0)
+  // Model calls one question (or one automation run) may take.
+  maxCalls   Int      @default(14)
+  // When automations may run at all, on the factory clock: between autoFrom
+  // and autoTo ("HH:MM"; both null = any time; from > to runs over midnight),
+  // on these weekdays (0 = Sunday). A schedule that falls outside is skipped;
+  // a condition waits for the next check inside.
+  autoFrom     String?
+  autoTo       String?
+  autoWeekdays Int[]   @default([0, 1, 2, 3, 4, 5, 6])
+  // The morning review: from this time on working days, unless paused.
+  reviewAt     String  @default("07:30")
+  reviewPaused Boolean @default(false)
   // ai_reader's password, made by the migration that created the login and
   // never written anywhere else.
   dbPassword String   @default("")
@@ -1400,6 +1419,8 @@ model AiAccess {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   enabled    Boolean  @default(true)
   monthlyUsd Float    @default(0)
+  // The person's own cap for a factory day (0 = none of their own).
+  dailyUsd   Float    @default(0)
   updatedAt  DateTime @updatedAt
 }
 

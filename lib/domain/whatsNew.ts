@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-ai-panel-controls",
+    dateISO: "2026-10-12",
+    title: "The AI opens beside the page — and the owner sets its model, effort, daily caps and automation hours",
+    where: "The AI button in the bar · AI assistant settings",
+    body: "The AI button opens the assistant on the right while the page stays beside it; ⤢ makes it full size. Chat, Inbox, Automations and Playbook are tabs inside it, and an automation's times can be changed from its Timing button. The owner's settings page now has tabs: a model and an effort (Low … Max) for the chat and another for the automations, a daily cap beside the monthly one (for the plant and per person), the steps per question, and the hours and days automations may run in, with the morning review's time and its own switch.",
+  },
+  {
     id: "2026-10-12-ai-imports",
     dateISO: "2026-10-12",
     title: "Attach a sheet in the AI chat — it reads it, or imports it",

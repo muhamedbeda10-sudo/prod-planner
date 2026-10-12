@@ -16,6 +16,7 @@ import { InstallApp } from "@/components/InstallApp";
 import { useCanSee } from "@/components/TabAccess";
 import { ChatDock } from "@/components/ChatDock";
 import { InboxBell } from "@/components/InboxBell";
+import { useAiPanel } from "@/components/AiPanel";
 import { useOdooAlerts } from "@/components/OdooAlerts";
 import { LineTabs } from "@/components/LineTabs";
 import { Avatar, UserMenu } from "@/components/UserMenu";
@@ -179,6 +180,11 @@ export function AppNav({
   inbox?: { unread: number; any: boolean };
 }) {
   const pathname = usePathname();
+  // on the assistant's own pages it is already full size: the bar's buttons go there as links
+  const aiPage = pathname === "/ai" || pathname.startsWith("/ai/");
+  const panelCtx = useAiPanel();
+  const panel = aiPage ? null : panelCtx;
+  const aiOn = aiPage || (!!panel?.shown && panel.state.tab !== "inbox");
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
   // the ODOO tab lights up with the rows waiting to be closed; its badge
   // opens the popup rather than the page
@@ -399,17 +405,31 @@ export function AppNav({
             <LineTabs line={line} />
             {/* the AI assistant — for the people the owner opened it to */}
             {ai && (
-              <Link
-                href="/ai"
-                className={`nav-tab nav-tab-icon flex items-center ${isActive("/ai") ? "nav-tab-active" : ""}`}
-                aria-label="AI assistant"
-                title="AI assistant — ask about the plant's data"
-              >
-                <Bot size={18} />
-              </Link>
+              panel ? (
+                <button
+                  type="button"
+                  onClick={() => panel.toggle("chat")}
+                  className={`nav-tab nav-tab-icon flex items-center ${aiOn ? "nav-tab-active" : ""}`}
+                  aria-label="AI assistant"
+                  aria-expanded={panel.shown}
+                  title="AI assistant"
+                >
+                  <Bot size={18} />
+                </button>
+              ) : (
+                <Link href="/ai" className={`nav-tab nav-tab-icon flex items-center ${isActive("/ai") ? "nav-tab-active" : ""}`} aria-label="AI assistant" title="AI assistant">
+                  <Bot size={18} />
+                </Link>
+              )
             )}
             {/* what the assistant and the automations sent this person */}
-            {(ai || inbox.any) && <InboxBell initial={inbox.unread} active={isActive("/inbox")} />}
+            {(ai || inbox.any) && (
+              <InboxBell
+                initial={inbox.unread}
+                active={isActive("/inbox") || (!!panel?.shown && panel.state.tab === "inbox")}
+                onOpen={panel ? () => panel.toggle("inbox") : undefined}
+              />
+            )}
             {/* chat is a glance, not a destination — an icon here with its
                 unread badge, opening a panel over whatever page you are on */}
             <div className={canSee("/chat") ? "hidden md:block" : "hidden"}>
@@ -536,15 +556,19 @@ export function AppNav({
                 </Link>
               ))}
               {ai && (
-                <Link
-                  href="/ai"
-                  className={`flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
-                    isActive("/ai") ? "bg-brand-light text-brand" : "hover:bg-surface-2"
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDrawer(false);
+                    if (panel) panel.openTab("chat");
+                  }}
+                  className={`w-[calc(100%-1rem)] text-start flex items-center gap-3 mx-2 px-3 py-3 rounded-lg text-[15px] font-semibold transition-colors ${
+                    aiOn ? "bg-brand-light text-brand" : "hover:bg-surface-2"
                   }`}
                 >
-                  <Bot size={19} className={isActive("/ai") ? "text-brand" : "text-muted"} />
+                  <Bot size={19} className={aiOn ? "text-brand" : "text-muted"} />
                   AI assistant
-                </Link>
+                </button>
               )}
 
               {showTools && (

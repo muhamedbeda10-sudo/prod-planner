@@ -6,25 +6,17 @@ import { Modal } from "@/components/Modal";
 import { savePlaybookRule, setPlaybookRuleActive } from "@/app/ai/playbook/actions";
 import { PLAYBOOK_BODY_MAX, PLAYBOOK_TITLE_MAX, PLAYBOOK_TOPICS, PLAYBOOK_TOPIC_LABEL, isPlaybookTopic } from "@/lib/domain/aiPlaybook";
 import { formatDateTime } from "@/lib/domain/format";
+import type { PlaybookRuleView } from "@/lib/server/ai/panel";
 
 // The playbook's rules by topic: read by anyone the assistant is opened to,
 // kept by admins — add, rewrite, retire, bring back. A rule is a paragraph,
 // in the words people use on the floor.
 
-export interface PlaybookRuleView {
-  id: number;
-  topic: string;
-  title: string;
-  body: string;
-  active: boolean;
-  updatedBy: string | null;
-  updatedAt: string;
-  revisions: { id: number; action: string; by: string; at: string }[];
-}
+export type { PlaybookRuleView };
 
 const inputCls = "px-2.5 py-1.5 text-sm w-full";
 
-function RuleForm({ rule, onClose }: { rule: PlaybookRuleView | null; onClose: () => void }) {
+function RuleForm({ rule, onClose, onSaved }: { rule: PlaybookRuleView | null; onClose: () => void; onSaved?: () => void }) {
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -34,8 +26,10 @@ function RuleForm({ rule, onClose }: { rule: PlaybookRuleView | null; onClose: (
     setErr(null);
     start(async () => {
       const r = await savePlaybookRule(fd).catch(() => ({ ok: false, error: "The request failed — try again." }));
-      if (r.ok) onClose();
-      else setErr(r.error ?? "It was not saved.");
+      if (r.ok) {
+        onSaved?.();
+        onClose();
+      } else setErr(r.error ?? "It was not saved.");
     });
   };
   return (
@@ -65,7 +59,7 @@ function RuleForm({ rule, onClose }: { rule: PlaybookRuleView | null; onClose: (
   );
 }
 
-function Rule({ rule, canEdit, onEdit }: { rule: PlaybookRuleView; canEdit: boolean; onEdit: () => void }) {
+function Rule({ rule, canEdit, onEdit, onChanged }: { rule: PlaybookRuleView; canEdit: boolean; onEdit: () => void; onChanged?: () => void }) {
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const toggle = () => {
@@ -77,10 +71,11 @@ function Rule({ rule, canEdit, onEdit }: { rule: PlaybookRuleView; canEdit: bool
     start(async () => {
       const r = await setPlaybookRuleActive(fd).catch(() => ({ ok: false, error: "The request failed — try again." }));
       if (!r.ok) setErr(r.error ?? "It did not go through.");
+      else onChanged?.();
     });
   };
   return (
-    <li className={`border rounded-xl px-3 py-2 ${rule.active ? "" : "opacity-60"}`}>
+    <li className={`border rounded-xl bg-surface px-3 py-2 ${rule.active ? "" : "opacity-60"}`}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted tabnum">#{rule.id}</span>
         <span className="font-bold" dir="auto">{rule.title}</span>
@@ -104,35 +99,37 @@ function Rule({ rule, canEdit, onEdit }: { rule: PlaybookRuleView; canEdit: bool
   );
 }
 
-export function PlaybookView({ rules, canEdit, left }: { rules: PlaybookRuleView[]; canEdit: boolean; left: number }) {
+export function PlaybookView({ rules, canEdit, left, onChanged }: { rules: PlaybookRuleView[]; canEdit: boolean; left: number; onChanged?: () => void }) {
   const [editing, setEditing] = useState<PlaybookRuleView | null | "new">(null);
   const [showRetired, setShowRetired] = useState(false);
   const active = rules.filter((r) => r.active);
   const retired = rules.filter((r) => !r.active);
   const topics = [...PLAYBOOK_TOPICS, ...new Set(active.map((r) => r.topic).filter((t) => !isPlaybookTopic(t)))];
+  const rule = (r: PlaybookRuleView) => <Rule key={r.id} rule={r} canEdit={canEdit} onEdit={() => setEditing(r)} onChanged={onChanged} />;
   return (
-    <div className="space-y-4 max-w-4xl">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
-        <span>{active.length} rule(s). {canEdit ? "Add one here, or tell the assistant — “remember that …” — and approve its card." : "Admins keep these."}</span>
-        {canEdit && <button type="button" className="btn btn-primary btn-sm ms-auto" onClick={() => setEditing("new")}><Plus size={14} aria-hidden /> New rule</button>}
-      </div>
-      {left > 0 && <p className="text-sm font-semibold text-warn-fg">{left} of the oldest rules do not fit what the assistant is handed — shorten or retire some.</p>}
+    <div className="space-y-4">
+      {canEdit && (
+        <div className="flex">
+          <button type="button" className="btn btn-primary btn-sm ms-auto" onClick={() => setEditing("new")}><Plus size={14} aria-hidden /> New rule</button>
+        </div>
+      )}
+      {left > 0 && <p className="text-sm font-semibold text-warn-fg">{left} rule(s) do not fit — shorten or retire some.</p>}
       {topics.map((t) => {
         const list = active.filter((r) => r.topic === t);
         if (list.length === 0) return null;
         return (
           <section key={t} className="space-y-2">
             <h2>{isPlaybookTopic(t) ? PLAYBOOK_TOPIC_LABEL[t] : t}</h2>
-            <ul className="space-y-2">{list.map((r) => <Rule key={r.id} rule={r} canEdit={canEdit} onEdit={() => setEditing(r)} />)}</ul>
+            <ul className="space-y-2">{list.map(rule)}</ul>
           </section>
         );
       })}
-      {active.length === 0 && <p className="text-sm text-muted">No rules yet. The assistant answers from the data and its general rules alone.</p>}
+      {active.length === 0 && <p className="text-sm text-muted">No rules yet.</p>}
       {retired.length > 0 && (
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowRetired((v) => !v)}>{showRetired ? "Hide" : "Show"} {retired.length} retired</button>
       )}
-      {showRetired && <ul className="space-y-2">{retired.map((r) => <Rule key={r.id} rule={r} canEdit={canEdit} onEdit={() => setEditing(r)} />)}</ul>}
-      {editing !== null && <RuleForm rule={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
+      {showRetired && <ul className="space-y-2">{retired.map(rule)}</ul>}
+      {editing !== null && <RuleForm rule={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={onChanged} />}
     </div>
   );
 }

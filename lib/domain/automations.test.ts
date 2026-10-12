@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAutomation, describeTrigger, freshRows, nextConditionCheck, nextScheduleRun, recipientsOf, renderMessage, rowKey, type AutomationConfig } from "./automations";
+import { checkAutomation, checkWindow, describeTrigger, describeWindow, inAutomationWindow, retimeAutomation, freshRows, nextConditionCheck, nextScheduleRun, recipientsOf, renderMessage, rowKey, type AutomationConfig } from "./automations";
 
 const base = { name: "Morning welding report", trigger: "schedule", times: ["07:30"], days: "working", action: "report", prompt: "Welding output vs plan" } as const;
 const fridayOrHoliday = (holidays: string[] = []) => (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay() === 5 || holidays.includes(iso);
@@ -105,5 +105,52 @@ describe("a trigger in words", () => {
     expect(c.ok && describeTrigger(c.config)).toBe("every working day at 07:30, 14:00 (Cairo)");
     const cond = { trigger: "condition", checkEveryMin: 60, activeFrom: "07:00", activeTo: "19:00" } as Pick<AutomationConfig, "trigger" | "checkEveryMin" | "activeFrom" | "activeTo"> as AutomationConfig;
     expect(describeTrigger(cond)).toBe("when its query finds new rows — checked every 1 hour, 07:00–19:00 on working days");
+  });
+});
+
+describe("the automations' hours", () => {
+  // 2026-10-12 is a Monday; Cairo is UTC+3 in October
+  const w = (o: Partial<{ from: string | null; to: string | null; weekdays: number[] }> = {}) => ({ from: "07:00", to: "19:00", weekdays: [0, 1, 2, 3, 4, 6], ...o });
+
+  it("checks the hours and the days", () => {
+    expect(checkWindow({ from: "07:00", to: "19:00", weekdays: [3, 1, 1] })).toEqual({ ok: true, window: { from: "07:00", to: "19:00", weekdays: [1, 3] } });
+    expect(checkWindow({})).toEqual({ ok: true, window: { from: null, to: null, weekdays: [0, 1, 2, 3, 4, 5, 6] } });
+    expect(checkWindow({ from: "07:00" })).toMatchObject({ ok: false, error: expect.stringContaining("both ends") });
+    expect(checkWindow({ from: "7:00", to: "19:00" })).toMatchObject({ ok: false, error: expect.stringContaining("HH:MM") });
+    expect(checkWindow({ from: "07:00", to: "07:00" })).toMatchObject({ ok: false });
+    expect(checkWindow({ weekdays: [] })).toMatchObject({ ok: false, error: expect.stringContaining("at least one day") });
+    expect(checkWindow({ weekdays: [7] })).toMatchObject({ ok: false });
+  });
+
+  it("is open inside the hours on a ticked day, the end not included", () => {
+    expect(inAutomationWindow(at("2026-10-12T04:00:00Z"), w())).toBe(true); // 07:00 Cairo
+    expect(inAutomationWindow(at("2026-10-12T03:59:00Z"), w())).toBe(false); // 06:59
+    expect(inAutomationWindow(at("2026-10-12T16:00:00Z"), w())).toBe(false); // 19:00
+    expect(inAutomationWindow(at("2026-10-16T08:00:00Z"), w())).toBe(false); // a Friday
+    expect(inAutomationWindow(at("2026-10-16T08:00:00Z"), w({ from: null, to: null, weekdays: [5] }))).toBe(true);
+  });
+
+  it("runs over midnight when it starts after it ends", () => {
+    const night = w({ from: "22:00", to: "06:00", weekdays: [0, 1, 2, 3, 4, 5, 6] });
+    expect(inAutomationWindow(at("2026-10-12T20:00:00Z"), night)).toBe(true); // 23:00
+    expect(inAutomationWindow(at("2026-10-12T01:00:00Z"), night)).toBe(true); // 04:00
+    expect(inAutomationWindow(at("2026-10-12T09:00:00Z"), night)).toBe(false); // 12:00
+  });
+
+  it("reads as a person says it", () => {
+    expect(describeWindow(w())).toBe("Sun, Mon, Tue, Wed, Thu, Sat · 07:00–19:00");
+    expect(describeWindow({ from: null, to: null, weekdays: [0, 1, 2, 3, 4, 5, 6] })).toBe("Every day · all day");
+  });
+
+  it("changes an automation's timing and nothing else", () => {
+    const c = checkAutomation(base);
+    if (!c.ok) throw new Error(c.error);
+    const r = retimeAutomation(c.config, { times: ["09:00"], days: "weekdays", weekdays: [0, 2], checkEveryMin: 15 });
+    expect(r).toMatchObject({ ok: true, config: { trigger: "schedule", times: ["09:00"], days: "weekdays", weekdays: [0, 2], action: "report", prompt: base.prompt } });
+    expect(retimeAutomation(c.config, { times: [], days: "working" })).toMatchObject({ ok: false });
+    const cond = checkAutomation({ ...base, trigger: "condition", conditionSql: 'SELECT 1 AS key' });
+    if (!cond.ok) throw new Error(cond.error);
+    expect(retimeAutomation(cond.config, { checkEveryMin: 60, activeFrom: "08:00", activeTo: "16:00", times: ["01:00"] }))
+      .toMatchObject({ ok: true, config: { trigger: "condition", checkEveryMin: 60, activeFrom: "08:00", activeTo: "16:00", times: [] } });
   });
 });

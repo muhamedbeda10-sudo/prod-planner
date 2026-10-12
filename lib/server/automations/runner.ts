@@ -9,11 +9,11 @@ import { toolsFor } from "@/lib/server/ai/tools";
 import { pruneAiFiles } from "@/lib/server/ai/files";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { deliverToInbox } from "@/lib/server/inbox";
-import { configOf, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
+import { automationWindowOf, configOf, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
 import { runDailyReviews } from "./review";
 import { AI_DENY_TEXT, automationContext, costUsd } from "@/lib/domain/ai";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
-import { AUTOMATION_LIMITS, freshRows, recipientsOf, renderMessage, rowsTable, type AutomationConfig } from "@/lib/domain/automations";
+import { AUTOMATION_LIMITS, describeWindow, freshRows, inAutomationWindow, recipientsOf, renderMessage, rowsTable, type AutomationConfig } from "@/lib/domain/automations";
 import { factoryDayISO } from "@/lib/domain/dates";
 
 // Running automations: the ones due, each claimed so two ticks never run it
@@ -26,8 +26,6 @@ import { factoryDayISO } from "@/lib/domain/dates";
 const LOCK_MS = 10 * 60_000;
 /** Automations taken per tick; what is left waits for the next one. */
 const MAX_PER_TICK = 10;
-/** What one AI run may call, at most. */
-const AI_CALLS = 14;
 
 export interface TickResult {
   ran: number;
@@ -46,6 +44,14 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
   // housekeeping once an hour, paused or not
   if (now.getUTCMinutes() === 7) await pruneOld(now).catch((e) => console.error("automations: housekeeping failed", e));
   if (settings.automationsPaused) return { ran: 0, checked: 0, skipped: "The owner has paused the automations." };
+  // outside the owner's hours: a schedule that falls due now is skipped to
+  // its next time; a condition waits, and its next check inside the hours
+  // still finds what started matching meanwhile. The morning review waits too.
+  const window = automationWindowOf(settings);
+  if (!inAutomationWindow(now, window)) {
+    await skipOutsideWindow(now, describeWindow(window)).catch((e) => console.error("automations: could not skip what fell outside the hours", e));
+    return { ran: 0, checked: 0, skipped: "Outside the automations' hours." };
+  }
   await expireProposals(now);
   const due = await prisma.automation.findMany({
     where: { enabled: true, deletedAt: null, nextRunAt: { lte: now }, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] },
@@ -60,6 +66,26 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
     if (Date.now() < deadline) await runDailyReviews({ now, deadline }).catch((e) => console.error("review: failed", e));
   }
   return result;
+}
+
+/** The schedules due while automations may not run: each moved on to its
+ *  next time, the skip kept on a run of its own. */
+async function skipOutsideWindow(now: Date, hours: string): Promise<void> {
+  const due = await prisma.automation.findMany({
+    where: { trigger: "schedule", enabled: true, deletedAt: null, nextRunAt: { lte: now }, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] },
+    take: 50,
+  });
+  if (due.length === 0) return;
+  const offDay = await offDays(now);
+  const note = `Skipped — outside the automations' hours (${hours}).`;
+  for (const a of due) {
+    // moved only if no other tick moved it first
+    const moved = await prisma.automation.updateMany({
+      where: { id: a.id, nextRunAt: a.nextRunAt },
+      data: { nextRunAt: nextRunOf(configOf(a), now, offDay), lastStatus: "skipped", lastNote: note },
+    });
+    if (moved.count === 1) await prisma.automationRun.create({ data: { automationId: a.id, cause: "schedule", startedAt: now, finishedAt: now, status: "skipped", summary: note } });
+  }
 }
 
 async function runAll(due: Automation[], deadline: number, result: TickResult): Promise<void> {
@@ -175,11 +201,12 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
       areas, canDelete: hasPerm(owner, AI_DELETE_KEY), noconfirm: hasPerm(owner, AI_NOCONFIRM_KEY),
     });
     const instruction = rows.length > 0 ? `${config.prompt}\n\nThese rows started matching the automation's condition:\n\n${rowsTable(rows, AUTOMATION_LIMITS.conditionRows)}` : config.prompt!;
-    const usage = await prisma.aiUsage.create({ data: { userId: owner.id, model: settings.model, question: `Automation: ${a.name}`.slice(0, 500) } });
+    const usage = await prisma.aiUsage.create({ data: { userId: owner.id, model: settings.autoModel, question: `Automation: ${a.name}`.slice(0, 500) } });
     const actionIds: number[] = [];
     const answer = await ask({
       apiKey,
-      model: settings.model,
+      model: settings.autoModel,
+      effort: settings.autoEffort,
       history: [],
       question: questionMessages(instruction, context),
       tools,
@@ -188,9 +215,9 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
       playbook: await getPlaybookText(),
       events: { status: () => {}, text: () => {}, action: (v) => actionIds.push(v.id) },
       via: "automation",
-      maxCalls: AI_CALLS,
+      maxCalls: settings.maxCalls,
     });
-    const cost = costUsd(settings.model, answer.tokens);
+    const cost = costUsd(settings.autoModel, answer.tokens);
     await prisma.aiUsage.update({
       where: { id: usage.id },
       data: { calls: answer.calls, queries: answer.queries, ...answer.tokens, costUsd: cost, error: answer.error?.slice(0, 1000) ?? null, finishedAt: new Date() },
