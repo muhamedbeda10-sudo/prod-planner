@@ -15,6 +15,7 @@ import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/do
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { assignLineMachine, moveLineRank, optimizeMachines, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
 import { DoneBox, MachinePick, SheetToPlace } from "@/components/MachineBoard";
+import { LineSheet } from "@/components/LineMaterialChips";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 
 // 🗺 The Floor canvas — a department's bay as the planner draws it: the
@@ -437,6 +438,10 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
   }
   const m = card?.machine ?? machineName;
   const compact = n.h < 100;
+  // a running line cut from one sheet takes a second row for the sheet: a
+  // block of the usual height then shows that one line and counts the rest;
+  // a compact block keeps the sheet to its line's tooltip
+  const runShown = compact ? 1 : n.h < 140 && card?.running.slice(0, 2).some((q) => q.sheet) ? 1 : 2;
   return (
     <div
       data-node={m?.code ?? n.id}
@@ -456,16 +461,19 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
       </div>
       {card && card.running.length > 0 ? (
         <div className="mt-1 rounded-md bg-brand-light/40 border border-brand/30 px-1.5 py-1 min-w-0 space-y-0.5">
-          {card.running.slice(0, compact ? 1 : 2).map((q) => (
-            <div key={`${q.key}#${q.sheet}`} className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
-              <span className="text-brand font-extrabold shrink-0">▶</span>
-              <span className="font-extrabold truncate">{q.bom}</span>
-              <span className="font-bold shrink-0">{q.item}</span>
-              <span className="font-extrabold tabnum text-brand shrink-0">×{q.remaining}</span>
-              {!compact && q.deliveryISO && <span className="text-[10px] text-muted shrink-0">📅 {ddmm(q.deliveryISO)}</span>}
+          {card.running.slice(0, runShown).map((q) => (
+            <div key={`${q.key}#${q.sheet}`} className="min-w-0" title={compact && q.sheet ? sheetKeyLabel(q.sheet) : undefined}>
+              <div className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
+                <span className="text-brand font-extrabold shrink-0">▶</span>
+                <span className="font-extrabold truncate">{q.bom}</span>
+                <span className="font-bold shrink-0">{q.item}</span>
+                <span className="font-extrabold tabnum text-brand shrink-0">×{q.remaining}</span>
+                {!compact && q.deliveryISO && <span className="text-[10px] text-muted shrink-0">📅 {ddmm(q.deliveryISO)}</span>}
+              </div>
+              {!compact && <LineSheet sheet={q.sheet} className="block ps-3 text-[10px] font-semibold leading-tight text-muted truncate" />}
             </div>
           ))}
-          {card.running.length > (compact ? 1 : 2) && <div className="text-[10px] text-brand font-bold">+{card.running.length - (compact ? 1 : 2)} more running</div>}
+          {card.running.length > runShown && <div className="text-[10px] text-brand font-bold">+{card.running.length - runShown} more running</div>}
         </div>
       ) : (
         <div className="mt-1 text-[11px] text-muted">{card && card.waiting.length > 0 ? "nothing running yet" : "idle — nothing on it"}</div>
@@ -563,7 +571,10 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                   <tr key={`${q.key}#${q.sheet}`} className={`border-t ${q.running ? "bg-brand-light/40" : ""}`}>
                     <td className="p-1 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</td>
                     <td className="p-1 font-extrabold ltr whitespace-nowrap">{q.bom}</td>
-                    <td className="p-1 text-center font-bold">{q.item}</td>
+                    <td className="p-1 text-center font-bold">
+                      {q.item}
+                      <LineSheet sheet={q.sheet} className="block text-[10px] font-semibold text-muted whitespace-nowrap" />
+                    </td>
                     <td className="p-1 text-center tabnum font-extrabold whitespace-nowrap">
                       {q.remaining}
                       {q.split && <span className="block text-[10px] font-semibold text-muted" title="Part of the line — the rest is on another machine or waits">of {q.lineRemaining}</span>}
