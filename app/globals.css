@@ -1344,3 +1344,6 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 .col-row { display: block; width: 100%; text-align: start; padding: 7px 12px; transition: background-color 0.12s ease; }
 .col-row:hover { background: var(--surface-2); }
 .col-row-on, .col-row-on:hover { background: var(--brand-light); }
+
+/* a pill that may run to a second line — a long status on a phone */
+.pill-wrap { white-space: normal; height: auto; line-height: 1.35; text-align: start; }

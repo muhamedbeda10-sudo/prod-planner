@@ -156,9 +156,9 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
         {allRecorded ? (
             <span className="pill pill-ok">recorded{data.recordedBy ? ` · ${data.recordedBy}` : ""}</span>
           ) : recordedHere.length > 0 ? (
-            <span className="pill pill-warn">{recordedHere.map((d) => WORKER_DEPT_LABEL[d]).join(", ")} recorded — the rest shows defaults</span>
+            <span className="pill pill-warn pill-wrap">{recordedHere.map((d) => WORKER_DEPT_LABEL[d]).join(", ")} recorded — the rest shows defaults</span>
           ) : (
-            <span className="pill pill-warn">not recorded yet — defaults shown</span>
+            <span className="pill pill-warn pill-wrap">not recorded yet — defaults shown</span>
           )}
         {dirty && <span className="pill pill-warn">unsaved changes</span>}
       </div>
