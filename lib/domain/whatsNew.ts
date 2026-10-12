@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-floor-sheet-line",
+    dateISO: "2026-10-12",
+    title: "Floor: each sheet of an item is named, and goes on a machine as that sheet",
+    where: "Floor → Cut → ▸ to place · a machine's block and queue",
+    body: "Picking one sheet of an item from a machine's ＋ Put a line on it… list — its 5 mm, say, while its 3 mm is on another laser — put the WHOLE item on that machine. It now goes on as that sheet only, as the → button in the \"to place\" list always did; a whole item already placed this way stays whole until it is taken off and the sheet placed again. The Floor now also names the sheet of each line — 3 mm MS 1220×2440 — waiting in both lists, on a machine's block and in its queue, so two sheets of one item, or two lasers on the same item, no longer look alike.",
+    href: "/simulate?view=floor&dept=Cut",
+  },
+  {
     id: "2026-10-11-phones-tablets",
     dateISO: "2026-10-11",
     title: "Tidier on phones and tablets — and less text everywhere",
