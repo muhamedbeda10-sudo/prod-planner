@@ -1209,7 +1209,7 @@ model PowderScrapRevision {
   id      Int         @id @default(autoincrement())
   scrapId Int
   scrap   PowderScrap @relation(fields: [scrapId], references: [id], onDelete: Cascade)
-  action  String // edit | delete
+  action  String // edit | delete | restore
   before  Json
   after   Json?
   byId    Int?

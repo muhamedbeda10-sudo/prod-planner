@@ -296,9 +296,12 @@ export const AI_AREA_LABEL: Record<AiArea, string> = {
   tracker: "the Plan Tracker and the Daily log",
   machines: "the machines and their distribution",
   simulator: "the simulator",
-  data: "other data (the ODOO log, Material, Physical material, Consumables, the calendar, workers, machines)",
+  data: "other data (the ODOO log, Material, Physical material, Consumables with its catalogue, limits and powder scrap, the shift roster, the calendar, workers, machines)",
+  setup: "the plant's set-up (the standard times, capacity and calibration, the times per machine, the shift hours and the master switches)",
+  imports: "imports of files attached in this chat (plans, the Daily log, ODOO, Material, Physical material)",
   automations: "automations and scheduled reports",
   playbook: "the plant's playbook",
+  users: "users and permissions (the owner's)",
 };
 
 /** The app's context for one question — the system message after it: who

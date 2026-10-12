@@ -17,6 +17,10 @@ import { WORKER_TOOLS } from "./workers";
 import { MACHINE_LIST_TOOLS } from "./machineList";
 import { AUTOMATION_TOOLS } from "./automations";
 import { PLAYBOOK_TOOLS } from "./playbook";
+import { SHIFT_TOOLS } from "./shifts";
+import { CATALOGUE_TOOLS } from "./catalogue";
+import { SETUP_TOOLS } from "./setup";
+import { USER_TOOLS } from "./users";
 import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 
 // Every tool the assistant has, in the one fixed order the API sees them in
@@ -40,9 +44,15 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...MACHINE_LIST_TOOLS,
   ...AUTOMATION_TOOLS,
   ...PLAYBOOK_TOOLS,
+  ...SHIFT_TOOLS,
+  ...CATALOGUE_TOOLS,
+  ...SETUP_TOOLS,
+  ...USER_TOOLS,
 ];
 
 const BY_NAME = new Map<string, AiTool>(AI_TOOLS.map((t) => [t.name, t]));
+
+const OWNER_ONLY = "Only the owner manages users and permissions.";
 
 /** The read tools' titles — how a look-up reads in the chat's history. */
 export const READ_TOOL_TITLES: Readonly<Record<string, string>> = Object.fromEntries(AI_TOOLS.filter((t) => t.kind === "read").map((t) => [t.name, t.title]));
@@ -69,6 +79,7 @@ export function riskOf(tool: AnyWriteTool, input: unknown): AiRisk {
 /** Why the assistant may not work on this tool's area for this person, or null. */
 export function areaDenied(user: User, tool: AnyWriteTool): string | null {
   if (tool.area === "playbook") return user.isAdmin ? null : "Only an admin keeps the plant's playbook — ask one.";
+  if (tool.area === "users") return user.isOwner ? null : OWNER_ONLY;
   const key = AI_AREA_KEY[tool.area];
   if (key && !hasPerm(user, key)) return "The assistant has not been given this kind of change for you — the owner ticks it on Users & Permissions (AI assistant).";
   return null;
@@ -82,6 +93,7 @@ export function areaDenied(user: User, tool: AnyWriteTool): string | null {
  *  reads as that change left it — so it never removes anything that was
  *  there before (undoing an addition removes just what was added). */
 export function callDenied(user: User, hidden: ReadonlySet<string>, tool: AiTool, input: unknown, o: { undo?: boolean } = {}): string | null {
+  if (tool.ownerOnly && !user.isOwner) return OWNER_ONLY;
   if (tool.tabs?.some((t) => hidden.has(t))) return "That screen is not opened for you, so the assistant cannot work on it for you.";
   if (tool.kind === "read") return null;
   const area = areaDenied(user, tool);
@@ -92,10 +104,13 @@ export function callDenied(user: User, hidden: ReadonlySet<string>, tool: AiTool
   return null;
 }
 
-/** The tools this person's assistant gets, in the fixed order. */
-export function toolsFor(user: User, o: { hidden: ReadonlySet<string>; actionsPaused: boolean }): AiTool[] {
+/** The tools this person's assistant gets, in the fixed order — fewer when
+ *  it runs unattended (an automation, the morning review). */
+export function toolsFor(user: User, o: { hidden: ReadonlySet<string>; actionsPaused: boolean; unattended?: boolean }): AiTool[] {
   return AI_TOOLS.filter((t) => {
     if (t.internal) return false;
+    if (t.ownerOnly && !user.isOwner) return false;
+    if (t.liveOnly && o.unattended) return false;
     if (t.tabs?.some((x) => o.hidden.has(x))) return false;
     if (t.kind === "read") return true;
     if (o.actionsPaused) return false;

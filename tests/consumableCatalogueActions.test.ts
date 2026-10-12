@@ -58,7 +58,7 @@ describe("saveCatalogueItem", () => {
 
   it("adds an item, the code upper-cased and PC by default, and records it", async () => {
     const res = await saveCatalogueItem(form({ name: " Spare  fuse ", code: "c-con-fuse-1" }));
-    expect(res).toEqual({ ok: true });
+    expect(res).toEqual({ ok: true, id: 50 });
     expect(h.tx.consumableItem.create.mock.calls[0][0].data).toEqual({ name: "Spare fuse", code: "C-CON-FUSE-1", uom: "PC", remark: null, active: true });
     expect(h.tx.consumableCatalogueChange.create.mock.calls[0][0].data).toMatchObject({ itemId: 50, entity: "item", action: "create", by: "Store Keeper", byId: 5 });
   });
@@ -74,7 +74,7 @@ describe("saveCatalogueItem", () => {
     const prev = { id: 3, name: "Drill Bit 4mm", code: "C-CON-DRB-04", uom: "PC", remark: null, active: true };
     h.tx.consumableItem.findUnique.mockResolvedValue(prev);
     h.tx.consumableItem.update.mockResolvedValue({ ...prev, active: false });
-    expect(await saveCatalogueItem(form({ id: "3", name: "Drill Bit 4mm", code: "C-CON-DRB-04", active: "false" }))).toEqual({ ok: true });
+    expect(await saveCatalogueItem(form({ id: "3", name: "Drill Bit 4mm", code: "C-CON-DRB-04", active: "false" }))).toEqual({ ok: true, id: 3 });
     expect(h.tx.consumableCatalogueChange.create.mock.calls[0][0].data).toMatchObject({ action: "update", before: { active: true }, after: { active: false } });
   });
 });
@@ -82,7 +82,7 @@ describe("saveCatalogueItem", () => {
 describe("saveConsumableLimit", () => {
   it("adds a limit for the departments picked", async () => {
     const res = await saveConsumableLimit(form({ itemId: "3", departments: ["PaintingLV", "WeldingTX"], basis: "pool", period: "month", qty: "10" }));
-    expect(res).toEqual({ ok: true });
+    expect(res).toEqual({ ok: true, id: 70 });
     const data = h.tx.consumableLimit.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ itemId: 3, departments: "WeldingTX,PaintingLV", basis: "pool", period: "month" });
     expect(data.qty.toString()).toBe("10");
@@ -105,7 +105,7 @@ describe("saveConsumableLimit", () => {
   it("changes a limit and keeps the number it had", async () => {
     h.tx.consumableLimit.findUnique.mockResolvedValue({ id: 8, itemId: 3, departments: "WeldingTX", basis: "pool", period: "month", qty: new Prisma.Decimal(15) });
     h.tx.consumableLimit.update.mockResolvedValue({ id: 8, itemId: 3, departments: "WeldingTX", basis: "pool", period: "month", qty: new Prisma.Decimal(20) });
-    expect(await saveConsumableLimit(form({ id: "8", itemId: "3", departments: "WeldingTX", basis: "pool", period: "month", qty: "20" }))).toEqual({ ok: true });
+    expect(await saveConsumableLimit(form({ id: "8", itemId: "3", departments: "WeldingTX", basis: "pool", period: "month", qty: "20" }))).toEqual({ ok: true, id: 8 });
     expect(h.tx.consumableCatalogueChange.create.mock.calls[0][0].data).toMatchObject({ action: "update", before: { qty: 15 }, after: { qty: 20 } });
   });
 

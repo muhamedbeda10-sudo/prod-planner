@@ -165,7 +165,7 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
 
     const hidden = hiddenTabsOf(owner);
     // a report reads only; act gets the owner's write tools too
-    const tools = toolsFor(owner, { hidden, actionsPaused: config.action === "report" ? true : settings.actionsPaused });
+    const tools = toolsFor(owner, { hidden, actionsPaused: config.action === "report" ? true : settings.actionsPaused, unattended: true });
     const areas = [...new Set(tools.flatMap((t) => (t.kind === "write" ? [t.area] : [])))] as AiArea[];
     const people = await prisma.user.findMany({ where: { id: { in: recipients } }, select: { id: true, name: true } });
     const context = automationContext({

@@ -79,7 +79,7 @@ export async function reviewFor(user: User, now: Date): Promise<void> {
   const apiKey = apiKeyOf(settings);
   if (!apiKey) return;
   const hidden = hiddenTabsOf(user);
-  const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused });
+  const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused, unattended: true });
   const areas = [...new Set(tools.flatMap((t) => (t.kind === "write" ? [t.area] : [])))] as AiArea[];
   const usage = await prisma.aiUsage.create({ data: { userId: user.id, model: settings.model, question: "Morning review" } });
   const actionIds: number[] = [];

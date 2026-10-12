@@ -140,7 +140,7 @@ describe("the assistant's runs", () => {
   it("a report reads only, runs as the owner, is sent as written, and is paid for like a question", async () => {
     h.ask.mockResolvedValue(answer());
     await runAutomation(auto({ action: "report", message: null, prompt: "Welding vs plan" }), { cause: "schedule", now });
-    expect(h.toolsFor).toHaveBeenCalledWith(owner, { hidden: expect.any(Set), actionsPaused: true });
+    expect(h.toolsFor).toHaveBeenCalledWith(owner, { hidden: expect.any(Set), actionsPaused: true, unattended: true });
     const call = h.ask.mock.calls[0][0];
     expect(call).toMatchObject({ via: "automation", ctx: { user: owner, automationId: 3, conversationId: null } });
     expect(call.question[1].content).toContain("Your final answer is sent as it is to Ahmed");

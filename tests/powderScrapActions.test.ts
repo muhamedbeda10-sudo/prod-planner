@@ -29,7 +29,7 @@ vi.mock("@/lib/server/auth", () => ({
   hasPerm: (u: { isAdmin: boolean; perms: string }, p: string) => u.isAdmin || u.perms.split(",").includes(p),
 }));
 
-import { createPowderScrap, deletePowderScrap, updatePowderScrap } from "@/app/consumables/powderActions";
+import { createPowderScrap, deletePowderScrap, restorePowderScrap, updatePowderScrap } from "@/app/consumables/powderActions";
 import { factoryDayISO } from "@/lib/domain/dates";
 
 function form(fields: Record<string, string>): FormData {
@@ -58,6 +58,7 @@ beforeEach(() => {
   h.getCurrentUser.mockResolvedValue(keeper);
   h.prisma.powderScrap.findUnique.mockResolvedValue(saved());
   h.prisma.powderScrap.updateMany.mockResolvedValue({ count: 1 });
+  h.prisma.powderScrap.create.mockResolvedValue({ id: 41 });
   h.prisma.$transaction.mockImplementation(async (cb: (tx: typeof h.prisma) => unknown) => cb(h.prisma));
 });
 
@@ -70,7 +71,7 @@ describe("createPowderScrap", () => {
   });
 
   it("records the weighing with its day and the recorder", async () => {
-    expect(await createPowderScrap(form({ ...valid, notes: "colour change" }))).toEqual({ ok: true });
+    expect(await createPowderScrap(form({ ...valid, notes: "colour change" }))).toEqual({ ok: true, id: 41 });
     const data = h.prisma.powderScrap.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ department: "PaintingTX", notes: "colour change", recordedById: 5, recordedBy: "Store Keeper" });
     expect(data.kg.toString()).toBe("12.5");
@@ -129,5 +130,27 @@ describe("deletePowderScrap", () => {
     expect(await deletePowderScrap(form(ref))).toEqual({ ok: true });
     expect(h.prisma.powderScrap.updateMany.mock.calls[0][0].data).toMatchObject({ deletedBy: "Admin" });
     expect(h.prisma.powderScrapRevision.create.mock.calls[0][0].data).toMatchObject({ scrapId: 9, action: "delete", before: { kg: 12.5 } });
+  });
+});
+
+describe("restorePowderScrap", () => {
+  it("is the admin's alone, and only for a weighing taken off", async () => {
+    h.requireAdmin.mockResolvedValue(NO_PERM);
+    expect((await restorePowderScrap(form(ref))).ok).toBe(false);
+    h.requireAdmin.mockResolvedValue({ user: admin });
+    expect((await restorePowderScrap(form(ref))).error).toMatch(/not taken off/);
+    expect(h.prisma.powderScrap.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("brings it back and says so in its history", async () => {
+    h.prisma.powderScrap.findUnique.mockResolvedValue(saved({ deletedAt: new Date() }));
+    expect(await restorePowderScrap(form(ref))).toEqual({ ok: true });
+    expect(h.prisma.powderScrap.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: 9, updatedAt: version }, data: { deletedAt: null, deletedBy: null } });
+    expect(h.prisma.powderScrapRevision.create.mock.calls[0][0].data).toMatchObject({ scrapId: 9, action: "restore", by: "Admin" });
+  });
+
+  it("refuses when someone changed it since", async () => {
+    h.prisma.powderScrap.findUnique.mockResolvedValue(saved({ deletedAt: new Date(), updatedAt: new Date("2026-09-29T08:00:00.000Z") }));
+    expect((await restorePowderScrap(form(ref))).error).toMatch(/Someone changed/);
   });
 });

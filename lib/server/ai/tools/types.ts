@@ -66,6 +66,11 @@ interface ToolBase<I> {
   /** Not offered to the model: a tool only the app itself calls — the undo
    *  of another change. */
   internal?: true;
+  /** Only for the owner — Users & Permissions are theirs alone. */
+  ownerOnly?: true;
+  /** Only in a chat the person is in, never in an automation or the morning
+   *  review: what must not move while nobody is watching. */
+  liveOnly?: true;
   /** Further checks and normalising after the schema: the typed input, or what is wrong. */
   parse?(raw: Record<string, unknown>): I | string;
 }

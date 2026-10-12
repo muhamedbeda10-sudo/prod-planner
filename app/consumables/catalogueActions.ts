@@ -15,6 +15,8 @@ import { ALL_DEPARTMENTS, isLimitBasis, isLimitPeriod, serializeDepartments } fr
 export interface CatalogueActionResult {
   ok: boolean;
   error?: string;
+  /** The item or limit saved — the new one's id when one was added. */
+  id?: number;
 }
 
 const PERM = "consumables.edit";
@@ -90,21 +92,21 @@ export async function saveCatalogueItem(formData: FormData): Promise<CatalogueAc
       const next = await tx.consumableItem.update({ where: { id }, data });
       if (JSON.stringify(itemSnapshot(prev)) === JSON.stringify(itemSnapshot(next))) return "same" as const;
       await audit(tx, who, { itemId: id, entity: "item", entityId: id, action: "update", before: itemSnapshot(prev), after: itemSnapshot(next) });
-    } else {
-      const next = await tx.consumableItem.create({ data });
-      await audit(tx, who, { itemId: next.id, entity: "item", entityId: next.id, action: "create", after: itemSnapshot(next) });
-      if (limit?.data) {
-        const d = limit.data;
-        const l = await tx.consumableLimit.create({ data: { itemId: next.id, departments: d.departments, basis: d.basis, period: d.period, qty: new Prisma.Decimal(d.qty) } });
-        await audit(tx, who, { itemId: next.id, entity: "limit", entityId: l.id, action: "create", after: limitSnapshot(l) });
-      }
+      return id;
     }
-    return "ok" as const;
+    const next = await tx.consumableItem.create({ data });
+    await audit(tx, who, { itemId: next.id, entity: "item", entityId: next.id, action: "create", after: itemSnapshot(next) });
+    if (limit?.data) {
+      const d = limit.data;
+      const l = await tx.consumableLimit.create({ data: { itemId: next.id, departments: d.departments, basis: d.basis, period: d.period, qty: new Prisma.Decimal(d.qty) } });
+      await audit(tx, who, { itemId: next.id, entity: "limit", entityId: l.id, action: "create", after: limitSnapshot(l) });
+    }
+    return next.id;
   });
   if (result === "gone") return { ok: false, error: "That item no longer exists — refresh the page." };
   if (result === "same") return { ok: false, error: "Nothing changed." };
   revalidate();
-  return { ok: true };
+  return { ok: true, id: result };
 }
 
 /** Read a limit's fields from the form. */
@@ -147,16 +149,16 @@ export async function saveConsumableLimit(formData: FormData): Promise<Catalogue
       const next = await tx.consumableLimit.update({ where: { id }, data });
       if (JSON.stringify(limitSnapshot(prev)) === JSON.stringify(limitSnapshot(next))) return "same" as const;
       await audit(tx, who, { itemId, entity: "limit", entityId: id, action: "update", before: limitSnapshot(prev), after: limitSnapshot(next) });
-    } else {
-      const next = await tx.consumableLimit.create({ data: { ...data, itemId } });
-      await audit(tx, who, { itemId, entity: "limit", entityId: next.id, action: "create", after: limitSnapshot(next) });
+      return id;
     }
-    return "ok" as const;
+    const next = await tx.consumableLimit.create({ data: { ...data, itemId } });
+    await audit(tx, who, { itemId, entity: "limit", entityId: next.id, action: "create", after: limitSnapshot(next) });
+    return next.id;
   });
   if (result === "gone") return { ok: false, error: "That limit no longer exists — refresh the page." };
   if (result === "same") return { ok: false, error: "Nothing changed." };
   revalidate();
-  return { ok: true };
+  return { ok: true, id: result };
 }
 
 /** Remove a limit from an item (the item then has no limit there). */
