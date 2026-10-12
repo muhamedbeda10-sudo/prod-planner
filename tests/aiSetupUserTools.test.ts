@@ -162,7 +162,7 @@ describe("users and permissions", () => {
     const p = await updateUserAccessTool.describe(input, owner);
     expect(p).toMatchObject({
       changes: [
-        { label: "Ahmed — Painting worklist — record & edit", before: "no", after: "yes" },
+        { label: "Ahmed — Painting — record", before: "no", after: "yes" },
         { label: "Ahmed — Order quantity — edit", before: "yes", after: "no" },
         { label: "Ahmed — screen Floor / Simulator", before: "hidden", after: "shown" },
         { label: "Ahmed — AI assistant", before: "off", after: "on, $15 a month" },
@@ -171,6 +171,7 @@ describe("users and permissions", () => {
     const out = await updateUserAccessTool.execute(input, owner);
     const fd = fdOf(h.users.updateUserPerms);
     expect(fd.get("isAdmin")).toBe("on");
+    expect(fd.get("aiKeys")).toBe("1");
     expect(fd.getAll("perms").sort()).toEqual(["painting.edit", "tracker.components", "tracker.status", "welding.edit"]);
     expect(fd.getAll("tabs")).toContain("simulate");
     expect([fd.get("aiForm"), fd.get("aiEnabled"), fd.get("aiUsd")]).toEqual(["1", "on", "15"]);

@@ -199,6 +199,8 @@ export const updateUserAccessTool: WriteTool<AccessInput> = {
     if ("error" in p) return { ok: false, error: p.error };
     const before = await readUserAccess(target.id);
     const fd = formOf({ id: target.id, ...(p.admin ? { isAdmin: "on" } : {}) });
+    // the whole set, the assistant's keys included
+    fd.set("aiKeys", "1");
     for (const k of p.perms) fd.append("perms", k);
     appendScreens(fd, p.hidden);
     if (p.aiChanges && p.ai) {
@@ -272,6 +274,7 @@ export const createUserTool: WriteTool<CreateInput> = {
   },
   async execute(i) {
     const fd = formOf({ email: i.email, name: i.name, password: randomBytes(24).toString("base64url"), ...(i.admin ? { isAdmin: "on" } : {}) });
+    fd.set("aiKeys", "1");
     for (const k of i.permissions ?? []) fd.append("perms", k);
     appendScreens(fd, new Set(i.hiddenScreens ?? []));
     if (i.aiEnabled !== undefined || i.aiMonthlyUsd !== undefined) {

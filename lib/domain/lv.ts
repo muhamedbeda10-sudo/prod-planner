@@ -77,19 +77,18 @@ export const LV_STAGE_SHORT: Record<LvChainStage, string> = {
   Delivered: "Dlvd",
 };
 
-/** Which tracker permission records a panel stage. Punching and bending are
- *  the panel's fabrication, so they sit behind the Fab column's key; the
- *  rest map to their namesakes. */
+/** Which permission types a panel stage's column on the LV Plan Tracker: the
+ *  stage's own key — the one that records it on its worklist too. */
 export function lvPermKey(stage: LvChainStage): string {
   switch (stage) {
     case "Punching":
-      return "lv.tracker.punch";
+      return "lv.punching";
     case "Bending":
-      return "lv.tracker.bend";
+      return "lv.bending";
     case "Welding":
-      return "lv.tracker.weld";
+      return "lv.welding";
     case "Painting":
-      return "lv.tracker.paint";
+      return "lv.painting";
     case "Delivered":
       return "lv.tracker.delivered";
   }

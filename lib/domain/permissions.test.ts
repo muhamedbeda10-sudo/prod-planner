@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ACCESS_PERM_KEYS, PERMISSIONS, PERM_KEYS, bayPermKeys, deptPermKey, ledgerPermKey, linePermKey, machineLinePermKey, mayScheduleLine, parsePerms, shiftPermKey, trackerPermKey } from "./permissions";
+import { ACCESS_PERM_KEYS, AI_PERM_GROUPS, AI_PERM_KEYS, PERMISSIONS, PERM_ALERTS, PERM_KEYS, PERM_OTHER, PERM_TABLES, bayPermKeys, deptPermKey, ledgerPermKey, linePermKey, machineLinePermKey, mayScheduleLine, parsePerms, serializePerms, shiftPermKey, trackerPermKey, withAiPerms, withoutAiChange } from "./permissions";
 import { DELIVERED_STAGE, DEPTS, ITEMS, SHOTBLAST_STAGE } from "./constants";
 import { LV_CHAIN, LV_PRODUCTS } from "./lv";
 import { MANUAL_ITEM } from "./manualJob";
@@ -8,7 +8,7 @@ import { RUN_ITEM } from "./nestRun";
 
 describe("the panels' own keys", () => {
   it("are all registered, so the Users page offers them and parsePerms keeps them", () => {
-    for (const k of ["lv.punching", "lv.bending", "lv.welding", "lv.painting", "lv.tracker.punch", "lv.tracker.bend", "lv.tracker.weld", "lv.tracker.paint", "lv.tracker.delivered", "lv.status", "lv.import", "lv.odoo", "lv.material"]) {
+    for (const k of ["lv.punching", "lv.bending", "lv.welding", "lv.painting", "lv.tracker.delivered", "lv.status", "lv.import", "lv.odoo", "lv.material", "shifts.lv"]) {
       expect(PERM_KEYS.has(k), k).toBe(true);
     }
     expect([...parsePerms("lv.punching, lv.status,nonsense")]).toEqual(["lv.punching", "lv.status"]);
@@ -115,8 +115,9 @@ describe("admins follow their ticks", () => {
   it("were ticked by the migration with exactly the access rights of the day", () => {
     const sql = readFileSync("prisma/migrations/20260928160000_admins_follow_ticks/migration.sql", "utf8");
     const list = /SET "perms" = '([^']+)'/.exec(sql)?.[1].split(",") ?? [];
-    // every right in the migration exists; a right added later is ticked by hand
-    for (const k of list) expect(ACCESS_PERM_KEYS, k).toContain(k);
+    // every right in the migration exists, or lives on in the key it was
+    // merged into; a right added later is ticked by hand
+    for (const k of list) for (const now of parsePerms(k)) expect(ACCESS_PERM_KEYS, k).toContain(now);
     expect(list).not.toContain("odoo.alerts");
     expect(list).not.toContain("odoo.needMo");
   });
@@ -132,5 +133,54 @@ describe("the assistant's keys", () => {
     expect(ACCESS_PERM_KEYS).toContain("ai.act.delete");
     expect(ACCESS_PERM_KEYS).not.toContain("ai.act.noconfirm");
     expect(ACCESS_PERM_KEYS).not.toContain("ai.suggestions");
+  });
+});
+
+describe("one key per department", () => {
+  it("records the worklist and types the tracker column alike", () => {
+    for (const d of ["Cut", "Welding", "Painting", "ShotBlast", "Delivered"]) expect(trackerPermKey(d), d).toBe(ledgerPermKey(d, "CF"));
+    for (const d of LV_CHAIN) expect(PERM_KEYS.has(ledgerPermKey(d, "PNL")), d).toBe(true);
+  });
+
+  it("gives whoever held either of the old two keys the merged one", () => {
+    expect([...parsePerms("tracker.cut")]).toEqual(["cut.edit"]);
+    expect([...parsePerms("tracker.weld,tracker.paint")]).toEqual(["welding.edit", "painting.edit"]);
+    expect([...parsePerms("lv.tracker.punch,lv.tracker.bend,lv.tracker.weld,lv.tracker.paint")]).toEqual(["lv.punching", "lv.bending", "lv.welding", "lv.painting"]);
+    // saved again, only the merged keys remain
+    expect(serializePerms(parsePerms("tracker.cut,cut.edit,lv.tracker.delivered"))).toBe("cut.edit,lv.tracker.delivered");
+    for (const old of ["tracker.cut", "tracker.weld", "tracker.paint", "lv.tracker.punch", "lv.tracker.bend", "lv.tracker.weld", "lv.tracker.paint"]) expect(PERM_KEYS.has(old), old).toBe(false);
+  });
+});
+
+describe("the Users page's layout", () => {
+  it("shows every key but the assistant's exactly once", () => {
+    const shown = [...PERM_TABLES.flatMap((t) => t.rows.flatMap((r) => r.cells.filter((c): c is string => c !== null))), ...PERM_OTHER, ...PERM_ALERTS];
+    expect(new Set(shown).size).toBe(shown.length);
+    expect(new Set([...shown, ...AI_PERM_KEYS])).toEqual(PERM_KEYS);
+    for (const k of AI_PERM_KEYS) expect(shown).not.toContain(k);
+    for (const t of PERM_TABLES) for (const r of t.rows) expect(r.cells.length, `${t.title} ${r.label}`).toBe(t.columns.length);
+  });
+
+  it("has every key once in the catalogue", () => {
+    const keys = PERMISSIONS.map((p) => p.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("the assistant's keys and the rest", () => {
+  it("are all grouped on AI assistant settings, once each", () => {
+    const grouped = AI_PERM_GROUPS.flatMap((g) => g.keys);
+    expect(new Set(grouped).size).toBe(grouped.length);
+    expect(grouped.sort()).toEqual([...AI_PERM_KEYS].sort());
+  });
+
+  it("are written each by its own page, never the other's", () => {
+    const stored = "cut.edit,tracker.status,ai.act.tracker,ai.automations";
+    // AI assistant settings: only the assistant's keys change
+    expect(withAiPerms(stored, ["ai.act.data", "cut.edit"])).toBe("cut.edit,tracker.status,ai.act.data");
+    expect(withAiPerms(stored, [])).toBe("cut.edit,tracker.status");
+    // Users & Permissions: everything but the assistant's
+    expect(withoutAiChange(stored, ["welding.edit", "ai.act.delete"])).toBe("welding.edit,ai.act.tracker,ai.automations");
+    expect(withoutAiChange(stored, [])).toBe("ai.act.tracker,ai.automations");
   });
 });

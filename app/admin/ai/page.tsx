@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
 import { apiKeyOf, getAiSettings, todayStart } from "@/lib/server/ai/access";
 import { monthStart } from "@/lib/domain/ai";
+import { AI_PERM_KEYS, parsePerms } from "@/lib/domain/permissions";
 import { AiAdmin } from "@/components/AiAdmin";
 import { schedulerStatus } from "@/lib/server/automations/scheduler";
 import { automationViews } from "@/lib/server/automations/views";
@@ -26,7 +27,7 @@ export default async function AiAdminPage() {
   const lastFrom = monthStart(new Date(from.getTime() - 86_400_000));
   const [s, users, access, byUser, byUserToday, plant, plantToday, lastMonth, recent] = await Promise.all([
     getAiSettings(),
-    prisma.user.findMany({ orderBy: [{ isOwner: "desc" }, { active: "desc" }, { name: "asc" }], select: { id: true, name: true, email: true, isOwner: true, active: true } }),
+    prisma.user.findMany({ orderBy: [{ isOwner: "desc" }, { active: "desc" }, { name: "asc" }], select: { id: true, name: true, email: true, isOwner: true, active: true, perms: true } }),
     prisma.aiAccess.findMany(),
     prisma.aiUsage.groupBy({ by: ["userId"], where: { at: { gte: from } }, _sum: { costUsd: true }, _count: { _all: true }, _max: { at: true } }),
     prisma.aiUsage.groupBy({ by: ["userId"], where: { at: { gte: today } }, _sum: { costUsd: true } }),
@@ -85,6 +86,8 @@ export default async function AiAdminPage() {
             spentToday: todayOf.get(u.id) ?? 0,
             questions: used?._count._all ?? 0,
             lastAt: used?._max.at?.toISOString() ?? null,
+            // what the assistant may do for them, as stored (the owner's rights are implied)
+            aiKeys: AI_PERM_KEYS.filter((k) => parsePerms(u.perms).has(k)),
           };
         }),
         changes: changes.map((c) => ({

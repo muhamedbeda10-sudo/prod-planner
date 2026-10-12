@@ -7,9 +7,10 @@ import {
 } from "lucide-react";
 import { AI_CALLS_RANGE, AI_EFFORTS, AI_EFFORT_LABEL, AI_MODELS, aiModel, usdText, type AiEffort } from "@/lib/domain/ai";
 import { WEEKDAY_NAMES, describeWindow } from "@/lib/domain/automations";
+import { AI_PERM_GROUPS, permDef } from "@/lib/domain/permissions";
 import { formatDateTime } from "@/lib/domain/format";
 import {
-  removeAiKey, removeAutomationClock, saveAiKey, setAiEnabled, setAiLimits, setAiModel, setAiPause, setAiUserAccess,
+  removeAiKey, removeAutomationClock, saveAiKey, setAiEnabled, setAiLimits, setAiModel, setAiPause, setAiUserAccess, setAiUserRights,
   setAutomationHours, setupAutomationClock, testAi, type AiActionResult,
 } from "@/app/admin/ai/actions";
 import { AutomationsView } from "@/components/AutomationsView";
@@ -21,7 +22,8 @@ import type { SchedulerStatus } from "@/lib/server/automations/scheduler";
 // automations' model and effort), Limits (the plant's caps per day and month,
 // steps per question), Automations (on/off, the hours they may run in, the
 // morning review, the scheduler, everyone's automations), People (who may use
-// it, each one's caps and spend) and Activity (what it changed, what it was asked).
+// it, what it may do for each — never more than they may themselves — each
+// one's caps and spend) and Activity (what it changed, what it was asked).
 
 export interface AiAdminUser {
   id: number;
@@ -36,6 +38,8 @@ export interface AiAdminUser {
   spentToday: number;
   questions: number;
   lastAt: string | null;
+  /** What the assistant may do for them (the owner's access rights are implied). */
+  aiKeys: string[];
 }
 
 export interface AiAdminData {
@@ -612,7 +616,7 @@ function PeopleCard({ data }: { data: AiAdminData }) {
         </label>
       </CardHead>
       <div className="overflow-x-auto -mx-4 md:-mx-5">
-        <table className="w-full min-w-[760px]">
+        <table className="w-full min-w-[860px]">
           <thead>
             <tr>
               <th className="text-start px-4 md:px-5">Person</th>
@@ -621,7 +625,8 @@ function PeopleCard({ data }: { data: AiAdminData }) {
               <th className="text-start">Monthly cap</th>
               <th className="text-end">Today</th>
               <th className="text-end">This month</th>
-              <th className="text-end px-4 md:px-5">Questions</th>
+              <th className="text-end">Questions</th>
+              <th className="text-end px-4 md:px-5">What it may do</th>
             </tr>
           </thead>
           <tbody>
@@ -635,6 +640,8 @@ function PeopleCard({ data }: { data: AiAdminData }) {
 
 function PersonRow({ u }: { u: AiAdminUser }) {
   const r = useRun();
+  const [rights, setRights] = useState(false);
+  const shownKeys = u.isOwner ? u.aiKeys.filter((k) => permDef(k)?.notify || permDef(k)?.optIn) : u.aiKeys;
   const [on, setOn] = useState(u.enabled);
   const [usd, setUsd] = useState(usdInput(u.monthlyUsd));
   const [dayUsd, setDayUsd] = useState(usdInput(u.dailyUsd));
@@ -660,6 +667,7 @@ function PersonRow({ u }: { u: AiAdminUser }) {
     </span>
   );
   return (
+    <>
     <tr className={u.active ? "" : "opacity-60"}>
       <td className="px-4 md:px-5">
         <div className="font-semibold flex items-center gap-1.5">
@@ -701,8 +709,78 @@ function PersonRow({ u }: { u: AiAdminUser }) {
         {usdText(u.spent)}
         {u.monthlyUsd > 0 && <span className="text-xs text-muted"> / {usdText(u.monthlyUsd)}</span>}
       </td>
-      <td className="text-end tabnum px-4 md:px-5" title={u.lastAt ? `Last asked ${when(u.lastAt)}` : undefined}>{u.questions || "—"}</td>
+      <td className="text-end tabnum" title={u.lastAt ? `Last asked ${when(u.lastAt)}` : undefined}>{u.questions || "—"}</td>
+      <td className="text-end px-4 md:px-5">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRights((v) => !v)} aria-expanded={rights}>
+          {u.isOwner ? "Everything" : `${shownKeys.length} right${shownKeys.length === 1 ? "" : "s"}`} {rights ? "▴" : "▾"}
+        </button>
+      </td>
     </tr>
+    {rights && (
+      <tr>
+        <td colSpan={8} className="px-4 md:px-5 !pt-0 bg-surface-2/50">
+          <RightsEditor u={u} onDone={() => setRights(false)} />
+        </td>
+      </tr>
+    )}
+    </>
+  );
+}
+
+/** "AI — the simulator" → "The simulator". */
+const rightLabel = (label: string) => {
+  const t = label.replace(/^AI — /, "");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+
+/** What the assistant may do for one person — never more than they may do
+ *  themselves: each change also needs their own permission for it. */
+function RightsEditor({ u, onDone }: { u: AiAdminUser; onDone: () => void }) {
+  const r = useRun();
+  const [keys, setKeys] = useState<Set<string>>(() => new Set(u.aiKeys));
+  const groups = u.isOwner ? AI_PERM_GROUPS.filter((g) => g.title === "Choices") : AI_PERM_GROUPS;
+  const toggle = (k: string, on: boolean) => setKeys((s) => { const n = new Set(s); if (on) n.add(k); else n.delete(k); return n; });
+  return (
+    <div className="py-3 space-y-3">
+      {!u.enabled && !u.isOwner && <p className="text-xs font-semibold text-warn-fg">The assistant is closed to {u.name} — these apply once it is opened.</p>}
+      {u.isOwner && <p className="text-xs text-muted">You hold every right; only your own choices are here.</p>}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {groups.map((g) => (
+          <fieldset key={g.title} className="border rounded-lg p-3 bg-surface">
+            <legend className="px-1 text-xs font-extrabold uppercase tracking-wide text-muted">{g.title}</legend>
+            <div className="space-y-1.5">
+              {g.keys.map((k) => {
+                const d = permDef(k);
+                return (
+                  <label key={k} className="flex items-start gap-2 text-sm cursor-pointer" title={d?.desc}>
+                    <input type="checkbox" checked={keys.has(k)} onChange={(e) => toggle(k, e.target.checked)} className="mt-0.5 accent-[var(--brand)]" />
+                    <span className="font-semibold">{rightLabel(d?.label ?? k)}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted">Never more than {u.isOwner ? "you" : u.name} may do on the app — each change also needs that permission.</span>
+        <Note msg={r.msg} />
+        <button type="button" className="btn btn-sm btn-ghost ms-auto" onClick={onDone} disabled={r.pending}>Close</button>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          disabled={r.pending}
+          onClick={() => {
+            const f = new FormData();
+            f.set("userId", String(u.id));
+            for (const k of keys) f.append("keys", k);
+            r.run(() => setAiUserRights(f));
+          }}
+        >
+          <Save size={14} aria-hidden /> {r.pending ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
   );
 }
 

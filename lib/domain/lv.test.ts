@@ -37,11 +37,11 @@ describe("an LV panel's chain — punched, bent, welded, painted, delivered", ()
     expect(lvChainError(st(), "Welding", 0, "MO-1")).toBeNull();
   });
 
-  it("records every tracker column behind the panels' own key", () => {
-    expect(lvPermKey("Punching")).toBe("lv.tracker.punch");
-    expect(lvPermKey("Bending")).toBe("lv.tracker.bend");
-    expect(lvPermKey("Welding")).toBe("lv.tracker.weld");
-    expect(lvPermKey("Painting")).toBe("lv.tracker.paint");
+  it("types every tracker column with the stage's own key — the worklist's", () => {
+    expect(lvPermKey("Punching")).toBe("lv.punching");
+    expect(lvPermKey("Bending")).toBe("lv.bending");
+    expect(lvPermKey("Welding")).toBe("lv.welding");
+    expect(lvPermKey("Painting")).toBe("lv.painting");
     expect(lvPermKey("Delivered")).toBe("lv.tracker.delivered");
   });
 

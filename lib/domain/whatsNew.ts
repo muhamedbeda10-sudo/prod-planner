@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-permissions-tables",
+    dateISO: "2026-10-12",
+    title: "Simpler permissions — one key per department, and the AI's rights on its own page",
+    where: "Users & Permissions · AI assistant settings → People",
+    body: "A department's worklist and its Plan Tracker column are now one permission: whoever had either has both. Users & Permissions shows them as two tables — the departments (transformers, LV panels and the shift log side by side) and the orders — then the rest and the notifications. What the assistant may do for each person, with their access and caps, is now only on AI assistant settings → People, and never more than the person may do themselves.",
+  },
+  {
     id: "2026-10-12-ai-panel-controls",
     dateISO: "2026-10-12",
     title: "The AI opens beside the page — and the owner sets its model, effort, daily caps and automation hours",

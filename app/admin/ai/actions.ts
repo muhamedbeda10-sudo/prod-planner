@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { requireOwner } from "@/lib/server/auth";
 import { AI_CALLS_RANGE, AI_EFFORT_LABEL, AI_MODELS, aiModel, isAiEffort } from "@/lib/domain/ai";
 import { checkWindow } from "@/lib/domain/automations";
+import { isAiPerm, permDef, withAiPerms } from "@/lib/domain/permissions";
 import { apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
 import { encryptSecret } from "@/lib/server/ai/secret";
 import { testReader } from "@/lib/server/ai/reader";
@@ -157,6 +158,26 @@ export async function setAiUserAccess(fd: FormData): Promise<AiActionResult> {
     update: { enabled, monthlyUsd: usd, dailyUsd: dayUsd },
   });
   return done();
+}
+
+/** What the assistant may do for one person — its keys alone; the person's
+ *  other permissions stay as they are. It never does more than the person
+ *  may do themselves: every change also needs their own key for it. The
+ *  owner holds every right already; only their two choices (small changes
+ *  without asking, the morning review) are theirs to tick. */
+export async function setAiUserRights(fd: FormData): Promise<AiActionResult> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  const userId = Number(fd.get("userId"));
+  if (!Number.isInteger(userId)) return { ok: false, error: "Invalid user." };
+  const target = await prisma.user.findUnique({ where: { id: userId }, select: { isOwner: true, perms: true } });
+  if (!target) return { ok: false, error: "User not found." };
+  const keys = [...new Set(fd.getAll("keys").map(String))];
+  if (keys.some((k) => !isAiPerm(k))) return { ok: false, error: "Unknown AI right." };
+  const allowed = target.isOwner ? keys.filter((k) => permDef(k)?.notify || permDef(k)?.optIn) : keys;
+  await prisma.user.update({ where: { id: userId }, data: { perms: withAiPerms(target.perms, allowed) } });
+  revalidatePath("/admin/users");
+  return done("Saved.");
 }
 
 /** The owner's switches: every change by the assistant (off: nothing it

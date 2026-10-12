@@ -65,10 +65,16 @@ describe("permission checks", () => {
   });
 
   it("a non-admin is gated strictly by their perms CSV", () => {
-    const u = mkUser({ perms: "cut.edit,tracker.weld" });
+    const u = mkUser({ perms: "cut.edit,tracker.status" });
     expect(hasPerm(u, "cut.edit")).toBe(true);
-    expect(hasPerm(u, "tracker.weld")).toBe(true);
+    expect(hasPerm(u, "tracker.status")).toBe(true);
     expect(hasPerm(u, "painting.edit")).toBe(false);
+  });
+
+  it("an old tracker-column key holds its department's merged key", () => {
+    const u = mkUser({ perms: "tracker.weld" });
+    expect(hasPerm(u, "welding.edit")).toBe(true);
+    expect(hasPerm(u, "cut.edit")).toBe(false);
   });
 
   it("canEditDept maps a dept to its <dept>.edit key", () => {
