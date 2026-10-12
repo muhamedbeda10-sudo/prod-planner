@@ -48,9 +48,10 @@ import type { User } from "@prisma/client";
 import type { QueueRowSnapshot } from "@/lib/server/machineQueues";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import {
-  addMachineRuleTool, assignLineTool, getMachineBoardTool, planMachinesTool, resetMachinePlanTool, restoreQueuesTool, setMachineRuleActiveTool, unassignLineTool,
+  addMachineRuleTool, assignLinesTool, assignLineTool, getMachineBoardTool, moveLineTool, planMachinesTool, resetMachinePlanTool, restoreQueuesTool, setMachineRuleActiveTool, unassignLineTool,
 } from "@/lib/server/ai/tools/machines";
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
+import { sameSnapshot } from "@/lib/domain/aiActions";
 
 const ctx: ToolCtx = { user: { id: 1, name: "Sara" } as User, hidden: new Set(), now: new Date(), todayISO: "2026-10-12", conversationId: 1, automationId: null };
 const L1 = { id: 1, code: "L1", name: "Laser 1", dept: "Cut", center: "Cutting", active: true, hoursPerDay: 15 };
@@ -99,7 +100,12 @@ describe("assign_line_to_machine", () => {
     const before = [row({ machineId: 2, qty: 3 })];
     h.readQueueSnapshot.mockResolvedValue(before);
     const p = await assignLineTool.describe({ ...line, qty: null }, ctx);
-    expect(p).toMatchObject({ title: "M1 TN → L1", changes: [{ label: "M1 TN", before: "L2#1 M1 TN ×3", after: "L1 (the rest)" }], snapshot: before });
+    expect(p).toMatchObject({
+      title: "M1 TN → L1",
+      changes: [{ label: "M1 TN", before: "L2#1 M1 TN ×3", after: "L1 (the rest)" }],
+      // what it relies on: where this line is now, not the whole department
+      snapshot: [{ bom: "B1", mo: "M1", item: "TN", machineId: 2, sheet: "", qty: 3, running: false, sheetDone: 0 }],
+    });
     const out = await assignLineTool.execute({ ...line, qty: 4 }, ctx);
     expect(fdOf(h.actions.assignLineMachine)).toEqual({ dept: "Cut", bom: "B1", mo: "M1", item: "TN", sheet: "", machineId: "1", qty: "4" });
     expect(out).toEqual({ ok: true, message: "done", undo: { tool: "restore_machine_queues", input: { dept: "Cut", rows: before } } });
@@ -110,6 +116,121 @@ describe("assign_line_to_machine", () => {
     h.readQueueSnapshot.mockResolvedValue([]);
     h.actions.assignLineMachine.mockResolvedValue({ ok: false, error: "That line is done." });
     expect(await assignLineTool.execute({ ...line, qty: null }, ctx)).toEqual({ ok: false, error: "That line is done." });
+  });
+});
+
+describe("a card on the board, approved after others", () => {
+  const snap = async (rows: QueueRowSnapshot[]) => {
+    h.readQueueSnapshot.mockResolvedValue(rows);
+    const p = await assignLineTool.describe({ ...line, qty: null }, ctx);
+    if ("error" in p) throw new Error(p.error);
+    return p.snapshot;
+  };
+
+  it("stays good when other lines go on the machines first — even on the same machine, even ahead of it", async () => {
+    h.perms.add("cut.edit");
+    const proposed = await snap([row({ bom: "B7", mo: "M7", machineId: 1, running: true })]);
+    // another card approved first: another line at the back of L1, a third on L2, L1's queue renumbered
+    const later = [row({ bom: "B7", mo: "M7", machineId: 1, rank: 2, running: false }), row({ bom: "B8", mo: "M8", machineId: 1, rank: 1, running: true }), row({ bom: "B9", mo: "M9", machineId: 2 })];
+    expect(sameSnapshot(await snap(later), proposed)).toBe(true);
+  });
+
+  it("goes out of date when its own line was moved, resized or put on a machine since", async () => {
+    h.perms.add("cut.edit");
+    const proposed = await snap([]);
+    expect(sameSnapshot(await snap([row({ machineId: 2 })]), proposed)).toBe(false);
+    const onL2 = await snap([row({ machineId: 2, qty: 3 })]);
+    expect(sameSnapshot(await snap([row({ machineId: 2, qty: 5 })]), onL2)).toBe(false);
+    // its place in the queue moving round it is not a change to it
+    expect(sameSnapshot(await snap([row({ machineId: 2, qty: 3, rank: 4 })]), onL2)).toBe(true);
+  });
+
+  it("a move within a queue relies on that machine's queue, and on no other", async () => {
+    h.perms.add("cut.edit");
+    const q = [row({ machineId: 1, rank: 1 }), row({ bom: "B7", mo: "M7", machineId: 1, rank: 2 })];
+    h.readQueueSnapshot.mockResolvedValue([...q, row({ bom: "B9", mo: "M9", machineId: 2 })]);
+    const p = await moveLineTool.describe({ ...line, dir: "down" }, ctx);
+    expect(p).toMatchObject({ snapshot: q });
+  });
+});
+
+describe("assign_lines_to_machines", () => {
+  const many = (lines: Record<string, unknown>[]) => {
+    const c = checkToolInput<Parameters<typeof assignLinesTool.describe>[0]>(assignLinesTool, { dept: "Cut", lines });
+    if (!c.ok) throw new Error(c.error);
+    return c.input;
+  };
+  const A = { bom: "B1", mo: "M1", item: "TN", machine: "L1" };
+  const B = { bom: "B2", mo: "M2", item: "TN", machine: "l2" };
+  const C = { bom: "B3", mo: "M3", item: "CF", machine: "L1", qty: 4 };
+
+  beforeEach(() => {
+    h.board.getDeptBoardLines.mockResolvedValue([{ bom: "B1", mo: "M1", item: "TN" }, { bom: "B2", mo: "M2", item: "TN" }, { bom: "B3", mo: "M3", item: "CF" }, { bom: "B4", mo: "M4", item: "PNL" }]);
+    h.readQueueSnapshot.mockResolvedValue([row({ bom: "B2", mo: "M2", machineId: 1, qty: 2 }), row({ bom: "B9", mo: "M9", machineId: 2 })]);
+  });
+
+  it("refuses a line listed twice for a machine, and a line's rest on two machines", () => {
+    expect(checkToolInput(assignLinesTool, { dept: "Cut", lines: [A, { ...A, machine: "l1" }] })).toMatchObject({ ok: false, error: expect.stringContaining("listed twice for l1") });
+    expect(checkToolInput(assignLinesTool, { dept: "Cut", lines: [A, { ...A, machine: "L2" }] })).toMatchObject({ ok: false, error: expect.stringContaining("goes on one machine only") });
+    // split over two machines: a share on one, the rest on the other
+    expect(checkToolInput(assignLinesTool, { dept: "Cut", lines: [{ ...A, qty: 5 }, { ...A, machine: "L2" }] })).toMatchObject({ ok: true });
+  });
+
+  it("asks for an approval whenever it carries more than one line", () => {
+    expect(assignLinesTool.risk instanceof Function && assignLinesTool.risk(many([A]))).toBe("low");
+    expect(assignLinesTool.risk instanceof Function && assignLinesTool.risk(many([A, B]))).toBe("high");
+  });
+
+  it("checks every line before anything moves: its own key, its machine, that the department owes it", async () => {
+    h.perms.add("cut.edit");
+    expect(await assignLinesTool.describe(many([A, { bom: "B4", mo: "M4", item: "PNL", machine: "L2" }]), ctx)).toEqual({ error: expect.stringContaining("M4 PNL: Scheduling this line needs its own key") });
+    expect(await assignLinesTool.describe(many([A, { ...B, machine: "ZZ" }]), ctx)).toEqual({ error: "No machine ZZ in Cut." });
+    h.prisma.machine.findFirst.mockImplementationOnce(async () => L1).mockImplementationOnce(async () => ({ ...L2, active: false }));
+    expect(await assignLinesTool.describe(many([A, B]), ctx)).toEqual({ error: expect.stringContaining("L2 is retired") });
+    expect(await assignLinesTool.describe(many([A, { bom: "B5", mo: "M5", item: "TN", machine: "L1" }]), ctx)).toEqual({ error: expect.stringContaining("M5 TN is not an open line of Cut") });
+    h.planningOn = false;
+    expect(await assignLinesTool.describe(many([A]), ctx)).toEqual({ error: expect.stringContaining("switched off") });
+  });
+
+  it("is one card for the whole distribution, relying on its own lines only", async () => {
+    h.perms.add("cut.edit");
+    const p = await assignLinesTool.describe(many([A, B, C]), ctx);
+    expect(p).toMatchObject({
+      title: "3 line(s) → 2 machine(s) of Cut",
+      summary: expect.stringContaining("L1 2, L2 1"),
+      changes: [
+        { label: "M1 TN", before: "not on a machine", after: "L1 (the rest)" },
+        { label: "M2 TN", before: "L1#1 M2 TN ×2", after: "L2 (the rest)" },
+        { label: "M3 CF", before: "not on a machine", after: "L1 ×4" },
+      ],
+      // the other line on L2 is not part of it
+      snapshot: [{ bom: "B2", mo: "M2", item: "TN", machineId: 1, sheet: "", qty: 2, running: false, sheetDone: 0 }],
+    });
+  });
+
+  it("runs the board's own action for each line, in order, and is undone as one", async () => {
+    h.perms.add("cut.edit");
+    const before = [row({ bom: "B9", mo: "M9", machineId: 2 })];
+    h.readQueueSnapshot.mockResolvedValue(before);
+    const out = await assignLinesTool.execute(many([A, B, C]), ctx);
+    const sent = h.actions.assignLineMachine.mock.calls.map((c) => Object.fromEntries((c[0] as FormData).entries()));
+    expect(sent).toEqual([
+      { dept: "Cut", bom: "B1", mo: "M1", item: "TN", sheet: "", machineId: "1", qty: "" },
+      { dept: "Cut", bom: "B2", mo: "M2", item: "TN", sheet: "", machineId: "2", qty: "" },
+      { dept: "Cut", bom: "B3", mo: "M3", item: "CF", sheet: "", machineId: "1", qty: "4" },
+    ]);
+    expect(out).toEqual({ ok: true, message: "Put 3 line(s) on 2 machine(s) of Cut.", undo: { tool: "restore_machine_queues", input: { dept: "Cut", rows: before } } });
+  });
+
+  it("stops at the first line the board refuses, keeping the undo of what it did", async () => {
+    h.perms.add("cut.edit");
+    h.readQueueSnapshot.mockResolvedValue([]);
+    h.actions.assignLineMachine.mockResolvedValueOnce({ ok: true }).mockResolvedValueOnce({ ok: false, error: "L2 is retired — bring it back in Tools → Machines first." });
+    const out = await assignLinesTool.execute(many([A, B, C]), ctx);
+    expect(out).toEqual({ ok: true, message: expect.stringContaining("Put 1 of 3 line(s) on the machines — stopped at M2 TN → L2: L2 is retired"), undo: { tool: "restore_machine_queues", input: { dept: "Cut", rows: [] } } });
+    expect(h.actions.assignLineMachine).toHaveBeenCalledTimes(2);
+    h.actions.assignLineMachine.mockReset().mockResolvedValue({ ok: false, error: "That line is done." });
+    expect(await assignLinesTool.execute(many([A, B]), ctx)).toEqual({ ok: false, error: "M1 TN → L1: That line is done." });
   });
 });
 
