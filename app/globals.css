@@ -1145,3 +1145,10 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 @media screen and (min-width: 1024px) {
   html.ai-docked main { padding-right: calc(var(--ai-panel-w) + 1.25rem); }
 }
+
+/* a row of tabs: scrolls sideways on a narrow screen without showing a
+   scrollbar, and its bottom line is a shadow the open tab's underline paints
+   over — nothing hangs below it, so nothing overflows */
+.tab-strip { box-shadow: inset 0 -1px 0 var(--border); }
+.no-scrollbar { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

@@ -148,8 +148,8 @@ export function AiWorkspace({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center gap-1 border-b px-1.5 shrink-0 bg-surface">
-        <div role="tablist" aria-label="AI assistant" className="flex items-center gap-0.5 min-w-0 overflow-x-auto">
+      <div className="tab-strip flex items-center gap-1 px-1.5 shrink-0 bg-surface">
+        <div role="tablist" aria-label="AI assistant" className="no-scrollbar flex items-center gap-0.5 min-w-0">
           {tabs.map((t) => {
             const { label, icon: Icon } = AI_TAB_META[t];
             const on = t === tab;
@@ -161,7 +161,7 @@ export function AiWorkspace({
                 aria-selected={on}
                 onClick={() => onTab(t)}
                 title={label}
-                className={`inline-flex items-center gap-1.5 ${compact && !on ? "px-2.5" : "px-3"} py-2.5 text-sm font-bold border-b-2 -mb-px whitespace-nowrap transition-colors ${
+                className={`inline-flex items-center gap-1.5 ${compact && !on ? "px-2.5" : "px-3"} py-2.5 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${
                   on ? "border-[var(--brand)] text-brand" : "border-transparent text-muted hover:text-foreground"
                 }`}
               >
