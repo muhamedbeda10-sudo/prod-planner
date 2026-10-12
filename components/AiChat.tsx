@@ -1,20 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Check, Copy, FileSpreadsheet, Loader2, MessageSquare, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X } from "lucide-react";
+import { Bot, Check, Copy, FileSpreadsheet, FileText, Image as ImageIcon, Loader2, MessageSquare, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
 import { deleteAiConversation, discardAiFile, loadAiConversation, uploadAiFile } from "@/app/ai/actions";
 import { AI_MAX_QUESTION, usdText, type AiChatTurn } from "@/lib/domain/ai";
-import { AI_FILE_ACCEPT, AI_FILE_LIMITS, fileSizeText } from "@/lib/domain/aiFiles";
+import { AI_FILE_ACCEPT, AI_FILE_LIMITS, AI_IMAGE_MAX_SIDE, AI_IMAGE_QUALITY, fileSizeText } from "@/lib/domain/aiFiles";
+import { compressImage } from "@/lib/imageCompress";
 import type { AiActionView } from "@/lib/domain/aiActions";
 
 // The AI assistant's chat: the person's conversations on the side (a drawer
 // below a laptop's width), the open one in the middle, the answer streaming
 // in as it is written — what it is looking up shown while it looks, the
 // changes it prepares as cards to approve — and the month's spend under the
-// box. A sheet can go with a question: the paperclip sends it to the app
-// first, and the question carries its number.
+// box. A photo, a PDF or a sheet can go with a question: the paperclip sends
+// it to the app first (a photo shrunk to what reads well), and the question
+// carries its number; the photo shows on the question after.
 
 interface Turn extends AiChatTurn {
   error?: string;
@@ -194,7 +196,9 @@ export function AiChat({
     setFileErr(null);
     const room = AI_FILE_LIMITS.perQuestion - pending.length;
     if (picked.length > room) setFileErr(`At most ${AI_FILE_LIMITS.perQuestion} files with one question.`);
-    for (const f of picked.slice(0, Math.max(0, room))) {
+    for (const raw of picked.slice(0, Math.max(0, room))) {
+      // a phone photo is several MB: shrunk to what still reads well
+      const f = await compressImage(raw, { maxDimension: AI_IMAGE_MAX_SIDE, quality: AI_IMAGE_QUALITY });
       if (f.size > AI_FILE_LIMITS.maxBytes) {
         setFileErr(`"${f.name}" is ${fileSizeText(f.size)} — at most ${fileSizeText(AI_FILE_LIMITS.maxBytes)} a file.`);
         continue;
@@ -336,11 +340,7 @@ export function AiChat({
                   <div key={i} className="flex flex-col items-end gap-1">
                     {t.files && t.files.length > 0 && (
                       <div className="flex flex-wrap justify-end gap-1.5 max-w-[88%] sm:max-w-[80%]">
-                        {t.files.map((f) => (
-                          <span key={f.id} className="pill pill-muted text-[11px]" dir="auto" title={`File #${f.id}`}>
-                            <FileSpreadsheet size={12} /> {f.name}
-                          </span>
-                        ))}
+                        {t.files.map((f) => <SentFile key={f.id} file={f} />)}
                       </div>
                     )}
                     <div dir="auto" className="max-w-[88%] sm:max-w-[80%] rounded-2xl rounded-ee-md bg-brand-light px-3.5 py-2 text-[15px] whitespace-pre-wrap break-words">{t.text}</div>
@@ -377,7 +377,7 @@ export function AiChat({
             <div className="max-w-4xl mx-auto flex flex-wrap items-center gap-1.5 mb-2">
               {pending.map((f) => (
                 <span key={f.id} className="pill pill-muted text-xs gap-1" dir="auto">
-                  <FileSpreadsheet size={13} /> {f.name} <span className="text-muted">{fileSizeText(f.size)}</span>
+                  <FileKindIcon kind={f.kind} size={13} /> {f.name} <span className="text-muted">{fileSizeText(f.size)}</span>
                   <button type="button" onClick={() => unattach(f.id)} disabled={busy} className="-me-1 p-0.5 rounded hover:bg-surface-2" aria-label={`Remove ${f.name}`} title="Remove">
                     <X size={12} />
                   </button>
@@ -396,8 +396,8 @@ export function AiChat({
               className="btn btn-ghost h-10 w-10 !p-0 shrink-0"
               onClick={() => picker.current?.click()}
               disabled={!canAsk || busy || pending.length >= AI_FILE_LIMITS.perQuestion}
-              aria-label="Attach a sheet"
-              title="Attach a sheet (Excel or CSV) — to read it or import it"
+              aria-label="Attach a photo, a PDF or a sheet"
+              title="Attach a photo, a PDF or a sheet (Excel, CSV) — to read it, take figures off it, or import it"
             >
               <Paperclip size={18} />
             </button>
@@ -510,5 +510,32 @@ function Answer({ turn, live, streaming, actions, onAction }: { turn: Turn; live
         )}
       </div>
     </div>
+  );
+}
+
+function FileKindIcon({ kind, size }: { kind: string; size: number }) {
+  if (kind === "image") return <ImageIcon size={size} />;
+  if (kind === "pdf") return <FileText size={size} />;
+  return <FileSpreadsheet size={size} />;
+}
+
+/** A file sent with a question: a photo as itself (opening full size), any
+ *  other file as its name to download — or a note once it is no longer kept. */
+function SentFile({ file }: { file: { id: number; name: string; kind: string } }) {
+  const [gone, setGone] = useState(false);
+  const href = `/api/ai/files/${file.id}`;
+  if (file.kind === "image" && !gone) {
+    return (
+      <a href={href} target="_blank" rel="noopener" title={file.name} className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element -- a private file behind the session, not a static asset */}
+        <img src={href} alt={file.name} loading="lazy" onError={() => setGone(true)} className="h-28 max-w-[14rem] rounded-xl border object-cover bg-surface-2" />
+      </a>
+    );
+  }
+  return (
+    // a tab of its own: a file cleared since must not take the chat's place
+    <a href={gone ? undefined : href} target="_blank" rel="noopener" className="pill pill-muted text-[11px]" dir="auto" title={gone ? "No longer kept" : `File #${file.id}`}>
+      <FileKindIcon kind={file.kind} size={12} /> {file.name}{gone ? " — no longer kept" : ""}
+    </a>
   );
 }

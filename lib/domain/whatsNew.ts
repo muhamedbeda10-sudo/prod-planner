@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-ai-photos",
+    dateISO: "2026-10-12",
+    title: "Send the assistant a photo — it takes the figures off it and records them",
+    where: "AI assistant → 📎",
+    body: "Attach a photo (from the phone's camera too) or a PDF: a production sheet, a hand-out slip, an attendance list, a delivery note. Tell the assistant what to take off it — it gives it back as a table, marks anything it could not read clearly, and asks before it guesses. Then ask it to record them: output into the Daily log, hand-outs, the roster … each as a card you approve, with Undo. The photo stays on your question in the chat for two weeks.",
+    href: "/ai",
+  },
+  {
     id: "2026-10-12-ai-imports",
     dateISO: "2026-10-12",
     title: "Attach a sheet in the AI chat — it reads it, or imports it",
