@@ -325,6 +325,8 @@ model User {
   aiConversations  AiConversation[]
   aiUsage          AiUsage[]
   aiActions        AiAction[]
+  aiInbox          AiInboxItem[]
+  pushDevices      PushSubscription[]
 }
 
 // A person's own view settings — the Plan Tracker's columns, folded and
@@ -1527,4 +1529,61 @@ model AiPlaybookRevision {
   at      DateTime        @default(now())
 
   @@index([entryId])
+}
+
+// What the assistant sends a person: a report an automation wrote, a message
+// someone's automation sends them, a suggestion with its changes ready to
+// approve (actionIds — the AiAction rows, the person's own to decide). The
+// app's inbox (the bell) shows them; a push reaches the person's devices.
+// Private, like the rest of the assistant's records.
+model AiInboxItem {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind         String // report | message | suggestion
+  title        String
+  body         String // Markdown, charts included
+  // Whose automation it came from, as the person reads it ("Sara's automation
+  // “Late welding”"); kept as text, so it reads the same after a rename.
+  fromName     String?
+  automationId Int?
+  runId        Int?
+  actionIds    Int[]     @default([])
+  createdAt    DateTime  @default(now())
+  readAt       DateTime?
+  // when a push reached at least one of the person's devices
+  pushedAt     DateTime?
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+// One device (a browser, an installed app) a person turned notifications on
+// for: what the browser's push service needs to deliver to it. Gone when the
+// service says the device unsubscribed, or after it keeps failing.
+model PushSubscription {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String    @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime  @default(now())
+  lastOkAt  DateTime?
+  failures  Int       @default(0)
+
+  @@index([userId])
+}
+
+// The app's Web Push identity (VAPID): a push service delivers to a device
+// only what is signed with the key the device subscribed under. Made on first
+// use, the private half encrypted at rest (lib/server/ai/secret.ts). Should it
+// become unreadable — the secret behind it changed — a new pair is made and
+// every device turns notifications on again.
+model PushKeys {
+  id            Int      @id @default(1)
+  publicKey     String
+  privateKeyEnc String
+  createdAt     DateTime @default(now())
 }

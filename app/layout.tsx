@@ -14,6 +14,7 @@ import { getUserPrefs } from "@/lib/server/userPrefs";
 import { WHATS_NEW_PREF_KEYS } from "@/lib/domain/userPrefs";
 import { getActiveLine } from "@/lib/server/line";
 import { aiVisibleFor } from "@/lib/server/ai/access";
+import { inboxState } from "@/lib/server/inbox";
 import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
 import { ODOO_ALERTS_PERM, ODOO_NEED_MO_PERM } from "@/lib/domain/odooAlerts";
 
@@ -50,9 +51,9 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getCurrentUser(); // null on /login (proxy guards the rest)
-  const [unreadChat, settings, line, prefs, ai] = user
-    ? await Promise.all([getChatUnreadCount(user.id), getSettings(), getActiveLine(), getUserPrefs(user.id, WHATS_NEW_PREF_KEYS), aiVisibleFor(user)])
-    : [0, null, "TR" as const, {}, false];
+  const [unreadChat, settings, line, prefs, ai, inbox] = user
+    ? await Promise.all([getChatUnreadCount(user.id), getSettings(), getActiveLine(), getUserPrefs(user.id, WHATS_NEW_PREF_KEYS), aiVisibleFor(user), inboxState(user.id)])
+    : [0, null, "TR" as const, {}, false, { unread: 0, any: false }];
   // the ODOO alerts — "ready to close" and "needs an MO" — for whoever is
   // subscribed to either
   const perms = user ? userPerms(user) : new Set<string>();
@@ -82,6 +83,7 @@ export default async function RootLayout({
             line={line}
             whatsNewSeen={prefs["whatsnew:seen"] ?? null}
             ai={ai}
+            inbox={inbox}
           />
         )}
         <main className="flex-1 w-full px-3 py-3 md:px-5 md:py-4">

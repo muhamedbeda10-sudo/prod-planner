@@ -15,6 +15,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { InstallApp } from "@/components/InstallApp";
 import { useCanSee } from "@/components/TabAccess";
 import { ChatDock } from "@/components/ChatDock";
+import { InboxBell } from "@/components/InboxBell";
 import { useOdooAlerts } from "@/components/OdooAlerts";
 import { LineTabs } from "@/components/LineTabs";
 import { WhatsNew } from "@/components/WhatsNew";
@@ -154,6 +155,7 @@ export function AppNav({
   line = "TR",
   whatsNewSeen = null,
   ai = false,
+  inbox = { unread: 0, any: false },
 }: {
   user: NavUser;
   unreadChat?: number;
@@ -171,6 +173,8 @@ export function AppNav({
   whatsNewSeen?: string | null;
   /** The AI assistant is open to this person (lib/server/ai/access). */
   ai?: boolean;
+  /** The inbox's unread count, and whether anything was ever sent to them. */
+  inbox?: { unread: number; any: boolean };
 }) {
   const pathname = usePathname();
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
@@ -402,6 +406,8 @@ export function AppNav({
                 <Bot size={18} />
               </Link>
             )}
+            {/* what the assistant and the automations sent this person */}
+            {(ai || inbox.any) && <InboxBell initial={inbox.unread} active={isActive("/inbox")} />}
             {/* what changed in the app — counted until opened */}
             <WhatsNew seen={whatsNewSeen} />
             {/* chat is a glance, not a destination — an icon here with its
