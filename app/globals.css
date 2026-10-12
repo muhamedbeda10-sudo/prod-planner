@@ -1286,10 +1286,11 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 
 /* ---- a strip of figures: one card, hairlines between the cells; any number of cells ---- */
 .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-sm); }
-.kpi { padding: 12px 16px; min-width: 0; background: var(--surface); box-shadow: -1px -1px 0 0 var(--border); }
-.kpi-label { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 650; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kpi-value { font-size: 24px; font-weight: 600; line-height: 1.15; margin-top: 3px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
-.kpi-sub { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* a cell of the strip is a .kpi without its own frame — the strip is the frame */
+.kpi-strip > .kpi { padding: 12px 16px; min-width: 0; background: var(--surface); border: 0; border-radius: 0; box-shadow: -1px -1px 0 0 var(--border); }
+.kpi-strip .kpi-label { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 650; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-strip .kpi-value { font-size: 24px; font-weight: 600; line-height: 1.15; margin-top: 3px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.kpi-strip .kpi-sub { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi-meter { height: 4px; margin-top: 8px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 14%, transparent); overflow: hidden; }
 .kpi-meter > span { display: block; height: 100%; border-radius: 999px; background: var(--brand); }
 .kpi-meter-over { background: color-mix(in srgb, var(--bad-fg) 14%, transparent); }

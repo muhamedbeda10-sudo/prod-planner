@@ -1,5 +1,8 @@
 "use client";
 
+import { Layers } from "lucide-react";
+import { EmptyState } from "@/components/primitives";
+
 import Link from "next/link";
 import type { MaterialDashboardData } from "@/lib/server/fabAnalytics";
 import type { Breakdown, MoRow } from "@/lib/domain/materialDashboard";
@@ -79,7 +82,7 @@ function Bars({ rows }: { rows: Breakdown[] }) {
 }
 
 function MoTable({ rows, value, head }: { rows: MoRow[]; value: (m: MoRow) => number | null; head: string }) {
-  if (rows.length === 0) return <p className="text-xs text-muted">Nothing to show yet.</p>;
+  if (rows.length === 0) return <EmptyState compact icon={Layers} title="Nothing to show yet" />;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs border-collapse">
@@ -117,10 +120,14 @@ export function FabAnalyticsView({ a }: { a: MaterialDashboardData }) {
 
   if (a.nested.linesTotal === 0) {
     return (
-      <p className="bg-surface border rounded-xl p-4 text-sm text-muted">
-        The material sheet is empty. Upload it on the{" "}
-        <Link href="/material" className="text-accent font-semibold hover:underline">Material tab</Link> and the dashboard fills in.
-      </p>
+      <div className="bg-surface border rounded-xl">
+        <EmptyState
+          icon={Layers}
+          title="The material sheet is empty"
+          hint="Upload it on the Material tab and the dashboard fills in."
+          action={<Link href="/material" className="btn btn-secondary btn-sm">Open Material</Link>}
+        />
+      </div>
     );
   }
 

@@ -1,3 +1,5 @@
+import { Activity } from "lucide-react";
+import { EmptyState } from "@/components/primitives";
 import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { WORKER_DEPT_LABEL } from "@/lib/domain/tanks";
@@ -41,7 +43,7 @@ export function ShiftProductivity({ data, dayISO, filterLabel, isAdmin }: { data
         {isAdmin && <Link href="/admin/standard-times" className="ms-auto text-xs text-accent font-semibold hover:underline">Calibrate the standard times →</Link>}
       </div>
       {n === 0 ? (
-        <p className="text-xs text-muted">Nothing recorded yet — the rates appear from the first saved day.</p>
+        <div className="rounded-xl border border-dashed"><EmptyState compact icon={<Activity size={18} aria-hidden />} title="Nothing recorded yet" hint="The rates appear from the first saved day." /></div>
       ) : (
         <div className="bg-surface border rounded-xl overflow-x-auto">
           <table className="w-full text-sm border-collapse">

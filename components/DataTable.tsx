@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { AlertTriangle, Inbox, MoreHorizontal, RotateCw } from "lucide-react";
+import { AlertTriangle, Inbox, MoreHorizontal, RotateCw, SearchX } from "lucide-react";
+import { EmptyState } from "@/components/primitives";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { Modal } from "@/components/Modal";
 import { Tooltip } from "@/components/Tooltip";
@@ -352,11 +353,8 @@ function AskDialog({ title, body, fields, confirmLabel, danger = false, onAnswer
 /** Nothing to show: say why, and what to do about it. */
 export function TableEmpty({ title, hint, action, filtered = false }: { title: ReactNode; hint?: ReactNode; action?: ReactNode; filtered?: boolean }) {
   return (
-    <div className="dt-state" role="status">
-      <Inbox size={22} className="text-muted" aria-hidden />
-      <p className="font-semibold">{title}</p>
-      {hint && <p className="text-sm text-muted max-w-xl">{hint}</p>}
-      {action && <div className="mt-1 flex flex-wrap justify-center gap-2">{action}</div>}
+    <div role="status">
+      <EmptyState icon={filtered ? SearchX : Inbox} title={title} hint={hint} action={action && <div className="flex flex-wrap justify-center gap-2">{action}</div>} />
       {filtered && <span className="sr-only">Filters are hiding rows.</span>}
     </div>
   );

@@ -6,7 +6,7 @@ import { Printer } from "lucide-react";
  *  department's paper/PDF worklist. Print CSS hides nav, filters and inputs. */
 export function PrintButton() {
   return (
-    <button type="button" onClick={() => window.print()} className="no-print btn btn-primary btn-sm">
+    <button type="button" onClick={() => window.print()} className="no-print btn btn-secondary btn-sm">
       <Printer size={14} />
       Print / PDF
     </button>

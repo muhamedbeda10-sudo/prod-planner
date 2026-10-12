@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/primitives";
+
 import { formatDate } from "@/lib/domain/format";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -575,12 +577,8 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
       {/* ===== thread ===== */}
       <section className={`${active === null ? "hidden md:flex" : "flex"} flex-1 min-w-0 flex-col`}>
         {activeContact === null ? (
-          <div className="flex-1 grid place-items-center text-center p-8" style={{ background: "var(--chat-bg)" }}>
-            <div className="text-muted">
-              <MessagesSquare size={40} className="mx-auto mb-3 opacity-40" />
-              <p className="font-semibold">Pick a person or a group to start chatting</p>
-              <p className="text-xs mt-1">Direct messages stay between the two of you; groups reach every member.</p>
-            </div>
+          <div className="flex-1 grid place-items-center p-8" style={{ background: "var(--chat-bg)" }}>
+            <EmptyState icon={MessagesSquare} title="Pick a person or a group to start chatting" hint="Direct messages stay between the two of you; groups reach every member." />
           </div>
         ) : (
           <>

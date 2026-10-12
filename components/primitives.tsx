@@ -15,7 +15,7 @@ type IconProp = Icon | ReactElement;
 const drawIcon = (icon: IconProp, size: number) => (isValidElement(icon) ? icon : (() => { const I = icon as Icon; return <I size={size} aria-hidden />; })());
 
 /** Nothing here yet — an icon, a line that says so, and what to do about it. */
-export function EmptyState({ icon, title, hint, action, compact = false }: { icon: IconProp; title: string; hint?: ReactNode; action?: ReactNode; compact?: boolean }) {
+export function EmptyState({ icon, title, hint, action, compact = false }: { icon: IconProp; title: ReactNode; hint?: ReactNode; action?: ReactNode; compact?: boolean }) {
   return (
     <div className={`empty ${compact ? "empty-compact" : ""}`}>
       <span className="empty-icon">{drawIcon(icon, compact ? 18 : 22)}</span>

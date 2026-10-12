@@ -1,5 +1,7 @@
 "use client";
 
+import { EmptyState } from "@/components/primitives";
+import { CalendarDays, Users } from "lucide-react";
 import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -45,10 +47,10 @@ const keyOf = (l: { workerId: number; dept: string }) => `${l.dept}|${l.workerId
 
 function Stat({ label, value, sub, tone = "" }: { label: string; value: string; sub?: string; tone?: string }) {
   return (
-    <div className="bg-surface border rounded-xl px-4 py-3 min-w-[9rem]">
-      <div className="text-[11px] font-bold text-muted uppercase tracking-wide">{label}</div>
-      <div className={`text-2xl font-extrabold tabnum leading-tight ${tone}`}>{value}</div>
-      {sub && <div className="text-[11px] text-muted">{sub}</div>}
+    <div className="kpi">
+      <div className="kpi-label">{label}</div>
+      <div className={`kpi-value ${tone}`}>{value}</div>
+      {sub && <div className="kpi-sub">{sub}</div>}
     </div>
   );
 }
@@ -144,30 +146,31 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
       </div>
 
       {/* the day at a glance — over what the filter shows */}
-      <div className="flex flex-wrap items-stretch gap-3">
+      <div className="kpi-strip">
         <Stat label={`Present · ${filterLabel}`} value={`${totals.present} / ${totals.workers}`} sub={totals.workers - totals.present > 0 ? `${totals.workers - totals.present} absent` : totals.workers ? "everyone in" : "nobody registered"} />
         <Stat label="Man-hours" value={String(totals.hours)} sub={capacity !== null ? `${depts.length === 1 && filter !== "" && !filter.startsWith("line:") ? `${WORKER_DEPT_LABEL[depts[0]]} ` : ""}capacity ${round1(capacity)} mh/day` : "no capacity figure set"} tone={capacityTone} />
         <Stat label="Overtime" value={`${totals.overtimeH} h`} sub={`${shown.filter((l) => l.present && l.overtimeH > 0).length} worker(s)`} />
-        <div className="flex-1 min-w-[12rem] flex items-end justify-end gap-2 text-xs text-muted">
-          {allRecorded ? (
+      </div>
+      {/* whether the day is recorded, for what the filter shows */}
+      <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted">
+        {allRecorded ? (
             <span className="pill pill-ok">recorded{data.recordedBy ? ` · ${data.recordedBy}` : ""}</span>
           ) : recordedHere.length > 0 ? (
             <span className="pill pill-warn">{recordedHere.map((d) => WORKER_DEPT_LABEL[d]).join(", ")} recorded — the rest shows defaults</span>
           ) : (
             <span className="pill pill-warn">not recorded yet — defaults shown</span>
           )}
-          {dirty && <span className="pill pill-warn">unsaved changes</span>}
-        </div>
+        {dirty && <span className="pill pill-warn">unsaved changes</span>}
       </div>
 
       {/* the roster */}
       <section className="bg-surface border rounded-xl overflow-hidden">
         {shown.length === 0 ? (
-          <p className="text-sm text-muted p-4">
-            {draft.length === 0
-              ? "Nobody is registered yet — add people in Tools → Production Workers and tick their sections."
-              : needle ? "Nobody matches the search." : `Nobody is registered in ${filterLabel} yet — add them in Tools → Production Workers.`}
-          </p>
+          <EmptyState
+            icon={Users}
+            title={draft.length === 0 ? "Nobody is registered yet" : needle ? "Nobody matches the search" : `Nobody is registered in ${filterLabel} yet`}
+            hint={needle ? undefined : "Add people in Tools → Production Workers and tick their sections."}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
@@ -285,7 +288,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
       <section>
         <h2>Last days recorded — {filterLabel}</h2>
         {history.length === 0 ? (
-          <p className="text-xs text-muted">Nothing recorded yet.</p>
+          <div className="rounded-xl border border-dashed"><EmptyState compact icon={CalendarDays} title="Nothing recorded yet" hint="Save a day and it is listed here." /></div>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {history.map((h) => (
