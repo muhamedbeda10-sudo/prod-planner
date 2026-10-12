@@ -39,7 +39,7 @@ function PermChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: 
                   value={p.key}
                   defaultChecked={defaults.has(p.key)}
                   disabled={disabled}
-                  data-access={p.notify ? undefined : "1"}
+                  data-access={p.notify || p.optIn ? undefined : "1"}
                   className="mt-0.5 accent-[var(--brand,#1b7a43)]"
                 />
                 <span className="font-semibold">{p.label}</span>

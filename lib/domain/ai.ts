@@ -2,6 +2,9 @@
 // pick and what they cost, what one question cost, who may ask right now,
 // and what the assistant's SQL may be and how its rows go back to it.
 
+import { filesOfNote, isAttachmentNote } from "./aiFiles";
+import type { AiArea } from "./aiActions";
+
 export interface AiModelDef {
   id: string;
   label: string;
@@ -121,9 +124,43 @@ export function conversationTitle(question: string): string {
  *  ai_assistant migration); of User it reads these columns alone. */
 export const AI_PRIVATE_TABLES = [
   "Session", "UserPref", "ChatMessage", "ChatGroup", "ChatGroupMember", "ChatMessageHide", "ChatReaction",
-  "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage",
+  "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage", "AiAction",
+  "AiPlaybookEntry", "AiPlaybookRevision", "AiInboxItem", "PushSubscription", "PushKeys", "Automation", "AutomationRun", "AiFile",
 ] as const;
 export const AI_USER_COLUMNS = ["id", "name", "active"] as const;
+
+/** The tables behind a screen the owner can hide from someone. A person who
+ *  does not see the screen is not read its data by the assistant either.
+ *  Only data that lives on ONE screen is listed: the orders, the daily log,
+ *  the plans and the machines are every screen's, and stay readable. */
+export const AI_TAB_TABLES: Record<string, readonly string[]> = {
+  odoo: ["OdooEntry", "OdooNote"],
+  consumables: [
+    "ConsumableIssue", "ConsumableIssueRevision", "ConsumableItem", "ConsumableLimit",
+    "ConsumableCatalogueChange", "ConsumableIssueRecipient", "PowderScrap", "PowderScrapRevision",
+  ],
+  physical: ["PhysicalStock"],
+  material: ["MaterialUsage"],
+  shifts: ["ShiftEntry", "DeptDayHours"],
+  barcode: ["TankUnit", "TankEvent", "TankSerialCounter"],
+  simulate: ["SimScenario", "FloorLayout"],
+};
+
+/** The tables closed to someone by the screens hidden from them. */
+export function blockedTablesFor(hidden: ReadonlySet<string>): string[] {
+  return [...hidden].flatMap((t) => AI_TAB_TABLES[t] ?? []);
+}
+
+/** The first closed table a query names, or null. Table names are case
+ *  sensitive and must be double-quoted to resolve at all, so the quoted name
+ *  is what to look for. The XML functions that run a query given as text
+ *  could name a table without quoting it in the statement, so with anything
+ *  closed they are refused outright. */
+export function blockedTableIn(sql: string, blocked: readonly string[]): string | null {
+  if (blocked.length === 0) return null;
+  if (/\b(query|table|cursor|schema|database)_to_xml/i.test(sql)) return blocked[0];
+  return blocked.find((t) => sql.includes(`"${t}"`)) ?? null;
+}
 
 /** Rows handed back per query — anything bigger is for SQL to aggregate. */
 export const AI_ROW_LIMIT = 200;
@@ -208,24 +245,35 @@ export function readerUrl(base: string, password: string): string {
 export interface AiChatTurn {
   role: "user" | "assistant";
   text: string;
-  /** What the assistant looked up on the way (each query's purpose). */
+  /** What the assistant looked up on the way (each look-up's purpose). */
   lookups: string[];
+  /** The tool calls that prepared changes — the cards shown under the answer. */
+  actionIds?: string[];
+  /** The files sent with a question. */
+  files?: { id: number; name: string; kind: string }[];
 }
 
-type Block = { type?: string; text?: string; input?: { purpose?: unknown } };
+type Block = { type?: string; text?: string; id?: string; name?: string; input?: { purpose?: unknown } };
 
 /** The kept API messages as a chat: each question (the last text block of
- *  its message — the one before it says who asked and when), then one answer
- *  gathering every assistant message and look-up up to the next question. */
-export function displayTurns(rows: readonly { role: string; content: unknown }[]): AiChatTurn[] {
+ *  its message, with the files its note names), then one answer gathering
+ *  every assistant message, look-up and prepared change up to the next
+ *  question. The app's own context messages (role "system") are not part of
+ *  what people read. `readTitles` names the read tools, whose calls show as
+ *  look-ups; any other tool call prepared a change. */
+export function displayTurns(rows: readonly { role: string; content: unknown }[], readTitles: Readonly<Record<string, string>> = {}): AiChatTurn[] {
   const out: AiChatTurn[] = [];
   for (const r of rows) {
+    if (r.role === "system") continue;
     const blocks: Block[] = Array.isArray(r.content) ? (r.content as Block[]) : typeof r.content === "string" ? [{ type: "text", text: r.content }] : [];
     if (r.role === "user") {
       // tool results belong to the answer being worked out
       if (blocks.some((b) => b.type === "tool_result")) continue;
       const texts = blocks.filter((b) => b.type === "text");
-      out.push({ role: "user", text: texts[texts.length - 1]?.text ?? "", lookups: [] });
+      const note = texts.find((b) => typeof b.text === "string" && isAttachmentNote(b.text));
+      const own = texts.filter((b) => b !== note);
+      const files = note ? filesOfNote(note.text!) : [];
+      out.push({ role: "user", text: own[own.length - 1]?.text ?? "", lookups: [], ...(files.length ? { files } : {}) });
       continue;
     }
     let cur = out[out.length - 1];
@@ -235,11 +283,106 @@ export function displayTurns(rows: readonly { role: string; content: unknown }[]
     }
     for (const b of blocks) {
       if (b.type === "text" && b.text) cur.text += (cur.text ? "\n\n" : "") + b.text;
-      const purpose = b.type === "tool_use" ? b.input?.purpose : undefined;
+      if (b.type !== "tool_use") continue;
+      const purpose = b.input?.purpose;
       if (typeof purpose === "string" && purpose.trim()) cur.lookups.push(purpose.trim());
+      else if (b.name && readTitles[b.name]) cur.lookups.push(readTitles[b.name]);
+      else if (b.name && !(b.name in readTitles) && b.id) (cur.actionIds ??= []).push(b.id);
     }
   }
   return out;
+}
+
+const FACTORY_CLOCK = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Africa/Cairo", weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+
+/** The areas as the assistant is told it may work on them. */
+export const AI_AREA_LABEL: Record<AiArea, string> = {
+  tracker: "the Plan Tracker and the Daily log",
+  machines: "the machines and their distribution",
+  simulator: "the simulator",
+  data: "other data (the ODOO log, Material, Physical material, Consumables with its catalogue, limits and powder scrap, the shift roster, the calendar, workers, machines)",
+  setup: "the plant's set-up (the standard times, capacity and calibration, the times per machine, the shift hours and the master switches)",
+  imports: "imports of files attached in this chat (plans, the Daily log, ODOO, Material, Physical material)",
+  automations: "automations and scheduled reports",
+  playbook: "the plant's playbook",
+  users: "users and permissions (the owner's)",
+};
+
+/** The app's context for one question — the system message after it: who
+ *  asks and when, what the assistant may change for them, and what became of
+ *  the changes it prepared before. */
+export function questionContext(o: {
+  askedBy: string;
+  now: Date;
+  areas: readonly AiArea[];
+  canDelete: boolean;
+  noconfirm: boolean;
+  paused: boolean;
+  notes: readonly string[];
+}): string {
+  const lines = [`Asked by ${o.askedBy} on ${FACTORY_CLOCK.format(o.now)}, Cairo time.`];
+  if (o.paused) lines.push("The owner has paused every change by the assistant: you can only read and advise right now.");
+  else if (o.areas.length === 0) lines.push("You may not change anything for this person — you only read and advise.");
+  else {
+    lines.push(`You may prepare changes for this person on: ${o.areas.map((a) => AI_AREA_LABEL[a]).join("; ")}.${o.canDelete ? " Deletions too — each one waits for their approval." : " No deletions."}`);
+    lines.push(o.noconfirm ? "A small, low-risk change runs at once (the person opted into that); everything else waits for their approval." : "Every change waits for the person's approval.");
+  }
+  if (o.notes.length > 0) lines.push("Since your last answer:", ...o.notes.map((n) => `- ${n}`));
+  return lines.join("\n");
+}
+
+/** The context of an automation's run — the system message after its
+ *  instruction: whose it is, that nobody is reading live, who receives the
+ *  answer, and what may be changed. */
+export function automationContext(o: {
+  name: string;
+  owner: string;
+  now: Date;
+  action: "report" | "act";
+  recipients: readonly string[];
+  areas: readonly AiArea[];
+  canDelete: boolean;
+  noconfirm: boolean;
+}): string {
+  const lines = [
+    `This is ${o.owner}'s automation "${o.name}", running by itself on ${FACTORY_CLOCK.format(o.now)}, Cairo time. Nobody is reading live and nobody can answer a question: do not ask one.`,
+  ];
+  if (o.action === "report") {
+    lines.push(`Your final answer is sent as it is to ${o.recipients.join(", ")} — write the complete report: a short headline first, then the figures (tables, charts where they help). Read only; you change nothing.`);
+  } else {
+    lines.push(`Prepare the changes the instruction calls for with your write tools — on: ${o.areas.map((a) => AI_AREA_LABEL[a]).join("; ")}.${o.canDelete ? "" : " No deletions."}`);
+    lines.push(o.noconfirm ? `A small, low-risk change runs at once (${o.owner} opted into that); everything else waits in ${o.owner}'s inbox for approval.` : `Every change waits in ${o.owner}'s inbox for their approval.`);
+    lines.push(`Your final answer goes to ${o.owner} with them: say in a few lines what you prepared and why — or that nothing needed changing.`);
+  }
+  return lines.join("\n");
+}
+
+/** The morning review's instruction and context (lib/server/automations/
+ *  review.ts): what to look at for this person, what to prepare, and that
+ *  every change waits for them. */
+export function reviewQuestion(name: string, language: "Arabic" | "English"): string {
+  return [
+    `Morning review for ${name}. Look at the plant as it stands now, from ${name}'s side — what they work on and may change: orders late or about to be late, work blocked or on hold, machines overloaded or idle, figures that look wrong or missing.`,
+    "1. Lead with the two or three things that matter most today, each in a line with its figures.",
+    `2. For each concrete fix you can make with your tools, prepare it — it waits for ${name}'s approval. At most five, the most important first; nothing speculative.`,
+    "3. End with what they should look at themselves, outside your tools, if anything.",
+    "If nothing needs attention, say so in one line and prepare nothing.",
+    `Write it in ${language === "Arabic" ? "Egyptian Arabic" : "English"}; keep MO numbers, BOMs and codes as they are.`,
+  ].join("\n");
+}
+
+export function reviewContext(o: { name: string; now: Date; areas: readonly AiArea[]; canDelete: boolean }): string {
+  const lines = [`This is ${o.name}'s morning review, which the owner set up for them, running by itself on ${FACTORY_CLOCK.format(o.now)}, Cairo time. Nobody is reading live and nobody can answer a question: do not ask one. Your final answer goes to ${o.name}'s inbox with the changes you prepare.`];
+  if (o.areas.length === 0) lines.push(`You may not change anything for ${o.name}: advise only.`);
+  else lines.push(`You may prepare changes for ${o.name} on: ${o.areas.map((a) => AI_AREA_LABEL[a]).join("; ")}.${o.canDelete ? "" : " No deletions."} Every one waits for their approval — none runs by itself.`);
+  return lines.join("\n");
+}
+
+/** Arabic letters in a text — what tells the language a person asks in. */
+export function writesArabic(text: string): boolean {
+  return /[\u0600-\u06FF]/.test(text);
 }
 
 /** A conversation longer than this many kept messages takes a new chat —

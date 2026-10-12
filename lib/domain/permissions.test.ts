@@ -104,11 +104,13 @@ describe("the panels' own keys", () => {
 });
 
 describe("admins follow their ticks", () => {
-  it("start ticked with every access right but no notification", () => {
+  it("start ticked with every access right but no notification and no opt-in choice", () => {
     const notify = PERMISSIONS.filter((p) => p.notify).map((p) => p.key);
-    expect(notify.sort()).toEqual(["odoo.alerts", "odoo.needMo"]);
-    for (const k of notify) expect(ACCESS_PERM_KEYS).not.toContain(k);
-    expect(ACCESS_PERM_KEYS.length + notify.length).toBe(PERM_KEYS.size);
+    const optIn = PERMISSIONS.filter((p) => p.optIn).map((p) => p.key);
+    expect(notify.sort()).toEqual(["ai.suggestions", "odoo.alerts", "odoo.needMo"]);
+    expect(optIn).toEqual(["ai.act.noconfirm"]);
+    for (const k of [...notify, ...optIn]) expect(ACCESS_PERM_KEYS).not.toContain(k);
+    expect(ACCESS_PERM_KEYS.length + notify.length + optIn.length).toBe(PERM_KEYS.size);
   });
   it("were ticked by the migration with exactly the access rights of the day", () => {
     const sql = readFileSync("prisma/migrations/20260928160000_admins_follow_ticks/migration.sql", "utf8");
@@ -117,5 +119,18 @@ describe("admins follow their ticks", () => {
     for (const k of list) expect(ACCESS_PERM_KEYS, k).toContain(k);
     expect(list).not.toContain("odoo.alerts");
     expect(list).not.toContain("odoo.needMo");
+  });
+});
+
+describe("the assistant's keys", () => {
+  it("are registered, one per area, plus deletions, automations and the two personal choices", () => {
+    for (const k of ["ai.act.tracker", "ai.act.machines", "ai.act.simulator", "ai.act.data", "ai.act.delete", "ai.automations", "ai.automations.act", "ai.act.noconfirm", "ai.suggestions", "simulator.edit"]) {
+      expect(PERM_KEYS.has(k), k).toBe(true);
+    }
+  });
+  it("hand the owner every right but never 'small changes without asking' — that one is ticked by hand", () => {
+    expect(ACCESS_PERM_KEYS).toContain("ai.act.delete");
+    expect(ACCESS_PERM_KEYS).not.toContain("ai.act.noconfirm");
+    expect(ACCESS_PERM_KEYS).not.toContain("ai.suggestions");
   });
 });

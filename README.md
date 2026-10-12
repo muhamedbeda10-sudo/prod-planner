@@ -293,6 +293,39 @@ mobile drawer still lists every view flat, since it has the vertical room.
    against its whole number), graded **over / close (80–100%) / under / not issued**, with the month before and the last six
    months (a sparkline per item and a chart of how many items fell in each grade), each item opening onto its departments.
    Month picker, Excel export (item and limit lines) and a print / PDF with the company header.
+12. **AI assistant** (`/ai`) — Claude answers from the live data in Arabic or English: SQL through `ai_reader`, a
+   read-only login that cannot see the private tables, nor the tables of a screen hidden from the person. What it may do
+   is the owner's call per person (Users & Permissions → AI assistant), and never more than the person may do themselves.
+   - **Changes** (`lib/server/ai/changes.ts`, `lib/server/ai/tools/*`): the Plan Tracker and Daily log, the machine board
+     and ⚡ Plan, the Simulator and the run order, the ODOO log, Material, physical stock, consumables with their catalogue,
+     limits and powder scrap, the shift roster, the calendar, workers and machines, the standard times, capacity,
+     calibration, times per machine and settings (key "AI — standard times and settings"), and — for the owner alone, in a
+     live chat only — Users & Permissions (an account it makes has a password nobody knows; the owner sets the first one).
+     A write tool never writes by itself: `describe` shows the card (before → after) and keeps a
+     snapshot of the data; on Approve it runs only if the data still reads the same, through the screen's own server action
+     as the person (`runAsActor` — the audit names "Sara (AI)"). Undo runs only while nothing changed since; where an
+     action stamps things as it goes, the undo writes the rows back exactly from the snapshot (`lib/server/rowSnapshots.ts`,
+     reachable only from an undo). Deletions need their own key and always wait; "small changes without asking" is a
+     per-person opt-in. The owner can pause every change, or every automation, at once (AI assistant settings).
+   - **Attached sheets and imports** (`lib/server/ai/files.ts`, `lib/server/ai/tools/imports.ts`): an Excel or CSV sheet
+     attached with the 📎 is checked by its bytes, kept in `AiFile` for 14 days (out of the nightly backup, closed to
+     `ai_reader`) and opened only in its own chat. The assistant reads it, and imports it through the screen's own importer
+     — the card is the importer's dry run, and the import runs only while a fresh dry run reads the same. No undo for an
+     import; key "AI — imports" plus the person's own import permission.
+   - **Machine rules** (Tools → Machines & lines): only / never / prefer, by item, line, sheet thickness and material, kVA —
+     ⚡ Plan follows them (`lib/domain/machineRules.ts`, `optimizePlan`'s `allowed` / `preferred`).
+   - **Automations** (`/automations`, `lib/domain/automations.ts`, `lib/server/automations/*`): on a schedule (Cairo times on
+     working days, every day or weekdays) or when a read-only query finds rows it did not at its last check (edge-triggered by
+     a `key` column); notify (no AI), report, or act (changes wait for approval). They run as their owner, count against the
+     month's caps, stop after five failures in a row. The clock: Supabase pg_cron + pg_net call `/api/automations/tick`
+     every minute with a secret kept in Supabase Vault — set up in one click on AI assistant settings; until then open pages
+     tick, at most once a minute for the whole plant.
+   - **Inbox and push** (`/inbox`): reports, messages and suggestions, with Web Push to phones (VAPID keys made on first use,
+     the private half encrypted; only the real push services are posted to). The count rides on the chat's poll.
+   - **Morning review** (`lib/server/automations/review.ts`): for the people ticked "AI — daily review and suggestions", every
+     working morning from 07:30 — suggestions only; every change waits.
+   - **Playbook** (`/ai/playbook`): how this plant works, told to the assistant with every question; admins keep it there or
+     through the assistant.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

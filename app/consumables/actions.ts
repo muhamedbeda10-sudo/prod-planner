@@ -48,6 +48,8 @@ export interface ConsumableActionResult {
    *  these lines and asks for the reason, then sends again with it. */
   needsReason?: boolean;
   breaches?: string[];
+  /** createConsumableIssue: the new row's id. */
+  id?: number;
 }
 
 const NOT_LOGGED_IN = "You are not logged in — refresh the page.";
@@ -235,8 +237,10 @@ export async function createConsumableIssue(formData: FormData): Promise<Consuma
   // issuedAt is the database's clock (the column default) — never the form's.
   // The row and a group's workers are one insert. A refusal from the
   // database comes back as a message, never as a page that will not load.
+  let created: { id: number };
   try {
-    await prisma.consumableIssue.create({
+    created = await prisma.consumableIssue.create({
+      select: { id: true },
       data: {
         itemId: picked.itemId ?? null,
         ...verdict.data!,
@@ -258,7 +262,7 @@ export async function createConsumableIssue(formData: FormData): Promise<Consuma
     return { ok: false, error: SAVE_FAILED, department };
   }
   revalidateConsumables();
-  return { ok: true, department };
+  return { ok: true, department, id: created.id };
 }
 
 /** Correct a saved row — its recorder (consumables.edit) or an admin. The

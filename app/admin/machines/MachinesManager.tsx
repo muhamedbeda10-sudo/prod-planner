@@ -1,35 +1,19 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { deptLabel } from "@/lib/domain/constants";
 import { CENTERS, CENTER_LABEL, SHIFT_DEPTS, type ShiftDept } from "@/lib/domain/shifts";
+import type { MachineRuleView } from "@/lib/domain/machineRules";
 import type { MachineDTO } from "@/lib/server/machines";
 import { createMachine, updateMachine, setMachineActive, deleteMachine } from "./actions";
+import { inputCls, Msg, useAction } from "./formBits";
+import { MachineRules } from "./MachineRules";
 import { Modal } from "@/components/Modal";
 
 // The machines list, by department. A code, a name, the work centre it
 // belongs to (every laser and punch is "Cutting" — a job goes to whichever is
-// free) and the hours it is available on a working day.
-
-const inputCls = "px-2.5 py-1.5 text-sm font-semibold w-full";
-
-function useAction() {
-  const [pending, startTransition] = useTransition();
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  function run(fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData, okText: string, after?: () => void) {
-    startTransition(async () => {
-      const res = await fn(fd);
-      setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
-      if (res.ok) after?.();
-    });
-  }
-  return { pending, msg, run };
-}
-
-function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
-  if (!msg) return null;
-  return <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
-}
+// free) and the hours it is available on a working day — and the planner's
+// rules for what each machine takes, which ⚡ Plan follows.
 
 function Fields({ m, disabled }: { m?: MachineDTO; disabled?: boolean }) {
   const [dept, setDept] = useState<ShiftDept>((m?.dept as ShiftDept) ?? "Cut");
@@ -66,7 +50,7 @@ function Fields({ m, disabled }: { m?: MachineDTO; disabled?: boolean }) {
   );
 }
 
-function MachineRow({ m }: { m: MachineDTO }) {
+function MachineRow({ m, rules, planningOn }: { m: MachineDTO; rules: MachineRuleView[]; planningOn: boolean }) {
   const [editing, setEditing] = useState(false);
   const edit = useAction();
   const act = useAction();
@@ -97,6 +81,7 @@ function MachineRow({ m }: { m: MachineDTO }) {
       </div>
       <Msg msg={act.msg} />
       <Msg msg={del.msg} />
+      <MachineRules machine={m} rules={rules} planningOn={planningOn} />
       {editing && (
         <Modal title={`Edit ${m.code}`} sub={m.name} onClose={() => setEditing(false)} busy={edit.pending}>
           <form
@@ -116,7 +101,7 @@ function MachineRow({ m }: { m: MachineDTO }) {
   );
 }
 
-export function MachinesManager({ machines }: { machines: MachineDTO[] }) {
+export function MachinesManager({ machines, rules, planningOn }: { machines: MachineDTO[]; rules: MachineRuleView[]; planningOn: boolean }) {
   const add = useAction();
   const [open, setOpen] = useState(false);
   return (
@@ -146,7 +131,7 @@ export function MachinesManager({ machines }: { machines: MachineDTO[] }) {
         return (
           <section key={d} className="space-y-2">
             <h2>{deptLabel(d)} <span className="text-muted font-normal text-sm">· {list.length}</span></h2>
-            {list.map((m) => <MachineRow key={m.id} m={m} />)}
+            {list.map((m) => <MachineRow key={m.id} m={m} rules={rules.filter((r) => r.machineId === m.id)} planningOn={planningOn} />)}
           </section>
         );
       })}

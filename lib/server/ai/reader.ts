@@ -1,7 +1,7 @@
 import "server-only";
 import { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { formatRows, prepareSql, readerUrl } from "@/lib/domain/ai";
+import { formatRows, jsonSafe, prepareSql, readerUrl } from "@/lib/domain/ai";
 
 // The assistant's own way into the database: a second client logged in as
 // ai_reader, the read-only login the ai_assistant migration made. Whatever
@@ -42,6 +42,25 @@ export async function runAiQuery(sql: string): Promise<{ ok: boolean; text: stri
     return { ok: true, text: formatRows(rows), rows: rows.length };
   } catch (e) {
     return { ok: false, text: errorText(e), rows: 0 };
+  }
+}
+
+/** The rows themselves, as JSON can carry them — what an automation's
+ *  condition reads. At most `limit`; `truncated` when there were more. Same
+ *  login, same checks, same time limit as the assistant's own queries. */
+export async function runAiRows(sql: string, limit: number): Promise<{ ok: true; rows: Record<string, unknown>[]; truncated: boolean } | { ok: false; error: string }> {
+  const prepared = prepareSql(sql, limit);
+  if ("error" in prepared) return { ok: false, error: prepared.error };
+  try {
+    const client = await readerClient();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const rows = await Promise.race([
+      client.$queryRawUnsafe<Record<string, unknown>[]>(prepared.sql),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("The query took too long — narrow it down.")), QUERY_TIMEOUT_MS); }),
+    ]).finally(() => clearTimeout(timer));
+    return { ok: true, rows: rows.slice(0, limit).map((r) => jsonSafe(r) as Record<string, unknown>), truncated: rows.length > limit };
+  } catch (e) {
+    return { ok: false, error: errorText(e) };
   }
 }
 

@@ -117,3 +117,23 @@ export function factoryDayStart(iso: string): Date | null {
   t = midnight - cairoOffsetMs(t);
   return new Date(t);
 }
+
+/** The instant the factory clock reads a time of day on a factory day —
+ *  "07:30" on "2026-10-12", Cairo time. The same two passes as
+ *  factoryDayStart, so a day with a daylight-saving jump still lands on the
+ *  clock's own reading. Null for a malformed day or time. */
+export function factoryTimeAt(iso: string, hhmm: string): Date | null {
+  const d = parseISODate(iso);
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm);
+  if (!d || !m) return null;
+  const wall = d.getTime() + (Number(m[1]) * 60 + Number(m[2])) * 60_000;
+  let t = wall - cairoOffsetMs(wall);
+  t = wall - cairoOffsetMs(t);
+  return new Date(t);
+}
+
+/** The factory clock's time of day at an instant: "07:30". */
+export function factoryClockHHMM(at: Date): string {
+  const p = Object.fromEntries(CAIRO_PARTS.formatToParts(at).map((x) => [x.type, x.value]));
+  return `${p.hour}:${p.minute}`;
+}

@@ -84,6 +84,7 @@ export default async function SimulatePage({ searchParams }: { searchParams: Pro
       <WhatIfSimulator
         inputs={inputs}
         isAdmin={me.isAdmin}
+        canSave={hasPerm(me, "simulator.edit")}
         savedScenarios={saved.map((s) => ({ name: s.name, data: s.data, savedBy: s.savedBy }))}
         appliedRunOrder={applied ? { atISO: applied.appliedAt.toISOString(), by: applied.appliedBy } : null}
       />

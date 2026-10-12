@@ -327,6 +327,12 @@ model User {
   aiAccess         AiAccess?
   aiConversations  AiConversation[]
   aiUsage          AiUsage[]
+  aiActions        AiAction[]
+  aiInbox          AiInboxItem[]
+  aiInboxSent      AiInboxItem[] @relation("inboxSent")
+  pushDevices      PushSubscription[]
+  automations      Automation[]
+  aiFiles          AiFile[]
 }
 
 // A person's own view settings — the Plan Tracker's columns, folded and
@@ -582,8 +588,43 @@ model Machine {
   output    HandoverEntry[]
   manualJobs ManualJob[]
   sheetCuts  SheetCutLog[]
+  rules      MachineRule[]
 
   @@index([dept])
+}
+
+// What one machine takes — the planner's own knowledge of the floor, written
+// down so ⚡ Plan follows it: "the 6 kW laser takes 6 mm and up", "the punch
+// does top covers only", "keep stainless off B4-09", "tanks of 1000 kVA and up
+// go first to B4-10". `effect`:
+//   only   — the machine takes ONLY work matching one of its "only" rules;
+//   never  — it never takes work matching this rule;
+//   prefer — among the machines allowed, it goes first for matching work.
+// Every field given must match; a rule with none matches all work. Thickness
+// and material are read off the line's nesting (the MATERIAL tab): a line
+// matches a thickness range only when every sheet it is cut from is inside it,
+// and a line with no nesting yet does not match a thickness or material rule.
+// A rule taken off stays (inactive), with who took it off.
+model MachineRule {
+  id             Int      @id @default(autoincrement())
+  machineId      Int
+  machine        Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  effect         String // only | never | prefer
+  item           String? // CF | TC | TN | CB | AR | MB | PNL
+  line           String? // TR | LV
+  minThicknessMm Float?
+  maxThicknessMm Float?
+  material       String? // as the MATERIAL tab names it: Steel, Stainless steel …
+  minKva         Int?
+  maxKva         Int?
+  note           String? // the planner's own words for it
+  active         Boolean  @default(true)
+  createdBy      String?
+  updatedBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([machineId, active])
 }
 
 // What ONE piece of an item really costs on ONE machine, in hours — the
@@ -1172,7 +1213,7 @@ model PowderScrapRevision {
   id      Int         @id @default(autoincrement())
   scrapId Int
   scrap   PowderScrap @relation(fields: [scrapId], references: [id], onDelete: Cascade)
-  action  String // edit | delete
+  action  String // edit | delete | restore
   before  Json
   after   Json?
   byId    Int?
@@ -1336,6 +1377,18 @@ model AiSettings {
   // ai_reader's password, made by the migration that created the login and
   // never written anywhere else.
   dbPassword String   @default("")
+  // The owner's brakes. actionsPaused: nothing the assistant prepares can
+  // run — no approval goes through and nothing small runs on its own.
+  // automationsPaused: no automation fires (they stay saved, and pick up
+  // again when it comes off).
+  actionsPaused     Boolean @default(false)
+  automationsPaused Boolean @default(false)
+  // The automations' clock: the database's own scheduler (pg_cron) calls the
+  // tick endpoint every minute with a secret; its SHA-256 is kept here, the
+  // secret itself only in that job. lastTickAt: the last tick that ran —
+  // from that job, or from a page open somewhere when it is not set up.
+  tickSecretHash    String  @default("")
+  lastTickAt        DateTime?
   updatedBy  String?
   updatedAt  DateTime @updatedAt
 }
@@ -1362,6 +1415,8 @@ model AiConversation {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   messages  AiMessage[]
+  actions   AiAction[]
+  files     AiFile[]
 
   @@index([userId, updatedAt])
 }
@@ -1375,6 +1430,30 @@ model AiMessage {
   createdAt      DateTime       @default(now())
 
   @@index([conversationId, id])
+}
+
+/// A file a person attached in the assistant's chat — a sheet the assistant
+/// reads, and the app's own importer runs on once its import is approved.
+/// The person's alone and their chat's; kept a fortnight (lib/domain/
+/// aiFiles.ts), then cleared — and left out of the nightly backup.
+model AiFile {
+  id             Int             @id @default(autoincrement())
+  userId         Int
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // the chat it was sent in — null until it goes with a question
+  conversationId Int?
+  conversation   AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  name           String
+  kind           String // excel | csv
+  type           String // the media type it is kept as
+  size           Int
+  sha256         String
+  data           Bytes
+  createdAt      DateTime        @default(now())
+
+  @@index([userId, createdAt])
+  @@index([conversationId])
+  @@index([createdAt])
 }
 
 // Every question asked and what it cost: the tokens of all the calls it took
@@ -1403,4 +1482,218 @@ model AiUsage {
 
   @@index([at])
   @@index([userId, at])
+}
+
+// One change the assistant prepared — the proposal the person approves, and
+// the record of what it did. It never writes on its own authority: approved,
+// it runs the app's own action for the change as the person it acts for, so
+// their permissions decide and the app's usual audit columns name them,
+// marked "(AI)". Kept when the chat is deleted: this is the assistant's log.
+model AiAction {
+  id             Int             @id @default(autoincrement())
+  createdAt      DateTime        @default(now())
+  // the person it acts for — who approves it, whose permissions it runs with
+  userId         Int
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId Int?
+  conversation   AiConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  // the model's tool call that proposed it — places the card in the chat
+  toolUseId      String?
+  // or the automation that proposed it
+  automationId   Int?
+  automation     Automation?     @relation(fields: [automationId], references: [id], onDelete: SetNull)
+  tool           String
+  input          Json
+  title          String
+  summary        String
+  // [{label, before, after}] — what the approval card shows
+  changes        Json
+  risk           String // low | high | destructive
+  // the data the proposal was made on; approved, it runs only if the data
+  // still reads the same
+  snapshot       Json?
+  status         String          @default("proposed") // proposed | executing | executed | failed | rejected | stale | expired | undone
+  // ran without an approval click: a small change the person opted into
+  auto           Boolean         @default(false)
+  expiresAt      DateTime?
+  decidedAt      DateTime?
+  executedAt     DateTime?
+  result         String?
+  error          String?
+  // how to put it back: {tool, input, expect} — expect is the data as the
+  // change left it; the undo runs only while it still reads so
+  undo           Json?
+  undoOfId       Int?
+  undoneAt       DateTime?
+  // when the outcome was told to the assistant (at the person's next question)
+  reportedAt     DateTime?
+
+  @@index([userId, createdAt])
+  @@index([conversationId])
+  @@index([status, expiresAt])
+  @@index([automationId])
+}
+
+// The plant's playbook for the assistant: the rules its people explained to
+// it — how lines are shared out over the machines, what a morning report must
+// carry, which customer goes first — kept by the admins (through the
+// assistant or on the playbook page) and given to the assistant with every
+// question. A rule taken off stays in the table, inactive, with its history.
+model AiPlaybookEntry {
+  id        Int                  @id @default(autoincrement())
+  // machines | planning | reports | general — a heading, not a switch
+  topic     String
+  title     String
+  body      String
+  active    Boolean              @default(true)
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  revisions AiPlaybookRevision[]
+
+  @@index([active])
+}
+
+// Every change to a playbook rule: who, when, the rule before and after.
+model AiPlaybookRevision {
+  id      Int             @id @default(autoincrement())
+  entryId Int
+  entry   AiPlaybookEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  action  String // create | update | retire | restore
+  before  Json?
+  after   Json?
+  by      String
+  at      DateTime        @default(now())
+
+  @@index([entryId])
+}
+
+// What the assistant sends a person: a report an automation wrote, a message
+// someone's automation sends them, a suggestion with its changes ready to
+// approve (actionIds — the AiAction rows, the person's own to decide). The
+// app's inbox (the bell) shows them; a push reaches the person's devices.
+// Private, like the rest of the assistant's records.
+model AiInboxItem {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind         String // report | message | suggestion
+  title        String
+  body         String // Markdown, charts included
+  // Whose automation it came from, as the person reads it ("Sara's automation
+  // “Late welding”"); kept as text, so it reads the same after a rename.
+  fromName     String?
+  // who sent it by hand through the assistant (a message) — what lets them
+  // take it back; null for an automation's
+  fromUserId   Int?
+  fromUser     User?       @relation("inboxSent", fields: [fromUserId], references: [id], onDelete: SetNull)
+  automationId Int?
+  automation   Automation? @relation(fields: [automationId], references: [id], onDelete: SetNull)
+  runId        Int?
+  actionIds    Int[]     @default([])
+  createdAt    DateTime  @default(now())
+  readAt       DateTime?
+  // when a push reached at least one of the person's devices
+  pushedAt     DateTime?
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+// One device (a browser, an installed app) a person turned notifications on
+// for: what the browser's push service needs to deliver to it. Gone when the
+// service says the device unsubscribed, or after it keeps failing.
+model PushSubscription {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String    @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime  @default(now())
+  lastOkAt  DateTime?
+  failures  Int       @default(0)
+
+  @@index([userId])
+}
+
+// The app's Web Push identity (VAPID): a push service delivers to a device
+// only what is signed with the key the device subscribed under. Made on first
+// use, the private half encrypted at rest (lib/server/ai/secret.ts). Should it
+// become unreadable — the secret behind it changed — a new pair is made and
+// every device turns notifications on again.
+model PushKeys {
+  id            Int      @id @default(1)
+  publicKey     String
+  privateKeyEnc String
+  createdAt     DateTime @default(now())
+}
+
+// What a person asked the assistant to do by itself (lib/domain/automations.ts):
+// WHEN — on a schedule (times of day on the factory clock, on working days,
+// every day or chosen weekdays) or when a read-only query finds rows it did
+// not at its last check; WHAT — send a message, have the assistant write a
+// report, or have it prepare changes that wait for the owner's approval. It
+// runs as its owner, with the owner's permissions as they stand at each run,
+// and stops itself after failing five times in a row. Deleting keeps it (and
+// its runs) on record, off. Private: the assistant's own records.
+model Automation {
+  id            Int             @id @default(autoincrement())
+  ownerId       Int
+  owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name          String
+  enabled       Boolean         @default(true)
+  trigger       String // schedule | condition
+  times         String[]        @default([]) // "HH:MM", Cairo
+  days          String          @default("working") // working | every | weekdays
+  weekdays      Int[]           @default([]) // 0 = Sunday
+  conditionSql  String?
+  checkEveryMin Int             @default(30)
+  activeFrom    String? // "HH:MM" — a condition checked only inside these hours, on working days
+  activeTo      String?
+  action        String // notify | report | act
+  message       String? // notify
+  prompt        String? // report | act
+  recipientIds  Int[]           @default([]) // none = the owner
+  // the keys the condition matched at its last check: what fires is what was not there
+  lastKeys      String[]        @default([])
+  nextRunAt     DateTime?
+  lastRunAt     DateTime?
+  lastCheckAt   DateTime?
+  lastStatus    String? // ok | failed | skipped
+  lastNote      String?
+  failures      Int             @default(0) // in a row
+  lockedUntil   DateTime?
+  deletedAt     DateTime?
+  createdBy     String?
+  updatedBy     String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  runs          AutomationRun[]
+  inbox         AiInboxItem[]
+  actions       AiAction[]
+
+  @@index([enabled, nextRunAt])
+  @@index([ownerId])
+}
+
+// One time an automation fired (or failed): what caused it, what it sent and
+// prepared, and what it cost. A condition checked with nothing new is not a run.
+model AutomationRun {
+  id           Int        @id @default(autoincrement())
+  automationId Int
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  cause        String // schedule | condition | manual
+  startedAt    DateTime   @default(now())
+  finishedAt   DateTime?
+  status       String     @default("running") // running | ok | failed | skipped
+  summary      String?
+  error        String?
+  costUsd      Float      @default(0)
+  inboxIds     Int[]      @default([])
+  actionIds    Int[]      @default([])
+
+  @@index([automationId, startedAt])
 }

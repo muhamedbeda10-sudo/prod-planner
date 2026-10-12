@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { put, del } from "@vercel/blob";
-import { isItem, isDept, applicableItems, ospOf, type Item } from "@/lib/domain/constants";
+import { isItem, isDept } from "@/lib/domain/constants";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
@@ -17,7 +17,7 @@ import { TANK_ITEM } from "@/lib/domain/tanks";
 import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
 import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
-import { capsFor, spreadOverGroup } from "@/lib/domain/groupSpread";
+import { loadGroupMembers, groupTotal, spreadGroupChange } from "@/lib/server/groupRecord";
 import { LV_ITEM, LV_STAGES, lvStageAt } from "@/lib/domain/lv";
 import { consumeSheetDone } from "@/lib/domain/machineMaterial";
 import { runSheet } from "@/lib/domain/nestRun";
@@ -324,43 +324,11 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     if (tankTracking && item === TANK_ITEM && dept === "Painting") return { ok: false, error: PAINT_TANKS_ELSEWHERE };
     if (mos.length === 0) return { ok: false, error: "The group has no MOs to distribute over." };
 
-    // the member orders + their per-dept ledger totals for this component
-    const [orders, sums] = await Promise.all([
-      prisma.masterOrder.findMany({ where: { mo: { in: mos } } }),
-      prisma.handoverEntry.groupBy({ by: ["mo", "dept"], where: { mo: { in: mos }, item }, _sum: { qty: true } }),
-    ]);
-    const orderOf = new Map(orders.map((o) => [o.mo, o]));
-    const sumOf = (mo: string, d: string) => sums.find((s) => s.mo === mo && s.dept === d)?._sum.qty ?? 0;
-
-    // per-MO state in the GIVEN order (the order shown on screen)
-    const members = mos.map((mo) => {
-      const o = orderOf.get(mo);
-      if (o && o.bom !== bom) return null; // belongs to another BOM — reject below
-      // AR/MB the order doesn't need (rule or manual N/A) can't receive output
-      const eligible = o ? applicableItems(o).includes(item as Item) : !["AR", "MB"].includes(item);
-      return {
-        mo,
-        o,
-        eligible,
-        cut: sumOf(mo, "Cut"),
-        weld: sumOf(mo, "Welding"),
-        paint: sumOf(mo, "Painting"),
-        shp: sumOf(mo, SHOTBLAST_STAGE),
-        delivered: sumOf(mo, DELIVERED_STAGE),
-      };
-    });
-    if (members.some((m) => m === null)) return { ok: false, error: "An MO in the group belongs to a different BOM — refresh the page." };
-    const list = members as NonNullable<(typeof members)[number]>[];
-
-    const current = list.reduce((s, m) => {
-      switch (dept) {
-        case "Cut": return s + m.cut;
-        case "Welding": return s + m.weld;
-        case "Painting": return s + m.paint;
-        case SHOTBLAST_STAGE: return s + m.shp;
-        default: return s + m.delivered;
-      }
-    }, 0);
+    // the member orders + their per-dept ledger totals for this component,
+    // per MO in the GIVEN order (the order shown on screen)
+    const list = await loadGroupMembers(bom, item, mos);
+    if (!list) return { ok: false, error: "An MO in the group belongs to a different BOM — refresh the page." };
+    const current = groupTotal(list, dept);
 
     // the requested change
     let delta: number;
@@ -391,18 +359,9 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     const planLabel = source === "weekly" ? String(formData.get("planLabel") ?? "").trim() : "";
 
     // Per-MO headroom and the fill order are ONE rule, shared with the
-    // tracker's own preview — see lib/domain/groupSpread.
-    const caps = (m: (typeof list)[number]) => capsFor({
-      required: m.o?.planQty ?? 0,
-      cut: m.cut, weld: m.weld, paint: m.paint, shp: m.shp, delivered: m.delivered,
-      osp: ospOf(m.o ?? {}, item as Item),
-      eligible: m.eligible,
-      paintExempt: isPaintExempt(item),
-    }, dept);
-    const spread = spreadOverGroup(
-      list.map((m) => { const c = caps(m); return { mo: m.mo, capAdd: c.add, capSub: c.sub }; }),
-      delta
-    );
+    // tracker's own preview and the assistant's — see lib/server/groupRecord
+    // and lib/domain/groupSpread.
+    const spread = spreadGroupChange(list, dept, item, delta);
     if (spread.left > 0) {
       return {
         ok: false,
@@ -837,7 +796,9 @@ export async function deleteQueueNote(formData: FormData): Promise<RecordResult>
       if (p.startsWith("http")) {
         await del(p); // Vercel Blob photo
       } else {
-        await rm(path.join(process.cwd(), p)); // legacy local-disk photo
+        // legacy local-disk photo; the hint keeps the bundler from tracing the
+        // whole project into every function that imports these actions
+        await rm(path.join(/*turbopackIgnore: true*/ process.cwd(), p));
       }
     } catch {
       /* photo file already gone — fine */

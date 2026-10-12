@@ -11,13 +11,16 @@ import { SCRAP_LIMITS, readScrapForm, sameScrap, type ScrapSnapshot } from "@/li
 
 // POWDER SCRAP — the writes. Recording a weighing needs consumables.edit
 // (the store's permission). A weighing is corrected by the person who
-// recorded it or by an admin; deleting it is the admin's, and soft. Every
-// change keeps the weighing before and after (PowderScrapRevision), and is
-// refused if someone else changed it since the page was drawn.
+// recorded it or by an admin; deleting it — and bringing it back — is the
+// admin's, and soft. Every change keeps the weighing before and after
+// (PowderScrapRevision), and is refused if someone else changed it since the
+// page was drawn.
 
 export interface PowderActionResult {
   ok: boolean;
   error?: string;
+  /** The weighing recorded. */
+  id?: number;
 }
 
 const NOT_LOGGED_IN = "You are not logged in — refresh the page.";
@@ -51,14 +54,15 @@ export async function createPowderScrap(formData: FormData): Promise<PowderActio
   const read = readForm(formData);
   if (read.error) return { ok: false, error: read.error };
   const f = read.fields!;
-  await prisma.powderScrap.create({
+  const row = await prisma.powderScrap.create({
     data: {
       day: parseISODate(f.dayISO)!, department: f.department, kg: new Prisma.Decimal(f.kg), notes: f.notes,
       recordedById: user.id, recordedBy: user.name,
     },
+    select: { id: true },
   });
   revalidatePath("/consumables");
-  return { ok: true };
+  return { ok: true, id: row.id };
 }
 
 /** Correct a weighing — its recorder (consumables.edit) or an admin. */
@@ -110,6 +114,31 @@ export async function deletePowderScrap(formData: FormData): Promise<PowderActio
     const res = await tx.powderScrap.updateMany({ where: { id: ref.id, updatedAt: prev.updatedAt, deletedAt: null }, data: { deletedAt: new Date(), deletedBy: user.name } });
     if (res.count !== 1) return false;
     await tx.powderScrapRevision.create({ data: { scrapId: ref.id, action: "delete", before: json(snapshotOf(prev)), after: Prisma.DbNull, byId: user.id, by: user.name } });
+    return true;
+  });
+  if (!done) return { ok: false, error: STALE };
+  revalidatePath("/consumables");
+  return { ok: true };
+}
+
+/** Bring a weighing taken off back — the admin's, like taking it off. Its
+ *  history says who brought it back. */
+export async function restorePowderScrap(formData: FormData): Promise<PowderActionResult> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const user = guard.user!;
+  const ref = idAndVersion(formData);
+  if (!ref) return { ok: false, error: "Invalid weighing — refresh the page." };
+
+  const prev = await prisma.powderScrap.findUnique({ where: { id: ref.id } });
+  if (!prev) return { ok: false, error: GONE };
+  if (!prev.deletedAt) return { ok: false, error: "That weighing is not taken off." };
+  if (prev.updatedAt.getTime() !== ref.version.getTime()) return { ok: false, error: STALE };
+
+  const done = await prisma.$transaction(async (tx) => {
+    const res = await tx.powderScrap.updateMany({ where: { id: ref.id, updatedAt: prev.updatedAt, deletedAt: { not: null } }, data: { deletedAt: null, deletedBy: null } });
+    if (res.count !== 1) return false;
+    await tx.powderScrapRevision.create({ data: { scrapId: ref.id, action: "restore", before: json(snapshotOf(prev)), after: json(snapshotOf(prev)), byId: user.id, by: user.name } });
     return true;
   });
   if (!done) return { ok: false, error: STALE };

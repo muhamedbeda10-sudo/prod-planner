@@ -57,3 +57,60 @@ npm run seed -- "C:\المسار\إلى\Production_Master_Excel.xlsm"
   `D:\SYS\prod-planner\open-app.cmd`. (لا يوجد تشغيل تلقائي مع بداية الويندوز —
   التطبيق يفتح فقط عند الضغط على الأيقونة.)
 - **إيقاف السيرفر:** دبل-كليك على `stop.bat` (أو أغلق نافذة "ATC Planner Server").
+
+---
+
+## النسخ الاحتياطي لقاعدة البيانات الحية (Supabase)
+الخطة المجانية في Supabase **مافيهاش أي باك أب**، و`scripts/backup.mjs` بياخد نسخة من PostgreSQL
+القديمة على `D:\SYS` بس. الباك أب الحقيقي للداتا الحية هو الـ workflow
+`.github/workflows/backup.yml`: كل ليلة (03:40 صيفي / 02:40 شتوي بتوقيت القاهرة) بياخد `pg_dump`
+للـ schema بتاعة الأبلكيشن، ويقفله في ملف 7-Zip بباسورد (AES-256)، ويحفظه 30 يوم في GitHub.
+الملفات اللي بتترفع في شات الـ AI (جدول `AiFile`) مش بتدخل الباك أب: بتتمسح لوحدها بعد 14 يوم،
+والجدول بيرجع فاضي مع الاسترجاع.
+
+### التجهيز (مرة واحدة)
+في GitHub: **Settings → Secrets and variables → Actions → New repository secret**:
+1. `BACKUP_DATABASE_URL` — من Supabase: **Connect → Session pooler** (العنوان اللي فيه
+   `pooler.supabase.com:5432`)، مش الـ direct (`db.<ref>.supabase.co`) ولا الـ transaction pooler (6543).
+2. `BACKUP_PASSPHRASE` — باسورد طويل (16 حرف على الأقل). **احفظه في مكان تاني غير GitHub** —
+   من غيره الباك أب مايتفتحش.
+
+بعدها من تاب **Actions → Database backup → Run workflow** شغّله مرة يدوي وتأكد إنه أخضر.
+الـ schedule بيشتغل من الفرع `master` بس.
+
+### الاسترجاع
+1. من **Actions → Database backup** افتح التشغيلة وحمّل الـ artifact (`atc-db-<التاريخ>`).
+2. افتح الـ `.7z` بـ 7-Zip بالباسورد ← هتلاقي `atc.dump`.
+3. محتاج `pg_restore` نسخة **17** أو أحدث (من PostgreSQL 17، أو Docker: `postgres:17`).
+   - جدول واحد بس (مثلاً لو اتمسحت صفوف من الـ Daily log):
+     ```
+     pg_restore --list atc.dump | findstr HandoverEntry
+     pg_restore --data-only --table=HandoverEntry -f handover.sql atc.dump
+     ```
+     راجع `handover.sql` وخد منه الصفوف اللي محتاجها.
+   - الداتابيز كلها في مشروع جديد/فاضي:
+     ```
+     pg_restore --no-owner --clean --if-exists -d "<connection string>" atc.dump
+     ```
+     الاسترجاع على الداتابيز الحية بيكتب فوق الموجود — اعمله بس لو ده المقصود، وبعد ما توقف الشغل.
+
+## الأوتوميشنز والإشعارات على الموبايل (مرة واحدة، من صاحب الأبلكيشن)
+### ساعة الأوتوميشنز
+الكرون بتاع Vercel في الخطة المجانية بيشتغل مرة واحدة في اليوم، فالداتابيز هي اللي بتمسك الوقت:
+من **AI assistant settings → Automations → Set up the scheduler** — زرار واحد بيفعّل `pg_cron` و`pg_net`
+في Supabase (مجاناً)، ويحط السر في Supabase Vault، ويعمل job بتنادي الأبلكيشن كل دقيقة. افتح الصفحة دي
+من الموقع الحي (https) مش من preview.
+- لو الزرار رجّع خطأ صلاحيات: من Supabase **Database → Extensions** فعّل `pg_cron` و`pg_net` بإيدك، وبعدين دوس
+  على الزرار تاني.
+- لحد ما يتعمل، الأوتوميشنز بتشتغل بس وفيه صفحة من الأبلكيشن مفتوحة في مكان ما (مش بالليل).
+- **Set it up again** بيعمل سر جديد والقديم بيبطل فوراً؛ **Remove** بيشيل الـ job.
+- **Pause** على نفس الصفحة بيوقف كل الأوتوميشنز والـ morning review مرة واحدة.
+
+### الإشعارات على الموبايل
+مافيش حاجة تتظبط: مفاتيح الـ push بتتعمل لوحدها أول مرة وبتتحفظ مشفّرة. كل واحد بيفعّلها لنفسه على كل
+جهاز من **الجرس 🔔 → Turn on notifications**. على الآيفون: Share → Add to Home Screen الأول، وبعدين يفتح
+الأبلكيشن من الأيقونة ويفعّلها من هناك.
+- لو اتغيّر `AI_SECRET` (أو باسورد الداتابيز من غير `AI_SECRET`) المفاتيح بتتعمل من جديد وكل واحد بيفعّل
+  الإشعارات تاني.
+- اختياري: `PUSH_SUBJECT` (مثلاً `mailto:it@company.com`) — العنوان اللي خدمات الـ push تكلّمه لو فيه مشكلة؛
+  من غيره بيستخدم عنوان الموقع.

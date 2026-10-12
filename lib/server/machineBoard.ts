@@ -7,6 +7,7 @@ import { ITEM_NAME, applicableItems, ospOf } from "@/lib/domain/constants";
 import { isOnHold } from "@/lib/domain/hold";
 import { dateForOffsetISO, offsetForDateISO } from "@/lib/domain/whatif";
 import { boardPins, type OptLine, type OptMachine, type OptPin } from "@/lib/domain/optimizePlan";
+import { machineVerdict, type MachineRuleLike, type WorkFacts } from "@/lib/domain/machineRules";
 import { getStdData } from "./standardTimes";
 import { getAllMachines, type MachineDTO } from "./machines";
 import { getMachineItemTimes } from "./machineTimes";
@@ -21,6 +22,7 @@ import { LV_ITEM, lvStageAt } from "@/lib/domain/lv";
 import { fullyCutPieces, sheetKeyOf, type LineMaterial } from "@/lib/domain/machineMaterial";
 import { getLinesMaterial, type OrderRef } from "./machineMaterial";
 import { getManualJobs, manualBoardLines } from "./manualJobs";
+import { getActiveMachineRules } from "./machineRules";
 import { getNestRuns, runCover, runCut } from "./nestRuns";
 import { RUN_BOM, RUN_ITEM, minutesLeft, runDescription, runIdOf, runMo, type NestRunView } from "@/lib/domain/nestRun";
 import { MANUAL_BOM, MANUAL_ITEM, manualIdOf, manualMaterial, manualMo, type ManualJobView } from "@/lib/domain/manualJob";
@@ -143,7 +145,9 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
   // the class an order belongs to, by MO; by BOM when the line has no MO and
   // every order of that BOM agrees
   const tierByMo = new Map(orders.map((o) => [o.mo, tierForOrder(std, o)]));
-  const urgentByMo = new Map(orders.map((o) => [o.mo, o.urgent]));
+  // "flagged": the monthly plan's URGENT column, or the planner's ⭐ priority
+  // on the tracker — either puts the order first among those due the same day
+  const urgentByMo = new Map(orders.map((o) => [o.mo, o.urgent || o.priority]));
   const tierByBom = new Map<string, number | null>();
   for (const o of orders) {
     const t = tierByMo.get(o.mo) ?? null;
@@ -194,7 +198,9 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
   // the floor knows a job by
   const requiredByBom = new Map<string, number>();
   for (const o of orders) if (o.status === "open") requiredByBom.set(o.bom, (requiredByBom.get(o.bom) ?? 0) + o.planQty);
-  return { machines, assignments, price, perPiece, urgentByMo, downtimeH, crewH, crew, rates, orderOf: (mo: string) => orderByMo.get(mo), requiredByBom, orders };
+  /** The kVA class a line's order belongs to — what a machine's kVA rule reads. */
+  const tierOf = (l: { bom: string; mo: string }): number | null => (l.mo ? tierByMo.get(l.mo) : tierByBom.get(l.bom)) ?? null;
+  return { machines, assignments, price, perPiece, tierOf, urgentByMo, downtimeH, crewH, crew, rates, orderOf: (mo: string) => orderByMo.get(mo), requiredByBom, orders };
 }
 
 export async function getMachineBoard(dept: BoardDept, planLines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
@@ -408,13 +414,25 @@ async function registryCutLines(orders: readonly { mo: string; bom: string; line
 
 /** What the ⚡ optimizer plans from: the department's machines with the hours
  *  they really have today, every open line with its route and the day the plan
- *  promises it, and the work already running (which keeps its machine).
- *  `mayPlan` narrows it to the lines the planner's keys cover on the shared
- *  floor; the other line's waiting work then keeps its machine and its place
- *  too, like running work. */
-export async function getOptimizerInputs(dept: BoardDept, dayISO: string, mayPlan: (item: string) => boolean = () => true): Promise<{ machines: OptMachine[]; lines: OptLine[]; pins: OptPin[] }> {
-  const [ctx, allInputs, holidays, runs] = await Promise.all([
+ *  promises it, the work already running (which keeps its machine), and the
+ *  machines' rules with what each line is as they read it. */
+export interface OptimizerInputs {
+  machines: OptMachine[];
+  lines: OptLine[];
+  pins: OptPin[];
+  /** What each line is, as the machines' rules read it. */
+  facts: Record<string, WorkFacts>;
+  /** The department's active machine rules. */
+  rules: MachineRuleLike[];
+}
+
+/** The optimizer's inputs for a department. `mayPlan` narrows them to the
+ *  lines the planner's keys cover on the shared floor; the other line's
+ *  waiting work then keeps its machine and its place too, like running work. */
+export async function getOptimizerInputs(dept: BoardDept, dayISO: string, mayPlan: (item: string) => boolean = () => true): Promise<OptimizerInputs> {
+  const [ctx, allInputs, holidays, runs, rules] = await Promise.all([
     loadBoardContext(dept, dayISO), getDeptBoardLines(dept, dayISO), loadHolidays(), dept === "Cut" ? getNestRuns(dept) : Promise.resolve([] as NestRunView[]),
+    getActiveMachineRules(dept),
   ]);
   // a line a nest run carries is the planner's own arrangement — the plan
   // leaves it to him rather than put the item on a machine a second time
@@ -445,6 +463,29 @@ export async function getOptimizerInputs(dept: BoardDept, dayISO: string, mayPla
     }
   }
 
+  // what each line is, for the machines' rules: its item and product line,
+  // its order's kVA class, and the sheets its nesting cuts it from
+  const facts: Record<string, WorkFacts> = {};
+  if (rules.length > 0) {
+    const refs = [...merged.values()].map((l) => {
+      const [bom, mo, item] = l.key.split("|");
+      return { key: l.key, bom, mo, item };
+    });
+    const material = await getLinesMaterial(refs, ctx.orderOf);
+    for (const r of refs) {
+      const specs = material[r.key]?.specs ?? [];
+      facts[r.key] = {
+        item: r.item,
+        line: r.item === LV_ITEM ? "LV" : "TR",
+        kva: ctx.tierOf(r),
+        thicknessesMm: [...new Set(specs.map((x) => x.thicknessMm))],
+        materials: [...new Set(specs.map((x) => x.material))],
+      };
+    }
+  }
+  const rulesOf = new Map<number, MachineRuleLike[]>();
+  for (const r of rules) (rulesOf.get(r.machineId) ?? rulesOf.set(r.machineId, []).get(r.machineId)!).push(r);
+
   const lines: OptLine[] = [...merged.values()].map((l) => {
     const shares = centerShares(dept, l.item);
     const route = routeFor(dept, l.item).map((center) => {
@@ -456,7 +497,19 @@ export async function getOptimizerInputs(dept: BoardDept, dayISO: string, mayPla
         const own = ctx.rates[m.id]?.[l.item];
         if (m.center === center && own !== undefined) perMachine[m.id] = own;
       }
-      return { center, pieces: left, hoursPerPiece: perPc, ...(Object.keys(perMachine).length > 0 ? { perMachine } : {}) };
+      // the machines of this centre the rules let it go on, and prefer for it
+      const atCenter = ctx.machines.filter((m) => m.active && m.center === center);
+      const ruled = atCenter.some((m) => rulesOf.has(m.id));
+      const verdicts = ruled ? atCenter.map((m) => ({ id: m.id, v: machineVerdict(rulesOf.get(m.id) ?? [], facts[l.key]) })) : [];
+      const preferred = verdicts.filter((x) => x.v.allowed && x.v.preferred).map((x) => x.id);
+      return {
+        center,
+        pieces: left,
+        hoursPerPiece: perPc,
+        ...(Object.keys(perMachine).length > 0 ? { perMachine } : {}),
+        ...(ruled ? { allowed: verdicts.filter((x) => x.v.allowed).map((x) => x.id) } : {}),
+        ...(preferred.length > 0 ? { preferred } : {}),
+      };
     });
     return { key: l.key, pieces: l.pieces, route, dueDay: l.dueISO ? offsetForDateISO(l.dueISO, dayISO, holidaySet, false) : null, urgent: l.urgent };
   });
@@ -464,7 +517,7 @@ export async function getOptimizerInputs(dept: BoardDept, dayISO: string, mayPla
   const machines: OptMachine[] = ctx.machines
     .filter((m) => m.active)
     .map((m) => ({ id: m.id, code: m.code, center: m.center, availableH: m.hoursPerDay === null ? 0 : Math.max(0, m.hoursPerDay - (ctx.downtimeH[m.id] ?? 0)) }));
-  return { machines, lines, pins };
+  return { machines, lines, pins, facts, rules };
 }
 
 /** The open lines of a department's worklist, as the board wants them — the

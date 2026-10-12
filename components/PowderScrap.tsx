@@ -144,7 +144,7 @@ function ScrapRow({ e, isAdmin, today, earliest, showActions }: { e: ScrapEntryV
             <ul className="space-y-0.5">
               {e.revisions.map((r) => (
                 <li key={r.id}>
-                  <b>{r.action === "delete" ? "Deleted" : "Edited"}</b> by {r.by} · {r.atLabel} — {r.changes.length ? r.changes.join("; ") : r.before}
+                  <b>{r.action === "delete" ? "Deleted" : r.action === "restore" ? "Brought back" : "Edited"}</b> by {r.by} · {r.atLabel} — {r.changes.length ? r.changes.join("; ") : r.before}
                 </li>
               ))}
             </ul>

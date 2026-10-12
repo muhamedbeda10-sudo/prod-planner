@@ -21,8 +21,9 @@ export function notifyPerm(): NotifyPerm {
 let reg: Promise<ServiceWorkerRegistration | null> | null = null;
 
 // A service worker is what shows notifications on Android (the plain
-// Notification constructor throws there) and routes their clicks back.
-function registration(): Promise<ServiceWorkerRegistration | null> {
+// Notification constructor throws there) and routes their clicks back — and
+// receives the server's pushes (lib/pushClient.ts).
+export function registration(): Promise<ServiceWorkerRegistration | null> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return Promise.resolve(null);
   reg ??= navigator.serviceWorker
     .register("/notify-sw.js")

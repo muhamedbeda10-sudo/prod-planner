@@ -5,6 +5,9 @@ import { apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
 import { monthStart } from "@/lib/domain/ai";
 import { PageHead } from "@/components/ui";
 import { AiAdmin } from "@/components/AiAdmin";
+import { AutomationsAdmin } from "@/components/AutomationsAdmin";
+import { schedulerStatus } from "@/lib/server/automations/scheduler";
+import { automationViews } from "@/lib/server/automations/views";
 
 export const metadata = { title: "AI assistant settings — ATC" };
 export const dynamic = "force-dynamic";
@@ -28,6 +31,11 @@ export default async function AiAdminPage() {
     prisma.aiUsage.aggregate({ where: { at: { gte: from } }, _sum: { costUsd: true }, _count: { _all: true } }),
     prisma.aiUsage.aggregate({ where: { at: { gte: lastFrom, lt: from } }, _sum: { costUsd: true } }),
     prisma.aiUsage.findMany({ orderBy: { at: "desc" }, take: 40, include: { user: { select: { name: true } } } }),
+  ]);
+  const [changes, clock, automations] = await Promise.all([
+    prisma.aiAction.findMany({ orderBy: { id: "desc" }, take: 60, include: { user: { select: { name: true } } } }),
+    schedulerStatus(),
+    automationViews({}),
   ]);
   const accessOf = new Map(access.map((a) => [a.userId, a]));
   const usageOf = new Map(byUser.map((u) => [u.userId, u]));
@@ -63,6 +71,20 @@ export default async function AiAdminPage() {
               lastAt: used?._max.at?.toISOString() ?? null,
             };
           }),
+          actionsPaused: s.actionsPaused,
+          automationsPaused: s.automationsPaused,
+          changes: changes.map((c) => ({
+            id: c.id,
+            at: c.createdAt.toISOString(),
+            who: c.user.name,
+            title: c.title,
+            summary: c.summary,
+            status: c.status,
+            risk: c.risk,
+            auto: c.auto,
+            automationId: c.automationId,
+            error: c.error,
+          })),
           recent: recent.map((r) => ({
             id: r.id,
             at: r.at.toISOString(),
@@ -77,6 +99,7 @@ export default async function AiAdminPage() {
           })),
         }}
       />
+      <AutomationsAdmin clock={clock} automations={automations} />
     </div>
   );
 }

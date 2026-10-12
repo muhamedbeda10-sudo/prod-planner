@@ -36,12 +36,14 @@ export interface PhysicalImportResult {
   missing?: number;
   removed?: number;
   issues?: string[];
+  /** true = nothing was written, this is a dry-run report. */
+  preview?: boolean;
 }
 
 /** The store's sheet → the table, matched on the product code (any case).
  *  A code already here is updated in place and keeps its note; `prune`
  *  removes the codes the file no longer carries. */
-export async function importPhysicalStock(buf: ArrayBuffer, by: string | null, prune: boolean): Promise<PhysicalImportResult> {
+export async function importPhysicalStock(buf: ArrayBuffer, by: string | null, prune: boolean, preview = false): Promise<PhysicalImportResult> {
   const wb = XLSX.read(buf, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   if (!ws) return { ok: false, error: "The file has no sheet." };
@@ -53,24 +55,34 @@ export async function importPhysicalStock(buf: ArrayBuffer, by: string | null, p
   const byCode = new Map(existing.map((r) => [r.code.toUpperCase(), r]));
   const seen = new Set<string>();
   let added = 0, updated = 0, unchanged = 0;
+  // what the file does to the table, row by row in its order — written below
+  // unless this is a dry run
+  type Data = { name: string; uom: string; physical: number; odoo: number; sortOrder: number };
+  const writes: ({ create: Data & { code: string; updatedBy: string | null } } | { id: number; update: Data & { updatedBy?: string | null } })[] = [];
+  for (const [i, r] of parsed.rows.entries()) {
+    const key = r.code.toUpperCase();
+    seen.add(key);
+    const cur = byCode.get(key);
+    const data = { name: r.name, uom: r.uom, physical: r.physical, odoo: r.odoo, sortOrder: i + 1 };
+    if (!cur) {
+      writes.push({ create: { code: r.code, ...data, updatedBy: by } });
+      added++;
+    } else if (cur.name !== r.name || cur.uom !== r.uom || cur.physical !== r.physical || cur.odoo !== r.odoo || cur.sortOrder !== i + 1) {
+      // the figures moved — stamp who brought them; a re-sort alone is not news
+      const figures = cur.physical !== r.physical || cur.odoo !== r.odoo || cur.name !== r.name || cur.uom !== r.uom;
+      writes.push({ id: cur.id, update: { ...data, ...(figures ? { updatedBy: by } : {}) } });
+      if (figures) updated++; else unchanged++;
+    } else unchanged++;
+  }
+  const gone = existing.filter((r) => !seen.has(r.code.toUpperCase()));
+  if (preview) return { ok: true, preview: true, added, updated, unchanged, missing: gone.length, removed: 0, issues: parsed.issues };
+
   await prisma.$transaction(async (tx) => {
-    for (const [i, r] of parsed.rows.entries()) {
-      const key = r.code.toUpperCase();
-      seen.add(key);
-      const cur = byCode.get(key);
-      const data = { name: r.name, uom: r.uom, physical: r.physical, odoo: r.odoo, sortOrder: i + 1 };
-      if (!cur) {
-        await tx.physicalStock.create({ data: { code: r.code, ...data, updatedBy: by } });
-        added++;
-      } else if (cur.name !== r.name || cur.uom !== r.uom || cur.physical !== r.physical || cur.odoo !== r.odoo || cur.sortOrder !== i + 1) {
-        // the figures moved — stamp who brought them; a re-sort alone is not news
-        const figures = cur.physical !== r.physical || cur.odoo !== r.odoo || cur.name !== r.name || cur.uom !== r.uom;
-        await tx.physicalStock.update({ where: { id: cur.id }, data: { ...data, ...(figures ? { updatedBy: by } : {}) } });
-        if (figures) updated++; else unchanged++;
-      } else unchanged++;
+    for (const w of writes) {
+      if ("create" in w) await tx.physicalStock.create({ data: w.create });
+      else await tx.physicalStock.update({ where: { id: w.id }, data: w.update });
     }
   });
-  const gone = existing.filter((r) => !seen.has(r.code.toUpperCase()));
   let removed = 0;
   if (prune && gone.length > 0) removed = (await prisma.physicalStock.deleteMany({ where: { id: { in: gone.map((r) => r.id) } } })).count;
   return { ok: true, added, updated, unchanged, missing: gone.length, removed, issues: parsed.issues };

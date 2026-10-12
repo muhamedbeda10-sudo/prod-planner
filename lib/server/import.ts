@@ -11,6 +11,10 @@ export interface ImportResult {
   orderCount?: number;
   scheduleCount?: number;
   warnings?: ImportWarning[];
+  /** true = nothing was written, this is a dry-run report. */
+  preview?: boolean;
+  /** The plan's orders the import replaces (a dry run's count). */
+  replacedOrders?: number;
 }
 
 /** Pick the sheet to import: explicit request > "week-<planNo>" > single sheet. */
@@ -33,7 +37,8 @@ export async function importWeeklyPlan(
   buffer: ArrayBuffer,
   planNo: number,
   startDate: Date,
-  sheetName?: string
+  sheetName?: string,
+  preview = false
 ): Promise<ImportResult> {
   let wb: XLSX.WorkBook;
   try {
@@ -66,6 +71,20 @@ export async function importWeeklyPlan(
   const parsed = parseWeeklyPlan(grid);
   if (parsed.orders.length === 0) {
     return { ok: false, error: "No order rows found (data starts on row 6 and the MO column is required)." };
+  }
+
+  // a dry run: what the import would put in, and what it would replace
+  if (preview) {
+    return {
+      ok: true,
+      preview: true,
+      planNo,
+      sheetName: name,
+      orderCount: parsed.orders.length,
+      scheduleCount: parsed.schedules.length,
+      warnings: parsed.warnings,
+      replacedOrders: await prisma.planOrder.count({ where: { planNo } }),
+    };
   }
 
   // Idempotent replace: wipe this plan's orders + schedules, keep the header + handover.

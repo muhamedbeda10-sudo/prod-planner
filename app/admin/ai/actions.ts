@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
 import { requireOwner } from "@/lib/server/auth";
@@ -9,6 +10,7 @@ import { apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
 import { encryptSecret } from "@/lib/server/ai/secret";
 import { testReader } from "@/lib/server/ai/reader";
 import { apiErrorText } from "@/lib/server/ai/agent";
+import { removeScheduler, setupScheduler, tickUrlFor } from "@/lib/server/automations/scheduler";
 
 // The AI assistant's settings — the owner's alone, like Users & Permissions:
 // the Claude API key, who may use it and how much of the month's spend.
@@ -131,4 +133,46 @@ export async function setAiUserAccess(fd: FormData): Promise<AiActionResult> {
   if (usd === null) return { ok: false, error: "Enter an amount in dollars (0 = no cap of their own)." };
   await prisma.aiAccess.upsert({ where: { userId }, create: { userId, enabled, monthlyUsd: usd }, update: { enabled, monthlyUsd: usd } });
   return done();
+}
+
+/** The owner's brakes: stop every change by the assistant (nothing it
+ *  prepared can be approved, nothing small runs on its own), or every
+ *  automation — and start them again. */
+export async function setAiPause(fd: FormData): Promise<AiActionResult> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  const what = String(fd.get("what") ?? "");
+  const paused = fd.get("paused") === "true";
+  if (what !== "actions" && what !== "automations") return { ok: false, error: "Unknown switch." };
+  await getAiSettings();
+  await prisma.aiSettings.update({
+    where: { id: 1 },
+    data: { ...(what === "actions" ? { actionsPaused: paused } : { automationsPaused: paused }), updatedBy: g.user!.name },
+  });
+  if (what === "actions") return done(paused ? "Paused — the assistant can only read and advise now; nothing it prepared can run." : "The assistant's changes run again (each still waits for its approval).");
+  return done(paused ? "Paused — no automation fires until you start them again." : "Automations run again.");
+}
+
+/** Set the automations' clock up in the database (Supabase pg_cron + pg_net,
+ *  the secret in Vault) — or again, with a new secret. */
+export async function setupAutomationClock(): Promise<AiActionResult> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  const h = await headers();
+  const url = tickUrlFor(h.get("x-forwarded-host") ?? h.get("host"), h.get("x-forwarded-proto"));
+  if (!url) return { ok: false, error: "The app's https address could not be worked out — open the settings from the live site (https) and try again." };
+  await getAiSettings();
+  const r = await setupScheduler(url);
+  if (!r.ok) return { ok: false, error: `${r.error} — on Supabase, the two extensions can also be turned on by hand (Database → Extensions: pg_cron and pg_net); then try again.` };
+  return done(`Set up: the database calls ${url} every minute.`);
+}
+
+/** Take the clock away — automations then run only while the app is open somewhere. */
+export async function removeAutomationClock(): Promise<AiActionResult> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  await getAiSettings();
+  const r = await removeScheduler();
+  if (!r.ok) return { ok: false, error: r.error };
+  return done("Removed — automations now run only while the app is open somewhere.");
 }

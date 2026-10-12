@@ -15,7 +15,7 @@ import { sectionLabel } from "@/lib/domain/tanks";
 
 export interface ScrapRevisionView {
   id: number;
-  action: "edit" | "delete";
+  action: "edit" | "delete" | "restore";
   before: string;
   after: string | null;
   changes: string[];
@@ -101,7 +101,7 @@ export async function getPowderReport(month: string, viewer: { id: number; isAdm
           const before = parseScrapSnapshot(v.before);
           const after = parseScrapSnapshot(v.after);
           return {
-            id: v.id, action: v.action === "delete" ? "delete" as const : "edit" as const,
+            id: v.id, action: v.action === "delete" || v.action === "restore" ? v.action : "edit" as const,
             before: describeScrap(before), after: after ? describeScrap(after) : null, changes: scrapChanges(before, after),
             by: v.by, atLabel: factoryDateTimeLabel(v.at),
           };

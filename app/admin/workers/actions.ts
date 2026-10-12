@@ -105,7 +105,7 @@ export async function deleteWorker(formData: FormData): Promise<WorkerActionResu
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid worker." };
 
-  const [onTanks, onEvents, onConsumables, inGroups] = await Promise.all([
+  const [onTanks, onEvents, onConsumables, inGroups, onShifts] = await Promise.all([
     prisma.tankUnit.count({
       where: { OR: [{ weldedById: id }, { testedById: id }, { paintedById: id }, { qaById: id }] },
     }),
@@ -114,6 +114,10 @@ export async function deleteWorker(formData: FormData): Promise<WorkerActionResu
     prisma.consumableIssue.count({ where: { workerId: id } }),
     // …and the group hand-outs (several workers, a whole department) he was one of
     prisma.consumableIssueRecipient.count({ where: { workerId: id } }),
+    // the shift log's days: deleting the worker would take his rows with him
+    // (they cascade), and the day's man-hours already counted would no longer
+    // add up to the rows that are left
+    prisma.shiftEntry.count({ where: { workerId: id } }),
   ]);
   if (onTanks > 0 || onEvents > 0) {
     return {
@@ -126,6 +130,9 @@ export async function deleteWorker(formData: FormData): Promise<WorkerActionResu
       ok: false,
       error: `Their name is on ${onConsumables + inGroups} consumables hand-out(s) — deactivate them instead of deleting, so the record survives.`,
     };
+  }
+  if (onShifts > 0) {
+    return { ok: false, error: `They are on ${onShifts} day(s) of the shift log — deactivate them instead of deleting, so those days keep their record.` };
   }
 
   await prisma.worker.delete({ where: { id } });

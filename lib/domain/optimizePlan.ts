@@ -42,6 +42,12 @@ export interface OptStep {
    *  planner has said so the plan uses his number, not the estimate. */
   perMachine?: Record<number, number>;
   pieces?: number;
+  /** The machines of the centre this work may go on under the machines'
+   *  rules (lib/domain/machineRules); absent = every machine of the centre. */
+  allowed?: readonly number[];
+  /** The machines a rule puts first for this work — they win unless another
+   *  allowed machine could start it more than PREFER_DAYS sooner. */
+  preferred?: readonly number[];
 }
 
 export interface OptLine {
@@ -52,7 +58,8 @@ export interface OptLine {
   /** Working days from today the stage must be finished in; null = no date,
    *  which goes after everything dated. */
   dueDay: number | null;
-  /** The order is flagged ⭐ — it wins among lines due the same day. */
+  /** The order is flagged — ⭐ priority on the tracker, or URGENT on the
+   *  monthly plan — and wins among lines due the same day. */
   urgent?: boolean;
 }
 
@@ -99,7 +106,9 @@ export interface OptPlacement {
 export interface OptSkip {
   key: string;
   center: string;
-  reason: "no machine" | "nothing left";
+  /** "no machine": the centre has none with hours; "not allowed": it has,
+   *  but the machines' rules allow none of them this work. */
+  reason: "no machine" | "not allowed" | "nothing left";
 }
 
 export interface OptResult {
@@ -127,6 +136,10 @@ const WHOLE_UNDER_DAYS = 0.5;
 /** Never cut one batch over more machines than this — a queue of slivers is
  *  worse to work than a slightly later finish. */
 const MAX_SPLIT = 4;
+/** A machine a rule prefers for the work goes first unless another allowed
+ *  machine could start it more than this many working days sooner — the
+ *  planner's preference, not a reason to let a batch wait a week. */
+export const PREFER_DAYS = 0.5;
 
 const lineHours = (l: OptLine) => l.route.reduce((s, r) => s + Math.max(0, r.hoursPerPiece) * (r.pieces ?? l.pieces), 0);
 
@@ -202,9 +215,10 @@ export function optimizePlan(
         if (pinned !== undefined) ready = Math.max(ready, pinned);
         continue; // the whole step is on a machine already
       }
-      const cands = (byCenter.get(step.center) ?? []).slice();
+      const atCenter = byCenter.get(step.center) ?? [];
+      const cands = step.allowed ? atCenter.filter((m) => step.allowed!.includes(m.id)) : atCenter.slice();
       if (cands.length === 0) {
-        skipped.push({ key: l.key, center: step.center, reason: "no machine" });
+        skipped.push({ key: l.key, center: step.center, reason: atCenter.length === 0 ? "no machine" : "not allowed" });
         continue;
       }
       // How fast each machine works THIS item: its hours a day over the hours
@@ -216,8 +230,10 @@ export function optimizePlan(
         return [m.id, h > 0 ? m.availableH / h : Number.POSITIVE_INFINITY];
       }));
       // when each machine could start this batch, soonest first, fastest first
+      // — a machine the rules prefer counted as starting PREFER_DAYS sooner
       const starts = new Map(cands.map((m) => [m.id, Math.max(free.get(m.id) ?? 0, ready)]));
-      cands.sort((x, y) => starts.get(x.id)! - starts.get(y.id)! || perDay.get(y.id)! - perDay.get(x.id)! || x.id - y.id);
+      const rankStart = (m: OptMachine) => starts.get(m.id)! - (step.preferred?.includes(m.id) ? PREFER_DAYS : 0);
+      cands.sort((x, y) => rankStart(x) - rankStart(y) || perDay.get(y.id)! - perDay.get(x.id)! || x.id - y.id);
 
       const takes = (m: OptMachine, pcs: number) => {
         const rate = perDay.get(m.id)!;

@@ -74,6 +74,7 @@ beforeEach(() => {
   h.requireAdmin.mockResolvedValue({ user: admin });
   h.getCurrentUser.mockResolvedValue(storekeeper);
   h.checkIssueLimits.mockResolvedValue([]);
+  h.prisma.consumableIssue.create.mockResolvedValue({ id: 101 });
   h.prisma.consumableItem.findUnique.mockResolvedValue({ id: 3, name: "Grinding Disk 115x6x22.23mm", active: true });
   // the catalogue a pasted item is matched against
   h.prisma.consumableItem.findMany.mockResolvedValue([{ id: 3, name: "Grinding Disk 115x6x22.23mm", code: "C-CON-GRD-115x6x22.23" }]);
@@ -96,7 +97,7 @@ describe("createConsumableIssue", () => {
 
   it("records the hand-out with the recorder, and never a typed time", async () => {
     const res = await createConsumableIssue(form({ ...valid, issuedAt: "2020-01-01T00:00:00Z" }));
-    expect(res).toEqual({ ok: true, department: "WeldingTX" });
+    expect(res).toEqual({ ok: true, department: "WeldingTX", id: 101 });
     const data = h.prisma.consumableIssue.create.mock.calls[0][0].data;
     // the department's hand-out, naming who asked for it / collected it
     expect(data).toMatchObject({ item: "Welding wire 1.2mm", department: "WeldingTX", workerId: 7, recipientScope: "department", recipientCount: 0, notes: null, recordedById: 5, recordedBy: "Store Keeper" });
@@ -108,7 +109,7 @@ describe("createConsumableIssue", () => {
 
   it("files a typed department under its first spelling", async () => {
     const res = await createConsumableIssue(form({ ...valid, department: "__new__", departmentNew: "maintenance" }));
-    expect(res).toEqual({ ok: true, department: "Maintenance" });
+    expect(res).toEqual({ ok: true, department: "Maintenance", id: 101 });
     expect(h.prisma.consumableIssue.create.mock.calls[0][0].data.department).toBe("Maintenance");
   });
 

@@ -15,6 +15,7 @@ export interface HandoverImportResult {
   corrected?: number;
   unknownBoms?: string[]; // codes imported as-is that nothing in the registry matches
   issues?: string[]; // first N validation problems
+  preview?: boolean; // true = nothing was written, this is a dry-run report
 }
 
 interface Insert {
@@ -31,7 +32,7 @@ interface Insert {
 const sig = (r: { date: Date; dept: string; bom: string; mo?: string | null; item: string; qty: number; planNo: number }) =>
   `${dayNumber(r.date)}|${r.dept}|${r.bom}|${(r.mo ?? "").trim()}|${r.item}|${r.qty}|${r.planNo}`;
 
-export async function importHandoverFile(buffer: ArrayBuffer): Promise<HandoverImportResult> {
+export async function importHandoverFile(buffer: ArrayBuffer, preview = false): Promise<HandoverImportResult> {
   let wb: XLSX.WorkBook;
   try {
     wb = XLSX.read(new Uint8Array(buffer), { cellDates: false });
@@ -115,14 +116,17 @@ export async function importHandoverFile(buffer: ArrayBuffer): Promise<HandoverI
     skippedExisting += Math.min(count, have);
   }
 
-  for (let i = 0; i < toInsert.length; i += 500) {
-    await prisma.handoverEntry.createMany({
-      data: toInsert.slice(i, i + 500).map((r) => ({ ...r, source: "import" })),
-    });
+  if (!preview) {
+    for (let i = 0; i < toInsert.length; i += 500) {
+      await prisma.handoverEntry.createMany({
+        data: toInsert.slice(i, i + 500).map((r) => ({ ...r, source: "import" })),
+      });
+    }
   }
 
   return {
     ok: true,
+    ...(preview ? { preview: true } : {}),
     added: toInsert.length,
     skippedExisting,
     invalid,

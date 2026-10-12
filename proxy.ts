@@ -13,6 +13,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // everything except static assets and Next internals
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.png|brand/|icons/|manifest.webmanifest|notify-sw.js).*)"],
+  // everything except static assets and Next internals — and the automations'
+  // tick, which the database's scheduler calls with its own secret (no
+  // session); the route itself checks the secret, or a session for a page's tick
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.png|brand/|icons/|manifest.webmanifest|notify-sw.js|api/automations/tick).*)"],
 };

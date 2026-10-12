@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, KeyRound, PlugZap, ShieldCheck, Trash2 } from "lucide-react";
+import { Bot, Hand, KeyRound, ListChecks, PlugZap, ShieldCheck, Trash2 } from "lucide-react";
 import { AI_MODELS, aiModel, usdText } from "@/lib/domain/ai";
-import { removeAiKey, saveAiKey, setAiEnabled, setAiModel, setAiPlantCap, setAiUserAccess, testAi, type AiActionResult } from "@/app/admin/ai/actions";
+import { removeAiKey, saveAiKey, setAiEnabled, setAiModel, setAiPause, setAiPlantCap, setAiUserAccess, testAi, type AiActionResult } from "@/app/admin/ai/actions";
 
 // The owner's page for the AI assistant: the key, the switch and the model,
-// the plant's monthly cap, each person's access and allowance with what they
-// have spent, and the latest questions with what each cost.
+// the plant's monthly cap, the brakes on what it changes and on automations,
+// each person's access and allowance with what they have spent, every change
+// it prepared or made, and the latest questions with what each cost.
 
 export interface AiAdminUser {
   id: number;
@@ -35,6 +36,9 @@ export interface AiAdminData {
   lastMonthSpent: number;
   updatedBy: string | null;
   users: AiAdminUser[];
+  actionsPaused: boolean;
+  automationsPaused: boolean;
+  changes: { id: number; at: string; who: string; title: string; summary: string; status: string; risk: string; auto: boolean; automationId: number | null; error: string | null }[];
   recent: { id: number; at: string; who: string; question: string; model: string; queries: number; tokens: number; costUsd: number; error: string | null; running: boolean }[];
 }
 
@@ -88,7 +92,9 @@ export function AiAdmin({ data }: { data: AiAdminData }) {
         <SwitchCard data={data} />
       </div>
 
+      <BrakesCard data={data} />
       <PeopleCard data={data} />
+      <ChangesCard data={data} />
       <RecentCard data={data} />
     </div>
   );
@@ -353,6 +359,99 @@ function RecentCard({ data }: { data: AiAdminData }) {
                 </div>
               </div>
               <div className="text-sm font-semibold tabnum shrink-0" title={`${r.tokens.toLocaleString("en")} tokens`}>{usdText(r.costUsd)}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** The owner's two brakes. Off is instant and needs no deployment: the
+ *  assistant then only reads and advises, and automations wait. */
+function BrakesCard({ data }: { data: AiAdminData }) {
+  const act = useRun();
+  const auto = useRun();
+  const row = (title: string, help: string, paused: boolean, r: ReturnType<typeof useRun>, what: "actions" | "automations") => (
+    <div className="flex flex-wrap items-center gap-2 py-2">
+      <div className="flex-1 min-w-[14rem]">
+        <div className="text-sm font-bold flex items-center gap-2">
+          {title}
+          <span className={`pill ${paused ? "pill-bad" : "pill-ok"}`}>{paused ? "PAUSED" : "ON"}</span>
+        </div>
+        <div className="text-xs text-muted">{help}</div>
+      </div>
+      <button
+        type="button"
+        disabled={r.pending}
+        onClick={() => r.run(() => setAiPause(fd({ what, paused: String(!paused) })))}
+        className={`shrink-0 rounded-md px-3.5 py-1.5 text-sm font-bold text-white disabled:opacity-50 ${paused ? "bg-brand hover:bg-brand-dark" : "bg-bad-fg hover:opacity-90"}`}
+      >
+        {r.pending ? "Saving…" : paused ? "Start again" : "Pause"}
+      </button>
+      <div className="basis-full"><Note msg={r.msg} /></div>
+    </div>
+  );
+  return (
+    <section className={CARD}>
+      <h2 className="text-sm font-extrabold flex items-center gap-2 mb-1">
+        <Hand size={16} /> Brakes
+      </h2>
+      <div className="divide-y">
+        {row("Changes by the assistant", "Paused: it only reads and advises — nothing it prepared can be approved, nothing small runs on its own. Who may have it change what is on Users & Permissions (AI assistant).", data.actionsPaused, act, "actions")}
+        {row("Automations", "Paused: no automation fires and no scheduled report goes out; they stay saved and pick up again when started.", data.automationsPaused, auto, "automations")}
+      </div>
+    </section>
+  );
+}
+
+const CHANGE_TONE: Record<string, string> = {
+  proposed: "pill-info",
+  executing: "pill-muted",
+  executed: "pill-ok",
+  failed: "pill-bad",
+  rejected: "pill-muted",
+  stale: "pill-warn",
+  expired: "pill-muted",
+  undone: "pill-muted",
+};
+
+/** Every change the assistant prepared or made, newest first — the record a
+ *  click on Approve leaves, beside the app's own audit columns. */
+function ChangesCard({ data }: { data: AiAdminData }) {
+  const [status, setStatus] = useState("");
+  const rows = data.changes.filter((c) => !status || c.status === status);
+  return (
+    <section className={CARD}>
+      <div className="flex flex-wrap items-center gap-2 mb-1">
+        <h2 className="text-sm font-extrabold flex items-center gap-2 flex-1">
+          <ListChecks size={16} /> Changes by the assistant
+        </h2>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className="px-2 py-1 text-sm" aria-label="Filter by what became of them">
+          <option value="">All</option>
+          {Object.keys(CHANGE_TONE).map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted">None yet.</p>
+      ) : (
+        <ul className="divide-y max-h-[460px] overflow-y-auto">
+          {rows.map((c) => (
+            <li key={c.id} className="py-2 flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold flex flex-wrap items-center gap-1.5" dir="auto">
+                  <span className="truncate">{c.title}</span>
+                  <span className={`pill ${CHANGE_TONE[c.status] ?? "pill-muted"} text-[10px]`}>{c.status}</span>
+                  {c.risk === "destructive" && <span className="pill pill-bad text-[10px]">deletion</span>}
+                  {c.auto && <span className="pill pill-muted text-[10px]">without asking</span>}
+                  {c.automationId && <span className="pill pill-muted text-[10px]">automation #{c.automationId}</span>}
+                </div>
+                <div className="text-xs text-muted truncate" dir="auto" title={c.summary}>{c.summary}</div>
+                <div className="text-[11px] text-muted">
+                  #{c.id} · {c.who} · {when(c.at)}
+                  {c.error && <span className="text-bad-fg"> · {c.error}</span>}
+                </div>
+              </div>
             </li>
           ))}
         </ul>

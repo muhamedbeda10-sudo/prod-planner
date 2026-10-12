@@ -7,6 +7,7 @@ import { parsePerms, deptPermKey, bayPermKeys, machineLinePermKey, PERM_KEYS, AC
 import type { User } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { canSeePath, firstVisiblePath, parseHiddenTabs } from "@/lib/domain/tabs";
+import { currentActor } from "./actor";
 
 const SESSION_COOKIE = "atc_session";
 const SESSION_DAYS = 30;
@@ -55,8 +56,8 @@ export async function destroySession(): Promise<void> {
   store.delete(SESSION_COOKIE);
 }
 
-/** The logged-in user, or null. Cached per request. */
-export const getCurrentUser = cache(async (): Promise<User | null> => {
+/** The session's user, or null. Cached per request. */
+const sessionUser = cache(async (): Promise<User | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const session = await prisma.session.findUnique({
@@ -67,8 +68,24 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
   return asOwner(session.user);
 });
 
+/** The logged-in user, or null — or, while the assistant runs a change on
+ *  someone's behalf (lib/server/actor.ts), that person, marked as the
+ *  assistant in the name every action records. */
+export async function getCurrentUser(): Promise<User | null> {
+  const actor = currentActor();
+  if (actor) return actor.user;
+  return sessionUser();
+}
+
+/** A stored account as the app treats it — the owner with every right.
+ *  For server code that acts for someone outside their own request (an
+ *  automation): what getCurrentUser would have answered for them. */
+export function effectiveUser(user: User): User {
+  return asOwner(user);
+}
+
 /** The owner holds every right: every admin gate and every access tick pass.
- *  The notification subscriptions stay theirs to tick. */
+ *  The notification subscriptions and opt-in choices stay theirs to tick. */
 function asOwner(user: User): User {
   if (!user.isOwner) return user;
   const notify = [...parsePerms(user.perms)].filter((k) => !ACCESS_PERM_KEYS.includes(k));

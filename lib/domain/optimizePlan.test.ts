@@ -144,6 +144,48 @@ describe("optimizePlan", () => {
   });
 });
 
+describe("optimizePlan and the machines' rules", () => {
+  it("puts a line only on the machines its rules allow", () => {
+    const line = { key: "thick", pieces: 4, dueDay: 2, route: [step("Cutting", 4, 4, { allowed: [2] })] };
+    const r = optimizePlan([m(1, "Cutting", 10), m(2, "Cutting", 5)], [line]);
+    expect(r.placements.map((p) => p.machineId)).toEqual([2]);
+  });
+
+  it("leaves a line no machine's rules allow, saying so apart from a centre with no machine", () => {
+    const r = optimizePlan(
+      [m(1, "Cutting", 10)],
+      [
+        { key: "ruled", pieces: 4, dueDay: 2, route: [step("Cutting", 4, 4, { allowed: [] })] },
+        { key: "bent", pieces: 4, dueDay: 2, route: [step("Bending", 4, 4)] },
+      ]
+    );
+    expect(r.placements).toEqual([]);
+    expect([...r.skipped].sort((a, b) => a.key.localeCompare(b.key))).toEqual([
+      { key: "bent", center: "Bending", reason: "no machine" },
+      { key: "ruled", center: "Cutting", reason: "not allowed" },
+    ]);
+  });
+
+  it("gives the preferred machine the work unless another could start it over half a day sooner", () => {
+    // both free: the preferred one takes it although the other is faster
+    const free = optimizePlan([m(1, "Cutting", 10), m(2, "Cutting", 5)], [cut("p", 2, 1, 3, { route: [step("Cutting", 1, 2, { preferred: [2] })] })]);
+    expect(free.placements.map((p) => p.machineId)).toEqual([2]);
+    // the preferred one busy for two days: the free one takes it
+    const busy = optimizePlan(
+      [m(1, "Cutting", 10), m(2, "Cutting", 5)],
+      [cut("p", 2, 1, 3, { route: [step("Cutting", 1, 2, { preferred: [2] })] })],
+      [{ key: "running", center: "Cutting", machineId: 2, pieces: 1, hours: 10 }]
+    );
+    expect(busy.placements.map((p) => p.machineId)).toEqual([1]);
+  });
+
+  it("splits only over the machines the rules allow", () => {
+    const big = { key: "big", pieces: 30, dueDay: 9, route: [step("Cutting", 60, 30, { allowed: [1, 3] })] };
+    const r = optimizePlan([m(1, "Cutting", 10), m(2, "Cutting", 10), m(3, "Cutting", 10)], [big]);
+    expect(new Set(r.placements.map((p) => p.machineId))).toEqual(new Set([1, 3]));
+  });
+});
+
 describe("boardPins — the work a plan is built around", () => {
   const q = (key: string, item: string, running: boolean, hours: number | null = 2) => ({ key, item, step: "Cutting", remaining: 4, hours, running });
   const punch = [{ machine: { id: 1 }, queue: [q("tr-running", "CF", true), q("panel-waiting", "PNL", false), q("tr-waiting", "CF", false)] }];
