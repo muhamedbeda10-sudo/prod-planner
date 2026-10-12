@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-run-order-hold",
+    dateISO: "2026-10-12",
+    title: "An order on hold leaves the approved run order",
+    where: "Cut, Welding and Painting worklists → 🎯 Approved run order",
+    body: "A paused order is no longer in the run order the floor works top-down — the ⏸️ on-hold strip just below names it instead. Release it on the Plan Tracker and its lines come back in their old place, with what is left on them; the run order itself is never changed.",
+  },
+  {
     id: "2026-10-11-phones-tablets",
     dateISO: "2026-10-11",
     title: "Tidier on phones and tablets — and less text everywhere",
