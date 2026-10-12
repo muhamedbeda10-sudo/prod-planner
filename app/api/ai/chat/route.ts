@@ -1,14 +1,20 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm, hiddenTabsOf } from "@/lib/server/auth";
 import { aiStatusFor, apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
-import { ask, questionMessage, type AiMessageParam } from "@/lib/server/ai/agent";
-import { AI_DENY_TEXT, AI_MAX_MESSAGES, AI_MAX_QUESTION, conversationTitle, costUsd } from "@/lib/domain/ai";
+import { ask, questionMessages, type AiMessageParam } from "@/lib/server/ai/agent";
+import { markOutcomesTold, pendingOutcomes } from "@/lib/server/ai/changes";
+import { toolsFor } from "@/lib/server/ai/tools";
+import { getPlaybookText } from "@/lib/server/ai/playbook";
+import { AI_DENY_TEXT, AI_MAX_MESSAGES, AI_MAX_QUESTION, conversationTitle, costUsd, questionContext } from "@/lib/domain/ai";
+import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
+import { factoryDayISO } from "@/lib/domain/dates";
 
 // One question to the AI assistant, answered as a stream of JSON lines:
 //   {type:"start", conversationId, title}
-//   {type:"status", text}   — what it is looking up now
+//   {type:"status", text}   — what it is looking up or preparing now
 //   {type:"text", delta}    — a piece of the answer
+//   {type:"action", action} — a change it prepared (or made), as its card
 //   {type:"done", costUsd, error?}
 // The access and the month's caps are checked before anything is spent; the
 // question, the answer and what it cost are kept when it ends.
@@ -56,7 +62,23 @@ export async function POST(request: Request) {
   // logged before the first call, finished after the last — what the caps
   // and the one-at-a-time rule read
   const usage = await prisma.aiUsage.create({ data: { userId: user.id, conversationId: conversation.id, model: conversation.model, question: question.slice(0, 500) } });
-  const history: AiMessageParam[] = (existing?.messages ?? []).map((m) => ({ role: m.role as "user" | "assistant", content: m.content as unknown as AiMessageParam["content"] }));
+  const history: AiMessageParam[] = (existing?.messages ?? []).map((m) => ({ role: m.role as AiMessageParam["role"], content: m.content as unknown as AiMessageParam["content"] }));
+
+  // what this person's assistant may do, and what became of what it prepared
+  const now = new Date();
+  const hidden = hiddenTabsOf(user);
+  const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused });
+  const areas = [...new Set(tools.flatMap((t) => (t.kind === "write" ? [t.area] : [])))] as AiArea[];
+  const [outcomes, playbook] = await Promise.all([existing ? pendingOutcomes(conversation.id) : { ids: [], notes: [] }, getPlaybookText()]);
+  const context = questionContext({
+    askedBy: user.name,
+    now,
+    areas,
+    canDelete: hasPerm(user, AI_DELETE_KEY),
+    noconfirm: hasPerm(user, AI_NOCONFIRM_KEY),
+    paused: settings.actionsPaused,
+    notes: outcomes.notes,
+  });
 
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -76,8 +98,16 @@ export async function POST(request: Request) {
         apiKey,
         model: conversation.model,
         history,
-        question: questionMessage(question, user.name, new Date()),
-        events: { status: (text) => send({ type: "status", text }), text: (delta) => send({ type: "text", delta }) },
+        question: questionMessages(question, context),
+        tools,
+        ctx: { user, hidden, now, todayISO: factoryDayISO(now), conversationId: conversation.id, automationId: null },
+        settings,
+        playbook,
+        events: {
+          status: (text) => send({ type: "status", text }),
+          text: (delta) => send({ type: "text", delta }),
+          action: (action) => send({ type: "action", action }),
+        },
       });
       const cost = costUsd(conversation.model, result.tokens);
 
@@ -92,6 +122,8 @@ export async function POST(request: Request) {
             data: { calls: result.calls, queries: result.queries, ...result.tokens, costUsd: cost, error: result.error?.slice(0, 1000) ?? null, finishedAt: new Date() },
           }),
         ]);
+        // the assistant read the outcomes only if its answer was kept
+        if (!result.error) await markOutcomesTold(outcomes.ids);
       } catch (e) {
         console.error("AI: could not keep the conversation", e);
         await prisma.aiUsage.update({ where: { id: usage.id }, data: { costUsd: cost, error: "could not be saved", finishedAt: new Date() } }).catch(() => {});

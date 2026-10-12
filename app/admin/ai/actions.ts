@@ -132,3 +132,21 @@ export async function setAiUserAccess(fd: FormData): Promise<AiActionResult> {
   await prisma.aiAccess.upsert({ where: { userId }, create: { userId, enabled, monthlyUsd: usd }, update: { enabled, monthlyUsd: usd } });
   return done();
 }
+
+/** The owner's brakes: stop every change by the assistant (nothing it
+ *  prepared can be approved, nothing small runs on its own), or every
+ *  automation — and start them again. */
+export async function setAiPause(fd: FormData): Promise<AiActionResult> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  const what = String(fd.get("what") ?? "");
+  const paused = fd.get("paused") === "true";
+  if (what !== "actions" && what !== "automations") return { ok: false, error: "Unknown switch." };
+  await getAiSettings();
+  await prisma.aiSettings.update({
+    where: { id: 1 },
+    data: { ...(what === "actions" ? { actionsPaused: paused } : { automationsPaused: paused }), updatedBy: g.user!.name },
+  });
+  if (what === "actions") return done(paused ? "Paused — the assistant can only read and advise now; nothing it prepared can run." : "The assistant's changes run again (each still waits for its approval).");
+  return done(paused ? "Paused — no automation fires until you start them again." : "Automations run again.");
+}

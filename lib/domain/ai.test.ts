@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  aiDecision, aiVisible, conversationTitle, costUsd, displayTurns, formatRows, jsonSafe, monthStart, prepareSql, readerUrl, usdText, type AiGate,
+  aiDecision, aiVisible, blockedTableIn, blockedTablesFor, conversationTitle, costUsd, displayTurns, formatRows, jsonSafe, monthStart, prepareSql, questionContext, readerUrl, usdText, type AiGate,
 } from "./ai";
 
 const gate = (o: Partial<AiGate>): AiGate => ({
@@ -114,5 +114,61 @@ describe("conversationTitle / displayTurns", () => {
       { role: "assistant", text: "There are **3**.", lookups: ["Late orders"] },
       { role: "user", text: "Which?", lookups: [] },
     ]);
+  });
+});
+
+describe("the chat with changes in it", () => {
+  it("skips the app's context messages and shows prepared changes as cards", () => {
+    const turns = displayTurns(
+      [
+        { role: "user", content: [{ type: "text", text: "Hold MO 7" }] },
+        { role: "system", content: "Asked by Sara on …" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "t1", name: "get_orders", input: { mos: ["7"] } },
+            { type: "tool_use", id: "t2", name: "query_database", input: { purpose: "Open orders", sql: "SELECT 1" } },
+          ],
+        },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "{}" }] },
+        { role: "assistant", content: [{ type: "text", text: "Ready." }, { type: "tool_use", id: "t3", name: "set_order_hold", input: { mos: ["7"] } }] },
+      ],
+      { get_orders: "Reading the orders", query_database: "Looking it up" },
+    );
+    expect(turns).toEqual([
+      { role: "user", text: "Hold MO 7", lookups: [] },
+      { role: "assistant", text: "Ready.", lookups: ["Reading the orders", "Open orders"], actionIds: ["t3"] },
+    ]);
+  });
+});
+
+describe("questionContext", () => {
+  const now = new Date("2026-10-12T05:30:00Z");
+  it("says what the assistant may change, and what became of earlier changes", () => {
+    const t = questionContext({ askedBy: "Sara", now, areas: ["tracker", "machines"], canDelete: false, noconfirm: false, paused: false, notes: ["Change #3 was rejected."] });
+    expect(t).toContain("Asked by Sara on Monday, 12 October 2026");
+    expect(t).toContain("08:30");
+    expect(t).toContain("the Plan Tracker and the Daily log; the machines and their distribution");
+    expect(t).toContain("No deletions.");
+    expect(t).toContain("Every change waits for the person's approval.");
+    expect(t).toContain("- Change #3 was rejected.");
+  });
+  it("says so when the owner paused the changes, or none were given", () => {
+    expect(questionContext({ askedBy: "S", now, areas: ["tracker"], canDelete: true, noconfirm: true, paused: true, notes: [] })).toContain("paused");
+    expect(questionContext({ askedBy: "S", now, areas: [], canDelete: false, noconfirm: false, paused: false, notes: [] })).toContain("only read and advise");
+  });
+});
+
+describe("hidden screens close their tables to the assistant", () => {
+  it("finds a closed table a query names, quoted as it must be", () => {
+    const blocked = blockedTablesFor(new Set(["odoo", "calendar"]));
+    expect(blocked).toEqual(["OdooEntry", "OdooNote"]);
+    expect(blockedTableIn(`SELECT count(*) FROM "OdooEntry"`, blocked)).toBe("OdooEntry");
+    expect(blockedTableIn(`SELECT count(*) FROM "MasterOrder"`, blocked)).toBeNull();
+  });
+  it("refuses the functions that run a query given as text while anything is closed", () => {
+    const blocked = blockedTablesFor(new Set(["odoo"]));
+    expect(blockedTableIn(`SELECT query_to_xml('select * from "Odoo' || 'Entry"', true, false, '')`, blocked)).not.toBeNull();
+    expect(blockedTableIn(`SELECT query_to_xml('select 1', true, false, '')`, [])).toBeNull();
   });
 });

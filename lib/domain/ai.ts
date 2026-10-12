@@ -2,6 +2,8 @@
 // pick and what they cost, what one question cost, who may ask right now,
 // and what the assistant's SQL may be and how its rows go back to it.
 
+import type { AiArea } from "./aiActions";
+
 export interface AiModelDef {
   id: string;
   label: string;
@@ -121,9 +123,43 @@ export function conversationTitle(question: string): string {
  *  ai_assistant migration); of User it reads these columns alone. */
 export const AI_PRIVATE_TABLES = [
   "Session", "UserPref", "ChatMessage", "ChatGroup", "ChatGroupMember", "ChatMessageHide", "ChatReaction",
-  "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage",
+  "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage", "AiAction",
+  "AiPlaybookEntry", "AiPlaybookRevision",
 ] as const;
 export const AI_USER_COLUMNS = ["id", "name", "active"] as const;
+
+/** The tables behind a screen the owner can hide from someone. A person who
+ *  does not see the screen is not read its data by the assistant either.
+ *  Only data that lives on ONE screen is listed: the orders, the daily log,
+ *  the plans and the machines are every screen's, and stay readable. */
+export const AI_TAB_TABLES: Record<string, readonly string[]> = {
+  odoo: ["OdooEntry", "OdooNote"],
+  consumables: [
+    "ConsumableIssue", "ConsumableIssueRevision", "ConsumableItem", "ConsumableLimit",
+    "ConsumableCatalogueChange", "ConsumableIssueRecipient", "PowderScrap", "PowderScrapRevision",
+  ],
+  physical: ["PhysicalStock"],
+  material: ["MaterialUsage"],
+  shifts: ["ShiftEntry", "DeptDayHours"],
+  barcode: ["TankUnit", "TankEvent", "TankSerialCounter"],
+  simulate: ["SimScenario", "FloorLayout"],
+};
+
+/** The tables closed to someone by the screens hidden from them. */
+export function blockedTablesFor(hidden: ReadonlySet<string>): string[] {
+  return [...hidden].flatMap((t) => AI_TAB_TABLES[t] ?? []);
+}
+
+/** The first closed table a query names, or null. Table names are case
+ *  sensitive and must be double-quoted to resolve at all, so the quoted name
+ *  is what to look for. The XML functions that run a query given as text
+ *  could name a table without quoting it in the statement, so with anything
+ *  closed they are refused outright. */
+export function blockedTableIn(sql: string, blocked: readonly string[]): string | null {
+  if (blocked.length === 0) return null;
+  if (/\b(query|table|cursor|schema|database)_to_xml/i.test(sql)) return blocked[0];
+  return blocked.find((t) => sql.includes(`"${t}"`)) ?? null;
+}
 
 /** Rows handed back per query — anything bigger is for SQL to aggregate. */
 export const AI_ROW_LIMIT = 200;
@@ -208,18 +244,24 @@ export function readerUrl(base: string, password: string): string {
 export interface AiChatTurn {
   role: "user" | "assistant";
   text: string;
-  /** What the assistant looked up on the way (each query's purpose). */
+  /** What the assistant looked up on the way (each look-up's purpose). */
   lookups: string[];
+  /** The tool calls that prepared changes — the cards shown under the answer. */
+  actionIds?: string[];
 }
 
-type Block = { type?: string; text?: string; input?: { purpose?: unknown } };
+type Block = { type?: string; text?: string; id?: string; name?: string; input?: { purpose?: unknown } };
 
 /** The kept API messages as a chat: each question (the last text block of
- *  its message — the one before it says who asked and when), then one answer
- *  gathering every assistant message and look-up up to the next question. */
-export function displayTurns(rows: readonly { role: string; content: unknown }[]): AiChatTurn[] {
+ *  its message), then one answer gathering every assistant message, look-up
+ *  and prepared change up to the next question. The app's own context
+ *  messages (role "system") are not part of what people read. `readTitles`
+ *  names the read tools, whose calls show as look-ups; any other tool call
+ *  prepared a change. */
+export function displayTurns(rows: readonly { role: string; content: unknown }[], readTitles: Readonly<Record<string, string>> = {}): AiChatTurn[] {
   const out: AiChatTurn[] = [];
   for (const r of rows) {
+    if (r.role === "system") continue;
     const blocks: Block[] = Array.isArray(r.content) ? (r.content as Block[]) : typeof r.content === "string" ? [{ type: "text", text: r.content }] : [];
     if (r.role === "user") {
       // tool results belong to the answer being worked out
@@ -235,11 +277,51 @@ export function displayTurns(rows: readonly { role: string; content: unknown }[]
     }
     for (const b of blocks) {
       if (b.type === "text" && b.text) cur.text += (cur.text ? "\n\n" : "") + b.text;
-      const purpose = b.type === "tool_use" ? b.input?.purpose : undefined;
+      if (b.type !== "tool_use") continue;
+      const purpose = b.input?.purpose;
       if (typeof purpose === "string" && purpose.trim()) cur.lookups.push(purpose.trim());
+      else if (b.name && readTitles[b.name]) cur.lookups.push(readTitles[b.name]);
+      else if (b.name && !(b.name in readTitles) && b.id) (cur.actionIds ??= []).push(b.id);
     }
   }
   return out;
+}
+
+const FACTORY_CLOCK = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Africa/Cairo", weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+
+/** The areas as the assistant is told it may work on them. */
+export const AI_AREA_LABEL: Record<AiArea, string> = {
+  tracker: "the Plan Tracker and the Daily log",
+  machines: "the machines and their distribution",
+  simulator: "the simulator",
+  data: "other data (the ODOO log, Material, Physical material, Consumables, the calendar, workers, machines)",
+  automations: "automations and scheduled reports",
+  playbook: "the plant's playbook",
+};
+
+/** The app's context for one question — the system message after it: who
+ *  asks and when, what the assistant may change for them, and what became of
+ *  the changes it prepared before. */
+export function questionContext(o: {
+  askedBy: string;
+  now: Date;
+  areas: readonly AiArea[];
+  canDelete: boolean;
+  noconfirm: boolean;
+  paused: boolean;
+  notes: readonly string[];
+}): string {
+  const lines = [`Asked by ${o.askedBy} on ${FACTORY_CLOCK.format(o.now)}, Cairo time.`];
+  if (o.paused) lines.push("The owner has paused every change by the assistant: you can only read and advise right now.");
+  else if (o.areas.length === 0) lines.push("You may not change anything for this person — you only read and advise.");
+  else {
+    lines.push(`You may prepare changes for this person on: ${o.areas.map((a) => AI_AREA_LABEL[a]).join("; ")}.${o.canDelete ? " Deletions too — each one waits for their approval." : " No deletions."}`);
+    lines.push(o.noconfirm ? "A small, low-risk change runs at once (the person opted into that); everything else waits for their approval." : "Every change waits for the person's approval.");
+  }
+  if (o.notes.length > 0) lines.push("Since your last answer:", ...o.notes.map((n) => `- ${n}`));
+  return lines.join("\n");
 }
 
 /** A conversation longer than this many kept messages takes a new chat —

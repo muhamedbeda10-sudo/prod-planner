@@ -324,6 +324,7 @@ model User {
   aiAccess         AiAccess?
   aiConversations  AiConversation[]
   aiUsage          AiUsage[]
+  aiActions        AiAction[]
 }
 
 // A person's own view settings — the Plan Tracker's columns, folded and
@@ -1333,6 +1334,12 @@ model AiSettings {
   // ai_reader's password, made by the migration that created the login and
   // never written anywhere else.
   dbPassword String   @default("")
+  // The owner's brakes. actionsPaused: nothing the assistant prepares can
+  // run — no approval goes through and nothing small runs on its own.
+  // automationsPaused: no automation fires (they stay saved, and pick up
+  // again when it comes off).
+  actionsPaused     Boolean @default(false)
+  automationsPaused Boolean @default(false)
   updatedBy  String?
   updatedAt  DateTime @updatedAt
 }
@@ -1359,6 +1366,7 @@ model AiConversation {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   messages  AiMessage[]
+  actions   AiAction[]
 
   @@index([userId, updatedAt])
 }
@@ -1400,4 +1408,88 @@ model AiUsage {
 
   @@index([at])
   @@index([userId, at])
+}
+
+// One change the assistant prepared — the proposal the person approves, and
+// the record of what it did. It never writes on its own authority: approved,
+// it runs the app's own action for the change as the person it acts for, so
+// their permissions decide and the app's usual audit columns name them,
+// marked "(AI)". Kept when the chat is deleted: this is the assistant's log.
+model AiAction {
+  id             Int             @id @default(autoincrement())
+  createdAt      DateTime        @default(now())
+  // the person it acts for — who approves it, whose permissions it runs with
+  userId         Int
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId Int?
+  conversation   AiConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  // the model's tool call that proposed it — places the card in the chat
+  toolUseId      String?
+  // or the automation that proposed it
+  automationId   Int?
+  tool           String
+  input          Json
+  title          String
+  summary        String
+  // [{label, before, after}] — what the approval card shows
+  changes        Json
+  risk           String // low | high | destructive
+  // the data the proposal was made on; approved, it runs only if the data
+  // still reads the same
+  snapshot       Json?
+  status         String          @default("proposed") // proposed | executing | executed | failed | rejected | stale | expired | undone
+  // ran without an approval click: a small change the person opted into
+  auto           Boolean         @default(false)
+  expiresAt      DateTime?
+  decidedAt      DateTime?
+  executedAt     DateTime?
+  result         String?
+  error          String?
+  // how to put it back: {tool, input, expect} — expect is the data as the
+  // change left it; the undo runs only while it still reads so
+  undo           Json?
+  undoOfId       Int?
+  undoneAt       DateTime?
+  // when the outcome was told to the assistant (at the person's next question)
+  reportedAt     DateTime?
+
+  @@index([userId, createdAt])
+  @@index([conversationId])
+  @@index([status, expiresAt])
+  @@index([automationId])
+}
+
+// The plant's playbook for the assistant: the rules its people explained to
+// it — how lines are shared out over the machines, what a morning report must
+// carry, which customer goes first — kept by the admins (through the
+// assistant or on the playbook page) and given to the assistant with every
+// question. A rule taken off stays in the table, inactive, with its history.
+model AiPlaybookEntry {
+  id        Int                  @id @default(autoincrement())
+  // machines | planning | reports | general — a heading, not a switch
+  topic     String
+  title     String
+  body      String
+  active    Boolean              @default(true)
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  revisions AiPlaybookRevision[]
+
+  @@index([active])
+}
+
+// Every change to a playbook rule: who, when, the rule before and after.
+model AiPlaybookRevision {
+  id      Int             @id @default(autoincrement())
+  entryId Int
+  entry   AiPlaybookEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  action  String // create | update | retire | restore
+  before  Json?
+  after   Json?
+  by      String
+  at      DateTime        @default(now())
+
+  @@index([entryId])
 }

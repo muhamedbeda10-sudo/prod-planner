@@ -14,6 +14,10 @@ export interface PermDef {
   /** A notification, not an access right: never ticked in bulk (an admin
    *  gets the access rights, not everyone's alerts). */
   notify?: true;
+  /** A choice the person opts into, not an access right: never ticked in
+   *  bulk, and not handed to the owner with the rights either — the owner
+   *  ticks it for themselves like anyone else. */
+  optIn?: true;
 }
 
 export interface PermCategory {
@@ -111,7 +115,26 @@ export const PERM_CATEGORIES: PermCategory[] = [
       { key: "plans.import", label: "Plans — import", desc: "Import monthly plans (Orders Registry) and weekly plans" },
       { key: "logs.import", label: "Daily Logs — Excel import", desc: "Bulk-import handover logs from Excel (writes to all departments)" },
       { key: "calendar.manage", label: "Calendar — manage", desc: "Add and remove factory holidays" },
-      { key: "machines.manage", label: "Machines — manage", desc: "Add, edit and retire the machines and lines of each department (the shift log and the worklists read the list)" },
+      { key: "machines.manage", label: "Machines — manage", desc: "Add, edit and retire the machines and lines of each department (the shift log and the worklists read the list), and keep each machine's rules — which work it takes, never takes or is preferred for — that ⚡ Plan follows" },
+      { key: "simulator.edit", label: "Simulator — save and delete scenarios", desc: "Save what-if scenarios on the Simulator under a name, overwrite them and delete them. Applying a scenario as the run order stays the admin's" },
+    ],
+  },
+  {
+    // What the assistant may DO for this person. It never does more than the
+    // person may do themselves: every change also needs the person's own key
+    // for it (a tracker column, a worklist, the Odoo log …), and waits for
+    // their approval in the chat unless it is a small one and they opted in.
+    name: "AI assistant",
+    perms: [
+      { key: "ai.act.tracker", label: "AI — Plan Tracker and Daily log", desc: "The assistant may prepare changes on the Plan Tracker and the Daily log for this person: close, reopen, hold and flag orders, quantities, specs and components, recorded totals and log corrections. Each one still needs the person's own tracker or log permission for it" },
+      { key: "ai.act.machines", label: "AI — machines and the distribution", desc: "The assistant may put lines on machines, order and split the queues, run ⚡ Plan, and keep the machines' rules — within the person's own worklist and machines permissions" },
+      { key: "ai.act.simulator", label: "AI — the simulator", desc: "The assistant may build and run what-if scenarios, save and delete them, and — for an admin — apply one as the run order" },
+      { key: "ai.act.data", label: "AI — other data", desc: "The assistant may change the rest of the app's data for this person — the ODOO log, Material, Physical material, Consumables, the calendar, workers and machines — each within the person's own permission for it" },
+      { key: "ai.act.delete", label: "AI — deletions", desc: "The assistant may prepare deletions (log rows, scenarios, queue lines, holidays …). A deletion always waits for an explicit approval, whatever else is ticked, and the assistant's log keeps what it removed" },
+      { key: "ai.automations", label: "AI — automations and scheduled reports", desc: "Create automations with the assistant — \"when this happens, tell that person\", \"every working day at 7:30 send me a report on …\". They run as this person, with this person's permissions, and stop when those are taken away" },
+      { key: "ai.automations.act", label: "AI — automations may change data", desc: "An automation of this person may prepare changes — they wait in the person's AI inbox for approval, or the small ones run on their own when the person also opted into small changes without asking" },
+      { key: "ai.act.noconfirm", optIn: true, label: "AI — small changes without asking", desc: "Not an access right but a choice: the assistant makes LOW-RISK changes (a flag, a spec, a queue's order …) without waiting for an approval click. Quantities, closings, the run order, deletions and anything over several rows still wait. Never ticked in bulk" },
+      { key: "ai.suggestions", notify: true, label: "AI — daily review and suggestions", desc: "Not an access right but a notification: every working morning the assistant reviews the plant for this person and sends its suggestions to their AI inbox, each with the change ready to approve. Ticked per person" },
     ],
   },
 ];
@@ -120,8 +143,9 @@ export const PERMISSIONS: PermDef[] = PERM_CATEGORIES.flatMap((c) => c.perms);
 
 export const PERM_KEYS = new Set(PERMISSIONS.map((p) => p.key));
 
-/** Every access right (no notifications) — what an admin starts ticked with. */
-export const ACCESS_PERM_KEYS = PERMISSIONS.filter((p) => !p.notify).map((p) => p.key);
+/** Every access right (no notifications, no opt-in choices) — what an admin
+ *  starts ticked with, and what the owner holds without ticking. */
+export const ACCESS_PERM_KEYS = PERMISSIONS.filter((p) => !p.notify && !p.optIn).map((p) => p.key);
 
 /** Retired keys auto-expand to their granular successors, so accounts created
  *  before the split keep working without touching the database. */

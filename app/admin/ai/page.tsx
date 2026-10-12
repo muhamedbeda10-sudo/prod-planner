@@ -29,6 +29,7 @@ export default async function AiAdminPage() {
     prisma.aiUsage.aggregate({ where: { at: { gte: lastFrom, lt: from } }, _sum: { costUsd: true } }),
     prisma.aiUsage.findMany({ orderBy: { at: "desc" }, take: 40, include: { user: { select: { name: true } } } }),
   ]);
+  const changes = await prisma.aiAction.findMany({ orderBy: { id: "desc" }, take: 60, include: { user: { select: { name: true } } } });
   const accessOf = new Map(access.map((a) => [a.userId, a]));
   const usageOf = new Map(byUser.map((u) => [u.userId, u]));
 
@@ -63,6 +64,20 @@ export default async function AiAdminPage() {
               lastAt: used?._max.at?.toISOString() ?? null,
             };
           }),
+          actionsPaused: s.actionsPaused,
+          automationsPaused: s.automationsPaused,
+          changes: changes.map((c) => ({
+            id: c.id,
+            at: c.createdAt.toISOString(),
+            who: c.user.name,
+            title: c.title,
+            summary: c.summary,
+            status: c.status,
+            risk: c.risk,
+            auto: c.auto,
+            automationId: c.automationId,
+            error: c.error,
+          })),
           recent: recent.map((r) => ({
             id: r.id,
             at: r.at.toISOString(),

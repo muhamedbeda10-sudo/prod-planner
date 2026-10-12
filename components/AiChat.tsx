@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Bot, Check, Copy, Loader2, MessageSquare, PanelLeft, Plus, Search, Send, Trash2, X } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
+import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
 import { deleteAiConversation, loadAiConversation } from "@/app/ai/actions";
 import { AI_MAX_QUESTION, usdText, type AiChatTurn } from "@/lib/domain/ai";
+import type { AiActionView } from "@/lib/domain/aiActions";
 
 // The AI assistant's chat: the person's conversations on the side (a drawer
 // below a laptop's width), the open one in the middle, the answer streaming
-// in as it is written — what it is looking up shown while it looks — and the
-// month's spend under the box.
+// in as it is written — what it is looking up shown while it looks, the
+// changes it prepares as cards to approve — and the month's spend under the
+// box.
 
 interface Turn extends AiChatTurn {
   error?: string;
@@ -57,11 +60,14 @@ export function AiChat({
   isOwner: boolean;
   status: AiChatStatus;
   conversations: Conv[];
-  initial: { id: number; turns: AiChatTurn[] } | null;
+  initial: { id: number; turns: AiChatTurn[]; actions: AiActionView[] } | null;
 }) {
   const [convs, setConvs] = useState<Conv[]>(conversations);
   const [activeId, setActiveId] = useState<number | null>(initial?.id ?? null);
   const [turns, setTurns] = useState<Turn[]>(initial?.turns ?? []);
+  // the cards, by the tool call that prepared them
+  const [actions, setActions] = useState<Record<string, AiActionView>>(() => byCall(initial?.actions ?? []));
+  const putAction = (v: AiActionView) => setActions((m) => (v.toolUseId ? { ...m, [v.toolUseId]: v } : m));
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<string | null>(null);
@@ -113,6 +119,7 @@ export function AiChat({
     }
     setActiveId(id);
     setTurns(r.turns ?? []);
+    setActions(byCall(r.actions ?? []));
     setUrl(id);
   }
 
@@ -120,6 +127,7 @@ export function AiChat({
     if (busy) return;
     setActiveId(null);
     setTurns([]);
+    setActions({});
     setLoadErr(null);
     setSideOpen(false);
     setUrl(null);
@@ -149,6 +157,13 @@ export function AiChat({
       setLive(null);
       pending.current += String(ev.delta ?? "");
       if (!flushTimer.current) flushTimer.current = setTimeout(flush, 60);
+    } else if (ev.type === "action") {
+      const v = ev.action as AiActionView;
+      putAction(v);
+      if (v.toolUseId) {
+        const id = v.toolUseId;
+        patchLast((t) => ({ ...t, actionIds: [...(t.actionIds ?? []).filter((x) => x !== id), id] }));
+      }
     } else if (ev.type === "done") {
       flush();
       const cost = Number(ev.costUsd ?? 0);
@@ -266,7 +281,14 @@ export function AiChat({
                     <div dir="auto" className="max-w-[88%] sm:max-w-[80%] rounded-2xl rounded-ee-md bg-brand-light px-3.5 py-2 text-[15px] whitespace-pre-wrap break-words">{t.text}</div>
                   </div>
                 ) : (
-                  <Answer key={i} turn={t} live={busy && i === turns.length - 1 ? live : null} streaming={busy && i === turns.length - 1} />
+                  <Answer
+                    key={i}
+                    turn={t}
+                    live={busy && i === turns.length - 1 ? live : null}
+                    streaming={busy && i === turns.length - 1}
+                    actions={(t.actionIds ?? []).flatMap((id) => (actions[id] ? [actions[id]] : []))}
+                    onAction={putAction}
+                  />
                 ),
               )}
             </div>
@@ -346,7 +368,14 @@ function Welcome({ onPick, disabled }: { onPick: (q: string) => void; disabled: 
   );
 }
 
-function Answer({ turn, live, streaming }: { turn: Turn; live: string | null; streaming: boolean }) {
+/** The cards keyed by the tool call that prepared them. */
+function byCall(list: readonly AiActionView[]): Record<string, AiActionView> {
+  const out: Record<string, AiActionView> = {};
+  for (const v of list) if (v.toolUseId) out[v.toolUseId] = v;
+  return out;
+}
+
+function Answer({ turn, live, streaming, actions, onAction }: { turn: Turn; live: string | null; streaming: boolean; actions: AiActionView[]; onAction: (v: AiActionView) => void }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex gap-2.5">
@@ -370,6 +399,8 @@ function Answer({ turn, live, streaming }: { turn: Turn; live: string | null; st
             {live}
           </div>
         )}
+        {actions.map((v) => <AiActionCard key={v.id} view={v} onChange={onAction} />)}
+        {!streaming && <ApproveAll views={actions} onChange={onAction} />}
         {turn.error && <p className="text-sm font-semibold text-bad-fg mt-1">{turn.error}</p>}
         {!streaming && turn.text && (
           <button
