@@ -246,6 +246,39 @@ export async function deleteOdooEntry(formData: FormData): Promise<OdooActionRes
   return { ok: true };
 }
 
+/** A merged line's head, edited like a row: the SOI, product, MO and status
+ *  typed there land on every row under it. Each row keeps its own date and
+ *  quantity — those are what tell the closings apart. */
+export async function updateOdooGroup(formData: FormData): Promise<OdooActionResult> {
+  const ids = idsOf(formData);
+  if (ids.length === 0) return { ok: false, error: "Invalid entry." };
+  const guard = await guardRows(ids);
+  if (guard.error) return { ok: false, error: guard.error };
+  const f = read(formData);
+  if (!f.product) return { ok: false, error: "Enter the product (Tank, Top Cover, …)." };
+  const prev = await prisma.odooEntry.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, doneAt: true, date: true, ledgerId: true } });
+  if (prev.length === 0) return { ok: false, error: "That row no longer exists." };
+  if (!f.odooMo && prev.some((p) => p.ledgerId === null)) return { ok: false, error: "Enter the Odoo MO number." };
+  const by = guard.user?.name ?? null;
+  await prisma.$transaction(prev.map((p) => prisma.odooEntry.update({
+    where: { id: p.id },
+    data: { soi: f.soi, product: f.product, odooMo: f.odooMo, status: f.status, doneAt: doneAtFor(f.status, p, p.date), recordedBy: by },
+  })));
+  revalidateOdoo();
+  return { ok: true };
+}
+
+/** Delete every row of a merged line at once. */
+export async function deleteOdooEntries(formData: FormData): Promise<OdooActionResult> {
+  const ids = idsOf(formData);
+  if (ids.length === 0) return { ok: false, error: "Invalid entry." };
+  const guard = await guardRows(ids);
+  if (guard.error) return { ok: false, error: guard.error };
+  await prisma.odooEntry.deleteMany({ where: { id: { in: ids } } });
+  revalidateOdoo();
+  return { ok: true };
+}
+
 /** Import the clerk's sheet once — its first seven columns; notes are never read. */
 export async function importOdooAction(formData: FormData): Promise<OdooImportResult> {
   const line = await lineOf(formData);

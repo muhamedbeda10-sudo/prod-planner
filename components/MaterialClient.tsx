@@ -20,6 +20,7 @@ import { CellEditor, GroupBand, GroupLegend, TableEmpty, TableFrame, Th, useConf
 import { parseSaved, savedString, useStoredFilters } from "@/components/useStoredFilters";
 import {
   createMaterialLine, createLvOrderLines, updateMaterialLine, setActualPerUnit, setSheetsUsed, setProducedQty, setUtilization, deleteMaterialLine, importMaterialAction,
+  updateMaterialGroup, deleteMaterialLines,
 } from "@/app/material/actions";
 
 // The MATERIAL tab — the planner's material sheet as one living table: no
@@ -416,38 +417,207 @@ function SumCells({ s, showMonth }: { s: Sums; showMonth: boolean }) {
   );
 }
 
-function SoiGroupRow({ g, open, onToggle, odoo, showMonth }: { g: MaterialSoiGroup; open: boolean; onToggle: () => void; odoo: Record<string, string>; showMonth: boolean }) {
+/** What every line of a group agrees on — or null where they differ. */
+function sharedOf<T>(values: T[]): T | null {
+  return values.every((v) => v === values[0]) ? values[0] : null;
+}
+const asText = (v: string | number | null) => (v === null ? "" : String(v));
+
+/** One cell of a group's head row, typed like a line's cell — what is typed
+ *  lands on EVERY line of the group. Where the lines differ the box is empty
+ *  and says so; leaving it empty changes nothing. */
+function GroupInput({ ids, field, values, title, type = "number", step = "0.01", className = "" }: {
+  ids: number[]; field: "mtr" | "soi" | "mo" | "bom" | "units" | "utilization" | "producedQty";
+  values: (string | number | null)[]; title: string; type?: "number" | "text"; step?: string; className?: string;
+}) {
+  const a = useAction();
+  const shared = sharedOf(values.map(asText));
+  const distinct = new Set(values.map(asText)).size;
+  function save(v: string) {
+    const fd = new FormData();
+    fd.set("ids", ids.join(","));
+    fd.set(field, v);
+    a.run(updateMaterialGroup, fd, "Saved.");
+  }
+  return (
+    <span className="flex flex-col items-end">
+      <CellEditor
+        col={`group-${field}`} type={type} value={shared ?? ""} onCommit={save} step={type === "number" ? step : undefined} min={type === "number" ? "0" : undefined}
+        disabled={a.pending} placeholder={shared === null ? "mixed" : "—"}
+        title={`${title} — typing it here sets it on all ${ids.length} lines${shared === null ? ` (they hold ${distinct} different values now)` : ""}`}
+        ariaLabel={`${title} for all ${ids.length} lines`}
+        className={`${cellInput} ${type === "text" ? "ltr text-xs" : ""} ${className}`.trim()}
+      />
+      {a.msg?.ok === false && <span className="text-[10px] text-bad-fg whitespace-normal">{a.msg.text}</span>}
+    </span>
+  );
+}
+
+/** The fields a group's "Edit all lines" form offers: the order's, which every
+ *  line carries alike. The per-material figures stay on each line. */
+const GROUP_FORM: { name: "mtr" | "soi" | "mo" | "bom" | "units" | "utilization" | "producedQty" | "note"; label: string; num?: boolean; step?: string; className: string }[] = [
+  { name: "mtr", label: "MTR Request #", className: "w-32" },
+  { name: "soi", label: "SOI", className: "w-28" },
+  { name: "mo", label: "MO", className: "w-40" },
+  { name: "bom", label: "BOM Ref", className: "w-36" },
+  { name: "units", label: "Units", num: true, step: "1", className: "w-20" },
+  { name: "utilization", label: "Utilization", num: true, step: "0.0001", className: "w-24" },
+  { name: "producedQty", label: "Quantity", num: true, step: "1", className: "w-24" },
+  { name: "note", label: "Notes", className: "w-48" },
+];
+
+function SoiGroupRow({ g, open, onToggle, odoo, showMonth, canEdit }: { g: MaterialSoiGroup; open: boolean; onToggle: () => void; odoo: Record<string, string>; showMonth: boolean; canEdit: boolean }) {
   const onOdoo = g.mos.filter((mo) => odoo[mo.toUpperCase()]);
   const shownMos = g.mos.slice(0, 4);
+  const ids = g.lines.map((l) => l.id);
+  const n = ids.length;
+  const [editing, setEditing] = useState(false);
+  const edit = useAction();
+  const del = useAction();
+  const [confirmDelete, confirmDialog] = useConfirm();
+  const initial = Object.fromEntries(GROUP_FORM.map((f) => [f.name, sharedOf(g.lines.map((l) => asText(l[f.name])))])) as Record<string, string | null>;
+  const label = g.soi || "No SOI";
+  const row = useRowMenu(() => [
+    { heading: `${label} · ${n} lines` },
+    { key: "edit", label: `Edit all ${n} lines…`, icon: "✏️", onSelect: () => setEditing(true) },
+    { key: "fold", label: open ? "Fold the lines" : "Show the lines", icon: open ? "▴" : "▾", onSelect: onToggle },
+    ...(g.lines[0]?.bom ? [{ key: "trace", label: "Open the order's details", icon: "🔍", href: `/trace?bom=${encodeURIComponent(g.lines[0].bom)}` }] : []),
+    { sep: true },
+    {
+      key: "delete", label: `Delete all ${n} lines…`, icon: "🗑", danger: true, disabled: del.pending,
+      onSelect: async () => {
+        const ok = await confirmDelete({
+          title: `Delete the ${n} lines of ${label}?`,
+          body: <>Every line of this SOI leaves the table for good. Their sheets drop out of the totals below.</>,
+          items: g.lines.map((l) => `${l.mo || l.bom} · ${l.partCode ? `${l.partCode} ` : ""}${l.material} ${l.thicknessMm} mm ${l.sheetSize}`),
+          confirmLabel: `Delete ${n} lines`,
+          danger: true,
+        });
+        if (!ok) return;
+        const fd = new FormData(); fd.set("ids", ids.join(","));
+        del.run(deleteMaterialLines, fd, "Deleted.");
+      },
+    },
+  ], `Actions for ${label}`);
+  const s: Sums = g;
+  const diffCls = s.difference === null ? "" : s.difference < 0 ? "text-bad-fg" : s.difference > 0 ? "text-ok-fg" : "text-muted";
+  const sharedMo = sharedOf(g.lines.map((l) => l.mo.trim()));
+  const sharedBom = sharedOf(g.lines.map((l) => l.bom));
+  const sharedNote = sharedOf(g.lines.map((l) => l.note ?? ""));
+  const sharedMonth = sharedOf(g.lines.map((l) => l.month));
   return (
-    <tr className="mat-group">
-      <td className="p-2 stick stick-end" colSpan={3} style={STICK_ALL}>
-        <button type="button" onClick={onToggle} aria-expanded={open} className="inline-flex items-center gap-1.5 font-bold ltr" title={open ? "Fold this SOI" : "Show this SOI's lines"}>
-          <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
-          {g.soi || <span className="text-muted font-semibold">No SOI</span>}
-          <span className="text-xs text-muted font-semibold tabnum">· {g.mos.length} MO{g.mos.length === 1 ? "" : "s"} · {g.lines.length} line{g.lines.length === 1 ? "" : "s"}</span>
-        </button>
-      </td>
-      <td className="p-2" colSpan={11}>
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs ltr">
-          {g.mos.length > 0 && (
-            <span
-              className={`pill ${onOdoo.length === g.mos.length ? "pill-ok" : onOdoo.length ? "pill-warn" : "pill-muted"}`}
-              title={onOdoo.length ? `On the ODOO tab: ${onOdoo.join(", ")}` : "No ODOO row carries these MOs yet"}
-            >
-              {onOdoo.length > 0 && <Check size={10} aria-hidden />}ODOO {onOdoo.length}/{g.mos.length}
+    <>
+      <tr className="mat-group" {...(canEdit ? { onContextMenu: row.onContextMenu } : {})}>
+        <td className={`p-2 ltr text-xs ${stickCls(0)}`} style={stickStyle(0)}>
+          <span className="flex items-center gap-1">
+            <button type="button" onClick={onToggle} aria-expanded={open} className="icon-btn !p-0.5 shrink-0" title={open ? "Fold this SOI" : "Show this SOI's lines"} aria-label={open ? `Fold ${label}` : `Show the lines of ${label}`}>
+              <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+            </button>
+            {canEdit ? <GroupInput ids={ids} field="mtr" type="text" values={g.lines.map((l) => l.mtr)} title="MTR Request #" className="w-full" />
+              : <span className="block truncate">{sharedOf(g.lines.map((l) => l.mtr)) || <span className="text-muted">—</span>}</span>}
+          </span>
+        </td>
+        <td className={`p-2 ltr text-xs font-bold ${stickCls(1)}`} style={stickStyle(1)}>
+          {canEdit ? <GroupInput ids={ids} field="soi" type="text" values={g.lines.map((l) => l.soi)} title="SOI" className="w-full font-bold" />
+            : <span className="block truncate">{g.soi || <span className="text-muted font-semibold">No SOI</span>}</span>}
+        </td>
+        <td className={`p-2 font-bold whitespace-nowrap ltr text-xs ${stickCls(2)}`} style={stickStyle(2)}>
+          {sharedMo !== null ? (
+            canEdit ? (
+              <span className="flex items-center gap-1.5 min-w-0">
+                <GroupInput ids={ids} field="mo" type="text" values={g.lines.map((l) => l.mo.trim())} title="MO" className="w-28" />
+                {sharedMo && (odoo[sharedMo.toUpperCase()]
+                  ? <span className="pill pill-ok shrink-0" title={`On the ODOO tab — ${odoo[sharedMo.toUpperCase()]}`}><Check size={10} aria-hidden /></span>
+                  : <span className="pill pill-muted shrink-0" title="No ODOO row carries this MO yet">no ODOO</span>)}
+              </span>
+            ) : <MoCell mo={sharedMo} odoo={odoo} />
+          ) : (
+            <span className="flex items-center gap-1.5">
+              {g.mos.length} MOs
+              <span
+                className={`pill ${onOdoo.length === g.mos.length ? "pill-ok" : onOdoo.length ? "pill-warn" : "pill-muted"}`}
+                title={onOdoo.length ? `On the ODOO tab: ${onOdoo.join(", ")}` : "No ODOO row carries these MOs yet"}
+              >
+                {onOdoo.length > 0 && <Check size={10} aria-hidden />}ODOO {onOdoo.length}/{g.mos.length}
+              </span>
             </span>
           )}
-          {shownMos.map((mo) => (
-            <span key={mo} className="inline-flex items-center gap-1 text-muted">
-              {mo}{odoo[mo.toUpperCase()] && <Check size={11} className="text-ok-fg" aria-label="on the ODOO tab" />}
-            </span>
-          ))}
-          {g.mos.length > shownMos.length && <span className="text-muted" title={g.mos.slice(4).join(", ")}>+{g.mos.length - shownMos.length} more</span>}
-        </span>
-      </td>
-      <SumCells s={g} showMonth={showMonth} />
-    </tr>
+        </td>
+        <td className="p-2 whitespace-nowrap ltr text-xs">
+          {sharedBom !== null
+            ? (canEdit ? <GroupInput ids={ids} field="bom" type="text" values={g.lines.map((l) => l.bom)} title="BOM Ref" className="w-32" /> : <BomLink bom={sharedBom} />)
+            : <span className="text-muted" title={[...new Set(g.lines.map((l) => l.bom))].join(", ")}>{new Set(g.lines.map((l) => l.bom)).size} BOMs</span>}
+        </td>
+        <td className={`p-2 ${NUM}`}>
+          {canEdit ? <GroupInput ids={ids} field="units" step="1" values={g.lines.map((l) => l.units)} title="Quantity of units" className="w-16" />
+            : <Units v={sharedOf(g.lines.map((l) => l.units))} />}
+        </td>
+        <td className="p-2" colSpan={9}>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs ltr">
+            <span className="font-semibold text-muted tabnum">{n} line{n === 1 ? "" : "s"}</span>
+            {g.mos.length > 1 && shownMos.map((mo) => (
+              <span key={mo} className="inline-flex items-center gap-1 text-muted">
+                {mo}{odoo[mo.toUpperCase()] && <Check size={11} className="text-ok-fg" aria-label="on the ODOO tab" />}
+              </span>
+            ))}
+            {g.mos.length > shownMos.length && <span className="text-muted" title={g.mos.slice(4).join(", ")}>+{g.mos.length - shownMos.length} more</span>}
+            {edit.msg?.ok === false && <span className="text-bad-fg">{edit.msg.text}</span>}
+            {del.msg?.ok === false && <span className="text-bad-fg">{del.msg.text}</span>}
+          </span>
+        </td>
+        <td className={`p-2 ${NUM} emph`}><Sheets v={s.forJob} /></td>
+        <td className={`p-2 ${NUM} emph`} title="The lines' pieces nested for the job, added up — type each line's below"><Sheets v={s.sheetsUsed} /></td>
+        <td className={`p-2 ${NUM}`}>
+          {canEdit ? <GroupInput ids={ids} field="utilization" step="0.0001" values={g.lines.map((l) => l.utilization)} title="Average utilization" className="w-20" />
+            : <Utilization v={sharedOf(g.lines.map((l) => l.utilization))} />}
+        </td>
+        <td className={`p-2 ${NUM} emph`}><Sheets v={s.actualWeightKg} digits={3} /></td>
+        <td className={`p-2 ${NUM} emph ${diffCls}`}><Sheets v={s.difference} /></td>
+        <td className="p-2 text-xs min-w-[8rem] max-w-[200px]">{sharedNote ?? <span className="text-muted">…</span>}</td>
+        <td className={`p-2 ${NUM}`}>
+          {canEdit ? <GroupInput ids={ids} field="producedQty" step="1" values={g.lines.map((l) => l.producedQty)} title="The quantity to cost" className="w-16" />
+            : <Units v={sharedOf(g.lines.map((l) => l.producedQty))} />}
+        </td>
+        <td className={`p-2 ${NUM} font-semibold`}><Sheets v={s.forProduced} /></td>
+        {showMonth && <td className="p-2 whitespace-nowrap text-xs">{sharedMonth ?? <span className="text-muted">…</span>}</td>}
+        <td className="px-1 text-center whitespace-nowrap no-print">
+          {canEdit ? <>{row.button}{row.menu}{confirmDialog}</> : <span className="text-muted text-xs">—</span>}
+        </td>
+      </tr>
+      {editing && (
+        <Modal title={`Edit all ${n} lines of ${label}`} sub="What you change here lands on every line of the SOI; a box left as it is changes nothing" onClose={() => setEditing(false)} busy={edit.pending} width="max-w-3xl">
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const form = new FormData(e.currentTarget);
+            const fd = new FormData(); fd.set("ids", ids.join(","));
+            for (const f of GROUP_FORM) {
+              const v = String(form.get(f.name) ?? "").trim();
+              const was = initial[f.name];
+              // a field the lines differ on changes only when something is typed
+              if (was === null ? v !== "" : v !== was.trim()) fd.set(f.name, v);
+            }
+            edit.run(updateMaterialGroup, fd, "Saved.", () => setEditing(false));
+          }}>
+            <div className="flex flex-wrap items-end gap-2">
+              {GROUP_FORM.map((f) => (
+                <Field key={f.name} label={f.label} hint={initial[f.name] === null ? `${f.label} — the lines differ; type one to set it on all of them` : `${f.label} — the same on every line`} className={f.className}>
+                  <input
+                    name={f.name} type={f.num ? "number" : "text"} step={f.step} min={f.num ? "0" : undefined} aria-label={f.label}
+                    defaultValue={initial[f.name] ?? ""} placeholder={initial[f.name] === null ? "differs — keep" : ""} disabled={edit.pending}
+                    className={`${F} ${f.num ? "ltr tabnum" : f.name === "note" ? "" : "ltr"} w-full`}
+                  />
+                </Field>
+              ))}
+            </div>
+            <Msg msg={edit.msg} />
+            <div className="flex justify-end gap-2 pt-3 mt-3 border-t">
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(false)} disabled={edit.pending}>Cancel</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={edit.pending}>{edit.pending ? "Saving…" : `Save ${n} lines`}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -901,11 +1071,13 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
                 {lv || !bySoi
                   ? shown.map((l) => <LineRow key={l.id} line={l} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} />)
                   : soiGroups.map((g) => (
+                    // a SOI of one line needs no head: the line is the row
+                    g.lines.length === 1 ? <LineRow key={g.lines[0].id} line={g.lines[0]} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} /> : (
                     <Fragment key={`soi-${g.soi}`}>
-                      <SoiGroupRow g={g} open={!folded.has(g.soi)} onToggle={() => toggleFold(g.soi)} odoo={odooByMo} showMonth={showMonth} />
+                      <SoiGroupRow g={g} open={!folded.has(g.soi)} onToggle={() => toggleFold(g.soi)} odoo={odooByMo} showMonth={showMonth} canEdit={canEdit} />
                       {!folded.has(g.soi) && g.lines.map((l) => <LineRow key={l.id} line={l} knownBoms={knownBoms} knownCodes={knownCodes} canEdit={canEdit} showMonth={showMonth} product={product} odoo={odooByMo} />)}
                     </Fragment>
-                  ))}
+                  )))}
               </tbody>
               {!lv && (
                 // what the lines on screen add up to, pinned under the sheet
