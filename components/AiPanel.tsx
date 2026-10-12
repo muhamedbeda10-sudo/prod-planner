@@ -177,12 +177,12 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
   if (!p || !made) return null;
   const { state } = p;
 
-  const iconBtn = "grid place-items-center w-8 h-8 rounded-md text-muted hover:text-foreground hover:bg-surface-2";
+  const iconBtn = "icon-btn icon-btn-md";
   return (
     <aside
       aria-label="AI assistant"
       hidden={!p.shown}
-      className={`no-print fixed z-[29] top-[49px] bottom-0 right-0 left-0 flex flex-col bg-surface text-foreground shadow-2xl ${
+      className={`ai-panel no-print fixed z-[29] top-[49px] bottom-0 right-0 left-0 flex flex-col bg-surface text-foreground shadow-2xl ${
         state.expanded ? "" : "lg:left-auto lg:w-[var(--ai-panel-w)] lg:border-l"
       }`}
     >

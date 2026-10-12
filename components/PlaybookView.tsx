@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { BookOpen, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { EmptyState } from "@/components/primitives";
 import { Modal } from "@/components/Modal";
 import { savePlaybookRule, setPlaybookRuleActive } from "@/app/ai/playbook/actions";
 import { PLAYBOOK_BODY_MAX, PLAYBOOK_TITLE_MAX, PLAYBOOK_TOPICS, PLAYBOOK_TOPIC_LABEL, isPlaybookTopic } from "@/lib/domain/aiPlaybook";
@@ -75,26 +76,30 @@ function Rule({ rule, canEdit, onEdit, onChanged }: { rule: PlaybookRuleView; ca
     });
   };
   return (
-    <li className={`border rounded-xl bg-surface px-3 py-2 ${rule.active ? "" : "opacity-60"}`}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted tabnum">#{rule.id}</span>
-        <span className="font-bold" dir="auto">{rule.title}</span>
-        {!rule.active && <span className="pill pill-muted text-[11px]">Retired</span>}
-        <span className="ms-auto text-xs text-muted">{rule.updatedBy ? `${rule.updatedBy} · ` : ""}{formatDateTime(rule.updatedAt)}</span>
+    <li className={`rounded-xl border bg-surface px-3 py-3 sm:px-4 ${rule.active ? "" : "opacity-60"}`}>
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-sm font-bold" dir="auto">{rule.title}</span>
+            {!rule.active && <span className="pill pill-muted">Retired</span>}
+            <span className="text-[11px] text-muted tabnum">#{rule.id}</span>
+          </div>
+          <p className="text-sm mt-1 whitespace-pre-wrap leading-relaxed" dir="auto">{rule.body}</p>
+          <p className="text-[11px] text-muted mt-1.5">
+            {rule.updatedBy ? `${rule.updatedBy} · ` : ""}{formatDateTime(rule.updatedAt)}
+            {rule.revisions.length > 1 && ` · ${rule.revisions.length} revisions`}
+          </p>
+        </div>
         {canEdit && (
-          <span className="inline-flex gap-1">
-            {rule.active && <button type="button" className="btn btn-sm" onClick={onEdit} disabled={pending} aria-label={`Edit rule ${rule.id}`}><Pencil size={13} aria-hidden /></button>}
-            <button type="button" className="btn btn-sm" onClick={toggle} disabled={pending} aria-label={rule.active ? `Retire rule ${rule.id}` : `Bring back rule ${rule.id}`}>
+          <span className="inline-flex gap-0.5 shrink-0">
+            {rule.active && <button type="button" className="icon-btn" onClick={onEdit} disabled={pending} aria-label={`Edit rule ${rule.id}`} title="Edit"><Pencil size={13} aria-hidden /></button>}
+            <button type="button" className={`icon-btn ${rule.active ? "icon-btn-danger" : ""}`} onClick={toggle} disabled={pending} aria-label={rule.active ? `Retire rule ${rule.id}` : `Bring back rule ${rule.id}`} title={rule.active ? "Retire" : "Bring back"}>
               {rule.active ? <Trash2 size={13} aria-hidden /> : <RotateCcw size={13} aria-hidden />}
             </button>
           </span>
         )}
       </div>
-      <p className="text-sm whitespace-pre-wrap mt-1" dir="auto">{rule.body}</p>
-      {rule.revisions.length > 1 && (
-        <p className="text-[11px] text-muted mt-1">{rule.revisions.map((v) => `${v.action} by ${v.by}, ${formatDateTime(v.at)}`).join(" · ")}</p>
-      )}
-      {err && <p className="text-sm font-semibold text-bad-fg">{err}</p>}
+      {err && <p className="text-sm font-semibold text-bad-fg mt-1">{err}</p>}
     </li>
   );
 }
@@ -108,23 +113,30 @@ export function PlaybookView({ rules, canEdit, left, onChanged }: { rules: Playb
   const rule = (r: PlaybookRuleView) => <Rule key={r.id} rule={r} canEdit={canEdit} onEdit={() => setEditing(r)} onChanged={onChanged} />;
   return (
     <div className="space-y-4">
-      {canEdit && (
-        <div className="flex">
-          <button type="button" className="btn btn-primary btn-sm ms-auto" onClick={() => setEditing("new")}><Plus size={14} aria-hidden /> New rule</button>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs text-muted">
+          {active.length} rule{active.length === 1 ? "" : "s"} the assistant is told with every question.
+          {canEdit && " Add one here, or tell it “remember that …” and approve the card."}
+        </p>
+        {canEdit && <button type="button" className="btn btn-primary btn-sm ms-auto" onClick={() => setEditing("new")}><Plus size={14} aria-hidden /> New rule</button>}
+      </div>
+      {left > 0 && <p className="text-sm font-semibold text-warn-fg">{left} rule(s) do not fit what the assistant is handed — shorten or retire some.</p>}
+      {active.length === 0 ? (
+        <div className="rounded-xl border border-dashed">
+          <EmptyState icon={BookOpen} title="No rules yet" hint="How this plant works — which bay welds the big tanks, what goes on which laser, who to tell when. The assistant answers from the data and its general rules alone until there are some." />
         </div>
+      ) : (
+        topics.map((t) => {
+          const list = active.filter((r) => r.topic === t);
+          if (list.length === 0) return null;
+          return (
+            <section key={t} className="space-y-2">
+              <h2 className="flex items-center gap-2">{isPlaybookTopic(t) ? PLAYBOOK_TOPIC_LABEL[t] : t} <span className="tabnum font-semibold">{list.length}</span></h2>
+              <ul className="space-y-2">{list.map(rule)}</ul>
+            </section>
+          );
+        })
       )}
-      {left > 0 && <p className="text-sm font-semibold text-warn-fg">{left} rule(s) do not fit — shorten or retire some.</p>}
-      {topics.map((t) => {
-        const list = active.filter((r) => r.topic === t);
-        if (list.length === 0) return null;
-        return (
-          <section key={t} className="space-y-2">
-            <h2>{isPlaybookTopic(t) ? PLAYBOOK_TOPIC_LABEL[t] : t}</h2>
-            <ul className="space-y-2">{list.map(rule)}</ul>
-          </section>
-        );
-      })}
-      {active.length === 0 && <p className="text-sm text-muted">No rules yet.</p>}
       {retired.length > 0 && (
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowRetired((v) => !v)}>{showRetired ? "Hide" : "Show"} {retired.length} retired</button>
       )}

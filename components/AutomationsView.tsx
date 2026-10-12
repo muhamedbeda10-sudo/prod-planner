@@ -1,19 +1,24 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CalendarClock, ChevronDown, ChevronRight, FlaskConical, Pause, Play, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { Bell, CalendarClock, ChevronDown, Clock, FileText, FlaskConical, Pause, Play, Plus, RotateCcw, Trash2, Wand2, X, Zap } from "lucide-react";
 import { deleteAutomation, restoreAutomation, runAutomationNow, setAutomationEnabled, setAutomationTiming } from "@/app/automations/actions";
+import { EmptyState } from "@/components/primitives";
 import { CHECK_EVERY, WEEKDAY_NAMES, AUTOMATION_LIMITS } from "@/lib/domain/automations";
 import { formatDateTime } from "@/lib/domain/format";
 import type { AutomationView } from "@/lib/server/automations/views";
 
-// The automations, each with what sets it off, what it does, when it runs
-// next and how its last runs went — and Pause / Turn on, Timing, Test (to me),
-// Delete. What one does is changed by asking the assistant; when it runs is
-// changed here.
+// The automations, each a card: what sets it off, what it does, when it
+// runs next and how its last runs went — and Pause / Turn on, Timing, Test
+// (to me), Delete. What one does is changed by asking the assistant; when it
+// runs is changed here. Above them, whether automations run at all right now.
 
 const STATUS_TONE: Record<string, string> = { ok: "pill-ok", failed: "pill-bad", skipped: "pill-warn", running: "pill-info" };
-const KIND_LABEL: Record<string, string> = { notify: "Message", report: "Report", act: "Changes" };
+const KIND: Record<string, { label: string; icon: typeof Bell; tile: string }> = {
+  notify: { label: "Message", icon: Bell, tile: "bg-warn-bg text-warn-fg" },
+  report: { label: "Report", icon: FileText, tile: "bg-info-bg text-info-fg" },
+  act: { label: "Changes", icon: Wand2, tile: "bg-ok-bg text-ok-fg" },
+};
 const DAYS_LABEL: Record<string, string> = { working: "Working days", every: "Every day", weekdays: "Chosen days" };
 
 type Result = { ok: boolean; error?: string };
@@ -56,11 +61,11 @@ function TimingForm({ a, onDone, onCancel }: { a: AutomationView; onDone: () => 
   };
 
   return (
-    <div className="mt-2 rounded-lg border bg-surface-2 p-3 space-y-3">
+    <div className="mt-3 rounded-lg border bg-surface-2 p-3 space-y-3">
       {t.trigger === "schedule" ? (
         <>
           <div>
-            <p className="text-xs font-bold text-muted mb-1.5">Times (Cairo)</p>
+            <p className="filter-label mb-1.5">Times (Cairo)</p>
             <div className="flex flex-wrap items-center gap-1.5">
               {times.map((x) => (
                 <span key={x} className="pill pill-muted tabnum gap-1">
@@ -79,7 +84,7 @@ function TimingForm({ a, onDone, onCancel }: { a: AutomationView; onDone: () => 
             </div>
           </div>
           <div>
-            <p className="text-xs font-bold text-muted mb-1.5">Days</p>
+            <p className="filter-label mb-1.5">Days</p>
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(DAYS_LABEL).map(([k, label]) => (
                 <button key={k} type="button" onClick={() => setDays(k)} className={`btn btn-sm ${days === k ? "btn-primary" : "btn-secondary"}`}>{label}</button>
@@ -105,7 +110,7 @@ function TimingForm({ a, onDone, onCancel }: { a: AutomationView; onDone: () => 
       ) : (
         <>
           <div>
-            <p className="text-xs font-bold text-muted mb-1.5">Check every</p>
+            <p className="filter-label mb-1.5">Check every</p>
             <div className="flex flex-wrap gap-1.5">
               {CHECK_EVERY.map((m) => (
                 <button key={m} type="button" onClick={() => setEvery(m)} className={`btn btn-sm tabnum ${every === m ? "btn-primary" : "btn-secondary"}`}>{everyText(m)}</button>
@@ -153,35 +158,59 @@ function Row({ a, showOwner, canTime, onChanged }: { a: AutomationView; showOwne
       }
     });
   };
+  const k = KIND[a.kind] ?? KIND.notify;
+  const off = a.deleted || !a.enabled;
   return (
-    <div className={`border rounded-xl bg-surface ${a.enabled ? "" : "opacity-75"}`}>
-      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full text-start flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2.5" aria-expanded={open}>
-        {open ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
-        <span className="font-extrabold min-w-0 truncate" dir="auto">{a.name}</span>
-        <span className="pill pill-muted text-[11px]">{KIND_LABEL[a.kind] ?? a.kind}</span>
-        {a.deleted ? <span className="pill pill-muted text-[11px]">Deleted</span> : !a.enabled && <span className="pill pill-warn text-[11px]">Paused</span>}
-        {a.lastStatus && a.lastStatus !== "ok" && <span className={`pill ${STATUS_TONE[a.lastStatus] ?? "pill-muted"} text-[11px]`}>{a.lastStatus}</span>}
-        {showOwner && <span className="text-xs text-muted">{a.owner}</span>}
-        {a.nextRunAt && <span className="ms-auto text-xs text-muted tabnum">{formatDateTime(a.nextRunAt)}</span>}
-        <span className="basis-full text-xs text-muted ps-6" dir="auto">{a.trigger}</span>
+    <article className={`rounded-xl border bg-surface ${off ? "opacity-70" : ""}`}>
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full text-start flex items-start gap-3 px-3 py-3 sm:px-4" aria-expanded={open}>
+        <span className={`w-9 h-9 rounded-lg grid place-items-center shrink-0 ${k.tile}`} title={k.label}>
+          <k.icon size={17} aria-hidden />
+        </span>
+        <span className="flex-1 min-w-0">
+          {/* the name keeps the line; on a narrow screen the pills wrap under it */}
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="min-w-0 flex-[1_1_10rem] truncate text-sm font-bold" dir="auto">{a.name}</span>
+            {a.deleted ? <span className="pill pill-muted">Deleted</span> : !a.enabled ? <span className="pill pill-warn">Paused</span> : null}
+            {a.lastStatus && a.lastStatus !== "ok" && <span className={`pill ${STATUS_TONE[a.lastStatus] ?? "pill-muted"}`}>Last: {a.lastStatus}</span>}
+            {showOwner && <span className="text-xs text-muted truncate">{a.owner}</span>}
+            {a.nextRunAt && <span className="ms-auto text-[11px] text-muted tabnum whitespace-nowrap shrink-0" title="Next run">{formatDateTime(a.nextRunAt)}</span>}
+          </span>
+          <span className="block mt-0.5 text-[13px] text-muted truncate" dir="auto">
+            {a.timing.trigger === "schedule" ? <Clock size={12} className="inline -mt-0.5 me-1" aria-hidden /> : <Zap size={12} className="inline -mt-0.5 me-1" aria-hidden />}
+            {a.trigger} — {a.action}
+          </span>
+        </span>
+        <ChevronDown size={15} className={`text-muted shrink-0 mt-2.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
       </button>
       {open && (
-        <div className="px-3 pb-3 border-t space-y-2 text-sm">
-          <p className="mt-2 text-xs text-muted" dir="auto">{a.action}</p>
+        <div className="px-3 pb-3 sm:px-4 sm:pb-4 border-t pt-3 space-y-3 text-sm">
           {a.lastNote && a.lastStatus !== "ok" && <p className="text-xs text-bad-fg" dir="auto">{a.lastNote}</p>}
-          {a.text && <p className="whitespace-pre-wrap" dir="auto">{a.text}</p>}
-          {a.conditionSql && <pre className="text-xs bg-surface-2 border rounded-lg p-2 overflow-x-auto ltr">{a.conditionSql}</pre>}
+          {a.text && (
+            <div>
+              <p className="filter-label mb-1">{a.kind === "notify" ? "The message" : "The assistant's instruction"}</p>
+              <p className="whitespace-pre-wrap" dir="auto">{a.text}</p>
+            </div>
+          )}
+          {a.conditionSql && (
+            <div>
+              <p className="filter-label mb-1">What it watches</p>
+              <pre className="text-xs bg-surface-2 border rounded-lg p-2.5 overflow-x-auto ltr">{a.conditionSql}</pre>
+            </div>
+          )}
           {a.runs.length > 0 && (
-            <ul className="space-y-1">
-              {a.runs.map((r) => (
-                <li key={r.id} className="flex flex-wrap gap-2 text-xs">
-                  <span className="tabnum text-muted">{formatDateTime(r.startedAt)}</span>
-                  <span className={`pill ${STATUS_TONE[r.status] ?? "pill-muted"} text-[10px]`}>{r.status}</span>
-                  <span dir="auto" className="min-w-0">{r.error ?? r.summary ?? ""}</span>
-                  {r.costUsd > 0 && <span className="text-muted tabnum">${r.costUsd.toFixed(3)}</span>}
-                </li>
-              ))}
-            </ul>
+            <div>
+              <p className="filter-label mb-1">Last runs</p>
+              <ul className="space-y-1">
+                {a.runs.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="tabnum text-muted w-28 shrink-0">{formatDateTime(r.startedAt)}</span>
+                    <span className={`pill ${STATUS_TONE[r.status] ?? "pill-muted"}`}>{r.status}</span>
+                    <span dir="auto" className="min-w-0">{r.error ?? r.summary ?? ""}</span>
+                    {r.costUsd > 0 && <span className="text-muted tabnum ms-auto">${r.costUsd.toFixed(3)}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {timing && (
             <TimingForm
@@ -194,34 +223,43 @@ function Row({ a, showOwner, canTime, onChanged }: { a: AutomationView; showOwne
               }}
             />
           )}
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
             {a.deleted ? (
-              <button type="button" className="btn btn-sm" disabled={pending} onClick={() => act(restoreAutomation, { enabled: "false" }, "Restored, paused.")}><RotateCcw size={14} aria-hidden /> Restore</button>
+              <button type="button" className="btn btn-sm btn-secondary" disabled={pending} onClick={() => act(restoreAutomation, { enabled: "false" }, "Restored, paused.")}><RotateCcw size={14} aria-hidden /> Restore</button>
             ) : (
               <>
                 {a.enabled ? (
-                  <button type="button" className="btn btn-sm" disabled={pending} onClick={() => act(setAutomationEnabled, { enabled: "false" }, "Paused.")}><Pause size={14} aria-hidden /> Pause</button>
+                  <button type="button" className="btn btn-sm btn-secondary" disabled={pending} onClick={() => act(setAutomationEnabled, { enabled: "false" }, "Paused.")}><Pause size={14} aria-hidden /> Pause</button>
                 ) : (
-                  <button type="button" className="btn btn-sm" disabled={pending} onClick={() => act(setAutomationEnabled, { enabled: "true" }, "On.")}><Play size={14} aria-hidden /> Turn on</button>
+                  <button type="button" className="btn btn-sm btn-primary" disabled={pending} onClick={() => act(setAutomationEnabled, { enabled: "true" }, "On.")}><Play size={14} aria-hidden /> Turn on</button>
                 )}
                 {canTime && !timing && (
-                  <button type="button" className="btn btn-sm" disabled={pending} onClick={() => setTiming(true)}><CalendarClock size={14} aria-hidden /> Timing</button>
+                  <button type="button" className="btn btn-sm btn-secondary" disabled={pending} onClick={() => setTiming(true)}><CalendarClock size={14} aria-hidden /> Timing</button>
                 )}
                 <button
-                  type="button" className="btn btn-sm" disabled={pending}
+                  type="button" className="btn btn-sm btn-secondary" disabled={pending}
                   onClick={() => act(runAutomationNow, {}, "Sent to your inbox as a test.", a.kind === "notify" ? undefined : "Run it now as a test? It costs like a question; the result comes to you alone.")}
                 >
                   <FlaskConical size={14} aria-hidden /> {pending ? "Running…" : "Test"}
                 </button>
-                <button type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={pending} onClick={() => act(deleteAutomation, {}, "Deleted.", `Delete "${a.name}"?`)}><Trash2 size={14} aria-hidden /> Delete</button>
+                <button type="button" className="btn btn-sm btn-ghost text-bad-fg ms-auto" disabled={pending} onClick={() => act(deleteAutomation, {}, "Deleted.", `Delete "${a.name}"?`)}><Trash2 size={14} aria-hidden /> Delete</button>
               </>
             )}
-            {msg && <span className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</span>}
+            {msg && <span className={`basis-full text-xs font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</span>}
           </div>
+          <p className="text-[11px] text-muted">{a.createdBy ? `Made by ${a.createdBy}. ` : ""}To change what it does, ask the assistant.</p>
         </div>
       )}
-    </div>
+    </article>
   );
+}
+
+export interface AutomationsStatus {
+  paused: boolean;
+  inHours: boolean;
+  hours: string;
+  stale: boolean;
+  allowed: boolean;
 }
 
 export function AutomationsView({
@@ -229,6 +267,7 @@ export function AutomationsView({
   showOwner = false,
   canTime = true,
   onChanged,
+  status,
 }: {
   automations: AutomationView[];
   showOwner?: boolean;
@@ -236,20 +275,44 @@ export function AutomationsView({
   canTime?: boolean;
   /** Something changed — for a list that is not refreshed by the page. */
   onChanged?: () => void;
+  /** Whether automations run at all right now — shown above the list. */
+  status?: AutomationsStatus;
 }) {
   const [showDeleted, setShowDeleted] = useState(false);
   const live = automations.filter((a) => !a.deleted);
   const deleted = automations.filter((a) => a.deleted);
   return (
-    <div className="space-y-2">
-      {live.length === 0 && <p className="text-sm text-muted">No automations yet.</p>}
-      {live.map((a) => <Row key={a.id} a={a} showOwner={showOwner} canTime={canTime} onChanged={onChanged} />)}
+    <div className="space-y-3">
+      {status && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className={`inline-flex items-center gap-1.5 font-semibold ${status.paused ? "text-warn-fg" : status.inHours ? "text-ok-fg" : "text-muted"}`}>
+            <span className={`w-2 h-2 rounded-full ${status.paused ? "bg-[var(--warn-fg)]" : status.inHours ? "bg-[var(--ok-fg)]" : "bg-[var(--muted)]"}`} aria-hidden />
+            {status.paused ? "Paused by the owner" : status.inHours ? "Running" : "Outside the hours"}
+          </span>
+          <span className="text-muted">{status.hours}</span>
+          {!status.paused && status.stale && <span className="pill pill-muted" title="No scheduler is set up: they run only while the app is open somewhere.">No scheduler</span>}
+          {!status.allowed && <span className="pill pill-warn">Stopped — no permission</span>}
+        </div>
+      )}
+      {live.length === 0 ? (
+        <div className="rounded-xl border border-dashed">
+          <EmptyState
+            icon={Clock}
+            title="No automations yet"
+            hint={<>Ask the assistant for one — “every working day at 7:30 send me the orders late at welding”, or “when an order is put on hold, tell Ahmed”.</>}
+          />
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {live.map((a) => <Row key={a.id} a={a} showOwner={showOwner} canTime={canTime} onChanged={onChanged} />)}
+        </div>
+      )}
       {deleted.length > 0 && (
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowDeleted((v) => !v)}>
           {showDeleted ? "Hide" : "Show"} {deleted.length} deleted
         </button>
       )}
-      {showDeleted && deleted.map((a) => <Row key={a.id} a={a} showOwner={showOwner} canTime={false} onChanged={onChanged} />)}
+      {showDeleted && <div className="space-y-2">{deleted.map((a) => <Row key={a.id} a={a} showOwner={showOwner} canTime={false} onChanged={onChanged} />)}</div>}
     </div>
   );
 }

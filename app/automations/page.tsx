@@ -21,19 +21,12 @@ export default async function AutomationsPage() {
 
   return (
     <div className="max-w-4xl">
-      <PageHead
-        title="Automations"
-        sub={d.hours}
-        actions={
-          d.paused ? (
-            <span className="pill pill-warn">Paused by the owner</span>
-          ) : (
-            <span className={`pill ${d.inHours ? "pill-ok" : "pill-muted"}`}>{d.inHours ? "Running" : "Outside hours"}</span>
-          )
-        }
+      <PageHead title="Automations" />
+      <AutomationsView
+        automations={d.automations}
+        canTime={d.allowed}
+        status={{ paused: d.paused, inHours: d.inHours, hours: d.hours, stale: d.stale, allowed: d.allowed }}
       />
-      {!d.allowed && <p className="mb-3 text-sm text-warn-fg">Stopped — you no longer have automations.</p>}
-      <AutomationsView automations={d.automations} canTime={d.allowed} />
     </div>
   );
 }
