@@ -9,9 +9,10 @@ import { AI_MAX_QUESTION, usdText, type AiChatTurn } from "@/lib/domain/ai";
 import { AI_FILE_ACCEPT, AI_FILE_LIMITS, AI_IMAGE_MAX_SIDE, AI_IMAGE_QUALITY, fileSizeText } from "@/lib/domain/aiFiles";
 import { compressImage } from "@/lib/imageCompress";
 import type { AiActionView } from "@/lib/domain/aiActions";
+import type { AiChatStatus } from "@/lib/server/ai/panel";
 
 // The AI assistant's chat: the person's conversations on the side (a drawer
-// below a laptop's width), the open one in the middle, the answer streaming
+// below a laptop's width, and always in the narrow side panel), the open one in the middle, the answer streaming
 // in as it is written — what it is looking up shown while it looks, the
 // changes it prepares as cards to approve — and the month's spend under the
 // box. A photo, a PDF or a sheet can go with a question: the paperclip sends
@@ -36,14 +37,7 @@ interface Pending {
   size: number;
 }
 
-export interface AiChatStatus {
-  ok: boolean;
-  reason: string | null;
-  userSpent: number;
-  userCap: number;
-  plantSpent: number;
-  plantCap: number;
-}
+export type { AiChatStatus };
 
 const SUGGESTIONS = [
   "إيه الأوردرات المتأخرة دلوقتي، وواقفة في أنهي قسم؟",
@@ -68,11 +62,17 @@ export function AiChat({
   status,
   conversations,
   initial,
+  compact = false,
+  syncUrl = true,
 }: {
   isOwner: boolean;
   status: AiChatStatus;
   conversations: Conv[];
   initial: { id: number; turns: AiChatTurn[]; actions: AiActionView[] } | null;
+  /** Narrow (the side panel): the chats are always a drawer. */
+  compact?: boolean;
+  /** Keep the open chat in the address bar (the /ai page). */
+  syncUrl?: boolean;
 }) {
   const [convs, setConvs] = useState<Conv[]>(conversations);
   const [activeId, setActiveId] = useState<number | null>(initial?.id ?? null);
@@ -83,7 +83,7 @@ export function AiChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<string | null>(null);
-  const [spent, setSpent] = useState({ user: status.userSpent, plant: status.plantSpent });
+  const [spent, setSpent] = useState({ user: status.userSpent, plant: status.plantSpent, userToday: status.userSpentToday, plantToday: status.plantSpentToday });
   const [sideOpen, setSideOpen] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending[]>([]);
@@ -96,7 +96,11 @@ export function AiChat({
   const delta = useRef("");
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const capReached = (status.userCap > 0 && spent.user >= status.userCap) || (status.plantCap > 0 && spent.plant >= status.plantCap);
+  const capReached =
+    (status.userCap > 0 && spent.user >= status.userCap) ||
+    (status.plantCap > 0 && spent.plant >= status.plantCap) ||
+    (status.userDayCap > 0 && spent.userToday >= status.userDayCap) ||
+    (status.plantDayCap > 0 && spent.plantToday >= status.plantDayCap);
   const canAsk = status.ok && !capReached;
 
   // keep the newest of the answer in view while it is written
@@ -121,7 +125,7 @@ export function AiChat({
   };
 
   function setUrl(id: number | null) {
-    window.history.replaceState(null, "", id ? `/ai?c=${id}` : "/ai");
+    if (syncUrl) window.history.replaceState(null, "", id ? `/ai?c=${id}` : "/ai");
   }
 
   async function open(id: number) {
@@ -183,7 +187,7 @@ export function AiChat({
     } else if (ev.type === "done") {
       flush();
       const cost = Number(ev.costUsd ?? 0);
-      setSpent((s) => ({ user: s.user + cost, plant: s.plant + cost }));
+      setSpent((s) => ({ user: s.user + cost, plant: s.plant + cost, userToday: s.userToday + cost, plantToday: s.plantToday + cost }));
       if (ev.error) patchLast((t) => ({ ...t, error: String(ev.error) }));
     }
   }
@@ -273,24 +277,38 @@ export function AiChat({
     }
   }
 
-  const meter = status.userCap > 0
-    ? `${usdText(spent.user)} / ${usdText(status.userCap)} this month`
-    : `${usdText(spent.user)} this month${isOwner && status.plantCap > 0 ? ` · plant ${usdText(spent.plant)} / ${usdText(status.plantCap)}` : ""}`;
+  const of = (v: number, cap: number) => (cap > 0 ? `${usdText(v)} / ${usdText(cap)}` : usdText(v));
+  const meter = [
+    status.userDayCap > 0 && `Today ${of(spent.userToday, status.userDayCap)}`,
+    `Month ${of(spent.user, status.userCap)}`,
+    isOwner && (status.plantCap > 0 || status.plantDayCap > 0) && `Plant ${status.plantDayCap > 0 ? `today ${of(spent.plantToday, status.plantDayCap)}` : of(spent.plant, status.plantCap)}`,
+  ].filter(Boolean).join(" · ");
   const activeTitle = convs.find((c) => c.id === activeId)?.title ?? null;
 
+  // the conversations: beside the chat on a wide screen, a drawer over it in
+  // the side panel and below a laptop's width
+  const drawerCls = compact
+    ? `${sideOpen ? "flex absolute z-20 inset-y-0 start-0 w-[min(18rem,85%)] shadow-2xl border-e" : "hidden"}`
+    : `${sideOpen ? "flex fixed z-50 inset-y-0 start-0 w-[min(20rem,85vw)] shadow-2xl" : "hidden"} lg:static lg:z-auto lg:flex lg:w-64 lg:shadow-none lg:border lg:rounded-xl`;
+  const narrowOnly = compact ? "" : "lg:hidden";
+
   return (
-    <div className="ai-chat flex gap-3 h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-8.5rem)] min-h-[380px]">
-      {/* below a laptop's width the chats are a drawer over the page */}
-      {sideOpen && <button type="button" aria-label="Close the chats" className="lg:hidden fixed inset-0 z-40 bg-black/45" onClick={() => setSideOpen(false)} />}
-      <aside
-        className={`${sideOpen ? "flex fixed z-50 inset-y-0 start-0 w-[min(20rem,85vw)] shadow-2xl" : "hidden"} lg:static lg:z-auto lg:flex lg:w-64 lg:shadow-none lg:border lg:rounded-xl shrink-0 flex-col bg-surface overflow-hidden`}
-      >
+    <div className={`ai-chat relative flex h-full min-h-[380px] ${compact ? "" : "gap-3"}`}>
+      {sideOpen && (
+        <button
+          type="button"
+          aria-label="Close the chats"
+          className={compact ? "absolute inset-0 z-10 bg-black/45" : "lg:hidden fixed inset-0 z-40 bg-black/45"}
+          onClick={() => setSideOpen(false)}
+        />
+      )}
+      <aside className={`${drawerCls} shrink-0 flex-col bg-surface overflow-hidden`}>
         <div className="p-2 border-b flex gap-2">
           <button type="button" className="btn btn-primary btn-sm flex-1" onClick={newChat} disabled={busy}>
             <Plus size={15} /> New chat
           </button>
           {/* .btn sets its own display, so the hiding goes on a wrapper */}
-          <span className="lg:hidden">
+          <span className={narrowOnly}>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSideOpen(false)} aria-label="Close the chats"><X size={16} /></button>
           </span>
         </div>
@@ -318,8 +336,8 @@ export function AiChat({
       </aside>
 
       {/* the open conversation */}
-      <section className="flex-1 min-w-0 flex flex-col bg-surface border rounded-xl overflow-hidden">
-        <div className="lg:hidden flex items-center gap-1 px-1.5 py-1 border-b">
+      <section className={`flex-1 min-w-0 flex flex-col bg-surface overflow-hidden ${compact ? "" : "border rounded-xl"}`}>
+        <div className={`${narrowOnly} flex items-center gap-1 px-1.5 py-1 border-b`}>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSideOpen(true)} aria-label="Chats" title="Chats">
             <PanelLeft size={17} />
           </button>
@@ -332,7 +350,7 @@ export function AiChat({
         <div ref={scroller} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4 md:px-6 md:py-4">
           {loadErr && <p className="text-sm font-semibold text-bad-fg mb-3">{loadErr}</p>}
           {turns.length === 0 ? (
-            <Welcome onPick={(q) => (canAsk ? ask(q) : setInput(q))} disabled={!canAsk || busy} />
+            <Welcome onPick={(q) => (canAsk ? ask(q) : setInput(q))} disabled={!canAsk || busy} compact={compact} />
           ) : (
             <div className="max-w-4xl mx-auto space-y-4 md:space-y-5">
               {turns.map((t, i) =>
@@ -369,7 +387,7 @@ export function AiChat({
         >
           {!canAsk && (
             <p className="max-w-4xl mx-auto text-sm font-semibold text-warn-fg mb-2">
-              {status.reason ?? "You have used this month's AI allowance — ask the owner to raise it."}
+              {status.reason ?? "The AI allowance is used up."}
               {isOwner && <> <a href="/admin/ai" className="underline text-brand">Settings</a></>}
             </p>
           )}
@@ -431,16 +449,16 @@ export function AiChat({
   );
 }
 
-function Welcome({ onPick, disabled }: { onPick: (q: string) => void; disabled: boolean }) {
+function Welcome({ onPick, disabled, compact }: { onPick: (q: string) => void; disabled: boolean; compact: boolean }) {
   return (
-    <div className="max-w-2xl mx-auto pt-2 sm:pt-8 md:pt-14">
+    <div className={`max-w-2xl mx-auto ${compact ? "pt-4" : "pt-2 sm:pt-8 md:pt-14"}`}>
       <div className="flex items-center justify-center gap-2.5">
         <span className="w-9 h-9 rounded-xl bg-brand-light text-brand grid place-items-center shrink-0">
           <Bot size={20} />
         </span>
         <p className="text-lg font-extrabold">Ask about the plant</p>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 sm:mt-6">
+      <div className={`grid grid-cols-1 ${compact ? "" : "sm:grid-cols-2"} gap-2 mt-4 sm:mt-6`}>
         {SUGGESTIONS.map((q, i) => (
           <button
             key={q}
@@ -448,8 +466,8 @@ function Welcome({ onPick, disabled }: { onPick: (q: string) => void; disabled: 
             disabled={disabled}
             onClick={() => onPick(q)}
             dir="auto"
-            // a phone shows the first four
-            className={`${i >= 4 ? "hidden sm:flex" : "flex"} text-start border rounded-xl px-3 py-2.5 text-sm hover:bg-surface-2 hover:border-[var(--border-strong)] transition-colors disabled:opacity-60 items-start gap-2`}
+            // a phone and the side panel show the first four
+            className={`${i >= 4 ? (compact ? "hidden" : "hidden sm:flex") : "flex"} text-start border rounded-xl px-3 py-2.5 text-sm hover:bg-surface-2 hover:border-[var(--border-strong)] transition-colors disabled:opacity-60 items-start gap-2`}
           >
             <MessageSquare size={15} className="text-muted mt-0.5 shrink-0" />
             <span>{q}</span>

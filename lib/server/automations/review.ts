@@ -13,18 +13,16 @@ import { AI_DELETE_KEY, type AiArea } from "@/lib/domain/aiActions";
 import { factoryClockHHMM, factoryDayISO } from "@/lib/domain/dates";
 
 // The morning review ("AI — daily review and suggestions", ticked per person
-// by the owner): once every working day, from REVIEW_AT on the factory clock,
+// by the owner): once every working day, from the owner's time on the factory clock (reviewAt),
 // the assistant looks at the plant from that person's side and sends their
 // inbox what matters today — each fix it can make prepared as a change that
 // waits for their approval (never one that runs by itself). It runs as them,
 // with their permissions and their month's allowance, like a question.
 
 export const REVIEW_KEY = "ai.suggestions";
-export const REVIEW_AT = "07:30";
 /** The person's day already reviewed — a server-side mark, not a preference
  *  anyone sets. */
 const REVIEWED_ON = "ai:reviewedOn";
-const AI_CALLS = 14;
 
 /** Take today's review for one person — false when another tick has it. */
 async function claimToday(userId: number, today: string): Promise<boolean> {
@@ -48,7 +46,9 @@ async function languageOf(userId: number): Promise<"Arabic" | "English"> {
 /** Today's reviews that are due, until the deadline. The number run. */
 export async function runDailyReviews(o: { now: Date; deadline: number }): Promise<number> {
   const today = factoryDayISO(o.now);
-  if ((await offDays(o.now))(today) || factoryClockHHMM(o.now) < REVIEW_AT) return 0;
+  const s = await getAiSettings();
+  if (s.reviewPaused) return 0;
+  if ((await offDays(o.now))(today) || factoryClockHHMM(o.now) < s.reviewAt) return 0;
   // the key is a CSV entry: a contains() narrows, hasPerm decides
   const candidates = await prisma.user.findMany({ where: { active: true, perms: { contains: REVIEW_KEY } } });
   let ran = 0;
@@ -81,11 +81,12 @@ export async function reviewFor(user: User, now: Date): Promise<void> {
   const hidden = hiddenTabsOf(user);
   const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused, unattended: true });
   const areas = [...new Set(tools.flatMap((t) => (t.kind === "write" ? [t.area] : [])))] as AiArea[];
-  const usage = await prisma.aiUsage.create({ data: { userId: user.id, model: settings.model, question: "Morning review" } });
+  const usage = await prisma.aiUsage.create({ data: { userId: user.id, model: settings.autoModel, question: "Morning review" } });
   const actionIds: number[] = [];
   const answer = await ask({
     apiKey,
-    model: settings.model,
+    model: settings.autoModel,
+    effort: settings.autoEffort,
     history: [],
     question: questionMessages(reviewQuestion(user.name, await languageOf(user.id)), reviewContext({ name: user.name, now, areas, canDelete: hasPerm(user, AI_DELETE_KEY) })),
     tools,
@@ -96,11 +97,11 @@ export async function reviewFor(user: User, now: Date): Promise<void> {
     via: "automation",
     // a suggestion is asked, never done: every change waits for the person
     allowAuto: false,
-    maxCalls: AI_CALLS,
+    maxCalls: settings.maxCalls,
   });
   await prisma.aiUsage.update({
     where: { id: usage.id },
-    data: { calls: answer.calls, queries: answer.queries, ...answer.tokens, costUsd: costUsd(settings.model, answer.tokens), error: answer.error?.slice(0, 1000) ?? null, finishedAt: new Date() },
+    data: { calls: answer.calls, queries: answer.queries, ...answer.tokens, costUsd: costUsd(settings.autoModel, answer.tokens), error: answer.error?.slice(0, 1000) ?? null, finishedAt: new Date() },
   });
   if (answer.error) return;
   await deliverToInbox([{

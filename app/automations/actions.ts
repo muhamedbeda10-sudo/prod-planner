@@ -3,10 +3,10 @@
 import { revalidatePath } from "next/cache";
 import type { Automation, User } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { effectiveUser, getCurrentUser, requirePerm } from "@/lib/server/auth";
+import { effectiveUser, getCurrentUser, hasPerm, requirePerm } from "@/lib/server/auth";
 import { AUTOMATIONS_KEY, automationFor, configOf, nextRunOf, offDays, ownerDenied, prepareAutomation, runCondition } from "@/lib/server/automations/store";
 import { testAutomation } from "@/lib/server/automations/runner";
-import { freshRows, type AutomationInput } from "@/lib/domain/automations";
+import { freshRows, retimeAutomation, type AutomationInput, type AutomationTiming } from "@/lib/domain/automations";
 
 // The automations' writes — from the Automations page and from the
 // assistant's tools alike. A person keeps their own (AI — automations); the
@@ -153,4 +153,36 @@ export async function runAutomationNow(fd: FormData): Promise<AutomationActionRe
   revalidate();
   revalidatePath("/inbox");
   return r.ok ? { ok: true, id: a.id } : { ok: false, error: r.error };
+}
+
+/** Change when an automation runs — its times and days, or how often its
+ *  condition is checked and in which hours — from the screen. What it does
+ *  stays as it was (that is asked of the assistant). Its owner may, and the
+ *  app's owner: when it runs is the plant's call too. */
+export async function setAutomationTiming(fd: FormData): Promise<AutomationActionResult> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: NOT_LOGGED_IN };
+  const id = idOf(fd.get("id"));
+  const a = id ? await automationFor(user, id) : null;
+  if (!a) return { ok: false, error: "That automation is not yours." };
+  if (a.ownerId === user.id && !user.isOwner && !hasPerm(user, AUTOMATIONS_KEY)) return { ok: false, error: "You no longer have automations." };
+  let timing: AutomationTiming;
+  try {
+    timing = JSON.parse(String(fd.get("timing") ?? ""));
+    if (!timing || typeof timing !== "object") throw new Error();
+  } catch {
+    return { ok: false, error: "The timing could not be read." };
+  }
+  const r = retimeAutomation(configOf(a), timing);
+  if (!r.ok) return { ok: false, error: r.error };
+  const c = r.config;
+  const now = new Date();
+  const nextRunAt = nextRunOf(c, now, await offDays(now));
+  if (c.trigger === "schedule" && !nextRunAt) return { ok: false, error: "That schedule never comes round — check its days." };
+  await prisma.automation.update({
+    where: { id: a.id },
+    data: { times: c.times, days: c.days, weekdays: c.weekdays, checkEveryMin: c.checkEveryMin, activeFrom: c.activeFrom, activeTo: c.activeTo, nextRunAt, updatedBy: user.name },
+  });
+  revalidate();
+  return { ok: true, id: a.id };
 }

@@ -18,7 +18,7 @@
 //              inbox for approval (small ones run on their own only if the
 //              person opted into that).
 
-import { parseISODate, toISODate, factoryDayISO, factoryTimeAt } from "./dates";
+import { parseISODate, toISODate, factoryClockHHMM, factoryDayISO, factoryTimeAt } from "./dates";
 import { jsonSafe, prepareSql } from "./ai";
 
 export const AUTOMATION_TRIGGERS = ["schedule", "condition"] as const;
@@ -266,4 +266,67 @@ export function describeAction(c: Pick<AutomationConfig, "action">, recipients: 
   if (c.action === "notify") return `sends a message${to}`;
   if (c.action === "report") return `the assistant writes a report${to}`;
   return "the assistant prepares changes for approval";
+}
+
+// ---- the hours automations may run in (the owner's, for the whole plant) ----
+
+/** When automations may run at all, on the factory clock. from/to null = any
+ *  time of day; from after to runs over midnight (22:00–06:00). */
+export interface AutomationWindow {
+  from: string | null;
+  to: string | null;
+  /** 0 = Sunday … 6 = Saturday. */
+  weekdays: number[];
+}
+
+export const ALL_WEEKDAYS: readonly number[] = [0, 1, 2, 3, 4, 5, 6];
+
+/** A window cleaned, or what is wrong with it. */
+export function checkWindow(i: { from?: string | null; to?: string | null; weekdays?: readonly number[] }): { ok: true; window: AutomationWindow } | { ok: false; error: string } {
+  const from = i.from ? clean(i.from) : null;
+  const to = i.to ? clean(i.to) : null;
+  if ((from === null) !== (to === null)) return { ok: false, error: "Give both ends of the hours, or neither." };
+  if (from && (!HHMM.test(from) || !HHMM.test(to!))) return { ok: false, error: "The hours are written HH:MM, e.g. 07:00 to 19:00." };
+  if (from && from === to) return { ok: false, error: "The hours must not start and end at the same time." };
+  const weekdays = [...new Set(i.weekdays ?? ALL_WEEKDAYS)].sort((a, b) => a - b);
+  if (weekdays.length === 0) return { ok: false, error: "Tick at least one day." };
+  if (weekdays.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) return { ok: false, error: "A day is 0 (Sunday) to 6 (Saturday)." };
+  return { ok: true, window: { from, to, weekdays } };
+}
+
+/** Whether automations may run at this moment: the factory day's weekday is
+ *  ticked, and the clock is inside the hours (from included, to not). Over
+ *  midnight, the small hours count on the day they fall on. */
+export function inAutomationWindow(now: Date, w: AutomationWindow): boolean {
+  const day = parseISODate(factoryDayISO(now))!.getUTCDay();
+  if (!w.weekdays.includes(day)) return false;
+  if (!w.from || !w.to) return true;
+  const t = factoryClockHHMM(now);
+  return w.from < w.to ? t >= w.from && t < w.to : t >= w.from || t < w.to;
+}
+
+/** The window as a person reads it: "Sun–Thu, Sat · 07:00–19:00". */
+export function describeWindow(w: AutomationWindow): string {
+  const days = w.weekdays.length === 7 ? "Every day" : w.weekdays.map((d) => WEEKDAY_NAMES[d].slice(0, 3)).join(", ");
+  return `${days} · ${w.from && w.to ? `${w.from}–${w.to}` : "all day"}`;
+}
+
+/** Only the timing of an automation — what its owner (or the app's owner)
+ *  changes from the screen; what it does stays as it was. */
+export type AutomationTiming = Pick<AutomationInput, "times" | "days" | "weekdays" | "checkEveryMin" | "activeFrom" | "activeTo">;
+
+/** A stored configuration with new timing, checked as a whole. The trigger
+ *  stays what it was: a condition needs its query, which the assistant writes. */
+export function retimeAutomation(c: AutomationConfig, t: AutomationTiming): ReturnType<typeof checkAutomation> {
+  const input: AutomationInput = { ...c };
+  if (c.trigger === "schedule") {
+    input.times = t.times;
+    input.days = t.days;
+    input.weekdays = t.weekdays;
+  } else {
+    input.checkEveryMin = t.checkEveryMin;
+    input.activeFrom = t.activeFrom ?? null;
+    input.activeTo = t.activeTo ?? null;
+  }
+  return checkAutomation(input);
 }

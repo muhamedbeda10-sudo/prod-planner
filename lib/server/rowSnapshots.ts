@@ -402,14 +402,15 @@ export interface UserAccessSnapshot {
   perms: string;
   hiddenTabs: string;
   active: boolean;
-  /** The assistant for them: null while they were never given it. */
-  ai: { enabled: boolean; monthlyUsd: number } | null;
+  /** The assistant for them: null while they were never given it. The daily
+   *  cap is absent from a snapshot taken before it existed (left as it is). */
+  ai: { enabled: boolean; monthlyUsd: number; dailyUsd?: number } | null;
 }
 
 export async function readUserAccess(id: number): Promise<UserAccessSnapshot | null> {
-  const u = await prisma.user.findUnique({ where: { id }, select: { id: true, isAdmin: true, perms: true, hiddenTabs: true, active: true, aiAccess: { select: { enabled: true, monthlyUsd: true } } } });
+  const u = await prisma.user.findUnique({ where: { id }, select: { id: true, isAdmin: true, perms: true, hiddenTabs: true, active: true, aiAccess: { select: { enabled: true, monthlyUsd: true, dailyUsd: true } } } });
   if (!u) return null;
-  return { id: u.id, isAdmin: u.isAdmin, perms: u.perms, hiddenTabs: u.hiddenTabs, active: u.active, ai: u.aiAccess ? { enabled: u.aiAccess.enabled, monthlyUsd: u.aiAccess.monthlyUsd } : null };
+  return { id: u.id, isAdmin: u.isAdmin, perms: u.perms, hiddenTabs: u.hiddenTabs, active: u.active, ai: u.aiAccess ? { enabled: u.aiAccess.enabled, monthlyUsd: u.aiAccess.monthlyUsd, dailyUsd: u.aiAccess.dailyUsd } : null };
 }
 
 /** Put an account's access back exactly as snapshotted — the owner's alone,

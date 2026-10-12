@@ -31,6 +31,33 @@ export function aiModel(id: string | null | undefined): AiModelDef {
   return AI_MODELS.find((m) => m.id === id) ?? AI_MODELS[0];
 }
 
+/** How hard the model thinks before it answers (the API's output_config.effort)
+ *  — every model above takes all five. Higher answers harder questions better,
+ *  and costs more tokens and time. */
+export const AI_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type AiEffort = (typeof AI_EFFORTS)[number];
+export const DEFAULT_AI_EFFORT: AiEffort = "medium";
+
+export const AI_EFFORT_LABEL: Record<AiEffort, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+
+export function isAiEffort(v: unknown): v is AiEffort {
+  return typeof v === "string" && (AI_EFFORTS as readonly string[]).includes(v);
+}
+
+/** A stored effort as the API takes it — anything unknown is the default. */
+export function aiEffort(v: string | null | undefined): AiEffort {
+  return isAiEffort(v) ? v : DEFAULT_AI_EFFORT;
+}
+
+/** The model calls one question may take, as the owner may set it. */
+export const AI_CALLS_RANGE = { min: 4, max: 30 } as const;
+
 export interface AiTokens {
   inputTokens: number;
   outputTokens: number;
@@ -70,37 +97,47 @@ export function monthStart(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
-export type AiDeny = "noKey" | "off" | "noAccess" | "userCap" | "plantCap";
+export type AiDeny = "noKey" | "off" | "noAccess" | "userDayCap" | "userCap" | "plantDayCap" | "plantCap";
 
 export interface AiGate {
   isOwner: boolean;
   hasKey: boolean;
   /** Open to the team (the owner can use it either way). */
   enabled: boolean;
-  access: { enabled: boolean; monthlyUsd: number } | null;
+  /** The person's own caps (0 = none of their own). */
+  access: { enabled: boolean; monthlyUsd: number; dailyUsd?: number } | null;
+  /** Spent this month / this factory day. */
   userSpent: number;
+  userSpentToday?: number;
   plantSpent: number;
+  plantSpentToday?: number;
+  /** The plant's caps (0 = none). */
   plantCap: number;
+  plantDayCap?: number;
 }
 
 export const AI_DENY_TEXT: Record<AiDeny, string> = {
   noKey: "The assistant has no Claude API key yet — the owner adds it on AI assistant settings.",
   off: "The assistant is switched off for now.",
   noAccess: "The assistant is not opened for your account — ask the owner.",
+  userDayCap: "You have used today's AI allowance — it starts again tomorrow.",
   userCap: "You have used this month's AI allowance — ask the owner to raise it.",
+  plantDayCap: "The plant's AI budget for today is used up — it starts again tomorrow.",
   plantCap: "The plant's AI budget for this month is used up — the owner can raise it.",
 };
 
 /** Whether a person may ask now, and why not. The owner holds no allowance
- *  of their own, but the plant's cap holds for them too — it is what guards
+ *  of their own, but the plant's caps hold for them too — it is what guards
  *  the account's credit. */
 export function aiDecision(g: AiGate): { ok: true } | { ok: false; reason: AiDeny } {
   if (!g.hasKey) return { ok: false, reason: "noKey" };
   if (!g.isOwner) {
     if (!g.enabled) return { ok: false, reason: "off" };
     if (!g.access?.enabled) return { ok: false, reason: "noAccess" };
+    if ((g.access.dailyUsd ?? 0) > 0 && (g.userSpentToday ?? 0) >= g.access.dailyUsd!) return { ok: false, reason: "userDayCap" };
     if (g.access.monthlyUsd > 0 && g.userSpent >= g.access.monthlyUsd) return { ok: false, reason: "userCap" };
   }
+  if ((g.plantDayCap ?? 0) > 0 && (g.plantSpentToday ?? 0) >= g.plantDayCap!) return { ok: false, reason: "plantDayCap" };
   if (g.plantCap > 0 && g.plantSpent >= g.plantCap) return { ok: false, reason: "plantCap" };
   return { ok: true };
 }

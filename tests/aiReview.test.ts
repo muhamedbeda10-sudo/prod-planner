@@ -16,6 +16,7 @@ const h = vi.hoisted(() => {
     },
     perms: new Set<string>(),
     status: { ok: true },
+    settings: { model: "claude-opus-5-5", effort: "high", autoModel: "claude-haiku-5-5", autoEffort: "low", maxCalls: 12, actionsPaused: false, reviewAt: "07:30", reviewPaused: false },
     ask: fn(),
     toolsFor: fn(),
     deliverToInbox: fn(),
@@ -27,7 +28,7 @@ const h = vi.hoisted(() => {
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/server/auth", () => ({ effectiveUser: (u: unknown) => u, hasPerm: (_u: unknown, k: string) => h.perms.has(k), hiddenTabsOf: () => new Set<string>() }));
-vi.mock("@/lib/server/ai/access", () => ({ aiStatusFor: async () => h.status, apiKeyOf: () => "sk", getAiSettings: async () => ({ model: "claude-opus-5-5", actionsPaused: false }) }));
+vi.mock("@/lib/server/ai/access", () => ({ aiStatusFor: async () => h.status, apiKeyOf: () => "sk", getAiSettings: async () => h.settings }));
 vi.mock("@/lib/server/ai/agent", () => ({ ask: h.ask, questionMessages: (q: string, c: string) => [{ role: "user", content: q }, { role: "system", content: c }] }));
 vi.mock("@/lib/server/ai/tools", () => ({ toolsFor: h.toolsFor }));
 vi.mock("@/lib/server/ai/playbook", async (orig) => ({ ...(await orig<typeof import("@/lib/server/ai/playbook")>()), getPlaybookText: async () => "" }));
@@ -48,6 +49,8 @@ beforeEach(() => {
   h.perms.clear();
   h.perms.add("ai.suggestions");
   h.status.ok = true;
+  h.settings.reviewAt = "07:30";
+  h.settings.reviewPaused = false;
   h.prisma.holiday.findMany.mockResolvedValue([]);
   h.prisma.user.findMany.mockResolvedValue([sara]);
   h.prisma.userPref.findUnique.mockResolvedValue(null);
@@ -79,6 +82,18 @@ describe("the morning review", () => {
     h.prisma.holiday.findMany.mockResolvedValue([{ date: new Date("2026-10-12T00:00:00Z") }]);
     expect(await runDailyReviews({ now: monday0730, deadline: Date.now() + 60_000 })).toBe(0);
     expect(h.ask).not.toHaveBeenCalled();
+  });
+
+  it("goes out from the owner's time, on the automations' model, and not while switched off", async () => {
+    h.settings.reviewAt = "09:00";
+    expect(await runDailyReviews({ now: monday0730, deadline: Date.now() + 60_000 })).toBe(0);
+    h.settings.reviewAt = "07:00";
+    h.settings.reviewPaused = true;
+    expect(await runDailyReviews({ now: monday0730, deadline: Date.now() + 60_000 })).toBe(0);
+    expect(h.ask).not.toHaveBeenCalled();
+    h.settings.reviewPaused = false;
+    expect(await runDailyReviews({ now: monday0730, deadline: Date.now() + 60_000 })).toBe(1);
+    expect(h.ask.mock.calls[0][0]).toMatchObject({ model: "claude-haiku-5-5", effort: "low", maxCalls: 12 });
   });
 
   it("once a day: a person reviewed today, or being reviewed by another tick, is passed by", async () => {

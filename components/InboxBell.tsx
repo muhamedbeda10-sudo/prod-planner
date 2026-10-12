@@ -17,7 +17,7 @@ export const INBOX_CHANGED = "inbox-changed";
 export const INBOX_UNREAD = "inbox-unread";
 const FALLBACK_MS = 5 * 60_000;
 
-export function InboxBell({ initial, active }: { initial: number; active: boolean }) {
+export function InboxBell({ initial, active, onOpen }: { initial: number; active: boolean; /** Open the inbox in the AI panel instead of its page. */ onOpen?: () => void }) {
   const [unread, setUnread] = useState(initial);
 
   useEffect(() => {
@@ -47,10 +47,15 @@ export function InboxBell({ initial, active }: { initial: number; active: boolea
   }, []);
 
   const label = unread > 0 ? `Inbox — ${unread} not read` : "Inbox";
-  return (
-    <Link href="/inbox" className={`nav-tab nav-tab-icon flex items-center gap-1 ${active ? "nav-tab-active" : ""}`} aria-label={label} title={label}>
+  const inner = (
+    <>
       <Bell size={18} />
       {unread > 0 && <span className="count-badge count-badge-alert">{unread > 99 ? "99+" : unread}</span>}
-    </Link>
+    </>
   );
+  const cls = `nav-tab nav-tab-icon flex items-center gap-1 ${active ? "nav-tab-active" : ""}`;
+  if (onOpen) {
+    return <button type="button" onClick={onOpen} className={cls} aria-label={label} title={label}>{inner}</button>;
+  }
+  return <Link href="/inbox" className={cls} aria-label={label} title={label}>{inner}</Link>;
 }
