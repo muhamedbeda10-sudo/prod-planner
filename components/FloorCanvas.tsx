@@ -9,11 +9,13 @@ import {
   FLOOR_COLORS, GRID, addNode, drawOrder, moveNode, placeMachine, removeNode, resizeNode, updateNode,
   type FloorColor, type FloorLayoutData, type FloorNode,
 } from "@/lib/domain/floor";
-import { clearWords, loadTone, type MachineCard } from "@/lib/domain/machineBoard";
+import { clearWords, loadTone, unassignedKey, type MachineCard } from "@/lib/domain/machineBoard";
+import { sheetKeyLabel } from "@/lib/domain/machineMaterial";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { assignLineMachine, moveLineRank, optimizeMachines, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
-import { DoneBox, MachinePick } from "@/components/MachineBoard";
+import { DoneBox, MachinePick, SheetToPlace } from "@/components/MachineBoard";
+import { LineSheet } from "@/components/LineMaterialChips";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 
 // 🗺 The Floor canvas — a department's bay as the planner draws it: the
@@ -375,12 +377,13 @@ function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoa
   return (
     <ul className="grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
       {lines.map((u) => (
-        <li key={`${u.key}#${u.center}`} className="flex items-center gap-2 text-xs min-w-0">
+        <li key={unassignedKey(u)} className="flex items-center gap-2 text-xs min-w-0">
           <span className="font-bold truncate">{u.bom}</span>
           <span className="font-semibold shrink-0">{u.item}</span>
           <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
           {multiCentre(board) && <span className="pill pill-muted shrink-0" title={`${CENTER_LABEL[u.center] ?? u.center} — step ${u.stepNo} of ${u.stepCount} on this line's route`}>{u.center}</span>}
           {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
+          <SheetToPlace sheet={u.sheet} />
           {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
           {u.deliveryISO && <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span>}
           {canAssign && (
@@ -435,6 +438,10 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
   }
   const m = card?.machine ?? machineName;
   const compact = n.h < 100;
+  // a running line cut from one sheet takes a second row for the sheet: a
+  // block of the usual height then shows that one line and counts the rest;
+  // a compact block keeps the sheet to its line's tooltip
+  const runShown = compact ? 1 : n.h < 140 && card?.running.slice(0, 2).some((q) => q.sheet) ? 1 : 2;
   return (
     <div
       data-node={m?.code ?? n.id}
@@ -454,16 +461,19 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
       </div>
       {card && card.running.length > 0 ? (
         <div className="mt-1 rounded-md bg-brand-light/40 border border-brand/30 px-1.5 py-1 min-w-0 space-y-0.5">
-          {card.running.slice(0, compact ? 1 : 2).map((q) => (
-            <div key={`${q.key}#${q.sheet}`} className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
-              <span className="text-brand font-extrabold shrink-0">▶</span>
-              <span className="font-extrabold truncate">{q.bom}</span>
-              <span className="font-bold shrink-0">{q.item}</span>
-              <span className="font-extrabold tabnum text-brand shrink-0">×{q.remaining}</span>
-              {!compact && q.deliveryISO && <span className="text-[10px] text-muted shrink-0">📅 {ddmm(q.deliveryISO)}</span>}
+          {card.running.slice(0, runShown).map((q) => (
+            <div key={`${q.key}#${q.sheet}`} className="min-w-0" title={compact && q.sheet ? sheetKeyLabel(q.sheet) : undefined}>
+              <div className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
+                <span className="text-brand font-extrabold shrink-0">▶</span>
+                <span className="font-extrabold truncate">{q.bom}</span>
+                <span className="font-bold shrink-0">{q.item}</span>
+                <span className="font-extrabold tabnum text-brand shrink-0">×{q.remaining}</span>
+                {!compact && q.deliveryISO && <span className="text-[10px] text-muted shrink-0">📅 {ddmm(q.deliveryISO)}</span>}
+              </div>
+              {!compact && <LineSheet sheet={q.sheet} className="block ps-3 text-[10px] font-semibold leading-tight text-muted truncate" />}
             </div>
           ))}
-          {card.running.length > (compact ? 1 : 2) && <div className="text-[10px] text-brand font-bold">+{card.running.length - (compact ? 1 : 2)} more running</div>}
+          {card.running.length > runShown && <div className="text-[10px] text-brand font-bold">+{card.running.length - runShown} more running</div>}
         </div>
       ) : (
         <div className="mt-1 text-[11px] text-muted">{card && card.waiting.length > 0 ? "nothing running yet" : "idle — nothing on it"}</div>
@@ -485,7 +495,9 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
   const a = useAction();
   const [showAll, setShowAll] = useState(false);
   const m = card?.machine;
-  const line = (bom: string, mo: string, item: string, sheet = "") => {
+  // the sheet always goes along: "" is the whole item, so a line spread by
+  // sheet that left it out would land on the machine whole
+  const line = (bom: string, mo: string, item: string, sheet: string) => {
     const fd = new FormData();
     fd.set("dept", board.dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item); fd.set("sheet", sheet);
     fd.set("machineId", String(n.machineId ?? ""));
@@ -559,7 +571,10 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                   <tr key={`${q.key}#${q.sheet}`} className={`border-t ${q.running ? "bg-brand-light/40" : ""}`}>
                     <td className="p-1 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</td>
                     <td className="p-1 font-extrabold ltr whitespace-nowrap">{q.bom}</td>
-                    <td className="p-1 text-center font-bold">{q.item}</td>
+                    <td className="p-1 text-center font-bold">
+                      {q.item}
+                      <LineSheet sheet={q.sheet} className="block text-[10px] font-semibold text-muted whitespace-nowrap" />
+                    </td>
                     <td className="p-1 text-center tabnum font-extrabold whitespace-nowrap">
                       {q.remaining}
                       {q.split && <span className="block text-[10px] font-semibold text-muted" title="Part of the line — the rest is on another machine or waits">of {q.lineRemaining}</span>}
@@ -594,10 +609,10 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
       {canAssign && mine.length > 0 && (
         <select
           className="w-full border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold" value="" disabled={a.pending} aria-label="Put a line on it"
-          onChange={(e) => { const u = mine[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
+          onChange={(e) => { const u = mine[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item, u.sheet ?? ""); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
         >
           <option value="">＋ Put a line on it… ({mine.length} waiting{multiCentre(board) ? ` for ${CENTER_LABEL[m.center] ?? m.center}` : ""})</option>
-          {mine.map((u, i) => <option key={`${u.key}#${u.center}`} value={i}>{u.bom} {u.item} ×{u.remaining}{u.partial ? ` (rest of ${u.lineRemaining})` : ""}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
+          {mine.map((u, i) => <option key={unassignedKey(u)} value={i}>{u.bom} {u.item} ×{u.remaining}{u.partial ? ` (rest of ${u.lineRemaining})` : ""}{u.sheet ? ` · ${sheetKeyLabel(u.sheet)}` : ""}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
         </select>
       )}
       {a.err && <div className="text-[11px] text-bad-fg">{a.err}</div>}

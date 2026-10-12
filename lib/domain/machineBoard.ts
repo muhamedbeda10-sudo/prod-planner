@@ -371,3 +371,8 @@ export function loadTone(load: number | null): "ok" | "warn" | "bad" | null {
 }
 
 export const lineKey = (bom: string, mo: string, item: string) => `${bom}|${mo}|${item}`;
+
+/** A waiting row's own key: its line, the centre the pieces still need, and
+ *  its sheet — an item spread by sheet waits as one row PER SHEET at the
+ *  same centre, so the line and the centre alone repeat. */
+export const unassignedKey = (u: Pick<UnassignedLine, "key" | "center" | "sheet">) => `${u.key}#${u.center}#${u.sheet ?? ""}`;
