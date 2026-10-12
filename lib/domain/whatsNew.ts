@@ -24,6 +24,13 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     href: "/material",
   },
   {
+    id: "2026-10-12-account-menu",
+    dateISO: "2026-10-12",
+    title: "Your photo in the bar — and everything about your account behind it",
+    where: "The bar → the round button at its end",
+    body: "Your name, sign-out, dark mode and this ✨ What's new list now sit behind one round button at the end of the bar. Click it and choose Add your photo — the picture is cropped to a circle for you; until then the button shows your initials. The line switch beside it is now a small TR / LV.",
+  },
+  {
     id: "2026-10-12-cascade-heads-editable",
     dateISO: "2026-10-12",
     title: "A group's head row is edited like the rows under it",

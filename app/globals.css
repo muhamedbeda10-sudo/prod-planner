@@ -814,6 +814,9 @@ div.overflow-x-auto > table thead {
 .seg > a, .seg > button { padding: 0.25rem 0.7rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: var(--muted); transition: color 0.12s ease, background-color 0.12s ease; }
 .seg > a:hover, .seg > button:hover { color: var(--foreground); }
 .seg > .on, .seg > .on:hover { background: var(--brand); color: #fff; }
+/* the small switch: the bar's TR / LV */
+.seg-sm { border-radius: 7px; }
+.seg-sm > a, .seg-sm > button { padding: 0.1rem 0.45rem; border-radius: 5px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em; }
 .viz .recharts-cartesian-grid line { stroke: var(--border); }
 .viz .recharts-cartesian-axis-line, .viz .recharts-cartesian-axis-tick-line { stroke: var(--border-strong); }
 .viz .recharts-text { fill: var(--muted); }
