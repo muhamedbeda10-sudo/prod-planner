@@ -1444,9 +1444,13 @@ model AiFile {
   conversationId Int?
   conversation   AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   name           String
-  kind           String // excel | csv
+  kind           String // excel | csv | image | pdf
   type           String // the media type it is kept as
   size           Int
+  // what the model counted a photo or PDF as when it was attached — how many
+  // of a chat's files go again with each question; null for a sheet, or a
+  // file that could not be counted then
+  tokens         Int?
   sha256         String
   data           Bytes
   createdAt      DateTime        @default(now())

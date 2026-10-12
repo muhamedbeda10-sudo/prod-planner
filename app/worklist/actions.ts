@@ -28,6 +28,8 @@ export interface RecordResult {
   /** Welding a batch of tanks mints their serials — the worklist shows them
    *  straight away so the technician can write them on the steel. */
   serials?: string[];
+  /** The Daily log row the recording made. */
+  ledgerId?: number;
 }
 
 /** Thrown inside a tank transaction to roll it back with a message the shop
@@ -133,7 +135,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
 
     // the ledger row and the tanks' serials are ONE write: a serial must never
     // survive a welding record that failed to save, nor the other way round
-    const serials = await prisma.$transaction(async (tx) => {
+    const made = await prisma.$transaction(async (tx) => {
       const ledger = await tx.handoverEntry.create({
         data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist", machineId, createdBy: guard.user?.name ?? null },
       });
@@ -160,7 +162,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
           }
         }
       }
-      if (!mintsTanks) return [];
+      if (!mintsTanks) return { ledgerId: ledger.id, serials: [] as string[] };
       const minted = await mintTankSerials(tx, {
         bom, mo, planNo, count: qty, date, ledgerId: ledger.id,
         workerId: welder.worker?.id ?? null,
@@ -168,10 +170,10 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
         workerStamp: welder.worker?.stamp ?? null,
         byUser: guard.user?.name ?? null,
       });
-      return minted.map((m) => m.serial);
+      return { ledgerId: ledger.id, serials: minted.map((m) => m.serial) };
     });
     for (const p of TANK_PATHS) revalidatePath(p);
-    return { ok: true, serials: serials.length > 0 ? serials : undefined };
+    return { ok: true, serials: made.serials.length > 0 ? made.serials : undefined, ledgerId: made.ledgerId };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }

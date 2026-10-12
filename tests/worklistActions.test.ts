@@ -149,7 +149,7 @@ describe("recordOutput — validation guards run before any DB write", () => {
   it("writes a dated ledger entry on the happy path", async () => {
     h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "MO-1" });
     const res = await recordOutput(form({ date: DATE, dept: "Cut", bom: "B", mo: "MO-1", item: "CF", qty: "3", planNo: "0" }));
-    expect(res).toEqual({ ok: true });
+    expect(res).toEqual({ ok: true, ledgerId: 1 });
     expect(txWrites).toEqual([
       expect.objectContaining({ dept: "Cut", bom: "B", mo: "MO-1", item: "CF", qty: 3, planNo: 0, source: "worklist" }),
     ]);
@@ -192,7 +192,7 @@ describe("recordOutput — a panel off a machine card takes the LV stage's key, 
     expect(await recordOutput(panel("Welding"))).toEqual({ ok: false, error: NO.error });
     expect(txWrites).toEqual([]);
     holding("lv.welding");
-    expect(await recordOutput(panel("Welding"))).toEqual({ ok: true });
+    expect(await recordOutput(panel("Welding"))).toEqual({ ok: true, ledgerId: 1 });
     expect(txWrites).toEqual([expect.objectContaining({ dept: "Welding", mo: "MO-LV", item: "PNL", qty: 2, source: "worklist" })]);
   });
 
@@ -346,7 +346,7 @@ describe("the master switch — with tank tracking OFF a tank is just a quantity
     const res = await recordOutput(
       form({ date: DATE, dept: "Welding", bom: "B", mo: "MO-1", item: "TN", qty: "3", planNo: "0" })
     );
-    expect(res).toEqual({ ok: true });
+    expect(res).toEqual({ ok: true, ledgerId: 1 });
     expect(res.serials).toBeUndefined();
     expect(h.mintTankSerials).not.toHaveBeenCalled();
     expect(txWrites).toEqual([expect.objectContaining({ dept: "Welding", item: "TN", qty: 3 })]);

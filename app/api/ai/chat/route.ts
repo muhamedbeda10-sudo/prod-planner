@@ -6,8 +6,8 @@ import { ask, questionMessages, type AiMessageParam } from "@/lib/server/ai/agen
 import { markOutcomesTold, pendingOutcomes } from "@/lib/server/ai/changes";
 import { toolsFor } from "@/lib/server/ai/tools";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
-import { linkFiles, questionFiles } from "@/lib/server/ai/files";
-import { AI_FILE_LIMITS, attachmentNote } from "@/lib/domain/aiFiles";
+import { fileExpander, linkFiles, questionFiles, seenBlocks, withoutSeen } from "@/lib/server/ai/files";
+import { AI_FILE_LIMITS, attachmentNote, fileRef } from "@/lib/domain/aiFiles";
 import { AI_DENY_TEXT, AI_MAX_MESSAGES, AI_MAX_QUESTION, conversationTitle, costUsd, questionContext } from "@/lib/domain/ai";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
 import { factoryDayISO } from "@/lib/domain/dates";
@@ -108,7 +108,14 @@ export async function POST(request: Request) {
         apiKey,
         model: conversation.model,
         history,
-        question: questionMessages(question, context, files.files.length ? attachmentNote(files.files) : undefined),
+        question: questionMessages(
+          question,
+          context,
+          files.files.length ? attachmentNote(files.files) : undefined,
+          seenBlocks(files.files, fileRef),
+        ),
+        // the photos and PDFs go to the model as the files themselves
+        expand: fileExpander(user.id),
         tools,
         ctx: { user, hidden, now, todayISO: factoryDayISO(now), conversationId: conversation.id, automationId: null },
         settings,
@@ -120,10 +127,14 @@ export async function POST(request: Request) {
         },
       });
       const cost = costUsd(conversation.model, result.tokens);
+      // a question the model refused to read keeps its files as lines only —
+      // a file it cannot take would be refused again with every later question
+      const names = new Map(files.files.map((f) => [f.id, f.name]));
+      const keep = result.badRequest && files.files.length ? result.added.map((m) => withoutSeen(m, names)) : result.added;
 
       try {
         await prisma.$transaction([
-          ...result.added.map((m) =>
+          ...keep.map((m) =>
             prisma.aiMessage.create({ data: { conversationId: conversation.id, role: m.role, content: m.content as unknown as Prisma.InputJsonValue } }),
           ),
           prisma.aiConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),

@@ -2,7 +2,8 @@
 
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
-import { aiStatusFor } from "@/lib/server/ai/access";
+import { aiStatusFor, apiKeyOf, getAiSettings } from "@/lib/server/ai/access";
+import { seenMeasurer } from "@/lib/server/ai/vision";
 import { discardFile, storeAiFile, type StoreResult } from "@/lib/server/ai/files";
 import { actionsOfConversation, approveAction, rejectAction, undoAction, type DecideResult } from "@/lib/server/ai/changes";
 import { READ_TOOL_TITLES } from "@/lib/server/ai/tools";
@@ -66,7 +67,8 @@ export async function undoAiAction(id: number): Promise<DecideResult> {
 }
 
 /** A file attached in the chat — checked and kept for the question it goes
- *  with. Only for someone the assistant answers now. */
+ *  with (a photo or a PDF measured by the model first). Only for someone the
+ *  assistant answers now. */
 export async function uploadAiFile(fd: FormData): Promise<StoreResult> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: NOT_LOGGED_IN };
@@ -75,7 +77,9 @@ export async function uploadAiFile(fd: FormData): Promise<StoreResult> {
   const file = fd.get("file");
   if (!(file instanceof File)) return { ok: false, error: "Choose a file." };
   try {
-    return await storeAiFile(user, file);
+    const settings = await getAiSettings();
+    const apiKey = apiKeyOf(settings);
+    return await storeAiFile(user, file, new Date(), apiKey ? seenMeasurer(apiKey, settings.model) : undefined);
   } catch (e) {
     console.error("AI: could not keep an attached file", e);
     return { ok: false, error: "The file could not be kept — try again." };

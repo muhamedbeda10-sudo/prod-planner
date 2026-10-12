@@ -307,11 +307,17 @@ mobile drawer still lists every view flat, since it has the vertical room.
      action stamps things as it goes, the undo writes the rows back exactly from the snapshot (`lib/server/rowSnapshots.ts`,
      reachable only from an undo). Deletions need their own key and always wait; "small changes without asking" is a
      per-person opt-in. The owner can pause every change, or every automation, at once (AI assistant settings).
-   - **Attached sheets and imports** (`lib/server/ai/files.ts`, `lib/server/ai/tools/imports.ts`): an Excel or CSV sheet
-     attached with the 📎 is checked by its bytes, kept in `AiFile` for 14 days (out of the nightly backup, closed to
-     `ai_reader`) and opened only in its own chat. The assistant reads it, and imports it through the screen's own importer
-     — the card is the importer's dry run, and the import runs only while a fresh dry run reads the same. No undo for an
-     import; key "AI — imports" plus the person's own import permission.
+   - **Attached files and imports** (`lib/server/ai/files.ts`, `lib/server/ai/tools/imports.ts`): a photo, a PDF, an Excel
+     or CSV sheet attached with the 📎 is checked by its bytes (a photo shrunk in the browser first; a photo or PDF also
+     measured by the model's own token count, so one it refuses never reaches a chat), kept in `AiFile` for 14 days (out
+     of the nightly backup, closed to `ai_reader`) and opened only in its own chat. Photos and PDFs go to the model with
+     the question — the chat keeps a reference (`aifile_<id>`) that is turned back into the file each time the chat is
+     sent: the chat's newest, while they fit (20 files, 16 MB, 250 thousand tokens — the count measured at upload is kept
+     in `AiFile.tokens`), older ones named only. It takes the figures off them as asked and records them with the write
+     tools (`record_output` for production).
+     Sheets it reads with a tool, and imports through the screen's own importer — the card is the importer's dry run, and
+     the import runs only while a fresh dry run reads the same. No undo for an import; key "AI — imports" plus the
+     person's own import permission.
    - **Machine rules** (Tools → Machines & lines): only / never / prefer, by item, line, sheet thickness and material, kVA —
      ⚡ Plan follows them (`lib/domain/machineRules.ts`, `optimizePlan`'s `allowed` / `preferred`).
    - **Automations** (`/automations`, `lib/domain/automations.ts`, `lib/server/automations/*`): on a schedule (Cairo times on
