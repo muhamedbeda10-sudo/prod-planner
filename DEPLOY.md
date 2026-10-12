@@ -57,3 +57,37 @@ npm run seed -- "C:\المسار\إلى\Production_Master_Excel.xlsm"
   `D:\SYS\prod-planner\open-app.cmd`. (لا يوجد تشغيل تلقائي مع بداية الويندوز —
   التطبيق يفتح فقط عند الضغط على الأيقونة.)
 - **إيقاف السيرفر:** دبل-كليك على `stop.bat` (أو أغلق نافذة "ATC Planner Server").
+
+---
+
+## النسخ الاحتياطي لقاعدة البيانات الحية (Supabase)
+الخطة المجانية في Supabase **مافيهاش أي باك أب**، و`scripts/backup.mjs` بياخد نسخة من PostgreSQL
+القديمة على `D:\SYS` بس. الباك أب الحقيقي للداتا الحية هو الـ workflow
+`.github/workflows/backup.yml`: كل ليلة (03:40 صيفي / 02:40 شتوي بتوقيت القاهرة) بياخد `pg_dump`
+للـ schema بتاعة الأبلكيشن، ويقفله في ملف 7-Zip بباسورد (AES-256)، ويحفظه 30 يوم في GitHub.
+
+### التجهيز (مرة واحدة)
+في GitHub: **Settings → Secrets and variables → Actions → New repository secret**:
+1. `BACKUP_DATABASE_URL` — من Supabase: **Connect → Session pooler** (العنوان اللي فيه
+   `pooler.supabase.com:5432`)، مش الـ direct (`db.<ref>.supabase.co`) ولا الـ transaction pooler (6543).
+2. `BACKUP_PASSPHRASE` — باسورد طويل (16 حرف على الأقل). **احفظه في مكان تاني غير GitHub** —
+   من غيره الباك أب مايتفتحش.
+
+بعدها من تاب **Actions → Database backup → Run workflow** شغّله مرة يدوي وتأكد إنه أخضر.
+الـ schedule بيشتغل من الفرع `master` بس.
+
+### الاسترجاع
+1. من **Actions → Database backup** افتح التشغيلة وحمّل الـ artifact (`atc-db-<التاريخ>`).
+2. افتح الـ `.7z` بـ 7-Zip بالباسورد ← هتلاقي `atc.dump`.
+3. محتاج `pg_restore` نسخة **17** أو أحدث (من PostgreSQL 17، أو Docker: `postgres:17`).
+   - جدول واحد بس (مثلاً لو اتمسحت صفوف من الـ Daily log):
+     ```
+     pg_restore --list atc.dump | findstr HandoverEntry
+     pg_restore --data-only --table=HandoverEntry -f handover.sql atc.dump
+     ```
+     راجع `handover.sql` وخد منه الصفوف اللي محتاجها.
+   - الداتابيز كلها في مشروع جديد/فاضي:
+     ```
+     pg_restore --no-owner --clean --if-exists -d "<connection string>" atc.dump
+     ```
+     الاسترجاع على الداتابيز الحية بيكتب فوق الموجود — اعمله بس لو ده المقصود، وبعد ما توقف الشغل.
