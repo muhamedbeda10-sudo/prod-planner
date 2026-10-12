@@ -128,7 +128,7 @@ export const PERM_CATEGORIES: PermCategory[] = [
     // their approval in the chat unless it is a small one and they opted in.
     name: "AI assistant",
     perms: [
-      { key: "ai.act.tracker", label: "AI — Plan Tracker and Daily log", desc: "The assistant may prepare changes on the Plan Tracker and the Daily log for this person: close, reopen, hold and flag orders, quantities, specs and components, recorded totals and log corrections. Each one still needs the person's own tracker or log permission for it" },
+      { key: "ai.act.tracker", label: "AI — Plan Tracker and Daily log", desc: "The assistant may prepare changes on the Plan Tracker and the Daily log for this person: close, reopen, hold and flag orders, quantities, specs and components, recorded totals, output taken off a production sheet or a photo of one, and log corrections. Each one still needs the person's own tracker or log permission for it" },
       { key: "ai.act.machines", label: "AI — machines and the distribution", desc: "The assistant may put lines on machines, order and split the queues, run ⚡ Plan, and keep the machines' rules — within the person's own worklist and machines permissions" },
       { key: "ai.act.simulator", label: "AI — the simulator", desc: "The assistant may build and run what-if scenarios, save and delete them, and — for an admin — apply one as the run order" },
       { key: "ai.act.data", label: "AI — other data", desc: "The assistant may change the rest of the app's data for this person — the ODOO log, Material, Physical material, Consumables (hand-outs, the catalogue and its limits, powder scrap), the shift roster, the calendar, workers and machines — each within the person's own permission for it" },

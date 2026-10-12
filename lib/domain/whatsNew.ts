@@ -23,6 +23,14 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The AI button opens the assistant on the right while the page stays beside it; ⤢ makes it full size. Chat, Inbox, Automations and Playbook are tabs inside it, and an automation's times can be changed from its Timing button. The owner's settings page now has tabs: a model and an effort (Low … Max) for the chat and another for the automations, a daily cap beside the monthly one (for the plant and per person), the steps per question, and the hours and days automations may run in, with the morning review's time and its own switch.",
   },
   {
+    id: "2026-10-12-ai-photos",
+    dateISO: "2026-10-12",
+    title: "Send the assistant a photo — it takes the figures off it and records them",
+    where: "AI assistant → 📎",
+    body: "Attach a photo (from the phone's camera too) or a PDF: a production sheet, a hand-out slip, an attendance list, a delivery note. Tell the assistant what to take off it — it gives it back as a table, marks anything it could not read clearly, and asks before it guesses. Then ask it to record them: output into the Daily log, hand-outs, the roster … each as a card you approve, with Undo. The photo stays on your question in the chat for two weeks.",
+    href: "/ai",
+  },
+  {
     id: "2026-10-12-ai-imports",
     dateISO: "2026-10-12",
     title: "Attach a sheet in the AI chat — it reads it, or imports it",

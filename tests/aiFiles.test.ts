@@ -10,7 +10,7 @@ import * as XLSX from "xlsx";
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
   return {
-    prisma: { aiFile: { create: fn(), count: fn(), aggregate: fn(), findMany: fn(), findUnique: fn(), updateMany: fn(), deleteMany: fn() } },
+    prisma: { aiFile: { create: fn(), count: fn(), aggregate: fn(), findMany: fn(), findUnique: fn(), findFirst: fn(), updateMany: fn(), deleteMany: fn() } },
     perms: new Set<string>(),
     lines: [] as string[],
     importers: {
@@ -41,7 +41,8 @@ vi.mock("@/app/physical/actions", async (orig) => ({ ...(await orig<object>()), 
 
 import type { User } from "@prisma/client";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
-import { chatFile, questionFiles, readSheet, storeAiFile } from "@/lib/server/ai/files";
+import { chatFile, fileExpander, questionFiles, readSheet, seenBlocks, storeAiFile, withoutSeen } from "@/lib/server/ai/files";
+import { fileRef } from "@/lib/domain/aiFiles";
 import { importDailyLogTool, importMaterialSheetTool, importMonthlyPlanTool, readAttachedFileTool } from "@/lib/server/ai/tools/imports";
 import { checkToolInput } from "@/lib/server/ai/tools";
 
@@ -93,6 +94,87 @@ describe("keeping an attached file", () => {
   });
 });
 
+describe("a photo or a PDF", () => {
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+  const PDF = new TextEncoder().encode("%PDF-1.4\n%âãÏÓ\n1 0 obj");
+
+  it("is measured by the model before it is kept, and refused when the model refuses it", async () => {
+    const measure = vi.fn().mockResolvedValue({ ok: true, tokens: 1600 });
+    expect(await storeAiFile(user, new File([JPEG], "IMG_2041"), now, measure)).toEqual({ ok: true, file: { id: 12, name: "IMG_2041", kind: "image", size: JPEG.length } });
+    expect(measure).toHaveBeenCalledWith({ kind: "image", type: "image/jpeg", data: JPEG });
+    // what the model counted it as is kept with it — how many of a chat's files go with each question
+    expect(h.prisma.aiFile.create.mock.calls[0][0].data).toMatchObject({ kind: "image", type: "image/jpeg", tokens: 1600 });
+
+    measure.mockResolvedValue({ ok: false, error: "The PDF is damaged." });
+    expect(await storeAiFile(user, new File([PDF], "note.pdf"), now, measure)).toEqual({ ok: false, error: "\"note.pdf\" cannot be read by the assistant: The PDF is damaged." });
+    measure.mockResolvedValue({ ok: true, tokens: 500_000 });
+    expect(await storeAiFile(user, new File([PDF], "manual.pdf"), now, measure)).toMatchObject({ ok: false, error: expect.stringContaining("too much for the assistant") });
+    // a count that could not be made does not hold the file back
+    measure.mockResolvedValue({ ok: true, tokens: null });
+    expect(await storeAiFile(user, new File([PDF], "note.pdf"), now, measure)).toMatchObject({ ok: true });
+    expect(h.prisma.aiFile.create.mock.calls[1][0].data).toMatchObject({ kind: "pdf", tokens: null });
+  });
+
+  /** The kept photos and PDFs, as the expander's reads find them. */
+  const store = (rows: { id: number; userId?: number; kind: string; name?: string; size?: number; tokens?: number | null }[]) =>
+    h.prisma.aiFile.findMany.mockImplementation(async ({ where }: { where: { id: { in: number[] }; userId: number } }) =>
+      rows
+        .filter((r) => where.id.in.includes(r.id) && (r.userId ?? 1) === where.userId)
+        .map((r) => ({ type: "image/jpeg", name: `photo ${r.id}.jpg`, size: JPEG.length, tokens: 1600, data: JPEG, ...r })));
+  const photoQuestion = (id: number) => ({ role: "user", content: [...seenBlocks([{ id, name: `photo ${id}.jpg`, kind: "image" }], fileRef), { type: "text", text: `photo ${id}` }] });
+
+  it("goes with the question as a reference, and to the model as the file itself", async () => {
+    const blocks = seenBlocks([{ id: 12, name: "sheet.jpg", kind: "image" }, { id: 13, name: "plan.xlsx", kind: "excel" }, { id: 14, name: "note.pdf", kind: "pdf" }], fileRef);
+    expect(blocks).toEqual([
+      { type: "image", source: { type: "file", file_id: "aifile_12" } },
+      { type: "document", source: { type: "file", file_id: "aifile_14" }, title: "note.pdf" },
+    ]);
+    // the person's own only: someone else's file is as good as gone
+    store([{ id: 12, kind: "image", name: "sheet.jpg" }, { id: 14, userId: 2, kind: "pdf" }]);
+    const expand = fileExpander(1);
+    const messages = [
+      { role: "user", content: [...blocks, { type: "text", text: "Take the welding figures off it" }] },
+      { role: "assistant", content: [{ type: "text", text: "Here they are." }] },
+    ];
+    const sent = await expand(messages);
+    expect(sent[0].content).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/jpeg", data: Buffer.from(JPEG).toString("base64") } },
+      { type: "text", text: "[file #14 is no longer kept — it was attached more than 14 days ago]" },
+      { type: "text", text: "Take the welding figures off it" },
+    ]);
+    // the record keeps the references, and each file is read once a question
+    expect(messages[0].content[0]).toEqual(blocks[0]);
+    expect(sent[1]).toBe(messages[1]);
+    await expand(messages);
+    expect(h.prisma.aiFile.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("goes again with each later question while the chat's files fit — the newest first, older ones named", async () => {
+    store(Array.from({ length: 22 }, (_, i) => ({ id: 100 + i, kind: "image" })));
+    const messages = Array.from({ length: 22 }, (_, i) => photoQuestion(100 + i));
+    const sent = await fileExpander(1)(messages);
+    expect(sent.map((m) => (m.content as { type: string }[])[0].type)).toEqual([...Array(2).fill("text"), ...Array(20).fill("image")]);
+    expect(sent[0].content).toEqual([
+      { type: "text", text: "[file #100 \"photo 100.jpg\" — a photo sent earlier in this chat — is not shown with this question: the chat carries more files than one question can. If you need to look at it again, ask the person to attach it again.]" },
+      { type: "text", text: "photo 100" },
+    ]);
+    // only the files that go are read
+    expect(h.prisma.aiFile.findMany.mock.calls[1][0]).toEqual({ where: { id: { in: Array.from({ length: 20 }, (_, i) => 102 + i) }, userId: 1 }, select: { id: true, data: true } });
+  });
+
+  it("is kept as a line only when the model refused the question carrying it", () => {
+    const q = { role: "user", content: [...seenBlocks([{ id: 12, name: "sheet.jpg", kind: "image" }], fileRef), { type: "text", text: "Read it" }] };
+    expect(withoutSeen(q, new Map([[12, "sheet.jpg"]])).content).toEqual([
+      { type: "text", text: "[file #12 \"sheet.jpg\" could not be read by the assistant — attach it again, or another copy]" },
+      { type: "text", text: "Read it" },
+    ]);
+  });
+
+  it("is never read as a sheet", () => {
+    expect(readSheet({ kind: "image", data: JPEG }, {})).toEqual({ error: expect.stringContaining("a photo") });
+  });
+});
+
 describe("a question's files", () => {
   it("are the person's own, still kept, and sent in no other chat", async () => {
     h.prisma.aiFile.findMany.mockResolvedValue([kept({ conversationId: null })]);
@@ -107,6 +189,17 @@ describe("a question's files", () => {
     h.prisma.aiFile.findMany.mockResolvedValue([kept({ createdAt: new Date("2026-09-01T00:00:00Z") })]);
     expect(await questionFiles(1, [12], 5, now)).toEqual({ ok: false, error: "A file is not there any more — attach it again." });
     expect(await questionFiles(1, [1, 2, 3, 4, 5, 6], 5, now)).toMatchObject({ ok: false, error: "At most 5 files with one question." });
+  });
+
+  it("carry no more photos and PDFs than go to the model together", async () => {
+    const pdf = (id: number, o: Record<string, unknown> = {}) => kept({ id, name: `scan ${id}.pdf`, kind: "pdf", type: "application/pdf", size: 4 * 1024 * 1024, tokens: 20_000, ...o });
+    h.prisma.aiFile.findMany.mockResolvedValue([pdf(1), pdf(2), pdf(3), pdf(4), pdf(5)]);
+    expect(await questionFiles(1, [1, 2, 3, 4, 5], 5, now)).toEqual({ ok: false, error: "The photos and PDFs sent with one question come to at most 16 MB — these come to 20 MB. Send some of them with the next question." });
+    h.prisma.aiFile.findMany.mockResolvedValue([pdf(1, { tokens: 120_000 }), pdf(2, { tokens: 120_000 }), pdf(3, { size: 1000, tokens: 15_000 })]);
+    expect(await questionFiles(1, [1, 2, 3], 5, now)).toMatchObject({ ok: false, error: expect.stringContaining("too much for the assistant to look at with one question") });
+    // a sheet is read with a tool: it does not count
+    h.prisma.aiFile.findMany.mockResolvedValue([pdf(1), pdf(2), pdf(3), pdf(4), kept({ id: 5, size: 4 * 1024 * 1024 })]);
+    expect(await questionFiles(1, [1, 2, 3, 4, 5], 5, now)).toMatchObject({ ok: true });
   });
 
   it("opens for the assistant only for its person, in its chat", async () => {

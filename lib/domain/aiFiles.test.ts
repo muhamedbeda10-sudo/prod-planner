@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiFileKind, attachmentNote, cleanFileName, fileSizeText, filesOfNote, isAttachmentNote } from "./aiFiles";
+import { aiFileKind, attachmentNote, cleanFileName, fileRef, fileRefId, fileSizeText, filesOfNote, filesToSend, isAttachmentNote, questionSeenProblem, seenTokensOf, type SeenWeight } from "./aiFiles";
 import { displayTurns } from "./ai";
 
 const bytes = (...b: number[]) => new Uint8Array(b);
@@ -15,8 +15,51 @@ describe("aiFileKind", () => {
     // a program renamed to a sheet, a zip called a CSV, a binary called a CSV
     expect(aiFileKind("plan.xlsx", bytes(0x4d, 0x5a, 0x90, 0x00))).toBeNull();
     expect(aiFileKind("stock.csv", bytes(0x50, 0x4b, 0x03, 0x04, 0x00))).toBeNull();
-    expect(aiFileKind("photo.jpg", bytes(0xff, 0xd8, 0xff))).toBeNull();
     expect(aiFileKind("empty.csv", bytes())).toBeNull();
+  });
+
+  it("takes a photo or a PDF by its bytes alone, whatever a phone named it", () => {
+    expect(aiFileKind("IMG_2041", bytes(0xff, 0xd8, 0xff, 0xe0))).toEqual({ kind: "image", type: "image/jpeg" });
+    expect(aiFileKind("scan.png", bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))).toEqual({ kind: "image", type: "image/png" });
+    expect(aiFileKind("x", text("RIFF\u0000\u0000\u0000\u0000WEBPVP8 "))).toEqual({ kind: "image", type: "image/webp" });
+    expect(aiFileKind("anim.gif", text("GIF89a"))).toEqual({ kind: "image", type: "image/gif" });
+    expect(aiFileKind("note.pdf", text("%PDF-1.7\n"))).toEqual({ kind: "pdf", type: "application/pdf" });
+    // a RIFF that is not a WebP (a .wav) is not a picture
+    expect(aiFileKind("sound.wav", text("RIFF\u0000\u0000\u0000\u0000WAVEfmt "))).toBeNull();
+    // an iPhone HEIC photo is not one the model takes
+    expect(aiFileKind("IMG_1.heic", text("\u0000\u0000\u0000\u0018ftypheic"))).toBeNull();
+  });
+
+  it("refers to a seen file by a reference only the app writes", () => {
+    expect(fileRef(12)).toBe("aifile_12");
+    expect(fileRefId("aifile_12")).toBe(12);
+    expect([fileRefId("file_011CNha8"), fileRefId("aifile_x"), fileRefId("aifile_-3"), fileRefId(12)]).toEqual([null, null, null, null]);
+  });
+});
+
+describe("the photos and PDFs sent with a question", () => {
+  const photo = (o: Partial<SeenWeight> = {}): SeenWeight => ({ kind: "image", size: 800_000, tokens: 3_000, ...o });
+  const pdf = (o: Partial<SeenWeight> = {}) => photo({ kind: "pdf", ...o });
+
+  it("go from the newest back while they fit — none older than the first that does not", () => {
+    expect(filesToSend([])).toEqual([]);
+    expect(filesToSend([photo(), photo()])).toEqual([true, true]);
+    // twenty at most
+    const many = filesToSend(Array.from({ length: 22 }, () => photo()));
+    expect(many.slice(0, 2)).toEqual([false, false]);
+    expect(many.filter(Boolean)).toHaveLength(20);
+    // 16 MB at most: the PDF that would pass it stops the older photo too
+    expect(filesToSend([photo(), pdf({ size: 4_000_000 }), pdf({ size: 4_000_000 }), pdf({ size: 4_000_000 }), pdf({ size: 4_000_000 }), photo()])).toEqual([false, false, true, true, true, true]);
+    // 250 thousand tokens at most — a file never counted, reckoned at the most it can be
+    expect(filesToSend([pdf({ tokens: 100_000 }), pdf({ tokens: 100_000 }), pdf({ tokens: 100_000 })])).toEqual([false, true, true]);
+    expect([seenTokensOf({ kind: "image", tokens: null }), seenTokensOf({ kind: "pdf", tokens: null }), seenTokensOf({ kind: "pdf", tokens: 900 })]).toEqual([7_000, 120_000, 900]);
+    expect(filesToSend([pdf({ tokens: null }), pdf({ tokens: null }), pdf({ tokens: null })])).toEqual([false, true, true]);
+  });
+
+  it("a question's own must all go together; its sheets do not count", () => {
+    expect(questionSeenProblem([photo(), { kind: "excel", size: 4_000_000, tokens: null }])).toBeNull();
+    expect(questionSeenProblem(Array.from({ length: 5 }, () => pdf({ size: 4 * 1024 * 1024 })))).toBe("The photos and PDFs sent with one question come to at most 16 MB — these come to 20 MB. Send some of them with the next question.");
+    expect(questionSeenProblem([pdf({ tokens: 120_000 }), pdf({ tokens: 120_000 }), pdf({ tokens: 15_000 })])).toContain("too much for the assistant to look at with one question");
   });
 });
 
