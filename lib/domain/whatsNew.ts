@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-odoo-order-material",
+    dateISO: "2026-10-12",
+    title: "ODOO log: a row closed under another MO of its order is no longer red",
+    where: "ODOO → the log's colours",
+    body: "Odoo often closes a part under a different MO of the order than the one the Material tab names — the Top Cover of S01328-35 is nested under SF01/MO/20227 and closed under SF01/MO/20218. Such a row used to stay red although its material was recorded; it now takes its colour from its order's lines of the same part, the same lines the 🧱 popup shows. Another order's lines never colour it.",
+    href: "/odoo",
+  },
+  {
     id: "2026-10-12-floor-sheet-line",
     dateISO: "2026-10-12",
     title: "Floor: each sheet of an item is named, and goes on a machine as that sheet",

@@ -20,7 +20,7 @@ import { useActiveLine } from "@/components/LineContext";
 import { Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { Modal } from "@/components/Modal";
-import { MO_MATERIAL_FLAG, entryMaterialNeed, moMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
+import { MO_MATERIAL_FLAG, entryMaterialNeed, rowMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote } from "@/app/odoo/actions";
 
@@ -490,7 +490,7 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
   // the MO typed for it, against the Material tab: red when no nesting is
   // filed under it, yellow when some of its lines are not nested yet, green
   // when every line is
-  const moState = moMaterialState(nesting, e.odooMo);
+  const moState = rowMaterialState(nesting, e, needCtx);
   const flag = moState === "none" ? null : MO_MATERIAL_FLAG[moState];
   return (
     <>
@@ -604,7 +604,7 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
   // adds up — the way a single row does; the ▶ and the rows button open the
   // closings underneath
   const details = () => setMaterial(true);
-  const moState = moMaterialState(nesting, head.odooMo);
+  const moState = rowMaterialState(nesting, head, needCtx);
   const flag = moState === "none" ? null : MO_MATERIAL_FLAG[moState];
   const rowTitle = need ? `Click for the material behind all ${g.qty} units` : `Click — no material lines for this ${needCtx.lv ? "order" : "line"} yet`;
   return (
@@ -881,8 +881,8 @@ export function OdooClient({
   const [matState, setMatState] = useState<"" | "missing" | "partial" | "ok">("");
   const editableLines = (["TR", "LV"] as const).filter((l) => canEditLine[l]);
   const byMat = useCallback(
-    (rows: OdooEntryView[], st: typeof matState = matState) => (st ? rows.filter((e) => moMaterialState(nesting, e.odooMo) === st) : rows),
-    [nesting, matState]
+    (rows: OdooEntryView[], st: typeof matState = matState) => (st ? rows.filter((e) => rowMaterialState(nesting, e, { ...needCtx, lv: e.line === "LV" }) === st) : rows),
+    [nesting, matState, needCtx]
   );
   const pick = useCallback((f: OdooFilters) => byMat(filterOdooEntries(entries, f)), [byMat, entries]);
   const shown = useMemo(() => pick(filters), [pick, filters]);
@@ -912,11 +912,11 @@ export function OdooClient({
   const matCounts = useMemo(() => {
     const out = { missing: 0, partial: 0, ok: 0 };
     for (const e of byMat(filterOdooEntries(entries, filters), "")) {
-      const st = moMaterialState(nesting, e.odooMo);
+      const st = rowMaterialState(nesting, e, { ...needCtx, lv: e.line === "LV" });
       if (st !== "none") out[st] += 1;
     }
     return out;
-  }, [byMat, entries, filters, nesting]);
+  }, [byMat, entries, filters, nesting, needCtx]);
   const showAll = useShowAll();
   const elsewhere = day === "all" ? 0 : Math.max(0, totalRows - entries.length);
   const elsewhereLink = elsewhere > 0 && (

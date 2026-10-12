@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, jobLines, materialNeed, materialNeedText, moKey, moMaterialState, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup, linesOfMo, moParent } from "./odooMaterial";
+import { bookText, candidateBoms, candidateMos, EMPTY_NEED_CONTEXT, entryMaterialNeed, jobLines, materialNeed, materialNeedText, moKey, moMaterialState, monthLabelOfISO, nestingKey, splitFgCode, varianceOf, varianceText, type NestingLine, type NestingLookup, linesOfMo, moParent, rowMaterialState } from "./odooMaterial";
 
 function line(over: Partial<NestingLine> & { id: number }): NestingLine {
   return {
@@ -396,3 +396,22 @@ describe("a nested 0 is a value, a blank is none", () => {
     expect(need.notNested).toBe(1);
   });
 });
+
+describe("rowMaterialState", () => {
+  const ctx = { lv: false, soiBoms: { "S01328-35": ["12012E16M15"] }, soiMos: {} };
+  const partKey = nestingKey("FB-051", "12012E16M15");
+  it("reads the order's lines of the same part when Odoo closes it under another MO", () => {
+    const lookup: NestingLookup = {
+      [partKey]: [line({ id: 1, sheetsUsed: 2, soi: "S01328-35", mo: "SF01/MO/20227" })],
+    };
+    const row = { odooMo: "SF01/MO/20218", fgCode: "FB-051-12012E16M15", soi: "s01328-35" };
+    expect(rowMaterialState(lookup, row, ctx)).toBe("ok");
+    // another order's lines of the same part never colour it
+    expect(rowMaterialState(lookup, { ...row, soi: "S09999-1" }, ctx)).toBe("missing");
+    // its own MO's lines come first
+    const own: NestingLookup = { ...lookup, [moKey("SF01/MO/20218")]: [line({ id: 2, sheetsUsed: null, actualPerUnit: null })] };
+    expect(rowMaterialState(own, row, ctx)).toBe("partial");
+    expect(rowMaterialState(lookup, { ...row, odooMo: "" }, ctx)).toBe("none");
+  });
+});
+
