@@ -16,7 +16,7 @@ const h = vi.hoisted(() => {
     actions: {
       setOrderStatus: fn(), setOrderQty: fn(), decidePlanQty: fn(), setOrderSpec: fn(), setGroupOrderSpec: fn(),
       setOrderPriority: fn(), setOrderHold: fn(), pushOrderToWorklist: fn(), setExcludedItems: fn(), closeDeliveredOrders: fn(),
-      recordTrackerTotal: fn(), recordGroupOutput: fn(), recordLvTotal: fn(),
+      recordTrackerTotal: fn(), recordGroupOutput: fn(), recordLvTotal: fn(), recordLvGroupTotal: fn(),
       updateHandover: fn(), bulkSetHandoverDate: fn(), bulkDeleteHandover: fn(),
     },
     checkOutputChain: fn(),
@@ -41,7 +41,7 @@ vi.mock("@/app/handover/actions", () => h.actions);
 import type { User } from "@prisma/client";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import {
-  pushToWorklistTool, recordBomTotalTool, recordStageTotalsTool, setOrderHoldTool, setOrderSpecsTool, setOrderStatusTool,
+  pushToWorklistTool, recordBomTotalTool, recordLvBomTotalTool, recordStageTotalsTool, setOrderHoldTool, setOrderSpecsTool, setOrderStatusTool,
 } from "@/lib/server/ai/tools/tracker";
 import { deleteLogEntriesTool, setLogDatesTool } from "@/lib/server/ai/tools/dailyLog";
 import { AI_TOOLS, checkToolInput, writeToolNamed } from "@/lib/server/ai/tools";
@@ -70,6 +70,50 @@ describe("the registry", () => {
       expect(t.description.length, t.name).toBeGreaterThan(40);
       for (const r of t.schema.required ?? []) expect(t.schema.properties, `${t.name}.${r}`).toHaveProperty(r);
     }
+  });
+});
+
+describe("record_lv_bom_total", () => {
+  // two panel orders of one BOM: P1 bent 5 / welded 3, P2 bent 4 / welded 0
+  const panels = [
+    { mo: "P1", bom: "LVB", line: "LV", planQty: 5 },
+    { mo: "P2", bom: "LVB", line: "LV", planQty: 5 },
+  ];
+  const sums = [
+    { mo: "P1", dept: "Punching", _sum: { qty: 5 } }, { mo: "P1", dept: "Bending", _sum: { qty: 5 } }, { mo: "P1", dept: "Welding", _sum: { qty: 3 } },
+    { mo: "P2", dept: "Punching", _sum: { qty: 4 } }, { mo: "P2", dept: "Bending", _sum: { qty: 4 } },
+  ];
+  const input = { stage: "Welding" as const, bom: "LVB", mos: ["P1", "P2"], total: 7 };
+
+  beforeEach(() => {
+    h.prisma.masterOrder.findMany.mockResolvedValue(panels);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue(sums);
+  });
+
+  it("spreads the group's new total over its MOs in order, as the LV tracker's group row does", async () => {
+    expect(await recordLvBomTotalTool.describe(input, ctx)).toEqual({ error: expect.stringContaining("permission") });
+    h.perms.add("lv.welding");
+    const p = await recordLvBomTotalTool.describe(input, ctx);
+    expect(p).toMatchObject({
+      title: "LVB LV Welding: 3 → 7",
+      changes: [{ label: "P1 Welding", before: "3", after: "5 (+2 today)" }, { label: "P2 Welding", before: "0", after: "2 (+2 today)" }],
+    });
+    // more than the stage before has finished is refused whole
+    expect(await recordLvBomTotalTool.describe({ ...input, total: 10 }, ctx)).toEqual({ error: expect.stringContaining("Only 9 fit") });
+    expect(await recordLvBomTotalTool.describe({ ...input, total: 3 }, ctx)).toEqual({ error: "The group total is 3 already." });
+    // an MO of another BOM is not in the group
+    h.prisma.masterOrder.findMany.mockResolvedValue([panels[0], { ...panels[1], bom: "OTHER" }]);
+    expect(await recordLvBomTotalTool.describe(input, ctx)).toEqual({ error: "P2 is not on BOM LVB." });
+  });
+
+  it("runs the group row's own action and is undone MO by MO", async () => {
+    h.perms.add("lv.welding");
+    h.prisma.handoverEntry.groupBy.mockResolvedValueOnce(sums).mockResolvedValueOnce([
+      ...sums.filter((x) => x.dept !== "Welding"), { mo: "P1", dept: "Welding", _sum: { qty: 5 } }, { mo: "P2", dept: "Welding", _sum: { qty: 2 } },
+    ]);
+    const out = await recordLvBomTotalTool.execute(input, ctx);
+    expect(fdOf(h.actions.recordLvGroupTotal)).toEqual({ stage: "Welding", bom: "LVB", mos: "P1,P2", total: "7" });
+    expect(out).toEqual({ ok: true, message: "Recorded LVB LV Welding total 7.", undo: { tool: "record_lv_totals", input: { stage: "Welding", totals: [{ mo: "P1", total: 3 }, { mo: "P2", total: 0 }] } } });
   });
 });
 

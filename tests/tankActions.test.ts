@@ -204,7 +204,8 @@ describe("paintTanks", () => {
     const res = await paintTanks(
       form({ serials: "SF-B-0001,SF-B-0002,SF-C-0001", workerId: "7", date: "2026-08-27" })
     );
-    expect(res).toEqual({ ok: true, count: 3 });
+    // the rows it wrote come back, so the assistant's undo can name them
+    expect(res).toEqual({ ok: true, count: 3, ledgerIds: [901, 902] });
     expect(writes.ledger).toEqual([
       expect.objectContaining({ dept: "Painting", mo: "MO-1", item: "TN", qty: 2 }),
       expect.objectContaining({ dept: "Painting", mo: "MO-2", item: "TN", qty: 1 }),

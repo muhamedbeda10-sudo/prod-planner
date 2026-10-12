@@ -5,9 +5,14 @@ import { AI_AREA_KEY, AI_DELETE_KEY, type AiRisk } from "@/lib/domain/aiActions"
 import { validateInput } from "@/lib/domain/aiInput";
 import { queryDatabase } from "./sql";
 import { TRACKER_TOOLS } from "./tracker";
+import { ORDER_TOOLS } from "./orders";
 import { DAILY_LOG_TOOLS } from "./dailyLog";
 import { MACHINE_TOOLS } from "./machines";
+import { CUT_FLOOR_TOOLS } from "./cutFloor";
+import { WORKLIST_TOOLS } from "./worklists";
+import { TANK_TOOLS } from "./tanks";
 import { SIMULATOR_TOOLS } from "./simulator";
+import { FLOOR_TOOLS } from "./floor";
 import { ODOO_TOOLS } from "./odoo";
 import { MATERIAL_TOOLS } from "./material";
 import { PHYSICAL_TOOLS } from "./physical";
@@ -16,6 +21,7 @@ import { CALENDAR_TOOLS } from "./calendar";
 import { WORKER_TOOLS } from "./workers";
 import { MACHINE_LIST_TOOLS } from "./machineList";
 import { AUTOMATION_TOOLS } from "./automations";
+import { CHAT_TOOLS } from "./chat";
 import { PLAYBOOK_TOOLS } from "./playbook";
 import { SHIFT_TOOLS } from "./shifts";
 import { CATALOGUE_TOOLS } from "./catalogue";
@@ -33,9 +39,14 @@ import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 export const AI_TOOLS: readonly AiTool[] = [
   queryDatabase,
   ...TRACKER_TOOLS,
+  ...ORDER_TOOLS,
   ...DAILY_LOG_TOOLS,
+  ...WORKLIST_TOOLS,
+  ...TANK_TOOLS,
   ...MACHINE_TOOLS,
+  ...CUT_FLOOR_TOOLS,
   ...SIMULATOR_TOOLS,
+  ...FLOOR_TOOLS,
   ...ODOO_TOOLS,
   ...MATERIAL_TOOLS,
   ...PHYSICAL_TOOLS,
@@ -44,6 +55,7 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...WORKER_TOOLS,
   ...MACHINE_LIST_TOOLS,
   ...AUTOMATION_TOOLS,
+  ...CHAT_TOOLS,
   ...PLAYBOOK_TOOLS,
   ...SHIFT_TOOLS,
   ...CATALOGUE_TOOLS,

@@ -21,12 +21,17 @@ const h = vi.hoisted(() => {
       consumableItem: { findMany: fn() },
       consumableIssue: { findUnique: fn() },
       consumableIssueRevision: { findFirst: fn() },
+      materialUsage: { findUnique: fn() },
+      masterOrder: { findUnique: fn() },
     },
     perms: new Set<string>(),
     lines: [] as string[],
     snap: { readOdooRows: fn(), restoreOdooRows: fn(), readMaterialRows: fn(), restoreMaterialRows: fn(), readPhysicalRows: fn(), restorePhysicalRows: fn() },
-    odoo: { addOdooNote: fn(), createOdooEntry: fn(), deleteOdooEntry: fn(), deleteOdooNote: fn(), setOdooMo: fn(), setOdooStatus: fn(), updateOdooEntry: fn() },
-    material: { deleteMaterialLine: fn(), setActualPerUnit: fn(), setProducedQty: fn(), setSheetsUsed: fn(), setUtilization: fn(), updateMaterialLine: fn() },
+    odoo: { addOdooNote: fn(), createOdooEntry: fn(), deleteOdooEntry: fn(), deleteOdooNote: fn(), setOdooMo: fn(), setOdooStatus: fn(), updateOdooEntry: fn(), setOdooFgCode: fn(), updateOdooGroup: fn() },
+    material: {
+      deleteMaterialLine: fn(), setActualPerUnit: fn(), setProducedQty: fn(), setSheetsUsed: fn(), setUtilization: fn(), updateMaterialLine: fn(),
+      createMaterialLine: fn(), createLvOrderLines: fn(), updateMaterialGroup: fn(),
+    },
     physical: { createPhysicalItem: fn(), deletePhysicalItem: fn(), updatePhysicalCell: fn() },
     calendar: { addHoliday: fn(), deleteHoliday: fn() },
     workers: { createWorker: fn(), deleteWorker: fn(), setWorkerActive: fn(), setWorkerVacation: fn(), updateWorker: fn() },
@@ -53,8 +58,8 @@ vi.mock("@/lib/server/consumableLimits", () => ({ checkIssueLimits: h.checkIssue
 
 import type { User } from "@prisma/client";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
-import { addOdooEntryTool, deleteOdooEntriesTool, restoreOdooRowsTool, setOdooStatusTool } from "@/lib/server/ai/tools/odoo";
-import { setMaterialCellsTool } from "@/lib/server/ai/tools/material";
+import { addOdooEntryTool, deleteOdooEntriesTool, restoreOdooRowsTool, setOdooFgCodeTool, setOdooStatusTool, updateOdooGroupTool } from "@/lib/server/ai/tools/odoo";
+import { addLvOrderMaterialTool, addMaterialLineTool, setMaterialCellsTool, updateMaterialGroupTool } from "@/lib/server/ai/tools/material";
 import { updatePhysicalItemsTool } from "@/lib/server/ai/tools/physical";
 import { addHolidaysTool, deleteHolidaysTool, restoreHolidaysTool } from "@/lib/server/ai/tools/calendar";
 import { deleteWorkerTool, updateWorkerTool } from "@/lib/server/ai/tools/workers";
@@ -79,6 +84,91 @@ beforeEach(() => {
   for (const group of [h.odoo, h.material, h.physical, h.calendar, h.workers, h.machines, h.consumables]) for (const f of Object.values(group)) f.mockResolvedValue({ ok: true });
   h.snap.restoreOdooRows.mockResolvedValue({ ok: true });
   h.checkIssueLimits.mockResolvedValue([]);
+});
+
+describe("ODOO: FG-CODE and a merged line", () => {
+  it("types the FG-CODE over a guessed one, row by row, undone by the rows as they were", async () => {
+    h.perms.add("odoo.edit");
+    const rows = [odooRow(1, { fgCode: "FB-1", fgGuessed: true }), odooRow(2, { fgCode: "FB-1" })];
+    h.snap.readOdooRows.mockResolvedValue(rows);
+    const i = checkToolInput<{ ids: number[]; fgCode: string }>(setOdooFgCodeTool, { ids: [1, 2], fgCode: " fb-1 " });
+    if (!i.ok) throw new Error(i.error);
+    // the guessed one becomes typed; the typed one is as it should be
+    expect(await setOdooFgCodeTool.describe(i.input, ctx)).toMatchObject({ changes: [{ label: expect.stringContaining("#1"), before: "FB-1 (guessed)", after: "FB-1" }] });
+    expect(await setOdooFgCodeTool.execute(i.input, ctx)).toEqual({ ok: true, message: "FG-CODE FB-1 is on 1 row(s).", undo: { tool: "restore_odoo_rows", input: { rows: JSON.stringify(rows) } } });
+    expect(fdOf(h.odoo.setOdooFgCode)).toEqual({ id: "1", fgCode: "FB-1" });
+  });
+
+  it("writes the head's four values to every row — one the rows do not share has to be given", async () => {
+    h.perms.add("odoo.edit");
+    h.snap.readOdooRows.mockResolvedValue([odooRow(1, { soi: "S1" }), odooRow(2, { soi: "S1", status: "Done" })]);
+    expect(await updateOdooGroupTool.describe({ ids: [1, 2], odooMo: "sf01/mo/9" }, ctx)).toEqual({ error: expect.stringContaining("differ in Status") });
+    const p = await updateOdooGroupTool.describe({ ids: [1, 2], odooMo: "sf01/mo/9", status: "Done" }, ctx);
+    expect(p).toMatchObject({ summary: "On 2 ODOO row(s): Odoo MO → SF01/MO/9; Status → Done." });
+    expect("changes" in p && p.changes).toHaveLength(3);
+    await updateOdooGroupTool.execute({ ids: [1, 2], odooMo: "sf01/mo/9", status: "Done" }, ctx);
+    expect(fdOf(h.odoo.updateOdooGroup)).toEqual({ ids: "1,2", soi: "S1", product: "Tank", odooMo: "SF01/MO/9", status: "Done" });
+    expect(checkToolInput(updateOdooGroupTool, { ids: [1] })).toMatchObject({ ok: false });
+  });
+});
+
+describe("MATERIAL: new lines and a group", () => {
+  const mat = (id: number, o: Record<string, unknown> = {}) => ({
+    id, line: "TR", month: "", bom: "B1", mo: "M1", units: 4, partCode: "TN", partName: "TANK", materialCode: "", material: "Steel", thicknessMm: 3, sheetSize: "1250*2500",
+    sheetsPerUnit: 2, actualPerUnit: null, actualPerUnitManual: false, sheetsUsed: null, producedQty: null, sortOrder: 0, soi: "S1", mtr: "", weightKg: null, utilization: null, note: null,
+    recordedBy: null, createdAt: "2026-10-01T00:00:00.000Z", ...o,
+  });
+
+  it("adds a line on its own product line, refused when the same line is there, undone by deleting it", async () => {
+    const raw = { line: "LV", bom: "b9", mo: "P1", material: "galvanized", thicknessMm: 1.5, sheetSize: "1220 x 2440", units: 5, sheetsPerUnit: 0.5 };
+    const c = checkToolInput<Parameters<typeof addMaterialLineTool.describe>[0]>(addMaterialLineTool, raw);
+    if (!c.ok) throw new Error(c.error);
+    expect(c.input).toMatchObject({ bom: "B9", material: "Galvanized steel", sheetSize: "1220*2440", partCode: "" });
+    expect(await addMaterialLineTool.describe(c.input, ctx)).toEqual({ error: expect.stringContaining("MATERIAL permission") });
+    h.perms.add("lv.material");
+    h.prisma.materialUsage.findUnique.mockResolvedValueOnce({ id: 70 });
+    expect(await addMaterialLineTool.describe(c.input, ctx)).toEqual({ error: expect.stringContaining("is a line already (#70)") });
+    h.prisma.materialUsage.findUnique.mockResolvedValueOnce(null);
+    expect(await addMaterialLineTool.describe(c.input, ctx)).toMatchObject({ title: "MATERIAL: add P1 Galvanized steel 1.5mm 1220*2440" });
+    h.prisma.materialUsage.findUnique.mockResolvedValueOnce({ id: 71 });
+    expect(await addMaterialLineTool.execute(c.input, ctx)).toMatchObject({ ok: true, undo: { tool: "delete_material_lines", input: { ids: [71] } } });
+    expect(h.lines).toEqual(["LV"]);
+    expect(fdOf(h.material.createMaterialLine)).toMatchObject({ bom: "B9", mo: "P1", material: "Galvanized steel", thicknessMm: "1.5", sheetSize: "1220*2440", units: "5", sheetsPerUnit: "0.5" });
+  });
+
+  it("adds an LV order's sheets, skipping the ones there, undone by deleting what it added", async () => {
+    h.perms.add("lv.material");
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ bom: "LVB", planQty: 6, line: "LV" });
+    const raw = { mo: "p1", rows: [{ thicknessMm: 1.5, sheetsPerUnit: 0.5 }, { material: "Stainless", thicknessMm: 2, sheetSize: "1250*2500", sheetsPerUnit: 0.25 }] };
+    expect(checkToolInput(addLvOrderMaterialTool, { mo: "P1", rows: [{ thicknessMm: 1.5, sheetsPerUnit: 1 }, { thicknessMm: 1.5, sheetsPerUnit: 2, material: "galvanized" }] })).toMatchObject({ ok: false, error: expect.stringContaining("listed twice") });
+    const c = checkToolInput<Parameters<typeof addLvOrderMaterialTool.describe>[0]>(addLvOrderMaterialTool, raw);
+    if (!c.ok) throw new Error(c.error);
+    h.prisma.materialUsage.findUnique.mockResolvedValueOnce({ id: 80 }).mockResolvedValueOnce(null);
+    const p = await addLvOrderMaterialTool.describe(c.input, ctx);
+    expect(p).toMatchObject({ summary: expect.stringContaining("1 already there, skipped"), changes: [{ after: "skipped — there already" }, { after: "0.25 sheet(s) a panel" }] });
+    h.prisma.materialUsage.findUnique.mockResolvedValueOnce({ id: 80 }).mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 81 });
+    h.material.createLvOrderLines.mockResolvedValue({ ok: true, added: 1, skipped: 1 });
+    expect(await addLvOrderMaterialTool.execute(c.input, ctx)).toEqual({ ok: true, message: "Added 1 sheet line(s) of P1.", undo: { tool: "delete_material_lines", input: { ids: [81] } } });
+    expect(h.lines).toEqual(["LV"]);
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ bom: "B1", planQty: 6, line: "TR" });
+    expect(await addLvOrderMaterialTool.describe(c.input, ctx)).toEqual({ error: "P1 is not an LV panel order." });
+  });
+
+  it("edits an SOI group's lines together, sending only what is given, undone by the lines as they were", async () => {
+    h.perms.add("material.edit");
+    const rows = [mat(1), mat(2, { partCode: "TC", producedQty: 3 })];
+    h.snap.readMaterialRows.mockResolvedValue(rows);
+    expect(checkToolInput(updateMaterialGroupTool, { ids: [1, 2] })).toMatchObject({ ok: false });
+    const p = await updateMaterialGroupTool.describe({ ids: [1, 2], mtr: " mt-9 ", producedQty: null }, ctx);
+    expect(p).toMatchObject({ summary: "On 2 MATERIAL line(s): MTR → MT-9; Units produced → —." });
+    expect("changes" in p && p.changes).toHaveLength(3);
+    const out = await updateMaterialGroupTool.execute({ ids: [1, 2], mtr: " mt-9 ", producedQty: null }, ctx);
+    expect(fdOf(h.material.updateMaterialGroup)).toEqual({ ids: "1,2", mtr: " mt-9 ", producedQty: "" });
+    expect(out).toMatchObject({ undo: { tool: "restore_material_rows" } });
+    h.snap.readMaterialRows.mockResolvedValue([mat(1), mat(2, { line: "LV" })]);
+    h.perms.add("lv.material");
+    expect(await updateMaterialGroupTool.describe({ ids: [1, 2], mtr: "X" }, ctx)).toEqual({ error: expect.stringContaining("both product lines") });
+  });
 });
 
 describe("the ODOO log", () => {

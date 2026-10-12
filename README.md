@@ -296,11 +296,20 @@ mobile drawer still lists every view flat, since it has the vertical room.
 12. **AI assistant** (`/ai`) — Claude answers from the live data in Arabic or English: SQL through `ai_reader`, a
    read-only login that cannot see the private tables, nor the tables of a screen hidden from the person. What it may do
    is the owner's call per person (Users & Permissions → AI assistant), and never more than the person may do themselves.
-   - **Changes** (`lib/server/ai/changes.ts`, `lib/server/ai/tools/*`): the Plan Tracker and Daily log, the machine board
-     and ⚡ Plan, the Simulator and the run order, the ODOO log, Material, physical stock, consumables with their catalogue,
+   - **Changes** (`lib/server/ai/changes.ts`, `lib/server/ai/tools/*`): the Plan Tracker and Daily log, the Orders Registry
+     (an admin's edits, plan months, deletions) and a BOM's Fins, the machine board and ⚡ Plan (a line's share on a
+     machine too), the cutting floor — nest runs (several jobs' parts on the same sheets, their pieces taken off what the
+     machines cut of those lines), manual jobs and the sheets cut — the worklists' notes (with photos from the chat),
+     returns upstream, an admin's dates and hidden lines, tanks piece by piece (welder, leak test, repair, painting,
+     quality), the Simulator, the run order and the departments' drawn floors, the ODOO log (FG codes and merged lines
+     too), Material (new lines, an LV order's sheets, SOI groups), physical stock, consumables with their catalogue,
      limits and powder scrap, the shift roster, the calendar, workers and machines, the standard times, capacity,
-     calibration, times per machine and settings (key "AI — standard times and settings"), and — for the owner alone, in a
-     live chat only — Users & Permissions (an account it makes has a password nobody knows; the owner sets the first one).
+     calibration, times per machine and settings (key "AI — standard times and settings"), automations (a test run too)
+     and messages — to colleagues' inboxes or, in a live chat and only when asked, the team chat — and, for the owner
+     alone, in a live chat only, Users & Permissions (an account it makes has a password nobody knows; the owner sets
+     the first one). Left out on purpose: the assistant's own settings (its key, limits, pause, model), approving its own
+     changes, passwords and signing in, the backup's login, and what is only a screen's own view (polls, preferences,
+     marking things read).
      A write tool never writes by itself: `describe` shows the card (before → after) and keeps a
      snapshot of the data; on Approve it runs only if the data still reads the same, through the screen's own server action
      as the person (`runAsActor` — the audit names "Sara (AI)"). The snapshot is what the change relies on, not the whole

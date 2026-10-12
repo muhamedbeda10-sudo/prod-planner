@@ -14,6 +14,8 @@ import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 export interface NestRunResult {
   ok: boolean;
   error?: string;
+  /** The run made (createNestRun). */
+  id?: number;
 }
 
 const DEPT = "Cut";
@@ -105,11 +107,11 @@ export async function createNestRun(fd: FormData): Promise<NestRunResult> {
   }
 
   const by = guard.user?.name ?? null;
-  await prisma.$transaction(async (tx) => {
+  const id = await prisma.$transaction(async (tx) => {
     const run = await tx.nestRun.create({
       data: { dept: DEPT, material, thicknessMm, sheetSize, sheets, identical, sheetMinutes: minutes, note: form.note, createdBy: by, parts: { create: parts } },
     });
-    if (machineId === null) return;
+    if (machineId === null) return run.id;
     const [last, runningNow] = await Promise.all([
       tx.worklistMachine.aggregate({ where: { dept: DEPT, machineId }, _max: { rank: true } }),
       tx.worklistMachine.count({ where: { dept: DEPT, machineId, running: true } }),
@@ -117,9 +119,10 @@ export async function createNestRun(fd: FormData): Promise<NestRunResult> {
     await tx.worklistMachine.create({
       data: { dept: DEPT, bom: RUN_BOM, mo: runMo(run.id), item: RUN_ITEM, machineId, rank: (last._max.rank ?? 0) + 1, running: runningNow === 0, qty: null, setBy: by },
     });
+    return run.id;
   });
   revalidate();
-  return { ok: true };
+  return { ok: true, id };
 }
 
 /** Edit a run. Until a sheet of it is cut, everything changes — the sheet,

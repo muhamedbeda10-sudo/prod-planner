@@ -14,10 +14,11 @@ import {
   setOrderHold, setOrderPriority, setOrderQty, setOrderSpec, setOrderStatus,
 } from "@/app/orders/actions";
 import { recordGroupOutput, recordTrackerTotal } from "@/app/worklist/actions";
-import { recordLvTotal } from "@/app/lv/actions";
+import { recordLvGroupTotal, recordLvTotal } from "@/app/lv/actions";
 import { DELIVERED_STAGE, ITEMS, SHOTBLAST_STAGE, applicableItems, isItem, isPaintExempt, ospOf, type Item } from "@/lib/domain/constants";
 import { linePermKey, trackerPermKey } from "@/lib/domain/permissions";
-import { LV_CHAIN, LV_ITEM, lvChainError, lvPermKey, lvStageOf, type LvChainStage, type LvState } from "@/lib/domain/lv";
+import { LV_CHAIN, LV_ITEM, lvChainError, lvGroupMembers, lvPermKey, lvStageOf, type LvChainStage, type LvState } from "@/lib/domain/lv";
+import { spreadOverGroup } from "@/lib/domain/groupSpread";
 import { TANK_ITEM } from "@/lib/domain/tanks";
 import { cell, type AiChange } from "@/lib/domain/aiActions";
 import type { NumberSchema, ObjectSchema } from "@/lib/domain/aiInput";
@@ -924,6 +925,84 @@ export const recordLvTotalsTool: WriteTool<LvTotalsInput> = {
   },
 };
 
+interface LvBomTotalInput {
+  stage: LvChainStage;
+  bom: string;
+  mos: string[];
+  total: number;
+}
+
+/** The members of a merged panel row, checked: every MO a panel order of that BOM. */
+async function lvGroup(i: LvBomTotalInput): Promise<{ rows: { mo: string; state: LvState }[] } | { error: string }> {
+  const states = await lvStates(i.mos);
+  if ("error" in states) return states;
+  const boms = await prisma.masterOrder.findMany({ where: { mo: { in: i.mos } }, select: { mo: true, bom: true } });
+  const off = i.mos.find((mo) => boms.find((b) => b.mo === mo)?.bom !== i.bom);
+  if (off) return { error: `${off} is not on BOM ${i.bom}.` };
+  return { rows: i.mos.map((mo) => ({ mo, state: states.get(mo)! })) };
+}
+
+export const recordLvBomTotalTool: WriteTool<LvBomTotalInput> = {
+  kind: "write",
+  name: "record_lv_bom_total",
+  title: "Record a panel BOM's total over its orders",
+  description:
+    "Type the NEW total of a merged LV BOM row for one stage, as the LV tracker's group row does: the change is spread over the panel MOs in the order given — each filled to its own room before the next, a reduction taken off the LAST ones first — and refused whole when it does not fit. The card shows exactly which MO gets what.",
+  area: "tracker",
+  risk: "high",
+  schema: {
+    type: "object",
+    properties: {
+      stage: { type: "string", enum: LV_CHAIN, description: "The LV stage." },
+      bom: { type: "string", minLength: 1, maxLength: 60, description: "The panels' BOM." },
+      mos: { ...MOS(60), description: "The BOM's panel MOs in the order they should be filled (the tracker lists them in MO order)." },
+      total: { type: "integer", minimum: 0, maximum: 1000000, description: "The new total of the group at that stage." },
+    },
+    required: ["stage", "bom", "mos", "total"],
+    additionalProperties: false,
+  },
+  parse: (r) => {
+    const i = r as unknown as LvBomTotalInput;
+    return { ...i, bom: i.bom.trim(), mos: uniq(i.mos) };
+  },
+  async describe(i, ctx) {
+    if (!hasPerm(ctx.user, lvPermKey(i.stage))) return { error: NO_RIGHT };
+    const g = await lvGroup(i);
+    if ("error" in g) return g;
+    const current = g.rows.reduce((n, r) => n + lvStageOf(r.state, i.stage), 0);
+    const delta = i.total - current;
+    if (delta === 0) return { error: `The group total is ${current} already.` };
+    const spread = spreadOverGroup(lvGroupMembers(g.rows, i.stage), delta);
+    if (spread.left > 0) {
+      return { error: delta > 0 ? `Only ${current + spread.fits} fit — the ${g.rows.length} MOs have no more room at ${i.stage} (the stage before it, or the order quantity, is the limit).` : `Only ${current - spread.fits} can be taken back — the rest already went on to the next stage.` };
+    }
+    return {
+      title: `${i.bom} LV ${i.stage}: ${current} → ${i.total}`,
+      summary: `Record ${i.bom}'s LV ${i.stage} total ${current} → ${i.total}: ${spread.alloc.map((a) => `${a.mo} ${a.qty > 0 ? "+" : ""}${a.qty}`).join(", ")} in today's Daily log.`,
+      changes: spread.alloc.map((a) => {
+        const was = lvStageOf(g.rows.find((r) => r.mo === a.mo)!.state, i.stage);
+        return { label: `${a.mo} ${i.stage}`, before: cell(was), after: `${was + a.qty} (${a.qty > 0 ? "+" : ""}${a.qty} today)` };
+      }),
+      snapshot: g.rows,
+    };
+  },
+  async execute(i) {
+    const g = await lvGroup(i);
+    if ("error" in g) return { ok: false, error: g.error };
+    const before = new Map(g.rows.map((r) => [r.mo, lvStageOf(r.state, i.stage)]));
+    const r: ActionAnswer = await recordLvGroupTotal(formOf({ stage: i.stage, bom: i.bom, mos: i.mos.join(","), total: i.total }));
+    if (!r.ok) return { ok: false, error: r.error };
+    const after = await lvStates(i.mos);
+    const moved = "error" in after ? [] : i.mos.filter((mo) => lvStageOf(after.get(mo)!, i.stage) !== before.get(mo));
+    return {
+      ok: true,
+      message: `Recorded ${i.bom} LV ${i.stage} total ${i.total}.`,
+      // put back MO by MO: a group reduction would come off the last MOs, not the ones that took it
+      undo: moved.length ? { tool: "record_lv_totals", input: { stage: i.stage, totals: moved.map((mo) => ({ mo, total: before.get(mo) ?? 0 })) } } : undefined,
+    };
+  },
+};
+
 export const TRACKER_TOOLS = [
   getOrders,
   setOrderStatusTool,
@@ -939,4 +1018,5 @@ export const TRACKER_TOOLS = [
   recordStageTotalsTool,
   recordBomTotalTool,
   recordLvTotalsTool,
+  recordLvBomTotalTool,
 ] as const;

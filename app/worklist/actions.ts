@@ -30,6 +30,9 @@ export interface RecordResult {
   serials?: string[];
   /** The Daily log row the recording made. */
   ledgerId?: number;
+  /** The row the action made: a queue note (addQueueNote), a return
+   *  (returnToUpstream). */
+  id?: number;
 }
 
 /** Thrown inside a tank transaction to roll it back with a message the shop
@@ -648,18 +651,19 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
 
     const date = new Date();
     await prisma.plan.upsert({ where: { planNo: 0 }, create: { planNo: 0, startDate: date }, update: {} });
-    await prisma.$transaction(async (tx) => {
+    const made = await prisma.$transaction(async (tx) => {
       const ledger = await tx.handoverEntry.create({
         data: { date, dept: toDept, bom, mo: mo || null, item, qty: -qty, planNo: 0, source: "return", note: reason, createdBy: guard.user?.name ?? null },
       });
-      await tx.returnEntry.create({
+      const ret = await tx.returnEntry.create({
         data: { date, fromDept, toDept, bom, mo: mo || null, item, qty, reason, handoverId: ledger.id },
       });
+      return { id: ret.id, ledgerId: ledger.id };
     });
     for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
       revalidatePath(p);
     }
-    return { ok: true };
+    return { ok: true, ...made };
   } catch (e) {
     return { ok: false, error: `Failed to return: ${e instanceof Error ? e.message : String(e)}` };
   }
@@ -679,8 +683,8 @@ export async function redeliverReturn(formData: FormData): Promise<RecordResult>
     if (guard.error) return { ok: false, error: guard.error };
 
     const date = new Date();
-    await prisma.$transaction(async (tx) => {
-      await tx.handoverEntry.create({
+    const ledgerId = await prisma.$transaction(async (tx) => {
+      const ledger = await tx.handoverEntry.create({
         data: {
           date, dept: ret.toDept, bom: ret.bom, mo: ret.mo, item: ret.item,
           qty: ret.qty, planNo: 0, source: "return", note: `re-delivered (was: ${ret.reason})`,
@@ -688,11 +692,12 @@ export async function redeliverReturn(formData: FormData): Promise<RecordResult>
         },
       });
       await tx.returnEntry.update({ where: { id }, data: { status: "resolved" } });
+      return ledger.id;
     });
     for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
       revalidatePath(p);
     }
-    return { ok: true };
+    return { ok: true, ledgerId };
   } catch (e) {
     return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
   }
@@ -755,13 +760,13 @@ export async function addQueueNote(formData: FormData): Promise<RecordResult> {
       }
     }
 
-    await prisma.queueNote.create({
+    const note = await prisma.queueNote.create({
       data: { bom, mo: mo || null, item, dept, text, photos: urls.length > 0 ? JSON.stringify(urls) : null },
     });
     revalidatePath("/worklist/cut");
-  revalidatePath("/worklist/welding");
+    revalidatePath("/worklist/welding");
     revalidatePath("/worklist/painting");
-    return { ok: true };
+    return { ok: true, id: note.id };
   } catch (e) {
     return { ok: false, error: `Failed to save note: ${e instanceof Error ? e.message : String(e)}` };
   }
