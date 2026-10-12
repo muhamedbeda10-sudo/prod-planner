@@ -71,6 +71,11 @@ interface ToolBase<I> {
   /** Only in a chat the person is in, never in an automation or the morning
    *  review: what must not move while nobody is watching. */
   liveOnly?: true;
+  /** In the model's context from the first request — the tools nearly every
+   *  question needs. Every other tool waits until the model finds it with the
+   *  tool search (lib/server/ai/agent.ts), so its definition costs nothing
+   *  until a question needs it. */
+  loaded?: true;
   /** Further checks and normalising after the schema: the typed input, or what is wrong. */
   parse?(raw: Record<string, unknown>): I | string;
 }

@@ -16,6 +16,7 @@ export const queryDatabase: ReadTool<Input> = {
   kind: "read",
   name: "query_database",
   title: "Looking it up in the database",
+  loaded: true,
   description:
     "Run ONE read-only SQL query (SELECT, or WITH … SELECT) on the app's PostgreSQL database and get the rows back as {columns, rows} — at most 200 rows, so aggregate in SQL for anything bigger. Table and column names are case-sensitive and must be double-quoted. Call it as often as you need; every figure in your answer must come from a result. For what an order still owes, the machine queues or a simulated week, prefer the dedicated tools — they compute it exactly as the app's screens do.",
   schema: {

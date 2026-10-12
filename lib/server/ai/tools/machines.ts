@@ -82,6 +82,7 @@ export const getMachineBoardTool: ReadTool<DeptInput> = {
   kind: "read",
   name: "get_machine_board",
   title: "Reading the machine board",
+  loaded: true,
   description:
     "The department's machine board as the planner sees it today: each machine (code, centre, hours today, load in days, the day its queue clears, its crew) with what runs now and what waits in order (pieces, standard hours, the sheet, the due day), each machine's rules, and the lines NOT on any machine yet, most urgent first, with the centre they need and their sheets. Read it before moving lines or planning.",
   schema: { type: "object", properties: { dept: DEPT }, required: ["dept"], additionalProperties: false },

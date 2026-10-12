@@ -296,6 +296,12 @@ mobile drawer still lists every view flat, since it has the vertical room.
 12. **AI assistant** (`/ai`) — Claude answers from the live data in Arabic or English: SQL through `ai_reader`, a
    read-only login that cannot see the private tables, nor the tables of a screen hidden from the person. What it may do
    is the owner's call per person (Users & Permissions → AI assistant), and never more than the person may do themselves.
+   - **Tools on demand** (`lib/server/ai/agent.ts`): the model starts each question with two tools — `query_database` and
+     `get_machine_board` (`loaded` on the tool) — and finds every other one with the API's tool search (BM25, the tools
+     sent with `defer_loading`), so a question carries only the definitions it uses (two tools and the search ≈ 0.5 k
+     tokens instead of ≈ 39 k for all of them) and the cached prefix stays the same. A chat from before keeps the tools it
+     called loaded, a find of a tool the person no longer has is left out of what is sent, and a turn the API pauses is
+     sent back to carry on.
    - **Changes** (`lib/server/ai/changes.ts`, `lib/server/ai/tools/*`): the Plan Tracker and Daily log, the Orders Registry
      (an admin's edits, plan months, deletions) and a BOM's Fins, the machine board and ⚡ Plan (a line's share on a
      machine too), the cutting floor — nest runs (several jobs' parts on the same sheets, their pieces taken off what the
