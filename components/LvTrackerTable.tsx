@@ -209,6 +209,25 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
     run(setOrderStatus, fd);
   }
 
+  /** The open MOs of a merged code delivered in full. */
+  const groupDone = (members: LvTrackerRow[]) => members.filter((m) => m.status === "open" && m.state.required > 0 && m.state.delivered >= m.state.required);
+  async function changeGroupStatus(bom: string, members: LvTrackerRow[], next: "open" | "closed") {
+    if (members.length === 0) return;
+    if (next === "closed") {
+      const ok = await confirmIt({
+        title: `Close ${members.length} order${members.length === 1 ? "" : "s"} of ${bom}?`,
+        body: <>They drop out of the daily screens; you can reopen any of them any time.</>,
+        items: members.map(orderLine),
+        confirmLabel: `Close ${members.length}`,
+      });
+      if (!ok) return;
+    }
+    const fd = new FormData();
+    fd.set("mos", members.map((m) => m.mo).join(","));
+    fd.set("status", next);
+    run(setOrderStatus, fd);
+  }
+
   async function closeDone() {
     const ok = await confirmIt({
       title: `Close ${doneCount} delivered order${doneCount === 1 ? "" : "s"}?`,
@@ -296,6 +315,14 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
         e.push(
           { key: "hold", icon: "⏸️", label: `Put ${free.length} open MO${free.length === 1 ? "" : "s"} on hold`, disabled: free.length === 0, prompt: { placeholder: "Reason (optional)", submit: "Hold", onSubmit: (note) => setHold(free.map((m) => m.mo), true, note) } },
           { key: "release", icon: "▶", label: `Release ${held.length} from hold`, disabled: held.length === 0, onSelect: () => setHold(held.map((m) => m.mo), false) },
+          { sep: true }
+        );
+        // the head row closes and reopens like an MO row — for every MO under it
+        const done = groupDone(t.members);
+        const closed = t.members.filter((m) => m.status === "closed");
+        e.push(
+          { key: "close", icon: "✓", label: `Close ${done.length} delivered MO${done.length === 1 ? "" : "s"}`, disabled: done.length === 0, hint: "Only an order delivered in full can close", onSelect: () => void changeGroupStatus(t.bom, done, "closed") },
+          { key: "reopen", icon: "↩", label: `Reopen ${closed.length} closed MO${closed.length === 1 ? "" : "s"}`, disabled: closed.length === 0, onSelect: () => void changeGroupStatus(t.bom, closed, "open") },
           { sep: true }
         );
       }
@@ -543,7 +570,23 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
                     )}
                     {show("left") && <td className="p-2 text-center font-semibold border-l border-border-strong" style={{ color: gReq - gComplete > 0 ? undefined : "var(--ok-fg)" }}><Num v={Math.max(0, gReq - gComplete)} /></td>}
                     {show("pct") && <AchCell ach={gReq > 0 ? gComplete / gReq : null} />}
-                    {show("status") && <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap">{open ? "collapse" : "open MOs"}</td>}
+                    {show("status") && (() => {
+                      const done = groupDone(members);
+                      const closedN = members.filter((m) => m.status === "closed").length;
+                      return (
+                        <td className="p-2 text-center whitespace-nowrap no-print" onClick={(e) => e.stopPropagation()}>
+                          {closedN === members.length ? (
+                            <span className="pill pill-muted opacity-70" title="Right-click the row to reopen">Closed</span>
+                          ) : canStatus && done.length > 0 ? (
+                            <button type="button" onClick={() => changeGroupStatus(bom, done, "closed")} disabled={pending} className="btn btn-primary btn-sm !py-0.5" title={`Close the ${done.length} delivered MO${done.length === 1 ? "" : "s"} of ${bom}`}>
+                              <Check size={12} aria-hidden />Close{done.length < members.length ? ` ${done.length}` : ""}
+                            </button>
+                          ) : (
+                            <span className="pill pill-muted" title={closedN ? `${closedN} of ${members.length} closed` : undefined}>Open{closedN ? ` ${members.length - closedN}/${members.length}` : ""}</span>
+                          )}
+                        </td>
+                      );
+                    })()}
                   </tr>
                   {open && members.map((m, i) => moRow(m, true, i === members.length - 1))}
                 </Fragment>

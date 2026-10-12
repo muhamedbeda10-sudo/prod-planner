@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-cascade-heads-editable",
+    dateISO: "2026-10-12",
+    title: "A group's head row is edited like the rows under it",
+    where: "Material · ODOO log · Plan Tracker · LV tracker",
+    body: "Material: an SOI's head row takes MTR #, SOI, MO, BOM, units, utilization and quantity typed straight into it, written to every line of the SOI; its ⋯ menu edits or deletes all its lines at once. An SOI of a single line shows that line alone. ODOO: a merged line keeps notes like a row and has its own ⋯ menu — edit SOI, product, MO and status for all its rows, or delete them. Plan Tracker and LV tracker: a merged BOM row closes its finished MOs and reopens closed ones, and on the Plan Tracker flags them all as priority.",
+    href: "/material",
+  },
+  {
     id: "2026-10-12-order-page-links",
     dateISO: "2026-10-12",
     title: "Open an order's page from the ODOO and Material tabs",

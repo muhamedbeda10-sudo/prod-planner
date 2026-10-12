@@ -559,9 +559,12 @@ export function MasterTrackerTable({
 
   // ⭐ priority toggle — the order shows in the priority table on every worklist
   function togglePriority(r: MasterTrackerRow) {
+    setPriority([r.mo], !r.priority);
+  }
+  function setPriority(mos: string[], priority: boolean) {
     const fd = new FormData();
-    fd.set("mo", r.mo);
-    fd.set("priority", String(!r.priority));
+    fd.set("mos", mos.join(","));
+    fd.set("priority", String(priority));
     startTransition(async () => {
       const res = await setOrderPriority(fd);
       if (res.ok) router.refresh();
@@ -638,6 +641,21 @@ export function MasterTrackerTable({
           { sep: true }
         );
       }
+      // the head row does what an MO row does — for every MO under it
+      const live = t.members.filter((m) => m.status !== "closed");
+      if (can("tracker.priority") && live.length > 0) {
+        const allPrio = live.every((m) => m.priority);
+        e.push({ key: "prio", icon: "⭐", label: allPrio ? `Remove priority from ${live.length} MOs` : `Flag ${live.length} MOs as priority`, onSelect: () => setPriority(live.map((m) => m.mo), !allPrio) });
+      }
+      if (can("tracker.status")) {
+        const done = groupDone(t.members);
+        const closed = t.members.filter((m) => m.status === "closed");
+        e.push(
+          { key: "close", icon: "✓", label: `Close ${done.length} finished MO${done.length === 1 ? "" : "s"}`, disabled: done.length === 0, hint: "Only an order the customer has received in full can close", onSelect: () => void changeGroupStatus(t.bom, done, "closed") },
+          { key: "reopen", icon: "↩", label: `Reopen ${closed.length} closed MO${closed.length === 1 ? "" : "s"}`, disabled: closed.length === 0, onSelect: () => void changeGroupStatus(t.bom, closed, "open") },
+          { sep: true }
+        );
+      }
       e.push({ key: "trace", icon: "🔍", label: "Open trace for this BOM", href: `/trace?bom=${encodeURIComponent(t.bom)}` });
       return e;
     }
@@ -659,6 +677,32 @@ export function MasterTrackerTable({
     }
     e.push({ sep: true }, { key: "trace", icon: "🔍", label: "Open trace", href: `/trace?mo=${encodeURIComponent(r.mo)}` });
     return e;
+  }
+
+  /** The open MOs of a merged BOM the customer has received in full. */
+  function groupDone(members: MasterTrackerRow[]) {
+    return members.filter((m) => m.status === "open" && m.required > 0 && m.complete >= m.required);
+  }
+
+  async function changeGroupStatus(bom: string, members: MasterTrackerRow[], next: "open" | "closed") {
+    if (members.length === 0) return;
+    if (next === "closed") {
+      const ok = await confirmIt({
+        title: `Close ${members.length} order${members.length === 1 ? "" : "s"} of ${bom}?`,
+        body: <>They drop out of the daily screens; you can reopen any of them any time.</>,
+        items: members.map((r) => `${r.mo} · ${r.bom}${r.customer ? ` · ${r.customer}` : ""} — ${r.required} pcs`),
+        confirmLabel: `Close ${members.length}`,
+      });
+      if (!ok) return;
+    }
+    const fd = new FormData();
+    fd.set("mos", members.map((m) => m.mo).join(","));
+    fd.set("status", next);
+    startTransition(async () => {
+      const res = await setOrderStatus(fd);
+      if (res.ok) router.refresh();
+      else alert(res.error ?? "Failed");
+    });
   }
 
   async function changeStatus(mo: string, next: "open" | "closed") {
@@ -1039,11 +1083,25 @@ export function MasterTrackerTable({
                     )}
                     {!scoped && show("achv") && <AchCell ach={gAch} />}
                     {show("eta") && etaCell(groupEta(members), members.every((m) => m.hold.onHold))}
-                    {show("status") && (
-                      <td className="p-2 text-center no-print text-xs text-muted whitespace-nowrap">
-                        {open ? "collapse" : "open MOs"}
-                      </td>
-                    )}
+                    {show("status") && (() => {
+                      // the MO rows' status cell, for all of them: closed, a
+                      // Close for the finished ones, or open
+                      const done = groupDone(members);
+                      const closedN = members.filter((m) => m.status === "closed").length;
+                      return (
+                        <td className="p-2 text-center no-print whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          {closedN === members.length ? (
+                            <span className="pill pill-muted opacity-70" title="Right-click the row to reopen">Closed</span>
+                          ) : can("tracker.status") && done.length > 0 ? (
+                            <button onClick={() => changeGroupStatus(gBom, done, "closed")} disabled={pending} className="btn btn-primary btn-sm !py-0.5" title={`Close the ${done.length} finished MO${done.length === 1 ? "" : "s"} of ${gBom}`}>
+                              <Check size={12} aria-hidden />Close{done.length < members.length ? ` ${done.length}` : ""}
+                            </button>
+                          ) : (
+                            <span className="pill pill-muted" title={closedN ? `${closedN} of ${members.length} closed` : undefined}>Open{closedN ? ` ${members.length - closedN}/${members.length}` : ""}</span>
+                          )}
+                        </td>
+                      );
+                    })()}
                   </tr>
                   {open && members.map((m, i) => renderRow(m, true, i === members.length - 1))}
                 </Fragment>
