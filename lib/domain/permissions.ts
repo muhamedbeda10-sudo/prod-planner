@@ -7,6 +7,8 @@
 // Plan-Tracker cell editing are DELIBERATELY separate: holding a dept's
 // worklist permission does not open its tracker column, and vice-versa.
 
+import { LV_ITEM } from "./lv";
+
 export interface PermDef {
   key: string;
   label: string;
@@ -142,10 +144,11 @@ export function deptPermKey(dept: string): string {
   return `${dept.toLowerCase()}.edit`;
 }
 
-/** The key that edits one ledger row: a panel's row (item USS/LSS) follows
- *  the LV keys whatever its department; a transformer's the department's. */
+/** The key that edits one ledger row: a panel's row (item PNL) follows the
+ *  LV keys whatever its department; a transformer's the department's. The
+ *  panel's TYPE (USS / LSS) sits on its order, never on a ledger row. */
 export function ledgerPermKey(dept: string, item: string): string {
-  if (item === "USS" || item === "LSS") {
+  if (item === LV_ITEM) {
     if (dept === "Delivered") return "lv.tracker.delivered";
     return `lv.${dept.toLowerCase()}`;
   }

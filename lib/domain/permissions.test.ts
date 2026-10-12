@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ACCESS_PERM_KEYS, PERMISSIONS, PERM_KEYS, deptPermKey, ledgerPermKey, linePermKey, parsePerms, shiftPermKey, trackerPermKey } from "./permissions";
+import { DELIVERED_STAGE, DEPTS, ITEMS, SHOTBLAST_STAGE } from "./constants";
+import { LV_CHAIN, LV_PRODUCTS } from "./lv";
 
 describe("the panels' own keys", () => {
   it("are all registered, so the Users page offers them and parsePerms keeps them", () => {
@@ -17,12 +19,34 @@ describe("the panels' own keys", () => {
     expect(deptPermKey("Welding")).toBe("welding.edit");
   });
 
-  it("govern a panel's ledger row whatever its department", () => {
-    expect(ledgerPermKey("Welding", "USS")).toBe("lv.welding");
-    expect(ledgerPermKey("Painting", "LSS")).toBe("lv.painting");
-    expect(ledgerPermKey("Delivered", "USS")).toBe("lv.tracker.delivered");
+  it("govern a panel's ledger row (item PNL) at every stage, whatever its department", () => {
+    // "PNL" written out, not LV_ITEM: it is what the panels' rows already in
+    // the ledger carry, so this fails if the constant ever drifts from them
+    expect(ledgerPermKey("Punching", "PNL")).toBe("lv.punching");
+    expect(ledgerPermKey("Bending", "PNL")).toBe("lv.bending");
+    expect(ledgerPermKey("Welding", "PNL")).toBe("lv.welding");
+    expect(ledgerPermKey("Painting", "PNL")).toBe("lv.painting");
+    expect(ledgerPermKey("Delivered", "PNL")).toBe("lv.tracker.delivered");
+    // each a key the Users page can tick — one outside the catalog would
+    // quietly make the row admin-only
+    for (const d of LV_CHAIN) expect(PERM_KEYS.has(ledgerPermKey(d, "PNL")), d).toBe(true);
+  });
+
+  it("leave a transformer's row on its department's key — neither line opens the other's", () => {
+    expect(ledgerPermKey("Cut", "CF")).toBe("cut.edit");
     expect(ledgerPermKey("Welding", "TN")).toBe("welding.edit");
+    expect(ledgerPermKey("Painting", "TC")).toBe("painting.edit");
+    expect(ledgerPermKey("ShotBlast", "CF")).toBe("tracker.shp");
     expect(ledgerPermKey("Delivered", "TN")).toBe("tracker.delivered");
+    for (const d of [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE]) {
+      for (const item of ITEMS) expect(ledgerPermKey(d, item), `${d} ${item}`).not.toMatch(/^lv\./);
+    }
+  });
+
+  it("go by the ledger's panel item, not the panel type the plan names", () => {
+    // USS / LSS is the order's type (MasterOrder.product) — no ledger row
+    // carries it, so it opens nothing on the panels' keys
+    for (const type of LV_PRODUCTS) expect(ledgerPermKey("Welding", type)).toBe("welding.edit");
   });
 
   it("follow the line for closing, importing, Odoo and material", () => {
