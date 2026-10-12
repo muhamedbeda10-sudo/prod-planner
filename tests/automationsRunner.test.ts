@@ -17,7 +17,11 @@ const h = vi.hoisted(() => {
     },
     perms: new Set<string>(),
     status: { ok: true, reason: null as string | null },
-    settings: { automationsPaused: false, actionsPaused: false, model: "claude-opus-5-5", apiKeyEnc: "v1:x" },
+    settings: {
+      automationsPaused: false, actionsPaused: false, model: "claude-opus-5-5", effort: "medium", autoModel: "claude-sonnet-5-5", autoEffort: "low",
+      maxCalls: 10, apiKeyEnc: "v1:x", autoFrom: null as string | null, autoTo: null as string | null, autoWeekdays: [0, 1, 2, 3, 4, 5, 6],
+      reviewAt: "07:30", reviewPaused: true,
+    },
     runAiRows: fn(),
     ask: fn(),
     toolsFor: fn(),
@@ -64,6 +68,9 @@ beforeEach(() => {
   h.status.ok = true;
   h.settings.automationsPaused = false;
   h.settings.actionsPaused = false;
+  h.settings.autoFrom = null;
+  h.settings.autoTo = null;
+  h.settings.autoWeekdays = [0, 1, 2, 3, 4, 5, 6];
   h.prisma.user.findUnique.mockResolvedValue(owner);
   h.prisma.user.findMany.mockResolvedValue([{ id: 9, name: "Ahmed" }]);
   h.prisma.holiday.findMany.mockResolvedValue([]);
@@ -188,5 +195,45 @@ describe("a tick", () => {
     h.prisma.automation.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
     expect(await runDueAutomations({ now, deadline: Date.now() + 60_000 })).toEqual({ ran: 1, checked: 0 });
     expect(h.deliverToInbox).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the owner's hours", () => {
+  it("outside them nothing runs: a schedule due now is moved on to its next time, the skip on its record", async () => {
+    h.settings.autoFrom = "08:00";
+    h.settings.autoTo = "18:00"; // 07:30 Cairo is before
+    h.prisma.automation.findMany.mockResolvedValue([auto({ id: 3 })]);
+    h.prisma.automation.updateMany.mockResolvedValue({ count: 1 });
+    expect(await runDueAutomations({ now })).toMatchObject({ ran: 0, skipped: expect.stringContaining("hours") });
+    expect(h.prisma.automation.findMany.mock.calls[0][0].where).toMatchObject({ trigger: "schedule" });
+    expect(h.prisma.automation.updateMany.mock.calls[0][0]).toMatchObject({
+      where: { id: 3, nextRunAt: now },
+      data: { nextRunAt: new Date("2026-10-13T04:30:00Z"), lastStatus: "skipped", lastNote: expect.stringContaining("08:00–18:00") },
+    });
+    expect(h.prisma.automationRun.create.mock.calls[0][0].data).toMatchObject({ automationId: 3, status: "skipped" });
+    expect(h.deliverToInbox).not.toHaveBeenCalled();
+  });
+
+  it("a weekday not ticked counts as outside them", async () => {
+    h.settings.autoWeekdays = [0, 2, 3]; // not Monday
+    h.prisma.automation.findMany.mockResolvedValue([]);
+    expect(await runDueAutomations({ now })).toMatchObject({ ran: 0, skipped: expect.stringContaining("hours") });
+  });
+
+  it("inside them it runs as before", async () => {
+    h.settings.autoFrom = "07:00";
+    h.settings.autoTo = "19:00";
+    h.prisma.automation.findMany.mockResolvedValue([auto()]);
+    h.prisma.automation.updateMany.mockResolvedValue({ count: 1 });
+    expect(await runDueAutomations({ now, deadline: Date.now() + 60_000 })).toEqual({ ran: 1, checked: 0 });
+  });
+});
+
+describe("an AI run", () => {
+  it("uses the automations' own model, effort and steps", async () => {
+    h.ask.mockResolvedValue({ added: [], tokens: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 }, calls: 1, queries: 0, changes: 0, stop: "end_turn", text: "Report" });
+    await runAutomation(auto({ action: "report", message: null, prompt: "Welding vs plan" }), { cause: "schedule", now });
+    expect(h.ask.mock.calls[0][0]).toMatchObject({ model: "claude-sonnet-5-5", effort: "low", maxCalls: 10 });
+    expect(h.prisma.aiUsage.create.mock.calls[0][0].data).toMatchObject({ model: "claude-sonnet-5-5" });
   });
 });

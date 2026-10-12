@@ -10,22 +10,13 @@ import { pushState, turnPushOff, turnPushOn, type PushState } from "@/lib/pushCl
 import { INBOX_KIND_LABEL, inboxPreview, type InboxKind } from "@/lib/domain/inbox";
 import { formatDateTime } from "@/lib/domain/format";
 import type { AiActionView } from "@/lib/domain/aiActions";
+import type { InboxItemView } from "@/lib/server/ai/panel";
 
 // The inbox: newest first, each item opened in place — its Markdown (charts
 // included), and the changes it proposes as cards to approve. Opening an
-// item marks it read. At the top, this device's notifications: on, off, or
-// why they cannot be.
+// item marks it read. At the top, this device's notifications switch.
 
-export interface InboxItemView {
-  id: number;
-  kind: InboxKind;
-  title: string;
-  body: string;
-  fromName: string | null;
-  createdAt: string;
-  readAt: string | null;
-  actionIds: number[];
-}
+export type { InboxItemView };
 
 const KIND_TONE: Record<InboxKind, string> = { report: "pill-info", message: "pill-warn", suggestion: "pill-ok" };
 
@@ -61,22 +52,21 @@ function DevicePush() {
       {state === "on" ? (
         <>
           <BellRing size={16} className="text-ok-fg" aria-hidden />
-          <span className="font-semibold">Notifications are on for this device.</span>
-          <button type="button" className="btn btn-sm" disabled={pending} onClick={off}>Turn off</button>
+          <span className="font-semibold">Notifications on</span>
+          <button type="button" className="btn btn-sm btn-ghost" disabled={pending} onClick={off}>Turn off</button>
         </>
       ) : state === "unsupported" ? (
-        <span className="text-muted">This browser cannot receive notifications. On an iPhone or iPad, add the app to the Home Screen (Share → Add to Home Screen) and open it from there.</span>
+        <span className="text-muted inline-flex items-center gap-1.5" title="On an iPhone or iPad, add the app to the Home Screen and open it from there.">
+          <BellOff size={16} aria-hidden /> Notifications not available here
+        </span>
       ) : state === "denied" ? (
-        <>
-          <BellOff size={16} className="text-muted" aria-hidden />
-          <span className="text-muted">Notifications are blocked for this site — allow them in the browser&apos;s site settings to get these on this device.</span>
-        </>
+        <span className="text-muted inline-flex items-center gap-1.5" title="Allow notifications for this site in the browser's settings.">
+          <BellOff size={16} aria-hidden /> Notifications blocked
+        </span>
       ) : (
-        <>
-          <BellOff size={16} className="text-muted" aria-hidden />
-          <span className="text-muted">Get these on this device even with the app closed.</span>
-          <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={on}>{pending ? "Turning on…" : "Turn on notifications"}</button>
-        </>
+        <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={on}>
+          <BellRing size={14} aria-hidden /> {pending ? "Turning on…" : "Turn on notifications"}
+        </button>
       )}
       {msg && <span className="text-bad-fg font-semibold">{msg}</span>}
     </div>
@@ -94,19 +84,19 @@ function Item({ item, actions, open, onToggle, onDelete, onAction }: {
   const ref = useRef<HTMLDivElement>(null);
   const proposed = actions.filter((a) => a.status === "proposed");
   return (
-    <div ref={ref} id={`item-${item.id}`} className={`border rounded-xl ${item.readAt ? "" : "border-[var(--brand)]"}`}>
+    <div ref={ref} id={`item-${item.id}`} className={`border rounded-xl bg-surface ${item.readAt ? "" : "border-[var(--brand)]"}`}>
       <button type="button" onClick={onToggle} className="w-full text-start flex flex-wrap items-center gap-2 px-3 py-2.5" aria-expanded={open}>
         {open ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
         {!item.readAt && <span className="w-2 h-2 rounded-full bg-[var(--brand)]" aria-label="not read" />}
         <span className={`pill ${KIND_TONE[item.kind] ?? "pill-muted"} text-[11px]`}>{INBOX_KIND_LABEL[item.kind] ?? item.kind}</span>
-        <span className="font-extrabold" dir="auto">{item.title}</span>
+        <span className="font-extrabold min-w-0" dir="auto">{item.title}</span>
         {proposed.length > 0 && <span className="pill pill-info text-[11px]">{proposed.length} to approve</span>}
         <span className="ms-auto text-xs text-muted tabnum">{formatDateTime(item.createdAt)}</span>
         {!open && <span className="basis-full text-sm text-muted truncate" dir="auto">{inboxPreview(item.body, 160)}</span>}
       </button>
       {open && (
         <div className="px-3 pb-3 border-t">
-          {item.fromName && <p className="text-xs text-muted mt-2" dir="auto">From {item.fromName}</p>}
+          {item.fromName && <p className="text-xs text-muted mt-2" dir="auto">{item.fromName}</p>}
           <div className="text-sm"><AiMarkdown text={item.body} /></div>
           {proposed.length > 1 && <ApproveAll views={proposed} onChange={onAction} />}
           {actions.map((a) => <AiActionCard key={a.id} view={a} onChange={onAction} />)}
@@ -159,8 +149,8 @@ export function InboxView({ items: initial, actions: initialActions, openId }: {
   const onAction = (v: AiActionView) => setActions((m) => new Map(m).set(v.id, v));
 
   return (
-    <div className="space-y-3 max-w-4xl">
-      <div className="card p-3 flex flex-wrap items-center gap-3">
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
         <DevicePush />
         {unread > 0 && (
           <button type="button" className="btn btn-sm ms-auto" onClick={() => readNow("all")}><CheckCheck size={14} aria-hidden /> Mark all read ({unread})</button>
@@ -168,7 +158,7 @@ export function InboxView({ items: initial, actions: initialActions, openId }: {
       </div>
       {err && <p className="text-sm font-semibold text-bad-fg">{err}</p>}
       {items.length === 0 ? (
-        <p className="text-muted text-sm">Nothing yet. Reports, messages and suggestions from the assistant and the automations arrive here.</p>
+        <p className="text-muted text-sm">No notifications yet.</p>
       ) : (
         items.map((it) => (
           <Item

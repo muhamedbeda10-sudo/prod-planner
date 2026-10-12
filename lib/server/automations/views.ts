@@ -34,6 +34,16 @@ export interface AutomationView {
   lastNote: string | null;
   failures: number;
   createdBy: string | null;
+  /** When it runs, as the timing form edits it. */
+  timing: {
+    trigger: "schedule" | "condition";
+    times: string[];
+    days: string;
+    weekdays: number[];
+    checkEveryMin: number;
+    activeFrom: string | null;
+    activeTo: string | null;
+  };
   runs: AutomationRunView[];
 }
 
@@ -56,6 +66,7 @@ export async function automationViews(where: { ownerId?: number }): Promise<Auto
       conditionSql: c.conditionSql, text: c.message ?? c.prompt,
       nextRunAt: a.enabled ? a.nextRunAt?.toISOString() ?? null : null, lastRunAt: a.lastRunAt?.toISOString() ?? null,
       lastStatus: a.lastStatus, lastNote: a.lastNote, failures: a.failures, createdBy: a.createdBy,
+      timing: { trigger: c.trigger, times: c.times, days: c.days, weekdays: c.weekdays, checkEveryMin: c.checkEveryMin, activeFrom: c.activeFrom, activeTo: c.activeTo },
       runs: a.runs.map((r) => ({ id: r.id, cause: r.cause, status: r.status, startedAt: r.startedAt.toISOString(), summary: r.summary, error: r.error, costUsd: r.costUsd })),
     };
   });

@@ -1,7 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import type { AiSettings } from "@prisma/client";
-import { addTokens, aiModel, NO_TOKENS, type AiModelDef, type AiTokens } from "@/lib/domain/ai";
+import { addTokens, aiEffort, aiModel, NO_TOKENS, type AiEffort, type AiModelDef, type AiTokens } from "@/lib/domain/ai";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import type { ActorVia } from "@/lib/server/actor";
 import { AI_SCHEMA_TEXT } from "./schemaText.generated";
@@ -94,6 +94,11 @@ function systemBlocks(playbook: string): Anthropic.Beta.Messages.BetaTextBlockPa
   return blocks;
 }
 
+/** Room for the thinking and the answer of one call — more effort thinks
+ *  longer, so it gets more room before it would be cut off. Streamed, so a
+ *  large ceiling does not hit a request timeout; only what is written is billed. */
+const MAX_TOKENS: Record<AiEffort, number> = { low: 16_000, medium: 16_000, high: 32_000, xhigh: 64_000, max: 64_000 };
+
 /** Calls per question — each look-up or prepared change takes one; the last one must answer. */
 const MAX_CALLS = 14;
 
@@ -176,15 +181,15 @@ async function callModel(
   system: Anthropic.Beta.Messages.BetaTextBlockParam[],
   tools: { full: ApiTool[]; plain: ApiTool[] },
   messages: MessageParam[],
-  opts: { plain: boolean; answerNow: boolean },
+  opts: { plain: boolean; answerNow: boolean; effort: AiEffort },
   events: AskEvents,
   signal?: AbortSignal,
 ): Promise<Message> {
   const base = {
     model: m.id,
-    max_tokens: 16000,
+    max_tokens: MAX_TOKENS[opts.effort],
     system,
-    output_config: { effort: "medium" as const },
+    output_config: { effort: opts.effort },
     // caches the conversation so far, on top of the system prompt's own mark
     cache_control: { type: "ephemeral" as const },
     ...(opts.answerNow ? { tool_choice: { type: "none" as const } } : {}),
@@ -225,6 +230,8 @@ export function apiErrorText(e: unknown): string {
 export async function ask(opts: {
   apiKey: string;
   model: string;
+  /** How hard it thinks — the owner's setting (an unknown one is the default). */
+  effort?: string;
   history: MessageParam[];
   /** The new question: the person's message, then the app's context. */
   question: MessageParam[];
@@ -247,6 +254,7 @@ export async function ask(opts: {
 }): Promise<AskResult> {
   const client = new Anthropic({ apiKey: opts.apiKey, maxRetries: 2, timeout: 180_000 });
   const m = aiModel(opts.model);
+  const effort = aiEffort(opts.effort);
   const system = systemBlocks(opts.playbook ?? "");
   const tools = { full: apiTools(opts.tools, true), plain: apiTools(opts.tools, false) };
   const byName = new Map(opts.tools.map((t) => [t.name, t]));
@@ -282,7 +290,7 @@ export async function ask(opts: {
       if (wroteText && step > 0) events.text("\n\n");
       let msg: Message;
       try {
-        msg = await callModel(client, m, system, tools, await expand([...history, ...turn]), { plain, answerNow: step === maxCalls - 1 }, events, opts.signal);
+        msg = await callModel(client, m, system, tools, await expand([...history, ...turn]), { plain, answerNow: step === maxCalls - 1, effort }, events, opts.signal);
         jsonRetries = 0;
       } catch (e) {
         // a 400 on the full request: the plain one, once, for the rest of the

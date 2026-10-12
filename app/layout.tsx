@@ -4,6 +4,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { AppNav } from "@/components/AppNav";
 import { AutomationTicker } from "@/components/AutomationTicker";
+import { AiPanel, AiPanelProvider } from "@/components/AiPanel";
 import { TouchLongPress } from "@/components/TouchLongPress";
 import { TabAccessProvider } from "@/components/TabAccess";
 import { parseHiddenTabs } from "@/lib/domain/tabs";
@@ -74,6 +75,7 @@ export default async function RootLayout({
         <TouchLongPress />
         <LineProvider line={line}>
         <TabAccessProvider hidden={[...parseHiddenTabs(user?.hiddenTabs)]}>
+        <AiPanelProvider config={{ ai, automations: perms.has("ai.automations"), inbox: inbox.any, isOwner: !!user?.isOwner }}>
         {user && (
           <AppNav
             user={{ id: user.id, name: user.name, isAdmin: user.isAdmin, isOwner: user.isOwner, perms: [...userPerms(user)], avatarUrl: user.avatarUrl }}
@@ -90,7 +92,9 @@ export default async function RootLayout({
         {user && <AutomationTicker />}
         <main className="flex-1 w-full px-3 py-3 md:px-5 md:py-4">
           {children}
+          {user && <AiPanel isOwner={user.isOwner} />}
         </main>
+        </AiPanelProvider>
         <SpeedInsights />
         </TabAccessProvider>
         </LineProvider>

@@ -1,12 +1,12 @@
 import "server-only";
-import type { Automation, User } from "@prisma/client";
+import type { AiSettings, Automation, User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hasPerm, hiddenTabsOf } from "@/lib/server/auth";
 import { runAiRows } from "@/lib/server/ai/reader";
 import { blockedTableIn, blockedTablesFor } from "@/lib/domain/ai";
 import { toISODate } from "@/lib/domain/dates";
 import {
-  AUTOMATION_LIMITS, checkAutomation, freshRows, nextConditionCheck, nextScheduleRun, type AutomationConfig, type AutomationInput, type OffDay,
+  ALL_WEEKDAYS, AUTOMATION_LIMITS, checkAutomation, freshRows, nextConditionCheck, nextScheduleRun, type AutomationConfig, type AutomationInput, type AutomationWindow, type OffDay,
 } from "@/lib/domain/automations";
 
 // Automations as the app keeps them: a configuration checked against the
@@ -16,6 +16,11 @@ import {
 
 export const AUTOMATIONS_KEY = "ai.automations";
 export const AUTOMATIONS_ACT_KEY = "ai.automations.act";
+
+/** The hours and days the owner lets automations run in. */
+export function automationWindowOf(s: Pick<AiSettings, "autoFrom" | "autoTo" | "autoWeekdays">): AutomationWindow {
+  return { from: s.autoFrom, to: s.autoTo, weekdays: s.autoWeekdays.length ? s.autoWeekdays : [...ALL_WEEKDAYS] };
+}
 
 /** Fridays, and the holidays on the calendar from a little before today. */
 export async function offDays(now = new Date()): Promise<OffDay> {
