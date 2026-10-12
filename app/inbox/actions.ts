@@ -1,9 +1,9 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, requirePerm } from "@/lib/server/auth";
 import { pushPublicKey, readSubscription } from "@/lib/server/push";
-import { unreadInboxCount } from "@/lib/server/inbox";
+import { deliverToInbox, unreadInboxCount } from "@/lib/server/inbox";
 
 // A person's own inbox — what the assistant and the automations sent them —
 // and the devices they turned notifications on for. Each person reads, marks
@@ -84,5 +84,39 @@ export async function removeInboxDevice(endpoint: string): Promise<InboxActionRe
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: NOT_LOGGED_IN };
   await prisma.pushSubscription.deleteMany({ where: { userId: user.id, endpoint: String(endpoint ?? "").slice(0, 1000) } });
+  return { ok: true };
+}
+
+const MESSAGE_TO = 20;
+const MESSAGE_TITLE = 120;
+const MESSAGE_BODY = 4000;
+
+/** A message to colleagues' inboxes (and their devices) — what the assistant
+ *  sends for a person who asked it to. The same key as automations: telling
+ *  people things is what they are for. The ids of the items made. */
+export async function sendInboxMessage(fd: FormData): Promise<InboxActionResult & { ids?: number[] }> {
+  const guard = await requirePerm("ai.automations");
+  if (guard.error) return { ok: false, error: guard.error };
+  const to = String(fd.get("to") ?? "").split(",").map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n > 0);
+  const title = String(fd.get("title") ?? "").replace(/\s+/g, " ").trim();
+  const body = String(fd.get("body") ?? "").trim();
+  if (to.length === 0 || to.length > MESSAGE_TO) return { ok: false, error: `Name 1 to ${MESSAGE_TO} people.` };
+  if (!title || title.length > MESSAGE_TITLE) return { ok: false, error: `Give the message a title (at most ${MESSAGE_TITLE} characters).` };
+  if (!body || body.length > MESSAGE_BODY) return { ok: false, error: `Write the message (at most ${MESSAGE_BODY} characters).` };
+  const people = await prisma.user.findMany({ where: { id: { in: to }, active: true }, select: { id: true } });
+  if (people.length !== new Set(to).size) return { ok: false, error: "One of them is not an active user." };
+  const ids = await deliverToInbox(people.map((p) => ({ userId: p.id, kind: "message" as const, title, body, fromName: guard.user!.name, fromUserId: guard.user!.id })));
+  return { ok: true, ids };
+}
+
+/** Take messages back out of the inboxes they were sent to — the undo of a
+ *  message sent through the assistant. A notification already shown on a
+ *  device stays shown. */
+export async function retractInboxMessages(ids: number[]): Promise<InboxActionResult> {
+  const guard = await requirePerm("ai.automations");
+  if (guard.error) return { ok: false, error: guard.error };
+  if (!idsOk(ids) || ids.length === 0) return { ok: false, error: "Invalid items." };
+  // only messages this person sent by hand, no automation's
+  await prisma.aiInboxItem.deleteMany({ where: { id: { in: ids }, kind: "message", automationId: null, fromUserId: guard.user!.id } });
   return { ok: true };
 }

@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { expireProposals, toView } from "@/lib/server/ai/changes";
 import { PageHead } from "@/components/ui";
 import { InboxView, type InboxItemView } from "@/components/InboxView";
@@ -37,7 +38,11 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
 
   return (
     <div>
-      <PageHead title="Inbox" sub="Reports, messages and suggestions from the assistant and the automations" />
+      <PageHead
+        title="Inbox"
+        sub="Reports, messages and suggestions from the assistant and the automations"
+        actions={hasPerm(me, "ai.automations") ? <Link href="/automations" className="btn btn-sm">Automations</Link> : undefined}
+      />
       <InboxView items={items} actions={actions} openId={openId} />
     </div>
   );

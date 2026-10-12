@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Bell, Clock } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { aiStatusFor } from "@/lib/server/ai/access";
 import { actionsOfConversation } from "@/lib/server/ai/changes";
 import { READ_TOOL_TITLES } from "@/lib/server/ai/tools";
@@ -36,7 +38,18 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
 
   return (
     <>
-      <PageHead title="AI assistant" sub={aiModel(status.model).label} />
+      <PageHead
+        title="AI assistant"
+        sub={aiModel(status.model).label}
+        actions={
+          <span className="inline-flex gap-1.5">
+            {hasPerm(user, "ai.automations") && (
+              <Link href="/automations" className="btn btn-sm" title="What the assistant does by itself for you"><Clock size={14} aria-hidden /> Automations</Link>
+            )}
+            <Link href="/inbox" className="btn btn-sm" title="Reports, messages and suggestions"><Bell size={14} aria-hidden /> Inbox</Link>
+          </span>
+        }
+      />
       <AiChat
         isOwner={user.isOwner}
         status={{ ok: status.ok, reason: status.reason ? AI_DENY_TEXT[status.reason] : null, userSpent: status.userSpent, userCap: status.userCap, plantSpent: status.plantSpent, plantCap: status.plantCap }}

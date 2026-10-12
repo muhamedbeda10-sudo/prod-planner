@@ -14,6 +14,8 @@ export interface InboxDelivery {
   title: string;
   body: string;
   fromName?: string | null;
+  /** Who sent it by hand through the assistant — the one who may take it back. */
+  fromUserId?: number | null;
   automationId?: number | null;
   runId?: number | null;
   actionIds?: number[];
@@ -32,7 +34,7 @@ export async function deliverToInbox(items: readonly InboxDelivery[]): Promise<n
     if (!active.has(i.userId)) continue;
     const row = await prisma.aiInboxItem.create({
       data: {
-        userId: i.userId, kind: i.kind, title: i.title.slice(0, TITLE_MAX), body: i.body.slice(0, BODY_MAX), fromName: i.fromName ?? null,
+        userId: i.userId, kind: i.kind, title: i.title.slice(0, TITLE_MAX), body: i.body.slice(0, BODY_MAX), fromName: i.fromName ?? null, fromUserId: i.fromUserId ?? null,
         automationId: i.automationId ?? null, runId: i.runId ?? null, actionIds: i.actionIds ?? [],
       },
       select: { id: true },

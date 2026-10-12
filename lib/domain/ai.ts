@@ -124,7 +124,7 @@ export function conversationTitle(question: string): string {
 export const AI_PRIVATE_TABLES = [
   "Session", "UserPref", "ChatMessage", "ChatGroup", "ChatGroupMember", "ChatMessageHide", "ChatReaction",
   "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage", "AiAction",
-  "AiPlaybookEntry", "AiPlaybookRevision", "AiInboxItem", "PushSubscription", "PushKeys",
+  "AiPlaybookEntry", "AiPlaybookRevision", "AiInboxItem", "PushSubscription", "PushKeys", "Automation", "AutomationRun",
 ] as const;
 export const AI_USER_COLUMNS = ["id", "name", "active"] as const;
 
@@ -321,6 +321,32 @@ export function questionContext(o: {
     lines.push(o.noconfirm ? "A small, low-risk change runs at once (the person opted into that); everything else waits for their approval." : "Every change waits for the person's approval.");
   }
   if (o.notes.length > 0) lines.push("Since your last answer:", ...o.notes.map((n) => `- ${n}`));
+  return lines.join("\n");
+}
+
+/** The context of an automation's run — the system message after its
+ *  instruction: whose it is, that nobody is reading live, who receives the
+ *  answer, and what may be changed. */
+export function automationContext(o: {
+  name: string;
+  owner: string;
+  now: Date;
+  action: "report" | "act";
+  recipients: readonly string[];
+  areas: readonly AiArea[];
+  canDelete: boolean;
+  noconfirm: boolean;
+}): string {
+  const lines = [
+    `This is ${o.owner}'s automation "${o.name}", running by itself on ${FACTORY_CLOCK.format(o.now)}, Cairo time. Nobody is reading live and nobody can answer a question: do not ask one.`,
+  ];
+  if (o.action === "report") {
+    lines.push(`Your final answer is sent as it is to ${o.recipients.join(", ")} — write the complete report: a short headline first, then the figures (tables, charts where they help). Read only; you change nothing.`);
+  } else {
+    lines.push(`Prepare the changes the instruction calls for with your write tools — on: ${o.areas.map((a) => AI_AREA_LABEL[a]).join("; ")}.${o.canDelete ? "" : " No deletions."}`);
+    lines.push(o.noconfirm ? `A small, low-risk change runs at once (${o.owner} opted into that); everything else waits in ${o.owner}'s inbox for approval.` : `Every change waits in ${o.owner}'s inbox for their approval.`);
+    lines.push(`Your final answer goes to ${o.owner} with them: say in a few lines what you prepared and why — or that nothing needed changing.`);
+  }
   return lines.join("\n");
 }
 

@@ -326,7 +326,9 @@ model User {
   aiUsage          AiUsage[]
   aiActions        AiAction[]
   aiInbox          AiInboxItem[]
+  aiInboxSent      AiInboxItem[] @relation("inboxSent")
   pushDevices      PushSubscription[]
+  automations      Automation[]
 }
 
 // A person's own view settings — the Plan Tracker's columns, folded and
@@ -1377,6 +1379,12 @@ model AiSettings {
   // again when it comes off).
   actionsPaused     Boolean @default(false)
   automationsPaused Boolean @default(false)
+  // The automations' clock: the database's own scheduler (pg_cron) calls the
+  // tick endpoint every minute with a secret; its SHA-256 is kept here, the
+  // secret itself only in that job. lastTickAt: the last tick that ran —
+  // from that job, or from a page open somewhere when it is not set up.
+  tickSecretHash    String  @default("")
+  lastTickAt        DateTime?
   updatedBy  String?
   updatedAt  DateTime @updatedAt
 }
@@ -1464,6 +1472,7 @@ model AiAction {
   toolUseId      String?
   // or the automation that proposed it
   automationId   Int?
+  automation     Automation?     @relation(fields: [automationId], references: [id], onDelete: SetNull)
   tool           String
   input          Json
   title          String
@@ -1546,7 +1555,12 @@ model AiInboxItem {
   // Whose automation it came from, as the person reads it ("Sara's automation
   // “Late welding”"); kept as text, so it reads the same after a rename.
   fromName     String?
+  // who sent it by hand through the assistant (a message) — what lets them
+  // take it back; null for an automation's
+  fromUserId   Int?
+  fromUser     User?       @relation("inboxSent", fields: [fromUserId], references: [id], onDelete: SetNull)
   automationId Int?
+  automation   Automation? @relation(fields: [automationId], references: [id], onDelete: SetNull)
   runId        Int?
   actionIds    Int[]     @default([])
   createdAt    DateTime  @default(now())
@@ -1586,4 +1600,71 @@ model PushKeys {
   publicKey     String
   privateKeyEnc String
   createdAt     DateTime @default(now())
+}
+
+// What a person asked the assistant to do by itself (lib/domain/automations.ts):
+// WHEN — on a schedule (times of day on the factory clock, on working days,
+// every day or chosen weekdays) or when a read-only query finds rows it did
+// not at its last check; WHAT — send a message, have the assistant write a
+// report, or have it prepare changes that wait for the owner's approval. It
+// runs as its owner, with the owner's permissions as they stand at each run,
+// and stops itself after failing five times in a row. Deleting keeps it (and
+// its runs) on record, off. Private: the assistant's own records.
+model Automation {
+  id            Int             @id @default(autoincrement())
+  ownerId       Int
+  owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name          String
+  enabled       Boolean         @default(true)
+  trigger       String // schedule | condition
+  times         String[]        @default([]) // "HH:MM", Cairo
+  days          String          @default("working") // working | every | weekdays
+  weekdays      Int[]           @default([]) // 0 = Sunday
+  conditionSql  String?
+  checkEveryMin Int             @default(30)
+  activeFrom    String? // "HH:MM" — a condition checked only inside these hours, on working days
+  activeTo      String?
+  action        String // notify | report | act
+  message       String? // notify
+  prompt        String? // report | act
+  recipientIds  Int[]           @default([]) // none = the owner
+  // the keys the condition matched at its last check: what fires is what was not there
+  lastKeys      String[]        @default([])
+  nextRunAt     DateTime?
+  lastRunAt     DateTime?
+  lastCheckAt   DateTime?
+  lastStatus    String? // ok | failed | skipped
+  lastNote      String?
+  failures      Int             @default(0) // in a row
+  lockedUntil   DateTime?
+  deletedAt     DateTime?
+  createdBy     String?
+  updatedBy     String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  runs          AutomationRun[]
+  inbox         AiInboxItem[]
+  actions       AiAction[]
+
+  @@index([enabled, nextRunAt])
+  @@index([ownerId])
+}
+
+// One time an automation fired (or failed): what caused it, what it sent and
+// prepared, and what it cost. A condition checked with nothing new is not a run.
+model AutomationRun {
+  id           Int        @id @default(autoincrement())
+  automationId Int
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  cause        String // schedule | condition | manual
+  startedAt    DateTime   @default(now())
+  finishedAt   DateTime?
+  status       String     @default("running") // running | ok | failed | skipped
+  summary      String?
+  error        String?
+  costUsd      Float      @default(0)
+  inboxIds     Int[]      @default([])
+  actionIds    Int[]      @default([])
+
+  @@index([automationId, startedAt])
 }

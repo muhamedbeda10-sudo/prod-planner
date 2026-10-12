@@ -6,12 +6,16 @@ import { Bell } from "lucide-react";
 import { pollInbox } from "@/app/inbox/actions";
 
 // The bell in the bar: what the assistant and the automations sent this
-// person, with the number not read yet. It asks again every minute while the
-// page is in front, when the page comes back to the front, and at once when
-// the inbox page says it changed something.
+// person, with the number not read yet. The number rides on the chat's own
+// poll (every open page makes it anyway — one request, not two); the bell
+// asks by itself only now and then as a fallback, when the page comes back
+// to the front, and at once when the inbox page says it changed something.
 
+/** The inbox page changed something — ask again now. */
 export const INBOX_CHANGED = "inbox-changed";
-const EVERY_MS = 60_000;
+/** A fresh count from the chat's poll (CustomEvent<number>). */
+export const INBOX_UNREAD = "inbox-unread";
+const FALLBACK_MS = 5 * 60_000;
 
 export function InboxBell({ initial, active }: { initial: number; active: boolean }) {
   const [unread, setUnread] = useState(initial);
@@ -27,15 +31,18 @@ export function InboxBell({ initial, active }: { initial: number; active: boolea
         /* offline for a moment — the next tick tries again */
       }
     };
-    const t = window.setInterval(refresh, EVERY_MS);
+    const fromChat = (e: Event) => setUnread((e as CustomEvent<number>).detail);
+    const t = window.setInterval(refresh, FALLBACK_MS);
     const onShow = () => void refresh();
     document.addEventListener("visibilitychange", onShow);
     window.addEventListener(INBOX_CHANGED, onShow);
+    window.addEventListener(INBOX_UNREAD, fromChat);
     return () => {
       stop = true;
       window.clearInterval(t);
       document.removeEventListener("visibilitychange", onShow);
       window.removeEventListener(INBOX_CHANGED, onShow);
+      window.removeEventListener(INBOX_UNREAD, fromChat);
     };
   }, []);
 

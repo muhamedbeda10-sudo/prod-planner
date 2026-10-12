@@ -15,6 +15,7 @@ import { CONSUMABLE_TOOLS } from "./consumables";
 import { CALENDAR_TOOLS } from "./calendar";
 import { WORKER_TOOLS } from "./workers";
 import { MACHINE_LIST_TOOLS } from "./machineList";
+import { AUTOMATION_TOOLS } from "./automations";
 import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 
 // Every tool the assistant has, in the one fixed order the API sees them in
@@ -36,6 +37,7 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...CALENDAR_TOOLS,
   ...WORKER_TOOLS,
   ...MACHINE_LIST_TOOLS,
+  ...AUTOMATION_TOOLS,
 ];
 
 const BY_NAME = new Map<string, AiTool>(AI_TOOLS.map((t) => [t.name, t]));

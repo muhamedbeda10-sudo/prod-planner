@@ -54,8 +54,9 @@ export async function POST(request: Request) {
   if (existing && existing.messages.length >= AI_MAX_MESSAGES) return fail(400, "This chat has grown long — start a new one (every question re-reads the whole chat).");
   // one question at a time: one still being answered (started inside the
   // route's own time limit) blocks the next, so a burst cannot run past the
-  // caps before its cost is counted
-  const running = await prisma.aiUsage.count({ where: { userId: user.id, finishedAt: null, at: { gte: new Date(Date.now() - (maxDuration + 30) * 1000) } } });
+  // caps before its cost is counted. An automation of theirs running now
+  // (no conversation) does not hold the chat up.
+  const running = await prisma.aiUsage.count({ where: { userId: user.id, finishedAt: null, conversationId: { not: null }, at: { gte: new Date(Date.now() - (maxDuration + 30) * 1000) } } });
   if (running > 0) return fail(429, "One question at a time — wait for the answer, then ask again.");
 
   const conversation = existing ?? (await prisma.aiConversation.create({ data: { userId: user.id, title: conversationTitle(question), model: settings.model } }));

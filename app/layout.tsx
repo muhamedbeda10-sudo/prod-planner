@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { AppNav } from "@/components/AppNav";
+import { AutomationTicker } from "@/components/AutomationTicker";
 import { TouchLongPress } from "@/components/TouchLongPress";
 import { TabAccessProvider } from "@/components/TabAccess";
 import { parseHiddenTabs } from "@/lib/domain/tabs";
@@ -86,6 +87,7 @@ export default async function RootLayout({
             inbox={inbox}
           />
         )}
+        {user && <AutomationTicker />}
         <main className="flex-1 w-full px-3 py-3 md:px-5 md:py-4">
           {children}
         </main>
