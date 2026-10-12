@@ -199,7 +199,7 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
 
     if (!isDept(dept) && dept !== DELIVERED_STAGE && dept !== SHOTBLAST_STAGE) return { ok: false, error: "Invalid department." };
     // each tracker column has ITS OWN permission — deliberately separate from
-    // the dept's worklist permission (tracker.cut / .weld / .paint / .shp / .delivered)
+    // the dept's own permission (cut.edit / welding.edit / painting.edit / tracker.shp / tracker.delivered)
     const guard = await requirePerm(trackerPermKey(dept));
     if (guard.error) return { ok: false, error: guard.error };
     if (!bom || !mo) return { ok: false, error: "Missing MO / BOM." };

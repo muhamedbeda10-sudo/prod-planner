@@ -171,7 +171,7 @@ describe("set_order_specs", () => {
 
 describe("record_stage_totals", () => {
   beforeEach(() => {
-    h.perms.add("tracker.weld");
+    h.perms.add("welding.edit");
     h.prisma.masterOrder.findMany.mockResolvedValue([order("A"), order("B")]);
     h.prisma.handoverEntry.groupBy.mockResolvedValue([{ mo: "A", _sum: { qty: 4 } }]);
   });
@@ -203,7 +203,7 @@ describe("record_stage_totals", () => {
 
 describe("record_bom_total", () => {
   it("spreads the change over the MOs as the tracker does, and is undone MO by MO", async () => {
-    h.perms.add("tracker.cut");
+    h.perms.add("cut.edit");
     h.prisma.masterOrder.findMany.mockResolvedValue([order("A", { planQty: 5 }), order("B", { planQty: 5 })]);
     h.prisma.handoverEntry.groupBy.mockResolvedValueOnce([{ mo: "A", dept: "Cut", _sum: { qty: 3 } }]);
     const input = { dept: "Cut" as const, bom: "12011E16M13", item: "TC" as const, mos: ["A", "B"], total: 7 };
@@ -222,7 +222,7 @@ describe("record_bom_total", () => {
   });
 
   it("says how much fits when the total does not", async () => {
-    h.perms.add("tracker.cut");
+    h.perms.add("cut.edit");
     h.prisma.masterOrder.findMany.mockResolvedValue([order("A", { planQty: 5 })]);
     h.prisma.handoverEntry.groupBy.mockResolvedValue([]);
     expect(await recordBomTotalTool.describe({ dept: "Cut", bom: "12011E16M13", item: "TC", mos: ["A"], total: 9 }, ctx)).toEqual({ error: "Only 5 more pieces fit on these orders (the chain and the order quantities)." });
