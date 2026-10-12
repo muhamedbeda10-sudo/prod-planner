@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-12-floor-sheet-line",
+    dateISO: "2026-10-12",
+    title: "Floor: one sheet of an item goes on a machine as that sheet",
+    where: "Floor → Cut → a machine → ＋ Put a line on it…",
+    body: "Picking one sheet of an item from a machine's ＋ Put a line on it… list — its 5 mm, say, while its 3 mm is on another laser — put the WHOLE item on that machine. It now goes on as that sheet only, as the → button in the \"to place\" list always did. A whole item already placed this way stays whole until it is taken off and the sheet placed again.",
+    href: "/simulate?view=floor&dept=Cut",
+  },
+  {
     id: "2026-10-11-phones-tablets",
     dateISO: "2026-10-11",
     title: "Tidier on phones and tablets — and less text everywhere",

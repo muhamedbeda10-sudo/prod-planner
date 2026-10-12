@@ -485,7 +485,9 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
   const a = useAction();
   const [showAll, setShowAll] = useState(false);
   const m = card?.machine;
-  const line = (bom: string, mo: string, item: string, sheet = "") => {
+  // the sheet always goes along: "" is the whole item, so a line spread by
+  // sheet that left it out would land on the machine whole
+  const line = (bom: string, mo: string, item: string, sheet: string) => {
     const fd = new FormData();
     fd.set("dept", board.dept); fd.set("bom", bom); fd.set("mo", mo); fd.set("item", item); fd.set("sheet", sheet);
     fd.set("machineId", String(n.machineId ?? ""));
@@ -594,7 +596,7 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
       {canAssign && mine.length > 0 && (
         <select
           className="w-full border rounded-md px-2 py-1.5 bg-surface text-sm font-semibold" value="" disabled={a.pending} aria-label="Put a line on it"
-          onChange={(e) => { const u = mine[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
+          onChange={(e) => { const u = mine[Number(e.target.value)]; if (!u) return; const fd = line(u.bom, u.mo, u.item, u.sheet ?? ""); fd.set("machineId", String(m.id)); a.run(assignLineMachine, fd); }}
         >
           <option value="">＋ Put a line on it… ({mine.length} waiting{multiCentre(board) ? ` for ${CENTER_LABEL[m.center] ?? m.center}` : ""})</option>
           {mine.map((u, i) => <option key={`${u.key}#${u.center}`} value={i}>{u.bom} {u.item} ×{u.remaining}{u.partial ? ` (rest of ${u.lineRemaining})` : ""}{u.deliveryISO ? ` · ${ddmm(u.deliveryISO)}` : ""}</option>)}
