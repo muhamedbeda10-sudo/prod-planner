@@ -414,25 +414,8 @@ export function AppNav({
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
             {/* the plant's two products: one switch, inside every tab at once */}
             <LineTabs line={line} />
-            {/* the AI assistant — for the people the owner opened it to */}
-            {ai && (
-              panel ? (
-                <button
-                  type="button"
-                  onClick={() => panel.toggle("chat")}
-                  className={`nav-tab nav-tab-icon flex items-center ${aiOn ? "nav-tab-active" : ""}`}
-                  aria-label="AI assistant"
-                  aria-expanded={panel.shown}
-                  title="AI assistant"
-                >
-                  <Bot size={18} />
-                </button>
-              ) : (
-                <Link href="/ai" className={`nav-tab nav-tab-icon flex items-center ${isActive("/ai") ? "nav-tab-active" : ""}`} aria-label="AI assistant" title="AI assistant">
-                  <Bot size={18} />
-                </Link>
-              )
-            )}
+            {/* the AI assistant has no button here: its round button sits in
+                the corner of every page (components/AiPanel) */}
             {/* what the assistant and the automations sent this person */}
             {(ai || inbox.any) && (
               <InboxBell
