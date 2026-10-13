@@ -195,7 +195,7 @@ export function AppNav({
   const aiPage = pathname === "/ai" || pathname.startsWith("/ai/");
   const panelCtx = useAiPanel();
   const panel = aiPage ? null : panelCtx;
-  const aiOn = aiPage || (!!panel?.shown && panel.state.tab !== "inbox");
+  const aiOn = aiPage || (!!panel?.shown && panel.state.view !== "inbox");
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
   // the ODOO tab lights up with the rows waiting to be closed; its badge
   // opens the popup rather than the page
@@ -414,30 +414,13 @@ export function AppNav({
           <div className="ml-auto flex items-center gap-1 md:gap-2 shrink-0">
             {/* the plant's two products: one switch, inside every tab at once */}
             <LineTabs line={line} />
-            {/* the AI assistant — for the people the owner opened it to */}
-            {ai && (
-              panel ? (
-                <button
-                  type="button"
-                  onClick={() => panel.toggle("chat")}
-                  className={`nav-tab nav-tab-icon flex items-center ${aiOn ? "nav-tab-active" : ""}`}
-                  aria-label="AI assistant"
-                  aria-expanded={panel.shown}
-                  title="AI assistant"
-                >
-                  <Bot size={18} />
-                </button>
-              ) : (
-                <Link href="/ai" className={`nav-tab nav-tab-icon flex items-center ${isActive("/ai") ? "nav-tab-active" : ""}`} aria-label="AI assistant" title="AI assistant">
-                  <Bot size={18} />
-                </Link>
-              )
-            )}
+            {/* the AI assistant has no button here: its round button sits in
+                the corner of every page (components/AiPanel) */}
             {/* what the assistant and the automations sent this person */}
             {(ai || inbox.any) && (
               <InboxBell
                 initial={inbox.unread}
-                active={isActive("/inbox") || (!!panel?.shown && panel.state.tab === "inbox")}
+                active={isActive("/inbox") || (!!panel?.shown && panel.state.view === "inbox")}
                 onOpen={panel ? () => panel.toggle("inbox") : undefined}
               />
             )}
