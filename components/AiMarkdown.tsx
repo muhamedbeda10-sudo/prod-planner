@@ -3,6 +3,7 @@
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AiChart } from "@/components/AiChart";
+import { isChartBlock } from "@/lib/domain/aiChart";
 
 // An AI answer as it reads: Markdown (tables, lists, bold) in the app's own
 // type. The answer as a whole reads in the language it was written in — an
@@ -63,9 +64,14 @@ function components(streaming: boolean): Components {
     },
     code: ({ children, className }) => <code className={`${className ?? ""} px-1 py-0.5 rounded bg-surface-2 ltr`}>{children}</code>,
     pre: ({ node, children }) => {
-      const code = (node as HastNode | undefined)?.children?.[0];
-      const cls = code?.tagName === "code" ? code.properties?.className : undefined;
-      if (Array.isArray(cls) && cls.includes("language-chart") && code) return <AiChart source={textOf(code)} streaming={streaming} />;
+      const code = (node as HastNode | undefined)?.children?.find((c) => c.type === "element");
+      if (code?.tagName === "code") {
+        const cls = Array.isArray(code.properties?.className) ? (code.properties.className as unknown[]).map(String) : [];
+        const lang = cls.find((c) => c.startsWith("language-"))?.slice("language-".length) ?? "";
+        const source = textOf(code);
+        // a chart's JSON draws as the chart, however its fence was labelled
+        if (isChartBlock(lang, source)) return <AiChart source={source} streaming={streaming} />;
+      }
       return <pre className="my-2.5 p-3 rounded-lg bg-surface-2 overflow-x-auto text-xs ltr">{children}</pre>;
     },
   };

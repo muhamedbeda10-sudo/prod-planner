@@ -2,19 +2,24 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { automationFor, configOf, prepareAutomation } from "@/lib/server/automations/store";
 import { automationViews } from "@/lib/server/automations/views";
-import { deleteAutomation, restoreAutomation, runAutomationNow, saveAutomation, setAutomationEnabled } from "@/app/automations/actions";
+import { deleteAutomation, restoreAutomation, runAutomationNow, saveAutomation, setAutomationEnabled, setAutomationTiming } from "@/app/automations/actions";
 import { retractInboxMessages, sendInboxMessage } from "@/app/inbox/actions";
-import { AUTOMATION_ACTIONS, AUTOMATION_LIMITS, CHECK_EVERY, describeAction, describeTrigger, SCHEDULE_DAYS, type AutomationConfig, type AutomationInput } from "@/lib/domain/automations";
+import {
+  AUTOMATION_ACTIONS, AUTOMATION_LIMITS, CHECK_EVERY, describeAction, describeTrigger, retimeAutomation, SCHEDULE_DAYS, type AutomationConfig, type AutomationInput, type AutomationTiming,
+} from "@/lib/domain/automations";
 import { formatDateTime } from "@/lib/domain/format";
 import type { AiChange } from "@/lib/domain/aiActions";
 import type { ObjectSchema } from "@/lib/domain/aiInput";
 import { formOf, type ReadTool, type ToolCtx, type WriteTool } from "./types";
 
 // Automations for the assistant — the person's own: listed, made, changed,
-// paused, deleted — and a message sent to colleagues now. Each goes through
-// the Automations page's own actions as the person (AI — automations), and
-// each is undone by putting it back. Making or changing one always waits for
-// the person's approval: it will run again and again, and may tell others.
+// paused, retimed, deleted — and a message sent to colleagues now. The app's
+// owner, as on AI assistant settings, also sees everyone's and pauses,
+// retimes or deletes any (what one does stays its owner's to change). Each
+// goes through the Automations page's own actions as the person (AI —
+// automations), and each is undone by putting it back. Making or changing one
+// always waits for the person's approval: it will run again and again, and
+// may tell others.
 
 const HHMM = { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" } as const;
 const PEOPLE = { type: "array", maxItems: AUTOMATION_LIMITS.recipients, items: { type: "string", minLength: 1, maxLength: 80 }, description: "Who receives it, by their name on the users list; leave out for the person alone. Include the person too if they want it as well." } as const;
@@ -123,18 +128,19 @@ function configChanges(c: AutomationConfig, recipients: string[], o: { was?: { c
 
 // ------------------------------------------------------------------ read
 
-export const listAutomationsTool: ReadTool<Record<string, never>> = {
+export const listAutomationsTool: ReadTool<{ everyone?: boolean }> = {
   kind: "read",
   name: "list_automations",
   title: "Looking at the automations",
-  description: "The person's own automations: each one's id, name, whether it is on, when it runs and what it does (the query, message or instruction), who receives it, its next run, and how its last runs went.",
-  schema: { type: "object", properties: {}, additionalProperties: false },
-  async run(_i, ctx) {
-    const views = (await automationViews({ ownerId: ctx.user.id })).filter((a) => !a.deleted);
+  description: "The person's own automations: each one's id, name, whether it is on, when it runs and what it does (the query, message or instruction), who receives it, its next run, and how its last runs went. The app's owner may list everyone's (everyone: true), each with whose it is.",
+  schema: { type: "object", properties: { everyone: { type: "boolean", description: "The app's owner only: every person's automations." } }, additionalProperties: false },
+  async run(i, ctx) {
+    if (i.everyone && !ctx.user.isOwner) return { ok: false, text: "Only the app's owner sees everyone's automations." };
+    const views = (await automationViews(i.everyone ? {} : { ownerId: ctx.user.id })).filter((a) => !a.deleted);
     return {
       ok: true,
       text: JSON.stringify(views.map((a) => ({
-        id: a.id, name: a.name, on: a.enabled, when: a.trigger, what: a.action, ...(a.conditionSql ? { query: a.conditionSql } : {}), text: a.text,
+        id: a.id, name: a.name, ...(i.everyone ? { owner: a.owner } : {}), on: a.enabled, when: a.trigger, what: a.action, ...(a.conditionSql ? { query: a.conditionSql } : {}), text: a.text,
         next: a.nextRunAt, last: a.lastStatus ? { status: a.lastStatus, note: a.lastNote, at: a.lastRunAt } : null,
         runs: a.runs.slice(0, 3).map((r) => ({ at: r.startedAt, status: r.status, note: r.error ?? r.summary })),
       }))),
@@ -143,6 +149,9 @@ export const listAutomationsTool: ReadTool<Record<string, never>> = {
 };
 
 // ------------------------------------------------------------- writes
+
+/** Why an automation is not one this person may run the timing of, pause or delete. */
+const notTheirs = (id: number, ctx: ToolCtx) => (ctx.user.isOwner ? `No automation #${id}.` : `No automation #${id} of ${ctx.user.name}'s.`);
 
 const CREATE_SCHEMA: ObjectSchema = {
   type: "object",
@@ -230,13 +239,13 @@ export const setAutomationEnabledTool: WriteTool<{ id: number; enabled: boolean 
   kind: "write",
   name: "set_automation_enabled",
   title: "Pause or resume an automation",
-  description: "Pause one of the person's automations, or turn it back on (a condition then watches afresh from what matches now).",
+  description: "Pause one of the person's automations, or turn it back on (a condition then watches afresh from what matches now). The app's owner may pause anyone's.",
   area: "automations",
   risk: "low",
   schema: { type: "object", properties: { id: { type: "integer", minimum: 1 }, enabled: { type: "boolean" } }, required: ["id", "enabled"], additionalProperties: false },
   async describe(i, ctx) {
     const a = await automationFor(ctx.user, i.id);
-    if (!a || a.ownerId !== ctx.user.id) return { error: `No automation #${i.id} of ${ctx.user.name}'s.` };
+    if (!a) return { error: notTheirs(i.id, ctx) };
     if (a.enabled === i.enabled) return { error: `"${a.name}" is ${a.enabled ? "on" : "paused"} already.` };
     return {
       title: `${i.enabled ? "Turn on" : "Pause"} "${a.name}"`,
@@ -251,17 +260,105 @@ export const setAutomationEnabledTool: WriteTool<{ id: number; enabled: boolean 
   },
 };
 
+interface TimingInput {
+  id: number;
+  times?: string[];
+  days?: string;
+  weekdays?: number[];
+  checkEveryMin?: number;
+  activeFrom?: string;
+  activeTo?: string;
+  /** condition: checked at any hour — the hours dropped. */
+  anyHour?: boolean;
+}
+
+/** An automation's timing as the screen's timing editor holds it. */
+function timingOf(c: AutomationConfig): AutomationTiming {
+  return c.trigger === "schedule"
+    ? { times: c.times, days: c.days, ...(c.days === "weekdays" ? { weekdays: c.weekdays } : {}) }
+    : { checkEveryMin: c.checkEveryMin, activeFrom: c.activeFrom ?? null, activeTo: c.activeTo ?? null };
+}
+
+/** The timing asked for, over the one it has — a field left out stays. */
+function timingFrom(i: TimingInput, c: AutomationConfig): AutomationTiming {
+  const was = timingOf(c);
+  return c.trigger === "schedule"
+    ? { times: i.times ?? was.times, days: (i.days ?? was.days) as AutomationTiming["days"], ...((i.days ?? was.days) === "weekdays" ? { weekdays: i.weekdays ?? c.weekdays } : {}) }
+    : i.anyHour
+      ? { checkEveryMin: i.checkEveryMin ?? was.checkEveryMin, activeFrom: null, activeTo: null }
+      : { checkEveryMin: i.checkEveryMin ?? was.checkEveryMin, activeFrom: i.activeFrom ?? was.activeFrom ?? null, activeTo: i.activeTo ?? was.activeTo ?? null };
+}
+
+/** The input that puts an automation's timing back as it is now. */
+function timingInputOf(id: number, c: AutomationConfig): TimingInput {
+  if (c.trigger === "schedule") return { id, times: [...c.times], days: c.days, ...(c.days === "weekdays" ? { weekdays: [...c.weekdays] } : {}) };
+  return c.activeFrom && c.activeTo ? { id, checkEveryMin: c.checkEveryMin, activeFrom: c.activeFrom, activeTo: c.activeTo } : { id, checkEveryMin: c.checkEveryMin, anyHour: true };
+}
+
+export const setAutomationTimingTool: WriteTool<TimingInput> = {
+  kind: "write",
+  name: "set_automation_timing",
+  title: "Change when an automation runs",
+  description:
+    "Change only WHEN an automation runs, as the screen's timing editor does — a schedule's times and days, or how often a condition is checked and in which hours; what it does stays. For the person's own, and for the app's owner anyone's (list_automations everyone: true). Fields left out stay as they are.",
+  area: "automations",
+  risk: "low",
+  schema: {
+    type: "object",
+    properties: {
+      id: { type: "integer", minimum: 1 },
+      times: CONFIG_PROPS.times,
+      days: CONFIG_PROPS.days,
+      weekdays: CONFIG_PROPS.weekdays,
+      checkEveryMin: CONFIG_PROPS.checkEveryMin,
+      activeFrom: CONFIG_PROPS.activeFrom,
+      activeTo: CONFIG_PROPS.activeTo,
+      anyHour: { type: "boolean", description: "condition: true = check at any hour (its hours dropped)." },
+    },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  parse: (r) => (Object.keys(r).length > 1 ? (r as unknown as TimingInput) : "Say what changes in when it runs."),
+  async describe(i, ctx) {
+    const a = await automationFor(ctx.user, i.id);
+    if (!a) return { error: notTheirs(i.id, ctx) };
+    const c = configOf(a);
+    const asked = c.trigger === "schedule" ? [i.checkEveryMin, i.activeFrom, i.activeTo, i.anyHour] : [i.times, i.days, i.weekdays];
+    if (asked.some((v) => v !== undefined)) return { error: `"${a.name}" runs ${c.trigger === "schedule" ? "on a schedule — give times and days" : "when its condition finds rows — give how often and in which hours"}.` };
+    const r = retimeAutomation(c, timingFrom(i, c));
+    if (!r.ok) return { error: r.error };
+    const before = describeTrigger(c);
+    const after = describeTrigger(r.config);
+    if (before === after) return { error: `"${a.name}" runs so already.` };
+    const whose = a.ownerId === ctx.user.id ? "" : ` (${(await prisma.user.findUnique({ where: { id: a.ownerId }, select: { name: true } }))?.name ?? "another person"}'s)`;
+    return {
+      title: `Retime "${a.name}"`,
+      summary: `Run the automation "${a.name}"${whose} ${after} instead of ${before}.`,
+      changes: [{ label: a.name, before, after }],
+      snapshot: { id: a.id, updatedAt: a.updatedAt.toISOString() },
+    };
+  },
+  async execute(i, ctx) {
+    const a = await automationFor(ctx.user, i.id);
+    if (!a) return { ok: false, error: notTheirs(i.id, ctx) };
+    const c = configOf(a);
+    const r = await setAutomationTiming(formOf({ id: a.id, timing: JSON.stringify(timingFrom(i, c)) }));
+    if (!r.ok) return { ok: false, error: r.error };
+    return { ok: true, message: `"${a.name}" is retimed.`, undo: { tool: "set_automation_timing", input: timingInputOf(a.id, c) as unknown as Record<string, unknown> } };
+  },
+};
+
 export const deleteAutomationTool: WriteTool<{ id: number }> = {
   kind: "write",
   name: "delete_automation",
   title: "Delete an automation",
-  description: "Delete one of the person's automations — it stops and leaves the list; its record and runs stay, and Undo brings it back.",
+  description: "Delete one of the person's automations — it stops and leaves the list; its record and runs stay, and Undo brings it back. The app's owner may delete anyone's.",
   area: "automations",
   risk: "destructive",
   schema: { type: "object", properties: { id: { type: "integer", minimum: 1 } }, required: ["id"], additionalProperties: false },
   async describe(i, ctx) {
     const a = await automationFor(ctx.user, i.id);
-    if (!a || a.ownerId !== ctx.user.id) return { error: `No automation #${i.id} of ${ctx.user.name}'s.` };
+    if (!a) return { error: notTheirs(i.id, ctx) };
     return {
       title: `Delete "${a.name}"`,
       summary: `Delete the automation "${a.name}" (${describeTrigger(configOf(a))}).`,
@@ -400,6 +497,7 @@ export const AUTOMATION_TOOLS = [
   createAutomationTool,
   updateAutomationTool,
   setAutomationEnabledTool,
+  setAutomationTimingTool,
   deleteAutomationTool,
   testAutomationTool,
   sendMessageTool,

@@ -334,6 +334,17 @@ mobile drawer still lists every view flat, since it has the vertical room.
      in one click; with the Simulator closed, the answer carries a button that opens it with the scenario.
      `simulate_scenario` starts from the screen as well; saving a scenario for everyone and the run order stay changes
      with a card.
+   - **Charts and printouts** (`lib/domain/aiChart.ts`, `components/AiChart*.tsx`, `components/AiPrint.tsx`): an answer or a
+     report draws its figures from a ```chart block — bar, line, area and combo (stacked or as shares of 100%, target
+     lines, one thing picked out with the rest in gray), pie, KPI cards (with a trend and progress), Pareto (the causes
+     that make 80% stand out), histogram, scatter, heatmap, progress against target, funnel, waterfall, Gantt, dumbbell,
+     radar and treemap — on one value scale each, in the palette's slots, every chart with its numbers as a table and
+     their export. A chart's JSON draws however its fence was labelled. The same blocks draw in the chat and in the
+     inbox's reports; **Print / PDF** on an answer or a report prints it alone under the company header, charts and all.
+   - **Owner's reach and the floor's new stations**: the app's owner lists everyone's automations and pauses, retimes
+     (`set_automation_timing`) or deletes any, as AI assistant settings lets them; what one does stays its owner's to
+     change. A new partition, line or machine is made and placed on the floor in one edit (`edit_floor_layout` kind
+     new), and its undo takes it off the list again while nothing uses it.
    - **Attached files and imports** (`lib/server/ai/files.ts`, `lib/server/ai/tools/imports.ts`): a photo, a PDF, an Excel
      or CSV sheet attached with the 📎 is checked by its bytes (a photo shrunk in the browser first; a photo or PDF also
      measured by the model's own token count, so one it refuses never reaches a chat), kept in `AiFile` for 14 days (out

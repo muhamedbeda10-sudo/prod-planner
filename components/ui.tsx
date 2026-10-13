@@ -59,6 +59,15 @@ export function PageHead({
   );
 }
 
+const COLUMN_WIDTH = { "3xl": "max-w-3xl", "4xl": "max-w-4xl" } as const;
+
+/** A one-column screen (the inbox, automations, settings): a width that reads
+ *  well, centred in whatever room the window and the docked assistant leave —
+ *  never stuck to one side of a wide screen. */
+export function ReadingColumn({ children, width = "4xl", className = "" }: { children: ReactNode; width?: keyof typeof COLUMN_WIDTH; className?: string }) {
+  return <div className={`mx-auto w-full ${COLUMN_WIDTH[width]} ${className}`}>{children}</div>;
+}
+
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <div className={`bg-surface border rounded-xl overflow-hidden ${className}`}>{children}</div>

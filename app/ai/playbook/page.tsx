@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/server/auth";
 import { chatStatusFor, playbookData } from "@/lib/server/ai/panel";
-import { PageHead } from "@/components/ui";
+import { PageHead, ReadingColumn } from "@/components/ui";
 import { PlaybookView } from "@/components/PlaybookView";
 
 export const metadata = { title: "The assistant's playbook — ATC" };
@@ -19,9 +19,9 @@ export default async function PlaybookPage() {
   const { rules, canEdit, left } = await playbookData(me);
 
   return (
-    <div className="max-w-4xl">
+    <ReadingColumn>
       <PageHead title="Playbook" />
       <PlaybookView rules={rules} canEdit={canEdit} left={left} />
-    </div>
+    </ReadingColumn>
   );
 }
