@@ -6,7 +6,8 @@
 //                  by everyone, so a malformed or oversized one never lands;
 //   withKnobs      turns the few knobs a person (or the assistant) names —
 //                  "two more welders, Fridays on, the laser down Sunday to
-//                  Tuesday, rush MO 4471" — into a whole scenario;
+//                  Tuesday, rush MO 4471" — into a whole scenario, and
+//                  knobsOfScenario reads them back out of one;
 //   kpisOf, describeScenario, scenarioCost — how the Simulator sums one up.
 
 import { deptLabel } from "./constants";
@@ -248,13 +249,36 @@ export function kpisOf(result: WhatIfResult) {
 /** Man-hours a day the scenario's extra workers add (negative: take away). */
 export const scenarioCost = (sc: Scenario) => WI_STAGES.reduce((a, s) => a + sc.workersDelta[s] * sc.shiftHours, 0);
 
+/** The queue runs in an order of its own, not today's plain one. */
+export const queueEdited = (sc: Scenario, inputs: WhatIfInputs) => sc.queue.some((id, i) => inputs.jobs[i]?.id !== id);
+
+/** A scenario's knobs in the terms withKnobs takes them — what is sent back,
+ *  one changed, to change it: stoppages, holds and splits as whole lists (a
+ *  list given replaces the one there). A hold or a split that no longer does
+ *  anything — its job no longer open, or the batches no longer adding up to
+ *  what the job still owes — is left out. */
+export function knobsOfScenario(sc: Scenario, inputs: WhatIfInputs) {
+  const jobs = new Map(inputs.jobs.map((j) => [j.id, j]));
+  return {
+    workersDelta: Object.fromEntries(WI_STAGES.filter((s) => sc.workersDelta[s] !== 0).map((s) => [s, sc.workersDelta[s]])) as Partial<Record<WiStage, number>>,
+    shiftHours: sc.shiftHours,
+    workFridays: sc.workFridays,
+    downtimes: sc.downtimes.map((d) => ({ ...d })),
+    holds: Object.entries(sc.holds).filter(([job]) => jobs.has(job)).map(([job, untilISO]) => ({ job, untilISO })),
+    splits: Object.entries(sc.splits)
+      .filter(([job, batches]) => batches.reduce((a, b) => a + b, 0) === jobs.get(job)?.left.finish)
+      .map(([job, batches]) => ({ job, batches: [...batches] })),
+    queueEdited: queueEdited(sc, inputs),
+  };
+}
+
 /** One line that names a scenario: "+2 Welding · Fridays on · queue edited · 1 split". */
 export function describeScenario(sc: Scenario, inputs: WhatIfInputs): string {
   const parts: string[] = [];
   for (const s of WI_STAGES) if (sc.workersDelta[s] !== 0) parts.push(`${sc.workersDelta[s] > 0 ? "+" : ""}${sc.workersDelta[s]} ${deptLabel(s)}`);
   if (sc.shiftHours !== 11) parts.push(`${sc.shiftHours}h shifts`);
   if (sc.workFridays) parts.push("Fridays on");
-  if (sc.queue.some((id, i) => inputs.jobs[i]?.id !== id)) parts.push("queue edited");
+  if (queueEdited(sc, inputs)) parts.push("queue edited");
   const splits = Object.keys(sc.splits).length;
   if (splits) parts.push(`${splits} split${splits === 1 ? "" : "s"}`);
   const holds = Object.keys(sc.holds).length;

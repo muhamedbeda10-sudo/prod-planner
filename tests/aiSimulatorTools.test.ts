@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The assistant's Simulator tools: a what-if run against today's jobs, saving
-// and deleting scenarios, and the run order — what each card says, which of
-// the Simulator's own actions runs, and how each is undone.
+// The assistant's Simulator tools: a what-if run against today's jobs, a
+// scenario put on the person's own Simulator screen, saving and deleting
+// scenarios, and the run order — what each card says, which of the
+// Simulator's own actions runs, and how each is undone.
 
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
@@ -28,7 +29,7 @@ import type { WhatIfInputs, WhatIfJob } from "@/lib/domain/whatif";
 import { parseScenario } from "@/lib/domain/whatifScenario";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import {
-  applyRunOrderTool, clearRunOrderTool, deleteScenarioTool, restoreRunOrderTool, restoreScenarioTool, saveScenarioTool, simulateScenarioTool,
+  applyRunOrderTool, clearRunOrderTool, deleteScenarioTool, restoreRunOrderTool, restoreScenarioTool, saveScenarioTool, showOnSimulatorTool, simulateScenarioTool,
 } from "@/lib/server/ai/tools/simulator";
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
 
@@ -43,6 +44,8 @@ const inputs: WhatIfInputs = {
 const user = (o: Partial<User> = {}) => ({ id: 1, name: "Sara", isAdmin: false, ...o }) as User;
 const ctxOf = (u: User): ToolCtx => ({ user: u, hidden: new Set(), now: new Date(), todayISO: "2026-10-12", conversationId: 1, automationId: null });
 const ctx = ctxOf(user());
+/** A chat with the Simulator open beside it (or not), showing this scenario. */
+const onScreen = (scenario: unknown, open = true): ToolCtx => ({ ...ctx, screen: { simulator: { open, scenario } } });
 const fdOf = (m: ReturnType<typeof vi.fn>) => Object.fromEntries((m.mock.calls[0][0] as FormData).entries());
 
 beforeEach(() => {
@@ -73,6 +76,57 @@ describe("simulate_scenario", () => {
 
   it("will not both rush jobs and optimise the queue", () => {
     expect(checkToolInput(simulateScenarioTool, { first: ["A"], optimize: true })).toEqual({ ok: false, error: expect.stringContaining("not both") });
+  });
+
+  it("starts from what the person's Simulator shows, and leaves the screen as it is", async () => {
+    const c = onScreen({ workFridays: true, queue: ["A|TN", "B|CF"] });
+    const j = JSON.parse((await simulateScenarioTool.run({ workersDelta: { Welding: 1 } }, c)).text);
+    expect(j).toMatchObject({ startedFrom: "the scenario on the person's Simulator", scenario: "+1 Welding · Fridays on", knobs: { workersDelta: { Welding: 1 }, workFridays: true } });
+    expect(c.screen?.simulator.scenario).toEqual({ workFridays: true, queue: ["A|TN", "B|CF"] });
+    expect(JSON.parse((await simulateScenarioTool.run({ from: "plant" }, c)).text)).toMatchObject({ startedFrom: "the plant as it stands", scenario: "reality as-is" });
+  });
+});
+
+describe("show_on_simulator", () => {
+  it("turns the knobs on what the Simulator shows, puts the result on it, and the next call starts from there", async () => {
+    const c = onScreen({ workFridays: true, queue: ["A|TN", "B|CF"] });
+    const r = await showOnSimulatorTool.run({ workersDelta: { Welding: 2 } }, c);
+    expect(r.ok).toBe(true);
+    expect(r.simulator).toMatchObject({ label: "+2 Welding · Fridays on", scenario: { workFridays: true, workersDelta: { Welding: 2, Cut: 0 }, queue: ["A|TN", "B|CF"] } });
+    expect(JSON.parse(r.text)).toMatchObject({ screen: expect.stringContaining("On the person's Simulator now"), startedFrom: "the scenario on the person's Simulator", reality: { ordersOpen: 2 } });
+    const r2 = await showOnSimulatorTool.run({ shiftHours: 9 }, c);
+    expect(r2.simulator?.label).toBe("+2 Welding · 9h shifts · Fridays on");
+  });
+
+  it("with the Simulator closed, offers it as a button — and the next call builds on the one offered", async () => {
+    const c = onScreen(null, false);
+    const r = await showOnSimulatorTool.run({ workFridays: true }, c);
+    expect(JSON.parse(r.text)).toMatchObject({ screen: expect.stringContaining("a button that opens it"), startedFrom: "the plant as it stands" });
+    expect(c.screen?.simulator).toMatchObject({ open: false, scenario: { workFridays: true } });
+    expect((await showOnSimulatorTool.run({ first: ["B"] }, c)).simulator?.label).toBe("Fridays on · queue edited");
+  });
+
+  it("starts afresh from the plant, opens a saved scenario, and optimises the queue on request", async () => {
+    const c = onScreen({ workFridays: true });
+    expect((await showOnSimulatorTool.run({ from: "plant" }, c)).simulator?.label).toBe("reality as-is");
+    h.prisma.simScenario.findUnique.mockResolvedValue({ data: { shiftHours: 9 } });
+    expect((await showOnSimulatorTool.run({ saved: "Short shifts" }, c)).simulator?.label).toBe("9h shifts");
+    const late = { ...inputs, jobs: [job("A|TN", { dueISO: "2026-10-30" }), job("B|CF", { dueISO: "2026-10-13" })] };
+    h.getWhatIfInputs.mockResolvedValue(late);
+    const o = await showOnSimulatorTool.run({ from: "plant", optimize: true }, c);
+    expect(o.simulator).toMatchObject({ label: "queue optimised", scenario: { queue: ["B|CF", "A|TN"] } });
+    expect(checkToolInput(showOnSimulatorTool, { saved: "Short shifts", from: "plant" })).toEqual({ ok: false, error: expect.stringContaining("not both") });
+  });
+
+  it("says when the screen's scenario cannot be read, and needs a chat the person is in", async () => {
+    expect(await showOnSimulatorTool.run({}, onScreen({ holds: { "A|TN": "someday" } }))).toEqual({ ok: false, text: expect.stringContaining("cannot be read") });
+    expect(await showOnSimulatorTool.run({}, ctx)).toEqual({ ok: false, text: expect.stringContaining("only in a chat") });
+  });
+
+  it("is offered in a chat — with the changes paused too, as it changes nothing — never unattended", () => {
+    expect(toolsFor(user(), { hidden: new Set(), actionsPaused: true }).map((t) => t.name)).toContain("show_on_simulator");
+    expect(toolsFor(user(), { hidden: new Set(), actionsPaused: false, unattended: true }).map((t) => t.name)).not.toContain("show_on_simulator");
+    expect(toolsFor(user(), { hidden: new Set(["simulate"]), actionsPaused: false }).map((t) => t.name)).not.toContain("show_on_simulator");
   });
 });
 

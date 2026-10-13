@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultScenario, optimizeQueue, optimizeQueueWithin, type WhatIfInputs, type WhatIfJob } from "./whatif";
-import { describeScenario, isDayISO, loadScenario, parseScenario, scenarioName, withKnobs } from "./whatifScenario";
+import { describeScenario, isDayISO, knobsOfScenario, loadScenario, parseScenario, scenarioName, withKnobs } from "./whatifScenario";
 
 const job = (id: string, o: Partial<WhatIfJob> = {}): WhatIfJob => ({
   id, mo: id.split("|")[0], bom: "B1", item: id.split("|")[1], dueISO: "2026-10-20",
@@ -76,6 +76,31 @@ describe("withKnobs", () => {
     const moved = { ...reality, queue: ["A|TC", "A|TN#2", "B|CF", "A|TN#1"], splits: { "A|TN": [1, 3] } };
     expect(withKnobs(inputs, moved, {})).toMatchObject({ ok: true, scenario: { queue: ["A|TC", "A|TN#2", "B|CF", "A|TN#1"] } });
     expect(withKnobs(inputs, moved, { splits: [] })).toMatchObject({ ok: true, scenario: { queue: ["A|TC", "A|TN", "B|CF"], splits: {} } });
+  });
+});
+
+describe("knobsOfScenario", () => {
+  it("reads the knobs back in the terms withKnobs takes — building from them gives the scenario again", () => {
+    const built = withKnobs(inputs, reality, {
+      workersDelta: { Welding: 2 }, shiftHours: 9, workFridays: true,
+      downtimes: [{ stage: "weld", fromISO: "2026-10-13", toISO: "2026-10-14" }],
+      holds: [{ job: "B|CF", untilISO: "2026-10-15" }], splits: [{ job: "A|TN", batches: [1, 3] }],
+    });
+    if (!built.ok) throw new Error(built.error);
+    const k = knobsOfScenario(built.scenario, inputs);
+    expect(k).toEqual({
+      workersDelta: { Welding: 2 }, shiftHours: 9, workFridays: true,
+      downtimes: [{ stage: "weld", fromISO: "2026-10-13", toISO: "2026-10-14" }],
+      holds: [{ job: "B|CF", untilISO: "2026-10-15" }], splits: [{ job: "A|TN", batches: [1, 3] }],
+      queueEdited: true,
+    });
+    const again = withKnobs(inputs, reality, k);
+    expect(again).toEqual({ ok: true, scenario: built.scenario });
+  });
+
+  it("leaves out a hold or a split that no longer does anything", () => {
+    const sc = { ...reality, holds: { "Z|TN": "2026-10-15", "B|CF": "2026-10-16" }, splits: { "A|TN": [2, 3], "B|CF": [1, 3] } };
+    expect(knobsOfScenario(sc, inputs)).toMatchObject({ holds: [{ job: "B|CF", untilISO: "2026-10-16" }], splits: [{ job: "B|CF", batches: [1, 3] }], queueEdited: false });
   });
 });
 

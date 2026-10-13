@@ -10,20 +10,30 @@ import { fileExpander, linkFiles, questionFiles, seenBlocks, withoutSeen } from 
 import { AI_FILE_LIMITS, attachmentNote, fileRef } from "@/lib/domain/aiFiles";
 import { AI_DENY_TEXT, AI_MAX_MESSAGES, AI_MAX_QUESTION, conversationTitle, costUsd, questionContext } from "@/lib/domain/ai";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
+import { simulatorOnScreen } from "@/lib/domain/simulatorScreen";
 import { factoryDayISO } from "@/lib/domain/dates";
+import type { ScreenState } from "@/lib/server/ai/tools/types";
 
 // One question to the AI assistant, answered as a stream of JSON lines:
 //   {type:"start", conversationId, title}
 //   {type:"status", text}   — what it is looking up or preparing now
 //   {type:"text", delta}    — a piece of the answer
 //   {type:"action", action} — a change it prepared (or made), as its card
+//   {type:"simulator", show} — a scenario for the person's Simulator: put on
+//                              it at once when it is open, else a button
 //   {type:"done", costUsd, error?}
-// The access and the month's caps are checked before anything is spent; the
-// question, the answer and what it cost are kept when it ends.
+// The question may carry what the person has open beside the chat (the
+// Simulator's scenario). The access and the month's caps are checked before
+// anything is spent; the question, the answer and what it cost are kept when
+// it ends.
 
 export const dynamic = "force-dynamic";
 // a question with several look-ups can take a minute or two
 export const maxDuration = 300;
+
+/** The largest request read, in bytes and in characters — a question, its
+ *  files' numbers and the Simulator's scenario fit well inside. */
+const MAX_BODY = 1_000_000;
 
 const fail = (status: number, error: string) => Response.json({ error }, { status });
 
@@ -31,9 +41,14 @@ export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return fail(401, "You are not logged in — refresh the page.");
 
-  let body: { conversationId?: unknown; question?: unknown; fileIds?: unknown };
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY) return fail(413, "The request is too large.");
+  let body: { conversationId?: unknown; question?: unknown; fileIds?: unknown; screen?: unknown };
   try {
-    body = await request.json();
+    const raw = await request.text();
+    if (raw.length > MAX_BODY) return fail(413, "The request is too large.");
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return fail(400, "Bad request.");
+    body = parsed as typeof body;
   } catch {
     return fail(400, "Bad request.");
   }
@@ -80,6 +95,10 @@ export async function POST(request: Request) {
   const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused });
   const areas = [...new Set(tools.flatMap((t) => (t.kind === "write" ? [t.area] : [])))] as AiArea[];
   const [outcomes, playbook] = await Promise.all([existing ? pendingOutcomes(conversation.id) : { ids: [], notes: [] }, getPlaybookText()]);
+  // the Simulator open beside the chat — its scenario as this browser has it
+  // (read against today's jobs only where a tool starts from it)
+  const onScreen = hidden.has("simulate") ? null : simulatorOnScreen(body.screen);
+  const screen: ScreenState = { simulator: { open: onScreen !== null, scenario: onScreen } };
   const context = questionContext({
     askedBy: user.name,
     now,
@@ -88,6 +107,7 @@ export async function POST(request: Request) {
     noconfirm: hasPerm(user, AI_NOCONFIRM_KEY),
     paused: settings.actionsPaused,
     notes: outcomes.notes,
+    simulatorOpen: onScreen !== null,
   });
 
   const enc = new TextEncoder();
@@ -119,13 +139,14 @@ export async function POST(request: Request) {
         // the photos and PDFs go to the model as the files themselves
         expand: fileExpander(user.id),
         tools,
-        ctx: { user, hidden, now, todayISO: factoryDayISO(now), conversationId: conversation.id, automationId: null },
+        ctx: { user, hidden, now, todayISO: factoryDayISO(now), conversationId: conversation.id, automationId: null, screen },
         settings,
         playbook,
         events: {
           status: (text) => send({ type: "status", text }),
           text: (delta) => send({ type: "text", delta }),
           action: (action) => send({ type: "action", action }),
+          simulator: (show) => send({ type: "simulator", show }),
         },
       });
       const cost = costUsd(conversation.model, result.tokens);

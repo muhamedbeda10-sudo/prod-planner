@@ -4,18 +4,20 @@ import { hasPerm } from "@/lib/server/auth";
 import { getWhatIfInputs } from "@/lib/server/whatif";
 import { applyRunOrder, clearRunOrder, deleteScenario, saveScenario, type RunOrderLine } from "@/app/simulate/actions";
 import { defaultScenario, optimizeQueueWithin, simulate, type Scenario, type WhatIfInputs, type WhatIfResult } from "@/lib/domain/whatif";
-import { describeScenario, kpisOf, loadScenario, scenarioCost, scenarioName, withKnobs, type ScenarioKnobs } from "@/lib/domain/whatifScenario";
+import { describeScenario, knobsOfScenario, kpisOf, loadScenario, scenarioCost, scenarioName, withKnobs, type ScenarioKnobs } from "@/lib/domain/whatifScenario";
 import type { AiChange } from "@/lib/domain/aiActions";
 import type { ArraySchema, ObjectSchema } from "@/lib/domain/aiInput";
-import { formOf, type ReadTool, type WriteTool } from "./types";
+import { formOf, type ReadTool, type ToolCtx, type WriteTool } from "./types";
 
 // The What-if Simulator for the assistant: run a scenario — workers added or
 // taken away, Fridays, stoppages, material holds, split batches, jobs rushed
 // to the front, the queue optimised — against today's open jobs with the
-// screen's own arithmetic; keep one under a name for everyone (Simulator —
-// save and delete scenarios); and, for an admin, make one THE run order every
-// worklist follows. Saving and the run order go through the screen's own
-// actions as the person; each is undone by putting back what was there.
+// screen's own arithmetic; put one on the person's own Simulator, as they
+// would turn its knobs themselves (nothing in the plant moves, so no card);
+// keep one under a name for everyone (Simulator — save and delete
+// scenarios); and, for an admin, make one THE run order every worklist
+// follows. Saving and the run order go through the screen's own actions as
+// the person; each is undone by putting back what was there.
 
 const TABS = ["simulate"] as const;
 const NO_SAVE = "Saving and deleting scenarios needs the Simulator — save and delete scenarios permission (Users & Permissions).";
@@ -72,8 +74,21 @@ const KNOB_PROPS: ObjectSchema["properties"] = {
 
 const OPTIMIZE = { type: "boolean", description: "Reorder the queue for the fewest late jobs, then the least lateness (the screen's ⚡ optimiser). Not with first." } as const;
 
+const FROM = {
+  type: "string",
+  enum: ["screen", "plant"],
+  description:
+    "What it starts from: screen (the default) = the scenario on the person's Simulator — while it is not open, the one last offered them in this answer, else the plant; plant = the plant as it stands, nothing turned. Not with saved.",
+} as const;
+
 interface KnobInput extends ScenarioKnobs {
   saved?: string;
+}
+
+/** A scenario that may start from the person's Simulator. */
+interface ScreenInput extends KnobInput {
+  from?: "screen" | "plant";
+  optimize?: boolean;
 }
 
 /** The input's knobs, apart from the starting scenario's name. */
@@ -84,34 +99,109 @@ function knobsOf(i: KnobInput): ScenarioKnobs {
   };
 }
 
+function parseScreenInput(r: Record<string, unknown>): ScreenInput | string {
+  if (r.optimize === true && Array.isArray(r.first) && r.first.length > 0) return "Either rush jobs with first, or let optimize order the queue — not both.";
+  if (r.saved !== undefined && r.from !== undefined) return "Start from a saved scenario (saved), or from the screen or the plant (from) — not both.";
+  return r as unknown as ScreenInput;
+}
+
+/** The scenario on the person's Simulator a call starts from — null when it
+ *  starts from a saved one or the plant, or there is none (an automation, a
+ *  Simulator that is not open). */
+function screenStart(i: ScreenInput, ctx: ToolCtx): unknown {
+  return i.saved || i.from === "plant" ? null : (ctx.screen?.simulator.scenario ?? null);
+}
+
 interface Built {
   inputs: WhatIfInputs;
   scenario: Scenario;
-  /** The saved scenario it started from, as stored — null from the plant as it stands. */
+  /** The saved scenario it started from, as stored — null from the plant as it stands or the screen. */
   from: unknown;
+  /** What it started from, in words. */
+  start: string;
 }
 
-/** The scenario the input names: its starting point (a saved scenario or the
- *  plant as it stands) with the knobs turned. */
-async function buildScenario(i: KnobInput): Promise<Built | { error: string }> {
+/** The scenario the input names: its starting point (a saved scenario, the
+ *  one on the person's Simulator, or the plant as it stands) with the knobs
+ *  turned. The screen's is read against today's jobs as a saved one is. */
+async function buildScenario(i: KnobInput, screen: unknown = null): Promise<Built | { error: string }> {
   const inputs = await getWhatIfInputs();
   let start = defaultScenario(inputs);
   let from: unknown = null;
+  let named = "the plant as it stands";
   if (i.saved) {
     const row = await prisma.simScenario.findUnique({ where: { name: scenarioName(i.saved) }, select: { data: true } });
     if (!row) return { error: `No saved scenario is called "${i.saved}" — list_scenarios has their names.` };
     start = loadScenario(inputs, row.data);
     from = row.data;
+    named = `the saved scenario "${scenarioName(i.saved)}"`;
+  } else if (screen !== null) {
+    const own = withKnobs(inputs, loadScenario(inputs, screen), {});
+    if (!own.ok) return { error: `The scenario on the person's Simulator cannot be read (${own.error}) — start from the plant (from: plant) or a saved scenario.` };
+    start = own.scenario;
+    named = "the scenario on the person's Simulator";
   }
   const built = withKnobs(inputs, start, knobsOf(i));
   if (!built.ok) return { error: built.error };
-  return { inputs, scenario: built.scenario, from };
+  return { inputs, scenario: built.scenario, from, start: named };
+}
+
+/** The scenario with its queue optimised, when asked. */
+function optimised(b: Built, optimize: boolean | undefined): { scenario: Scenario; optimized: { complete: boolean } | null } {
+  if (!optimize) return { scenario: b.scenario, optimized: null };
+  const o = optimizeQueueWithin(b.inputs, b.scenario, OPTIMIZE_MS);
+  return { scenario: { ...b.scenario, queue: o.queue }, optimized: { complete: o.complete } };
 }
 
 const kpiView = (r: WhatIfResult) => {
   const k = kpisOf(r);
   return { ordersOpen: k.active, ordersLate: k.late, ordersOnTime: k.onTime, lastClearsISO: k.lastEta };
 };
+
+const MAX_JOB_ROWS = 60;
+/** Holds and splits listed among a scenario's knobs — what a call takes back. */
+const MAX_KNOB_ROWS = 100;
+
+type JobsShown = "late" | "changed" | "all";
+
+/** What a scenario does against today's reality, and its knobs — the answer
+ *  of simulate_scenario and show_on_simulator. */
+function scenarioReport(b: Built, scenario: Scenario, ctx: ToolCtx, o: { show?: JobsShown; optimized: { complete: boolean } | null }) {
+  const { inputs } = b;
+  const result = simulate(inputs, scenario);
+  const baseline = simulate(inputs, defaultScenario(inputs));
+  const open = result.jobs.filter((j) => !j.done);
+  const show = o.show ?? null;
+  const listed = open.filter((j) => (show === "all" ? true : show === "late" ? j.late : show === "changed" ? j.deltaDays !== 0 : j.late || j.deltaDays !== 0));
+  const knobs = knobsOfScenario(scenario, inputs);
+  return {
+    today: ctx.todayISO,
+    startedFrom: b.start,
+    scenario: describeScenario(scenario, inputs),
+    knobs: { ...knobs, holds: knobs.holds.slice(0, MAX_KNOB_ROWS), splits: knobs.splits.slice(0, MAX_KNOB_ROWS) },
+    addedManHoursADay: scenarioCost(scenario),
+    ...(o.optimized ? { queueOptimised: o.optimized.complete ? "yes" : "partly — the best order found in the time allowed" } : {}),
+    reality: kpiView(baseline),
+    withScenario: kpiView(result),
+    weeklyPlan: inputs.plan
+      ? {
+          planNo: inputs.plan.planNo, fromISO: inputs.plan.minISO, toISO: inputs.plan.maxISO, workingDays: result.planWorkingDays,
+          departments: result.stages.map((s) => ({
+            dept: s.dept, requiredH: Math.round(s.required), availableH: s.available === null ? null : Math.round(s.available),
+            loadPct: s.load === null ? null : Math.round(s.load * 100),
+          })),
+        }
+      : null,
+    jobs: listed.slice(0, MAX_JOB_ROWS).map((j) => ({
+      job: j.id, bom: j.bom, qty: j.qty, due: j.dueISO, today: j.baselineISO, scenario: j.etaISO,
+      ...(j.deltaDays ? { movesDays: j.deltaDays } : {}), ...(j.late ? { late: true } : {}), ...(j.blockedBy ? { blockedAt: j.blockedBy } : {}),
+    })),
+    jobsListed: Math.min(listed.length, MAX_JOB_ROWS),
+    jobsMatching: listed.length,
+    openJobs: open.length,
+    queueFront: scenario.queue.slice(0, 15),
+  };
+}
 
 // ------------------------------------------------------------------ reads
 
@@ -139,74 +229,67 @@ export const listScenariosTool: ReadTool<Record<string, never>> = {
   },
 };
 
-interface SimulateInput extends KnobInput {
-  optimize?: boolean;
-  show?: "late" | "changed" | "all";
+interface SimulateInput extends ScreenInput {
+  show?: JobsShown;
 }
-
-const MAX_JOB_ROWS = 60;
 
 export const simulateScenarioTool: ReadTool<SimulateInput> = {
   kind: "read",
   name: "simulate_scenario",
   title: "Running a what-if scenario",
   description:
-    "Run a what-if on the Simulator's own arithmetic — changes nothing. Starting from the plant as it stands (or a saved scenario), turn the knobs: workers per department, hours a worker adds, Fridays, stoppages, material holds, split batches, jobs rushed to the front, or the optimised queue. Returns the scenario against today's reality: orders late and when the last clears, the weekly plan's load per department, and the jobs that are late or move (each with its due day, today's forecast and the scenario's). A job is one component of one order, \"MO|ITEM\".",
+    "Run a what-if on the Simulator's own arithmetic — it changes nothing, not even the person's screen (show_on_simulator puts one there). Start from what the person's Simulator shows (the default; the plant as it stands when there is none), the plant (from: plant) or a saved scenario, and turn the knobs: workers per department, hours a worker adds, Fridays, stoppages, material holds, split batches, jobs rushed to the front, or the optimised queue. Returns the scenario and its knobs against today's reality: orders late and when the last clears, the weekly plan's load per department, and the jobs that are late or move (each with its due day, today's forecast and the scenario's). A job is one component of one order, \"MO|ITEM\".",
   schema: {
     type: "object",
     properties: {
       ...KNOB_PROPS,
+      from: FROM,
       optimize: OPTIMIZE,
       show: { type: "string", enum: ["late", "changed", "all"], description: "Which jobs to list: late = late under the scenario, changed = their date moves, all = every open job (at most 60 rows). Default: late and changed." },
     },
     additionalProperties: false,
   },
   tabs: TABS,
-  parse: (r) => (r.optimize === true && Array.isArray(r.first) && r.first.length > 0 ? "Either rush jobs with first, or let optimize order the queue — not both." : (r as unknown as SimulateInput)),
+  parse: (r) => parseScreenInput(r) as SimulateInput | string,
   status: (i) => (i.optimize ? "Optimising the queue" : "Running the scenario"),
   async run(i, ctx) {
-    const built = await buildScenario(i);
+    const built = await buildScenario(i, screenStart(i, ctx));
     if ("error" in built) return { ok: false, text: built.error };
-    const { inputs } = built;
-    let scenario = built.scenario;
-    let optimized: { complete: boolean } | null = null;
-    if (i.optimize) {
-      const o = optimizeQueueWithin(inputs, scenario, OPTIMIZE_MS);
-      scenario = { ...scenario, queue: o.queue };
-      optimized = { complete: o.complete };
-    }
-    const result = simulate(inputs, scenario);
-    const baseline = simulate(inputs, defaultScenario(inputs));
-    const open = result.jobs.filter((j) => !j.done);
-    const show = i.show ?? null;
-    const listed = open.filter((j) => (show === "all" ? true : show === "late" ? j.late : show === "changed" ? j.deltaDays !== 0 : j.late || j.deltaDays !== 0));
+    const { scenario, optimized } = optimised(built, i.optimize);
+    return { ok: true, text: JSON.stringify(scenarioReport(built, scenario, ctx, { show: i.show, optimized })) };
+  },
+};
+
+export const showOnSimulatorTool: ReadTool<ScreenInput> = {
+  kind: "read",
+  name: "show_on_simulator",
+  title: "Putting it on the Simulator",
+  description:
+    "Put a what-if scenario on the person's What-if Simulator, at once and with no card — nothing in the plant changes: it is their own screen, and the scenario it replaces stays one click away there. While the Simulator is open beside the chat, what they see changes; while it is not, the chat shows them a button that opens it with this scenario. Built like simulate_scenario: from what the Simulator shows (the default), the plant as it stands (from: plant — the screen's changes dropped) or a saved scenario (saved — how one is opened on it), with the knobs turned. A knob given replaces that knob of the start — stoppages, holds and splits as whole lists, so send back the result's knobs with the one change; a knob left out keeps it. Returns what it does against today's reality.",
+  schema: { type: "object", properties: { ...KNOB_PROPS, from: FROM, optimize: OPTIMIZE }, additionalProperties: false },
+  tabs: TABS,
+  // the person's screen — never in an automation, where nobody has one
+  liveOnly: true,
+  parse: parseScreenInput,
+  status: (i) => (i.optimize ? "Optimising the queue" : "Putting it on the Simulator"),
+  async run(i, ctx) {
+    if (!ctx.screen) return { ok: false, text: "The Simulator can be changed only in a chat the person is in." };
+    const built = await buildScenario(i, screenStart(i, ctx));
+    if ("error" in built) return { ok: false, text: built.error };
+    const { scenario, optimized } = optimised(built, i.optimize);
+    const { open } = ctx.screen.simulator;
+    // what the Simulator shows now — or would open with — for the calls after
+    ctx.screen.simulator = { open, scenario };
+    const named = describeScenario(scenario, built.inputs);
     return {
       ok: true,
       text: JSON.stringify({
-        today: ctx.todayISO,
-        scenario: describeScenario(scenario, inputs),
-        addedManHoursADay: scenarioCost(scenario),
-        ...(optimized ? { queueOptimised: optimized.complete ? "yes" : "partly — the best order found in the time allowed" } : {}),
-        reality: kpiView(baseline),
-        withScenario: kpiView(result),
-        weeklyPlan: inputs.plan
-          ? {
-              planNo: inputs.plan.planNo, fromISO: inputs.plan.minISO, toISO: inputs.plan.maxISO, workingDays: result.planWorkingDays,
-              departments: result.stages.map((s) => ({
-                dept: s.dept, requiredH: Math.round(s.required), availableH: s.available === null ? null : Math.round(s.available),
-                loadPct: s.load === null ? null : Math.round(s.load * 100),
-              })),
-            }
-          : null,
-        jobs: listed.slice(0, MAX_JOB_ROWS).map((j) => ({
-          job: j.id, bom: j.bom, qty: j.qty, due: j.dueISO, today: j.baselineISO, scenario: j.etaISO,
-          ...(j.deltaDays ? { movesDays: j.deltaDays } : {}), ...(j.late ? { late: true } : {}), ...(j.blockedBy ? { blockedAt: j.blockedBy } : {}),
-        })),
-        jobsListed: Math.min(listed.length, MAX_JOB_ROWS),
-        jobsMatching: listed.length,
-        openJobs: open.length,
-        queueFront: scenario.queue.slice(0, 15),
+        screen: open
+          ? "On the person's Simulator now; the scenario it replaced is one click away there."
+          : "The Simulator is not open on the person's screen: the chat shows them a button that opens it with this scenario.",
+        ...scenarioReport(built, scenario, ctx, { optimized }),
       }),
+      simulator: { scenario, label: optimized ? named.replace("queue edited", "queue optimised") : named },
     };
   },
 };
@@ -233,7 +316,7 @@ export const saveScenarioTool: WriteTool<SaveInput> = {
   name: "save_scenario",
   title: "Save a what-if scenario",
   description:
-    "Save a what-if scenario on the Simulator under a name, for everyone to load — built like simulate_scenario (from the plant as it stands or a saved one, with the knobs turned, optionally the optimised queue). A scenario of that name is overwritten. Run simulate_scenario first so the person has seen what it does.",
+    "Save a what-if scenario on the Simulator under a name, for everyone to load — built from the plant as it stands or a saved one, with the knobs turned (optionally the optimised queue). It does not read the person's screen: to keep what their Simulator shows, send the knobs simulate_scenario or show_on_simulator report — a queue reordered by hand (queueEdited) cannot be sent, so then the person saves it with the Simulator's own Save. A scenario of that name is overwritten. Show it to the person first (show_on_simulator, or simulate_scenario).",
   area: "simulator",
   risk: "low",
   tabs: TABS,
@@ -468,6 +551,7 @@ export const restoreRunOrderTool: WriteTool<{ entries: string }> = {
 export const SIMULATOR_TOOLS = [
   listScenariosTool,
   simulateScenarioTool,
+  showOnSimulatorTool,
   saveScenarioTool,
   deleteScenarioTool,
   applyRunOrderTool,
