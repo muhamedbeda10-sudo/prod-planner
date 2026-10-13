@@ -179,16 +179,30 @@ describe("the floor", () => {
     expect(out).toMatchObject({ drawn: true, nodes: [{ id: "m7", machine: "W-1", x: 20, y: 20 }], notOnFloor: ["W-2"] });
   });
 
+  it("reads a floor nobody has drawn as the page shows it: every active machine set out in rows", async () => {
+    h.prisma.machine.findMany.mockResolvedValue([{ id: 7, code: "W-1", name: "Bay A", active: true }, { id: 8, code: "W-2", name: "Bay B", active: true }, { id: 9, code: "W-3", name: "Old", active: false }]);
+    const out = JSON.parse((await getFloorLayoutTool.run({ dept: "Welding" }, ctx())).text);
+    expect(out).toMatchObject({ drawn: false, nodes: [{ id: "m7", machine: "W-1", x: 20, y: 20 }, { id: "m8", machine: "W-2", y: 20 }], notOnFloor: [] });
+    expect(out.nodes).toHaveLength(2);
+  });
+
   it("edits it as the canvas does, under the machines key, and is undone by the floor as stored — or not drawn", async () => {
-    const i = { dept: "Welding" as const, add: [{ kind: "machine" as const, machine: "w-2", x: 400, y: 100 }, { kind: "zone" as const, text: "Tank welding", color: "blue" as const }] };
+    // a floor nobody has drawn: the edit starts from its machines as the page shows them
+    const i = { dept: "Welding" as const, add: [{ kind: "zone" as const, text: "Tank welding", color: "blue" as const }], move: [{ node: "w-2", x: 400, y: 100 }] };
     expect(await editFloorLayoutTool.describe(i, ctx())).toEqual({ error: expect.stringContaining("machines.manage") });
     h.perms.add("machines.manage");
-    expect(await editFloorLayoutTool.describe({ dept: "Welding", move: [{ node: "W-1", x: 10 }] }, ctx())).toEqual({ error: expect.stringContaining("Nothing on the floor is W-1") });
+    expect(await editFloorLayoutTool.describe({ dept: "Welding", add: [{ kind: "machine", machine: "W-1" }] }, ctx())).toEqual({ error: "W-1 is on the floor already — move it instead." });
+    expect(await editFloorLayoutTool.describe({ dept: "Welding", move: [{ node: "W-9", x: 10 }] }, ctx())).toEqual({ error: expect.stringContaining("Nothing on the floor is W-9") });
     const p = await editFloorLayoutTool.describe(i, ctx());
-    expect(p).toMatchObject({ summary: "Edit the Welding floor: 2 change(s) — its first drawing.", changes: [{ label: "W-2", after: "at 400, 100 (180×110)" }, { label: 'zone "Tank welding"' }], snapshot: null });
+    expect(p).toMatchObject({
+      summary: "Edit the Welding floor: 2 change(s) — its first drawing, from its machines set out in rows as the page shows them.",
+      changes: [{ label: 'zone "Tank welding"' }, { label: "W-2", after: "400, 100 (180×110)" }],
+      snapshot: null,
+    });
     const out = await editFloorLayoutTool.execute(i, ctx());
     const saved = JSON.parse(String(fd(h.floorActions.saveFloorLayout).layout));
-    expect(saved.nodes.map((n: { kind: string }) => n.kind)).toEqual(["machine", "zone"]);
+    // W-1 stays where the page showed it; nothing the planner saw drops off
+    expect(saved.nodes.map((n: { id: string; kind: string; x: number; y: number }) => [n.kind, n.x, n.y])).toEqual([["machine", 20, 20], ["machine", 400, 100], ["zone", expect.any(Number), expect.any(Number)]]);
     expect(out).toEqual({ ok: true, message: "The Welding floor is saved.", undo: { tool: "restore_floor_layout", input: { dept: "Welding", layout: "null" } } });
     const u = checkToolInput<Parameters<typeof restoreFloorLayoutTool.execute>[0]>(restoreFloorLayoutTool, { dept: "Welding", layout: "null" });
     if (!u.ok) throw new Error(u.error);

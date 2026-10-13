@@ -4,7 +4,7 @@ import { hasPerm } from "@/lib/server/auth";
 import { readFloorLayout, restoreFloorLayout, type FloorLayoutSnapshot } from "@/lib/server/rowSnapshots";
 import { saveFloorLayout } from "@/app/simulate/floorActions";
 import {
-  FLOOR_COLORS, addNode, moveNode, parseLayout, placeMachine, removeNode, resizeNode, updateNode, type FloorColor, type FloorLayoutData, type FloorNode,
+  FLOOR_COLORS, addNode, moveNode, parseLayout, placeMachine, removeNode, resizeNode, startingFloor, updateNode, type FloorColor, type FloorLayoutData, type FloorNode,
 } from "@/lib/domain/floor";
 import { SHIFT_DEPTS, type ShiftDept } from "@/lib/domain/shifts";
 import type { AiChange } from "@/lib/domain/aiActions";
@@ -13,8 +13,10 @@ import { formOf, type ReadTool, type ToolCtx, type WriteTool } from "./types";
 // The Floor canvas for the assistant: a department's drawn floor — its
 // machines where they really stand, the areas drawn around them and free
 // labels — read, and edited as the canvas edits it (the same pure moves, then
-// the canvas's own save), under the key that keeps the machines list. Undone
-// by putting the floor back exactly as it was stored, or not drawn at all.
+// the canvas's own save), under the key that keeps the machines list. A floor
+// nobody has drawn yet is the one the page shows: every machine set out in
+// rows. Undone by putting the floor back exactly as it was stored, or not
+// drawn at all.
 
 const TABS = ["simulate"] as const;
 const DEPT = { type: "string", enum: SHIFT_DEPTS, description: "The department's floor." } as const;
@@ -29,24 +31,35 @@ type Machines = Awaited<ReturnType<typeof machinesOf>>;
 
 const nodeName = (n: FloorNode, machines: Machines) => (n.kind === "machine" ? machines.find((m) => m.id === n.machineId)?.code ?? `machine #${n.machineId}` : `${n.kind} "${n.text ?? ""}"`);
 
+/** The floor as the page shows it, and whether anything is drawn on it — an
+ *  edit of a floor nobody has drawn starts from its machines set out in rows,
+ *  as the planner sees them, never from an empty floor. */
+function floorOf(stored: FloorLayoutSnapshot | null, machines: Machines): { layout: FloorLayoutData; drawn: boolean } {
+  const drawnLayout = parseLayout(stored?.data ?? null);
+  return {
+    layout: startingFloor(drawnLayout, machines.filter((m) => m.active).map((m) => m.id)),
+    drawn: drawnLayout.nodes.length > 0,
+  };
+}
+
 export const getFloorLayoutTool: ReadTool<{ dept: ShiftDept }> = {
   kind: "read",
   name: "get_floor_layout",
   title: "Reading the floor",
   description:
-    "A department's drawn floor (Floor / Simulator): the canvas size and every node — a machine (by its code) where it stands, an area or a label with its text and colour — each with its id, position (x, y from the top left) and size, in canvas units on a 10-unit grid; and the department's machines not on the floor yet. Read it before edit_floor_layout.",
+    "A department's drawn floor (Floor / Simulator): the canvas size and every node — a machine (by its code) where it stands, an area or a label with its text and colour — each with its id, position (x, y from the top left) and size, in canvas units on a 10-unit grid; and the department's machines not on the floor yet. A floor nobody has drawn (drawn: false) is shown with every machine set out in rows, and is edited from there. Read it before edit_floor_layout.",
   schema: { type: "object", properties: { dept: DEPT }, required: ["dept"], additionalProperties: false },
   tabs: TABS,
   status: (i) => `Reading the ${i.dept} floor`,
   async run(i) {
     const [stored, machines] = await Promise.all([readFloorLayout(i.dept), machinesOf(i.dept)]);
-    const layout = parseLayout(stored?.data ?? null);
+    const { layout, drawn } = floorOf(stored, machines);
     const placed = new Set(layout.nodes.filter((n) => n.kind === "machine").map((n) => n.machineId));
     return {
       ok: true,
       text: JSON.stringify({
         dept: i.dept,
-        drawn: stored !== null,
+        drawn,
         canvas: { w: layout.w, h: layout.h },
         nodes: layout.nodes.map((n) => ({
           id: n.id, kind: n.kind, ...(n.kind === "machine" ? { machine: nodeName(n, machines) } : { text: n.text ?? "", color: n.color ?? "slate" }), x: n.x, y: n.y, w: n.w, h: n.h,
@@ -176,18 +189,19 @@ export const editFloorLayoutTool: WriteTool<EditInput> = {
     const no = denied(ctx);
     if (no) return { error: no };
     const [stored, machines] = await Promise.all([readFloorLayout(i.dept), machinesOf(i.dept)]);
-    const e = edited(parseLayout(stored?.data ?? null), i, machines);
+    const floor = floorOf(stored, machines);
+    const e = edited(floor.layout, i, machines);
     if ("error" in e) return e;
     return {
       title: `Edit the ${i.dept} floor`,
-      summary: `Edit the ${i.dept} floor: ${e.changes.length} change(s)${stored ? "" : " — its first drawing"}.`,
+      summary: `Edit the ${i.dept} floor: ${e.changes.length} change(s)${floor.drawn ? "" : " — its first drawing, from its machines set out in rows as the page shows them"}.`,
       changes: e.changes,
       snapshot: stored,
     };
   },
   async execute(i) {
     const [stored, machines] = await Promise.all([readFloorLayout(i.dept), machinesOf(i.dept)]);
-    const e = edited(parseLayout(stored?.data ?? null), i, machines);
+    const e = edited(floorOf(stored, machines).layout, i, machines);
     if ("error" in e) return { ok: false, error: e.error };
     const r = await saveFloorLayout(formOf({ dept: i.dept, layout: JSON.stringify(e.layout) }));
     return r.ok ? { ok: true, message: `The ${i.dept} floor is saved.`, undo: { tool: "restore_floor_layout", input: { dept: i.dept, layout: JSON.stringify(stored) } } } : { ok: false, error: r.error };

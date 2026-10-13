@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
-  AlertCircle, BarChart3, Bot, Boxes, Check, ChevronDown, Clock, Copy, Factory, FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks, Loader2, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X,
+  AlertCircle, BarChart3, Bot, Boxes, Check, ChevronDown, Clock, Copy, Factory, FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks, Loader2, MonitorPlay, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X,
 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
@@ -10,7 +11,9 @@ import { EmptyState } from "@/components/primitives";
 import { deleteAiConversation, discardAiFile, loadAiConversation, uploadAiFile } from "@/app/ai/actions";
 import { AI_MAX_QUESTION, usdText, type AiChatTurn } from "@/lib/domain/ai";
 import { AI_FILE_ACCEPT, AI_FILE_LIMITS, AI_IMAGE_MAX_SIDE, AI_IMAGE_QUALITY, fileSizeText } from "@/lib/domain/aiFiles";
+import { isSimulatorShow, SIMULATOR_HREF, type SimulatorShow } from "@/lib/domain/simulatorScreen";
 import { compressImage } from "@/lib/imageCompress";
+import { openSimulator, stageOnSimulator } from "@/lib/simulatorBridge";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import type { AiChatStatus } from "@/lib/server/ai/panel";
 
@@ -21,10 +24,21 @@ import type { AiChatStatus } from "@/lib/server/ai/panel";
 // allowance under the box. A photo, a PDF or a sheet can go with a question:
 // the paperclip sends it to the app first (a photo shrunk to what reads
 // well), and the question carries its number; the photo shows on the
-// question after.
+// question after. With the What-if Simulator open on the page, a question
+// carries the scenario on it, and a scenario the assistant shows goes
+// straight onto it — or, with it closed, comes as a button that opens it
+// with that scenario.
 
 interface Turn extends AiChatTurn {
   error?: string;
+  /** Scenarios the assistant showed on the Simulator during this answer —
+   *  kept for this page's life only. */
+  simulator?: SimulatorNote[];
+}
+
+/** A scenario the assistant showed, and whether it is on the Simulator yet. */
+interface SimulatorNote extends SimulatorShow {
+  shown: boolean;
 }
 
 interface Conv {
@@ -83,6 +97,7 @@ export function AiChat({
   /** Keep the open chat in the address bar (the /ai page). */
   syncUrl?: boolean;
 }) {
+  const router = useRouter();
   const [convs, setConvs] = useState<Conv[]>(conversations);
   const [activeId, setActiveId] = useState<number | null>(initial?.id ?? null);
   const [turns, setTurns] = useState<Turn[]>(initial?.turns ?? []);
@@ -193,6 +208,13 @@ export function AiChat({
         const id = v.toolUseId;
         patchLast((t) => ({ ...t, actionIds: [...(t.actionIds ?? []).filter((x) => x !== id), id] }));
       }
+    } else if (ev.type === "simulator") {
+      if (!isSimulatorShow(ev.show)) return;
+      const show = ev.show;
+      // on the Simulator at once when it is open on the page; a button otherwise
+      const sim = openSimulator();
+      if (sim) sim.show(show.scenario, show.label);
+      patchLast((t) => ({ ...t, simulator: [...(t.simulator ?? []), { ...show, shown: sim !== null }] }));
     } else if (ev.type === "done") {
       flush();
       const cost = Number(ev.costUsd ?? 0);
@@ -236,6 +258,20 @@ export function AiChat({
     void discardAiFile(id);
   }
 
+  /** A scenario the assistant showed, put on the Simulator: on it at once
+   *  when it is open on the page, else left for it as it opens. */
+  function showOnSimulator(s: SimulatorNote) {
+    const sim = openSimulator();
+    if (sim) sim.show(s.scenario, s.label);
+    else {
+      stageOnSimulator(s.scenario, s.label);
+      router.push(SIMULATOR_HREF);
+    }
+    setTurns((all) =>
+      all.map((t) => (t.simulator?.some((x) => x.toolUseId === s.toolUseId) ? { ...t, simulator: t.simulator.map((x) => (x.toolUseId === s.toolUseId ? { ...x, shown: true } : x)) } : t)),
+    );
+  }
+
   async function ask(text: string) {
     const question = text.trim();
     if (!question || busy || !canAsk || uploading > 0) return;
@@ -250,11 +286,13 @@ export function AiChat({
       { role: "user", text: question, lookups: [], ...(sent.length ? { files: sent.map(({ id, name, kind }) => ({ id, name, kind })) } : {}) },
       { role: "assistant", text: "", lookups: [] },
     ]);
+    // the Simulator open on the page: the assistant starts from what it shows
+    const sim = openSimulator();
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: activeId, question, fileIds: sent.map((f) => f.id) }),
+        body: JSON.stringify({ conversationId: activeId, question, fileIds: sent.map((f) => f.id), ...(sim ? { screen: { simulator: sim.scenario() } } : {}) }),
       });
       if (!res.ok || !res.body) {
         // refused before it began: the files wait for the next try
@@ -386,6 +424,7 @@ export function AiChat({
                     streaming={busy && i === turns.length - 1}
                     actions={(t.actionIds ?? []).flatMap((id) => (actions[id] ? [actions[id]] : []))}
                     onAction={putAction}
+                    onSimulator={showOnSimulator}
                   />
                 ),
               )}
@@ -527,7 +566,21 @@ function Lookups({ items }: { items: string[] }) {
   );
 }
 
-function Answer({ turn, live, streaming, actions, onAction }: { turn: Turn; live: string | null; streaming: boolean; actions: AiActionView[]; onAction: (v: AiActionView) => void }) {
+function Answer({
+  turn,
+  live,
+  streaming,
+  actions,
+  onAction,
+  onSimulator,
+}: {
+  turn: Turn;
+  live: string | null;
+  streaming: boolean;
+  actions: AiActionView[];
+  onAction: (v: AiActionView) => void;
+  onSimulator: (s: SimulatorNote) => void;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex gap-3">
@@ -543,6 +596,7 @@ function Answer({ turn, live, streaming, actions, onAction }: { turn: Turn; live
             {live}
           </div>
         )}
+        {turn.simulator?.map((s) => <SimulatorLine key={s.toolUseId} note={s} onShow={() => onSimulator(s)} />)}
         {actions.map((v) => <AiActionCard key={v.id} view={v} onChange={onAction} />)}
         {!streaming && <ApproveAll views={actions} onChange={onAction} />}
         {turn.error && (
@@ -565,6 +619,28 @@ function Answer({ turn, live, streaming, actions, onAction }: { turn: Turn; live
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** A scenario the assistant showed: on the Simulator already, or a button
+ *  that opens the Simulator with it — and puts it back on after a change. */
+function SimulatorLine({ note, onShow }: { note: SimulatorNote; onShow: () => void }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border px-3 py-2 text-sm">
+      <MonitorPlay size={15} className="text-brand shrink-0" aria-hidden />
+      <span className="flex-1 min-w-0">
+        <span className="font-semibold">{note.shown ? "On your Simulator" : "For your Simulator"}</span>
+        <span className="text-muted"> · {note.label}</span>
+      </span>
+      <button
+        type="button"
+        className={`btn btn-sm ${note.shown ? "btn-ghost" : "btn-primary"}`}
+        onClick={onShow}
+        title={note.shown ? "Put this scenario on the Simulator again" : "Open the What-if Simulator with this scenario"}
+      >
+        {note.shown ? "Show it again" : "Open on the Simulator"}
+      </button>
     </div>
   );
 }

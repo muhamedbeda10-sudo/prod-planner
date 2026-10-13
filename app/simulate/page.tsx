@@ -7,7 +7,7 @@ import { getFloorLayout } from "@/lib/server/floor";
 import { getDeptBoardLines, getMachineBoard } from "@/lib/server/machineBoard";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { isShiftDept, type ShiftDept } from "@/lib/domain/shifts";
-import { placeMachine } from "@/lib/domain/floor";
+import { startingFloor } from "@/lib/domain/floor";
 import { PageHead } from "@/components/ui";
 import { ViewTabs } from "@/components/ViewTabs";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
@@ -50,7 +50,7 @@ export default async function SimulatePage({ searchParams }: { searchParams: Pro
     // a floor nobody has drawn yet starts with every machine on it, in rows —
     // what each is on shows at once; the planner then drags them into place
     const { updatedBy, updatedAtISO } = saved;
-    const layout = saved.layout.nodes.length > 0 ? saved.layout : board.machines.reduce((l, m) => placeMachine(l, m.id), saved.layout);
+    const layout = startingFloor(saved.layout, board.machines.map((m) => m.id));
     return (
       <div>
         <RememberLastVisit storageKey="simulate:last" />

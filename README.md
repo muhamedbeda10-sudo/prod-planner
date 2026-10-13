@@ -325,6 +325,15 @@ mobile drawer still lists every view flat, since it has the vertical room.
      action stamps things as it goes, the undo writes the rows back exactly from the snapshot (`lib/server/rowSnapshots.ts`,
      reachable only from an undo). Deletions need their own key and always wait; "small changes without asking" is a
      per-person opt-in. The owner can pause every change, or every automation, at once (AI assistant settings).
+   - **The Simulator on the person's screen** (`show_on_simulator`, `lib/simulatorBridge.ts`): with the What-if Simulator
+     open beside the chat, a question carries the scenario on it (at most 800 k characters, read against today's jobs only
+     where a tool starts from it), and the assistant turns the knobs on that screen at once — workers, hours, Fridays,
+     stoppages, holds, splits, jobs rushed to the front, the optimised queue, or a saved scenario opened. No card: it is the
+     person's own sandbox and nothing in the plant changes, so it works with the changes paused too, and never in an
+     automation. Each scenario it replaces is kept in the browser (the last five) and the Simulator's banner puts it back
+     in one click; with the Simulator closed, the answer carries a button that opens it with the scenario.
+     `simulate_scenario` starts from the screen as well; saving a scenario for everyone and the run order stay changes
+     with a card.
    - **Attached files and imports** (`lib/server/ai/files.ts`, `lib/server/ai/tools/imports.ts`): a photo, a PDF, an Excel
      or CSV sheet attached with the 📎 is checked by its bytes (a photo shrunk in the browser first; a photo or PDF also
      measured by the model's own token count, so one it refuses never reaches a chat), kept in `AiFile` for 14 days (out

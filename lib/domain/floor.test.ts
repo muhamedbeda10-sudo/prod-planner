@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addNode, drawOrder, emptyLayout, freeSpot, moveNode, parseLayout, placeMachine, removeNode, resizeNode, snap, updateNode } from "./floor";
+import { addNode, drawOrder, emptyLayout, freeSpot, moveNode, parseLayout, placeMachine, removeNode, resizeNode, snap, startingFloor, updateNode } from "./floor";
 
 describe("parseLayout", () => {
   it("keeps well-formed nodes, snapped and inside the sheet, and drops the rest", () => {
@@ -37,6 +37,12 @@ describe("placing", () => {
     l = placeMachine(l, 6);
     expect(l.nodes[1].x).toBeGreaterThan(l.nodes[0].x + l.nodes[0].w);
     expect(l.nodes[1].y).toBe(20);
+  });
+  it("opens a floor nobody has drawn with the machines set out in rows — a drawn one as it is", () => {
+    const fresh = startingFloor(emptyLayout(), [5, 6]);
+    expect(fresh.nodes.map((n) => [n.id, n.y])).toEqual([["m5", 20], ["m6", 20]]);
+    const drawn = addNode(emptyLayout(), "label", "Door");
+    expect(startingFloor(drawn, [5, 6])).toBe(drawn);
   });
   it("finds a spot below when the row is full", () => {
     const l = { ...emptyLayout(), w: 400, nodes: [{ id: "a", kind: "zone" as const, x: 20, y: 20, w: 340, h: 100 }] };

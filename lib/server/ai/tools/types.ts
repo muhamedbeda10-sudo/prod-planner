@@ -2,6 +2,7 @@ import "server-only";
 import type { User } from "@prisma/client";
 import type { AiArea, AiChange, AiRisk } from "@/lib/domain/aiActions";
 import type { ObjectSchema } from "@/lib/domain/aiInput";
+import type { SimulatorShow } from "@/lib/domain/simulatorScreen";
 
 // The assistant's tools, as the app defines them. Each has the JSON Schema the
 // model reads, and the app checks every call against that same schema before
@@ -28,12 +29,25 @@ export interface ToolCtx {
   todayISO: string;
   conversationId: number | null;
   automationId: number | null;
+  /** What the person has open beside the chat, as their browser sent it with
+   *  the question — only in a chat they are in. A tool that changes it
+   *  (show_on_simulator) keeps it up to date for the calls after it. */
+  screen?: ScreenState;
+}
+
+export interface ScreenState {
+  /** The What-if Simulator: open beside the chat or not, and the scenario on
+   *  it — as the browser sent it, then the one the assistant put there (or,
+   *  while it is not open, last offered the person); null while none is. */
+  simulator: { open: boolean; scenario: unknown };
 }
 
 export interface ReadResult {
   ok: boolean;
   /** What goes back to the model — compact JSON or a short sentence. */
   text: string;
+  /** A scenario to put on the person's Simulator (show_on_simulator). */
+  simulator?: Omit<SimulatorShow, "toolUseId">;
 }
 
 export interface Proposal {

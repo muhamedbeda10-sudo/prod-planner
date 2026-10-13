@@ -113,6 +113,14 @@ export function placeMachine(layout: FloorLayoutData, machineId: number): FloorL
   return { ...layout, nodes: [...layout.nodes, { id: `m${machineId}`, kind: "machine", machineId, ...at, ...size }] };
 }
 
+/** The floor as it opens: the drawn one — or, while nothing is drawn on it,
+ *  every machine given (the department's active ones, in their order) set
+ *  out in rows, so what each is on shows at once and the planner drags them
+ *  into place. */
+export function startingFloor(layout: FloorLayoutData, machineIds: readonly number[]): FloorLayoutData {
+  return layout.nodes.length > 0 ? layout : machineIds.reduce((l, id) => placeMachine(l, id), layout);
+}
+
 export function addNode(layout: FloorLayoutData, kind: "zone" | "label", text: string, color: FloorColor = "slate"): FloorLayoutData {
   const size = NODE_SIZE[kind];
   const at = freeSpot(layout, size.w, size.h);

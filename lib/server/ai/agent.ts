@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AiSettings } from "@prisma/client";
 import { addTokens, aiEffort, aiModel, NO_TOKENS, type AiEffort, type AiModelDef, type AiTokens } from "@/lib/domain/ai";
 import type { AiActionView } from "@/lib/domain/aiActions";
+import type { SimulatorShow } from "@/lib/domain/simulatorScreen";
 import type { ActorVia } from "@/lib/server/actor";
 import { AI_SCHEMA_TEXT } from "./schemaText.generated";
 import { checkToolInput } from "./tools";
@@ -52,6 +53,7 @@ Changing things
 - Files the person attaches are listed before their question (file #N): read a sheet with read_attached_file before you say what it is or use it. Import one only when the person asks for it to be imported, with the import tool that fits what the file is (a monthly plan, a weekly plan, a Daily-log sheet, an ODOO sheet, the MATERIAL sheet, the store's stock sheet); ask which month, plan number or line when the file and the question do not say. The card shows the importer's own dry run; an import cannot be undone from the chat, so say so.
 - Spreading work over the machines: when the person explains how they spread it ("this laser cuts only up to 12 mm", "LV panels never go on B4-10", "the big tanks go to L2 first"), write each point down as a machine rule (add_machine_rule, one rule per call, their own words in the note) — ⚡ Plan follows the rules every time after, theirs and yours. Then show them preview_machine_plan, and prepare plan_machines only when they ask for the plan to be put on the machines. Putting lines on machines yourself: all of them in ONE assign_lines_to_machines, in the order each machine should run them — one card, one approval, one undo; never a string of assign_line_to_machine cards, which go one by one and leave the board half done if one fails. assign_line_to_machine is for a single line. Cutting several jobs' parts together on the same sheets (CF and TC of an order nested on one sheet …) is a nest run: read get_nest_runs, then create_nest_run on the laser — its pieces come off what the machines cut of those lines. A job from outside the plan is create_manual_job.
 - Tanks, while they are tracked, are recorded piece by piece — by the serials on the steel (get_tanks) and the badge number of whoever did the work: the leak test, a repair, painting, a tank sent back, quality's verdict. A note on a worklist line (add_queue_note) can carry the photos attached in this chat.
+- The What-if Simulator is the person's own sandbox. A what-if they want to see goes on it with show_on_simulator: at once on their screen while the Simulator is open beside the chat, otherwise as a button in the chat that opens it with the scenario. That takes no approval and changes nothing in the plant — never call it prepared; the scenario it replaced stays one click away on their screen. Weigh variants with simulate_scenario, show the one they asked for (or the one you recommend), and say what it does in numbers. Saving one for everyone (save_scenario) and making one the run order (apply_run_order) are changes like any other.
 
 The database
 - PostgreSQL. Each table is named after its Prisma model and each column after its field, case-sensitive — always double-quote them: SELECT "mo", "planQty" FROM "MasterOrder" WHERE "status" = 'open'. A relation field (a model type, or a list such as Machine[]) is not a column; its foreign key is (e.g. "machineId").
@@ -112,6 +114,8 @@ export interface AskEvents {
   text(delta: string): void;
   /** A change it prepared (or made) — the card the chat shows. */
   action?(view: AiActionView): void;
+  /** A scenario it puts on the person's Simulator — the chat hands it over. */
+  simulator?(show: SimulatorShow): void;
 }
 
 export interface AskResult {
@@ -338,6 +342,7 @@ export async function ask(opts: {
   const events: AskEvents = {
     status: opts.events.status,
     action: opts.events.action,
+    simulator: opts.events.simulator,
     text: (d) => {
       wroteText = true;
       answer += d;
@@ -423,6 +428,7 @@ export async function ask(opts: {
             r = { ok: false, text: `The look-up failed: ${e instanceof Error ? e.message : String(e)}` };
           }
           queries++;
+          if (r.ok && r.simulator) events.simulator?.({ toolUseId: u.id, ...r.simulator });
           results.push({ type: "tool_result", tool_use_id: u.id, ...(r.ok ? {} : { is_error: true }), content: r.text } satisfies ToolResult);
           continue;
         }
