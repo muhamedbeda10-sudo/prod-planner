@@ -1296,6 +1296,13 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 .ai-md th { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 650; color: var(--muted); background: var(--surface-2); padding: 7px 10px; text-align: start; white-space: nowrap; }
 .ai-md td { padding: 6px 10px; text-align: start; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; vertical-align: top; }
 .ai-md td.num { text-align: end; }
+.ai-md td.cell-wide { min-width: 16rem; }
+/* a list of "**Label:** value" read as a panel of fields */
+.ai-md .ai-fields { list-style: none; margin: 10px 0; padding: 10px 14px; display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 20px; row-gap: 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.ai-md .ai-fields > li { display: contents; }
+.ai-md .ai-field-label { color: var(--muted); font-size: var(--fs-sm); font-weight: 600; padding-top: 1px; white-space: nowrap; }
+.ai-md .ai-field-value { min-width: 0; overflow-wrap: anywhere; }
+.ai-md hr + ul, .ai-md ul + hr { margin-top: 0.75rem; }
 .ai-md tbody tr:hover td { background: var(--row-hover); }
 .ai-md code { font-size: 0.875em; }
 

@@ -37,7 +37,12 @@ export interface TickResult {
   skipped?: string;
 }
 
-const fromName = (owner: User, a: Pick<Automation, "name">) => `${owner.name}'s automation “${a.name}”`;
+/** A name set in a line of other words, keeping its own direction — an
+ *  Arabic name in an English title (or the other way round) does not pull
+ *  the words around it into its order. */
+const isolate = (s: string) => `\u2068${s}\u2069`;
+
+const fromName = (owner: User, a: Pick<Automation, "name">) => `${owner.name}'s automation “${isolate(a.name)}”`;
 
 /** Run what is due now — until the deadline, then the rest waits. */
 export async function runDueAutomations(o: { now?: Date; deadline?: number } = {}): Promise<TickResult> {
@@ -200,7 +205,7 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
   const denied = ownerDenied(owner, config);
   if (denied && !test) {
     await prisma.automation.update({ where: { id: a.id }, data: { enabled: false, lockedUntil: null, lastStatus: "skipped", lastNote: `Stopped: ${denied}` } });
-    await deliverToInbox([{ userId: owner.id, kind: "message", title: `Automation stopped: ${a.name}`, body: `Your automation **${a.name}** stopped: ${denied}`, automationId: a.id }]);
+    await deliverToInbox([{ userId: owner.id, kind: "message", title: `Automation stopped: ${isolate(a.name)}`, body: `Your automation **${a.name}** stopped: ${denied}`, automationId: a.id }]);
     return true;
   }
   if (denied) return failRun(a, null, o, `${denied}`, next);
@@ -235,7 +240,7 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
 
   const run = await prisma.automationRun.create({ data: { automationId: a.id, cause: o.cause, startedAt: o.now } });
   const recipients = test ? [o.testTo!.id] : recipientsOf(config, owner.id);
-  const title = `${test ? "[Test] " : ""}${a.name}${config.trigger === "condition" ? ` — ${rows.length} new` : config.trigger === "event" && o.event ? ` — ${o.event.actorName}: ${o.event.summary}` : ""}`;
+  const title = `${test ? "[Test] " : ""}${isolate(a.name)}${config.trigger === "condition" ? ` — ${rows.length} new` : config.trigger === "event" && o.event ? ` — ${isolate(`${o.event.actorName}: ${o.event.summary}`)}` : ""}`;
   const from = fromName(owner, a);
 
   try {
@@ -341,7 +346,7 @@ async function failRun(a: Automation, runId: number | null, o: RunOptions, error
   });
   if (stop) {
     await deliverToInbox([{
-      userId: a.ownerId, kind: "message", title: `Automation stopped: ${a.name}`, automationId: a.id,
+      userId: a.ownerId, kind: "message", title: `Automation stopped: ${isolate(a.name)}`, automationId: a.id,
       body: `Your automation **${a.name}** failed ${failures} times in a row and has stopped. The last error:\n\n> ${err.replace(/\n/g, " ")}\n\nAsk the assistant to fix it, then turn it back on from Automations.`,
     }]);
   }
