@@ -59,7 +59,8 @@ export async function saveAutomation(fd: FormData): Promise<AutomationActionResu
   const c = p.prepared.config;
   const data = {
     name: c.name, trigger: c.trigger, times: c.times, days: c.days, weekdays: c.weekdays, conditionSql: c.conditionSql, checkEveryMin: c.checkEveryMin,
-    activeFrom: c.activeFrom, activeTo: c.activeTo, action: c.action, message: c.message, prompt: c.prompt, recipientIds: c.recipientIds,
+    activeFrom: c.activeFrom, activeTo: c.activeTo, eventTypes: c.eventTypes, eventActorIds: c.eventActorIds, eventMatch: c.eventMatch,
+    action: c.action, message: c.message, prompt: c.prompt, recipientIds: c.recipientIds,
     lastKeys: p.prepared.baselineKeys, nextRunAt: p.prepared.nextRunAt, failures: 0, updatedBy: user.name,
   };
   const saved = existing

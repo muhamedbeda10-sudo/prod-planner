@@ -24,7 +24,7 @@ describe("checkAutomation", () => {
       [{ ...base, trigger: "condition", conditionSql: "SELECT 1", activeFrom: "19:00", activeTo: "07:00" }, "start before they end"],
       [{ ...base, action: "notify", prompt: undefined }, "Write the message"],
       [{ ...base, action: "act", recipientIds: [4] }, "owner's to approve"],
-      [{ ...base, trigger: "sometimes" }, "schedule or a condition"],
+      [{ ...base, trigger: "sometimes" }, "a schedule, a condition or an event"],
     ];
     for (const [input, msg] of bad) {
       const r = checkAutomation(input);
@@ -152,5 +152,27 @@ describe("the automations' hours", () => {
     if (!cond.ok) throw new Error(cond.error);
     expect(retimeAutomation(cond.config, { checkEveryMin: 60, activeFrom: "08:00", activeTo: "16:00", times: ["01:00"] }))
       .toMatchObject({ ok: true, config: { trigger: "condition", checkEveryMin: 60, activeFrom: "08:00", activeTo: "16:00", times: [] } });
+  });
+});
+
+describe("an event automation", () => {
+  const ev = { name: "Holds", trigger: "event", eventTypes: ["order.held"], action: "notify", message: "{who}: {detail}" };
+  it("is checked: known events, people by id, short words", () => {
+    const ok = checkAutomation({ ...ev, eventActorIds: [9, 9], eventMatch: "  SF01/MO/1 " });
+    expect(ok.ok && ok.config).toMatchObject({ trigger: "event", eventTypes: ["order.held"], eventActorIds: [9], eventMatch: "SF01/MO/1", times: [], conditionSql: null });
+    expect(checkAutomation({ ...ev, eventTypes: [] })).toMatchObject({ ok: false, error: "Say which events fire it." });
+    expect(checkAutomation({ ...ev, eventTypes: ["order.burned"] })).toMatchObject({ ok: false, error: expect.stringContaining("not an event the app records") });
+    expect(checkAutomation({ ...ev, eventActorIds: [0] })).toMatchObject({ ok: false });
+  });
+  it("reads as what fires it and by whom", () => {
+    const c = checkAutomation({ ...ev, eventTypes: ["order.held", "order.closed"], eventMatch: "Welding" });
+    expect(c.ok && describeTrigger(c.config, ["Sara"])).toBe("the moment: order put on hold, order closed by Sara — mentioning “Welding”");
+  });
+  it("fills an event's blanks in its message, without a table under it", () => {
+    expect(renderMessage("{who} — {detail}", { name: "Holds", rows: [{ a: 1 }], fields: { who: "Sara", detail: "Put MO/1 on hold" } })).toBe("Sara — Put MO/1 on hold");
+  });
+  it("has no timing to change", () => {
+    const c = checkAutomation(ev);
+    expect(c.ok && retimeAutomation(c.config, { times: ["07:00"] })).toMatchObject({ ok: false });
   });
 });

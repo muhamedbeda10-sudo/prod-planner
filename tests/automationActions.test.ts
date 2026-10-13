@@ -52,7 +52,7 @@ const form = (o: Record<string, unknown>) => {
 const schedule = { name: "Morning", trigger: "schedule", times: ["07:30"], days: "working", action: "notify", message: "Good morning" };
 const stored = (o: Record<string, unknown> = {}) => ({
   id: 3, ownerId: 7, name: "Morning", enabled: true, trigger: "schedule", times: ["07:30"], days: "working", weekdays: [], conditionSql: null, checkEveryMin: 30,
-  activeFrom: null, activeTo: null, action: "notify", message: "Good morning", prompt: null, recipientIds: [], lastKeys: [], deletedAt: null,
+  activeFrom: null, activeTo: null, eventTypes: [], eventActorIds: [], eventMatch: null, action: "notify", message: "Good morning", prompt: null, recipientIds: [], lastKeys: [], deletedAt: null,
   updatedAt: new Date("2026-10-11T10:00:00Z"), ...o,
 });
 

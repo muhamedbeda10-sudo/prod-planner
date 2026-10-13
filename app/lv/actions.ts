@@ -1,5 +1,7 @@
 "use server";
 
+import { emitEvent } from "@/lib/server/events";
+import { outputSentence } from "@/lib/domain/appEvents";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { requirePerm } from "@/lib/server/auth";
@@ -159,6 +161,7 @@ export async function recordLvOutput(formData: FormData): Promise<Result> {
       await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
     });
     for (const p of PATHS) revalidatePath(p);
+    await emitEvent({ type: "output.recorded", subject: mo, summary: outputSentence({ qty, item: "panels", on: mo, stage }), data: { dept: stage, mo, item: LV_ITEM, qty } });
     return { ok: true };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };

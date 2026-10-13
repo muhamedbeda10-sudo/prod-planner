@@ -1759,7 +1759,7 @@ model Automation {
   owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   name          String
   enabled       Boolean         @default(true)
-  trigger       String // schedule | condition
+  trigger       String // schedule | condition | event
   times         String[]        @default([]) // "HH:MM", Cairo
   days          String          @default("working") // working | every | weekdays
   weekdays      Int[]           @default([]) // 0 = Sunday
@@ -1767,6 +1767,11 @@ model Automation {
   checkEveryMin Int             @default(30)
   activeFrom    String? // "HH:MM" — a condition checked only inside these hours, on working days
   activeTo      String?
+  // event: the kinds of event that fire it (lib/domain/appEvents.ts), by whom
+  // (none = anyone), and words the event must carry (an MO, a department)
+  eventTypes    String[]        @default([])
+  eventActorIds Int[]           @default([])
+  eventMatch    String?
   action        String // notify | report | act
   message       String? // notify
   prompt        String? // report | act
@@ -1793,13 +1798,31 @@ model Automation {
   @@index([ownerId])
 }
 
+// What happened in the app, as its own actions record it once done — who did
+// it, what it was about, a sentence that says it. "On event" automations fire
+// from it the moment it is made; kept a few months, then cleared.
+model AppEvent {
+  id        Int      @id @default(autoincrement())
+  type      String
+  at        DateTime @default(now())
+  // kept by name when the account goes
+  actorId   Int?
+  actorName String
+  subject   String?
+  summary   String
+  data      Json     @default("{}")
+
+  @@index([type, at])
+  @@index([at])
+}
+
 // One time an automation fired (or failed): what caused it, what it sent and
 // prepared, and what it cost. A condition checked with nothing new is not a run.
 model AutomationRun {
   id           Int        @id @default(autoincrement())
   automationId Int
   automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  cause        String // schedule | condition | manual
+  cause        String // schedule | condition | event | manual
   startedAt    DateTime   @default(now())
   finishedAt   DateTime?
   status       String     @default("running") // running | ok | failed | skipped

@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   allowed: true,
   deliver: vi.fn(),
   store: vi.fn(),
+  emit: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -29,6 +30,7 @@ vi.mock("@/lib/server/auth", () => ({
 }));
 vi.mock("@/lib/server/actor", () => ({ currentActor: () => undefined }));
 vi.mock("@/lib/server/inbox", () => ({ deliverToInbox: h.deliver }));
+vi.mock("@/lib/server/events", () => ({ emitEvent: h.emit }));
 vi.mock("@/lib/server/uploads", () => ({
   filesOf: (fd: FormData) => fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0),
   storeUploads: h.store,
@@ -122,6 +124,8 @@ describe("postTaskUpdate", () => {
     const told = h.deliver.mock.calls[0][0];
     expect(told).toHaveLength(1);
     expect(told[0]).toMatchObject({ userId: OWNER.id, kind: "task", taskId: 5, title: "Done — to review: Clean bay 2" });
+    // an event for "on event" automations — reaching only the task's people
+    expect(h.emit).toHaveBeenCalledWith(expect.objectContaining({ type: "task.done", subject: "Task #5", participants: [OWNER.id, SARA.id] }));
   });
 
   it("refuses anyone not on the task, and the doer's review of their own work", async () => {

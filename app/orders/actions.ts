@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { emitEvent, listed } from "@/lib/server/events";
 import { prisma } from "@/lib/db";
 import { importMonthlyPlan, type MonthlyImportResult } from "@/lib/server/importMonthly";
 import { requirePerm, requireAdmin, getCurrentUser, hasPerm } from "@/lib/server/auth";
@@ -32,6 +33,13 @@ export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean;
     data: { status, closedAt: status === "closed" ? new Date() : null },
   });
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/report", "/trace"]) revalidatePath(p);
+  const done = orders.map((o) => o.mo);
+  await emitEvent({
+    type: status === "closed" ? "order.closed" : "order.reopened",
+    subject: listed(done),
+    summary: `${status === "closed" ? "Closed" : "Reopened"} ${listed(done, 6)}`,
+    data: { mos: done },
+  });
   return { ok: true };
 }
 
@@ -242,11 +250,20 @@ export async function setOrderHold(formData: FormData): Promise<{ ok: boolean; e
   }
   const closed = orders.filter((o) => o.status === "closed");
   if (hold && closed.length === orders.length) return { ok: false, error: "A closed order cannot be put on hold — reopen it first." };
+  const touched = orders.filter((o) => o.status === "open").map((o) => o.mo);
   await prisma.masterOrder.updateMany({
-    where: { mo: { in: orders.filter((o) => o.status === "open").map((o) => o.mo) } },
+    where: { mo: { in: touched } },
     data: hold ? { holdAt: new Date(), holdNote: note, holdBy: guard.user?.name ?? null } : { holdAt: null, holdNote: null, holdBy: null },
   });
   for (const p of HOLD_PATHS) revalidatePath(p);
+  if (touched.length > 0) {
+    await emitEvent({
+      type: hold ? "order.held" : "order.released",
+      subject: listed(touched),
+      summary: hold ? `Put ${listed(touched, 6)} on hold${note ? ` — ${note}` : ""}` : `Released ${listed(touched, 6)} from hold`,
+      data: { mos: touched, ...(note ? { note } : {}) },
+    });
+  }
   return { ok: true };
 }
 
@@ -374,7 +391,15 @@ export async function importMonthlyAction(formData: FormData): Promise<MonthlyIm
     const family = line === "LV" ? String(formData.get("family") ?? "") : "";
     if (!isLvFamily(family)) return { ok: false, error: "Pick which plan the sheet is." };
     const res = await importMonthlyPlan(buffer, label, preview, line, family);
-    if (res.ok && !preview) revalidatePath("/orders");
+    if (res.ok && !preview) {
+      revalidatePath("/orders");
+      await emitEvent({
+        type: "plan.imported",
+        subject: `${label}${line === "LV" ? " (LV)" : ""}`,
+        summary: `Imported the ${label} plan${line === "LV" ? ` (LV${family ? `, ${family}` : ""})` : ""} — ${res.added ?? 0} new orders, ${res.updatedMos ?? 0} revised`,
+        data: { kind: "monthly", month: label, line, added: res.added ?? 0, updated: res.updatedMos ?? 0 },
+      });
+    }
     return res;
   } catch (e) {
     return { ok: false, error: `Import failed: ${e instanceof Error ? e.message : String(e)}` };

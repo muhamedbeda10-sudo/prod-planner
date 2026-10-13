@@ -33,6 +33,8 @@ export async function offDays(now = new Date()): Promise<OffDay> {
 /** When an automation runs next after `after` (null: never, for a schedule
  *  whose days never come). */
 export function nextRunOf(c: AutomationConfig, after: Date, offDay: OffDay): Date | null {
+  // an event one has no clock: its events fire it (lib/server/events.ts)
+  if (c.trigger === "event") return null;
   return c.trigger === "schedule" ? nextScheduleRun(after, c, offDay) : nextConditionCheck(after, c, offDay);
 }
 
@@ -41,6 +43,7 @@ export function configOf(a: Automation): AutomationConfig {
   return {
     name: a.name, trigger: a.trigger as AutomationConfig["trigger"], times: a.times, days: a.days as AutomationConfig["days"], weekdays: a.weekdays,
     conditionSql: a.conditionSql, checkEveryMin: a.checkEveryMin, activeFrom: a.activeFrom, activeTo: a.activeTo,
+    eventTypes: a.eventTypes, eventActorIds: a.eventActorIds, eventMatch: a.eventMatch,
     action: a.action as AutomationConfig["action"], message: a.message, prompt: a.prompt, recipientIds: a.recipientIds,
   };
 }
@@ -91,6 +94,10 @@ export async function prepareAutomation(owner: User, input: AutomationInput, o: 
   }
   const people = c.recipientIds.length ? await prisma.user.findMany({ where: { id: { in: c.recipientIds }, active: true }, select: { id: true, name: true } }) : [];
   if (people.length !== c.recipientIds.length) return { ok: false, error: "One of the recipients is not an active user." };
+  if (c.eventActorIds.length > 0) {
+    const watched = await prisma.user.count({ where: { id: { in: c.eventActorIds }, active: true } });
+    if (watched !== c.eventActorIds.length) return { ok: false, error: "One of the people it watches is not an active user." };
+  }
   let matchingNow: Record<string, unknown>[] = [];
   let baselineKeys: string[] = [];
   if (c.trigger === "condition") {

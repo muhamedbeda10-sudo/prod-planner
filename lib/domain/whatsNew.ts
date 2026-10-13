@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-13-instant-alerts",
+    dateISO: "2026-10-13",
+    title: "Instant alerts — the moment something happens",
+    where: "Ask the assistant · the inbox's Alerts tab",
+    body: "Ask the assistant for an alert on what happens in the app — \"tell me the moment Sara closes an order\", \"when a leak test fails, tell the welding foreman\", \"when anyone puts an MO on hold, tell me and Ahmed\". It fires the moment it happens (orders closed, reopened, held or released; output recorded; work returned; leak tests and quality checks failed; tanks sent back to welding; Odoo close-outs; consumables handed out; plans imported; tasks given, done, approved or returned), only for the people and the words you name. The alert lands in Alerts, and on phones where notifications are on; one that writes a report lands in Reports.",
+    href: "/automations",
+  },
+  {
     id: "2026-10-13-inbox-tasks",
     dateISO: "2026-10-13",
     title: "The inbox is its own window — Alerts, Reports and Tasks",

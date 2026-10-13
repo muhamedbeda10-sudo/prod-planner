@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { importWeeklyPlan, type ImportResult } from "@/lib/server/import";
 import { parseISODate } from "@/lib/domain/dates";
 import { requirePerm } from "@/lib/server/auth";
+import { emitEvent } from "@/lib/server/events";
 
 export async function importPlanAction(formData: FormData): Promise<ImportResult> {
   const guard = await requirePerm("plans.import");
@@ -22,7 +23,10 @@ export async function importPlanAction(formData: FormData): Promise<ImportResult
   try {
     const buffer = await file.arrayBuffer();
     const res = await importWeeklyPlan(buffer, planNo, startDate, sheet);
-    if (res.ok) revalidatePath("/import");
+    if (res.ok) {
+      revalidatePath("/import");
+      await emitEvent({ type: "plan.imported", subject: `Weekly plan ${planNo}`, summary: `Imported weekly plan ${planNo} (week of ${startStr})`, data: { kind: "weekly", planNo, startDate: startStr } });
+    }
     return res;
   } catch (e) {
     // never crash the page — surface the failure as a readable message
