@@ -195,7 +195,7 @@ export function AppNav({
   const aiPage = pathname === "/ai" || pathname.startsWith("/ai/");
   const panelCtx = useAiPanel();
   const panel = aiPage ? null : panelCtx;
-  const aiOn = aiPage || (!!panel?.shown && panel.state.tab !== "inbox");
+  const aiOn = aiPage || (!!panel?.shown && panel.state.view !== "inbox");
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
   // the ODOO tab lights up with the rows waiting to be closed; its badge
   // opens the popup rather than the page
@@ -437,7 +437,7 @@ export function AppNav({
             {(ai || inbox.any) && (
               <InboxBell
                 initial={inbox.unread}
-                active={isActive("/inbox") || (!!panel?.shown && panel.state.tab === "inbox")}
+                active={isActive("/inbox") || (!!panel?.shown && panel.state.view === "inbox")}
                 onOpen={panel ? () => panel.toggle("inbox") : undefined}
               />
             )}

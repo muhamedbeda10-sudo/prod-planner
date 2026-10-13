@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle, BarChart3, Bot, Boxes, Check, ChevronDown, Clock, Copy, Factory, FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks, Loader2, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X,
 } from "lucide-react";
@@ -27,10 +27,22 @@ interface Turn extends AiChatTurn {
   error?: string;
 }
 
-interface Conv {
+export interface Conv {
   id: number;
   title: string;
   updatedAt: string;
+}
+
+/** The chat's list of conversations and what moves it — handed to whoever
+ *  draws the list outside the chat (the popup's sidebar, its History pane). */
+export interface ChatListApi {
+  convs: Conv[];
+  activeId: number | null;
+  activeTitle: string | null;
+  busy: boolean;
+  open: (id: number) => void;
+  newChat: () => void;
+  remove: (c: Conv) => void;
 }
 
 /** A file attached and kept, waiting for the question it goes with. */
@@ -56,7 +68,7 @@ const DAY = 86_400_000;
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
 /** Which group of the list a conversation sits in, by when it was last used. */
-function groupOf(iso: string, now: Date): string {
+export function groupOf(iso: string, now: Date): string {
   const t = new Date(iso).getTime();
   const today = startOfDay(now);
   if (t >= today) return "Today";
@@ -64,7 +76,7 @@ function groupOf(iso: string, now: Date): string {
   if (t >= today - 7 * DAY) return "Previous 7 days";
   return "Earlier";
 }
-const GROUPS = ["Today", "Yesterday", "Previous 7 days", "Earlier"];
+export const GROUPS = ["Today", "Yesterday", "Previous 7 days", "Earlier"];
 
 export function AiChat({
   isOwner,
@@ -73,6 +85,8 @@ export function AiChat({
   initial,
   compact = false,
   syncUrl = true,
+  listInside = true,
+  onApi,
 }: {
   isOwner: boolean;
   status: AiChatStatus;
@@ -82,6 +96,11 @@ export function AiChat({
   compact?: boolean;
   /** Keep the open chat in the address bar (the /ai page). */
   syncUrl?: boolean;
+  /** Draw the list of chats and the chat's own head here; off, whoever holds
+   *  the chat draws them from `onApi`. */
+  listInside?: boolean;
+  /** Told the list and its moves whenever they change. */
+  onApi?: (api: ChatListApi) => void;
 }) {
   const [convs, setConvs] = useState<Conv[]>(conversations);
   const [activeId, setActiveId] = useState<number | null>(initial?.id ?? null);
@@ -133,26 +152,32 @@ export function AiChat({
     if (d) patchLast((t) => ({ ...t, text: t.text + d }));
   };
 
-  function setUrl(id: number | null) {
-    if (syncUrl) window.history.replaceState(null, "", id ? `/ai?c=${id}` : "/ai");
-  }
+  const setUrl = useCallback(
+    (id: number | null) => {
+      if (syncUrl) window.history.replaceState(null, "", id ? `/ai?c=${id}` : "/ai");
+    },
+    [syncUrl],
+  );
 
-  async function open(id: number) {
-    if (busy) return;
-    setLoadErr(null);
-    setSideOpen(false);
-    const r = await loadAiConversation(id);
-    if (!r.ok) {
-      setLoadErr(r.error ?? "Could not open it.");
-      return;
-    }
-    setActiveId(id);
-    setTurns(r.turns ?? []);
-    setActions(byCall(r.actions ?? []));
-    setUrl(id);
-  }
+  const open = useCallback(
+    async (id: number) => {
+      if (busy) return;
+      setLoadErr(null);
+      setSideOpen(false);
+      const r = await loadAiConversation(id);
+      if (!r.ok) {
+        setLoadErr(r.error ?? "Could not open it.");
+        return;
+      }
+      setActiveId(id);
+      setTurns(r.turns ?? []);
+      setActions(byCall(r.actions ?? []));
+      setUrl(id);
+    },
+    [busy, setUrl],
+  );
 
-  function newChat() {
+  const newChat = useCallback(() => {
     if (busy) return;
     setActiveId(null);
     setTurns([]);
@@ -161,15 +186,25 @@ export function AiChat({
     setSideOpen(false);
     setUrl(null);
     box.current?.focus();
-  }
+  }, [busy, setUrl]);
 
-  async function remove(c: Conv) {
-    if (busy || !confirm(`Delete the chat "${c.title}"? What it cost stays in the usage log.`)) return;
-    const r = await deleteAiConversation(c.id);
-    if (!r.ok) return setLoadErr(r.error ?? "Could not delete it.");
-    setConvs((all) => all.filter((x) => x.id !== c.id));
-    if (activeId === c.id) newChat();
-  }
+  const remove = useCallback(
+    async (c: Conv) => {
+      if (busy || !confirm(`Delete the chat "${c.title}"? What it cost stays in the usage log.`)) return;
+      const r = await deleteAiConversation(c.id);
+      if (!r.ok) return setLoadErr(r.error ?? "Could not delete it.");
+      setConvs((all) => all.filter((x) => x.id !== c.id));
+      if (activeId === c.id) newChat();
+    },
+    [busy, activeId, newChat],
+  );
+
+  const activeTitle = convs.find((c) => c.id === activeId)?.title ?? null;
+
+  // the list outside the chat follows it
+  useEffect(() => {
+    onApi?.({ convs, activeId, activeTitle, busy, open, newChat, remove });
+  }, [onApi, convs, activeId, activeTitle, busy, open, newChat, remove]);
 
   function handle(ev: { type: string; [k: string]: unknown }, question: string) {
     if (ev.type === "start") {
@@ -292,7 +327,6 @@ export function AiChat({
     `month ${of(spent.user, status.userCap)}`,
     isOwner && (status.plantCap > 0 || status.plantDayCap > 0) && `plant ${status.plantDayCap > 0 ? `today ${of(spent.plantToday, status.plantDayCap)}` : of(spent.plant, status.plantCap)}`,
   ].filter(Boolean).join(" · ");
-  const activeTitle = convs.find((c) => c.id === activeId)?.title ?? null;
 
   // the conversations: beside the chat on a wide screen, a drawer over it in
   // the side panel and below a laptop's width
@@ -305,7 +339,7 @@ export function AiChat({
 
   return (
     <div className="ai-chat relative flex h-full min-h-[380px]">
-      {sideOpen && (
+      {listInside && sideOpen && (
         <button
           type="button"
           aria-label="Close the chats"
@@ -313,6 +347,7 @@ export function AiChat({
           onClick={() => setSideOpen(false)}
         />
       )}
+      {listInside && (
       <aside className={`${drawerCls} shrink-0 flex-col bg-surface overflow-hidden`}>
         <div className="p-2 flex gap-1.5">
           <button type="button" className="btn btn-primary btn-sm flex-1" onClick={newChat} disabled={busy}>
@@ -349,9 +384,11 @@ export function AiChat({
           ))}
         </nav>
       </aside>
+      )}
 
       {/* the open conversation */}
       <section className="flex-1 min-w-0 flex flex-col bg-surface overflow-hidden">
+        {listInside && (
         <div className={`${narrowOnly} flex items-center gap-1 px-1.5 py-1 border-b`}>
           <button type="button" className="icon-btn" onClick={() => setSideOpen(true)} aria-label="Chats" title="Chats">
             <PanelLeft size={16} />
@@ -361,6 +398,7 @@ export function AiChat({
             <Plus size={16} />
           </button>
         </div>
+        )}
 
         <div ref={scroller} className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">
           {loadErr && <p className="text-sm font-semibold text-bad-fg mb-3">{loadErr}</p>}
