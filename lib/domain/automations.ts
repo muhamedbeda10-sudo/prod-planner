@@ -8,7 +8,11 @@
 //   condition  a read-only query, checked every so many minutes (optionally
 //              only within working hours): it fires for the rows that match
 //              now and did not at the last check — so a held order tells
-//              once, and again only if it is released and held again.
+//              once, and again only if it is released and held again;
+//   event      the moment something happens in the app (lib/domain/
+//              appEvents.ts) — an order closed, a leak test failed, a task
+//              marked done — by anyone or by the people named, optionally
+//              only when it mentions some words (an MO, a department).
 // WHAT — an action:
 //   notify     a message the person wrote (with the rows, for a condition),
 //              to them and whoever they name — no AI, no cost;
@@ -20,8 +24,9 @@
 
 import { parseISODate, toISODate, factoryClockHHMM, factoryDayISO, factoryTimeAt } from "./dates";
 import { jsonSafe, prepareSql } from "./ai";
+import { APP_EVENTS, isAppEventType } from "./appEvents";
 
-export const AUTOMATION_TRIGGERS = ["schedule", "condition"] as const;
+export const AUTOMATION_TRIGGERS = ["schedule", "condition", "event"] as const;
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
 export const AUTOMATION_ACTIONS = ["notify", "report", "act"] as const;
 export type AutomationAction = (typeof AUTOMATION_ACTIONS)[number];
@@ -44,6 +49,14 @@ export const AUTOMATION_LIMITS = {
   conditionRows: 200,
   /** Rows a message lists. */
   messageRows: 30,
+  /** event: the kinds one automation listens for, the people it watches, its words. */
+  eventTypes: 16,
+  eventActors: 20,
+  eventMatch: 80,
+  /** event: messages one automation sends in an hour — a busy event cannot flood phones. */
+  eventNotifiesPerHour: 30,
+  /** event: a report or an act run at most this often, in minutes — each costs. */
+  eventAiEveryMin: 15,
 } as const;
 
 export const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
@@ -62,6 +75,10 @@ export interface AutomationConfig {
   /** Check only between these times on working days; both null = any time. */
   activeFrom: string | null;
   activeTo: string | null;
+  /** event: what fires it, by whom (none = anyone), and words it must mention. */
+  eventTypes: string[];
+  eventActorIds: number[];
+  eventMatch: string | null;
   action: AutomationAction;
   /** notify: the message; {count} {rows} {name} are filled in. */
   message: string | null;
@@ -83,6 +100,9 @@ export interface AutomationInput {
   checkEveryMin?: number;
   activeFrom?: string | null;
   activeTo?: string | null;
+  eventTypes?: readonly string[];
+  eventActorIds?: readonly number[];
+  eventMatch?: string | null;
   action?: string;
   message?: string | null;
   prompt?: string | null;
@@ -98,7 +118,7 @@ export function checkAutomation(i: AutomationInput): { ok: true; config: Automat
   const name = clean(i.name).replace(/\s+/g, " ");
   if (!name) return { ok: false, error: "Give the automation a name." };
   if (name.length > L.name) return { ok: false, error: `Keep the name under ${L.name} characters.` };
-  if (!(AUTOMATION_TRIGGERS as readonly string[]).includes(i.trigger ?? "")) return { ok: false, error: "The trigger is a schedule or a condition." };
+  if (!(AUTOMATION_TRIGGERS as readonly string[]).includes(i.trigger ?? "")) return { ok: false, error: "The trigger is a schedule, a condition or an event." };
   if (!(AUTOMATION_ACTIONS as readonly string[]).includes(i.action ?? "")) return { ok: false, error: "The action is notify, report or act." };
   const trigger = i.trigger as AutomationTrigger;
   const action = i.action as AutomationAction;
@@ -110,8 +130,22 @@ export function checkAutomation(i: AutomationInput): { ok: true; config: Automat
   let checkEveryMin = 30;
   let activeFrom: string | null = null;
   let activeTo: string | null = null;
+  let eventTypes: string[] = [];
+  let eventActorIds: number[] = [];
+  let eventMatch: string | null = null;
 
-  if (trigger === "schedule") {
+  if (trigger === "event") {
+    eventTypes = [...new Set((i.eventTypes ?? []).map((t) => clean(t)))];
+    if (eventTypes.length === 0) return { ok: false, error: "Say which events fire it." };
+    if (eventTypes.length > L.eventTypes) return { ok: false, error: `At most ${L.eventTypes} kinds of event.` };
+    const unknown = eventTypes.find((t) => !isAppEventType(t));
+    if (unknown) return { ok: false, error: `"${unknown}" is not an event the app records.` };
+    eventActorIds = [...new Set(i.eventActorIds ?? [])];
+    if (eventActorIds.some((r) => !Number.isInteger(r) || r <= 0)) return { ok: false, error: "A person watched is not one on the users list." };
+    if (eventActorIds.length > L.eventActors) return { ok: false, error: `Watch at most ${L.eventActors} people.` };
+    eventMatch = clean(i.eventMatch).replace(/\s+/g, " ") || null;
+    if (eventMatch && eventMatch.length > L.eventMatch) return { ok: false, error: `Keep the words it looks for under ${L.eventMatch} characters.` };
+  } else if (trigger === "schedule") {
     times = [...new Set((i.times ?? []).map((t) => clean(t)))].sort();
     if (times.length === 0) return { ok: false, error: "A schedule needs at least one time of day (HH:MM, Cairo)." };
     if (times.length > L.times) return { ok: false, error: `At most ${L.times} times a day.` };
@@ -148,7 +182,7 @@ export function checkAutomation(i: AutomationInput): { ok: true; config: Automat
   if (recipientIds.length > L.recipients) return { ok: false, error: `At most ${L.recipients} recipients.` };
   if (action === "act" && recipientIds.length > 0) return { ok: false, error: "Changes an automation prepares are its owner's to approve — they go to no one else." };
 
-  return { ok: true, config: { name, trigger, times, days, weekdays, conditionSql, checkEveryMin, activeFrom, activeTo, action, message, prompt, recipientIds } };
+  return { ok: true, config: { name, trigger, times, days, weekdays, conditionSql, checkEveryMin, activeFrom, activeTo, eventTypes, eventActorIds, eventMatch, action, message, prompt, recipientIds } };
 }
 
 /** A day the plant does not work: a Friday or a holiday. */
@@ -236,16 +270,30 @@ export function rowsTable(rows: readonly Record<string, unknown>[], max: number 
 
 /** A notify automation's message with its blanks filled in: {name}, {count}
  *  and {rows} (a table of the rows that fired; a condition's message that
- *  names no {rows} gets the table under it). */
-export function renderMessage(template: string, o: { name: string; rows?: readonly Record<string, unknown>[] }): string {
+ *  names no {rows} gets the table under it), and an event's own fields. */
+export function renderMessage(template: string, o: { name: string; rows?: readonly Record<string, unknown>[]; fields?: Readonly<Record<string, string>> }): string {
   const rows = o.rows ?? [];
   const table = rowsTable(rows);
-  const body = template.replace(/\{name\}/g, o.name).replace(/\{count\}/g, String(rows.length)).replace(/\{rows\}/g, table);
-  return rows.length > 0 && !template.includes("{rows}") ? `${body}\n\n${table}` : body;
+  let body = template.replace(/\{name\}/g, o.name).replace(/\{count\}/g, String(rows.length)).replace(/\{rows\}/g, table);
+  // an event's own blanks — {who} {what} {about} {detail} {when}
+  let usedField = false;
+  for (const [k, v] of Object.entries(o.fields ?? {})) {
+    if (body.includes(`{${k}}`)) usedField = true;
+    body = body.split(`{${k}}`).join(v);
+  }
+  return rows.length > 0 && !template.includes("{rows}") && !usedField ? `${body}\n\n${table}` : body;
 }
 
-/** The trigger as a person reads it. */
-export function describeTrigger(c: Pick<AutomationConfig, "trigger" | "times" | "days" | "weekdays" | "checkEveryMin" | "activeFrom" | "activeTo">): string {
+/** The trigger as a person reads it — with the names of the people an event one watches. */
+export function describeTrigger(
+  c: Pick<AutomationConfig, "trigger" | "times" | "days" | "weekdays" | "checkEveryMin" | "activeFrom" | "activeTo"> & Partial<Pick<AutomationConfig, "eventTypes" | "eventActorIds" | "eventMatch">>,
+  actorNames: readonly string[] = [],
+): string {
+  if (c.trigger === "event") {
+    const what = (c.eventTypes ?? []).map((t) => (isAppEventType(t) ? APP_EVENTS[t].label.toLowerCase() : t)).join(", ");
+    const who = actorNames.length > 0 ? ` by ${actorNames.join(", ")}` : (c.eventActorIds ?? []).length > 0 ? " by the people named" : "";
+    return `the moment: ${what}${who}${c.eventMatch ? ` — mentioning “${c.eventMatch}”` : ""}`;
+  }
   if (c.trigger === "schedule") {
     const when = c.days === "every" ? "every day" : c.days === "weekdays" ? `every ${c.weekdays.map((d) => WEEKDAY_NAMES[d]).join(", ")}` : "every working day";
     return `${when} at ${c.times.join(", ")} (Cairo)`;
@@ -318,6 +366,7 @@ export type AutomationTiming = Pick<AutomationInput, "times" | "days" | "weekday
 /** A stored configuration with new timing, checked as a whole. The trigger
  *  stays what it was: a condition needs its query, which the assistant writes. */
 export function retimeAutomation(c: AutomationConfig, t: AutomationTiming): ReturnType<typeof checkAutomation> {
+  if (c.trigger === "event") return { ok: false, error: "It runs the moment its events happen — it has no timing to change." };
   const input: AutomationInput = { ...c };
   if (c.trigger === "schedule") {
     input.times = t.times;

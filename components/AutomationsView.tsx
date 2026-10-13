@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Bell, CalendarClock, ChevronDown, Clock, FileText, FlaskConical, Pause, Play, Plus, RotateCcw, Trash2, Wand2, X, Zap } from "lucide-react";
+import { Bell, BellRing, CalendarClock, ChevronDown, Clock, FileText, FlaskConical, Pause, Play, Plus, RotateCcw, Trash2, Wand2, X, Zap } from "lucide-react";
 import { deleteAutomation, restoreAutomation, runAutomationNow, setAutomationEnabled, setAutomationTiming } from "@/app/automations/actions";
 import { EmptyState } from "@/components/primitives";
 import { CHECK_EVERY, WEEKDAY_NAMES, AUTOMATION_LIMITS } from "@/lib/domain/automations";
@@ -176,7 +176,7 @@ function Row({ a, showOwner, canTime, onChanged }: { a: AutomationView; showOwne
             {a.nextRunAt && <span className="ms-auto text-[11px] text-muted tabnum whitespace-nowrap shrink-0" title="Next run">{formatDateTime(a.nextRunAt)}</span>}
           </span>
           <span className="block mt-0.5 text-[13px] text-muted truncate" dir="auto">
-            {a.timing.trigger === "schedule" ? <Clock size={12} className="inline -mt-0.5 me-1" aria-hidden /> : <Zap size={12} className="inline -mt-0.5 me-1" aria-hidden />}
+            {a.timing.trigger === "schedule" ? <Clock size={12} className="inline -mt-0.5 me-1" aria-hidden /> : a.timing.trigger === "event" ? <BellRing size={12} className="inline -mt-0.5 me-1" aria-hidden /> : <Zap size={12} className="inline -mt-0.5 me-1" aria-hidden />}
             {a.trigger} — {a.action}
           </span>
         </span>
@@ -233,7 +233,7 @@ function Row({ a, showOwner, canTime, onChanged }: { a: AutomationView; showOwne
                 ) : (
                   <button type="button" className="btn btn-sm btn-primary" disabled={pending} onClick={() => act(setAutomationEnabled, { enabled: "true" }, "On.")}><Play size={14} aria-hidden /> Turn on</button>
                 )}
-                {canTime && !timing && (
+                {canTime && !timing && a.timing.trigger !== "event" && (
                   <button type="button" className="btn btn-sm btn-secondary" disabled={pending} onClick={() => setTiming(true)}><CalendarClock size={14} aria-hidden /> Timing</button>
                 )}
                 <button

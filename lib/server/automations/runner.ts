@@ -16,6 +16,8 @@ import { AI_DENY_TEXT, automationContext, costUsd } from "@/lib/domain/ai";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
 import { AUTOMATION_LIMITS, describeWindow, freshRows, inAutomationWindow, recipientsOf, renderMessage, rowsTable, type AutomationConfig } from "@/lib/domain/automations";
 import { factoryDayISO } from "@/lib/domain/dates";
+import { formatDateTime } from "@/lib/domain/format";
+import { EVENT_TAB, eventMatches, eventRow, isTaskEvent, type AppEventView } from "@/lib/domain/appEvents";
 
 // Running automations: the ones due, each claimed so two ticks never run it
 // twice, run as its owner with the owner's permissions as they stand now —
@@ -113,23 +115,69 @@ async function runAll(due: Automation[], deadline: number, result: TickResult): 
   }
 }
 
+/** Fire the "on event" automations an event matches — the moment it was
+ *  recorded (lib/server/events.ts). A message goes at any hour, at most so
+ *  many an hour per automation; a report or a change, which cost, only
+ *  inside the automations' hours and at most every so many minutes, each
+ *  claimed so two events never run it at once. Paused, nothing fires. A
+ *  task's event reaches only the automations of people on the task, and an
+ *  event from a screen hidden from the owner none of theirs. */
+export async function runEventAutomations(e: AppEventView, now = new Date()): Promise<number> {
+  const settings = await getAiSettings();
+  if (settings.automationsPaused) return 0;
+  const rules = await prisma.automation.findMany({ where: { trigger: "event", enabled: true, deletedAt: null, eventTypes: { has: e.type } }, orderBy: { id: "asc" }, take: 100 });
+  const inHours = inAutomationWindow(now, automationWindowOf(settings));
+  let fired = 0;
+  for (const a of rules) {
+    if (!eventMatches(a, e)) continue;
+    if (isTaskEvent(e.type) && !(e.participants ?? []).includes(a.ownerId)) continue;
+    const tab = EVENT_TAB[e.type];
+    if (tab) {
+      const owner = await prisma.user.findUnique({ where: { id: a.ownerId }, select: { hiddenTabs: true, isOwner: true } });
+      if (!owner || (!owner.isOwner && hiddenTabsOf(owner as User).has(tab))) continue;
+    }
+    const ai = a.action !== "notify";
+    if (ai) {
+      if (!inHours) continue;
+      if (a.lastRunAt && now.getTime() - a.lastRunAt.getTime() < AUTOMATION_LIMITS.eventAiEveryMin * 60_000) continue;
+      const claim = await prisma.automation.updateMany({ where: { id: a.id, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] }, data: { lockedUntil: new Date(now.getTime() + LOCK_MS) } });
+      if (claim.count === 0) continue;
+    } else {
+      const lastHour = await prisma.automationRun.count({ where: { automationId: a.id, startedAt: { gte: new Date(now.getTime() - 3_600_000) } } });
+      if (lastHour >= AUTOMATION_LIMITS.eventNotifiesPerHour) continue;
+    }
+    try {
+      if (await runAutomation(a, { cause: "event", now, event: e })) fired++;
+    } catch (err) {
+      console.error(`automation ${a.id} failed on event ${e.id}`, err);
+      if (ai) await prisma.automation.update({ where: { id: a.id }, data: { lockedUntil: null } }).catch(() => {});
+    }
+  }
+  return fired;
+}
+
 /** How long a run's record, and an inbox item, are kept. */
 const KEEP_RUNS_DAYS = 180;
 const KEEP_READ_DAYS = 180;
 const KEEP_UNREAD_DAYS = 365;
+/** How long the app's events are kept — what fired an automation is on its run. */
+const KEEP_EVENTS_DAYS = 90;
 
 /** Old runs, and old inbox items, go — read ones after half a year, the rest
  *  after a year. What they proposed stays on the assistant's record. */
 async function pruneOld(now: Date): Promise<void> {
   const ago = (days: number) => new Date(now.getTime() - days * 86_400_000);
   await prisma.automationRun.deleteMany({ where: { startedAt: { lt: ago(KEEP_RUNS_DAYS) } } });
+  await prisma.appEvent.deleteMany({ where: { at: { lt: ago(KEEP_EVENTS_DAYS) } } });
   await prisma.aiInboxItem.deleteMany({ where: { OR: [{ readAt: { not: null }, createdAt: { lt: ago(KEEP_READ_DAYS) } }, { createdAt: { lt: ago(KEEP_UNREAD_DAYS) } }] } });
   await pruneAiFiles(now);
 }
 
 interface RunOptions {
-  cause: "schedule" | "condition" | "manual";
+  cause: "schedule" | "condition" | "event" | "manual";
   now: Date;
+  /** event: what happened — the run is about it alone. */
+  event?: AppEventView;
   /** A condition's keys as this check found them — kept once the run is through. */
   keys?: string[];
   /** A test run: everything goes to this person alone, marked as a test, and
@@ -176,14 +224,23 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
     }
   }
 
+  // an event: the one that happened (a test run has none — it says so)
+  let fields: Record<string, string> | undefined;
+  if (config.trigger === "event") {
+    const e = o.event;
+    const at = e ? formatDateTime(e.at) : formatDateTime(o.now);
+    rows = e ? [eventRow(e, at)] : [{ when: at, who: "—", what: "(a test run — no event happened)", about: "", detail: "" }];
+    fields = { who: e?.actorName ?? "—", what: String(rows[0].what), about: e?.subject ?? "", detail: e?.summary ?? "(a test run)", when: at };
+  }
+
   const run = await prisma.automationRun.create({ data: { automationId: a.id, cause: o.cause, startedAt: o.now } });
   const recipients = test ? [o.testTo!.id] : recipientsOf(config, owner.id);
-  const title = `${test ? "[Test] " : ""}${a.name}${config.trigger === "condition" ? ` — ${rows.length} new` : ""}`;
+  const title = `${test ? "[Test] " : ""}${a.name}${config.trigger === "condition" ? ` — ${rows.length} new` : config.trigger === "event" && o.event ? ` — ${o.event.actorName}: ${o.event.summary}` : ""}`;
   const from = fromName(owner, a);
 
   try {
     if (config.action === "notify") {
-      const body = renderMessage(config.message!, { name: a.name, rows });
+      const body = renderMessage(config.message!, { name: a.name, rows, fields });
       const inboxIds = await deliverToInbox(recipients.map((userId) => ({ userId, kind: "message" as const, title, body, fromName: from, automationId: a.id, runId: run.id })));
       return finishRun(a, run.id, o, { summary: `Sent to ${inboxIds.length} person(s).`, inboxIds }, next);
     }
@@ -205,7 +262,10 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
       name: a.name, owner: owner.name, now: o.now, action: config.action, recipients: people.map((p) => p.name),
       areas, canDelete: hasPerm(owner, AI_DELETE_KEY), noconfirm: hasPerm(owner, AI_NOCONFIRM_KEY),
     });
-    const instruction = rows.length > 0 ? `${config.prompt}\n\nThese rows started matching the automation's condition:\n\n${rowsTable(rows, AUTOMATION_LIMITS.conditionRows)}` : config.prompt!;
+    const instruction =
+      config.trigger === "event"
+        ? `${config.prompt}\n\nWhat just happened in the app, which fired this automation:\n\n${rowsTable(rows, 1)}`
+        : rows.length > 0 ? `${config.prompt}\n\nThese rows started matching the automation's condition:\n\n${rowsTable(rows, AUTOMATION_LIMITS.conditionRows)}` : config.prompt!;
     const usage = await prisma.aiUsage.create({ data: { userId: owner.id, model: settings.autoModel, question: `Automation: ${a.name}`.slice(0, 500) } });
     const actionIds: number[] = [];
     const answer = await ask({

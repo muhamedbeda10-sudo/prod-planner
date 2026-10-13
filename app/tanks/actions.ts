@@ -1,5 +1,6 @@
 "use server";
 
+import { emitEvent, listed } from "@/lib/server/events";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
@@ -238,6 +239,15 @@ export async function recordLeakTest(formData: FormData): Promise<TankActionResu
       }
     });
     revalidateTanks();
+    if (result !== "pass") {
+      const mos = [...new Set(tanks.map((t) => t.mo).filter((m): m is string => !!m))];
+      await emitEvent({
+        type: "tank.leak_failed",
+        subject: listed(serials),
+        summary: `${tanks.length} tank${tanks.length === 1 ? "" : "s"} failed the leak test — ${listed(serials, 6)}${mos.length ? ` (${listed(mos)})` : ""}${note ? ` — ${note}` : ""}`,
+        data: { serials, mos, note },
+      });
+    }
     return { ok: true, count: tanks.length };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
@@ -376,6 +386,7 @@ export async function sendTankBackToWelding(formData: FormData): Promise<TankAct
       });
     });
     revalidateTanks();
+    await emitEvent({ type: "tank.rewelding", subject: serial, summary: `Tank ${serial}${tank.mo ? ` (${tank.mo})` : ""} sent back to welding — ${reason}`, data: { serial, mo: tank.mo, reason } });
     return { ok: true, count: 1 };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
@@ -432,6 +443,9 @@ export async function recordTankQa(formData: FormData): Promise<TankActionResult
       });
     });
     revalidateTanks([`/tank/${serial}`]);
+    if (result !== "ok") {
+      await emitEvent({ type: "tank.qa_failed", subject: serial, summary: `Tank ${serial}${tank.mo ? ` (${tank.mo})` : ""} is not OK at quality — ${note}`, data: { serial, mo: tank.mo, note } });
+    }
     return { ok: true, count: 1 };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };

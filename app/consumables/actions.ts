@@ -1,5 +1,6 @@
 "use server";
 
+import { emitEvent } from "@/lib/server/events";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -262,6 +263,13 @@ export async function createConsumableIssue(formData: FormData): Promise<Consuma
     return { ok: false, error: SAVE_FAILED, department };
   }
   revalidateConsumables();
+  const over = verdict.data!.overLimit;
+  await emitEvent({
+    type: "consumables.issued",
+    subject: f.item,
+    summary: `Handed out ${f.qty} × ${f.item} to ${department}${over ? ` — OVER THE LIMIT: ${verdict.data!.overLimitReason ?? ""}` : ""}`,
+    data: { item: f.item, qty: f.qty, department, overLimit: over },
+  });
   return { ok: true, department, id: created.id };
 }
 

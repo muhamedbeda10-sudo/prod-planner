@@ -163,7 +163,7 @@ export const AI_PRIVATE_TABLES = [
   "Session", "UserPref", "ChatMessage", "ChatGroup", "ChatGroupMember", "ChatMessageHide", "ChatReaction",
   "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage", "AiAction",
   "AiPlaybookEntry", "AiPlaybookRevision", "AiInboxItem", "PushSubscription", "PushKeys", "Automation", "AutomationRun", "AiFile",
-  "Task", "TaskAssignee", "TaskUpdate",
+  "Task", "TaskAssignee", "TaskUpdate", "AppEvent",
 ] as const;
 export const AI_USER_COLUMNS = ["id", "name", "active"] as const;
 
@@ -343,7 +343,7 @@ export const AI_AREA_LABEL: Record<AiArea, string> = {
   data: "other data (the ODOO log, Material, Physical material, Consumables with its catalogue, limits and powder scrap, the shift roster, the calendar, workers, machines)",
   setup: "the plant's set-up (the standard times, capacity and calibration, the times per machine, the shift hours and the master switches)",
   imports: "imports of files attached in this chat (plans, the Daily log, ODOO, Material, Physical material)",
-  automations: "automations and scheduled reports",
+  automations: "automations — scheduled reports, watched conditions and instant alerts on what happens in the app",
   tasks: "tasks — giving them, and reporting on and reviewing the person's own",
   playbook: "the plant's playbook",
   users: "users and permissions (the owner's)",

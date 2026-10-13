@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { put, del } from "@vercel/blob";
-import { isItem, isDept } from "@/lib/domain/constants";
+import { isItem, isDept, deptLabel } from "@/lib/domain/constants";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
@@ -21,6 +21,8 @@ import { loadGroupMembers, groupTotal, spreadGroupChange } from "@/lib/server/gr
 import { LV_ITEM, LV_STAGES, lvStageAt } from "@/lib/domain/lv";
 import { consumeSheetDone } from "@/lib/domain/machineMaterial";
 import { runSheet } from "@/lib/domain/nestRun";
+import { emitEvent } from "@/lib/server/events";
+import { outputSentence } from "@/lib/domain/appEvents";
 
 export interface RecordResult {
   ok: boolean;
@@ -176,6 +178,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
       return { ledgerId: ledger.id, serials: minted.map((m) => m.serial) };
     });
     for (const p of TANK_PATHS) revalidatePath(p);
+    await emitEvent({ type: "output.recorded", subject: mo || bom, summary: outputSentence({ qty, item, on: mo || bom, stage: dept }), data: { dept, mo, bom, item, qty } });
     return { ok: true, serials: made.serials.length > 0 ? made.serials : undefined, ledgerId: made.ledgerId };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
@@ -269,6 +272,7 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     });
     if (failure) return { ok: false, error: failure };
     for (const p of TANK_PATHS) revalidatePath(p);
+    await emitEvent({ type: "output.recorded", subject: mo, summary: outputSentence({ qty: delta, item, on: mo, stage: dept, total: newTotal }), data: { dept, mo, bom, item, qty: delta } });
     return { ok: true };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
@@ -428,6 +432,8 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     });
     if (typeof outcome === "string") return { ok: false, error: outcome };
     for (const p of TANK_PATHS) revalidatePath(p);
+    const on = mos.length === 1 ? mos[0] : `${bom} (${mos.length} orders)`;
+    await emitEvent({ type: "output.recorded", subject: on, summary: outputSentence({ qty: delta, item, on, stage: dept, total: newTotal }), data: { dept, bom, mos, item, qty: delta } });
     return { ok: true, serials: outcome.length > 0 ? outcome : undefined };
   } catch (e) {
     return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
@@ -663,6 +669,12 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
     for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
       revalidatePath(p);
     }
+    await emitEvent({
+      type: "work.returned",
+      subject: mo || bom,
+      summary: `Returned ${qty} × ${item} on ${mo || bom} from ${deptLabel(fromDept)} to ${deptLabel(toDept)} — ${reason}`,
+      data: { fromDept, toDept, mo, bom, item, qty, reason },
+    });
     return { ok: true, ...made };
   } catch (e) {
     return { ok: false, error: `Failed to return: ${e instanceof Error ? e.message : String(e)}` };

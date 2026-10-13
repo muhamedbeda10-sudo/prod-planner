@@ -1,5 +1,6 @@
 "use server";
 
+import { emitEvent } from "@/lib/server/events";
 import { revalidatePath } from "next/cache";
 import { getActiveLine } from "@/lib/server/line";
 import { prisma } from "@/lib/db";
@@ -120,6 +121,12 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
     select: { id: true },
   });
   revalidateOdoo();
+  await emitEvent({
+    type: "odoo.logged",
+    subject: f.odooMo,
+    summary: `Logged ${f.qty} × ${f.product} on Odoo ${f.odooMo}${f.soi ? ` (${f.soi})` : ""}${line === "LV" ? " — LV" : ""}`,
+    data: { line, odooMo: f.odooMo, product: f.product, qty: f.qty, soi: f.soi },
+  });
   return { ok: true, id: created.id };
 }
 

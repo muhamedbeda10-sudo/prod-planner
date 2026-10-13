@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, requirePerm } from "@/lib/server/auth";
 import { currentActor } from "@/lib/server/actor";
 import { filesOf, storeUploads } from "@/lib/server/uploads";
+import { emitEvent } from "@/lib/server/events";
 import { ASSIGN_KEY, markTaskNewsRead, roleOf, selfOnlyOf, sendTaskNews, taskDetail, tasksData, type TaskDetail, type TasksData } from "@/lib/server/tasks";
 import { MOVE_NEEDS_TEXT, TASK_LIMITS, TASK_MOVE_LABEL, cleanDueDate, isTaskMove, isTaskStatus, moveTask } from "@/lib/domain/tasks";
 
@@ -25,6 +26,10 @@ export interface TaskActionResult {
 }
 
 const idOk = (n: number) => Number.isInteger(n) && n > 0;
+
+/** Everyone on a task — the only people its events may reach. */
+const participantsOf = (t: { createdById: number | null; assignees: { userId: number }[] }) =>
+  [...new Set([...(t.createdById ? [t.createdById] : []), ...t.assignees.map((a) => a.userId)])];
 
 /** Where it came from: a click, or the assistant acting for the person. */
 const viaNow = () => (currentActor() ? "ai" : "app");
@@ -52,8 +57,9 @@ export async function createTask(fd: FormData): Promise<TaskActionResult & { ids
   const due = dueRaw ? cleanDueDate(dueRaw) : null;
   if (dueRaw && !due) return { ok: false, error: "The due day is not a date." };
 
-  const found = await prisma.user.findMany({ where: { id: { in: people }, active: true }, select: { id: true } });
+  const found = await prisma.user.findMany({ where: { id: { in: people }, active: true }, select: { id: true, name: true } });
   if (found.length !== people.length) return { ok: false, error: "One of them is not an active user." };
+  const nameOf = new Map(found.map((u) => [u.id, u.name]));
 
   let mo: string | null = null;
   if (moRaw) {
@@ -84,7 +90,10 @@ export async function createTask(fd: FormData): Promise<TaskActionResult & { ids
       }),
     ),
   );
-  for (const t of made) await sendTaskNews(t, "create", me.name, "", me.id);
+  for (const t of made) {
+    await sendTaskNews(t, "create", me.name, "", me.id);
+    await emitEvent({ type: "task.given", subject: `Task #${t.id}`, summary: `Gave “${t.title}” to ${t.assignees.map((a) => nameOf.get(a.userId) ?? `#${a.userId}`).join(", ")}`, participants: participantsOf(t), data: { taskId: t.id } });
+  }
   return { ok: true, ids: made.map((t) => t.id) };
 }
 
@@ -147,6 +156,11 @@ export async function postTaskUpdate(fd: FormData): Promise<TaskActionResult & {
   const said = body || (stored.files.length > 0 ? `(${stored.files.length} photo${stored.files.length > 1 ? "s" : ""} or file${stored.files.length > 1 ? "s" : ""})` : "");
   await sendTaskNews(t, move === "submit" && next === "done" ? "approve" : move, me.name, said, me.id);
   await markTaskNewsRead(me.id, id);
+  const happened = next === "done" ? "task.approved" : next === "submitted" ? "task.done" : move === "return" ? "task.returned" : null;
+  if (happened) {
+    const verb = happened === "task.approved" ? "Approved" : happened === "task.done" ? "Marked done" : "Returned for rework";
+    await emitEvent({ type: happened, subject: `Task #${t.id}`, summary: `${verb} “${t.title}”${body ? ` — ${body.slice(0, 200)}` : ""}`, participants: participantsOf(t), data: { taskId: t.id } });
+  }
   return { ok: true, status: next };
 }
 

@@ -1,5 +1,7 @@
 ﻿"use server";
 
+import { emitEvent } from "@/lib/server/events";
+import { outputSentence } from "@/lib/domain/appEvents";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { buildBomClassifier } from "@/lib/domain/normalizeBoms";
@@ -96,6 +98,7 @@ export async function addHandover(formData: FormData): Promise<ActionResult> {
       await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
     });
     revalidateEverywhere();
+    await emitEvent({ type: "output.recorded", subject: mo, summary: outputSentence({ qty, item, on: mo, stage: dept }), data: { dept, mo, item, qty, source: "daily log" } });
     return { ok: true };
   }
 
@@ -125,6 +128,7 @@ export async function addHandover(formData: FormData): Promise<ActionResult> {
     await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
   });
   revalidateEverywhere();
+  await emitEvent({ type: "output.recorded", subject: resolved.bom, summary: outputSentence({ qty, item, on: resolved.bom, stage: dept }), data: { dept, bom: resolved.bom, item, qty, source: "daily log" } });
   return { ok: true };
 }
 

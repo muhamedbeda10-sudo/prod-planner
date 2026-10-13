@@ -10,7 +10,7 @@ const h = vi.hoisted(() => {
   return {
     prisma: {
       automation: { findMany: fn(), updateMany: fn(), update: fn(), count: fn() },
-      automationRun: { create: fn(), update: fn(), findFirst: fn() },
+      automationRun: { create: fn(), update: fn(), findFirst: fn(), count: fn() },
       user: { findUnique: fn(), findMany: fn() },
       aiUsage: { create: fn(), update: fn() },
       holiday: { findMany: fn() },
@@ -34,7 +34,7 @@ vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/server/auth", () => ({
   effectiveUser: (u: unknown) => u,
   hasPerm: (_u: unknown, k: string) => h.perms.has(k),
-  hiddenTabsOf: () => new Set<string>(),
+  hiddenTabsOf: (u: { hiddenTabs?: string } | null) => new Set((u?.hiddenTabs ?? "").split(",").filter(Boolean)),
 }));
 vi.mock("@/lib/server/ai/access", () => ({
   aiStatusFor: async () => h.status,
@@ -49,13 +49,14 @@ vi.mock("@/lib/server/ai/reader", () => ({ runAiRows: h.runAiRows }));
 vi.mock("@/lib/server/inbox", () => ({ deliverToInbox: h.deliverToInbox }));
 
 import type { Automation } from "@prisma/client";
-import { runAutomation, runDueAutomations } from "@/lib/server/automations/runner";
+import { runAutomation, runDueAutomations, runEventAutomations } from "@/lib/server/automations/runner";
+import type { AppEventView } from "@/lib/domain/appEvents";
 
 const owner = { id: 7, name: "Sara", active: true, isOwner: false, isAdmin: false, hiddenTabs: "" };
 const now = new Date("2026-10-12T04:30:00Z"); // Monday 07:30 Cairo
 const auto = (o: Partial<Automation> = {}): Automation => ({
   id: 3, ownerId: 7, name: "Late welding", enabled: true, trigger: "schedule", times: ["07:30"], days: "working", weekdays: [],
-  conditionSql: null, checkEveryMin: 30, activeFrom: null, activeTo: null, action: "notify", message: "Good morning — {name}", prompt: null,
+  conditionSql: null, checkEveryMin: 30, activeFrom: null, activeTo: null, eventTypes: [], eventActorIds: [], eventMatch: null, action: "notify", message: "Good morning — {name}", prompt: null,
   recipientIds: [9], lastKeys: [], nextRunAt: now, lastRunAt: null, lastCheckAt: null, lastStatus: null, lastNote: null, failures: 0,
   lockedUntil: null, deletedAt: null, createdBy: "Sara (AI)", updatedBy: null, createdAt: now, updatedAt: now, ...o,
 });
@@ -235,5 +236,63 @@ describe("an AI run", () => {
     await runAutomation(auto({ action: "report", message: null, prompt: "Welding vs plan" }), { cause: "schedule", now });
     expect(h.ask.mock.calls[0][0]).toMatchObject({ model: "claude-sonnet-5-5", effort: "low", maxCalls: 10 });
     expect(h.prisma.aiUsage.create.mock.calls[0][0].data).toMatchObject({ model: "claude-sonnet-5-5" });
+  });
+});
+
+describe("an event", () => {
+  const rule = (o: Partial<Automation> = {}) =>
+    auto({ trigger: "event", times: [], nextRunAt: null, eventTypes: ["order.closed"], eventActorIds: [], eventMatch: null, message: "{who}: {detail}", ...o });
+  const event = (o: Partial<AppEventView> = {}): AppEventView => ({
+    id: 1, type: "order.closed", at: now.toISOString(), actorId: 10, actorName: "Ahmed", subject: "SF01/MO/1", summary: "Closed SF01/MO/1", ...o,
+  });
+  const fire = async (a: Automation, e: AppEventView = event()) => {
+    h.prisma.automation.findMany.mockResolvedValue([a]);
+    return runEventAutomations(e, now);
+  };
+
+  beforeEach(() => {
+    h.prisma.automationRun.count.mockResolvedValue(0);
+    h.prisma.automation.updateMany.mockResolvedValue({ count: 1 });
+    h.prisma.user.findUnique.mockResolvedValue({ ...owner, hiddenTabs: "" });
+  });
+
+  it("tells at once, in the owner's words, about what happened — and books no next run", async () => {
+    expect(await fire(rule())).toBe(1);
+    expect(h.deliverToInbox.mock.calls[0][0][0]).toMatchObject({ userId: 9, kind: "message", title: "Late welding — Ahmed: Closed SF01/MO/1", body: "Ahmed: Closed SF01/MO/1" });
+    expect(h.prisma.automationRun.create.mock.calls[0][0].data).toMatchObject({ cause: "event" });
+    expect(lastUpdate()).toMatchObject({ lastStatus: "ok", nextRunAt: null });
+  });
+
+  it("listens only for its people and its words", async () => {
+    expect(await fire(rule({ eventActorIds: [9] }))).toBe(0);
+    expect(await fire(rule({ eventMatch: "MO/2" }))).toBe(0);
+    expect(await fire(rule({ eventActorIds: [10], eventMatch: "mo/1" }))).toBe(1);
+  });
+
+  it("tells of a task only someone on the task, and of a screen only someone who sees it", async () => {
+    const task = event({ type: "task.done", subject: "Task #5", summary: "Marked done “Clean bay 2”", participants: [1, 9] });
+    expect(await fire(rule({ eventTypes: ["task.done"] }), task)).toBe(0);
+    expect(await fire(rule({ eventTypes: ["task.done"] }), { ...task, participants: [7, 9] })).toBe(1);
+    h.prisma.user.findUnique.mockResolvedValue({ ...owner, hiddenTabs: "odoo" });
+    expect(await fire(rule({ eventTypes: ["odoo.logged"] }), event({ type: "odoo.logged" }))).toBe(0);
+  });
+
+  it("stays quiet while paused, and past so many messages an hour", async () => {
+    h.settings.automationsPaused = true;
+    expect(await fire(rule())).toBe(0);
+    h.settings.automationsPaused = false;
+    h.prisma.automationRun.count.mockResolvedValue(30);
+    expect(await fire(rule())).toBe(0);
+    expect(h.deliverToInbox).not.toHaveBeenCalled();
+  });
+
+  it("writes a report only inside the automations' hours, and not again within minutes", async () => {
+    h.settings.autoFrom = "08:00";
+    h.settings.autoTo = "16:00"; // now is 07:30 Cairo
+    expect(await fire(rule({ action: "report", message: null, prompt: "Say what this means for the week." }))).toBe(0);
+    h.settings.autoFrom = null;
+    h.settings.autoTo = null;
+    expect(await fire(rule({ action: "report", message: null, prompt: "Say what this means.", lastRunAt: new Date(now.getTime() - 5 * 60_000) }))).toBe(0);
+    expect(h.ask).not.toHaveBeenCalled();
   });
 });
