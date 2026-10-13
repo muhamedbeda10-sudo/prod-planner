@@ -809,6 +809,16 @@ div.overflow-x-auto > table thead {
   div.overflow-x-auto:has(> table) { max-height: none; overflow: visible; }
 }
 
+/* ---- an AI report or answer on paper (components/AiPrint.tsx): laid out
+   off screen first, so its charts have a width to draw at, then the only
+   thing printed ---- */
+.ai-print-sheet { position: fixed; left: -12000px; top: 0; width: 1000px; background: #fff; }
+@media print {
+  html.ai-printing body > *:not(.ai-print-sheet) { display: none !important; }
+  html.ai-printing .ai-print-sheet { position: static; width: auto; padding: 7mm 9mm; }
+  html.ai-printing .ai-print-sheet .ai-chart { break-inside: avoid; }
+}
+
 /* ---- Odoo dashboard: segmented view switch + recharts chrome ---- */
 .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; padding: 2px; background: var(--surface-2); }
 .seg > a, .seg > button { padding: 0.25rem 0.7rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: var(--muted); transition: color 0.12s ease, background-color 0.12s ease; }

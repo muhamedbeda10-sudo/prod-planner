@@ -348,8 +348,8 @@ export const AI_AREA_LABEL: Record<AiArea, string> = {
 };
 
 /** The app's context for one question — the system message after it: who
- *  asks and when, what the assistant may change for them, and what became of
- *  the changes it prepared before. */
+ *  asks and when, what the assistant may change for them, what they have open
+ *  beside the chat, and what became of the changes it prepared before. */
 export function questionContext(o: {
   askedBy: string;
   now: Date;
@@ -358,6 +358,8 @@ export function questionContext(o: {
   noconfirm: boolean;
   paused: boolean;
   notes: readonly string[];
+  /** The What-if Simulator is open beside the chat. */
+  simulatorOpen?: boolean;
 }): string {
   const lines = [`Asked by ${o.askedBy} on ${FACTORY_CLOCK.format(o.now)}, Cairo time.`];
   if (o.paused) lines.push("The owner has paused every change by the assistant: you can only read and advise right now.");
@@ -365,6 +367,9 @@ export function questionContext(o: {
   else {
     lines.push(`You may prepare changes for this person on: ${o.areas.map((a) => AI_AREA_LABEL[a]).join("; ")}.${o.canDelete ? " Deletions too — each one waits for their approval." : " No deletions."}`);
     lines.push(o.noconfirm ? "A small, low-risk change runs at once (the person opted into that); everything else waits for their approval." : "Every change waits for the person's approval.");
+  }
+  if (o.simulatorOpen) {
+    lines.push("The person has the What-if Simulator open beside this chat: show_on_simulator changes what it shows, at once and with no card (the plant's data does not change, and the scenario it replaces stays one click away), and it and simulate_scenario start from what it shows unless told otherwise.");
   }
   if (o.notes.length > 0) lines.push("Since your last answer:", ...o.notes.map((n) => `- ${n}`));
   return lines.join("\n");

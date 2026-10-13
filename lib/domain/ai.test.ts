@@ -172,6 +172,11 @@ describe("questionContext", () => {
     expect(questionContext({ askedBy: "S", now, areas: ["tracker"], canDelete: true, noconfirm: true, paused: true, notes: [] })).toContain("paused");
     expect(questionContext({ askedBy: "S", now, areas: [], canDelete: false, noconfirm: false, paused: false, notes: [] })).toContain("only read and advise");
   });
+  it("says when the What-if Simulator is open beside the chat — and the assistant can change it even with the changes paused", () => {
+    const open = questionContext({ askedBy: "S", now, areas: [], canDelete: false, noconfirm: false, paused: true, notes: [], simulatorOpen: true });
+    expect(open).toContain("open beside this chat: show_on_simulator changes what it shows, at once and with no card");
+    expect(questionContext({ askedBy: "S", now, areas: [], canDelete: false, noconfirm: false, paused: false, notes: [] })).not.toContain("Simulator");
+  });
 });
 
 describe("hidden screens close their tables to the assistant", () => {

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
-import { PageHead } from "@/components/ui";
+import { PageHead, ReadingColumn } from "@/components/ui";
 import { ImportForm } from "@/components/ImportForm";
 import { toISODate } from "@/lib/domain/dates";
 import { getPlanNos } from "@/lib/server/data";
@@ -19,7 +19,7 @@ export default async function ImportPage() {
 
   const plans = await getPlanNos();
   return (
-    <div className="space-y-5 max-w-3xl">
+    <ReadingColumn width="3xl" className="space-y-5">
       <PageHead title="Import Weekly Plan" sub="The delivery schedule" views={<ViewTabs views={PLANS_VIEWS} current="/import" label="Plans view" />} />
       <p className="text-sm text-muted">
         <b>Delivery schedule only.</b> Dates per MO come from here; order quantities live in the monthly registry
@@ -33,6 +33,6 @@ export default async function ImportPage() {
       {plans.length > 0 && (
         <p className="text-xs text-muted">Existing plans: {plans.join(", ")}</p>
       )}
-    </div>
+    </ReadingColumn>
   );
 }

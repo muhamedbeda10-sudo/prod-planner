@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
 import { inboxData } from "@/lib/server/ai/panel";
-import { PageHead } from "@/components/ui";
+import { PageHead, ReadingColumn } from "@/components/ui";
 import { InboxView } from "@/components/InboxView";
 
 export const metadata = { title: "Inbox — ATC" };
@@ -26,9 +26,9 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const { items, actions } = await inboxData(me.id);
 
   return (
-    <div className="max-w-4xl">
+    <ReadingColumn>
       <PageHead title="Inbox" />
       <InboxView items={items} actions={actions} openId={openId} />
-    </div>
+    </ReadingColumn>
   );
 }

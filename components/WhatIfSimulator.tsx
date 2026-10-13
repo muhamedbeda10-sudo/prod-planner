@@ -14,10 +14,11 @@ import type { EtaStage, StageBlackout } from "@/lib/domain/eta";
 import { saveScenario, deleteScenario, applyRunOrder, clearRunOrder } from "@/app/simulate/actions";
 import { deptLabel, STAGE_COLOR, type Item } from "@/lib/domain/constants";
 import { ITEM_PRODUCT, productColor } from "@/lib/domain/productColors";
+import { attachSimulator, clearStaged, pushAssistStep, setAssistSteps, SIM_SCENARIO_KEY, stagedScenario, useAssistSteps } from "@/lib/simulatorBridge";
 import { SearchBox, FilterSelect } from "@/components/FilterControls";
 import { TableEmpty, TableFrame, Th, useAsk, useConfirm } from "@/components/DataTable";
 import { Tooltip } from "@/components/Tooltip";
-import { Check, FilterX, Minus, Pin, Plus, RotateCcw, Save, Trash2, Wrench, Zap } from "lucide-react";
+import { Bot, Check, FilterX, Minus, Pin, Plus, RotateCcw, Save, Trash2, Undo2, Wrench, Zap } from "lucide-react";
 
 /* The control room: turn the knobs — workers per stage, working Fridays, a
    hand-reordered (drag & drop) queue, split quantities, or one click of the
@@ -25,7 +26,9 @@ import { Check, FilterX, Minus, Pin, Plus, RotateCcw, Save, Trash2, Wrench, Zap 
    instantly, with the SAME arithmetic the live pages use. The queue schedules
    JOBS (one component of one order), so the TC of an order can jump ahead
    while its TN waits, and a job can split into a rushed batch + the rest.
-   Pin a scenario as "A" to compare against it. Nothing here is saved. */
+   Pin a scenario as "A" to compare against it. The assistant beside it can
+   turn the knobs too; what it replaces is one click away. Nothing here is
+   saved. */
 
 const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-US");
 const dd = (iso: string | null) => formatDate(iso);
@@ -211,8 +214,6 @@ function Timeline({ result, baseline, inputs, workFridays, shownIds, blackouts }
 
 /* ================================ the page ================================ */
 
-const AUTOSAVE_KEY = "atc.sim.scenario";
-
 export interface SavedScenarioDTO {
   name: string;
   data: unknown;
@@ -231,11 +232,14 @@ export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, save
   // simulate() itself is defensive about stale job ids
   const sanitize = (raw: unknown): Scenario => loadScenario(inputs, raw);
 
-  // the work in progress survives a refresh — restored from this browser
+  // the work in progress survives a refresh — restored from this browser; or
+  // the assistant's scenario, when its button in the chat opened the page
   const [scenario, setScenario] = useState<Scenario>(() => {
     if (typeof window !== "undefined") {
+      const staged = stagedScenario();
+      if (staged) return sanitize(staged);
       try {
-        const raw = window.localStorage.getItem(AUTOSAVE_KEY);
+        const raw = window.localStorage.getItem(SIM_SCENARIO_KEY);
         if (raw) return sanitize(JSON.parse(raw));
       } catch { /* fall through to reality */ }
     }
@@ -243,9 +247,40 @@ export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, save
   });
   useEffect(() => {
     try {
-      window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(scenario));
+      window.localStorage.setItem(SIM_SCENARIO_KEY, JSON.stringify(scenario));
     } catch { /* storage full/blocked — the sandbox still works */ }
   }, [scenario]);
+
+  // ---- the assistant beside it: it reads what is on the screen with each
+  // question and puts its scenarios here — each keeping the one it replaced,
+  // which the banner puts back ----
+  const router = useRouter();
+  const assistSteps = useAssistSteps();
+  const onScreen = useRef(scenario);
+  useEffect(() => {
+    onScreen.current = scenario;
+  }, [scenario]);
+  useEffect(() => {
+    clearStaged();
+    return attachSimulator({
+      scenario: () => onScreen.current,
+      show: (next, label) => {
+        const sc = loadScenario(inputs, next);
+        if (JSON.stringify(sc) === JSON.stringify(onScreen.current)) return;
+        pushAssistStep(label, onScreen.current);
+        onScreen.current = sc;
+        setScenario(sc);
+        // the page's figures read again, so the screen and the answer agree
+        router.refresh();
+      },
+    });
+  }, [inputs, router]);
+  const putBack = () => {
+    const last = assistSteps[assistSteps.length - 1];
+    if (!last) return;
+    setScenario(last.before ? loadScenario(inputs, last.before) : defaultScenario(inputs));
+    setAssistSteps(assistSteps.slice(0, -1));
+  };
 
   const [pinned, setPinned] = useState<Scenario | null>(null);
   const [grouped, setGrouped] = useState(false);
@@ -346,7 +381,6 @@ export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, save
     setScenario((sc) => ({ ...sc, downtimes: sc.downtimes.filter((_, x) => x !== i) }));
 
   // ---- persistence & commit ----
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [actionMsg, setActionMsg] = useState("");
   const runAction = (fn: () => Promise<{ ok: boolean; error?: string }>, okMsg: string) => {
@@ -511,6 +545,23 @@ export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, save
 
   return (
     <div className="space-y-4">
+      {/* ================= the assistant's change ================= */}
+      {assistSteps.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border rounded-xl px-3.5 py-2 text-sm bg-surface-2" role="status">
+          <Bot size={15} className="text-brand shrink-0" aria-hidden />
+          <span className="font-bold">The assistant put on the screen:</span>
+          <span className="text-muted min-w-0">{assistSteps[assistSteps.length - 1].label}</span>
+          <span className="ms-auto flex gap-1.5">
+            <button type="button" onClick={putBack} className="btn btn-ghost btn-sm" title="Put back the scenario that was on the screen before the assistant's change">
+              <Undo2 size={14} aria-hidden />Put back the one before
+            </button>
+            <button type="button" onClick={() => setAssistSteps([])} className="btn btn-ghost btn-sm" title="Keep it, and forget the ones before" aria-label="Keep the assistant's scenario">
+              ✕
+            </button>
+          </span>
+        </div>
+      )}
+
       {/* ================= pinned banner ================= */}
       {pinned && (
         <div className="flex flex-wrap items-center gap-2 border rounded-xl px-3.5 py-2 text-sm" style={{ background: "var(--brand-light)", borderColor: "color-mix(in srgb, var(--brand) 35%, transparent)" }}>

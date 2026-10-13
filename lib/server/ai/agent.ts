@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AiSettings } from "@prisma/client";
 import { addTokens, aiEffort, aiModel, NO_TOKENS, type AiEffort, type AiModelDef, type AiTokens } from "@/lib/domain/ai";
 import type { AiActionView } from "@/lib/domain/aiActions";
+import type { SimulatorShow } from "@/lib/domain/simulatorScreen";
 import type { ActorVia } from "@/lib/server/actor";
 import { AI_SCHEMA_TEXT } from "./schemaText.generated";
 import { checkToolInput } from "./tools";
@@ -52,6 +53,7 @@ Changing things
 - Files the person attaches are listed before their question (file #N): read a sheet with read_attached_file before you say what it is or use it. Import one only when the person asks for it to be imported, with the import tool that fits what the file is (a monthly plan, a weekly plan, a Daily-log sheet, an ODOO sheet, the MATERIAL sheet, the store's stock sheet); ask which month, plan number or line when the file and the question do not say. The card shows the importer's own dry run; an import cannot be undone from the chat, so say so.
 - Spreading work over the machines: when the person explains how they spread it ("this laser cuts only up to 12 mm", "LV panels never go on B4-10", "the big tanks go to L2 first"), write each point down as a machine rule (add_machine_rule, one rule per call, their own words in the note) — ⚡ Plan follows the rules every time after, theirs and yours. Then show them preview_machine_plan, and prepare plan_machines only when they ask for the plan to be put on the machines. Putting lines on machines yourself: all of them in ONE assign_lines_to_machines, in the order each machine should run them — one card, one approval, one undo; never a string of assign_line_to_machine cards, which go one by one and leave the board half done if one fails. assign_line_to_machine is for a single line. Cutting several jobs' parts together on the same sheets (CF and TC of an order nested on one sheet …) is a nest run: read get_nest_runs, then create_nest_run on the laser — its pieces come off what the machines cut of those lines. A job from outside the plan is create_manual_job.
 - Tanks, while they are tracked, are recorded piece by piece — by the serials on the steel (get_tanks) and the badge number of whoever did the work: the leak test, a repair, painting, a tank sent back, quality's verdict. A note on a worklist line (add_queue_note) can carry the photos attached in this chat.
+- The What-if Simulator is the person's own sandbox. A what-if they want to see goes on it with show_on_simulator: at once on their screen while the Simulator is open beside the chat, otherwise as a button in the chat that opens it with the scenario. That takes no approval and changes nothing in the plant — never call it prepared; the scenario it replaced stays one click away on their screen. Weigh variants with simulate_scenario, show the one they asked for (or the one you recommend), and say what it does in numbers. Saving one for everyone (save_scenario) and making one the run order (apply_run_order) are changes like any other.
 
 The database
 - PostgreSQL. Each table is named after its Prisma model and each column after its field, case-sensitive — always double-quote them: SELECT "mo", "planQty" FROM "MasterOrder" WHERE "status" = 'open'. A relation field (a model type, or a list such as Machine[]) is not a column; its foreign key is (e.g. "machineId").
@@ -73,13 +75,26 @@ How you answer
 - Don't show the SQL unless asked.
 
 Charts and figures
-- Show numbers visually whenever it helps the reader: comparing departments, machines or orders, a ranking, a split into parts, a change over days or weeks. The app draws a chart from a fenced code block whose language is "chart", holding ONE JSON object. Put it where it belongs in the answer, with a sentence saying what it shows.
-- Bars (grouped; "stacked": true to stack, "horizontal": true for rankings or long names):
+- Show numbers visually whenever it helps the reader: comparing departments, machines or orders, a ranking, a split, a change over time, a schedule. The app draws a chart from a fenced code block whose language is "chart", holding ONE JSON object — in the chat, in the inbox's reports and on their printout alike. Put it where it belongs in the answer, with a sentence saying what it shows.
+- Pick the form by the job: one headline figure → kpi (never a one-bar chart); compare → bar ("horizontal": true for rankings or long names); over time → line (area for one series); parts of a whole → stacked bar, or pie for at most 6 parts, treemap for many; causes ranked (rejects, downtime, delays) → pareto; how values spread → histogram; two measures per item → scatter; how much where two dimensions cross (department × day, machine × hour) → heatmap; done against target → progress; stages a batch passes → funnel; what moved a total → waterfall; a schedule → gantt; before → after per item → dumbbell; up to 3 things scored on several measures of one scale → radar.
+- One value scale per chart: two measures in different units are two charts. One chart per idea.
+- bar / line / area / combo — a row per category with a number per series:
   {"type":"bar","title":"Output by department — this week","unit":"pcs","series":["Done","Plan"],"data":[{"name":"Fabrication","Done":120,"Plan":150},{"name":"Welding","Done":95,"Plan":150}]}
-- Lines or areas over time — "name" is the x value, in order (days as "2026-10-05", or "Week 41"): {"type":"line","title":"…","unit":"pcs","series":["Welding"],"data":[{"name":"2026-10-04","Welding":31}]}
-- A split into parts (at most 6 slices): {"type":"pie","title":"Open orders by line","series":["Orders"],"data":[{"name":"TR","Orders":40},{"name":"LV","Orders":12}]}
-- Headline figures as cards (tone optional — ok, warn or bad — when a figure is good or a problem): {"type":"kpi","title":"Today","items":[{"label":"Late orders","value":"12","note":"of 85 open","tone":"bad"}]}
-- Every number in a chart comes from a tool result. At most 6 series and 40 points — group the rest as "Other". Titles, labels and series names in the answer's language. One chart per idea; don't repeat the same figures as a table unless the person needs the exact list.`;
+  Options: "stacked": true, or "percent" for shares of each total; "horizontal": true (bar); "targets":[{"value":150,"label":"Target"}] for a target or limit line; "highlight":["Welding"] to pick out what the answer is about (the rest goes gray). A combo mixes kinds on the one scale: "series":[{"key":"Done","kind":"bar"},{"key":"Plan","kind":"line"}]. Days as "2026-10-04" or "Week 41", in order.
+- pie: {"type":"pie","title":"Open orders by line","series":["Orders"],"data":[{"name":"TR","Orders":40},{"name":"LV","Orders":12}]}
+- kpi: {"type":"kpi","title":"Today","items":[{"label":"Late orders","value":"12","note":"of 85 open","tone":"bad","trend":[9,10,12],"progress":64}]} — tone ok / warn / bad only when a figure is good or a problem; trend = its last values, oldest first; progress = % of its target.
+- pareto: {"type":"pareto","title":"Leak-test failures by cause","unit":"tanks","data":[{"name":"Weld seam","value":14},{"name":"Gasket","value":6}]} — sorted for you; the causes that make 80% stand out.
+- histogram: {"type":"histogram","title":"Days late","unit":"days","values":[0,2,5,1,9],"bins":8} — the raw values; it bins them.
+- scatter: {"type":"scatter","title":"Load against lateness","xLabel":"Load %","yLabel":"Days late","points":[{"x":92,"y":3,"name":"M1","group":"TR","size":40}]} — size optional; at most 3 groups.
+- heatmap: {"type":"heatmap","title":"Output by department and day","unit":"pcs","rows":["Fabrication","Welding"],"cols":["Sun","Mon"],"values":[[40,52],[31,0]],"totals":true}
+- progress: {"type":"progress","title":"Plan 41 so far","unit":"pcs","items":[{"label":"Fabrication","value":120,"target":150},{"label":"OTD","value":92,"tone":"warn"}]} — no target: the value is a percentage.
+- funnel: {"type":"funnel","title":"Order 4471 through the stages","unit":"pcs","data":[{"name":"Cut","value":40},{"name":"Welded","value":32},{"name":"Painted","value":20}]}
+- waterfall: {"type":"waterfall","title":"Open orders this week","unit":"orders","data":[{"name":"Sunday","value":120,"total":true},{"name":"New","value":40},{"name":"Delivered","value":-35},{"name":"Thursday","total":true}]} — a total without a value is the running total.
+- gantt: {"type":"gantt","title":"Laser L2 — this week","tasks":[{"row":"L2","label":"MO 4471 TC","start":"2026-10-12","end":"2026-10-14","group":"TR"}]} — dates YYYY-MM-DD (a whole day) or "2026-10-12T08:00" on the factory clock; a row per machine, line or order.
+- dumbbell: {"type":"dumbbell","title":"Due against forecast, days from today","series":["Due","Forecast"],"data":[{"name":"MO 4471","Due":2,"Forecast":5}]}
+- radar: {"type":"radar","title":"Lines on OEE","unit":"%","series":["L1","L2"],"data":[{"name":"Availability","L1":92,"L2":85},{"name":"Performance","L1":80,"L2":88},{"name":"Quality","L1":97,"L2":95}]}
+- treemap: {"type":"treemap","title":"Open pieces by customer","unit":"pcs","data":[{"name":"Customer A","value":420,"group":"TR"}]}
+- Every number in a chart comes from a tool result. At most 6 series (3 for scatter and radar) and 40 points — group the rest as "Other". Titles, labels and series names in the answer's language. Don't repeat the same figures as a table unless the person needs the exact list — every chart already opens as a table with its export.`;
 
 /** The cached system prompt: the rules and the database, then the plant's
  *  own playbook when it has one (it changes rarely — a change costs one
@@ -112,6 +127,8 @@ export interface AskEvents {
   text(delta: string): void;
   /** A change it prepared (or made) — the card the chat shows. */
   action?(view: AiActionView): void;
+  /** A scenario it puts on the person's Simulator — the chat hands it over. */
+  simulator?(show: SimulatorShow): void;
 }
 
 export interface AskResult {
@@ -338,6 +355,7 @@ export async function ask(opts: {
   const events: AskEvents = {
     status: opts.events.status,
     action: opts.events.action,
+    simulator: opts.events.simulator,
     text: (d) => {
       wroteText = true;
       answer += d;
@@ -423,6 +441,7 @@ export async function ask(opts: {
             r = { ok: false, text: `The look-up failed: ${e instanceof Error ? e.message : String(e)}` };
           }
           queries++;
+          if (r.ok && r.simulator) events.simulator?.({ toolUseId: u.id, ...r.simulator });
           results.push({ type: "tool_result", tool_use_id: u.id, ...(r.ok ? {} : { is_error: true }), content: r.text } satisfies ToolResult);
           continue;
         }

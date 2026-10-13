@@ -11,9 +11,11 @@ const h = vi.hoisted(() => {
   return {
     prisma: {
       masterOrder: { findUnique: fn(), findMany: fn() },
-      user: { findMany: fn() },
+      user: { findMany: fn(), findUnique: fn() },
       chatGroup: { findMany: fn(), findFirst: fn() },
       machine: { findMany: fn() },
+      shiftEntry: { count: fn() }, machineDowntime: { count: fn() }, machineRule: { count: fn() }, worklistMachine: { count: fn() },
+      machineItemTime: { count: fn() }, handoverEntry: { count: fn() }, manualJob: { count: fn() }, sheetCutLog: { count: fn() },
     },
     perms: new Set<string>(),
     files: new Map<number, unknown>(),
@@ -22,9 +24,12 @@ const h = vi.hoisted(() => {
     snaps: { restoreOrderMonths: fn(), readFloorLayout: fn(), restoreFloorLayout: fn() },
     orders: { updateOrder: fn(), removeOrderMonth: fn(), setGroupFins: fn(), deleteOrders: fn() },
     chat: { sendChatMessage: fn(), createChatGroup: fn(), addChatGroupMembers: fn() },
-    floorActions: { saveFloorLayout: fn() },
+    floorActions: { saveFloorLayout: fn(), createPartition: fn() },
+    machineActions: { deleteMachine: fn() },
     automationFor: fn(),
     runAutomationNow: fn(),
+    setAutomationTiming: fn(),
+    setAutomationEnabled: fn(),
   };
 });
 
@@ -36,6 +41,7 @@ vi.mock("@/lib/server/rowSnapshots", () => h.snaps);
 vi.mock("@/app/orders/actions", () => h.orders);
 vi.mock("@/app/chat/actions", () => h.chat);
 vi.mock("@/app/simulate/floorActions", () => h.floorActions);
+vi.mock("@/app/admin/machines/actions", () => h.machineActions);
 vi.mock("@/lib/server/ai/files", () => ({
   chatFile: async (_ctx: unknown, id: number) => h.files.get(id) ?? { error: `No file #${id} in this chat.` },
   uploadOf: (f: { name: string; type: string }) => new File([new Uint8Array([1])], f.name, { type: f.type }),
@@ -46,15 +52,17 @@ vi.mock("@/lib/server/automations/store", () => ({
   prepareAutomation: vi.fn(),
 }));
 vi.mock("@/lib/server/automations/views", () => ({ automationViews: vi.fn() }));
-vi.mock("@/app/automations/actions", () => ({ deleteAutomation: vi.fn(), restoreAutomation: vi.fn(), runAutomationNow: h.runAutomationNow, saveAutomation: vi.fn(), setAutomationEnabled: vi.fn() }));
+vi.mock("@/app/automations/actions", () => ({
+  deleteAutomation: vi.fn(), restoreAutomation: vi.fn(), runAutomationNow: h.runAutomationNow, saveAutomation: vi.fn(), setAutomationEnabled: h.setAutomationEnabled, setAutomationTiming: h.setAutomationTiming,
+}));
 vi.mock("@/app/inbox/actions", () => ({ retractInboxMessages: vi.fn(), sendInboxMessage: vi.fn() }));
 
 import type { User } from "@prisma/client";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import { deleteOrdersTool, removeOrderMonthTool, restoreOrderMonthsTool, setBomFinsTool, updateOrderTool } from "@/lib/server/ai/tools/orders";
 import { addChatGroupMembersTool, createChatGroupTool, sendChatMessageTool } from "@/lib/server/ai/tools/chat";
-import { editFloorLayoutTool, getFloorLayoutTool, restoreFloorLayoutTool } from "@/lib/server/ai/tools/floor";
-import { testAutomationTool } from "@/lib/server/ai/tools/automations";
+import { editFloorLayoutTool, getFloorLayoutTool, removeFloorStationsTool, restoreFloorLayoutTool } from "@/lib/server/ai/tools/floor";
+import { setAutomationEnabledTool, setAutomationTimingTool, testAutomationTool } from "@/lib/server/ai/tools/automations";
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
 
 const sara = { id: 1, name: "Sara", isAdmin: false, isOwner: false } as User;
@@ -78,7 +86,8 @@ beforeEach(() => {
     return all.filter((u) => (where.name.equals !== undefined ? u.name.toLowerCase() === n : u.name.toLowerCase().includes(n)));
   });
   h.prisma.chatGroup.findMany.mockResolvedValue([]);
-  for (const g of [h.orders, h.chat, h.floorActions, h.snaps]) for (const f of Object.values(g)) f.mockResolvedValue({ ok: true });
+  for (const g of [h.orders, h.chat, h.floorActions, h.snaps, h.machineActions]) for (const f of Object.values(g)) f.mockResolvedValue({ ok: true });
+  for (const t of ["shiftEntry", "machineDowntime", "machineRule", "worklistMachine", "machineItemTime", "handoverEntry", "manualJob", "sheetCutLog"] as const) h.prisma[t].count.mockResolvedValue(0);
   h.snaps.readFloorLayout.mockResolvedValue(null);
   h.prisma.machine.findMany.mockResolvedValue([{ id: 7, code: "W-1", name: "Bay A", active: true }, { id: 8, code: "W-2", name: "Bay B", active: true }]);
 });
@@ -179,21 +188,88 @@ describe("the floor", () => {
     expect(out).toMatchObject({ drawn: true, nodes: [{ id: "m7", machine: "W-1", x: 20, y: 20 }], notOnFloor: ["W-2"] });
   });
 
+  it("reads a floor nobody has drawn as the page shows it: every active machine set out in rows", async () => {
+    h.prisma.machine.findMany.mockResolvedValue([{ id: 7, code: "W-1", name: "Bay A", active: true }, { id: 8, code: "W-2", name: "Bay B", active: true }, { id: 9, code: "W-3", name: "Old", active: false }]);
+    const out = JSON.parse((await getFloorLayoutTool.run({ dept: "Welding" }, ctx())).text);
+    expect(out).toMatchObject({ drawn: false, nodes: [{ id: "m7", machine: "W-1", x: 20, y: 20 }, { id: "m8", machine: "W-2", y: 20 }], notOnFloor: [] });
+    expect(out.nodes).toHaveLength(2);
+  });
+
   it("edits it as the canvas does, under the machines key, and is undone by the floor as stored — or not drawn", async () => {
-    const i = { dept: "Welding" as const, add: [{ kind: "machine" as const, machine: "w-2", x: 400, y: 100 }, { kind: "zone" as const, text: "Tank welding", color: "blue" as const }] };
+    // a floor nobody has drawn: the edit starts from its machines as the page shows them
+    const i = { dept: "Welding" as const, add: [{ kind: "zone" as const, text: "Tank welding", color: "blue" as const }], move: [{ node: "w-2", x: 400, y: 100 }] };
     expect(await editFloorLayoutTool.describe(i, ctx())).toEqual({ error: expect.stringContaining("machines.manage") });
     h.perms.add("machines.manage");
-    expect(await editFloorLayoutTool.describe({ dept: "Welding", move: [{ node: "W-1", x: 10 }] }, ctx())).toEqual({ error: expect.stringContaining("Nothing on the floor is W-1") });
+    expect(await editFloorLayoutTool.describe({ dept: "Welding", add: [{ kind: "machine", machine: "W-1" }] }, ctx())).toEqual({ error: "W-1 is on the floor already — move it instead." });
+    expect(await editFloorLayoutTool.describe({ dept: "Welding", move: [{ node: "W-9", x: 10 }] }, ctx())).toEqual({ error: expect.stringContaining("Nothing on the floor is W-9") });
     const p = await editFloorLayoutTool.describe(i, ctx());
-    expect(p).toMatchObject({ summary: "Edit the Welding floor: 2 change(s) — its first drawing.", changes: [{ label: "W-2", after: "at 400, 100 (180×110)" }, { label: 'zone "Tank welding"' }], snapshot: null });
+    expect(p).toMatchObject({
+      summary: "Edit the Welding floor: 2 change(s) — its first drawing, from its machines set out in rows as the page shows them.",
+      changes: [{ label: 'zone "Tank welding"' }, { label: "W-2", after: "400, 100 (180×110)" }],
+      snapshot: null,
+    });
     const out = await editFloorLayoutTool.execute(i, ctx());
     const saved = JSON.parse(String(fd(h.floorActions.saveFloorLayout).layout));
-    expect(saved.nodes.map((n: { kind: string }) => n.kind)).toEqual(["machine", "zone"]);
+    // W-1 stays where the page showed it; nothing the planner saw drops off
+    expect(saved.nodes.map((n: { id: string; kind: string; x: number; y: number }) => [n.kind, n.x, n.y])).toEqual([["machine", 20, 20], ["machine", 400, 100], ["zone", expect.any(Number), expect.any(Number)]]);
     expect(out).toEqual({ ok: true, message: "The Welding floor is saved.", undo: { tool: "restore_floor_layout", input: { dept: "Welding", layout: "null" } } });
     const u = checkToolInput<Parameters<typeof restoreFloorLayoutTool.execute>[0]>(restoreFloorLayoutTool, { dept: "Welding", layout: "null" });
     if (!u.ok) throw new Error(u.error);
     await restoreFloorLayoutTool.execute(u.input, ctx());
     expect(h.snaps.restoreFloorLayout).toHaveBeenCalledWith("Welding", null);
+  });
+});
+
+describe("a new partition on the floor", () => {
+  const drawn = { data: { version: 1, w: 1600, h: 900, nodes: [{ id: "m7", kind: "machine", machineId: 7, x: 20, y: 20, w: 180, h: 110 }] }, updatedBy: "Admin" };
+  const i = { dept: "Welding" as const, add: [{ kind: "new" as const, text: "Bay C" }, { kind: "label" as const, text: "Door" }] };
+  beforeEach(() => {
+    h.perms.add("machines.manage");
+    h.snaps.readFloorLayout.mockResolvedValue(drawn);
+  });
+
+  it("is made on the machines list under the next free code, placed at once, and waits for approval", async () => {
+    expect(typeof editFloorLayoutTool.risk === "function" && editFloorLayoutTool.risk(i)).toBe("high");
+    const p = await editFloorLayoutTool.describe(i, ctx());
+    expect(p).toMatchObject({
+      summary: "Edit the Welding floor: 2 change(s) — and W-3 new on the machines list.",
+      changes: [{ label: "W-3 Bay C", before: "—", after: expect.stringMatching(/^new partition, at \d+, \d+/) }, { label: 'label "Door"' }],
+      snapshot: { floor: drawn, stations: ["W-3"] },
+    });
+    h.floorActions.createPartition.mockResolvedValue({ ok: true, id: 20 });
+    const out = await editFloorLayoutTool.execute(i, ctx());
+    expect(fd(h.floorActions.createPartition)).toEqual({ dept: "Welding", name: "Bay C", code: "W-3" });
+    const saved = JSON.parse(String(fd(h.floorActions.saveFloorLayout).layout));
+    expect(saved.nodes.map((n: { id: string }) => n.id)).toEqual(["m7", "m20", expect.any(String)]);
+    expect(out).toEqual({
+      ok: true,
+      message: "The Welding floor is saved — W-3 new on the machines list.",
+      undo: { tool: "remove_floor_stations", input: { dept: "Welding", layout: JSON.stringify(drawn), stations: ["W-3"] } },
+    });
+  });
+
+  it("takes a code asked for when it is free, and refuses one that is taken or nameless", async () => {
+    expect(await editFloorLayoutTool.describe({ dept: "Welding", add: [{ kind: "new", text: "Bay D", machine: "w-1" }] }, ctx())).toEqual({ error: "Code W-1 is already taken." });
+    expect(await editFloorLayoutTool.describe({ dept: "Welding", add: [{ kind: "new" }] }, ctx())).toEqual({ error: expect.stringContaining("Name each new partition") });
+    expect(await editFloorLayoutTool.describe({ dept: "Painting", add: [{ kind: "new", text: "Line 3", machine: "pl-9" }] }, ctx())).toMatchObject({ changes: [{ label: "PL-9 Line 3", after: expect.stringContaining("new line") }] });
+  });
+
+  it("is taken off the list again when the floor cannot be saved", async () => {
+    h.floorActions.createPartition.mockResolvedValue({ ok: true, id: 20 });
+    h.floorActions.saveFloorLayout.mockResolvedValue({ ok: false, error: "Pick a department." });
+    expect(await editFloorLayoutTool.execute(i, ctx())).toEqual({ ok: false, error: "Pick a department." });
+    expect(fd(h.machineActions.deleteMachine)).toEqual({ id: "20" });
+  });
+
+  it("is undone — the floor back and the row gone — only while nothing uses it", async () => {
+    h.prisma.machine.findMany.mockResolvedValue([{ id: 20, code: "W-3", name: "Bay C", dept: "Welding" }]);
+    const u = { dept: "Welding" as const, layout: JSON.stringify(drawn), stations: ["W-3"] };
+    expect(await removeFloorStationsTool.describe(u, ctx())).toMatchObject({ changes: [{ label: "Welding floor" }, { label: "W-3 Bay C", after: "removed" }] });
+    await removeFloorStationsTool.execute(u, ctx());
+    expect(h.snaps.restoreFloorLayout).toHaveBeenCalledWith("Welding", drawn);
+    expect(fd(h.machineActions.deleteMachine)).toEqual({ id: "20" });
+    h.prisma.shiftEntry.count.mockResolvedValue(2);
+    expect(await removeFloorStationsTool.describe(u, ctx())).toEqual({ error: expect.stringContaining("W-3 is in use since") });
   });
 });
 
@@ -206,5 +282,32 @@ describe("test_automation", () => {
     h.runAutomationNow.mockResolvedValue({ ok: true, id: 4 });
     expect(await testAutomationTool.execute({ id: 4 }, ctx())).toEqual({ ok: true, message: '"Late orders" ran as a test — the result is in Sara\'s inbox.' });
     expect(fd(h.runAutomationNow)).toEqual({ id: "4" });
+  });
+});
+
+describe("set_automation_timing", () => {
+  const owner = { ...sara, id: 9, name: "Muhamed", isOwner: true } as User;
+  const config = { name: "Late orders", trigger: "schedule", times: ["07:30"], days: "working", weekdays: [], conditionSql: null, checkEveryMin: 30, activeFrom: null, activeTo: null, action: "notify", message: "Late: {count}", prompt: null, recipientIds: [] };
+  const omars = { id: 4, ownerId: 2, name: "Late orders", config, updatedAt: new Date("2026-10-12T08:00:00Z") };
+  beforeEach(() => {
+    h.automationFor.mockImplementation(async (u: User) => (u.isOwner || u.id === 2 ? omars : null));
+    h.prisma.user.findUnique.mockResolvedValue({ name: "Omar" });
+    h.setAutomationTiming.mockResolvedValue({ ok: true, id: 4 });
+    h.setAutomationEnabled.mockResolvedValue({ ok: true, id: 4 });
+  });
+
+  it("lets the app's owner retime anyone's — only when it runs — and is undone by the old timing", async () => {
+    expect(await setAutomationTimingTool.describe({ id: 4, times: ["08:00"] }, ctx())).toEqual({ error: "No automation #4 of Sara's." });
+    const p = await setAutomationTimingTool.describe({ id: 4, times: ["08:00", "14:00"] }, ctx(owner));
+    expect(p).toMatchObject({ title: 'Retime "Late orders"', summary: expect.stringContaining("(Omar's)"), snapshot: { id: 4 } });
+    expect(await setAutomationTimingTool.describe({ id: 4, checkEveryMin: 15 }, ctx(owner))).toEqual({ error: expect.stringContaining("on a schedule") });
+    expect(await setAutomationTimingTool.describe({ id: 4, times: ["07:30"] }, ctx(owner))).toEqual({ error: '"Late orders" runs so already.' });
+    const out = await setAutomationTimingTool.execute({ id: 4, times: ["08:00", "14:00"] }, ctx(owner));
+    expect(JSON.parse(String(fd(h.setAutomationTiming).timing))).toEqual({ times: ["08:00", "14:00"], days: "working" });
+    expect(out).toEqual({ ok: true, message: '"Late orders" is retimed.', undo: { tool: "set_automation_timing", input: { id: 4, times: ["07:30"], days: "working" } } });
+  });
+
+  it("lets the owner pause anyone's too", async () => {
+    expect(await setAutomationEnabledTool.describe({ id: 4, enabled: false }, ctx(owner))).toMatchObject({ title: 'Pause "Late orders"' });
   });
 });

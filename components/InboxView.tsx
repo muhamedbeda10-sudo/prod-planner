@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { BellOff, BellRing, CheckCheck, ChevronDown, FileText, Inbox, Lightbulb, MessageSquare, Trash2 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
+import { AiPrintButton } from "@/components/AiPrint";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
 import { EmptyState } from "@/components/primitives";
 import { INBOX_CHANGED } from "@/components/InboxBell";
@@ -121,7 +122,8 @@ function Item({ item, actions, open, onToggle, onDelete, onAction }: {
           <AiMarkdown text={item.body} className="!text-[14px]" />
           {proposed.length > 1 && <ApproveAll views={proposed} onChange={onAction} />}
           {actions.map((a) => <AiActionCard key={a.id} view={a} onChange={onAction} />)}
-          <div className="flex justify-end mt-3">
+          <div className="flex justify-end gap-1 mt-3">
+            <AiPrintButton title={item.title} subtitle={item.fromName ?? INBOX_KIND_LABEL[item.kind]} date={formatDateTime(item.createdAt)} text={item.body} />
             <button type="button" className="btn btn-sm btn-ghost text-bad-fg" onClick={onDelete}><Trash2 size={14} aria-hidden /> Remove</button>
           </div>
         </div>
