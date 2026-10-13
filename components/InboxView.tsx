@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { BellOff, BellRing, CheckCheck, ChevronDown, FileText, Inbox, Lightbulb, MessageSquare, Trash2 } from "lucide-react";
+import { BellOff, BellRing, CheckCheck, ChevronDown, ClipboardCheck, FileText, Inbox, Lightbulb, MessageSquare, Trash2 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiPrintButton } from "@/components/AiPrint";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
@@ -25,13 +25,22 @@ const KIND: Record<InboxKind, { icon: typeof FileText; tone: string; tile: strin
   report: { icon: FileText, tone: "pill-info", tile: "bg-info-bg text-info-fg" },
   message: { icon: MessageSquare, tone: "pill-warn", tile: "bg-warn-bg text-warn-fg" },
   suggestion: { icon: Lightbulb, tone: "pill-ok", tile: "bg-ok-bg text-ok-fg" },
+  task: { icon: ClipboardCheck, tone: "pill-muted", tile: "bg-surface-3 text-muted" },
 };
+
+/** What the inbox lists when it is not told: everything but a task's news,
+ *  which is read on the task itself. */
+const LISTED: readonly InboxKind[] = ["report", "message", "suggestion"];
+
+const KIND_CHIP: Record<InboxKind, string> = { report: "Reports", message: "Messages", suggestion: "To approve", task: "Tasks" };
 
 type Filter = "all" | "unread" | InboxKind;
 
 const changed = () => window.dispatchEvent(new Event(INBOX_CHANGED));
 
-function DevicePush() {
+/** This device's notifications: a switch — as a line of text and a button,
+ *  or (compact) one icon button for a window's head. */
+export function DevicePush({ compact = false }: { compact?: boolean }) {
   const [state, setState] = useState<PushState | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -42,7 +51,6 @@ function DevicePush() {
       live = false;
     };
   }, []);
-  if (state === null) return null;
   const on = () =>
     start(async () => {
       setMsg(null);
@@ -56,6 +64,28 @@ function DevicePush() {
       await turnPushOff().catch(() => setMsg("Notifications could not be turned off — reload the page and try again."));
       setState(await pushState());
     });
+  if (state === null) return null;
+  if (compact) {
+    const label =
+      state === "on" ? "Notifications are on for this device — turn them off"
+      : state === "unsupported" ? "No notifications on this device — on an iPhone or iPad, add the app to the Home Screen and open it from there"
+      : state === "denied" ? "Notifications are blocked by the browser — allow them in its settings"
+      : "Turn on notifications for this device";
+    const can = state !== "unsupported" && state !== "denied";
+    return (
+      <button
+        type="button"
+        className={`icon-btn icon-btn-md ${state === "on" ? "text-ok-fg" : ""}`}
+        onClick={state === "on" ? off : on}
+        disabled={pending || !can}
+        title={msg ?? label}
+        aria-label={label}
+        aria-pressed={state === "on"}
+      >
+        {can ? <BellRing size={17} /> : <BellOff size={17} />}
+      </button>
+    );
+  }
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       {state === "on" ? (
@@ -132,8 +162,25 @@ function Item({ item, actions, open, onToggle, onDelete, onAction }: {
   );
 }
 
-export function InboxView({ items: initial, actions: initialActions, openId }: { items: InboxItemView[]; actions: AiActionView[]; openId: number | null }) {
-  const [items, setItems] = useState(initial);
+export function InboxView({
+  items: initial,
+  actions: initialActions,
+  openId,
+  kinds = LISTED,
+  device = true,
+  emptyHint = "Reports, messages and suggestions from the assistant and the automations land here, and on this device when notifications are on.",
+}: {
+  items: InboxItemView[];
+  actions: AiActionView[];
+  openId: number | null;
+  /** The kinds this list shows — an inbox tab's. */
+  kinds?: readonly InboxKind[];
+  /** This device's notifications switch above the list (the window keeps it in its head). */
+  device?: boolean;
+  emptyHint?: string;
+}) {
+  const [all, setItems] = useState(initial);
+  const items = useMemo(() => all.filter((i) => kinds.includes(i.kind)), [all, kinds]);
   const [actions, setActions] = useState(() => new Map(initialActions.map((a) => [a.id, a])));
   const [openIds, setOpenIds] = useState<Set<number>>(() => new Set(openId ? [openId] : []));
   const [filter, setFilter] = useState<Filter>("all");
@@ -146,9 +193,10 @@ export function InboxView({ items: initial, actions: initialActions, openId }: {
   }, [items, unread]);
   const shown = items.filter((it) => filter === "all" || (filter === "unread" ? !it.readAt : it.kind === filter));
 
-  const readNow = (ids: number[] | "all") => {
+  const readNow = (ids: number[]) => {
+    if (ids.length === 0) return;
     const now = new Date().toISOString();
-    setItems((xs) => xs.map((x) => (ids === "all" || ids.includes(x.id) ? { ...x, readAt: x.readAt ?? now } : x)));
+    setItems((xs) => xs.map((x) => (ids.includes(x.id) ? { ...x, readAt: x.readAt ?? now } : x)));
     markInboxRead(ids).then((r) => (r.ok ? changed() : setErr(r.error ?? "Could not mark it read."))).catch(() => setErr("Could not mark it read."));
   };
 
@@ -181,16 +229,15 @@ export function InboxView({ items: initial, actions: initialActions, openId }: {
   const chips: { id: Filter; label: string }[] = [
     { id: "all", label: "All" },
     { id: "unread", label: "Unread" },
-    { id: "report", label: "Reports" },
-    { id: "message", label: "Messages" },
-    { id: "suggestion", label: "Suggestions" },
+    // a tab of one kind needs no chip for it
+    ...(kinds.length > 1 ? kinds.map((k) => ({ id: k, label: KIND_CHIP[k] })) : []),
   ];
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="no-scrollbar flex items-center gap-1.5 min-w-0">
-          {chips.map((c) => {
+          {items.length > 0 && chips.map((c) => {
             const n = counts[c.id] ?? 0;
             if (c.id !== "all" && n === 0) return null;
             return (
@@ -201,9 +248,9 @@ export function InboxView({ items: initial, actions: initialActions, openId }: {
           })}
         </div>
         <div className="ms-auto flex flex-wrap items-center gap-1.5">
-          <DevicePush />
+          {device && <DevicePush />}
           {unread > 0 && (
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => readNow("all")}><CheckCheck size={14} aria-hidden /> Mark all read</button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => readNow(items.filter((i) => !i.readAt).map((i) => i.id))}><CheckCheck size={14} aria-hidden /> Mark all read</button>
           )}
         </div>
       </div>
@@ -213,7 +260,7 @@ export function InboxView({ items: initial, actions: initialActions, openId }: {
           <EmptyState
             icon={Inbox}
             title={items.length === 0 ? "Nothing here yet" : filter === "unread" ? "All read" : "Nothing of that kind"}
-            hint={items.length === 0 ? "Reports, messages and suggestions from the assistant and the automations land here, and on this device when notifications are on." : undefined}
+            hint={items.length === 0 ? emptyHint : undefined}
           />
         </div>
       ) : (

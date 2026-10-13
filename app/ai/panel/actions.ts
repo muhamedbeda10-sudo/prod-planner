@@ -6,10 +6,11 @@ import {
   type AiChatStatus, type AiConversationItem, type AutomationsData, type InboxItemView, type PlaybookRuleView,
 } from "@/lib/server/ai/panel";
 import { aiModel } from "@/lib/domain/ai";
+import type { InboxTab } from "@/lib/domain/inbox";
 import type { AiActionView } from "@/lib/domain/aiActions";
 
-// What the side panel's tabs load when they are opened — each the person's
-// own, read as the pages read it (lib/server/ai/panel).
+// What the AI and inbox windows load when a pane is opened — each the
+// person's own, read as the pages read it (lib/server/ai/panel).
 
 type Loaded<T> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -24,7 +25,7 @@ export async function loadAiChat(): Promise<Loaded<{ isOwner: boolean; model: st
   return { ok: true, isOwner: me.isOwner, model: aiModel(chat.model).label, status: chat.status, conversations };
 }
 
-export async function loadInbox(): Promise<Loaded<{ items: InboxItemView[]; actions: AiActionView[] }>> {
+export async function loadInbox(): Promise<Loaded<{ items: InboxItemView[]; actions: AiActionView[]; unread: Record<InboxTab, number> }>> {
   const me = await getCurrentUser();
   if (!me) return NOT_LOGGED_IN;
   return { ok: true, ...(await inboxData(me.id)) };

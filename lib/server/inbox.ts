@@ -3,8 +3,8 @@ import { prisma } from "@/lib/db";
 import { pushTo } from "@/lib/server/push";
 import { inboxPreview, type InboxKind } from "@/lib/domain/inbox";
 
-// Putting something in a person's inbox — a report, a message, a suggestion —
-// and pushing it to their devices. The inbox row is the delivery; the push is
+// Putting something in a person's inbox — a report, a message, a suggestion,
+// a task's news — and pushing it to their devices. The inbox row is the delivery; the push is
 // a courtesy on top of it (a person with no device turned on, or a device
 // that is off, still finds it under the bell).
 
@@ -19,6 +19,8 @@ export interface InboxDelivery {
   automationId?: number | null;
   runId?: number | null;
   actionIds?: number[];
+  /** A task's news: the task it is about — its notification opens the task. */
+  taskId?: number | null;
 }
 
 const TITLE_MAX = 200;
@@ -38,7 +40,7 @@ export async function deliverToInbox(items: readonly InboxDelivery[]): Promise<n
     const row = await prisma.aiInboxItem.create({
       data: {
         userId: i.userId, kind: i.kind, title: i.title.slice(0, TITLE_MAX), body: i.body.slice(0, BODY_MAX), fromName: i.fromName ?? null, fromUserId: i.fromUserId ?? null,
-        automationId: i.automationId ?? null, runId: i.runId ?? null, actionIds: i.actionIds ?? [],
+        automationId: i.automationId ?? null, runId: i.runId ?? null, actionIds: i.actionIds ?? [], taskId: i.taskId ?? null,
       },
       select: { id: true },
     });
@@ -47,7 +49,10 @@ export async function deliverToInbox(items: readonly InboxDelivery[]): Promise<n
   for (let k = 0; k < made.length; k += PUSH_AT_ONCE) {
     await Promise.all(
       made.slice(k, k + PUSH_AT_ONCE).map(async ({ id, item }) => {
-        const pushed = await pushTo(item.userId, { title: item.title, body: inboxPreview(item.body), url: `/inbox?item=${id}`, tag: `inbox-${id}` });
+        const url = item.taskId ? `/inbox?task=${item.taskId}` : `/inbox?item=${id}`;
+        // a task's news replaces its earlier notification on the device
+        const tag = item.taskId ? `task-${item.taskId}` : `inbox-${id}`;
+        const pushed = await pushTo(item.userId, { title: item.title, body: inboxPreview(item.body), url, tag });
         if (pushed.sent > 0) await prisma.aiInboxItem.update({ where: { id }, data: { pushedAt: new Date() } });
       }),
     );

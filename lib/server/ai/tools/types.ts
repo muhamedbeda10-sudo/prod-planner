@@ -82,6 +82,8 @@ interface ToolBase<I> {
   internal?: true;
   /** Only for the owner — Users & Permissions are theirs alone. */
   ownerOnly?: true;
+  /** Offered only to a person with this key (giving tasks). */
+  needs?: string;
   /** Only in a chat the person is in, never in an automation or the morning
    *  review: what must not move while nobody is watching. */
   liveOnly?: true;

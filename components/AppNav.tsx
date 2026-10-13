@@ -17,6 +17,7 @@ import { useCanSee } from "@/components/TabAccess";
 import { ChatDock } from "@/components/ChatDock";
 import { InboxBell } from "@/components/InboxBell";
 import { useAiPanel } from "@/components/AiPanel";
+import { useInboxPanel } from "@/components/InboxPanel";
 import { useOdooAlerts } from "@/components/OdooAlerts";
 import { LineTabs } from "@/components/LineTabs";
 import { Avatar, UserMenu } from "@/components/UserMenu";
@@ -195,7 +196,8 @@ export function AppNav({
   const aiPage = pathname === "/ai" || pathname.startsWith("/ai/");
   const panelCtx = useAiPanel();
   const panel = aiPage ? null : panelCtx;
-  const aiOn = aiPage || (!!panel?.shown && panel.state.view !== "inbox");
+  const aiOn = aiPage || !!panel?.shown;
+  const inboxPanel = useInboxPanel();
   const alerts = useOdooAlerts(odooAlerts.enabled, odooAlerts.count, user.id);
   // the ODOO tab lights up with the rows waiting to be closed; its badge
   // opens the popup rather than the page
@@ -416,14 +418,13 @@ export function AppNav({
             <LineTabs line={line} />
             {/* the AI assistant has no button here: its round button sits in
                 the corner of every page (components/AiPanel) */}
-            {/* what the assistant and the automations sent this person */}
-            {(ai || inbox.any) && (
-              <InboxBell
-                initial={inbox.unread}
-                active={isActive("/inbox") || (!!panel?.shown && panel.state.view === "inbox")}
-                onOpen={panel ? () => panel.toggle("inbox") : undefined}
-              />
-            )}
+            {/* the inbox — alerts, reports and tasks — for everyone: anyone
+                can be given a task. It opens as a window of its own. */}
+            <InboxBell
+              initial={inbox.unread}
+              active={isActive("/inbox") || !!inboxPanel?.shown}
+              onOpen={inboxPanel && !isActive("/inbox") ? inboxPanel.toggle : undefined}
+            />
             {/* chat is a glance, not a destination — an icon here with its
                 unread badge, opening a panel over whatever page you are on */}
             <div className={canSee("/chat") ? "hidden md:block" : "hidden"}>

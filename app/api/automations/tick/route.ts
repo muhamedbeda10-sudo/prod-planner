@@ -25,12 +25,14 @@ async function claimMinute(now: Date): Promise<boolean> {
 }
 
 /** Whether pages still need to tick: no scheduler, and something to run —
- *  an automation on, or someone's morning review. A page told no asks again
+ *  an automation on, a task's due day to watch, or someone's morning review. A page told no asks again
  *  only rarely. */
 async function pagesNeeded(): Promise<boolean> {
   const s = await prisma.aiSettings.findUnique({ where: { id: 1 }, select: { tickSecretHash: true } });
   if (s?.tickSecretHash) return false;
   if ((await prisma.automation.count({ where: { enabled: true, deletedAt: null } })) > 0) return true;
+  // a task with a due day still to pass reminds its people when it does
+  if ((await prisma.task.count({ where: { status: { in: ["open", "in_progress", "returned"] }, dueDate: { not: null }, overdueSentAt: null } })) > 0) return true;
   return (await prisma.user.count({ where: { active: true, perms: { contains: REVIEW_KEY } } })) > 0;
 }
 

@@ -10,7 +10,7 @@ import { automationViews, type AutomationView } from "@/lib/server/automations/v
 import { AI_DENY_TEXT } from "@/lib/domain/ai";
 import { playbookText } from "@/lib/domain/aiPlaybook";
 import { describeWindow, inAutomationWindow } from "@/lib/domain/automations";
-import type { InboxKind } from "@/lib/domain/inbox";
+import { INBOX_TABS, tabOfKind, type InboxKind, type InboxTab } from "@/lib/domain/inbox";
 import type { AiActionView } from "@/lib/domain/aiActions";
 
 // What the assistant's tabs show — the chat, the inbox, the automations and
@@ -76,17 +76,29 @@ export interface InboxItemView {
 
 const INBOX_SHOWN = 100;
 
-/** A person's inbox, newest first, with the changes proposed in it — theirs to decide. */
-export async function inboxData(userId: number): Promise<{ items: InboxItemView[]; actions: AiActionView[] }> {
+/** What is not read yet, by the inbox's tabs. */
+export async function inboxCounts(userId: number): Promise<Record<InboxTab, number>> {
+  const rows = await prisma.aiInboxItem.groupBy({ by: ["kind"], where: { userId, readAt: null }, _count: { _all: true } });
+  const out = Object.fromEntries(INBOX_TABS.map((t) => [t, 0])) as Record<InboxTab, number>;
+  for (const r of rows) out[tabOfKind(r.kind as InboxKind)] += r._count._all;
+  return out;
+}
+
+/** A person's inbox, newest first, with the changes proposed in it — theirs
+ *  to decide. A task's news is not listed: it is read on the task. */
+export async function inboxData(userId: number): Promise<{ items: InboxItemView[]; actions: AiActionView[]; unread: Record<InboxTab, number> }> {
   await expireProposals();
-  const rows = await prisma.aiInboxItem.findMany({ where: { userId }, orderBy: { id: "desc" }, take: INBOX_SHOWN });
+  const [rows, unread] = await Promise.all([
+    prisma.aiInboxItem.findMany({ where: { userId, kind: { not: "task" } }, orderBy: { id: "desc" }, take: INBOX_SHOWN }),
+    inboxCounts(userId),
+  ]);
   const ids = [...new Set(rows.flatMap((r) => r.actionIds))];
   const actions = ids.length ? (await prisma.aiAction.findMany({ where: { id: { in: ids }, userId } })).map(toView) : [];
   const items: InboxItemView[] = rows.map((r) => ({
     id: r.id, kind: r.kind as InboxKind, title: r.title, body: r.body, fromName: r.fromName,
     createdAt: r.createdAt.toISOString(), readAt: r.readAt?.toISOString() ?? null, actionIds: r.actionIds,
   }));
-  return { items, actions };
+  return { items, actions, unread };
 }
 
 export interface AutomationsData {

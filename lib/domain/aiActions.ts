@@ -12,7 +12,7 @@
 export type AiRisk = "low" | "high" | "destructive";
 
 /** The part of the app a write tool works on — each has its own key. */
-export type AiArea = "tracker" | "machines" | "simulator" | "data" | "setup" | "imports" | "automations" | "playbook" | "users";
+export type AiArea = "tracker" | "machines" | "simulator" | "data" | "setup" | "imports" | "automations" | "tasks" | "playbook" | "users";
 
 /** The key a person needs for the assistant to work on an area for them. The
  *  playbook has none: it is the plant's own rules, kept by its admins; nor
@@ -25,6 +25,9 @@ export const AI_AREA_KEY: Record<AiArea, string | null> = {
   setup: "ai.act.setup",
   imports: "ai.act.import",
   automations: "ai.automations",
+  // a task's own rules decide: giving one needs the key for it, acting on
+  // one only being on it — the assistant asks no key of its own
+  tasks: null,
   playbook: null,
   users: null,
 };

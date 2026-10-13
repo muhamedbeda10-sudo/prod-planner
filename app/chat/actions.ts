@@ -1,8 +1,5 @@
 "use server";
 
-import path from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
-import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
 import {
@@ -13,6 +10,7 @@ import {
 import { unreadInboxCount } from "@/lib/server/inbox";
 import { broadcast } from "@/lib/server/realtimeBroadcast";
 import { chatTopic } from "@/lib/domain/chatTopic";
+import { filesOf, storeUploads } from "@/lib/server/uploads";
 
 // Chat needs no permission key — every active account can message every other
 // and can open a group. What it DOES need is scoping: every query here pins
@@ -22,14 +20,7 @@ import { chatTopic } from "@/lib/domain/chatTopic";
 const NOT_LOGGED_IN = "You are not logged in — refresh the page.";
 const MAX_BODY = 2000;
 const MAX_FILES = 6;
-const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB — same ceiling as note photos
-const MAX_DB_IMAGE_BYTES = 2 * 1024 * 1024; // DB fallback: compressed images only
 const MAX_GROUP_NAME = 60;
-
-// the allowed set, by extension (browser MIME strings are too inconsistent to
-// gate on): images render inline, the documents render as file cards
-const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
-const DOC_EXTENSIONS = new Set([".pdf", ".xls", ".xlsx", ".csv", ".doc", ".docx"]);
 
 const kindOf = (raw: unknown): ThreadKind => (raw === "group" ? "group" : "user");
 
@@ -62,7 +53,7 @@ export async function sendChatMessage(
   const text = String(formData.get("body") ?? "").trim();
   const moRaw = String(formData.get("mo") ?? "").trim();
   const replyToId = Number(formData.get("replyTo")) || 0;
-  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  const files = filesOf(formData);
 
   if (text.length > MAX_BODY) return { ok: false, error: `Message is too long (max ${MAX_BODY} characters).` };
   if (!Number.isInteger(targetId)) return { ok: false, error: "Invalid conversation." };
@@ -106,50 +97,10 @@ export async function sendChatMessage(
     replyRef = { id: target.id, fromId: target.fromId, fromName: target.from.name, snippet: snippetOf(target) };
   }
 
-  // ---- attachments: whitelist, cap, then store. Priority order: Vercel Blob →
-  // local dev dir → (images only) data URLs straight into the row, so photos
-  // keep working on Vercel even before Blob storage is configured ----
-  for (const f of files) {
-    const ext = path.extname(f.name).toLowerCase();
-    if (!IMAGE_EXTENSIONS.has(ext) && !DOC_EXTENSIONS.has(ext)) {
-      return { ok: false, error: `"${f.name}" — only images, PDF, Excel, Word and CSV files are allowed.` };
-    }
-    if (f.size > MAX_FILE_BYTES) return { ok: false, error: `"${f.name}" is larger than 10 MB.` };
-  }
-  const useBlob = !!process.env.BLOB_READ_WRITE_TOKEN; // cloud + any machine with the token
-  const dbImagesOnly = !useBlob && !!process.env.VERCEL; // ephemeral filesystem — images inline, documents refused
-  const attachments: ChatAttachment[] = [];
-  if (files.length > 0) {
-    const dir = path.join(process.cwd(), "uploads", "chat");
-    if (!useBlob && !dbImagesOnly) await mkdir(dir, { recursive: true });
-    for (const f of files) {
-      const ext = path.extname(f.name).toLowerCase();
-      const type = f.type || "application/octet-stream";
-      let url: string;
-      if (useBlob) {
-        const stored = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
-        const blob = await put(`chat/${stored}`, Buffer.from(await f.arrayBuffer()), {
-          access: "public",
-          contentType: type,
-          addRandomSuffix: true, // unguessable URL — the app itself stays behind login
-        });
-        url = blob.url;
-      } else if (dbImagesOnly) {
-        if (!IMAGE_EXTENSIONS.has(ext)) {
-          return { ok: false, error: `"${f.name}" — document storage is not configured yet (Vercel Blob); photos still work.` };
-        }
-        if (f.size > MAX_DB_IMAGE_BYTES) {
-          return { ok: false, error: `"${f.name}" is too large to store without Blob storage — max 2 MB per photo.` };
-        }
-        url = `data:${type};base64,${Buffer.from(await f.arrayBuffer()).toString("base64")}`;
-      } else {
-        const stored = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
-        await writeFile(path.join(dir, stored), Buffer.from(await f.arrayBuffer()));
-        url = `/uploads/chat/${stored}`;
-      }
-      attachments.push({ url, name: f.name, size: f.size, type });
-    }
-  }
+  // ---- attachments: whitelist, cap, then store (lib/server/uploads) ----
+  const stored = await storeUploads(files, "chat");
+  if (!stored.ok) return { ok: false, error: stored.error };
+  const attachments: ChatAttachment[] = stored.files;
 
   const row = await prisma.chatMessage.create({
     data: {

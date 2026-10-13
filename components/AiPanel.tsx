@@ -1,28 +1,27 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Bot } from "lucide-react";
 import { AiWorkspace, type AiLayout, type AiTab, type AiView } from "@/components/AiWorkspace";
+import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
+import { useInboxPanel } from "@/components/InboxPanel";
 
 // The AI assistant on every page: a round button in the corner opens it as
 // a card in the corner (the page stays usable beside it); one click widens it
-// to a window in the middle of the screen with the chats and the inbox down
-// its side; on a phone it is the whole screen. It stays open — and a chat
-// being answered keeps going — while the person moves between pages, steps
-// back to the corner when a link in it opens a page, closes on Escape, and
-// reopens as it was left. It sits inside <main>, where the app's control and
-// table styles live, but is fixed to the window above the bar.
+// to a window in the middle of the screen with the chats down its side; on a
+// phone it is the whole screen. It stays open — and a chat being answered
+// keeps going — while the person moves between pages, steps back to the
+// corner when a link in it opens a page, closes on Escape, and reopens as it
+// was left. The inbox is a window of its own (components/InboxPanel); one of
+// the two is open at a time. It sits inside <main>, where the app's control
+// and table styles live, but is fixed to the window above the bar.
 
 export interface AiPanelConfig {
   /** The assistant itself is open to this person (the chat, the playbook). */
   ai: boolean;
   /** They may keep automations. */
   automations: boolean;
-  /** Something was ever sent to their inbox (a person without the assistant still gets messages). */
-  inbox: boolean;
-  /** The inbox's unread count when the page was made. */
-  inboxUnread?: number;
   isOwner: boolean;
 }
 
@@ -56,90 +55,35 @@ export function useAiPanel(): PanelApi | null {
   return useContext(Ctx);
 }
 
-const STORE_KEY = "ai-panel:v2";
-const PHONE = "(max-width: 767px)";
-
-// The window's state lives in this browser's storage — the source of truth,
-// so it reopens as it was after a reload (memory when storage is blocked).
-// The server renders it closed; the browser takes over after hydration.
-const listeners = new Set<() => void>();
-let memory = "";
-/** Opened since this page loaded: on a phone a window left open is not
- *  reopened over the page by a reload — only by a tap. */
-let openedNow = false;
-
-function subscribe(cb: () => void) {
-  listeners.add(cb);
-  window.addEventListener("storage", cb);
-  return () => {
-    listeners.delete(cb);
-    window.removeEventListener("storage", cb);
-  };
-}
-
-function readRaw(): string {
-  try {
-    return localStorage.getItem(STORE_KEY) ?? memory;
-  } catch {
-    return memory;
-  }
-}
-
-function parseStored(raw: string): Partial<PanelState> {
-  try {
-    const v = JSON.parse(raw || "null") as Partial<PanelState> | null;
-    return v && typeof v === "object" ? v : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeStored(s: PanelState) {
-  memory = JSON.stringify(s);
-  try {
-    localStorage.setItem(STORE_KEY, memory);
-  } catch {
-    /* storage unavailable — holds for this page load only */
-  }
-  listeners.forEach((l) => l());
-}
-
-const isPhone = () => window.matchMedia(PHONE).matches;
-
-function subscribePhone(cb: () => void) {
-  const m = window.matchMedia(PHONE);
-  m.addEventListener("change", cb);
-  return () => m.removeEventListener("change", cb);
-}
-
-/** Whether the screen is a phone's — the server says no. */
-function usePhone(): boolean {
-  return useSyncExternalStore(subscribePhone, isPhone, () => false);
-}
+const store = floatStore("ai-panel:v2");
+const serverRaw = () => "";
 
 /** The assistant's own pages show it full size; the window stays out of their way. */
 const onAiPage = (path: string) => path === "/ai" || path.startsWith("/ai/");
 
-const VIEWS: AiView[] = ["chat", "history", "inbox", "automations", "playbook"];
+const VIEWS: AiView[] = ["chat", "history", "automations", "playbook"];
 
 export function AiPanelProvider({ config, children }: { config: AiPanelConfig; children: ReactNode }) {
   const tabs = useMemo<AiTab[]>(() => {
     const t: AiTab[] = [];
     if (config.ai) t.push("chat");
-    if (config.ai || config.inbox) t.push("inbox");
     if (config.automations) t.push("automations");
     if (config.ai) t.push("playbook");
     return t;
-  }, [config.ai, config.inbox, config.automations]);
+  }, [config.ai, config.automations]);
 
-  const raw = useSyncExternalStore(subscribe, readRaw, () => "");
+  const raw = useSyncExternalStore(store.subscribe, store.read, serverRaw);
   const phone = usePhone();
+  // opened since this page loaded: on a phone a window left open is not
+  // reopened over the page by a reload — only by a tap (which may store
+  // nothing new, so this is what shows it)
+  const [openedNow, setOpenedNow] = useState(false);
   const state = useMemo<PanelState>(() => {
-    const s = parseStored(raw);
+    const s = parseStored<PanelState>(raw);
     const allowed = (v: AiView | undefined): v is AiView => !!v && VIEWS.includes(v) && (v === "history" ? tabs.includes("chat") : tabs.includes(v));
-    const view = allowed(s.view) ? s.view : tabs[0] ?? "inbox";
+    const view = allowed(s.view) ? s.view : tabs[0] ?? "chat";
     return { open: !!s.open && (openedNow || !isPhone()), large: !!s.large, view };
-  }, [raw, tabs]);
+  }, [raw, tabs, openedNow]);
   const pathname = usePathname();
   const aiPage = onAiPage(pathname);
 
@@ -149,30 +93,31 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
   useEffect(() => {
     if (pathname === lastPath.current) return;
     lastPath.current = pathname;
-    const cur = parseStored(readRaw());
-    if (cur.open && (cur.large || isPhone())) {
-      writeStored({ open: !isPhone(), large: false, view: cur.view ?? tabs[0] ?? "inbox" });
-    }
+    const cur = parseStored<PanelState>(store.read());
+    if (cur.open && (cur.large || isPhone())) store.write({ open: !isPhone(), large: false, view: cur.view ?? tabs[0] ?? "chat" });
   }, [pathname, tabs]);
 
   const shown = state.open && tabs.length > 0 && !aiPage;
-  const modal = shown && (state.large || phone);
 
-  // the page behind the window in the middle (or the whole screen) does not scroll
-  useEffect(() => {
-    const el = document.documentElement;
-    el.classList.toggle("ai-modal", modal);
-    return () => el.classList.remove("ai-modal");
-  }, [modal]);
+  const put = useCallback(
+    (next: Partial<PanelState>) => {
+      if (next.open) {
+        setOpenedNow(true);
+        if (!state.open) announceOpen("ai");
+      }
+      store.write({ ...state, ...next });
+    },
+    [state],
+  );
+  const close = useCallback(() => put({ open: false }), [put]);
+
+  useWindowChrome("ai", shown, shown && (state.large || phone), close);
+  useCloseWhenOtherOpens("ai", shown, close);
 
   const api = useMemo<PanelApi>(() => {
     const fix = (v: AiView | undefined, cur: AiView): AiView => {
       const ok = (x: AiView) => (x === "history" ? tabs.includes("chat") : tabs.includes(x));
       return v && ok(v) ? v : ok(cur) ? cur : tabs[0];
-    };
-    const put = (next: Partial<PanelState>) => {
-      if (next.open) openedNow = true;
-      writeStored({ ...state, ...next });
     };
     return {
       tabs,
@@ -186,21 +131,11 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
       },
       openTab: (view) => put({ open: true, view: fix(view, state.view) }),
       open: () => put({ open: true, view: fix(undefined, state.view) }),
-      close: () => put({ open: false }),
+      close,
       setLarge: (v) => put({ large: v }),
       setView: (view) => put({ view: fix(view, state.view) }),
     };
-  }, [tabs, shown, aiPage, state]);
-
-  // Escape closes it
-  useEffect(() => {
-    if (!shown) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") api.close();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [shown, api]);
+  }, [tabs, shown, aiPage, state, put, close]);
 
   if (tabs.length === 0) return <>{children}</>;
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
@@ -209,8 +144,9 @@ export function AiPanelProvider({ config, children }: { config: AiPanelConfig; c
 /** The round button in the corner, and the window itself — placed inside
  *  <main>. The window is made the first time it opens, then kept (hidden
  *  when closed), so what it was doing carries on. */
-export function AiPanel({ isOwner, inboxUnread = 0 }: { isOwner: boolean; inboxUnread?: number }) {
+export function AiPanel({ isOwner }: { isOwner: boolean }) {
   const p = useAiPanel();
+  const inbox = useInboxPanel();
   const phone = usePhone();
   const [made, setMade] = useState(false);
   if (p?.shown && !made) setMade(true);
@@ -220,13 +156,14 @@ export function AiPanel({ isOwner, inboxUnread = 0 }: { isOwner: boolean; inboxU
 
   // automations and the playbook open in the large window on a wide screen
   const onView = (v: AiView) => {
-    if (!phone && !state.large && (v === "automations" || v === "playbook")) writeStored({ ...state, large: true, view: v });
+    if (!phone && !state.large && (v === "automations" || v === "playbook")) store.write({ ...state, large: true, view: v });
     else p.setView(v);
   };
 
   return (
     <>
-      {!p.shown && (
+      {/* the button steps aside while either window is open */}
+      {!p.shown && !inbox?.shown && (
         <button type="button" className="ai-fab no-print" onClick={p.open} aria-label="Open the AI assistant" title="AI assistant">
           <Bot size={26} aria-hidden />
         </button>
@@ -242,7 +179,6 @@ export function AiPanel({ isOwner, inboxUnread = 0 }: { isOwner: boolean; inboxU
               layout={layout}
               visible={p.shown}
               isOwner={isOwner}
-              inboxUnread={inboxUnread}
               onExpand={p.setLarge}
               onClose={p.close}
             />

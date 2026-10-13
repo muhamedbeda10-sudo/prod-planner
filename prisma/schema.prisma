@@ -109,20 +109,20 @@ model HandoverEntry {
 // existing MOs are left untouched, new MOs are added. This is the general
 // orders list; weekly plans only contribute delivery schedules.
 model MasterOrder {
-  id            Int       @id @default(autoincrement())
-  mo            String    @unique
+  id               Int       @id @default(autoincrement())
+  mo               String    @unique
   // Which of the plant's two products this order is — a transformer (TR) or
   // an LV panel (LV). Stamped by the plan import it came from and never
   // inferred from the order's shape. Every screen shows ONE line at a time.
-  line          String    @default("TR")
-  soi           String?
-  urgent        Boolean   @default(false)
-  customer      String?
-  fgCode        String?
-  bom           String
-  kva           String?
-  rating        String?
-  secItem       String?
+  line             String    @default("TR")
+  soi              String?
+  urgent           Boolean   @default(false)
+  customer         String?
+  fgCode           String?
+  bom              String
+  kva              String?
+  rating           String?
+  secItem          String?
   // The LV plan's own columns. `product` is the panel type (LSS / USS);
   // `ospEncloser` the enclosures bought outside rather than made here;
   // `materialsRemarks` the sheet's second remarks column, about parts.
@@ -133,53 +133,53 @@ model MasterOrder {
   // (transformers / LV panels), "MB" the LV meter boxes' own sheet. A plan's
   // import revises and takes off the month only the orders of its own plan.
   family           String    @default("")
-  planQty       Float     @default(0)
+  planQty          Float     @default(0)
   // A plan import that brings a DIFFERENT qty for an order already in the
   // registry never overwrites planQty: the sheet's figure waits here, with the
   // plan that brought it, until the planner uses it or keeps the old one.
-  pendingPlanQty  Float?
-  pendingQtyMonth String?
-  pendingQtyAt    DateTime?
+  pendingPlanQty   Float?
+  pendingQtyMonth  String?
+  pendingQtyAt     DateTime?
   // The order's spec columns, shown on the tracker. NONE of them is imported:
   // the monthly sheet does not carry them in a form the import can trust, so
   // the planner types them on the tracker and a re-import leaves them alone.
   // Fins sits beside the components (it is one of them, welded on the tank);
   // the rest sit beside KVA.
-  fins          String?
-  crcSize       String? // "CRC Size" — 900, "-", …
-  colorRal      String?
-  sfm           String?
-  remarks       String?
-  source        String? // which monthly plan (month label) FIRST added it
+  fins             String?
+  crcSize          String? // "CRC Size" — 900, "-", …
+  colorRal         String?
+  sfm              String?
+  remarks          String?
+  source           String? // which monthly plan (month label) FIRST added it
   // EVERY monthly plan the MO appeared in (CSV of month labels) — a carried-over
   // order shows under each of its months in the tracker filter, with a badge
-  months        String    @default("")
-  status        String    @default("open") // open | closed
+  months           String    @default("")
+  status           String    @default("open") // open | closed
   // OSP — quantities outsourced per component (made outside, not by our depts).
   // They never appear in the dept worklists and count as covered in the tracker.
-  ospCF         Float     @default(0)
-  ospTC         Float     @default(0)
-  ospTN         Float     @default(0)
-  ospCB         Float     @default(0)
+  ospCF            Float     @default(0)
+  ospTC            Float     @default(0)
+  ospTN            Float     @default(0)
+  ospCB            Float     @default(0)
   // Components this order does NOT need at all (CSV of CF/TC/TN/CB). The plan
   // sheets can't express this — it is set manually on the tracker.
-  excludedItems String?
+  excludedItems    String?
   // Components this order needs although the KVA/rating rule says otherwise
   // (CSV, in practice AR/MB). The planner's own say over the rule: together
   // with excludedItems, the six components are his to switch on or off.
-  includedItems String?
+  includedItems    String?
   // Marked IMPORTANT by the admin: shows in a dedicated priority table on top
   // of every dept worklist until its work is done.
-  priority      Boolean   @default(false)
+  priority         Boolean   @default(false)
   // ON HOLD — the planner paused this order: it stays open on the tracker
   // (tinted, with the reason) but leaves every worklist queue and the ETA
   // until released. `holdAt` set = on hold.
-  holdAt        DateTime?
-  holdNote      String?
-  holdBy        String?
-  closedAt      DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  holdAt           DateTime?
+  holdNote         String?
+  holdBy           String?
+  closedAt         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([bom])
   @@index([status])
@@ -299,27 +299,27 @@ model QueueNote {
 // Application account. Admin manages accounts and assigns granular permission
 // keys (see lib/domain/permissions.ts) from the in-app Users page.
 model User {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique // login identifier (their Gmail)
-  name         String
-  passwordHash String // scrypt: salt:hash hex
-  isAdmin      Boolean   @default(false) // full access to the app's tools
+  id               Int                @id @default(autoincrement())
+  email            String             @unique // login identifier (their Gmail)
+  name             String
+  passwordHash     String // scrypt: salt:hash hex
+  isAdmin          Boolean            @default(false) // full access to the app's tools
   // The one account that owns the app: every right, and the only one that
   // sees and manages Users & Permissions — admins included.
-  isOwner      Boolean   @default(false)
-  perms        String    @default("") // CSV of permission keys
+  isOwner          Boolean            @default(false)
+  perms            String             @default("") // CSV of permission keys
   // The screens this account does NOT see (CSV of tab ids — lib/domain/tabs.ts).
   // Empty sees everything; the owner sets it per person, admins included.
-  hiddenTabs   String    @default("")
+  hiddenTabs       String             @default("")
   // The person's own photo, in the bar's round button — a Vercel Blob URL,
   // or /uploads/avatars/<file> where there is no Blob store. Null = initials.
-  avatarUrl    String?
-  active       Boolean   @default(true) // deactivated users cannot log in
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  sessions     Session[]
-  sentMessages     ChatMessage[] @relation("sentMessages")
-  receivedMessages ChatMessage[] @relation("receivedMessages")
+  avatarUrl        String?
+  active           Boolean            @default(true) // deactivated users cannot log in
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  sessions         Session[]
+  sentMessages     ChatMessage[]      @relation("sentMessages")
+  receivedMessages ChatMessage[]      @relation("receivedMessages")
   chatGroups       ChatGroupMember[]
   consumableIssues ConsumableIssue[]
   powderScraps     PowderScrap[]
@@ -329,10 +329,13 @@ model User {
   aiUsage          AiUsage[]
   aiActions        AiAction[]
   aiInbox          AiInboxItem[]
-  aiInboxSent      AiInboxItem[] @relation("inboxSent")
+  aiInboxSent      AiInboxItem[]      @relation("inboxSent")
   pushDevices      PushSubscription[]
   automations      Automation[]
   aiFiles          AiFile[]
+  tasksCreated     Task[]             @relation("tasksCreated")
+  taskAssignments  TaskAssignee[]
+  taskUpdates      TaskUpdate[]
 }
 
 // A person's own view settings — the Plan Tracker's columns, folded and
@@ -356,25 +359,25 @@ model UserPref {
 // makes it arrive without a refresh. readAt doubles as the DM unread flag;
 // group read state lives on ChatGroupMember.lastReadId.
 model ChatMessage {
-  id          Int       @id @default(autoincrement())
-  fromId      Int
-  toId        Int? // direct recipient — null for group messages
-  groupId     Int? // group — null for direct messages
-  body        String
-  mo          String? // attached order reference — renders as a chip opening /trace
-  attachments String? // JSON array of {url,name,size,type} (images / PDF / Office)
+  id            Int       @id @default(autoincrement())
+  fromId        Int
+  toId          Int? // direct recipient — null for group messages
+  groupId       Int? // group — null for direct messages
+  body          String
+  mo            String? // attached order reference — renders as a chip opening /trace
+  attachments   String? // JSON array of {url,name,size,type} (images / PDF / Office)
   // "delete for me" on a DIRECT message: each end can hide it from their OWN
   // view; the row stays because the other end still sees it. Group messages
   // use ChatMessageHide (one row per hiding member) instead.
-  hiddenForFrom Boolean @default(false)
-  hiddenForTo   Boolean @default(false)
+  hiddenForFrom Boolean   @default(false)
+  hiddenForTo   Boolean   @default(false)
   // pinned to the top of its conversation (DM or group), by either side
-  pinnedAt DateTime?
-  pinnedBy Int?
+  pinnedAt      DateTime?
+  pinnedBy      Int?
   // reply-to (quote): points at an earlier message in the SAME conversation
-  replyToId Int?
-  readAt    DateTime? // null = the DM recipient hasn't opened the thread yet
-  createdAt DateTime  @default(now())
+  replyToId     Int?
+  readAt        DateTime? // null = the DM recipient hasn't opened the thread yet
+  createdAt     DateTime  @default(now())
 
   from  User       @relation("sentMessages", fields: [fromId], references: [id], onDelete: Cascade)
   to    User?      @relation("receivedMessages", fields: [toId], references: [id], onDelete: Cascade)
@@ -473,7 +476,7 @@ model Settings {
   // decides the shop floor is ready to work off the serials. Turning it off
   // again is always safe — the tanks already recorded stay in the database and
   // pick up where they left off when it comes back on.
-  tankTracking    Boolean @default(false)
+  tankTracking Boolean @default(false)
 
   // Master switch for planning work onto MACHINES: the machine board and the
   // Machine column on the worklists, the machine sheets, and the Floor view.
@@ -552,17 +555,17 @@ model StageCapacity {
 // hours), entered by the admin. Compared against the std-hours the ledger says
 // that day EARNED, it calibrates the standard times to this plant's real pace.
 model DeptDayHours {
-  id        Int      @id @default(autoincrement())
-  date      DateTime // day-only granularity
-  dept      String // Cut | Welding | ShotBlast | Painting
-  hours     Float
+  id         Int      @id @default(autoincrement())
+  date       DateTime // day-only granularity
+  dept       String // Cut | Welding | ShotBlast | Painting
+  hours      Float
   // The quick entry: heads present × hours each. Null on a day summed from
   // the per-worker roster.
   people     Int?
   hoursEach  Float?
   source     String   @default("roster") // roster | quick
   recordedBy String?
-  updatedAt DateTime @default(now()) @updatedAt
+  updatedAt  DateTime @default(now()) @updatedAt
 
   @@unique([date, dept])
 }
@@ -587,11 +590,11 @@ model Machine {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  shifts    ShiftEntry[]
-  downtimes MachineDowntime[]
-  lines     WorklistMachine[]
-  itemTimes MachineItemTime[]
-  output    HandoverEntry[]
+  shifts     ShiftEntry[]
+  downtimes  MachineDowntime[]
+  lines      WorklistMachine[]
+  itemTimes  MachineItemTime[]
+  output     HandoverEntry[]
   manualJobs ManualJob[]
   sheetCuts  SheetCutLog[]
   rules      MachineRule[]
@@ -797,13 +800,13 @@ model Worker {
   // man who made it, with or without the app.
   stamp    String?
 
-  depts     String   @default("") // CSV of section codes (lib/domain/tanks.ts WORKER_SECTIONS)
-  active    Boolean  @default(true) // inactive workers stay on old records, leave the dropdowns
+  depts         String    @default("") // CSV of section codes (lib/domain/tanks.ts WORKER_SECTIONS)
+  active        Boolean   @default(true) // inactive workers stay on old records, leave the dropdowns
   // On vacation until this day (inclusive): absent on the shift log by default
   // and out of the dropdowns until then. Null = at work.
   vacationUntil DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   shifts           ShiftEntry[]
   consumableIssues ConsumableIssue[]
@@ -919,48 +922,48 @@ model TankSerialCounter {
 // label the monthly plan uses). It is part of the identity, so importing a
 // month's sheet again updates that month's lines instead of doubling them.
 model MaterialUsage {
-  id            Int      @id @default(autoincrement())
+  id                  Int      @id @default(autoincrement())
   // Which product line's nesting this is — TR or LV, stamped from the toggle
   // when the line is typed or its sheet imported. The tab shows one at a time.
-  line          String   @default("TR")
-  month         String   @default("") // "" = entered before months existed
-  bom           String
-  mo            String   @default("") // "" = the line covers the BOM (how the sheet writes it)
-  units         Float    @default(0) // Quantity of Units
-  partCode      String   @default("") // FB-022 — the part this line's sheets go into
-  partName      String   @default("") // TANK, TOP COVER …
-  materialCode  String   @default("") // the sheet's "Codes": T-SSS-5MM
-  material      String // Steel | Stainless steel | … (lib/domain/material.ts)
-  thicknessMm   Float
-  sheetSize     String // "1220*2440"
-  sheetsPerUnit Float // No. of Sheets in BOM for one Unit
+  line                String   @default("TR")
+  month               String   @default("") // "" = entered before months existed
+  bom                 String
+  mo                  String   @default("") // "" = the line covers the BOM (how the sheet writes it)
+  units               Float    @default(0) // Quantity of Units
+  partCode            String   @default("") // FB-022 — the part this line's sheets go into
+  partName            String   @default("") // TANK, TOP COVER …
+  materialCode        String   @default("") // the sheet's "Codes": T-SSS-5MM
+  material            String // Steel | Stainless steel | … (lib/domain/material.ts)
+  thicknessMm         Float
+  sheetSize           String // "1220*2440"
+  sheetsPerUnit       Float // No. of Sheets in BOM for one Unit
   // "No. of Sheets in Actual Nesting for one Unit", STORED AS THE SHEET WRITES
   // IT. It used to be derived back out of sheetsUsed ÷ units, which is a
   // round trip through a rounded product: the figure shown was never quite the
   // figure imported, and with no units on the line it vanished. Everything the
   // tab multiplies — the job, a produced quantity — multiplies THIS.
-  actualPerUnit Float?
+  actualPerUnit       Float?
   // The rate was TYPED in the tab rather than read off the sheet. A re-import
   // then leaves it alone: the planner types it for the lines the sheet does
   // not carry, and a fresh sheet must never blank what he worked out.
-  actualPerUnitManual Boolean @default(false)
-  sheetsUsed    Float? // No. of Sheets in Actual Nesting for Job — blank until nested
-  producedQty   Float? // units actually produced so far — the daily entry
+  actualPerUnitManual Boolean  @default(false)
+  sheetsUsed          Float? // No. of Sheets in Actual Nesting for Job — blank until nested
+  producedQty         Float? // units actually produced so far — the daily entry
   // The line's row in the sheet it came from, so the tab reads in the sheet's
   // own order rather than alphabetically. Lines typed in the tab sort last.
-  sortOrder     Int      @default(0)
+  sortOrder           Int      @default(0)
   // The newer sheet's own columns: the SOI it files the MO under, the weight
   // of one sheet (kg — the actual weight is that × the pieces nested for the
   // job), and the planner's average utilization of the nesting.
-  soi           String   @default("")
+  soi                 String   @default("")
   // the newest sheet's first column: the MTR request the sheets were drawn on
-  mtr           String   @default("")
-  weightKg      Float?
-  utilization   Float?
-  note          String?
-  recordedBy    String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  mtr                 String   @default("")
+  weightKg            Float?
+  utilization         Float?
+  note                String?
+  recordedBy          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@unique([month, bom, mo, partCode, material, thicknessMm, sheetSize])
   @@index([bom])
@@ -979,31 +982,31 @@ model MaterialUsage {
 // plan's MOs (PF01/MO/…), so the row stands on its own rather than linking
 // to the orders registry.
 model OdooEntry {
-  id         Int      @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
   // Which product line's close-out this is — TR or LV. Stamped from the
   // toggle when the row is typed or imported, from the order when it is born
   // of a closing. The tab shows one line at a time.
-  line       String   @default("TR")
+  line       String    @default("TR")
   date       DateTime // the day of the attempt (day-only granularity)
   soi        String?
   fgCode     String // FB-022-14003E11M11 — Odoo's finished-good code
   product    String // Tank | Top Cover | Core Frame | Encloser | Cable Box …
   odooMo     String // SF01/MO/06234
   qty        Float
-  status     String   @default("MO to be close") // MO to be close | Pending | Done | Blocked | Cancelled …
+  status     String    @default("MO to be close") // MO to be close | Pending | Done | Blocked | Cancelled …
   doneAt     DateTime? // when the status was moved to Done; null while it is not
   recordedBy String?
   // Where the row came from: typed (manual), the office's sheet (import), or
   // born from a closing in the ledger — a painting row (painting) or the
   // core's shot blast (shotblast). A born row carries its ledger entry's id
   // and an EMPTY odooMo: Odoo's number is not ours to know, the clerk types it.
-  source     String   @default("manual")
-  ledgerId   Int?     @unique
+  source     String    @default("manual")
+  ledgerId   Int?      @unique
   // The FG-CODE was composed (part code + BOM) rather than copied from an
   // earlier row of the same SOI and product — worth a look before it is booked.
-  fgGuessed  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  fgGuessed  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   notes OdooNote[]
 
@@ -1038,34 +1041,34 @@ model OdooNote {
 // earlier version. Delete is the admin's, and soft — the row leaves the log
 // but stays in the table with who removed it and when.
 model ConsumableIssue {
-  id         Int      @id @default(autoincrement())
-  item       String
+  id             Int                        @id @default(autoincrement())
+  item           String
   // decimal, not float: grease by the kilo and paint by the litre must add
   // up exactly when the month is totalled
-  qty        Decimal  @db.Decimal(14, 3)
+  qty            Decimal                    @db.Decimal(14, 3)
   // A worker section's code (WeldingTX, PaintingLV … — lib/domain/tanks.ts
   // WORKER_SECTIONS), or a department typed by the recorder that is not one
   // of them (Maintenance, Store …). Typed ones reappear in the dropdown.
-  department String
+  department     String
   // Who took it: one worker (workerId), or a group — several workers picked
   // by name, or the whole department as it stood (the workers present in the
   // section at recording). A group's people are ConsumableIssueRecipient;
   // recipientCount is how many, kept as it was that day.
   workerId       Int?
-  worker         Worker?  @relation(fields: [workerId], references: [id], onDelete: Restrict)
-  recipientScope String   @default("worker") // worker | workers | department
-  recipientCount Int      @default(1)
+  worker         Worker?                    @relation(fields: [workerId], references: [id], onDelete: Restrict)
+  recipientScope String                     @default("worker") // worker | workers | department
+  recipientCount Int                        @default(1)
   recipients     ConsumableIssueRecipient[]
   notes          String?
-  issuedAt       DateTime @default(now())
+  issuedAt       DateTime                   @default(now())
 
   // The catalogue item it was handed out of; null for an item typed by hand
   // (not in the catalogue — no limit applies). `item` keeps the name either way.
-  itemId  Int?
-  catalog ConsumableItem? @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  itemId          Int?
+  catalog         ConsumableItem? @relation(fields: [itemId], references: [id], onDelete: Restrict)
   // Recorded although it took a limit over (the recorder was warned and gave
   // the reason); the breach as it read at that moment, for the record.
-  overLimit       Boolean @default(false)
+  overLimit       Boolean         @default(false)
   overLimitReason String?
   overLimitNote   String?
 
@@ -1287,19 +1290,19 @@ model ManualJob {
 // taken back off once the item is recorded; this log keeps it — the history
 // of what each machine cuts at what thickness, for planning machines from it.
 model SheetCutLog {
-  id         Int      @id @default(autoincrement())
-  at         DateTime @default(now())
-  date       DateTime // the factory day it was cut on
-  dept       String
-  bom        String
-  mo         String
-  item       String
-  sheet      String // "<thickness>|<material>|<size>"
+  id          Int      @id @default(autoincrement())
+  at          DateTime @default(now())
+  date        DateTime // the factory day it was cut on
+  dept        String
+  bom         String
+  mo          String
+  item        String
+  sheet       String // "<thickness>|<material>|<size>"
   thicknessMm Float?
-  machineId  Int?
-  machine    Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
-  qty        Int
-  createdBy  String?
+  machineId   Int?
+  machine     Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  qty         Int
+  createdBy   String?
 
   @@index([machineId])
   @@index([item])
@@ -1313,25 +1316,25 @@ model SheetCutLog {
 // the key its machine-queue row carries); the technician records it by the
 // sheets finished, and each part's pieces follow pro rata.
 model NestRun {
-  id          Int           @id @default(autoincrement())
-  dept        String        @default("Cut")
-  material    String
-  thicknessMm Float
-  sheetSize   String        @default("")
-  sheets      Int
-  sheetsDone  Int           @default(0)
+  id           Int           @id @default(autoincrement())
+  dept         String        @default("Cut")
+  material     String
+  thicknessMm  Float
+  sheetSize    String        @default("")
+  sheets       Int
+  sheetsDone   Int           @default(0)
   // The cutting time, in minutes: identical sheets carry ONE figure (a sheet's
   // time, the run's being that × sheets); different sheets carry one per
   // sheet, in the order they are cut. Empty = not given (the parts' standard
   // times stand in).
-  identical    Boolean      @default(true)
-  sheetMinutes Float[]      @default([])
-  note        String?
-  createdBy   String?
-  createdAt   DateTime      @default(now())
-  doneAt      DateTime?
-  updatedAt   DateTime      @updatedAt
-  parts       NestRunPart[]
+  identical    Boolean       @default(true)
+  sheetMinutes Float[]       @default([])
+  note         String?
+  createdBy    String?
+  createdAt    DateTime      @default(now())
+  doneAt       DateTime?
+  updatedAt    DateTime      @updatedAt
+  parts        NestRunPart[]
 
   @@index([dept])
 }
@@ -1370,52 +1373,52 @@ model NestRunPart {
 // API key, the switch that opens it to the team, the model, and the plant's
 // monthly spend cap.
 model AiSettings {
-  id         Int      @id @default(1)
+  id                Int       @id @default(1)
   // On for the people the owner ticked; the owner can use it either way.
-  enabled    Boolean  @default(false)
+  enabled           Boolean   @default(false)
   // The Claude API key, AES-256-GCM encrypted (lib/server/ai/secret.ts) —
   // never sent to a browser; the hint is its last four characters.
-  apiKeyEnc  String   @default("")
-  apiKeyHint String   @default("")
+  apiKeyEnc         String    @default("")
+  apiKeyHint        String    @default("")
   // The chat's model and effort (low … max — how hard it thinks; lib/domain/ai AI_EFFORTS).
-  model      String   @default("claude-opus-5-5")
-  effort     String   @default("medium")
+  model             String    @default("claude-opus-5-5")
+  effort            String    @default("medium")
   // The automations' and the morning review's own model and effort.
-  autoModel  String   @default("claude-opus-5-5")
-  autoEffort String   @default("medium")
+  autoModel         String    @default("claude-opus-5-5")
+  autoEffort        String    @default("medium")
   // The plant's spend cap for a calendar month, in US dollars (0 = none).
-  monthlyUsd Float    @default(0)
+  monthlyUsd        Float     @default(0)
   // …and for a factory day (Cairo), in US dollars (0 = none).
-  dailyUsd   Float    @default(0)
+  dailyUsd          Float     @default(0)
   // Model calls one question (or one automation run) may take.
-  maxCalls   Int      @default(14)
+  maxCalls          Int       @default(14)
   // When automations may run at all, on the factory clock: between autoFrom
   // and autoTo ("HH:MM"; both null = any time; from > to runs over midnight),
   // on these weekdays (0 = Sunday). A schedule that falls outside is skipped;
   // a condition waits for the next check inside.
-  autoFrom     String?
-  autoTo       String?
-  autoWeekdays Int[]   @default([0, 1, 2, 3, 4, 5, 6])
+  autoFrom          String?
+  autoTo            String?
+  autoWeekdays      Int[]     @default([0, 1, 2, 3, 4, 5, 6])
   // The morning review: from this time on working days, unless paused.
-  reviewAt     String  @default("07:30")
-  reviewPaused Boolean @default(false)
+  reviewAt          String    @default("07:30")
+  reviewPaused      Boolean   @default(false)
   // ai_reader's password, made by the migration that created the login and
   // never written anywhere else.
-  dbPassword String   @default("")
+  dbPassword        String    @default("")
   // The owner's brakes. actionsPaused: nothing the assistant prepares can
   // run — no approval goes through and nothing small runs on its own.
   // automationsPaused: no automation fires (they stay saved, and pick up
   // again when it comes off).
-  actionsPaused     Boolean @default(false)
-  automationsPaused Boolean @default(false)
+  actionsPaused     Boolean   @default(false)
+  automationsPaused Boolean   @default(false)
   // The automations' clock: the database's own scheduler (pg_cron) calls the
   // tick endpoint every minute with a secret; its SHA-256 is kept here, the
   // secret itself only in that job. lastTickAt: the last tick that ran —
   // from that job, or from a page open somewhere when it is not set up.
-  tickSecretHash    String  @default("")
+  tickSecretHash    String    @default("")
   lastTickAt        DateTime?
-  updatedBy  String?
-  updatedAt  DateTime @updatedAt
+  updatedBy         String?
+  updatedAt         DateTime  @updatedAt
 }
 
 // Who besides the owner may use the assistant, and how much of the month's
@@ -1491,21 +1494,21 @@ model AiFile {
 // (one per database look-up) and their price in US dollars. What the monthly
 // caps are counted against; kept when a conversation or an account is deleted.
 model AiUsage {
-  id               Int      @id @default(autoincrement())
-  at               DateTime @default(now())
+  id               Int       @id @default(autoincrement())
+  at               DateTime  @default(now())
   // kept (unnamed) when the account is deleted — the month's spend stands
   userId           Int?
-  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   conversationId   Int?
   model            String
   question         String
-  calls            Int      @default(0)
-  queries          Int      @default(0)
-  inputTokens      Int      @default(0)
-  outputTokens     Int      @default(0)
-  cacheReadTokens  Int      @default(0)
-  cacheWriteTokens Int      @default(0)
-  costUsd          Float    @default(0)
+  calls            Int       @default(0)
+  queries          Int       @default(0)
+  inputTokens      Int       @default(0)
+  outputTokens     Int       @default(0)
+  cacheReadTokens  Int       @default(0)
+  cacheWriteTokens Int       @default(0)
+  costUsd          Float     @default(0)
   error            String?
   // Null while the question is being answered: one at a time per person,
   // so a burst of questions cannot run past the caps before they are counted.
@@ -1606,9 +1609,9 @@ model AiPlaybookRevision {
 // app's inbox (the bell) shows them; a push reaches the person's devices.
 // Private, like the rest of the assistant's records.
 model AiInboxItem {
-  id           Int       @id @default(autoincrement())
+  id           Int         @id @default(autoincrement())
   userId       Int
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   kind         String // report | message | suggestion
   title        String
   body         String // Markdown, charts included
@@ -1622,14 +1625,94 @@ model AiInboxItem {
   automationId Int?
   automation   Automation? @relation(fields: [automationId], references: [id], onDelete: SetNull)
   runId        Int?
-  actionIds    Int[]     @default([])
-  createdAt    DateTime  @default(now())
+  actionIds    Int[]       @default([])
+  // a task's news (kind "task"): the task it is about — opening the task reads it
+  taskId       Int?
+  task         Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt    DateTime    @default(now())
   readAt       DateTime?
   // when a push reached at least one of the person's devices
   pushedAt     DateTime?
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
+  @@index([taskId])
+}
+
+// A piece of work one person gives others — by hand on the inbox's Tasks tab
+// or through the assistant. Its people report on it (text and photos) and mark
+// it done; the one who gave it approves it or returns it for rework, until it
+// is done or they cancel it. Sent to several people, it is either one task
+// they share (shared) or one task each, made together (batchId), each
+// reported on and approved on its own. Never deleted once anyone acted on it:
+// its thread is the record of who did what, when.
+model Task {
+  id            Int            @id @default(autoincrement())
+  // the tasks made together as "one each" — the giver sees them side by side
+  batchId       String?
+  title         String
+  details       String         @default("")
+  // photos and files given with it — [{url, name, size, type}], as the chat keeps them
+  attachments   Json           @default("[]")
+  priority      String         @default("normal") // normal | urgent
+  // the factory day it is due by
+  dueDate       DateTime?      @db.Date
+  // an order it is about — must be on the Orders Registry
+  mo            String?
+  shared        Boolean        @default(false)
+  status        String         @default("open") // open | in_progress | submitted | returned | done | cancelled
+  // who gave it; kept by name when the account goes
+  createdById   Int?
+  createdBy     User?          @relation("tasksCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  createdByName String
+  via           String         @default("app") // app | ai
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  // the last time anything happened on it — the lists' order
+  activityAt    DateTime       @default(now())
+  submittedAt   DateTime?
+  // done or cancelled
+  closedAt      DateTime?
+  // the one reminder that it passed its due day
+  overdueSentAt DateTime?
+  assignees     TaskAssignee[]
+  updates       TaskUpdate[]
+  inbox         AiInboxItem[]
+
+  @@index([createdById, activityAt])
+  @@index([status, dueDate])
+  @@index([batchId])
+}
+
+// A person a task is given to.
+model TaskAssignee {
+  id     Int  @id @default(autoincrement())
+  taskId Int
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([userId])
+}
+
+// One entry of a task's thread: a note (text, photos, files), or a move —
+// started, marked done, approved, returned, cancelled, reopened — with what
+// was said with it. Kept by name when the account goes.
+model TaskUpdate {
+  id          Int      @id @default(autoincrement())
+  taskId      Int
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId    Int?
+  author      User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  authorName  String
+  kind        String // note | start | submit | approve | return | cancel | reopen
+  body        String   @default("")
+  attachments Json     @default("[]")
+  via         String   @default("app") // app | ai
+  createdAt   DateTime @default(now())
+
+  @@index([taskId, id])
 }
 
 // One device (a browser, an installed app) a person turned notifications on

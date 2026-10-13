@@ -1186,6 +1186,17 @@ html.ai-modal { overflow: hidden; }
 .icon-btn-on, .icon-btn-on:hover { background: var(--brand-light); color: var(--brand); border-color: transparent; }
 .ai-side { width: 280px; flex-shrink: 0; border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; background: var(--surface); min-height: 0; }
 .ai-pane-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+/* the inbox's card hangs under the bell, on the right, below the bar */
+.ai-pop-compact.inbox-pop { top: 56px; bottom: auto; height: min(720px, calc(100dvh - 76px)); max-height: none; }
+
+/* ---- tasks (components/TasksView): the list, a task's thread ---- */
+.task-row { display: block; width: 100%; text-align: start; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid transparent; transition: background-color 0.12s ease, border-color 0.12s ease; }
+.task-row:hover { background: var(--surface-2); }
+.task-row-on, .task-row-on:hover { background: var(--brand-light); border-color: color-mix(in srgb, var(--brand) 30%, transparent); }
+.task-bubble { display: inline-block; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; padding: 7px 11px; border-radius: 12px; border-top-left-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; line-height: 1.45; }
+.task-bubble-mine { background: var(--brand-light); border-color: color-mix(in srgb, var(--brand) 25%, var(--border)); border-top-left-radius: 12px; border-top-right-radius: 4px; }
+.task-event { display: flex; gap: 10px; align-items: flex-start; padding: 7px 10px; border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
+.task-event-icon { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border); flex-shrink: 0; }
 
 /* a row of tabs: scrolls sideways on a narrow screen without showing a
    scrollbar, and its bottom line is a shadow the open tab's underline paints
