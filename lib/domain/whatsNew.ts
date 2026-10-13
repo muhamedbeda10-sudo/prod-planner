@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-13-inbox-tasks",
+    dateISO: "2026-10-13",
+    title: "The inbox is its own window — Alerts, Reports and Tasks",
+    where: "The 🔔 bell in the bar → Tasks",
+    body: "The bell opens the inbox in a window of its own, apart from the assistant: Alerts (messages, and changes waiting for your approval), Reports, and Tasks. Give a colleague a task there or through the assistant (\"give Ahmed a task to …\") — one each or one shared, with a due day and photos. They report on it with text and photos and mark it done; you approve it or return it with what to fix. Giving tasks is a permission the owner ticks (Tasks — give tasks); everyone can receive them.",
+    href: "/inbox?tab=tasks",
+  },
+  {
     id: "2026-10-12-permissions-tables",
     dateISO: "2026-10-12",
     title: "Simpler permissions — one key per department, and the AI's rights on its own page",

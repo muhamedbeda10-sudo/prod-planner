@@ -31,7 +31,7 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
       : null,
   ]);
   const actions = open ? await actionsOfConversation(open.id) : [];
-  const tabs: AiTab[] = ["chat", "inbox", ...(hasPerm(user, "ai.automations") ? (["automations"] as const) : []), "playbook"];
+  const tabs: AiTab[] = ["chat", ...(hasPerm(user, "ai.automations") ? (["automations"] as const) : []), "playbook"];
 
   return (
     <AiWorkspacePage

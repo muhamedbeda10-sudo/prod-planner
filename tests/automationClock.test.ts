@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   prisma: {
     aiSettings: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     automation: { count: vi.fn() },
+    task: { count: vi.fn() },
     user: { count: vi.fn() },
     $executeRawUnsafe: vi.fn(),
     $queryRawUnsafe: vi.fn(),
@@ -40,6 +41,7 @@ beforeEach(() => {
   h.prisma.$queryRawUnsafe.mockResolvedValue([]);
   h.prisma.$executeRawUnsafe.mockResolvedValue(0);
   h.prisma.automation.count.mockResolvedValue(1);
+  h.prisma.task.count.mockResolvedValue(0);
   h.prisma.user.count.mockResolvedValue(0);
 });
 
@@ -133,7 +135,11 @@ describe("the tick route", () => {
     h.prisma.aiSettings.findUnique.mockResolvedValue({ tickSecretHash: "" });
     h.prisma.automation.count.mockResolvedValue(0);
     expect(await (await post()).json()).toMatchObject({ pages: false });
-    // …but someone's morning review still needs the pages
+    // …but a task's due day still to pass needs the pages
+    h.prisma.task.count.mockResolvedValue(1);
+    expect(await (await post()).json()).toMatchObject({ pages: true });
+    h.prisma.task.count.mockResolvedValue(0);
+    // …and so does someone's morning review
     h.prisma.user.count.mockResolvedValue(1);
     expect(await (await post()).json()).toMatchObject({ pages: true });
   });

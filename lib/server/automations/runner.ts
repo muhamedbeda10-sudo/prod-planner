@@ -9,6 +9,7 @@ import { toolsFor } from "@/lib/server/ai/tools";
 import { pruneAiFiles } from "@/lib/server/ai/files";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { deliverToInbox } from "@/lib/server/inbox";
+import { remindOverdueTasks } from "@/lib/server/tasks";
 import { automationWindowOf, configOf, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
 import { runDailyReviews } from "./review";
 import { AI_DENY_TEXT, automationContext, costUsd } from "@/lib/domain/ai";
@@ -43,12 +44,16 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
   const settings = await getAiSettings();
   // housekeeping once an hour, paused or not
   if (now.getUTCMinutes() === 7) await pruneOld(now).catch((e) => console.error("automations: housekeeping failed", e));
+  const window = automationWindowOf(settings);
+  const inHours = inAutomationWindow(now, window);
+  // the tasks past their due day tell their people — inside the plant's
+  // hours (no phone buzzes at night), whether the automations are paused or not
+  if (inHours) await remindOverdueTasks(now).catch((e) => console.error("tasks: overdue reminders failed", e));
   if (settings.automationsPaused) return { ran: 0, checked: 0, skipped: "The owner has paused the automations." };
   // outside the owner's hours: a schedule that falls due now is skipped to
   // its next time; a condition waits, and its next check inside the hours
   // still finds what started matching meanwhile. The morning review waits too.
-  const window = automationWindowOf(settings);
-  if (!inAutomationWindow(now, window)) {
+  if (!inHours) {
     await skipOutsideWindow(now, describeWindow(window)).catch((e) => console.error("automations: could not skip what fell outside the hours", e));
     return { ran: 0, checked: 0, skipped: "Outside the automations' hours." };
   }

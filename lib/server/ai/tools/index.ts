@@ -21,6 +21,7 @@ import { CALENDAR_TOOLS } from "./calendar";
 import { WORKER_TOOLS } from "./workers";
 import { MACHINE_LIST_TOOLS } from "./machineList";
 import { AUTOMATION_TOOLS } from "./automations";
+import { TASK_TOOLS } from "./tasks";
 import { CHAT_TOOLS } from "./chat";
 import { PLAYBOOK_TOOLS } from "./playbook";
 import { SHIFT_TOOLS } from "./shifts";
@@ -55,6 +56,7 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...WORKER_TOOLS,
   ...MACHINE_LIST_TOOLS,
   ...AUTOMATION_TOOLS,
+  ...TASK_TOOLS,
   ...CHAT_TOOLS,
   ...PLAYBOOK_TOOLS,
   ...SHIFT_TOOLS,
@@ -108,6 +110,7 @@ export function areaDenied(user: User, tool: AnyWriteTool): string | null {
  *  there before (undoing an addition removes just what was added). */
 export function callDenied(user: User, hidden: ReadonlySet<string>, tool: AiTool, input: unknown, o: { undo?: boolean } = {}): string | null {
   if (tool.ownerOnly && !user.isOwner) return OWNER_ONLY;
+  if (tool.needs && !hasPerm(user, tool.needs)) return "The owner has not given this person that right — it is ticked on Users & Permissions.";
   if (tool.tabs?.some((t) => hidden.has(t))) return "That screen is not opened for you, so the assistant cannot work on it for you.";
   if (tool.kind === "read") return null;
   const area = areaDenied(user, tool);
@@ -124,6 +127,7 @@ export function toolsFor(user: User, o: { hidden: ReadonlySet<string>; actionsPa
   return AI_TOOLS.filter((t) => {
     if (t.internal) return false;
     if (t.ownerOnly && !user.isOwner) return false;
+    if (t.needs && !hasPerm(user, t.needs)) return false;
     if (t.liveOnly && o.unattended) return false;
     if (t.tabs?.some((x) => o.hidden.has(x))) return false;
     if (t.kind === "read") return true;

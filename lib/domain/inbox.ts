@@ -1,13 +1,38 @@
 // The inbox's words — pure, for the page and the server alike.
 
-export const INBOX_KINDS = ["report", "message", "suggestion"] as const;
+export const INBOX_KINDS = ["report", "message", "suggestion", "task"] as const;
 export type InboxKind = (typeof INBOX_KINDS)[number];
 
 export const INBOX_KIND_LABEL: Record<InboxKind, string> = {
   report: "Report",
   message: "Message",
   suggestion: "Suggestion",
+  task: "Task",
 };
+
+/** The inbox's tabs: what reaches a person (messages, changes to approve),
+ *  the reports written for them, and their tasks. */
+export const INBOX_TABS = ["alerts", "reports", "tasks"] as const;
+export type InboxTab = (typeof INBOX_TABS)[number];
+
+export const INBOX_TAB_LABEL: Record<InboxTab, string> = {
+  alerts: "Alerts",
+  reports: "Reports",
+  tasks: "Tasks",
+};
+
+/** The kinds each tab lists. A task's news is read on the task itself. */
+export const TAB_KINDS: Record<InboxTab, readonly InboxKind[]> = {
+  alerts: ["message", "suggestion"],
+  reports: ["report"],
+  tasks: ["task"],
+};
+
+export function tabOfKind(kind: InboxKind): InboxTab {
+  return kind === "report" ? "reports" : kind === "task" ? "tasks" : "alerts";
+}
+
+export const isInboxTab = (s: string): s is InboxTab => (INBOX_TABS as readonly string[]).includes(s);
 
 /** A notification's one or two lines out of a Markdown body: no chart
  *  blocks, no table rules, no Markdown marks, the whitespace folded. */
