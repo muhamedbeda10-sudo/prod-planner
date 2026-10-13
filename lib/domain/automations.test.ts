@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAutomation, checkWindow, describeTrigger, describeWindow, inAutomationWindow, retimeAutomation, freshRows, nextConditionCheck, nextScheduleRun, recipientsOf, renderMessage, rowKey, type AutomationConfig } from "./automations";
+import { checkAutomation, checkWindow, describeTrigger, describeWindow, inAutomationWindow, retimeAutomation, freshRows, nextConditionCheck, nextScheduleRun, recipientsOf, renderMessage, rowKey, rowsForPeople, type AutomationConfig } from "./automations";
 
 const base = { name: "Morning welding report", trigger: "schedule", times: ["07:30"], days: "working", action: "report", prompt: "Welding output vs plan" } as const;
 const fridayOrHoliday = (holidays: string[] = []) => (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay() === 5 || holidays.includes(iso);
@@ -94,7 +94,7 @@ describe("a condition's rows", () => {
 describe("a notify message", () => {
   it("fills in the blanks, and lists the rows under a message that does not place them", () => {
     const rows = [{ key: "1", mo: "MO-1", dept: "Welding" }];
-    expect(renderMessage("{count} order(s) held — {name}", { name: "Held orders", rows })).toBe("1 order(s) held — Held orders\n\n| mo | dept |\n| --- | --- |\n| MO-1 | Welding |");
+    expect(renderMessage("{count} order(s) held — {name}", { name: "Held orders", rows })).toBe("1 order(s) held — Held orders\n\n- **MO:** MO-1\n- **Dept:** Welding");
     expect(renderMessage("Good morning", { name: "x" })).toBe("Good morning");
   });
 });
@@ -174,5 +174,24 @@ describe("an event automation", () => {
   it("has no timing to change", () => {
     const c = checkAutomation(ev);
     expect(c.ok && retimeAutomation(c.config, { times: ["07:00"] })).toMatchObject({ ok: false });
+  });
+});
+
+describe("rows as a person reads them", () => {
+  const now = new Date("2026-10-13T10:00:00Z");
+  it("lists a few rows field by field — names in words, days as the app writes them, empty fields left out", () => {
+    const rows = [{ key: "7", by: null, note: "Born from a daily-log row", status: "Pending", qty: 9, odooMo: "", fgCode: "FB-051", soi: "S01328-35", date: "2026-10-12T00:00:00.000Z" }];
+    expect(rowsForPeople(rows, { now })).toBe(
+      "- **Note:** Born from a daily-log row\n- **Status:** Pending\n- **Qty:** 9\n- **FG code:** FB-051\n- **SOI:** S01328-35\n- **Date:** Mon 12 Oct",
+    );
+  });
+  it("puts many rows in a table without the columns no row fills, and escapes what Markdown would read", () => {
+    const rows = [1, 2, 3, 4].map((n) => ({ mo: `MO/${n}`, empty: null, note: n === 1 ? "a | b *c*" : "x" }));
+    const out = rowsForPeople(rows, { now });
+    expect(out.split("\n").slice(0, 3)).toEqual(["| MO | Note |", "| --- | --- |", "| MO/1 | a \\| b \\*c\\* |"]);
+  });
+  it("says how many more there were", () => {
+    const rows = Array.from({ length: 5 }, (_, n) => ({ mo: `MO/${n}` }));
+    expect(rowsForPeople(rows, { max: 4, now })).toContain("…and 1 more.");
   });
 });

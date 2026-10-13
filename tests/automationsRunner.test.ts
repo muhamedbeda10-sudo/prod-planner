@@ -86,7 +86,7 @@ describe("a scheduled message", () => {
   it("goes to the people named, as the owner's automation, and books the next working day", async () => {
     expect(await runAutomation(auto(), { cause: "schedule", now })).toBe(true);
     expect(h.deliverToInbox).toHaveBeenCalledWith([
-      { userId: 9, kind: "message", title: "Late welding", body: "Good morning — Late welding", fromName: "Sara's automation “Late welding”", automationId: 3, runId: 50 },
+      { userId: 9, kind: "message", title: "\u2068Late welding\u2069", body: "Good morning — Late welding", fromName: "Sara's automation “\u2068Late welding\u2069”", automationId: 3, runId: 50 },
     ]);
     expect(h.prisma.automationRun.update.mock.calls[0][0].data).toMatchObject({ status: "ok", inboxIds: [100] });
     expect(lastUpdate()).toMatchObject({ lastStatus: "ok", failures: 0, lockedUntil: null, nextRunAt: new Date("2026-10-13T04:30:00Z") });
@@ -100,7 +100,7 @@ describe("a condition", () => {
   it("fires only for rows that were not there at the last check", async () => {
     h.runAiRows.mockResolvedValue({ ok: true, truncated: false, rows: [{ key: "A", mo: "A" }, { key: "B", mo: "B" }] });
     await runAutomation(cond({ lastKeys: ["A"] }), { cause: "condition", now });
-    expect(h.deliverToInbox.mock.calls[0][0][0]).toMatchObject({ title: "Late welding — 1 new", body: "1 held\n\n| mo |\n| --- |\n| B |" });
+    expect(h.deliverToInbox.mock.calls[0][0][0]).toMatchObject({ title: "\u2068Late welding\u2069 — 1 new", body: "1 held\n\n- **MO:** B" });
     expect(lastUpdate()).toMatchObject({ lastKeys: ["A", "B"], lastStatus: "ok" });
   });
 
@@ -131,14 +131,14 @@ describe("failures", () => {
     h.deliverToInbox.mockRejectedValueOnce(new Error("boom"));
     await runAutomation(auto({ failures: 4 }), { cause: "schedule", now });
     expect(lastUpdate()).toMatchObject({ enabled: false, failures: 5, lastStatus: "failed" });
-    expect(h.deliverToInbox).toHaveBeenLastCalledWith([expect.objectContaining({ userId: 7, title: "Automation stopped: Late welding", body: expect.stringContaining("failed 5 times") })]);
+    expect(h.deliverToInbox).toHaveBeenLastCalledWith([expect.objectContaining({ userId: 7, title: "Automation stopped: \u2068Late welding\u2069", body: expect.stringContaining("failed 5 times") })]);
   });
 
   it("an owner who lost automations stops it, and is told why", async () => {
     h.perms.clear();
     await runAutomation(auto(), { cause: "schedule", now });
     expect(lastUpdate()).toMatchObject({ enabled: false, lastStatus: "skipped", lastNote: expect.stringContaining("AI — automations") });
-    expect(h.deliverToInbox.mock.calls[0][0][0]).toMatchObject({ userId: 7, title: "Automation stopped: Late welding" });
+    expect(h.deliverToInbox.mock.calls[0][0][0]).toMatchObject({ userId: 7, title: "Automation stopped: \u2068Late welding\u2069" });
   });
 });
 
@@ -179,7 +179,7 @@ describe("the assistant's runs", () => {
 describe("a test run", () => {
   it("sends to the one testing, marked, and leaves the schedule as it was", async () => {
     await runAutomation(auto(), { cause: "manual", now, testTo: { ...owner, id: 1, name: "Owner" } as never });
-    expect(h.deliverToInbox.mock.calls[0][0][0]).toMatchObject({ userId: 1, title: "[Test] Late welding" });
+    expect(h.deliverToInbox.mock.calls[0][0][0]).toMatchObject({ userId: 1, title: "[Test] \u2068Late welding\u2069" });
     expect(lastUpdate()).toEqual({ lockedUntil: null });
   });
 });
@@ -258,7 +258,7 @@ describe("an event", () => {
 
   it("tells at once, in the owner's words, about what happened — and books no next run", async () => {
     expect(await fire(rule())).toBe(1);
-    expect(h.deliverToInbox.mock.calls[0][0][0]).toMatchObject({ userId: 9, kind: "message", title: "Late welding — Ahmed: Closed SF01/MO/1", body: "Ahmed: Closed SF01/MO/1" });
+    expect(h.deliverToInbox.mock.calls[0][0][0]).toMatchObject({ userId: 9, kind: "message", title: "\u2068Late welding\u2069 — \u2068Ahmed: Closed SF01/MO/1\u2069", body: "Ahmed: Closed SF01/MO/1" });
     expect(h.prisma.automationRun.create.mock.calls[0][0].data).toMatchObject({ cause: "event" });
     expect(lastUpdate()).toMatchObject({ lastStatus: "ok", nextRunAt: null });
   });

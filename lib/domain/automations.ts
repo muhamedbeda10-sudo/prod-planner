@@ -25,6 +25,7 @@
 import { parseISODate, toISODate, factoryClockHHMM, factoryDayISO, factoryTimeAt } from "./dates";
 import { jsonSafe, prepareSql } from "./ai";
 import { APP_EVENTS, isAppEventType } from "./appEvents";
+import { humanizeKey, readableValue } from "./fieldNames";
 
 export const AUTOMATION_TRIGGERS = ["schedule", "condition", "event"] as const;
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
@@ -268,12 +269,45 @@ export function rowsTable(rows: readonly Record<string, unknown>[], max: number 
   return lines.join("\n");
 }
 
+/** Text set into Markdown as it is — no marks, no table bars, one line. */
+const plainMd = (s: string) => s.replace(/\s+/g, " ").replace(/([\\`*_[\]|<>#])/g, "\\$1");
+
+/** Rows as a person reads them in a message: the columns named in words, the
+ *  values as the app writes them, the columns empty on every row left out.
+ *  A few rows read best as a short list each; more as a table. (rowsTable
+ *  keeps the plain form the assistant reads.) */
+export function rowsForPeople(rows: readonly Record<string, unknown>[], o: { max?: number; now?: Date } = {}): string {
+  if (rows.length === 0) return "";
+  const max = o.max ?? AUTOMATION_LIMITS.messageRows;
+  const shown = rows.slice(0, max);
+  const all = [...new Set(shown.flatMap((r) => Object.keys(r)))];
+  const keyed = all.filter((c) => c !== "key");
+  const cols = (keyed.length > 0 ? keyed : all).filter((c) => shown.some((r) => readableValue(r[c], o.now) !== null));
+  if (cols.length === 0) return "";
+  let out: string;
+  if (shown.length <= 3) {
+    out = shown
+      .map((r) => cols.flatMap((c) => {
+        const v = readableValue(r[c], o.now);
+        return v === null ? [] : [`- **${plainMd(humanizeKey(c))}:** ${plainMd(v.slice(0, 400))}`];
+      }).join("\n"))
+      .join("\n\n---\n\n");
+  } else {
+    out = [
+      `| ${cols.map((c) => plainMd(humanizeKey(c))).join(" | ")} |`,
+      `| ${cols.map(() => "---").join(" | ")} |`,
+      ...shown.map((r) => `| ${cols.map((c) => plainMd((readableValue(r[c], o.now) ?? "—").slice(0, 160))).join(" | ")} |`),
+    ].join("\n");
+  }
+  return rows.length > max ? `${out}\n\n…and ${rows.length - max} more.` : out;
+}
+
 /** A notify automation's message with its blanks filled in: {name}, {count}
  *  and {rows} (a table of the rows that fired; a condition's message that
  *  names no {rows} gets the table under it), and an event's own fields. */
 export function renderMessage(template: string, o: { name: string; rows?: readonly Record<string, unknown>[]; fields?: Readonly<Record<string, string>> }): string {
   const rows = o.rows ?? [];
-  const table = rowsTable(rows);
+  const table = rowsForPeople(rows);
   let body = template.replace(/\{name\}/g, o.name).replace(/\{count\}/g, String(rows.length)).replace(/\{rows\}/g, table);
   // an event's own blanks — {who} {what} {about} {detail} {when}
   let usedField = false;
