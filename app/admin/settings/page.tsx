@@ -4,7 +4,7 @@ import { getSettings } from "@/lib/server/data";
 import { backupLoginState } from "@/lib/server/backupLogin";
 import { backupLinks } from "@/lib/domain/backup";
 import { formatDateTime } from "@/lib/domain/format";
-import { PageHead } from "@/components/ui";
+import { PageHead, ReadingColumn } from "@/components/ui";
 import { TankTrackingToggle } from "./TankTrackingToggle";
 import { MachinePlanningToggle } from "./MachinePlanningToggle";
 import { BackupLogin } from "./BackupLogin";
@@ -28,7 +28,7 @@ export default async function SettingsPage() {
   const backup = me.isOwner ? await backupLoginState() : null;
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <ReadingColumn className="space-y-4">
       <PageHead title="Settings" sub="Plant-wide switches — what changes how several screens behave at once" />
       <TankTrackingToggle initialOn={settings.tankTracking} />
       <MachinePlanningToggle initialOn={settings.machinePlanning} />
@@ -40,6 +40,6 @@ export default async function SettingsPage() {
           links={backupLinks({ provider: process.env.VERCEL_GIT_PROVIDER, owner: process.env.VERCEL_GIT_REPO_OWNER, slug: process.env.VERCEL_GIT_REPO_SLUG })}
         />
       )}
-    </div>
+    </ReadingColumn>
   );
 }

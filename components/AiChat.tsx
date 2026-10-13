@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
+import { AiPrintButton } from "@/components/AiPrint";
 import { EmptyState } from "@/components/primitives";
 import { deleteAiConversation, discardAiFile, loadAiConversation, uploadAiFile } from "@/app/ai/actions";
 import { AI_MAX_QUESTION, usdText, type AiChatTurn } from "@/lib/domain/ai";
@@ -420,6 +421,7 @@ export function AiChat({
                   <Answer
                     key={i}
                     turn={t}
+                    question={turns[i - 1]?.role === "user" ? turns[i - 1].text : ""}
                     live={busy && i === turns.length - 1 ? live : null}
                     streaming={busy && i === turns.length - 1}
                     actions={(t.actionIds ?? []).flatMap((id) => (actions[id] ? [actions[id]] : []))}
@@ -568,6 +570,7 @@ function Lookups({ items }: { items: string[] }) {
 
 function Answer({
   turn,
+  question,
   live,
   streaming,
   actions,
@@ -575,6 +578,8 @@ function Answer({
   onSimulator,
 }: {
   turn: Turn;
+  /** The question it answers — the printout's title. */
+  question: string;
   live: string | null;
   streaming: boolean;
   actions: AiActionView[];
@@ -616,6 +621,7 @@ function Answer({
             >
               {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
             </button>
+            <AiPrintButton title={question.length > 90 ? `${question.slice(0, 89)}…` : question || "AI assistant"} subtitle="AI assistant" text={turn.text} className="text-xs" />
           </div>
         )}
       </div>
