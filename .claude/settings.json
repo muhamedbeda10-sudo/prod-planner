@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm ci)",
+      "Bash(npx prisma generate)",
+      "Bash(npm run lint)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run test:run)",
+      "Bash(npm run ai:schema)",
+      "Bash(git fetch:*)",
+      "Bash(git push -u origin claude/:*)",
+      "mcp__github__create_pull_request",
+      "mcp__github__pull_request_read",
+      "mcp__github__list_pull_requests",
+      "mcp__github__get_check_run",
+      "mcp__github__merge_pull_request",
+      "mcp__claude-code-remote__subscribe_pr_activity",
+      "mcp__claude-code-remote__unsubscribe_pr_activity"
+    ]
+  }
+}
