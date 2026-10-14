@@ -29,6 +29,8 @@ import { ConsumablesDashboard } from "@/components/LazyCharts";
 export const metadata = { title: "Consumables — ATC" };
 export const dynamic = "force-dynamic";
 
+const BASIS_EXPORT = { pool: "shared", each: "each department", person: "per worker" } as const;
+
 // How far back the slicer reaches — a year of hand-outs.
 const HISTORY_DAYS = 365;
 
@@ -74,7 +76,7 @@ export default async function ConsumablesPage({
         { href: hrefFor("log"), label: "Log", title: "Hand out and record" },
         { href: hrefFor("dashboard"), label: "Dashboard", title: "What went out, to whom, against the limits" },
         { href: hrefFor("powder"), label: "Powder", title: "Powder scrap" },
-        { href: hrefFor("limits"), label: "Limits", title: "Per-person limits" },
+        { href: hrefFor("limits"), label: "Limits", title: "The catalogue, its limits, and where each stands now" },
         ...(me.isAdmin ? [{ href: hrefFor("edits"), label: "Edits", title: "Every change made to a recorded hand-out" }] : []),
       ]}
       current={hrefFor(view)}
@@ -120,23 +122,31 @@ export default async function ConsumablesPage({
     const [items, standings, changes, custom] = await Promise.all([
       getCatalogue(), getCurrentStandings(today), getCatalogueChanges(60, factoryDateTimeLabel), getCustomDepartments(),
     ]);
-    const exportRows = items.flatMap((i) => (i.limits.length ? i.limits : [null]).map((l) => ({
-      Code: i.code ?? "",
-      Item: i.name,
-      UOM: i.uom,
-      Active: i.active ? "yes" : "retired",
-      Limit: l ? l.qty : "",
-      Per: l ? PERIOD_LABEL[l.period] : "",
-      Counted: l ? (l.basis === "person" ? "per person" : "shared") : "",
-      Departments: l ? l.departmentsLabel : "",
-      "Used now": l && standings[l.id] ? standings[l.id].used : "",
-      Remark: i.remark ?? "",
-    })));
+    const exportRows = items.flatMap((i) => (i.limits.length ? i.limits : [null]).map((l) => {
+      const s = l ? standings[l.id] : undefined;
+      return {
+        Code: i.code ?? "",
+        Item: i.name,
+        UOM: i.uom,
+        Active: i.active ? "yes" : "retired",
+        Limit: l ? l.qty : "",
+        Per: l ? PERIOD_LABEL[l.period] : "",
+        Counted: l ? BASIS_EXPORT[l.basis] : "",
+        Departments: l ? l.departmentsLabel : "",
+        Window: s?.windowLabel ?? "",
+        // an each-department or per-worker limit: every department's number added up
+        "Limit now": s ? s.limit : "",
+        "Used now": s ? s.used : "",
+        "Left now": s ? Math.round((s.limit - s.used) * 1000) / 1000 : "",
+        "Departments over": s && s.departments.length ? s.departments.filter((d) => d.used > d.limit + 1e-9).map((d) => `${d.label} ${d.used}/${d.limit}`).join(" · ") : "",
+        Remark: i.remark ?? "",
+      };
+    }));
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="consumables:last" />
         <PageHead
-          title="Consumables" sub="Per-person limits" views={viewSwitch}
+          title="Consumables" sub="Catalogue & limits · where each stands now" views={viewSwitch}
           actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-limits-${today}.xlsx`, sheetName: "Limits" }]} />}
         />
         <ConsumableLimits
@@ -248,15 +258,18 @@ function monthlyExportRows(report: Awaited<ReturnType<typeof getMonthlyReport>>)
   return report.rows.flatMap((r) => [
     {
       Level: "Item", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: "", "Limit": "", "Monthly limit": r.allowance ?? "",
-      Used: r.used, "Outside the limits": r.outside, "Of the limit": r.ratio === null ? "" : `${Math.round(r.ratio * 100)}%`,
+      Used: r.used, Left: r.allowance === null ? "" : Math.round((r.allowance - r.covered) * 1000) / 1000, "Outside the limits": r.outside, "Of the limit": r.ratio === null ? "" : `${Math.round(r.ratio * 100)}%`,
       Status: MONTH_STATUS_LABEL[r.status], [`Used ${report.prevMonth}`]: r.prevUsed,
       "Counted over": "",
       ...Object.fromEntries(r.trend.map((t) => [t.month, t.used])),
     },
     ...r.limits.map((l) => ({
       Level: "Limit", Code: r.code ?? "", Item: r.name, UOM: r.uom, Departments: l.departmentsLabel,
-      "Limit": `${l.qty} ${PERIOD_LABEL[l.period]}${l.basis === "person" ? " per person" : ""}`, "Monthly limit": l.allowance,
-      Used: l.used, "Outside the limits": "", "Of the limit": `${Math.round(l.ratio * 100)}%`, Status: MONTH_STATUS_LABEL[l.status],
+      "Limit": l.perWorker
+        ? `${l.perWorker.qty} per worker × ${Math.max(1, l.perWorker.workers)} ${PERIOD_LABEL[l.period]}`
+        : `${l.qty} ${PERIOD_LABEL[l.period]} (${BASIS_EXPORT[l.basis]})`,
+      "Monthly limit": l.allowance,
+      Used: l.used, Left: l.left, "Outside the limits": "", "Of the limit": `${Math.round(l.ratio * 100)}%`, Status: MONTH_STATUS_LABEL[l.status],
       [`Used ${report.prevMonth}`]: l.prevUsed,
       "Counted over": l.toDate ?? "",
       ...Object.fromEntries(r.trend.map((t) => [t.month, ""])),

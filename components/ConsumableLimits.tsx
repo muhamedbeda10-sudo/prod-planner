@@ -2,23 +2,52 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { WORKER_GROUPS } from "@/lib/domain/tanks";
-import { ALL_DEPARTMENTS, LIMIT_PERIODS, PERIOD_LABEL, PERIOD_NOUN, type LimitBasis, type LimitPeriod } from "@/lib/domain/consumableLimits";
-import type { CatalogueChangeView, CatalogueItemDTO, LimitDTO } from "@/lib/server/consumableLimits";
+import { ALL_DEPARTMENTS, LIMIT_PERIODS, PERIOD_LABEL, rulesOverlap, type LimitBasis, type LimitPeriod } from "@/lib/domain/consumableLimits";
+import { NEAR_RATIO } from "@/lib/domain/consumableMonthly";
+import type { CatalogueChangeView, CatalogueItemDTO, LimitDTO, LimitStandingView } from "@/lib/server/consumableLimits";
 import { deleteConsumableLimit, saveCatalogueItem, saveConsumableLimit } from "@/app/consumables/catalogueActions";
 import { ActionMsg as Msg, useConsumableAction as useAction } from "@/components/consumablesUi";
 import { Modal } from "@/components/Modal";
+import { TableEmpty, TableFrame, Th, useRowMenu } from "@/components/DataTable";
+import { SearchBox } from "@/components/FilterControls";
+import { StatTile } from "@/components/charts/kit";
 
 // The CONSUMABLES tab's Limits view: the store's catalogue — code, name, unit
-// — each item with its limits and where each stands right now in its own
-// period. Whoever records hand-outs (consumables.edit) adds items, changes
-// them, retires them, and adds, changes or removes their limits in place;
-// every change is kept (the list at the foot of the page).
+// — each item with its limits, one line per limit, and where each stands
+// right now in its own window (this month, this quarter …). An "each
+// department" or "per worker" limit is every department's own number, so its
+// line adds them up and opens onto each department's standing. Whoever
+// records hand-outs (consumables.edit) adds items, changes them, retires
+// them, and adds, changes or removes their limits; every change is kept (the
+// list at the foot of the page).
 
-type Standing = { used: number; limit: number; windowLabel: string; overWorkers: number };
 type Departments = { sections: { code: string; label: string; group: string }[]; custom: string[] };
 
 const F = "px-2 py-1.5 text-sm font-semibold";
 const fmt = (n: number) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: 3 }));
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+const BASIS_LABEL: Record<LimitBasis, string> = { pool: "Shared", each: "Each department", person: "Per worker" };
+const BASIS_HINT: Record<LimitBasis, string> = {
+  pool: "One number for all the departments picked together",
+  each: "Every department picked has the whole number to itself",
+  person: "The number per worker, times each department's workers on the workers list",
+};
+
+/** Where a limit stands now, in four words. */
+type LimitState = "over" | "near" | "ok" | "idle";
+const STATE_LABEL: Record<LimitState, string> = { over: "Over", near: "Close", ok: "Within", idle: "Not used" };
+const STATE_PILL: Record<LimitState, string> = { over: "pill-bad", near: "pill-warn", ok: "pill-ok", idle: "pill-muted" };
+const STATE_TONE: Record<LimitState, string> = { over: "var(--bad-fg)", near: "var(--warn-fg)", ok: "var(--ok-fg)", idle: "var(--border-strong)" };
+
+function stateOf(s: LimitStandingView | undefined): LimitState {
+  if (!s || s.used <= 0) return "idle";
+  if (s.over > 0) return "over";
+  if (s.worstRatio >= NEAR_RATIO - 1e-9) return "near";
+  return "ok";
+}
+const ratioState = (used: number, limit: number): LimitState =>
+  used <= 0 ? "idle" : used > limit + 1e-9 ? "over" : used >= limit * NEAR_RATIO - 1e-9 ? "near" : "ok";
 
 function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
   return (
@@ -29,24 +58,19 @@ function Field({ label, className = "", children }: { label: string; className?:
   );
 }
 
-/** Used against the limit in the current window: a bar, green → amber at
- *  80% → red past the limit. */
-function UsageBar({ s, basis }: { s: Standing | undefined; basis: LimitBasis }) {
-  if (!s) return null;
-  const ratio = s.limit > 0 ? s.used / s.limit : 0;
-  const tone = ratio > 1 + 1e-9 ? "var(--bad-fg)" : ratio >= 0.8 ? "var(--warn-fg)" : "var(--ok-fg)";
+/** Used against the limit: the bar fills to the limit; past it, the bar is
+ *  full and red, and the figure says by how much. */
+function Bar({ used, limit, state }: { used: number; limit: number; state: LimitState }) {
+  const ratio = limit > 0 ? used / limit : 0;
   return (
-    <div className="min-w-[9rem]" title={`${basis === "pool" ? "Handed out" : "The fullest department"} ${s.windowLabel}: ${fmt(s.used)} of ${fmt(s.limit)}`}>
-      <div className="flex items-baseline justify-between gap-2 text-[11px]">
-        <span className="text-muted">{s.windowLabel}</span>
-        <span className="tabnum font-bold" style={{ color: ratio > 1 ? "var(--bad-fg)" : undefined }}>{fmt(s.used)} / {fmt(s.limit)}</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden mt-0.5">
-        <div className="h-full rounded-full" style={{ width: `${Math.min(100, ratio * 100)}%`, background: tone }} />
-      </div>
-      {basis !== "pool" && s.overWorkers > 0 && <div className="text-[11px] text-bad-fg font-semibold">{s.overWorkers} department(s) over</div>}
+    <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden" aria-hidden>
+      <div className="h-full rounded-full" style={{ width: `${Math.min(100, ratio * 100)}%`, background: STATE_TONE[state] }} />
     </div>
   );
+}
+
+function StatePill({ state }: { state: LimitState }) {
+  return <span className={`pill ${STATE_PILL[state]} whitespace-nowrap`}>{state === "over" ? "⚠ " : ""}{STATE_LABEL[state]}</span>;
 }
 
 function ItemForm({ item, onDone, departments }: { item?: CatalogueItemDTO; onDone: () => void; departments?: Departments }) {
@@ -203,47 +227,133 @@ function LimitForm({ itemId, limit, departments, onDone }: { itemId: number; lim
   );
 }
 
-function ItemRow({ item, standings, departments, canEdit }: { item: CatalogueItemDTO; standings: Record<number, Standing>; departments: Departments; canEdit: boolean }) {
+/** Every department's own standing under an "each" or per-worker limit. */
+function DepartmentBreakdown({ s, uom, basis }: { s: LimitStandingView; uom: string; basis: LimitBasis }) {
+  return (
+    <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2 xl:grid-cols-3">
+      {s.departments.map((d) => {
+        const st = ratioState(d.used, d.limit);
+        return (
+          <li key={d.department} className="min-w-0">
+            <div className="flex items-baseline gap-2 text-xs">
+              <span className="font-semibold truncate min-w-0 flex-1" title={d.label}>{d.label}</span>
+              <span className="tabnum whitespace-nowrap"><b style={{ color: st === "over" ? "var(--bad-fg)" : undefined }}>{fmt(d.used)}</b> / {fmt(d.limit)} {uom}</span>
+            </div>
+            <Bar used={d.used} limit={d.limit} state={st} />
+            {basis === "person" && d.workers !== null && (
+              <div className="text-[11px] text-muted">{d.workers > 0 ? `${d.workers} worker${d.workers === 1 ? "" : "s"} on the list` : "no one on the workers list — counted as one"}</div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** One limit's line: the number, how it counts, for whom, and where it stands now. */
+function LimitCells({ l, s, uom, open, toggle }: { l: LimitDTO; s: LimitStandingView | undefined; uom: string; open: boolean; toggle: () => void }) {
+  const state = stateOf(s);
+  const split = !!s && s.departments.length > 0;
+  const left = s ? round3(s.limit - s.used) : null;
+  return (
+    <>
+      <td className="p-2 whitespace-nowrap">
+        <span className="tabnum font-extrabold">{fmt(l.qty)}</span> <span className="text-xs text-muted">{uom}</span>
+        <div className="text-xs text-muted">{PERIOD_LABEL[l.period]}</div>
+      </td>
+      <td className="p-2"><span className="pill pill-muted whitespace-nowrap" title={BASIS_HINT[l.basis]}>{BASIS_LABEL[l.basis]}</span></td>
+      <td className="p-2 text-xs max-w-[16rem]">{l.departmentsLabel}</td>
+      <td className="p-2 min-w-[11rem]">
+        {s ? (
+          <>
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className="text-muted whitespace-nowrap">{s.windowLabel}</span>
+              <span className="tabnum whitespace-nowrap"><b style={{ color: state === "over" ? "var(--bad-fg)" : undefined }}>{fmt(s.used)}</b> / {fmt(s.limit)}</span>
+            </div>
+            <Bar used={s.used} limit={s.limit} state={split ? ratioState(s.used, s.limit) : state} />
+            {split && (
+              <button type="button" className="text-[11px] text-muted hover:text-foreground mt-0.5 no-print" onClick={toggle} aria-expanded={open}>
+                {open ? "▾" : "▸"} {s.departments.length} department{s.departments.length === 1 ? "" : "s"}
+                {s.over > 0 ? <b className="text-bad-fg"> · {s.over} over</b> : null}
+              </button>
+            )}
+          </>
+        ) : <span className="text-xs text-muted">—</span>}
+      </td>
+      <td className="p-2 text-right tabnum whitespace-nowrap">
+        {left === null ? "—" : split ? <span className="text-xs text-muted" title="Every department has its own number — see each one">by department</span>
+          : <b style={{ color: left < 0 ? "var(--bad-fg)" : undefined }}>{fmt(left)}</b>}
+      </td>
+      <td className="p-2"><StatePill state={state} /></td>
+    </>
+  );
+}
+
+/** A line's ⋯ menu (and right-click): its limit, and the item's own actions. */
+function RowActions({ name, limitId, onEdit }: { name: string; limitId?: number; onEdit: (what: "item" | "new-limit" | number) => void }) {
+  const menu = useRowMenu(() => [
+    { heading: name },
+    ...(limitId !== undefined ? [{ key: "edit-limit", label: "Edit this limit…", icon: "✏️", onSelect: () => onEdit(limitId) }] : []),
+    { key: "add-limit", label: "Add a limit…", icon: "➕", onSelect: () => onEdit("new-limit") },
+    { sep: true } as const,
+    { key: "edit-item", label: "Edit the item…", icon: "📦", onSelect: () => onEdit("item") },
+  ], `Actions for ${name}`);
+  return <td className="p-2 text-center no-print" onContextMenu={menu.onContextMenu}>{menu.button}{menu.menu}</td>;
+}
+
+function ItemRows({ item, standings, departments, canEdit }: { item: CatalogueItemDTO; standings: Record<number, LimitStandingView>; departments: Departments; canEdit: boolean }) {
   const [editing, setEditing] = useState<"item" | "new-limit" | number | null>(null);
+  const [open, setOpen] = useState<Set<number>>(new Set());
   const close = () => setEditing(null);
-  const worst = Math.max(0, ...item.limits.map((l) => { const s = standings[l.id]; return s && s.limit > 0 ? s.used / s.limit : 0; }));
+  const toggle = (id: number) => setOpen((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // the item's cells run down its limits' lines and any department list opened under them
+  const hasBreakdown = (id: number) => open.has(id) && (standings[id]?.departments.length ?? 0) > 0;
+  const span = Math.max(1, item.limits.length + item.limits.filter((l) => hasBreakdown(l.id)).length);
+  // limits that cover a department twice — each holds on its own
+  const overlapping = item.limits.some((a, i) => item.limits.slice(i + 1).some((b) => rulesOverlap(a, b)));
+  const cols = canEdit ? 9 : 8;
+
+  const itemCells = (
+    <>
+      <td className="p-2 align-top" rowSpan={span}>
+        <div className="font-semibold">
+          {item.name}
+          {!item.active && <span className="pill pill-muted ms-1.5">retired</span>}
+        </div>
+        <div className="text-xs text-muted ltr">{item.code ?? "no code"}</div>
+        {item.remark && <div className="text-xs text-muted">{item.remark}</div>}
+        {overlapping && (
+          <span className="pill pill-info mt-1" title="Two of its limits cover the same department. Both hold: a hand-out must fit each of them, or it needs a reason.">both limits apply</span>
+        )}
+      </td>
+      <td className="p-2 align-top text-xs font-bold" rowSpan={span}>{item.uom}</td>
+    </>
+  );
+
   return (
     <Fragment>
-      <tr className={`border-t align-top ${item.active ? "" : "opacity-60"}`}>
-        <td className="p-2">
-          <div className="font-semibold">
-            {item.name}
-            {!item.active && <span className="pill pill-muted ms-1.5">retired</span>}
-            {worst > 1 + 1e-9 && <span className="pill pill-bad ms-1.5">⚠ over</span>}
-          </div>
-          <div className="text-xs text-muted ltr">{item.code ?? "no code"}{item.remark ? <span className="ms-2 not-italic">· {item.remark}</span> : null}</div>
-        </td>
-        <td className="p-2 text-xs font-bold">{item.uom}</td>
-        <td className="p-2">
-          {item.limits.length === 0 ? <span className="text-xs text-muted">No limit</span> : (
-            <ul className="space-y-2">
-              {item.limits.map((l) => (
-                <li key={l.id} className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                  <div className="min-w-[14rem]">
-                    <span className="tabnum font-extrabold">{fmt(l.qty)}</span> <span className="text-muted text-xs">{item.uom} {PERIOD_LABEL[l.period]}</span>
-                    {l.basis === "person" && <span className="pill pill-muted ms-1" title="The number per worker, times each department's workers">per worker</span>}
-                    {l.basis === "each" && <span className="pill pill-muted ms-1" title="Every department picked has the whole number">each department</span>}
-                    <div className="text-xs">{l.departmentsLabel}</div>
-                  </div>
-                  <UsageBar s={standings[l.id]} basis={l.basis} />
-                  {canEdit && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(l.id)}>Edit</button>}
-                </li>
-              ))}
-            </ul>
+      {item.limits.length === 0 ? (
+        <tr className={`border-t ${item.active ? "" : "opacity-60"}`}>
+          {itemCells}
+          <td className="p-2 text-xs text-muted" colSpan={6}>No limit — what is handed out of it is logged, nothing holds it back.</td>
+          {canEdit && <RowActions name={item.name} onEdit={setEditing} />}
+        </tr>
+      ) : item.limits.map((l, k) => (
+        <Fragment key={l.id}>
+          <tr className={`${k === 0 ? "border-t" : ""} ${item.active ? "" : "opacity-60"}`}>
+            {k === 0 && itemCells}
+            <LimitCells l={l} s={standings[l.id]} uom={item.uom} open={open.has(l.id)} toggle={() => toggle(l.id)} />
+            {canEdit && <RowActions name={item.name} limitId={l.id} onEdit={setEditing} />}
+          </tr>
+          {hasBreakdown(l.id) && (
+            <tr className="bg-surface-2/60">
+              <td colSpan={cols - 2} className="p-3">
+                <DepartmentBreakdown s={standings[l.id]} uom={item.uom} basis={l.basis} />
+              </td>
+            </tr>
           )}
-        </td>
-        {canEdit && (
-          <td className="p-2 whitespace-nowrap">
-            <button type="button" className="btn btn-sm" onClick={() => setEditing("item")}>Edit item</button>
-            <button type="button" className="btn btn-sm ms-1" onClick={() => setEditing("new-limit")}>+ Limit</button>
-          </td>
-        )}
-      </tr>
+        </Fragment>
+      ))}
       {editing !== null && canEdit && (
         <Modal
           title={editing === "item" ? `Edit ${item.name}` : editing === "new-limit" ? `Add a limit to ${item.name}` : `Edit a limit of ${item.name}`}
@@ -259,6 +369,8 @@ function ItemRow({ item, standings, departments, canEdit }: { item: CatalogueIte
   );
 }
 
+type Filter = "all" | "over" | "near" | "nolimit" | "retired";
+
 export function ConsumableLimits({
   items,
   standings,
@@ -267,7 +379,7 @@ export function ConsumableLimits({
   canEdit,
 }: {
   items: CatalogueItemDTO[];
-  standings: Record<number, Standing>;
+  standings: Record<number, LimitStandingView>;
   departments: Departments;
   changes: CatalogueChangeView[];
   canEdit: boolean;
@@ -275,37 +387,77 @@ export function ConsumableLimits({
   const [q, setQ] = useState("");
   const [dept, setDept] = useState("");
   const [adding, setAdding] = useState(false);
-  const [onlyAlarms, setOnlyAlarms] = useState(false);
+  const [filter, setFilter] = useState<Filter>("all");
 
-  // the items with a limit over right now (per-person: any worker over)
-  const overIds = useMemo(
-    () => new Set(items.filter((i) => i.limits.some((l) => { const s = standings[l.id]; return !!s && (s.used > s.limit + 1e-9 || s.overWorkers > 0); })).map((i) => i.id)),
-    [items, standings]
-  );
+  // an item is as bad as its worst limit
+  const stateOfItem = useMemo(() => {
+    const rank: Record<LimitState, number> = { over: 3, near: 2, ok: 1, idle: 0 };
+    return new Map(items.map((i) => [i.id, i.limits.map((l) => stateOf(standings[l.id])).reduce<LimitState>((w, s) => (rank[s] > rank[w] ? s : w), "idle")]));
+  }, [items, standings]);
+  const counts = useMemo(() => {
+    const active = items.filter((i) => i.active);
+    return {
+      all: items.length,
+      over: active.filter((i) => stateOfItem.get(i.id) === "over").length,
+      near: active.filter((i) => stateOfItem.get(i.id) === "near").length,
+      nolimit: active.filter((i) => i.limits.length === 0).length,
+      retired: items.length - active.length,
+      active: active.length,
+      limits: active.reduce((n, i) => n + i.limits.length, 0),
+    };
+  }, [items, stateOfItem]);
+
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return items.filter((i) =>
       (!needle || [i.name, i.code ?? "", i.remark ?? ""].some((v) => v.toLowerCase().includes(needle)))
       && (!dept || i.limits.some((l) => l.departments === ALL_DEPARTMENTS || l.departments.includes(dept)))
-      && (!onlyAlarms || overIds.has(i.id))
+      && (filter === "all" ? true
+        : filter === "retired" ? !i.active
+        : filter === "nolimit" ? i.active && i.limits.length === 0
+        : i.active && stateOfItem.get(i.id) === filter)
     );
-  }, [items, q, dept, onlyAlarms, overIds]);
-  const overCount = overIds.size;
+  }, [items, q, dept, filter, stateOfItem]);
+
+  const FILTERS: { key: Filter; label: string; n: number }[] = [
+    { key: "all", label: "All", n: counts.all },
+    { key: "over", label: "Over now", n: counts.over },
+    { key: "near", label: "Close", n: counts.near },
+    { key: "nolimit", label: "No limit", n: counts.nolimit },
+    { key: "retired", label: "Retired", n: counts.retired },
+  ];
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 no-print">
-        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search item, code…" aria-label="Search the catalogue" className={`${F} w-full sm:w-64`} />
+      <div className="flex flex-wrap gap-3">
+        <StatTile label="Items in use" value={fmt(counts.active)} sub={`${fmt(counts.limits)} limit${counts.limits === 1 ? "" : "s"} set`} />
+        <StatTile label="Over a limit now" value={fmt(counts.over)} sub={counts.over ? "items past a number in its current window" : "✓ every item within its limits"} />
+        <StatTile label={`Close (${Math.round(NEAR_RATIO * 100)}%+)`} value={fmt(counts.near)} sub="items near a limit" />
+        <StatTile label="No limit" value={fmt(counts.nolimit)} sub="active items only logged" />
+      </div>
+
+      <div className="toolbar toolbar-row no-print !mb-0">
+        <SearchBox value={q} onChange={setQ} placeholder="Search item, code, remark…" wide />
         <select value={dept} onChange={(e) => setDept(e.target.value)} aria-label="Department" className={`${F} w-full sm:w-56`}>
           <option value="">Every department</option>
-          {departments.sections.map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
-          {departments.custom.map((d) => <option key={d} value={d}>{d}</option>)}
+          {WORKER_GROUPS.map((g) => (
+            <optgroup key={g.key} label={g.label}>
+              {departments.sections.filter((s) => s.group === g.key).map((s) => <option key={s.code} value={s.code}>{s.label}</option>)}
+            </optgroup>
+          ))}
+          {departments.custom.length > 0 && (
+            <optgroup label="Other departments">{departments.custom.map((d) => <option key={d} value={d}>{d}</option>)}</optgroup>
+          )}
         </select>
-        <button type="button" className={`pill cursor-pointer ${onlyAlarms ? "pill-bad" : overCount ? "pill-warn" : "pill-muted"}`} onClick={() => setOnlyAlarms((v) => !v)} aria-pressed={onlyAlarms}>
-          ⚠ {overCount} over their limit now
-        </button>
-        <span className="text-sm text-muted">{shown.length} of {items.length} items</span>
-        {canEdit && <button type="button" className="btn btn-primary btn-sm ms-auto" onClick={() => setAdding(true)}>+ Add item</button>}
+        <nav className="seg" aria-label="Show">
+          {FILTERS.map((f) => (
+            <button key={f.key} type="button" className={filter === f.key ? "on" : ""} onClick={() => setFilter(f.key)} aria-pressed={filter === f.key}>
+              {f.label} <span className="tabnum">{f.n}</span>
+            </button>
+          ))}
+        </nav>
+        <span className="text-sm text-muted ms-auto"><b className="text-foreground tabnum">{shown.length}</b> of <span className="tabnum">{items.length}</span> items</span>
+        {canEdit && <button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>+ Add item</button>}
       </div>
       {adding && canEdit && (
         <Modal title="Add an item to the catalogue" sub="The item, and its limit — how much, how often, for which departments" onClose={() => setAdding(false)}>
@@ -315,22 +467,35 @@ export function ConsumableLimits({
       {!canEdit && <p className="text-xs text-muted">Changing the catalogue and its limits needs the “Consumables — record” permission.</p>}
 
       <section className="bg-surface border rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-brand text-white text-left">
-                <th className="p-2">Item</th>
-                <th className="p-2">UOM</th>
-                <th className="p-2">Limits · where each stands now ({(["month", "quarter"] as LimitPeriod[]).map((p) => PERIOD_NOUN[p]).join(", ")})</th>
-                {canEdit && <th className="p-2 no-print">Change</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((i) => <ItemRow key={i.id} item={i} standings={standings} departments={departments} canEdit={canEdit} />)}
-              {shown.length === 0 && <tr><td colSpan={4} className="p-4 text-sm text-muted">No item matches.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        {shown.length === 0 ? (
+          <TableEmpty
+            title={items.length === 0 ? "The catalogue is empty" : "No item matches"}
+            hint={items.length === 0 && canEdit ? "Add the store's items and their limits — hand-outs of them are then counted." : undefined}
+            filtered={items.length > 0}
+            action={items.length > 0 ? <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setQ(""); setDept(""); setFilter("all"); }}>Show every item</button> : undefined}
+          />
+        ) : (
+          <TableFrame className="!max-h-[calc(100vh-16rem)] min-h-[16rem]">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="text-left">
+                  <Th label="Item" />
+                  <Th label="Unit" />
+                  <Th label="Limit" hint="How much, how often — months run Jan–Mar, Apr–Jun … for every 3 months" />
+                  <Th label="Counted" full="How the number counts" hint="Shared: one number for the departments together · Each department: every department the whole number · Per worker: the number times each department's workers" />
+                  <Th label="For" full="The departments it covers" />
+                  <Th label="Now" full="Used in the current window" hint="This month, or the months of a longer limit so far. An each-department or per-worker limit adds its departments up — open it to see each one." />
+                  <Th label="Left" num className="text-right" hint="What can still be handed out before the limit" />
+                  <Th label="Status" hint={`Over: past the number · Close: ${Math.round(NEAR_RATIO * 100)}% or more · Within · Not used. An each-department or per-worker limit takes its fullest department.`} />
+                  {canEdit && <Th label="" className="no-print w-10" />}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((i) => <ItemRows key={i.id} item={i} standings={standings} departments={departments} canEdit={canEdit} />)}
+              </tbody>
+            </table>
+          </TableFrame>
+        )}
       </section>
 
       <details className="bg-surface border rounded-xl p-3">

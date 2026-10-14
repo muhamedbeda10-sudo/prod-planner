@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ALL_DEPARTMENTS, FABRICATION_SECTIONS, FAB_AND_WELD_SECTIONS, checkAgainstLimits, departmentsLabel, describeBreach, expandPerWorker,
-  exceedances, isLimitPeriod, issueUses, parseDepartments, periodWindow, serializeDepartments, splitSheetLimit, standings, windowLabel, windowsOverlapping,
+  exceedances, exceedancesByMonth, headcountResolver, isLimitPeriod, issueUses, rulesOverlap, parseDepartments, periodWindow, serializeDepartments, splitSheetLimit, standings, windowLabel, windowsOverlapping,
   windowsSpan, type LimitCandidate, type LimitRule, type LimitUse,
 } from "./consumableLimits";
 
@@ -235,5 +235,45 @@ describe("periods of several months", () => {
     expect(windowLabel("halfyear", periodWindow("halfyear", "2026-09-28"))).toBe("Jul–Dec 2026");
     expect(windowLabel("year", periodWindow("year", "2026-09-28"))).toBe("2026");
     expect(windowLabel("quarter", periodWindow("quarter", "2026-09-28"))).toBe("Q3 2026");
+  });
+});
+
+describe("the headcount a month is held to", () => {
+  const rows = [
+    { month: "2026-07", department: "WeldingTX", workers: 10 }, { month: "2026-07", department: "*", workers: 10 },
+    { month: "2026-09", department: "WeldingTX", workers: 6 }, { month: "2026-09", department: "*", workers: 6 },
+  ];
+  const live = new Map([["WeldingTX", 12]]);
+  const of = headcountResolver(rows, live, "2026-10");
+
+  it("takes the month's own record, or the latest before it", () => {
+    expect(of("2026-07").get("WeldingTX")).toBe(10);
+    expect(of("2026-08").get("WeldingTX")).toBe(10); // nothing changed in August
+    expect(of("2026-09").get("WeldingTX")).toBe(6);
+    expect(of("2026-09").has("*")).toBe(false);
+  });
+
+  it("takes the list as it stands for this month, and before anything was recorded", () => {
+    expect(of("2026-10")).toBe(live);
+    expect(of("2026-05")).toBe(live);
+  });
+
+  it("holds a past month's per-worker limit to that month's workers", () => {
+    const r = [rule({ id: 4, basis: "person", qty: 2 })];
+    // 14 in July: 10 workers → 20, within; 14 in September: 6 workers → 12, over
+    const uses = [use({ qty: 14, dayISO: "2026-07-10" }), use({ qty: 14, dayISO: "2026-09-10" })];
+    const ex = exceedancesByMonth(r, uses, "2026-07-01", "2026-09-30", of);
+    expect(ex.map((e) => [e.windowLabel, e.used, e.limit])).toEqual([["Sep 2026", 14, 12]]);
+  });
+});
+
+describe("two limits on the same department", () => {
+  it("both hold — a hand-out over either is named", () => {
+    const rules = [rule({ id: 1, qty: 10 }), rule({ id: 2, qty: 25, departments: ALL_DEPARTMENTS, period: "quarter" })];
+    expect(rulesOverlap(rules[0], rules[1])).toBe(true);
+    expect(rulesOverlap(rule({ departments: ["WeldingTX"] }), rule({ departments: ["PaintingTX"] }))).toBe(false);
+    const uses = [use({ qty: 9 }), use({ qty: 15, dayISO: "2026-07-10", department: "PaintingTX" })];
+    expect(checkAgainstLimits(rules, uses, cand({ qty: 2 })).map((b) => b.ruleId)).toEqual([1, 2]);
+    expect(checkAgainstLimits(rules, uses, cand({ qty: 1 }))).toEqual([]);
   });
 });

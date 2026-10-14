@@ -1180,6 +1180,21 @@ model ConsumableCatalogueChange {
 /// The people of a group hand-out — several workers picked by name, or the
 /// whole department as it stood. Each counts an equal share of the quantity
 /// against a per-person limit.
+// How many workers each section had in a month — what a per-worker limit is
+// multiplied by when that month is reviewed later. Rewritten (the month's
+// rows replaced) whenever the workers list changes or a hand-out is
+// recorded, so the last write of a month is the month as it ended; a month
+// with no write reads the latest month before it. department "*" holds the
+// total, so a month whose sections all went empty is still a month on record.
+model ConsumableHeadcount {
+  month      String // "2026-10", the factory's calendar month
+  department String // a worker section's code, or "*"
+  workers    Int
+  updatedAt  DateTime @updatedAt
+
+  @@id([month, department])
+}
+
 model ConsumableIssueRecipient {
   issueId  Int
   issue    ConsumableIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)

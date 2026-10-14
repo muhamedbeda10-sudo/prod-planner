@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  keepsOverLimitReason,
+  overLimitReasonProblem,
   NEW_DEPARTMENT,
   summarizeHandouts,
   canEditIssue,
@@ -295,5 +297,25 @@ describe("summarizeHandouts", () => {
   });
   it("is empty for no rows", () => {
     expect(summarizeHandouts([])).toEqual({ items: [], departments: [] });
+  });
+});
+
+describe("the over-limit reason", () => {
+  it("is required, and must be words", () => {
+    expect(overLimitReasonProblem(null)).toMatch(/not recorded/);
+    expect(overLimitReasonProblem("  ")).toMatch(/not recorded/);
+    expect(overLimitReasonProblem("ok")).toMatch(/at least 5/);
+    expect(overLimitReasonProblem("......")).toMatch(/at least 5/);
+    expect(overLimitReasonProblem("night shift")).toBeNull();
+    expect(overLimitReasonProblem("عطل في الماكينة")).toBeNull();
+  });
+
+  it("is kept by a correction only while it asks no more of the limit", () => {
+    const before = { itemId: 3, department: "WeldingTX", qty: 5 };
+    expect(keepsOverLimitReason(before, { ...before })).toBe(true);
+    expect(keepsOverLimitReason(before, { ...before, qty: 4 })).toBe(true);
+    expect(keepsOverLimitReason(before, { ...before, qty: 6 })).toBe(false);
+    expect(keepsOverLimitReason(before, { ...before, department: "PaintingTX" })).toBe(false);
+    expect(keepsOverLimitReason(before, { ...before, itemId: 4 })).toBe(false);
   });
 });

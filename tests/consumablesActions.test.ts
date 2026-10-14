@@ -22,13 +22,16 @@ const h = vi.hoisted(() => {
     getCurrentUser: vi.fn(),
     checkIssueLimits: vi.fn(),
     limitHints: vi.fn(),
+    lockItemLimits: vi.fn(),
+    snapshotHeadcount: vi.fn(),
   };
 });
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("next/cache", () => ({ revalidatePath: h.revalidatePath }));
-vi.mock("@/lib/server/consumableLimits", () => ({ checkIssueLimits: h.checkIssueLimits, limitHints: h.limitHints }));
+vi.mock("@/lib/server/consumableLimits", () => ({ checkIssueLimits: h.checkIssueLimits, limitHints: h.limitHints, lockItemLimits: h.lockItemLimits }));
+vi.mock("@/lib/server/consumableHeadcount", () => ({ snapshotHeadcount: h.snapshotHeadcount }));
 vi.mock("@/lib/server/auth", () => ({
   requirePerm: h.requirePerm,
   requireAdmin: h.requireAdmin,
@@ -322,20 +325,20 @@ describe("limits at recording", () => {
     expect(res.ok).toBe(true);
     const data = h.prisma.consumableIssue.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ itemId: 3, item: "Grinding Disk 115x6x22.23mm", overLimit: false, overLimitReason: null });
-    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3, department: "WeldingTX", workerIds: [], qty: 2 }));
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3, department: "WeldingTX", workerIds: [], qty: 2 }), expect.anything());
   });
 
   it("records a typed item with no catalogue link, and no limit check to speak of", async () => {
     const res = await createConsumableIssue(form({ ...valid, itemId: "__new__", item: "Spare fuse" }));
     expect(res.ok).toBe(true);
     expect(h.prisma.consumableIssue.create.mock.calls[0][0].data).toMatchObject({ itemId: null, item: "Spare fuse" });
-    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: null }));
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: null }), expect.anything());
   });
 
   it("links a pasted item to the catalogue by its name or code, under the catalogue's name", async () => {
     expect((await createConsumableIssue(form({ ...valid, item: "  grinding disk 115×6×22.23MM " }))).ok).toBe(true);
     expect(h.prisma.consumableIssue.create.mock.calls[0][0].data).toMatchObject({ itemId: 3, item: "Grinding Disk 115x6x22.23mm" });
-    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3 }));
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3 }), expect.anything());
     expect((await createConsumableIssue(form({ ...valid, item: "c-con-grd-115x6x22.23" }))).ok).toBe(true);
     expect(h.prisma.consumableIssue.create.mock.calls[1][0].data).toMatchObject({ itemId: 3 });
     // only active items (and, for a correction, the row's own) are matched
@@ -370,6 +373,24 @@ describe("limits at recording", () => {
     });
   });
 
+  it("never records over a limit without a real reason", async () => {
+    h.checkIssueLimits.mockResolvedValue([breach]);
+    for (const reason of ["", "   ", "ok", ".....", "- - -"]) {
+      const res = await createConsumableIssue(form({ ...valid, itemId: "3", overLimitReason: reason }));
+      expect(res).toMatchObject({ ok: false, needsReason: true });
+    }
+    expect(h.prisma.consumableIssue.create).not.toHaveBeenCalled();
+    // a reason in Arabic is a reason
+    expect((await createConsumableIssue(form({ ...valid, itemId: "3", overLimitReason: "الوردية التانية خلصت" }))).ok).toBe(true);
+  });
+
+  it("takes the item's lock before it counts the limits, and writes the month's headcount after", async () => {
+    await createConsumableIssue(form({ ...valid, itemId: "3" }));
+    expect(h.lockItemLimits).toHaveBeenCalledWith(h.prisma, 3);
+    expect(h.lockItemLimits.mock.invocationCallOrder[0]).toBeLessThan(h.checkIssueLimits.mock.invocationCallOrder[0]);
+    expect(h.snapshotHeadcount).toHaveBeenCalled();
+  });
+
   it("refuses an over-long reason", async () => {
     h.checkIssueLimits.mockResolvedValue([breach]);
     expect((await createConsumableIssue(form({ ...valid, itemId: "3", overLimitReason: "x".repeat(301) }))).error).toMatch(/too long/);
@@ -378,13 +399,16 @@ describe("limits at recording", () => {
   it("checks an edit on the day it was handed out, leaving the row itself out", async () => {
     h.prisma.consumableIssue.findUnique.mockResolvedValue(saved({ issuedAt: new Date("2026-09-20T08:00:00Z"), itemId: 3 }));
     await updateConsumableIssue(form({ ...valid, itemId: "3", qty: "3", id: "42", version: version.toISOString() }));
-    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3, dayISO: "2026-09-20", excludeIssueId: 42, qty: 3 }));
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ itemId: 3, dayISO: "2026-09-20", excludeIssueId: 42, qty: 3 }), expect.anything());
+    // checked under the item's lock, in the transaction that writes it
+    expect(h.lockItemLimits).toHaveBeenCalledWith(h.prisma, 3);
   });
 
-  it("keeps an edited row's earlier reason while it is still over, and clears the flag once it is not", async () => {
+  it("keeps an edited row's earlier reason while it is still over and asks no more, and clears the flag once it is not", async () => {
     h.checkIssueLimits.mockResolvedValue([breach]);
     h.prisma.consumableIssue.findUnique.mockResolvedValue(saved({ issuedAt: new Date("2026-09-28T08:00:00Z"), itemId: 3, overLimit: true, overLimitReason: "urgent job" }));
-    const edit = form({ ...valid, itemId: "3", qty: "3", id: "42", version: version.toISOString() });
+    // the same item, department and quantity — only the notes change
+    const edit = form({ ...valid, itemId: "3", qty: "2", notes: "for the night shift", id: "42", version: version.toISOString() });
     expect((await updateConsumableIssue(edit)).ok).toBe(true);
     expect(h.prisma.consumableIssue.updateMany.mock.calls[0][0].data).toMatchObject({ overLimit: true, overLimitReason: "urgent job" });
 
@@ -392,6 +416,18 @@ describe("limits at recording", () => {
     h.prisma.consumableIssue.updateMany.mockClear();
     expect((await updateConsumableIssue(edit)).ok).toBe(true);
     expect(h.prisma.consumableIssue.updateMany.mock.calls[0][0].data).toMatchObject({ overLimit: false, overLimitReason: null, overLimitNote: null });
+  });
+
+  it("asks for a new reason when an edit of a row already over raises its quantity", async () => {
+    h.checkIssueLimits.mockResolvedValue([breach]);
+    h.prisma.consumableIssue.findUnique.mockResolvedValue(saved({ issuedAt: new Date("2026-09-28T08:00:00Z"), itemId: 3, overLimit: true, overLimitReason: "urgent job" }));
+    const res = await updateConsumableIssue(form({ ...valid, itemId: "3", qty: "5", id: "42", version: version.toISOString() }));
+    expect(res).toMatchObject({ ok: false, needsReason: true });
+    expect(h.prisma.consumableIssue.updateMany).not.toHaveBeenCalled();
+    // with its own reason it goes through
+    const ok = await updateConsumableIssue(form({ ...valid, itemId: "3", qty: "5", id: "42", version: version.toISOString(), overLimitReason: "three welders on the night shift" }));
+    expect(ok.ok).toBe(true);
+    expect(h.prisma.consumableIssue.updateMany.mock.calls[0][0].data).toMatchObject({ overLimit: true, overLimitReason: "three welders on the night shift" });
   });
 
   it("asks for a reason when an edit newly takes a row over", async () => {
@@ -421,7 +457,7 @@ describe("older group rows", () => {
     expect(upd.data.qty.toString()).toBe("24");
     expect(upd.data.department).toBe("PaintingTX");
     expect(upd.data.workerId).toBe(9);
-    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ department: "PaintingTX", workerIds: [], excludeIssueId: 42 }));
+    expect(h.checkIssueLimits).toHaveBeenCalledWith(expect.objectContaining({ department: "PaintingTX", workerIds: [], excludeIssueId: 42 }), expect.anything());
     const rev = h.prisma.consumableIssueRevision.create.mock.calls[0][0].data;
     expect(rev.before).toMatchObject({ workerId: 0, workerName: "Whole Welding TX (3)", qty: 20 });
     expect(rev.after).toMatchObject({ workerId: 9, workerName: "Karim", department: "PaintingTX", qty: 24 });

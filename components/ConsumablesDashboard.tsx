@@ -356,7 +356,7 @@ export function ConsumablesDashboard({ s, periodLabel, period }: { s: Consumable
   const trendRows: TableRow[] = singleDay
     ? s.timeline.buckets.map((b) => ({ Hour: b.label, "Hand-outs": b.issues }))
     : s.daily.map((d) => ({ Day: d.dayISO, "Hand-outs": d.issues, "7-day average": d.avg7 ?? "" }));
-  const shareRows: TableRow[] = s.departments.map((d) => ({ Department: d.label, "Hand-outs": d.issues, Share: pct(d.issues / s.totals.issues, 1), Items: d.items, Workers: d.workers }));
+  const shareRows: TableRow[] = s.departments.map((d) => ({ Department: d.label, "Hand-outs": d.issues, Share: pct(d.issues / s.totals.issues, 1), Items: d.items, "Workers on the list": d.people || "" }));
   const stackRows: TableRow[] = s.departmentTrend.buckets.map((b) => ({ [s.departmentTrend.unit === "week" ? "Week of" : "Day"]: b.key, ...Object.fromEntries(s.departmentTrend.series.map((x) => [x.label, b.values[x.key] ?? 0])), Total: b.total }));
   const weekRows: TableRow[] = WEEK_ORDER.map((d) => ({ Weekday: WEEKDAYS[d], ...Object.fromEntries(s.weekHour.hours.map((h, j) => [hh(h), s.weekHour.counts[d][j]])) }));
   const paretoRows: TableRow[] = s.pareto.rows.map((r, i) => ({ "#": i + 1, Item: r.item, "Hand-outs": r.issues, Share: pct(r.share, 1), "Running total": pct(r.cumulative, 1) }));

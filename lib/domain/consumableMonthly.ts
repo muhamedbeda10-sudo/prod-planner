@@ -8,10 +8,16 @@
 // "300% over" — it is counted over its window so far (the window's first day
 // to the month's last) against its whole number. Pure and tested; the reads
 // are lib/server/consumableMonthly.ts.
+//
+// The limits are counted exactly as the record form and the alarms count
+// them: an "each department" or "per worker" limit is first made into each
+// department's own (expandPerWorker) — the number, or the number times the
+// department's workers — because a hand-out is recorded to a department, not
+// to the worker who collected it.
 
 import {
-  coversDepartment, isMultiMonth, periodWindow, ruleLabel, usageIn, windowLabel, windowsOverlapping,
-  type LimitBasis, type LimitPeriod, type LimitRule, type LimitUse,
+  coversDepartment, departmentsLabel, expandPerWorker, isMultiMonth, periodWindow, rulesOverlap, usageIn, windowLabel,
+  type HeadcountOf, type LimitBasis, type LimitPeriod, type LimitRule, type LimitUse,
 } from "./consumableLimits";
 
 export const NEAR_RATIO = 0.8;
@@ -67,13 +73,14 @@ export function isMonthKey(s: string): boolean {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 }
 
-/** The days the report needs counted: six months back — or the year's
- *  start, where every multi-month window of the month begins — to the
- *  month's end. */
+/** The days the report needs counted: from the first day of the year of the
+ *  earliest month it grades (the trend's first month, or the month before)
+ *  — where every multi-month window of those months begins, a yearly one
+ *  included — to the month's end. */
 export function reportSpan(month: string, trendMonths = 6): { from: string; to: string } {
-  const { from, to } = monthBounds(month);
-  const first = monthBounds(shiftMonth(month, -(trendMonths - 1))).from;
-  return { from: [first, periodWindow("year", from).from].sort()[0], to };
+  const { to } = monthBounds(month);
+  const earliest = [shiftMonth(month, -(Math.max(1, trendMonths) - 1)), shiftMonth(month, -1)].sort()[0];
+  return { from: periodWindow("year", monthBounds(earliest).from).from, to };
 }
 
 // ---------------------------------------------------------------- the report
@@ -87,29 +94,32 @@ export interface ItemInput {
   rules: LimitRule[];
 }
 
-export interface WorkerOver { workerId: number; used: number }
-
 export interface LimitMonthRow {
+  /** The counted limit's id — a department's share of an "each" or "per
+   *  worker" limit has a made-up negative one. */
   ruleId: number;
+  /** The limit as it is set on the Limits tab. */
+  sourceId: number;
   departmentsLabel: string;
+  /** How the limit is set: shared, each department its own, or per worker. */
   basis: LimitBasis;
   period: LimitPeriod;
+  /** The number as set (per worker for a per-worker limit). */
   qty: number;
-  /** The monthly allowance (per worker for a per-person limit); for a
-   *  quarterly limit its whole number, counted over the quarter to date. */
+  /** A per-worker limit: the number per worker and the workers it is times. */
+  perWorker: { qty: number; workers: number } | null;
+  /** What the department(s) may draw in the month — for a limit of several
+   *  months its whole number, counted over its months so far. */
   allowance: number;
-  /** A quarterly limit: the window counted ("Q3 to date"); null otherwise. */
+  /** A limit of several months: the window counted ("Q3 2026 to date"); null otherwise. */
   toDate: string | null;
-  /** Pool: everything handed out to its departments in the month; person:
-   *  the worker who took the most. */
+  /** Everything handed out to its departments in the month (or the window so far). */
   used: number;
-  /** Per-person limits: all the workers together. */
-  usedAll: number;
+  /** allowance − used; negative when over. */
+  left: number;
   ratio: number;
   status: Exclude<MonthStatus, "nolimit">;
   prevUsed: number;
-  /** A per-person limit: the workers over their monthly allowance. */
-  workersOver: WorkerOver[];
 }
 
 export interface ItemMonthRow {
@@ -118,14 +128,22 @@ export interface ItemMonthRow {
   name: string;
   uom: string;
   active: boolean;
-  /** Sum of the shared limits' monthly allowances; null when the item has
-   *  none (no limit, or only per-person limits). */
+  /** Sum of the monthly limits' allowances (every department's share);
+   *  null when the item has none (no limit, or only limits of several
+   *  months), or when its limits overlap — see `overlapping`. */
   allowance: number | null;
+  /** Two of its limits cover the same department: both hold (a hand-out must
+   *  fit each), so their numbers do not add up to one — the item is graded
+   *  by its worst limit, with no total. */
+  overlapping: boolean;
   /** Everything handed out of the item in the month, any department. */
   used: number;
+  /** …of which to the departments its monthly limits cover — what the
+   *  allowance is held against. */
+  covered: number;
   /** …of which to departments no limit of the item covers. */
   outside: number;
-  /** Covered use / allowance, or for per-person items the worst worker's. */
+  /** covered / allowance; with no monthly limit, the worst limit's ratio. */
   ratio: number | null;
   status: MonthStatus;
   prevUsed: number;
@@ -134,6 +152,13 @@ export interface ItemMonthRow {
   /** The last six months, oldest first. */
   trend: { month: string; used: number }[];
   limits: LimitMonthRow[];
+}
+
+export interface MonthlyReportOptions {
+  /** The workers each department had in a month — a per-worker limit is
+   *  times this; each month graded is held to its own. None: no one. */
+  headcountOf?: HeadcountOf;
+  trendCount?: number;
 }
 
 export interface MonthlyReport {
@@ -153,66 +178,60 @@ function inMonth(uses: readonly LimitUse[], month: string): LimitUse[] {
   return uses.filter((u) => u.dayISO >= from && u.dayISO <= to);
 }
 
-function perWorker(rule: LimitRule, uses: readonly LimitUse[]): Map<number, number> {
-  const m = new Map<number, number>();
-  for (const u of uses) {
-    if (u.itemId !== rule.itemId || !coversDepartment(rule, u.department)) continue;
-    m.set(u.workerId, round3((m.get(u.workerId) ?? 0) + u.qty));
-  }
-  return m;
-}
+const sum = (uses: readonly LimitUse[]) => round3(uses.reduce((n, u) => n + u.qty, 0));
 
-/** One limit over one month. */
-function limitMonth(rule: LimitRule, allUses: readonly LimitUse[], month: string, prevMonth: string): LimitMonthRow {
+/** One counted limit over one month. `rule` is a department's own or a
+ *  shared one (expandPerWorker has run); `source` is the limit as set. */
+function limitMonth(rule: LimitRule, source: LimitRule, allUses: readonly LimitUse[], month: string, prevMonth: string): LimitMonthRow {
   const allowance = monthlyAllowance(rule);
-  const { from, to } = monthBounds(month);
+  const bounds = monthBounds(month);
   const prevBounds = monthBounds(prevMonth);
-  // a quarterly limit counts the quarter so far; every other the month
-  const quarterly = isMultiMonth(rule.period);
-  const monthWindow = quarterly ? { from: periodWindow(rule.period, from).from, to } : { from, to };
-  const prevWindow = quarterly ? { from: periodWindow(rule.period, prevBounds.from).from, to: prevBounds.to } : prevBounds;
-  const between = (w: { from: string; to: string }) => allUses.filter((u) => u.dayISO >= w.from && u.dayISO <= w.to);
-  const cur = between(monthWindow);
-  const prev = between(prevWindow);
-
-  let used: number;
-  let usedAll: number;
-  let prevUsed: number;
-  let workersOver: WorkerOver[] = [];
-  if (rule.basis === "person") {
-    const per = perWorker(rule, cur);
-    const sorted = [...per.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
-    used = sorted[0]?.[1] ?? 0;
-    usedAll = round3(sorted.reduce((n, [, q]) => n + q, 0));
-    workersOver = sorted.filter(([, q]) => q > allowance + 1e-9).map(([workerId, q]) => ({ workerId, used: q }));
-    prevUsed = Math.max(0, ...perWorker(rule, prev).values());
-  } else {
-    used = usageIn(rule, cur, monthWindow);
-    usedAll = used;
-    prevUsed = usageIn(rule, prev, prevWindow);
-  }
-
+  // a limit of several months counts its window so far; a monthly one the month
+  const multi = isMultiMonth(rule.period);
+  const window = (b: { from: string; to: string }) => (multi ? { from: periodWindow(rule.period, b.from).from, to: b.to } : b);
+  const monthWindow = window(bounds);
+  const used = usageIn(rule, allUses, monthWindow);
+  const prevUsed = usageIn(rule, allUses, window(prevBounds));
   return {
-    ruleId: rule.id, departmentsLabel: ruleLabel(rule), basis: rule.basis, period: rule.period, qty: rule.qty,
-    allowance, toDate: quarterly ? `${windowLabel(rule.period, monthWindow)} to date` : null, used, usedAll, ratio: allowance > 0 ? used / allowance : 0, status: grade(used, allowance), prevUsed,
-    workersOver,
+    ruleId: rule.id, sourceId: rule.sourceId ?? rule.id, departmentsLabel: departmentsLabel(rule.departments), basis: source.basis, period: rule.period, qty: source.qty,
+    perWorker: rule.perWorker ?? null,
+    allowance, toDate: multi ? `${windowLabel(rule.period, monthWindow)} to date` : null,
+    used, left: round3(allowance - used), ratio: allowance > 0 ? used / allowance : 0, status: grade(used, allowance), prevUsed,
   };
 }
 
-function itemMonth(item: ItemInput, allUses: readonly LimitUse[], month: string, prevMonth: string, trendMonths: string[]): ItemMonthRow {
+/** An item's limits as they are counted: each department's own share of an
+ *  "each" or "per worker" limit, shared ones as they are. `seen`: the
+ *  departments the item went to — an "every department" limit covers them. */
+function countedRules(item: ItemInput, mine: readonly LimitUse[], headcount: ReadonlyMap<string, number>): { rule: LimitRule; source: LimitRule }[] {
+  const seen = [...new Set(mine.map((u) => u.department))];
+  const sourceOf = new Map(item.rules.map((r) => [r.id, r]));
+  return expandPerWorker(item.rules, headcount, seen).map((rule) => ({ rule, source: sourceOf.get(rule.sourceId ?? rule.id) ?? rule }));
+}
+
+function itemMonth(item: ItemInput, allUses: readonly LimitUse[], month: string, prevMonth: string, trendMonths: string[], headcount: ReadonlyMap<string, number>): ItemMonthRow {
+  // `headcount`: the month's own — the month before is compared on the same
+  // limits, so "vs last month" is like for like
   const mine = allUses.filter((u) => u.itemId === item.id);
   const cur = inMonth(mine, month);
-  const used = round3(cur.reduce((n, u) => n + u.qty, 0));
-  const prevUsed = round3(inMonth(mine, prevMonth).reduce((n, u) => n + u.qty, 0));
-  const covered = (u: LimitUse) => item.rules.some((r) => coversDepartment(r, u.department));
-  const outside = round3(cur.filter((u) => !covered(u)).reduce((n, u) => n + u.qty, 0));
-  const limits = item.rules.map((r) => limitMonth(r, mine, month, prevMonth));
+  const used = sum(cur);
+  const prevUsed = sum(inMonth(mine, prevMonth));
+  const counted = countedRules(item, mine, headcount);
+  const outside = sum(cur.filter((u) => !counted.some(({ rule }) => coversDepartment(rule, u.department))));
+  // worst first, then the fullest, so the item opens on what matters
+  const limits = counted
+    .map(({ rule, source }) => limitMonth(rule, source, mine, month, prevMonth))
+    .sort((a, b) => SEVERITY[b.status] - SEVERITY[a.status] || b.ratio - a.ratio || a.departmentsLabel.localeCompare(b.departmentsLabel));
 
-  // the item's monthly allowance adds its shared limits — a quarterly one
-  // stands on its own over the quarter, so it grades the item through its row
-  const pools = item.rules.filter((r) => r.basis === "pool" && !isMultiMonth(r.period));
-  const allowance = pools.length ? round3(pools.reduce((n, r) => n + monthlyAllowance(r), 0)) : null;
-  const poolUsed = round3(cur.filter((u) => pools.some((r) => coversDepartment(r, u.department))).reduce((n, u) => n + u.qty, 0));
+  // the item's monthly allowance adds its monthly limits (every department's
+  // share); one of several months stands on its own over its window, so it
+  // grades the item through its row
+  const monthly = counted.filter(({ rule }) => !isMultiMonth(rule.period)).map(({ rule }) => rule);
+  // monthly limits that count a department twice both hold — their numbers
+  // are not one total (one of several months stands apart anyway)
+  const overlapping = monthly.some((a, i) => monthly.slice(i + 1).some((b) => rulesOverlap(a, b)));
+  const allowance = monthly.length && !overlapping ? round3(monthly.reduce((n, r) => n + monthlyAllowance(r), 0)) : null;
+  const covered = sum(cur.filter((u) => monthly.some((r) => coversDepartment(r, u.department))));
 
   let status: MonthStatus;
   let ratio: number | null;
@@ -222,14 +241,14 @@ function itemMonth(item: ItemInput, allUses: readonly LimitUse[], month: string,
   } else {
     // the item takes the worst of its limits
     status = limits.reduce<MonthStatus>((w, l) => (SEVERITY[l.status] > SEVERITY[w] ? l.status : w), "unused");
-    ratio = allowance !== null && allowance > 0 ? poolUsed / allowance : Math.max(...limits.map((l) => l.ratio));
+    ratio = allowance !== null && allowance > 0 ? covered / allowance : Math.max(...limits.map((l) => l.ratio));
   }
 
   return {
     itemId: item.id, code: item.code, name: item.name, uom: item.uom, active: item.active,
-    allowance, used, outside, ratio, status, prevUsed,
+    allowance, overlapping, used, covered, outside, ratio, status, prevUsed,
     change: prevUsed > 0 ? (used - prevUsed) / prevUsed : null,
-    trend: trendMonths.map((m) => ({ month: m, used: round3(inMonth(mine, m).reduce((n, u) => n + u.qty, 0)) })),
+    trend: trendMonths.map((m) => ({ month: m, used: sum(inMonth(mine, m)) })),
     limits,
   };
 }
@@ -239,7 +258,10 @@ function itemMonth(item: ItemInput, allUses: readonly LimitUse[], month: string,
  * was handed out in the month); items without a limit but handed out show as
  * "No limit". Sorted worst first, then by how far over.
  */
-export function buildMonthlyReport(items: readonly ItemInput[], uses: readonly LimitUse[], month: string, trendCount = 6): MonthlyReport {
+export function buildMonthlyReport(items: readonly ItemInput[], uses: readonly LimitUse[], month: string, opts: MonthlyReportOptions = {}): MonthlyReport {
+  const none = new Map<string, number>();
+  const headcountOf: HeadcountOf = opts.headcountOf ?? (() => none);
+  const trendCount = opts.trendCount ?? 6;
   const prevMonth = shiftMonth(month, -1);
   const trendMonths = Array.from({ length: trendCount }, (_, i) => shiftMonth(month, i - (trendCount - 1)));
   const handed = new Set(inMonth(uses, month).map((u) => u.itemId));
@@ -247,7 +269,7 @@ export function buildMonthlyReport(items: readonly ItemInput[], uses: readonly L
   const rows = items
     .filter((i) => i.active || handed.has(i.id))
     .filter((i) => i.rules.length > 0 || handed.has(i.id))
-    .map((i) => itemMonth(i, uses, month, prevMonth, trendMonths))
+    .map((i) => itemMonth(i, uses, month, prevMonth, trendMonths, headcountOf(month)))
     .sort((a, b) => SEVERITY[b.status] - SEVERITY[a.status] || (b.ratio ?? 0) - (a.ratio ?? 0) || a.name.localeCompare(b.name));
 
   const counts: Record<MonthStatus, number> = { over: 0, near: 0, under: 0, unused: 0, nolimit: 0 };
@@ -257,7 +279,7 @@ export function buildMonthlyReport(items: readonly ItemInput[], uses: readonly L
     const c = { month: m, over: 0, near: 0, under: 0, unused: 0 };
     for (const i of items) {
       if (!i.active || i.rules.length === 0) continue;
-      const st = itemMonth(i, uses, m, shiftMonth(m, -1), []).status;
+      const st = itemMonth(i, uses, m, shiftMonth(m, -1), [], headcountOf(m)).status;
       if (st !== "nolimit") c[st] += 1;
     }
     return c;

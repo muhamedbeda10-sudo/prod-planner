@@ -10,6 +10,7 @@ import {
   type ItemMonthRow, type LimitMonthRow, type MonthStatus,
 } from "@/lib/domain/consumableMonthly";
 import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
+import { TableEmpty, TableFrame, Th } from "@/components/DataTable";
 import type { MonthlyReportView } from "@/lib/server/consumableMonthly";
 
 // The CONSUMABLES monthly review: each catalogue item's month against its
@@ -58,60 +59,75 @@ function Change({ row }: { row: ItemMonthRow }) {
   );
 }
 
-function LimitDetail({ l, uom, workers, prevComplete }: { l: LimitMonthRow; uom: string; workers: MonthlyReportView["workers"]; prevComplete: boolean }) {
+const BASIS_WORD: Record<LimitMonthRow["basis"], string> = { pool: "shared", each: "each department", person: "per worker" };
+
+/** How a counted limit reads: "60 PC a month · each department", or for a
+ *  per-worker one "2 PC per worker × 12 workers a month". */
+function limitWords(l: LimitMonthRow, uom: string): string {
+  if (l.perWorker) {
+    const n = l.perWorker.workers;
+    return `${fmt(l.perWorker.qty)} ${uom} per worker × ${n > 0 ? `${n} worker${n === 1 ? "" : "s"}` : "1 (no one on the list)"} ${PERIOD_LABEL[l.period]}`;
+  }
+  return `${fmt(l.qty)} ${uom} ${PERIOD_LABEL[l.period]} · ${BASIS_WORD[l.basis]}`;
+}
+
+function LimitDetail({ l, uom, prevComplete }: { l: LimitMonthRow; uom: string; prevComplete: boolean }) {
   return (
-    <tr className="border-t">
-      <td className="p-1.5 ps-6 text-xs">
+    <tr className="bg-surface-2/50">
+      <td className="p-1.5 ps-7 text-xs">
         <div className="font-semibold">{l.departmentsLabel}</div>
         <div className="text-muted">
-          {fmt(l.qty)} {uom} {PERIOD_LABEL[l.period]}{l.basis === "person" ? " per person" : ""}
+          {limitWords(l, uom)}
           {l.toDate ? <> — counted over <b>{l.toDate}</b></> : null}
         </div>
       </td>
-      <td className="p-1.5 text-end tabnum text-xs">{fmt(l.allowance)}</td>
-      <td className="p-1.5 text-end tabnum text-xs">
-        <b>{fmt(l.used)}</b>
-        {l.basis === "person" && <div className="text-muted">top worker · all {fmt(l.usedAll)}</div>}
-      </td>
+      <td className="p-1.5 text-right tabnum text-xs">{fmt(l.allowance)}</td>
+      <td className="p-1.5 text-right tabnum text-xs"><b>{fmt(l.used)}</b></td>
+      <td className="p-1.5 text-right tabnum text-xs"><b style={{ color: l.left < 0 ? "var(--bad-fg)" : undefined }}>{fmt(l.left)}</b></td>
       <td className="p-1.5"><UseBar used={l.used} allowance={l.allowance} status={l.status} /></td>
       <td className="p-1.5"><StatusPill s={l.status} /></td>
       <td className="p-1.5 text-xs tabnum text-muted">{prevComplete ? fmt(l.prevUsed) : "—"}</td>
-      <td className="p-1.5 text-xs" colSpan={2}>
-        {l.basis === "person" && (l.workersOver.length
-          ? <div className="text-bad-fg">{l.workersOver.map((w) => `${workers[w.workerId]?.name ?? "?"} (${workers[w.workerId]?.empId ?? ""}) ${fmt(w.used)}`).join(" · ")}</div>
-          : <div className="text-muted">no worker over {fmt(l.allowance)}</div>)}
-      </td>
+      <td className="p-1.5" colSpan={2} />
     </tr>
   );
 }
 
-function ItemRow({ r, open, toggle, workers, prevComplete }: { r: ItemMonthRow; open: boolean; toggle: () => void; workers: MonthlyReportView["workers"]; prevComplete: boolean }) {
+function ItemRow({ r, open, toggle, prevComplete }: { r: ItemMonthRow; open: boolean; toggle: () => void; prevComplete: boolean }) {
+  const multi = r.limits.filter((l) => l.toDate);
+  const left = r.allowance === null ? null : Math.round((r.allowance - r.covered) * 1000) / 1000;
   return (
     <Fragment>
-      <tr className="border-t align-middle cursor-pointer hover:bg-surface-2/60" onClick={toggle} aria-expanded={open}>
+      <tr className={`border-t align-middle ${r.limits.length ? "cursor-pointer" : ""}`} onClick={r.limits.length ? toggle : undefined} aria-expanded={r.limits.length ? open : undefined}>
         <td className="p-2">
           <div className="font-semibold">
-            <span className="text-muted me-1 no-print">{r.limits.length ? (open ? "▾" : "▸") : " "}</span>
+            <span className="text-muted me-1 no-print inline-block w-3">{r.limits.length ? (open ? "▾" : "▸") : ""}</span>
             {r.name}
             {!r.active && <span className="pill pill-muted ms-1.5">retired</span>}
           </div>
-          <div className="text-xs text-muted ltr">{r.code ?? ""}{r.limits.length > 1 ? ` · ${r.limits.length} limits` : ""}</div>
+          <div className="text-xs text-muted ltr ps-4">{[r.code, r.limits.length > 1 ? `${r.limits.length} limits` : null].filter(Boolean).join(" · ")}</div>
         </td>
-        <td className="p-2 text-end tabnum">{r.allowance === null ? <span className="text-xs text-muted">{r.limits.length ? (r.limits.every((l) => l.toDate !== null) ? "over months" : "—") : "—"}</span> : <>{fmt(r.allowance)} <span className="text-[10px] text-muted">{r.uom}</span></>}</td>
-        <td className="p-2 text-end tabnum">
+        <td className="p-2 text-right tabnum whitespace-nowrap">
+          {r.allowance === null
+            ? r.overlapping
+              ? <span className="text-xs text-muted" title="Two of its limits cover the same department — both hold, so they are not added into one number. Open it for each limit.">both apply · see each</span>
+              : <span className="text-xs text-muted" title={multi.length ? "Only limits of several months — see each one" : undefined}>{multi.length ? "over months" : "—"}</span>
+            : <>{fmt(r.allowance)} <span className="text-[10px] text-muted">{r.uom}</span></>}
+        </td>
+        <td className="p-2 text-right tabnum whitespace-nowrap">
           <b>{fmt(r.used)}</b> <span className="text-[10px] text-muted">{r.uom}</span>
-          {r.outside > 0 && <div className="text-[11px] text-muted" title="Handed out to departments none of its limits cover">{fmt(r.outside)} outside the limits</div>}
-          {r.limits.filter((l) => l.toDate).map((l) => (
-            <div key={l.ruleId} className="text-[11px] text-muted" title="A quarterly limit counts the quarter so far">{l.toDate}: <b className="text-foreground">{fmt(l.used)}</b> of {fmt(l.allowance)}</div>
-          ))}
+          {r.outside > 0 && <div className="text-[11px] text-muted" title="Handed out to departments none of its limits cover — not held against a limit">{fmt(r.outside)} outside the limits</div>}
+          {multi.length > 0 && r.allowance !== null && <div className="text-[11px] text-muted">monthly limits: {fmt(r.covered)}</div>}
         </td>
-        <td className="p-2"><UseBar used={r.allowance === null ? 0 : r.used - r.outside} allowance={r.allowance} status={r.status} /></td>
+        <td className="p-2 text-right tabnum whitespace-nowrap">
+          {left === null ? <span className="text-xs text-muted">—</span> : <b style={{ color: left < 0 ? "var(--bad-fg)" : undefined }}>{fmt(left)}</b>}
+        </td>
+        <td className="p-2"><UseBar used={r.allowance === null ? 0 : r.covered} allowance={r.allowance} status={r.status} /></td>
         <td className="p-2"><StatusPill s={r.status} /></td>
         <td className="p-2"><Change row={r} /></td>
         <td className="p-2" title={r.trend.map((t) => `${monthShort(t.month)}: ${fmt(t.used)}`).join("\n")}><Sparkline values={r.trend.map((t) => t.used)} width={90} height={24} /></td>
         <td className="p-2 text-[11px] text-muted tabnum whitespace-nowrap">{r.trend.map((t) => fmt(t.used)).join(" · ")}</td>
       </tr>
-      {open && r.limits.map((l) => <LimitDetail key={l.ruleId} l={l} uom={r.uom} workers={workers} prevComplete={prevComplete} />)}
+      {open && r.limits.map((l) => <LimitDetail key={l.ruleId} l={l} uom={r.uom} prevComplete={prevComplete} />)}
     </Fragment>
   );
 }
@@ -186,27 +202,39 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
       </div>
 
       <section className="bg-surface border rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-brand text-white text-left">
-                <th className="p-2">Item</th>
-                <th className="p-2 text-end">Monthly limit</th>
-                <th className="p-2 text-end">Used · {monthShort(r.month)}</th>
-                <th className="p-2">Of the limit</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">vs {monthShort(r.prevMonth)}</th>
-                <th className="p-2" colSpan={2}>{monthShort(r.trendMonths[0])} → {monthShort(r.month)}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((row) => <ItemRow key={row.itemId} r={row} open={open.has(row.itemId)} toggle={() => toggle(row.itemId)} workers={r.workers} prevComplete={r.prevComplete} />)}
-              {shown.length === 0 && <tr><td colSpan={8} className="p-4 text-sm text-muted">No item matches.</td></tr>}
-            </tbody>
-          </table>
-        </div>
+        {shown.length === 0 ? (
+          <TableEmpty
+            title={r.rows.length === 0 ? `No catalogue item has a limit or a hand-out in ${monthLong(r.month)}` : "No item matches"}
+            filtered={r.rows.length > 0}
+            action={r.rows.length > 0 ? <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setQ(""); setFilter("all"); }}>Show every item</button> : undefined}
+          />
+        ) : (
+          <TableFrame>
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="text-left">
+                  <Th label="Item" hint="Click an item for its limits, department by department" />
+                  <Th label="Monthly limit" num className="text-right" hint="Its monthly limits added up — every department's own share. A limit of several months is counted on its own line, over its months so far." />
+                  <Th label={`Used · ${monthShort(r.month)}`} num className="text-right" hint="Everything handed out of the item in the month" />
+                  <Th label="Left" num className="text-right" hint="Monthly limit − what its departments drew; negative when over" />
+                  <Th label="Of the limit" />
+                  <Th label="Status" hint="An item takes the worst of its limits" />
+                  <Th label={`vs ${monthShort(r.prevMonth)}`} />
+                  <Th label={`${monthShort(r.trendMonths[0])} → ${monthShort(r.month)}`} colSpan={2} />
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((row) => <ItemRow key={row.itemId} r={row} open={open.has(row.itemId)} toggle={() => toggle(row.itemId)} prevComplete={r.prevComplete} />)}
+              </tbody>
+            </table>
+          </TableFrame>
+        )}
       </section>
-      <p className="text-[11px] text-muted">Items handed out to departments none of their limits cover show that part apart and it does not count against the limit.</p>
+      <p className="text-[11px] text-muted">
+        Each-department and per-worker limits are counted department by department, the way the record form and the alarms count them — a per-worker number is times the department&apos;s workers that month (kept month by month; before the record began, the list as it stands).
+        Two limits covering the same department both hold: a hand-out must fit each, and they are not added into one monthly number.
+        Hand-outs to departments none of an item&apos;s limits cover show apart and count against no limit.
+      </p>
     </div>
   );
 }
