@@ -68,7 +68,7 @@ describe("the monthly report", () => {
     // them — the collector is not the one held to the per-worker number.
     const i = item({ rules: [rule({ basis: "person", qty: 8, departments: ["WeldingTX", "PaintingTX"] })] });
     const headcount = new Map([["WeldingTX", 5], ["PaintingTX", 2]]);
-    const r = buildMonthlyReport([i], [use({ workerId: 1, qty: 30 }), use({ workerId: 1, qty: 9 }), use({ department: "PaintingTX", workerId: 7, qty: 17 })], "2026-09", { headcount });
+    const r = buildMonthlyReport([i], [use({ workerId: 1, qty: 30 }), use({ workerId: 1, qty: 9 }), use({ department: "PaintingTX", workerId: 7, qty: 17 })], "2026-09", { headcountOf: () => headcount });
     const byDept = Object.fromEntries(r.rows[0].limits.map((l) => [l.departmentsLabel, l]));
     expect(byDept["Welding TX"]).toMatchObject({ allowance: 40, used: 39, left: 1, status: "near", basis: "person", qty: 8, perWorker: { qty: 8, workers: 5 }, sourceId: 1 });
     expect(byDept["Transformer Painting"]).toMatchObject({ allowance: 16, used: 17, left: -1, status: "over" });
@@ -89,7 +89,7 @@ describe("the monthly report", () => {
 
   it("covers every department an 'all departments' per-worker limit's item went to", () => {
     const i = item({ rules: [rule({ basis: "person", qty: 2, departments: "*" })] });
-    const r = buildMonthlyReport([i], [use({ department: "Maintenance", qty: 3 })], "2026-09", { headcount: new Map([["WeldingTX", 4]]) });
+    const r = buildMonthlyReport([i], [use({ department: "Maintenance", qty: 3 })], "2026-09", { headcountOf: () => new Map([["WeldingTX", 4]]) });
     const byDept = Object.fromEntries(r.rows[0].limits.map((l) => [l.departmentsLabel, [l.allowance, l.used, l.status]]));
     // nobody on the list for Maintenance — counted as one worker
     expect(byDept).toEqual({ "Welding TX": [8, 0, "unused"], Maintenance: [2, 3, "over"] });
@@ -115,6 +115,24 @@ describe("the monthly report", () => {
     expect(r.countsByMonth.find((c) => c.month === "2026-07")).toMatchObject({ over: 1 });
     expect(r.countsByMonth.find((c) => c.month === "2026-09")).toMatchObject({ under: 1 });
     expect(r.countsByMonth.find((c) => c.month === "2026-08")).toMatchObject({ unused: 1 });
+  });
+});
+
+describe("the month's own headcount and overlapping limits", () => {
+  it("holds each month graded to the workers it had", () => {
+    const i = item({ rules: [rule({ basis: "person", qty: 2 })] });
+    const headcountOf = (m: string) => new Map([["WeldingTX", m === "2026-09" ? 10 : 5]]);
+    const r = buildMonthlyReport([i], [use({ qty: 14, dayISO: "2026-08-10" }), use({ qty: 14 })], "2026-09", { headcountOf });
+    // September: 10 workers → 20; August (in the trend) had 5 → 10, over
+    expect(r.rows[0].limits[0]).toMatchObject({ allowance: 20, used: 14, status: "under" });
+    expect(r.countsByMonth.find((c) => c.month === "2026-08")).toMatchObject({ over: 1 });
+  });
+
+  it("does not add two limits on the same department into one number", () => {
+    const i = item({ rules: [rule({ id: 1, qty: 10 }), rule({ id: 2, qty: 40, departments: "*" })] });
+    const r = buildMonthlyReport([i], [use({ qty: 11 })], "2026-09");
+    expect(r.rows[0]).toMatchObject({ allowance: null, overlapping: true, status: "over" });
+    expect(r.rows[0].ratio).toBeCloseTo(1.1);
   });
 });
 

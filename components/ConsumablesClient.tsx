@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { WORKER_GROUPS } from "@/lib/domain/tanks";
-import { CONSUMABLE_LIMITS, NEW_DEPARTMENT, OVER_LIMIT_REASON_MAX, matchCatalogueItem, summarizeHandouts, workersForDepartment } from "@/lib/domain/consumables";
+import { CONSUMABLE_LIMITS, NEW_DEPARTMENT, OVER_LIMIT_REASON_MAX, OVER_LIMIT_REASON_MIN, matchCatalogueItem, summarizeHandouts, workersForDepartment } from "@/lib/domain/consumables";
 import { formatQty } from "@/lib/domain/format";
 import type { CatalogueOption, ConsumableIssueView, ConsumablesPageData, ConsumableWorkerOption } from "@/lib/server/consumables";
 import type { LimitHint } from "@/lib/server/consumableLimits";
@@ -91,17 +91,20 @@ function LimitHints({ itemId, department, qty, issueId }: { itemId: string; depa
   );
 }
 
-/** The warning when a hand-out would take a limit over: what it breaks, and
- *  the reason the recorder must give to record it anyway. */
-function OverLimitPrompt({ breaches, disabled }: { breaches: string[]; disabled?: boolean }) {
+/** The warning when a hand-out would take a limit over: every limit it
+ *  breaks, and the reason the recorder must write — without one it is not
+ *  recorded (the server refuses it too). `error`: why the last reason would
+ *  not do. */
+function OverLimitPrompt({ breaches, disabled, error }: { breaches: string[]; disabled?: boolean; error?: string | null }) {
   return (
     <div className="border border-[var(--bad-fg)] rounded-lg p-2 space-y-1.5 bg-[var(--bad-bg)]" role="alert">
-      <div className="text-sm font-bold text-bad-fg">⚠ This takes a limit over</div>
+      <div className="text-sm font-bold text-bad-fg">⚠ This takes {breaches.length > 1 ? `${breaches.length} limits` : "a limit"} over — it is not recorded without a reason</div>
       <ul className="text-xs list-disc ms-4">{breaches.map((b) => <li key={b}>{b}</li>)}</ul>
-      <Field label="Reason — required to record it anyway" className="w-full">
-        <input type="text" name="overLimitReason" required autoFocus disabled={disabled} maxLength={OVER_LIMIT_REASON_MAX} autoComplete="off"
+      <Field label={`Reason — required (at least ${OVER_LIMIT_REASON_MIN} characters)`} className="w-full">
+        <input type="text" name="overLimitReason" required autoFocus disabled={disabled} minLength={OVER_LIMIT_REASON_MIN} maxLength={OVER_LIMIT_REASON_MAX} autoComplete="off"
           placeholder="e.g. a second shift ran out, the old one was damaged…" className={`${F} w-full`} />
       </Field>
+      {error && <p className="text-xs font-semibold text-bad-fg">{error}</p>}
     </div>
   );
 }
@@ -339,7 +342,7 @@ function RecordRow({ data }: { data: ConsumablesPageData }) {
         }
       />
       <LimitHints itemId={itemId} department={department} qty={qty} />
-      {breaches && <OverLimitPrompt breaches={breaches} disabled={add.pending} />}
+      {breaches && <OverLimitPrompt breaches={breaches} disabled={add.pending} error={add.msg && !add.msg.ok ? add.msg.text : null} />}
       {!breaches && <Msg msg={add.msg} />}
     </form>
   );
@@ -373,8 +376,8 @@ function EditDialog({ e, data, onClose }: { e: ConsumableIssueView; data: Consum
           knownItems={data.knownItems} itemText={itemText} setItemText={changed(setItemText)} matched={matched} setQty={changed(setQty)}
         />
         <LimitHints itemId={itemId} department={department} qty={qty} issueId={e.id} />
-        {breaches && <OverLimitPrompt breaches={breaches} disabled={edit.pending} />}
-        {e.overLimit && !breaches && <p className="text-xs text-bad-fg">Recorded over a limit — “{e.overLimit.reason}”. It keeps that reason while it stays over.</p>}
+        {breaches && <OverLimitPrompt breaches={breaches} disabled={edit.pending} error={edit.msg && !edit.msg.ok ? edit.msg.text : null} />}
+        {e.overLimit && !breaches && <p className="text-xs text-bad-fg">Recorded over a limit — “{e.overLimit.reason}”. It keeps that reason only while the item and department stay and the quantity does not go up; otherwise a new reason is asked for.</p>}
         {!breaches && <Msg msg={edit.msg} />}
         <FormFoot>
           <button type="button" className="btn btn-sm btn-ghost" onClick={onClose} disabled={edit.pending}>Cancel</button>

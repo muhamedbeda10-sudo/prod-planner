@@ -6,13 +6,16 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm, requireAdmin, requirePerm } from "@/lib/server/auth";
 import { getCustomDepartments } from "@/lib/server/consumables";
-import { checkIssueLimits, limitHints, type LimitHint } from "@/lib/server/consumableLimits";
+import { checkIssueLimits, limitHints, lockItemLimits, type LimitHint } from "@/lib/server/consumableLimits";
+import { snapshotHeadcount } from "@/lib/server/consumableHeadcount";
 import { parseWorkerSections } from "@/lib/domain/workers";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { describeBreach, type LimitBreach } from "@/lib/domain/consumableLimits";
 import {
   canEditIssue,
   issueWho,
+  keepsOverLimitReason,
+  overLimitReasonProblem,
   parseSnapshot,
   readConsumableForm,
   matchCatalogueItem,
@@ -27,10 +30,13 @@ import {
 } from "@/lib/domain/consumables";
 
 // The CONSUMABLES tab's writes. Recording a hand-out needs consumables.edit.
-// A hand-out of a catalogue item is checked against the item's limits: one
-// that would take a limit over is refused until the recorder gives a reason,
-// then saved flagged over the limit with the reason and the breach as it read
-// (a warning, not a wall — the store may have a good reason).
+// A hand-out of a catalogue item is checked against every limit of the item
+// that covers its department (all must hold): one that would take a limit
+// over is NEVER recorded without a reason — refused until the recorder writes
+// one, then saved flagged over the limit with the reason and the breach as it
+// read. The check and the write run in one transaction holding the item's
+// lock, so two hand-outs of the same item at once cannot both pass on the
+// same room: the second waits, then counts the first.
 // A hand-out is recorded to a department — the item, the quantity and the
 // department, no worker (rows from before keep the worker they named). A
 // per-person limit counts as the department's: the number times its workers.
@@ -140,33 +146,45 @@ async function resolveRecipients(pick: RecipientPick, department: string): Promi
  * revision. "stale" when the row moved underneath, "failed" when the
  * database refused it.
  */
+type ChangeRevision = { action: "edit" | "delete" | "restore"; before: ConsumableSnapshot; after: ConsumableSnapshot | null };
+
 async function writeChange(
   id: number,
   readAt: Date,
   data: Prisma.ConsumableIssueUncheckedUpdateManyInput,
-  revision: { action: "edit" | "delete" | "restore"; before: ConsumableSnapshot; after: ConsumableSnapshot | null },
+  revision: ChangeRevision,
   user: { id: number; name: string },
   where: { deletedAt?: null } = { deletedAt: null }
 ): Promise<"ok" | "stale" | "failed"> {
-  const at = new Date();
   try {
-    return await prisma.$transaction(async (tx: Tx) => {
-      const res = await tx.consumableIssue.updateMany({ where: { id, updatedAt: readAt, ...where }, data });
-      if (res.count !== 1) return "stale" as const;
-      await tx.consumableIssueRevision.create({
-        data: {
-          issueId: id, action: revision.action,
-          before: json(revision.before), after: revision.after ? json(revision.after) : Prisma.DbNull,
-          byId: user.id, by: user.name, at,
-        },
-      });
-      return "ok" as const;
-    });
+    return await prisma.$transaction((tx: Tx) => writeChangeIn(tx, id, readAt, data, revision, user, where));
   } catch (e) {
     // a refusal from the database comes back as a message, not a crash
     console.error("consumables writeChange", e);
     return "failed";
   }
+}
+
+/** writeChange's body, inside a transaction the caller holds. */
+async function writeChangeIn(
+  tx: Tx,
+  id: number,
+  readAt: Date,
+  data: Prisma.ConsumableIssueUncheckedUpdateManyInput,
+  revision: ChangeRevision,
+  user: { id: number; name: string },
+  where: { deletedAt?: null } = { deletedAt: null }
+): Promise<"ok" | "stale"> {
+  const res = await tx.consumableIssue.updateMany({ where: { id, updatedAt: readAt, ...where }, data });
+  if (res.count !== 1) return "stale";
+  await tx.consumableIssueRevision.create({
+    data: {
+      issueId: id, action: revision.action,
+      before: json(revision.before), after: revision.after ? json(revision.after) : Prisma.DbNull,
+      byId: user.id, by: user.name, at: new Date(),
+    },
+  });
+  return "ok";
 }
 
 /** The item the form names: a catalogue item — picked by id, or typed /
@@ -193,18 +211,23 @@ async function pickItem(formData: FormData, opts: { allowInactiveId?: number | n
   return hit ? { itemId: hit.id, name: hit.name } : { itemId: null };
 }
 
-/** The over-limit decision for a hand-out: refused (needs the reason), or the
- *  flag, reason and note to save. `keepReason` — an edited row already over
- *  keeps the reason it was given unless a new one comes. */
+/** The over-limit decision for a hand-out: refused (no reason, or one that
+ *  is not a reason), or the flag, reason and note to save. `keepReason` — a
+ *  corrected row already over that asks no more of the limit keeps the
+ *  reason it was given unless a new one comes. */
 function overLimitVerdict(breaches: LimitBreach[], reason: string | null, keepReason: string | null = null):
   { refuse?: ConsumableActionResult; data?: { overLimit: boolean; overLimitReason: string | null; overLimitNote: string | null } } {
   if (breaches.length === 0) return { data: { overLimit: false, overLimitReason: null, overLimitNote: null } };
   const lines = breaches.map(describeBreach);
   const why = reason ?? keepReason;
-  if (!why) {
-    return { refuse: { ok: false, needsReason: true, breaches: lines, error: "This takes a limit over — give the reason to record it anyway." } };
-  }
+  const problem = overLimitReasonProblem(why);
+  if (problem) return { refuse: { ok: false, needsReason: true, breaches: lines, error: problem } };
   return { data: { overLimit: true, overLimitReason: why, overLimitNote: lines.join(" | ") } };
+}
+
+/** The refusal a locked write hands back instead of saving. */
+class Refused {
+  constructor(readonly result: ConsumableActionResult) {}
 }
 
 export async function createConsumableIssue(formData: FormData): Promise<ConsumableActionResult> {
@@ -230,38 +253,48 @@ export async function createConsumableIssue(formData: FormData): Promise<Consuma
   const badReceiver = workerProblem(receiver, department);
   if (badReceiver) return { ok: false, error: badReceiver };
 
-  // a per-person limit and a group: the number times the workers
-  const breaches = await checkIssueLimits({ itemId: picked.itemId ?? null, department, workerIds: r.workerIds, qty: f.qty, dayISO: factoryDayISO(new Date()) });
-  const verdict = overLimitVerdict(breaches, reason.reason);
-  if (verdict.refuse) return { ...verdict.refuse, department };
-
   // issuedAt is the database's clock (the column default) — never the form's.
-  // The row and a group's workers are one insert. A refusal from the
-  // database comes back as a message, never as a page that will not load.
+  // The limits are checked and the row written under the item's lock. A
+  // refusal from the database comes back as a message, never as a page that
+  // will not load.
+  const itemId = picked.itemId ?? null;
   let created: { id: number };
+  let verdict: ReturnType<typeof overLimitVerdict>;
   try {
-    created = await prisma.consumableIssue.create({
-      select: { id: true },
-      data: {
-        itemId: picked.itemId ?? null,
-        ...verdict.data!,
-        item: f.item,
-        qty: new Prisma.Decimal(f.qty),
-        department,
-        // the department's hand-out, naming who asked for it / collected it
-        workerId: r.workerId ?? receiver!.id,
-        recipientScope: r.scope,
-        recipientCount: r.workerIds.length || (r.scope === "worker" ? 1 : 0),
-        ...(r.workerId === null && r.workerIds.length > 0 ? { recipients: { create: r.workerIds.map((workerId) => ({ workerId })) } } : {}),
-        notes: f.notes,
-        recordedById: user.id,
-        recordedBy: user.name,
-      },
-    });
+    const out = await prisma.$transaction(async (tx: Tx) => {
+      await lockItemLimits(tx, itemId);
+      const breaches = await checkIssueLimits({ itemId, department, workerIds: r.workerIds, qty: f.qty, dayISO: factoryDayISO(new Date()) }, tx);
+      const v = overLimitVerdict(breaches, reason.reason);
+      if (v.refuse) return new Refused({ ...v.refuse, department });
+      const row = await tx.consumableIssue.create({
+        select: { id: true },
+        data: {
+          itemId,
+          ...v.data!,
+          item: f.item,
+          qty: new Prisma.Decimal(f.qty),
+          department,
+          // the department's hand-out, naming who asked for it / collected it
+          workerId: r.workerId ?? receiver!.id,
+          recipientScope: r.scope,
+          recipientCount: r.workerIds.length || (r.scope === "worker" ? 1 : 0),
+          ...(r.workerId === null && r.workerIds.length > 0 ? { recipients: { create: r.workerIds.map((workerId) => ({ workerId })) } } : {}),
+          notes: f.notes,
+          recordedById: user.id,
+          recordedBy: user.name,
+        },
+      });
+      return { row, v };
+    }, { timeout: 15_000 });
+    if (out instanceof Refused) return out.result;
+    created = out.row;
+    verdict = out.v;
   } catch (e) {
     console.error("createConsumableIssue", e);
     return { ok: false, error: SAVE_FAILED, department };
   }
+  // the month's workers as they stood when it was handed out
+  await snapshotHeadcount();
   revalidateConsumables();
   const over = verdict.data!.overLimit;
   await emitEvent({
@@ -313,25 +346,43 @@ export async function updateConsumableIssue(formData: FormData): Promise<Consuma
   };
   if (sameSnapshot(before, after)) return { ok: false, error: "Nothing changed." };
 
-  // checked on the day it was handed out, the row itself left out of the count
-  const breaches = await checkIssueLimits({
-    itemId: picked.itemId ?? null, department, workerIds: [], qty: f.qty,
-    dayISO: factoryDayISO(prev.issuedAt), excludeIssueId: id,
-  });
-  const verdict = overLimitVerdict(breaches, reason.reason, prev.overLimit ? prev.overLimitReason : null);
-  if (verdict.refuse) return verdict.refuse;
+  // a row already over keeps its reason only while the correction asks no
+  // more of the limit; anything else over needs a reason of its own
+  const itemId = picked.itemId ?? null;
+  const keep = prev.overLimit && keepsOverLimitReason(
+    { itemId: prev.itemId, department: prev.department, qty: prev.qty.toNumber() },
+    { itemId, department, qty: f.qty },
+  ) ? prev.overLimitReason : null;
 
-  const done = await writeChange(
-    id, prev.updatedAt,
-    {
-      item: f.item, itemId: picked.itemId ?? null, ...verdict.data!,
-      qty: new Prisma.Decimal(f.qty), notes: f.notes, department, workerId: receiver!.id,
-      // a one-worker row keeps its scope (the check wants its worker, and one)
-      editedAt: new Date(), editedBy: user.name,
-    },
-    { action: "edit", before, after },
-    user
-  );
+  // checked on the day it was handed out, the row itself left out of the
+  // count — and written — under the item's lock
+  let done: "ok" | "stale" | "failed";
+  try {
+    const out = await prisma.$transaction(async (tx: Tx) => {
+      await lockItemLimits(tx, itemId);
+      const breaches = await checkIssueLimits({
+        itemId, department, workerIds: [], qty: f.qty,
+        dayISO: factoryDayISO(prev.issuedAt), excludeIssueId: id,
+      }, tx);
+      const verdict = overLimitVerdict(breaches, reason.reason, keep);
+      if (verdict.refuse) return new Refused(verdict.refuse);
+      return writeChangeIn(
+        tx, id, prev.updatedAt,
+        {
+          item: f.item, itemId, ...verdict.data!,
+          qty: new Prisma.Decimal(f.qty), notes: f.notes, department, workerId: receiver!.id,
+          editedAt: new Date(), editedBy: user.name,
+        },
+        { action: "edit", before, after },
+        user
+      );
+    }, { timeout: 15_000 });
+    if (out instanceof Refused) return out.result;
+    done = out;
+  } catch (e) {
+    console.error("updateConsumableIssue", e);
+    done = "failed";
+  }
   if (done !== "ok") return { ok: false, error: done === "stale" ? STALE : SAVE_FAILED };
 
   revalidateConsumables();

@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { WORKER_GROUPS } from "@/lib/domain/tanks";
-import { ALL_DEPARTMENTS, LIMIT_PERIODS, PERIOD_LABEL, type LimitBasis, type LimitPeriod } from "@/lib/domain/consumableLimits";
+import { ALL_DEPARTMENTS, LIMIT_PERIODS, PERIOD_LABEL, rulesOverlap, type LimitBasis, type LimitPeriod } from "@/lib/domain/consumableLimits";
 import { NEAR_RATIO } from "@/lib/domain/consumableMonthly";
 import type { CatalogueChangeView, CatalogueItemDTO, LimitDTO, LimitStandingView } from "@/lib/server/consumableLimits";
 import { deleteConsumableLimit, saveCatalogueItem, saveConsumableLimit } from "@/app/consumables/catalogueActions";
@@ -309,6 +309,8 @@ function ItemRows({ item, standings, departments, canEdit }: { item: CatalogueIt
   // the item's cells run down its limits' lines and any department list opened under them
   const hasBreakdown = (id: number) => open.has(id) && (standings[id]?.departments.length ?? 0) > 0;
   const span = Math.max(1, item.limits.length + item.limits.filter((l) => hasBreakdown(l.id)).length);
+  // limits that cover a department twice — each holds on its own
+  const overlapping = item.limits.some((a, i) => item.limits.slice(i + 1).some((b) => rulesOverlap(a, b)));
   const cols = canEdit ? 9 : 8;
 
   const itemCells = (
@@ -320,6 +322,9 @@ function ItemRows({ item, standings, departments, canEdit }: { item: CatalogueIt
         </div>
         <div className="text-xs text-muted ltr">{item.code ?? "no code"}</div>
         {item.remark && <div className="text-xs text-muted">{item.remark}</div>}
+        {overlapping && (
+          <span className="pill pill-info mt-1" title="Two of its limits cover the same department. Both hold: a hand-out must fit each of them, or it needs a reason.">both limits apply</span>
+        )}
       </td>
       <td className="p-2 align-top text-xs font-bold" rowSpan={span}>{item.uom}</td>
     </>

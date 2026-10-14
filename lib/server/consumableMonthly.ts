@@ -2,9 +2,8 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { buildMonthlyReport, monthBounds, reportSpan, shiftMonth, type MonthlyReport } from "@/lib/domain/consumableMonthly";
-import { departmentWorkers } from "@/lib/domain/consumables";
 import { loadUses, toRule } from "./consumableLimits";
-import { getAllWorkers } from "./workers";
+import { loadHeadcountOf } from "./consumableHeadcount";
 
 // The CONSUMABLES monthly review — the reads. The arithmetic is
 // lib/domain/consumableMonthly.ts.
@@ -21,19 +20,19 @@ export interface MonthlyReportView extends MonthlyReport {
 
 export async function getMonthlyReport(month: string): Promise<MonthlyReportView> {
   const span = reportSpan(month);
-  const [items, uses, first, workers] = await Promise.all([
+  const [items, uses, first, headcountOf] = await Promise.all([
     prisma.consumableItem.findMany({ orderBy: { name: "asc" }, include: { limits: { orderBy: { id: "asc" } } } }),
     loadUses(span.from, span.to),
     prisma.consumableIssue.findFirst({ where: { deletedAt: null }, orderBy: { issuedAt: "asc" }, select: { issuedAt: true } }),
-    getAllWorkers(),
+    loadHeadcountOf(),
   ]);
-  // the same headcount the record form and the alarms multiply a per-worker
-  // limit by — the workers on the list today (the list keeps no history)
+  // a per-worker limit is times the department's workers — each month the
+  // workers it had then (this month: the list as it stands)
   const report = buildMonthlyReport(
     items.map((i) => ({ id: i.id, code: i.code, name: i.name, uom: i.uom, active: i.active, rules: i.limits.map(toRule) })),
     uses,
     month,
-    { headcount: departmentWorkers(workers) },
+    { headcountOf },
   );
 
   const thisMonth = factoryDayISO(new Date()).slice(0, 7);

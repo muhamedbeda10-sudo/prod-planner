@@ -108,7 +108,9 @@ function ItemRow({ r, open, toggle, prevComplete }: { r: ItemMonthRow; open: boo
         </td>
         <td className="p-2 text-right tabnum whitespace-nowrap">
           {r.allowance === null
-            ? <span className="text-xs text-muted" title={multi.length ? "Only limits of several months — see each one" : undefined}>{multi.length ? "over months" : "—"}</span>
+            ? r.overlapping
+              ? <span className="text-xs text-muted" title="Two of its limits cover the same department — both hold, so they are not added into one number. Open it for each limit.">both apply · see each</span>
+              : <span className="text-xs text-muted" title={multi.length ? "Only limits of several months — see each one" : undefined}>{multi.length ? "over months" : "—"}</span>
             : <>{fmt(r.allowance)} <span className="text-[10px] text-muted">{r.uom}</span></>}
         </td>
         <td className="p-2 text-right tabnum whitespace-nowrap">
@@ -229,7 +231,8 @@ export function ConsumablesMonthly({ report: r, monthHref }: { report: MonthlyRe
         )}
       </section>
       <p className="text-[11px] text-muted">
-        Each-department and per-worker limits are counted department by department, the way the record form and the alarms count them — a per-worker number is times the department&apos;s workers on the list today.
+        Each-department and per-worker limits are counted department by department, the way the record form and the alarms count them — a per-worker number is times the department&apos;s workers that month (kept month by month; before the record began, the list as it stands).
+        Two limits covering the same department both hold: a hand-out must fit each, and they are not added into one monthly number.
         Hand-outs to departments none of an item&apos;s limits cover show apart and count against no limit.
       </p>
     </div>

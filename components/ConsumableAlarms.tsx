@@ -2,6 +2,7 @@ import { ChartCard, StatTile, type TableRow } from "@/components/charts/kit";
 import { TableFrame, Th } from "@/components/DataTable";
 import { departmentLabel } from "@/lib/domain/consumables";
 import { PERIOD_LABEL } from "@/lib/domain/consumableLimits";
+import { monthShort } from "@/lib/domain/consumableMonthly";
 import type { AlarmRow, LimitDashboard } from "@/lib/server/consumableLimits";
 
 // The CONSUMABLES dashboard's alarms: the limits, in two tenses —
@@ -58,6 +59,8 @@ function AlarmLine({ a }: { a: AlarmRow }) {
 export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard; periodLabel: string; period: string }) {
   const overNow = d.board.filter(isOver);
   const file = (name: string) => `consumables-${name}-${period}.xlsx`;
+  // the past card looks back over the last finished months, whatever the slicer
+  const pastLabel = `${monthShort(d.exceedanceSpan.from.slice(0, 7))} – ${monthShort(d.exceedanceSpan.to.slice(0, 7))}`;
 
   const boardRows: TableRow[] = overNow.map((a) => ({
     Item: a.item, Code: a.code ?? "", Departments: a.departmentsLabel, Limit: a.limit, UOM: a.uom, Per: PERIOD_LABEL[a.period],
@@ -76,7 +79,7 @@ export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard
     <section className="space-y-3">
       <div className="flex flex-wrap gap-3">
         <StatTile label="Over a limit now" value={fmt(overNow.length)} sub={overNow.length ? "limits past their number this month (or their months so far)" : "✓ every limit within its number"} />
-        <StatTile label="Closed over a limit" value={fmt(d.exceedances.length)} sub={`past months (or longer limits) that ended over, ${periodLabel}`} />
+        <StatTile label="Closed over a limit" value={fmt(d.exceedances.length)} sub={`months (or longer limits) that ended over, ${pastLabel}`} />
         <StatTile label="Recorded over a limit" value={fmt(d.overLimitIssues.length)} sub={`hand-outs with a reason, ${periodLabel}`} />
         {d.uncatalogued > 0 && <StatTile label="Not in the catalogue" value={fmt(d.uncatalogued)} sub="hand-outs no limit counts — add the item?" />}
       </div>
@@ -94,8 +97,10 @@ export function ConsumableAlarms({ d, periodLabel, period }: { d: LimitDashboard
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <ChartCard
           title="Past months over the limit"
-          sub={d.exceedances.length ? `Each finished month (or longer limit) on the slicer that ended over its number — the running month is under Alarms now` : `No finished month went over a limit ${periodLabel}`}
-          table={d.exceedances.length ? { rows: exRows, filename: file("exceeded"), sheet: "Exceeded" } : undefined}
+          sub={d.exceedances.length
+            ? `The last finished months (${pastLabel}) whatever the slicer — each month (or longer limit) that ended over its number, per-worker limits with that month's workers. The running month is under Alarms now.`
+            : `No month went over a limit ${pastLabel}`}
+          table={d.exceedances.length ? { rows: exRows, filename: `consumables-exceeded-${d.exceedanceSpan.from}_to_${d.exceedanceSpan.to}.xlsx`, sheet: "Exceeded" } : undefined}
         >
           {d.exceedances.length > 0 ? (
             <TableFrame className="max-h-[420px]">

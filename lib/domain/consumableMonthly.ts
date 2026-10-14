@@ -16,8 +16,8 @@
 // to the worker who collected it.
 
 import {
-  coversDepartment, departmentsLabel, expandPerWorker, isMultiMonth, periodWindow, usageIn, windowLabel,
-  type LimitBasis, type LimitPeriod, type LimitRule, type LimitUse,
+  coversDepartment, departmentsLabel, expandPerWorker, isMultiMonth, periodWindow, rulesOverlap, usageIn, windowLabel,
+  type HeadcountOf, type LimitBasis, type LimitPeriod, type LimitRule, type LimitUse,
 } from "./consumableLimits";
 
 export const NEAR_RATIO = 0.8;
@@ -129,8 +129,13 @@ export interface ItemMonthRow {
   uom: string;
   active: boolean;
   /** Sum of the monthly limits' allowances (every department's share);
-   *  null when the item has none (no limit, or only limits of several months). */
+   *  null when the item has none (no limit, or only limits of several
+   *  months), or when its limits overlap — see `overlapping`. */
   allowance: number | null;
+  /** Two of its limits cover the same department: both hold (a hand-out must
+   *  fit each), so their numbers do not add up to one — the item is graded
+   *  by its worst limit, with no total. */
+  overlapping: boolean;
   /** Everything handed out of the item in the month, any department. */
   used: number;
   /** …of which to the departments its monthly limits cover — what the
@@ -150,8 +155,9 @@ export interface ItemMonthRow {
 }
 
 export interface MonthlyReportOptions {
-  /** The workers each department has — a per-worker limit is times this. */
-  headcount?: ReadonlyMap<string, number>;
+  /** The workers each department had in a month — a per-worker limit is
+   *  times this; each month graded is held to its own. None: no one. */
+  headcountOf?: HeadcountOf;
   trendCount?: number;
 }
 
@@ -204,6 +210,8 @@ function countedRules(item: ItemInput, mine: readonly LimitUse[], headcount: Rea
 }
 
 function itemMonth(item: ItemInput, allUses: readonly LimitUse[], month: string, prevMonth: string, trendMonths: string[], headcount: ReadonlyMap<string, number>): ItemMonthRow {
+  // `headcount`: the month's own — the month before is compared on the same
+  // limits, so "vs last month" is like for like
   const mine = allUses.filter((u) => u.itemId === item.id);
   const cur = inMonth(mine, month);
   const used = sum(cur);
@@ -219,7 +227,10 @@ function itemMonth(item: ItemInput, allUses: readonly LimitUse[], month: string,
   // share); one of several months stands on its own over its window, so it
   // grades the item through its row
   const monthly = counted.filter(({ rule }) => !isMultiMonth(rule.period)).map(({ rule }) => rule);
-  const allowance = monthly.length ? round3(monthly.reduce((n, r) => n + monthlyAllowance(r), 0)) : null;
+  // monthly limits that count a department twice both hold — their numbers
+  // are not one total (one of several months stands apart anyway)
+  const overlapping = monthly.some((a, i) => monthly.slice(i + 1).some((b) => rulesOverlap(a, b)));
+  const allowance = monthly.length && !overlapping ? round3(monthly.reduce((n, r) => n + monthlyAllowance(r), 0)) : null;
   const covered = sum(cur.filter((u) => monthly.some((r) => coversDepartment(r, u.department))));
 
   let status: MonthStatus;
@@ -235,7 +246,7 @@ function itemMonth(item: ItemInput, allUses: readonly LimitUse[], month: string,
 
   return {
     itemId: item.id, code: item.code, name: item.name, uom: item.uom, active: item.active,
-    allowance, used, covered, outside, ratio, status, prevUsed,
+    allowance, overlapping, used, covered, outside, ratio, status, prevUsed,
     change: prevUsed > 0 ? (used - prevUsed) / prevUsed : null,
     trend: trendMonths.map((m) => ({ month: m, used: sum(inMonth(mine, m)) })),
     limits,
@@ -248,7 +259,8 @@ function itemMonth(item: ItemInput, allUses: readonly LimitUse[], month: string,
  * "No limit". Sorted worst first, then by how far over.
  */
 export function buildMonthlyReport(items: readonly ItemInput[], uses: readonly LimitUse[], month: string, opts: MonthlyReportOptions = {}): MonthlyReport {
-  const headcount = opts.headcount ?? new Map<string, number>();
+  const none = new Map<string, number>();
+  const headcountOf: HeadcountOf = opts.headcountOf ?? (() => none);
   const trendCount = opts.trendCount ?? 6;
   const prevMonth = shiftMonth(month, -1);
   const trendMonths = Array.from({ length: trendCount }, (_, i) => shiftMonth(month, i - (trendCount - 1)));
@@ -257,7 +269,7 @@ export function buildMonthlyReport(items: readonly ItemInput[], uses: readonly L
   const rows = items
     .filter((i) => i.active || handed.has(i.id))
     .filter((i) => i.rules.length > 0 || handed.has(i.id))
-    .map((i) => itemMonth(i, uses, month, prevMonth, trendMonths, headcount))
+    .map((i) => itemMonth(i, uses, month, prevMonth, trendMonths, headcountOf(month)))
     .sort((a, b) => SEVERITY[b.status] - SEVERITY[a.status] || (b.ratio ?? 0) - (a.ratio ?? 0) || a.name.localeCompare(b.name));
 
   const counts: Record<MonthStatus, number> = { over: 0, near: 0, under: 0, unused: 0, nolimit: 0 };
@@ -267,7 +279,7 @@ export function buildMonthlyReport(items: readonly ItemInput[], uses: readonly L
     const c = { month: m, over: 0, near: 0, under: 0, unused: 0 };
     for (const i of items) {
       if (!i.active || i.rules.length === 0) continue;
-      const st = itemMonth(i, uses, m, shiftMonth(m, -1), [], headcount).status;
+      const st = itemMonth(i, uses, m, shiftMonth(m, -1), [], headcountOf(m)).status;
       if (st !== "nolimit") c[st] += 1;
     }
     return c;

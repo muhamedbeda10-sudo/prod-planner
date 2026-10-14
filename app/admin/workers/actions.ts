@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { serializeWorkerDepts } from "@/lib/server/workers";
+import { snapshotHeadcount } from "@/lib/server/consumableHeadcount";
 import { normalizeEmpId } from "@/lib/domain/tanks";
 import { parseISODate } from "@/lib/domain/dates";
 
@@ -18,6 +19,14 @@ export interface WorkerActionResult {
 }
 
 const PATHS = ["/admin/workers", "/worklist/welding", "/worklist/leak-test", "/worklist/painting", "/shifts"];
+
+/** After a change to who is on the list (or in which section): the pages
+ *  that offer workers, and this month's headcount the consumables'
+ *  per-worker limits are multiplied by. A vacation does not change it — the count is the staff, not who came in. */
+async function afterListChange() {
+  await snapshotHeadcount();
+  revalidateWorkers();
+}
 
 function revalidateWorkers() {
   for (const p of PATHS) revalidatePath(p);
@@ -53,7 +62,7 @@ export async function createWorker(formData: FormData): Promise<WorkerActionResu
   await prisma.worker.create({
     data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts, vacationUntil },
   });
-  revalidateWorkers();
+  await afterListChange();
   return { ok: true };
 }
 
@@ -77,7 +86,7 @@ export async function updateWorker(formData: FormData): Promise<WorkerActionResu
     where: { id },
     data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts, vacationUntil },
   });
-  revalidateWorkers();
+  await afterListChange();
   return { ok: true };
 }
 
@@ -92,7 +101,7 @@ export async function setWorkerActive(formData: FormData): Promise<WorkerActionR
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid worker." };
 
   await prisma.worker.update({ where: { id }, data: { active } });
-  revalidateWorkers();
+  await afterListChange();
   return { ok: true };
 }
 
@@ -136,7 +145,7 @@ export async function deleteWorker(formData: FormData): Promise<WorkerActionResu
   }
 
   await prisma.worker.delete({ where: { id } });
-  revalidateWorkers();
+  await afterListChange();
   return { ok: true };
 }
 

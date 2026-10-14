@@ -200,6 +200,49 @@ export function expandPerWorker(rules: readonly LimitRule[], workers: ReadonlyMa
   return out;
 }
 
+// ---------------------------------------------------------------- headcount by month
+
+/** The total row of a month's headcount record. */
+export const HEADCOUNT_TOTAL = "*";
+/** The workers each department had in a month ("2026-09"). */
+export type HeadcountOf = (month: string) => ReadonlyMap<string, number>;
+
+/**
+ * The headcount a month is held to, from the monthly records: the current
+ * month (or later) the list as it stands now (`live`); an earlier month its
+ * own record, or the latest one before it (nothing changed in between), or —
+ * before any was kept — the list as it stands.
+ */
+export function headcountResolver(
+  rows: readonly { month: string; department: string; workers: number }[],
+  live: ReadonlyMap<string, number>,
+  currentMonth: string,
+): HeadcountOf {
+  const byMonth = new Map<string, Map<string, number>>();
+  for (const r of rows) {
+    const m = byMonth.get(r.month) ?? new Map<string, number>();
+    if (r.department !== HEADCOUNT_TOTAL) m.set(r.department, r.workers);
+    byMonth.set(r.month, m);
+  }
+  const months = [...byMonth.keys()].sort();
+  return (month) => {
+    if (month >= currentMonth) return live;
+    let found: string | undefined;
+    for (const m of months) {
+      if (m > month) break;
+      found = m;
+    }
+    return found ? byMonth.get(found)! : live;
+  };
+}
+
+/** Do two limits count any department twice (an "every department" limit
+ *  overlaps every other)? Both then hold — a hand-out must fit each. */
+export function rulesOverlap(a: Pick<LimitRule, "departments">, b: Pick<LimitRule, "departments">): boolean {
+  if (a.departments === ALL_DEPARTMENTS || b.departments === ALL_DEPARTMENTS) return true;
+  return a.departments.some((d) => (b.departments as readonly string[]).includes(d));
+}
+
 export function coversDepartment(rule: Pick<LimitRule, "departments">, department: string): boolean {
   return rule.departments === ALL_DEPARTMENTS || rule.departments.includes(department);
 }
@@ -402,6 +445,27 @@ export function exceedances(rules: readonly LimitRule[], uses: readonly LimitUse
         const used = round3(inW.reduce((n, u) => n + u.qty, 0));
         if (used > rule.qty + 1e-9) out.push({ ...base, used, workerId: null });
       }
+    }
+  }
+  return out.sort((a, b) => b.window.from.localeCompare(a.window.from) || b.used / b.limit - a.used / a.limit);
+}
+
+/**
+ * The windows overlapping from..to that ended over a limit, each counted with
+ * the headcount of its own last month — a per-worker limit for September is
+ * the number times September's workers. `rules` are the limits as set (not
+ * yet made each department's); `seen`: the departments hand-outs went to.
+ */
+export function exceedancesByMonth(
+  rules: readonly LimitRule[], uses: readonly LimitUse[], fromISO: string, toISO: string,
+  headcountOf: HeadcountOf, seen: Iterable<string> = [],
+): LimitExceedance[] {
+  const seenList = [...seen];
+  const out: LimitExceedance[] = [];
+  for (const rule of rules) {
+    for (const w of windowsOverlapping(rule.period, fromISO, toISO)) {
+      const counted = expandPerWorker([rule], headcountOf(w.to.slice(0, 7)), seenList);
+      out.push(...exceedances(counted, uses, w.from, w.to));
     }
   }
   return out.sort((a, b) => b.window.from.localeCompare(a.window.from) || b.used / b.limit - a.used / a.limit);

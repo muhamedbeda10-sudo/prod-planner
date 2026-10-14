@@ -328,11 +328,39 @@ export function matchCatalogueItem<C extends { id: number; name: string; code: s
   return null;
 }
 
+/** A reason is words, not a dot to get past the box: this many characters at
+ *  least, a few of them letters or figures (Arabic or English). */
+export const OVER_LIMIT_REASON_MIN = 5;
+const REASON_WORD_CHARS = 3;
+
 /** The recorder's reason for going over a limit — one line, trimmed. */
 export function readOverLimitReason(get: (name: string) => unknown): { reason: string | null; error?: string } {
   const reason = cleanText(get("overLimitReason"));
   if (reason.length > OVER_LIMIT_REASON_MAX) return { reason: null, error: `The reason is too long (at most ${OVER_LIMIT_REASON_MAX} characters).` };
   return { reason: reason || null };
+}
+
+/** Why a reason will not do, or null when it will: a hand-out over a limit
+ *  is never recorded without one. */
+export function overLimitReasonProblem(reason: string | null): string | null {
+  const r = cleanText(reason);
+  if (!r) return "This takes a limit over — write the reason to record it. Without a reason it is not recorded.";
+  const wordChars = (r.match(/[\p{L}\p{N}]/gu) ?? []).length;
+  if (r.length < OVER_LIMIT_REASON_MIN || wordChars < REASON_WORD_CHARS) {
+    return `Write the reason in words (at least ${OVER_LIMIT_REASON_MIN} characters) — it is kept with the hand-out.`;
+  }
+  return null;
+}
+
+/** May a corrected row that is still over a limit keep the reason it was
+ *  recorded with? Only when the correction asks no more of the limit: the
+ *  same catalogue item, the same department, and no more than before. Any
+ *  other correction that is over needs its own reason. */
+export function keepsOverLimitReason(
+  before: { itemId: number | null; department: string; qty: number },
+  after: { itemId: number | null; department: string; qty: number },
+): boolean {
+  return before.itemId === after.itemId && before.department === after.department && after.qty <= before.qty + 1e-9;
 }
 
 /** A snapshot in one line: "2 × Welding wire · Welding TX · 1203 Sayed · “note”". */

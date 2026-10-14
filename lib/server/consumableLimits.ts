@@ -1,17 +1,23 @@
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, factoryDayStart } from "@/lib/domain/dates";
 import { departmentLabel, departmentWorkers } from "@/lib/domain/consumables";
 import { getAllWorkers } from "./workers";
+import { loadHeadcountOf } from "./consumableHeadcount";
+import { monthBounds, shiftMonth } from "@/lib/domain/consumableMonthly";
 import {
-  ALL_DEPARTMENTS, PERIOD_LABEL, candidateStanding, checkAgainstLimits, expandPerWorker, ruleLabel, coversDepartment, departmentsLabel, exceedances, isLimitBasis, isLimitPeriod,
+  ALL_DEPARTMENTS, PERIOD_LABEL, candidateStanding, checkAgainstLimits, expandPerWorker, ruleLabel, coversDepartment, departmentsLabel, exceedancesByMonth, isLimitBasis, isLimitPeriod,
   issueUses, parseDepartments, periodWindow, standings, windowsSpan, type LimitBasis, type LimitBreach, type LimitPeriod, type LimitRule, type LimitUse,
 } from "@/lib/domain/consumableLimits";
 
 // The CONSUMABLES catalogue and limits — the reads. The rules are pure in
 // lib/domain/consumableLimits.ts; this file turns rows into them and counts
 // the hand-outs in the windows they need.
+
+/** The database, or the transaction a check runs in (see checkIssueLimits). */
+type Db = Prisma.TransactionClient;
 
 export interface LimitDTO {
   id: number;
@@ -63,24 +69,32 @@ export async function getCatalogue(opts: { activeOnly?: boolean } = {}): Promise
  *  workers, every department hand-outs already went to (a section with no
  *  one on the list, or a typed one), and `alsoCovers` — the department a
  *  hand-out is being checked for, which may be its first. */
-export async function loadRules(itemIds?: number[], alsoCovers: readonly string[] = []): Promise<LimitRule[]> {
-  const [rows, workers, used] = await Promise.all([
-    prisma.consumableLimit.findMany({ where: { item: { active: true }, ...(itemIds ? { itemId: { in: itemIds } } : {}) } }),
-    getAllWorkers(),
-    prisma.consumableIssue.findMany({ where: { deletedAt: null }, select: { department: true }, distinct: ["department"] }),
-  ]);
-  return expandPerWorker(rows.map(toRule), departmentWorkers(workers), [...used.map((u) => u.department), ...alsoCovers]);
+export async function loadRules(itemIds?: number[], alsoCovers: readonly string[] = [], db: Db = prisma): Promise<LimitRule[]> {
+  const [raw, workers, seen] = await Promise.all([loadRawRules(itemIds, db), getAllWorkers(), departmentsUsed(db)]);
+  return expandPerWorker(raw, departmentWorkers(workers), [...seen, ...alsoCovers]);
+}
+
+/** The limits of active items as they are set — not yet made each department's. */
+async function loadRawRules(itemIds?: number[], db: Db = prisma): Promise<LimitRule[]> {
+  const rows = await db.consumableLimit.findMany({ where: { item: { active: true }, ...(itemIds ? { itemId: { in: itemIds } } : {}) } });
+  return rows.map(toRule);
+}
+
+/** Every department a live hand-out went to. */
+async function departmentsUsed(db: Db = prisma): Promise<string[]> {
+  const rows = await db.consumableIssue.findMany({ where: { deletedAt: null }, select: { department: true }, distinct: ["department"] });
+  return rows.map((r) => r.department);
 }
 
 const CAIRO_DAY = (d: Date) => factoryDayISO(d);
 
 /** Catalogue hand-outs in factory days from..to, as the limits count them —
  *  a group hand-out as an equal share for each of its workers. */
-export async function loadUses(fromISO: string, toISO: string, opts: { itemIds?: number[]; excludeIssueId?: number } = {}): Promise<LimitUse[]> {
+export async function loadUses(fromISO: string, toISO: string, opts: { itemIds?: number[]; excludeIssueId?: number } = {}, db: Db = prisma): Promise<LimitUse[]> {
   const gte = factoryDayStart(fromISO);
   const lt = factoryDayStart(addDaysISO(toISO, 1));
   if (!gte || !lt) return [];
-  const rows = await prisma.consumableIssue.findMany({
+  const rows = await db.consumableIssue.findMany({
     where: {
       deletedAt: null,
       itemId: opts.itemIds ? { in: opts.itemIds } : { not: null },
@@ -95,16 +109,31 @@ export async function loadUses(fromISO: string, toISO: string, opts: { itemIds?:
   }));
 }
 
-/** Would this hand-out break a limit? The rules of the item that cover the
- *  department, each counted in its own window around the day. `workerIds`:
- *  the one worker, or every worker of a group hand-out. */
-export async function checkIssueLimits(c: { itemId: number | null; department: string; workerIds: readonly number[]; qty: number; dayISO: string; excludeIssueId?: number }): Promise<LimitBreach[]> {
+/** Would this hand-out break a limit? Every rule of the item that covers the
+ *  department — several may, and each must hold — counted in its own window
+ *  around the day. `workerIds`: the one worker, or every worker of a group
+ *  hand-out. `db`: the transaction the hand-out is written in, holding the
+ *  item's lock (lockItemLimits), so two hand-outs at once cannot both pass
+ *  on the same room. */
+export async function checkIssueLimits(c: { itemId: number | null; department: string; workerIds: readonly number[]; qty: number; dayISO: string; excludeIssueId?: number }, db: Db = prisma): Promise<LimitBreach[]> {
   if (c.itemId === null) return [];
-  const rules = (await loadRules([c.itemId], [c.department])).filter((r) => coversDepartment(r, c.department));
+  const rules = (await loadRules([c.itemId], [c.department], db)).filter((r) => coversDepartment(r, c.department));
   const span = windowsSpan(rules, c.dayISO);
   if (!span) return [];
-  const uses = await loadUses(span.from, span.to, { itemIds: [c.itemId], excludeIssueId: c.excludeIssueId });
+  const uses = await loadUses(span.from, span.to, { itemIds: [c.itemId], excludeIssueId: c.excludeIssueId }, db);
   return checkAgainstLimits(rules, uses, { itemId: c.itemId, department: c.department, workerIds: c.workerIds, dayISO: c.dayISO, qty: c.qty });
+}
+
+/** Arbitrary, fixed: the first key of the advisory locks a catalogue item's
+ *  limit checks take (the second is the item's id). */
+const LIMIT_LOCK = 41_207;
+
+/** Hold the item's limits for the rest of the transaction: a second hand-out
+ *  of the same item waits until this one is written (or refused), then
+ *  counts it. Released when the transaction ends. */
+export async function lockItemLimits(tx: Db, itemId: number | null): Promise<void> {
+  if (itemId === null) return;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LIMIT_LOCK}::int, ${itemId}::int)`;
 }
 
 export interface LimitHint {
@@ -185,10 +214,12 @@ export interface OverLimitIssue {
 export interface LimitDashboard {
   /** Every rule in its current window (this month, this quarter …). */
   board: AlarmRow[];
-  /** Windows touching the slicer's period that are over and done — a month
-   *  (or longer limit) that closed over its number. The window still running
-   *  is the board's, not repeated here. */
+  /** Windows of the last EXCEEDANCE_MONTHS finished months (whatever the
+   *  slicer) that closed over their number — each counted with the workers
+   *  of its own month. The window still running is the board's. */
   exceedances: ExceedanceRow[];
+  /** The months the exceedances look back over: "Jul 2026 – Sep 2026". */
+  exceedanceSpan: { from: string; to: string };
   /** Hand-outs in the slicer's period recorded over a limit, with the reason. */
   overLimitIssues: OverLimitIssue[];
   /** Hand-outs in the period of items not in the catalogue — no limit counts them. */
@@ -200,20 +231,30 @@ function groupName(scope: string, department: string, count: number): string {
   return scope === "department" ? `Whole ${departmentLabel(department)} (${count})` : `${count} workers`;
 }
 
+/** How many finished months "past months over the limit" looks back over. */
+export const EXCEEDANCE_MONTHS = 3;
+
 export async function getLimitDashboard(fromISO: string, toISO: string, todayISO: string): Promise<LimitDashboard> {
-  const [items, rules] = await Promise.all([
+  const [items, raw, list, seen, headcountOf] = await Promise.all([
     prisma.consumableItem.findMany({ select: { id: true, name: true, code: true, uom: true } }),
-    loadRules(),
+    loadRawRules(),
+    getAllWorkers(),
+    departmentsUsed(),
+    loadHeadcountOf(),
   ]);
+  // now: the list as it stands
+  const rules = expandPerWorker(raw, departmentWorkers(list), seen);
   const itemOf = new Map(items.map((i) => [i.id, i]));
 
-  // the uses both views need: today's widest window, and the slicer's period
-  // widened to the whole windows it touches
+  // the past: the last few finished months, widened to the whole windows
+  // they touch (a quarter that began before them)
+  const thisMonth = todayISO.slice(0, 7);
+  const pastFrom = monthBounds(shiftMonth(thisMonth, -EXCEEDANCE_MONTHS)).from;
+  const pastTo = monthBounds(shiftMonth(thisMonth, -1)).to;
   const cur = windowsSpan(rules, todayISO);
-  const rangeFrom = rules.length ? [fromISO, ...rules.map((r) => periodWindow(r.period, fromISO).from)].sort()[0] : fromISO;
-  const rangeTo = rules.length ? [toISO, ...rules.map((r) => periodWindow(r.period, toISO).to)].sort().at(-1)! : toISO;
+  const rangeFrom = [pastFrom, ...raw.map((r) => periodWindow(r.period, pastFrom).from)].sort()[0];
   const spanFrom = [rangeFrom, cur?.from ?? rangeFrom].sort()[0];
-  const spanTo = [rangeTo, cur?.to ?? rangeTo].sort().at(-1)!;
+  const spanTo = [todayISO, cur?.to ?? todayISO].sort().at(-1)!;
 
   const gte = factoryDayStart(fromISO)!;
   const lt = factoryDayStart(addDaysISO(toISO, 1))!;
@@ -244,8 +285,9 @@ export async function getLimitDashboard(fromISO: string, toISO: string, todayISO
     };
   }).sort((a, b) => b.ratio - a.ratio || a.item.localeCompare(b.item));
 
-  const ex: ExceedanceRow[] = exceedances(rules, uses.filter((u) => u.dayISO >= rangeFrom && u.dayISO <= rangeTo), fromISO, toISO)
-    .filter((e) => e.window.to < todayISO)
+  // windows that ended inside the last few months — each with its month's workers
+  const ex: ExceedanceRow[] = exceedancesByMonth(raw, uses, pastFrom, pastTo, headcountOf, seen)
+    .filter((e) => e.window.to >= pastFrom && e.window.to <= pastTo)
     .map((e) => {
     const it = itemOf.get(e.itemId);
     return {
@@ -258,6 +300,7 @@ export async function getLimitDashboard(fromISO: string, toISO: string, todayISO
   return {
     board,
     exceedances: ex,
+    exceedanceSpan: { from: pastFrom, to: pastTo },
     overLimitIssues: flagged.map((f) => ({
       id: f.id, dayISO: CAIRO_DAY(f.issuedAt), item: f.item, qty: f.qty.toNumber(), department: f.department,
       worker: f.worker ?? { name: groupName(f.recipientScope, f.department, f.recipientCount), empId: "" }, reason: f.overLimitReason, note: f.overLimitNote, recordedBy: f.recordedBy,
