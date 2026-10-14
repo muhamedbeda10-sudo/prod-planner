@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { factoryDayISO, factoryDayStart } from "@/lib/domain/dates";
 import { departmentLabel, departmentWorkers } from "@/lib/domain/consumables";
-import { WORKER_SECTIONS } from "@/lib/domain/tanks";
 import { getAllWorkers } from "./workers";
 import {
   ALL_DEPARTMENTS, PERIOD_LABEL, candidateStanding, checkAgainstLimits, expandPerWorker, ruleLabel, coversDepartment, departmentsLabel, exceedances, isLimitBasis, isLimitPeriod,
@@ -58,17 +57,19 @@ export async function getCatalogue(opts: { activeOnly?: boolean } = {}): Promise
 }
 
 /** The limit rules of active items (all of them, or the items given), as
- *  they are counted: a per-person rule turned into each department's limit —
- *  the number times the department's workers. */
-export async function loadRules(itemIds?: number[]): Promise<LimitRule[]> {
-  const sectionCodes = WORKER_SECTIONS.map((s) => s.code as string);
-  const [rows, workers, typed] = await Promise.all([
+ *  they are counted: an "each department" or per-worker rule turned into
+ *  each department's own limit — the number, or the number times the
+ *  department's workers. An "every department" rule covers the sections with
+ *  workers, every department hand-outs already went to (a section with no
+ *  one on the list, or a typed one), and `alsoCovers` — the department a
+ *  hand-out is being checked for, which may be its first. */
+export async function loadRules(itemIds?: number[], alsoCovers: readonly string[] = []): Promise<LimitRule[]> {
+  const [rows, workers, used] = await Promise.all([
     prisma.consumableLimit.findMany({ where: { item: { active: true }, ...(itemIds ? { itemId: { in: itemIds } } : {}) } }),
     getAllWorkers(),
-    // the typed departments hand-outs went to — an "every department" per-person rule covers them too
-    prisma.consumableIssue.findMany({ where: { deletedAt: null, department: { notIn: sectionCodes } }, select: { department: true }, distinct: ["department"] }),
+    prisma.consumableIssue.findMany({ where: { deletedAt: null }, select: { department: true }, distinct: ["department"] }),
   ]);
-  return expandPerWorker(rows.map(toRule), departmentWorkers(workers), typed.map((t) => t.department));
+  return expandPerWorker(rows.map(toRule), departmentWorkers(workers), [...used.map((u) => u.department), ...alsoCovers]);
 }
 
 const CAIRO_DAY = (d: Date) => factoryDayISO(d);
@@ -99,7 +100,7 @@ export async function loadUses(fromISO: string, toISO: string, opts: { itemIds?:
  *  the one worker, or every worker of a group hand-out. */
 export async function checkIssueLimits(c: { itemId: number | null; department: string; workerIds: readonly number[]; qty: number; dayISO: string; excludeIssueId?: number }): Promise<LimitBreach[]> {
   if (c.itemId === null) return [];
-  const rules = (await loadRules([c.itemId])).filter((r) => coversDepartment(r, c.department));
+  const rules = (await loadRules([c.itemId], [c.department])).filter((r) => coversDepartment(r, c.department));
   const span = windowsSpan(rules, c.dayISO);
   if (!span) return [];
   const uses = await loadUses(span.from, span.to, { itemIds: [c.itemId], excludeIssueId: c.excludeIssueId });
@@ -122,7 +123,7 @@ export interface LimitHint {
  *  counted against it. `excludeIssueId`: the row being corrected, which the
  *  quantity typed replaces. */
 export async function limitHints(itemId: number, department: string, workerIds: readonly number[], dayISO: string, excludeIssueId?: number): Promise<LimitHint[]> {
-  const rules = (await loadRules([itemId])).filter((r) => coversDepartment(r, department));
+  const rules = (await loadRules([itemId], [department])).filter((r) => coversDepartment(r, department));
   const span = windowsSpan(rules, dayISO);
   if (!span) return [];
   const uses = await loadUses(span.from, span.to, { itemIds: [itemId], excludeIssueId });
@@ -305,23 +306,58 @@ export async function getCatalogueChanges(take = 60, labelOf: (d: Date) => strin
   });
 }
 
-/** Where each rule stands right now, keyed by rule — the Limits view's bars. */
-export async function getCurrentStandings(todayISO: string): Promise<Record<number, { used: number; limit: number; windowLabel: string; overWorkers: number; departments?: number }>> {
+/** One department's own share of an "each" or per-worker limit, right now. */
+export interface DepartmentStanding {
+  department: string;
+  label: string;
+  used: number;
+  limit: number;
+  /** A per-worker limit: the workers the number is times (0 = no one on the list, counted as one). */
+  workers: number | null;
+}
+
+/** Where a limit stands in its current window — the Limits view's bar. */
+export interface LimitStandingView {
+  windowLabel: string;
+  /** A shared limit: what its departments drew against the number. An
+   *  "each" or per-worker limit: every department added up. */
+  used: number;
+  limit: number;
+  /** The fullest department (or the pool): used / limit — what the alarm reads. */
+  worstRatio: number;
+  /** Departments (or the pool) past their number now. */
+  over: number;
+  /** An "each" or per-worker limit: every department's own, fullest first;
+   *  empty for a shared one. */
+  departments: DepartmentStanding[];
+}
+
+/** Where each limit stands right now, keyed by the limit as set. */
+export async function getCurrentStandings(todayISO: string): Promise<Record<number, LimitStandingView>> {
   const rules = await loadRules();
   const span = windowsSpan(rules, todayISO);
   if (!span) return {};
   const uses = await loadUses(span.from, span.to);
-  // a limit made into one per department stands as its fullest department,
-  // and says how many are over
-  const out: Record<number, { used: number; limit: number; windowLabel: string; overWorkers: number; departments?: number }> = {};
-  const sourceOf = new Map(rules.map((r) => [r.id, r.sourceId ?? r.id]));
+  const ruleOf = new Map(rules.map((r) => [r.id, r]));
+  const out: Record<number, LimitStandingView> = {};
   for (const st of standings(rules, uses, todayISO)) {
-    const key = sourceOf.get(st.ruleId) ?? st.ruleId;
-    const over = st.used > st.limit + 1e-9 ? 1 : 0;
-    const cur = out[key];
-    if (!cur) { out[key] = { used: st.used, limit: st.limit, windowLabel: st.windowLabel, overWorkers: over, departments: 1 }; continue; }
-    const worse = st.limit > 0 && st.used / st.limit > (cur.limit > 0 ? cur.used / cur.limit : 0);
-    out[key] = { ...(worse ? { used: st.used, limit: st.limit, windowLabel: st.windowLabel } : cur), overWorkers: cur.overWorkers + over, departments: (cur.departments ?? 1) + 1 };
+    const rule = ruleOf.get(st.ruleId)!;
+    const key = rule.sourceId ?? rule.id;
+    const ratio = st.limit > 0 ? st.used / st.limit : 0;
+    const isOver = st.used > st.limit + 1e-9 ? 1 : 0;
+    const cur = out[key] ?? { windowLabel: st.windowLabel, used: 0, limit: 0, worstRatio: 0, over: 0, departments: [] };
+    cur.used = Math.round((cur.used + st.used) * 1000) / 1000;
+    cur.limit = Math.round((cur.limit + st.limit) * 1000) / 1000;
+    cur.worstRatio = Math.max(cur.worstRatio, ratio);
+    cur.over += isOver;
+    if (rule.sourceId !== undefined && rule.departments !== ALL_DEPARTMENTS) {
+      const department = rule.departments[0];
+      cur.departments.push({ department, label: departmentLabel(department), used: st.used, limit: st.limit, workers: rule.perWorker?.workers ?? null });
+    }
+    out[key] = cur;
+  }
+  for (const v of Object.values(out)) {
+    v.departments.sort((a, b) => b.used / b.limit - a.used / a.limit || b.used - a.used || a.label.localeCompare(b.label));
   }
   return out;
 }
