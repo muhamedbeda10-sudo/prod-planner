@@ -16,6 +16,22 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-14-consumables-reason-required",
+    dateISO: "2026-10-14",
+    title: "Consumables: nothing over a limit is recorded without a reason",
+    where: "Consumables → Log",
+    body: "A hand-out that would take a limit over now needs a real reason (at least 5 characters) — without it, it is not recorded, from the form or from the assistant. When an item has two limits on the same department, both hold and the warning names each one it breaks. Two hand-outs of the same item at the same moment can no longer both slip past a limit: the second waits and counts the first. Correcting a row that was over keeps its reason only while the item and department stay and the quantity does not go up; otherwise a new reason is asked for.",
+    href: "/consumables",
+  },
+  {
+    id: "2026-10-14-consumables-limits-tab",
+    dateISO: "2026-10-14",
+    title: "Consumables limits: counted right, one line per limit, and each department's own",
+    where: "Consumables → Limits · Dashboard → Monthly review",
+    body: "The monthly review now counts \"each department\" and \"per worker\" limits department by department, as the record form does — it no longer shows items over that are not. A per-worker limit is times the department's workers that month (kept month by month from today). The Limits tab shows one line per limit: how it counts, for whom, used and left this month (or quarter), with Over / Close / No limit filters; open a per-department limit to see every department. \"Past months over the limit\" on the dashboard always shows the last 3 finished months.",
+    href: "/consumables?view=limits",
+  },
+  {
     id: "2026-10-13-instant-alerts",
     dateISO: "2026-10-13",
     title: "Instant alerts — the moment something happens",
