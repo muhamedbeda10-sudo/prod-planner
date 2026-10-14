@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-14-monthly-import-add-only",
+    dateISO: "2026-10-14",
+    title: "The monthly plan import never removes orders",
+    where: "Orders → Import monthly plan · the assistant's import",
+    body: "Importing a monthly plan now only adds and updates: new MOs are added, MOs in the sheet get its changes (a different quantity is still held for your decision), and the month's orders the sheet does not list stay exactly as they are — not deleted, not closed, not taken off the month. The result says how many will be added, updated, held for a quantity decision, and that 0 will be removed. Taking the missing orders out is still possible, on purpose only: untick \"Keep orders not in the sheet\".",
+    href: "/orders",
+  },
+  {
     id: "2026-10-13-instant-alerts",
     dateISO: "2026-10-13",
     title: "Instant alerts — the moment something happens",

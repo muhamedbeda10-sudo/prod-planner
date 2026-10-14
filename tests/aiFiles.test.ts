@@ -235,11 +235,16 @@ describe("importing an attached file", () => {
     h.actions.importMonthlyAction.mockResolvedValue({ ok: true, added: 2, updatedMos: 1 });
     const input = { fileId: 12, month: "2026-10", line: "TR" as const };
     const p = await importMonthlyPlanTool.describe(input, ctx);
-    expect(h.importers.importMonthlyPlan).toHaveBeenCalledWith(expect.any(ArrayBuffer), "October 2026", true, "TR", "");
+    expect(h.importers.importMonthlyPlan).toHaveBeenCalledWith(expect.any(ArrayBuffer), "October 2026", true, "TR", "", { keepMissing: true });
     expect(p).toMatchObject({
       title: "Import the October 2026 transformers' plan",
       summary: expect.stringContaining("cannot be undone from the chat"),
-      changes: expect.arrayContaining([{ label: "New MOs", before: "—", after: "2 (SF01/MO/1; SF01/MO/2)" }, { label: "Field changes", before: "—", after: "SF01/MO/3 soi: — → SOI9" }]),
+      changes: expect.arrayContaining([
+        { label: "New MOs", before: "—", after: "2 (SF01/MO/1; SF01/MO/2)" },
+        { label: "Field changes", before: "—", after: "SF01/MO/3 soi: — → SOI9" },
+        { label: "Quantity changes (held, not applied)", before: "—", after: "0" },
+        { label: "Removed", before: "—", after: "0 removed" },
+      ]),
       snapshot: { file: "abc", preview: expect.stringMatching(/^[0-9a-f]{64}$/) },
     });
     // the same dry run, the same snapshot — a moved one would read stale
@@ -249,9 +254,30 @@ describe("importing an attached file", () => {
     expect(h.lines).toEqual(["TR"]);
     const fd = h.actions.importMonthlyAction.mock.calls[0][0] as FormData;
     expect(fd.get("month")).toBe("2026-10");
+    expect(fd.get("missing")).toBe("keep");
     expect((fd.get("file") as File).name).toBe("October plan.xlsx");
-    expect(out).toEqual({ ok: true, message: "Imported: 2 new MO(s), 1 changed." });
+    expect(out).toEqual({ ok: true, message: "Imported: 2 new MO(s), 1 updated, 0 removed." });
     expect(out.undo).toBeUndefined();
+  });
+
+  it("never removes the month's other MOs unless asked to in so many words", async () => {
+    h.perms.add("plans.import");
+    h.importers.importMonthlyPlan.mockResolvedValue({ ...preview, keepMissing: true, notInSheet: 18 });
+    h.actions.importMonthlyAction.mockResolvedValue({ ok: true, added: 2, updatedMos: 1, removed: [] });
+    const input = { fileId: 12, month: "2026-10", line: "TR" as const };
+    expect(await importMonthlyPlanTool.describe(input, ctx)).toMatchObject({
+      summary: expect.stringContaining("0 removed"),
+      changes: expect.arrayContaining([{ label: "Removed", before: "18 not in the sheet", after: "0 removed — 18 MO(s) of the month not in the sheet stay exactly as they are" }]),
+    });
+
+    h.importers.importMonthlyPlan.mockResolvedValue({ ...preview, keepMissing: false, notInSheet: 1, removed: [{ mo: "SF01/MO/9", action: "deleted" }] });
+    const takeOut = { ...input, keepMissing: false };
+    expect(await importMonthlyPlanTool.describe(takeOut, ctx)).toMatchObject({
+      changes: expect.arrayContaining([{ label: "Taken out of the month", before: "1 not in the sheet", after: "1 taken out (SF01/MO/9 deleted)" }]),
+    });
+    expect(h.importers.importMonthlyPlan).toHaveBeenLastCalledWith(expect.any(ArrayBuffer), "October 2026", true, "TR", "", { keepMissing: false });
+    await importMonthlyPlanTool.execute(takeOut, ctx);
+    expect((h.actions.importMonthlyAction.mock.calls.at(-1)![0] as FormData).get("missing")).toBe("takeOut");
   });
 
   it("says what the importer refused, and never imports a file of another chat", async () => {

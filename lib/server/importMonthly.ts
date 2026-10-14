@@ -35,10 +35,24 @@ export interface MonthlyImportResult {
   /** Existing MOs whose qty in the sheet differs — held for the planner's
    *  decision, never applied by the import. */
   qtyProposals?: QtyProposal[];
-  /** Open MOs previously imported from this same month but ABSENT from this
-   *  sheet — taken out (unless preview): deleted when nothing was ever
-   *  recorded on them, closed when the daily log or a tank names them. */
+  /** Whether the month's open MOs the sheet does not list were left alone
+   *  (the default) or taken out. */
+  keepMissing?: boolean;
+  /** Open MOs of this month (and this plan) that the sheet does not list —
+   *  left exactly as they are when keepMissing, taken out otherwise. */
+  notInSheet?: number;
+  /** The MOs taken out — always empty when keepMissing. Otherwise (unless
+   *  preview): deleted when nothing was ever recorded on them, closed when
+   *  the daily log or a tank names them. */
   removed?: { mo: string; action: "deleted" | "closed" }[];
+}
+
+export interface MonthlyImportOptions {
+  /** true (the default): the import only ADDS and UPDATES — an open MO of
+   *  this month the sheet does not list is not deleted, closed, taken off the
+   *  month or changed in any way. false: such MOs are taken out, as the
+   *  import used to do — only when someone chooses it on purpose. */
+  keepMissing?: boolean;
 }
 
 /** Import one month's plan for ONE product line. Every order it adds is
@@ -46,8 +60,16 @@ export interface MonthlyImportResult {
  *  mistake in the sheet, not a revision, and is refused with its row.
  *  `family` is which of the line's plans the sheet is (the LV meter boxes'
  *  plan is "MB"): the orders it adds carry it, and only that plan's orders
- *  are taken off the month when the sheet no longer lists them. */
-export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string, preview = false, line: ProductLine = "TR", family = ""): Promise<MonthlyImportResult> {
+ *  are revised. The import never removes an order unless `keepMissing` is
+ *  turned off on purpose (see MonthlyImportOptions). */
+export async function importMonthlyPlan(
+  buffer: ArrayBuffer,
+  sourceLabel: string,
+  preview = false,
+  line: ProductLine = "TR",
+  family = "",
+  { keepMissing = true }: MonthlyImportOptions = {}
+): Promise<MonthlyImportResult> {
   let wb: XLSX.WorkBook;
   try {
     wb = XLSX.read(new Uint8Array(buffer), { cellDates: false });
@@ -199,17 +221,21 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     );
   }
 
-  // MOs previously listed under THIS month's plan but missing from the new
-  // revision were taken off the plan. They go: deleted outright when nothing
-  // was ever recorded on them (the planning layers keyed on the MO with them,
-  // as the registry's own delete does), closed when the daily log or a tank
-  // already names them — history is never touched.
+  // Open MOs listed under THIS month's plan that the sheet does not list.
+  // By default the import is "add and update only": they stay exactly as
+  // they are — a sheet that lists part of the month (a revision sent for a
+  // few MOs, a second batch) must never cost the factory its other orders.
+  // Only when keepMissing is turned off on purpose are they taken out:
+  // deleted outright when nothing was ever recorded on them (the planning
+  // layers keyed on the MO with them, as the registry's own delete does),
+  // closed when the daily log or a tank already names them — history is
+  // never touched.
   const inSheet = new Set(rows.map((r) => r.mo));
   // another plan of the same line (the meter boxes beside the panels) is not
-  // this sheet's to take off
+  // this sheet's to judge
   const gone = registry.filter((o) => o.status === "open" && o.family === family && !inSheet.has(o.mo) && monthsOf(o.months || o.source || "").includes(sourceLabel));
   const removed: { mo: string; action: "deleted" | "closed" }[] = [];
-  if (gone.length > 0) {
+  if (!keepMissing && gone.length > 0) {
     const keys = gone.map((o) => o.mo);
     const [logged, tanks] = await Promise.all([
       prisma.handoverEntry.groupBy({ by: ["mo"], where: { mo: { in: keys } }, _count: { _all: true } }),
@@ -267,6 +293,8 @@ export async function importMonthlyPlan(buffer: ArrayBuffer, sourceLabel: string
     preview,
     changes: changes.slice(0, 300),
     qtyProposals,
+    keepMissing,
+    notInSheet: gone.length,
     removed,
   };
 }

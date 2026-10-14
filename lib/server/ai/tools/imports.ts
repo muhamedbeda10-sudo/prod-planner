@@ -160,40 +160,53 @@ interface MonthlyInput extends ImportBase {
   month: string;
   line: ProductLine;
   family?: LvFamily;
+  keepMissing?: boolean;
+}
+
+const monthlyFamily = (i: MonthlyInput) => (i.line === "LV" ? i.family ?? "" : "");
+const keepsMissing = (i: MonthlyInput) => i.keepMissing !== false;
+
+/** What happens to the month's MOs the sheet does not list, in words. */
+function notInSheetLine(r: MonthlyImportResult): string {
+  const removed = r.removed?.length ?? 0;
+  if (r.keepMissing !== false) return `0 removed${r.notInSheet ? ` — ${r.notInSheet} MO(s) of the month not in the sheet stay exactly as they are` : ""}`;
+  return `${removed} taken out${removed ? ` (${list(r.removed!.map((x) => `${x.mo} ${x.action}`))})` : ""}`;
 }
 
 export const importMonthlyPlanTool = importTool<MonthlyInput, MonthlyImportResult>({
   name: "import_monthly_plan",
   title: "Import a monthly plan",
   description:
-    "Import an attached monthly plan into the Orders registry for a month, as Orders → Import does: new MOs are added, changed plan fields applied, a changed quantity only proposed (never applied), and the month's open MOs the sheet no longer lists taken out (deleted, or closed when work was recorded on them).",
+    "Import an attached monthly plan into the Orders registry for a month, as Orders → Import does. It only adds and updates: new MOs are added, changed plan fields applied, a changed quantity only proposed (never applied), and the month's MOs the sheet does not list are left exactly as they are. Only with keepMissing: false — when the person asks for it in so many words — are those MOs taken out (deleted, or closed when work was recorded on them).",
   tabs: ["orders"],
   properties: {
     month: { type: "string", pattern: "^\\d{4}-(0[1-9]|1[0-2])$", description: "The plan's month, YYYY-MM." },
     line: LINE,
     family: { type: "string", enum: ["", "MB"], description: "LV only: \"\" = the panels' plan, MB = the meter boxes' plan." },
+    keepMissing: { type: "boolean", description: "Default true: the month's MOs the sheet does not list stay untouched. false takes them out — only when the person asks for that." },
   },
   required: ["month", "line"],
   perm: (i) => linePermKey(i.line, "import"),
-  preview: (i, f) => importMonthlyPlan(bytesOf(f), monthLabelFromInput(i.month)!, true, i.line, i.line === "LV" ? i.family ?? "" : ""),
+  preview: (i, f) => importMonthlyPlan(bytesOf(f), monthLabelFromInput(i.month)!, true, i.line, monthlyFamily(i), { keepMissing: keepsMissing(i) }),
   card(i, r, f) {
     const label = monthLabelFromInput(i.month)!;
     const plan = i.line === "LV" ? `${LV_FAMILY_LABEL[i.family ?? ""]} plan` : "transformers' plan";
+    const removed = r.removed?.length ?? 0;
     return {
       title: `Import the ${label} ${plan}`,
-      summary: `Import "${f.name}" as the ${label} ${plan}: ${r.added ?? 0} new MO(s), ${r.updatedMos ?? 0} changed, ${r.removed?.length ?? 0} taken out, ${r.qtyProposals?.length ?? 0} quantity change(s) left for your decision.`,
+      summary: `Import "${f.name}" as the ${label} ${plan}: ${r.added ?? 0} new MO(s) added, ${r.updatedMos ?? 0} updated, ${r.qtyProposals?.length ?? 0} with a quantity change held for your decision, ${removed} removed.`,
       changes: [
         { label: "New MOs", before: "—", after: `${r.added ?? 0}${r.addedMos?.length ? ` (${list(r.addedMos)})` : ""}` },
         { label: "MOs already in the registry", before: String(r.existing ?? 0), after: `${r.updatedMos ?? 0} with changed plan fields` },
         ...(r.changes?.length ? [{ label: "Field changes", before: "—", after: list(r.changes.map((c) => `${c.mo} ${c.field}: ${c.from || "—"} → ${c.to || "—"}`)) }] : []),
-        ...(r.removed?.length ? [{ label: "Taken out of the month", before: "open", after: list(r.removed.map((x) => `${x.mo} ${x.action}`)) }] : []),
-        ...(r.qtyProposals?.length ? [{ label: "Quantity changes (not applied)", before: "—", after: list(r.qtyProposals.map((q) => `${q.mo} ${q.from} → ${q.to}`)) }] : []),
+        { label: "Quantity changes (held, not applied)", before: "—", after: r.qtyProposals?.length ? `${r.qtyProposals.length} (${list(r.qtyProposals.map((q) => `${q.mo} ${q.from} → ${q.to}`))})` : "0" },
+        { label: r.keepMissing !== false ? "Removed" : "Taken out of the month", before: r.notInSheet ? `${r.notInSheet} not in the sheet` : "—", after: notInSheetLine(r) },
         ...(r.issues?.length ? [{ label: "Rows the importer skips", before: "—", after: list(r.issues) }] : []),
       ],
     };
   },
-  run: (i, f) => withLine(i.line, () => importMonthlyAction(upload(f, { month: i.month, family: i.line === "LV" ? i.family ?? "" : "" }))),
-  done: (r) => `Imported: ${r.added ?? 0} new MO(s), ${r.updatedMos ?? 0} changed${r.removed?.length ? `, ${r.removed.length} taken out` : ""}.`,
+  run: (i, f) => withLine(i.line, () => importMonthlyAction(upload(f, { month: i.month, family: monthlyFamily(i), missing: keepsMissing(i) ? "keep" : "takeOut" }))),
+  done: (r) => `Imported: ${r.added ?? 0} new MO(s), ${r.updatedMos ?? 0} updated, ${r.removed?.length ?? 0} removed.`,
 });
 
 // the weekly plan -----------------------------------------------------------

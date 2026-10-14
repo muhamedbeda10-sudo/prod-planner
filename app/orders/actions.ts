@@ -390,14 +390,18 @@ export async function importMonthlyAction(formData: FormData): Promise<MonthlyIm
     // the LV line imports two plans — the panels' and the meter boxes'
     const family = line === "LV" ? String(formData.get("family") ?? "") : "";
     if (!isLvFamily(family)) return { ok: false, error: "Pick which plan the sheet is." };
-    const res = await importMonthlyPlan(buffer, label, preview, line, family);
+    // "add and update only" unless taking orders out is chosen on purpose —
+    // a form that does not say (an older page, the assistant) keeps them
+    const keepMissing = String(formData.get("missing") ?? "keep") !== "takeOut";
+    const res = await importMonthlyPlan(buffer, label, preview, line, family, { keepMissing });
     if (res.ok && !preview) {
       revalidatePath("/orders");
+      const removed = res.removed?.length ?? 0;
       await emitEvent({
         type: "plan.imported",
         subject: `${label}${line === "LV" ? " (LV)" : ""}`,
-        summary: `Imported the ${label} plan${line === "LV" ? ` (LV${family ? `, ${family}` : ""})` : ""} — ${res.added ?? 0} new orders, ${res.updatedMos ?? 0} revised`,
-        data: { kind: "monthly", month: label, line, added: res.added ?? 0, updated: res.updatedMos ?? 0 },
+        summary: `Imported the ${label} plan${line === "LV" ? ` (LV${family ? `, ${family}` : ""})` : ""} — ${res.added ?? 0} new orders, ${res.updatedMos ?? 0} revised${removed ? `, ${removed} taken out` : ""}`,
+        data: { kind: "monthly", month: label, line, added: res.added ?? 0, updated: res.updatedMos ?? 0, removed },
       });
     }
     return res;

@@ -16,6 +16,9 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [res, setRes] = useState<MonthlyImportResult | null>(null);
+  // "add and update only" by default — taking the month's other orders out
+  // has to be chosen on purpose, every time
+  const [keep, setKeep] = useState(true);
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,6 +32,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
       if (r.ok && !r.preview) {
         router.refresh();
         inputRef.current?.form?.reset();
+        setKeep(true);
       }
     });
   }
@@ -36,7 +40,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
   return (
     <details className="bg-surface border rounded-xl p-4" open>
       <summary className="font-bold cursor-pointer select-none">
-        📥 Import monthly plan — <span className="text-accent">{LINE_LABEL[line]}</span> <span className="text-xs text-muted font-normal">(order data only: new MOs are added, existing MOs get the revision&apos;s changes{line === "TR" ? " — progress quantities are never read" : ""})</span>
+        📥 Import monthly plan — <span className="text-accent">{LINE_LABEL[line]}</span> <span className="text-xs text-muted font-normal">(add and update only: new MOs are added, existing MOs get the revision&apos;s changes, nothing is removed{line === "TR" ? " — progress quantities are never read" : ""})</span>
       </summary>
       <form onSubmit={submit} className="mt-3 flex flex-wrap items-center gap-3">
         <input ref={inputRef} name="file" type="file" accept=".xlsx,.xlsm,.xls" required
@@ -61,6 +65,18 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
             </select>
           </label>
         )}
+        {/* SAFE BY DEFAULT: the month's orders the sheet does not list are
+            kept as they are; unticking is the old "take them out" */}
+        <input type="hidden" name="missing" value={keep ? "keep" : "takeOut"} />
+        <label className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer">
+          <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} className="accent-[var(--brand)]" />
+          Keep orders not in the sheet
+          {keep ? (
+            <span className="text-xs text-muted font-normal">(nothing is ever removed)</span>
+          ) : (
+            <span className="text-xs text-bad-fg font-semibold">(the month&apos;s open orders missing from the sheet will be deleted, or closed when work was recorded)</span>
+          )}
+        </label>
         {/* SAFE BY DEFAULT: preview is pre-ticked — nothing is ever written
             until the user unticks it and imports again */}
         <label className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer">
@@ -73,7 +89,7 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
         </button>
         <span className="text-xs text-muted">
           The sheet is filed under <b>{LINE_LABEL[line]}</b> — switch the toggle at the top of the page first if it is the other product&apos;s plan.
-          New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. A quantity that differs from the registry&apos;s is never changed by the import — it is flagged with the old and the new figure, and you choose which one stays. Columns are read by header name — any sheet layout month to month.{line === "LV" ? " The meter boxes' sheet has no BOM column: its FG Code stands in, and its OSP column is the quantity bought outside." : ""}
+          New MOs are added; re-importing the SAME month applies the revision: raised quantities, urgency, BOMs… are updated and every change is listed below. Orders of the month that the sheet does not list are left exactly as they are. A quantity that differs from the registry&apos;s is never changed by the import — it is flagged with the old and the new figure, and you choose which one stays. Columns are read by header name — any sheet layout month to month.{line === "LV" ? " The meter boxes' sheet has no BOM column: its FG Code stands in, and its OSP column is the quantity bought outside." : ""}
         </span>
       </form>
 
@@ -88,8 +104,13 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
             </div>
           )}
           <div className="bg-ok-bg text-ok-fg rounded-md px-3 py-2 text-sm font-semibold">
-            New orders {res.preview ? "to add" : "added"}: <b>{res.added}</b> · revised MOs {res.preview ? "to update" : "updated"}: <b>{res.updatedMos ?? 0}</b> · unchanged: <b>{(res.existing ?? 0) - (res.updatedMos ?? 0)}</b> · registry total: <b>{res.totalOrders}</b>
+            New MOs {res.preview ? "to add" : "added"}: <b>{res.added}</b> · {res.preview ? "to update" : "updated"}: <b>{res.updatedMos ?? 0}</b> · quantity changes held: <b>{res.qtyProposals?.length ?? 0}</b> · {res.preview ? "to remove" : "removed"}: <b>{res.removed?.length ?? 0}</b> · unchanged: <b>{(res.existing ?? 0) - (res.updatedMos ?? 0)}</b> · registry total: <b>{res.totalOrders}</b>
           </div>
+          {res.keepMissing !== false && (res.notInSheet ?? 0) > 0 && (
+            <div className="bg-info-bg text-info-fg rounded-md px-3 py-2 text-xs font-semibold">
+              {res.notInSheet} open MO{res.notInSheet === 1 ? "" : "s"} of this month {res.notInSheet === 1 ? "is" : "are"} not in the sheet — kept exactly as {res.notInSheet === 1 ? "it is" : "they are"}: not deleted, not closed, not taken off the month.
+            </div>
+          )}
 
           {/* the revision diff — every field that changed, old → new */}
           {res.changes && res.changes.length > 0 && (
@@ -129,7 +150,8 @@ export function MonthlyImport({ line = "TR" }: { line?: ProductLine }) {
             <QtyDecisions proposals={res.qtyProposals} preview={!!res.preview} />
           )}
 
-          {/* MOs that vanished from the revision — taken off the registry */}
+          {/* MOs that vanished from the revision — taken off the registry,
+              only when "Keep orders not in the sheet" was unticked */}
           {res.removed && res.removed.length > 0 && (
             <div className="bg-warn-bg text-warn-fg rounded-md px-3 py-2 text-xs space-y-1">
               <b>⚠ Taken off this month’s plan ({res.removed.length}) — in the registry but missing from the sheet{res.preview ? " (will be applied)" : ""}:</b>
