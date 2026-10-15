@@ -15,7 +15,7 @@ const h = vi.hoisted(() => {
     readQueueSnapshot: fn(),
     snaps: { readNestRun: fn(), readManualJob: fn(), restoreNestRun: fn(), restoreManualJob: fn() },
     runs: { createNestRun: fn(), updateNestRun: fn(), deleteNestRun: fn(), recordNestRunSheets: fn() },
-    jobs: { createManualJob: fn(), recordManualDone: fn(), reopenManualJob: fn(), deleteManualJob: fn() },
+    jobs: { createManualJob: fn(), updateManualJob: fn(), recordManualDone: fn(), reopenManualJob: fn(), deleteManualJob: fn() },
     recordSheetDone: fn(),
   };
 });
@@ -36,7 +36,7 @@ import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import type { NestRunSnapshot, ManualJobSnapshot } from "@/lib/server/rowSnapshots";
 import {
   createManualJobTool, createNestRunTool, deleteManualJobTool, deleteNestRunTool, getNestRunsTool, recordManualJobDoneTool, recordNestRunSheetsTool, recordSheetDoneTool,
-  reopenManualJobTool, restoreNestRunTool, updateNestRunTool,
+  reopenManualJobTool, restoreNestRunTool, updateManualJobTool, updateNestRunTool,
 } from "@/lib/server/ai/tools/cutFloor";
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
 
@@ -253,6 +253,30 @@ describe("manual jobs", () => {
     expect(await reopenManualJobTool.describe({ id: 12, more: 5 }, ctx)).toMatchObject({ changes: [{ before: "20 of 20 done, finished", after: "20 of 25 done, open" }] });
     expect(deleteManualJobTool.risk).toBe("destructive");
     expect(await deleteManualJobTool.execute({ id: 12 }, ctx)).toMatchObject({ ok: true, undo: { tool: "restore_manual_job" } });
+  });
+});
+
+describe("update_manual_job", () => {
+  it("changes only what is said, as ✎ Edit does, and is undone exactly", async () => {
+    expect(checkToolInput(updateManualJobTool, { id: 12 })).toMatchObject({ ok: false, error: expect.stringContaining("Say what to change") });
+    expect(await updateManualJobTool.describe(parsed(updateManualJobTool, { id: 12, title: "Brackets" }), ctx)).toEqual({ error: expect.stringContaining("reads like that already") });
+    const input = parsed(updateManualJobTool, { id: 12, qty: 30, thicknessMm: 4, note: "for maintenance" });
+    expect(await updateManualJobTool.describe(input, ctx)).toMatchObject({
+      summary: 'Change manual job #12 "Brackets".',
+      changes: [{ label: "Pieces", before: "20", after: "30" }, { label: "Thickness (mm)", before: "—", after: "4" }, { label: "Note", before: "—", after: "for maintenance" }],
+    });
+    const out = await updateManualJobTool.execute(input, ctx);
+    expect(fd(h.jobs.updateManualJob)).toEqual({ id: "12", title: "Brackets", qty: "30", bom: "", item: "", material: "", thicknessMm: "4", sheetSize: "", note: "for maintenance" });
+    expect(out).toEqual({ ok: true, message: "Job #12 is changed.", undo: { tool: "restore_manual_job", input: { id: 12, state: JSON.stringify(job()) } } });
+  });
+
+  it("never wants fewer pieces than are done, and says when the change finishes or reopens it", async () => {
+    expect(await updateManualJobTool.describe({ id: 12, qty: 4 }, ctx)).toEqual({ error: expect.stringContaining("5 piece(s) are done already") });
+    expect(await updateManualJobTool.describe({ id: 12, qty: 5 }, ctx)).toMatchObject({ summary: expect.stringContaining("it is finished and leaves every machine") });
+    h.snaps.readManualJob.mockResolvedValue(job({ doneQty: 20, doneAt: "2026-10-11T12:00:00.000Z" }));
+    expect(await updateManualJobTool.describe({ id: 12, qty: 25 }, ctx)).toMatchObject({ summary: expect.stringContaining("it opens again, on no machine") });
+    h.perms.clear();
+    expect(await updateManualJobTool.describe({ id: 12, qty: 25 }, ctx)).toEqual({ error: expect.stringContaining("needs its worklist key") });
   });
 });
 

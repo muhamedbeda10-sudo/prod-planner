@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-15-manual-job-edit-duplicate",
+    dateISO: "2026-10-15",
+    title: "Manual jobs: edit and duplicate",
+    where: "Worklist → machines → 📋 Manual jobs",
+    body: "Every job in the Manual jobs list now has ✎ Edit — change what it is, the pieces, its BOM and part, the sheet (thickness, material, size, sheets) or the note; where it is queued stays as it is. Pieces can't go below what is done; exactly what is done finishes it. ⧉ Duplicate opens a new job with the same details — pick the machine, change what differs, save. The assistant can change a manual job too.",
+  },
+  {
     id: "2026-10-14-monthly-import-add-only",
     dateISO: "2026-10-14",
     title: "The monthly plan import never removes orders",
