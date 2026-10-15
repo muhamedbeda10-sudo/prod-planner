@@ -56,3 +56,15 @@ export function manualMaterial(j: Pick<ManualJobView, "material" | "thicknessMm"
     }],
   };
 }
+
+export type JobQtyEdit = { ok: true; finished: boolean } | { ok: false; error: string };
+
+/** What a new count of pieces wanted does to a job: never below what is
+ *  already done; equal to it finishes the job (it leaves every machine, as
+ *  its last ✓ would); above it the job is open — a finished one opens again,
+ *  on no machine until it is put on one, as ↺ Again does. */
+export function editedJobQty(doneQty: number, qty: number): JobQtyEdit {
+  if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: "Pieces must be a whole number above 0." };
+  if (qty < doneQty) return { ok: false, error: `${doneQty} piece(s) are done already — the job cannot want fewer than that.` };
+  return { ok: true, finished: qty === doneQty };
+}

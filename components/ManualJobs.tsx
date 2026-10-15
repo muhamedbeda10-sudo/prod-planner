@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
-import { createManualJob, deleteManualJob, reopenManualJob, type ManualActionResult } from "@/app/worklist/manualActions";
+import { createManualJob, deleteManualJob, reopenManualJob, updateManualJob, type ManualActionResult } from "@/app/worklist/manualActions";
 import { assignLineMachine } from "@/app/worklist/machineActions";
 import { MANUAL_BOM, MANUAL_ITEM, manualMo, type ManualJobView } from "@/lib/domain/manualJob";
 import { MATERIAL_PRESETS, SHEET_SIZE_PRESETS } from "@/lib/domain/material";
@@ -30,69 +30,129 @@ function useRun() {
   return { pending, err, run };
 }
 
-/** "+ Job" — a job the plan does not carry, straight onto a machine. */
-export function AddManualJob({ dept, machines }: { dept: string; machines: MachineDTO[] }) {
-  const [open, setOpen] = useState(false);
-  const a = useRun();
+const FIELD = "border rounded-md px-2 py-1.5 bg-surface text-sm w-full";
+const LABEL = "block text-xs font-semibold text-muted mb-0.5";
+
+/** The job's own fields, as typed — the same form adds a job, changes one
+ *  and copies one, so the three never drift apart. `job` fills it in;
+ *  `doneQty` is the floor of the pieces when a job is changed; the machine
+ *  picker is for a new job only (a job already made is moved with Move to…). */
+function JobFields({ dept, job, doneQty = 0, machines, machineCode }: { dept: string; job?: ManualJobView; doneQty?: number; machines?: MachineDTO[]; machineCode?: string | null }) {
   const word = machineWord(dept);
+  const num = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v));
+  const preset = machines?.find((m) => m.code === machineCode)?.id ?? machines?.[0]?.id ?? "";
+  return (
+    <>
+      <label className="sm:col-span-2"><span className={LABEL}>What is it? *</span>
+        <input name="title" required maxLength={120} className={FIELD} defaultValue={job?.title} placeholder="e.g. Brackets for maintenance, sample tank cover…" autoFocus />
+      </label>
+      <label><span className={LABEL}>Pieces *</span>
+        <input name="qty" type="number" min={Math.max(1, doneQty)} step={1} required className={`${FIELD} tabnum`} defaultValue={job?.qty} />
+        {doneQty > 0 && <span className="block text-[11px] text-muted mt-0.5">{doneQty} done already — not fewer than that</span>}
+      </label>
+      {machines ? (
+        <label><span className={LABEL}>{word[0].toUpperCase() + word.slice(1)}</span>
+          <select name="machineId" defaultValue={preset} className={FIELD}>
+            <option value="">— none yet, just save it —</option>
+            {machines.map((m) => <option key={m.id} value={m.id}>{m.code} · {m.name}</option>)}
+          </select>
+        </label>
+      ) : (
+        <div className="text-xs text-muted self-end pb-2">
+          {job?.doneAtISO ? "Finished — more pieces than are done opens it again, on no " + word + "."
+            : job && job.onMachines.length > 0 ? `On ${job.onMachines.join(", ")} — Move to… in the list moves it.`
+            : `On no ${word} — Put on… in the list puts it on one.`}
+        </div>
+      )}
+      <label><span className={LABEL}>BOM (if any)</span>
+        <input name="bom" maxLength={60} className={FIELD} defaultValue={job?.bom} />
+      </label>
+      <label><span className={LABEL}>Part / item (if any)</span>
+        <input name="item" maxLength={60} className={FIELD} defaultValue={job?.item} placeholder="Tank, bracket…" />
+      </label>
+      <div className="sm:col-span-2 text-[11px] font-bold uppercase tracking-wide text-muted border-t pt-2">The sheet — for the technician</div>
+      <label><span className={LABEL}>Thickness (mm)</span>
+        <input name="thicknessMm" type="number" min={0} step="0.1" className={`${FIELD} tabnum`} defaultValue={num(job?.thicknessMm)} />
+      </label>
+      <label><span className={LABEL}>Material</span>
+        <input name="material" list="manual-materials" className={FIELD} defaultValue={job?.material} placeholder="Steel, GI…" />
+        <datalist id="manual-materials">{MATERIAL_PRESETS.map((m) => <option key={m} value={m} />)}</datalist>
+      </label>
+      <label><span className={LABEL}>Sheet size</span>
+        <input name="sheetSize" list="manual-sizes" className={FIELD} defaultValue={job?.sheetSize} placeholder="1220*2440" />
+        <datalist id="manual-sizes">{SHEET_SIZE_PRESETS.map((m) => <option key={m} value={m} />)}</datalist>
+      </label>
+      <label><span className={LABEL}>Sheets for the job</span>
+        <input name="sheets" type="number" min={0} step="0.01" className={`${FIELD} tabnum`} defaultValue={num(job?.sheets)} />
+      </label>
+      <label className="sm:col-span-2"><span className={LABEL}>Note</span>
+        <input name="note" maxLength={500} className={FIELD} defaultValue={job?.note ?? ""} placeholder="Who asked for it, drawing no., …" />
+      </label>
+    </>
+  );
+}
+
+/** One job's form: add (with a machine), change one (`edit`), or copy one
+ *  into a new job (`copy`, with a machine — its done count starts at 0). */
+function JobForm({ dept, mode, job, machines, onDone, onCancel, onBusy }: {
+  dept: string;
+  mode: "add" | "edit" | "copy";
+  job?: ManualJobView;
+  machines: MachineDTO[];
+  onDone: () => void;
+  onCancel: () => void;
+  /** A save in flight — the popup around it stays until it answers. */
+  onBusy: (busy: boolean) => void;
+}) {
+  const a = useRun();
+  // a form that goes away (saved, back to the list) holds the popup no longer
+  useEffect(() => {
+    onBusy(a.pending);
+    return () => onBusy(false);
+  }, [a.pending, onBusy]);
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    fd.set("dept", dept);
-    a.run(createManualJob, fd, () => setOpen(false));
+    if (mode === "edit" && job) {
+      fd.set("id", String(job.id));
+      a.run(updateManualJob, fd, onDone);
+    } else {
+      fd.set("dept", dept);
+      a.run(createManualJob, fd, onDone);
+    }
   };
-  const field = "border rounded-md px-2 py-1.5 bg-surface text-sm w-full";
-  const label = "block text-xs font-semibold text-muted mb-0.5";
+  const editing = mode === "edit";
+  return (
+    <form onSubmit={submit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <JobFields
+        dept={dept}
+        job={job}
+        doneQty={editing ? job?.doneQty : 0}
+        machines={editing ? undefined : machines}
+        machineCode={job ? job.onMachines[0] ?? job.lastMachine : null}
+      />
+      {a.err && <p className="sm:col-span-2 text-sm font-semibold text-bad-fg">{a.err}</p>}
+      <div className="sm:col-span-2 flex justify-end gap-2">
+        <button type="button" className="btn btn-sm btn-ghost" onClick={onCancel} disabled={a.pending}>{mode === "add" ? "Cancel" : "Back to the list"}</button>
+        <button type="submit" className="btn btn-sm btn-primary" disabled={a.pending}>{a.pending ? "Saving…" : editing ? "Save changes" : mode === "copy" ? "Save the copy" : "Save job"}</button>
+      </div>
+    </form>
+  );
+}
+
+/** "+ Job" — a job the plan does not carry, straight onto a machine. */
+export function AddManualJob({ dept, machines }: { dept: string; machines: MachineDTO[] }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const word = machineWord(dept);
   return (
     <>
       <button type="button" className="btn btn-sm btn-secondary ms-1 normal-case no-print" onClick={() => setOpen(true)} title={`Put a job that is not in the plan on a ${word} — a repair, a sample, a spare part. It is kept in the list.`}>
         ✋ Add job
       </button>
       {open && (
-        <Modal title="✋ Add a job from outside the plan" sub={`It queues on the ${word} like any plan line, and stays in the Manual jobs list.`} onClose={() => setOpen(false)} busy={a.pending} width="max-w-xl">
-          <form onSubmit={submit} className="grid grid-cols-2 gap-3">
-            <label className="col-span-2"><span className={label}>What is it? *</span>
-              <input name="title" required maxLength={120} className={field} placeholder="e.g. Brackets for maintenance, sample tank cover…" autoFocus />
-            </label>
-            <label><span className={label}>Pieces *</span>
-              <input name="qty" type="number" min={1} step={1} required className={`${field} tabnum`} />
-            </label>
-            <label><span className={label}>{word[0].toUpperCase() + word.slice(1)}</span>
-              <select name="machineId" defaultValue={machines[0]?.id ?? ""} className={field}>
-                <option value="">— none yet, just save it —</option>
-                {machines.map((m) => <option key={m.id} value={m.id}>{m.code} · {m.name}</option>)}
-              </select>
-            </label>
-            <label><span className={label}>BOM (if any)</span>
-              <input name="bom" maxLength={60} className={field} />
-            </label>
-            <label><span className={label}>Part / item (if any)</span>
-              <input name="item" maxLength={60} className={field} placeholder="Tank, bracket…" />
-            </label>
-            <div className="col-span-2 text-[11px] font-bold uppercase tracking-wide text-muted border-t pt-2">The sheet — for the technician</div>
-            <label><span className={label}>Thickness (mm)</span>
-              <input name="thicknessMm" type="number" min={0} step="0.1" className={`${field} tabnum`} />
-            </label>
-            <label><span className={label}>Material</span>
-              <input name="material" list="manual-materials" className={field} placeholder="Steel, GI…" />
-              <datalist id="manual-materials">{MATERIAL_PRESETS.map((m) => <option key={m} value={m} />)}</datalist>
-            </label>
-            <label><span className={label}>Sheet size</span>
-              <input name="sheetSize" list="manual-sizes" className={field} placeholder="1220*2440" />
-              <datalist id="manual-sizes">{SHEET_SIZE_PRESETS.map((m) => <option key={m} value={m} />)}</datalist>
-            </label>
-            <label><span className={label}>Sheets for the job</span>
-              <input name="sheets" type="number" min={0} step="0.01" className={`${field} tabnum`} />
-            </label>
-            <label className="col-span-2"><span className={label}>Note</span>
-              <input name="note" maxLength={500} className={field} placeholder="Who asked for it, drawing no., …" />
-            </label>
-            {a.err && <p className="col-span-2 text-sm font-semibold text-bad-fg">{a.err}</p>}
-            <div className="col-span-2 flex justify-end gap-2">
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setOpen(false)} disabled={a.pending}>Cancel</button>
-              <button type="submit" className="btn btn-sm btn-primary" disabled={a.pending}>{a.pending ? "Saving…" : "Save job"}</button>
-            </div>
-          </form>
+        <Modal title="✋ Add a job from outside the plan" sub={`It queues on the ${word} like any plan line, and stays in the Manual jobs list.`} onClose={() => setOpen(false)} busy={busy} width="max-w-xl">
+          <JobForm dept={dept} mode="add" machines={machines} onDone={() => setOpen(false)} onCancel={() => setOpen(false)} onBusy={setBusy} />
         </Modal>
       )}
     </>
@@ -107,6 +167,9 @@ const sheetText = (j: ManualJobView) =>
  *  finished one for more pieces, or delete a mistake. */
 export function ManualJobsList({ dept, jobs, machines, canEdit }: { dept: string; jobs: ManualJobView[]; machines: MachineDTO[]; canEdit: boolean }) {
   const [open, setOpen] = useState(false);
+  // ✎ / ⧉ open the job's form in place of the table — one popup, one Escape
+  const [form, setForm] = useState<{ mode: "edit" | "copy"; job: ManualJobView } | null>(null);
+  const [formBusy, setFormBusy] = useState(false);
   const a = useRun();
   const word = machineWord(dept);
   const openCount = jobs.filter((j) => !j.doneAtISO).length;
@@ -123,12 +186,25 @@ export function ManualJobsList({ dept, jobs, machines, canEdit }: { dept: string
   };
   return (
     <>
-      <button type="button" className="btn btn-sm btn-ghost ms-1 normal-case no-print" onClick={() => setOpen(true)} title="Every job typed in from outside the plan — open and finished">
+      <button type="button" className="btn btn-sm btn-ghost ms-1 normal-case no-print" onClick={() => { setForm(null); setOpen(true); }} title="Every job typed in from outside the plan — open and finished">
         📋 Manual jobs{openCount > 0 ? ` (${openCount})` : ""}
       </button>
       {open && (
-        <Modal title="📋 Manual jobs" sub={`Jobs put on a ${word} from outside the plan — kept here, done or not.`} onClose={() => setOpen(false)} busy={a.pending} width="max-w-5xl">
-          {jobs.length === 0 ? (
+        <Modal
+          title={form ? (form.mode === "edit" ? `✎ Edit “${form.job.title}”` : `⧉ Duplicate “${form.job.title}”`) : "📋 Manual jobs"}
+          sub={form
+            ? form.mode === "edit"
+              ? `${form.job.doneQty} of ${form.job.qty} done · added ${formatDate(form.job.createdAtISO.slice(0, 10))}${form.job.createdBy ? ` by ${form.job.createdBy}` : ""}`
+              : `A new job with the same details — nothing of it done yet. Pick the ${word} and change what differs.`
+            : `Jobs put on a ${word} from outside the plan — kept here, done or not.`}
+          // Escape on a job's form goes back to the list, not out of it
+          onClose={() => (form ? setForm(null) : setOpen(false))}
+          busy={a.pending || formBusy}
+          width={form ? "max-w-xl" : "max-w-5xl"}
+        >
+          {form ? (
+            <JobForm key={`${form.mode}-${form.job.id}`} dept={dept} mode={form.mode} job={form.job} machines={machines} onDone={() => setForm(null)} onCancel={() => setForm(null)} onBusy={setFormBusy} />
+          ) : jobs.length === 0 ? (
             <p className="text-sm text-muted">None yet — ✋ Add job puts one on a {word}.</p>
           ) : (
             <div className="overflow-x-auto max-h-[65vh] overflow-y-auto">
@@ -181,6 +257,14 @@ export function ManualJobsList({ dept, jobs, machines, canEdit }: { dept: string
                                 ↺ Again
                               </button>
                             )}
+                            <button type="button" className="btn btn-sm btn-secondary me-1" disabled={a.pending} title="Change what it is, the pieces, the sheet or the note"
+                              onClick={() => setForm({ mode: "edit", job: j })}>
+                              ✎ Edit
+                            </button>
+                            <button type="button" className="btn btn-sm btn-secondary me-1" disabled={a.pending} title={`A new job with the same details — pick the ${word}, change what differs`}
+                              onClick={() => setForm({ mode: "copy", job: j })}>
+                              ⧉ Duplicate
+                            </button>
                             <button type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={a.pending} title="Delete — typed by mistake"
                               onClick={() => { if (confirm(`Delete “${j.title}”? It goes off every ${word} and out of the list.`)) byId(deleteManualJob, j.id); }}>
                               ✕

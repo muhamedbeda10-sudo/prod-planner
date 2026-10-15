@@ -8,11 +8,11 @@ import { readQueueSnapshot, type QueueRowSnapshot } from "@/lib/server/machineQu
 import { runCover } from "@/lib/server/nestRuns";
 import { readManualJob, readNestRun, restoreManualJob, restoreNestRun, type ManualJobSnapshot, type NestRunSnapshot } from "@/lib/server/rowSnapshots";
 import { createNestRun, deleteNestRun, recordNestRunSheets, updateNestRun } from "@/app/worklist/nestRunActions";
-import { createManualJob, deleteManualJob, recordManualDone, reopenManualJob } from "@/app/worklist/manualActions";
+import { createManualJob, deleteManualJob, recordManualDone, reopenManualJob, updateManualJob } from "@/app/worklist/manualActions";
 import { recordSheetDone } from "@/app/worklist/machineActions";
 import { deptPermKey, machineLinePermKey } from "@/lib/domain/permissions";
 import { expectedSheets, minutesText, partsDoneAt, RUN_BOM, RUN_ITEM, runMo } from "@/lib/domain/nestRun";
-import { MANUAL_BOM, MANUAL_ITEM, manualMo } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, editedJobQty, manualMo } from "@/lib/domain/manualJob";
 import { sheetKeyLabel, sheetKeyOf } from "@/lib/domain/machineMaterial";
 import { normalizeMaterialType, normalizeSheetSize } from "@/lib/domain/material";
 import { lineKey } from "@/lib/domain/machineBoard";
@@ -817,6 +817,91 @@ export const reopenManualJobTool: WriteTool<{ id: number; more: number }> = {
   },
 };
 
+interface UpdateJobInput {
+  id: number;
+  title?: string;
+  qty?: number;
+  bom?: string;
+  item?: string;
+  material?: string;
+  thicknessMm?: number;
+  sheetSize?: string;
+  sheets?: number;
+  note?: string;
+}
+
+const JOB_FIELDS = ["title", "qty", "bom", "item", "material", "thicknessMm", "sheetSize", "sheets", "note"] as const;
+const JOB_FIELD_LABEL: Record<(typeof JOB_FIELDS)[number], string> = {
+  title: "What it is", qty: "Pieces", bom: "BOM", item: "Part", material: "Material", thicknessMm: "Thickness (mm)", sheetSize: "Sheet size", sheets: "Sheets", note: "Note",
+};
+const shown = (v: string | number | null | undefined) => (v === null || v === undefined || v === "" ? "—" : String(v));
+
+/** The job as it will read after the change: what was said, the rest as it is. */
+function jobAfter(job: ManualJobSnapshot, i: UpdateJobInput) {
+  return {
+    title: i.title ?? job.title, qty: i.qty ?? job.qty, bom: i.bom ?? job.bom, item: i.item ?? job.item, material: i.material ?? job.material,
+    thicknessMm: i.thicknessMm ?? job.thicknessMm, sheetSize: i.sheetSize ?? job.sheetSize, sheets: i.sheets ?? job.sheets, note: i.note ?? job.note,
+  };
+}
+
+export const updateManualJobTool: WriteTool<UpdateJobInput> = {
+  kind: "write",
+  name: "update_manual_job",
+  title: "Change a manual job",
+  description:
+    "Change a manual job as it was typed, as ✎ Edit in the Manual jobs list does: what it is, the pieces wanted, its BOM and part, the sheet (material, thickness, size, sheets) and the note — only the fields given change. Where it is queued stays as it is. Pieces never below what is done; exactly what is done finishes it; more opens a finished one again, on no machine. To copy a job, use create_manual_job with its details. Undo puts it back as it was.",
+  area: "machines",
+  risk: "low",
+  schema: {
+    type: "object",
+    properties: {
+      id: { type: "integer", minimum: 1 },
+      title: { type: "string", minLength: 1, maxLength: 120 },
+      qty: { type: "integer", minimum: 1, maximum: 100000, description: "Pieces wanted in all (not the extra)." },
+      bom: { type: "string", maxLength: 60 },
+      item: { type: "string", maxLength: 60 },
+      material: { type: "string", maxLength: 60 },
+      thicknessMm: { type: "number", minimum: 0, maximum: 200 },
+      sheetSize: { type: "string", maxLength: 40 },
+      sheets: { type: "number", minimum: 0, maximum: 10000 },
+      note: { type: "string", maxLength: 500 },
+    },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  parse(r) {
+    const i = r as unknown as UpdateJobInput;
+    if (typeof i.title === "string" && !i.title.trim()) return "Say what the job is.";
+    if (!JOB_FIELDS.some((k) => i[k] !== undefined)) return "Say what to change on the job.";
+    return { ...i, ...(typeof i.title === "string" ? { title: i.title.trim() } : {}) };
+  },
+  async describe(i, ctx) {
+    const job = await theJob(i.id, ctx);
+    if ("error" in job) return job;
+    const after = jobAfter(job, i);
+    const qty = editedJobQty(job.doneQty, after.qty);
+    if (!qty.ok) return { error: qty.error };
+    const changes = JOB_FIELDS
+      .filter((k) => i[k] !== undefined && shown(job[k]) !== shown(after[k]))
+      .map((k) => ({ label: JOB_FIELD_LABEL[k], before: shown(job[k]), after: shown(after[k]) }));
+    if (changes.length === 0) return { error: `Manual job #${i.id} reads like that already.` };
+    const state = qty.finished && !job.doneAt ? " — that is all it has done, so it is finished and leaves every machine"
+      : !qty.finished && job.doneAt ? " — it opens again, on no machine until it is put on one" : "";
+    return {
+      title: `✎ "${job.title}"`,
+      summary: `Change manual job #${job.id} "${job.title}"${state}.`,
+      changes,
+      snapshot: job,
+    };
+  },
+  async execute(i) {
+    const before = await readManualJob(i.id);
+    if (!before) return { ok: false, error: `No manual job #${i.id}.` };
+    const r = await updateManualJob(formOf({ id: i.id, ...jobAfter(before, i) }));
+    return r.ok ? { ok: true, message: `Job #${i.id} is changed.`, undo: jobUndo(before) } : { ok: false, error: r.error ?? "Not changed." };
+  },
+};
+
 export const deleteManualJobTool: WriteTool<{ id: number }> = {
   kind: "write",
   name: "delete_manual_job",
@@ -958,6 +1043,7 @@ export const CUT_FLOOR_TOOLS = [
   recordNestRunSheetsTool,
   restoreNestRunTool,
   createManualJobTool,
+  updateManualJobTool,
   recordManualJobDoneTool,
   reopenManualJobTool,
   deleteManualJobTool,

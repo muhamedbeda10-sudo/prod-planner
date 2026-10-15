@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDeptEdit } from "@/lib/server/auth";
-import { MANUAL_BOM, MANUAL_ITEM, manualMo } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, editedJobQty, manualMo } from "@/lib/domain/manualJob";
 import { normalizeMaterialType, normalizeSheetSize } from "@/lib/domain/material";
 
 // Jobs from outside the plan, put on a machine by hand. The dept's worklist
@@ -78,6 +78,54 @@ export async function createManualJob(fd: FormData): Promise<ManualActionResult>
   });
   revalidate();
   return { ok: true, id };
+}
+
+/** ✎ Change a job as it was typed — what it is, the pieces wanted, its BOM
+ *  and part, the sheet and the note. Where it is queued stays as it is
+ *  (Move to… moves it). Fewer pieces than are done is refused; exactly the
+ *  pieces done finishes it; more opens a finished one again, on no machine
+ *  until it is put on one. A fixed share on a machine never asks for more
+ *  than is left. */
+export async function updateManualJob(fd: FormData): Promise<ManualActionResult> {
+  const id = Number(text(fd, "id"));
+  const job = Number.isInteger(id) ? await prisma.manualJob.findUnique({ where: { id } }) : null;
+  if (!job) return { ok: false, error: "That job is gone — reload the page." };
+  const guard = await requireDeptEdit(job.dept);
+  if (guard.error) return { ok: false, error: guard.error };
+  const title = text(fd, "title", 120);
+  if (!title) return { ok: false, error: "Say what the job is." };
+  const qty = Number(text(fd, "qty"));
+  const edit = editedJobQty(job.doneQty, qty);
+  if (!edit.ok) return { ok: false, error: edit.error };
+  const thicknessMm = num(fd, "thicknessMm");
+  const sheets = num(fd, "sheets");
+  if (thicknessMm === "bad") return { ok: false, error: "Thickness must be a number of mm." };
+  if (sheets === "bad") return { ok: false, error: "Sheets must be a number." };
+
+  const key = { dept: job.dept, bom: MANUAL_BOM, mo: manualMo(job.id), item: MANUAL_ITEM };
+  const wasDone = job.doneAt !== null;
+  const left = qty - job.doneQty;
+  await prisma.$transaction(async (tx) => {
+    await tx.manualJob.update({
+      where: { id },
+      data: {
+        title, qty,
+        bom: text(fd, "bom", 60), item: text(fd, "item", 60),
+        material: normalizeMaterialType(text(fd, "material", 60)),
+        thicknessMm, sheetSize: normalizeSheetSize(text(fd, "sheetSize", 40)), sheets,
+        note: text(fd, "note", 500) || null,
+        doneAt: edit.finished ? job.doneAt ?? new Date() : null,
+      },
+    });
+    // finished now — or opened again from finished — it is on no machine
+    if (edit.finished || wasDone) {
+      await tx.worklistMachine.deleteMany({ where: key });
+      return;
+    }
+    await tx.worklistMachine.updateMany({ where: { ...key, qty: { gt: left } }, data: { qty: left } });
+  });
+  revalidate();
+  return { ok: true };
 }
 
 /** ✓ on a manual job's card: the pieces finished go on the job, never in the
