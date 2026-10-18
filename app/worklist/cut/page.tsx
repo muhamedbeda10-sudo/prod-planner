@@ -1,53 +1,56 @@
+import { redirect } from "next/navigation";
 import { PageHead } from "@/components/ui";
 import { formatDate } from "@/lib/domain/format";
-import { getSoiLookup } from "@/lib/server/soi";
-import { getRunOrderLines } from "@/lib/server/worklistExtras";
-import { getCutSheet } from "@/lib/server/execution";
 import { getSettings } from "@/lib/server/data";
 import { getReturnsFor } from "@/lib/server/returns";
-import { getQueueNotes } from "@/lib/server/queueNotes";
-import { toISODate } from "@/lib/domain/dates";
+import { factoryDayISO } from "@/lib/domain/dates";
+import { heldOrders } from "@/lib/domain/hold";
 import { CutWorklistView } from "@/components/CutWorklistView";
 import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, canEditDept, hasPerm, guardTab } from "@/lib/server/auth";
-import { getMachineBoard, type BoardLineInput } from "@/lib/server/machineBoard";
-
-export const dynamic = "force-dynamic";
-import { redirect } from "next/navigation";
+import { getMachineBoard } from "@/lib/server/machineBoard";
+import { getWeeklyPlanTracker } from "@/lib/server/weeklyPlanTracker";
+import { loadMasterOrdersOf } from "@/lib/server/loads";
 import { getActiveLine } from "@/lib/server/line";
 
-// No page header on screen — every pixel goes to the work (title lives in the
-// nav tab). The PrintHeader appears only on the printed/PDF sheet.
-export default async function CutWorklistPage() {
+export const dynamic = "force-dynamic";
+
+// The fabrication page: the machines and the SHEET JOBS on them (sheets of
+// one thickness carrying the parts of several projects, closed sheet by
+// sheet), then the weekly plan measured at Fabrication — what the jobs are
+// cut against, and where the cut pieces are recorded. The PrintHeader
+// appears only on the printed/PDF sheet.
+export default async function CutWorklistPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
   await guardTab("/worklist/cut");
   // a panel is not cut on the lasers — its fabrication is punching, then bending
   if ((await getActiveLine()) === "LV") redirect("/worklist/punching");
-  const [{ planNo, today, dueNow, overdue, postponed, remarked, unscheduled, pushed, priority, held, hidden }, returns, notes, settings, user, runOrder, soi] = await Promise.all([
-    getCutSheet(),
+  const sp = await searchParams;
+  const dayISO = factoryDayISO(new Date());
+  // an unknown ?plan= falls back to the newest plan inside the loader
+  const [returns, settings, user, week, orders] = await Promise.all([
     getReturnsFor("Cut"),
-    getQueueNotes(),
     getSettings(),
     getCurrentUser(),
-    getRunOrderLines("Cut"),
-    getSoiLookup(),
+    getWeeklyPlanTracker(Number(sp.plan) || null),
+    loadMasterOrdersOf("TR"),
   ]);
-  const dayISO = toISODate(today);
   const canEdit = !!user && canEditDept(user, "Cut");
-
-  // every open line on the sheet, for the machine board: the dated tranches
-  // by what is left on them, the date-less pools by what can be pulled
-  const lines: BoardLineInput[] = [
-    ...[...dueNow, ...overdue, ...postponed].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.remaining, deliveryISO: r.deliveryISO, dueISO: r.cutDueISO })),
-    ...[...pushed, ...remarked, ...unscheduled].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO })),
-  ];
-  // the machine board only while the plant plans by machine (Settings)
-  const board = settings.machinePlanning ? await getMachineBoard("Cut", lines, dayISO, planNo ?? 0) : undefined;
+  // the machine board only while the plant plans by machine (Settings); the
+  // fabrication machines carry the jobs alone — no plan line of its own
+  const board = settings.machinePlanning ? await getMachineBoard("Cut", [], dayISO, week.planNo ?? 0) : undefined;
 
   return (
     <>
-      <PrintHeader title="Fabrication Worklist" date={formatDate(today)} />
-      <PageHead title="Fabrication Worklist" sub={`Transformers · ${formatDate(today)}`} />
-      <CutWorklistView soi={soi} runOrder={runOrder} dueNow={dueNow} overdue={overdue} postponed={postponed} remarked={remarked} pushed={pushed} priority={priority} held={held} hidden={hidden} day={dayISO} planNo={planNo} returns={returns} notes={notes} capacity={settings.capacityPerItem} leadDays={settings.leadCut} canEdit={canEdit} isAdmin={!!user?.isAdmin} canManage={!!user && hasPerm(user, "machines.manage")} board={board} />
+      <PrintHeader title="Fabrication Worklist" subtitle={week.planNo === null ? undefined : `Weekly plan ${week.planNo}`} date={formatDate(dayISO)} />
+      <PageHead title="Fabrication Worklist" sub={`Transformers · ${formatDate(dayISO)}`} />
+      <CutWorklistView
+        board={board}
+        week={week}
+        returns={returns}
+        held={heldOrders(orders)}
+        canEdit={canEdit}
+        canManage={!!user && hasPerm(user, "machines.manage")}
+      />
     </>
   );
 }

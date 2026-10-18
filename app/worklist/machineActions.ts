@@ -2,17 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { bayAccess, getCurrentUser, requireBayAccess, requireMachineLineEdit } from "@/lib/server/auth";
+import { bayAccess, requireBayAccess, requireMachineLineEdit } from "@/lib/server/auth";
 import { mayScheduleLine, type BayAccess } from "@/lib/domain/permissions";
 import { ledgerItemWhere } from "@/lib/server/line";
-import { getLinesMaterial, type OrderRef } from "@/lib/server/machineMaterial";
-import type { LineMaterial } from "@/lib/domain/machineMaterial";
 import { getOptimizerInputs } from "@/lib/server/machineBoard";
 import { optimizePlan } from "@/lib/domain/optimizePlan";
-import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
+import { factoryDayISO } from "@/lib/domain/dates";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
-import { MANUAL_BOM, MANUAL_ITEM } from "@/lib/domain/manualJob";
-import { RUN_BOM, RUN_ITEM } from "@/lib/domain/nestRun";
+import { MANUAL_BOM, MANUAL_ITEM, manualIdOf } from "@/lib/domain/manualJob";
+import { BOARD_LINE_REFUSED, boardTakesLine } from "@/lib/domain/machineBoard";
 import type { QueueRowSnapshot } from "@/lib/server/machineQueues";
 
 // The machine board's writes: put a worklist line on a machine (or take it
@@ -98,6 +96,16 @@ export async function assignLineMachine(fd: FormData): Promise<MachineActionResu
   const guard = await requireMachineLineEdit(line.dept, line.item);
   if (guard.error) return { ok: false, error: guard.error };
   const raw = String(fd.get("machineId") ?? "").trim();
+  // the fabrication machines carry sheet jobs (and the panels' punching) —
+  // a transformer plan line goes on them inside a job, never on its own
+  if (raw && !boardTakesLine(line.dept, line.bom, line.item)) return { ok: false, error: BOARD_LINE_REFUSED };
+  // a job goes on its own board's machines while it is open
+  if (raw && line.bom === MANUAL_BOM) {
+    const id = manualIdOf(line.mo);
+    const job = id === null ? null : await prisma.manualJob.findUnique({ where: { id }, select: { dept: true, doneAt: true } });
+    if (!job || job.dept !== line.dept) return { ok: false, error: "That job is gone — reload the page." };
+    if (job.doneAt) return { ok: false, error: "That job is finished — open it again from the jobs list first." };
+  }
   const qty = readQty(fd);
   if (qty !== null && typeof qty === "object") return { ok: false, error: qty.error };
   const key = { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item };
@@ -167,50 +175,6 @@ export async function setLineQty(fd: FormData): Promise<MachineActionResult> {
   const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
   if (!row) return { ok: false, error: "That line is not on this machine any more — reload the page." };
   await prisma.worklistMachine.update({ where: { id: row.id }, data: { qty, setBy: guard.user?.name ?? null } });
-  revalidate();
-  return { ok: true };
-}
-
-/** The sheets an item is cut from — the choice the picker offers when the
- *  item goes on a cutting machine (one machine may take its 3 mm, another
- *  its 5 mm, at the same time). */
-export async function getLineSheets(fd: FormData): Promise<{ ok: boolean; error?: string; material?: LineMaterial | null }> {
-  const line = readLine(fd);
-  if ("error" in line) return { ok: false, error: line.error };
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "Not signed in." };
-  const order = line.mo ? await prisma.masterOrder.findUnique({ where: { mo: line.mo }, select: { soi: true, months: true, source: true } }) : null;
-  const ref: OrderRef | undefined = order ? { soi: order.soi, months: (order.months || order.source || "").split(",").map((x) => x.trim()).filter(Boolean) } : undefined;
-  const key = `${line.bom}|${line.mo}|${line.item}`;
-  const got = await getLinesMaterial([{ key, bom: line.bom, mo: line.mo, item: line.item }], () => ref);
-  return { ok: true, material: got[key] ?? null };
-}
-
-/** ✓ on a sheet's line on a card: pieces' worth of THAT sheet cut on this
- *  machine. The item itself is not recorded here — it is counted once all
- *  its sheets are cut, on the worklist, which takes these pieces back off. */
-export async function recordSheetDone(fd: FormData): Promise<MachineActionResult> {
-  const line = readLine(fd);
-  if ("error" in line) return { ok: false, error: line.error };
-  if (!line.sheet) return { ok: false, error: "Not a sheet's line — reload the page." };
-  const guard = await requireMachineLineEdit(line.dept, line.item);
-  if (guard.error) return { ok: false, error: guard.error };
-  const machineId = Number(fd.get("machineId"));
-  if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
-  const qty = Number(String(fd.get("qty") ?? "").trim());
-  if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: "Enter whole pieces above 0." };
-  const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
-  if (!row) return { ok: false, error: "That sheet is not on this machine any more — reload the page." };
-  const by = guard.user?.name ?? null;
-  const date = parseISODate(String(fd.get("date") ?? "")) ?? parseISODate(factoryDayISO(new Date()))!;
-  const thk = Number(line.sheet.split("|")[0]);
-  await prisma.$transaction([
-    prisma.worklistMachine.update({ where: { id: row.id }, data: { sheetDone: row.sheetDone + qty, setBy: by } }),
-    // kept for good: what this machine cuts, at what thickness
-    prisma.sheetCutLog.create({
-      data: { date, dept: line.dept, bom: line.bom, mo: line.mo, item: line.item, sheet: line.sheet, thicknessMm: Number.isFinite(thk) ? thk : null, machineId, qty, createdBy: by },
-    }),
-  ]);
   revalidate();
   return { ok: true };
 }
@@ -344,7 +308,7 @@ export async function optimizeMachines(fd: FormData): Promise<MachineActionResul
     // a job typed in from outside the plan stays on the machine it was put on
     // and so does a sheet of an item the planner put on a machine by hand —
     // and so does the other line's waiting work, which only its own keys plan
-    await tx.worklistMachine.deleteMany({ where: { dept, running: false, sheet: "", NOT: [{ bom: MANUAL_BOM, item: MANUAL_ITEM }, { bom: RUN_BOM, item: RUN_ITEM }], ...rows.mine } });
+    await tx.worklistMachine.deleteMany({ where: { dept, running: false, sheet: "", NOT: [{ bom: MANUAL_BOM, item: MANUAL_ITEM }], ...rows.mine } });
     const running = await tx.worklistMachine.findMany({ where: { dept, running: true } });
     // only a whole-item row takes extra pieces — a sheet's row is that sheet alone
     const held = new Map(running.filter((r) => r.sheet === "").map((r) => [`${r.bom}|${r.mo}|${r.item}#${r.machineId}`, r]));
@@ -457,7 +421,9 @@ export async function restoreMachineQueues(fd: FormData): Promise<MachineActionR
   const machines = await prisma.machine.findMany({ where: { dept }, select: { id: true } });
   const rows = readSnapshotRows(raw, new Set(machines.map((m) => m.id)));
   if ("error" in rows) return { ok: false, error: rows.error };
-  const back = rows.filter((r) => mayScheduleLine(access, r.item));
+  // a row the board no longer takes (a transformer plan line on the
+  // fabrication machines, from before they carried sheet jobs) stays off
+  const back = rows.filter((r) => mayScheduleLine(access, r.item) && boardTakesLine(dept, r.bom, r.item));
   const by = guard.user?.name ?? null;
   await prisma.$transaction([
     prisma.worklistMachine.deleteMany({ where: { dept, ...rowsOf(access).mine } }),

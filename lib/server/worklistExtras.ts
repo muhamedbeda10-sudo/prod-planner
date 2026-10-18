@@ -1,4 +1,4 @@
-import { holdView, isOnHold, type HeldOrderDTO } from "@/lib/domain/hold";
+import { heldOrders, isOnHold, type HeldOrderDTO } from "@/lib/domain/hold";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { applicableItems, ospOf, isPaintExempt, type Dept, type Item } from "@/lib/domain/constants";
@@ -117,10 +117,7 @@ export async function getWorklistExtras(dept: Dept): Promise<WorklistExtras> {
   const pushSet = new Set(pushMos);
   const pushOrders = allOrders.filter((o) => pushSet.has(o.mo));
   const priorityOrders = [...allOrders].filter((o) => o.priority && o.status === "open" && !isOnHold(o)).sort((a, b) => a.mo.localeCompare(b.mo));
-  const held: HeldOrderDTO[] = allOrders
-    .filter((o) => o.status === "open" && isOnHold(o))
-    .sort((a, b) => a.mo.localeCompare(b.mo))
-    .map((o) => ({ mo: o.mo, bom: o.bom, description: [o.kva, o.rating].filter(Boolean).join(" · "), hold: holdView(o) }));
+  const held: HeldOrderDTO[] = heldOrders(allOrders);
 
   const done = new Map<string, number>(); // mo|item -> dept output
   for (const s of sums) if (s.mo) done.set(`${s.mo}|${s.item}`, s._sum.qty ?? 0);

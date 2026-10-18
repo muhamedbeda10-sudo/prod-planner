@@ -49,3 +49,11 @@ export interface HeldOrderDTO {
   description: string;
   hold: HoldView;
 }
+
+/** The open orders on hold, by MO — the strip a worklist names them in. */
+export function heldOrders(orders: readonly (HoldFields & { mo: string; bom: string; status: string; kva?: string | null; rating?: string | null })[]): HeldOrderDTO[] {
+  return orders
+    .filter((o) => o.status === "open" && isOnHold(o))
+    .sort((a, b) => a.mo.localeCompare(b.mo))
+    .map((o) => ({ mo: o.mo, bom: o.bom, description: [o.kva, o.rating].filter(Boolean).join(" · "), hold: holdView(o) }));
+}

@@ -516,7 +516,7 @@ export const setMachineTimesTool: WriteTool<TimesInput> = {
   kind: "write",
   name: "set_machine_times",
   title: "Set a machine's time per piece",
-  description: "Set the planner's own time per piece on one machine, per item (CF, TC, TN, CB, AR, MB) — it outranks the standard-times estimate when the machine's queue is priced and ⚡ Plan schedules it. hoursPerPc null clears it (the machine goes back on the estimate for that item).",
+  description: "Set the planner's own time per piece on one machine, per item (CF, TC, TN, CB, AR, MB) — it outranks the standard-times estimate when the machine's queue is priced and the machine plan schedules it. hoursPerPc null clears it (the machine goes back on the estimate for that item).",
   area: "setup",
   risk: "high",
   tabs: TIMES_TABS,

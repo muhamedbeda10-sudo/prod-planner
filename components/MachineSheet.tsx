@@ -2,20 +2,19 @@ import { ITEM_NAME, deptLabel, type Item } from "@/lib/domain/constants";
 import { machineWord } from "@/lib/domain/shifts";
 import type { MachineCard, MachineQueueLine } from "@/lib/domain/machineBoard";
 import { PrintHeader } from "@/components/PrintHeader";
-import { runIdOf, type NestRunView } from "@/lib/domain/nestRun";
-import { manualIdOf } from "@/lib/domain/manualJob";
+import { manualIdOf, type ManualJobView } from "@/lib/domain/manualJob";
 import { LineMaterialChips } from "@/components/LineMaterialChips";
 import { sheetKeyOf, sheetSizeLabel, sheetsFor, thicknessLabel, type LineMaterial } from "@/lib/domain/machineMaterial";
 
 // 🖨 One machine's sheet for the technician: what runs on it now, then what
 // comes next, in the planner's order — one table shape throughout, so the
-// two tables line up and a nest run's jobs sit under the same columns as a
+// two tables line up and a sheet job's parts sit under the same columns as a
 // plan line. Plain markup: the page renders it on the server.
 
 /** The sheet's columns, the same for every table on it — so "Running now"
- *  and "Next" line up. A laser that only cuts nest runs needs just the run,
- *  its BOMs and its sheet; a machine with plan lines carries their part,
- *  Required and pieces too. */
+ *  and "Next" line up. A machine that only cuts sheet jobs needs just the
+ *  job, the parts on it and its sheet; a machine with plan lines carries
+ *  their part, Required and pieces too. */
 const FULL = ["w-[5%]", "w-[17%]", "w-[22%]", "w-[10%]", "w-[22%]", "w-[10%]", "w-[14%]"] as const;
 const RUNS = ["w-[6%]", "w-[44%]", "w-[26%]", "w-[10%]", "w-[14%]"] as const;
 
@@ -39,34 +38,37 @@ function Head({ dept, runsOnly }: { dept: string; runsOnly: boolean }) {
   );
 }
 
-function Rows({ lines, from = 1, required, material, dept, runs, runsOnly }: { lines: MachineQueueLine[]; from?: number; required: Record<string, number>; material: Record<string, LineMaterial>; dept: string; runs: Record<number, NestRunView>; runsOnly: boolean }) {
+function Rows({ lines, from = 1, required, material, dept, jobs, runsOnly }: { lines: MachineQueueLine[]; from?: number; required: Record<string, number>; material: Record<string, LineMaterial>; dept: string; jobs: Record<number, ManualJobView>; runsOnly: boolean }) {
   const mark = (i: number) => (from === 0 ? "▶" : from + i);
   return (
     <>
       {lines.map((q, i) => {
-        const run = runs[runIdOf(q.mo) ?? -1];
-        // a nest run: one band for the run — its sheet, its sheets and the
-        // tick box — then the BOMs on its sheets, one a row
-        if (run) {
-          const boms = runBoms(run);
+        const job = jobs[manualIdOf(q.mo) ?? -1];
+        // a sheet job: one band for the job — its sheet, its sheets and the
+        // tick box — then every project's part on its sheets, one a row
+        if (job) {
           return (
             <tbody key={`${q.key}#${q.sheet}`} className="border-t-2 border-border">
               <tr className="bg-surface-2">
-                <td className="px-2 py-1.5 text-center font-extrabold tabnum align-middle" rowSpan={boms.length + 1}>{mark(i)}</td>
+                <td className="px-2 py-1.5 text-center font-extrabold tabnum align-middle" rowSpan={job.parts.length + 1}>{mark(i)}</td>
                 <td className="px-2 py-1.5" colSpan={runsOnly ? 1 : 3}>
-                  <span className="font-extrabold">🧩 Nest run #{run.id}</span>
-                  {run.note && <span className="ms-2 text-xs font-semibold text-muted">{run.note}</span>}
+                  <span className="font-extrabold">🧾 Job #{job.id}</span>
+                  {job.title.trim() && <span className="ms-2 text-xs font-semibold">{job.title}</span>}
+                  {job.note && <span className="ms-2 text-xs font-semibold text-muted">{job.note}</span>}
                 </td>
                 <td className="px-2 py-1.5"><LineMaterialChips m={material[q.key]} pcs={q.remaining} sheets={false} size="print" /></td>
                 <td className="px-2 py-1.5 text-center whitespace-nowrap">
                   <span className="font-extrabold tabnum text-lg">{q.remaining}</span><span className="text-xs font-semibold"> sh</span>
-                  {run.sheetsDone > 0 && <span className="block text-[10px] font-semibold text-muted">{run.sheetsDone} of {run.sheets} cut</span>}
+                  {job.doneQty > 0 && <span className="block text-[10px] font-semibold text-muted">{job.doneQty} of {job.qty} cut</span>}
+                  {q.split && <span className="block text-[10px] font-semibold text-muted">of {q.lineRemaining} left</span>}
                 </td>
-                <td className="border-l" rowSpan={boms.length + 1}></td>
+                <td className="border-l" rowSpan={job.parts.length + 1}></td>
               </tr>
-              {boms.map((bom) => (
-                <tr key={bom} className="border-t border-border/50">
-                  <td className="px-2 py-1 ps-4 font-bold tabnum" colSpan={runsOnly ? 3 : 5}>{bom}</td>
+              {job.parts.map((p) => (
+                <tr key={p.id} className="border-t border-border/50">
+                  <td className="px-2 py-1 ps-4" colSpan={runsOnly ? 3 : 5}>
+                    <b className="tabnum">{p.bom || "—"}</b> <span className="font-semibold">{p.item}</span> {p.part} <b className="tabnum">×{p.pcs}</b>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -98,19 +100,17 @@ function Rows({ lines, from = 1, required, material, dept, runs, runsOnly }: { l
   );
 }
 
-/** The BOMs on a run's sheets, each once, in the order they were put on. */
-function runBoms(run: NestRunView): string[] {
-  return [...new Set(run.parts.map((p) => p.bom))];
-}
-
-export function MachineSheet({ c, dept, dateLabel, required, material, runs, first }: { c: MachineCard; dept: string; dateLabel: string; required: Record<string, number>; material: Record<string, LineMaterial>; runs: Record<number, NestRunView>; first: boolean }) {
-  const runsOnly = c.queue.length > 0 && c.queue.every((q) => runIdOf(q.mo) !== null);
+export function MachineSheet({ c, dept, dateLabel, required, material, jobs, first }: { c: MachineCard; dept: string; dateLabel: string; required: Record<string, number>; material: Record<string, LineMaterial>; jobs: Record<number, ManualJobView>; first: boolean }) {
+  // the fabrication machines cut sheet jobs alone — the narrow table does
+  const runsOnly = c.queue.length > 0 && c.queue.every((q) => !!jobs[manualIdOf(q.mo) ?? -1]);
   return (
     <section className={`mb-8 ${first ? "" : "print-break"}`}>
       <PrintHeader title={`${c.machine.code} · ${c.machine.name}`} subtitle={`${deptLabel(dept)} — ${machineWord(dept)} sheet`} date={dateLabel} />
       <div className="flex flex-wrap items-baseline gap-3 mb-2">
         <h2 className="!mb-0">{c.machine.code} <span className="font-semibold">· {c.machine.name}</span></h2>
-        <span className="text-xs text-muted tabnum">{c.pcs} pcs · {c.hours} std-h{c.availableH !== null ? ` · ${c.availableH} h available today` : ""}{c.days !== null ? ` · ≈ ${c.days} day(s)` : ""}</span>
+        <span className="text-xs text-muted tabnum">
+          {runsOnly ? `${c.pcs} sheet(s) · ${c.queue.length} job(s)` : `${c.pcs} pcs · ${c.hours} std-h${c.availableH !== null ? ` · ${c.availableH} h available today` : ""}${c.days !== null ? ` · ≈ ${c.days} day(s)` : ""}`}
+        </span>
         {c.crew.length > 0 && <span className="text-xs text-muted">👷 {c.crew.join(", ")}</span>}
       </div>
       <SheetTotals c={c} material={material} dept={dept} />
@@ -118,7 +118,7 @@ export function MachineSheet({ c, dept, dateLabel, required, material, runs, fir
         <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-brand bg-brand-light/40">▶ Running now{c.running.length > 1 ? ` — ${c.running.length} together` : ""}</div>
         <table className="w-full table-fixed text-sm border-collapse">
           <Head dept={dept} runsOnly={runsOnly} />
-          {c.running.length === 0 ? <tbody><tr><td colSpan={runsOnly ? 5 : 7} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr></tbody> : <Rows lines={c.running} from={0} required={required} material={material} dept={dept} runs={runs} runsOnly={runsOnly} />}
+          {c.running.length === 0 ? <tbody><tr><td colSpan={runsOnly ? 5 : 7} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr></tbody> : <Rows lines={c.running} from={0} required={required} material={material} dept={dept} jobs={jobs} runsOnly={runsOnly} />}
         </table>
       </div>
       {c.waiting.length > 0 && (
@@ -126,7 +126,7 @@ export function MachineSheet({ c, dept, dateLabel, required, material, runs, fir
           <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-muted bg-surface-2">Next, in this order</div>
           <table className="w-full table-fixed text-sm border-collapse">
             <Head dept={dept} runsOnly={runsOnly} />
-            <Rows lines={c.waiting} from={1} required={required} material={material} dept={dept} runs={runs} runsOnly={runsOnly} />
+            <Rows lines={c.waiting} from={1} required={required} material={material} dept={dept} jobs={jobs} runsOnly={runsOnly} />
           </table>
         </div>
       )}
@@ -163,7 +163,7 @@ function SheetTotals({ c, material, dept }: { c: MachineCard; material: Record<s
       {[...tot.values()].map((t) => (
         <span key={`${t.label}|${t.size}`} className="whitespace-nowrap"><b>{t.label}</b> <span className="text-muted">{t.size}</span> · <b className="tabnum">{Math.round(t.sheets * 100) / 100}</b>{t.estimated ? "*" : ""}</span>
       ))}
-      <span className="text-[11px] text-muted">* part of it at the BOM rate — not nested yet</span>
+      {[...tot.values()].some((t) => t.estimated) && <span className="text-[11px] text-muted">* part of it at the BOM rate — not nested yet</span>}
     </div>
   );
 }

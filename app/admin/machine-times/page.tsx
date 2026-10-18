@@ -62,7 +62,7 @@ export default async function MachineTimesPage() {
         title="Hours a piece, by machine"
         description={
           <>
-            A figure here outranks the standard time for that machine: its queue on the board is priced with it, and ⚡ Plan schedules the
+            A figure here outranks the standard time for that machine: its queue on the board is priced with it, and the assistant&apos;s machine plan schedules the
             work with it. An empty cell keeps the estimate — the placeholder, for a {SHOWN_TIER} kVA tank.
           </>
         }

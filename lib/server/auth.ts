@@ -142,7 +142,7 @@ export function bayAccess(user: User | null, bay: string): BayAccess {
   return { tr: hasPerm(user, keys.tr), lv: keys.lv !== null && hasPerm(user, keys.lv) };
 }
 
-/** A write over a bay's machines as a whole — ⚡ plan, reset, empty a
+/** A write over a bay's machines as a whole — the machine plan, reset, empty a
  *  machine — acts on the lines the account may schedule there and leaves
  *  the other line's work where it is. Refused when it may schedule neither. */
 export async function requireBayAccess(bay: string): Promise<{ user?: User; access?: BayAccess; error?: string }> {

@@ -83,9 +83,6 @@ beforeEach(() => {
     const p = body({
       handoverEntry: { create: async ({ data }: { data: Record<string, unknown> }) => { txWrites.push(data); return { id: 1 }; } },
       returnEntry: { create: async () => ({ id: 1 }) },
-      // a Cut record takes its pieces off the sheets cut on the machines
-      worklistMachine: { findMany: async () => [], update: async () => ({}) },
-      nestRunPart: { findMany: async () => [], update: async () => ({}) },
     });
     // the real client returns a promise with .catch — the actions rely on it
     return p;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMachineBoard, clearWords, lineKey, loadTone, unassignedKey, urgencyOrder, type BoardLine, type BoardMachine } from "./machineBoard";
+import { boardTakesLine, buildMachineBoard, clearWords, lineKey, loadTone, unassignedKey, urgencyOrder, type BoardLine, type BoardMachine } from "./machineBoard";
 
 const m = (id: number, over: Partial<BoardMachine> = {}): BoardMachine => ({ id, code: `B4-${id}`, name: `Laser ${id}`, center: "Cutting", hoursPerDay: 9, active: true, ...over });
 const l = (bom: string, item: string, remaining: number, hours: number | null, deliveryISO: string | null = "2026-09-12", mo = "MO-1"): BoardLine => ({
@@ -252,15 +252,18 @@ describe("buildMachineBoard — one item on several machines, by sheet", () => {
   });
 });
 
-describe("buildMachineBoard — a nest run covers its parts' sheet", () => {
-  const M = (id: number) => ({ id, code: `L${id}`, name: `Laser ${id}`, center: "Cutting", hoursPerDay: 8, active: true });
-  const line = { key: "B1|MO1|TN", bom: "B1", mo: "MO1", item: "TN", description: "", remaining: 12, hours: 12, deliveryISO: null, route: [{ center: "Cutting", hours: 12 }], sheets: ["3|Steel|1250*2500", "5|Steel|1500*3000"] };
-  it("the run's sheet is covered, the other sheet still waits", () => {
-    const b = buildMachineBoard([M(1)], [line], [], {}, {}, [{ key: line.key, sheet: "3|Steel|1250*2500", pcs: 12 }]);
-    expect(b.unassigned.map((u) => [u.sheet, u.remaining])).toEqual([["5|Steel|1500*3000", 12]]);
+describe("boardTakesLine — what a department's machines carry", () => {
+  it("the fabrication machines take sheet jobs and the panels' punching, never a transformer plan line", () => {
+    expect(boardTakesLine("Cut", "MANUAL", "JOB")).toBe(true);
+    expect(boardTakesLine("Cut", "B1", "PNL")).toBe(true);
+    expect(boardTakesLine("Cut", "B1", "TN")).toBe(false);
+    expect(boardTakesLine("Cut", "MANUAL", "TN")).toBe(false);
+    expect(boardTakesLine("Cut", "RUN", "SHEET")).toBe(false);
   });
-  it("a run carrying part of the pieces leaves the rest of that sheet waiting", () => {
-    const b = buildMachineBoard([M(1)], [line], [], {}, {}, [{ key: line.key, sheet: "3|Steel|1250*2500", pcs: 8 }]);
-    expect(b.unassigned.map((u) => [u.sheet, u.remaining])).toEqual([["3|Steel|1250*2500", 4], ["5|Steel|1500*3000", 12]]);
+  it("every other bay takes its worklist's lines as they are", () => {
+    for (const dept of ["Welding", "Painting", "ShotBlast"]) {
+      expect(boardTakesLine(dept, "B1", "TN")).toBe(true);
+      expect(boardTakesLine(dept, "MANUAL", "JOB")).toBe(true);
+    }
   });
 });

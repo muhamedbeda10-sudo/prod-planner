@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { checkRule, type MachineRuleLike, type MachineRuleView, type RuleInput } from "@/lib/domain/machineRules";
 
 // The machines' rules (MachineRule) — what each machine takes, never takes or
-// is preferred for. ⚡ Plan reads the active ones; the writes are the callers'
+// is preferred for. The machine plan reads the active ones; the writes are the callers'
 // to guard (machines.manage), and a rule taken off stays, inactive.
 
 /** The active rules of a department's machines. */

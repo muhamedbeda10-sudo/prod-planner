@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-18-fabrication-sheet-jobs",
+    dateISO: "2026-10-18",
+    title: "Fabrication works in sheet jobs — closed on the machines by sheets, the weekly plan underneath",
+    where: "Worklist → Fabrication",
+    body: "✋ Add job on the Fabrication page now types a job as SHEETS: the thickness, material and size, how many sheets, and every project's part on them (the BOM, the component, the part — Bottom, Side wall, Skirt base … — and the pieces). Put it on a laser, or share it between machines in sheets. The machines are closed in SHEETS cut (✓ on the card), not pieces; a job leaves the board when its last sheet is cut. The lasers carry the jobs only — nest runs and putting the plan's own lines on the machines are gone, and so is the ⚡ Plan button (on every board and the Floor). Under the machines the page now shows the weekly plan at Fabrication: what each delivery day still needs cut — click a Fab cell to record the pieces cut. The open jobs typed in pieces were closed; type them again as sheet jobs. The assistant works the same way: it types sheet jobs, spreads them over the machines and closes them in sheets.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-15-manual-job-edit-duplicate",
     dateISO: "2026-10-15",
     title: "Manual jobs: edit and duplicate",

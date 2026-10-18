@@ -1272,14 +1272,23 @@ model PhysicalStock {
 // machine queue rows carry), and is KEPT: done or not, the list stays to come
 // back to. Its output is recorded here, never in the plan's ledger — it is
 // no order's work.
+//
+// On the fabrication board a job is a SHEET JOB (bySheet): sheets of one
+// thickness, material and size, carrying the parts of several projects
+// (ManualJobPart). Its qty and doneQty then count SHEETS — the machines
+// close it sheet by sheet — and the parts are what the technician cuts from
+// them, never recorded in the plan's ledger by it.
 model ManualJob {
-  id          Int       @id @default(autoincrement())
+  id          Int             @id @default(autoincrement())
   dept        String // Cut | Welding | Painting | ShotBlast — the board it was typed on
-  title       String // what it is, in the planner's words
-  bom         String    @default("") // a BOM it belongs to, when there is one
-  item        String    @default("") // the part, when there is one (Tank, bracket…)
+  title       String // what it is, in the planner's words ("" on a sheet job: its sheet names it)
+  bom         String          @default("") // a BOM it belongs to, when there is one
+  item        String          @default("") // the part, when there is one (Tank, bracket…)
+  // pieces wanted and done — or, on a sheet job, sheets wanted and cut
   qty         Int
-  doneQty     Int       @default(0)
+  doneQty     Int             @default(0)
+  bySheet     Boolean         @default(false)
+  parts       ManualJobPart[]
   // the sheet it is cut from, typed with it — the same facts the nesting
   // gives a plan line: thickness, material, sheet size, sheets for the job
   material    String    @default("")
@@ -1299,11 +1308,29 @@ model ManualJob {
   @@index([machineId])
 }
 
+// One project's part on a sheet job's sheets: the project (BOM), its
+// component (TN, TC, CF …), the part in the planner's words (Bottom, Side
+// wall, Skirt base …) and how many pieces the job's sheets carry of it.
+model ManualJobPart {
+  id    Int       @id @default(autoincrement())
+  jobId Int
+  job   ManualJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  bom   String    @default("")
+  item  String    @default("")
+  part  String
+  pcs   Int
+
+  @@index([jobId])
+  @@index([bom])
+}
+
 // Every ✓ on a sheet's line on a machine card: which sheet (thickness,
 // material, size) of which item was cut on which machine, how many pieces'
 // worth, and when. The board's own figure (WorklistMachine.sheetDone) is
 // taken back off once the item is recorded; this log keeps it — the history
 // of what each machine cuts at what thickness, for planning machines from it.
+// A sheet job's ✓ writes here too — under its board key (BOM "MANUAL", MO
+// "MANUAL-<id>", item "JOB"), qty = the SHEETS cut on that machine.
 model SheetCutLog {
   id          Int      @id @default(autoincrement())
   at          DateTime @default(now())
@@ -1330,6 +1357,8 @@ model SheetCutLog {
 // board it queues like any line (BOM "RUN", MO "RUN-<id>", item "SHEET" —
 // the key its machine-queue row carries); the technician records it by the
 // sheets finished, and each part's pieces follow pro rata.
+// No longer made: the fabrication board's sheet jobs (ManualJob, bySheet)
+// took their place. The rows stay as the record of what was cut.
 model NestRun {
   id           Int           @id @default(autoincrement())
   dept         String        @default("Cut")

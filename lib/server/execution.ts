@@ -30,7 +30,7 @@ export interface CutSheet {
   postponed: CutTranche[]; // admin re-dated to the FUTURE — visible so the date can be reverted
   remarked: CascadeRow[]; // this week's REMARKED lines with no known date — shown date-less
   unscheduled: CascadeRow[]; // open orders with NO date and NO remark. No longer a table
-  // on the worklist — it is the pool the machine board and ⚡ Plan draw from.
+  // on the worklist — it is the pool the machine boards and the machine plan draw from.
   pushed: CascadeRow[]; // sent down from the Plan Tracker (chosen qty) — to be scheduled here
   priority: PriorityLineDTO[]; // ⭐ orders the admin flagged — dedicated table on top
   held: HeldOrderDTO[]; // ⏸ orders the planner paused — out of every section, named once

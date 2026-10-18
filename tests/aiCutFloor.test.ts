@@ -1,22 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The assistant's cutting-floor tools (lib/server/ai/tools/cutFloor.ts): nest
-// runs, manual jobs and a sheet's pieces cut — what each card says, which of
-// the machine screen's own actions it runs with what, and how it is undone —
-// against a stubbed database, board and actions.
+// The assistant's job tools (lib/server/ai/tools/cutFloor.ts): the
+// fabrication board's SHEET JOBS (sheets of one thickness carrying several
+// projects' parts, closed in sheets) and the other boards' jobs in pieces —
+// what each card says, which of the machine screen's own actions it runs with
+// what, and how it is undone — against a stubbed database, board and actions.
 
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
   return {
-    prisma: { machine: { findFirst: fn(), findUnique: fn(), findMany: fn() } },
+    prisma: { machine: { findFirst: fn(), findUnique: fn(), findMany: fn() }, masterOrder: { findMany: fn() } },
     perms: new Set<string>(),
     planningOn: true,
     board: null as unknown,
-    readQueueSnapshot: fn(),
-    snaps: { readNestRun: fn(), readManualJob: fn(), restoreNestRun: fn(), restoreManualJob: fn() },
-    runs: { createNestRun: fn(), updateNestRun: fn(), deleteNestRun: fn(), recordNestRunSheets: fn() },
+    snaps: { readManualJob: fn(), restoreManualJob: fn() },
     jobs: { createManualJob: fn(), updateManualJob: fn(), recordManualDone: fn(), reopenManualJob: fn(), deleteManualJob: fn() },
-    recordSheetDone: fn(),
   };
 });
 
@@ -25,28 +23,21 @@ vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/server/auth", () => ({ hasPerm: (_u: unknown, k: string) => h.perms.has(k) }));
 vi.mock("@/lib/server/data", () => ({ isMachinePlanningOn: async () => h.planningOn }));
 vi.mock("@/lib/server/machineBoard", () => ({ getDeptBoardLines: async () => [], getMachineBoard: async () => h.board }));
-vi.mock("@/lib/server/machineQueues", () => ({ readQueueSnapshot: h.readQueueSnapshot }));
 vi.mock("@/lib/server/rowSnapshots", () => h.snaps);
-vi.mock("@/app/worklist/nestRunActions", () => h.runs);
 vi.mock("@/app/worklist/manualActions", () => h.jobs);
-vi.mock("@/app/worklist/machineActions", () => ({ recordSheetDone: h.recordSheetDone }));
 
 import type { User } from "@prisma/client";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
-import type { NestRunSnapshot, ManualJobSnapshot } from "@/lib/server/rowSnapshots";
+import type { ManualJobSnapshot } from "@/lib/server/rowSnapshots";
 import {
-  createManualJobTool, createNestRunTool, deleteManualJobTool, deleteNestRunTool, getNestRunsTool, recordManualJobDoneTool, recordNestRunSheetsTool, recordSheetDoneTool,
-  reopenManualJobTool, restoreNestRunTool, updateManualJobTool, updateNestRunTool,
+  createManualJobTool, deleteManualJobTool, getJobsTool, recordManualJobDoneTool, reopenManualJobTool, updateManualJobTool,
 } from "@/lib/server/ai/tools/cutFloor";
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
 
 const ctx: ToolCtx = { user: { id: 1, name: "Sara" } as User, hidden: new Set(), now: new Date("2026-10-12T08:00:00Z"), todayISO: "2026-10-12", conversationId: 1, automationId: null };
 const L1 = { id: 1, code: "B4-10", name: "Laser", dept: "Cut", center: "Cutting", active: true };
 const L2 = { id: 2, code: "B4-09", name: "Laser 2", dept: "Cut", center: "Cutting", active: true };
-// the MATERIAL tab keeps a material by its one name — "mild steel" is Steel
-const S3 = "3|Steel|1250*2500";
-const S4 = "4|Steel|1250*2500";
-const S5 = "5|Steel|1250*2500";
+const W1 = { id: 5, code: "Z1", name: "Zone 1", dept: "Welding", center: "Zone", active: true };
 
 const parsed = <I>(tool: Parameters<typeof checkToolInput<I>>[0], raw: unknown): I => {
   const c = checkToolInput<I>(tool, raw);
@@ -55,17 +46,27 @@ const parsed = <I>(tool: Parameters<typeof checkToolInput<I>>[0], raw: unknown):
 };
 const fd = (m: ReturnType<typeof vi.fn>, call = 0) => Object.fromEntries((m.mock.calls[call][0] as FormData).entries());
 
-const run = (o: Partial<NestRunSnapshot> = {}): NestRunSnapshot => ({
-  id: 7, dept: "Cut", material: "Steel", thicknessMm: 3, sheetSize: "1250*2500", sheets: 5, sheetsDone: 0, identical: true, sheetMinutes: [], note: null,
-  createdBy: "Sara", createdAt: "2026-10-11T07:00:00.000Z", doneAt: null,
-  parts: [{ id: 70, bom: "B1", mo: "M1", item: "CF", pcs: 10, donePcs: 0, consumedPcs: 0, replaces: "" }],
-  queue: [{ id: 900, machineId: 1, rank: 2, running: false, qty: null, sheet: "", sheetDone: 0, setBy: "Sara" }],
-  ...o,
-});
-const job = (o: Partial<ManualJobSnapshot> = {}): ManualJobSnapshot => ({
-  id: 12, dept: "Cut", title: "Brackets", bom: "", item: "", qty: 20, doneQty: 5, material: "", thicknessMm: null, sheetSize: "", sheets: null, note: null,
+const PARTS = [
+  { id: 1, bom: "B1", item: "TN", part: "Bottom", pcs: 4 },
+  { id: 2, bom: "B2", item: "TN", part: "Side wall", pcs: 8 },
+];
+/** A sheet job: 10 sheets of 3 mm steel, 4 of them cut. */
+const sheetJob = (o: Partial<ManualJobSnapshot> = {}): ManualJobSnapshot => ({
+  id: 12, dept: "Cut", title: "", bom: "", item: "", qty: 10, doneQty: 4, bySheet: true, parts: PARTS,
+  material: "Steel", thicknessMm: 3, sheetSize: "1250*2500", sheets: null, note: null,
   machineId: 1, createdBy: "Sara", createdAt: "2026-10-11T07:00:00.000Z", doneAt: null, queue: [], ...o,
 });
+/** A welding job from outside the plan, in pieces. */
+const pieceJob = (o: Partial<ManualJobSnapshot> = {}): ManualJobSnapshot => ({
+  id: 20, dept: "Welding", title: "Brackets", bom: "", item: "", qty: 20, doneQty: 5, bySheet: false, parts: [],
+  material: "", thicknessMm: null, sheetSize: "", sheets: null, note: null,
+  machineId: 5, createdBy: "Sara", createdAt: "2026-10-11T07:00:00.000Z", doneAt: null, queue: [], ...o,
+});
+
+const CUT_RAW = {
+  dept: "Cut", qty: 10, machine: "b4-10", thicknessMm: 3, material: "Steel", sheetSize: "1250*2500",
+  parts: [{ bom: "b1", item: "TN", part: "Bottom", pcs: 4 }, { bom: "B2", item: "TN", part: "Side wall", pcs: 8 }],
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -73,238 +74,160 @@ beforeEach(() => {
   h.perms.add("cut.edit");
   h.planningOn = true;
   h.prisma.machine.findFirst.mockImplementation(async ({ where }: { where: { dept: string; code: { equals: string } } }) =>
-    [L1, L2].find((m) => m.dept === where.dept && m.code.toLowerCase() === where.code.equals.toLowerCase()) ?? null);
-  h.prisma.machine.findUnique.mockImplementation(async ({ where }: { where: { id: number } }) => [L1, L2].find((m) => m.id === where.id) ?? null);
-  h.prisma.machine.findMany.mockResolvedValue([{ code: "B4-10" }]);
+    [L1, L2, W1].find((m) => m.dept === where.dept && m.code.toLowerCase() === where.code.equals.toLowerCase()) ?? null);
+  // the plan knows B1 and B2 — as the plan spells them
+  h.prisma.masterOrder.findMany.mockImplementation(async ({ where }: { where: { OR: { bom: { equals: string } }[] } }) =>
+    ["B1", "B2"].filter((b) => where.OR.some((o) => o.bom.equals.toUpperCase() === b)).map((bom) => ({ bom })));
   h.board = {
-    cards: [{ machine: L1 }, { machine: L2 }],
-    assigned: { "B1|M1|CF": { machineId: 1 } },
-    nestRuns: [
-      // another open run already holds 4 of M2 TC on the 3 mm
-      { id: 3, material: "Steel", thicknessMm: 3, sheetSize: "1250*2500", sheets: 2, sheetsDone: 0, identical: true, sheetMinutes: [], note: null, doneAtISO: null, onMachines: ["B4-09"], machineIds: [2],
-        parts: [{ id: 30, bom: "B2", mo: "M2", item: "TC", pcs: 4, donePcs: 0, consumedPcs: 0, replaces: "" }], createdBy: null, createdAtISO: "" },
+    cards: [
+      { machine: L1, queue: [{ bom: "MANUAL", mo: "MANUAL-12", item: "JOB", rank: 1, running: true, remaining: 6, split: false, lineRemaining: 6 }] },
+      { machine: L2, queue: [] },
     ],
-    runOptions: [{ sheet: S3, material: "Steel", thicknessMm: 3, sheetSize: "1250*2500", lines: [{ key: "B1|M1|CF", bom: "B1", mo: "M1", item: "CF", free: 0, perUnit: 0.25 }, { key: "B2|M2|TC", bom: "B2", mo: "M2", item: "TC", free: 6, perUnit: 0.1 }] }],
-    runCandidates: [
-      { key: "B1|M1|CF", bom: "B1", mo: "M1", item: "CF", remaining: 12, free: 0, sheets: [S3] },
-      { key: "B2|M2|TC", bom: "B2", mo: "M2", item: "TC", remaining: 10, free: 6, sheets: [S3] },
-      { key: "B3|M3|CB", bom: "B3", mo: "M3", item: "CB", remaining: 8, free: 8, sheets: [S4, S5] },
+    manualJobs: [
+      { id: 12, dept: "Cut", title: "", bom: "", item: "", qty: 10, doneQty: 4, bySheet: true, parts: PARTS, material: "Steel", thicknessMm: 3, sheetSize: "1250*2500", sheets: null, note: null, onMachines: ["B4-10"], lastMachine: "B4-10", createdBy: "Sara", createdAtISO: "", doneAtISO: null },
     ],
-    manualJobs: [{ id: 12, title: "Brackets", bom: "", item: "", qty: 20, doneQty: 5, onMachines: ["B4-10"], doneAtISO: null }],
+    jobBoms: ["B1", "B2"],
   };
-  for (const f of [...Object.values(h.runs), ...Object.values(h.jobs), h.recordSheetDone]) f.mockResolvedValue({ ok: true });
-  h.runs.createNestRun.mockResolvedValue({ ok: true, id: 8 });
+  for (const f of Object.values(h.jobs)) f.mockResolvedValue({ ok: true });
   h.jobs.createManualJob.mockResolvedValue({ ok: true, id: 13 });
-  h.snaps.readNestRun.mockResolvedValue(run());
-  h.snaps.readManualJob.mockResolvedValue(job());
-  h.snaps.restoreNestRun.mockResolvedValue({ ok: true });
+  h.snaps.readManualJob.mockResolvedValue(sheetJob());
 });
 
-describe("get_nest_runs", () => {
-  it("gives the open runs, each sheet the open lines need with what is free on it, every open line's own sheets, and the manual jobs", async () => {
-    const r = await getNestRunsTool.run({}, ctx);
+describe("get_jobs", () => {
+  it("gives each machine's sheets queued, every open sheet job with its sheet and parts, and the open projects", async () => {
+    const r = await getJobsTool.run({}, ctx);
     expect(r.ok).toBe(true);
     const out = JSON.parse(r.text);
-    expect(out.openRuns[0]).toMatchObject({ id: 3, sheets: 2, on: ["B4-09"], parts: [{ line: "M2 TC", pcs: 4, cut: 0 }], boardLine: { bom: "RUN", mo: "RUN-3", item: "SHEET" } });
-    expect(out.sheets[0]).toMatchObject({ key: S3, material: "Steel", thicknessMm: 3, sheetSize: "1250*2500", lines: [{ line: "M1 CF", free: 0, sheetsPerPiece: 0.25 }, { line: "M2 TC", free: 6 }] });
-    expect(out.openLines[2]).toMatchObject({ line: "M3 CB", ownSheets: [{ key: S4 }, { key: S5 }] });
-    // a job sits in a queue as a line — moved, reordered or taken off by the board's own tools
-    expect(out.manualJobs).toEqual([{ id: 12, title: "Brackets", qty: 20, done: 5, on: ["B4-10"], boardLine: { bom: "MANUAL", mo: "MANUAL-12", item: "JOB" } }]);
+    expect(out.countedIn).toBe("sheets");
+    expect(out.machines).toEqual([
+      { code: "B4-10", name: "Laser", center: "Cutting", active: true, jobsQueued: 6, otherLines: 0, jobs: [{ rank: 1, running: true, id: 12, here: 6 }] },
+      { code: "B4-09", name: "Laser 2", center: "Cutting", active: true, jobsQueued: 0, otherLines: 0, jobs: [] },
+    ]);
+    expect(out.openJobs).toEqual([expect.objectContaining({
+      id: 12, name: "3 mm MS 1250×2500", sheets: 10, sheetsCut: 4, on: ["B4-10"],
+      parts: [{ bom: "B1", item: "TN", part: "Bottom", pcs: 4 }, { bom: "B2", item: "TN", part: "Side wall", pcs: 8 }],
+      boardLine: { bom: "MANUAL", mo: "MANUAL-12", item: "JOB" },
+    })]);
+    expect(out.openProjects).toEqual(["B1", "B2"]);
+  });
+
+  it("says so while machine planning is off", async () => {
     h.planningOn = false;
-    expect((await getNestRunsTool.run({}, ctx)).ok).toBe(false);
+    expect(await getJobsTool.run({}, ctx)).toEqual({ ok: false, text: expect.stringContaining("switched off") });
   });
 });
 
-describe("create_nest_run", () => {
-  const raw = { material: "mild steel", thicknessMm: 3, sheetSize: "1250 x 2500", sheets: 3, machine: "b4-10", parts: [{ bom: "B1", mo: "M1", item: "cf", pcs: 8 }, { bom: "B2", mo: "M2", item: "TC", pcs: 6 }] };
-
-  it("reads the sheet as the screen keeps it, and refuses a line twice or a time given both ways", () => {
-    const i = parsed<Parameters<typeof createNestRunTool.describe>[0]>(createNestRunTool, raw);
-    expect(i).toMatchObject({ material: "Steel", sheetSize: "1250*2500", machine: "b4-10", parts: [{ item: "CF" }, { item: "TC" }] });
-    expect(checkToolInput(createNestRunTool, { ...raw, parts: [raw.parts[0], { ...raw.parts[0], pcs: 1 }] })).toMatchObject({ ok: false, error: expect.stringContaining("in the run twice") });
-    expect(checkToolInput(createNestRunTool, { ...raw, minutesPerSheet: 9, sheetMinutes: [9, 9, 9] })).toMatchObject({ ok: false, error: expect.stringContaining("not both") });
-    expect(checkToolInput(createNestRunTool, { ...raw, sheetMinutes: [9, 9] })).toMatchObject({ ok: false, error: expect.stringContaining("every one of the 3") });
+describe("create_manual_job — a sheet job on Cut", () => {
+  it("needs the sheet's thickness and material and at least one part", () => {
+    expect(checkToolInput(createManualJobTool, { ...CUT_RAW, thicknessMm: undefined })).toMatchObject({ ok: false, error: expect.stringContaining("thickness") });
+    expect(checkToolInput(createManualJobTool, { ...CUT_RAW, material: " " })).toMatchObject({ ok: false, error: expect.stringContaining("material") });
+    expect(checkToolInput(createManualJobTool, { ...CUT_RAW, parts: [] })).toMatchObject({ ok: false, error: expect.stringContaining("at least one") });
   });
 
-  it("needs the cutting worklist's key and the board in use", async () => {
-    const i = parsed<Parameters<typeof createNestRunTool.describe>[0]>(createNestRunTool, raw);
+  it("refuses a BOM the plan does not carry, and the board's key", async () => {
+    const bad = parsed(createManualJobTool, { ...CUT_RAW, parts: [{ bom: "ZZ9", item: "TN", part: "Bottom", pcs: 1 }] });
+    expect(await createManualJobTool.describe(bad, ctx)).toEqual({ error: expect.stringContaining("ZZ9 is no project in the plan") });
     h.perms.clear();
-    expect(await createNestRunTool.describe(i, ctx)).toEqual({ error: expect.stringContaining("needs its worklist key") });
-    h.perms.add("cut.edit");
-    h.planningOn = false;
-    expect(await createNestRunTool.describe(i, ctx)).toEqual({ error: expect.stringContaining("switched off") });
+    expect(await createManualJobTool.describe(parsed(createManualJobTool, CUT_RAW), ctx)).toEqual({ error: expect.stringContaining("Cut's machine board needs its worklist key") });
   });
 
-  it("takes only open lines, no more pieces than other runs leave, and asks which own sheet a part stands in for", async () => {
-    const bad = (parts: unknown[]) => createNestRunTool.describe(parsed(createNestRunTool, { ...raw, parts }), ctx);
-    expect(await bad([{ bom: "B9", mo: "M9", item: "CF", pcs: 1 }])).toEqual({ error: expect.stringContaining("M9 CF is not an open cutting line") });
-    // M2 TC still owes 10, another run holds 4 of it on the 3 mm
-    expect(await bad([{ bom: "B2", mo: "M2", item: "TC", pcs: 7 }])).toEqual({ error: "M2 TC: 6 piece(s) of it are left for a run on 3 mm MS 1250×2500 — it still owes 10 and other runs hold 4." });
-    expect(await bad([{ bom: "B3", mo: "M3", item: "CB", pcs: 2 }])).toEqual({ error: expect.stringContaining("say which of them this sheet stands in for") });
-    expect(await bad([{ bom: "B3", mo: "M3", item: "CB", pcs: 2, replaces: S3 }])).toEqual({ error: expect.stringContaining('"replaces" names one of them') });
-  });
-
-  it("shows each part and where it is queued now, the nesting's own sheets, and relies on what is left of its lines", async () => {
-    const p = await createNestRunTool.describe(parsed(createNestRunTool, { ...raw, minutesPerSheet: 12 }), ctx);
-    expect(p).toMatchObject({
-      title: "🧩 3 × 3 mm MS 1250×2500 on B4-10",
-      summary: expect.stringContaining("about 2.6 sheet(s)"),
-      changes: [
-        { label: "M1 CF", before: "12 left to place · queued on B4-10", after: "×8 on the 3 mm MS 1250×2500 sheets (off what B4-10 cuts of it)" },
-        { label: "M2 TC", before: "6 left to place", after: "×6 on the 3 mm MS 1250×2500 sheets" },
-      ],
-      snapshot: [{ key: "B1|M1|CF", sheet: S3, remaining: 12, held: 0 }, { key: "B2|M2|TC", sheet: S3, remaining: 10, held: 4 }],
+  it("shows the sheets and every part, runs the screen's own action with the parts, and is undone by deleting it", async () => {
+    const i = parsed(createManualJobTool, CUT_RAW);
+    expect(await createManualJobTool.describe(i, ctx)).toMatchObject({
+      title: "🧾 10 × 3 mm MS 1250×2500 on B4-10",
+      summary: expect.stringContaining("10 sheet(s) of 3 mm MS 1250×2500 carrying 2 part(s), at the back of B4-10's queue"),
+      changes: [{ label: "3 mm MS 1250×2500", before: "—", after: "10 sheet(s) — B1 TN Bottom ×4 · B2 TN Side wall ×8 · B4-10" }],
     });
-    expect("summary" in p && p.summary).toContain("Cutting time 36 min");
-  });
-
-  it("a part on another thickness stands in for its own sheet", async () => {
-    const p = await createNestRunTool.describe(parsed(createNestRunTool, { ...raw, thicknessMm: 4, parts: [{ bom: "B1", mo: "M1", item: "CF", pcs: 2 }, { bom: "B3", mo: "M3", item: "CB", pcs: 2 }] }), ctx);
-    expect(p).toMatchObject({ changes: [{ label: "M1 CF (instead of 3 mm MS 1250×2500)" }, { label: "M3 CB" }] });
-  });
-
-  it("runs the screen's own action and is undone by deleting the run", async () => {
-    const out = await createNestRunTool.execute(parsed(createNestRunTool, { ...raw, thicknessMm: 4, sheetMinutes: [10, 11, 12], parts: [{ bom: "B1", mo: "M1", item: "CF", pcs: 2 }] }), ctx);
-    expect(fd(h.runs.createNestRun)).toEqual({
-      material: "Steel", thicknessMm: "4", sheetSize: "1250*2500", sheets: "3", identical: "false", minutes: "[10,11,12]", note: "",
-      parts: JSON.stringify([{ bom: "B1", mo: "M1", item: "CF", pcs: 2, replaces: S3 }]), machineId: "1",
+    const out = await createManualJobTool.execute(i, ctx);
+    expect(fd(h.jobs.createManualJob)).toEqual({
+      dept: "Cut", title: "", qty: "10", material: "Steel", thicknessMm: "3", sheetSize: "1250*2500", machineId: "1",
+      parts: JSON.stringify(CUT_RAW.parts),
     });
-    expect(out).toEqual({ ok: true, message: "Nest run #8 is put together and queued on B4-10.", undo: { tool: "delete_nest_run", input: { id: 8 } } });
-  });
-});
-
-describe("update_nest_run", () => {
-  it("once sheets are cut, keeps the sheet and the parts and never goes below what is cut", async () => {
-    h.snaps.readNestRun.mockResolvedValue(run({ sheetsDone: 2 }));
-    expect(await updateNestRunTool.describe(parsed(updateNestRunTool, { id: 7, thicknessMm: 4 }), ctx)).toEqual({ error: expect.stringContaining("its sheet and its parts stay") });
-    expect(await updateNestRunTool.describe(parsed(updateNestRunTool, { id: 7, sheets: 1 }), ctx)).toEqual({ error: expect.stringContaining("cannot have fewer") });
-    const p = await updateNestRunTool.describe(parsed(updateNestRunTool, { id: 7, sheets: 2 }), ctx);
-    expect(p).toMatchObject({ changes: [{ label: "Sheets", before: "5 (2 cut)", after: "2 — finished" }], summary: expect.stringContaining("it is finished") });
+    expect(out).toEqual({ ok: true, message: "Job #13 is added on B4-10.", undo: { tool: "delete_manual_job", input: { id: 13 } } });
   });
 
-  it("moves it to another laser or off every machine, and says so when nothing changes", async () => {
-    expect(await updateNestRunTool.describe(parsed(updateNestRunTool, { id: 7, note: "" }), ctx)).toEqual({ error: "That is how the run is already." });
-    expect(await updateNestRunTool.describe(parsed(updateNestRunTool, { id: 7, machine: "B4-09" }), ctx)).toMatchObject({ changes: [{ label: "Machine", before: "B4-10", after: "back of B4-09's queue" }] });
-    expect(checkToolInput(updateNestRunTool, { id: 7 })).toMatchObject({ ok: false, error: "Say what changes on the run." });
-  });
-
-  it("sends the whole run as the edit form does, and is undone by putting it back as it was", async () => {
-    const before = run();
-    const out = await updateNestRunTool.execute(parsed(updateNestRunTool, { id: 7, sheets: 6, minutesPerSheet: 8, machine: "" }), ctx);
-    expect(fd(h.runs.updateNestRun)).toEqual({
-      id: "7", material: "Steel", thicknessMm: "3", sheetSize: "1250*2500", sheets: "6", identical: "true", minutes: "[8]", note: "",
-      parts: JSON.stringify([{ bom: "B1", mo: "M1", item: "CF", pcs: 10, replaces: "" }]), machineId: "",
-    });
-    expect(out).toEqual({ ok: true, message: "Nest run #7 is changed.", undo: { tool: "restore_nest_run", input: { id: 7, state: JSON.stringify(before) } } });
-  });
-});
-
-describe("delete_nest_run and its undo", () => {
-  it("is a deletion, refused once a sheet is cut, and comes back exactly", async () => {
-    expect(deleteNestRunTool.risk).toBe("destructive");
-    h.snaps.readNestRun.mockResolvedValueOnce(run({ sheetsDone: 1 }));
-    expect(await deleteNestRunTool.describe({ id: 7 }, ctx)).toEqual({ error: expect.stringContaining("already cut") });
-    const out = await deleteNestRunTool.execute({ id: 7 }, ctx);
-    expect(out).toMatchObject({ ok: true, undo: { tool: "restore_nest_run", input: { id: 7 } } });
-    // the undo's stored input passes the restore's own check, and puts that very state back
-    const undoInput = parsed<{ id: number; state: string }>(restoreNestRunTool, (out as { undo: { input: unknown } }).undo.input);
-    await restoreNestRunTool.execute(undoInput, ctx);
-    expect(h.snaps.restoreNestRun).toHaveBeenCalledWith(run());
-    expect(checkToolInput(restoreNestRunTool, { id: 7, state: JSON.stringify({ id: 8 }) })).toMatchObject({ ok: false });
-  });
-});
-
-describe("record_nest_run_sheets", () => {
-  it("counts the parts' pieces the sheets carry, on the laser it sits on, and is never undone from the chat", async () => {
-    expect(await recordNestRunSheetsTool.describe({ id: 7, sheets: 6 }, ctx)).toEqual({ error: "Only 5 sheet(s) left on run #7." });
-    expect(await recordNestRunSheetsTool.describe({ id: 7, sheets: 1, date: "2026-10-13" }, ctx)).toEqual({ error: expect.stringContaining("has not come yet") });
-    const p = await recordNestRunSheetsTool.describe({ id: 7, sheets: 2 }, ctx);
-    expect(p).toMatchObject({ summary: expect.stringContaining("on B4-10"), changes: [{ label: "Sheets cut", after: "2 of 5" }, { label: "M1 CF", before: "0 of 10 cut", after: "4 of 10 cut" }] });
-    const out = await recordNestRunSheetsTool.execute({ id: 7, sheets: 2 }, ctx);
-    expect(fd(h.runs.recordNestRunSheets)).toEqual({ id: "7", qty: "2", date: "2026-10-12", machineId: "1" });
-    expect(out).toEqual({ ok: true, message: "2 sheet(s) of nest run #7 are recorded as cut." });
-    h.snaps.readNestRun.mockResolvedValue(run({ queue: [run().queue[0], { ...run().queue[0], id: 901, machineId: 2 }] }));
-    expect(await recordNestRunSheetsTool.describe({ id: 7, sheets: 1 }, ctx)).toEqual({ error: expect.stringContaining("say which cut these sheets") });
-  });
-});
-
-describe("manual jobs", () => {
-  it("are added on a machine of their own department, and undone by deleting them", async () => {
-    const raw = { dept: "Welding", title: "  Lifting lugs ", qty: 4, machine: "B4-10" };
-    expect(checkToolInput(createManualJobTool, { ...raw, title: "   " })).toMatchObject({ ok: false, error: expect.stringContaining("must not be empty") });
-    expect(await createManualJobTool.describe(parsed(createManualJobTool, raw), ctx)).toEqual({ error: expect.stringContaining("Welding's machine board needs its worklist key") });
+  it("off Cut it is a job from outside the plan in pieces, with a title", async () => {
     h.perms.add("welding.edit");
-    expect(await createManualJobTool.describe(parsed(createManualJobTool, raw), ctx)).toEqual({ error: "No machine B4-10 in Welding." });
-    const out = await createManualJobTool.execute(parsed(createManualJobTool, { ...raw, dept: "Cut" }), ctx);
-    expect(fd(h.jobs.createManualJob)).toEqual({ dept: "Cut", title: "Lifting lugs", qty: "4", machineId: "1" });
-    expect(out).toEqual({ ok: true, message: 'Manual job #13 "Lifting lugs" is added on B4-10.', undo: { tool: "delete_manual_job", input: { id: 13 } } });
+    expect(checkToolInput(createManualJobTool, { dept: "Welding", qty: 4, title: "  " })).toMatchObject({ ok: false, error: "Say what the job is." });
+    const i = parsed(createManualJobTool, { dept: "Welding", title: " Lifting lugs ", qty: 4, machine: "Z1" });
+    expect(await createManualJobTool.describe(i, ctx)).toMatchObject({ summary: expect.stringContaining('"Lifting lugs" — 4 piece(s)') });
+    await createManualJobTool.execute(i, ctx);
+    expect(fd(h.jobs.createManualJob)).toEqual({ dept: "Welding", title: "Lifting lugs", qty: "4", machineId: "5" });
+  });
+});
+
+describe("record_manual_job_done — sheets cut", () => {
+  it("counts sheets, no more than are left, on a day that has come, and is undone exactly", async () => {
+    expect(await recordManualJobDoneTool.describe({ id: 12, qty: 7 }, ctx)).toEqual({ error: "Only 6 sheet(s) left on job #12." });
+    expect(await recordManualJobDoneTool.describe({ id: 12, qty: 2, date: "2026-10-13" }, ctx)).toEqual({ error: expect.stringContaining("has not come yet") });
+    expect(await recordManualJobDoneTool.describe({ id: 12, qty: 6, machine: "B4-10" }, ctx)).toMatchObject({
+      summary: expect.stringContaining("6 sheet(s) of job #12"),
+      changes: [{ before: "4 of 10 sheets cut", after: "10 of 10 sheets cut" }],
+    });
+    const out = await recordManualJobDoneTool.execute({ id: 12, qty: 2, machine: "B4-10" }, ctx);
+    expect(fd(h.jobs.recordManualDone)).toEqual({ id: "12", qty: "2", date: "2026-10-12", machineId: "1" });
+    expect(out).toEqual({ ok: true, message: "2 sheet(s) of job #12 are recorded.", undo: { tool: "restore_manual_job", input: { id: 12, state: JSON.stringify(sheetJob()) } } });
   });
 
-  it("record pieces done no more than are left, reopen with pieces to make, and delete as a deletion — each undone exactly", async () => {
-    // more pieces of a job still open, where it is
-    expect(await reopenManualJobTool.describe({ id: 12, more: 0 }, ctx)).toEqual({ error: expect.stringContaining("is open already") });
-    expect(await reopenManualJobTool.describe({ id: 12, more: 4 }, ctx)).toMatchObject({ summary: expect.stringContaining("it stays where it is"), changes: [{ before: "5 of 20 done", after: "5 of 24 done" }] });
-    expect(await recordManualJobDoneTool.describe({ id: 12, qty: 16 }, ctx)).toEqual({ error: "Only 15 left on job #12." });
-    expect(await recordManualJobDoneTool.describe({ id: 12, qty: 15 }, ctx)).toMatchObject({ summary: expect.stringContaining("its last") });
-    expect(await recordManualJobDoneTool.execute({ id: 12, qty: 3, machine: "B4-10" }, ctx)).toEqual({ ok: true, message: expect.any(String), undo: { tool: "restore_manual_job", input: { id: 12, state: JSON.stringify(job()) } } });
-    expect(fd(h.jobs.recordManualDone)).toEqual({ id: "12", qty: "3", machineId: "1" });
-    h.snaps.readManualJob.mockResolvedValue(job({ doneQty: 20, doneAt: "2026-10-11T12:00:00.000Z" }));
-    expect(await reopenManualJobTool.describe({ id: 12, more: 0 }, ctx)).toEqual({ error: expect.stringContaining("Nothing would be left") });
-    expect(await reopenManualJobTool.describe({ id: 12, more: 5 }, ctx)).toMatchObject({ changes: [{ before: "20 of 20 done, finished", after: "20 of 25 done, open" }] });
-    expect(deleteManualJobTool.risk).toBe("destructive");
-    expect(await deleteManualJobTool.execute({ id: 12 }, ctx)).toMatchObject({ ok: true, undo: { tool: "restore_manual_job" } });
+  it("a fabrication job left from the pieces days is kept as it was", async () => {
+    h.snaps.readManualJob.mockResolvedValue(sheetJob({ bySheet: false, parts: [], title: "Old" }));
+    expect(await recordManualJobDoneTool.describe({ id: 12, qty: 1 }, ctx)).toEqual({ error: expect.stringContaining("typed in pieces") });
+    expect(await reopenManualJobTool.describe({ id: 12, more: 1 }, ctx)).toEqual({ error: expect.stringContaining("typed in pieces") });
   });
 });
 
 describe("update_manual_job", () => {
-  it("changes only what is said, as ✎ Edit does, and is undone exactly", async () => {
+  it("changes a sheet job's sheets and parts, refuses fields a sheet job has not, and is undone exactly", async () => {
     expect(checkToolInput(updateManualJobTool, { id: 12 })).toMatchObject({ ok: false, error: expect.stringContaining("Say what to change") });
-    expect(await updateManualJobTool.describe(parsed(updateManualJobTool, { id: 12, title: "Brackets" }), ctx)).toEqual({ error: expect.stringContaining("reads like that already") });
-    const input = parsed(updateManualJobTool, { id: 12, qty: 30, thicknessMm: 4, note: "for maintenance" });
+    expect(await updateManualJobTool.describe(parsed(updateManualJobTool, { id: 12, bom: "B1" }), ctx)).toEqual({ error: expect.stringContaining("has no bom to change") });
+    expect(await updateManualJobTool.describe(parsed(updateManualJobTool, { id: 12, qty: 3 }), ctx)).toEqual({ error: expect.stringContaining("4 sheet(s) are cut already") });
+    const input = parsed(updateManualJobTool, { id: 12, qty: 12, parts: [{ bom: "B1", item: "TN", part: "Bottom", pcs: 6 }] });
     expect(await updateManualJobTool.describe(input, ctx)).toMatchObject({
-      summary: 'Change manual job #12 "Brackets".',
-      changes: [{ label: "Pieces", before: "20", after: "30" }, { label: "Thickness (mm)", before: "—", after: "4" }, { label: "Note", before: "—", after: "for maintenance" }],
+      summary: 'Change job #12 "3 mm MS 1250×2500".',
+      changes: [{ label: "Sheets", before: "10", after: "12" }, { label: "Parts on the sheets", before: "B1 TN Bottom ×4 · B2 TN Side wall ×8", after: "B1 TN Bottom ×6" }],
     });
     const out = await updateManualJobTool.execute(input, ctx);
-    expect(fd(h.jobs.updateManualJob)).toEqual({ id: "12", title: "Brackets", qty: "30", bom: "", item: "", material: "", thicknessMm: "4", sheetSize: "", note: "for maintenance" });
-    expect(out).toEqual({ ok: true, message: "Job #12 is changed.", undo: { tool: "restore_manual_job", input: { id: 12, state: JSON.stringify(job()) } } });
+    expect(fd(h.jobs.updateManualJob)).toEqual({
+      id: "12", title: "", qty: "12", bom: "", item: "", material: "Steel", thicknessMm: "3", sheetSize: "1250*2500",
+      parts: JSON.stringify([{ bom: "B1", item: "TN", part: "Bottom", pcs: 6 }]),
+    });
+    expect(out).toEqual({ ok: true, message: "Job #12 is changed.", undo: { tool: "restore_manual_job", input: { id: 12, state: JSON.stringify(sheetJob()) } } });
   });
 
-  it("never wants fewer pieces than are done, and says when the change finishes or reopens it", async () => {
-    expect(await updateManualJobTool.describe({ id: 12, qty: 4 }, ctx)).toEqual({ error: expect.stringContaining("5 piece(s) are done already") });
-    expect(await updateManualJobTool.describe({ id: 12, qty: 5 }, ctx)).toMatchObject({ summary: expect.stringContaining("it is finished and leaves every machine") });
-    h.snaps.readManualJob.mockResolvedValue(job({ doneQty: 20, doneAt: "2026-10-11T12:00:00.000Z" }));
-    expect(await updateManualJobTool.describe({ id: 12, qty: 25 }, ctx)).toMatchObject({ summary: expect.stringContaining("it opens again, on no machine") });
-    h.perms.clear();
-    expect(await updateManualJobTool.describe({ id: 12, qty: 25 }, ctx)).toEqual({ error: expect.stringContaining("needs its worklist key") });
+  it("a job in pieces keeps its own fields and words", async () => {
+    h.perms.add("welding.edit");
+    h.snaps.readManualJob.mockResolvedValue(pieceJob());
+    expect(await updateManualJobTool.describe(parsed(updateManualJobTool, { id: 20, title: "Brackets" }), ctx)).toEqual({ error: expect.stringContaining("reads like that already") });
+    expect(await updateManualJobTool.describe({ id: 20, qty: 4 }, ctx)).toEqual({ error: expect.stringContaining("5 piece(s) are done already") });
+    expect(await updateManualJobTool.describe(parsed(updateManualJobTool, { id: 20, qty: 30, note: "for maintenance" }), ctx)).toMatchObject({
+      changes: [{ label: "Pieces", before: "20", after: "30" }, { label: "Note", before: "—", after: "for maintenance" }],
+    });
+    h.snaps.readManualJob.mockResolvedValue(pieceJob({ doneQty: 20, doneAt: "2026-10-11T12:00:00.000Z" }));
+    expect(await reopenManualJobTool.describe({ id: 20, more: 5 }, ctx)).toMatchObject({ changes: [{ before: "20 of 20 done, finished", after: "20 of 25 done, open" }] });
+    expect(await updateManualJobTool.describe({ id: 20, qty: 25 }, ctx)).toMatchObject({ summary: expect.stringContaining("it opens again, on no machine") });
   });
 });
 
-describe("record_sheet_done", () => {
-  it("records a sheet on the machine that holds it, with the line's own key", async () => {
-    const raw = { dept: "Cut", bom: "B1", mo: "M1", item: "cf", sheet: S3, machine: "B4-10", qty: 4 };
-    h.readQueueSnapshot.mockResolvedValue([{ bom: "B1", mo: "M1", item: "CF", machineId: 1, rank: 1, running: true, qty: null, sheet: S5, sheetDone: 0 }]);
-    expect(await recordSheetDoneTool.describe(parsed(recordSheetDoneTool, raw), ctx)).toEqual({ error: expect.stringContaining("is not on B4-10") });
-    h.readQueueSnapshot.mockResolvedValue([{ bom: "B1", mo: "M1", item: "CF", machineId: 1, rank: 1, running: true, qty: null, sheet: S3, sheetDone: 2 }]);
-    expect(await recordSheetDoneTool.describe(parsed(recordSheetDoneTool, raw), ctx)).toMatchObject({ changes: [{ before: "2 cut", after: "6 cut" }], snapshot: { sheetDone: 2 } });
-    expect(await recordSheetDoneTool.execute(parsed(recordSheetDoneTool, raw), ctx)).toMatchObject({ ok: true });
-    expect(fd(h.recordSheetDone)).toEqual({ dept: "Cut", bom: "B1", mo: "M1", item: "CF", sheet: S3, machineId: "1", qty: "4", date: "2026-10-12" });
-    h.perms.clear();
-    expect(await recordSheetDoneTool.describe(parsed(recordSheetDoneTool, raw), ctx)).toEqual({ error: expect.stringContaining("needs its own key") });
+describe("delete_manual_job", () => {
+  it("is a deletion, undone by putting the job back", async () => {
+    expect(deleteManualJobTool.risk).toBe("destructive");
+    expect(await deleteManualJobTool.describe({ id: 12 }, ctx)).toMatchObject({ summary: expect.stringContaining("(4 of 10 sheets cut)") });
+    expect(await deleteManualJobTool.execute({ id: 12 }, ctx)).toMatchObject({ ok: true, undo: { tool: "restore_manual_job" } });
   });
 });
 
 describe("what the assistant is offered", () => {
-  it("never the restores; the deletions only with the deletions key", () => {
+  it("the jobs and their distribution, never the restores; the deletions only with the deletions key; no nest runs", () => {
     const names = (perms: string[]) => {
       h.perms.clear();
       for (const k of perms) h.perms.add(k);
       return toolsFor({ id: 1, isAdmin: false, isOwner: false } as User, { hidden: new Set(), actionsPaused: false }).map((t) => t.name);
     };
     const without = names(["ai.act.machines"]);
-    expect(without).toEqual(expect.arrayContaining(["get_nest_runs", "create_nest_run", "update_nest_run", "record_nest_run_sheets", "create_manual_job", "record_sheet_done"]));
-    expect(without).not.toEqual(expect.arrayContaining(["delete_nest_run"]));
-    expect(without).not.toContain("restore_nest_run");
-    expect(names(["ai.act.machines", "ai.act.delete"])).toEqual(expect.arrayContaining(["delete_nest_run", "delete_manual_job"]));
+    expect(without).toEqual(expect.arrayContaining(["get_jobs", "create_manual_job", "update_manual_job", "record_manual_job_done", "assign_lines_to_machines", "plan_machines"]));
+    expect(without).not.toContain("delete_manual_job");
+    expect(without).not.toContain("restore_manual_job");
+    for (const gone of ["get_nest_runs", "create_nest_run", "record_nest_run_sheets", "record_sheet_done"]) expect(without).not.toContain(gone);
+    expect(names(["ai.act.machines", "ai.act.delete"])).toContain("delete_manual_job");
   });
 });
