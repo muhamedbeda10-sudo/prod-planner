@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_JOB_PARTS, editedJobQty, jobName, jobSheetKey, jobsBySheet, manualDescription, manualMaterial, partNameSuggestions, partsText, readJobParts } from "./manualJob";
+import { MAX_JOB_PARTS, editedJobQty, jobName, jobSheetKey, jobsBySheet, manualDescription, manualMaterial, partNameSuggestions, partRowsOf, partsText, readJobParts } from "./manualJob";
 
 describe("editedJobQty — a new count of pieces wanted on a manual job", () => {
   it("is refused below what is done, or when it is not whole pieces above 0", () => {
@@ -73,5 +73,46 @@ describe("a sheet job on the board", () => {
   it("offers the part names typed before, most used first, one spelling each", () => {
     const parts = (names: string[]) => ({ parts: names.map((part, id) => ({ id, bom: "", item: "", part, pcs: 1 })) });
     expect(partNameSuggestions([parts(["Bottom", "Side wall"]), parts(["side wall", "Skirt base"]), parts(["  "])])).toEqual(["Side wall", "Bottom", "Skirt base"]);
+  });
+});
+
+describe("a part's pieces are optional", () => {
+  it("reads a blank or missing count as not given, and still checks one that is given", () => {
+    expect(readJobParts([{ bom: "B1", item: "TN", part: "Bottom", pcs: "" }, { bom: "B1", item: "TN", part: "Side wall", pcs: null }, { bom: "B1", item: "TN", part: "Skirt base" }])).toEqual({
+      ok: true,
+      parts: [
+        { bom: "B1", item: "TN", part: "Bottom", pcs: null },
+        { bom: "B1", item: "TN", part: "Side wall", pcs: null },
+        { bom: "B1", item: "TN", part: "Skirt base", pcs: null },
+      ],
+    });
+    expect(readJobParts([{ bom: "B1", item: "TN", part: "Bottom", pcs: " 4 " }])).toEqual({ ok: true, parts: [{ bom: "B1", item: "TN", part: "Bottom", pcs: 4 }] });
+    expect(readJobParts([{ bom: "B1", item: "TN", part: "Bottom", pcs: "0" }])).toMatchObject({ ok: false, error: expect.stringContaining("or left empty") });
+    expect(readJobParts([{ bom: "B1", item: "TN", part: "Bottom", pcs: "abc" }])).toMatchObject({ ok: false });
+  });
+
+  it("writes a part without its count as just its name", () => {
+    expect(partsText([{ bom: "B1", item: "TN", part: "Bottom", pcs: null }, { bom: "B2", item: "TN", part: "Side wall", pcs: 8 }])).toBe("B1 TN Bottom · B2 TN Side wall ×8");
+  });
+});
+
+describe("partRowsOf — the part rows as the form holds them", () => {
+  it("zips the columns back into rows, dropping a row left wholly empty", () => {
+    expect(partRowsOf({
+      bom: [" B1 ", "", "", "B2"],
+      item: ["TN", "TN", "", "CB"],
+      part: ["Bottom", "", "", " Cable box "],
+      pcs: ["4", "", "", ""],
+    })).toEqual([
+      { bom: "B1", item: "TN", part: "Bottom", pcs: "4" },
+      { bom: "B2", item: "CB", part: "Cable box", pcs: null },
+    ]);
+  });
+
+  it("keeps a row with only a count or only a project, for the check to name what it lacks", () => {
+    expect(partRowsOf({ bom: ["B1", ""], item: ["", ""], part: ["", ""], pcs: ["", "3"] })).toEqual([
+      { bom: "B1", item: "", part: "", pcs: null },
+      { bom: "", item: "", part: "", pcs: "3" },
+    ]);
   });
 });

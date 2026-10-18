@@ -24,8 +24,8 @@ export function SheetJobLine({ job, left, size = "sm" }: {
       {job.parts.length > 0 && (
         <span className={`flex flex-wrap gap-1 ${print ? "text-xs" : "text-[11px]"}`}>
           {job.parts.map((p) => (
-            <span key={p.id} className="pill pill-muted tabnum" title={`${p.pcs} piece(s) of ${p.part}${p.bom ? ` for ${p.bom}` : ""} on these sheets`}>
-              {p.bom && <b>{p.bom}</b>} {p.item} {p.part} ×{p.pcs}
+            <span key={p.id} className="pill pill-muted tabnum" title={`${p.pcs !== null ? `${p.pcs} piece(s) of ` : ""}${p.part}${p.bom ? ` for ${p.bom}` : ""} on these sheets`}>
+              {p.bom && <b>{p.bom}</b>} {p.item} {p.part}{p.pcs !== null && ` ×${p.pcs}`}
             </span>
           ))}
         </span>

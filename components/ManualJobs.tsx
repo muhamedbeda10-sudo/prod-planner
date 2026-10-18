@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/primitives";
 import { ClipboardList } from "lucide-react";
 import { createManualJob, deleteManualJob, reopenManualJob, updateManualJob, type ManualActionResult } from "@/app/worklist/manualActions";
 import { assignLineMachine } from "@/app/worklist/machineActions";
-import { MANUAL_BOM, MANUAL_ITEM, MAX_JOB_PARTS, jobName, jobSheetLabel, jobsBySheet, manualMo, partNameSuggestions, partsText, type ManualJobView } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, MAX_JOB_PARTS, jobName, jobSheetLabel, jobsBySheet, manualMo, partNameSuggestions, partRowsOf, partsText, type ManualJobView } from "@/lib/domain/manualJob";
 import { MATERIAL_PRESETS, SHEET_SIZE_PRESETS } from "@/lib/domain/material";
 import { ITEMS, ITEM_NAME } from "@/lib/domain/constants";
 import { machineWord } from "@/lib/domain/shifts";
@@ -98,44 +98,68 @@ function JobFields({ dept, job, doneQty = 0, machines, machineCode }: { dept: st
   );
 }
 
-/** One row of a sheet job's parts, as the form holds it. */
+/** One row of a sheet job's parts: its key, and what it opens with. The
+ *  fields themselves are uncontrolled — read off the form on Save — so a
+ *  tablet's keyboard types and deletes in them without the page re-drawing
+ *  under it at every key. */
 type PartRow = { key: number; bom: string; item: string; part: string; pcs: string };
 
 let partKey = 0;
 const newPart = (p?: Partial<Omit<PartRow, "key">>): PartRow => ({ key: ++partKey, bom: p?.bom ?? "", item: p?.item ?? "", part: p?.part ?? "", pcs: p?.pcs ?? "" });
 
+/** The form's part fields, one name per column — read back in row order. */
+const PART_FIELD = { bom: "partBom", item: "partItem", part: "partName", pcs: "partPcs" } as const;
+
+/** A sheet job's parts off the submitted form, as the JSON field the action reads. */
+function partsField(fd: FormData): string {
+  const col = (k: keyof typeof PART_FIELD) => fd.getAll(PART_FIELD[k]).map(String);
+  return JSON.stringify(partRowsOf({ bom: col("bom"), item: col("item"), part: col("part"), pcs: col("pcs") }));
+}
+
+/** No keyboard help where it fights the floor's codes and counts. */
+const PLAIN = { autoComplete: "off", autoCorrect: "off", spellCheck: false } as const;
+
 /** A sheet job's fields: the sheet (thickness, material, size), how many
  *  sheets, then the parts the sheets carry — a project (BOM), its component,
- *  the part in the planner's words and the pieces of it — and a name and
- *  note if wanted. The parts travel as one JSON field. */
+ *  the part in the planner's words and, if known, the pieces of it — and a
+ *  name and note if wanted. */
 function SheetJobFields({ dept, job, doneQty = 0, machines, machineCode, boms, partNames }: {
   dept: string; job?: ManualJobView; doneQty?: number; machines?: MachineDTO[]; machineCode?: string | null; boms: string[]; partNames: string[];
 }) {
   const word = machineWord(dept);
   const preset = machines?.find((m) => m.code === machineCode)?.id ?? machines?.[0]?.id ?? "";
   const [parts, setParts] = useState<PartRow[]>(() =>
-    job && job.parts.length > 0 ? job.parts.map((p) => newPart({ bom: p.bom, item: p.item, part: p.part, pcs: String(p.pcs) })) : [newPart()]);
-  const set = (key: number, patch: Partial<PartRow>) => setParts((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  const payload = JSON.stringify(parts.filter((r) => r.bom.trim() || r.part.trim() || r.pcs.trim()).map((r) => ({ bom: r.bom, item: r.item, part: r.part, pcs: Number(r.pcs) })));
+    job && job.parts.length > 0 ? job.parts.map((p) => newPart({ bom: p.bom, item: p.item, part: p.part, pcs: p.pcs === null ? "" : String(p.pcs) })) : [newPart()]);
+  // a new row takes the last row's project and component, as they are typed now
+  const addPart = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const form = e.currentTarget.form;
+    const last = (name: string) => {
+      const all = form ? [...form.querySelectorAll<HTMLInputElement | HTMLSelectElement>(`[name="${name}"]`)] : [];
+      return all[all.length - 1]?.value ?? "";
+    };
+    const bom = last(PART_FIELD.bom);
+    const item = last(PART_FIELD.item);
+    setParts((rows) => [...rows, newPart({ bom, item })]);
+  };
   const num = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v));
   return (
     <>
       <div className="sm:col-span-2 text-[11px] font-bold uppercase tracking-wide text-muted">The sheets</div>
       <div className="sm:col-span-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <label><span className={LABEL}>Thickness (mm) *</span>
-          <input name="thicknessMm" type="number" min={0.1} step="0.1" required className={`${FIELD} tabnum`} defaultValue={num(job?.thicknessMm)} autoFocus />
+          <input name="thicknessMm" type="text" inputMode="decimal" required className={`${FIELD} tabnum`} defaultValue={num(job?.thicknessMm)} autoFocus {...PLAIN} />
         </label>
         <label><span className={LABEL}>Material *</span>
-          <input name="material" list="manual-materials" required className={FIELD} defaultValue={job?.material} placeholder="Steel, GI…" />
+          <input name="material" list="manual-materials" required className={FIELD} defaultValue={job?.material} placeholder="Steel, GI…" {...PLAIN} />
           <datalist id="manual-materials">{MATERIAL_PRESETS.map((m) => <option key={m} value={m} />)}</datalist>
         </label>
         <label><span className={LABEL}>Sheet size</span>
-          <input name="sheetSize" list="manual-sizes" className={FIELD} defaultValue={job?.sheetSize} placeholder="1250*2500" />
+          <input name="sheetSize" list="manual-sizes" className={FIELD} defaultValue={job?.sheetSize} placeholder="1250*2500" {...PLAIN} />
           <datalist id="manual-sizes">{SHEET_SIZE_PRESETS.map((m) => <option key={m} value={m} />)}</datalist>
         </label>
         <label><span className={LABEL}>Sheets *</span>
           {/* a job copied from one typed in pieces brings its sheet, not its count */}
-          <input name="qty" type="number" min={Math.max(1, doneQty)} step={1} required className={`${FIELD} tabnum`} defaultValue={job?.bySheet ? job.qty : undefined} />
+          <input name="qty" type="text" inputMode="numeric" pattern="[0-9]*" required className={`${FIELD} tabnum`} defaultValue={job?.bySheet ? job.qty : undefined} {...PLAIN} />
           {doneQty > 0 && <span className="block text-[11px] text-muted mt-0.5">{doneQty} cut already — not fewer</span>}
         </label>
       </div>
@@ -144,41 +168,31 @@ function SheetJobFields({ dept, job, doneQty = 0, machines, machineCode, boms, p
         <span className="text-[11px] font-bold uppercase tracking-wide text-muted">On the sheets — every project&apos;s part</span>
         <span className="text-[11px] text-muted">{parts.length}/{MAX_JOB_PARTS}</span>
       </div>
-      <div className="sm:col-span-2 overflow-x-auto">
-        <table className="w-full text-sm border-collapse min-w-[34rem]">
-          <thead>
-            <tr className="text-left text-xs text-muted">
-              <th className="py-1 pe-2 font-semibold">Project (BOM)</th>
-              <th className="py-1 pe-2 font-semibold">Component</th>
-              <th className="py-1 pe-2 font-semibold">Part *</th>
-              <th className="py-1 pe-2 font-semibold">Pieces *</th>
-              <th className="py-1" />
-            </tr>
-          </thead>
-          <tbody>
-            {parts.map((r) => (
-              <tr key={r.key}>
-                <td className="py-0.5 pe-2"><input list="job-boms" value={r.bom} onChange={(e) => set(r.key, { bom: e.target.value })} maxLength={60} className={FIELD} placeholder="BOM — empty if none" aria-label="Project (BOM)" /></td>
-                <td className="py-0.5 pe-2">
-                  <select value={r.item} onChange={(e) => set(r.key, { item: e.target.value })} className={FIELD} aria-label="Component">
-                    <option value="">—</option>
-                    {ITEMS.map((it) => <option key={it} value={it}>{it} · {ITEM_NAME[it]}</option>)}
-                  </select>
-                </td>
-                <td className="py-0.5 pe-2"><input list="job-parts" value={r.part} onChange={(e) => set(r.key, { part: e.target.value })} maxLength={60} className={FIELD} placeholder="Bottom, Side wall…" aria-label="Part" /></td>
-                <td className="py-0.5 pe-2 w-24"><input type="number" min={1} step={1} value={r.pcs} onChange={(e) => set(r.key, { pcs: e.target.value })} className={`${FIELD} tabnum`} aria-label="Pieces" /></td>
-                <td className="py-0.5 text-right">
-                  <button type="button" className="btn btn-sm btn-ghost text-bad-fg px-1.5" title="Remove this part" disabled={parts.length === 1} onClick={() => setParts((rows) => rows.filter((x) => x.key !== r.key))}>✕</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="sm:col-span-2">
+        {/* one grid row a part: four fields across on a wide screen, two by
+            two on a phone or a tablet held upright — never a sideways scroll */}
+        <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)_6rem_2.25rem] gap-2 pb-1 text-xs font-semibold text-muted">
+          <span>Project (BOM)</span><span>Component</span><span>Part *</span><span>Pieces</span><span />
+        </div>
+        <div className="space-y-2 sm:space-y-1">
+          {parts.map((r) => (
+            <div key={r.key} className="grid grid-cols-2 gap-2 rounded-lg border p-2 sm:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)_6rem_2.25rem] sm:border-0 sm:p-0">
+              <input name={PART_FIELD.bom} list="job-boms" defaultValue={r.bom} maxLength={60} className={FIELD} placeholder="BOM (if any)" aria-label="Project (BOM)" autoCapitalize="characters" {...PLAIN} />
+              <select name={PART_FIELD.item} defaultValue={r.item} className={FIELD} aria-label="Component">
+                <option value="">—</option>
+                {ITEMS.map((it) => <option key={it} value={it}>{it} · {ITEM_NAME[it]}</option>)}
+              </select>
+              <input name={PART_FIELD.part} list="job-parts" defaultValue={r.part} maxLength={60} className={FIELD} placeholder="Part * — Bottom…" aria-label="Part" {...PLAIN} />
+              <div className="flex items-center gap-1 sm:contents">
+                <input name={PART_FIELD.pcs} type="text" inputMode="numeric" pattern="[0-9]*" defaultValue={r.pcs} className={`${FIELD} tabnum`} placeholder="Pieces" aria-label="Pieces" {...PLAIN} />
+                <button type="button" className="btn btn-sm btn-ghost text-bad-fg px-1.5 shrink-0" title="Remove this part" aria-label="Remove this part" disabled={parts.length === 1} onClick={() => setParts((rows) => rows.filter((x) => x.key !== r.key))}>✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
         <datalist id="job-boms">{boms.map((b) => <option key={b} value={b} />)}</datalist>
         <datalist id="job-parts">{partNames.map((n) => <option key={n} value={n} />)}</datalist>
-        <input type="hidden" name="parts" value={payload} />
-        <button type="button" className="btn btn-sm btn-secondary mt-1" disabled={parts.length >= MAX_JOB_PARTS}
-          onClick={() => setParts((rows) => [...rows, newPart({ bom: rows[rows.length - 1]?.bom ?? "", item: rows[rows.length - 1]?.item ?? "" })])}>
+        <button type="button" className="btn btn-sm btn-secondary mt-2" disabled={parts.length >= MAX_JOB_PARTS} onClick={addPart}>
           + Part
         </button>
       </div>
@@ -234,6 +248,7 @@ function JobForm({ dept, mode, job, machines, boms, partNames, onDone, onCancel,
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    if (jobsBySheet(dept)) fd.set("parts", partsField(fd));
     if (mode === "edit" && job) {
       fd.set("id", String(job.id));
       a.run(updateManualJob, fd, onDone);
