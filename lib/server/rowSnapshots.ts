@@ -482,7 +482,7 @@ export interface ManualJobSnapshot {
   qty: number;
   doneQty: number;
   bySheet: boolean;
-  parts: { id: number; bom: string; item: string; part: string; pcs: number }[];
+  parts: { id: number; bom: string; item: string; part: string; pcs: number | null }[];
   material: string;
   thicknessMm: number | null;
   sheetSize: string;

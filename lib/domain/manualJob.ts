@@ -36,8 +36,8 @@ export interface ManualJobPartView {
   item: string;
   /** The part, in the planner's words — Bottom, Side wall, Skirt base … */
   part: string;
-  /** Pieces of it the job's sheets carry. */
-  pcs: number;
+  /** Pieces of it the job's sheets carry; null when the count was not given. */
+  pcs: number | null;
 }
 
 export interface ManualJobView {
@@ -82,9 +82,10 @@ export function jobName(j: Pick<ManualJobView, "title" | "bySheet" | "thicknessM
   return t || jobSheetLabel(j);
 }
 
-/** "A123 TN Bottom ×4 · B456 TN Side wall ×8" — a sheet job's parts in one line. */
+/** "A123 TN Bottom ×4 · B456 TN Side wall" — a sheet job's parts in one
+ *  line, a part's count where it was given. */
 export function partsText(parts: readonly Pick<ManualJobPartView, "bom" | "item" | "part" | "pcs">[]): string {
-  return parts.map((p) => `${[p.bom, p.item, p.part].filter((x) => x.trim()).join(" ")} ×${p.pcs}`).join(" · ");
+  return parts.map((p) => `${[p.bom, p.item, p.part].filter((x) => x.trim()).join(" ")}${p.pcs !== null ? ` ×${p.pcs}` : ""}`).join(" · ");
 }
 
 /** What the board writes beside it: a sheet job's sheet and its parts; any
@@ -128,14 +129,32 @@ export function editedJobQty(doneQty: number, qty: number, bySheet = false): Job
   return { ok: true, finished: qty === doneQty };
 }
 
+/** A sheet job's part rows as the form holds them — one list per column, in
+ *  row order — back as rows; a row left wholly empty is no part. The pieces
+ *  stay as typed ("" = not given) for readJobParts to check. */
+export function partRowsOf(cols: { bom: readonly string[]; item: readonly string[]; part: readonly string[]; pcs: readonly string[] }): { bom: string; item: string; part: string; pcs: string | null }[] {
+  const n = Math.max(cols.bom.length, cols.item.length, cols.part.length, cols.pcs.length);
+  const rows: { bom: string; item: string; part: string; pcs: string | null }[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const bom = (cols.bom[i] ?? "").trim();
+    const item = (cols.item[i] ?? "").trim();
+    const part = (cols.part[i] ?? "").trim();
+    const pcs = (cols.pcs[i] ?? "").trim();
+    if (!bom && !part && !pcs) continue;
+    rows.push({ bom, item, part, pcs: pcs || null });
+  }
+  return rows;
+}
+
 export type JobPartsRead = { ok: true; parts: Omit<ManualJobPartView, "id">[] } | { ok: false; error: string };
 
 const PART_ITEMS: readonly string[] = ITEMS;
 
 /** A sheet job's parts as the form (or the assistant) sends them, checked:
- *  at least one, each with the part named and whole pieces above 0, its
- *  component one the plan knows (or none), the same part of the same project
- *  once. Whether a BOM is a real project is the server's to check. */
+ *  at least one, each with the part named, its pieces — when given — whole
+ *  and above 0 (blank or null = not given), its component one the plan knows
+ *  (or none), the same part of the same project once. Whether a BOM is a
+ *  real project is the server's to check. */
 export function readJobParts(raw: unknown): JobPartsRead {
   if (!Array.isArray(raw) || raw.length === 0) return { ok: false, error: "Add the parts the sheets carry — at least one." };
   if (raw.length > MAX_JOB_PARTS) return { ok: false, error: `At most ${MAX_JOB_PARTS} parts on one job.` };
@@ -146,11 +165,12 @@ export function readJobParts(raw: unknown): JobPartsRead {
     const bom = String(r.bom ?? "").trim().slice(0, 60);
     const item = String(r.item ?? "").trim().toUpperCase().slice(0, 10);
     const part = String(r.part ?? "").trim().replace(/\s+/g, " ").slice(0, 60);
-    const pcs = Number(r.pcs);
+    const rawPcs = r.pcs === null || r.pcs === undefined ? "" : String(r.pcs).trim();
+    const pcs = rawPcs === "" ? null : Number(rawPcs);
     const what = [bom, item, part].filter(Boolean).join(" ") || "A part";
     if (!part) return { ok: false, error: `${what}: name the part (Bottom, Side wall …).` };
     if (item && !PART_ITEMS.includes(item)) return { ok: false, error: `${what}: the component must be one of ${ITEMS.join(", ")} — or left empty.` };
-    if (!Number.isInteger(pcs) || pcs <= 0 || pcs > 100_000) return { ok: false, error: `${what}: pieces must be a whole number above 0.` };
+    if (pcs !== null && (!Number.isInteger(pcs) || pcs <= 0 || pcs > 100_000)) return { ok: false, error: `${what}: pieces must be a whole number above 0 — or left empty.` };
     const k = `${bom}|${item}|${part}`.toUpperCase();
     if (seen.has(k)) return { ok: false, error: `${what} is on the job twice — put its pieces on one row.` };
     seen.add(k);

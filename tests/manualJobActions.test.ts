@@ -124,6 +124,12 @@ describe("sheet jobs on the fabrication board", () => {
     expect(h.tx.worklistMachine.create).toHaveBeenCalledWith({ data: expect.objectContaining({ ...SHEET_KEY, mo: "MANUAL-31", machineId: 1, rank: 3, running: false, qty: null }) });
   });
 
+  it("keeps a part typed without its count, its pieces not given", async () => {
+    const r = await createManualJob(sheetForm({ dept: "Cut", parts: JSON.stringify([{ bom: "B1", item: "TN", part: "Bottom", pcs: null }]) }));
+    expect(r).toEqual({ ok: true, id: 31 });
+    expect(h.tx.manualJob.create.mock.calls[0][0].data.parts).toEqual({ create: [{ bom: "B1", item: "TN", part: "Bottom", pcs: null }] });
+  });
+
   it("refuses a sheet job without its thickness, material or parts, or with a BOM the plan does not carry — writing nothing", async () => {
     expect(await createManualJob(sheetForm({ dept: "Cut", thicknessMm: "" }))).toEqual({ ok: false, error: expect.stringContaining("Thickness") });
     expect(await createManualJob(sheetForm({ dept: "Cut", material: "" }))).toEqual({ ok: false, error: expect.stringContaining("material") });

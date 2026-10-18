@@ -118,6 +118,11 @@ describe("get_jobs", () => {
 });
 
 describe("create_manual_job — a sheet job on Cut", () => {
+  it("takes a part without its count — the count is the person's to give", async () => {
+    const i = parsed(createManualJobTool, { ...CUT_RAW, parts: [{ bom: "B1", item: "TN", part: "Bottom" }] });
+    expect(await createManualJobTool.describe(i, ctx)).toMatchObject({ changes: [{ after: "10 sheet(s) — B1 TN Bottom · B4-10" }] });
+  });
+
   it("needs the sheet's thickness and material and at least one part", () => {
     expect(checkToolInput(createManualJobTool, { ...CUT_RAW, thicknessMm: undefined })).toMatchObject({ ok: false, error: expect.stringContaining("thickness") });
     expect(checkToolInput(createManualJobTool, { ...CUT_RAW, material: " " })).toMatchObject({ ok: false, error: expect.stringContaining("material") });

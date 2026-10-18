@@ -137,9 +137,9 @@ const PART_SCHEMA = {
     bom: { type: "string", maxLength: 60, description: "The project (BOM) the part belongs to, as the plan writes it; \"\" for work outside the plan." },
     item: { type: "string", enum: ["", ...ITEMS], description: "Its component (CF, TC, TN, CB, AR, MB) or \"\"." },
     part: { type: "string", minLength: 1, maxLength: 60, description: "The part in the planner's words — Bottom, Side wall, Skirt base …" },
-    pcs: { type: "integer", minimum: 1, maximum: 100000, description: "Pieces of it the job's sheets carry." },
+    pcs: { type: "integer", minimum: 1, maximum: 100000, description: "Pieces of it the job's sheets carry — leave out when the person did not say." },
   },
-  required: ["bom", "item", "part", "pcs"],
+  required: ["bom", "item", "part"],
   additionalProperties: false,
 } as const;
 
@@ -147,7 +147,7 @@ interface PartInput {
   bom: string;
   item: string;
   part: string;
-  pcs: number;
+  pcs?: number | null;
 }
 
 interface CreateJobInput {
@@ -170,7 +170,7 @@ export const createManualJobTool: WriteTool<CreateJobInput> = {
   name: "create_manual_job",
   title: "Add a job",
   description:
-    `Type in a job as the machine screen's ✋ Add job does, and put it at the back of a machine's queue (an idle machine starts on it) — or only save it to the list when no machine is given. On Cut (Fabrication) it is a SHEET JOB: qty is the SHEETS, thicknessMm and material are required (sheetSize when known), and parts lists every project's part the sheets carry (at most ${MAX_JOB_PARTS}); title is optional. One thickness, material and size per job — another sheet is another job. Its sheets are counted on the job itself, never in the plan's ledger (the cut pieces are recorded on the weekly plan with record_output). On the other boards it is a job from outside the plan (a bracket, a repair …) in pieces, with a title. Undo deletes it.`,
+    `Type in a job as the machine screen's ✋ Add job does, and put it at the back of a machine's queue (an idle machine starts on it) — or only save it to the list when no machine is given. On Cut (Fabrication) it is a SHEET JOB: qty is the SHEETS, thicknessMm and material are required (sheetSize when known), and parts lists every project's part the sheets carry (at most ${MAX_JOB_PARTS}; a part's pieces only when the person gives them — never guess a count); title is optional. One thickness, material and size per job — another sheet is another job. Its sheets are counted on the job itself, never in the plan's ledger (the cut pieces are recorded on the weekly plan with record_output). On the other boards it is a job from outside the plan (a bracket, a repair …) in pieces, with a title. Undo deletes it.`,
   area: "machines",
   risk: "low",
   schema: {
@@ -386,7 +386,7 @@ function jobAfter(job: ManualJobSnapshot, i: UpdateJobInput) {
   return {
     title: i.title ?? job.title, qty: i.qty ?? job.qty, bom: i.bom ?? job.bom, item: i.item ?? job.item, material: i.material ?? job.material,
     thicknessMm: i.thicknessMm ?? job.thicknessMm, sheetSize: i.sheetSize ?? job.sheetSize, sheets: i.sheets ?? job.sheets, note: i.note ?? job.note,
-    parts: i.parts ?? job.parts.map((p) => ({ bom: p.bom, item: p.item, part: p.part, pcs: p.pcs })),
+    parts: (i.parts ?? job.parts).map((p) => ({ bom: p.bom, item: p.item, part: p.part, pcs: p.pcs ?? null })),
   };
 }
 

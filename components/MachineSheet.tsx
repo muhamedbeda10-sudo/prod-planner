@@ -67,7 +67,7 @@ function Rows({ lines, from = 1, required, material, dept, jobs, runsOnly }: { l
               {job.parts.map((p) => (
                 <tr key={p.id} className="border-t border-border/50">
                   <td className="px-2 py-1 ps-4" colSpan={runsOnly ? 3 : 5}>
-                    <b className="tabnum">{p.bom || "—"}</b> <span className="font-semibold">{p.item}</span> {p.part} <b className="tabnum">×{p.pcs}</b>
+                    <b className="tabnum">{p.bom || "—"}</b> <span className="font-semibold">{p.item}</span> {p.part} {p.pcs !== null && <b className="tabnum">×{p.pcs}</b>}
                   </td>
                 </tr>
               ))}

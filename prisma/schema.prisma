@@ -1310,7 +1310,8 @@ model ManualJob {
 
 // One project's part on a sheet job's sheets: the project (BOM), its
 // component (TN, TC, CF …), the part in the planner's words (Bottom, Side
-// wall, Skirt base …) and how many pieces the job's sheets carry of it.
+// wall, Skirt base …) and how many pieces the job's sheets carry of it —
+// null when the planner did not give the count.
 model ManualJobPart {
   id    Int       @id @default(autoincrement())
   jobId Int
@@ -1318,7 +1319,7 @@ model ManualJobPart {
   bom   String    @default("")
   item  String    @default("")
   part  String
-  pcs   Int
+  pcs   Int?
 
   @@index([jobId])
   @@index([bom])

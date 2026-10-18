@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-18-sheet-job-form-tablet",
+    dateISO: "2026-10-18",
+    title: "Add job: pieces are optional, and the fields type and delete properly on a tablet",
+    where: "Worklist → Fabrication → ✋ Add job",
+    body: "A part on a sheet job no longer needs its count of pieces — leave Pieces empty when you don't have it; the job shows the part without a count. The job form's fields now type and delete properly on a tablet's keyboard (the numbers open the number pad), and each part is one row that fits the screen — two by two on a phone — with no sideways scrolling.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-18-fabrication-sheet-jobs",
     dateISO: "2026-10-18",
     title: "Fabrication works in sheet jobs — closed on the machines by sheets, the weekly plan underneath",
