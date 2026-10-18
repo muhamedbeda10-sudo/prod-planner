@@ -7,7 +7,7 @@ import { ITEMS } from "@/lib/domain/constants";
 
 // The planner's own time per piece, per item, per machine. Where a figure is
 // set it outranks the standard-times estimate: the machine's queue is priced
-// with it and the ⚡ planner schedules the work with it. Clearing a cell puts
+// with it and the machine plan schedules the work with it. Clearing a cell puts
 // that machine back on the estimate.
 
 export interface TimesActionResult {

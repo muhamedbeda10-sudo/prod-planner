@@ -1,4 +1,6 @@
 import { round1 } from "@/lib/domain/shifts";
+import { LV_ITEM } from "@/lib/domain/lv";
+import { MANUAL_BOM, MANUAL_ITEM } from "@/lib/domain/manualJob";
 
 // The machine load board — pure. The worklist's open lines, each on the
 // machine the planner put it on, in the order he ranked them, priced in
@@ -174,11 +176,7 @@ export function buildMachineBoard(
   today: { downtimeH?: Record<number, number>; crewH?: Record<number, number>; crew?: Record<number, string[]> } = {},
   /** machine id → item → hours ONE piece costs THAT machine. The planner's own
    *  figure: where it is set it outranks the estimate for that machine's queue. */
-  rates: Record<number, Record<string, number>> = {},
-  /** Pieces of a line's sheet already on a machine inside a NEST RUN (sheets
-   *  shared by several jobs' parts) — that sheet of the line is covered for
-   *  them, though the run is its own line on the board. */
-  cover: readonly { key: string; sheet: string; pcs: number }[] = []
+  rates: Record<number, Record<string, number>> = {}
 ): MachineBoard {
   const open = new Map<string, BoardLine>();
   // a line with nothing left is off the board however it was assigned;
@@ -227,14 +225,6 @@ export function buildMachineBoard(
   const ordered = [...assignments].sort((x, y) => Number(!!y.running) - Number(!!x.running) || x.rank - y.rank);
   const explicit = ordered.filter((a) => a.qty !== null && a.qty !== undefined);
   const open_ = ordered.filter((a) => a.qty === null || a.qty === undefined);
-  for (const c of cover) {
-    const l = open.get(c.key);
-    const step = l?.route[0]?.center;
-    if (!l || !step || !c.sheet || !(c.pcs > 0)) continue;
-    const pool = `${c.key}#${step}`;
-    givenSheet.set(`${pool}#${c.sheet}`, (givenSheet.get(`${pool}#${c.sheet}`) ?? 0) + c.pcs);
-    (sheetsAt.get(pool) ?? sheetsAt.set(pool, new Set()).get(pool)!).add(c.sheet);
-  }
   const maxSheet = (pool: string) => Math.max(0, ...[...(sheetsAt.get(pool) ?? [])].map((sh) => givenSheet.get(`${pool}#${sh}`) ?? 0));
   const pending: { a: Assignment; pcs: number; step: string }[] = [];
   for (const a of [...explicit, ...open_]) {
@@ -371,6 +361,19 @@ export function loadTone(load: number | null): "ok" | "warn" | "bad" | null {
 }
 
 export const lineKey = (bom: string, mo: string, item: string) => `${bom}|${mo}|${item}`;
+
+/** What a department's machines take. The fabrication machines carry SHEET
+ *  JOBS — sheets carrying the parts of several projects, typed on the board —
+ *  and the panels' punching on the shared punches; a transformer plan line
+ *  goes on them inside a job, never on its own. Every other bay takes its
+ *  worklist's lines as they are. */
+export function boardTakesLine(dept: string, bom: string, item: string): boolean {
+  if (dept !== "Cut") return true;
+  return (bom === MANUAL_BOM && item === MANUAL_ITEM) || item === LV_ITEM;
+}
+
+/** Why the fabrication machines refuse a plan line of its own. */
+export const BOARD_LINE_REFUSED = "The fabrication machines carry sheet jobs — put this work on a ✋ job (its sheets and the parts on them) and queue the job.";
 
 /** A waiting row's own key: its line, the centre the pieces still need, and
  *  its sheet — an item spread by sheet waits as one row PER SHEET at the

@@ -19,8 +19,6 @@ import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
 import { loadGroupMembers, groupTotal, spreadGroupChange } from "@/lib/server/groupRecord";
 import { LV_ITEM, LV_STAGES, lvStageAt } from "@/lib/domain/lv";
-import { consumeSheetDone } from "@/lib/domain/machineMaterial";
-import { runSheet } from "@/lib/domain/nestRun";
 import { emitEvent } from "@/lib/server/events";
 import { outputSentence } from "@/lib/domain/appEvents";
 
@@ -146,27 +144,6 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
       });
       // a painting record is a closing — it gets its row on the ODOO tab
       await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
-      // the item cut and counted: the sheets' pieces already cut for it on
-      // the machines are accounted for now, so they come off those figures
-      if (dept === "Cut" && qty > 0) {
-        const [cutSheets, runParts] = await Promise.all([
-          tx.worklistMachine.findMany({ where: { dept: "Cut", bom, mo, item, sheet: { not: "" }, sheetDone: { gt: 0 } }, orderBy: { id: "asc" } }),
-          tx.nestRunPart.findMany({ where: { bom, mo, item }, orderBy: { id: "asc" }, include: { run: { select: { thicknessMm: true, material: true, sheetSize: true } } } }),
-        ]);
-        // a machine's sheet figures and the nest runs' cut parts, sheet by sheet
-        const rows = [
-          ...cutSheets.map((r) => ({ id: `w${r.id}`, sheet: r.sheet, sheetDone: r.sheetDone })),
-          ...runParts.filter((p) => p.donePcs > p.consumedPcs).map((p) => ({ id: `p${p.id}`, sheet: p.replaces || runSheet(p.run), sheetDone: p.donePcs - p.consumedPcs })),
-        ];
-        for (const [id, left] of consumeSheetDone(rows, qty)) {
-          const n = Number(id.slice(1));
-          if (id.startsWith("w")) await tx.worklistMachine.update({ where: { id: n }, data: { sheetDone: left } });
-          else {
-            const p = runParts.find((x) => x.id === n)!;
-            await tx.nestRunPart.update({ where: { id: n }, data: { consumedPcs: p.donePcs - left } });
-          }
-        }
-      }
       if (!mintsTanks) return { ledgerId: ledger.id, serials: [] as string[] };
       const minted = await mintTankSerials(tx, {
         bom, mo, planNo, count: qty, date, ledgerId: ledger.id,
@@ -364,8 +341,10 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     if (groupWelder.error) return { ok: false, error: groupWelder.error };
 
     // what the weekly cell says it was recorded against — for the ledger note
-    const dayISO = source === "weekly" ? String(formData.get("dayISO") ?? "").trim() : "";
-    const planLabel = source === "weekly" ? String(formData.get("planLabel") ?? "").trim() : "";
+    // (the weekly sheet on the Plan Tracker, or under the fabrication machines)
+    const dayISO = source !== "tracker" ? String(formData.get("dayISO") ?? "").trim().slice(0, 10) : "";
+    const planLabel = source !== "tracker" ? String(formData.get("planLabel") ?? "").trim().slice(0, 20) : "";
+    const fromWeekly = source === "weekly" || !!dayISO;
 
     // Per-MO headroom and the fill order are ONE rule, shared with the
     // tracker's own preview and the assistant's — see lib/server/groupRecord
@@ -399,7 +378,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
             source: source === "tracker" ? "tracker" : source === "weekly" ? "weekly" : "worklist",
             note:
               q < 0 ? `group correction: ${bom} ${item} total ${current} → ${newTotal}`
-              : source === "weekly"
+              : fromWeekly
                 ? `recorded on the weekly plan${planLabel ? ` ${planLabel}` : ""}${dayISO ? ` · ${dayISO} delivery` : ""}${alloc.size > 1 ? ` · split over ${alloc.size} MOs` : ""}`
                 : alloc.size > 1 ? `group record on ${bom}` : null,
             createdBy: by,

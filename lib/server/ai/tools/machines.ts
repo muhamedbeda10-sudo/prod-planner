@@ -13,16 +13,19 @@ import { createMachineRule, setMachineRuleOn } from "@/app/admin/machines/ruleAc
 import { optimizePlan } from "@/lib/domain/optimizePlan";
 import { checkRule, machineVerdict, ruleSentence, RULE_EFFECTS, RULE_ITEMS, type MachineRuleLike } from "@/lib/domain/machineRules";
 import { machineLinePermKey, mayScheduleLine, type BayAccess } from "@/lib/domain/permissions";
-import { lineKey } from "@/lib/domain/machineBoard";
+import { BOARD_LINE_REFUSED, boardTakesLine, lineKey } from "@/lib/domain/machineBoard";
+import { MANUAL_BOM, manualIdOf } from "@/lib/domain/manualJob";
 import { cell, type AiChange } from "@/lib/domain/aiActions";
 import type { MachineActionResult } from "@/app/worklist/machineActions";
 import { formOf, type ReadTool, type ToolCtx, type WriteTool } from "./types";
 
 // The machines for the assistant: the board as the planner sees it, a dry run
-// of ⚡ Plan, and every move the board itself makes — put a line on a machine,
-// take it off, move it in the queue, start or pause it, plan the whole
-// department, empty a machine, reset — plus the machines' rules that ⚡ Plan
-// follows. Every queue change runs the board's own action as the person, under
+// of the machine plan, and every move the board itself makes — put a line on
+// a machine, take it off, move it in the queue, start or pause it, plan the
+// whole department, empty a machine, reset — plus the machines' rules the
+// plan follows. The screens have no plan button: planning a department is
+// the assistant's alone. The fabrication machines carry SHEET JOBS (and the
+// panels' punching): the assistant spreads those jobs over them in sheets. Every queue change runs the board's own action as the person, under
 // the board's own rule: the machines are shared, so a line is scheduled with
 // ITS key (a panel's the LV stage's, a transformer part's the bay's), and a
 // write over the whole bay acts on the lines the person's keys cover, leaving
@@ -84,7 +87,7 @@ export const getMachineBoardTool: ReadTool<DeptInput> = {
   title: "Reading the machine board",
   loaded: true,
   description:
-    "The department's machine board as the planner sees it today: each machine (code, centre, hours today, load in days, the day its queue clears, its crew) with what runs now and what waits in order (pieces, standard hours, the sheet, the due day), each machine's rules, and the lines NOT on any machine yet, most urgent first, with the centre they need and their sheets. Read it before moving lines or planning.",
+    "The department's machine board as the planner sees it today: each machine (code, centre, hours today, load in days, the day its queue clears, its crew) with what runs now and what waits in order (pieces, standard hours, the sheet, the due day), each machine's rules, and the lines NOT on any machine yet, most urgent first, with the centre they need and their sheets. On Cut (Fabrication) the machines carry sheet jobs (line MANUAL|MANUAL-<id>|JOB, pcs = its SHEETS, no standard hours) and the panels' punching — get_jobs gives the jobs' sheets and parts. Read it before moving lines or planning.",
   schema: { type: "object", properties: { dept: DEPT }, required: ["dept"], additionalProperties: false },
   status: (i) => `Reading the ${i.dept} machine board`,
   async run(i, ctx) {
@@ -127,7 +130,7 @@ export const previewMachinePlanTool: ReadTool<DeptInput> = {
   name: "preview_machine_plan",
   title: "Working out a plan for the machines",
   description:
-    "A dry run of ⚡ Plan for a department — changes nothing. It plans every open line onto the machines the way the button would: by due day (flagged orders first among equals, then the longest job), each on the machine that can start it soonest, split over parallel machines when that clears it sooner, along the route, keeping what runs now, and following the machines' rules. Returns each machine's planned queue, the lines that would be late and by how much, and the lines no machine's rules allow (with why).",
+    "A dry run of the machine plan for a department (only you plan a department — the screens have no plan button) — changes nothing. It plans every open line onto the machines: by due day (flagged orders first among equals, then the longest job), each on the machine that can start it soonest, split over parallel machines when that clears it sooner, along the route, keeping what runs now, and following the machines' rules. Returns each machine's planned queue, the lines that would be late and by how much, and the lines no machine's rules allow (with why).",
   schema: { type: "object", properties: { dept: DEPT }, required: ["dept"], additionalProperties: false },
   status: (i) => `Working out a plan for ${i.dept}`,
   async run(i, ctx) {
@@ -179,10 +182,9 @@ interface LineInput {
 
 const LINE_FIELDS = {
   dept: DEPT,
-  bom: { type: "string", minLength: 1, maxLength: 80, description: "The line's BOM (a manual job's is MANUAL, a nest run's RUN)." },
-  mo: { type: "string", maxLength: 80, description: "The line's MO (\"\" for a BOM-level line)." },
-  item: { type: "string", minLength: 1, maxLength: 20, description: "The line's item (CF, TC, TN, CB, AR, MB, PNL; JOB / SHEET for manual jobs and nest runs)." },
-  sheet: { type: "string", maxLength: 120, description: "Only for an item spread over machines by sheet: \"<thickness>|<material>|<size>\" as the board shows it." },
+  bom: { type: "string", minLength: 1, maxLength: 80, description: "The line's BOM (a job's is MANUAL)." },
+  mo: { type: "string", maxLength: 80, description: "The line's MO (\"\" for a BOM-level line; a job's is MANUAL-<id>)." },
+  item: { type: "string", minLength: 1, maxLength: 20, description: "The line's item (CF, TC, TN, CB, AR, MB, PNL; JOB for a job)." },
   machine: { type: "string", minLength: 1, maxLength: 40, description: "The machine's code (e.g. B4-10)." },
 } as const;
 
@@ -198,7 +200,7 @@ const parseLine = (r: Record<string, unknown>) => ({
 type EditCheck = { ok: false; error: string } | { ok: true; machine: Machine };
 type BayCheck = { ok: false; error: string } | { ok: true; access: BayAccess };
 
-/** A write over the bay — ⚡ Plan, reset, empty a machine, an undo: the board
+/** A write over the bay — the machine plan, reset, empty a machine, an undo: the board
  *  in use, and which lines the person may schedule on its machines. */
 async function bayCheck(dept: string, ctx: ToolCtx): Promise<BayCheck> {
   if (!(await isMachinePlanningOn())) return { ok: false, error: OFF };
@@ -219,9 +221,31 @@ async function lineEditCheck(i: { dept: string; machine: string; item: string },
   return { ok: true, machine: m };
 }
 
-/** What ⚡ Plan plans for the person: the lines their keys cover — or, for a
+/** What the machine plan plans for the person: the lines their keys cover — or, for a
  *  look at the plan by someone who schedules neither, every line. */
 const planFor = (access: BayAccess) => (access.tr || access.lv ? (item: string) => mayScheduleLine(access, item) : () => true);
+
+/** Why a line cannot go on the department's machines, or null. A job must be
+ *  one of the board's own, still open; a fabrication machine takes no
+ *  transformer plan line of its own (only inside a sheet job); any other line
+ *  must be one the department still owes. */
+async function lineProblem(dept: string, l: { bom: string; mo: string; item: string }, open: () => Promise<ReadonlySet<string>>): Promise<string | null> {
+  if (!boardTakesLine(dept, l.bom, l.item)) return BOARD_LINE_REFUSED;
+  if (l.bom === MANUAL_BOM) {
+    const id = manualIdOf(l.mo);
+    const job = id === null ? null : await prisma.manualJob.findUnique({ where: { id }, select: { dept: true, doneAt: true } });
+    if (!job || job.dept !== dept) return `${l.mo || "That job"} is no job of ${dept}'s board — read get_jobs.`;
+    if (job.doneAt) return `Job #${id} is finished — reopen_manual_job opens it again.`;
+    return null;
+  }
+  return (await open()).has(lineKey(l.bom, l.mo, l.item)) ? null : `${lineName(l.bom, l.mo, l.item)} is not an open line of ${dept} — read get_machine_board for the lines it owes.`;
+}
+
+/** The department's open lines as keys, read once however often it is asked. */
+function openKeys(dept: BoardDept, todayISO: string): () => Promise<ReadonlySet<string>> {
+  let got: Promise<ReadonlySet<string>> | null = null;
+  return () => (got ??= getDeptBoardLines(dept, todayISO).then((ls) => new Set(ls.map((l) => lineKey(l.bom, l.mo, l.item)))));
+}
 
 async function codes(dept: string): Promise<Map<number, string>> {
   return new Map((await machinesOf(dept)).map((m) => [m.id, m.code]));
@@ -243,12 +267,12 @@ export const assignLineTool: WriteTool<AssignInput> = {
   name: "assign_line_to_machine",
   title: "Put a line on a machine",
   description:
-    "Put ONE worklist line on a machine, at the back of its queue. With qty only those pieces go there (the line is split, the rest stays where it is); without qty the machine takes the rest of the line. The line must be one the department still owes (see get_machine_board). For more than one line use assign_lines_to_machines — one change for all of them.",
+    "Put ONE line on a machine, at the back of its queue — a worklist line the department still owes (see get_machine_board), or a job (bom MANUAL, mo MANUAL-<id>, item JOB; see get_jobs). The fabrication (Cut) machines take jobs only — sheet jobs — and the panels' punching. With qty only that many go there — pieces, or a sheet job's SHEETS (the line is split, the rest stays where it is); without qty the machine takes the rest of it. For more than one line use assign_lines_to_machines — one change for all of them.",
   area: "machines",
   risk: "low",
   schema: {
     type: "object",
-    properties: { ...LINE_FIELDS, qty: { type: ["integer", "null"], minimum: 1, maximum: 100000, description: "Pieces for this machine; leave out for the rest of the line." } },
+    properties: { ...LINE_FIELDS, qty: { type: ["integer", "null"], minimum: 1, maximum: 100000, description: "Pieces — a sheet job's sheets — for this machine; leave out for the rest of it." } },
     required: ["dept", "bom", "mo", "item", "machine"],
     additionalProperties: false,
   },
@@ -257,15 +281,14 @@ export const assignLineTool: WriteTool<AssignInput> = {
     const c = await lineEditCheck(i, ctx);
     if (!c.ok) return { error: c.error };
     if (!c.machine.active) return { error: `${c.machine.code} is retired.` };
-    const key = lineKey(i.bom, i.mo, i.item);
-    const open = i.bom === "MANUAL" || i.bom === "RUN" || (await getDeptBoardLines(i.dept, ctx.todayISO)).some((l) => lineKey(l.bom, l.mo, l.item) === key);
-    if (!open) return { error: `${lineName(i.bom, i.mo, i.item)} is not an open line of ${i.dept} — read get_machine_board for the lines it owes.` };
+    const problem = await lineProblem(i.dept, i, openKeys(i.dept, ctx.todayISO));
+    if (problem) return { error: problem };
     const before = await readQueueSnapshot(i.dept);
     const codeOf = await codes(i.dept);
     const now = before.filter((r) => r.bom === i.bom && r.mo === i.mo && r.item === i.item);
     return {
       title: `${lineName(i.bom, i.mo, i.item)} → ${c.machine.code}`,
-      summary: `Put ${i.qty ? `${i.qty} pcs of ` : ""}${lineName(i.bom, i.mo, i.item)}${i.sheet ? ` (${i.sheet})` : ""} on ${c.machine.code}, at the back of its queue${i.qty ? "" : " — the rest of the line"}.`,
+      summary: `Put ${i.qty ? `${i.qty} ${i.bom === MANUAL_BOM && i.dept === "Cut" ? "sheet(s)" : "pcs"} of ` : ""}${lineName(i.bom, i.mo, i.item)}${i.sheet ? ` (${i.sheet})` : ""} on ${c.machine.code}, at the back of its queue${i.qty ? "" : " — the rest of the line"}.`,
       changes: [{ label: lineName(i.bom, i.mo, i.item), before: now.length ? queueOf(now, codeOf).join("; ") : "not on a machine", after: `${c.machine.code}${i.qty ? ` ×${i.qty}` : " (the rest)"}` }],
       snapshot: linesNow(before, [i]),
     };
@@ -295,7 +318,7 @@ export const assignLinesTool: WriteTool<ManyInput> = {
   name: "assign_lines_to_machines",
   title: "Put lines on machines",
   description:
-    "Put several worklist lines on the machines in one change — one card, one approval, one undo. Each goes at the back of its machine's queue, in the order given (an idle machine starts on the first line it is given). With qty only those pieces go on that machine (split a line over machines with one entry per machine); without qty the machine takes the rest of the line. Use it for any distribution of more than one line; assign_line_to_machine is for a single line.",
+    "Put several lines on the machines in one change — one card, one approval, one undo: worklist lines the department owes, or jobs (bom MANUAL, mo MANUAL-<id>, item JOB). On Cut (Fabrication) this is how the sheet jobs are distributed over the lasers and punches (read get_jobs first): the machines there take jobs only, and the panels' punching. Each goes at the back of its machine's queue, in the order given (an idle machine starts on the first line it is given). With qty only that many go on that machine — pieces, or a sheet job's SHEETS (split one over machines with one entry per machine); without qty the machine takes the rest of it. Use it for any distribution of more than one line; assign_line_to_machine is for a single line.",
   area: "machines",
   risk: (i) => (i.lines.length > 1 ? "high" : "low"),
   schema: {
@@ -312,7 +335,6 @@ export const assignLinesTool: WriteTool<ManyInput> = {
             bom: LINE_FIELDS.bom,
             mo: LINE_FIELDS.mo,
             item: LINE_FIELDS.item,
-            sheet: LINE_FIELDS.sheet,
             machine: LINE_FIELDS.machine,
             qty: { type: ["integer", "null"], minimum: 1, maximum: 100000, description: "Pieces for this machine; leave out for the rest of the line." },
           },
@@ -355,13 +377,14 @@ export const assignLinesTool: WriteTool<ManyInput> = {
       if (!m.active) return { error: `${m.code} is retired — bring it back in Tools → Machines first.` };
       machines.set(code, m);
     }
-    const open = new Set((await getDeptBoardLines(i.dept, ctx.todayISO)).map((l) => lineKey(l.bom, l.mo, l.item)));
+    const open = openKeys(i.dept, ctx.todayISO);
     for (const l of i.lines) {
       const key = machineLinePermKey(i.dept, l.item);
       if (key === null) return { error: `${lineLabel(l)}: no panel goes on ${i.dept}'s machines.` };
       if (!hasPerm(ctx.user, key)) return { error: `${lineLabel(l)}: ${NO_LINE_RIGHT}` };
-      if (l.bom !== "MANUAL" && l.bom !== "RUN" && !open.has(lineKey(l.bom, l.mo, l.item))) {
-        return { error: `${lineLabel(l)} is not an open line of ${i.dept} — read get_machine_board for the lines it owes.` };
+      const problem = await lineProblem(i.dept, l, open);
+      if (problem) {
+        return { error: `${lineLabel(l)}: ${problem}` };
       }
     }
     const before = await readQueueSnapshot(i.dept);
@@ -543,7 +566,7 @@ export const setLineRunningTool: WriteTool<RunningInput> = {
   kind: "write",
   name: "set_line_running",
   title: "Start or pause a line on a machine",
-  description: "Mark a line as running on its machine now (several can run at once — a nest of several orders) or put it back to waiting.",
+  description: "Mark a line or a job as running on its machine now (several can run at once) or put it back to waiting.",
   area: "machines",
   risk: "low",
   schema: {
@@ -581,9 +604,9 @@ export const setLineRunningTool: WriteTool<RunningInput> = {
 export const planMachinesTool: WriteTool<DeptInput> = {
   kind: "write",
   name: "plan_machines",
-  title: "Plan the machines (⚡)",
+  title: "Plan the machines",
   description:
-    "Run ⚡ Plan for a department: every waiting whole line the person schedules is taken off and their open lines are planned onto the machines again (what runs now stays, manual jobs and nest runs stay, and so does the other product line's work on shared machines), following the machines' rules. Look at preview_machine_plan first. The card lists each machine's new queue.",
+    "Plan a department's machines (only you do this — the screens have no plan button): every waiting whole line the person schedules is taken off and their open lines are planned onto the machines again (what runs now stays, jobs stay, and so does the other product line's work on shared machines), following the machines' rules. On Cut (Fabrication) it plans only the panels' punching — the sheet jobs are spread with assign_lines_to_machines. Look at preview_machine_plan first. The card lists each machine's new queue.",
   area: "machines",
   risk: "high",
   schema: { type: "object", properties: { dept: DEPT }, required: ["dept"], additionalProperties: false },
@@ -607,7 +630,7 @@ export const planMachinesTool: WriteTool<DeptInput> = {
       after: (planned.get(id) ?? []).join(", ") || "nothing new",
     }));
     return {
-      title: `⚡ Plan ${i.dept}: ${plan.linesPlaced} line(s) on ${plan.machinesUsed} machine(s)`,
+      title: `Plan ${i.dept}: ${plan.linesPlaced} line(s) on ${plan.machinesUsed} machine(s)`,
       summary: `Re-plan ${i.dept}: ${plan.linesPlaced} line(s) over ${plan.machinesUsed} machine(s), clearing in ${plan.spanDays} working day(s)${plan.late.length ? `; ${plan.late.length} line(s) would still be late (worst by ${plan.late[0].byDays} day(s))` : ""}${plan.skipped.length ? `; ${new Set(plan.skipped.map((s) => s.key)).size} line(s) left unplaced (no machine, or the rules allow none)` : ""}. What runs now stays.`,
       changes,
       snapshot: { queues: before, placements: plan.placements.map((p) => [p.key, p.machineId, p.pieces]) },
@@ -766,7 +789,7 @@ export const addMachineRuleTool: WriteTool<RuleInput> = {
   name: "add_machine_rule",
   title: "Add a rule to a machine",
   description:
-    "Write down how a machine is used, as the planner explains it, for ⚡ Plan to follow: only = the machine takes ONLY matching work (several only-rules: any of them), never = it never takes matching work, prefer = it goes first for matching work. Every field given must match: item, line (TR/LV), thickness range in mm (every sheet of the line inside it), material (as the MATERIAL tab names it), kVA range. Put the planner's own words in note. One rule per call.",
+    "Write down how a machine is used, as the planner explains it, for the machine plan to follow: only = the machine takes ONLY matching work (several only-rules: any of them), never = it never takes matching work, prefer = it goes first for matching work. Every field given must match: item, line (TR/LV), thickness range in mm (every sheet of the line inside it), material (as the MATERIAL tab names it), kVA range. Put the planner's own words in note. One rule per call.",
   area: "machines",
   risk: "low",
   schema: {
@@ -799,7 +822,7 @@ export const addMachineRuleTool: WriteTool<RuleInput> = {
     const existing = await prisma.machineRule.findMany({ where: { machineId: m.id, active: true } });
     return {
       title: ruleSentence(m.code, rule),
-      summary: `New rule: ${ruleSentence(m.code, rule)}${rule.note ? ` — "${rule.note}"` : ""}. ⚡ Plan follows it from the next plan.`,
+      summary: `New rule: ${ruleSentence(m.code, rule)}${rule.note ? ` — "${rule.note}"` : ""}. The machine plan follows it from the next plan.`,
       changes: [{ label: `${m.code} rules`, before: existing.length ? existing.map((r) => ruleSentence(m.code, r)).join("; ") : "none", after: `+ ${ruleSentence(m.code, rule)}` }],
       snapshot: { machineId: m.id, active: existing.map((r) => r.id) },
     };

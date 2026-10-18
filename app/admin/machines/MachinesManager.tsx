@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/primitives";
 // The machines list, by department. A code, a name, the work centre it
 // belongs to (every laser and punch is "Cutting" — a job goes to whichever is
 // free) and the hours it is available on a working day — and the planner's
-// rules for what each machine takes, which ⚡ Plan follows.
+// rules for what each machine takes, which the machine plan follows.
 
 function Fields({ m, disabled }: { m?: MachineDTO; disabled?: boolean }) {
   const [dept, setDept] = useState<ShiftDept>((m?.dept as ShiftDept) ?? "Cut");
@@ -143,7 +143,7 @@ export function MachinesManager({ machines, rules, planningOn }: { machines: Mac
           <EmptyState
             icon={Plus}
             title="No machines yet"
-            hint="Add the lasers, punches, presses, shot-blast cabinets and paint lines — the worklists and ⚡ Plan put the work on them."
+            hint="Add the lasers, punches, presses, shot-blast cabinets and paint lines — the worklists and the assistant's machine plan put the work on them."
             action={<button type="button" className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>Add the first machine</button>}
           />
         </div>

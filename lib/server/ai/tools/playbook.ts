@@ -23,7 +23,7 @@ export const savePlaybookRuleTool: WriteTool<SaveInput> = {
   kind: "write",
   name: "save_playbook_rule",
   title: "Remember a rule of the plant",
-  description: `Write down a rule of how this plant works, as an admin explains it, so you are told it from now on with every question and every automation, for everyone — or rewrite one (its #id is in the playbook in your instructions). One rule per call, a short paragraph in the admin's own words. Topics: ${PLAYBOOK_TOPICS.map((t) => `${t} (${PLAYBOOK_TOPIC_LABEL[t]})`).join(", ")}. For which machine takes which work, use the machines' rules instead — ⚡ Plan follows those.`,
+  description: `Write down a rule of how this plant works, as an admin explains it, so you are told it from now on with every question and every automation, for everyone — or rewrite one (its #id is in the playbook in your instructions). One rule per call, a short paragraph in the admin's own words. Topics: ${PLAYBOOK_TOPICS.map((t) => `${t} (${PLAYBOOK_TOPIC_LABEL[t]})`).join(", ")}. For which machine takes which work, use the machines' rules instead — the machine plan follows those.`,
   area: "playbook",
   risk: "high",
   schema: {

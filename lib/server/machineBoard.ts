@@ -1,17 +1,15 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { itemHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
-import { buildMachineBoard, lineKey, type Assignment, type BoardLine, type LinePlacement, type MachineBoard } from "@/lib/domain/machineBoard";
+import { boardTakesLine, buildMachineBoard, lineKey, type Assignment, type BoardLine, type LinePlacement, type MachineBoard } from "@/lib/domain/machineBoard";
 import { centerShares, hoursOfShift, isShiftCode, round1, routeFor } from "@/lib/domain/shifts";
-import { ITEM_NAME, applicableItems, ospOf } from "@/lib/domain/constants";
-import { isOnHold } from "@/lib/domain/hold";
 import { dateForOffsetISO, offsetForDateISO } from "@/lib/domain/whatif";
 import { boardPins, type OptLine, type OptMachine, type OptPin } from "@/lib/domain/optimizePlan";
 import { machineVerdict, type MachineRuleLike, type WorkFacts } from "@/lib/domain/machineRules";
 import { getStdData } from "./standardTimes";
 import { getAllMachines, type MachineDTO } from "./machines";
 import { getMachineItemTimes } from "./machineTimes";
-import { getCutSheet, getPaintingQueue, getWeldingQueue } from "./execution";
+import { getPaintingQueue, getWeldingQueue } from "./execution";
 import { getWorklistExtras } from "./worklistExtras";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { loadHolidays, loadMasterOrdersOf } from "./loads";
@@ -19,12 +17,10 @@ import { getSettings, getShiftHours } from "./data";
 import { withLine } from "./line";
 import { getLvWorklist } from "./lvWorklist";
 import { LV_ITEM, lvStageAt } from "@/lib/domain/lv";
-import { fullyCutPieces, sheetKeyOf, type LineMaterial } from "@/lib/domain/machineMaterial";
+import { sheetKeyOf, type LineMaterial } from "@/lib/domain/machineMaterial";
 import { getLinesMaterial, type OrderRef } from "./machineMaterial";
-import { getManualJobs, manualBoardLines } from "./manualJobs";
+import { getManualJobs, manualBoardLines, openJobBoms } from "./manualJobs";
 import { getActiveMachineRules } from "./machineRules";
-import { getNestRuns, runCover, runCut } from "./nestRuns";
-import { RUN_BOM, RUN_ITEM, minutesLeft, runDescription, runIdOf, runMo, type NestRunView } from "@/lib/domain/nestRun";
 import { MANUAL_BOM, MANUAL_ITEM, manualIdOf, manualMaterial, manualMo, type ManualJobView } from "@/lib/domain/manualJob";
 
 // The machine load board for one worklist: the page hands over the open
@@ -70,52 +66,12 @@ export interface MachineBoardData extends MachineBoard {
   /** The department's jobs from outside the plan — open ones on the board
    *  like any line, and the list kept to come back to. */
   manualJobs: ManualJobView[];
-  /** Items spread over machines by sheet whose every sheet is cut for some
-   *  pieces — whole pieces, ready to be recorded as cut in one click. */
-  readyCut: ReadyCut[];
-  /** The cutting board's nest runs — open ones on the board, and the list. */
-  nestRuns: NestRunView[];
-  runOptions: RunSheetOption[];
-  runCandidates: RunCandidate[];
-}
-
-/** A sheet the open lines are cut from, and the lines that still need it —
- *  what a nest run is put together from. */
-export interface RunSheetOption {
-  sheet: string;
-  material: string;
-  thicknessMm: number;
-  sheetSize: string;
-  lines: {
-    key: string; bom: string; mo: string; item: string; description: string; free: number; perUnit: number;
-    /** The plan's Required for the whole BOM. */
-    required: number;
-    /** The nesting's material name and code, and its sheets for the job. */
-    material: string; materialCode: string; jobSheets: number | null;
-  }[];
-}
-
-/** Any open line, for a run cut from a sheet the nesting does not list. */
-export interface RunCandidate {
-  key: string; bom: string; mo: string; item: string; description: string; remaining: number;
-  /** The plan's Required for the whole BOM. */
-  required: number;
-  /** Pieces no machine or run holds yet (the most any of its sheets lacks). */
-  free: number;
-  /** The sheets its own nesting cuts it from. */
-  sheets: string[];
-}
-
-export interface ReadyCut {
-  key: string;
-  bom: string;
-  mo: string;
-  item: string;
-  description: string;
-  /** Pieces cut on every sheet — what can be recorded. */
-  qty: number;
-  /** What each sheet has cut so far (pieces' worth). */
-  sheets: { sheet: string; cut: number }[];
+  /** The plan's Required for each BOM on the board — every open order of it
+   *  together; what the floor knows a job by (the printed sheet's column). */
+  required: Record<string, number>;
+  /** The open transformer projects (BOMs) — what a sheet job's parts are
+   *  typed against on the fabrication board; empty on the other boards. */
+  jobBoms: string[];
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -204,65 +160,33 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
 }
 
 export async function getMachineBoard(dept: BoardDept, planLines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
-  const [ctx, settings, holidays, manualJobs, nestRuns] = await Promise.all([
-    loadBoardContext(dept, dayISO), getSettings(), loadHolidays(), getManualJobs(dept), dept === "Cut" ? getNestRuns(dept) : Promise.resolve([] as NestRunView[]),
+  const [ctx, settings, holidays, manualJobs, jobBoms] = await Promise.all([
+    loadBoardContext(dept, dayISO), getSettings(), loadHolidays(), getManualJobs(dept), dept === "Cut" ? openJobBoms() : Promise.resolve([] as string[]),
   ]);
-  // the jobs typed in from outside the plan queue beside the plan's lines
-  const lines = [...planLines, ...manualBoardLines(manualJobs)];
-  // the nest runs' hold on their parts' sheets, and what they have cut
-  const cover = runCover(nestRuns);
-  const cutByRuns = runCut(nestRuns);
-  const coverKeys = new Set(cover.map((c) => c.key));
-  // the sheets behind the lines (a plan line's off the MATERIAL tab's
-  // nesting, a manual job's as it was typed) — every open line on the cutting
-  // board, where a nest run is put together from them; the lines a machine
-  // holds elsewhere. An item spread by sheet (over machines or runs) also
-  // gets its list of sheets, so the board can say which still need a machine.
+  // the jobs typed in from outside the plan queue beside the plan's lines —
+  // on the fabrication machines, beside the panels' punching only: a
+  // transformer plan line goes on them inside a sheet job
+  const lines = [...planLines.filter((l) => boardTakesLine(dept, l.bom, l.item)), ...manualBoardLines(manualJobs)];
+  // the sheets behind the lines a machine holds (a plan line's off the
+  // MATERIAL tab's nesting, a manual job's as it was typed) — what the
+  // technician needs before starting it. An item spread by sheet also gets
+  // its list of sheets, so the board can say which still need a machine.
   const placedKeys = new Set(ctx.assignments.map((a) => a.key));
-  // the cutting board's nest runs can carry any part the plan still owes
-  const registry = dept === "Cut" ? await registryCutLines(ctx.orders) : [];
   const refs = new Map<string, { key: string; bom: string; mo: string; item: string }>();
-  for (const l of [...lines, ...registry]) {
+  for (const l of lines) {
     const key = lineKey(l.bom, l.mo, l.item);
-    if (manualIdOf(l.mo) !== null) continue;
-    if (dept === "Cut" || placedKeys.has(key) || coverKeys.has(key)) refs.set(key, { key, bom: l.bom, mo: l.mo, item: l.item });
+    if (manualIdOf(l.mo) !== null || !placedKeys.has(key)) continue;
+    refs.set(key, { key, bom: l.bom, mo: l.mo, item: l.item });
   }
   const material = await getLinesMaterial([...refs.values()], ctx.orderOf);
   for (const j of manualJobs) {
     const m = manualMaterial(j);
     if (m) material[lineKey(MANUAL_BOM, manualMo(j.id), MANUAL_ITEM)] = m;
   }
-  const bySheet = new Set([...ctx.assignments.filter((a) => a.sheet).map((a) => a.key), ...coverKeys]);
-  const sheetsOf = (key: string) => {
-    const own = material[key]?.specs.map(sheetKeyOf) ?? [];
-    // a run's sheet the nesting does not list still counts as one of the item's
-    const extra = cover.filter((c) => c.key === key && !own.includes(c.sheet)).map((c) => c.sheet);
-    return [...own, ...new Set(extra)];
-  };
-  // a run is a line of its own: its sheets are its pieces; its hours are its
-  // parts' cutting hours for the sheets still to cut
-  const runLines: BoardLine[] = nestRuns
-    .filter((r) => !r.doneAtISO && r.sheets - r.sheetsDone > 0)
-    .map((r) => {
-      const left = r.sheets - r.sheetsDone;
-      let hours: number | null = null;
-      for (const p of r.parts) {
-        const per = ctx.perPiece({ bom: p.bom, mo: p.mo, item: p.item });
-        if (per === null) continue;
-        hours = (hours ?? 0) + per * (centerShares(dept, p.item).Cutting ?? 1) * p.pcs;
-      }
-      // the run's own cutting time, where it was given, outranks the estimate
-      const own = minutesLeft(r);
-      const h = own !== null ? round1(own / 60) : hours === null ? null : round1((hours * left) / r.sheets);
-      const key = lineKey(RUN_BOM, runMo(r.id), RUN_ITEM);
-      material[key] = { partName: "", month: "nest run", specs: [{ material: r.material, materialCode: "", thicknessMm: r.thicknessMm, sheetSize: r.sheetSize, perUnit: 1, actual: true }] };
-      return { key, bom: RUN_BOM, mo: runMo(r.id), item: RUN_ITEM, description: runDescription(r), remaining: left, hours: h, deliveryISO: null, dueISO: null, route: [{ center: "Cutting", hours: h }] };
-    });
-  const priced = [
-    ...ctx.price(lines).map((l) => (bySheet.has(l.key) ? { ...l, sheets: sheetsOf(l.key) } : l)),
-    ...runLines,
-  ];
-  const board = buildMachineBoard(ctx.machines, priced, ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew }, ctx.rates, cover);
+  const bySheet = new Set(ctx.assignments.filter((a) => a.sheet).map((a) => a.key));
+  const sheetsOf = (key: string) => material[key]?.specs.map(sheetKeyOf) ?? [];
+  const priced = ctx.price(lines).map((l) => (bySheet.has(l.key) ? { ...l, sheets: sheetsOf(l.key) } : l));
+  const board = buildMachineBoard(ctx.machines, priced, ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew }, ctx.rates);
   // the day each machine's queue is finished — Fridays and the calendar's days
   // off skipped, so "clears 18/09" is a date the floor can hold you to
   const holidaySet = new Set(holidays.map((h) => toISODate(h.date)));
@@ -307,112 +231,13 @@ export async function getMachineBoard(dept: BoardDept, planLines: readonly Board
       ...(missing.length > 0 ? { missing } : {}),
     };
   }
-  // the items whose every sheet is cut for some pieces: those pieces are
-  // whole, and wait for one click to be recorded as cut
-  const remainingOf = new Map<string, { remaining: number; l: BoardLineInput }>();
-  for (const l of lines) {
-    const k = lineKey(l.bom, l.mo, l.item);
-    const cur = remainingOf.get(k);
-    remainingOf.set(k, { remaining: (cur?.remaining ?? 0) + l.remaining, l: cur?.l ?? l });
-  }
-  // a part the worklist does not show yet (its day has not come, or the line
-  // is hidden) can still sit in a run — the registry says what is left of it
-  const registryOf = new Map<string, BoardLineInput>();
-  for (const r of registry) registryOf.set(lineKey(r.bom, r.mo, r.item), r);
-  for (const [k, r] of registryOf) if (!remainingOf.has(k)) remainingOf.set(k, { remaining: r.remaining, l: r });
-  const readyCut: ReadyCut[] = [];
-  for (const key of bySheet) {
-    const open = remainingOf.get(key);
-    const specs = material[key]?.specs ?? [];
-    if (!open || open.remaining <= 0 || specs.length === 0) continue;
-    const rows = [
-      ...ctx.assignments.filter((x) => x.key === key && x.sheet).map((x) => ({ sheet: x.sheet!, sheetDone: x.sheetDone ?? 0 })),
-      ...cutByRuns.filter((x) => x.key === key),
-    ];
-    const keys = sheetsOf(key);
-    const qty = fullyCutPieces(rows, keys, open.remaining);
-    if (qty <= 0) continue;
-    readyCut.push({
-      key, bom: open.l.bom, mo: open.l.mo, item: open.l.item, description: open.l.description, qty,
-      sheets: keys.map((sh) => ({ sheet: sh, cut: rows.filter((r) => r.sheet === sh).reduce((n, r) => n + r.sheetDone, 0) })),
-    });
-  }
-  // what a nest run can be put together from: each sheet the open lines are
-  // cut from, with the lines that still need it and how many of their pieces
-  // no machine or run holds yet
-  const runOptions: RunSheetOption[] = [];
-  const runCandidates: RunCandidate[] = [];
-  if (dept === "Cut") {
-    // what the board already holds of a line on a sheet: placed on machines
-    // (its worklist pieces less what still waits) or carried by a run
-    const boardRemaining = new Map<string, number>();
-    for (const l of priced) boardRemaining.set(l.key, (boardRemaining.get(l.key) ?? 0) + l.remaining);
-    const coverOf = (key: string, sheet: string) => cover.filter((c) => c.key === key && (!sheet || c.sheet === sheet)).reduce((n, c) => n + c.pcs, 0);
-    const placedOn = (key: string, sheet: string) => {
-      const onBoard = boardRemaining.get(key);
-      if (onBoard === undefined) return coverOf(key, sheet);
-      const step1 = board.unassigned.filter((u) => u.key === key && u.stepNo === 1);
-      const waiting = (sheet ? step1.find((u) => u.sheet === sheet) : undefined) ?? step1.find((u) => !u.sheet);
-      // a line spread by sheet with nothing waiting on this one is fully placed on it
-      const left = waiting?.remaining ?? (sheet && step1.some((u) => u.sheet) ? 0 : step1.reduce((n, u) => Math.max(n, u.remaining), 0));
-      return Math.max(0, onBoard - left);
-    };
-    const bySheetOpt = new Map<string, RunSheetOption>();
-    const seenLine = new Set<string>();
-    for (const l of [...priced, ...registry.map((r) => ({ ...r, key: lineKey(r.bom, r.mo, r.item) }))]) {
-      if (seenLine.has(l.key) || manualIdOf(l.mo) !== null || runIdOf(l.mo) !== null) continue;
-      seenLine.add(l.key);
-      // the plan's own figure where the registry has the line, else the board's
-      const remaining = registryOf.get(l.key)?.remaining ?? remainingOf.get(l.key)?.remaining ?? 0;
-      if (remaining <= 0) continue;
-      const specs = material[l.key]?.specs ?? [];
-      const freeOn = (sheet: string) => Math.max(0, remaining - placedOn(l.key, sheet));
-      runCandidates.push({
-        key: l.key, bom: l.bom, mo: l.mo, item: l.item, description: l.description, remaining, required: ctx.requiredByBom.get(l.bom) ?? 0,
-        free: specs.length > 0 ? Math.max(...specs.map((sp) => freeOn(sheetKeyOf(sp)))) : freeOn(""),
-        sheets: specs.map(sheetKeyOf),
-      });
-      for (const sp of specs) {
-        const sheet = sheetKeyOf(sp);
-        const free = freeOn(sheet);
-        if (free <= 0) continue;
-        const opt = bySheetOpt.get(sheet) ?? { sheet, material: sp.material, thicknessMm: sp.thicknessMm, sheetSize: sp.sheetSize, lines: [] };
-        opt.lines.push({
-          key: l.key, bom: l.bom, mo: l.mo, item: l.item, description: l.description, free, perUnit: sp.perUnit,
-          required: ctx.requiredByBom.get(l.bom) ?? 0, material: sp.material, materialCode: sp.materialCode, jobSheets: sp.jobSheets ?? null,
-        });
-        bySheetOpt.set(sheet, opt);
-      }
-    }
-    runOptions.push(...[...bySheetOpt.values()].sort((a, b) => b.lines.length - a.lines.length || a.thicknessMm - b.thicknessMm));
-  }
   return {
-    ...board, readyCut, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), days, assigned, material, manualJobs,
-    nestRuns, runOptions, runCandidates,
+    ...board, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), days, assigned, material, manualJobs, jobBoms,
+    required: Object.fromEntries([...new Set(lines.map((l) => l.bom))].map((b) => [b, ctx.requiredByBom.get(b) ?? 0])),
   };
 }
 
-/** Every transformer part the plan still owes cutting on, straight off the
- *  registry — open orders not on hold, each applicable component, its order
- *  qty less the OSP share less what is already cut. Wider than the cutting
- *  worklist, which shows a line only once its day comes (or it is pushed,
- *  remarked or date-less) and leaves the hidden ones out: a nest run can
- *  carry any of them now. */
-async function registryCutLines(orders: readonly { mo: string; bom: string; line: string; status: string; holdAt: Date | null; planQty: number; ospCF: number; ospTC: number; ospTN: number; ospCB: number }[] & Parameters<typeof applicableItems>[0][]): Promise<BoardLineInput[]> {
-  const done = await prisma.handoverEntry.groupBy({ by: ["mo", "item"], where: { dept: "Cut", mo: { not: null } }, _sum: { qty: true } });
-  const doneOf = new Map(done.map((d) => [`${d.mo}|${d.item}`, d._sum.qty ?? 0]));
-  const out: BoardLineInput[] = [];
-  for (const o of orders) {
-    if (o.line !== "TR" || o.status !== "open" || isOnHold(o)) continue;
-    for (const item of applicableItems(o)) {
-      const left = Math.max(0, o.planQty - ospOf(o, item) - (doneOf.get(`${o.mo}|${item}`) ?? 0));
-      if (left > 0) out.push({ bom: o.bom, mo: o.mo, item, description: ITEM_NAME[item], remaining: left, deliveryISO: null });
-    }
-  }
-  return out;
-}
-
-/** What the ⚡ optimizer plans from: the department's machines with the hours
+/** What the machine plan (the assistant's optimizer) plans from: the department's machines with the hours
  *  they really have today, every open line with its route and the day the plan
  *  promises it, the work already running (which keeps its machine), and the
  *  machines' rules with what each line is as they read it. */
@@ -430,14 +255,9 @@ export interface OptimizerInputs {
  *  lines the planner's keys cover on the shared floor; the other line's
  *  waiting work then keeps its machine and its place too, like running work. */
 export async function getOptimizerInputs(dept: BoardDept, dayISO: string, mayPlan: (item: string) => boolean = () => true): Promise<OptimizerInputs> {
-  const [ctx, allInputs, holidays, runs, rules] = await Promise.all([
-    loadBoardContext(dept, dayISO), getDeptBoardLines(dept, dayISO), loadHolidays(), dept === "Cut" ? getNestRuns(dept) : Promise.resolve([] as NestRunView[]),
-    getActiveMachineRules(dept),
+  const [ctx, inputs, holidays, rules] = await Promise.all([
+    loadBoardContext(dept, dayISO), getDeptBoardLines(dept, dayISO), loadHolidays(), getActiveMachineRules(dept),
   ]);
-  // a line a nest run carries is the planner's own arrangement — the plan
-  // leaves it to him rather than put the item on a machine a second time
-  const inRun = new Set(runCover(runs).map((c) => c.key));
-  const inputs = allInputs.filter((l) => !inRun.has(lineKey(l.bom, l.mo, l.item)));
   // the board of BOTH lines, whoever plans: the work the plan keeps has to
   // be on it to be kept
   const board = buildMachineBoard(ctx.machines, ctx.price(inputs), ctx.assignments, { downtimeH: ctx.downtimeH, crewH: ctx.crewH, crew: ctx.crew }, ctx.rates);
@@ -534,13 +354,8 @@ export async function getDeptBoardLines(dept: BoardDept, dayISO: string): Promis
 
 async function transformerBoardLines(dept: BoardDept, dayISO: string): Promise<BoardLineInput[]> {
   const day = parseISODate(dayISO) ?? new Date();
-  if (dept === "Cut") {
-    const sheet = await getCutSheet();
-    return [
-      ...[...sheet.dueNow, ...sheet.overdue, ...sheet.postponed].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.remaining, deliveryISO: r.deliveryISO, dueISO: r.cutDueISO })),
-      ...[...sheet.pushed, ...sheet.remarked, ...sheet.unscheduled].map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO, dueISO: null })),
-    ];
-  }
+  // the fabrication machines carry sheet jobs — no transformer line of its own
+  if (dept === "Cut") return [];
   if (dept === "ShotBlast") return [];
   const [queue, extras] = await Promise.all([dept === "Welding" ? getWeldingQueue(day) : getPaintingQueue(day), getWorklistExtras(dept)]);
   return [

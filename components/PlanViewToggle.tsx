@@ -43,8 +43,10 @@ export function PlanViewToggle({ value }: { value: "monthly" | "weekly" }) {
   );
 }
 
-/** Which weekly plan to show — newest first, defaulting to the latest. */
-export function WeekPlanPicker({ plans, value }: { plans: number[]; value: number | null }) {
+/** Which weekly plan to show — newest first, defaulting to the latest. On
+ *  the Plan Tracker by default; `basePath` keeps another page (the
+ *  fabrication worklist) on itself with only ?plan= changed. */
+export function WeekPlanPicker({ plans, value, basePath }: { plans: number[]; value: number | null; basePath?: string }) {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -56,8 +58,12 @@ export function WeekPlanPicker({ plans, value }: { plans: number[]; value: numbe
         value={value ?? ""}
         onChange={(e) => {
           const next = new URLSearchParams(sp.toString());
-          next.set("view", "weekly");
           next.set("plan", e.target.value);
+          if (basePath) {
+            router.push(`${basePath}?${next.toString()}`);
+            return;
+          }
+          next.set("view", "weekly");
           router.push(`/tracker?${next.toString()}`);
         }}
       >

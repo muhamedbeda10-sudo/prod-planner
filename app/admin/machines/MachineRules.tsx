@@ -13,7 +13,7 @@ import { createMachineRule, setMachineRuleOn } from "./ruleActions";
 import { inputCls, Msg, useAction } from "./formBits";
 
 // A machine's rules, under its row: what it takes only, never takes, or goes
-// first for — the planner's own way of spreading the work, which ⚡ Plan
+// first for — the planner's own way of spreading the work, which the machine plan
 // follows (lib/domain/machineRules.ts). A rule is never edited in place: one
 // that no longer holds is taken off (it stays on record) and a new one added,
 // so the record shows what the plan followed when.
@@ -170,7 +170,7 @@ export function MachineRules({ machine, rules, planningOn }: { machine: MachineD
     <div className="border-t px-3 py-2 sm:px-4 space-y-1.5 bg-surface-2/40">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted">
-          <span className="font-semibold">Rules for ⚡ Plan</span>
+          <span className="font-semibold">Rules for planning the machines</span>
           {active.length === 0 ? " — none: it takes any work of its centre" : ` — ${active.length}`}
           {!planningOn && " · machine planning is off (Settings), so nothing follows them yet"}
         </span>

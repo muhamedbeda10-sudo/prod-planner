@@ -3,11 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDeptEdit } from "@/lib/server/auth";
-import { MANUAL_BOM, MANUAL_ITEM, editedJobQty, manualMo } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, editedJobQty, jobSheetKey, jobsBySheet, manualMo, readJobParts, type ManualJobPartView } from "@/lib/domain/manualJob";
 import { normalizeMaterialType, normalizeSheetSize } from "@/lib/domain/material";
+import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
+import { knownBoms } from "@/lib/server/manualJobs";
 
 // Jobs from outside the plan, put on a machine by hand. The dept's worklist
 // permission covers them, the same as putting a plan line on a machine.
+// Fabrication's are SHEET JOBS: typed, queued, split and closed in sheets,
+// with the parts of the projects the sheets carry.
 
 export interface ManualActionResult {
   ok: boolean;
@@ -30,6 +34,59 @@ const num = (fd: FormData, k: string): number | null | "bad" => {
   return Number.isFinite(n) && n >= 0 ? n : "bad";
 };
 
+type SheetJobForm = {
+  title: string;
+  sheets: number;
+  material: string;
+  thicknessMm: number;
+  sheetSize: string;
+  parts: Omit<ManualJobPartView, "id">[];
+  note: string | null;
+};
+
+/** A sheet job as the form sends it — the sheet, how many, and every
+ *  project's part on them — checked, each BOM matched to the plan's own
+ *  spelling; or what is wrong with it. */
+async function readSheetJob(fd: FormData): Promise<SheetJobForm | { error: string }> {
+  const sheets = Number(text(fd, "qty"));
+  if (!Number.isInteger(sheets) || sheets <= 0) return { error: "Sheets must be a whole number above 0." };
+  const thicknessMm = Number(text(fd, "thicknessMm"));
+  if (!Number.isFinite(thicknessMm) || thicknessMm <= 0) return { error: "Thickness must be a number of mm above 0." };
+  const material = normalizeMaterialType(text(fd, "material", 60));
+  if (!material) return { error: "Say the sheet's material." };
+  let raw: unknown;
+  try { raw = JSON.parse(String(fd.get("parts") ?? "[]")); } catch { return { error: "The parts list could not be read — reload the page." }; }
+  const read = readJobParts(raw);
+  if (!read.ok) return { error: read.error };
+  const known = await knownBoms(read.parts.map((p) => p.bom));
+  const parts: SheetJobForm["parts"] = [];
+  for (const p of read.parts) {
+    if (!p.bom) { parts.push(p); continue; }
+    const bom = known.get(p.bom.toUpperCase());
+    if (!bom) return { error: `${p.bom} is no project in the plan — check the BOM, or leave it empty for work outside the plan.` };
+    parts.push({ ...p, bom });
+  }
+  return {
+    title: text(fd, "title", 120), sheets, material, thicknessMm,
+    sheetSize: normalizeSheetSize(text(fd, "sheetSize", 40)), parts, note: text(fd, "note", 500) || null,
+  };
+}
+
+/** A machine of the department a job may be put on, or what is wrong with it. */
+async function jobMachine(fd: FormData, dept: string): Promise<{ machineId: number | null } | { error: string }> {
+  const raw = text(fd, "machineId");
+  if (!raw) return { machineId: null };
+  const machineId = Number(raw);
+  const machine = Number.isInteger(machineId) ? await prisma.machine.findUnique({ where: { id: machineId } }) : null;
+  if (!machine || machine.dept !== dept) return { error: "That machine is not in this department." };
+  if (!machine.active) return { error: `${machine.code} is retired.` };
+  return { machineId };
+}
+
+/** A job typed in pieces on the fabrication board, before it counted sheets —
+ *  kept as it was, not changed in pieces again. */
+const PIECES_JOB = "This job was typed in pieces, before the fabrication board counted sheets — ⧉ Duplicate it into a sheet job instead.";
+
 /** Type a job in and put it on a machine at the back of its queue (an idle
  *  machine starts on it). Without a machine it is only saved to the list. */
 export async function createManualJob(fd: FormData): Promise<ManualActionResult> {
@@ -37,35 +94,41 @@ export async function createManualJob(fd: FormData): Promise<ManualActionResult>
   if (!(DEPTS as readonly string[]).includes(dept)) return { ok: false, error: "This worklist has no machines." };
   const guard = await requireDeptEdit(dept);
   if (guard.error) return { ok: false, error: guard.error };
-  const title = text(fd, "title", 120);
-  if (!title) return { ok: false, error: "Say what the job is." };
-  const qty = Number(text(fd, "qty"));
-  if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: "Pieces must be a whole number above 0." };
-  const thicknessMm = num(fd, "thicknessMm");
-  const sheets = num(fd, "sheets");
-  if (thicknessMm === "bad") return { ok: false, error: "Thickness must be a number of mm." };
-  if (sheets === "bad") return { ok: false, error: "Sheets must be a number." };
+  const by = guard.user?.name ?? null;
+  const where = await jobMachine(fd, dept);
+  if ("error" in where) return { ok: false, error: where.error };
+  const { machineId } = where;
 
-  let machineId: number | null = null;
-  const rawMachine = text(fd, "machineId");
-  if (rawMachine) {
-    machineId = Number(rawMachine);
-    const machine = Number.isInteger(machineId) ? await prisma.machine.findUnique({ where: { id: machineId } }) : null;
-    if (!machine || machine.dept !== dept) return { ok: false, error: "That machine is not in this department." };
-    if (!machine.active) return { ok: false, error: `${machine.code} is retired.` };
+  let data: Parameters<typeof prisma.manualJob.create>[0]["data"];
+  let parts: SheetJobForm["parts"] = [];
+  if (jobsBySheet(dept)) {
+    const form = await readSheetJob(fd);
+    if ("error" in form) return { ok: false, error: form.error };
+    parts = form.parts;
+    data = {
+      dept, bySheet: true, title: form.title, qty: form.sheets, machineId, createdBy: by,
+      material: form.material, thicknessMm: form.thicknessMm, sheetSize: form.sheetSize, note: form.note,
+    };
+  } else {
+    const title = text(fd, "title", 120);
+    if (!title) return { ok: false, error: "Say what the job is." };
+    const qty = Number(text(fd, "qty"));
+    if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: "Pieces must be a whole number above 0." };
+    const thicknessMm = num(fd, "thicknessMm");
+    const sheets = num(fd, "sheets");
+    if (thicknessMm === "bad") return { ok: false, error: "Thickness must be a number of mm." };
+    if (sheets === "bad") return { ok: false, error: "Sheets must be a number." };
+    data = {
+      dept, title, qty, machineId, createdBy: by,
+      bom: text(fd, "bom", 60), item: text(fd, "item", 60),
+      material: normalizeMaterialType(text(fd, "material", 60)),
+      thicknessMm, sheetSize: normalizeSheetSize(text(fd, "sheetSize", 40)), sheets,
+      note: text(fd, "note", 500) || null,
+    };
   }
 
-  const by = guard.user?.name ?? null;
   const id = await prisma.$transaction(async (tx) => {
-    const job = await tx.manualJob.create({
-      data: {
-        dept, title, qty, machineId, createdBy: by,
-        bom: text(fd, "bom", 60), item: text(fd, "item", 60),
-        material: normalizeMaterialType(text(fd, "material", 60)),
-        thicknessMm, sheetSize: normalizeSheetSize(text(fd, "sheetSize", 40)), sheets,
-        note: text(fd, "note", 500) || null,
-      },
-    });
+    const job = await tx.manualJob.create({ data: { ...data, ...(parts.length > 0 ? { parts: { create: parts } } : {}) } });
     if (machineId === null) return job.id;
     const [last, runningNow] = await Promise.all([
       tx.worklistMachine.aggregate({ where: { dept, machineId }, _max: { rank: true } }),
@@ -80,43 +143,57 @@ export async function createManualJob(fd: FormData): Promise<ManualActionResult>
   return { ok: true, id };
 }
 
-/** ✎ Change a job as it was typed — what it is, the pieces wanted, its BOM
- *  and part, the sheet and the note. Where it is queued stays as it is
- *  (Move to… moves it). Fewer pieces than are done is refused; exactly the
- *  pieces done finishes it; more opens a finished one again, on no machine
- *  until it is put on one. A fixed share on a machine never asks for more
- *  than is left. */
+/** ✎ Change a job as it was typed — what it is, the count wanted, its BOM
+ *  and part (a sheet job: its parts), the sheet and the note. Where it is
+ *  queued stays as it is (Move to… moves it). Fewer than are done is
+ *  refused; exactly the count done finishes it; more opens a finished one
+ *  again, on no machine until it is put on one. A fixed share on a machine
+ *  never asks for more than is left. */
 export async function updateManualJob(fd: FormData): Promise<ManualActionResult> {
   const id = Number(text(fd, "id"));
   const job = Number.isInteger(id) ? await prisma.manualJob.findUnique({ where: { id } }) : null;
   if (!job) return { ok: false, error: "That job is gone — reload the page." };
   const guard = await requireDeptEdit(job.dept);
   if (guard.error) return { ok: false, error: guard.error };
-  const title = text(fd, "title", 120);
-  if (!title) return { ok: false, error: "Say what the job is." };
-  const qty = Number(text(fd, "qty"));
-  const edit = editedJobQty(job.doneQty, qty);
+  if (jobsBySheet(job.dept) && !job.bySheet) return { ok: false, error: PIECES_JOB };
+
+  let data: Parameters<typeof prisma.manualJob.update>[0]["data"];
+  let parts: SheetJobForm["parts"] | null = null;
+  let qty: number;
+  if (job.bySheet) {
+    const form = await readSheetJob(fd);
+    if ("error" in form) return { ok: false, error: form.error };
+    qty = form.sheets;
+    parts = form.parts;
+    data = { title: form.title, qty, material: form.material, thicknessMm: form.thicknessMm, sheetSize: form.sheetSize, note: form.note };
+  } else {
+    const title = text(fd, "title", 120);
+    if (!title) return { ok: false, error: "Say what the job is." };
+    qty = Number(text(fd, "qty"));
+    const thicknessMm = num(fd, "thicknessMm");
+    const sheets = num(fd, "sheets");
+    if (thicknessMm === "bad") return { ok: false, error: "Thickness must be a number of mm." };
+    if (sheets === "bad") return { ok: false, error: "Sheets must be a number." };
+    data = {
+      title, qty,
+      bom: text(fd, "bom", 60), item: text(fd, "item", 60),
+      material: normalizeMaterialType(text(fd, "material", 60)),
+      thicknessMm, sheetSize: normalizeSheetSize(text(fd, "sheetSize", 40)), sheets,
+      note: text(fd, "note", 500) || null,
+    };
+  }
+  const edit = editedJobQty(job.doneQty, qty, job.bySheet);
   if (!edit.ok) return { ok: false, error: edit.error };
-  const thicknessMm = num(fd, "thicknessMm");
-  const sheets = num(fd, "sheets");
-  if (thicknessMm === "bad") return { ok: false, error: "Thickness must be a number of mm." };
-  if (sheets === "bad") return { ok: false, error: "Sheets must be a number." };
 
   const key = { dept: job.dept, bom: MANUAL_BOM, mo: manualMo(job.id), item: MANUAL_ITEM };
   const wasDone = job.doneAt !== null;
   const left = qty - job.doneQty;
   await prisma.$transaction(async (tx) => {
-    await tx.manualJob.update({
-      where: { id },
-      data: {
-        title, qty,
-        bom: text(fd, "bom", 60), item: text(fd, "item", 60),
-        material: normalizeMaterialType(text(fd, "material", 60)),
-        thicknessMm, sheetSize: normalizeSheetSize(text(fd, "sheetSize", 40)), sheets,
-        note: text(fd, "note", 500) || null,
-        doneAt: edit.finished ? job.doneAt ?? new Date() : null,
-      },
-    });
+    await tx.manualJob.update({ where: { id }, data: { ...data, doneAt: edit.finished ? job.doneAt ?? new Date() : null } });
+    if (parts !== null) {
+      await tx.manualJobPart.deleteMany({ where: { jobId: id } });
+      if (parts.length > 0) await tx.manualJobPart.createMany({ data: parts.map((p) => ({ ...p, jobId: id })) });
+    }
     // finished now — or opened again from finished — it is on no machine
     if (edit.finished || wasDone) {
       await tx.worklistMachine.deleteMany({ where: key });
@@ -128,28 +205,42 @@ export async function updateManualJob(fd: FormData): Promise<ManualActionResult>
   return { ok: true };
 }
 
-/** ✓ on a manual job's card: the pieces finished go on the job, never in the
- *  plan's ledger. When it is all done it leaves every machine and stays in
- *  the list as finished. */
+/** ✓ on a manual job's card: the pieces finished — on a sheet job, the
+ *  SHEETS cut on that machine — go on the job, never in the plan's ledger.
+ *  A sheet job's sheets also go on the sheet cut log with the machine and
+ *  the day. When it is all done it leaves every machine and stays in the
+ *  list as finished. */
 export async function recordManualDone(fd: FormData): Promise<ManualActionResult> {
   const id = Number(text(fd, "id"));
   const job = Number.isInteger(id) ? await prisma.manualJob.findUnique({ where: { id } }) : null;
   if (!job) return { ok: false, error: "That job is gone — reload the page." };
   const guard = await requireDeptEdit(job.dept);
   if (guard.error) return { ok: false, error: guard.error };
+  if (jobsBySheet(job.dept) && !job.bySheet) return { ok: false, error: PIECES_JOB };
   const qty = Number(text(fd, "qty"));
   const left = job.qty - job.doneQty;
-  if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: "Enter whole pieces above 0." };
-  if (qty > left) return { ok: false, error: `Only ${left} left on this job.` };
+  if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: job.bySheet ? "Enter the sheets cut — a whole number above 0." : "Enter whole pieces above 0." };
+  if (qty > left) return { ok: false, error: job.bySheet ? `Only ${left} sheet(s) left on this job.` : `Only ${left} left on this job.` };
   const machineId = Number(text(fd, "machineId")) || null;
+  const date = parseISODate(text(fd, "date")) ?? parseISODate(factoryDayISO(new Date()))!;
   const doneQty = job.doneQty + qty;
   const finished = doneQty >= job.qty;
   const key = { dept: job.dept, bom: MANUAL_BOM, mo: manualMo(job.id), item: MANUAL_ITEM };
-  await prisma.$transaction(async (tx) => {
-    await tx.manualJob.update({ where: { id }, data: { doneQty, doneAt: finished ? new Date() : null, ...(machineId ? { machineId } : {}) } });
+  const by = guard.user?.name ?? null;
+  const stale = await prisma.$transaction(async (tx) => {
+    // only on the count this ✓ was checked against: two ticks at once on the
+    // same job must not both land on what was left before either
+    const moved = await tx.manualJob.updateMany({ where: { id, doneQty: job.doneQty }, data: { doneQty, doneAt: finished ? new Date() : null, ...(machineId ? { machineId } : {}) } });
+    if (moved.count === 0) return true;
+    // kept for good: the sheets each machine cut, at what thickness
+    if (job.bySheet) {
+      await tx.sheetCutLog.create({
+        data: { date, ...key, sheet: jobSheetKey(job), thicknessMm: job.thicknessMm, machineId, qty, createdBy: by },
+      });
+    }
     if (finished) {
       await tx.worklistMachine.deleteMany({ where: key });
-      return;
+      return false;
     }
     // a fixed share on this machine shrinks by what it finished
     if (machineId) {
@@ -159,23 +250,28 @@ export async function recordManualDone(fd: FormData): Promise<ManualActionResult
         else await tx.worklistMachine.delete({ where: { id: row.id } });
       }
     }
+    return false;
   });
+  if (stale) return { ok: false, error: "Someone recorded on this job a moment ago — reload the page and check what is left." };
   revalidate();
   return { ok: true };
 }
 
-/** Open a finished job again (more pieces are wanted, or it was ticked by
- *  mistake) — back in the list as open, off every machine until it is put on one. */
+/** Open a finished job again (more pieces — a sheet job's sheets — are
+ *  wanted, or it was ticked by mistake) — back in the list as open, off
+ *  every machine until it is put on one. */
 export async function reopenManualJob(fd: FormData): Promise<ManualActionResult> {
   const id = Number(text(fd, "id"));
   const job = Number.isInteger(id) ? await prisma.manualJob.findUnique({ where: { id } }) : null;
   if (!job) return { ok: false, error: "That job is gone — reload the page." };
   const guard = await requireDeptEdit(job.dept);
   if (guard.error) return { ok: false, error: guard.error };
+  if (jobsBySheet(job.dept) && !job.bySheet) return { ok: false, error: PIECES_JOB };
+  const unit = job.bySheet ? "sheets" : "pieces";
   const more = Number(text(fd, "more") || "0");
-  if (!Number.isInteger(more) || more < 0) return { ok: false, error: "Extra pieces must be a whole number." };
+  if (!Number.isInteger(more) || more < 0) return { ok: false, error: `Extra ${unit} must be a whole number.` };
   const qty = job.qty + more;
-  if (qty - job.doneQty <= 0) return { ok: false, error: "Nothing would be left to make — add the extra pieces wanted." };
+  if (qty - job.doneQty <= 0) return { ok: false, error: `Nothing would be left to make — add the extra ${unit} wanted.` };
   await prisma.manualJob.update({ where: { id }, data: { qty, doneAt: null } });
   revalidate();
   return { ok: true };

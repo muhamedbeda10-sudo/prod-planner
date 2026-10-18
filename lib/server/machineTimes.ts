@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 // The timings sheet prices a STAGE for a class of tank; it cannot know that a
 // 6 kW laser cuts a top cover in half the time a punch does. Where the planner
 // types a figure here it outranks the estimate: that machine's queue is priced
-// with it, and the ⚡ planner schedules the work with it, so the fast machines
+// with it, and the machine plan schedules the work with it, so the fast machines
 // are given the work that suits them.
 
 /** machine id → item → hours ONE piece costs on that machine. */

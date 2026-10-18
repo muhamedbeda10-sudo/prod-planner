@@ -14,8 +14,9 @@ import { sheetKeyLabel } from "@/lib/domain/machineMaterial";
 import { CENTER_LABEL, SHIFT_DEPTS, machineWord, type ShiftDept } from "@/lib/domain/shifts";
 import { mayScheduleLine, type BayAccess } from "@/lib/domain/permissions";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
-import { assignLineMachine, moveLineRank, optimizeMachines, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
-import { DoneBox, MachinePick, SheetToPlace } from "@/components/MachineBoard";
+import { assignLineMachine, moveLineRank, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
+import { DoneBox, MachinePick } from "@/components/MachineBoard";
+import { jobSheetLabel, manualIdOf } from "@/lib/domain/manualJob";
 import { LineSheet } from "@/components/LineMaterialChips";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
 
@@ -91,9 +92,6 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
   // the floor is the point of this screen: the list of lines still to place
   // stays folded until the planner asks for it
   const [showQueue, setShowQueue] = useState(false);
-  const router = useRouter();
-  const [planning, startPlanning] = useTransition();
-  const [planNote, setPlanNote] = useState("");
   // the block whose details are open — the floor itself keeps the whole width
   const [opened, setOpened] = useState<string | null>(null);
 
@@ -107,8 +105,6 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
   const unplaced = [...allMachines.values()].filter((m) => !placedIds.has(m.id) && m.active);
   const word = machineWord(dept);
   const assignsAny = canAssign.tr || canAssign.lv;
-  // one line's keys only: ⚡ plans that line, around the other's work
-  const onlyKind = canAssign.tr && canAssign.lv ? null : canAssign.lv ? "panel" : "transformer";
 
   // the drawing saves itself: a moment after the last change (a drag fires
   // dozens of changes — only the settled one is written), so switching tab
@@ -217,40 +213,17 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
             {part.err && <span className="text-xs text-bad-fg">{part.err}</span>}
           </>
         )}
-        {assignsAny && (
-          <button
-            type="button"
-            className="btn btn-sm btn-primary ms-auto"
-            disabled={planning}
-            title={`Work out what every ${word} should run and in what order, from the weekly plan — earliest date first, each line on the ${word} that finishes it soonest. What is running now stays.`}
-            onClick={() => {
-              if (!confirm(onlyKind
-                ? `Plan the ${onlyKind} lines on every ${word} from the weekly plan?\n\nThey are re-ordered. What is RUNNING now stays where it is, and so do the other lines — these queue behind them.`
-                : `Plan every ${word} from the weekly plan?\n\nEvery waiting line is re-ordered. What is RUNNING now stays where it is.`)) return;
-              setPlanNote("");
-              startPlanning(async () => {
-                const fd = new FormData();
-                fd.set("dept", dept);
-                const res = await optimizeMachines(fd);
-                setPlanNote(res.ok ? [res.summary, res.lateNote].filter(Boolean).join(" ") : res.error ?? "Failed");
-                if (res.ok) router.refresh();
-              });
-            }}
-          >
-            {planning ? "Planning…" : "⚡ Plan"}
-          </button>
-        )}
         {board.unassigned.length > 0 && (
           <button
             type="button"
-            className={`btn btn-sm ${showQueue ? "btn-secondary" : "btn-ghost"} ${assignsAny ? "" : "ms-auto"}`}
+            className={`btn btn-sm ${showQueue ? "btn-secondary" : "btn-ghost"} ms-auto`}
             title={showQueue ? "Back to the floor alone" : `Open the ${board.unassigned.length} line(s) no ${word} has yet, to place them from here`}
             onClick={() => setShowQueue((v) => !v)}
           >
             {showQueue ? "▾" : "▸"} {board.unassigned.length} to place
           </button>
         )}
-        <span className={`${board.unassigned.length > 0 || assignsAny ? "" : "ms-auto "}inline-flex items-center gap-1 text-xs text-muted`}>
+        <span className={`${board.unassigned.length > 0 ? "" : "ms-auto "}inline-flex items-center gap-1 text-xs text-muted`}>
           zoom
           <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="border rounded-md px-1.5 py-1 bg-surface text-xs font-semibold" aria-label="Zoom">
             {ZOOMS.map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
@@ -269,7 +242,6 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
         <span className="font-bold text-sm">{deptLabel(dept)} floor</span>
         <span className="text-muted tabnum">{board.cards.length} {machineWord(dept, true)} · {board.totalHours} h queued{board.totalAvailableH !== null ? ` / ${board.totalAvailableH} h today` : ""}</span>
         {board.unassigned.length > 0 && <span className="text-warn-fg font-semibold">{board.unassigned.length} line(s) not on a {word}</span>}
-        {planNote && <span className="font-semibold">⚡ {planNote}</span>}
         <span className="text-muted">Click a block for its orders{canDraw ? "; drag it to move, pull the corner to resize" : ""}.</span>
       </div>
       <div
@@ -288,7 +260,7 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
             onPointerDown={(e) => { if (e.target === e.currentTarget) setSelected(null); }}
           >
             {drawOrder(layout.nodes).map((n) => (
-              <Node key={n.id} n={n} card={n.kind === "machine" ? cardOf.get(n.machineId!) ?? null : null} machineName={n.kind === "machine" ? allMachines.get(n.machineId!) : undefined}
+              <Node key={n.id} n={n} board={board} card={n.kind === "machine" ? cardOf.get(n.machineId!) ?? null : null} machineName={n.kind === "machine" ? allMachines.get(n.machineId!) : undefined}
                 selected={selected === n.id} canDraw={canDraw} onDown={onDown} onMove={onMove} onUp={onUp} dept={dept} />
             ))}
             {layout.nodes.length === 0 && (
@@ -381,18 +353,25 @@ const machinesAt = (board: MachineBoardData, center: string) => {
   return at.length > 0 ? at : board.machines;
 };
 
+/** The sheet job a board line is, if it is one — counted in sheets, not pieces. */
+const sheetJobOf = (board: MachineBoardData, mo: string) => {
+  const id = manualIdOf(mo);
+  return id === null ? undefined : board.manualJobs.find((j) => j.id === id && j.bySheet);
+};
+const isSheetJob = (board: MachineBoardData, mo: string) => !!sheetJobOf(board, mo);
+
 function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoardData["unassigned"]; board: MachineBoardData; canAssign: BayAccess; target: { id: number; code: string; center: string } | null }) {
   const a = useAction();
   return (
     <ul className="grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
       {lines.map((u) => (
         <li key={unassignedKey(u)} className="flex items-center gap-2 text-xs min-w-0">
+          {manualIdOf(u.mo) !== null ? <span className="font-bold truncate">{u.description}</span> : <>
           <span className="font-bold truncate">{u.bom}</span>
-          <span className="font-semibold shrink-0">{u.item}</span>
-          <span className="tabnum font-bold shrink-0">×{u.remaining}</span>
+          <span className="font-semibold shrink-0">{u.item}</span></>}
+          <span className="tabnum font-bold shrink-0">{isSheetJob(board, u.mo) ? `${u.remaining} sh` : `×${u.remaining}`}</span>
           {multiCentre(board) && <span className="pill pill-muted shrink-0" title={`${CENTER_LABEL[u.center] ?? u.center} — step ${u.stepNo} of ${u.stepCount} on this line's route`}>{u.center}</span>}
-          {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other pieces are on a machine already">✂ rest of {u.lineRemaining}</span>}
-          <SheetToPlace sheet={u.sheet} />
+          {u.partial && <span className="text-[10px] text-muted tabnum shrink-0" title="The rest of a split line — the other share is on a machine already">✂ rest of {u.lineRemaining}</span>}
           {u.hours !== null && <span className="text-muted tabnum shrink-0">{u.hours} h</span>}
           {u.deliveryISO && <span className="text-muted tabnum shrink-0">📅 {ddmm(u.deliveryISO)}</span>}
           {mayScheduleLine(canAssign, u.item) && (
@@ -405,7 +384,7 @@ function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoa
                   → {target.code}
                 </button>
               )}
-              <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} sheet={u.sheet} machines={machinesAt(board, u.center)} current={undefined} canEdit compact />
+              <MachinePick dept={board.dept} bom={u.bom} mo={u.mo} item={u.item} machines={machinesAt(board, u.center)} current={undefined} canEdit compact unit={isSheetJob(board, u.mo) ? "sheets" : "pcs"} />
             </span>
           )}
         </li>
@@ -415,8 +394,8 @@ function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoa
   );
 }
 
-function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, dept }: {
-  n: FloorNode; card: MachineCard | null; machineName?: { code: string; name: string } | undefined; selected: boolean; canDraw: boolean; dept: string;
+function Node({ n, card, board, machineName, selected, canDraw, onDown, onMove, onUp, dept }: {
+  n: FloorNode; card: MachineCard | null; board: MachineBoardData; machineName?: { code: string; name: string } | undefined; selected: boolean; canDraw: boolean; dept: string;
   onDown: (e: React.PointerEvent, n: FloorNode, mode: "move" | "resize") => void; onMove: (e: React.PointerEvent) => void; onUp: () => void;
 }) {
   const tone = card ? loadTone(card.load) : null;
@@ -474,9 +453,14 @@ function Node({ n, card, machineName, selected, canDraw, onDown, onMove, onUp, d
             <div key={`${q.key}#${q.sheet}`} className="min-w-0" title={compact && q.sheet ? sheetKeyLabel(q.sheet) : undefined}>
               <div className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
                 <span className="text-brand font-extrabold shrink-0">▶</span>
-                <span className="font-extrabold truncate">{q.bom}</span>
-                <span className="font-bold shrink-0">{q.item}</span>
-                <span className="font-extrabold tabnum text-brand shrink-0">×{q.remaining}</span>
+                {sheetJobOf(board, q.mo) ? <>
+                  <span className="font-extrabold truncate">🧾 {jobSheetLabel(sheetJobOf(board, q.mo)!)}</span>
+                  <span className="font-extrabold tabnum text-brand shrink-0">{q.remaining} sh</span>
+                </> : <>
+                  <span className="font-extrabold truncate">{q.bom}</span>
+                  <span className="font-bold shrink-0">{q.item}</span>
+                  <span className="font-extrabold tabnum text-brand shrink-0">×{q.remaining}</span>
+                </>}
                 {!compact && q.deliveryISO && <span className="text-[10px] text-muted shrink-0">📅 {ddmm(q.deliveryISO)}</span>}
               </div>
               {!compact && <LineSheet sheet={q.sheet} className="block ps-3 text-[10px] font-semibold leading-tight text-muted truncate" />}
@@ -584,13 +568,13 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                 {rows.map((q) => (
                   <tr key={`${q.key}#${q.sheet}`} className={`border-t ${q.running ? "bg-brand-light/40" : ""}`}>
                     <td className="p-1 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</td>
-                    <td className="p-1 font-extrabold ltr whitespace-nowrap">{q.bom}</td>
+                    <td className="p-1 font-extrabold ltr whitespace-nowrap">{sheetJobOf(board, q.mo) ? `Job #${manualIdOf(q.mo)}` : q.bom}</td>
                     <td className="p-1 text-center font-bold">
-                      {q.item}
+                      {sheetJobOf(board, q.mo) ? jobSheetLabel(sheetJobOf(board, q.mo)!) : q.item}
                       <LineSheet sheet={q.sheet} className="block text-[10px] font-semibold text-muted whitespace-nowrap" />
                     </td>
                     <td className="p-1 text-center tabnum font-extrabold whitespace-nowrap">
-                      {q.remaining}
+                      {q.remaining}{isSheetJob(board, q.mo) ? " sh" : ""}
                       {q.split && <span className="block text-[10px] font-semibold text-muted" title="Part of the line — the rest is on another machine or waits">of {q.lineRemaining}</span>}
                     </td>
                     <td className="p-1 text-center tabnum">{q.hours !== null ? q.hours : "—"}</td>

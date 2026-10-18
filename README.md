@@ -65,6 +65,18 @@ mobile drawer still lists every view flat, since it has the vertical room.
    differ. All four export with the rest.
 4. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
    allocation, overdue rollover, fill-up rows, Cut Alarm (Cut ready / Partial / NOT CUT YET).
+   The **Fabrication** worklist (`/worklist/cut`) works in **sheet jobs**: its machine board on top, the orders on
+   hold and the pieces Welding sent back, then the **weekly plan measured at Fabrication** (one block per delivery
+   day, one row per project, Req and Fab per component, the week picker beside it) — what each day still needs
+   cut, and where the cut pieces are recorded: a click on a Fab cell adds pieces, under the Cut key, filling the
+   project's earliest unfilled promise first. ✋ **Add job** types a job in as SHEETS of one thickness, material
+   and size — how many — and every project's part on them (BOM from the plan, component, the part in the
+   planner's words such as Bottom / Side wall / Skirt base, pieces), and queues it on a machine. The fabrication
+   machines carry those jobs alone (and the panels' punching on the shared punches): no transformer plan line
+   goes on them by itself, and the nest runs are gone. A job is shared between machines in sheets (the box beside
+   the picker, ✂ on a card), and closed on each machine **in sheets cut** (✓), each ✓ on the sheet cut log with
+   the machine and the day; the job leaves the board when its last sheet is cut. Closing sheets records no
+   pieces in the plan — those are recorded on the weekly plan below. A machine's load there reads in sheets.
 5. **Daily report + Dashboard** (`/report`, `/` — views of the Plan Tracker tab; the report covers
    ONE day or any period through its From→To picker, with the capacity its efficiency is measured
    against scaled to the working days the range really spans) — dept output, complete sets, efficiency/balance %,
@@ -149,7 +161,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    (Admin → Standard Times shows it read-only now). Recording needs `shifts.<dept>`; viewing is free.
    **Times per machine** (Tools → Times per Machine, `machines.manage`): what ONE piece of each item really
    takes on each machine, in hours. A figure here **outranks the standard time** for that machine — its queue
-   on the board is priced with it and ⚡ Plan schedules with it, so a 6 kW laser and a punch stop being planned
+   on the board is priced with it and the machine plan schedules with it, so a 6 kW laser and a punch stop being planned
    as the same machine, and an item the timings sheet never priced (AR, MB) gets a time at last. An empty cell
    keeps the estimate (the stage's standard hours split over the centres the item routes through, which
    follows the kVA class); the placeholder shows that estimate for a 1000 kVA tank. A typed figure is flat for
@@ -191,7 +203,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    dated lines first, the month's undated ones behind "show all"). Every worklist's filter bar carries
    **🏭 on a machine / not on a machine** chips that filter every table to what the floor is running, or to
    what still has to be placed. The month's undated backlog is no longer a table on the page at all — it
-   is the pool the board and ⚡ Plan draw from, so the worklist ends at the work the shift actually runs.
+   is the pool the board and the machine plan draw from, so the worklist ends at the work the shift actually runs.
    **Print sheet** on a card (or in the Floor's inspector) opens the technician's sheet for that
    machine — what runs now, then what is next in order, with pieces, standard hours, delivery date, the
    crew and a Done column to tick — and **Print all sheets** prints every machine of the department, one per
@@ -205,7 +217,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
    Welding has no machines but **partitions** of the bay — groups of welders on the same orders — kept on
    the same list (centre "Zone"), so the welding worklist, the shift log ("which partition") and the board
    treat a partition like a machine, with the welders the shift log put on it today.
-   **⚡ Plan the machines** (on the board and in the Floor toolbar, `lib/domain/optimizePlan.ts`) fills every
+   **The machine plan** (`lib/domain/optimizePlan.ts`) — no button on the screens any more: the AI assistant runs it
+   (`preview_machine_plan`, `plan_machines`) and spreads the fabrication board's sheet jobs itself — fills every
    queue in one go: lines in the order they are **due** (the weekly plan's date for this stage, then the
    flagged orders, then the longest job), each on the machine that **finishes** it soonest, split over
    machines of the same centre when running them in parallel clears the batch sooner (they finish together,
@@ -214,7 +227,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    Machine where there is one, the estimate otherwise. What is **running now is never moved** — the plan is
    built around it. It answers with what it did: lines placed, machines used, when the last piece clears,
    which lines cannot make their date and by how much, and any centre with no machine to run it.
-   **⟲ Reset** beside it takes every line off every machine of the department — the plan is cleared, the
+   **⟲ Reset** on the board takes every line off every machine of the department — the plan is cleared, the
    work itself untouched — so the board can be planned again from nothing.
    **📊 Timeline** draws the whole department on the working days ahead (5, 10 or 20 of them): one track per
    machine, one block per queued line, each as long as that machine needs for it and starting where the one
@@ -303,9 +316,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
      called loaded, a find of a tool the person no longer has is left out of what is sent, and a turn the API pauses is
      sent back to carry on.
    - **Changes** (`lib/server/ai/changes.ts`, `lib/server/ai/tools/*`): the Plan Tracker and Daily log, the Orders Registry
-     (an admin's edits, plan months, deletions) and a BOM's Fins, the machine board and ⚡ Plan (a line's share on a
-     machine too), the cutting floor — nest runs (several jobs' parts on the same sheets, their pieces taken off what the
-     machines cut of those lines), manual jobs and the sheets cut — the worklists' notes (with photos from the chat),
+     (an admin's edits, plan months, deletions) and a BOM's Fins, the machine board and the machine plan (a line's share
+     on a machine too), the jobs — the fabrication board's sheet jobs (sheets carrying several projects' parts, spread
+     over the machines and closed in sheets) and the other boards' jobs in pieces — the worklists' notes (with photos from the chat),
      returns upstream, an admin's dates and hidden lines, tanks piece by piece (welder, leak test, repair, painting,
      quality), the Simulator, the run order and the departments' drawn floors, the ODOO log (FG codes and merged lines
      too), Material (new lines, an LV order's sheets, SOI groups), physical stock, consumables with their catalogue,
@@ -357,7 +370,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
      the import runs only while a fresh dry run reads the same. No undo for an import; key "AI — imports" plus the
      person's own import permission.
    - **Machine rules** (Tools → Machines & lines): only / never / prefer, by item, line, sheet thickness and material, kVA —
-     ⚡ Plan follows them (`lib/domain/machineRules.ts`, `optimizePlan`'s `allowed` / `preferred`).
+     the machine plan follows them (`lib/domain/machineRules.ts`, `optimizePlan`'s `allowed` / `preferred`).
    - **Automations** (`/automations`, `lib/domain/automations.ts`, `lib/server/automations/*`): on a schedule (Cairo times on
      working days, every day or weekdays) or when a read-only query finds rows it did not at its last check (edge-triggered by
      a `key` column); notify (no AI), report, or act (changes wait for approval). They run as their owner, count against the

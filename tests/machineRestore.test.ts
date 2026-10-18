@@ -43,12 +43,20 @@ beforeEach(() => {
 
 describe("restoreMachineQueues", () => {
   it("replaces the department's queues with the snapshot, in one transaction", async () => {
-    const rows = [row(), row({ machineId: 2, rank: 1, running: true, qty: 4, sheet: "3|Steel|1220*2440", sheetDone: 2 })];
-    const r = await restoreMachineQueues(fd("Cut", rows));
+    const rows = [row(), row({ machineId: 2, rank: 1, running: true, qty: 4 })];
+    const r = await restoreMachineQueues(fd("Welding", rows));
     expect(r).toEqual({ ok: true, summary: expect.stringContaining("back as they were (2 lines)") });
-    expect(h.prisma.worklistMachine.deleteMany).toHaveBeenCalledWith({ where: { dept: "Cut" } });
-    expect(h.prisma.worklistMachine.createMany).toHaveBeenCalledWith({ data: rows.map((x) => ({ dept: "Cut", ...x, setBy: "Sara (AI)" })) });
+    expect(h.prisma.worklistMachine.deleteMany).toHaveBeenCalledWith({ where: { dept: "Welding" } });
+    expect(h.prisma.worklistMachine.createMany).toHaveBeenCalledWith({ data: rows.map((x) => ({ dept: "Welding", ...x, setBy: "Sara (AI)" })) });
     expect(h.prisma.$transaction).toHaveBeenCalledWith(["delete", "create"]);
+  });
+
+  it("on the fabrication machines puts back the jobs and the panels, never a transformer plan line of its own", async () => {
+    const job = row({ bom: "MANUAL", mo: "MANUAL-7", item: "JOB", qty: 3 });
+    const panel = row({ machineId: 2, item: "PNL", mo: "M7" });
+    const r = await restoreMachineQueues(fd("Cut", [row(), job, panel]));
+    expect(r).toEqual({ ok: true, summary: expect.stringContaining("(2 lines)") });
+    expect(h.prisma.worklistMachine.createMany).toHaveBeenCalledWith({ data: [job, panel].map((x) => ({ dept: "Cut", ...x, setBy: "Sara (AI)" })) });
   });
 
   it("needs a key for the bay's machines", async () => {

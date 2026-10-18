@@ -31,7 +31,7 @@ const ctx = { user: { id: 1, name: "Sara" } as User, hidden: new Set<string>(), 
 
 const tool = (name: string, o: Partial<AiTool> = {}): AiTool =>
   ({ kind: "read", name, title: name, description: `The ${name} tool, described.`, schema: { type: "object", properties: {}, additionalProperties: false }, run: async () => ({ ok: true, text: "[]" }), ...o }) as AiTool;
-const TOOLS = [tool("query_database", { loaded: true }), tool("get_machine_board", { loaded: true }), tool("create_nest_run"), tool("record_output")];
+const TOOLS = [tool("query_database", { loaded: true }), tool("get_machine_board", { loaded: true }), tool("create_manual_job"), tool("record_output")];
 
 type Block = Record<string, unknown>;
 /** One call to the model: its blocks and why it stopped, and the stream events it fires. */
@@ -58,7 +58,7 @@ describe("the tools a question starts with", () => {
     h.stream.mockReturnValue(reply([{ type: "text", text: "Done." }]));
     await run();
     expect(sentTools()[0]).toEqual({ type: "tool_search_tool_bm25_20251119", name: "tool_search_tool_bm25" });
-    expect(deferred()).toEqual(["create_nest_run", "record_output"]);
+    expect(deferred()).toEqual(["create_manual_job", "record_output"]);
     // a deferred definition never carries a cache mark — the API refuses it
     expect(sentTools().some((t) => t.defer_loading && t.cache_control)).toBe(false);
   });
@@ -81,7 +81,7 @@ describe("a chat already under way", () => {
   const searched = (names: string[]): AiMessageParam => ({
     role: "assistant",
     content: [
-      { type: "server_tool_use", id: "srvtoolu_1", name: "tool_search_tool_bm25", input: { query: "nest run" } },
+      { type: "server_tool_use", id: "srvtoolu_1", name: "tool_search_tool_bm25", input: { query: "sheet job" } },
       { type: "tool_search_tool_result", tool_use_id: "srvtoolu_1", content: { type: "tool_search_tool_search_result", tool_references: names.map((n) => ({ type: "tool_reference", tool_name: n })) } },
       { type: "tool_use", id: "toolu_1", name: names[0], input: {} },
     ],
@@ -98,23 +98,23 @@ describe("a chat already under way", () => {
       done,
     ];
     await run({ history: old });
-    expect(deferred()).toEqual(["create_nest_run"]);
+    expect(deferred()).toEqual(["create_manual_job"]);
   });
 
   it("keeps a tool its search found deferred — the API loads it from the find", async () => {
     h.stream.mockReturnValue(reply([{ type: "text", text: "Done." }]));
-    await run({ history: [{ role: "user", content: [{ type: "text", text: "Nest them" }] }, searched(["create_nest_run"]), result, done] });
-    expect(deferred()).toEqual(["create_nest_run", "record_output"]);
+    await run({ history: [{ role: "user", content: [{ type: "text", text: "Put the sheets on a job" }] }, searched(["create_manual_job"]), result, done] });
+    expect(deferred()).toEqual(["create_manual_job", "record_output"]);
   });
 
   it("drops a find of a tool the person no longer has, and keeps the chat as it was", async () => {
     h.stream.mockReturnValue(reply([{ type: "text", text: "Done." }]));
-    const history: AiMessageParam[] = [{ role: "user", content: [{ type: "text", text: "Nest them" }] }, searched(["create_nest_run", "delete_nest_run"]), result, done];
+    const history: AiMessageParam[] = [{ role: "user", content: [{ type: "text", text: "Put the sheets on a job" }] }, searched(["create_manual_job", "delete_nest_run"]), result, done];
     const kept = JSON.stringify(history);
     await run({ history });
     const sent = h.stream.mock.calls[0][0].messages as AiMessageParam[];
     const find = (sent[1].content as unknown as Block[])[1] as { content: { tool_references: { tool_name: string }[] } };
-    expect(find.content.tool_references.map((r) => r.tool_name)).toEqual(["create_nest_run"]);
+    expect(find.content.tool_references.map((r) => r.tool_name)).toEqual(["create_manual_job"]);
     // the other messages go as they were, and the kept chat is untouched
     expect(sent[0]).toBe(history[0]);
     expect(JSON.stringify(history)).toBe(kept);
@@ -125,12 +125,12 @@ describe("a paused turn", () => {
   it("is sent back as it is and the model carries on — both halves kept", async () => {
     const text = vi.fn();
     h.stream
-      .mockReturnValueOnce(reply([{ type: "server_tool_use", id: "srvtoolu_1", name: "tool_search_tool_bm25", input: { query: "nest run" } }], "pause_turn"))
+      .mockReturnValueOnce(reply([{ type: "server_tool_use", id: "srvtoolu_1", name: "tool_search_tool_bm25", input: { query: "sheet job" } }], "pause_turn"))
       .mockReturnValueOnce(reply([{ type: "text", text: "Found it." }]));
     const r = await run({ events: { status: () => {}, text } });
     expect(h.stream).toHaveBeenCalledTimes(2);
     const second = h.stream.mock.calls[1][0].messages as AiMessageParam[];
-    expect(second[second.length - 1]).toEqual({ role: "assistant", content: [{ type: "server_tool_use", id: "srvtoolu_1", name: "tool_search_tool_bm25", input: { query: "nest run" } }] });
+    expect(second[second.length - 1]).toEqual({ role: "assistant", content: [{ type: "server_tool_use", id: "srvtoolu_1", name: "tool_search_tool_bm25", input: { query: "sheet job" } }] });
     expect(r.added.map((m) => m.role)).toEqual(["user", "system", "assistant", "assistant"]);
     expect(r.error).toBeUndefined();
   });

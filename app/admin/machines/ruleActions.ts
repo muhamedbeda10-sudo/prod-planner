@@ -5,7 +5,7 @@ import { requirePerm } from "@/lib/server/auth";
 import { addMachineRule, setMachineRuleActive } from "@/lib/server/machineRules";
 
 // The machines' rules — what each takes, never takes, or is preferred for —
-// kept with the machines list (machines.manage). ⚡ Plan follows them.
+// kept with the machines list (machines.manage). The machine plan follows them.
 
 export interface RuleActionResult {
   ok: boolean;

@@ -81,10 +81,16 @@ const coverage = (r: WeeklyPlanRow, metric: Stage): number | null => {
   return owed > 0 ? cells.reduce((s, c) => s + c[metric], 0) / owed : null;
 };
 
-export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }: {
+export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, fabrication = false }: {
   data: WeeklyPlanTracker;
   capacityCard?: React.ReactNode;
-  canRecord?: boolean; // "weekly.record" — one permission for the whole sheet
+  /** The Plan Tracker: "weekly.record", one permission for the whole sheet.
+   *  The fabrication page: the Cut worklist's own permission. */
+  canRecord?: boolean;
+  /** On the fabrication page, under its machines: the week measured and
+   *  recorded at Fabrication only — what the floor cuts against — with the
+   *  page's own filters, flowing with the page rather than filling the screen. */
+  fabrication?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -105,7 +111,9 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
       const qty = Number(editVal);
       if (!Number.isInteger(qty) || qty <= 0) { setCellErr("Enter a whole quantity greater than zero."); return; }
       const fd = new FormData();
-      fd.set("source", "weekly");
+      // the fabrication page records as its worklist does (the Cut key); the
+      // ledger note still names the plan and the delivery day
+      fd.set("source", fabrication ? "worklist" : "weekly");
       fd.set("dept", dept);
       fd.set("bom", bom);
       fd.set("item", item);
@@ -127,22 +135,24 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
     },
   };
 
-  const [q, setQ] = useSavedFilter("wtracker.q");
-  const [stage, setStage] = useSavedFilter("wtracker.stage");
-  const [hideDone, setHideDone] = useSavedFilter("wtracker.hideDone");
+  const filterKey = fabrication ? "fab.wplan" : "wtracker";
+  const [q, setQ] = useSavedFilter(`${filterKey}.q`);
+  const [stage, setStage] = useSavedFilter(`${filterKey}.stage`);
+  const [hideDone, setHideDone] = useSavedFilter(`${filterKey}.hideDone`);
 
-  const stages = useMemo(() => {
+  const stages = useMemo((): Stage[] => {
+    if (fabrication) return ["cut"];
     const sel = new Set(stage.split(",").filter(Boolean));
     const picked = STAGE_OPTS.filter((o) => sel.has(o.value));
     return (picked.length > 0 ? picked : [...STAGE_OPTS]).map((o) => o.value);
-  }, [stage]);
+  }, [stage, fabrication]);
   const toggleStage = (v: Stage) => {
     const sel = new Set(stage.split(",").filter(Boolean));
     if (sel.has(v)) sel.delete(v); else sel.add(v);
     setStage(STAGE_OPTS.map((o) => o.value).filter((x) => sel.has(x)).join(","));
   };
 
-  const metric = metricOf(stages, !!stage);
+  const metric = fabrication ? "cut" : metricOf(stages, !!stage);
 
   const days = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -216,7 +226,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
     // itself never does, so the headline is always on screen. `print-flow`
     // hands the height back to the paper: a fixed-height scroller would print
     // one page and clip everything under it.
-    <div className="print-flow space-y-3 md:flex md:flex-col md:space-y-0 md:gap-3 md:h-[calc(100vh-7.75rem)]">
+    <div className={fabrication ? "space-y-3" : "print-flow space-y-3 md:flex md:flex-col md:space-y-0 md:gap-3 md:h-[calc(100vh-7.75rem)]"}>
       {/* what the sheet is showing — filters don't survive onto paper otherwise */}
       <PrintScope
         parts={[
@@ -244,10 +254,10 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
         hasActive={hasActive}
         onReset={() => { setQ(""); setStage(""); setHideDone(""); }}
       >
-        <PlanViewToggle value="weekly" />
-        <WeekPlanPicker plans={data.planNos} value={data.planNo} />
+        {!fabrication && <PlanViewToggle value="weekly" />}
+        <WeekPlanPicker plans={data.planNos} value={data.planNo} basePath={fabrication ? "/worklist/cut" : undefined} />
         <SearchBox value={q} onChange={setQ} placeholder="Search project / SOI…" />
-        <div className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
+        {!fabrication && <div className="col-span-2 flex min-w-0 flex-col gap-1 text-sm sm:col-span-1 sm:flex-row sm:items-center sm:gap-1.5">
           <span className="text-muted text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Dept</span>
           <div className="flex flex-wrap gap-1">
             {STAGE_OPTS.map((o) => {
@@ -265,13 +275,13 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
               );
             })}
           </div>
-        </div>
+        </div>}
         <label className="col-span-2 flex items-center gap-1.5 text-sm sm:col-span-1">
           <input type="checkbox" checked={hideDone === "1"} onChange={(e) => setHideDone(e.target.checked ? "1" : "")} />
           <span className="text-muted text-[11px] font-bold uppercase tracking-wide">Hide finished</span>
         </label>
         <div className="col-span-2 flex items-center gap-2 sm:col-span-1">
-          <ExportMenu excel={[{ label: "CSV", rows: exportRows, filename: `weekly-plan-${data.planNo ?? "none"}.csv` }]} print />
+          <ExportMenu excel={[{ label: "CSV", rows: exportRows, filename: `${fabrication ? "fabrication-" : ""}weekly-plan-${data.planNo ?? "none"}.csv` }]} print />
         </div>
       </FilterBar>
 
@@ -282,7 +292,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false }
       ) : days.length === 0 ? (
         <div className="bg-surface border rounded-xl p-8 text-center text-muted">Nothing matches these filters.</div>
       ) : (
-        <div className="print-flow print-fit print-tracker bg-surface border rounded-xl overflow-auto md:flex-1 md:min-h-0">
+        <div className={`print-flow print-fit print-tracker bg-surface border rounded-xl overflow-auto ${fabrication ? "md:max-h-[75vh]" : "md:flex-1 md:min-h-0"}`}>
           <table className="w-full text-sm border-collapse">
             {days.map((d) => <DayBlock key={d.iso} day={d} stages={stages} metric={metric} planNo={data.planNo ?? 0} rec={rec} />)}
           </table>

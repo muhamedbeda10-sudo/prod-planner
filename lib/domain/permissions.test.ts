@@ -4,7 +4,6 @@ import { ACCESS_PERM_KEYS, AI_PERM_GROUPS, AI_PERM_KEYS, PERMISSIONS, PERM_ALERT
 import { DELIVERED_STAGE, DEPTS, ITEMS, SHOTBLAST_STAGE } from "./constants";
 import { LV_CHAIN, LV_PRODUCTS } from "./lv";
 import { MANUAL_ITEM } from "./manualJob";
-import { RUN_ITEM } from "./nestRun";
 
 describe("the panels' own keys", () => {
   it("are all registered, so the Users page offers them and parsePerms keeps them", () => {
@@ -56,13 +55,12 @@ describe("the panels' own keys", () => {
     expect(machineLinePermKey("Welding", "PNL")).toBe("lv.welding");
     expect(machineLinePermKey("Painting", "PNL")).toBe("lv.painting");
     expect(machineLinePermKey("ShotBlast", "PNL")).toBeNull(); // takes no panels: no one's
-    // a transformer part, and the bay's own jobs and nest runs, stay the bay's
+    // a transformer part, and the bay's own jobs, stay the bay's
     expect(machineLinePermKey("Cut", "CF")).toBe("cut.edit");
     expect(machineLinePermKey("Welding", "TN")).toBe("welding.edit");
     expect(machineLinePermKey("Painting", "TC")).toBe("painting.edit");
     expect(machineLinePermKey("ShotBlast", "CF")).toBe("tracker.shp");
     expect(machineLinePermKey("Cut", MANUAL_ITEM)).toBe("cut.edit");
-    expect(machineLinePermKey("Cut", RUN_ITEM)).toBe("cut.edit");
   });
 
   it("give each bay one key per line, every one of them tickable", () => {
@@ -83,7 +81,7 @@ describe("the panels' own keys", () => {
     expect(mayScheduleLine(transformers, "PNL")).toBe(false);
     expect(mayScheduleLine(panels, "PNL")).toBe(true);
     expect(mayScheduleLine(panels, "CF")).toBe(false);
-    expect(mayScheduleLine(panels, RUN_ITEM)).toBe(false);
+    expect(mayScheduleLine(panels, MANUAL_ITEM)).toBe(false);
   });
 
   it("follow the line for closing, importing, Odoo and material", () => {

@@ -19,6 +19,7 @@ const h = vi.hoisted(() => {
       session: { findUnique: fn() },
       machine: { findUnique: fn() },
       worklistMachine: { findMany: fn(), findUnique: fn(), update: fn(), create: fn(), delete: fn(), deleteMany: fn(), count: fn(), aggregate: fn() },
+      manualJob: { findUnique: fn() },
       sheetCutLog: { create: fn() },
       $transaction: fn(),
     },
@@ -33,9 +34,10 @@ vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/server/machineBoard", () => ({ getOptimizerInputs: h.getOptimizerInputs }));
 vi.mock("@/lib/server/machineMaterial", () => ({ getLinesMaterial: vi.fn() }));
 
-import { assignLineMachine, clearMachineQueue, moveLineRank, optimizeMachines, recordSheetDone, resetMachinePlan, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
+import { assignLineMachine, clearMachineQueue, moveLineRank, optimizeMachines, resetMachinePlan, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
 import { bayAccess } from "@/lib/server/auth";
 import { ACCESS_PERM_KEYS, bayPermKeys, mayScheduleLine } from "@/lib/domain/permissions";
+import { BOARD_LINE_REFUSED, boardTakesLine } from "@/lib/domain/machineBoard";
 
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -66,7 +68,6 @@ function lineActions(bay: string, item: string) {
   return {
     "put on": () => assignLineMachine(form(line)),
     split: () => setLineQty(form({ ...line, qty: "2" })),
-    "✓ a sheet": () => recordSheetDone(form({ ...line, sheet: "3|1250*2500", qty: "2" })),
     "take off": () => unassignLineMachine(form(line)),
     "next in line": () => moveLineRank(form({ ...line, dir: "top" })),
     start: () => setLineRunning(form({ ...line, running: "true" })),
@@ -104,12 +105,28 @@ describe("a line on the shared machines is scheduled with the line's key, never 
   });
 
   it("a transformer part stays the bay's — the LV key schedules none of it", async () => {
-    onMachine("Cut", "CF");
-    holding("lv.punching");
-    for (const [name, act] of Object.entries(lineActions("Cut", "CF"))) expect(await act(), name).toEqual(NO);
+    onMachine("Welding", "CF");
+    holding("lv.welding");
+    for (const [name, act] of Object.entries(lineActions("Welding", "CF"))) expect(await act(), name).toEqual(NO);
     expect(writes()).toBe(0);
+    holding("welding.edit");
+    for (const [name, act] of Object.entries(lineActions("Welding", "CF"))) expect(await act(), name).toEqual({ ok: true });
+  });
+
+  it("the fabrication machines take sheet jobs: a transformer part is refused even with the bay's key, an open job goes on", async () => {
+    onMachine("Cut", "CF");
     holding("cut.edit");
-    for (const [name, act] of Object.entries(lineActions("Cut", "CF"))) expect(await act(), name).toEqual({ ok: true });
+    expect(await assignLineMachine(form({ dept: "Cut", bom: "B-1", mo: "MO-1", item: "CF", machineId: "1" }))).toEqual({ ok: false, error: BOARD_LINE_REFUSED });
+    expect(writes()).toBe(0);
+    const job = { dept: "Cut", bom: "MANUAL", mo: "MANUAL-7", item: "JOB", machineId: "1" };
+    h.prisma.worklistMachine.findMany.mockResolvedValue([]);
+    h.prisma.manualJob.findUnique.mockResolvedValueOnce({ dept: "Cut", doneAt: new Date() });
+    expect(await assignLineMachine(form(job))).toEqual({ ok: false, error: expect.stringContaining("finished") });
+    h.prisma.manualJob.findUnique.mockResolvedValueOnce({ dept: "Welding", doneAt: null });
+    expect(await assignLineMachine(form(job))).toEqual({ ok: false, error: expect.stringContaining("gone") });
+    h.prisma.manualJob.findUnique.mockResolvedValueOnce({ dept: "Cut", doneAt: null });
+    expect(await assignLineMachine(form({ ...job, qty: "3" }))).toEqual({ ok: true });
+    expect(h.prisma.worklistMachine.create).toHaveBeenCalledWith({ data: expect.objectContaining({ bom: "MANUAL", mo: "MANUAL-7", item: "JOB", qty: 3 }) });
   });
 
   it("a panel on shot blast, which takes none, is no one's — not even an admin's", async () => {
@@ -126,7 +143,7 @@ describe("a line on the shared machines is scheduled with the line's key, never 
         for (const item of ["CF", "PNL"]) {
           onMachine(bay, item);
           const done = await assignLineMachine(form({ dept: bay, bom: "B-1", mo: "MO-1", item, machineId: "1" }));
-          expect(done.ok, `${bay}, holding ${key}, a ${item}`).toBe(mayScheduleLine(bayAccess(user, bay), item));
+          expect(done.ok, `${bay}, holding ${key}, a ${item}`).toBe(mayScheduleLine(bayAccess(user, bay), item) && boardTakesLine(bay, "B-1", item));
         }
       }
     }
