@@ -1,8 +1,11 @@
 name: Database backup
 
-# The live database (Supabase, free plan) is not backed up by Supabase — the
-# free plan keeps no backups at all — and scripts/backup.mjs still dumps the
-# old on-prem PostgreSQL. This job is the backup of the LIVE data: every night
+# The live database runs on Supabase's Pro plan, which takes a daily backup of
+# its own and keeps 7 days of them (Database → Backups). Those only restore the
+# whole project in place, over everything typed since, and live with the
+# project — gone with it, out of reach without the Supabase account. This job
+# is the backup kept outside Supabase (scripts/backup.mjs still dumps the old
+# on-prem PostgreSQL only): every night
 # a consistent pg_dump of the app's schema, sealed in a password-protected
 # 7-Zip archive (AES-256, file names hidden too) and kept as a workflow
 # artifact for BACKUP_KEEP_DAYS days. Downloading it needs read access to this
