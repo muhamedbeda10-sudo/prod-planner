@@ -104,6 +104,13 @@ describe("assign_line_to_machine", () => {
     expect(await assignLineTool.describe({ ...job, qty: 4 }, ctx)).toMatchObject({ title: "MANUAL-12 JOB → L1", summary: expect.stringContaining("Put 4 sheet(s) of MANUAL-12 JOB on L1") });
   });
 
+  it("takes part of a sheet job's sheets for a machine, and only whole pieces of a plan line", () => {
+    const job = { dept: "Cut", bom: "MANUAL", mo: "MANUAL-12", item: "JOB", machine: "L1", qty: 1.5 };
+    expect(assignLineTool.parse!(job)).toMatchObject({ qty: 1.5 });
+    expect(assignLineTool.parse!({ ...job, qty: 1.125 })).toEqual(expect.stringContaining("two decimals at most"));
+    expect(assignLineTool.parse!({ ...line, qty: 1.5 })).toEqual(expect.stringContaining("pieces are whole"));
+  });
+
   it("refuses a retired machine, an unknown one, and a line the department does not owe", async () => {
     h.perms.add("welding.edit");
     h.prisma.machine.findFirst.mockResolvedValueOnce({ ...L1, active: false });

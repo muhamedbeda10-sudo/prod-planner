@@ -6,7 +6,8 @@
 // On the fabrication board every job is a SHEET JOB: sheets of one
 // thickness, material and size, carrying the parts of several projects
 // (a tank's Bottom of one BOM beside the Side walls of another). Its count —
-// what the board queues, splits over machines and closes — is its SHEETS.
+// what the board queues, splits over machines and closes — is its SHEETS,
+// to the hundredth of a sheet (2.5 sheets; a quarter sheet is 0.25).
 
 import { ITEMS } from "./constants";
 import { sheetKeyLabel, sheetKeyOf, type LineMaterial } from "./machineMaterial";
@@ -24,6 +25,32 @@ export function manualIdOf(mo: string | null | undefined): number | null {
 
 /** The boards whose jobs are typed and closed in sheets — fabrication's. */
 export const jobsBySheet = (dept: string) => dept === "Cut";
+
+/** A count of sheets rounded to the hundredth — half a sheet, a quarter, a
+ *  sheet and a quarter are counted, nothing finer — so what is cut and what
+ *  is left add up to the job exactly (0.1 + 0.2 is not left as 0.30000004).
+ *  A whole count of pieces comes back as it was. */
+export const roundSheets = (n: number) => Math.round(n * 100) / 100;
+
+/** Whether a count of sheets is one a job may carry: above 0, to the
+ *  hundredth at most (2, 2.5, 0.25 — not 0.125). */
+export const isSheetCount = (n: number) => Number.isFinite(n) && n > 0 && Math.abs(roundSheets(n) - n) < 1e-9;
+
+/** What a sheet count box says when it is refused. */
+export const SHEET_COUNT_RULE = "a number above 0, to two decimals at most (2, 2.5, 0.25)";
+
+/** A count as it is typed in a box: "2.5", or "2,5" as a phone keypad may
+ *  write it — a comma followed by one or two digits is the decimal point
+ *  ("1,000" stays no number). NaN when it is no number; 0 when blank. */
+export function typedCount(raw: string): number {
+  const t = raw.trim();
+  return Number(/^\d+,\d{1,2}$/.test(t) ? t.replace(",", ".") : t);
+}
+
+/** The board lines counted in sheets: a sheet job on the fabrication board.
+ *  Its share on a machine may be a fraction of a sheet; any other line's is
+ *  whole pieces. */
+export const isSheetJobLine = (dept: string, bom: string) => bom === MANUAL_BOM && jobsBySheet(dept);
 
 /** The most parts one sheet job carries. */
 export const MAX_JOB_PARTS = 40;
@@ -121,12 +148,13 @@ export type JobQtyEdit = { ok: true; finished: boolean } | { ok: false; error: s
  *  finished one opens again, on no machine until it is put on one, as
  *  ↺ Again does. */
 export function editedJobQty(doneQty: number, qty: number, bySheet = false): JobQtyEdit {
-  const unit = bySheet ? "Sheets" : "Pieces";
-  if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: `${unit} must be a whole number above 0.` };
-  if (qty < doneQty) {
+  if (bySheet ? !isSheetCount(qty) : !Number.isInteger(qty) || qty <= 0) {
+    return { ok: false, error: bySheet ? `Sheets must be ${SHEET_COUNT_RULE}.` : "Pieces must be a whole number above 0." };
+  }
+  if (roundSheets(qty) < roundSheets(doneQty)) {
     return { ok: false, error: bySheet ? `${doneQty} sheet(s) are cut already — the job cannot have fewer than that.` : `${doneQty} piece(s) are done already — the job cannot want fewer than that.` };
   }
-  return { ok: true, finished: qty === doneQty };
+  return { ok: true, finished: roundSheets(qty) === roundSheets(doneQty) };
 }
 
 /** A sheet job's part rows as the form holds them — one list per column, in

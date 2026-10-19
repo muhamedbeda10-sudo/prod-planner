@@ -129,6 +129,20 @@ describe("a line on the shared machines is scheduled with the line's key, never 
     expect(h.prisma.worklistMachine.create).toHaveBeenCalledWith({ data: expect.objectContaining({ bom: "MANUAL", mo: "MANUAL-7", item: "JOB", qty: 3 }) });
   });
 
+  it("a sheet job's share on a machine may be part of a sheet; a plan line's pieces stay whole", async () => {
+    onMachine("Cut", "CF");
+    holding("cut.edit");
+    const job = { dept: "Cut", bom: "MANUAL", mo: "MANUAL-7", item: "JOB", machineId: "1" };
+    h.prisma.worklistMachine.findMany.mockResolvedValue([]);
+    h.prisma.manualJob.findUnique.mockResolvedValue({ dept: "Cut", doneAt: null });
+    expect(await assignLineMachine(form({ ...job, qty: "1.5" }))).toEqual({ ok: true });
+    expect(h.prisma.worklistMachine.create).toHaveBeenCalledWith({ data: expect.objectContaining({ mo: "MANUAL-7", qty: 1.5 }) });
+    expect(await assignLineMachine(form({ ...job, qty: "0.125" }))).toEqual({ ok: false, error: expect.stringContaining("two decimals at most") });
+    onMachine("Welding", "CF");
+    holding("welding.edit");
+    expect(await assignLineMachine(form({ dept: "Welding", bom: "B-1", mo: "MO-1", item: "CF", machineId: "1", qty: "1.5" }))).toEqual({ ok: false, error: expect.stringContaining("whole number") });
+  });
+
   it("a panel on shot blast, which takes none, is no one's — not even an admin's", async () => {
     onMachine("ShotBlast", "PNL");
     const admin = { id: 1, name: "admin", isAdmin: true, isOwner: false, perms: ACCESS_PERM_KEYS.join(","), hiddenTabs: "", active: true };

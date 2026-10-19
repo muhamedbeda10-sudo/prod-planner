@@ -9,7 +9,7 @@ import { readManualJob, restoreManualJob, type ManualJobSnapshot } from "@/lib/s
 import { createManualJob, deleteManualJob, recordManualDone, reopenManualJob, updateManualJob } from "@/app/worklist/manualActions";
 import { deptPermKey } from "@/lib/domain/permissions";
 import {
-  MANUAL_BOM, MANUAL_ITEM, MAX_JOB_PARTS, editedJobQty, jobName, jobSheetLabel, jobsBySheet, manualIdOf, manualMo, partsText, readJobParts,
+  MANUAL_BOM, MANUAL_ITEM, MAX_JOB_PARTS, SHEET_COUNT_RULE, editedJobQty, isSheetCount, roundSheets, jobName, jobSheetLabel, jobsBySheet, manualIdOf, manualMo, partsText, readJobParts,
   type ManualJobPartView,
 } from "@/lib/domain/manualJob";
 import { ITEMS } from "@/lib/domain/constants";
@@ -63,7 +63,11 @@ async function jobMachine(dept: string, code: string): Promise<Machine | { error
 }
 
 const unitOf = (j: { bySheet: boolean }) => (j.bySheet ? "sheet(s)" : "piece(s)");
-const progress = (j: { bySheet: boolean; doneQty: number; qty: number }) => `${j.doneQty} of ${j.qty} ${j.bySheet ? "sheets cut" : "done"}`;
+const progress = (j: { bySheet: boolean; doneQty: number; qty: number }) => `${roundSheets(j.doneQty)} of ${roundSheets(j.qty)} ${j.bySheet ? "sheets cut" : "done"}`;
+
+/** What is wrong with a count of a job's sheets (Cut, to the hundredth: 2.5) or pieces (whole), or null. */
+const countProblem = (bySheet: boolean, n: number, what: string): string | null =>
+  bySheet ? (isSheetCount(n) ? null : `${what} must be ${SHEET_COUNT_RULE}.`) : Number.isInteger(n) && n > 0 ? null : `${what} must be whole pieces above 0.`;
 
 /** A sheet job's parts, checked, each BOM the plan carries in the plan's own
  *  spelling (any other kept as typed — a job may be for any project), and
@@ -164,7 +168,7 @@ export const createManualJobTool: WriteTool<CreateJobInput> = {
   name: "create_manual_job",
   title: "Add a job",
   description:
-    `Type in a job as the machine screen's ✋ Add job does, and put it at the back of a machine's queue (an idle machine starts on it) — or only save it to the list when no machine is given. On Cut (Fabrication) it is a SHEET JOB: qty is the SHEETS, thicknessMm and material are required (sheetSize when known), and parts lists every project's part the sheets carry (at most ${MAX_JOB_PARTS}; a part's pieces only when the person gives them — never guess a count); title is optional. One thickness, material and size per job — another sheet is another job. Its sheets are counted on the job itself, never in the plan's ledger (the cut pieces are recorded on the weekly plan with record_output). On the other boards it is a job from outside the plan (a bracket, a repair …) in pieces, with a title. Undo deletes it.`,
+    `Type in a job as the machine screen's ✋ Add job does, and put it at the back of a machine's queue (an idle machine starts on it) — or only save it to the list when no machine is given. On Cut (Fabrication) it is a SHEET JOB: qty is the SHEETS — part of a sheet too, to the hundredth (2.5) — thicknessMm and material are required (sheetSize when known), and parts lists every project's part the sheets carry (at most ${MAX_JOB_PARTS}; a part's pieces only when the person gives them — never guess a count); title is optional. One thickness, material and size per job — another sheet is another job. Its sheets are counted on the job itself, never in the plan's ledger (the cut pieces are recorded on the weekly plan with record_output). On the other boards it is a job from outside the plan (a bracket, a repair …) in pieces, with a title. Undo deletes it.`,
   area: "machines",
   risk: "low",
   schema: {
@@ -172,7 +176,7 @@ export const createManualJobTool: WriteTool<CreateJobInput> = {
     properties: {
       dept: DEPT,
       title: { type: "string", maxLength: 120, description: "What the job is, in the person's words — required off Cut; on Cut an optional name." },
-      qty: { type: "integer", minimum: 1, maximum: 100000, description: "On Cut the sheets; elsewhere the pieces." },
+      qty: { type: "number", minimum: 0.01, maximum: 100000, description: "On Cut the sheets (2.5 = two and a half); elsewhere the pieces, whole." },
       machine: { type: "string", maxLength: 40, description: "The machine's code to queue it on; leave out to save it to the list only." },
       material: { type: "string", maxLength: 60, description: "The sheet's material (Steel, Stainless steel, Galvanized steel …) — required on Cut." },
       thicknessMm: { type: "number", minimum: 0, maximum: 200, description: "The sheet's thickness — required on Cut." },
@@ -190,6 +194,8 @@ export const createManualJobTool: WriteTool<CreateJobInput> = {
     const { machine, ...rest } = r as unknown as CreateJobInput;
     const title = String(rest.title ?? "").trim();
     const base = { ...rest, title, ...(typeof machine === "string" && machine.trim() ? { machine: machine.trim() } : {}) };
+    const bad = countProblem(jobsBySheet(rest.dept), rest.qty, jobsBySheet(rest.dept) ? "Sheets" : "Pieces");
+    if (bad) return bad;
     if (!jobsBySheet(rest.dept)) return title ? base : "Say what the job is.";
     if (!(Number(rest.thicknessMm) > 0)) return "A fabrication job needs its sheet's thickness.";
     if (!String(rest.material ?? "").trim()) return "A fabrication job needs its sheet's material.";
@@ -271,7 +277,7 @@ export const recordManualJobDoneTool: WriteTool<JobDoneInput> = {
     type: "object",
     properties: {
       id: { type: "integer", minimum: 1 },
-      qty: { type: "integer", minimum: 1, maximum: 100000, description: "Sheets cut (Cut) or pieces done (elsewhere)." },
+      qty: { type: "number", minimum: 0.01, maximum: 100000, description: "Sheets cut (Cut — part of a sheet too, 2.5) or whole pieces done (elsewhere)." },
       machine: { type: "string", maxLength: 40, description: "The machine that cut them." },
       date: { type: "string", format: "date", description: "The day they were cut (default today)." },
     },
@@ -281,8 +287,10 @@ export const recordManualJobDoneTool: WriteTool<JobDoneInput> = {
   async describe(i, ctx) {
     const job = await workableJob(i.id, ctx);
     if ("error" in job) return job;
-    const left = job.qty - job.doneQty;
+    const left = roundSheets(job.qty - job.doneQty);
     if (job.doneAt || left <= 0) return { error: `Job #${i.id} is finished.` };
+    const badQty = countProblem(job.bySheet, i.qty, job.bySheet ? "Sheets cut" : "Pieces done");
+    if (badQty) return { error: badQty };
     if (i.qty > left) return { error: `Only ${left} ${unitOf(job)} left on job #${i.id}.` };
     if (i.machine) {
       const m = await jobMachine(job.dept, i.machine);
@@ -294,8 +302,8 @@ export const recordManualJobDoneTool: WriteTool<JobDoneInput> = {
     const name = jobName(job);
     return {
       title: `✓ ${i.qty} ${unitOf(job)} of "${name}"`,
-      summary: `Record ${i.qty} ${unitOf(job)} of job #${job.id} "${name}" as ${job.bySheet ? "cut" : "done"}${i.machine ? ` on ${i.machine}` : ""} on ${date}${job.doneQty + i.qty >= job.qty ? " — its last; it leaves every machine, finished" : ""}.`,
-      changes: [{ label: name, before: progress(job), after: progress({ ...job, doneQty: job.doneQty + i.qty }) }],
+      summary: `Record ${i.qty} ${unitOf(job)} of job #${job.id} "${name}" as ${job.bySheet ? "cut" : "done"}${i.machine ? ` on ${i.machine}` : ""} on ${date}${roundSheets(job.doneQty + i.qty) >= roundSheets(job.qty) ? " — its last; it leaves every machine, finished" : ""}.`,
+      changes: [{ label: name, before: progress(job), after: progress({ ...job, doneQty: roundSheets(job.doneQty + i.qty) }) }],
       snapshot: job,
     };
   },
@@ -318,7 +326,7 @@ export const reopenManualJobTool: WriteTool<{ id: number; more: number }> = {
   risk: "low",
   schema: {
     type: "object",
-    properties: { id: { type: "integer", minimum: 1 }, more: { type: "integer", minimum: 0, maximum: 100000, description: "Extra sheets (Cut) or pieces wanted (0 = none)." } },
+    properties: { id: { type: "integer", minimum: 1 }, more: { type: "number", minimum: 0, maximum: 100000, description: "Extra sheets (Cut — part of a sheet too, 2.5) or whole pieces wanted (0 = none)." } },
     required: ["id", "more"],
     additionalProperties: false,
   },
@@ -326,21 +334,23 @@ export const reopenManualJobTool: WriteTool<{ id: number; more: number }> = {
     const job = await workableJob(i.id, ctx);
     if ("error" in job) return job;
     const name = jobName(job);
+    const bad = i.more === 0 ? null : countProblem(job.bySheet, i.more, job.bySheet ? "Extra sheets" : "Extra pieces");
+    if (bad) return { error: bad };
     if (!job.doneAt) {
       // still open: more of it, where it is
       if (i.more === 0) return { error: `Job #${i.id} is open already — say how many more ${unitOf(job)} are wanted.` };
       return {
         title: `${i.more} more ${unitOf(job)} of "${name}"`,
         summary: `Add ${i.more} ${unitOf(job)} to job #${job.id} "${name}" — it stays where it is.`,
-        changes: [{ label: name, before: progress(job), after: progress({ ...job, qty: job.qty + i.more }) }],
+        changes: [{ label: name, before: progress(job), after: progress({ ...job, qty: roundSheets(job.qty + i.more) }) }],
         snapshot: job,
       };
     }
-    if (job.qty + i.more - job.doneQty <= 0) return { error: `Nothing would be left to make — add the extra ${unitOf(job)} wanted.` };
+    if (roundSheets(job.qty + i.more - job.doneQty) <= 0) return { error: `Nothing would be left to make — add the extra ${unitOf(job)} wanted.` };
     return {
       title: `Open "${name}" again`,
       summary: `Open job #${job.id} "${name}" again${i.more ? ` with ${i.more} more ${unitOf(job)}` : ""} — in the list as open, on no machine until it is put on one.`,
-      changes: [{ label: name, before: `${progress(job)}, finished`, after: `${progress({ ...job, qty: job.qty + i.more })}, open` }],
+      changes: [{ label: name, before: `${progress(job)}, finished`, after: `${progress({ ...job, qty: roundSheets(job.qty + i.more) })}, open` }],
       snapshot: job,
     };
   },
@@ -399,7 +409,7 @@ export const updateManualJobTool: WriteTool<UpdateJobInput> = {
     properties: {
       id: { type: "integer", minimum: 1 },
       title: { type: "string", maxLength: 120 },
-      qty: { type: "integer", minimum: 1, maximum: 100000, description: "Sheets (Cut) or pieces wanted in all — not the extra." },
+      qty: { type: "number", minimum: 0.01, maximum: 100000, description: "Sheets (Cut — part of a sheet too, 2.5) or whole pieces wanted in all — not the extra." },
       material: { type: "string", maxLength: 60 },
       thicknessMm: { type: "number", minimum: 0, maximum: 200 },
       sheetSize: { type: "string", maxLength: 40 },
@@ -502,7 +512,7 @@ const RESTORE_SCHEMA = {
 
 const jobState = (i: RestoreInput) =>
   stateOf<ManualJobSnapshot>(i.state, i.id, (v) =>
-    typeof v.dept === "string" && typeof v.title === "string" && Number.isInteger(v.qty) && Number.isInteger(v.doneQty) && typeof v.bySheet === "boolean" && Array.isArray(v.parts) && Array.isArray(v.queue));
+    typeof v.dept === "string" && typeof v.title === "string" && Number.isFinite(v.qty) && Number.isFinite(v.doneQty) && typeof v.bySheet === "boolean" && Array.isArray(v.parts) && Array.isArray(v.queue));
 
 /** The undo of a job's change or deletion — never offered to the model. */
 export const restoreManualJobTool: WriteTool<RestoreInput> = {

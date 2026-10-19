@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-sheet-job-part-sheets",
+    dateISO: "2026-10-19",
+    title: "Add job: sheets can be part of a sheet — 2.5, 0.25",
+    where: "Worklist → Fabrication → ✋ Add job · ✓ on a machine card · ✂ share",
+    body: "A sheet job's sheets no longer have to be a whole number: type 2.5 (or 2,5 on a phone keypad), to two decimals at most. The same goes everywhere the job's sheets are counted — ✓ on the card records part of a sheet cut, a job can be shared between lasers in part of a sheet (1.5 here, 1 there), ✂ resizes a share, ✎ Edit and ↺ Again take it too, and so does the assistant. What is left always adds up to the job exactly. Jobs on the other boards are still counted in whole pieces.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-19-daily-log-tanks",
     dateISO: "2026-10-19",
     title: "Tanks are added on the worklists only; machine rates count each day once",

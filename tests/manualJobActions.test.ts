@@ -19,7 +19,7 @@ const h = vi.hoisted(() => {
   return {
     tx,
     prisma: {
-      manualJob: { findUnique: fn() },
+      manualJob: { findUnique: fn(), update: fn() },
       machine: { findUnique: fn() },
       masterOrder: { findMany: fn() },
       $transaction: vi.fn(async (f: (t: typeof tx) => Promise<unknown>) => f(tx)),
@@ -140,8 +140,45 @@ describe("sheet jobs on the fabrication board", () => {
     expect(await createManualJob(sheetForm({ dept: "Cut", thicknessMm: "" }))).toEqual({ ok: false, error: expect.stringContaining("Thickness") });
     expect(await createManualJob(sheetForm({ dept: "Cut", material: "" }))).toEqual({ ok: false, error: expect.stringContaining("material") });
     expect(await createManualJob(sheetForm({ dept: "Cut", parts: "[]" }))).toEqual({ ok: false, error: expect.stringContaining("at least one") });
-    expect(await createManualJob(sheetForm({ dept: "Cut", qty: "2.5" }))).toEqual({ ok: false, error: expect.stringContaining("Sheets must be a whole number") });
+    expect(await createManualJob(sheetForm({ dept: "Cut", qty: "0.125" }))).toEqual({ ok: false, error: expect.stringContaining("two decimals at most") });
+    expect(await createManualJob(sheetForm({ dept: "Cut", qty: "0" }))).toEqual({ ok: false, error: expect.stringContaining("Sheets must be a number above 0") });
+    expect(await createManualJob(sheetForm({ dept: "Cut", qty: "1,000" }))).toEqual({ ok: false, error: expect.stringContaining("Sheets must be") });
     expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("takes part of a sheet — 2.5, or 2,5 off a phone keypad", async () => {
+    expect(await createManualJob(sheetForm({ dept: "Cut", qty: "2.5" }))).toEqual({ ok: true, id: 31 });
+    expect(h.tx.manualJob.create.mock.calls[0][0].data.qty).toBe(2.5);
+    expect(await createManualJob(sheetForm({ dept: "Cut", qty: "2,75" }))).toEqual({ ok: true, id: 31 });
+    expect(h.tx.manualJob.create.mock.calls[1][0].data.qty).toBe(2.75);
+  });
+
+  it("✓ closes part of a sheet, and what is left adds up to the job exactly", async () => {
+    // 2.3 sheets wanted, 1.1 cut: 1.2 left — not 1.1999999…
+    h.prisma.manualJob.findUnique.mockResolvedValue({ ...SHEET_JOB, qty: 2.3, doneQty: 1.1 });
+    expect(await recordManualDone(form({ id: "30", qty: "1.25" }, {}))).toEqual({ ok: false, error: "Only 1.2 sheet(s) left on this job." });
+    expect(await recordManualDone(form({ id: "30", qty: "0.125" }, {}))).toEqual({ ok: false, error: expect.stringContaining("two decimals at most") });
+    h.tx.worklistMachine.findFirst.mockResolvedValue({ id: 99, qty: 1.2 });
+    expect(await recordManualDone(form({ id: "30", qty: "0.5", machineId: "1" }, {}))).toEqual({ ok: true });
+    expect(h.tx.manualJob.updateMany).toHaveBeenCalledWith({ where: { id: 30, doneQty: 1.1 }, data: { doneQty: 1.6, doneAt: null, machineId: 1 } });
+    expect(h.tx.sheetCutLog.create.mock.calls[0][0].data.qty).toBe(0.5);
+    expect(h.tx.worklistMachine.update).toHaveBeenCalledWith({ where: { id: 99 }, data: { qty: 0.7 } });
+    // the last 1.2 finishes it
+    expect(await recordManualDone(form({ id: "30", qty: "1.2", machineId: "1" }, {}))).toEqual({ ok: true });
+    expect(h.tx.manualJob.updateMany.mock.calls[1][0].data).toEqual({ doneQty: 2.3, doneAt: expect.any(Date), machineId: 1 });
+    expect(h.tx.worklistMachine.deleteMany).toHaveBeenCalledWith({ where: SHEET_KEY });
+  });
+
+  it("✎ and ↺ take part of a sheet; a job in pieces stays whole", async () => {
+    h.prisma.manualJob.findUnique.mockResolvedValue({ ...SHEET_JOB });
+    expect(await updateManualJob(sheetForm({ qty: "10.5" }))).toEqual({ ok: true });
+    expect(h.tx.manualJob.update.mock.calls[0][0].data.qty).toBe(10.5);
+    h.prisma.manualJob.findUnique.mockResolvedValue({ ...SHEET_JOB, doneQty: 10, doneAt: new Date("2026-10-12T10:00:00Z") });
+    expect(await reopenManualJob(form({ id: "30", more: "0.5" }, {}))).toEqual({ ok: true });
+    expect(h.prisma.manualJob.update).toHaveBeenCalledWith({ where: { id: 30 }, data: { qty: 10.5, doneAt: null } });
+    h.prisma.manualJob.findUnique.mockResolvedValue({ ...JOB });
+    expect(await reopenManualJob(form({ more: "0.5" }))).toEqual({ ok: false, error: "Extra pieces must be a whole number." });
+    expect(await recordManualDone(form({ qty: "0.5" }))).toEqual({ ok: false, error: "Enter whole pieces above 0." });
   });
 
   it("✎ replaces the parts, never below the sheets cut", async () => {

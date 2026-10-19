@@ -52,7 +52,8 @@ describe("restoreMachineQueues", () => {
   });
 
   it("on the fabrication machines puts back the jobs and the panels, never a transformer plan line of its own", async () => {
-    const job = row({ bom: "MANUAL", mo: "MANUAL-7", item: "JOB", qty: 3 });
+    // a sheet job's share may be part of a sheet
+    const job = row({ bom: "MANUAL", mo: "MANUAL-7", item: "JOB", qty: 2.5 });
     const panel = row({ machineId: 2, item: "PNL", mo: "M7" });
     const r = await restoreMachineQueues(fd("Cut", [row(), job, panel]));
     expect(r).toEqual({ ok: true, summary: expect.stringContaining("(2 lines)") });
@@ -80,6 +81,8 @@ describe("restoreMachineQueues", () => {
       [[row({ machineId: 9 })], "another department"],
       [[row(), row()], "twice"],
       [[row({ qty: 0 })], "bad quantity"],
+      [[row({ qty: 2.5 })], "bad quantity"],
+      [[row({ bom: "MANUAL", mo: "MANUAL-7", item: "JOB", qty: 0.125 })], "bad quantity"],
       [[row({ rank: -1 })], "bad rank"],
       [[row({ running: "yes" })], "running state"],
       [[row({ bom: "" })], "incomplete"],

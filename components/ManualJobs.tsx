@@ -159,7 +159,8 @@ function SheetJobFields({ dept, job, doneQty = 0, machines, machineCode, boms, p
         </label>
         <label><span className={LABEL}>Sheets *</span>
           {/* a job copied from one typed in pieces brings its sheet, not its count */}
-          <input name="qty" type="text" inputMode="numeric" pattern="[0-9]*" required className={`${FIELD} tabnum`} defaultValue={job?.bySheet ? job.qty : undefined} {...PLAIN} />
+          {/* part of a sheet is a count too — 2.5, or 2,5 off a phone keypad */}
+          <input name="qty" type="text" inputMode="decimal" required className={`${FIELD} tabnum`} defaultValue={job?.bySheet ? job.qty : undefined} placeholder="e.g. 2.5" {...PLAIN} />
           {doneQty > 0 && <span className="block text-[11px] text-muted mt-0.5">{doneQty} cut already — not fewer</span>}
         </label>
       </div>

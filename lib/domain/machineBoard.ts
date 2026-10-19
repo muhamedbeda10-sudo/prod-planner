@@ -1,6 +1,6 @@
 import { round1 } from "@/lib/domain/shifts";
 import { LV_ITEM } from "@/lib/domain/lv";
-import { MANUAL_BOM, MANUAL_ITEM } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, roundSheets } from "@/lib/domain/manualJob";
 
 // The machine load board — pure. The worklist's open lines, each on the
 // machine the planner put it on, in the order he ranked them, priced in
@@ -209,6 +209,11 @@ export function buildMachineBoard(
   };
   const stepHours = (l: BoardLine, step: string): number | null => l.route.find((r) => r.center === step)?.hours ?? l.route[0]?.hours ?? null;
 
+  // a sheet job is counted to the hundredth of a sheet (2.5): what is left
+  // of it is rounded so it never drifts (2.3 − 1.1 is 1.2, not 1.1999…); a
+  // plan line's count stays exactly as it was
+  const count = (l: BoardLine, n: number) => (l.bom === MANUAL_BOM ? roundSheets(n) : n);
+
   const byMachine = new Map<number, MachineQueueLine[]>();
   // pieces of each line already given to a machine, PER STEP of the route: a
   // tank owes its 12 pieces to cutting AND to bending AND to fins, so each
@@ -235,8 +240,9 @@ export function buildMachineBoard(
     seen.add(pairKey);
     const step = stepFor(l, a.machineId);
     const pool = `${a.key}#${step}`;
-    const left = Math.max(0, l.remaining - (given.get(pool) ?? 0) - (sheet ? givenSheet.get(`${pool}#${sheet}`) ?? 0 : maxSheet(pool)));
-    const pcs = a.qty !== null && a.qty !== undefined ? Math.min(Math.max(0, Math.floor(a.qty)), left) : left;
+    const left = Math.max(0, count(l, l.remaining - (given.get(pool) ?? 0) - (sheet ? givenSheet.get(`${pool}#${sheet}`) ?? 0 : maxSheet(pool))));
+    // a plan line's share is whole pieces; a sheet job's may be part of a sheet
+    const pcs = a.qty !== null && a.qty !== undefined ? Math.min(Math.max(0, l.bom === MANUAL_BOM ? roundSheets(a.qty) : Math.floor(a.qty)), left) : left;
     if (pcs <= 0) continue;
     if (sheet) {
       givenSheet.set(`${pool}#${sheet}`, (givenSheet.get(`${pool}#${sheet}`) ?? 0) + pcs);
@@ -252,7 +258,7 @@ export function buildMachineBoard(
     // a sheet's pieces already cut here leave its queue; the share stays
     // counted, so the sheet does not come back as waiting for a machine
     const sheetDone = sheet ? Math.min(pcs, Math.max(0, Math.floor(a.sheetDone ?? 0))) : 0;
-    const left = pcs - sheetDone;
+    const left = count(l, pcs - sheetDone);
     if (left <= 0) continue;
     if (!byMachine.has(a.machineId)) byMachine.set(a.machineId, []);
     const share = left / l.remaining;
@@ -295,9 +301,9 @@ export function buildMachineBoard(
       running,
       waiting: queue.filter((q) => !q.running),
       now: running[0] ?? null,
-      pcs: queue.reduce((s, l) => s + l.remaining, 0),
+      pcs: roundSheets(queue.reduce((s, l) => s + l.remaining, 0)),
       hours,
-      unpricedPcs: queue.filter((l) => l.hours === null).reduce((s, l) => s + l.remaining, 0),
+      unpricedPcs: roundSheets(queue.filter((l) => l.hours === null).reduce((s, l) => s + l.remaining, 0)),
       downtimeH,
       crewH: today.crewH?.[m.id] ?? 0,
       crew: today.crew?.[m.id] ?? [],
@@ -313,7 +319,8 @@ export function buildMachineBoard(
     l.route.forEach((r, i) => {
       const pool = `${l.key}#${r.center}`;
       const whole = given.get(pool) ?? 0;
-      const push = (leftPcs: number, sheet?: string) => {
+      const push = (rawLeft: number, sheet?: string) => {
+        const leftPcs = count(l, rawLeft);
         if (leftPcs <= 0) return;
         unassigned.push({
           ...l,
