@@ -109,7 +109,8 @@ export async function createMaterialLine(formData: FormData): Promise<MaterialAc
 }
 
 export async function updateMaterialLine(formData: FormData): Promise<MaterialActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
+  const line = await getActiveLine();
+  const guard = await requirePerm(linePermKey(line, "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid material line." };
@@ -118,7 +119,8 @@ export async function updateMaterialLine(formData: FormData): Promise<MaterialAc
   if (bad) return { ok: false, error: bad };
   const [clash, was] = await Promise.all([
     prisma.materialUsage.findUnique({ where: { month_bom_mo_partCode_material_thicknessMm_sheetSize: keyOf(f) } }),
-    prisma.materialUsage.findUnique({ where: { id }, select: { actualPerUnit: true, actualPerUnitManual: true } }),
+    // the permission checked is the active line's, so only that line's rows are reachable
+    prisma.materialUsage.findFirst({ where: { id, line }, select: { actualPerUnit: true, actualPerUnitManual: true } }),
   ]);
   if (clash && clash.id !== id) return { ok: false, error: `Another line already records ${lineLabel(f)} on ${f.mo || f.bom}.` };
   if (!was) return { ok: false, error: "That material line is gone — refresh the page." };
@@ -131,7 +133,8 @@ export async function updateMaterialLine(formData: FormData): Promise<MaterialAc
  *  value — "not nested yet" / "nothing produced yet" / "no rate of its own" —
  *  which is not zero. */
 async function setCell(formData: FormData, field: "actualPerUnit" | "sheetsUsed" | "producedQty" | "utilization", label: string): Promise<MaterialActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
+  const line = await getActiveLine();
+  const guard = await requirePerm(linePermKey(line, "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid material line." };
@@ -152,12 +155,14 @@ async function setCell(formData: FormData, field: "actualPerUnit" | "sheetsUsed"
     // the rate falls back to this number over the units, which is exactly
     // what was just typed. A rate he typed himself is his own statement and
     // stays: he can clear it in its own box if he wants the division back.
-    const was = await prisma.materialUsage.findUnique({ where: { id }, select: { actualPerUnitManual: true } });
+    const was = await prisma.materialUsage.findFirst({ where: { id, line }, select: { actualPerUnitManual: true } });
     if (!was) return { ok: false, error: "That material line is gone — refresh the page." };
     if (!was.actualPerUnitManual) data.actualPerUnit = null;
   }
 
-  await prisma.materialUsage.update({ where: { id }, data });
+  // the permission checked is the active line's, so only that line's rows are reachable
+  const res = await prisma.materialUsage.updateMany({ where: { id, line }, data });
+  if (res.count === 0) return { ok: false, error: "That material line is gone — refresh the page." };
   revalidateMaterial();
   return { ok: true };
 }
@@ -248,11 +253,13 @@ export async function deleteMaterialLines(formData: FormData): Promise<MaterialA
 }
 
 export async function deleteMaterialLine(formData: FormData): Promise<MaterialActionResult> {
-  const guard = await requirePerm(linePermKey(await getActiveLine(), "material"));
+  const line = await getActiveLine();
+  const guard = await requirePerm(linePermKey(line, "material"));
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid material line." };
-  await prisma.materialUsage.delete({ where: { id } });
+  const res = await prisma.materialUsage.deleteMany({ where: { id, line } });
+  if (res.count === 0) return { ok: false, error: "That material line is gone — refresh the page." };
   revalidateMaterial();
   return { ok: true };
 }
