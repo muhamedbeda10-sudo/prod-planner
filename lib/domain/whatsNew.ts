@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-chat-factory-clock",
+    dateISO: "2026-10-19",
+    title: "Chat times are on the factory clock",
+    where: "Chat · the chat pop-ups · the assistant",
+    body: "Every time in the chat — on each message, in the contact list, on pinned messages and \"Seen at\" — is now written on the factory's clock (Cairo), the same as the rest of the app, wherever your phone or computer is set. The day separators in a thread follow the factory's day too, so a message sent just after midnight sits under the new day. The assistant's conversation list (Today, Yesterday …) and the time on its action cards follow the factory's clock as well.",
+    href: "/chat",
+  },
+  {
     id: "2026-10-19-sheet-job-any-bom",
     dateISO: "2026-10-19",
     title: "Add job: any BOM, in the plan or not",

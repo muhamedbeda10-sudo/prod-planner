@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { factoryWallClockMs } from "@/lib/domain/dates";
 import { Bar, CartesianGrid, Cell, ComposedChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis } from "recharts";
 import { HeatScale, Heatmap, OTHER, catColor, catInk, compact, fmt, pct } from "@/components/charts/kit";
 import { ChartFrame, TICK, Tip, ToneIcon, unitOf, useWidth, valueText, type TipProps } from "@/components/AiChartFrame";
@@ -229,10 +230,7 @@ const HOUR = 3_600_000;
 const noSubscribe = () => () => {};
 /** Now on the wall clock the times are written in (the factory's), to the
  *  minute — stable between renders, and none on the server. */
-const wallNow = () => {
-  const d = new Date();
-  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
-};
+const wallNow = () => factoryWallClockMs(new Date());
 
 const dayLabel = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const hourLabel = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC" });

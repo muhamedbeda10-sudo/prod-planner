@@ -11,6 +11,7 @@ import { AiPrintButton } from "@/components/AiPrint";
 import { EmptyState } from "@/components/primitives";
 import { deleteAiConversation, discardAiFile, loadAiConversation, uploadAiFile } from "@/app/ai/actions";
 import { AI_MAX_QUESTION, usdText, type AiChatTurn } from "@/lib/domain/ai";
+import { factoryDaysBefore } from "@/lib/domain/dates";
 import { AI_FILE_ACCEPT, AI_FILE_LIMITS, AI_IMAGE_MAX_SIDE, AI_IMAGE_QUALITY, fileSizeText } from "@/lib/domain/aiFiles";
 import { isSimulatorShow, SIMULATOR_HREF, type SimulatorShow } from "@/lib/domain/simulatorScreen";
 import { compressImage } from "@/lib/imageCompress";
@@ -79,16 +80,13 @@ const SUGGESTIONS: { q: string; icon: typeof Clock }[] = [
   { q: "Which open orders still have no nesting on the Material tab?", icon: Layers },
 ];
 
-const DAY = 86_400_000;
-const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-
-/** Which group of the list a conversation sits in, by when it was last used. */
+/** Which group of the list a conversation sits in, by when it was last used —
+ *  counted in factory days, so the server and a browser in any zone agree. */
 export function groupOf(iso: string, now: Date): string {
-  const t = new Date(iso).getTime();
-  const today = startOfDay(now);
-  if (t >= today) return "Today";
-  if (t >= today - DAY) return "Yesterday";
-  if (t >= today - 7 * DAY) return "Previous 7 days";
+  const ago = factoryDaysBefore(new Date(iso), now);
+  if (ago <= 0) return "Today";
+  if (ago === 1) return "Yesterday";
+  if (ago <= 7) return "Previous 7 days";
   return "Earlier";
 }
 export const GROUPS = ["Today", "Yesterday", "Previous 7 days", "Earlier"];

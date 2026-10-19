@@ -18,7 +18,7 @@ const SHEETS = "var(--viz-2)";
 const RAMP = ["var(--ramp-1)", "var(--ramp-2)", "var(--ramp-3)", "var(--ramp-4)", "var(--ramp-5)", "var(--ramp-6)"];
 
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const n1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+const n1 = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 1 });
 
 function TipBox({ children }: { children: React.ReactNode }) {
   return (
