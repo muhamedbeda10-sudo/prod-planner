@@ -1305,6 +1305,9 @@ export function MasterTrackerTable({
       fd.set("mo", r.mo);
       fd.set("item", it);
       fd.set("total", typed);
+      // the figure the total was typed from — the server refuses it if the
+      // ledger has moved on since the page loaded
+      fd.set("base", String(value));
       startTransition(async () => {
         const res = await recordTrackerTotal(fd);
         if (res.ok) router.refresh();
@@ -1390,13 +1393,15 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
   function groupCell(gBom: string, members: MasterTrackerRow[], it: Item, stage: string, borderR: boolean) {
     // the core's Painting column is its SHOT BLAST — same as the MO rows
     const dept = stage === "Painting" && isPaintExempt(it) ? "ShotBlast" : stage;
-    const value =
-      dept === "Cut" ? members.reduce((s, r) => s + r.items[it].cut, 0)
-      : dept === "Welding" ? members.reduce((s, r) => s + r.items[it].weld, 0)
-      : dept === "ShotBlast" ? members.reduce((s, r) => s + r.items[it].shp, 0)
-      : dept === "Delivered" ? members.reduce((s, r) => s + r.items[it].delivered, 0)
-      : members.reduce((s, r) => s + r.items[it].paint, 0);
-    const eligibleMos = members.filter((m) => m.items[it].eligible && !m.items[it].excluded).map((m) => m.mo);
+    const at = (r: MasterTrackerRow) =>
+      dept === "Cut" ? r.items[it].cut
+      : dept === "Welding" ? r.items[it].weld
+      : dept === "ShotBlast" ? r.items[it].shp
+      : dept === "Delivered" ? r.items[it].delivered
+      : r.items[it].paint;
+    const value = members.reduce((s, r) => s + at(r), 0);
+    const eligible = members.filter((m) => m.items[it].eligible && !m.items[it].excluded);
+    const eligibleMos = eligible.map((m) => m.mo);
     // what the BOM's MOs need of this component, less what is bought out
     const target = members.reduce((s, m) => s + (m.items[it].eligible && !m.items[it].excluded ? Math.max(0, m.required - m.items[it].osp) : 0), 0);
     const state = stageState(value, target, members.some((m) => etas[m.mo]?.late), members.some((m) => m.urgent), members.every((m) => m.hold.onHold));
@@ -1432,6 +1437,8 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       fd.set("item", it);
       fd.set("total", typed);
       fd.set("mos", eligibleMos.join(","));
+      // what the MOs it lands on showed — the server refuses a stale page
+      fd.set("base", String(eligible.reduce((s, r) => s + at(r), 0)));
       startTransition(async () => {
         const res = await recordGroupOutput(fd);
         if (res.ok) router.refresh();

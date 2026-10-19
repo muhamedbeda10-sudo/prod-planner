@@ -17,7 +17,8 @@ import { TANK_ITEM } from "@/lib/domain/tanks";
 import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
 import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
-import { loadGroupMembers, groupTotal, spreadGroupChange } from "@/lib/server/groupRecord";
+import { loadGroupMembers, groupTotal, groupShownTotal, spreadGroupChange } from "@/lib/server/groupRecord";
+import { readBase, shownStageTotal, staleTotalError } from "@/lib/domain/trackerEdit";
 import { LV_ITEM, LV_STAGES, lvStageAt } from "@/lib/domain/lv";
 import { emitEvent } from "@/lib/server/events";
 import { outputSentence } from "@/lib/domain/appEvents";
@@ -191,8 +192,15 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     const tankTracking = (await getSettings()).tankTracking;
     if (tankTracking && item === TANK_ITEM && dept === "Painting") return { ok: false, error: PAINT_TANKS_ELSEWHERE };
 
-    const agg = await prisma.handoverEntry.aggregate({ where: { mo, item, dept }, _sum: { qty: true } });
+    const [agg, order] = await Promise.all([
+      prisma.handoverEntry.aggregate({ where: { mo, item, dept }, _sum: { qty: true } }),
+      prisma.masterOrder.findUnique({ where: { mo }, select: { planQty: true } }),
+    ]);
     const current = agg._sum.qty ?? 0;
+    // the total was typed from the figure on the page; if the ledger moved
+    // since, the difference below would be counted from the wrong figure
+    const stale = staleTotalError(readBase(formData.get("base")), shownStageTotal(current, order?.planQty ?? 0));
+    if (stale) return { ok: false, error: stale };
     const delta = newTotal - current;
     if (delta === 0) return { ok: false, error: "Nothing changed — the total is already " + current + "." };
 
@@ -322,6 +330,8 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     if (source === "tracker") {
       newTotal = Number(formData.get("total"));
       if (!Number.isInteger(newTotal) || newTotal < 0) return { ok: false, error: "Enter a whole number ≥ 0." };
+      const stale = staleTotalError(readBase(formData.get("base")), groupShownTotal(list, dept));
+      if (stale) return { ok: false, error: stale };
       delta = newTotal - current;
       if (delta === 0) return { ok: false, error: "Nothing changed — the group total is already " + current + "." };
     } else {

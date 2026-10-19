@@ -3,6 +3,7 @@ import { holdView, type HoldView } from "@/lib/domain/hold";
 import { prisma } from "@/lib/db";
 import { loadMasterOrdersOf } from "./loads";
 import { LV_ITEM, lvComplete, type LvState } from "@/lib/domain/lv";
+import { shownStageTotal } from "@/lib/domain/trackerEdit";
 
 // The LV panels' tracker: one row per panel order, its position on the
 // chain read off the ledger — the same ledger the transformers write, under
@@ -47,7 +48,7 @@ export async function getLvTracker(): Promise<LvTrackerRow[]> {
   const g = (mo: string, dept: string) => done.get(`${mo}|${dept}`) ?? 0;
 
   return orders.map((o) => {
-    const cap = (v: number) => (o.planQty > 0 ? Math.min(v, o.planQty) : v);
+    const cap = (v: number) => shownStageTotal(v, o.planQty);
     const state: LvState = {
       required: o.planQty,
       punch: cap(g(o.mo, "Punching")),

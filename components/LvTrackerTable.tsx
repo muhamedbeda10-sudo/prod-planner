@@ -399,7 +399,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
         {stages.map((stage) =>
           cell(`${r.mo}|${stage}`, lvStageOf(r.state, stage), r.state.required, { held, urgent: r.urgent, bottleneck: bn === stage }, stage, (total) => {
             const fd = new FormData();
-            fd.set("mo", r.mo); fd.set("stage", stage); fd.set("total", total);
+            fd.set("mo", r.mo); fd.set("stage", stage); fd.set("total", total); fd.set("base", String(lvStageOf(r.state, stage)));
             run(recordLvTotal, fd);
           })
         )}
@@ -561,6 +561,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
                         (total) => {
                           const fd = new FormData();
                           fd.set("bom", bom); fd.set("stage", stage); fd.set("total", total); fd.set("mos", members.map((m) => m.mo).join(","));
+                          fd.set("base", String(sum((r) => lvStageOf(r.state, stage))));
                           run(recordLvGroupTotal, fd);
                         },
                         // which MOs the number lands on, before it is saved —

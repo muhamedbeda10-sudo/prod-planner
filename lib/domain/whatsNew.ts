@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-tracker-stale-total",
+    dateISO: "2026-10-19",
+    title: "A tracker total typed on an out-of-date page is refused, not miscounted",
+    where: "Plan Tracker · LV tracker — typing a new total in a stage cell",
+    body: "Typing a new total in a tracker cell records the difference from the figure on your screen. If someone recorded on that order since the page loaded — the worklists keep recording while the tracker stays open — the cell now says the figure has moved and asks you to refresh, instead of counting the difference from the old number (which could double-count output, or take back tanks welded meanwhile).",
+    href: "/tracker",
+  },
+  {
     id: "2026-10-19-leak-test-quality-sections",
     dateISO: "2026-10-19",
     title: "Leak testers and quality inspectors are back in the dropdowns",

@@ -3,6 +3,7 @@ import type { MasterOrder } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { DELIVERED_STAGE, SHOTBLAST_STAGE, applicableItems, isPaintExempt, ospOf, type Item } from "@/lib/domain/constants";
 import { capsFor, spreadOverGroup } from "@/lib/domain/groupSpread";
+import { shownStageTotal } from "@/lib/domain/trackerEdit";
 
 // Recording on a BOM group row: the member orders in the order given, their
 // totals per stage for one component, and how a change spreads over them.
@@ -51,17 +52,26 @@ export async function loadGroupMembers(bom: string, item: string, mos: readonly 
   return members;
 }
 
+/** One member's ledger total at one stage. */
+function memberAt(m: GroupMember, dept: string): number {
+  switch (dept) {
+    case "Cut": return m.cut;
+    case "Welding": return m.weld;
+    case "Painting": return m.paint;
+    case SHOTBLAST_STAGE: return m.shp;
+    default: return m.delivered;
+  }
+}
+
 /** The group's total at one stage. */
 export function groupTotal(members: readonly GroupMember[], dept: string): number {
-  return members.reduce((s, m) => {
-    switch (dept) {
-      case "Cut": return s + m.cut;
-      case "Welding": return s + m.weld;
-      case "Painting": return s + m.paint;
-      case SHOTBLAST_STAGE: return s + m.shp;
-      default: return s + m.delivered;
-    }
-  }, 0);
+  return members.reduce((s, m) => s + memberAt(m, dept), 0);
+}
+
+/** The same total as the tracker shows it: each member capped at its order's
+ *  quantity — what a group cell's typed total was worked out from. */
+export function groupShownTotal(members: readonly GroupMember[], dept: string): number {
+  return members.reduce((s, m) => s + shownStageTotal(memberAt(m, dept), m.o?.planQty ?? 0), 0);
 }
 
 /** How a change of `delta` pieces lands on the members: each takes up to its
