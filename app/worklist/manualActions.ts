@@ -3,15 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireDeptEdit } from "@/lib/server/auth";
-import { MANUAL_BOM, MANUAL_ITEM, editedJobQty, jobSheetKey, jobsBySheet, manualMo, readJobParts, type ManualJobPartView } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, SHEET_COUNT_RULE, editedJobQty, isSheetCount, jobSheetKey, jobsBySheet, manualMo, readJobParts, roundSheets, typedCount, type ManualJobPartView } from "@/lib/domain/manualJob";
 import { normalizeMaterialType, normalizeSheetSize } from "@/lib/domain/material";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { partsWithPlanBoms } from "@/lib/server/manualJobs";
 
 // Jobs from outside the plan, put on a machine by hand. The dept's worklist
 // permission covers them, the same as putting a plan line on a machine.
-// Fabrication's are SHEET JOBS: typed, queued, split and closed in sheets,
-// with the parts of the projects the sheets carry.
+// Fabrication's are SHEET JOBS: typed, queued, split and closed in sheets —
+// part of a sheet too, to the hundredth (2.5) — with the parts of the
+// projects the sheets carry.
 
 export interface ManualActionResult {
   ok: boolean;
@@ -48,8 +49,8 @@ type SheetJobForm = {
  *  project's part on them — checked, a BOM the plan carries written as the
  *  plan writes it (any other kept as typed); or what is wrong with it. */
 async function readSheetJob(fd: FormData): Promise<SheetJobForm | { error: string }> {
-  const sheets = Number(text(fd, "qty"));
-  if (!Number.isInteger(sheets) || sheets <= 0) return { error: "Sheets must be a whole number above 0." };
+  const sheets = typedCount(text(fd, "qty"));
+  if (!isSheetCount(sheets)) return { error: `Sheets must be ${SHEET_COUNT_RULE}.` };
   const thicknessMm = Number(text(fd, "thicknessMm"));
   if (!Number.isFinite(thicknessMm) || thicknessMm <= 0) return { error: "Thickness must be a number of mm above 0." };
   const material = normalizeMaterialType(text(fd, "material", 60));
@@ -181,7 +182,7 @@ export async function updateManualJob(fd: FormData): Promise<ManualActionResult>
 
   const key = { dept: job.dept, bom: MANUAL_BOM, mo: manualMo(job.id), item: MANUAL_ITEM };
   const wasDone = job.doneAt !== null;
-  const left = qty - job.doneQty;
+  const left = roundSheets(qty - job.doneQty);
   await prisma.$transaction(async (tx) => {
     await tx.manualJob.update({ where: { id }, data: { ...data, doneAt: edit.finished ? job.doneAt ?? new Date() : null } });
     if (parts !== null) {
@@ -211,14 +212,14 @@ export async function recordManualDone(fd: FormData): Promise<ManualActionResult
   const guard = await requireDeptEdit(job.dept);
   if (guard.error) return { ok: false, error: guard.error };
   if (jobsBySheet(job.dept) && !job.bySheet) return { ok: false, error: PIECES_JOB };
-  const qty = Number(text(fd, "qty"));
-  const left = job.qty - job.doneQty;
-  if (!Number.isInteger(qty) || qty <= 0) return { ok: false, error: job.bySheet ? "Enter the sheets cut — a whole number above 0." : "Enter whole pieces above 0." };
+  const qty = job.bySheet ? typedCount(text(fd, "qty")) : Number(text(fd, "qty"));
+  const left = roundSheets(job.qty - job.doneQty);
+  if (job.bySheet ? !isSheetCount(qty) : !Number.isInteger(qty) || qty <= 0) return { ok: false, error: job.bySheet ? `Enter the sheets cut — ${SHEET_COUNT_RULE}.` : "Enter whole pieces above 0." };
   if (qty > left) return { ok: false, error: job.bySheet ? `Only ${left} sheet(s) left on this job.` : `Only ${left} left on this job.` };
   const machineId = Number(text(fd, "machineId")) || null;
   const date = parseISODate(text(fd, "date")) ?? parseISODate(factoryDayISO(new Date()))!;
-  const doneQty = job.doneQty + qty;
-  const finished = doneQty >= job.qty;
+  const doneQty = roundSheets(job.doneQty + qty);
+  const finished = doneQty >= roundSheets(job.qty);
   const key = { dept: job.dept, bom: MANUAL_BOM, mo: manualMo(job.id), item: MANUAL_ITEM };
   const by = guard.user?.name ?? null;
   const stale = await prisma.$transaction(async (tx) => {
@@ -240,7 +241,8 @@ export async function recordManualDone(fd: FormData): Promise<ManualActionResult
     if (machineId) {
       const row = await tx.worklistMachine.findFirst({ where: { ...key, machineId } });
       if (row && row.qty !== null) {
-        if (row.qty - qty > 0) await tx.worklistMachine.update({ where: { id: row.id }, data: { qty: row.qty - qty } });
+        const keep = roundSheets(row.qty - qty);
+        if (keep > 0) await tx.worklistMachine.update({ where: { id: row.id }, data: { qty: keep } });
         else await tx.worklistMachine.delete({ where: { id: row.id } });
       }
     }
@@ -262,10 +264,12 @@ export async function reopenManualJob(fd: FormData): Promise<ManualActionResult>
   if (guard.error) return { ok: false, error: guard.error };
   if (jobsBySheet(job.dept) && !job.bySheet) return { ok: false, error: PIECES_JOB };
   const unit = job.bySheet ? "sheets" : "pieces";
-  const more = Number(text(fd, "more") || "0");
-  if (!Number.isInteger(more) || more < 0) return { ok: false, error: `Extra ${unit} must be a whole number.` };
-  const qty = job.qty + more;
-  if (qty - job.doneQty <= 0) return { ok: false, error: `Nothing would be left to make — add the extra ${unit} wanted.` };
+  const more = job.bySheet ? typedCount(text(fd, "more")) : Number(text(fd, "more") || "0");
+  if (job.bySheet ? more !== 0 && !isSheetCount(more) : !Number.isInteger(more) || more < 0) {
+    return { ok: false, error: job.bySheet ? `Extra sheets must be ${SHEET_COUNT_RULE} — or 0.` : "Extra pieces must be a whole number." };
+  }
+  const qty = roundSheets(job.qty + more);
+  if (roundSheets(qty - job.doneQty) <= 0) return { ok: false, error: `Nothing would be left to make — add the extra ${unit} wanted.` };
   await prisma.manualJob.update({ where: { id }, data: { qty, doneAt: null } });
   revalidate();
   return { ok: true };

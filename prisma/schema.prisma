@@ -715,9 +715,10 @@ model WorklistMachine {
   // Running on the machine right now — several lines can be, when the
   // machine nests or works them together; the rest wait in rank order.
   running   Boolean  @default(false)
-  // Pieces of the line on THIS machine; null = whatever the other machines
-  // do not take. A line split over two machines is two rows.
-  qty       Int?
+  // Pieces of the line on THIS machine — a sheet job's sheets, to the
+  // hundredth; null = whatever the other machines do not take. A line split
+  // over two machines is two rows.
+  qty       Float?
   // The sheet of the item this machine cuts — "<thickness>|<material>|<size>"
   // off the MATERIAL tab's nesting — when the item is spread over machines
   // by sheet (its 3 mm on one laser, its 5 mm on another, at the same time).
@@ -1284,9 +1285,10 @@ model ManualJob {
   title       String // what it is, in the planner's words ("" on a sheet job: its sheet names it)
   bom         String          @default("") // a BOM it belongs to, when there is one
   item        String          @default("") // the part, when there is one (Tank, bracket…)
-  // pieces wanted and done — or, on a sheet job, sheets wanted and cut
-  qty         Int
-  doneQty     Int             @default(0)
+  // pieces wanted and done — or, on a sheet job, sheets wanted and cut,
+  // to the hundredth of a sheet (2.5); pieces stay whole
+  qty         Float
+  doneQty     Float           @default(0)
   bySheet     Boolean         @default(false)
   parts       ManualJobPart[]
   // the sheet it is cut from, typed with it — the same facts the nesting
@@ -1331,7 +1333,7 @@ model ManualJobPart {
 // taken back off once the item is recorded; this log keeps it — the history
 // of what each machine cuts at what thickness, for planning machines from it.
 // A sheet job's ✓ writes here too — under its board key (BOM "MANUAL", MO
-// "MANUAL-<id>", item "JOB"), qty = the SHEETS cut on that machine.
+// "MANUAL-<id>", item "JOB"), qty = the SHEETS cut on that machine (2.5).
 model SheetCutLog {
   id          Int      @id @default(autoincrement())
   at          DateTime @default(now())
@@ -1344,7 +1346,7 @@ model SheetCutLog {
   thicknessMm Float?
   machineId   Int?
   machine     Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
-  qty         Int
+  qty         Float
   createdBy   String?
 
   @@index([machineId])

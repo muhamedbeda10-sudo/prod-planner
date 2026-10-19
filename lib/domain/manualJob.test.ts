@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_JOB_PARTS, editedJobQty, jobName, jobSheetKey, jobsBySheet, manualDescription, manualMaterial, partNameSuggestions, partRowsOf, partsText, readJobParts, withPlanSpelling } from "./manualJob";
+import { MANUAL_BOM, MAX_JOB_PARTS, editedJobQty, isSheetCount, isSheetJobLine, jobName, jobSheetKey, jobsBySheet, manualDescription, manualMaterial, partNameSuggestions, partRowsOf, partsText, readJobParts, roundSheets, typedCount, withPlanSpelling } from "./manualJob";
 
 describe("editedJobQty — a new count of pieces wanted on a manual job", () => {
   it("is refused below what is done, or when it is not whole pieces above 0", () => {
@@ -19,8 +19,49 @@ describe("editedJobQty — a new count of pieces wanted on a manual job", () => 
 describe("editedJobQty — a sheet job's sheets", () => {
   it("speaks in sheets cut", () => {
     expect(editedJobQty(4, 3, true)).toEqual({ ok: false, error: expect.stringContaining("4 sheet(s) are cut already") });
-    expect(editedJobQty(0, 0, true)).toEqual({ ok: false, error: "Sheets must be a whole number above 0." });
+    expect(editedJobQty(0, 0, true)).toEqual({ ok: false, error: expect.stringContaining("Sheets must be a number above 0") });
     expect(editedJobQty(4, 4, true)).toEqual({ ok: true, finished: true });
+  });
+
+  it("takes part of a sheet, to the hundredth", () => {
+    expect(editedJobQty(0, 2.5, true)).toEqual({ ok: true, finished: false });
+    expect(editedJobQty(0, 0.25, true)).toEqual({ ok: true, finished: false });
+    expect(editedJobQty(2.5, 2.5, true)).toEqual({ ok: true, finished: true });
+    expect(editedJobQty(2.5, 2.25, true)).toEqual({ ok: false, error: expect.stringContaining("2.5 sheet(s) are cut already") });
+    expect(editedJobQty(0, 0.125, true)).toEqual({ ok: false, error: expect.stringContaining("two decimals at most") });
+  });
+
+  it("finishes the job however its cut sheets were added up", () => {
+    // 0.1 + 0.2 cut, 0.3 wanted: the same count, not a hair short
+    expect(editedJobQty(0.1 + 0.2, 0.3, true)).toEqual({ ok: true, finished: true });
+  });
+});
+
+describe("sheet counts — part of a sheet", () => {
+  it("rounds to the hundredth, and leaves whole counts as they are", () => {
+    expect(roundSheets(0.1 + 0.2)).toBe(0.3);
+    expect(roundSheets(2.3 - 1.1)).toBe(1.2);
+    expect(roundSheets(7)).toBe(7);
+  });
+
+  it("takes a count above 0 with two decimals at most", () => {
+    expect([2, 2.5, 0.25, 0.01, 1.2].map(isSheetCount)).toEqual([true, true, true, true, true]);
+    expect([0, -1, 0.125, Number.NaN, Number.POSITIVE_INFINITY].map(isSheetCount)).toEqual([false, false, false, false, false]);
+  });
+
+  it("reads a decimal comma as the point, and nothing else", () => {
+    expect(typedCount("2.5")).toBe(2.5);
+    expect(typedCount(" 2,5 ")).toBe(2.5);
+    expect(typedCount("0,25")).toBe(0.25);
+    expect(typedCount("1,000")).toBeNaN();
+    expect(typedCount("abc")).toBeNaN();
+    expect(typedCount("")).toBe(0);
+  });
+
+  it("counts a sheet job's line in sheets — on the fabrication board only", () => {
+    expect(isSheetJobLine("Cut", MANUAL_BOM)).toBe(true);
+    expect(isSheetJobLine("Welding", MANUAL_BOM)).toBe(false);
+    expect(isSheetJobLine("Cut", "B123")).toBe(false);
   });
 });
 

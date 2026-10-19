@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { MANUAL_BOM, MANUAL_ITEM, manualDescription, manualIdOf, manualMo, withPlanSpelling, type ManualJobView } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, manualDescription, manualIdOf, manualMo, roundSheets, withPlanSpelling, type ManualJobView } from "@/lib/domain/manualJob";
 
 /** How many finished jobs the board's list keeps in sight — the rest stay
  *  in the table, only off the list. */
@@ -30,11 +30,12 @@ export async function getManualJobs(dept: string): Promise<ManualJobView[]> {
 }
 
 /** The open jobs as board lines — what is left of each (pieces, or a sheet
- *  job's sheets), under its own key. */
+ *  job's sheets, to the hundredth), under its own key. */
 export function manualBoardLines(jobs: readonly ManualJobView[]) {
   return jobs
-    .filter((j) => !j.doneAtISO && j.qty - j.doneQty > 0)
-    .map((j) => ({ bom: MANUAL_BOM, mo: manualMo(j.id), item: MANUAL_ITEM, description: manualDescription(j), remaining: j.qty - j.doneQty, deliveryISO: null, dueISO: null }));
+    .map((j) => ({ j, left: roundSheets(j.qty - j.doneQty) }))
+    .filter(({ j, left }) => !j.doneAtISO && left > 0)
+    .map(({ j, left }) => ({ bom: MANUAL_BOM, mo: manualMo(j.id), item: MANUAL_ITEM, description: manualDescription(j), remaining: left, deliveryISO: null, dueISO: null }));
 }
 
 /** The projects a sheet job's parts name, matched to the plan however they

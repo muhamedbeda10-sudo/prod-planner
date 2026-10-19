@@ -9,7 +9,7 @@ import { getOptimizerInputs } from "@/lib/server/machineBoard";
 import { optimizePlan } from "@/lib/domain/optimizePlan";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { CENTER_LABEL, machineWord } from "@/lib/domain/shifts";
-import { MANUAL_BOM, MANUAL_ITEM, manualIdOf } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, SHEET_COUNT_RULE, isSheetCount, isSheetJobLine, manualIdOf, typedCount } from "@/lib/domain/manualJob";
 import { BOARD_LINE_REFUSED, boardTakesLine } from "@/lib/domain/machineBoard";
 import type { QueueRowSnapshot } from "@/lib/server/machineQueues";
 
@@ -76,9 +76,15 @@ function rowKey(line: { dept: BoardDept; bom: string; mo: string; item: string; 
   return { dept_bom_mo_item_machineId_sheet: { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item, machineId, sheet: line.sheet } };
 }
 
-function readQty(fd: FormData): number | null | { error: string } {
+/** The share a machine is given: whole pieces — or, of a sheet job, its
+ *  sheets, part of a sheet too (2.5). Blank = the rest of the line. */
+function readQty(fd: FormData, line: { dept: string; bom: string }): number | null | { error: string } {
   const raw = String(fd.get("qty") ?? "").trim();
   if (!raw) return null;
+  if (isSheetJobLine(line.dept, line.bom)) {
+    const n = typedCount(raw);
+    return isSheetCount(n) ? n : { error: `Sheets must be ${SHEET_COUNT_RULE} — leave it blank for the whole job.` };
+  }
   const n = Number(raw);
   if (!Number.isInteger(n) || n <= 0) return { error: "Pieces must be a whole number above 0 — leave it blank for the whole line." };
   return n;
@@ -106,7 +112,7 @@ export async function assignLineMachine(fd: FormData): Promise<MachineActionResu
     if (!job || job.dept !== line.dept) return { ok: false, error: "That job is gone — reload the page." };
     if (job.doneAt) return { ok: false, error: "That job is finished — open it again from the jobs list first." };
   }
-  const qty = readQty(fd);
+  const qty = readQty(fd, line);
   if (qty !== null && typeof qty === "object") return { ok: false, error: qty.error };
   const key = { dept: line.dept, bom: line.bom, mo: line.mo, item: line.item };
   const existing = await prisma.worklistMachine.findMany({ where: key });
@@ -170,7 +176,7 @@ export async function setLineQty(fd: FormData): Promise<MachineActionResult> {
   if (guard.error) return { ok: false, error: guard.error };
   const machineId = Number(fd.get("machineId"));
   if (!Number.isInteger(machineId)) return { ok: false, error: "Invalid machine." };
-  const qty = readQty(fd);
+  const qty = readQty(fd, line);
   if (qty !== null && typeof qty === "object") return { ok: false, error: qty.error };
   const row = await prisma.worklistMachine.findUnique({ where: rowKey(line, machineId) });
   if (!row) return { ok: false, error: "That line is not on this machine any more — reload the page." };
@@ -373,7 +379,7 @@ export async function resetMachinePlan(fd: FormData): Promise<MachineActionResul
 const MAX_RESTORE_ROWS = 3000;
 
 /** The snapshot's rows, checked one by one, or what is wrong with them. */
-function readSnapshotRows(raw: unknown, machineIds: ReadonlySet<number>): QueueRowSnapshot[] | { error: string } {
+function readSnapshotRows(raw: unknown, dept: string, machineIds: ReadonlySet<number>): QueueRowSnapshot[] | { error: string } {
   if (!Array.isArray(raw)) return { error: "The snapshot is not a list of rows." };
   if (raw.length > MAX_RESTORE_ROWS) return { error: `A snapshot holds at most ${MAX_RESTORE_ROWS} rows.` };
   const out: QueueRowSnapshot[] = [];
@@ -391,7 +397,8 @@ function readSnapshotRows(raw: unknown, machineIds: ReadonlySet<number>): QueueR
     if (bom === null || mo === null || item === null || sheet === null || !bom || !item) return { error: "A row of the snapshot is incomplete." };
     if (!machineIds.has(machineId)) return { error: "A row of the snapshot is on a machine of another department, or one that is gone." };
     if (!Number.isInteger(rank) || rank < 0 || !Number.isInteger(sheetDone) || sheetDone < 0) return { error: "A row of the snapshot has a bad rank or count." };
-    if (qty !== null && (!Number.isInteger(qty) || qty <= 0)) return { error: "A row of the snapshot has a bad quantity." };
+    // whole pieces — a sheet job's share may be part of a sheet (2.5)
+    if (qty !== null && !(isSheetJobLine(dept, bom) ? isSheetCount(qty) : Number.isInteger(qty) && qty > 0)) return { error: "A row of the snapshot has a bad quantity." };
     if (typeof r?.running !== "boolean") return { error: "A row of the snapshot has no running state." };
     const k = `${bom}|${mo}|${item}|${machineId}|${sheet}`;
     if (seen.has(k)) return { error: "The snapshot holds the same row twice." };
@@ -419,7 +426,7 @@ export async function restoreMachineQueues(fd: FormData): Promise<MachineActionR
     return { ok: false, error: "The snapshot cannot be read." };
   }
   const machines = await prisma.machine.findMany({ where: { dept }, select: { id: true } });
-  const rows = readSnapshotRows(raw, new Set(machines.map((m) => m.id)));
+  const rows = readSnapshotRows(raw, dept, new Set(machines.map((m) => m.id)));
   if ("error" in rows) return { ok: false, error: rows.error };
   // a row the board no longer takes (a transformer plan line on the
   // fabrication machines, from before they carried sheet jobs) stays off

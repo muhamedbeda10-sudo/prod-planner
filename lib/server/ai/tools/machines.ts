@@ -14,7 +14,7 @@ import { optimizePlan } from "@/lib/domain/optimizePlan";
 import { checkRule, machineVerdict, ruleSentence, RULE_EFFECTS, RULE_ITEMS, type MachineRuleLike } from "@/lib/domain/machineRules";
 import { machineLinePermKey, mayScheduleLine, type BayAccess } from "@/lib/domain/permissions";
 import { BOARD_LINE_REFUSED, boardTakesLine, lineKey } from "@/lib/domain/machineBoard";
-import { MANUAL_BOM, manualIdOf } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, SHEET_COUNT_RULE, isSheetCount, isSheetJobLine, manualIdOf } from "@/lib/domain/manualJob";
 import { cell, type AiChange } from "@/lib/domain/aiActions";
 import type { MachineActionResult } from "@/app/worklist/machineActions";
 import { formOf, type ReadTool, type ToolCtx, type WriteTool } from "./types";
@@ -241,6 +241,14 @@ async function lineProblem(dept: string, l: { bom: string; mo: string; item: str
   return (await open()).has(lineKey(l.bom, l.mo, l.item)) ? null : `${lineName(l.bom, l.mo, l.item)} is not an open line of ${dept} — read get_machine_board for the lines it owes.`;
 }
 
+/** What is wrong with the share a machine is given of a line, or null:
+ *  whole pieces — a sheet job's sheets to the hundredth (2.5). */
+function shareProblem(dept: string, l: { bom: string; mo: string; item: string }, qty: number | null): string | null {
+  if (qty === null) return null;
+  if (isSheetJobLine(dept, l.bom)) return isSheetCount(qty) ? null : `${lineName(l.bom, l.mo, l.item)}: sheets must be ${SHEET_COUNT_RULE}.`;
+  return Number.isInteger(qty) ? null : `${lineName(l.bom, l.mo, l.item)}: pieces are whole — ${qty} is not.`;
+}
+
 /** The department's open lines as keys, read once however often it is asked. */
 function openKeys(dept: BoardDept, todayISO: string): () => Promise<ReadonlySet<string>> {
   let got: Promise<ReadonlySet<string>> | null = null;
@@ -272,11 +280,14 @@ export const assignLineTool: WriteTool<AssignInput> = {
   risk: "low",
   schema: {
     type: "object",
-    properties: { ...LINE_FIELDS, qty: { type: ["integer", "null"], minimum: 1, maximum: 100000, description: "Pieces — a sheet job's sheets — for this machine; leave out for the rest of it." } },
+    properties: { ...LINE_FIELDS, qty: { type: ["number", "null"], minimum: 0.01, maximum: 100000, description: "Pieces (whole) — a sheet job's sheets, part of a sheet too (2.5) — for this machine; leave out for the rest of it." } },
     required: ["dept", "bom", "mo", "item", "machine"],
     additionalProperties: false,
   },
-  parse: (r) => ({ ...parseLine(r), qty: (r.qty as number | null | undefined) ?? null }),
+  parse(r) {
+    const i = { ...parseLine(r), qty: (r.qty as number | null | undefined) ?? null };
+    return shareProblem(i.dept, i, i.qty) ?? i;
+  },
   async describe(i, ctx) {
     const c = await lineEditCheck(i, ctx);
     if (!c.ok) return { error: c.error };
@@ -336,7 +347,7 @@ export const assignLinesTool: WriteTool<ManyInput> = {
             mo: LINE_FIELDS.mo,
             item: LINE_FIELDS.item,
             machine: LINE_FIELDS.machine,
-            qty: { type: ["integer", "null"], minimum: 1, maximum: 100000, description: "Pieces for this machine; leave out for the rest of the line." },
+            qty: { type: ["number", "null"], minimum: 0.01, maximum: 100000, description: "Pieces (whole) — a sheet job's sheets, part of a sheet too (2.5) — for this machine; leave out for the rest of the line." },
           },
           required: ["bom", "mo", "item", "machine"],
           additionalProperties: false,
@@ -352,6 +363,10 @@ export const assignLinesTool: WriteTool<ManyInput> = {
       const l = parseLine({ ...x, dept });
       return { bom: l.bom, mo: l.mo, item: l.item, sheet: l.sheet, machine: l.machine, qty: (x.qty as number | null | undefined) ?? null };
     });
+    for (const l of lines) {
+      const bad = shareProblem(dept, l, l.qty);
+      if (bad) return bad;
+    }
     const places = new Set<string>();
     const rests = new Map<string, string>();
     for (const l of lines) {
@@ -476,16 +491,19 @@ export const setLineShareTool: WriteTool<ShareInput> = {
   name: "set_line_share",
   title: "Resize a line's share on a machine",
   description:
-    "Change how many pieces of a line ONE machine keeps (\"keep 12 of the 20 here\") — what it gives up waits for a machine, on none; qty null = this machine takes the rest of the line. The line must be on that machine already (see get_machine_board); to put it on one use assign_line_to_machine.",
+    "Change how many pieces of a line ONE machine keeps (\"keep 12 of the 20 here\") — of a sheet job, how many of its sheets (part of a sheet too: 2.5) — what it gives up waits for a machine, on none; qty null = this machine takes the rest of the line. The line must be on that machine already (see get_machine_board); to put it on one use assign_line_to_machine.",
   area: "machines",
   risk: "low",
   schema: {
     type: "object",
-    properties: { ...LINE_FIELDS, qty: { type: ["integer", "null"], minimum: 1, maximum: 100000, description: "Pieces this machine keeps; null for the rest of the line." } },
+    properties: { ...LINE_FIELDS, qty: { type: ["number", "null"], minimum: 0.01, maximum: 100000, description: "Pieces (whole) this machine keeps — a sheet job's sheets, part of a sheet too (2.5); null for the rest of the line." } },
     required: ["dept", "bom", "mo", "item", "machine", "qty"],
     additionalProperties: false,
   },
-  parse: (r) => ({ ...parseLine(r), qty: r.qty as number | null }),
+  parse(r) {
+    const i = { ...parseLine(r), qty: r.qty as number | null };
+    return shareProblem(i.dept, i, i.qty) ?? i;
+  },
   async describe(i, ctx) {
     const c = await lineEditCheck(i, ctx);
     if (!c.ok) return { error: c.error };
@@ -739,7 +757,7 @@ export const restoreQueuesTool: WriteTool<RestoreInput> = {
             machineId: { type: "integer", minimum: 1 },
             rank: { type: "integer", minimum: 0 },
             running: { type: "boolean" },
-            qty: { type: ["integer", "null"], minimum: 1 },
+            qty: { type: ["number", "null"], minimum: 0.01 },
             sheet: { type: "string", maxLength: 120 },
             sheetDone: { type: "integer", minimum: 0 },
           },

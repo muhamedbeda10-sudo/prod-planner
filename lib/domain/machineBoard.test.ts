@@ -180,6 +180,24 @@ describe("buildMachineBoard", () => {
     expect(b.cards[0].unpricedPcs).toBe(0);
   });
 
+  it("splits a sheet job's sheets over machines in part of a sheet, and what waits adds up exactly", () => {
+    // 2.3 sheets: 1.1 fixed on the first laser, 0.7 on the second — 0.5 waits
+    const job = l("MANUAL", "JOB", 2.3, null, null, "MANUAL-7");
+    const b = buildMachineBoard([m(1), m(2)], [job], [
+      { key: job.key, machineId: 1, rank: 1, qty: 1.1 },
+      { key: job.key, machineId: 2, rank: 1, qty: 0.7 },
+    ]);
+    expect(b.cards.map((c) => [c.queue[0].remaining, c.queue[0].split, c.pcs])).toEqual([[1.1, true, 1.1], [0.7, true, 0.7]]);
+    expect(b.unassigned.map((u) => u.remaining)).toEqual([0.5]);
+    // the rest of it on one laser: 1.2 there, nothing waiting
+    const rest = buildMachineBoard([m(1), m(2)], [job], [
+      { key: job.key, machineId: 1, rank: 1, qty: 1.1 },
+      { key: job.key, machineId: 2, rank: 1, qty: null },
+    ]);
+    expect(rest.cards[1].queue[0].remaining).toBe(1.2);
+    expect(rest.unassigned).toEqual([]);
+  });
+
   it("sums the day's available hours when every active machine has a figure", () => {
     const b = buildMachineBoard([m(1), m(2, { hoursPerDay: 8 }), m(3, { active: false, hoursPerDay: null })], lines, []);
     expect(b.totalAvailableH).toBe(17);

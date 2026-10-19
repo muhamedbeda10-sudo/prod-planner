@@ -13,7 +13,7 @@ import { MachineTimeline } from "@/components/MachineTimeline";
 import { LineMaterialChips } from "@/components/LineMaterialChips";
 import { AddManualJob, ManualJobsList } from "@/components/ManualJobs";
 import { recordManualDone } from "@/app/worklist/manualActions";
-import { jobsBySheet, manualIdOf, type ManualJobView } from "@/lib/domain/manualJob";
+import { SHEET_COUNT_RULE, isSheetCount, jobsBySheet, manualIdOf, roundSheets, typedCount, type ManualJobView } from "@/lib/domain/manualJob";
 import { SheetJobLine } from "@/components/SheetJobLine";
 import { factoryDayISO } from "@/lib/domain/dates";
 
@@ -127,7 +127,7 @@ export function MachinePick({ dept, bom, mo, item, machines, current, canEdit, c
         <input
           key={`${current?.machineId ?? ""}:${current?.split ? current.qty : ""}`}
           ref={qtyRef}
-          type="number" min={1} step={1} inputMode="numeric" placeholder="all"
+          type="number" min={unit === "sheets" ? 0.01 : 1} step={unit === "sheets" ? 0.01 : 1} inputMode={unit === "sheets" ? "decimal" : "numeric"} placeholder="all"
           defaultValue={current?.split ? current.qty : ""}
           disabled={a.pending}
           aria-label={unit === "sheets" ? "Sheets for the machine" : "Pieces for the machine"}
@@ -179,8 +179,8 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
   const manual = manualIdOf(q.mo);
   const bySheet = manual !== null && !!board.manualJobs.find((j) => j.id === manual)?.bySheet;
   const save = () => {
-    const qty = Number(val.trim() || q.remaining);
-    if (!Number.isFinite(qty) || qty <= 0) { onErr(bySheet ? "Enter the sheets cut — above 0." : "Enter pieces above 0."); return; }
+    const qty = val.trim() ? typedCount(val) : q.remaining;
+    if (bySheet ? !isSheetCount(qty) : !Number.isFinite(qty) || qty <= 0) { onErr(bySheet ? `Enter the sheets cut — ${SHEET_COUNT_RULE}.` : "Enter pieces above 0."); return; }
     if (qty > q.remaining) { onErr(bySheet ? `Only ${q.remaining} sheet(s) of this job on this ${machineWord(board.dept)}.` : `Only ${q.remaining} left on this ${board.dept === "Welding" ? "partition" : "machine"}.`); return; }
     onErr("");
     const fd = new FormData();
@@ -199,11 +199,11 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
     <span className="inline-flex items-center no-print rounded-md border border-brand/50 bg-surface overflow-hidden" title={`Sheets of this job cut on this ${machineWord(board.dept)} — blank = all ${q.remaining} left here.`}>
       <span className="ps-1.5 pe-1 text-[10px] font-bold uppercase text-muted">Sheets</span>
       <input
-        type="number" min={1} max={q.remaining} step={1} inputMode="numeric" placeholder={String(q.remaining)}
+        type="number" min={0.01} max={q.remaining} step={0.01} inputMode="decimal" placeholder={String(q.remaining)}
         value={val} disabled={pending} aria-label="Sheets cut"
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
-        className="w-10 border-x px-1 py-0.5 bg-surface text-xs tabnum ltr text-center outline-none"
+        className="w-12 border-x px-1 py-0.5 bg-surface text-xs tabnum ltr text-center outline-none"
       />
       <span className="px-1 text-[10px] text-muted tabnum">/ {q.remaining}</span>
       <button type="button" className="bg-brand text-white px-1.5 py-0.5 text-xs font-bold disabled:opacity-50" disabled={pending} onClick={save} title="Record the sheets cut">✓</button>
@@ -229,7 +229,7 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
 function queueCounts(c: MachineCard, jobs: ReadonlyMap<number, ManualJobView>) {
   let sheets = 0, pcs = 0;
   for (const q of c.queue) if (sheetJobOf(jobs, q.mo)) sheets += q.remaining; else pcs += q.remaining;
-  return { sheets, pcs, priced: c.queue.some((q) => !sheetJobOf(jobs, q.mo)) };
+  return { sheets: roundSheets(sheets), pcs, priced: c.queue.some((q) => !sheetJobOf(jobs, q.mo)) };
 }
 
 function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; canEdit: boolean }) {
@@ -315,7 +315,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
           <div className={`h-full ${tone ? TONE_BAR[tone] : "bg-muted"}`} style={{ width: `${pct}%` }} />
         </div>
       )}
-      {!bySheets && c.unpricedPcs - counts.sheets > 0 && <div className="text-[10px] text-warn-fg">{c.unpricedPcs - counts.sheets} pcs with no standard time — hours undercounted</div>}
+      {!bySheets && roundSheets(c.unpricedPcs - counts.sheets) > 0 && <div className="text-[10px] text-warn-fg">{roundSheets(c.unpricedPcs - counts.sheets)} pcs with no standard time — hours undercounted</div>}
 
       {c.running.length > 0 ? (
         <div className="rounded-lg border border-brand/40 bg-brand-light/30 px-2.5 py-2 space-y-1">
@@ -427,7 +427,7 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
   // would push the weekly plan under them off the screen
   const idleCards = sheetBoard ? board.cards.filter((c) => c.queue.length === 0 && c.machine.active) : [];
   const busyCards = board.cards.filter((c) => !idleCards.includes(c));
-  const sheetsQueued = board.cards.reduce((n, c) => n + queueCounts(c, jobs).sheets, 0);
+  const sheetsQueued = roundSheets(board.cards.reduce((n, c) => n + queueCounts(c, jobs).sheets, 0));
   const jobsQueued = new Set(board.cards.flatMap((c) => c.queue.filter((q) => sheetJobOf(jobs, q.mo)).map((q) => q.key))).size;
   // the weekly plan's dated lines are the ones to place first; the month's
   // undated backlog folds behind its own "show all"
