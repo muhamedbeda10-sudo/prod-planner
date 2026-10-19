@@ -675,6 +675,10 @@ export async function redeliverReturn(formData: FormData): Promise<RecordResult>
 
     const date = new Date();
     const ledgerId = await prisma.$transaction(async (tx) => {
+      // closed first, and only while still open: a second tap (or a second
+      // screen) re-delivering the same return credits the department once
+      const closed = await tx.returnEntry.updateMany({ where: { id, status: "open" }, data: { status: "resolved" } });
+      if (closed.count === 0) return null;
       const ledger = await tx.handoverEntry.create({
         data: {
           date, dept: ret.toDept, bom: ret.bom, mo: ret.mo, item: ret.item,
@@ -682,9 +686,9 @@ export async function redeliverReturn(formData: FormData): Promise<RecordResult>
           createdBy: guard.user?.name ?? null,
         },
       });
-      await tx.returnEntry.update({ where: { id }, data: { status: "resolved" } });
       return ledger.id;
     });
+    if (ledgerId === null) return { ok: false, error: "Already re-delivered." };
     for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
       revalidatePath(p);
     }

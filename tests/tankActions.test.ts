@@ -62,6 +62,9 @@ const writes = {
   ledger: [] as Record<string, unknown>[],
 };
 
+/** Tanks another screen moves on between an action's read and its write. */
+const moved = new Set<number>();
+
 const tank = (over: Record<string, unknown> = {}) => ({
   id: 1,
   serial: "SF-B-0001",
@@ -79,6 +82,7 @@ beforeEach(() => {
   writes.events.length = 0;
   writes.ledger.length = 0;
   writes.odoo.length = 0;
+  moved.clear();
 
   h.requireDeptEdit.mockResolvedValue({ user: { name: "tester" } });
   h.requirePerm.mockResolvedValue({ user: { name: "tester" } });
@@ -90,7 +94,16 @@ beforeEach(() => {
 
   h.prisma.$transaction.mockImplementation((body: (tx: unknown) => Promise<unknown>) =>
     body({
-      tankUnit: { update: async (a: { data: Record<string, unknown> }) => { writes.tankUpdates.push(a.data); } },
+      tankUnit: {
+        update: async (a: { data: Record<string, unknown> }) => { writes.tankUpdates.push(a.data); },
+        // a stage move is conditional on the status the action read; a tank in
+        // `moved` was moved on by another screen in between
+        updateMany: async (a: { where: { id: number; status: string }; data: Record<string, unknown> }) => {
+          if (moved.has(a.where.id)) return { count: 0 };
+          writes.tankUpdates.push(a.data);
+          return { count: 1 };
+        },
+      },
       tankEvent: { create: async (a: { data: Record<string, unknown> }) => { writes.events.push(a.data); } },
       // the real client returns the created row; paintTanks stamps its id onto
       // every tank it paints, so the stub has to hand one back
@@ -186,6 +199,14 @@ describe("markTankRepaired", () => {
     expect(writes.events[0]).toMatchObject({ kind: "repaired", workerName: "Sayed" });
   });
 
+  it("records a repair once when two screens confirm it together", async () => {
+    h.prisma.tankUnit.findUnique.mockResolvedValue(tank({ status: "repair" }));
+    moved.add(1);
+    const res = await markTankRepaired(form({ serial: "SF-B-0001", workerId: "7" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/refresh the page/);
+  });
+
   it("refuses a tank nobody asked to be repaired", async () => {
     h.prisma.tankUnit.findUnique.mockResolvedValue(tank({ status: "welded" }));
     const res = await markTankRepaired(form({ serial: "SF-B-0001", workerId: "7" }));
@@ -223,6 +244,17 @@ describe("paintTanks", () => {
       expect.objectContaining({ ledgerId: 901, soi: "S01259-4", product: "Tank", fgCode: "FB-022-12011E16M13", fgGuessed: false, odooMo: "", qty: 2, source: "painting" }),
       expect.objectContaining({ ledgerId: 902, qty: 1, source: "painting" }),
     ]);
+  });
+
+  it("paints a tank once when another screen painted it first — the whole batch is refused", async () => {
+    h.prisma.tankUnit.findMany.mockResolvedValue([
+      tank({ status: "tested" }),
+      tank({ id: 2, serial: "SF-B-0002", status: "tested" }),
+    ]);
+    moved.add(2);
+    const res = await paintTanks(form({ serials: "SF-B-0001,SF-B-0002", workerId: "7", date: "2026-08-27" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/SF-B-0002 was just recorded from another screen/);
   });
 
   it("refuses a tank that never passed the leak test — the whole point of the gate", async () => {
