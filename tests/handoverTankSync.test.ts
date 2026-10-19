@@ -17,6 +17,7 @@ const h = vi.hoisted(() => {
     requirePerm: vi.fn(),
     syncTanksToLedgerQty: vi.fn(),
     getKnownBoms: vi.fn(),
+    getSettings: vi.fn(),
   };
 });
 
@@ -27,6 +28,7 @@ vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChai
 vi.mock("@/lib/server/auth", () => ({ requireDeptEdit: h.requireDeptEdit, requirePerm: h.requirePerm }));
 vi.mock("@/lib/server/tanks", () => ({ syncTanksToLedgerQty: h.syncTanksToLedgerQty }));
 vi.mock("@/lib/server/handover", () => ({ getKnownBoms: h.getKnownBoms }));
+vi.mock("@/lib/server/data", () => ({ getSettings: h.getSettings }));
 vi.mock("@/lib/server/importHandover", () => ({ importHandoverFile: vi.fn() }));
 
 import { deleteHandover, updateHandover } from "@/app/handover/actions";
@@ -58,6 +60,7 @@ beforeEach(() => {
   h.requirePerm.mockResolvedValue({ user: { name: "tester" } });
   h.checkOutputChain.mockResolvedValue(null);
   h.syncTanksToLedgerQty.mockResolvedValue({});
+  h.getSettings.mockResolvedValue({ tankTracking: true });
   h.prisma.handoverEntry.findUnique.mockResolvedValue(paintRow);
   h.prisma.returnEntry.findMany.mockResolvedValue([]);
   odooRow = null;
@@ -160,9 +163,17 @@ describe("updateHandover — a smaller quantity gives pieces back", () => {
     expect(res.error).toContain("already moved past welding");
   });
 
-  it("leaves a quantity that grew alone — nothing to give back", async () => {
+  it("leaves a quantity that grew alone — nothing to give back (tracking off)", async () => {
+    h.getSettings.mockResolvedValue({ tankTracking: false });
     await updateHandover(form({ id: "7", qty: "9" }));
     expect(h.syncTanksToLedgerQty).toHaveBeenCalledWith(expect.anything(), paintRow, 9);
+  });
+
+  it("will not raise a tank row while tanks are tracked — they are added on the worklists", async () => {
+    const res = await updateHandover(form({ id: "7", qty: "9" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/Painting worklist/);
+    expect(calls).toEqual([]);
   });
 });
 

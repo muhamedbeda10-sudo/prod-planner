@@ -14,6 +14,8 @@ import { checkOutputChain } from "@/lib/server/outputGuard";
 import { requireDeptEdit, requirePerm } from "@/lib/server/auth";
 import { ledgerPermKey } from "@/lib/domain/permissions";
 import { syncTanksToLedgerQty } from "@/lib/server/tanks";
+import { TANKS_FROM_WORKLISTS, dailyLogAddsTanks } from "@/lib/domain/tanks";
+import { getSettings } from "@/lib/server/data";
 import { mirrorLedgerToOdoo, syncMirroredOdoo } from "@/lib/server/odooMirror";
 
 export interface ActionResult {
@@ -109,6 +111,7 @@ export async function addHandover(formData: FormData): Promise<ActionResult> {
   if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a positive quantity." };
   if (!Number.isInteger(planNo) || planNo <= 0) return { ok: false, error: "Invalid plan number." };
   if (!bomRaw) return { ok: false, error: "Enter a BOM code." };
+  if (dailyLogAddsTanks((await getSettings()).tankTracking, dept, item)) return { ok: false, error: TANKS_FROM_WORKLISTS };
 
   const resolved = await resolveBom(bomRaw);
   if (!resolved.ok) return { ok: false, error: resolved.error };
@@ -143,6 +146,10 @@ export async function updateHandover(formData: FormData): Promise<ActionResult> 
   if (!entry) return { ok: false, error: "Record not found." };
   const guard = await requirePerm(ledgerPermKey(entry.dept, entry.item));
   if (guard.error) return { ok: false, error: guard.error };
+  // a tank row may be lowered (its tanks follow it) but not raised here
+  if (qty > entry.qty && dailyLogAddsTanks((await getSettings()).tankTracking, entry.dept, entry.item)) {
+    return { ok: false, error: TANKS_FROM_WORKLISTS };
+  }
 
   // the note keeps the audit trail of WHO changed the row
   const data: { qty: number; note: string; date?: Date } = {
