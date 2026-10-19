@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-sheet-job-any-bom",
+    dateISO: "2026-10-19",
+    title: "Add job: any BOM, in the plan or not",
+    where: "Worklist → Fabrication → ✋ Add job",
+    body: "A part on a sheet job can now name any project's BOM — a spare part, a sample, an order that is not in the plan yet. The plan's BOMs are still offered as you type, and one the plan has is saved the way the plan writes it; any other is saved as you typed it. The assistant takes any BOM too, and tells you which ones are not in the plan.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-18-sheet-job-form-tablet",
     dateISO: "2026-10-18",
     title: "Add job: pieces are optional, and the fields type and delete properly on a tablet",

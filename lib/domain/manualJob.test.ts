@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_JOB_PARTS, editedJobQty, jobName, jobSheetKey, jobsBySheet, manualDescription, manualMaterial, partNameSuggestions, partRowsOf, partsText, readJobParts } from "./manualJob";
+import { MAX_JOB_PARTS, editedJobQty, jobName, jobSheetKey, jobsBySheet, manualDescription, manualMaterial, partNameSuggestions, partRowsOf, partsText, readJobParts, withPlanSpelling } from "./manualJob";
 
 describe("editedJobQty — a new count of pieces wanted on a manual job", () => {
   it("is refused below what is done, or when it is not whole pieces above 0", () => {
@@ -114,5 +114,28 @@ describe("partRowsOf — the part rows as the form holds them", () => {
       { bom: "B1", item: "", part: "", pcs: null },
       { bom: "", item: "", part: "", pcs: "3" },
     ]);
+  });
+});
+
+describe("withPlanSpelling — any project, written the plan's way where the plan has it", () => {
+  it("rewrites a known BOM as the plan spells it, keeps an unknown one as typed and names it once", () => {
+    const known = new Map([["B1001", "B1001"], ["TNK-2", "Tnk-2"]]);
+    const parts = [
+      { bom: "b1001", part: "Bottom" },
+      { bom: "tnk-2", part: "Side wall" },
+      { bom: "Spare-7", part: "Bracket" },
+      { bom: "Spare-7", part: "Lug" },
+      { bom: "", part: "Plate" },
+    ];
+    expect(withPlanSpelling(parts, known)).toEqual({
+      parts: [
+        { bom: "B1001", part: "Bottom" },
+        { bom: "Tnk-2", part: "Side wall" },
+        { bom: "Spare-7", part: "Bracket" },
+        { bom: "Spare-7", part: "Lug" },
+        { bom: "", part: "Plate" },
+      ],
+      notInPlan: ["Spare-7"],
+    });
   });
 });

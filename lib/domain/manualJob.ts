@@ -146,6 +146,22 @@ export function partRowsOf(cols: { bom: readonly string[]; item: readonly string
   return rows;
 }
 
+/** A sheet job's parts with each BOM written as the plan writes it, where
+ *  the plan carries it (`known`: upper-cased BOM → the plan's spelling); a
+ *  BOM the plan does not carry stays as typed — a job may be for any
+ *  project — and is named in `notInPlan`, once each. */
+export function withPlanSpelling<P extends { bom: string }>(parts: readonly P[], known: ReadonlyMap<string, string>): { parts: P[]; notInPlan: string[] } {
+  const notInPlan = new Set<string>();
+  const out = parts.map((p) => {
+    if (!p.bom) return p;
+    const bom = known.get(p.bom.toUpperCase());
+    if (bom) return { ...p, bom };
+    notInPlan.add(p.bom);
+    return p;
+  });
+  return { parts: out, notInPlan: [...notInPlan] };
+}
+
 export type JobPartsRead = { ok: true; parts: Omit<ManualJobPartView, "id">[] } | { ok: false; error: string };
 
 const PART_ITEMS: readonly string[] = ITEMS;
@@ -153,8 +169,8 @@ const PART_ITEMS: readonly string[] = ITEMS;
 /** A sheet job's parts as the form (or the assistant) sends them, checked:
  *  at least one, each with the part named, its pieces — when given — whole
  *  and above 0 (blank or null = not given), its component one the plan knows
- *  (or none), the same part of the same project once. Whether a BOM is a
- *  real project is the server's to check. */
+ *  (or none), the same part of the same project once. The BOM is free text
+ *  — any project, in the plan or not. */
 export function readJobParts(raw: unknown): JobPartsRead {
   if (!Array.isArray(raw) || raw.length === 0) return { ok: false, error: "Add the parts the sheets carry — at least one." };
   if (raw.length > MAX_JOB_PARTS) return { ok: false, error: `At most ${MAX_JOB_PARTS} parts on one job.` };

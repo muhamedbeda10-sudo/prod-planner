@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
 import { isMachinePlanningOn } from "@/lib/server/data";
 import { getDeptBoardLines, getMachineBoard } from "@/lib/server/machineBoard";
-import { knownBoms } from "@/lib/server/manualJobs";
+import { partsWithPlanBoms } from "@/lib/server/manualJobs";
 import { readManualJob, restoreManualJob, type ManualJobSnapshot } from "@/lib/server/rowSnapshots";
 import { createManualJob, deleteManualJob, recordManualDone, reopenManualJob, updateManualJob } from "@/app/worklist/manualActions";
 import { deptPermKey } from "@/lib/domain/permissions";
@@ -65,19 +65,13 @@ async function jobMachine(dept: string, code: string): Promise<Machine | { error
 const unitOf = (j: { bySheet: boolean }) => (j.bySheet ? "sheet(s)" : "piece(s)");
 const progress = (j: { bySheet: boolean; doneQty: number; qty: number }) => `${j.doneQty} of ${j.qty} ${j.bySheet ? "sheets cut" : "done"}`;
 
-/** A sheet job's parts with every BOM matched to the plan's own spelling, or what is wrong. */
-async function checkedParts(raw: unknown): Promise<Omit<ManualJobPartView, "id">[] | { error: string }> {
+/** A sheet job's parts, checked, each BOM the plan carries in the plan's own
+ *  spelling (any other kept as typed — a job may be for any project), and
+ *  which BOMs the plan does not carry; or what is wrong. */
+async function checkedParts(raw: unknown): Promise<{ parts: Omit<ManualJobPartView, "id">[]; notInPlan: string[] } | { error: string }> {
   const read = readJobParts(raw);
   if (!read.ok) return { error: read.error };
-  const known = await knownBoms(read.parts.map((p) => p.bom));
-  const out: Omit<ManualJobPartView, "id">[] = [];
-  for (const p of read.parts) {
-    if (!p.bom) { out.push(p); continue; }
-    const bom = known.get(p.bom.toUpperCase());
-    if (!bom) return { error: `${p.bom} is no project in the plan — check the BOM with query_database, or leave it empty for work outside the plan.` };
-    out.push({ ...p, bom });
-  }
-  return out;
+  return partsWithPlanBoms(read.parts);
 }
 
 // ------------------------------------------------------------- reading
@@ -89,7 +83,7 @@ export const getJobsTool: ReadTool<{ dept?: BoardDept }> = {
   name: "get_jobs",
   title: "Reading the jobs on the machines",
   description:
-    "The jobs of a machine board (default Cut, the fabrication board) and how they are spread. On Cut every job is a SHEET JOB: sheets of one thickness, material and size, carrying the parts of several projects (BOM, component, part such as Bottom / Side wall / Skirt base, pieces) — the fabrication machines carry nothing else, and a job is counted, split and closed in SHEETS. Returns each machine with the sheets (or pieces) queued on it and its jobs in order; every open job (its sheet, sheets wanted and cut, parts, the machines it sits on, its boardLine); and, on Cut, the open projects (BOMs) a job's parts are typed against. To distribute: put a job on a machine with assign_line_to_machine / assign_lines_to_machines using its boardLine (bom MANUAL, mo MANUAL-<id>, item JOB) — a qty there puts only that many SHEETS of it on that machine, the rest on another; move it with move_line_in_queue, take it off with unassign_line.",
+    "The jobs of a machine board (default Cut, the fabrication board) and how they are spread. On Cut every job is a SHEET JOB: sheets of one thickness, material and size, carrying the parts of several projects (BOM, component, part such as Bottom / Side wall / Skirt base, pieces) — the fabrication machines carry nothing else, and a job is counted, split and closed in SHEETS. Returns each machine with the sheets (or pieces) queued on it and its jobs in order; every open job (its sheet, sheets wanted and cut, parts, the machines it sits on, its boardLine); and, on Cut, the open projects (BOMs) of the plan — a job's part may also name any other project. To distribute: put a job on a machine with assign_line_to_machine / assign_lines_to_machines using its boardLine (bom MANUAL, mo MANUAL-<id>, item JOB) — a qty there puts only that many SHEETS of it on that machine, the rest on another; move it with move_line_in_queue, take it off with unassign_line.",
   schema: { type: "object", properties: { dept: DEPT }, additionalProperties: false },
   status: (i) => `Reading the jobs on ${i.dept ?? "Cut"}`,
   async run(i, ctx) {
@@ -134,7 +128,7 @@ export const getJobsTool: ReadTool<{ dept?: BoardDept }> = {
 const PART_SCHEMA = {
   type: "object",
   properties: {
-    bom: { type: "string", maxLength: 60, description: "The project (BOM) the part belongs to, as the plan writes it; \"\" for work outside the plan." },
+    bom: { type: "string", maxLength: 60, description: "The project (BOM) the part belongs to, as the person gives it — any project, in the plan or not (one the plan carries is saved in the plan's spelling); \"\" for none." },
     item: { type: "string", enum: ["", ...ITEMS], description: "Its component (CF, TC, TN, CB, AR, MB) or \"\"." },
     part: { type: "string", minLength: 1, maxLength: 60, description: "The part in the planner's words — Bottom, Side wall, Skirt base …" },
     pcs: { type: "integer", minimum: 1, maximum: 100000, description: "Pieces of it the job's sheets carry — leave out when the person did not say." },
@@ -209,12 +203,14 @@ export const createManualJobTool: WriteTool<CreateJobInput> = {
     if (machine && "error" in machine) return machine;
     const where = machine ? `, at the back of ${machine.code}'s queue (an idle machine starts on it)` : ", saved to the list on no machine";
     if (jobsBySheet(i.dept)) {
-      const parts = await checkedParts(i.parts ?? []);
-      if ("error" in parts) return parts;
+      const checked = await checkedParts(i.parts ?? []);
+      if ("error" in checked) return checked;
+      const { parts, notInPlan } = checked;
       const sheet = jobSheetLabel({ thicknessMm: i.thicknessMm ?? 0, material: i.material ?? "", sheetSize: i.sheetSize ?? "" });
+      const outside = notInPlan.length ? ` ${notInPlan.join(", ")} ${notInPlan.length === 1 ? "is" : "are"} not in the plan — kept as typed.` : "";
       return {
         title: `🧾 ${i.qty} × ${sheet}${machine ? ` on ${machine.code}` : ""}`,
-        summary: `Add a sheet job of ${i.qty} sheet(s) of ${sheet}${i.title ? ` "${i.title}"` : ""} carrying ${parts.length} part(s)${where}.`,
+        summary: `Add a sheet job of ${i.qty} sheet(s) of ${sheet}${i.title ? ` "${i.title}"` : ""} carrying ${parts.length} part(s)${where}.${outside}`,
         changes: [{ label: i.title || sheet, before: "—", after: `${i.qty} sheet(s) — ${partsText(parts)}${machine ? ` · ${machine.code}` : ""}` }],
         snapshot: machine ? { machine: machine.id, active: machine.active } : null,
       };

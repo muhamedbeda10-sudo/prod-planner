@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { MANUAL_BOM, MANUAL_ITEM, manualDescription, manualIdOf, manualMo, type ManualJobView } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, manualDescription, manualIdOf, manualMo, withPlanSpelling, type ManualJobView } from "@/lib/domain/manualJob";
 
 /** How many finished jobs the board's list keeps in sight — the rest stay
  *  in the table, only off the list. */
@@ -40,7 +40,7 @@ export function manualBoardLines(jobs: readonly ManualJobView[]) {
 /** The projects a sheet job's parts name, matched to the plan however they
  *  were typed: upper-cased BOM → the plan's own spelling. A BOM missing from
  *  the map is no project the plan carries. */
-export async function knownBoms(boms: readonly string[]): Promise<Map<string, string>> {
+async function knownBoms(boms: readonly string[]): Promise<Map<string, string>> {
   const want = [...new Set(boms.map((b) => b.trim()).filter(Boolean))];
   if (want.length === 0) return new Map();
   const rows = await prisma.masterOrder.findMany({
@@ -49,6 +49,12 @@ export async function knownBoms(boms: readonly string[]): Promise<Map<string, st
     distinct: ["bom"],
   });
   return new Map(rows.map((r) => [r.bom.toUpperCase(), r.bom]));
+}
+
+/** A sheet job's parts with each BOM the plan carries in the plan's own
+ *  spelling, the rest as typed — and which of them the plan does not carry. */
+export async function partsWithPlanBoms<P extends { bom: string }>(parts: readonly P[]): Promise<{ parts: P[]; notInPlan: string[] }> {
+  return withPlanSpelling(parts, await knownBoms(parts.map((p) => p.bom)));
 }
 
 /** The open transformer projects, A→Z — the BOMs the job form suggests. */
