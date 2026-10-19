@@ -85,8 +85,8 @@ export function SmartInsights({ data }: { data: SmartInsightsData }) {
                 <div>
                   <h2 className="!m-0 leading-tight">Smart Insights</h2>
                   <p className="text-[11px] text-muted">
-                    Automatic analysis of {data.analyzedEntries.toLocaleString()} production records and{" "}
-                    {data.analyzedLines.toLocaleString()} open lines · runs locally
+                    Automatic analysis of {data.analyzedEntries.toLocaleString("en-US")} production records and{" "}
+                    {data.analyzedLines.toLocaleString("en-US")} open lines · runs locally
                   </p>
                 </div>
               </div>

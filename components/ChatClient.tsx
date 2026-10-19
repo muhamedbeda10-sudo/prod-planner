@@ -3,7 +3,7 @@
 import { EmptyState } from "@/components/primitives";
 
 import { formatDate } from "@/lib/domain/format";
-import { factoryDayISO } from "@/lib/domain/dates";
+import { factoryClockHHMM, factoryDayISO } from "@/lib/domain/dates";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -39,10 +39,11 @@ const sameThread = (a: Thread | null, b: Thread | null) => !!a && !!b && a.kind 
 // with realtime the poll is only a safety net; without it, it IS the transport
 const POLL_MS = chatRealtimeConfigured ? 30000 : 5000;
 
-const timeOf = (iso: string) =>
-  new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-const dayOf = (iso: string) => iso.slice(0, 10);
-const dayLabel = (iso: string) => formatDate(factoryDayISO(new Date(iso)));
+// times and days on the factory clock, not the browser's: the server renders
+// the thread first, and a browser in another zone would hydrate other text
+const timeOf = (iso: string) => factoryClockHHMM(new Date(iso));
+const dayOf = (iso: string) => factoryDayISO(new Date(iso));
+const dayLabel = (iso: string) => formatDate(dayOf(iso));
 
 const sizeLabel = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;

@@ -16,8 +16,8 @@ import { SheetsPerDayChart, ThicknessChart } from "@/components/LazyCharts";
 // scrap and what the open MOs will still take. Then where the steel goes:
 // per day, thickness, material, sheet size and part, and the MOs worth a look.
 
-const n1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
-const n2 = (v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const n1 = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 1 });
+const n2 = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const t = (kg: number) => n2(kg / 1000);
 const pct = (f: number | null) => (f === null ? "—" : `${(f * 100).toFixed(1)}%`);
 
