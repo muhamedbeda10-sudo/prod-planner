@@ -130,11 +130,16 @@ describe("sheet jobs on the fabrication board", () => {
     expect(h.tx.manualJob.create.mock.calls[0][0].data.parts).toEqual({ create: [{ bom: "B1", item: "TN", part: "Bottom", pcs: null }] });
   });
 
-  it("refuses a sheet job without its thickness, material or parts, or with a BOM the plan does not carry — writing nothing", async () => {
+  it("takes a project the plan does not carry, as typed — and still writes a known one the plan's way", async () => {
+    const r = await createManualJob(sheetForm({ dept: "Cut", parts: JSON.stringify([{ bom: "zz9-spare", item: "", part: "Bracket", pcs: 2 }, { bom: "b2", item: "TN", part: "Bottom", pcs: null }]) }));
+    expect(r).toEqual({ ok: true, id: 31 });
+    expect(h.tx.manualJob.create.mock.calls[0][0].data.parts).toEqual({ create: [{ bom: "zz9-spare", item: "", part: "Bracket", pcs: 2 }, { bom: "B2", item: "TN", part: "Bottom", pcs: null }] });
+  });
+
+  it("refuses a sheet job without its thickness, material or parts — writing nothing", async () => {
     expect(await createManualJob(sheetForm({ dept: "Cut", thicknessMm: "" }))).toEqual({ ok: false, error: expect.stringContaining("Thickness") });
     expect(await createManualJob(sheetForm({ dept: "Cut", material: "" }))).toEqual({ ok: false, error: expect.stringContaining("material") });
     expect(await createManualJob(sheetForm({ dept: "Cut", parts: "[]" }))).toEqual({ ok: false, error: expect.stringContaining("at least one") });
-    expect(await createManualJob(sheetForm({ dept: "Cut", parts: JSON.stringify([{ bom: "ZZ9", item: "TN", part: "Bottom", pcs: 1 }]) }))).toEqual({ ok: false, error: expect.stringContaining("ZZ9 is no project in the plan") });
     expect(await createManualJob(sheetForm({ dept: "Cut", qty: "2.5" }))).toEqual({ ok: false, error: expect.stringContaining("Sheets must be a whole number") });
     expect(h.prisma.$transaction).not.toHaveBeenCalled();
   });

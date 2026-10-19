@@ -129,9 +129,12 @@ describe("create_manual_job — a sheet job on Cut", () => {
     expect(checkToolInput(createManualJobTool, { ...CUT_RAW, parts: [] })).toMatchObject({ ok: false, error: expect.stringContaining("at least one") });
   });
 
-  it("refuses a BOM the plan does not carry, and the board's key", async () => {
-    const bad = parsed(createManualJobTool, { ...CUT_RAW, parts: [{ bom: "ZZ9", item: "TN", part: "Bottom", pcs: 1 }] });
-    expect(await createManualJobTool.describe(bad, ctx)).toEqual({ error: expect.stringContaining("ZZ9 is no project in the plan") });
+  it("takes a BOM the plan does not carry as typed, says so on the card, and needs the board's key", async () => {
+    const outside = parsed(createManualJobTool, { ...CUT_RAW, parts: [{ bom: "zz9", item: "TN", part: "Bottom", pcs: 1 }, { bom: "b1", item: "TN", part: "Side wall" }] });
+    expect(await createManualJobTool.describe(outside, ctx)).toMatchObject({
+      summary: expect.stringContaining("zz9 is not in the plan — kept as typed."),
+      changes: [{ after: "10 sheet(s) — zz9 TN Bottom ×1 · B1 TN Side wall · B4-10" }],
+    });
     h.perms.clear();
     expect(await createManualJobTool.describe(parsed(createManualJobTool, CUT_RAW), ctx)).toEqual({ error: expect.stringContaining("Cut's machine board needs its worklist key") });
   });

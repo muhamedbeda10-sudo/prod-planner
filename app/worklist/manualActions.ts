@@ -6,7 +6,7 @@ import { requireDeptEdit } from "@/lib/server/auth";
 import { MANUAL_BOM, MANUAL_ITEM, editedJobQty, jobSheetKey, jobsBySheet, manualMo, readJobParts, type ManualJobPartView } from "@/lib/domain/manualJob";
 import { normalizeMaterialType, normalizeSheetSize } from "@/lib/domain/material";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
-import { knownBoms } from "@/lib/server/manualJobs";
+import { partsWithPlanBoms } from "@/lib/server/manualJobs";
 
 // Jobs from outside the plan, put on a machine by hand. The dept's worklist
 // permission covers them, the same as putting a plan line on a machine.
@@ -45,8 +45,8 @@ type SheetJobForm = {
 };
 
 /** A sheet job as the form sends it — the sheet, how many, and every
- *  project's part on them — checked, each BOM matched to the plan's own
- *  spelling; or what is wrong with it. */
+ *  project's part on them — checked, a BOM the plan carries written as the
+ *  plan writes it (any other kept as typed); or what is wrong with it. */
 async function readSheetJob(fd: FormData): Promise<SheetJobForm | { error: string }> {
   const sheets = Number(text(fd, "qty"));
   if (!Number.isInteger(sheets) || sheets <= 0) return { error: "Sheets must be a whole number above 0." };
@@ -58,14 +58,8 @@ async function readSheetJob(fd: FormData): Promise<SheetJobForm | { error: strin
   try { raw = JSON.parse(String(fd.get("parts") ?? "[]")); } catch { return { error: "The parts list could not be read — reload the page." }; }
   const read = readJobParts(raw);
   if (!read.ok) return { error: read.error };
-  const known = await knownBoms(read.parts.map((p) => p.bom));
-  const parts: SheetJobForm["parts"] = [];
-  for (const p of read.parts) {
-    if (!p.bom) { parts.push(p); continue; }
-    const bom = known.get(p.bom.toUpperCase());
-    if (!bom) return { error: `${p.bom} is no project in the plan — check the BOM, or leave it empty for work outside the plan.` };
-    parts.push({ ...p, bom });
-  }
+  // any project may be typed; one the plan carries is kept in the plan's spelling
+  const { parts } = await partsWithPlanBoms(read.parts);
   return {
     title: text(fd, "title", 120), sheets, material, thicknessMm,
     sheetSize: normalizeSheetSize(text(fd, "sheetSize", 40)), parts, note: text(fd, "note", 500) || null,

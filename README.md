@@ -70,7 +70,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    day, one row per project, Req and Fab per component, the week picker beside it) — what each day still needs
    cut, and where the cut pieces are recorded: a click on a Fab cell adds pieces, under the Cut key, filling the
    project's earliest unfilled promise first. ✋ **Add job** types a job in as SHEETS of one thickness, material
-   and size — how many — and every project's part on them (BOM from the plan, component, the part in the
+   and size — how many — and every project's part on them (any BOM — the plan's are suggested and kept in the plan's spelling — component, the part in the
    planner's words such as Bottom / Side wall / Skirt base, and the pieces when known), and queues it on a machine. The fabrication
    machines carry those jobs alone (and the panels' punching on the shared punches): no transformer plan line
    goes on them by itself, and the nest runs are gone. A job is shared between machines in sheets (the box beside
