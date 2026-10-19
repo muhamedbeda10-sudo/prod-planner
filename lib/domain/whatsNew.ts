@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-due-on-day-off",
+    dateISO: "2026-10-19",
+    title: "Work due on a Friday or a holiday counts on the working day before it",
+    where: "Machines → load and timeline · Simulate → what-if",
+    body: "Due dates are the delivery less the lead in calendar days, so a Saturday delivery is welding-due on a Friday. Those hours used to drop off the department load and the machine timeline as if they were past the horizon, and late blocks were not marked. They are now owed on the last working day before. In the what-if, a stoppage or a material arrival that starts on a day off no longer takes the working day before it as well.",
+    href: "/simulate",
+  },
+  {
     id: "2026-10-19-factory-day-dates",
     dateISO: "2026-10-19",
     title: "Work recorded after midnight lands on the factory's day, and impossible dates are refused",

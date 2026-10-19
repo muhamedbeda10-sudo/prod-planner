@@ -63,13 +63,18 @@ export interface Timeline {
 
 /** The day-offset of a date on the timeline's own axis: the index of that
  *  working day, or null when the date is unknown. A date already past sits at
- *  0 — it is due now, not "some day before the picture". */
+ *  0 — it is due now, not "some day before the picture". A date inside the
+ *  picture that is not a working day (a Friday, a holiday) is due by the last
+ *  working day before it: the lead times count calendar days, so a Saturday
+ *  delivery is welding-due on the Friday before. */
 export function dayOffsetOf(iso: string | null | undefined, days: readonly string[]): number | null {
   if (!iso) return null;
   const i = days.indexOf(iso);
   if (i >= 0) return i;
-  if (days.length > 0 && iso < days[0]) return 0; // overdue
-  return null; // beyond the horizon — nothing useful to draw
+  if (days.length === 0) return null;
+  if (iso < days[0]) return 0; // overdue
+  if (iso > days[days.length - 1]) return null; // beyond the horizon — nothing useful to draw
+  return days.filter((d) => d < iso).length - 1;
 }
 
 /**
