@@ -465,6 +465,20 @@ model Session {
   @@index([userId])
 }
 
+// A failed sign-in, kept a day: the login waits after too many in a short
+// time for one account from one address, or from one address for any
+// (lib/domain/loginThrottle.ts). Private — closed to the assistant.
+model LoginFailure {
+  id    Int      @id @default(autoincrement())
+  email String
+  ip    String
+  at    DateTime @default(now())
+
+  @@index([email, ip, at])
+  @@index([ip, at])
+  @@index([at])
+}
+
 // Global settings (Lists!J2:J5). Single row (id = 1).
 model Settings {
   id              Int @id @default(1)

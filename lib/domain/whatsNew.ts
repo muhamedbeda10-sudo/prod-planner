@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-login-throttle",
+    dateISO: "2026-10-19",
+    title: "The login waits after too many wrong passwords",
+    where: "Login page",
+    body: "After 8 wrong passwords for one account from one place within 15 minutes — or 40 from one place across accounts — the login asks you to wait 15 minutes before it checks a password again. Signing in successfully clears your count. If you are locked out and need in sooner, the admin can reset your password.",
+    href: "/login",
+  },
+  {
     id: "2026-10-19-daily-log-integrity",
     dateISO: "2026-10-19",
     title: "Deleting a return's row takes the return back; re-dating rows moves their ODOO rows",
