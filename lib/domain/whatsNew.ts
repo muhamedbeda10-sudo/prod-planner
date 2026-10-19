@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-repromise-remainder",
+    dateISO: "2026-10-19",
+    title: "A re-promised order is done when its remainder is done",
+    where: "Worklist → Cut · Welding · Painting — the delivery date and pieces due",
+    body: "When a newer weekly plan re-promises what is left of an order, the new delivery now counts only that remainder. An order promised 10, with 4 done, then re-promised 6, is through once 10 are done — it used to wait for 16 (the old 10 and the new 6) and kept showing the new date as late.",
+    href: "/worklist/welding",
+  },
+  {
     id: "2026-10-19-login-throttle",
     dateISO: "2026-10-19",
     title: "The login waits after too many wrong passwords",

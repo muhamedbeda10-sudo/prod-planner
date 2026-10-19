@@ -96,21 +96,24 @@ export async function getCutSheet(): Promise<CutSheet> {
       !closed.has(s.mo) &&
       !excludedOf.get(s.mo)?.has(s.item)
   );
+  // whole-order context: dept done / order qty (the "finished of total"
+  // fraction shown next to the day's plan), and what a re-promised line
+  // leaves its older promises
+  const orderQtyOf = new Map<string, number>(); // mo|item -> planQty − OSP
+  const lineOrderQty = new Map<string, number>(); // bom|mo|item -> planQty − OSP
+  for (const m of masters) {
+    for (const it of applicableItems(m)) {
+      orderQtyOf.set(`${m.mo}|${it}`, Math.max(0, m.planQty - ospOf(m, it)));
+      lineOrderQty.set(`${m.bom}|${m.mo}|${it}`, Math.max(0, m.planQty - ospOf(m, it)));
+    }
+  }
   const { dueNow: dueRaw, overdue: overdueRaw } = computeCutTranches({
     schedules: trancheSched,
     entries: entryIn,
     day: today,
     lead: settings.leadCut,
+    orderQty: lineOrderQty,
   });
-
-  // enrich tranche rows with whole-order context: dept done / order qty (the
-  // "finished of total" fraction shown next to the day's plan)
-  const orderQtyOf = new Map<string, number>(); // mo|item -> planQty − OSP
-  for (const m of masters) {
-    for (const it of applicableItems(m)) {
-      orderQtyOf.set(`${m.mo}|${it}`, Math.max(0, m.planQty - ospOf(m, it)));
-    }
-  }
   const cutDoneOf = new Map<string, number>(); // mo|item -> global cut output
   for (const e of entries) {
     if (e.dept !== "Cut" || !(e.mo ?? "").trim()) continue;
@@ -148,6 +151,7 @@ export async function getCutSheet(): Promise<CutSheet> {
     day: today,
     dept: "Cut",
     allSchedules: allSchedIn,
+    orderQty: lineOrderQty,
   });
 
   // date-less backlog (no open date in ANY plan), split three ways: lines the
@@ -261,17 +265,20 @@ async function loadQueueInputs() {
   // The OSP share never reaches the welding/painting queues.
   const inhouseCap = new Map<string, number>();
   const orderQtyOf = new Map<string, number>(); // mo|item -> planQty − OSP (whole-order fraction denominator)
+  const lineOrderQty = new Map<string, number>(); // bom|mo|item -> planQty − OSP (what a re-promise leaves the old plans)
   for (const m of masters) {
     for (const it of applicableItems(m)) {
       const osp = ospOf(m, it);
       if (osp > 0) inhouseCap.set(`${m.bom}|${m.mo}|${it}`, Math.max(0, m.planQty - osp));
       orderQtyOf.set(`${m.mo}|${it}`, Math.max(0, m.planQty - osp));
+      lineOrderQty.set(`${m.bom}|${m.mo}|${it}`, Math.max(0, m.planQty - osp));
     }
   }
   return {
     schedules: schedules.map((s) => ({ planNo: s.planNo, bom: s.bom, mo: s.mo, description: s.description, item: s.item, ovenDate: s.ovenDate, qty: s.qty })),
     entries: entries.map((e) => ({ planNo: e.planNo, dept: e.dept, bom: e.bom, mo: e.mo, item: e.item, qty: e.qty, date: e.date })),
     inhouseCap,
+    orderQty: lineOrderQty,
     orderQtyOf,
   };
 }

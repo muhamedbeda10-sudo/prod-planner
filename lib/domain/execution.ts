@@ -125,6 +125,7 @@ export function computeCutTranches(opts: {
   day: Date;
   lead: number; // leadCut
   dept?: string; // producing dept (default "Cut")
+  orderQty?: ReadonlyMap<string, number>; // bom|mo|item -> planQty − OSP: what a re-promise leaves the old plans
 }): CutSchedule {
   const { schedules, entries, day, lead } = opts;
   const dept = opts.dept ?? "Cut";
@@ -148,14 +149,14 @@ export function computeCutTranches(opts: {
   );
 
   // per-line tranches with supersession: only the NEWEST plan's dates count
-  const byLine = supersededTranches(schedules.map((s) => ({ ...s, planNo: s.planNo ?? 0 })));
+  const byLine = supersededTranches(schedules.map((s) => ({ ...s, planNo: s.planNo ?? 0 })), opts.orderQty);
 
   const dueNow: CutTranche[] = [];
   const overdue: CutTranche[] = [];
   for (const [key, line] of byLine) {
     const [bom, mo, item] = key.split("|");
-    // output credited to superseded promises must not consume the new tranches
-    let credit = Math.max(0, num(done, key) - line.oldQty);
+    // output the superseded promises keep does not consume the new tranches
+    let credit = Math.max(0, num(done, key) - line.oldCredit);
     for (const t of line.tranches) {
       const used = Math.min(credit, t.qty);
       credit -= used;
@@ -391,6 +392,7 @@ export function computeCascade(opts: {
   day: Date;
   dept: "Cut" | "Welding";
   allSchedules?: (ExecScheduleRow & { planNo: number })[]; // EVERY plan's schedule — for the old-promise delivery date
+  orderQty?: ReadonlyMap<string, number>; // bom|mo|item -> planQty − OSP (see supersededTranches)
 }): CascadeRow[] {
   const { orders, schedules, entries, day, dept, allSchedules } = opts;
   const dt = dayNumber(day);
@@ -429,7 +431,7 @@ export function computeCascade(opts: {
 
   // the old promise: the newest plan that ever scheduled this line, consumed
   // FIFO by output — shown so an unscheduled line keeps its last known date
-  const lines = allSchedules ? supersededTranches(allSchedules) : null;
+  const lines = allSchedules ? supersededTranches(allSchedules, opts.orderQty) : null;
 
   const rows: CascadeRow[] = [];
   for (const key of rowOrder) {
@@ -457,17 +459,22 @@ export function computeCascade(opts: {
 }
 
 /** Per-line delivery tranches where the NEWEST plan that scheduled the line
- *  supersedes every older one — a weekly re-import re-promises the remaining
+ *  supersedes every older one — a weekly re-import re-promises the REMAINING
  *  work under new dates, so the old dates stop counting. `oldQty` is the
- *  superseded plans' total: output up to that amount is credited to the old
- *  (cancelled) promises and must not consume the new tranches. */
-export function supersededTranches(schedules: (ExecScheduleRow & { planNo: number })[]) {
-  const byLine = new Map<string, { maxPlan: number; tranches: { ovenD: number; qty: number }[]; oldQty: number }>();
+ *  superseded plans' total. `oldCredit` is the output the old promises keep:
+ *  what the order had already done when the new plan promised the rest —
+ *  the order's quantity less the new promise (`orderQty`, bom|mo|item →
+ *  planQty − OSP), or, for an order not in the registry, the old promise less
+ *  a new one no bigger than it — never more than the old plans promised. Output beyond it
+ *  serves the new tranches: an order promised 10, 4 done, re-promised 6, is
+ *  through once 10 are done, not 16. */
+export function supersededTranches(schedules: (ExecScheduleRow & { planNo: number })[], orderQty?: ReadonlyMap<string, number>) {
+  const byLine = new Map<string, { maxPlan: number; tranches: { ovenD: number; qty: number }[]; oldQty: number; oldCredit: number }>();
   for (const s of schedules) {
     const key = `${s.bom}|${s.mo}|${s.item}`;
     let e = byLine.get(key);
     if (!e) {
-      e = { maxPlan: s.planNo, tranches: [], oldQty: 0 };
+      e = { maxPlan: s.planNo, tranches: [], oldQty: 0, oldCredit: 0 };
       byLine.set(key, e);
     }
     if (s.planNo > e.maxPlan) {
@@ -478,7 +485,16 @@ export function supersededTranches(schedules: (ExecScheduleRow & { planNo: numbe
     if (s.planNo === e.maxPlan) e.tranches.push({ ovenD: dayNumber(s.ovenDate), qty: s.qty });
     else e.oldQty += s.qty;
   }
-  for (const e of byLine.values()) e.tranches.sort((a, b) => a.ovenD - b.ovenD);
+  for (const [key, e] of byLine) {
+    e.tranches.sort((a, b) => a.ovenD - b.ovenD);
+    const promisedNow = e.tranches.reduce((t, x) => t + x.qty, 0);
+    const order = orderQty?.get(key);
+    // an order not in the registry: a new promise no bigger than the old one
+    // reads as its remainder; a bigger one is more work, and the old plans
+    // keep what they promised
+    const doneBefore = order !== undefined ? order - promisedNow : promisedNow <= e.oldQty ? e.oldQty - promisedNow : e.oldQty;
+    e.oldCredit = Math.min(e.oldQty, Math.max(0, doneBefore));
+  }
   return byLine;
 }
 
@@ -493,7 +509,7 @@ export function nextOpenDelivery(
 ): { d: number; open: number; qty: number } | null {
   const e = lines.get(key);
   if (!e) return null;
-  let credit = Math.max(0, done - e.oldQty);
+  let credit = Math.max(0, done - e.oldCredit);
   for (const t of e.tranches) {
     const used = Math.min(credit, t.qty);
     credit -= used;
@@ -536,6 +552,7 @@ export function computeDeptQueue(opts: {
   lead?: number; // days before delivery THIS dept must finish (weld 1, paint 0)
   inhouseCap?: Map<string, number>; // bom|mo|item -> planQty − OSP; the outsourced share never reaches our queues
   skipItems?: (item: string) => boolean; // components this dept never handles (e.g. painting skips the core CF)
+  orderQty?: ReadonlyMap<string, number>; // bom|mo|item -> planQty − OSP (see supersededTranches)
 }): WeldQueueRow[] {
   const { schedules, entries, day, fromDept, toDept, inhouseCap } = opts;
   const skipItems = opts.skipItems ?? (() => false);
@@ -569,7 +586,7 @@ export function computeDeptQueue(opts: {
   // ones (a re-import re-promises the remaining work), and this dept's own
   // output consumes the current tranches FIFO, so the date shown is the next
   // promised delivery this line still has to serve.
-  const lines = supersededTranches(schedules);
+  const lines = supersededTranches(schedules, opts.orderQty);
   const nextDelivery = (key: string) => nextOpenDelivery(lines, key, num(weldAttr, key));
 
   // WIP aging: when did the oldest STILL-WAITING piece arrive from upstream?
@@ -680,6 +697,7 @@ export function computeWeldingQueue(opts: {
   day: Date;
   lead?: number;
   inhouseCap?: Map<string, number>;
+  orderQty?: ReadonlyMap<string, number>;
 }): WeldQueueRow[] {
   return computeDeptQueue({ ...opts, fromDept: "Cut", toDept: "Welding", lead: opts.lead ?? 1 });
 }
@@ -691,6 +709,7 @@ export function computePaintingQueue(opts: {
   entries: (ExecEntry & { planNo: number })[];
   day: Date;
   inhouseCap?: Map<string, number>;
+  orderQty?: ReadonlyMap<string, number>;
 }): WeldQueueRow[] {
   // the core (CF) is never painted — it must not show up in the painting queue
   return computeDeptQueue({ ...opts, fromDept: "Welding", toDept: "Painting", lead: 0, skipItems: isPaintExempt });
