@@ -99,6 +99,9 @@ model HandoverEntry {
   @@index([date])
   @@index([bom])
   @@index([dept])
+  // the chain check, the tracker's totals and the trace all read one order's
+  // item at one stage
+  @@index([mo, item, dept])
   @@index([machineId])
 }
 

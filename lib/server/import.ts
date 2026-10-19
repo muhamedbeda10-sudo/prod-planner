@@ -87,43 +87,44 @@ export async function importWeeklyPlan(
     };
   }
 
-  // Idempotent replace: wipe this plan's orders + schedules, keep the header + handover.
-  await prisma.plan.upsert({
-    where: { planNo },
-    create: { planNo, startDate },
-    update: { startDate },
-  });
+  // Idempotent replace: wipe this plan's orders + schedules, keep the header +
+  // handover — all in one transaction, so a failure part-way leaves the week's
+  // plan as it was instead of empty.
   await prisma.$transaction([
+    prisma.plan.upsert({
+      where: { planNo },
+      create: { planNo, startDate },
+      update: { startDate },
+    }),
     prisma.planOrder.deleteMany({ where: { planNo } }),
     prisma.planSchedule.deleteMany({ where: { planNo } }),
+    prisma.planOrder.createMany({
+      data: parsed.orders.map((o) => ({
+        planNo,
+        bom: o.bom,
+        soi: o.soi,
+        mo: o.mo,
+        description: o.description,
+        item: o.item,
+        requiredQty: o.requiredQty,
+        plannerBalance: o.plannerBalance,
+        targetQty: o.targetQty,
+        remark: o.remark,
+      })),
+    }),
+    prisma.planSchedule.createMany({
+      data: parsed.schedules.map((s) => ({
+        planNo,
+        bom: s.bom,
+        soi: s.soi,
+        mo: s.mo,
+        description: s.description,
+        item: s.item,
+        ovenDate: new Date(startDate.getTime() + s.dayOffset * MS_PER_DAY),
+        qty: s.qty,
+      })),
+    }),
   ]);
-
-  await prisma.planOrder.createMany({
-    data: parsed.orders.map((o) => ({
-      planNo,
-      bom: o.bom,
-      soi: o.soi,
-      mo: o.mo,
-      description: o.description,
-      item: o.item,
-      requiredQty: o.requiredQty,
-      plannerBalance: o.plannerBalance,
-      targetQty: o.targetQty,
-      remark: o.remark,
-    })),
-  });
-  await prisma.planSchedule.createMany({
-    data: parsed.schedules.map((s) => ({
-      planNo,
-      bom: s.bom,
-      soi: s.soi,
-      mo: s.mo,
-      description: s.description,
-      item: s.item,
-      ovenDate: new Date(startDate.getTime() + s.dayOffset * MS_PER_DAY),
-      qty: s.qty,
-    })),
-  });
 
   return {
     ok: true,
