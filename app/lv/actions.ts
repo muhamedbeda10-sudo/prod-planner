@@ -10,6 +10,7 @@ import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { spreadOverGroup } from "@/lib/domain/groupSpread";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
+import { readBase, shownStageTotal, staleTotalError } from "@/lib/domain/trackerEdit";
 import { LV_ITEM, LV_STAGES, isLvChainStage, lvChainError, lvDeptPermKey, lvGroupMembers, lvPermKey, lvStageOf, type LvChainStage, type LvStage, type LvState } from "@/lib/domain/lv";
 
 // Recording an LV panel's stages from its tracker. The same shape as the
@@ -70,6 +71,8 @@ export async function recordLvTotal(formData: FormData): Promise<Result> {
     const cur = await stateOf(mo);
     if (!cur) return { ok: false, error: `${mo} is not an LV panel order — refresh the page.` };
     const from = lvStageOf(cur.state, stage);
+    const stale = staleTotalError(readBase(formData.get("base")), shownStageTotal(from, cur.state.required));
+    if (stale) return { ok: false, error: stale };
     const delta = newTotal - from;
     if (delta === 0) return { ok: false, error: `Nothing changed — the total is already ${from}.` };
     const chain = lvChainError(cur.state, stage, delta, mo);
@@ -106,6 +109,9 @@ export async function recordLvGroupTotal(formData: FormData): Promise<Result> {
     if (states.some((s) => !s.cur || s.cur.bom !== bom)) return { ok: false, error: "An MO in the group is no longer on this BOM — refresh the page." };
     const rows = states.map((s) => ({ mo: s.mo, state: s.cur!.state }));
     const current = rows.reduce((sum, r) => sum + lvStageOf(r.state, stage), 0);
+    const shown = rows.reduce((sum, r) => sum + shownStageTotal(lvStageOf(r.state, stage), r.state.required), 0);
+    const stale = staleTotalError(readBase(formData.get("base")), shown);
+    if (stale) return { ok: false, error: stale };
     const delta = newTotal - current;
     if (delta === 0) return { ok: false, error: `Nothing changed — the group total is already ${current}.` };
 

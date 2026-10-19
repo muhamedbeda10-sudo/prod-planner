@@ -3,6 +3,7 @@ import { holdView, type HoldView } from "@/lib/domain/hold";
 import { prisma } from "@/lib/db";
 import { loadMasterOrders } from "./loads";
 import { ITEMS, isPaintExempt, itemEligible, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
+import { shownStageTotal } from "@/lib/domain/trackerEdit";
 
 // Plan Tracker on the MONTHLY registry: one row per MO. Progress is GLOBAL —
 // setup balances plus every logged output, regardless of week — capped at the
@@ -68,7 +69,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
     let welded = Infinity;
     let complete = Infinity;
     for (const it of ITEMS) {
-      const cap = (v: number) => (o.planQty > 0 ? Math.min(v, o.planQty) : v);
+      const cap = (v: number) => shownStageTotal(v, o.planQty);
       const osp = ospOf(o, it);
       const cut = cap(g(o.mo, "Cut", it));
       const weld = cap(g(o.mo, "Welding", it));

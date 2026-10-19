@@ -71,6 +71,7 @@ beforeEach(() => {
   h.prisma.handoverEntry.create.mockResolvedValue({ id: 1 });
   h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 0 } });
   h.prisma.masterOrder.findMany.mockResolvedValue([]);
+  h.prisma.masterOrder.findUnique.mockResolvedValue(null);
   h.prisma.handoverEntry.groupBy.mockResolvedValue([]);
   // tanks: a named welder resolves, minting hands back the serials it made
   h.resolveWorker.mockResolvedValue({ worker: { id: 7, name: "Sayed" } });
@@ -231,6 +232,25 @@ describe("recordTrackerTotal — delta accounting", () => {
     const res = await recordTrackerTotal(form({ dept: "Cut", bom: "B", mo: "MO-1", item: "CF", total: "5" }));
     expect(res).toEqual({ ok: false, error: "Nothing changed — the total is already 5." });
     expect(h.prisma.handoverEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a total typed from a page the ledger has moved on from", async () => {
+    // the page showed 10; welding recorded 4 more since
+    h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 14 } });
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ planQty: 20 });
+    const res = await recordTrackerTotal(form({ dept: "Welding", bom: "B", mo: "MO-1", item: "CF", total: "11", base: "10" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/now 14, not the 10 on your screen/);
+    expect(txWrites).toHaveLength(0);
+  });
+
+  it("compares the base with the figure the cell shows — capped at the order's quantity", async () => {
+    // 12 recorded against an order of 10: the cell shows 10, and typing 9 takes the ledger to 9
+    h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 12 } });
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ planQty: 10 });
+    const res = await recordTrackerTotal(form({ dept: "Cut", bom: "B", mo: "MO-1", item: "CF", total: "9", base: "10" }));
+    expect(res.ok).toBe(true);
+    expect(txWrites[0]).toMatchObject({ qty: -3 });
   });
 
   it("records the DIFFERENCE as a dated entry when the total goes up", async () => {
@@ -437,6 +457,14 @@ describe("recordGroupOutput — recording from the weekly plan", () => {
     h.prisma.masterOrder.findMany.mockResolvedValue([ORDER]);
     // 5 already cut, nothing welded — welding headroom is 5
     h.prisma.handoverEntry.groupBy.mockResolvedValue([{ mo: "MO-1", dept: "Cut", _sum: { qty: 5 } }]);
+  });
+
+  it("refuses a group total typed from a stale page", async () => {
+    // the page showed 3 cut on the group; the ledger holds 5 now
+    const res = await recordGroupOutput(form({ source: "tracker", dept: "Cut", bom: "B-1", item: "CF", mos: "MO-1", total: "6", base: "3" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/now 5, not the 3 on your screen/);
+    expect(txWrites).toHaveLength(0);
   });
 
   it("asks for the weekly permission — not a tracker column permission", async () => {
