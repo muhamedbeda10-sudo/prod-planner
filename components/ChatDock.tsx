@@ -9,6 +9,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { pollChat, pollChatInbox } from "@/app/chat/actions";
 import { INBOX_UNREAD } from "@/components/InboxBell";
 import type { ChatContact, ChatInboxItem, ThreadKind } from "@/lib/server/chat";
+import { factoryClockHHMM } from "@/lib/domain/dates";
 import { armChime, chimeOn, playChime, setChimeOn } from "@/lib/chime";
 import { appInBackground, askNotify, notifyPerm, onNotifyClick, prepareNotify, systemNotify, type NotifyPerm } from "@/lib/sysNotify";
 
@@ -58,10 +59,8 @@ function writeSeen(userId: number, id: number) {
   }
 }
 
-const timeOf = (iso: string) => {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+// on the factory clock, as the chat itself writes it
+const timeOf = (iso: string) => factoryClockHHMM(new Date(iso));
 
 const ChatClient = dynamic(() => import("./ChatClient").then((m) => m.ChatClient), {
   ssr: false,

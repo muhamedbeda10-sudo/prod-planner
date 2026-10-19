@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { AlertTriangle, Check, CheckCheck, Clock, Loader2, RotateCcw, Undo2, X } from "lucide-react";
 import { approveAiAction, rejectAiAction, undoAiAction } from "@/app/ai/actions";
 import { RISK_TEXT, type AiActionStatus, type AiActionView } from "@/lib/domain/aiActions";
+import { factoryClockHHMM } from "@/lib/domain/dates";
+import { formatDateTime } from "@/lib/domain/format";
 
 // A change the assistant prepared, as the person answers it: what it does,
 // row by row (before → after), and Approve / Reject — then what happened,
@@ -20,7 +22,7 @@ const STATUS: Record<AiActionStatus, { label: string; tone: string }> = {
   undone: { label: "Undone", tone: "pill-muted" },
 };
 
-const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "");
+const time = (iso: string | null) => (iso ? factoryClockHHMM(new Date(iso)) : "");
 
 /** What the server answered, as the card shows it. */
 type Decide = (id: number) => Promise<{ ok: boolean; error?: string; view?: AiActionView }>;
@@ -108,7 +110,7 @@ export function AiActionCard({ view, onChange }: { view: AiActionView; onChange:
               </button>
               {view.expiresAt && (
                 <span className="text-[11px] text-muted inline-flex items-center gap-1">
-                  <Clock size={11} /> until {new Date(view.expiresAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  <Clock size={11} /> until {formatDateTime(view.expiresAt)}
                 </span>
               )}
             </>

@@ -87,11 +87,14 @@ export function monthLabelSortKey(label: string): number {
   return v ? Number(v.replace("-", "")) : -1;
 }
 
+// built once: a chat thread asks for the day of every message on each render
+const CAIRO_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" });
+
 /** The calendar day of a moment as the factory sees it (Africa/Cairo),
  *  "2026-09-07" — a close at 00:30 counts on the day it was made, not on the
  *  UTC day that was still yesterday. */
 export function factoryDayISO(at: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+  return CAIRO_DAY.format(at);
 }
 
 const CAIRO_PARTS = new Intl.DateTimeFormat("en-US", {
@@ -136,4 +139,20 @@ export function factoryTimeAt(iso: string, hhmm: string): Date | null {
 export function factoryClockHHMM(at: Date): string {
   const p = Object.fromEntries(CAIRO_PARTS.formatToParts(at).map((x) => [x.type, x.value]));
   return `${p.hour}:${p.minute}`;
+}
+
+/** Whole factory days from one moment back to another: 0 on the same Cairo
+ *  day, 1 for the day before it. What "Today" and "Yesterday" mean on screen —
+ *  the same on the server and in a browser in any zone, so a page rendered on
+ *  one and hydrated on the other agrees. */
+export function factoryDaysBefore(at: Date, now: Date): number {
+  return dayNumber(parseISODate(factoryDayISO(now))!) - dayNumber(parseISODate(factoryDayISO(at))!);
+}
+
+/** The factory clock's reading at an instant, to the minute, written as if it
+ *  were UTC: 08:58 Cairo on 4 Oct → Date.UTC(2026, 9, 4, 8, 58). For an axis
+ *  drawn in UTC whose times are the factory's wall clock. */
+export function factoryWallClockMs(at: Date): number {
+  const [h, m] = factoryClockHHMM(at).split(":").map(Number);
+  return parseISODate(factoryDayISO(at))!.getTime() + (h * 60 + m) * 60_000;
 }

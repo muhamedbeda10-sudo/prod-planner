@@ -1264,10 +1264,10 @@ export function MasterTrackerTable({
             className="print-as-text w-full min-w-8 rounded px-1 py-0.5 tabnum hover:ring-2 hover:ring-brand/60 transition-all cursor-text"
             title={`Fins on the WHOLE BOM — how many of its ${tanks} tanks carry fins. Type the group's figure: it fills each MO to its own quantity before the next, and a reduction comes off the last MOs first.`}
           >
-            {group!.current > 0 ? group!.current.toLocaleString() : <span className="opacity-60">—</span>}
+            {group!.current > 0 ? group!.current.toLocaleString("en-US") : <span className="opacity-60">—</span>}
           </button>
         ) : group ? (
-          group.current > 0 ? group.current.toLocaleString() : <span className="opacity-60">—</span>
+          group.current > 0 ? group.current.toLocaleString("en-US") : <span className="opacity-60">—</span>
         ) : (
           <span title="One of these MOs has Fins written as text — expand the group and set them one at a time">
             {agreedSpec(members.map((m) => m.fins)) || "…"}
