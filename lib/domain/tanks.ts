@@ -22,6 +22,18 @@
 /** The component tracked per piece. Everything else stays quantity-only. */
 export const TANK_ITEM = "TN";
 
+/** Whether a Daily log row would add tanks the tank layer never hears of.
+ *  With per-piece tracking on, a welded tank gets its serial and its welder on
+ *  the Welding worklist, and a tank is painted on the Painting worklist only
+ *  after it passed the leak test; a quantity typed on the Daily log carries
+ *  neither, so it may correct a tank row down but not add to one. */
+export function dailyLogAddsTanks(tankTracking: boolean, dept: string, item: string): boolean {
+  return tankTracking && item === TANK_ITEM && (dept === "Welding" || dept === "Painting");
+}
+
+export const TANKS_FROM_WORKLISTS =
+  "Tanks are tracked one by one: welded tanks are added on the Welding worklist (each gets its serial and welder), painted tanks on the Painting worklist (only after the leak test). The Daily log can lower a tank row, not add to it.";
+
 /** Fixed serial prefix — "Steel Fabrication". */
 export const TANK_SERIAL_PREFIX = "SF";
 

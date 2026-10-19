@@ -23,6 +23,24 @@ describe("measureRates", () => {
     expect(tc.hoursPerPc).toBe(0.5);
   });
 
+  it("counts a day once however many log rows recorded the item on it", () => {
+    const r = measureRates(
+      [out("2026-09-01", 1, "TN", 2, 4), out("2026-09-01", 1, "TN", 3, 6)],
+      [hrs("2026-09-01", 1, 10)]
+    );
+    expect(r).toEqual([{ machineId: 1, item: "TN", pieces: 5, hours: 10, hoursPerPc: 2, days: 1 }]);
+  });
+
+  it("measures nothing on a day mixing priced and unpriced items, rather than loading one with the other", () => {
+    // 2 tanks (4 std-h) beside 10 arresters (unpriced), 9 h worked: there is
+    // no fair split, so the day is left out
+    const r = measureRates(
+      [out("2026-09-01", 1, "TN", 2, 4), out("2026-09-01", 1, "AR", 10, 0), out("2026-09-02", 1, "TN", 2, 4)],
+      [hrs("2026-09-01", 1, 9), hrs("2026-09-02", 1, 6)]
+    );
+    expect(r).toEqual([{ machineId: 1, item: "TN", pieces: 2, hours: 6, hoursPerPc: 3, days: 1 }]);
+  });
+
   it("splits by pieces when nothing that day carries a standard time", () => {
     const r = measureRates(
       [out("2026-09-01", 1, "AR", 6, 0), out("2026-09-01", 1, "MB", 2, 0)],

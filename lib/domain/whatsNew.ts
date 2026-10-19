@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-daily-log-tanks",
+    dateISO: "2026-10-19",
+    title: "Tanks are added on the worklists only; machine rates count each day once",
+    where: "Daily Log · Machines → measured rates",
+    body: "With per-piece tank tracking on, the Daily Log no longer adds welded or painted tanks (TN): a quantity typed there carried no serial, no welder and skipped the leak test. Welded tanks are added on the Welding worklist and painted ones on the Painting worklist; the Daily Log can still lower a tank row, and its tanks follow. The machines' measured rates now count a day once however many rows recorded an item on it, and leave out a day that mixed priced and unpriced items instead of loading one with the other's hours.",
+    href: "/handover",
+  },
+  {
     id: "2026-10-19-repromise-remainder",
     dateISO: "2026-10-19",
     title: "A re-promised order is done when its remainder is done",
