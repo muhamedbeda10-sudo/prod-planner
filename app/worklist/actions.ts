@@ -6,7 +6,7 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { put, del } from "@vercel/blob";
 import { isItem, isDept, deptLabel } from "@/lib/domain/constants";
-import { parseISODate, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { checkOutputChain } from "@/lib/server/outputGuard";
@@ -212,7 +212,7 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
 
     // date = today; plan = whichever plan covers today (ahead-of-plan work
     // falls back to the newest plan, then the setup bucket 0)
-    const today = parseISODate(toISODate(new Date()))!;
+    const today = parseISODate(factoryDayISO(new Date()))!;
     const [windows, settings] = await Promise.all([getPlanWindows(), getSettings()]);
     const planNo =
       findPlanForDate(windows, today, settings.leadCut) ??
@@ -371,7 +371,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     const alloc = new Map(spread.alloc.map((a) => [a.mo, a.qty]));
 
     // date = today; plan = whichever plan covers today (same as tracker cells)
-    const today = parseISODate(toISODate(new Date()))!;
+    const today = parseISODate(factoryDayISO(new Date()))!;
     const [windows, settings] = await Promise.all([getPlanWindows(), getSettings()]);
     const planNo =
       findPlanForDate(windows, today, settings.leadCut) ??
@@ -644,7 +644,7 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
       return { ok: false, error: `Only ${Math.max(0, available)} pcs are waiting in this queue — cannot return ${qty}.` };
     }
 
-    const date = new Date();
+    const date = parseISODate(factoryDayISO(new Date()))!;
     await prisma.plan.upsert({ where: { planNo: 0 }, create: { planNo: 0, startDate: date }, update: {} });
     const made = await prisma.$transaction(async (tx) => {
       const ledger = await tx.handoverEntry.create({
@@ -683,7 +683,7 @@ export async function redeliverReturn(formData: FormData): Promise<RecordResult>
     const guard = await requireDeptEdit(ret.toDept);
     if (guard.error) return { ok: false, error: guard.error };
 
-    const date = new Date();
+    const date = parseISODate(factoryDayISO(new Date()))!;
     const ledgerId = await prisma.$transaction(async (tx) => {
       // closed first, and only while still open: a second tap (or a second
       // screen) re-delivering the same return credits the department once

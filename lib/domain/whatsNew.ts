@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-factory-day-dates",
+    dateISO: "2026-10-19",
+    title: "Work recorded after midnight lands on the factory's day, and impossible dates are refused",
+    where: "Plan Tracker · worklists · Leak test · Painting · Returns · ODOO · imports",
+    body: "Tracker totals, group recording, returns, leak tests and painting recorded between midnight and about 3 a.m. used to be dated the day before, because \"today\" was read on UTC. They now use the factory's clock, like the machine and consumables screens already did, and the data guard no longer flags those records as claimed in advance. Imports and typed dates also refuse a date that is not on the calendar (25/09 in a month/day column, 31 April) instead of quietly moving it to another day.",
+    href: "/tracker",
+  },
+  {
     id: "2026-10-19-tracker-stale-total",
     dateISO: "2026-10-19",
     title: "A tracker total typed on an out-of-date page is refused, not miscounted",

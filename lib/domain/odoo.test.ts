@@ -17,6 +17,11 @@ describe("parseOdooDate", () => {
     expect(parseOdooDate("")).toBeNull();
     expect(parseOdooDate("soon")).toBeNull();
   });
+  it("rejects a date that is not on the calendar, so the import reports it", () => {
+    expect(parseOdooDate("13/9/2026")).toBeNull();
+    expect(parseOdooDate("31-04-2026")).toBeNull();
+    expect(parseOdooDate("2026-13-01")).toBeNull();
+  });
 });
 
 describe("parseOdooSheet", () => {

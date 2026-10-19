@@ -76,6 +76,12 @@ describe("guardLedger — recording drift", () => {
     expect(guardLedger([e]).get(700)).toBeUndefined();
   });
 
+  it("reads the recording day on the factory clock — just after midnight Cairo is not ahead", () => {
+    // 01:30 Cairo on the 7th is 22:30 UTC on the 6th
+    const e = entry({ id: 700, dateISO: "2026-09-07", createdISO: "2026-09-06T22:30:00Z" });
+    expect(guardLedger([e]).get(700)).toBeUndefined();
+  });
+
   it("flags output claimed for a day that hadn't happened yet", () => {
     const e = entry({ id: 700, dateISO: "2026-07-05", createdISO: "2026-07-01T12:00:00Z" });
     expect(guardLedger([e]).get(700)?.[0].type).toBe("future");

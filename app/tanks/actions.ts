@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { emitEvent, listed } from "@/lib/server/events";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { parseISODate, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { checkOutputChain } from "@/lib/server/outputGuard";
 import { requireDeptEdit, requirePerm, requireAdmin } from "@/lib/server/auth";
 import { resolveWorker } from "@/lib/server/workers";
@@ -214,7 +214,7 @@ export async function recordLeakTest(formData: FormData): Promise<TankActionResu
     const tester = await resolveWorker(workerId, "LeakTest");
     if (tester.error) return { ok: false, error: tester.error };
 
-    const date = parseISODate(dateISO) ?? parseISODate(toISODate(new Date()))!;
+    const date = parseISODate(dateISO) ?? parseISODate(factoryDayISO(new Date()))!;
     const tanks = await prisma.tankUnit.findMany({ where: { serial: { in: serials } } });
     if (tanks.length !== serials.length) {
       const found = new Set(tanks.map((t) => t.serial));
@@ -289,7 +289,7 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
     const painter = await resolveWorker(workerId, "Painting");
     if (painter.error) return { ok: false, error: painter.error };
 
-    const date = parseISODate(dateISO) ?? parseISODate(toISODate(new Date()))!;
+    const date = parseISODate(dateISO) ?? parseISODate(factoryDayISO(new Date()))!;
     const tanks = await prisma.tankUnit.findMany({ where: { serial: { in: serials } } });
     if (tanks.length !== serials.length) {
       const found = new Set(tanks.map((t) => t.serial));

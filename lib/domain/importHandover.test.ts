@@ -12,6 +12,12 @@ describe("parseCellDate", () => {
     expect(parseCellDate("not a date")).toBeNull();
     expect(parseCellDate(null)).toBeNull();
   });
+  it("refuses a date that is not on the calendar instead of rolling it to another day", () => {
+    expect(parseCellDate("25/09/2026")).toBeNull(); // a d/m cell in the m/d sheet: month 25
+    expect(parseCellDate("9/31/2026")).toBeNull();
+    expect(parseCellDate("2026-02-30")).toBeNull();
+    expect(toDisplayDate(parseCellDate("2/29/2028")!)).toBe("29/02/2028"); // a real leap day
+  });
 });
 
 describe("parseHandoverGrid", () => {

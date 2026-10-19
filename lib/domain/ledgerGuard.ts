@@ -4,6 +4,8 @@
  * the impossible; this catches the merely implausible.
  */
 
+import { factoryDayISO } from "./dates";
+
 export interface GuardEntry {
   id: number;
   dateISO: string; // work date
@@ -89,7 +91,10 @@ export function guardLedger(entries: GuardEntry[]): Map<number, GuardFlag[]> {
   // ---- recording drift: entered long after the fact, or dated ahead of it ----
   for (const e of entries) {
     const workDay = Math.floor(Date.parse(`${e.dateISO}T00:00:00Z`) / 86400000);
-    const createdDay = Math.floor(Date.parse(e.createdISO) / 86400000);
+    // the day it was recorded on the factory clock — the work date is a
+    // factory day too, so an entry made after midnight Cairo is not "ahead"
+    const created = new Date(e.createdISO);
+    const createdDay = Number.isNaN(created.getTime()) ? Number.NaN : Math.floor(Date.parse(`${factoryDayISO(created)}T00:00:00Z`) / 86400000);
     if (Number.isNaN(workDay) || Number.isNaN(createdDay)) continue;
     const lag = createdDay - workDay;
     if (lag > LATE_DAYS) {

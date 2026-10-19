@@ -15,6 +15,7 @@ import { AddManualJob, ManualJobsList } from "@/components/ManualJobs";
 import { recordManualDone } from "@/app/worklist/manualActions";
 import { jobsBySheet, manualIdOf, type ManualJobView } from "@/lib/domain/manualJob";
 import { SheetJobLine } from "@/components/SheetJobLine";
+import { factoryDayISO } from "@/lib/domain/dates";
 
 // 🏭 The machine load board on a department's worklist — one card per
 // machine: what it is on NOW, what waits behind it, and how many hours the
@@ -273,7 +274,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
         {q.split && <span className="text-[11px] text-muted tabnum whitespace-nowrap" title="Part of the line — the rest is on another machine or waits">✂ of {q.lineRemaining}</span>}
         {q.hours !== null && <span className="text-xs text-muted tabnum whitespace-nowrap">{q.hours} h</span>}
         {q.deliveryISO && (strong
-          ? <span className={`pill tabnum ${q.deliveryISO < new Date().toISOString().slice(0, 10) ? "pill-bad" : "pill-muted"}`}>📅 {ddmm(q.deliveryISO)}</span>
+          ? <span className={`pill tabnum ${q.deliveryISO < factoryDayISO(new Date()) ? "pill-bad" : "pill-muted"}`}>📅 {ddmm(q.deliveryISO)}</span>
           : <span className="text-muted tabnum whitespace-nowrap">📅 {ddmm(q.deliveryISO)}</span>)}
         {strong && <span className="text-[11px] text-muted truncate">{q.mo}{q.description ? ` · ${q.description}` : ""}</span>}
         <LineMaterialChips m={board.material[q.key]} pcs={q.remaining} sheets={dept === "Cut" && q.stepNo === 1} sheet={q.sheet} />

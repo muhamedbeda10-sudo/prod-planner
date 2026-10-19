@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { linePermKey } from "@/lib/domain/permissions";
 import { isProductLine, type ProductLine } from "@/lib/domain/lines";
-import { parseISODate, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import { importOdooSheet, type OdooImportResult } from "@/lib/server/odoo";
 
@@ -101,7 +101,7 @@ function doneAtFor(nextStatus: string, prev: { status: string; doneAt: Date | nu
   if (!isDoneStatus(nextStatus)) return null;
   if (prev && isDoneStatus(prev.status) && prev.doneAt) return prev.doneAt;
   const now = new Date();
-  return toISODate(rowDate) < toISODate(now) ? rowDate : now;
+  return toISODate(rowDate) < factoryDayISO(now) ? rowDate : now;
 }
 
 export async function createOdooEntry(formData: FormData): Promise<OdooActionResult> {

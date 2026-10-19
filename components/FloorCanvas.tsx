@@ -19,6 +19,7 @@ import { DoneBox, MachinePick } from "@/components/MachineBoard";
 import { jobSheetLabel, manualIdOf } from "@/lib/domain/manualJob";
 import { LineSheet } from "@/components/LineMaterialChips";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
+import { factoryDayISO } from "@/lib/domain/dates";
 
 // 🗺 The Floor canvas — a department's bay as the planner draws it: the
 // machines (or welding partitions) as blocks he drags into the places they
@@ -523,7 +524,7 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
   // line's keep their places
   const waiting = card.waiting;
   const canGoNext = (q: (typeof waiting)[number]) => waiting.slice(0, waiting.indexOf(q)).some((x) => mayScheduleLine(canAssign, x.item));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = factoryDayISO(new Date());
   const rows = showAll ? card.queue : card.queue.slice(0, 30);
   return (
     <div className="space-y-3">

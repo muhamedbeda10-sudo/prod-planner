@@ -7,7 +7,7 @@ import { resolveBasis, resolveBom, resolveCompare, resolvePeriod } from "@/lib/d
 import { OdooBasisPicker, OdooBomPicker, OdooComparePicker } from "@/components/OdooPickers";
 import { OdooDashboard } from "@/components/LazyCharts";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
-import { toISODate } from "@/lib/domain/dates";
+import { factoryDayISO } from "@/lib/domain/dates";
 import { odooScopeKey, parseOdooScope } from "@/lib/domain/odoo";
 import { PageHead } from "@/components/ui";
 import { ExportMenu } from "@/components/ExportMenu";
@@ -35,7 +35,7 @@ export default async function OdooPage({
 
   const sp = await searchParams;
   // every day by default (the log opens on the whole period), one day, or a from..to period
-  const scope = parseOdooScope(sp.day ?? "all", toISODate(new Date()));
+  const scope = parseOdooScope(sp.day ?? "all", factoryDayISO(new Date()));
   const day = odooScopeKey(scope);
   const view = sp.view === "dashboard" ? "dashboard" : "log";
 
@@ -52,7 +52,7 @@ export default async function OdooPage({
     const period = resolvePeriod(sp);
     const basis = resolveBasis(sp);
     const data = await getOdooDashboard(period, basis, resolveBom(sp), resolveCompare(sp));
-    const today = toISODate(new Date());
+    const today = factoryDayISO(new Date());
     return (
       <div className="space-y-3">
         <RememberLastVisit storageKey="odoo:last" />
@@ -88,7 +88,7 @@ export default async function OdooPage({
   }));
 
   // the strip runs from the first logged day (a month back at least) to today
-  const today = toISODate(new Date());
+  const today = factoryDayISO(new Date());
   const oldest = days.length ? days[days.length - 1] : today;
   const min = [oldest, addDaysISO(today, -30)].sort()[0];
   const sel = scope.kind === "all" ? { from: null, to: null } : scope.kind === "day" ? { from: scope.iso, to: scope.iso } : { from: scope.from, to: scope.to };

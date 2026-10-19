@@ -25,6 +25,7 @@ import { Modal } from "@/components/Modal";
 import { MO_MATERIAL_FLAG, entryMaterialNeed, rowMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 import { ODOO_CHANGED_EVENT } from "@/lib/domain/odooAlerts";
 import { createOdooEntry, updateOdooEntry, deleteOdooEntry, importOdooAction, setOdooStatus, setOdooMo, addOdooNote, deleteOdooNote, updateOdooGroup, deleteOdooEntries } from "@/app/odoo/actions";
+import { factoryDayISO } from "@/lib/domain/dates";
 
 // The ODOO tab — the office's daily log of Odoo close attempts, one strip per
 // row, the columns of the sheet it replaces: Date · SOI# · FG-CODE · Product ·
@@ -94,7 +95,7 @@ function RowFields({
   shared?: boolean;
 }) {
   const line = useActiveLine();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = factoryDayISO(new Date());
   const born = isBorn(e);
   return (
     <>

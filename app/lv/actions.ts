@@ -5,7 +5,7 @@ import { outputSentence } from "@/lib/domain/appEvents";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { requirePerm } from "@/lib/server/auth";
-import { parseISODate, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
 import { spreadOverGroup } from "@/lib/domain/groupSpread";
@@ -39,7 +39,7 @@ async function stateOf(mo: string): Promise<{ state: LvState; bom: string } | nu
 
 /** Today's plan bucket, the way every tracker record is filed. */
 async function todaysPlan(): Promise<{ today: Date; planNo: number }> {
-  const today = parseISODate(toISODate(new Date()))!;
+  const today = parseISODate(factoryDayISO(new Date()))!;
   const [windows, settings] = await Promise.all([getPlanWindows(), getSettings()]);
   const planNo = findPlanForDate(windows, today, settings.leadCut) ?? (windows.length ? Math.max(...windows.map((w) => w.planNo)) : 0);
   await prisma.plan.upsert({ where: { planNo }, create: { planNo, startDate: today }, update: {} });
