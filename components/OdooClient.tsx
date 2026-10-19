@@ -563,6 +563,7 @@ function Row({ e, day, knownSois, nesting, needCtx, canEdit, inGroup = false }: 
               ev.preventDefault();
               const fd = new FormData(ev.currentTarget);
               fd.set("id", String(e.id));
+              fd.set("version", e.version);
               edit.run(updateOdooEntry, fd, "Saved.", () => setEditing(false));
             }}
           >

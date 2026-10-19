@@ -56,6 +56,9 @@ export interface OdooEntryView {
   done: boolean;
   /** When the status was moved to Done — the day the dashboard counts the close on. */
   doneAtISO: string | null;
+  /** The row's last change as the page drew it — an edit saved from an older
+   *  page is refused rather than undoing what was done since. */
+  version: string;
   recordedBy: string | null;
   /** manual | import | painting | shotblast — a painting / shot-blast row was
    *  born from a closing in the ledger and starts with no MO. */
