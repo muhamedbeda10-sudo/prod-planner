@@ -9,7 +9,7 @@
 // signature (day|dept|bom|mo|item|qty|planNo). This module only parses + validates.
 
 import { isItem, isDept } from "./constants";
-import { excelSerialToDate } from "./dates";
+import { calendarDate, excelSerialToDate } from "./dates";
 
 export interface HandoverImportRow {
   rowNum: number; // 1-based sheet row
@@ -38,9 +38,9 @@ export function parseCellDate(v: unknown): Date | null {
   }
   const s = String(v).trim();
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s); // ISO yyyy-mm-dd
-  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if (m) return calendarDate(+m[1], +m[2], +m[3]);
   m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s); // m/d/yyyy (sheet locale)
-  if (m) return new Date(Date.UTC(+m[3], +m[1] - 1, +m[2]));
+  if (m) return calendarDate(+m[3], +m[1], +m[2]);
   return null;
 }
 

@@ -11,7 +11,7 @@ import { OutputByComponentChart } from "@/components/LazyCharts";
 import { PrintButton } from "@/components/PrintButton";
 import { redirect } from "next/navigation";
 import { getActiveLine } from "@/lib/server/line";
-import { parseISODate, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { ITEMS, isPaintExempt, deptLabel, itemDailyTarget, STAGE_COLOR, FINISHING_LABEL, type Item } from "@/lib/domain/constants";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { guardTab } from "@/lib/server/auth";
@@ -83,7 +83,7 @@ export default async function ReportPage({
   const fromRaw = sp.from ? parseISODate(sp.from) : null;
   const from = fromRaw && toISODate(fromRaw) < dayISO ? fromRaw : null;
   const fromISO = from ? toISODate(from) : dayISO;
-  const todayISO = toISODate(new Date());
+  const todayISO = factoryDayISO(new Date());
   // never 0: a range of nothing but Fridays would otherwise zero the targets
   const spanDays = from ? Math.max(1, await countWorkingDays(from, day)) : 1;
   const periodWords = from ? `${formatDate(from)} → ${formatDate(day)}` : formatDate(day);

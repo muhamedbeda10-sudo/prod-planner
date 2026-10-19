@@ -33,11 +33,19 @@ export function utcDate(year: number, month1: number, day: number): Date {
   return new Date(Date.UTC(year, month1 - 1, day));
 }
 
+/** UTC-midnight Date for a Y/M/D that exists on the calendar, or null: Date.UTC
+ *  quietly rolls 2026-02-30 over to 2026-03-02 and month 25 into two years
+ *  later, and a typed or imported date must never land on another day. */
+export function calendarDate(year: number, month1: number, day: number): Date | null {
+  const d = utcDate(year, month1, day);
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month1 - 1 && d.getUTCDate() === day ? d : null;
+}
+
 /** Parse a yyyy-mm-dd string (from <input type=date>) to a UTC-midnight Date. */
 export function parseISODate(s: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim());
   if (!m) return null;
-  return utcDate(Number(m[1]), Number(m[2]), Number(m[3]));
+  return calendarDate(Number(m[1]), Number(m[2]), Number(m[3]));
 }
 
 /** Format a Date as yyyy-mm-dd (UTC) for date inputs. */

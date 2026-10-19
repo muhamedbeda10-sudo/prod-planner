@@ -3,6 +3,8 @@
 // until it is released. Nothing about its logs changes; a hold is a state,
 // like closed, not a record.
 
+import { factoryDayISO } from "./dates";
+
 export interface HoldFields {
   holdAt: Date | string | null;
   holdNote: string | null;
@@ -27,7 +29,7 @@ export function holdView(o: HoldFields): HoldView {
   return {
     onHold: at !== null,
     holdNote: at ? o.holdNote?.trim() || null : null,
-    holdSinceISO: at ? at.toISOString().slice(0, 10) : null,
+    holdSinceISO: at ? factoryDayISO(at) : null,
     holdBy: at ? o.holdBy : null,
   };
 }

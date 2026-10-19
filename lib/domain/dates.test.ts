@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  calendarDate,
+  parseISODate,
   excelSerialToDate,
   dateToExcelSerial,
   toDisplayDate,
@@ -52,5 +54,15 @@ describe("the factory clock", () => {
   it("writes the factory's wall clock as a UTC instant, to the minute", () => {
     expect(factoryWallClockMs(new Date("2026-10-04T05:58:41Z"))).toBe(Date.UTC(2026, 9, 4, 8, 58));
     expect(factoryWallClockMs(new Date("2026-10-04T22:30:00Z"))).toBe(Date.UTC(2026, 9, 5, 1, 30));
+  });
+});
+
+describe("calendar dates", () => {
+  it("parses a real day and refuses one Date.UTC would roll over", () => {
+    expect(parseISODate("2026-02-28")?.toISOString()).toBe("2026-02-28T00:00:00.000Z");
+    expect(parseISODate("2026-02-30")).toBeNull();
+    expect(parseISODate("2026-00-10")).toBeNull();
+    expect(calendarDate(2028, 2, 29)?.toISOString()).toBe("2028-02-29T00:00:00.000Z");
+    expect(calendarDate(2026, 2, 29)).toBeNull();
   });
 });

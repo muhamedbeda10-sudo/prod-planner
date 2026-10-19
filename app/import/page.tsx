@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, guardTab } from "@/lib/server/auth";
 import { PageHead, ReadingColumn } from "@/components/ui";
 import { ImportForm } from "@/components/ImportForm";
-import { toISODate } from "@/lib/domain/dates";
+import { factoryDayISO } from "@/lib/domain/dates";
 import { getPlanNos } from "@/lib/server/data";
 import { ViewTabs, PLANS_VIEWS } from "@/components/ViewTabs";
 import { getActiveLine } from "@/lib/server/line";
@@ -29,7 +29,7 @@ export default async function ImportPage() {
         Grid: A=BOM (merged, carried down) · B=SOI · C=MO · D=Description · E=Required · F..AC = 6 days × 4 components · AD=Remarks.
         Plan dates are oven dates. Remarks are stored for reference but never interpreted — no balance parsing.
       </p>
-      <ImportForm defaultDate={toISODate(new Date())} />
+      <ImportForm defaultDate={factoryDayISO(new Date())} />
       {plans.length > 0 && (
         <p className="text-xs text-muted">Existing plans: {plans.join(", ")}</p>
       )}

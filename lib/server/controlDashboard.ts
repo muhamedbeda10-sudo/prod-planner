@@ -6,7 +6,7 @@ import { getMasterTracker } from "./masterTracker";
 import { getEtaBase, getOrderEtas } from "./eta";
 import { getStageCapacity } from "./standardTimes";
 import { getOtdStats } from "./otd";
-import { currentMonthLabel, monthLabelSortKey, toISODate } from "@/lib/domain/dates";
+import { currentMonthLabel, factoryDayISO, monthLabelSortKey, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import { TANK_ITEM } from "@/lib/domain/tanks";
 import {
@@ -67,7 +67,7 @@ const TRAIL_DAYS = 14; // calendar days behind today the pace is read over
 export async function getControlDashboard(opts: { planMonth?: string | null } = {}): Promise<ControlDashboardData> {
   const line = await getActiveLine();
   const now = new Date();
-  const todayISO = toISODate(now);
+  const todayISO = factoryDayISO(now);
   const today = new Date(`${todayISO}T00:00:00Z`);
   const monthLabel = currentMonthLabel(now);
   const trailStart = new Date(today.getTime() - TRAIL_DAYS * 86400000);

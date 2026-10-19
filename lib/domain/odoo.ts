@@ -1,6 +1,6 @@
 // ODOO close-out log — pure helpers shared by the server and the form.
 
-import { excelSerialToDate } from "./dates";
+import { calendarDate, excelSerialToDate } from "./dates";
 
 /** The product names as Odoo's FG codes call them — a dropdown, not a
  *  constraint: anything typed is kept. */
@@ -156,11 +156,11 @@ export function parseOdooDate(v: unknown): Date | null {
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : new Date(Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate()));
   const s = String(v).trim();
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
-  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if (m) return calendarDate(+m[1], +m[2], +m[3]);
   m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s); // m/d/yyyy — the sheet's locale
-  if (m) return new Date(Date.UTC(+m[3], +m[1] - 1, +m[2]));
+  if (m) return calendarDate(+m[3], +m[1], +m[2]);
   m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(s); // d-m-yyyy
-  if (m) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+  if (m) return calendarDate(+m[3], +m[2], +m[1]);
   return null;
 }
 
