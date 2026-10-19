@@ -1,8 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { normalizeEmpId, sectionDept, type WorkerDept, type WorkerSection } from "@/lib/domain/tanks";
+import { normalizeEmpId, type WorkerDept, type WorkerSection } from "@/lib/domain/tanks";
 import { factoryDayISO, toISODate } from "@/lib/domain/dates";
-import { parseWorkerSections, serializeWorkerDepts } from "@/lib/domain/workers";
+import { parseWorkerSections, serializeWorkerDepts, workerDepts } from "@/lib/domain/workers";
 
 export { parseWorkerSections, serializeWorkerDepts };
 
@@ -37,7 +37,7 @@ function toDTO(w: {
   const vacationUntil = w.vacationUntil ? toISODate(w.vacationUntil) : null;
   return {
     id: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle, stamp: w.stamp,
-    sections, depts: [...new Set(sections.map(sectionDept))], active: w.active,
+    sections, depts: workerDepts(sections), active: w.active,
     vacationUntil, onVacation: vacationUntil !== null && vacationUntil >= factoryDayISO(new Date()),
   };
 }

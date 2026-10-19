@@ -1,7 +1,7 @@
 // The workers list's stored shape: a CSV of section codes. Pure, so the
 // parse and the serialize can be tested without a database.
 
-import { LEGACY_SECTION, WORKER_SECTIONS, isWorkerSection, type WorkerSection } from "./tanks";
+import { LEGACY_SECTION, WORKER_SECTIONS, isWorkerSection, sectionDept, type WorkerDept, type WorkerSection } from "./tanks";
 
 /** Parse the stored CSV of sections, dropping anything unknown; a bare
  *  department stored before the sections existed reads as its first section. */
@@ -26,3 +26,8 @@ export function serializeWorkerDepts(sections: Iterable<string>): string {
   return WORKER_SECTIONS.filter((s) => chosen.has(s.code)).map((s) => s.code).join(",");
 }
 
+/** The departments a worker's sections record on — what the dropdowns and the
+ *  shift log ask for — each once, in the order of the sections. */
+export function workerDepts(sections: readonly WorkerSection[]): WorkerDept[] {
+  return [...new Set(sections.map(sectionDept))];
+}

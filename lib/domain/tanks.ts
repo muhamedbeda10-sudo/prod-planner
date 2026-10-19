@@ -77,15 +77,20 @@ export type WorkerGroup = (typeof WORKER_GROUPS)[number]["key"];
 /** The sections people are registered in — the plant's own names, in the
  *  order they are listed on the floor. Each belongs to one line and rolls up
  *  to the department the app records on: a laser operator, a bender and a
- *  fin folder are all "Cut" to the worklists and the shift log. */
+ *  fin folder are all "Cut" to the worklists and the shift log. Every
+ *  department a tank stage credits a worker in needs a section here, or its
+ *  dropdown stays empty: the leak testers and the quality inspectors are
+ *  registered under a section of the same code as their department. */
 export const WORKER_SECTIONS = [
   { code: "LaserCutTX", label: "Laser Cutting TX", group: "TR", dept: "Cut" },
   { code: "BendingTX", label: "Bending TX", group: "TR", dept: "Cut" },
   { code: "Channels", label: "Channels Fabrication", group: "TR", dept: "Cut" },
   { code: "Fins", label: "Fin Folding", group: "TR", dept: "Cut" },
   { code: "WeldingTX", label: "Welding TX", group: "TR", dept: "Welding" },
+  { code: "LeakTest", label: "Leak Testing", group: "TR", dept: "LeakTest" },
   { code: "ShotBlast", label: "Shot Blasting", group: "TR", dept: "ShotBlast" },
   { code: "PaintingTX", label: "Transformer Painting", group: "TR", dept: "Painting" },
+  { code: "Quality", label: "Quality Control", group: "TR", dept: "Quality" },
   { code: "LaserCutLV", label: "Laser Cutting LV", group: "LV", dept: "Punching" },
   { code: "Punching", label: "Punching", group: "LV", dept: "Punching" },
   { code: "BendingLV", label: "Bending LV", group: "LV", dept: "Bending" },
