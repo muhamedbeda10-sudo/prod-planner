@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   simulate, defaultScenario, optimizeQueue, deriveJobs,
-  dateForOffsetISO, offsetForDateISO, countWorkingDaysISO,
+  dateForOffsetISO, offsetForDateISO, countWorkingDaysISO, blackoutsOf, releaseOf,
   type WhatIfInputs, type WhatIfJob,
 } from "./whatif";
 
@@ -260,6 +260,19 @@ describe("material holds and station downtime", () => {
       downtimes: [{ stage: "cut", fromISO: "2026-08-07", toISO: "2026-08-07" }],
     });
     expect(r.jobs[0].segments[0].end).toBe(2);
+  });
+
+  it("a stoppage that starts on the day off leaves the working day before it alone", () => {
+    // down Fri 07/08 – Sat 08/08: only Saturday is lost (axis [4,5]), Thursday still works
+    const bl = blackoutsOf({ ...defaultScenario(inputs), downtimes: [{ stage: "cut", fromISO: "2026-08-07", toISO: "2026-08-08" }] }, "2026-08-03", new Set());
+    expect(bl.cut).toEqual([{ start: 4, end: 5 }]);
+  });
+
+  it("material that lands on the day off is used from the next working day, not the day before", () => {
+    // arrives Friday 07/08: Mon–Thu (4 working days) pass without it
+    expect(releaseOf("2026-08-07", "2026-08-03", new Set(), false)).toBe(4);
+    expect(releaseOf("2026-08-06", "2026-08-03", new Set(), false)).toBe(3);
+    expect(releaseOf("2026-08-01", "2026-08-03", new Set(), false)).toBe(0); // already here
   });
 
   it("slower rates (the pessimistic band) never land earlier", () => {

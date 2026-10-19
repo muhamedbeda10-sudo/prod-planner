@@ -18,6 +18,14 @@ describe("buildDeptLoad", () => {
     expect(load.spareH).toBe(260);
   });
 
+  it("owes work due on a Friday by the Thursday before, not past the picture", () => {
+    // a Saturday delivery less one day of lead lands on the Friday
+    const load = buildDeptLoad([l(250, "2026-09-12")], DAYS, CAP);
+    expect(load.days[1]).toMatchObject({ owedH: 250, shortH: 50 });
+    expect(load.beyondH).toBe(0);
+    expect(load.shortFromISO).toBe("2026-09-11");
+  });
+
   it("names the day the running total of work passes the running total of hours", () => {
     // 150 h owed today against 100 — the department is already 50 h behind
     const load = buildDeptLoad([l(150, "2026-09-10"), l(120, "2026-09-11")], DAYS, CAP);

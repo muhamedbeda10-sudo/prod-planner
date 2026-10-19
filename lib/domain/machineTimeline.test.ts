@@ -29,7 +29,8 @@ describe("dayOffsetOf", () => {
   it("finds the working day, puts an overdue date at today, and gives up beyond the picture", () => {
     expect(dayOffsetOf("2026-09-13", DAYS)).toBe(2);
     expect(dayOffsetOf("2026-09-01", DAYS)).toBe(0); // already past — due now
-    expect(dayOffsetOf("2026-09-12", DAYS)).toBeNull(); // a Friday: not a working day
+    // a Friday inside the picture: due by Thursday, the last working day before it
+    expect(dayOffsetOf("2026-09-12", DAYS)).toBe(1);
     expect(dayOffsetOf("2026-10-01", DAYS)).toBeNull(); // past the horizon
     expect(dayOffsetOf(null, DAYS)).toBeNull();
   });

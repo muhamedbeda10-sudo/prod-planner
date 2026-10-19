@@ -162,6 +162,15 @@ export function offsetForDateISO(iso: string, todayISO: string, holidays: Set<st
   return offset;
 }
 
+/** How many working days from today come strictly before `iso` — where a
+ *  window that opens on that date starts. The day before is asked for, so a
+ *  window opening on a day off (a Friday, a holiday) starts after the last
+ *  working day before it instead of swallowing that day too. */
+export function workdaysBeforeISO(iso: string, todayISO: string, holidays: Set<string>, fridaysWork: boolean): number {
+  const dayBefore = new Date(parse(iso) - DAY).toISOString().slice(0, 10);
+  return offsetForDateISO(dayBefore, todayISO, holidays, fridaysWork);
+}
+
 /** Working-day offset from today → calendar date (day 1 ends on the first
  *  working day). Mirrors the live ETA column's mapping. */
 export function dateForOffsetISO(days: number, todayISO: string, holidays: Set<string>, fridaysWork: boolean): string {
@@ -245,7 +254,7 @@ export function blackoutsOf(scenario: Scenario, todayISO: string, holidays: Set<
   const out: Partial<Record<EtaStage, StageBlackout[]>> = {};
   for (const d of scenario.downtimes) {
     if (!d.fromISO || !d.toISO || d.toISO < d.fromISO) continue;
-    const start = Math.max(0, offsetForDateISO(d.fromISO, todayISO, holidays, scenario.workFridays) - 1);
+    const start = workdaysBeforeISO(d.fromISO, todayISO, holidays, scenario.workFridays);
     const end = offsetForDateISO(d.toISO, todayISO, holidays, scenario.workFridays);
     if (end <= start) continue; // already past, or all days off
     (out[d.stage] ??= []).push({ start, end });
@@ -267,7 +276,7 @@ export function blackoutsOf(scenario: Scenario, todayISO: string, holidays: Set<
 /** A job's earliest start on the axis, from its material-hold date. */
 export function releaseOf(holdISO: string | undefined, todayISO: string, holidays: Set<string>, fridaysWork: boolean): number {
   if (!holdISO) return 0;
-  return Math.max(0, offsetForDateISO(holdISO, todayISO, holidays, fridaysWork) - 1);
+  return workdaysBeforeISO(holdISO, todayISO, holidays, fridaysWork);
 }
 
 export function simulate(inputs: WhatIfInputs, scenario: Scenario): WhatIfResult {
