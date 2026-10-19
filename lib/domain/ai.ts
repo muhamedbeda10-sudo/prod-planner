@@ -192,11 +192,15 @@ export function blockedTablesFor(hidden: ReadonlySet<string>): string[] {
 /** The first closed table a query names, or null. Table names are case
  *  sensitive and must be double-quoted to resolve at all, so the quoted name
  *  is what to look for. The XML functions that run a query given as text
- *  could name a table without quoting it in the statement, so with anything
- *  closed they are refused outright. */
+ *  could name a table without quoting it in the statement, and a
+ *  Unicode-escaped identifier can name one without spelling it, so with
+ *  anything closed both are refused outright. */
 export function blockedTableIn(sql: string, blocked: readonly string[]): string | null {
   if (blocked.length === 0) return null;
   if (/\b(query|table|cursor|schema|database)_to_xml/i.test(sql)) return blocked[0];
+  // a Unicode-escaped identifier (U&"\004FdooEntry") names a table without
+  // spelling it, so it is refused the same way
+  if (/\bU&"/i.test(sql)) return blocked[0];
   return blocked.find((t) => sql.includes(`"${t}"`)) ?? null;
 }
 

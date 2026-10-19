@@ -190,5 +190,8 @@ describe("hidden screens close their tables to the assistant", () => {
     const blocked = blockedTablesFor(new Set(["odoo"]));
     expect(blockedTableIn(`SELECT query_to_xml('select * from "Odoo' || 'Entry"', true, false, '')`, blocked)).not.toBeNull();
     expect(blockedTableIn(`SELECT query_to_xml('select 1', true, false, '')`, [])).toBeNull();
+    expect(blockedTableIn(`SELECT * FROM U&"\\004FdooEntry"`, blocked)).not.toBeNull();
+    expect(blockedTableIn(`SELECT * FROM u&"\\004FdooEntry"`, blocked)).not.toBeNull();
+    expect(blockedTableIn(`SELECT * FROM U&"\\004FdooEntry"`, [])).toBeNull();
   });
 });

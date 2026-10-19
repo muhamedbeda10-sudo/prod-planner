@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { guardTab } from "@/lib/server/auth";
 import { getTrace } from "@/lib/server/trace";
 import { getActiveLine } from "@/lib/server/line";
 import { getLvTrace } from "@/lib/server/lvTrace";
@@ -15,6 +16,9 @@ export default async function TracePage({
 }: {
   searchParams: Promise<{ plan?: string; bom?: string; mo?: string; view?: string }>;
 }) {
+  // the proxy only sees that a session cookie is there; the session itself is
+  // checked here, before any order or log row is read
+  await guardTab("/trace");
   const sp = await searchParams;
   const planNo = Number(sp.plan) || 0;
   const mo = (sp.mo ?? "").trim();

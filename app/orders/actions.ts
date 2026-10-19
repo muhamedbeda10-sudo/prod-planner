@@ -68,7 +68,8 @@ export async function setOrderQty(formData: FormData): Promise<{ ok: boolean; er
 export async function decidePlanQty(formData: FormData): Promise<{ ok: boolean; error?: string; done?: number }> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, error: "You are not logged in — refresh the page." };
-  if (!hasPerm(me, "tracker.qty") && !hasPerm(me, linePermKey(await getActiveLine(), "import"))) {
+  const anyLine = hasPerm(me, "tracker.qty");
+  if (!anyLine && !hasPerm(me, linePermKey(await getActiveLine(), "import"))) {
     return { ok: false, error: "You do not have permission to change plan quantities — ask the admin." };
   }
   const decision = String(formData.get("decision") ?? "");
@@ -77,9 +78,14 @@ export async function decidePlanQty(formData: FormData): Promise<{ ok: boolean; 
   if (mos.length === 0) return { ok: false, error: "No order picked." };
   const orders = await prisma.masterOrder.findMany({
     where: { mo: { in: mos }, pendingPlanQty: { not: null } },
-    select: { mo: true, pendingPlanQty: true },
+    select: { mo: true, pendingPlanQty: true, line: true },
   });
   if (orders.length === 0) return { ok: false, error: "Nothing is waiting on these orders any more." };
+  // without the tracker's qty right, each order needs the import right of its own line
+  const notMine = anyLine ? [] : orders.filter((o) => !hasPerm(me, linePermKey(o.line, "import")));
+  if (notMine.length > 0) {
+    return { ok: false, error: `You do not have permission to change the plan quantity of ${notMine.map((o) => o.mo).join(", ")} — ask the admin.` };
+  }
   const clear = { pendingPlanQty: null, pendingQtyMonth: null, pendingQtyAt: null };
   await prisma.$transaction(
     orders.map((o) =>
