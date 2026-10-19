@@ -180,6 +180,19 @@ export function resolveDepartment(typed: string, knownCustom: readonly string[])
   return knownCustom.find((d) => fold(d) === t) ?? cleanText(typed);
 }
 
+/**
+ * What a corrected row's department is stored as. While the typed name still
+ * names the row's own department — its stored key or its label — the row
+ * keeps it, so a section added later under the same name ("Quality Control")
+ * does not move an old typed row into the section and its worker check.
+ * Anything else resolves as a new hand-out's department does.
+ */
+export function resolveEditedDepartment(typed: string, current: string, knownCustom: readonly string[]): string {
+  const t = fold(typed);
+  if (t === fold(current) || t === fold(departmentLabel(current))) return current;
+  return resolveDepartment(typed, knownCustom);
+}
+
 /** A department's name on screen: a section's label, or the typed name. */
 export function departmentLabel(department: string): string {
   return sectionLabel(department);

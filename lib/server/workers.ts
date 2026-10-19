@@ -20,7 +20,9 @@ export interface WorkerDTO {
   stamp: string | null;
   /** The sections the man is registered in (Laser Cutting TX, Welding USS/LV …). */
   sections: WorkerSection[];
-  /** The departments those sections record on — what the dropdowns and the shift log ask for. */
+  /** The departments those sections record on — what the dropdowns ask for. The
+   *  shift log reads only the ones that keep a shift record (LeakTest and
+   *  Quality do not). */
   depts: WorkerDept[];
   active: boolean;
   /** ISO day he is away until (inclusive), null when at work. */

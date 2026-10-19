@@ -23,6 +23,7 @@ import {
   readItemPick,
   readOverLimitReason,
   resolveDepartment,
+  resolveEditedDepartment,
   sameSnapshot,
   workerProblem,
   type ConsumableSnapshot,
@@ -334,7 +335,7 @@ export async function updateConsumableIssue(formData: FormData): Promise<Consuma
   if (reason.error) return { ok: false, error: reason.error };
 
   const before = snapshotOf(prev);
-  const department = resolveDepartment(f.department, await getCustomDepartments());
+  const department = resolveEditedDepartment(f.department, prev.department, await getCustomDepartments());
   // the person the row already names passes as he is (deactivated or moved
   // since — it is history) while the department stays
   const receiver = await loadWorker(f.receivedById);

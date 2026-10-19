@@ -17,6 +17,7 @@ import {
   matchCatalogueItem,
   groupLabel,
   resolveDepartment,
+  resolveEditedDepartment,
   workerProblem,
   workersForDepartment,
 } from "./consumables";
@@ -118,6 +119,28 @@ describe("resolveDepartment", () => {
 
   it("keeps a new department as typed, whitespace cleaned", () => {
     expect(resolveDepartment("  Tool   Room ", ["Maintenance"])).toBe("Tool Room");
+  });
+
+  it("files a department typed under a section's name in the section, even if it was typed before", () => {
+    expect(resolveDepartment("Quality Control", ["Quality Control"])).toBe("Quality");
+  });
+});
+
+describe("resolveEditedDepartment", () => {
+  it("keeps an old row's typed department that a section now shares a name with", () => {
+    expect(resolveEditedDepartment("Quality Control", "Quality Control", ["Quality Control"])).toBe("Quality Control");
+    expect(resolveEditedDepartment(" leak  testing ", "Leak Testing", ["Leak Testing"])).toBe("Leak Testing");
+  });
+
+  it("keeps a section row's department picked by its code or its label", () => {
+    expect(resolveEditedDepartment("Quality", "Quality", [])).toBe("Quality");
+    expect(resolveEditedDepartment("Quality Control", "Quality", [])).toBe("Quality");
+  });
+
+  it("resolves a department changed on the row as a new hand-out's", () => {
+    expect(resolveEditedDepartment("Quality Control", "WeldingTX", ["Maintenance"])).toBe("Quality");
+    expect(resolveEditedDepartment("maintenance", "WeldingTX", ["Maintenance"])).toBe("Maintenance");
+    expect(resolveEditedDepartment("Tool Room", "Maintenance", ["Maintenance"])).toBe("Tool Room");
   });
 });
 

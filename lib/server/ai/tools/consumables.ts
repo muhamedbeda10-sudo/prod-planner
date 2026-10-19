@@ -5,7 +5,7 @@ import { hasPerm } from "@/lib/server/auth";
 import { getCustomDepartments } from "@/lib/server/consumables";
 import { checkIssueLimits } from "@/lib/server/consumableLimits";
 import { createConsumableIssue, deleteConsumableIssue, restoreConsumableRevision, updateConsumableIssue } from "@/app/consumables/actions";
-import { canEditIssue, departmentLabel, matchCatalogueItem, resolveDepartment, workerProblem } from "@/lib/domain/consumables";
+import { canEditIssue, departmentLabel, matchCatalogueItem, resolveDepartment, resolveEditedDepartment, workerProblem } from "@/lib/domain/consumables";
 import { describeBreach } from "@/lib/domain/consumableLimits";
 import { parseWorkerSections } from "@/lib/domain/workers";
 import { normalizeEmpId } from "@/lib/domain/tanks";
@@ -192,7 +192,7 @@ async function mergedIssue(row: NonNullable<Awaited<ReturnType<typeof loadIssue>
     item = hit?.name ?? i.item.trim();
     itemId = hit?.id ?? null;
   }
-  const department = i.department === undefined ? row.department : resolveDepartment(i.department, await getCustomDepartments());
+  const department = i.department === undefined ? row.department : resolveEditedDepartment(i.department, row.department, await getCustomDepartments());
   const w = i.receivedBy === undefined ? (row.workerId ? await prisma.worker.findUnique({ where: { id: row.workerId } }) : null) : await findWorker(i.receivedBy);
   if (!w) return { error: i.receivedBy === undefined ? "Name who collected it (receivedBy) — the row names nobody." : `No worker ${i.receivedBy} on the list.` };
   return { item, itemId, qty: i.qty ?? row.qty.toNumber(), department, worker: w, notes: i.notes === undefined ? row.notes : i.notes?.trim() || null };
