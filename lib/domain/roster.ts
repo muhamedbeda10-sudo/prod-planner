@@ -3,7 +3,7 @@
 // helper exported from a "use client" file cannot be called on the server.
 
 import { ROSTER_DEPT_LINE, isRosterDept, type RosterDept } from "./shifts";
-import { WORKER_SECTIONS } from "./tanks";
+import { WORKER_SECTIONS, sectionLabel } from "./tanks";
 
 type RosterSectionRow = Extract<(typeof WORKER_SECTIONS)[number], { dept: RosterDept }>;
 
@@ -46,5 +46,5 @@ export function rosterFilterLabel(filter: RosterFilter): string {
   if (filter === "") return "Everyone";
   if (filter === "line:TR") return "Transformers";
   if (filter === "line:LV") return "LV panels";
-  return ROSTER_SECTIONS.find((s) => s.code === filter)?.label ?? filter;
+  return sectionLabel(filter);
 }

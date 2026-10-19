@@ -20,7 +20,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     dateISO: "2026-10-19",
     title: "Leak testers and quality inspectors are back in the dropdowns",
     where: "Admin → Production Workers · Worklist → Leak test · a tank's page → Quality",
-    body: "The workers list has two new Transformers sections: Leak Testing and Quality Control. Tick them on a worker under Production Workers and that person is offered as the tester on the Leak test worklist and as the inspector on a tank's Quality check — those lists used to say \"No leak testers on file\" whoever was registered. Workers already recorded as leak testers show up again without being re-entered. The assistant knows both sections too. The shift log is unchanged: leak testing and quality keep no shift record, so they are not among its section filters.",
+    body: "The workers list has two new Transformers sections: Leak Testing and Quality Control. Tick them on a worker under Production Workers and that person is offered as the tester on the Leak test worklist and as the inspector on a tank's Quality check — those lists used to say \"No leak testers on file\" whoever was registered. The two workers who have recorded leak tests on tanks are registered under Leak Testing again, next to their Welding TX section; anyone else who tests or inspects needs the section ticked. The assistant knows both sections too. The shift log is unchanged: leak testing and quality keep no shift record, so they are not among its section filters.",
     href: "/admin/workers",
   },
   {

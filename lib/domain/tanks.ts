@@ -56,9 +56,10 @@ export function tankEventLook(kind: string): { label: string; tone: string } {
   return TANK_EVENT_KINDS[kind as TankEventKind] ?? { label: kind, tone: "pill-muted" };
 }
 
-/** The departments a worker can be credited in — the dropdowns' source, and
- *  the shift log's: a worker is counted on the days of every department here.
- *  A department is the coarse stage the app records on; the SECTIONS below
+/** The departments a worker can be credited in — the dropdowns' source. The
+ *  shift log counts a worker on the days of each of his departments that keeps
+ *  a shift record (lib/domain/shifts.ts isRosterDept); LeakTest and Quality
+ *  keep none. A department is the coarse stage the app records on; the SECTIONS below
  *  are where the people are actually registered. */
 export const WORKER_DEPTS = ["Cut", "Welding", "ShotBlast", "LeakTest", "Painting", "Quality", "Punching", "Bending", "WeldingLV", "PaintingLV"] as const;
 export type WorkerDept = (typeof WORKER_DEPTS)[number];
