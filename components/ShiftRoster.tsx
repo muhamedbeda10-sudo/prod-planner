@@ -7,8 +7,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { DEFAULT_SHIFT_HOURS, SHIFT_CODES, dayTotals, lineHours, round1, shiftLabel, type RosterDept, type ShiftCode } from "@/lib/domain/shifts";
-import { WORKER_DEPT_LABEL, WORKER_GROUPS, WORKER_SECTIONS } from "@/lib/domain/tanks";
-import { rosterDepts, rosterLineMatches, type RosterFilter, rosterFilterLabel } from "@/lib/domain/roster";
+import { WORKER_DEPT_LABEL, WORKER_GROUPS } from "@/lib/domain/tanks";
+import { ROSTER_SECTIONS, rosterDepts, rosterLineMatches, type RosterFilter, rosterFilterLabel } from "@/lib/domain/roster";
 import type { ShiftLineDTO, ShiftRosterData } from "@/lib/server/shifts";
 import { clearShiftDay, saveShiftRoster } from "@/app/shifts/actions";
 import { ShiftHoursForm } from "@/components/ShiftHoursForm";
@@ -136,7 +136,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
         {WORKER_GROUPS.map((g) => (
           <div key={g.key} className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-bold text-muted uppercase tracking-wide w-24">{g.label}</span>
-            {WORKER_SECTIONS.filter((s) => s.group === g.key).map((s) => (
+            {ROSTER_SECTIONS.filter((s) => s.group === g.key).map((s) => (
               <button key={s.code} type="button" onClick={() => setFilter(filter === s.code ? "" : s.code)} className={`pill ${filter === s.code ? "pill-ok" : "pill-muted"} cursor-pointer`}>
                 {s.label}
               </button>

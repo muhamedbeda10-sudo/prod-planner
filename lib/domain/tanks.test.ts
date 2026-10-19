@@ -13,6 +13,9 @@ import {
   normalizeEmpId,
   isWorkerDept,
   isTankStatus,
+  WORKER_DEPTS,
+  sectionsOf,
+  sectionDept,
 } from "./tanks";
 
 describe("tank serials", () => {
@@ -175,5 +178,18 @@ describe("guards", () => {
     expect(isWorkerDept("Cut")).toBe(true);
     expect(isWorkerDept("Oven")).toBe(false);
     expect(isWorkerDept("WeldingLV")).toBe(true);
+  });
+});
+
+describe("worker sections", () => {
+  it("gives every department a section, so no dropdown is empty by design", () => {
+    for (const d of WORKER_DEPTS) expect(sectionsOf(d), d).not.toHaveLength(0);
+  });
+
+  it("registers the leak testers and the inspectors under their department's own code", () => {
+    expect(sectionsOf("LeakTest")).toEqual(["LeakTest"]);
+    expect(sectionDept("LeakTest")).toBe("LeakTest");
+    expect(sectionsOf("Quality")).toEqual(["Quality"]);
+    expect(sectionDept("Quality")).toBe("Quality");
   });
 });

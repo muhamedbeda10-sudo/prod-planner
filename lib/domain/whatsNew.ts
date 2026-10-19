@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-leak-test-quality-sections",
+    dateISO: "2026-10-19",
+    title: "Leak testers and quality inspectors are back in the dropdowns",
+    where: "Admin → Production Workers · Worklist → Leak test · a tank's page → Quality",
+    body: "The workers list has two new Transformers sections: Leak Testing and Quality Control. Tick them on a worker under Production Workers and that person is offered as the tester on the Leak test worklist and as the inspector on a tank's Quality check — those lists used to say \"No leak testers on file\" whoever was registered. Workers already recorded as leak testers show up again without being re-entered. The assistant knows both sections too. The shift log is unchanged: leak testing and quality keep no shift record, so they are not among its section filters.",
+    href: "/admin/workers",
+  },
+  {
     id: "2026-10-19-chat-factory-clock",
     dateISO: "2026-10-19",
     title: "Chat times are on the factory clock",

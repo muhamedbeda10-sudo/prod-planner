@@ -107,6 +107,8 @@ describe("resolveDepartment", () => {
     expect(resolveDepartment("WeldingTX", [])).toBe("WeldingTX");
     expect(resolveDepartment("welding tx", [])).toBe("WeldingTX");
     expect(resolveDepartment("  Shot   Blasting ", [])).toBe("ShotBlast");
+    expect(resolveDepartment("quality control", [])).toBe("Quality");
+    expect(resolveDepartment("Leak Testing", [])).toBe("LeakTest");
   });
 
   it("reuses the first spelling of a department already used", () => {
@@ -115,7 +117,7 @@ describe("resolveDepartment", () => {
   });
 
   it("keeps a new department as typed, whitespace cleaned", () => {
-    expect(resolveDepartment("  Quality   Control ", ["Maintenance"])).toBe("Quality Control");
+    expect(resolveDepartment("  Tool   Room ", ["Maintenance"])).toBe("Tool Room");
   });
 });
 
