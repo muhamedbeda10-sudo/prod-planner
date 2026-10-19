@@ -10,7 +10,8 @@ import { round1 } from "@/lib/domain/shifts";
 // splits a day. When nothing on the machine that day carries a standard time
 // (AR, MB, or a class nobody has priced), the split falls back to pieces, so
 // those items still end up with a measured figure — often the only one there
-// will ever be.
+// will ever be. A day that mixes priced and unpriced items is left out: it
+// cannot be split without loading one kind with the other's hours.
 //
 // The answer is deliberately plain: pieces, hours, and hours a piece. The
 // planner compares it with what he typed and decides.
@@ -52,18 +53,28 @@ export function measureRates(output: readonly RateOutput[], hours: readonly Rate
     hoursOn.set(k, (hoursOn.get(k) ?? 0) + h.hours);
   }
 
-  // a machine's day, gathered so its hours can be split between what it ran
-  const byDay = new Map<string, RateOutput[]>();
+  // a machine's day, gathered so its hours can be split between what it ran —
+  // one line per item, however many log rows recorded it, so a day counts once
+  const byDay = new Map<string, Map<string, RateOutput>>();
   for (const o of output) {
     if (!(o.qty > 0)) continue;
     const k = `${o.dateISO}#${o.machineId}`;
-    (byDay.get(k) ?? byDay.set(k, []).get(k)!).push(o);
+    const items = byDay.get(k) ?? byDay.set(k, new Map()).get(k)!;
+    const at = items.get(o.item);
+    if (at) items.set(o.item, { ...at, qty: at.qty + o.qty, stdHours: at.stdHours + Math.max(0, o.stdHours) });
+    else items.set(o.item, { ...o, stdHours: Math.max(0, o.stdHours) });
   }
 
   const acc = new Map<string, MeasuredRate>();
-  for (const [k, rows] of byDay) {
+  for (const [k, items] of byDay) {
     const dayHours = hoursOn.get(k);
     if (!dayHours || !(dayHours > 0)) continue; // no crew recorded — nothing to measure with
+    const rows = [...items.values()];
+    // a day mixing priced and unpriced items has no fair way to split: by
+    // standard hours the unpriced ones would get nothing and the priced ones
+    // would carry their hours, by pieces a tank would weigh what a bolt does —
+    // so it measures nothing rather than something wrong
+    if (rows.some((r) => r.stdHours > 0) && rows.some((r) => !(r.stdHours > 0))) continue;
     const std = rows.reduce((s, r) => s + Math.max(0, r.stdHours), 0);
     const pcs = rows.reduce((s, r) => s + r.qty, 0);
     for (const r of rows) {

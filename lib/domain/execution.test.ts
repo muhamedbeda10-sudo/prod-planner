@@ -292,15 +292,34 @@ describe("computeWeldingQueue — the welding screen is ONLY what was cut", () =
     const rows = computeWeldingQueue({ schedules: scheds, entries, day });
     expect(rows[0].deliveryISO).toBe("2026-07-16"); // NOT the missed 08/07 — the new promise wins
     expect(rows[0].dueISO).toBe("2026-07-15");
-    // output credited to the old promise (≤10) does not consume the new tranche:
-    // 12 welded = 10 old + 2 new → the 16/07 tranche is still open
-    const more = [...entries, { planNo: 29, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 8, date: day }];
-    const rows2 = computeWeldingQueue({
-      schedules: scheds,
-      entries: [...more, { planNo: 29, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 6, date: day }],
-      day,
-    });
+    // the new plan promised only the REMAINDER (10 − 4 welded): the 4 stay
+    // with the old promise, and 5 more leave 1 of the 16/07 tranche open
+    const later = (qty: number) => [
+      ...entries,
+      { planNo: 29, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty, date: day },
+      { planNo: 29, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 6, date: day },
+    ];
+    const rows2 = computeWeldingQueue({ schedules: scheds, entries: later(5), day });
     expect(rows2[0].deliveryISO).toBe("2026-07-16");
+    expect(rows2[0].dueQty).toBe(1);
+    // 10 welded in all clears it — not 16 (old 10 + new 6)
+    const rows3 = computeWeldingQueue({ schedules: scheds, entries: later(6), day });
+    expect(rows3.find((r) => r.mo === "MO-A")?.deliveryISO ?? null).toBeNull();
+  });
+
+  it("a re-promise leaves the old plans what the order had done: order − the new promise", () => {
+    // order of 12; plan 28 promised 10, 4 welded; plan 29 promises the 8 left
+    const scheds = [
+      { planNo: 28, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 8), qty: 10 },
+      { planNo: 29, bom: "B1", mo: "MO-A", item: "CF", ovenDate: utcDate(2026, 7, 16), qty: 8 },
+    ];
+    const entries = [
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 12, date: utcDate(2026, 7, 6) },
+      { planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "CF", qty: 9, date: utcDate(2026, 7, 7) },
+    ];
+    const rows = computeWeldingQueue({ schedules: scheds, entries, day, orderQty: new Map([["B1|MO-A|CF", 12]]) });
+    // 12 − 8 = 4 stay with plan 28; the other 5 count on the 8 → 3 open
+    expect(rows[0].dueQty).toBe(3);
   });
 
   it("the OSP share never reaches the dept queues (in-house cap)", () => {

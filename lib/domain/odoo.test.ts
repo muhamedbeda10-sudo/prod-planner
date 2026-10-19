@@ -113,7 +113,7 @@ describe("status and notes helpers", () => {
 describe("filterOdooEntries", () => {
   const row = (over: Partial<OdooEntryView>): OdooEntryView => ({
     id: 1, dateISO: "2026-09-06", soi: "S01035-1", fgCode: "FB-022-14003E11M11", product: "Tank", odooMo: "SF01/MO/06234",
-    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, recordedBy: null, source: "manual", fgGuessed: false, mo: null, line: "TR", bom: { boms: [], via: null }, notes: [], ...over,
+    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, version: "", recordedBy: null, source: "manual", fgGuessed: false, mo: null, line: "TR", bom: { boms: [], via: null }, notes: [], ...over,
   });
   const rows = [
     row({ id: 1 }),
@@ -148,7 +148,7 @@ describe("filterOdooEntries", () => {
 describe("filterOdooEntries — the day's own counts as filters", () => {
   const row = (over: Partial<OdooEntryView>): OdooEntryView => ({
     id: 1, dateISO: "2026-09-06", soi: "S1", fgCode: "FB-022-X", product: "Tank", odooMo: "SF01/MO/1",
-    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, recordedBy: null,
+    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, version: "", recordedBy: null,
     source: "manual", fgGuessed: false, mo: null, line: "TR", bom: { boms: [], via: null }, notes: [], ...over,
   });
   const rows = [
@@ -182,7 +182,7 @@ describe("filterOdooEntries — the day's own counts as filters", () => {
 describe("filterOdooEntries — ready to close: open AND its MO is known", () => {
   const row = (over: Partial<OdooEntryView>): OdooEntryView => ({
     id: 1, dateISO: "2026-09-06", soi: "S1", fgCode: "FB-022-X", product: "Tank", odooMo: "SF01/MO/1",
-    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, recordedBy: null,
+    qty: 5, status: "MO to be close", tone: "muted", done: false, doneAtISO: null, version: "", recordedBy: null,
     source: "manual", fgGuessed: false, mo: null, line: "TR", bom: { boms: [], via: null }, notes: [], ...over,
   });
   const rows = [
@@ -236,7 +236,7 @@ describe("groupOdooEntries — the rows that are the same closing", () => {
   const e = (id: number, over: Partial<OdooEntryView> = {}): OdooEntryView => ({
     id, dateISO: "2026-09-15", soi: "S01264-1", fgCode: "FB-022-14002E14M14", product: "Tank",
     odooMo: "SF01/MO/16192-002", qty: 3, status: "MO to be close", tone: "muted", done: false,
-    doneAtISO: null, recordedBy: null, source: "painting", fgGuessed: false, mo: null, line: "TR", bom: { boms: [], via: null }, notes: [], ...over,
+    doneAtISO: null, version: "", recordedBy: null, source: "painting", fgGuessed: false, mo: null, line: "TR", bom: { boms: [], via: null }, notes: [], ...over,
   });
 
   it("folds three closings of the same MO onto one line carrying the total", () => {

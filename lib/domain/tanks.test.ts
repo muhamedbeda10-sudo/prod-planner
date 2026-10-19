@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  dailyLogAddsTanks,
   tankSerial,
   parseTankSerial,
   serialsForBatch,
@@ -191,5 +192,18 @@ describe("worker sections", () => {
     expect(sectionDept("LeakTest")).toBe("LeakTest");
     expect(sectionsOf("Quality")).toEqual(["Quality"]);
     expect(sectionDept("Quality")).toBe("Quality");
+  });
+});
+
+describe("dailyLogAddsTanks", () => {
+  it("keeps welded and painted tanks to the worklists while tracking is on", () => {
+    expect(dailyLogAddsTanks(true, "Welding", "TN")).toBe(true);
+    expect(dailyLogAddsTanks(true, "Painting", "TN")).toBe(true);
+  });
+
+  it("leaves cut tanks, other components and tracking-off alone", () => {
+    expect(dailyLogAddsTanks(true, "Cut", "TN")).toBe(false);
+    expect(dailyLogAddsTanks(true, "Welding", "TC")).toBe(false);
+    expect(dailyLogAddsTanks(false, "Welding", "TN")).toBe(false);
   });
 });

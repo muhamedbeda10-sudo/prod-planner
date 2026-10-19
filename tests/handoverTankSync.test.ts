@@ -10,13 +10,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
   return {
-    prisma: { handoverEntry: { findUnique: fn(), update: fn(), delete: fn() }, $transaction: fn() },
+    prisma: { handoverEntry: { findUnique: fn(), update: fn(), delete: fn() }, returnEntry: { findMany: fn() }, $transaction: fn() },
     revalidatePath: vi.fn(),
     checkOutputChain: vi.fn(),
     requireDeptEdit: vi.fn(),
     requirePerm: vi.fn(),
     syncTanksToLedgerQty: vi.fn(),
     getKnownBoms: vi.fn(),
+    getSettings: vi.fn(),
   };
 });
 
@@ -27,6 +28,7 @@ vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChai
 vi.mock("@/lib/server/auth", () => ({ requireDeptEdit: h.requireDeptEdit, requirePerm: h.requirePerm }));
 vi.mock("@/lib/server/tanks", () => ({ syncTanksToLedgerQty: h.syncTanksToLedgerQty }));
 vi.mock("@/lib/server/handover", () => ({ getKnownBoms: h.getKnownBoms }));
+vi.mock("@/lib/server/data", () => ({ getSettings: h.getSettings }));
 vi.mock("@/lib/server/importHandover", () => ({ importHandoverFile: vi.fn() }));
 
 import { deleteHandover, updateHandover } from "@/app/handover/actions";
@@ -39,6 +41,8 @@ function form(fields: Record<string, string>): FormData {
 
 /** What the transaction body actually did, in order. */
 const calls: string[] = [];
+/** The returns taken back with a deleted row, by the filter used. */
+const returnDeletes: Record<string, unknown>[] = [];
 
 /** The Odoo row linked to the ledger row under test, if any — a painting
  *  record's row on the ODOO tab follows the record while it is untouched. */
@@ -51,11 +55,14 @@ const paintRow = {
 beforeEach(() => {
   vi.clearAllMocks();
   calls.length = 0;
+  returnDeletes.length = 0;
   h.requireDeptEdit.mockResolvedValue({ user: { name: "tester" } });
   h.requirePerm.mockResolvedValue({ user: { name: "tester" } });
   h.checkOutputChain.mockResolvedValue(null);
   h.syncTanksToLedgerQty.mockResolvedValue({});
+  h.getSettings.mockResolvedValue({ tankTracking: true });
   h.prisma.handoverEntry.findUnique.mockResolvedValue(paintRow);
+  h.prisma.returnEntry.findMany.mockResolvedValue([]);
   odooRow = null;
   h.prisma.$transaction.mockImplementation((body: (tx: unknown) => Promise<unknown>) =>
     body({
@@ -63,6 +70,7 @@ beforeEach(() => {
         update: async () => { calls.push("ledger.update"); },
         delete: async () => { calls.push("ledger.delete"); },
       },
+      returnEntry: { deleteMany: async (a: { where: Record<string, unknown> }) => { returnDeletes.push(a.where); return { count: 1 }; } },
       odooEntry: {
         findUnique: async () => odooRow,
         update: async (a: { data: Record<string, unknown> }) => { calls.push(`odoo.update ${JSON.stringify(a.data)}`); },
@@ -155,8 +163,38 @@ describe("updateHandover — a smaller quantity gives pieces back", () => {
     expect(res.error).toContain("already moved past welding");
   });
 
-  it("leaves a quantity that grew alone — nothing to give back", async () => {
+  it("leaves a quantity that grew alone — nothing to give back (tracking off)", async () => {
+    h.getSettings.mockResolvedValue({ tankTracking: false });
     await updateHandover(form({ id: "7", qty: "9" }));
     expect(h.syncTanksToLedgerQty).toHaveBeenCalledWith(expect.anything(), paintRow, 9);
+  });
+
+  it("will not raise a tank row while tanks are tracked — they are added on the worklists", async () => {
+    const res = await updateHandover(form({ id: "7", qty: "9" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/Painting worklist/);
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("a return's own row on the Daily log", () => {
+  const returnRow = { id: 8, dept: "Cut", bom: "25301", mo: "MO/1", item: "TN", qty: -2, note: "returned", source: "return" };
+
+  it("takes the open return back with it when it is deleted", async () => {
+    h.prisma.handoverEntry.findUnique.mockResolvedValue(returnRow);
+    const res = await deleteHandover(form({ id: "8" }));
+    expect(res.ok).toBe(true);
+    expect(returnDeletes).toEqual([{ handoverId: 8, status: "open" }]);
+    expect(calls.at(-1)).toBe("ledger.delete");
+  });
+
+  it("stays once its pieces were re-delivered — the re-delivery would count pieces never taken off", async () => {
+    h.prisma.handoverEntry.findUnique.mockResolvedValue(returnRow);
+    h.prisma.returnEntry.findMany.mockResolvedValue([{ mo: "MO/1", bom: "25301", item: "TN", qty: 2 }]);
+    const res = await deleteHandover(form({ id: "8" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/re-delivered since/);
+    expect(calls).toEqual([]);
+    expect(returnDeletes).toEqual([]);
   });
 });
