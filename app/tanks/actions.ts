@@ -1,5 +1,6 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { emitEvent, listed } from "@/lib/server/events";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
@@ -68,6 +69,23 @@ function workerIdFromForm(formData: FormData): number | null {
   return Number.isInteger(n) && n > 0 ? n : Number.NaN;
 }
 
+/** A tank that another screen moved on between the read and the write. */
+class TankMovedError extends Error {}
+
+/** Move a tank to its next stage inside the write, only while it still stands
+ *  where it was read: two tablets (or a retried tap) acting on the same tank
+ *  record it once, and the second is told to refresh instead of painting it,
+ *  or testing it, a second time. */
+async function moveTank(tx: Prisma.TransactionClient, tank: { id: number; serial: string; status: string }, data: Prisma.TankUnitUpdateManyMutationInput): Promise<void> {
+  const res = await tx.tankUnit.updateMany({ where: { id: tank.id, status: tank.status }, data });
+  if (res.count === 0) throw new TankMovedError(`${tank.serial} was just recorded from another screen — refresh the page and check it.`);
+}
+
+function failed(e: unknown): TankActionResult {
+  if (e instanceof TankMovedError) return { ok: false, error: e.message };
+  return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+}
+
 /** Read a "serials" field: one serial, or several separated by commas. */
 function serialsFromForm(formData: FormData): string[] {
   const raw = String(formData.get("serials") ?? formData.get("serial") ?? "");
@@ -121,7 +139,7 @@ export async function assignTankWelder(formData: FormData): Promise<TankActionRe
     revalidateTanks();
     return { ok: true, count: 1 };
   } catch (e) {
-    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+    return failed(e);
   }
 }
 
@@ -149,11 +167,8 @@ export async function markTankRepaired(formData: FormData): Promise<TankActionRe
     if (blocked) return { ok: false, error: blocked };
 
     await prisma.$transaction(async (tx) => {
-      await tx.tankUnit.update({
-        where: { id: tank.id },
-        // back to "welded": it re-enters the leak-test queue for another go
-        data: { status: "welded", testResult: null },
-      });
+      // back to "welded": it re-enters the leak-test queue for another go
+      await moveTank(tx, tank, { status: "welded", testResult: null });
       await tx.tankEvent.create({
         data: {
           tankId: tank.id,
@@ -168,7 +183,7 @@ export async function markTankRepaired(formData: FormData): Promise<TankActionRe
     revalidateTanks();
     return { ok: true, count: 1 };
   } catch (e) {
-    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+    return failed(e);
   }
 }
 
@@ -214,16 +229,13 @@ export async function recordLeakTest(formData: FormData): Promise<TankActionResu
     const status = statusAfterLeakTest(result);
     await prisma.$transaction(async (tx) => {
       for (const t of tanks) {
-        await tx.tankUnit.update({
-          where: { id: t.id },
-          data: {
-            status,
-            testedAt: date,
-            testedById: tester.worker!.id,
-            testedBy: tester.worker!.name,
-            testResult: result,
-            testNote: note || null,
-          },
+        await moveTank(tx, t, {
+          status,
+          testedAt: date,
+          testedById: tester.worker!.id,
+          testedBy: tester.worker!.name,
+          testResult: result,
+          testNote: note || null,
         });
         await tx.tankEvent.create({
           data: {
@@ -250,7 +262,7 @@ export async function recordLeakTest(formData: FormData): Promise<TankActionResu
     }
     return { ok: true, count: tanks.length };
   } catch (e) {
-    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+    return failed(e);
   }
 }
 
@@ -320,15 +332,12 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
         await mirrorLedgerToOdoo(tx, ledger, guard.user?.name ?? null);
         ids.push(ledger.id);
         for (const t of list) {
-          await tx.tankUnit.update({
-            where: { id: t.id },
-            data: {
-              status: "painted",
-              paintLedgerId: ledger.id,
-              paintedAt: date,
-              paintedById: painter.worker!.id,
-              paintedBy: painter.worker!.name,
-            },
+          await moveTank(tx, t, {
+            status: "painted",
+            paintLedgerId: ledger.id,
+            paintedAt: date,
+            paintedById: painter.worker!.id,
+            paintedBy: painter.worker!.name,
           });
           await tx.tankEvent.create({
             data: {
@@ -347,7 +356,7 @@ export async function paintTanks(formData: FormData): Promise<TankActionResult> 
     revalidateTanks();
     return { ok: true, count: tanks.length, ledgerIds };
   } catch (e) {
-    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+    return failed(e);
   }
 }
 
@@ -372,10 +381,7 @@ export async function sendTankBackToWelding(formData: FormData): Promise<TankAct
     if (tank.status === "repair") return { ok: false, error: "This tank is already back with welding." };
 
     await prisma.$transaction(async (tx) => {
-      await tx.tankUnit.update({
-        where: { id: tank.id },
-        data: { status: "repair", testResult: "repair", testNote: reason },
-      });
+      await moveTank(tx, tank, { status: "repair", testResult: "repair", testNote: reason });
       await tx.tankEvent.create({
         data: {
           tankId: tank.id,
@@ -389,7 +395,7 @@ export async function sendTankBackToWelding(formData: FormData): Promise<TankAct
     await emitEvent({ type: "tank.rewelding", subject: serial, summary: `Tank ${serial}${tank.mo ? ` (${tank.mo})` : ""} sent back to welding — ${reason}`, data: { serial, mo: tank.mo, reason } });
     return { ok: true, count: 1 };
   } catch (e) {
-    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+    return failed(e);
   }
 }
 
@@ -448,7 +454,7 @@ export async function recordTankQa(formData: FormData): Promise<TankActionResult
     }
     return { ok: true, count: 1 };
   } catch (e) {
-    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+    return failed(e);
   }
 }
 

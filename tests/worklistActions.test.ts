@@ -12,6 +12,7 @@ const h = vi.hoisted(() => {
       masterOrder: { findFirst: fn(), findUnique: fn(), findMany: fn() },
       planSchedule: { findFirst: fn() },
       planOrder: { findFirst: fn() },
+      returnEntry: { findUnique: fn() },
       handoverEntry: { findFirst: fn(), create: fn(), aggregate: fn(), groupBy: fn() },
       plan: { upsert: fn() },
       $transaction: fn(),
@@ -46,7 +47,7 @@ vi.mock("@/lib/server/tanks", () => ({
 }));
 vi.mock("@/lib/server/workers", () => ({ resolveWorker: h.resolveWorker }));
 
-import { recordOutput, recordTrackerTotal, recordGroupOutput, returnToUpstream } from "@/app/worklist/actions";
+import { recordOutput, recordTrackerTotal, recordGroupOutput, redeliverReturn, returnToUpstream } from "@/app/worklist/actions";
 
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -79,10 +80,15 @@ beforeEach(() => {
   h.unmintTankSerials.mockResolvedValue({ removed: 0, short: 0 });
   // run the transaction body against a tx whose create() we can inspect
   txWrites.length = 0;
+  openReturns.clear();
   h.prisma.$transaction.mockImplementation((body: (tx: unknown) => Promise<unknown>) => {
     const p = body({
       handoverEntry: { create: async ({ data }: { data: Record<string, unknown> }) => { txWrites.push(data); return { id: 1 }; } },
-      returnEntry: { create: async () => ({ id: 1 }) },
+      returnEntry: {
+        create: async () => ({ id: 1 }),
+        // closing a return is conditional on it still being open
+        updateMany: async ({ where }: { where: { id: number; status: string } }) => ({ count: openReturns.delete(where.id) ? 1 : 0 }),
+      },
     });
     // the real client returns a promise with .catch — the actions rely on it
     return p;
@@ -91,6 +97,8 @@ beforeEach(() => {
 
 /** Every ledger row written inside the last $transaction. */
 const txWrites: Record<string, unknown>[] = [];
+/** Returns still open as far as the transaction's conditional close sees. */
+const openReturns = new Set<number>();
 
 describe("recordOutput — validation guards run before any DB write", () => {
   it("rejects an invalid date", async () => {
@@ -485,5 +493,25 @@ describe("recordGroupOutput — recording from the weekly plan", () => {
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/Only 5 pcs fit/);
     expect(txWrites).toHaveLength(0);
+  });
+});
+
+describe("redeliverReturn", () => {
+  const ret = { id: 5, status: "open", fromDept: "Welding", toDept: "Cut", mo: "MO-1", bom: "B", item: "CF", qty: 3, reason: "burr" };
+
+  it("credits the upstream department and closes the return", async () => {
+    h.prisma.returnEntry.findUnique.mockResolvedValue(ret);
+    openReturns.add(5);
+    const res = await redeliverReturn(form({ id: "5" }));
+    expect(res).toEqual({ ok: true, ledgerId: 1 });
+    expect(txWrites).toEqual([expect.objectContaining({ dept: "Cut", qty: 3, source: "return" })]);
+  });
+
+  it("credits it once when a second screen re-delivers the same return", async () => {
+    h.prisma.returnEntry.findUnique.mockResolvedValue(ret);
+    // both read it open; the first closed it before this write
+    const res = await redeliverReturn(form({ id: "5" }));
+    expect(res).toEqual({ ok: false, error: "Already re-delivered." });
+    expect(txWrites).toEqual([]);
   });
 });
