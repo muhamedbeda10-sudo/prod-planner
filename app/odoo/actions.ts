@@ -65,6 +65,17 @@ interface Fields {
 
 const text = (v: FormDataEntryValue | null) => String(v ?? "").replace(/[\r\n]+/g, " ").trim();
 
+const STALE = "Someone changed this row since the page was loaded — refresh and try again.";
+
+/** The row's last change as the page drew it ("version") — the edit's
+ *  optimistic lock; null when the caller sent none (the assistant, which
+ *  re-reads the row before it writes). */
+function versionOf(formData: FormData): Date | null {
+  const raw = String(formData.get("version") ?? "");
+  const d = new Date(raw);
+  return raw && !Number.isNaN(d.getTime()) ? d : null;
+}
+
 function read(formData: FormData): Fields {
   const qtyRaw = text(formData.get("qty"));
   const qty = qtyRaw === "" ? null : Number(qtyRaw);
@@ -137,12 +148,16 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
   if (guard.error) return { ok: false, error: guard.error };
   const f = read(formData);
 
-  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { status: true, doneAt: true, ledgerId: true, fgCode: true, fgGuessed: true } });
+  const prev = await prisma.odooEntry.findUnique({ where: { id }, select: { status: true, doneAt: true, ledgerId: true, fgCode: true, fgGuessed: true, updatedAt: true } });
   if (!prev) return { ok: false, error: "That row no longer exists." };
+  // the modal sends the row's last change as it drew it: saving a modal opened
+  // before someone marked the row Done must not put it back to "to be close"
+  const version = versionOf(formData);
+  if (version && version.getTime() !== prev.updatedAt.getTime()) return { ok: false, error: STALE };
   const bad = validate(f, prev.ledgerId !== null);
   if (bad) return { ok: false, error: bad };
-  await prisma.odooEntry.update({
-    where: { id },
+  const res = await prisma.odooEntry.updateMany({
+    where: { id, updatedAt: prev.updatedAt },
     data: {
       date: f.date!, soi: f.soi, fgCode: f.fgCode ?? prev.fgCode, product: f.product, odooMo: f.odooMo,
       qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, prev, f.date!), recordedBy: guard.user?.name ?? null,
@@ -151,6 +166,7 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
       fgGuessed: prev.fgGuessed && (f.fgCode ?? prev.fgCode) === prev.fgCode,
     },
   });
+  if (res.count === 0) return { ok: false, error: STALE };
   revalidateOdoo();
   return { ok: true };
 }

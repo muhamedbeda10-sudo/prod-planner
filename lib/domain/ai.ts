@@ -160,7 +160,7 @@ export function conversationTitle(question: string): string {
 /** The tables the assistant may not read (revoked from ai_reader by the
  *  ai_assistant migration); of User it reads these columns alone. */
 export const AI_PRIVATE_TABLES = [
-  "Session", "UserPref", "ChatMessage", "ChatGroup", "ChatGroupMember", "ChatMessageHide", "ChatReaction",
+  "Session", "LoginFailure", "UserPref", "ChatMessage", "ChatGroup", "ChatGroupMember", "ChatMessageHide", "ChatReaction",
   "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage", "AiAction",
   "AiPlaybookEntry", "AiPlaybookRevision", "AiInboxItem", "PushSubscription", "PushKeys", "Automation", "AutomationRun", "AiFile",
   "Task", "TaskAssignee", "TaskUpdate", "AppEvent",

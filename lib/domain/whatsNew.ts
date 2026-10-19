@@ -16,6 +16,22 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-19-login-throttle",
+    dateISO: "2026-10-19",
+    title: "The login waits after too many wrong passwords",
+    where: "Login page",
+    body: "After 8 wrong passwords for one account from one place within 15 minutes — or 40 from one place across accounts — the login asks you to wait 15 minutes before it checks a password again. Signing in successfully clears your count. If you are locked out and need in sooner, the admin can reset your password.",
+    href: "/login",
+  },
+  {
+    id: "2026-10-19-daily-log-integrity",
+    dateISO: "2026-10-19",
+    title: "Deleting a return's row takes the return back; re-dating rows moves their ODOO rows",
+    where: "Daily Log · ODOO · Admin → Machines",
+    body: "Deleting the row a return took off a department now cancels that return too, instead of leaving it open to be re-delivered for pieces that were never taken off; a return already re-delivered keeps its row. Re-dating several rows at once moves their ODOO closing rows to the new day, as editing one row already did, and removing tanks keeps the painting row's ODOO row in step. A machine with output recorded on it can no longer be deleted — retire it, so that history keeps its machine.",
+    href: "/handover",
+  },
+  {
     id: "2026-10-19-due-on-day-off",
     dateISO: "2026-10-19",
     title: "Work due on a Friday or a holiday counts on the working day before it",

@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { toISODate } from "@/lib/domain/dates";
+import { syncMirroredOdoo } from "./odooMirror";
 import {
   TANK_ITEM,
   serialsForBatch,
@@ -470,12 +471,15 @@ export async function deleteTanksWithRecords(
     const row = await tx.handoverEntry.findUnique({ where: { id: ledgerId } });
     if (!row) continue; // already gone — nothing to take back
     const left = row.qty - qty;
+    // the row's ODOO closing follows it, as every Daily log edit's does
     if (left > 0) {
       await tx.handoverEntry.update({
         where: { id: ledgerId },
         data: { qty: left, note: `${row.note ? `${row.note} · ` : ""}${qty} tank(s) removed` },
       });
+      await syncMirroredOdoo(tx, ledgerId, { qty: left });
     } else {
+      await syncMirroredOdoo(tx, ledgerId, "delete");
       await tx.handoverEntry.delete({ where: { id: ledgerId } });
     }
   }

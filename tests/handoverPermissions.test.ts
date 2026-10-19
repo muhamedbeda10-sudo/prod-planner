@@ -17,6 +17,7 @@ const h = vi.hoisted(() => {
       handoverEntry: { findUnique: fn(), findMany: fn(), updateMany: fn() },
       masterOrder: { findUnique: fn() },
       plan: { findUnique: fn() },
+      returnEntry: { findMany: fn() },
       $transaction: fn(),
     },
   };
@@ -66,10 +67,14 @@ beforeEach(() => {
         update: async () => { writes.push("update"); },
         delete: async () => { writes.push("delete"); },
         deleteMany: async () => { writes.push("deleteMany"); },
+        updateMany: async () => { writes.push("updateMany"); return { count: 2 }; },
       },
+      returnEntry: { deleteMany: async () => ({ count: 0 }) },
     })
   );
   h.prisma.handoverEntry.updateMany.mockImplementation(async () => { writes.push("updateMany"); return { count: 2 }; });
+  // none of these rows is a return's
+  h.prisma.returnEntry.findMany.mockResolvedValue([]);
 });
 
 describe("a panel's row on the Daily log follows the LV keys", () => {

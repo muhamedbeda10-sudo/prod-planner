@@ -196,7 +196,7 @@ export async function bulkSetHandoverDate(formData: FormData): Promise<ActionRes
   if (ids.length === 0) return { ok: false, error: "No rows selected." };
   if (ids.length > 500) return { ok: false, error: "Too many rows at once — max 500." };
 
-  const entries = await prisma.handoverEntry.findMany({ where: { id: { in: ids } }, select: { id: true, dept: true, item: true } });
+  const entries = await prisma.handoverEntry.findMany({ where: { id: { in: ids } }, select: { id: true, dept: true, item: true, qty: true } });
   if (entries.length === 0) return { ok: false, error: "Records not found." };
   let by: string | null = null;
   for (const k of [...new Set(entries.map((e) => ledgerPermKey(e.dept, e.item)))]) {
@@ -205,12 +205,29 @@ export async function bulkSetHandoverDate(formData: FormData): Promise<ActionRes
     by = guard.user?.name ?? null;
   }
 
-  const res = await prisma.handoverEntry.updateMany({
-    where: { id: { in: entries.map((e) => e.id) } },
-    data: { date, note: by ? `edited by ${by}` : "edited" },
+  // the rows' ODOO closings move to the new day with them, as a single
+  // row's edit already does
+  const res = await prisma.$transaction(async (tx) => {
+    const moved = await tx.handoverEntry.updateMany({
+      where: { id: { in: entries.map((e) => e.id) } },
+      data: { date, note: by ? `edited by ${by}` : "edited" },
+    });
+    for (const e of entries) await syncMirroredOdoo(tx, e.id, { qty: e.qty, date });
+    return moved;
   });
   revalidateEverywhere();
   return { ok: true, updated: res.count };
+}
+
+/** The rows a return took off its department. Deleting one of an OPEN return
+ *  takes the return back with it (cancelReturn's rule); one whose pieces were
+ *  re-delivered since is refused, or the re-delivery would credit pieces that
+ *  were never taken off. */
+async function returnRowsRefusal(ids: readonly number[]): Promise<string | null> {
+  const done = await prisma.returnEntry.findMany({ where: { handoverId: { in: [...ids] }, status: { not: "open" } }, select: { mo: true, bom: true, item: true, qty: true } });
+  if (done.length === 0) return null;
+  const r = done[0];
+  return `That row is the return of ${r.qty} × ${r.item} on ${r.mo || r.bom}, and those pieces were re-delivered since — it stays, or the re-delivery would count pieces that were never taken off.`;
 }
 
 /** Delete SEVERAL log rows at once — the ticked rows on the Daily Log.
@@ -237,6 +254,8 @@ export async function bulkDeleteHandover(formData: FormData): Promise<ActionResu
   }
 
   const leaving = entries.map((e) => e.id);
+  const returnRefusal = await returnRowsRefusal(leaving);
+  if (returnRefusal) return { ok: false, error: returnRefusal };
   // one check per scope the batch touches: an MO's item, or a BOM's item for
   // the rows that carry no MO
   const scopes = new Map<string, (typeof entries)[number]>();
@@ -255,6 +274,8 @@ export async function bulkDeleteHandover(formData: FormData): Promise<ActionResu
         if (sync.error) throw new LedgerSyncError(sync.error);
         await syncMirroredOdoo(tx, e.id, "delete");
       }
+      // a return's own row deleted is the return taken back
+      await tx.returnEntry.deleteMany({ where: { handoverId: { in: leaving }, status: "open" } });
       await tx.handoverEntry.deleteMany({ where: { id: { in: leaving } } });
     })
     .catch((e) => {
@@ -280,6 +301,8 @@ export async function deleteHandover(formData: FormData): Promise<ActionResult> 
     dept: entry.dept, bom: entry.bom, mo: entry.mo, item: entry.item, qty: 0, excludeId: id,
   });
   if (chainError) return { ok: false, error: chainError };
+  const returnRefusal = await returnRowsRefusal([id]);
+  if (returnRefusal) return { ok: false, error: returnRefusal };
 
   // deleting the row takes its tanks with it: a welding row's tanks stop
   // existing, a painting row's tanks go back to "passed the leak test" and
@@ -289,6 +312,8 @@ export async function deleteHandover(formData: FormData): Promise<ActionResult> 
       const sync = await syncTanksToLedgerQty(tx, entry, 0);
       if (sync.error) throw new LedgerSyncError(sync.error);
       await syncMirroredOdoo(tx, id, "delete");
+      // a return's own row deleted is the return taken back
+      await tx.returnEntry.deleteMany({ where: { handoverId: id, status: "open" } });
       await tx.handoverEntry.delete({ where: { id } });
     })
     .catch((e) => {

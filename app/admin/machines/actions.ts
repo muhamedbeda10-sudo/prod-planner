@@ -83,18 +83,21 @@ export async function setMachineActive(formData: FormData): Promise<MachineActio
   return { ok: true };
 }
 
-/** Delete outright — refused once any shift or downtime row names it. */
+/** Delete outright — refused once any shift, downtime or Daily log row names
+ *  it: deleting would strip the machine off the output recorded on it (and
+ *  with it the measured rates), so it is retired instead. */
 export async function deleteMachine(formData: FormData): Promise<MachineActionResult> {
   const guard = await requirePerm("machines.manage");
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid machine." };
-  const [shifts, downs] = await Promise.all([
+  const [shifts, downs, output] = await Promise.all([
     prisma.shiftEntry.count({ where: { machineId: id } }),
     prisma.machineDowntime.count({ where: { machineId: id } }),
+    prisma.handoverEntry.count({ where: { machineId: id } }),
   ]);
-  if (shifts > 0 || downs > 0) {
-    return { ok: false, error: `It is on ${shifts} shift row(s) and ${downs} downtime row(s) — retire it instead of deleting, so those days keep their record.` };
+  if (shifts > 0 || downs > 0 || output > 0) {
+    return { ok: false, error: `It is on ${shifts} shift row(s), ${downs} downtime row(s) and ${output} Daily log row(s) — retire it instead of deleting, so that history keeps its machine.` };
   }
   await prisma.machine.delete({ where: { id } });
   revalidate();
