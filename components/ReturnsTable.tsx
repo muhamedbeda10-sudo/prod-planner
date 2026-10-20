@@ -65,7 +65,7 @@ export function ReturnsTable({ rows, dept, canEdit = false }: { rows: ReturnRowD
                     <button
                       onClick={() => redeliver(r)}
                       disabled={pending}
-                      className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50 transition-colors"
+                      className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50 transition-colors"
                       title={`Adds ${r.qty} back to ${deptLabel(dept)}'s total — it reappears in the ${deptLabel(r.fromDept)} queue immediately`}
                     >
                       ✓ Fixed &amp; re-delivered

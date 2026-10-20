@@ -123,7 +123,7 @@ export function TimesGrid({ machines, times, estimates, measured = {}, canEdit }
                             disabled={!canEdit || pending || same}
                             onClick={() => setDraft((d) => ({ ...d, [key(m.id, item)]: String(mm.hoursPerPc) }))}
                             title={`Measured: ${mm.pieces} pcs over ${mm.hours} man-hours on ${mm.days} day(s) — ${minutes(mm.hoursPerPc)} min a piece. Click to take it as the figure.`}
-                            className={`block w-full text-[10px] tabnum ${same ? "text-ok-fg" : "text-brand hover:underline cursor-pointer"}`}
+                            className={`block w-full text-[10px] tabnum ${same ? "text-ok-fg" : "text-brand-ink hover:underline cursor-pointer"}`}
                           >
                             {same ? "✓ " : "≈ "}{mm.hoursPerPc} <span className="text-muted">({mm.pieces} pcs)</span>
                           </button>

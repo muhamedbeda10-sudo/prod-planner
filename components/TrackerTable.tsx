@@ -67,7 +67,7 @@ export function TrackerTable({ rows, planNo }: { rows: TrackerRow[]; planNo: num
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white">
+            <tr className="bg-brand-fill text-white">
               <th rowSpan={2} className="p-2 text-left">BOM</th>
               <th rowSpan={2} className="p-2 text-left">MO</th>
               <th rowSpan={2} className="p-2">KVA</th>
@@ -79,7 +79,7 @@ export function TrackerTable({ rows, planNo }: { rows: TrackerRow[]; planNo: num
               <th rowSpan={2} className="p-2">Left</th>
               <th rowSpan={2} className="p-2">Achv.</th>
             </tr>
-            <tr className="bg-brand text-white text-xs">
+            <tr className="bg-brand-fill text-white text-xs">
               {ITEMS.map((it) => (
                 <CutWeldHead key={it} />
               ))}
@@ -92,7 +92,7 @@ export function TrackerTable({ rows, planNo }: { rows: TrackerRow[]; planNo: num
             {filtered.map((r, i) => (
               <tr key={r.bom} className={i % 2 ? "bg-zebra" : ""}>
                 <td className="p-2 font-bold whitespace-nowrap">
-                  <Link href={`/trace?plan=${planNo}&bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">
+                  <Link href={`/trace?plan=${planNo}&bom=${encodeURIComponent(r.bom)}`} className="text-brand-ink hover:underline">
                     {r.bom}
                   </Link>
                 </td>

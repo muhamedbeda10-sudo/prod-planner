@@ -23,7 +23,7 @@ export function LvTraceView({ t }: { t: LvTraceResult }) {
     <div className="space-y-6">
       <PageHeader label={t.key}>
         <TraceSearch initial={t.key} initialMode={t.scope} />
-        <Link href="/tracker" className="text-accent text-sm font-semibold">→ Back to tracker</Link>
+        <Link href="/tracker" className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
       </PageHeader>
 
       {/* what the scope is */}
@@ -41,7 +41,7 @@ export function LvTraceView({ t }: { t: LvTraceResult }) {
       <section className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-left">
+            <tr className="bg-brand-fill text-white text-left">
               <th className="p-2">Stage</th>
               <th className="p-2 text-center">Done</th>
               <th className="p-2 text-center">of</th>
@@ -67,7 +67,7 @@ export function LvTraceView({ t }: { t: LvTraceResult }) {
       <section className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-left">
+            <tr className="bg-brand-fill text-white text-left">
               <th className="p-2">MO</th>
               <th className="p-2">SOI</th>
               <th className="p-2">Customer</th>
@@ -84,7 +84,7 @@ export function LvTraceView({ t }: { t: LvTraceResult }) {
             {t.members.map((m) => (
               <tr key={m.mo} className={`border-t ${m.status === "closed" ? "opacity-60" : ""}`}>
                 <td className="p-2 font-bold whitespace-nowrap text-xs">
-                  <Link href={`/trace?mo=${encodeURIComponent(m.mo)}`} className="text-accent hover:underline">{m.mo}</Link>
+                  <Link href={`/trace?mo=${encodeURIComponent(m.mo)}`} className="text-brand-ink hover:underline">{m.mo}</Link>
                   {m.urgent && <span className="pill pill-bad ms-1">URGENT</span>}
                 </td>
                 <td className="p-2 whitespace-nowrap"><Soi soi={m.soi} /></td>

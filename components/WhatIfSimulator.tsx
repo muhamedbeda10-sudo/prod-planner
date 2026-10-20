@@ -67,7 +67,7 @@ function Kpi({ label, value, sub, pinned, tone }: {
     <div className="kpi">
       <div className="filter-label">{label}</div>
       <div className="kpi-value mt-1" style={{ color }}>{value}</div>
-      {pinned !== undefined && <div className="text-xs font-semibold tabnum mt-0.5" style={{ color: "var(--accent)" }}>📌 A: {pinned}</div>}
+      {pinned !== undefined && <div className="text-xs font-semibold tabnum mt-0.5 text-brand-ink">📌 A: {pinned}</div>}
       {sub && <div className="text-xs text-muted mt-0.5">{sub}</div>}
     </div>
   );
@@ -548,7 +548,7 @@ export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, save
       {/* ================= the assistant's change ================= */}
       {assistSteps.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border rounded-xl px-3.5 py-2 text-sm bg-surface-2" role="status">
-          <Bot size={15} className="text-brand shrink-0" aria-hidden />
+          <Bot size={15} className="text-brand-ink shrink-0" aria-hidden />
           <span className="font-bold">The assistant put on the screen:</span>
           <span className="text-muted min-w-0">{assistSteps[assistSteps.length - 1].label}</span>
           <span className="ms-auto flex gap-1.5">

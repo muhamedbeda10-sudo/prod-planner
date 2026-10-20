@@ -125,7 +125,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
               <dl className="divide-y divide-border/60">
                 {t.scope === "mo" ? (
                   <Prop k="BOM">
-                    <Link href={trace({ bom: t.bom })} className="text-accent font-bold hover:underline">{t.bom}</Link>
+                    <Link href={trace({ bom: t.bom })} className="text-brand-ink font-bold hover:underline">{t.bom}</Link>
                   </Prop>
                 ) : (
                   <Prop k="Orders">{t.members.length || "—"}{t.members.length > 0 && openOrders < t.members.length ? ` · ${openOrders} open` : ""}</Prop>
@@ -150,7 +150,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
                   <Prop k="Family">
                     <span className="flex flex-wrap justify-end gap-x-2">
                       {t.siblings.map((s) => (
-                        <Link key={s} href={trace({ bom: s })} className="text-accent font-semibold hover:underline">{s}</Link>
+                        <Link key={s} href={trace({ bom: s })} className="text-brand-ink font-semibold hover:underline">{s}</Link>
                       ))}
                     </span>
                   </Prop>
@@ -166,7 +166,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
                     return (
                       <li key={m.mo} className="px-4 py-2.5 hover:bg-brand-light/20 transition-colors">
                         <div className="flex items-center justify-between gap-2">
-                          <Link href={trace({ mo: m.mo })} className="font-bold text-accent hover:underline text-xs">{m.mo}</Link>
+                          <Link href={trace({ mo: m.mo })} className="font-bold text-brand-ink hover:underline text-xs">{m.mo}</Link>
                           <span className="flex items-center gap-1.5">
                             {m.urgent && <Chip tone="bad">U</Chip>}
                             {m.priority && <span title="Priority">⭐</span>}
@@ -332,7 +332,7 @@ function ComponentProgress({ pipeline }: { pipeline: TracePipelineRow[] }) {
         <div className="inline-flex rounded-lg border border-border/60 overflow-hidden">
           {(["grid", "table"] as const).map((v) => (
             <button key={v} type="button" onClick={() => setView(v)}
-              className={`px-2 py-1 transition-colors ${view === v ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}
+              className={`px-2 py-1 transition-colors ${view === v ? "bg-brand-fill text-white" : "bg-surface text-muted hover:text-foreground"}`}
               title={v === "grid" ? "Card view" : "Table view"}>
               {v === "grid" ? <LayoutGrid size={14} /> : <Rows3 size={14} />}
             </button>
@@ -450,7 +450,7 @@ function Records({ t }: { t: TraceResult }) {
           <div className="inline-flex rounded-lg border border-border/60 overflow-hidden text-xs font-bold">
             {TABS.map((tb) => (
               <button key={tb.key} type="button" onClick={() => setTab(tb.key)}
-                className={`px-3 py-1.5 transition-colors ${tab === tb.key ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}>
+                className={`px-3 py-1.5 transition-colors ${tab === tb.key ? "bg-brand-fill text-white" : "bg-surface text-muted hover:text-foreground"}`}>
                 {tb.label}<span className="ml-1.5 tabnum opacity-70">{tb.count}</span>
               </button>
             ))}
@@ -479,16 +479,13 @@ function Records({ t }: { t: TraceResult }) {
                   <td className="px-4 py-1.5 whitespace-nowrap tabnum text-muted">{formatDate(l.dateISO)}</td>
                   {byOrder && (
                     <td className="px-3 py-1.5 text-xs whitespace-nowrap ltr">
-                      {l.mo ? <Link href={`/trace?mo=${encodeURIComponent(l.mo)}`} className="text-accent hover:underline">{l.mo}</Link> : <span className="text-muted">—</span>}
+                      {l.mo ? <Link href={`/trace?mo=${encodeURIComponent(l.mo)}`} className="text-brand-ink hover:underline">{l.mo}</Link> : <span className="text-muted">—</span>}
                     </td>
                   )}
                   <td className="px-3 py-1.5">{deptLabel(l.dept)}</td>
                   <td className="px-3 py-1.5 text-center font-bold">{l.item}</td>
                   <td className="px-3 py-1.5 text-center">
-                    <span className="inline-block min-w-9 rounded-md px-1.5 py-0.5 font-bold tabnum text-xs"
-                      style={l.qty < 0
-                        ? { background: "var(--bad-bg)", color: "var(--bad-fg)" }
-                        : { background: "var(--brand-light)", color: "var(--brand)" }}>
+                    <span className={`inline-block min-w-9 rounded-md px-1.5 py-0.5 font-bold tabnum text-xs ${l.qty < 0 ? "bg-bad-bg text-bad-fg" : "bg-brand-light text-brand-ink"}`}>
                       {l.qty > 0 ? `+${l.qty}` : l.qty}
                     </span>
                   </td>
@@ -649,7 +646,7 @@ function Kpi({ icon, label, value, suffix, sub, pct, bar, tone }: {
   return (
     <div className="rounded-2xl bg-surface border border-border/60 shadow-sm px-4 py-3.5 transition-all hover:shadow-md">
       <div className="flex items-center gap-1.5 text-muted">
-        <span className="grid place-items-center w-6 h-6 rounded-lg bg-brand-light/60 text-brand">{icon}</span>
+        <span className="grid place-items-center w-6 h-6 rounded-lg bg-brand-light/60 text-brand-ink">{icon}</span>
         <span className="text-[10px] font-bold uppercase tracking-wide">{label}</span>
       </div>
       <div className="mt-2 flex items-baseline gap-1.5">
@@ -664,7 +661,7 @@ function Kpi({ icon, label, value, suffix, sub, pct, bar, tone }: {
 
 function Chip({ tone, className = "", children }: { tone: "ok" | "bad" | "warn" | "muted" | "brand"; className?: string; children: React.ReactNode }) {
   if (tone === "brand") {
-    return <span className={`pill ${className}`} style={{ background: "var(--brand-light)", color: "var(--brand)" }}>{children}</span>;
+    return <span className={`pill bg-brand-light text-brand-ink ${className}`}>{children}</span>;
   }
   return <span className={`pill pill-${tone} ${className}`}>{children}</span>;
 }
@@ -708,7 +705,7 @@ function Ring({ pct, size = 56 }: { pct: number; size?: number }) {
 function Avatar({ name }: { name: string }) {
   const initials = name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
   return (
-    <span className="grid place-items-center w-7 h-7 rounded-full bg-brand text-white text-[10px] font-extrabold shrink-0" title={name}>
+    <span className="grid place-items-center w-7 h-7 rounded-full bg-brand-fill text-white text-[10px] font-extrabold shrink-0" title={name}>
       {initials || "?"}
     </span>
   );

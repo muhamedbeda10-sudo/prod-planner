@@ -289,7 +289,7 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-left">
+            <tr className="bg-brand-fill text-white text-left">
               <th className="p-2 no-print w-8 text-center">
                 {editableVisible.length > 0 && (
                   <input
@@ -297,7 +297,7 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
                     checked={allVisibleSelected}
                     onChange={toggleAll}
                     title="Select all visible rows you can edit"
-                    className="accent-[var(--brand)] cursor-pointer"
+                    className="cursor-pointer"
                   />
                 )}
               </th>
@@ -331,7 +331,7 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
                       // controlled box out of step with the range
                       onChange={(e) => toggleRow(r.id, (e.nativeEvent as MouseEvent).shiftKey)}
                       title="Tick to select · Shift-click to select a range"
-                      className="accent-[var(--brand)] cursor-pointer"
+                      className="cursor-pointer"
                     />
                   )}
                 </td>

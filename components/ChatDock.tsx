@@ -248,13 +248,13 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
           className="fixed inset-x-2 bottom-2 top-14 z-50 flex flex-col rounded-xl border bg-surface text-foreground shadow-xl overflow-hidden md:absolute md:inset-auto md:right-0 md:top-[calc(100%+10px)] md:w-[860px] md:max-w-[92vw] md:h-[min(640px,calc(100vh-7rem))]"
         >
           <div className="flex items-center gap-2 px-3 py-2 border-b bg-surface-2 shrink-0">
-            <MessagesSquare size={15} className="text-brand" />
+            <MessagesSquare size={15} className="text-brand-ink" />
             <b className="text-sm">Chat</b>
             {perm !== "unsupported" && (
               <button
                 type="button"
                 onClick={() => perm === "default" && void turnOnAlerts()}
-                className={`ms-auto rounded-md p-1.5 hover:bg-surface transition-colors ${perm === "granted" ? "text-brand" : "text-muted"}`}
+                className={`ms-auto rounded-md p-1.5 hover:bg-surface transition-colors ${perm === "granted" ? "text-brand-ink" : "text-muted"}`}
                 title={
                   perm === "granted" ? "Desktop alerts are on — they show when the app is minimised or on another tab"
                   : perm === "denied" ? "Desktop alerts are blocked — allow notifications from the lock icon in the address bar"
@@ -317,7 +317,7 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
           aria-label="Desktop alerts"
           className="fixed bottom-4 left-4 z-50 flex w-[min(360px,calc(100vw-2rem))] gap-3 rounded-xl border border-l-4 border-l-brand bg-surface p-3 text-foreground shadow-xl animate-[navdrop_0.2s_ease-out]"
         >
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand text-white">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-fill text-white">
             <BellRing size={17} />
           </span>
           <div className="min-w-0 flex-1">
@@ -347,7 +347,7 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
               key={c.id}
               className="flex gap-3 rounded-xl border border-l-4 border-l-brand bg-surface p-3 shadow-xl animate-[navdrop_0.2s_ease-out]"
             >
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand text-sm font-extrabold text-white">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-fill text-sm font-extrabold text-white">
                 {c.fromName.trim().charAt(0).toUpperCase() || "?"}
               </span>
               <div className="min-w-0 flex-1">

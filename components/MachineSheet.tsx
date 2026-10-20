@@ -24,7 +24,7 @@ function Head({ dept, runsOnly }: { dept: string; runsOnly: boolean }) {
     <>
       <colgroup>{(runsOnly ? RUNS : FULL).map((w, i) => <col key={i} className={w} />)}</colgroup>
       <thead>
-        <tr className="bg-brand text-white text-left text-xs uppercase tracking-wide">
+        <tr className="bg-brand-fill text-white text-left text-xs uppercase tracking-wide">
           <th className={`${th} text-center`}>#</th>
           <th className={th}>BOM ref</th>
           {!runsOnly && <th className={th}>Part</th>}
@@ -115,7 +115,7 @@ export function MachineSheet({ c, dept, dateLabel, required, material, jobs, fir
       </div>
       <SheetTotals c={c} material={material} dept={dept} />
       <div className="bg-surface border rounded-xl overflow-x-auto mb-3">
-        <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-brand bg-brand-light/40">▶ Running now{c.running.length > 1 ? ` — ${c.running.length} together` : ""}</div>
+        <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-brand-ink bg-brand-light/40">▶ Running now{c.running.length > 1 ? ` — ${c.running.length} together` : ""}</div>
         <table className="w-full table-fixed text-sm border-collapse">
           <Head dept={dept} runsOnly={runsOnly} />
           {c.running.length === 0 ? <tbody><tr><td colSpan={runsOnly ? 5 : 7} className="p-3 text-center text-muted text-xs">nothing started yet</td></tr></tbody> : <Rows lines={c.running} from={0} required={required} material={material} dept={dept} jobs={jobs} runsOnly={runsOnly} />}

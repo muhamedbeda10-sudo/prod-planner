@@ -50,7 +50,7 @@ export function DeptPicker({ value }: { value: string }) {
               key={o.value}
               type="button"
               onClick={() => toggle(o.value)}
-              className={`rounded-md border px-2.5 py-1.5 text-xs font-bold transition-colors ${on ? "bg-brand text-white border-brand" : "bg-surface text-muted hover:text-foreground hover:border-brand/60"}`}
+              className={`rounded-md border px-2.5 py-1.5 text-xs font-bold transition-colors ${on ? "bg-brand-fill text-white border-brand-fill" : "bg-surface text-muted hover:text-foreground hover:border-brand/60"}`}
               title={`${o.label} — pick one or more; the whole report scopes to them`}
             >
               {o.label}

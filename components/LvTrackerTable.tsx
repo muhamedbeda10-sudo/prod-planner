@@ -356,8 +356,8 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
         {held && <span className="pill pill-warn cursor-help max-w-full" title={holdLabel(r.hold)}><Pause size={10} className="shrink-0" aria-hidden /><span className="truncate">HOLD{r.hold.holdNote ? ` · ${r.hold.holdNote}` : ""}</span></span>}
       </>
     );
-    const moLink = <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline whitespace-nowrap">{r.mo}</Link>;
-    const bomLink = <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline whitespace-nowrap">{r.bom}</Link>;
+    const moLink = <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-brand-ink hover:underline whitespace-nowrap">{r.mo}</Link>;
+    const bomLink = <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-brand-ink hover:underline whitespace-nowrap">{r.bom}</Link>;
     return (
       <tr
         key={r.mo}
@@ -464,7 +464,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
             <div className="grid grid-cols-2 gap-x-3">
               {LV_CHAIN.map((s) => (
                 <label key={s} className="flex items-center gap-2 py-0.5 cursor-pointer">
-                  <input type="checkbox" checked={!hiddenStages.has(s)} onChange={() => toggleStage(s)} className="accent-[var(--brand)]" />{LV_STAGE_LABEL[s]}
+                  <input type="checkbox" checked={!hiddenStages.has(s)} onChange={() => toggleStage(s)} />{LV_STAGE_LABEL[s]}
                 </label>
               ))}
             </div>
@@ -524,7 +524,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
                 </>
               );
               const caret = <ChevronRight size={12} className={`shrink-0 transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden />;
-              const bomLink = <Link href={`/trace?bom=${encodeURIComponent(bom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline whitespace-nowrap">{bom}</Link>;
+              const bomLink = <Link href={`/trace?bom=${encodeURIComponent(bom)}`} onClick={(e) => e.stopPropagation()} className="text-brand-ink hover:underline whitespace-nowrap">{bom}</Link>;
               return (
                 <Fragment key={`g|${bom}`}>
                   <tr

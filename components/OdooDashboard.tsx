@@ -415,7 +415,7 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm">
           <span className="font-bold">{title}</span>
-          {bomLabel && <span> · BOM <b className="text-accent">{bomLabel}</b></span>}
+          {bomLabel && <span> · BOM <b className="text-brand-ink">{bomLabel}</b></span>}
           {prevTitle && <span className="text-muted"> · compared with {prevTitle}{d.compare !== "prev" ? ` (${ODOO_COMPARE_LABEL[d.compare].toLowerCase()})` : ""}</span>}
         </div>
         <ExportButton rows={exportRows} filename={`odoo-dashboard-${d.bom ? `${d.bom}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`} sheetName="By day" />

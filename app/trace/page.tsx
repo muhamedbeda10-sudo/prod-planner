@@ -50,7 +50,7 @@ export default async function TracePage({
       return (
         <div className="space-y-6">
           <PageHeader title={`Trace — ${lt.key}`} sub="No LV panel order or log row carries this code.">
-            <Link href="/tracker" className="text-accent text-sm font-semibold">→ Back to tracker</Link>
+            <Link href="/tracker" className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
           </PageHeader>
           <div className="rounded-2xl bg-surface border border-border/60 shadow-sm p-10 flex flex-col items-center gap-3 text-center">
             <div className="text-4xl">🤷</div>
@@ -69,7 +69,7 @@ export default async function TracePage({
     return (
       <div className="space-y-6">
         <PageHeader title={`Trace — ${t.key}`} sub="This code or order does not appear in any plan, the registry, or the log yet.">
-          <Link href={trackerHref(planNo, view)} className="text-accent text-sm font-semibold">→ Back to tracker</Link>
+          <Link href={trackerHref(planNo, view)} className="text-brand-ink text-sm font-semibold">→ Back to tracker</Link>
         </PageHeader>
         <div className="rounded-2xl bg-surface border border-border/60 shadow-sm p-10 flex flex-col items-center gap-3 text-center">
           <div className="text-4xl">🤷</div>

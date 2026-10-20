@@ -182,7 +182,7 @@ export function BarcodeSheet({
       <div className="no-print bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-left">
+            <tr className="bg-brand-fill text-white text-left">
               <th className="p-2 w-8" />
               <th className="p-2">Serial</th>
               <th className="p-2">MO</th>
@@ -212,7 +212,6 @@ export function BarcodeSheet({
                     type="checkbox"
                     checked={picked.has(t.serial)}
                     onChange={() => toggle(t.serial)}
-                    className="accent-[var(--brand,#1b7a43)]"
                   />
                 </td>
                 <td className="p-2 whitespace-nowrap">

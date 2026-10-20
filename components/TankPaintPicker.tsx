@@ -115,7 +115,6 @@ export function TankPaintPicker({
                 checked={picked.has(t.serial)}
                 onChange={() => toggle(t.serial)}
                 disabled={pending}
-                className="accent-[var(--brand,#1b7a43)]"
               />
               <code className="ltr font-bold tabnum text-sm">{t.serial}</code>
               <button
@@ -171,7 +170,7 @@ export function TankPaintPicker({
           type="button"
           onClick={submit}
           disabled={pending || painters.length === 0}
-          className="rounded-md px-3 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+          className="rounded-md px-3 py-1.5 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50"
         >
           {pending ? "Saving…" : picked.size ? `Record ${picked.size} painted` : "Record painted"}
         </button>

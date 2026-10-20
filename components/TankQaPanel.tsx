@@ -76,7 +76,7 @@ export function TankQaPanel({
           type="button"
           onClick={() => setResult("ok")}
           disabled={pending}
-          className={`rounded-md px-3 py-1.5 text-xs font-bold border ${result === "ok" ? "bg-ok-fg text-white border-transparent" : "hover:bg-ok-bg"}`}
+          className={`rounded-md px-3 py-1.5 text-xs font-bold border ${result === "ok" ? "bg-ok-fill text-white border-transparent" : "hover:bg-ok-bg"}`}
         >
           ✓ OK
         </button>
@@ -112,7 +112,7 @@ export function TankQaPanel({
           type="button"
           onClick={submit}
           disabled={pending}
-          className="rounded-md px-4 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+          className="rounded-md px-4 py-1.5 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50"
         >
           {pending ? "Saving…" : "Record the check"}
         </button>

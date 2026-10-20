@@ -79,7 +79,7 @@ function ChatList({ api, q, onPick }: { api: ChatListApi | null; q: string; onPi
           {items.map((c) => (
             <div key={c.id} className={`conv-item ${c.id === api.activeId ? "conv-item-active" : ""}`}>
               <button type="button" onClick={() => onPick(c.id)} className="flex-1 min-w-0 text-start px-2.5 py-1.5" disabled={api.busy}>
-                <div className={`text-[13px] truncate ${c.id === api.activeId ? "font-semibold text-brand" : "font-medium"}`} dir="auto">{c.title}</div>
+                <div className={`text-[13px] truncate ${c.id === api.activeId ? "font-semibold text-brand-ink" : "font-medium"}`} dir="auto">{c.title}</div>
               </button>
               <button
                 type="button"

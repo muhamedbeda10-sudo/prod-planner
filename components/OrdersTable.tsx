@@ -224,7 +224,7 @@ export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: Pr
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-left">
+            <tr className="bg-brand-fill text-white text-left">
               <th className="p-2 w-8 text-center">
                 <input
                   type="checkbox"
@@ -281,7 +281,7 @@ export function OrdersTable({ rows, line = "TR" }: { rows: OrderRow[]; line?: Pr
                 </td>
                 <td className="p-2 font-bold whitespace-nowrap text-xs">{r.mo}</td>
                 <td className="p-2 font-bold whitespace-nowrap">
-                  <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline">{r.bom}</Link>
+                  <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-brand-ink hover:underline">{r.bom}</Link>
                 </td>
                 <td className="p-2 text-xs whitespace-nowrap">{r.soi ?? "—"}</td>
                 <td className="p-2 text-xs whitespace-nowrap">{r.customer ?? <span className="text-muted">—</span>}</td>

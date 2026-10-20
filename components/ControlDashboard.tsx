@@ -209,7 +209,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
           <Card title="Backlog · last 30 days" sub="Pieces waiting at each stage, day by day">
             <BacklogChart history={c.backlogHistory} />
           </Card>
-          <Card title="Needs a hand today" sub="Late first, then due this week · Left = tanks to paint" aside={<Link href="/tracker" className="text-accent font-semibold hover:underline">tracker →</Link>}>
+          <Card title="Needs a hand today" sub="Late first, then due this week · Left = tanks to paint" aside={<Link href="/tracker" className="text-brand-ink font-semibold hover:underline">tracker →</Link>}>
             {c.attention.length === 0 ? (
               <p className="text-sm text-muted">Nothing late, nothing due this week, nothing on hold.</p>
             ) : (
@@ -223,7 +223,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
                   {c.attention.slice(0, 6).map((a) => (
                     <tr key={a.mo} className="border-t">
                       <td className="py-1.5 pe-2 font-bold text-xs whitespace-nowrap">
-                        <Link href={`/trace?mo=${encodeURIComponent(a.mo)}`} className="text-accent hover:underline">{a.mo}</Link>
+                        <Link href={`/trace?mo=${encodeURIComponent(a.mo)}`} className="text-brand-ink hover:underline">{a.mo}</Link>
                         {a.urgent && <span className="pill pill-bad ms-1">U</span>}
                         {a.priority && <span className="ms-1" title="Priority">⭐</span>}
                       </td>
@@ -278,7 +278,7 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
                     <div className="mt-1 h-2.5 rounded-sm bg-border/70 overflow-hidden"><div className="h-full rounded-sm" style={{ width: `${ratio === null ? 0 : Math.min(100, ratio * 100)}%`, background: toneVar[tone] }} /></div>
                     <div className="text-[11px] text-muted mt-0.5 tabnum">
                       earns {one(l.earnedPerDay)} h/day{l.capacityPerDay !== null ? ` · capacity ${one(l.capacityPerDay)} h/day` : ""}{l.recordedPerDay !== null ? ` · logged ${one(l.recordedPerDay)} h/day` : ""}
-                      {l.capacityPerDay === null && <> · <Link href="/admin/standard-times" className="text-accent hover:underline">no capacity set</Link></>}
+                      {l.capacityPerDay === null && <> · <Link href="/admin/standard-times" className="text-brand-ink hover:underline">no capacity set</Link></>}
                     </div>
                   </div>
                 );
@@ -398,20 +398,20 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
                     {a.logged === 0 ? <span className="text-xs text-warn-fg">not logged</span> : <span className="tabnum text-xs"><b>{a.present}</b> / {a.logged}</span>}
                   </div>
                 ))}
-                <Link href="/shifts" className="text-xs text-accent font-semibold hover:underline">shift log →</Link>
+                <Link href="/shifts" className="text-xs text-brand-ink font-semibold hover:underline">shift log →</Link>
               </div>
               {/* downtime is the machines' — it goes with machine planning; the shift log stays */}
               {machinePlanning && <div>
                 <div className="text-[11px] font-bold text-muted uppercase tracking-wide mb-1">Downtime · this week</div>
                 <div className={`text-[2rem] font-extrabold leading-none ${c.floor.downtime.hours > 0 ? "text-warn-fg" : "text-ok-fg"}`}>{one(c.floor.downtime.hours)} h</div>
                 <div className="text-[11px] text-muted mt-1">{c.floor.downtime.machines === 0 ? "no machine stood still" : `across ${fmt(c.floor.downtime.machines)} machine${c.floor.downtime.machines === 1 ? "" : "s"}`}</div>
-                <Link href="/worklist/machines" className="text-xs text-accent font-semibold hover:underline">machines →</Link>
+                <Link href="/worklist/machines" className="text-xs text-brand-ink font-semibold hover:underline">machines →</Link>
               </div>}
               <div>
                 <div className="text-[11px] font-bold text-muted uppercase tracking-wide mb-1">Returns open</div>
                 <div className={`text-[2rem] font-extrabold leading-none ${c.floor.openReturns.pieces > 0 ? "text-bad-fg" : "text-ok-fg"}`}>{fmt(c.floor.openReturns.pieces)}</div>
                 <div className="text-[11px] text-muted mt-1">{c.floor.openReturns.lines === 0 ? "nothing sent back" : `pieces on ${fmt(c.floor.openReturns.lines)} return${c.floor.openReturns.lines === 1 ? "" : "s"} — fix first, they re-enter the flow`}</div>
-                {machinePlanning && <Link href="/worklist/cut" className="text-xs text-accent font-semibold hover:underline">worklist →</Link>}
+                {machinePlanning && <Link href="/worklist/cut" className="text-xs text-brand-ink font-semibold hover:underline">worklist →</Link>}
               </div>
             </div>
           </Card>
@@ -423,10 +423,10 @@ export function ControlDashboard({ c, d, controls, machinePlanning = true }: { c
 
       {/* ==== the control loops, one line ==== */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-muted border rounded-xl bg-surface px-4 py-2">
-        <Link href="/odoo" className="hover:text-accent"><b className={c.closing.open > 0 ? "text-warn-fg" : "text-ok-fg"}>{fmt(c.closing.open)}</b> Odoo closings open · <b className="text-foreground">{fmt(c.closing.needMo)}</b> need an MO</Link>
-        <Link href="/material" className="hover:text-accent"><b className={c.material.overBom > 0 ? "text-bad-fg" : "text-ok-fg"}>{fmt(c.material.overBom)}</b> material lines over BOM · {fmt(c.material.notNested)} not nested</Link>
-        <Link href="/shifts" className="hover:text-accent"><b className={shiftsIn === c.shifts.length ? "text-ok-fg" : "text-warn-fg"}>{shiftsIn}/{c.shifts.length}</b> shift logs in today · {c.shifts.map((s) => `${s.label} ${s.hours === null ? "—" : `${one(s.hours)}h`}`).join(" · ")}</Link>
-        <span className="ms-auto">{FINISHING_LABEL} = painting + the core&apos;s shot blast · <Link href="/report" className="text-accent hover:underline">printable report</Link></span>
+        <Link href="/odoo" className="hover:text-brand-ink"><b className={c.closing.open > 0 ? "text-warn-fg" : "text-ok-fg"}>{fmt(c.closing.open)}</b> Odoo closings open · <b className="text-foreground">{fmt(c.closing.needMo)}</b> need an MO</Link>
+        <Link href="/material" className="hover:text-brand-ink"><b className={c.material.overBom > 0 ? "text-bad-fg" : "text-ok-fg"}>{fmt(c.material.overBom)}</b> material lines over BOM · {fmt(c.material.notNested)} not nested</Link>
+        <Link href="/shifts" className="hover:text-brand-ink"><b className={shiftsIn === c.shifts.length ? "text-ok-fg" : "text-warn-fg"}>{shiftsIn}/{c.shifts.length}</b> shift logs in today · {c.shifts.map((s) => `${s.label} ${s.hours === null ? "—" : `${one(s.hours)}h`}`).join(" · ")}</Link>
+        <span className="ms-auto">{FINISHING_LABEL} = painting + the core&apos;s shot blast · <Link href="/report" className="text-brand-ink hover:underline">printable report</Link></span>
       </div>
     </div>
   );

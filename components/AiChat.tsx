@@ -403,7 +403,7 @@ export function AiChat({
               {items.map((c) => (
                 <div key={c.id} className={`conv-item ${c.id === activeId ? "conv-item-active" : ""}`}>
                   <button type="button" onClick={() => open(c.id)} className="flex-1 min-w-0 text-start px-2.5 py-1.5" disabled={busy}>
-                    <div className={`text-[13px] truncate ${c.id === activeId ? "font-semibold text-brand" : "font-medium"}`} dir="auto">{c.title}</div>
+                    <div className={`text-[13px] truncate ${c.id === activeId ? "font-semibold text-brand-ink" : "font-medium"}`} dir="auto">{c.title}</div>
                   </button>
                   <button
                     type="button"
@@ -483,7 +483,7 @@ export function AiChat({
                 <AlertCircle size={14} className="text-warn-fg mt-0.5 shrink-0" aria-hidden />
                 <span className="min-w-0">
                   {status.reason ?? "The AI allowance is used up."}
-                  {isOwner && <> <a href="/admin/ai" className="font-semibold text-brand underline underline-offset-2">Settings</a></>}
+                  {isOwner && <> <a href="/admin/ai" className="font-semibold text-brand-ink underline underline-offset-2">Settings</a></>}
                 </span>
               </div>
             )}
@@ -552,7 +552,7 @@ function Welcome({ onPick, disabled, compact }: { onPick: (q: string) => void; d
   return (
     <div className={`max-w-2xl mx-auto ${compact ? "pt-6" : "pt-4 sm:pt-10 md:pt-16"}`}>
       <div className="flex flex-col items-center text-center gap-2">
-        <span className="w-12 h-12 rounded-2xl bg-brand-light text-brand grid place-items-center shrink-0">
+        <span className="w-12 h-12 rounded-2xl bg-brand-light text-brand-ink grid place-items-center shrink-0">
           <Bot size={24} />
         </span>
         <h2 className="!text-xl !font-bold !normal-case !tracking-normal !text-foreground !mb-0">Ask about the plant</h2>
@@ -625,7 +625,7 @@ function Answer({
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex gap-3">
-      <div className="hidden sm:grid w-7 h-7 rounded-lg bg-brand-light text-brand place-items-center shrink-0 mt-0.5">
+      <div className="hidden sm:grid w-7 h-7 rounded-lg bg-brand-light text-brand-ink place-items-center shrink-0 mt-0.5">
         <Bot size={15} />
       </div>
       <div className="flex-1 min-w-0">
@@ -670,7 +670,7 @@ function Answer({
 function SimulatorLine({ note, onShow }: { note: SimulatorNote; onShow: () => void }) {
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border px-3 py-2 text-sm">
-      <MonitorPlay size={15} className="text-brand shrink-0" aria-hidden />
+      <MonitorPlay size={15} className="text-brand-ink shrink-0" aria-hidden />
       <span className="flex-1 min-w-0">
         <span className="font-semibold">{note.shown ? "On your Simulator" : "For your Simulator"}</span>
         <span className="text-muted"> · {note.label}</span>

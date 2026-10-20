@@ -49,7 +49,6 @@ function DeptChecks({ defaults, disabled }: { defaults: Set<string>; disabled?: 
                 value={sec.code}
                 defaultChecked={defaults.has(sec.code)}
                 disabled={disabled}
-                className="accent-[var(--brand,#1b7a43)]"
               />
               <span className="font-semibold">{sec.label}</span>
             </label>

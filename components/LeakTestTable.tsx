@@ -116,7 +116,7 @@ export function LeakTestTable({
               type="button"
               onClick={() => run([...picked], "pass", "")}
               disabled={pending || picked.size === 0 || testers.length === 0}
-              className="rounded-md px-3 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+              className="rounded-md px-3 py-1.5 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50"
               title="The picked tanks passed and move on to painting"
             >
               ✓ Passed ({picked.size})
@@ -131,7 +131,7 @@ export function LeakTestTable({
         <div className="bg-surface border rounded-xl overflow-x-auto md:overflow-x-visible">
           <table className="w-full text-sm border-collapse">
             <thead className="md:sticky md:top-0 md:z-10">
-              <tr className="bg-brand text-white text-left">
+              <tr className="bg-brand-fill text-white text-left">
                 {canEdit && <th className="p-2 w-8" />}
                 <th className="p-2">Serial</th>
                 <th className="p-2">MO</th>
@@ -164,7 +164,6 @@ export function LeakTestTable({
                         checked={picked.has(t.serial)}
                         onChange={() => toggle(t.serial)}
                         disabled={pending}
-                        className="accent-[var(--brand,#1b7a43)]"
                       />
                     </td>
                   )}
@@ -195,7 +194,7 @@ export function LeakTestTable({
                           type="button"
                           onClick={() => run([t.serial], "pass", "")}
                           disabled={pending || testers.length === 0}
-                          className="rounded-md px-2 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+                          className="rounded-md px-2 py-1 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50"
                         >
                           ✓ Passed
                         </button>

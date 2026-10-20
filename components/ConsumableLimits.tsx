@@ -108,7 +108,7 @@ function ItemForm({ item, onDone, departments }: { item?: CatalogueItemDTO; onDo
       {!item && departments && (
         <div className="w-full border rounded-lg p-2 space-y-2 mt-1">
           <label className="inline-flex items-center gap-1.5 text-sm font-bold cursor-pointer">
-            <input type="checkbox" checked={withLimit} onChange={(e) => setWithLimit(e.target.checked)} disabled={save.pending} className="accent-[var(--brand,#1b7a43)]" />
+            <input type="checkbox" checked={withLimit} onChange={(e) => setWithLimit(e.target.checked)} disabled={save.pending} />
             Its limit
           </label>
           {withLimit && <LimitFields departments={departments} all={all} setAll={setAll} busy={save.pending} />}
@@ -149,7 +149,7 @@ function LimitFields({ limit, departments, all, setAll, busy }: {
       </div>
       <div className="space-y-1">
         <label className="inline-flex items-center gap-1.5 text-sm font-bold cursor-pointer">
-          <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} disabled={busy} className="accent-[var(--brand,#1b7a43)]" />
+          <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} disabled={busy} />
           All departments
         </label>
         {!all && (
@@ -159,7 +159,7 @@ function LimitFields({ limit, departments, all, setAll, busy }: {
                 <span className="text-[11px] font-bold text-muted uppercase tracking-wide w-24">{g.label}</span>
                 {departments.sections.filter((s) => s.group === g.key).map((s) => (
                   <label key={s.code} className="inline-flex items-center gap-1 text-sm cursor-pointer">
-                    <input type="checkbox" name="departments" value={s.code} defaultChecked={picked.has(s.code)} disabled={busy} className="accent-[var(--brand,#1b7a43)]" />
+                    <input type="checkbox" name="departments" value={s.code} defaultChecked={picked.has(s.code)} disabled={busy} />
                     {s.label}
                   </label>
                 ))}
@@ -170,7 +170,7 @@ function LimitFields({ limit, departments, all, setAll, busy }: {
                 <span className="text-[11px] font-bold text-muted uppercase tracking-wide w-24">Other</span>
                 {departments.custom.map((d) => (
                   <label key={d} className="inline-flex items-center gap-1 text-sm cursor-pointer">
-                    <input type="checkbox" name="departments" value={d} defaultChecked={picked.has(d)} disabled={busy} className="accent-[var(--brand,#1b7a43)]" />
+                    <input type="checkbox" name="departments" value={d} defaultChecked={picked.has(d)} disabled={busy} />
                     {d}
                   </label>
                 ))}

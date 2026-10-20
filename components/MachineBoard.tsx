@@ -216,7 +216,7 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
           className="w-12 border-x px-1 py-0.5 bg-surface text-xs tabnum ltr text-center outline-none"
         />
         <span className="px-1 text-[10px] text-muted tabnum whitespace-nowrap">/ {q.remaining} left{q.split ? " here" : ""}</span>
-        <button type="button" className="bg-brand text-white px-1.5 py-0.5 text-xs font-bold disabled:opacity-50" disabled={pending} onClick={save} title="Record the sheets cut">✓</button>
+        <button type="button" className="bg-brand-fill text-white px-1.5 py-0.5 text-xs font-bold disabled:opacity-50" disabled={pending} onClick={save} title="Record the sheets cut">✓</button>
       </span>
       {jobTotal}
     </span>
@@ -287,7 +287,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
         {manualIdOf(q.mo) !== null ? <span className={strong ? "font-extrabold" : "font-bold"}>{q.description}</span> : <>
         <span className={strong ? "font-extrabold" : "font-bold"}>{q.bom}</span>
         <span className={strong ? "font-bold" : "font-semibold"}>{q.item}</span></>}
-        <span className={`tabnum ${strong ? "font-extrabold text-brand" : "font-bold"}`}>×{q.remaining}</span>
+        <span className={`tabnum ${strong ? "font-extrabold text-brand-ink" : "font-bold"}`}>×{q.remaining}</span>
         {q.split && <span className="text-[11px] text-muted tabnum whitespace-nowrap" title="Part of the line — the rest is on another machine or waits">✂ of {q.lineRemaining}</span>}
         {q.hours !== null && <span className="text-xs text-muted tabnum whitespace-nowrap">{q.hours} h</span>}
         {q.deliveryISO && (strong
@@ -336,7 +336,7 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
 
       {c.running.length > 0 ? (
         <div className="rounded-lg border border-brand/40 bg-brand-light/30 px-2.5 py-2 space-y-1">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-brand">▶ Now{c.running.length > 1 ? ` · ${c.running.length} together` : ""}</div>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-brand-ink">▶ Now{c.running.length > 1 ? ` · ${c.running.length} together` : ""}</div>
           {c.running.map((q) => (
             <div key={`${q.key}#${q.sheet}`} className="flex items-baseline gap-2 flex-wrap">
               {what(q, true)}
@@ -555,7 +555,7 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
               {dated.length > 0 && (
                 <>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wide text-brand">📅 Weekly plan — dated, earliest first</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-brand-ink">📅 Weekly plan — dated, earliest first</span>
                     {dated.length > 12 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAllDated((v) => !v)}>{showAllDated ? "Show fewer" : `Show all ${dated.length}`}</button>}
                   </div>
                   <ul className="mt-0.5 grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">{datedShown.map(row)}</ul>

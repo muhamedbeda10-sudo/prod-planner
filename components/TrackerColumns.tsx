@@ -132,15 +132,15 @@ export function ColumnMenu<K extends string>({ cols, list, fixed, fixedTitle, ch
           <div>
             <div className="flex items-center mb-1.5">
               <span className="filter-label">Columns · {shownCount} of {list.length + 1}</span>
-              <button type="button" className="ms-auto text-xs font-semibold text-accent hover:underline" onClick={cols.reset}>Defaults</button>
+              <button type="button" className="ms-auto text-xs font-semibold text-brand-ink hover:underline" onClick={cols.reset}>Defaults</button>
             </div>
             <div className="grid grid-cols-2 gap-x-3">
               <label className="flex items-center gap-2 py-0.5 opacity-60" title={fixedTitle}>
-                <input type="checkbox" checked disabled className="accent-[var(--brand)]" />{fixed}
+                <input type="checkbox" checked disabled />{fixed}
               </label>
               {list.map((c) => (
                 <label key={c.key} className="flex items-center gap-2 py-0.5 cursor-pointer">
-                  <input type="checkbox" checked={cols.isOn(c.key)} onChange={() => cols.setOn([c.key], !cols.isOn(c.key))} className="accent-[var(--brand)]" />{c.label}
+                  <input type="checkbox" checked={cols.isOn(c.key)} onChange={() => cols.setOn([c.key], !cols.isOn(c.key))} />{c.label}
                 </label>
               ))}
             </div>

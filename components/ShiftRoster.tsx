@@ -175,7 +175,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-brand text-white text-left">
+                <tr className="bg-brand-fill text-white text-left">
                   <th className="p-2 w-10 text-center" title="Present">✓</th>
                   <th className="p-2">Worker</th>
                   <th className="p-2">Section</th>
@@ -194,7 +194,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
                   return (
                     <tr key={k} className={`border-t ${l.present ? "" : "opacity-60 bg-surface-2/50"}`}>
                       <td className="p-2 text-center">
-                        <input type="checkbox" checked={l.present} disabled={ro} aria-label={`${w.name} present`} onChange={(e) => set(k, { present: e.target.checked })} className="accent-[var(--brand,#1b7a43)] scale-125" />
+                        <input type="checkbox" checked={l.present} disabled={ro} aria-label={`${w.name} present`} onChange={(e) => set(k, { present: e.target.checked })} className="scale-125" />
                       </td>
                       <td className="p-2 whitespace-nowrap">
                         <span className="inline-flex items-baseline gap-2">

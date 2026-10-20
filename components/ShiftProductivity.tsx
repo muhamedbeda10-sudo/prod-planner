@@ -40,7 +40,7 @@ export function ShiftProductivity({ data, dayISO, filterLabel, isAdmin }: { data
         <span className="text-[11px] text-muted">
           man-hours from this log against the pieces the daily log recorded on the same days · efficiency = std-hours the output is worth ÷ man-hours worked
         </span>
-        {isAdmin && <Link href="/admin/standard-times" className="ms-auto text-xs text-accent font-semibold hover:underline">Calibrate the standard times →</Link>}
+        {isAdmin && <Link href="/admin/standard-times" className="ms-auto text-xs text-brand-ink font-semibold hover:underline">Calibrate the standard times →</Link>}
       </div>
       {n === 0 ? (
         <div className="rounded-xl border border-dashed"><EmptyState compact icon={<Activity size={18} aria-hidden />} title="Nothing recorded yet" hint="The rates appear from the first saved day." /></div>

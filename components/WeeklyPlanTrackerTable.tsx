@@ -267,7 +267,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
                   key={o.value}
                   type="button"
                   onClick={() => toggleStage(o.value)}
-                  className={`rounded-md border px-2 py-1 text-xs font-bold transition-colors ${on ? "bg-brand text-white border-brand" : "bg-surface text-muted hover:text-foreground hover:border-brand/60"}`}
+                  className={`rounded-md border px-2 py-1 text-xs font-bold transition-colors ${on ? "bg-brand-fill text-white border-brand-fill" : "bg-surface text-muted hover:text-foreground hover:border-brand/60"}`}
                   title={`${o.label} — pick one or more departments to narrow the columns`}
                 >
                   {o.short}
@@ -287,7 +287,7 @@ export function WeeklyPlanTrackerTable({ data, capacityCard, canRecord = false, 
 
       {data.planNo === null ? (
         <div className="bg-surface border rounded-xl p-8 text-center text-muted">
-          No weekly plans have been imported yet. Import one from the <Link href="/import" className="text-brand font-bold underline">Import</Link> page.
+          No weekly plans have been imported yet. Import one from the <Link href="/import" className="text-brand-ink font-bold underline">Import</Link> page.
         </div>
       ) : days.length === 0 ? (
         <div className="bg-surface border rounded-xl p-8 text-center text-muted">Nothing matches these filters.</div>
@@ -318,7 +318,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
         <th
           rowSpan={day.rows.length + 2}
           // vertical text needs no width — a narrow rail buys the table columns
-          className={`p-0 w-7 align-middle border-r-2 border-border-strong ${day.isToday ? "bg-brand text-white" : "bg-brand-light/40"}`}
+          className={`p-0 w-7 align-middle border-r-2 border-border-strong ${day.isToday ? "bg-brand-fill text-white" : "bg-brand-light/40"}`}
           // a delivery date that passed unfinished reads red — colour alone, no extra text
           style={late && !day.isToday ? { background: "var(--bad-bg)", color: "var(--bad-fg)" } : undefined}
         >
@@ -326,14 +326,14 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
             {day.label}
           </div>
         </th>
-        <th rowSpan={2} className="px-2 py-1 text-left bg-brand text-white align-middle">Project (BOM)</th>
-        <th rowSpan={2} className="px-2 py-1 text-left bg-brand text-white align-middle" title="Sales order item">SOI</th>
-        <th rowSpan={2} className="px-2 py-1 bg-brand text-white align-middle" title={`How much of this day's promise ${metricLabel.label} has covered`}>
+        <th rowSpan={2} className="px-2 py-1 text-left bg-brand-fill text-white align-middle">Project (BOM)</th>
+        <th rowSpan={2} className="px-2 py-1 text-left bg-brand-fill text-white align-middle" title="Sales order item">SOI</th>
+        <th rowSpan={2} className="px-2 py-1 bg-brand-fill text-white align-middle" title={`How much of this day's promise ${metricLabel.label} has covered`}>
           Done
-          <span className="block text-[9px] font-normal opacity-75">{metricLabel.short}</span>
+          <span className="block text-[9px] font-normal">{metricLabel.short}</span>
         </th>
         {day.items.map((it) => (
-          <th key={it} colSpan={1 + stages.length} className="px-2 py-1 bg-brand text-white border-l border-border-strong">{it}</th>
+          <th key={it} colSpan={1 + stages.length} className="px-2 py-1 bg-brand-fill text-white border-l border-border-strong">{it}</th>
         ))}
       </tr>
       {/* each sub-header sits over the column it labels — one <th> each, never a
@@ -362,7 +362,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
                   monthly view opens, and the trip back returns to THIS week */}
               <Link
                 href={traceHref({ bom: r.bom }, planNo, "weekly")}
-                className="text-accent hover:underline"
+                className="text-brand-ink hover:underline"
                 title={`${r.soi ? r.soi + " · " : ""}Open the full trace for ${r.bom}`}
               >
                 {r.bom}
@@ -423,7 +423,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
                       </span>
                     )}
                     {c.osp > 0 && (
-                      <span className="block text-[9px] font-bold text-accent" title={`${c.osp} pcs of this day's promise are outsourced (OSP) — made outside, not by our departments`}>
+                      <span className="block text-[9px] font-bold text-brand-ink" title={`${c.osp} pcs of this day's promise are outsourced (OSP) — made outside, not by our departments`}>
                         OSP {c.osp}
                       </span>
                     )}

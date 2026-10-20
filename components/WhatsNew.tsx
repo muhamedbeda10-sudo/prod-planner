@@ -38,7 +38,7 @@ export function useWhatsNew(seen: string | null): { count: number; show: () => v
             </div>
             <div className="text-xs text-muted mt-0.5">{e.where}</div>
             <p className="text-sm mt-1">{e.body}</p>
-            {e.href && <Link href={e.href} onClick={() => setOpen(false)} className="text-xs font-semibold text-accent hover:underline">Open →</Link>}
+            {e.href && <Link href={e.href} onClick={() => setOpen(false)} className="text-xs font-semibold text-brand-ink hover:underline">Open →</Link>}
           </li>
         ))}
       </ol>

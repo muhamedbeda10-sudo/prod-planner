@@ -126,7 +126,7 @@ export function NotesPanelRow({
                             type="button"
                             onClick={() => { setEditingNote(n.id); setEditText(n.text); setNoteMsg(""); }}
                             disabled={pending}
-                            className="text-accent hover:underline"
+                            className="text-brand-ink hover:underline"
                           >
                             ✏️ Edit
                           </button>
@@ -135,7 +135,7 @@ export function NotesPanelRow({
                           type="button"
                           onClick={() => toggleNoteStatus(n.id, n.status === "open" ? "resolved" : "open")}
                           disabled={pending}
-                          className="text-accent hover:underline"
+                          className="text-brand-ink hover:underline"
                         >
                           {n.status === "open" ? "Mark resolved" : "Reopen"}
                         </button>
@@ -167,7 +167,7 @@ export function NotesPanelRow({
                           type="button"
                           onClick={() => saveNoteEdit(n.id)}
                           disabled={pending}
-                          className="rounded-md px-3 py-1 font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+                          className="rounded-md px-3 py-1 font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50"
                         >
                           {pending ? "Saving…" : "Save"}
                         </button>
@@ -214,7 +214,7 @@ export function NotesPanelRow({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-md px-4 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50 transition-colors whitespace-nowrap"
+                  className="rounded-md px-4 py-1.5 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50 transition-colors whitespace-nowrap"
                 >
                   {pending ? "Saving…" : "Save note"}
                 </button>

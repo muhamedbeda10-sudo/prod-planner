@@ -253,7 +253,7 @@ function RowFacts({ r, isNew, onOpen, opening }: { r: ReadyRow; isNew: boolean; 
       <span className="tabnum font-bold">× {r.qty}</span>
       {SOURCE_LABEL[r.source] && <span className="pill pill-muted text-[10px]">{SOURCE_LABEL[r.source]}</span>}
       {isNew && <span className="pill pill-warn text-[10px]">new</span>}
-      <button type="button" disabled={opening} onClick={(e) => { e.stopPropagation(); onOpen(r.id); }} className="text-xs text-accent font-semibold hover:underline">
+      <button type="button" disabled={opening} onClick={(e) => { e.stopPropagation(); onOpen(r.id); }} className="text-xs text-brand-ink font-semibold hover:underline">
         {opening ? "opening…" : "📦 material"}
       </button>
     </div>

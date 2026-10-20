@@ -1023,7 +1023,7 @@ export function MasterTrackerTable({
                         </>
                       );
                       const chevron = <ChevronRight size={14} className={`shrink-0 text-muted transition-transform duration-150 ${open ? "rotate-90" : ""}`} aria-hidden />;
-                      const bomLink = <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-accent hover:underline whitespace-nowrap">{gBom}</Link>;
+                      const bomLink = <Link href={`/trace?bom=${encodeURIComponent(gBom)}`} onClick={(e) => e.stopPropagation()} className="text-brand-ink hover:underline whitespace-nowrap">{gBom}</Link>;
                       return (
                         <>
                           {moOn && (
@@ -1612,8 +1612,8 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                   );
                   const holdEdge = r.hold.onHold ? { boxShadow: "inset 3px 0 0 var(--warn-fg)" } : {};
                   const tip = `${r.mo} · ${r.bom}${r.soi ? ` · SOI ${r.soi}` : ""}${r.customer ? ` · ${r.customer}` : ""}`;
-                  const moLink = <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-accent hover:underline whitespace-nowrap">{r.mo}</Link>;
-                  const bomLink = <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-accent hover:underline whitespace-nowrap">{r.bom}</Link>;
+                  const moLink = <Link href={`/trace?mo=${encodeURIComponent(r.mo)}`} className="text-brand-ink hover:underline whitespace-nowrap">{r.mo}</Link>;
+                  const bomLink = <Link href={`/trace?bom=${encodeURIComponent(r.bom)}`} className="text-brand-ink hover:underline whitespace-nowrap">{r.bom}</Link>;
                   return (
                     <>
                       {moOn && (
@@ -1856,7 +1856,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                           </label>
                         );
                       })}
-                      <button type="submit" disabled={pending} className="rounded-md px-3 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50">
+                      <button type="submit" disabled={pending} className="rounded-md px-3 py-1 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50">
                         Send
                       </button>
                       <button type="button" onClick={() => setOpenPush(null)} className="text-muted text-xs hover:underline">Cancel</button>
@@ -1878,12 +1878,12 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                         const needed = c.eligible && !c.excluded;
                         return (
                           <label key={it} className="inline-flex items-center gap-1.5 font-semibold cursor-pointer" title={it === "AR" ? "Arrester — the KVA rule adds it on 100–300 kVA; tick or untick it here regardless" : it === "MB" ? "Mono Box — the rating rule adds it when the secondary lists two voltages; tick or untick it here regardless" : undefined}>
-                            <input type="checkbox" name="req" value={it} defaultChecked={needed} className="accent-[var(--brand)]" />
+                            <input type="checkbox" name="req" value={it} defaultChecked={needed} />
                             {it}
                           </label>
                         );
                       })}
-                      <button type="submit" disabled={pending} className="rounded-md px-3 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50">
+                      <button type="submit" disabled={pending} className="rounded-md px-3 py-1 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50">
                         Save
                       </button>
                       <button type="button" onClick={() => setOpenConfig(null)} className="text-muted text-xs hover:underline">Cancel</button>

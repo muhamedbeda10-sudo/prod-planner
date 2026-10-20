@@ -373,7 +373,7 @@ function TaskPane({ id, onBack, onChanged, onOpen }: { id: number; onBack?: () =
                     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send("note");
                   }}
                 />
-                <button type="button" className="icon-btn icon-btn-md text-brand" onClick={() => send("note")} disabled={pending || (!text.trim() && picked.files.length === 0)} title="Send update (Ctrl+Enter)" aria-label="Send update">
+                <button type="button" className="icon-btn icon-btn-md text-brand-ink" onClick={() => send("note")} disabled={pending || (!text.trim() && picked.files.length === 0)} title="Send update (Ctrl+Enter)" aria-label="Send update">
                   {pending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 </button>
               </div>
@@ -474,7 +474,7 @@ function TaskForm({ onDone, onCancel }: { onDone: (ids: number[]) => void; onCan
           {names.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2">
               {names.map((n, i) => (
-                <span key={n} className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-light)] text-brand text-xs font-semibold ps-2.5 pe-1 py-0.5">
+                <span key={n} className="inline-flex items-center gap-1 rounded-full bg-brand-light text-brand-ink text-xs font-semibold ps-2.5 pe-1 py-0.5">
                   {n}
                   <button type="button" className="p-0.5 rounded-full hover:bg-black/10" onClick={() => toggle(chosen[i])} aria-label={`Remove ${n}`}><X size={11} /></button>
                 </span>
