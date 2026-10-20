@@ -509,8 +509,10 @@ export async function readManualJob(id: number): Promise<ManualJobSnapshot | nul
 }
 
 /** Put a manual job back exactly as snapshotted — deleted since, it comes back
- *  under its own number, with its parts, on the machines it was queued on. */
-export async function restoreManualJob(s: ManualJobSnapshot): Promise<RestoreResult> {
+ *  under its own number, with its parts, on the machines it was queued on.
+ *  The undo of a ✓ also takes that ✓'s row off the sheet cut log
+ *  (`cutLogId`), so the log never shows sheets the job no longer counts. */
+export async function restoreManualJob(s: ManualJobSnapshot, opts: { cutLogId?: number } = {}): Promise<RestoreResult> {
   const guard = await requirePerm(deptPermKey(s.dept));
   if (guard.error) return { ok: false, error: guard.error };
   try {
@@ -527,7 +529,11 @@ export async function restoreManualJob(s: ManualJobSnapshot): Promise<RestoreRes
         const part = { jobId: s.id, bom: p.bom, item: p.item, part: p.part, pcs: p.pcs };
         await tx.manualJobPart.upsert({ where: { id: p.id }, create: { id: p.id, ...part }, update: part });
       }
-      await putQueueRowsBack(tx, s.dept, { bom: MANUAL_BOM, mo: manualMo(s.id), item: MANUAL_ITEM }, s.queue);
+      const key = { bom: MANUAL_BOM, mo: manualMo(s.id), item: MANUAL_ITEM };
+      await putQueueRowsBack(tx, s.dept, key, s.queue);
+      // only this job's own row — never another job's under a wrong number;
+      // a row gone already leaves the log and the job agreeing all the same
+      if (opts.cutLogId !== undefined) await tx.sheetCutLog.deleteMany({ where: { id: opts.cutLogId, dept: s.dept, ...key } });
     });
   } catch (e) {
     return { ok: false, error: `The job could not be put back: ${e instanceof Error ? e.message : String(e)}` };

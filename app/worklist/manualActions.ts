@@ -19,6 +19,9 @@ export interface ManualActionResult {
   error?: string;
   /** The job made (createManualJob). */
   id?: number;
+  /** The sheet cut log row a sheet job's ✓ wrote (recordManualDone) — what
+   *  its undo takes off again. */
+  cutLogId?: number;
 }
 
 const DEPTS = ["Cut", "Welding", "Painting", "ShotBlast"] as const;
@@ -222,20 +225,21 @@ export async function recordManualDone(fd: FormData): Promise<ManualActionResult
   const finished = doneQty >= roundSheets(job.qty);
   const key = { dept: job.dept, bom: MANUAL_BOM, mo: manualMo(job.id), item: MANUAL_ITEM };
   const by = guard.user?.name ?? null;
-  const stale = await prisma.$transaction(async (tx) => {
+  const done = await prisma.$transaction(async (tx) => {
     // only on the count this ✓ was checked against: two ticks at once on the
     // same job must not both land on what was left before either
     const moved = await tx.manualJob.updateMany({ where: { id, doneQty: job.doneQty }, data: { doneQty, doneAt: finished ? new Date() : null, ...(machineId ? { machineId } : {}) } });
-    if (moved.count === 0) return true;
-    // kept for good: the sheets each machine cut, at what thickness
-    if (job.bySheet) {
-      await tx.sheetCutLog.create({
-        data: { date, ...key, sheet: jobSheetKey(job), thicknessMm: job.thicknessMm, machineId, qty, createdBy: by },
-      });
-    }
+    if (moved.count === 0) return null;
+    // kept for good: the sheets each machine cut, at what thickness — taken
+    // off only by this ✓'s own undo
+    const cutLogId = job.bySheet
+      ? (await tx.sheetCutLog.create({
+          data: { date, ...key, sheet: jobSheetKey(job), thicknessMm: job.thicknessMm, machineId, qty, createdBy: by },
+        })).id
+      : undefined;
     if (finished) {
       await tx.worklistMachine.deleteMany({ where: key });
-      return false;
+      return { cutLogId };
     }
     // a fixed share on this machine shrinks by what it finished
     if (machineId) {
@@ -246,11 +250,11 @@ export async function recordManualDone(fd: FormData): Promise<ManualActionResult
         else await tx.worklistMachine.delete({ where: { id: row.id } });
       }
     }
-    return false;
+    return { cutLogId };
   });
-  if (stale) return { ok: false, error: "Someone recorded on this job a moment ago — reload the page and check what is left." };
+  if (!done) return { ok: false, error: "Someone recorded on this job a moment ago — reload the page and check what is left." };
   revalidate();
-  return { ok: true };
+  return done.cutLogId === undefined ? { ok: true } : { ok: true, cutLogId: done.cutLogId };
 }
 
 /** Open a finished job again (more pieces — a sheet job's sheets — are

@@ -30,7 +30,7 @@ import type { User } from "@prisma/client";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import type { ManualJobSnapshot } from "@/lib/server/rowSnapshots";
 import {
-  createManualJobTool, deleteManualJobTool, getJobsTool, recordManualJobDoneTool, reopenManualJobTool, updateManualJobTool,
+  createManualJobTool, deleteManualJobTool, getJobsTool, recordManualJobDoneTool, reopenManualJobTool, restoreManualJobTool, updateManualJobTool,
 } from "@/lib/server/ai/tools/cutFloor";
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
 
@@ -89,6 +89,7 @@ beforeEach(() => {
     jobBoms: ["B1", "B2"],
   };
   for (const f of Object.values(h.jobs)) f.mockResolvedValue({ ok: true });
+  h.snaps.restoreManualJob.mockResolvedValue({ ok: true });
   h.jobs.createManualJob.mockResolvedValue({ ok: true, id: 13 });
   h.snaps.readManualJob.mockResolvedValue(sheetJob());
 });
@@ -172,9 +173,33 @@ describe("record_manual_job_done — sheets cut", () => {
       summary: expect.stringContaining("6 sheet(s) of job #12"),
       changes: [{ before: "4 of 10 sheets cut", after: "10 of 10 sheets cut" }],
     });
+    // the ✓ wrote row 77 on the sheet cut log: its undo takes that row off too
+    h.jobs.recordManualDone.mockResolvedValue({ ok: true, cutLogId: 77 });
     const out = await recordManualJobDoneTool.execute({ id: 12, qty: 2, machine: "B4-10" }, ctx);
     expect(fd(h.jobs.recordManualDone)).toEqual({ id: "12", qty: "2", date: "2026-10-12", machineId: "1" });
-    expect(out).toEqual({ ok: true, message: "2 sheet(s) of job #12 are recorded.", undo: { tool: "restore_manual_job", input: { id: 12, state: JSON.stringify(sheetJob()) } } });
+    const undo = { tool: "restore_manual_job", input: { id: 12, state: JSON.stringify(sheetJob()), cutLogId: 77 } };
+    expect(out).toEqual({ ok: true, message: "2 sheet(s) of job #12 are recorded.", undo });
+    expect(await restoreManualJobTool.describe(parsed(restoreManualJobTool, undo.input), ctx)).toMatchObject({
+      summary: 'Put job #12 "3 mm MS 1250×2500" back as it was — the ✓ comes off the sheet cut log too.',
+    });
+    await restoreManualJobTool.execute(parsed(restoreManualJobTool, undo.input), ctx);
+    expect(h.snaps.restoreManualJob).toHaveBeenCalledWith(sheetJob(), { cutLogId: 77 });
+  });
+
+  it("a job in pieces writes no sheet cut log row, so its undo takes none off", async () => {
+    h.perms.add("welding.edit");
+    h.snaps.readManualJob.mockResolvedValue(pieceJob());
+    const out = await recordManualJobDoneTool.execute({ id: 20, qty: 3 }, ctx);
+    expect(out).toMatchObject({ ok: true, undo: { tool: "restore_manual_job", input: { id: 20, state: JSON.stringify(pieceJob()) } } });
+    expect((out as { undo: { input: object } }).undo.input).not.toHaveProperty("cutLogId");
+    await restoreManualJobTool.execute(parsed(restoreManualJobTool, { id: 20, state: JSON.stringify(pieceJob()) }), ctx);
+    expect(h.snaps.restoreManualJob).toHaveBeenCalledWith(pieceJob(), { cutLogId: undefined });
+  });
+
+  it("the undo takes only a log row's number", () => {
+    const state = JSON.stringify(sheetJob());
+    for (const cutLogId of [0, -3, 1.5, "row 77"]) expect(checkToolInput(restoreManualJobTool, { id: 12, state, cutLogId })).toMatchObject({ ok: false });
+    expect(checkToolInput(restoreManualJobTool, { id: 12, state, cutLogId: 77 })).toEqual({ ok: true, input: { id: 12, state, cutLogId: 77 } });
   });
 
   it("a fabrication job left from the pieces days is kept as it was", async () => {
