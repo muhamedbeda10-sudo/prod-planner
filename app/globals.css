@@ -36,8 +36,10 @@
   --brand-ink: #157045;
   --accent-gray: #717171; /* ATC secondary gray */
   --surface-3: #e9edeb; /* group rows, pressed controls */
-  /* the app bar: ATC green on the light theme, near-black on the dark one */
-  --nav-bg: #1a8150;
+  /* the app bar: ATC green on the light theme, near-black on the dark one.
+     A step deeper than --brand so even the resting tabs (85% white) read
+     at 4.9:1; app/layout.tsx repeats it as the browser's theme colour */
+  --nav-bg: #157045;
   --nav-border: #136041;
   --nav-active: #ffffff;
   /* informational status (in progress, notes) — the fifth of the status set */
@@ -379,7 +381,9 @@ main table thead th.on-tint {
 main table tbody tr {
   transition: background-color 0.12s ease;
 }
-main table tbody tr:hover {
+/* only rows with data cells light up: a row of only <th> is a header inside
+   the body (the weekly plan's per-day heads) and keeps its own colour */
+main table tbody tr:has(> td):hover {
   background-color: var(--row-hover);
 }
 main table tbody td {
@@ -542,7 +546,7 @@ main textarea:focus {
   font-size: 13px;
   font-weight: 550;
   letter-spacing: 0.005em;
-  color: rgb(255 255 255 / 0.66);
+  color: rgb(255 255 255 / 0.85);
   transition: color 0.15s ease, background-color 0.15s ease;
 }
 /* The strip has to hold every tab on a laptop: below 1800px the tabs tighten
@@ -572,12 +576,12 @@ main textarea:focus {
 }
 .nav-tab:hover {
   color: #fff;
-  background: rgb(255 255 255 / 0.06);
+  background: rgb(255 255 255 / 0.10); /* resting tabs are 85% white: the wash carries the hover */
 }
 .nav-tab-active,
 .nav-tab-active:hover {
   color: #fff;
-  background: rgb(255 255 255 / 0.08);
+  background: rgb(255 255 255 / 0.12);
 }
 .nav-tab-active::after,
 .nav-tab-active:hover::after {

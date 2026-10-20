@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-20-nav-tabs-contrast",
+    dateISO: "2026-10-20",
+    title: "The tabs in the green top bar are easier to read",
+    where: "The top bar · Plan Tracker → weekly plan · Worklist → Fabrication → weekly plan",
+    href: "/tracker?view=weekly",
+    body: "In the light theme the top bar is a slightly deeper green and the tabs you are not on are brighter, so every tab reads clearly, not only the open one. In the weekly plan, the green heading row of each day (Req, Cut, Weld …) no longer turns pale when the mouse passes over it.",
+  },
+  {
     id: "2026-10-20-green-contrast",
     dateISO: "2026-10-20",
     title: "Green buttons and green text are easier to read",
