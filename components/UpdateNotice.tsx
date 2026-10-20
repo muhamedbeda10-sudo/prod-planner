@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { CornerCard } from "@/components/primitives";
@@ -13,6 +13,8 @@ import { VERSION_CHECK_MS, newerVersion, updateStep } from "@/lib/domain/appVers
 
 const MINE = process.env.APP_VERSION ?? "";
 const TICK_MS = 60_000;
+/** Coming back to the page asks again at most this often. */
+const SHOW_CHECK_MS = 60_000;
 const RELOADED_KEY = "app-update-reloaded";
 const INPUT_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
 /** Boxes people type into — a tick box, a button or a picked date holds nothing half done. */
@@ -27,44 +29,65 @@ function sinceReload(): number | null {
   }
 }
 
-function reload() {
+/** Load the page — this one, or the one a link opens — in the new version. */
+function reload(href?: string) {
   try {
     sessionStorage.setItem(RELOADED_KEY, String(Date.now()));
   } catch {
     /* private mode — the reload still happens */
   }
-  window.location.reload();
+  if (href) window.location.assign(href);
+  else window.location.reload();
 }
 
 const shown = (el: Element) => el.getClientRects().length > 0;
 const typedIn = (el: Element) =>
   !(el as HTMLInputElement).readOnly && ((el as HTMLInputElement).value ?? (el as HTMLElement).textContent ?? "").trim() !== "";
 
-/** Something may be half done: a modal open, the box in use holding text, a
- *  draft in a text area (the assistant's, chat, notes) or a form being filled.
- *  A search box sitting empty, or a corner card, holds nothing. */
+/** Something may be half done: a modal open, or text in the box in use, in a
+ *  text area (the assistant's, chat, notes) or in a form. A search box sitting
+ *  empty, or a corner card, holds nothing. */
 function busy(): boolean {
   if ([...document.querySelectorAll('[aria-modal="true"], dialog[open]')].some(shown)) return true;
-  const a = document.activeElement;
-  if (a?.matches(TYPED) && typedIn(a)) return true;
-  if ([...document.querySelectorAll("textarea")].some((t) => shown(t) && typedIn(t))) return true;
-  return [...document.querySelectorAll("form")].some((f) => shown(f) && [...f.querySelectorAll(TYPED)].some(typedIn));
+  return [...document.querySelectorAll(TYPED)].some(
+    (el) => shown(el) && typedIn(el) && (el === document.activeElement || el.matches("textarea") || el.closest("form") !== null),
+  );
+}
+
+/** A plain click on a link to another page of the app — where it goes. */
+function appLink(e: MouseEvent): string | null {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return null;
+  const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+  if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return null;
+  const url = new URL(a.href, window.location.href);
+  if (url.origin !== window.location.origin || url.pathname === window.location.pathname) return null;
+  return url.href;
 }
 
 export function UpdateNotice() {
-  const [ready, setReady] = useState(false);
-  const [later, setLater] = useState(false);
-  const pending = useRef<string | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+  const [putOff, setPutOff] = useState<string | null>(null);
+  const pendingRef = useRef<string | null>(null);
   const lastInput = useRef(0);
   const pathname = usePathname();
   const shownPath = useRef(pathname);
 
-  // the next page someone opens comes up in the new version
+  /** Reload now if a new version waits and nothing would be lost. */
+  const reloadIfSafe = useCallback((navigated: boolean, href?: string): boolean => {
+    if (!pendingRef.current) return false;
+    const idleMs = navigated ? 0 : Date.now() - lastInput.current;
+    if (updateStep({ navigated, idleMs, busy: busy(), sinceReloadMs: sinceReload() }) !== "reload") return false;
+    reload(href);
+    return true;
+  }, []);
+
+  // a page opened some other way (a button, the assistant) still comes up in
+  // the new version — links are caught before they open, below
   useEffect(() => {
     if (shownPath.current === pathname) return;
     shownPath.current = pathname;
-    if (pending.current && updateStep({ navigated: true, idleMs: 0, busy: busy(), sinceReloadMs: sinceReload() }) === "reload") reload();
-  }, [pathname]);
+    reloadIfSafe(true);
+  }, [pathname, reloadIfSafe]);
 
   useEffect(() => {
     if (!MINE) return;
@@ -72,63 +95,66 @@ export function UpdateNotice() {
     let lastCheck = Date.now();
     lastInput.current = Date.now();
 
-    // a minimised app counts as left alone: coming back to it after a while
-    // brings the new version up at once
-    const decide = () => {
-      if (!pending.current) return;
-      if (updateStep({ navigated: false, idleMs: Date.now() - lastInput.current, busy: busy(), sinceReloadMs: sinceReload() }) === "reload") reload();
-    };
     const check = async () => {
       lastCheck = Date.now();
       try {
         const r = await fetch("/api/version", { cache: "no-store" });
         const v = newerVersion(MINE, await r.json().catch(() => null));
         if (stop || !v) return;
-        // a version newer still than one put off with Later is offered again
-        if (v !== pending.current) setLater(false);
-        pending.current = v;
-        setReady(true);
-        decide();
+        pendingRef.current = v;
+        setPending(v);
+        // a minimised app counts as left alone: coming back to it after a
+        // while brings the new version up at once
+        reloadIfSafe(false);
       } catch {
         /* offline for a moment — the next tick asks again */
       }
     };
+    const visible = () => document.visibilityState === "visible";
     const tick = () => {
+      if (!visible()) return;
       if (Date.now() - lastCheck >= VERSION_CHECK_MS) void check();
-      else decide();
+      else reloadIfSafe(false);
     };
     const onShow = () => {
-      if (document.visibilityState === "visible") void check();
+      if (visible() && Date.now() - lastCheck >= SHOW_CHECK_MS) void check();
     };
     const onInput = () => { lastInput.current = Date.now(); };
+    // with a new version waiting, the next page opens straight in it — one load, not two
+    const onClick = (e: MouseEvent) => {
+      const href = pendingRef.current ? appLink(e) : null;
+      if (href && reloadIfSafe(true, href)) e.preventDefault();
+    };
 
     const t = window.setInterval(tick, TICK_MS);
     document.addEventListener("visibilitychange", onShow);
     window.addEventListener("online", onShow);
+    document.addEventListener("click", onClick, true);
     for (const e of INPUT_EVENTS) window.addEventListener(e, onInput, { passive: true });
     return () => {
       stop = true;
       window.clearInterval(t);
       document.removeEventListener("visibilitychange", onShow);
       window.removeEventListener("online", onShow);
+      document.removeEventListener("click", onClick, true);
       for (const e of INPUT_EVENTS) window.removeEventListener(e, onInput);
     };
-  }, []);
+  }, [reloadIfSafe]);
 
-  if (!ready || later) return null;
+  // a version newer still than the one put off with Later is offered again
+  if (!pending || pending === putOff) return null;
   return (
     // under the bar (z-30) like the assistant's button: the phone drawer and
     // the assistant's and inbox panels cover it
     <CornerCard
       role="status"
-      live
       icon={RefreshCw}
       title="A new version of the app is ready"
       className="z-[29]"
       actions={
         <>
-          <button type="button" className="btn btn-sm btn-primary" onClick={reload}>Reload now</button>
-          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setLater(true)}>Later</button>
+          <button type="button" className="btn btn-sm btn-primary" onClick={() => reload()}>Reload now</button>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setPutOff(pending)}>Later</button>
         </>
       }
     >
