@@ -257,7 +257,10 @@ async function workableJob(id: number, ctx: ToolCtx): Promise<ManualJobSnapshot 
   return job;
 }
 
-const jobUndo = (before: ManualJobSnapshot) => ({ tool: "restore_manual_job", input: { id: before.id, state: JSON.stringify(before) } });
+/** The undo: the job put back as it was — a ✓'s own row off the sheet cut
+ *  log too (`cutLogId`). */
+const jobUndo = (before: ManualJobSnapshot, cutLogId?: number) =>
+  ({ tool: "restore_manual_job", input: { id: before.id, state: JSON.stringify(before), ...(cutLogId !== undefined ? { cutLogId } : {}) } });
 
 interface JobDoneInput {
   id: number;
@@ -270,7 +273,7 @@ export const recordManualJobDoneTool: WriteTool<JobDoneInput> = {
   kind: "write",
   name: "record_manual_job_done",
   title: "Record a job's sheets cut (or pieces done)",
-  description: "✓ on a job's line on a machine: on Cut the SHEETS of the sheet job cut on that machine (they go on the sheet cut log with the machine and the day); elsewhere the pieces finished. They go on the job, never in the plan's ledger — the parts' cut pieces are recorded on the weekly plan with record_output. Give the machine that cut them: a share of the job fixed on it shrinks by them. When every sheet is cut the job leaves every machine and stays in the list as finished. Undo puts the job back as it was.",
+  description: "✓ on a job's line on a machine: on Cut the SHEETS of the sheet job cut on that machine (they go on the sheet cut log with the machine and the day); elsewhere the pieces finished. They go on the job, never in the plan's ledger — the parts' cut pieces are recorded on the weekly plan with record_output. Give the machine that cut them: a share of the job fixed on it shrinks by them. When every sheet is cut the job leaves every machine and stays in the list as finished. Undo puts the job back as it was and takes the ✓ off the sheet cut log.",
   area: "machines",
   risk: "low",
   schema: {
@@ -313,7 +316,7 @@ export const recordManualJobDoneTool: WriteTool<JobDoneInput> = {
     const m = i.machine ? await jobMachine(before.dept, i.machine) : null;
     if (m && "error" in m) return { ok: false, error: m.error };
     const r = await recordManualDone(formOf({ id: i.id, qty: i.qty, date: i.date ?? ctx.todayISO, ...(m ? { machineId: m.id } : {}) }));
-    return r.ok ? { ok: true, message: `${i.qty} ${unitOf(before)} of job #${i.id} are recorded.`, undo: jobUndo(before) } : { ok: false, error: r.error ?? "Not recorded." };
+    return r.ok ? { ok: true, message: `${i.qty} ${unitOf(before)} of job #${i.id} are recorded.`, undo: jobUndo(before, r.cutLogId) } : { ok: false, error: r.error ?? "Not recorded." };
   },
 };
 
@@ -501,11 +504,13 @@ export const deleteManualJobTool: WriteTool<{ id: number }> = {
 interface RestoreInput {
   id: number;
   state: string;
+  /** The sheet cut log row the undone ✓ wrote. */
+  cutLogId?: number;
 }
 
 const RESTORE_SCHEMA = {
   type: "object",
-  properties: { id: { type: "integer", minimum: 1 }, state: { type: "string", minLength: 2, maxLength: 200_000 } },
+  properties: { id: { type: "integer", minimum: 1 }, state: { type: "string", minLength: 2, maxLength: 200_000 }, cutLogId: { type: "integer", minimum: 1 } },
   required: ["id", "state"],
   additionalProperties: false,
 } as const;
@@ -514,18 +519,18 @@ const jobState = (i: RestoreInput) =>
   stateOf<ManualJobSnapshot>(i.state, i.id, (v) =>
     typeof v.dept === "string" && typeof v.title === "string" && Number.isFinite(v.qty) && Number.isFinite(v.doneQty) && typeof v.bySheet === "boolean" && Array.isArray(v.parts) && Array.isArray(v.queue));
 
-/** The undo of a job's change or deletion — never offered to the model. */
+/** The undo of a job's change, ✓ or deletion — never offered to the model. */
 export const restoreManualJobTool: WriteTool<RestoreInput> = {
   kind: "write",
   name: "restore_manual_job",
   internal: true,
   title: "Put a job back",
-  description: "Put a job back exactly as it was (the undo of a change to it or its deletion).",
+  description: "Put a job back exactly as it was (the undo of a change to it, a ✓ on it — its row on the sheet cut log taken off too — or its deletion).",
   area: "machines",
   risk: "low",
   schema: RESTORE_SCHEMA,
   parse(r) {
-    const i = { id: r.id as number, state: r.state as string };
+    const i: RestoreInput = { id: r.id as number, state: r.state as string, ...(r.cutLogId !== undefined ? { cutLogId: r.cutLogId as number } : {}) };
     const s = jobState(i);
     return typeof s === "string" ? s : i;
   },
@@ -537,7 +542,7 @@ export const restoreManualJobTool: WriteTool<RestoreInput> = {
     const name = jobName(then);
     return {
       title: `Put "${name}" back`,
-      summary: `Put job #${i.id} "${name}" back as it was${now ? "" : " — it was deleted"}.`,
+      summary: `Put job #${i.id} "${name}" back as it was${now ? "" : " — it was deleted"}${i.cutLogId !== undefined ? " — the ✓ comes off the sheet cut log too" : ""}.`,
       changes: [{ label: name, before: now ? progress(now) : "deleted", after: progress(then) }],
       snapshot: now,
     };
@@ -545,7 +550,7 @@ export const restoreManualJobTool: WriteTool<RestoreInput> = {
   async execute(i) {
     const then = jobState(i);
     if (typeof then === "string") return { ok: false, error: then };
-    const r = await restoreManualJob(then);
+    const r = await restoreManualJob(then, { cutLogId: i.cutLogId });
     return r.ok ? { ok: true, message: `Job #${i.id} is back as it was.` } : { ok: false, error: r.error };
   },
 };

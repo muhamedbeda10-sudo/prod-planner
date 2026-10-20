@@ -63,6 +63,7 @@ beforeEach(() => {
   h.prisma.machine.findUnique.mockResolvedValue({ id: 1, dept: "Cut", active: true, code: "L1" });
   h.tx.manualJob.create.mockResolvedValue({ id: 31 });
   h.tx.manualJob.updateMany.mockResolvedValue({ count: 1 });
+  h.tx.sheetCutLog.create.mockResolvedValue({ id: 501 });
   h.tx.worklistMachine.aggregate.mockResolvedValue({ _max: { rank: 2 } });
   h.tx.worklistMachine.count.mockResolvedValue(1);
 });
@@ -99,6 +100,12 @@ describe("updateManualJob — a job in pieces", () => {
     expect(await updateManualJob(form({ qty: "25" }))).toEqual({ ok: true });
     expect(h.tx.manualJob.update.mock.calls[0][0].data.doneAt).toBeNull();
     expect(h.tx.worklistMachine.deleteMany).toHaveBeenCalledWith({ where: KEY });
+  });
+
+  it("✓ counts the pieces on the job, never on the sheet cut log", async () => {
+    expect(await recordManualDone(form({ qty: "3" }))).toStrictEqual({ ok: true });
+    expect(h.tx.manualJob.updateMany).toHaveBeenCalledWith({ where: { id: 12, doneQty: 5 }, data: { doneQty: 8, doneAt: null } });
+    expect(h.tx.sheetCutLog.create).not.toHaveBeenCalled();
   });
 
   it("is the department's worklist key's, and a job gone is said so", async () => {
@@ -159,12 +166,12 @@ describe("sheet jobs on the fabrication board", () => {
     expect(await recordManualDone(form({ id: "30", qty: "1.25" }, {}))).toEqual({ ok: false, error: "Only 1.2 sheet(s) left on this job." });
     expect(await recordManualDone(form({ id: "30", qty: "0.125" }, {}))).toEqual({ ok: false, error: expect.stringContaining("two decimals at most") });
     h.tx.worklistMachine.findFirst.mockResolvedValue({ id: 99, qty: 1.2 });
-    expect(await recordManualDone(form({ id: "30", qty: "0.5", machineId: "1" }, {}))).toEqual({ ok: true });
+    expect(await recordManualDone(form({ id: "30", qty: "0.5", machineId: "1" }, {}))).toEqual({ ok: true, cutLogId: 501 });
     expect(h.tx.manualJob.updateMany).toHaveBeenCalledWith({ where: { id: 30, doneQty: 1.1 }, data: { doneQty: 1.6, doneAt: null, machineId: 1 } });
     expect(h.tx.sheetCutLog.create.mock.calls[0][0].data.qty).toBe(0.5);
     expect(h.tx.worklistMachine.update).toHaveBeenCalledWith({ where: { id: 99 }, data: { qty: 0.7 } });
     // the last 1.2 finishes it
-    expect(await recordManualDone(form({ id: "30", qty: "1.2", machineId: "1" }, {}))).toEqual({ ok: true });
+    expect(await recordManualDone(form({ id: "30", qty: "1.2", machineId: "1" }, {}))).toEqual({ ok: true, cutLogId: 501 });
     expect(h.tx.manualJob.updateMany.mock.calls[1][0].data).toEqual({ doneQty: 2.3, doneAt: expect.any(Date), machineId: 1 });
     expect(h.tx.worklistMachine.deleteMany).toHaveBeenCalledWith({ where: SHEET_KEY });
   });
@@ -194,7 +201,8 @@ describe("sheet jobs on the fabrication board", () => {
     h.prisma.manualJob.findUnique.mockResolvedValue({ ...SHEET_JOB });
     expect(await recordManualDone(form({ id: "30", qty: "7" }, {}))).toEqual({ ok: false, error: "Only 6 sheet(s) left on this job." });
     h.tx.worklistMachine.findFirst.mockResolvedValue({ id: 99, qty: 4 });
-    expect(await recordManualDone(form({ id: "30", qty: "3", machineId: "1", date: "2026-10-12" }, {}))).toEqual({ ok: true });
+    // the ✓'s row on the log comes back, for its undo to take off again
+    expect(await recordManualDone(form({ id: "30", qty: "3", machineId: "1", date: "2026-10-12" }, {}))).toEqual({ ok: true, cutLogId: 501 });
     expect(h.tx.manualJob.updateMany).toHaveBeenCalledWith({ where: { id: 30, doneQty: 4 }, data: { doneQty: 7, doneAt: null, machineId: 1 } });
     expect(h.tx.sheetCutLog.create).toHaveBeenCalledWith({
       data: { date: new Date("2026-10-12T00:00:00.000Z"), ...SHEET_KEY, sheet: "3|Steel|1250*2500", thicknessMm: 3, machineId: 1, qty: 3, createdBy: "Sara" },
@@ -204,8 +212,9 @@ describe("sheet jobs on the fabrication board", () => {
     vi.clearAllMocks();
     h.guard.mockResolvedValue({ user: { name: "Sara" } });
     h.tx.manualJob.updateMany.mockResolvedValue({ count: 1 });
+    h.tx.sheetCutLog.create.mockResolvedValue({ id: 502 });
     h.prisma.manualJob.findUnique.mockResolvedValue({ ...SHEET_JOB });
-    expect(await recordManualDone(form({ id: "30", qty: "6", machineId: "1" }, {}))).toEqual({ ok: true });
+    expect(await recordManualDone(form({ id: "30", qty: "6", machineId: "1" }, {}))).toEqual({ ok: true, cutLogId: 502 });
     expect(h.tx.manualJob.updateMany.mock.calls[0][0].data.doneAt).toBeInstanceOf(Date);
     expect(h.tx.worklistMachine.deleteMany).toHaveBeenCalledWith({ where: SHEET_KEY });
   });

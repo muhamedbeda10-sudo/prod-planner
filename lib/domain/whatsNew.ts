@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-20-assistant-undo-tick-log",
+    dateISO: "2026-10-20",
+    title: "Undoing the assistant's ✓ takes it off the sheet cut log too",
+    where: "The assistant · Worklist → Fabrication → sheet jobs",
+    body: "When you undo a ✓ the assistant recorded on a sheet job, the sheets go back on the job and that ✓ also comes off the sheet cut log, so the sheets each machine cut no longer count a ✓ the job does not. A ✓ the assistant recorded before this change stays on the log even when it is undone.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-20-done-box-job-total",
     dateISO: "2026-10-20",
     title: "✓ on a machine card shows the whole job: cut so far, of how many",
