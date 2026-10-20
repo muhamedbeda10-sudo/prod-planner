@@ -23,6 +23,14 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "You no longer have to close and reopen the app to get a new version. When one is out, a card in the bottom-left corner says so, with a Reload now button. If you do not press it, the app updates by itself when you open another page, or when nobody has touched it for 10 minutes (a minimised app too). It waits while a dialog is open or a box or form has something typed in it; then only Reload now updates it.",
   },
   {
+    id: "2026-10-20-assistant-undo-tick-log",
+    dateISO: "2026-10-20",
+    title: "Undoing the assistant's ✓ takes it off the sheet cut log too",
+    where: "The assistant · Worklist → Fabrication → sheet jobs",
+    body: "When you undo a ✓ the assistant recorded on a sheet job, the sheets go back on the job and that ✓ also comes off the sheet cut log, so the sheets each machine cut no longer count a ✓ the job does not. A ✓ the assistant recorded before this change stays on the log even when it is undone.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-20-sheet-count-repair",
     dateISO: "2026-10-20",
     title: "Sheet jobs that showed 2e-323 sheets show their real count again",
