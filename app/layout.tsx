@@ -42,7 +42,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: "#1c2220" },
-    { media: "(prefers-color-scheme: light)", color: "#1a8150" },
+    { media: "(prefers-color-scheme: light)", color: "#157045" }, // = --nav-bg
   ],
 };
 
