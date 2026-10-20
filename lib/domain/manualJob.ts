@@ -56,6 +56,30 @@ export function typedCount(raw: string): number {
  *  whole pieces. */
 export const isSheetJobLine = (dept: string, bom: string) => bom === MANUAL_BOM && jobsBySheet(dept);
 
+/** One ✓ on a sheet job, off the sheet cut log: when, on which machine, how
+ *  many sheets and who recorded it. */
+export interface SheetCutView {
+  id: number;
+  /** When it was recorded. */
+  atISO: string;
+  /** The machine it was cut on; null when it is gone or was not given. */
+  machine: string | null;
+  qty: number;
+  by: string | null;
+}
+
+/** Where a board line's sheets are now: each machine's share still to cut
+ *  (running or waiting) and what waits on no machine. */
+export function jobShares(
+  mo: string,
+  cards: readonly { machine: { code: string }; queue: readonly { mo: string; remaining: number; running: boolean }[] }[],
+  unassigned: readonly { mo: string; remaining: number }[],
+): { shares: { machine: string; left: number; running: boolean }[]; waiting: number } {
+  const shares = cards.flatMap((c) => c.queue.filter((q) => q.mo === mo).map((q) => ({ machine: c.machine.code, left: q.remaining, running: q.running })));
+  const waiting = roundSheets(unassigned.filter((u) => u.mo === mo).reduce((n, u) => n + u.remaining, 0));
+  return { shares, waiting };
+}
+
 /** The most parts one sheet job carries. */
 export const MAX_JOB_PARTS = 40;
 

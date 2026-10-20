@@ -15,6 +15,7 @@ import { AddManualJob, ManualJobsList } from "@/components/ManualJobs";
 import { recordManualDone } from "@/app/worklist/manualActions";
 import { SHEET_COUNT_RULE, isSheetCount, jobsBySheet, manualIdOf, roundSheets, typedCount, type ManualJobView } from "@/lib/domain/manualJob";
 import { SheetJobLine } from "@/components/SheetJobLine";
+import { SheetJobDetails } from "@/components/SheetJobDetails";
 import { factoryDayISO } from "@/lib/domain/dates";
 
 // 🏭 The machine load board on a department's worklist — one card per
@@ -276,7 +277,11 @@ function Card({ c, board, canEdit }: { c: MachineCard; board: MachineBoardData; 
   /** The line itself: a sheet job's sheet and parts, a manual job's words, or a plan line's BOM and item. */
   const what = (q: MachineQueueLine, strong: boolean) => {
     const job = sheetJobOf(jobs, q.mo);
-    if (job) return <SheetJobLine job={job} left={q.remaining} />;
+    if (job) return (
+      <SheetJobDetails job={job} board={board} canEdit={canEdit} done={canEdit ? (onErr) => <DoneBox board={board} q={q} machineId={c.machine.id} onErr={onErr} /> : undefined}>
+        <SheetJobLine job={job} left={q.remaining} />
+      </SheetJobDetails>
+    );
     return (
       <>
         {manualIdOf(q.mo) !== null ? <span className={strong ? "font-extrabold" : "font-bold"}>{q.description}</span> : <>
@@ -451,7 +456,7 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
     const job = sheetJobOf(jobs, u.mo);
     return (
       <li key={unassignedKey(u)} className="flex items-center gap-2 text-xs min-w-0">
-        {job ? <SheetJobLine job={job} left={u.remaining} /> : <>
+        {job ? <SheetJobDetails job={job} board={board} canEdit={canEdit}><SheetJobLine job={job} left={u.remaining} /></SheetJobDetails> : <>
         {manualIdOf(u.mo) !== null ? <span className="font-bold truncate">{u.description}</span> : <>
         <span className="font-bold truncate">{u.bom}</span>
         <span className="font-semibold shrink-0">{u.item}</span></>}

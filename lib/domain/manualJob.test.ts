@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MANUAL_BOM, MAX_JOB_PARTS, editedJobQty, isSheetCount, isSheetJobLine, jobName, jobSheetKey, jobsBySheet, manualDescription, manualMaterial, partNameSuggestions, partRowsOf, partsText, readJobParts, roundSheets, typedCount, withPlanSpelling } from "./manualJob";
+import { MANUAL_BOM, MAX_JOB_PARTS, editedJobQty, isSheetCount, isSheetJobLine, jobName, jobShares, jobSheetKey, jobsBySheet, manualDescription, manualMaterial, partNameSuggestions, partRowsOf, partsText, readJobParts, roundSheets, typedCount, withPlanSpelling } from "./manualJob";
 
 describe("editedJobQty — a new count of pieces wanted on a manual job", () => {
   it("is refused below what is done, or when it is not whole pieces above 0", () => {
@@ -180,5 +180,25 @@ describe("withPlanSpelling — any project, written the plan's way where the pla
       ],
       notInPlan: ["Spare-7"],
     });
+  });
+});
+
+describe("jobShares — where a sheet job's sheets are", () => {
+  const card = (code: string, queue: { mo: string; remaining: number; running: boolean }[]) => ({ machine: { code }, queue });
+  it("lists each machine's share of the job, running or waiting, and what waits on no machine", () => {
+    const cards = [
+      card("B4-10", [{ mo: "MANUAL-7", remaining: 2.5, running: true }, { mo: "MANUAL-8", remaining: 4, running: false }]),
+      card("B4-09", [{ mo: "MANUAL-7", remaining: 1, running: false }]),
+      card("B4-05", []),
+    ];
+    const unassigned = [{ mo: "MANUAL-7", remaining: 0.1 }, { mo: "MANUAL-7", remaining: 0.2 }, { mo: "MANUAL-8", remaining: 9 }];
+    expect(jobShares("MANUAL-7", cards, unassigned)).toEqual({
+      shares: [{ machine: "B4-10", left: 2.5, running: true }, { machine: "B4-09", left: 1, running: false }],
+      waiting: 0.3,
+    });
+  });
+
+  it("is empty for a job on no machine and waiting nowhere", () => {
+    expect(jobShares("MANUAL-9", [card("B4-10", [{ mo: "MANUAL-7", remaining: 1, running: false }])], [])).toEqual({ shares: [], waiting: 0 });
   });
 });

@@ -228,7 +228,7 @@ function SheetJobFields({ dept, job, doneQty = 0, machines, machineCode, boms, p
 
 /** One job's form: add (with a machine), change one (`edit`), or copy one
  *  into a new job (`copy`, with a machine — its done count starts at 0). */
-function JobForm({ dept, mode, job, machines, boms, partNames, onDone, onCancel, onBusy }: {
+export function JobForm({ dept, mode, job, machines, boms, partNames, onDone, onCancel, onBusy }: {
   dept: string;
   mode: "add" | "edit" | "copy";
   job?: ManualJobView;

@@ -16,6 +16,7 @@ import { mayScheduleLine, type BayAccess } from "@/lib/domain/permissions";
 import type { MachineBoardData } from "@/lib/server/machineBoard";
 import { assignLineMachine, moveLineRank, setLineQty, setLineRunning, unassignLineMachine } from "@/app/worklist/machineActions";
 import { DoneBox, MachinePick } from "@/components/MachineBoard";
+import { SheetJobDetails } from "@/components/SheetJobDetails";
 import { jobSheetLabel, manualIdOf } from "@/lib/domain/manualJob";
 import { LineSheet } from "@/components/LineMaterialChips";
 import { createPartition, saveFloorLayout } from "@/app/simulate/floorActions";
@@ -571,7 +572,12 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                     <td className="p-1 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</td>
                     <td className="p-1 font-extrabold ltr whitespace-nowrap">{sheetJobOf(board, q.mo) ? `Job #${manualIdOf(q.mo)}` : q.bom}</td>
                     <td className="p-1 text-center font-bold">
-                      {sheetJobOf(board, q.mo) ? jobSheetLabel(sheetJobOf(board, q.mo)!) : q.item}
+                      {sheetJobOf(board, q.mo) ? (
+                        <SheetJobDetails job={sheetJobOf(board, q.mo)!} board={board} canEdit={mayScheduleLine(canAssign, q.item)}
+                          done={mayScheduleLine(canAssign, q.item) ? (onErr) => <DoneBox board={board} q={q} machineId={m.id} onErr={onErr} /> : undefined}>
+                          {jobSheetLabel(sheetJobOf(board, q.mo)!)}
+                        </SheetJobDetails>
+                      ) : q.item}
                       <LineSheet sheet={q.sheet} className="block text-[10px] font-semibold text-muted whitespace-nowrap" />
                     </td>
                     <td className="p-1 text-center tabnum font-extrabold whitespace-nowrap">
