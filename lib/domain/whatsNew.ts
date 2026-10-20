@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-20-sheet-count-repair",
+    dateISO: "2026-10-20",
+    title: "Sheet jobs that showed 2e-323 sheets show their real count again",
+    where: "Worklist → Fabrication → 📋 Jobs · machine cards",
+    body: "A few sheet jobs added on 19 October showed their sheets as 2e-323 instead of a number, and left the machine cards. Their real count is put back (4 sheets showed as 2e-323), so they are back on their machines. Check them in 📋 Jobs against the nesting; ✎ Edit changes a count that is still not right.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-20-sheet-job-details",
     dateISO: "2026-10-20",
     title: "Click a sheet job on a machine to see all of it",
