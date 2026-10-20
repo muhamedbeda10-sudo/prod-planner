@@ -184,21 +184,26 @@ describe("withPlanSpelling — any project, written the plan's way where the pla
 });
 
 describe("jobShares — where a sheet job's sheets are", () => {
-  const card = (code: string, queue: { mo: string; remaining: number; running: boolean }[]) => ({ machine: { code }, queue });
-  it("lists each machine's share of the job, running or waiting, and what waits on no machine", () => {
+  const line = (mo: string, remaining: number, running = false, bom = MANUAL_BOM) => ({ bom, mo, remaining, running });
+  const card = (code: string, queue: ReturnType<typeof line>[]) => ({ machine: { code }, queue });
+  it("lists each machine's share of the job, running or waiting, and what waits on no machine — to the hundredth", () => {
     const cards = [
-      card("B4-10", [{ mo: "MANUAL-7", remaining: 2.5, running: true }, { mo: "MANUAL-8", remaining: 4, running: false }]),
-      card("B4-09", [{ mo: "MANUAL-7", remaining: 1, running: false }]),
+      card("B4-10", [line("MANUAL-7", 2.5, true), line("MANUAL-8", 4)]),
+      card("B4-09", [line("MANUAL-7", 1.1 + 0.2)]),
       card("B4-05", []),
     ];
-    const unassigned = [{ mo: "MANUAL-7", remaining: 0.1 }, { mo: "MANUAL-7", remaining: 0.2 }, { mo: "MANUAL-8", remaining: 9 }];
+    const unassigned = [line("MANUAL-7", 0.1), line("MANUAL-7", 0.2), line("MANUAL-8", 9)];
     expect(jobShares("MANUAL-7", cards, unassigned)).toEqual({
-      shares: [{ machine: "B4-10", left: 2.5, running: true }, { machine: "B4-09", left: 1, running: false }],
+      shares: [{ machine: "B4-10", left: 2.5, running: true }, { machine: "B4-09", left: 1.3, running: false }],
       waiting: 0.3,
     });
   });
 
+  it("counts only the job's own lines, not a plan line that happens to carry the same MO", () => {
+    expect(jobShares("MANUAL-7", [card("B4-10", [line("MANUAL-7", 5, false, "B-1")])], [line("MANUAL-7", 3, false, "B-1")])).toEqual({ shares: [], waiting: 0 });
+  });
+
   it("is empty for a job on no machine and waiting nowhere", () => {
-    expect(jobShares("MANUAL-9", [card("B4-10", [{ mo: "MANUAL-7", remaining: 1, running: false }])], [])).toEqual({ shares: [], waiting: 0 });
+    expect(jobShares("MANUAL-9", [card("B4-10", [line("MANUAL-7", 1)])], [])).toEqual({ shares: [], waiting: 0 });
   });
 });

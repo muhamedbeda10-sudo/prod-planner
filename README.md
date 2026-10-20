@@ -75,7 +75,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
    machines carry those jobs alone (and the panels' punching on the shared punches): no transformer plan line
    goes on them by itself, and the nest runs are gone. A job is shared between machines in sheets (the box beside
    the picker, ✂ on a card), and closed on each machine **in sheets cut** (✓), each ✓ on the sheet cut log with
-   the machine and the day; the job leaves the board when its last sheet is cut. Closing sheets records no
+   the machine and the day; the job leaves the board when its last sheet is cut. A click on a sheet job's sheet — on
+   a machine card, in the list of what waits on no machine, or on the Floor — opens its details: sheets for the
+   job, cut and left, which machines hold the rest, every project's part on the sheets, the note and every ✓
+   (when, which machine, how many, by whom), with ✓, ✎ Edit and ⧉ Duplicate beside them. Closing sheets records no
    pieces in the plan — those are recorded on the weekly plan below. A machine's load there reads in sheets.
 5. **Daily report + Dashboard** (`/report`, `/` — views of the Plan Tracker tab; the report covers
    ONE day or any period through its From→To picker, with the capacity its efficiency is measured

@@ -226,9 +226,19 @@ function SheetJobFields({ dept, job, doneQty = 0, machines, machineCode, boms, p
   );
 }
 
+/** The popup heading over a job's ✎ Edit or ⧉ Duplicate form — the same
+ *  from the jobs list and from a job's details. */
+export function jobFormHeading(mode: "edit" | "copy", job: ManualJobView, dept: string): { title: string; sub: string } {
+  if (mode === "copy") return { title: `⧉ Duplicate “${jobName(job)}”`, sub: `A new job with the same details — nothing of it ${job.bySheet ? "cut" : "done"} yet. Pick the ${machineWord(dept)} and change what differs.` };
+  return {
+    title: `✎ Edit “${jobName(job)}”`,
+    sub: `${job.doneQty} of ${job.qty} ${job.bySheet ? "sheets cut" : "done"} · added ${formatDate(job.createdAtISO.slice(0, 10))}${job.createdBy ? ` by ${job.createdBy}` : ""}`,
+  };
+}
+
 /** One job's form: add (with a machine), change one (`edit`), or copy one
  *  into a new job (`copy`, with a machine — its done count starts at 0). */
-export function JobForm({ dept, mode, job, machines, boms, partNames, onDone, onCancel, onBusy }: {
+export function JobForm({ dept, mode, job, machines, boms, partNames, onDone, onCancel, onBusy, backLabel = "Back to the list" }: {
   dept: string;
   mode: "add" | "edit" | "copy";
   job?: ManualJobView;
@@ -241,6 +251,8 @@ export function JobForm({ dept, mode, job, machines, boms, partNames, onDone, on
   onCancel: () => void;
   /** A save in flight — the popup around it stays until it answers. */
   onBusy: (busy: boolean) => void;
+  /** What the way back off an edit or a copy says — where it goes. */
+  backLabel?: string;
 }) {
   const a = useRun();
   // a form that goes away (saved, back to the list) holds the popup no longer
@@ -273,7 +285,7 @@ export function JobForm({ dept, mode, job, machines, boms, partNames, onDone, on
       {jobsBySheet(dept) ? <SheetJobFields {...fields} boms={boms} partNames={partNames} /> : <JobFields {...fields} />}
       {a.err && <p className="sm:col-span-2 text-sm font-semibold text-bad-fg">{a.err}</p>}
       <div className="sm:col-span-2 flex justify-end gap-2">
-        <button type="button" className="btn btn-sm btn-ghost" onClick={onCancel} disabled={a.pending}>{mode === "add" ? "Cancel" : "Back to the list"}</button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={onCancel} disabled={a.pending}>{mode === "add" ? "Cancel" : backLabel}</button>
         <button type="submit" className="btn btn-sm btn-primary" disabled={a.pending}>{a.pending ? "Saving…" : editing ? "Save changes" : mode === "copy" ? "Save the copy" : "Save job"}</button>
       </div>
     </form>
@@ -350,11 +362,9 @@ export function ManualJobsList({ dept, jobs, machines, canEdit, boms = [] }: { d
       </button>
       {open && (
         <Modal
-          title={form ? (form.mode === "edit" ? `✎ Edit “${jobName(form.job)}”` : `⧉ Duplicate “${jobName(form.job)}”`) : sheets ? "📋 Jobs" : "📋 Manual jobs"}
+          title={form ? jobFormHeading(form.mode, form.job, dept).title : sheets ? "📋 Jobs" : "📋 Manual jobs"}
           sub={form
-            ? form.mode === "edit"
-              ? `${form.job.doneQty} of ${form.job.qty} ${form.job.bySheet ? "sheets cut" : "done"} · added ${formatDate(form.job.createdAtISO.slice(0, 10))}${form.job.createdBy ? ` by ${form.job.createdBy}` : ""}`
-              : `A new job with the same details — nothing of it done yet. Pick the ${word} and change what differs.`
+            ? jobFormHeading(form.mode, form.job, dept).sub
             : sheets ? `The sheet jobs put on the ${machineWord(dept, true)} — kept here, cut or not.` : `Jobs put on a ${word} from outside the plan — kept here, done or not.`}
           // Escape on a job's form goes back to the list, not out of it
           onClose={() => (form ? setForm(null) : setOpen(false))}

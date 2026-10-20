@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Modal } from "@/components/Modal";
 import { TableEmpty, TableFrame, Th } from "@/components/DataTable";
-import { JobForm } from "@/components/ManualJobs";
+import { JobForm, jobFormHeading } from "@/components/ManualJobs";
 import { jobSheetLabel, jobShares, manualMo, partNameSuggestions, roundSheets, type ManualJobView } from "@/lib/domain/manualJob";
 import { ITEM_NAME } from "@/lib/domain/constants";
 import { formatDate, formatDateTime } from "@/lib/domain/format";
@@ -16,7 +16,7 @@ import type { MachineBoardData } from "@/lib/server/machineBoard";
 // recorded on it — with ✓, ✎ Edit and ⧉ Duplicate for whoever may change
 // the board.
 
-const HEAD = "text-[11px] font-bold uppercase tracking-wide text-muted";
+const HEAD = "field-label !mb-0";
 
 export function SheetJobDetails({ job, board, canEdit, done, children }: {
   job: ManualJobView;
@@ -39,7 +39,7 @@ export function SheetJobDetails({ job, board, canEdit, done, children }: {
       <button
         type="button"
         className="min-w-0 rounded-md text-start cursor-pointer hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-brand"
-        onClick={() => setOpen(true)}
+        onClick={() => { setErr(""); setOpen(true); }}
         aria-haspopup="dialog"
         title={`Job #${job.id} — its parts, what is cut, where and by whom`}
       >
@@ -48,9 +48,8 @@ export function SheetJobDetails({ job, board, canEdit, done, children }: {
       {/* outside the button: a click inside the popup must not bubble to it */}
       {open && (
         <Modal
-          title={form === "edit" ? `✎ Edit “${label}”` : form === "copy" ? `⧉ Duplicate “${label}”` : `🧾 ${label} · #${job.id}`}
-          sub={form === "copy"
-            ? `A new job with the same details — nothing of it cut yet. Pick the ${machineWord(board.dept)} and change what differs.`
+          title={form ? jobFormHeading(form, job, board.dept).title : `🧾 ${label} · #${job.id}`}
+          sub={form ? jobFormHeading(form, job, board.dept).sub
             : [job.title.trim(), `added ${formatDate(job.createdAtISO.slice(0, 10))}${job.createdBy ? ` by ${job.createdBy}` : ""}`].filter(Boolean).join(" · ")}
           // Escape on the form goes back to the details, not out of them
           onClose={() => (form ? setForm(null) : close())}
@@ -62,7 +61,7 @@ export function SheetJobDetails({ job, board, canEdit, done, children }: {
           {form ? (
             <JobForm
               key={`${form}-${job.id}`} dept={board.dept} mode={form} job={job} machines={board.machines} boms={board.jobBoms}
-              partNames={partNameSuggestions(board.manualJobs)} onDone={() => setForm(null)} onCancel={() => setForm(null)} onBusy={setBusy}
+              partNames={partNameSuggestions(board.manualJobs)} onDone={() => setForm(null)} onCancel={() => setForm(null)} onBusy={setBusy} backLabel="Back to the details"
             />
           ) : (
             <JobDetails job={job} board={board}>
@@ -93,17 +92,22 @@ function JobDetails({ job, board, children }: { job: ManualJobView; board: Machi
   const left = roundSheets(job.qty - job.doneQty);
   const pct = job.qty > 0 ? Math.min(100, Math.round((job.doneQty / job.qty) * 100)) : 0;
   const cuts = board.jobCuts[job.id] ?? [];
+  // the log and the job's count can differ: sheets ticked before the log was
+  // kept are in the count only; a ✓ undone afterwards stays in the log only.
+  // Say so rather than show a history that does not add up
+  const logged = roundSheets(cuts.reduce((n, c) => n + c.qty, 0));
+  const unlogged = roundSheets(job.doneQty - logged);
   return (
     <div className="space-y-4">
       <div className="kpi-strip kpi-strip-tight">
         <div className="kpi">
           <div className="kpi-label">Sheets</div>
-          <div className="kpi-value">{job.qty}</div>
+          <div className="kpi-value">{roundSheets(job.qty)}</div>
           <div className="kpi-sub">whole job</div>
         </div>
         <div className="kpi">
           <div className="kpi-label">Cut</div>
-          <div className="kpi-value">{job.doneQty}</div>
+          <div className="kpi-value">{roundSheets(job.doneQty)}</div>
           <div className="kpi-meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Share of the job cut"><span style={{ width: `${pct}%` }} /></div>
         </div>
         <div className="kpi">
@@ -163,9 +167,9 @@ function JobDetails({ job, board, children }: { job: ManualJobView; board: Machi
 
       <section className="space-y-1.5">
         <div className={HEAD}>Cut so far</div>
-        {cuts.length === 0 ? (
+        {cuts.length === 0 && unlogged <= 0 ? (
           <TableEmpty title="Nothing cut yet" hint={`✓ on the job's line records the sheets a ${word} cut.`} />
-        ) : (
+        ) : cuts.length > 0 && (
           <TableFrame>
             <table className="w-full border-collapse">
               <thead>
@@ -176,13 +180,23 @@ function JobDetails({ job, board, children }: { job: ManualJobView; board: Machi
                   <tr key={c.id}>
                     <td className="px-2 tabnum whitespace-nowrap">{formatDateTime(c.atISO)}</td>
                     <td className="px-2 font-bold ltr whitespace-nowrap">{c.machine ?? "—"}</td>
-                    <td className="px-2 text-end tabnum font-bold">{c.qty}</td>
+                    <td className="px-2 text-end tabnum font-bold">{roundSheets(c.qty)}</td>
                     <td className="px-2 text-muted">{c.by ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </TableFrame>
+        )}
+        {unlogged > 0 && (
+          <p className="text-[13px] text-muted">
+            {cuts.length > 0 ? `Besides these, ${unlogged}` : `${unlogged}`} sheet(s) were recorded as cut with no entry here — ticked before each ✓ was kept with its machine and time.
+          </p>
+        )}
+        {unlogged < 0 && (
+          <p className="text-[13px] text-warn-fg">
+            These add up to {logged} sheet(s), but the job counts {roundSheets(job.doneQty)} cut — a ✓ was undone since.
+          </p>
         )}
       </section>
 

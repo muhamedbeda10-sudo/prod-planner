@@ -72,11 +72,12 @@ export interface SheetCutView {
  *  (running or waiting) and what waits on no machine. */
 export function jobShares(
   mo: string,
-  cards: readonly { machine: { code: string }; queue: readonly { mo: string; remaining: number; running: boolean }[] }[],
-  unassigned: readonly { mo: string; remaining: number }[],
+  cards: readonly { machine: { code: string }; queue: readonly { bom: string; mo: string; remaining: number; running: boolean }[] }[],
+  unassigned: readonly { bom: string; mo: string; remaining: number }[],
 ): { shares: { machine: string; left: number; running: boolean }[]; waiting: number } {
-  const shares = cards.flatMap((c) => c.queue.filter((q) => q.mo === mo).map((q) => ({ machine: c.machine.code, left: q.remaining, running: q.running })));
-  const waiting = roundSheets(unassigned.filter((u) => u.mo === mo).reduce((n, u) => n + u.remaining, 0));
+  const ours = (l: { bom: string; mo: string }) => l.bom === MANUAL_BOM && l.mo === mo;
+  const shares = cards.flatMap((c) => c.queue.filter(ours).map((q) => ({ machine: c.machine.code, left: roundSheets(q.remaining), running: q.running })));
+  const waiting = roundSheets(unassigned.filter(ours).reduce((n, u) => n + u.remaining, 0));
   return { shares, waiting };
 }
 

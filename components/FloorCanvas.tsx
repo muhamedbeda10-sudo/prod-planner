@@ -127,10 +127,11 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
     return () => clearTimeout(t);
   }, [layout, dirty, canDraw, dept]);
 
-  // Escape closes the open block
+  // Escape closes the open block — unless a popup opened over it (a sheet
+  // job's details) is the one to close
   useEffect(() => {
     if (!opened) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpened(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && document.querySelectorAll('[role="dialog"][aria-modal="true"]').length <= 1) setOpened(null); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [opened]);
@@ -368,7 +369,11 @@ function UnassignedList({ lines, board, canAssign, target }: { lines: MachineBoa
     <ul className="grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
       {lines.map((u) => (
         <li key={unassignedKey(u)} className="flex items-center gap-2 text-xs min-w-0">
-          {manualIdOf(u.mo) !== null ? <span className="font-bold truncate">{u.description}</span> : <>
+          {sheetJobOf(board, u.mo) ? (
+            <SheetJobDetails job={sheetJobOf(board, u.mo)!} board={board} canEdit={mayScheduleLine(canAssign, u.item)}>
+              <span className="font-bold truncate">{u.description}</span>
+            </SheetJobDetails>
+          ) : manualIdOf(u.mo) !== null ? <span className="font-bold truncate">{u.description}</span> : <>
           <span className="font-bold truncate">{u.bom}</span>
           <span className="font-semibold shrink-0">{u.item}</span></>}
           <span className="tabnum font-bold shrink-0">{isSheetJob(board, u.mo) ? `${u.remaining} sh` : `×${u.remaining}`}</span>
@@ -567,21 +572,21 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((q) => (
+                {rows.map((q) => { const job = sheetJobOf(board, q.mo); return (
                   <tr key={`${q.key}#${q.sheet}`} className={`border-t ${q.running ? "bg-brand-light/40" : ""}`}>
                     <td className="p-1 text-center font-extrabold tabnum text-muted">{q.running ? "▶" : card.waiting.indexOf(q) + 1}</td>
-                    <td className="p-1 font-extrabold ltr whitespace-nowrap">{sheetJobOf(board, q.mo) ? `Job #${manualIdOf(q.mo)}` : q.bom}</td>
+                    <td className="p-1 font-extrabold ltr whitespace-nowrap">{job ? `Job #${job.id}` : q.bom}</td>
                     <td className="p-1 text-center font-bold">
-                      {sheetJobOf(board, q.mo) ? (
-                        <SheetJobDetails job={sheetJobOf(board, q.mo)!} board={board} canEdit={mayScheduleLine(canAssign, q.item)}
+                      {job ? (
+                        <SheetJobDetails job={job} board={board} canEdit={mayScheduleLine(canAssign, q.item)}
                           done={mayScheduleLine(canAssign, q.item) ? (onErr) => <DoneBox board={board} q={q} machineId={m.id} onErr={onErr} /> : undefined}>
-                          {jobSheetLabel(sheetJobOf(board, q.mo)!)}
+                          {jobSheetLabel(job)}
                         </SheetJobDetails>
                       ) : q.item}
                       <LineSheet sheet={q.sheet} className="block text-[10px] font-semibold text-muted whitespace-nowrap" />
                     </td>
                     <td className="p-1 text-center tabnum font-extrabold whitespace-nowrap">
-                      {q.remaining}{isSheetJob(board, q.mo) ? " sh" : ""}
+                      {q.remaining}{job ? " sh" : ""}
                       {q.split && <span className="block text-[10px] font-semibold text-muted" title="Part of the line — the rest is on another machine or waits">of {q.lineRemaining}</span>}
                     </td>
                     <td className="p-1 text-center tabnum">{q.hours !== null ? q.hours : "—"}</td>
@@ -601,7 +606,7 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
                       </td>
                     )}
                   </tr>
-                ))}
+                ); })}
               </tbody>
             </table>
             {card.queue.length > rows.length && (

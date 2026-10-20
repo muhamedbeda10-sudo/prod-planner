@@ -73,7 +73,7 @@ export interface MachineBoardData extends MachineBoard {
    *  typed against on the fabrication board; empty on the other boards. */
   jobBoms: string[];
   /** Job id → every ✓ recorded on that open sheet job, newest first — its
-   *  details' cut history. Absent = nothing cut yet. */
+   *  details' cut history. No key = nothing cut yet, or the job is finished. */
   jobCuts: Record<number, SheetCutView[]>;
 }
 
