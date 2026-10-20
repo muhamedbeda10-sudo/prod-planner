@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The version this build is, baked into the pages and the server alike: an
+  // open page compares its own with what /api/version answers to pick up a
+  // new deployment (components/UpdateNotice.tsx). Empty outside Vercel — a
+  // local build never asks.
+  env: {
+    APP_VERSION: process.env.VERCEL_DEPLOYMENT_ID || process.env.VERCEL_GIT_COMMIT_SHA || "",
+  },
   // What each server function carries. Prisma ships a query engine for every
   // database and runtime (MySQL, SQL Server, SQLite, CockroachDB, edge, wasm)
   // and the file tracer copies all of them into every one of the ~35 page

@@ -126,3 +126,32 @@ export function Note({ msg, className = "" }: { msg: { ok: boolean; text: string
   if (!msg) return null;
   return <p className={`text-xs font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"} ${className}`} role="status">{msg.text}</p>;
 }
+
+/** A card in the bottom-left corner that offers one thing — desktop alerts, a
+ *  new version — with an icon, a line, what it means and its buttons. The
+ *  caller picks the layer (`z-*`) and says what the card is to a screen reader:
+ *  a dialog that asks, or a status (read out as it appears). */
+export function CornerCard({ icon, title, children, actions, className = "", role, label }: {
+  icon: IconProp;
+  title: ReactNode;
+  children: ReactNode;
+  actions: ReactNode;
+  className?: string;
+  role: "dialog" | "status";
+  label?: string;
+}) {
+  return (
+    <div
+      role={role}
+      aria-label={label}
+      className={`fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] left-4 flex w-[min(360px,calc(100vw-2rem))] gap-3 rounded-xl border border-l-4 border-l-brand bg-surface p-3 text-foreground shadow-xl animate-[navdrop_0.2s_ease-out] motion-reduce:animate-none no-print ${className}`}
+    >
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand text-white">{drawIcon(icon, 17)}</span>
+      <div className="min-w-0 flex-1">
+        <b className="text-sm">{title}</b>
+        <p className="mt-0.5 text-sm text-muted">{children}</p>
+        <div className="mt-2 flex items-center gap-2">{actions}</div>
+      </div>
+    </div>
+  );
+}
