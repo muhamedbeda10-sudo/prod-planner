@@ -19,9 +19,9 @@ import { getLvWorklist } from "./lvWorklist";
 import { LV_ITEM, lvStageAt } from "@/lib/domain/lv";
 import { sheetKeyOf, type LineMaterial } from "@/lib/domain/machineMaterial";
 import { getLinesMaterial, type OrderRef } from "./machineMaterial";
-import { getManualJobs, manualBoardLines, openJobBoms } from "./manualJobs";
+import { getJobCuts, getManualJobs, manualBoardLines, openJobBoms } from "./manualJobs";
 import { getActiveMachineRules } from "./machineRules";
-import { MANUAL_BOM, MANUAL_ITEM, manualIdOf, manualMaterial, manualMo, type ManualJobView } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, manualIdOf, manualMaterial, manualMo, type ManualJobView, type SheetCutView } from "@/lib/domain/manualJob";
 
 // The machine load board for one worklist: the page hands over the open
 // lines it already computed (every section of the sheet), this prices them
@@ -72,6 +72,9 @@ export interface MachineBoardData extends MachineBoard {
   /** The open transformer projects (BOMs) — what a sheet job's parts are
    *  typed against on the fabrication board; empty on the other boards. */
   jobBoms: string[];
+  /** Job id → every ✓ recorded on that open sheet job, newest first — its
+   *  details' cut history. No key = nothing cut yet, or the job is finished. */
+  jobCuts: Record<number, SheetCutView[]>;
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -160,8 +163,11 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
 }
 
 export async function getMachineBoard(dept: BoardDept, planLines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
-  const [ctx, settings, holidays, manualJobs, jobBoms] = await Promise.all([
-    loadBoardContext(dept, dayISO), getSettings(), loadHolidays(), getManualJobs(dept), dept === "Cut" ? openJobBoms() : Promise.resolve([] as string[]),
+  const [ctx, settings, holidays, [manualJobs, jobCuts], jobBoms] = await Promise.all([
+    loadBoardContext(dept, dayISO), getSettings(), loadHolidays(),
+    // the sheet jobs' cut history follows the jobs, alongside the rest
+    getManualJobs(dept).then(async (jobs) => [jobs, await getJobCuts(dept, jobs)] as const),
+    dept === "Cut" ? openJobBoms() : Promise.resolve([] as string[]),
   ]);
   // the jobs typed in from outside the plan queue beside the plan's lines —
   // on the fabrication machines, beside the panels' punching only: a
@@ -232,7 +238,7 @@ export async function getMachineBoard(dept: BoardDept, planLines: readonly Board
     };
   }
   return {
-    ...board, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), days, assigned, material, manualJobs, jobBoms,
+    ...board, dept, dayISO, planNo, tankSerials: settings.tankTracking && dept === "Welding", machines: ctx.machines.filter((m) => m.active), days, assigned, material, manualJobs, jobBoms, jobCuts,
     required: Object.fromEntries([...new Set(lines.map((l) => l.bom))].map((b) => [b, ctx.requiredByBom.get(b) ?? 0])),
   };
 }

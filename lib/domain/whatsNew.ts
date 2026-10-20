@@ -24,6 +24,22 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     href: "/worklist/cut",
   },
   {
+    id: "2026-10-20-sheet-count-repair",
+    dateISO: "2026-10-20",
+    title: "Sheet jobs that showed 2e-323 sheets show their real count again",
+    where: "Worklist → Fabrication → 📋 Jobs · machine cards",
+    body: "A few sheet jobs added on 19 October showed their sheets as 2e-323 instead of a number, and left the machine cards. Their real count is put back (4 sheets showed as 2e-323), so they are back on their machines. Check them in 📋 Jobs against the nesting; ✎ Edit changes a count that is still not right.",
+    href: "/worklist/cut",
+  },
+  {
+    id: "2026-10-20-sheet-job-details",
+    dateISO: "2026-10-20",
+    title: "Click a sheet job on a machine to see all of it",
+    where: "Worklist → Fabrication → machine cards · Floor → a machine's lines",
+    body: "Click a sheet job's sheet (🧾 5 mm MS 1220×2440) on a machine card or on the floor to open its details. You see how many sheets it is for, how many are cut and how many are left, which machines hold the rest, every project's part on the sheets with its pieces, and the note. You also see every ✓ recorded on it: when, on which machine, how many sheets and by whom. ✓, ✎ Edit and ⧉ Duplicate are right there for whoever may change the board.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-20-done-box-job-total",
     dateISO: "2026-10-20",
     title: "✓ on a machine card shows the whole job: cut so far, of how many",

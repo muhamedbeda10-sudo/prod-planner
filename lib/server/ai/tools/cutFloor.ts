@@ -113,7 +113,11 @@ export const getJobsTool: ReadTool<{ dept?: BoardDept }> = {
           id: j.id,
           name: jobName(j),
           ...(j.bySheet
-            ? { sheet: jobSheetLabel(j), thicknessMm: j.thicknessMm, material: j.material, sheetSize: j.sheetSize, sheets: j.qty, sheetsCut: j.doneQty, parts: j.parts.map((p) => ({ bom: p.bom, item: p.item, part: p.part, pcs: p.pcs })) }
+            ? {
+              sheet: jobSheetLabel(j), thicknessMm: j.thicknessMm, material: j.material, sheetSize: j.sheetSize, sheets: j.qty, sheetsCut: j.doneQty, parts: j.parts.map((p) => ({ bom: p.bom, item: p.item, part: p.part, pcs: p.pcs })),
+              // every ✓ on it, newest first: when, which machine, how many, by whom
+              ...(board.jobCuts?.[j.id]?.length ? { cuts: board.jobCuts[j.id].slice(0, 20).map((c) => ({ at: c.atISO, machine: c.machine, sheets: c.qty, by: c.by })) } : {}),
+            }
             : { pieces: j.qty, done: j.doneQty, ...(j.bom ? { bom: j.bom } : {}), ...(j.item ? { item: j.item } : {}) }),
           on: j.onMachines,
           ...(j.note ? { note: j.note } : {}),
