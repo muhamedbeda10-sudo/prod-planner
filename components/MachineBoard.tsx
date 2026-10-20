@@ -177,7 +177,15 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
   // belongs on the queue table, not on a card
   if (board.tankSerials && q.item === "TN") return null;
   const manual = manualIdOf(q.mo);
-  const bySheet = manual !== null && !!board.manualJobs.find((j) => j.id === manual)?.bySheet;
+  const job = manual === null ? undefined : board.manualJobs.find((j) => j.id === manual);
+  const bySheet = !!job?.bySheet;
+  // a job's whole count beside what is left here — so whoever reads the box
+  // after a few ✓ still knows how many it was for and how many are done
+  const jobTotal = job && (
+    <span className="text-[13px] text-muted tabnum whitespace-nowrap" title={`Of the whole job: ${job.doneQty} ${bySheet ? "sheet(s) cut" : "done"}, of ${job.qty}${q.split ? ` — ${q.remaining} of them on this ${machineWord(board.dept)}` : ""}`}>
+      <b className="text-foreground">{job.doneQty}</b> of {job.qty} {bySheet ? "cut" : "done"}
+    </span>
+  );
   const save = () => {
     const qty = val.trim() ? typedCount(val) : q.remaining;
     if (bySheet ? !isSheetCount(qty) : !Number.isFinite(qty) || qty <= 0) { onErr(bySheet ? `Enter the sheets cut — ${SHEET_COUNT_RULE}.` : "Enter pieces above 0."); return; }
@@ -196,17 +204,20 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
     });
   };
   if (bySheet) return (
-    <span className="inline-flex items-center no-print rounded-md border border-brand/50 bg-surface overflow-hidden" title={`Sheets of this job cut on this ${machineWord(board.dept)} — blank = all ${q.remaining} left here.`}>
-      <span className="ps-1.5 pe-1 text-[10px] font-bold uppercase text-muted">Sheets</span>
-      <input
-        type="number" min={0.01} max={q.remaining} step={0.01} inputMode="decimal" placeholder={String(q.remaining)}
-        value={val} disabled={pending} aria-label="Sheets cut"
-        onChange={(e) => setVal(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
-        className="w-12 border-x px-1 py-0.5 bg-surface text-xs tabnum ltr text-center outline-none"
-      />
-      <span className="px-1 text-[10px] text-muted tabnum">/ {q.remaining}</span>
-      <button type="button" className="bg-brand text-white px-1.5 py-0.5 text-xs font-bold disabled:opacity-50" disabled={pending} onClick={save} title="Record the sheets cut">✓</button>
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 no-print">
+      <span className="inline-flex items-center rounded-md border border-brand/50 bg-surface overflow-hidden" title={`Sheets of this job cut on this ${machineWord(board.dept)} — blank = all ${q.remaining} left here.`}>
+        <span className="ps-1.5 pe-1 text-[10px] font-bold uppercase text-muted">Sheets</span>
+        <input
+          type="number" min={0.01} max={q.remaining} step={0.01} inputMode="decimal" placeholder={String(q.remaining)}
+          value={val} disabled={pending} aria-label="Sheets cut"
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
+          className="w-12 border-x px-1 py-0.5 bg-surface text-xs tabnum ltr text-center outline-none"
+        />
+        <span className="px-1 text-[10px] text-muted tabnum whitespace-nowrap">/ {q.remaining} left{q.split ? " here" : ""}</span>
+        <button type="button" className="bg-brand text-white px-1.5 py-0.5 text-xs font-bold disabled:opacity-50" disabled={pending} onClick={save} title="Record the sheets cut">✓</button>
+      </span>
+      {jobTotal}
     </span>
   );
   return (
@@ -220,6 +231,7 @@ export function DoneBox({ board, q, machineId, onErr }: { board: MachineBoardDat
         title={`Pieces finished — blank records all ${q.remaining}. What is left stays in the queue.`}
       />
       <button type="button" className="btn btn-sm btn-primary px-1.5" disabled={pending} title={`Record what is done (blank = all ${q.remaining}); the rest stays in the queue`} onClick={save}>✓</button>
+      {jobTotal && <span className="ms-1.5">{jobTotal}</span>}
     </span>
   );
 }

@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-20-done-box-job-total",
+    dateISO: "2026-10-20",
+    title: "✓ on a machine card shows the whole job: cut so far, of how many",
+    where: "Worklist → Fabrication → machine cards · Floor · Welding and Painting manual jobs",
+    body: "Beside the Sheets box on a job's line, the card now shows the whole job, like \"27 of 40 cut\", so after a few ✓ anyone reading it knows how many it was for and how many are done. The box itself says \"/ 13 left\" (\"left here\" when the job is shared between machines). A manual job on the Welding and Painting boards shows \"4 of 12 done\" the same way.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-20-jobs-list-fits",
     dateISO: "2026-10-20",
     title: "📋 Jobs: the whole list fits the popup",
