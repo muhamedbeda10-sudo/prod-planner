@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-20-app-updates-itself",
+    dateISO: "2026-10-20",
+    title: "The app picks up a new version without closing it",
+    where: "Every page · the installed app",
+    body: "You no longer have to close and reopen the app to get a new version. When one is out, a card in the bottom-left corner says so, with a Reload now button. If you do not press it, the app updates by itself when you open another page, or when nobody has touched it for 10 minutes (a minimised app too). It waits while a dialog is open or a box or form has something typed in it; then only Reload now updates it.",
+  },
+  {
     id: "2026-10-20-sheet-count-repair",
     dateISO: "2026-10-20",
     title: "Sheet jobs that showed 2e-323 sheets show their real count again",
