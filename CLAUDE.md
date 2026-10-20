@@ -35,7 +35,8 @@
    ```
    لو أي أمر فشل، صلّحه الأول. ممنوع تعمل skip أو disable لأي test عشان يعدّي.
 3. **راجع الـ diff بتاعك بعين ناقدة** على الأقل مرة: bugs، null cases، صلاحيات،
-   أماكن تانية نسيتها (شوف القسم 3).
+   أماكن تانية نسيتها (شوف القسم 3). المراجعة دي بتتعمل بالـ skills والـ agents
+   اللي في القسم 6، مش بالعين بس.
 4. اعمل **commit** و**push** على الـ branch المحدد للجلسة.
 5. افتح **PR على `master`** (`mcp__github__create_pull_request`)، وخلّي العنوان
    هو عنوان الـ commit.
@@ -136,3 +137,40 @@
 - أي تغيير في `prisma/schema.prisma` ليه migration في `prisma/migrations/` باسم
   بتاريخ ووقت، بنفس أسلوب الموجود.
 - متسيبش TODO ولا كود placeholder.
+
+## 6. استخدم الـ plugins والـ skills في المراجعة وتحسين الواجهة
+
+الـ plugins والـ skills دي متاحة في كل جلسة من حساب claude.ai. استخدمها من نفسك
+في الخطوات دي من غير ما أطلبها، وقبل الـ commit (القسم 2، خطوة 3):
+
+**مراجعة الكود — لكل تعديل في الكود:**
+1. `/code-review` (الـ skill `code-review`) على الـ diff، وصلّح كل finding حقيقي.
+2. لو التعديل أكبر من تصليح صغير (أكتر من ملف، أو server action، أو schema، أو
+   صلاحيات): شغّل الـ agents دي **مع بعض في رسالة واحدة** على الـ diff:
+   `review-council:correctness-reviewer`، `review-council:security-reviewer`،
+   `review-council:architecture-reviewer`، `review-council:test-evidence-reviewer`،
+   `review-council:policy-boundary-reviewer` (ده بيراجع الـ diff على الـ CLAUDE.md ده)،
+   و`review-council:interface-reviewer` لو فيه تغيير في API أو schema أو export.
+3. `/security-review` لو التعديل بيمس `lib/server/auth.ts` أو
+   `lib/domain/permissions.ts` أو server action بتكتب داتا أو input جاي من المستخدم.
+4. `/simplify` في الآخر على الكود اللي اتغيّر (تكرار، تبسيط، كفاءة).
+5. لو طلبت audit شامل للريبو أو لجزء كبير منه: `finecomb:finecomb`.
+
+**الواجهة — لأي تعديل في `app/*` أو `components/*` أو `app/globals.css`:**
+1. قبل التصميم: `frontend-design:frontend-design`، في حدود الـ design system اللي
+   في القسم 4 (مش بدله).
+2. `design:design-system` على الملفات اللي اتغيّرت: hex مكتوب مباشرة، tokens
+   ناقصة، component اتعمل له نسخة جديدة بدل المشترك.
+3. `a11y-enforcer:a11y-check` على الملفات اللي اتغيّرت، و`a11y-enforcer:contrast`
+   لأي لون جديد في الثيم الفاتح والغامق الاتنين.
+4. `design:ux-copy` لأي نص جديد: زرار، رسالة خطأ، empty state، confirm dialog.
+5. لو تقدر تشغّل التطبيق: `/run` وخد screenshots بالتلات مقاسات اللي في القسم 4،
+   وبعدها `design:design-critique` على الـ screenshots، وصلّح اللي يطلع.
+
+**القواعد:**
+- الـ finding ادعاء لازم تتأكد منه، مش أمر. صلّح اللي ليه مسار حقيقي يوصّل للمشكلة،
+  واللي مش حقيقي اذكره وقول ليه سبته.
+- لو skill أو agent مش متاح في الجلسة، أو فشل، كمّل بالمراجعة اليدوية وقولّي
+  في الرسالة الأخيرة إنه مااشتغلش. متوقفش الشغل عشانه.
+- في رسالتك الأخيرة اذكر الـ skills والـ agents اللي شغّلتها، وأهم اللي طلع منها
+  واتصلّح.
