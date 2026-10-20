@@ -23,6 +23,11 @@ const h = vi.hoisted(() => {
     user: { update: vi.fn() },
     aiAccess: { deleteMany: vi.fn(), upsert: vi.fn() },
     session: { deleteMany: vi.fn() },
+    machine: { count: vi.fn(), findMany: vi.fn() },
+    manualJob: { upsert: vi.fn() },
+    manualJobPart: { deleteMany: vi.fn(), upsert: vi.fn() },
+    worklistMachine: { deleteMany: vi.fn(), upsert: vi.fn() },
+    sheetCutLog: { deleteMany: vi.fn() },
   };
   return {
     tx,
@@ -39,7 +44,8 @@ vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/server/auth", () => ({ requirePerm: h.requirePerm, requireAdmin: h.requireAdmin, requireOwner: h.requireOwner }));
 
 import {
-  readOdooRows, restoreMachineTimes, restoreOdooRows, restorePhysicalRows, restoreShiftState, restoreStdState, restoreUserAccess, type OdooRowSnapshot,
+  readOdooRows, restoreMachineTimes, restoreManualJob, restoreOdooRows, restorePhysicalRows, restoreShiftState, restoreStdState, restoreUserAccess,
+  type ManualJobSnapshot, type OdooRowSnapshot,
 } from "@/lib/server/rowSnapshots";
 
 const row: OdooRowSnapshot = {
@@ -165,5 +171,48 @@ describe("an account's access", () => {
     h.prisma.user.findUnique.mockResolvedValue({ isOwner: true, isAdmin: true });
     expect(await restoreUserAccess({ ...snap, isAdmin: true })).toEqual({ ok: false, error: "The owner's own standing cannot be changed." });
     expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("a manual job", () => {
+  /** A sheet job, 4 of its 10 sheets cut, on machine 1. */
+  const job: ManualJobSnapshot = {
+    id: 30, dept: "Cut", title: "", bom: "", item: "", qty: 10, doneQty: 4, bySheet: true, parts: [{ id: 3, bom: "B1", item: "TN", part: "Bottom", pcs: 4 }],
+    material: "Steel", thicknessMm: 3, sheetSize: "1250*2500", sheets: null, note: null, machineId: 1, createdBy: "Sara",
+    createdAt: "2026-10-11T07:00:00.000Z", doneAt: null,
+    queue: [{ id: 9, machineId: 1, rank: 1, running: true, qty: null, sheet: "3|Steel|1250*2500", sheetDone: 0, setBy: null }],
+  };
+  const KEY = { bom: "MANUAL", mo: "MANUAL-30", item: "JOB" };
+
+  beforeEach(() => {
+    h.tx.machine.count.mockResolvedValue(1);
+    h.tx.machine.findMany.mockResolvedValue([{ id: 1 }]);
+  });
+
+  it("the undo of a ✓ takes that ✓'s own row off the sheet cut log, in the same go as the count", async () => {
+    expect(await restoreManualJob(job, { cutLogId: 77 })).toEqual({ ok: true });
+    expect(h.requirePerm).toHaveBeenCalledWith("cut.edit");
+    expect(h.tx.manualJob.upsert.mock.calls[0][0].update).toMatchObject({ doneQty: 4, doneAt: null });
+    // only that row of this job's — a number that is another job's row matches nothing
+    expect(h.tx.sheetCutLog.deleteMany).toHaveBeenCalledWith({ where: { id: 77, dept: "Cut", ...KEY } });
+    expect(h.prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("a log row that cannot be taken off puts nothing back, and says so", async () => {
+    h.tx.sheetCutLog.deleteMany.mockRejectedValueOnce(new Error("connection lost"));
+    expect(await restoreManualJob(job, { cutLogId: 77 })).toEqual({ ok: false, error: "The job could not be put back: connection lost" });
+  });
+
+  it("the undo of a change or a deletion leaves the sheet cut log alone", async () => {
+    expect(await restoreManualJob(job)).toEqual({ ok: true });
+    expect(h.tx.manualJob.upsert).toHaveBeenCalled();
+    expect(h.tx.sheetCutLog.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("is the department's worklist key's", async () => {
+    h.requirePerm.mockResolvedValueOnce({ error: "You do not have permission for this action — ask the admin." });
+    expect(await restoreManualJob(job, { cutLogId: 77 })).toMatchObject({ ok: false });
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+    expect(h.tx.sheetCutLog.deleteMany).not.toHaveBeenCalled();
   });
 });

@@ -93,7 +93,8 @@ function JobDetails({ job, board, children }: { job: ManualJobView; board: Machi
   const pct = job.qty > 0 ? Math.min(100, Math.round((job.doneQty / job.qty) * 100)) : 0;
   const cuts = board.jobCuts[job.id] ?? [];
   // the log and the job's count can differ: sheets ticked before the log was
-  // kept are in the count only; a ✓ undone afterwards stays in the log only.
+  // kept are in the count only; a ✓ the assistant undid before its undo took
+  // the ✓'s row off the log too stays in the log only.
   // Say so rather than show a history that does not add up
   const logged = roundSheets(cuts.reduce((n, c) => n + c.qty, 0));
   const unlogged = roundSheets(job.doneQty - logged);

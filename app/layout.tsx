@@ -7,6 +7,7 @@ import { AutomationTicker } from "@/components/AutomationTicker";
 import { AiPanel, AiPanelProvider } from "@/components/AiPanel";
 import { InboxPanel, InboxPanelProvider } from "@/components/InboxPanel";
 import { TouchLongPress } from "@/components/TouchLongPress";
+import { UpdateNotice } from "@/components/UpdateNotice";
 import { TabAccessProvider } from "@/components/TabAccess";
 import { parseHiddenTabs } from "@/lib/domain/tabs";
 import { LineProvider } from "@/components/LineContext";
@@ -92,6 +93,7 @@ export default async function RootLayout({
           />
         )}
         {user && <AutomationTicker />}
+        {user && <UpdateNotice />}
         <main className="flex-1 w-full px-3 py-3 md:px-5 md:py-4">
           {children}
           {user && <AiPanel isOwner={user.isOwner} />}

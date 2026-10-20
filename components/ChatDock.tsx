@@ -8,6 +8,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { pollChat, pollChatInbox } from "@/app/chat/actions";
 import { INBOX_UNREAD } from "@/components/InboxBell";
+import { CornerCard } from "@/components/primitives";
 import type { ChatContact, ChatInboxItem, ThreadKind } from "@/lib/server/chat";
 import { factoryClockHHMM } from "@/lib/domain/dates";
 import { armChime, chimeOn, playChime, setChimeOn } from "@/lib/chime";
@@ -312,25 +313,21 @@ export function ChatDock({ me, unread: initialUnread }: { me: { id: number; name
       )}
 
       {offer && !open && createPortal(
-        <div
+        <CornerCard
           role="dialog"
-          aria-label="Desktop alerts"
-          className="fixed bottom-4 left-4 z-50 flex w-[min(360px,calc(100vw-2rem))] gap-3 rounded-xl border border-l-4 border-l-brand bg-surface p-3 text-foreground shadow-xl animate-[navdrop_0.2s_ease-out]"
-        >
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-fill text-white">
-            <BellRing size={17} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <b className="text-sm">Turn on desktop alerts?</b>
-            <p className="mt-0.5 text-sm text-muted">
-              Messages and alerts reach you with a sound even when the app is minimised or on another tab.
-            </p>
-            <div className="mt-2 flex items-center gap-2">
+          label="Desktop alerts"
+          icon={BellRing}
+          title="Turn on desktop alerts?"
+          className="z-50"
+          actions={
+            <>
               <button type="button" className="btn btn-sm btn-primary" onClick={() => void turnOnAlerts()}>Turn on</button>
               <button type="button" className="btn btn-sm btn-ghost" onClick={notNow}>Not now</button>
-            </div>
-          </div>
-        </div>,
+            </>
+          }
+        >
+          Messages and alerts reach you with a sound even when the app is minimised or on another tab.
+        </CornerCard>,
         document.body,
       )}
 
