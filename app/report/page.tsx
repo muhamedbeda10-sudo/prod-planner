@@ -158,7 +158,7 @@ export default async function ReportPage({
       <div className="bg-surface border rounded-xl overflow-x-auto print-lg">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-center">
+            <tr className="bg-brand-fill text-white text-center">
               <th className="p-2 text-left">Dept</th>
               {/* each component carries its OWN daily target (base 27, AR/MB 20) */}
               {ITEMS.map((it) => (
@@ -218,7 +218,7 @@ export default async function ReportPage({
             ))}
             <div className="flex items-baseline gap-1.5 sm:ml-auto">
               <span className="text-sm font-semibold text-muted">Total</span>
-              <span className="text-xl font-extrabold tabnum text-brand">{fmtHrs(earned.total)}</span>
+              <span className="text-xl font-extrabold tabnum text-brand-ink">{fmtHrs(earned.total)}</span>
               <span className="text-[10px] text-muted">hrs</span>
             </div>
           </div>
@@ -251,14 +251,14 @@ export default async function ReportPage({
         <div className="flex flex-wrap items-center gap-3 mb-2">
           <h2 className="text-lg font-bold">
             Worked on — {periodWords}
-            {scoped && <span className="text-brand"> · {deptsF.map((d) => stageLabel(d)).join(" + ")} only</span>}
+            {scoped && <span className="text-brand-ink"> · {deptsF.map((d) => stageLabel(d)).join(" + ")} only</span>}
           </h2>
           <span className="pill pill-ok normal-case">{dayProjects.length} project{dayProjects.length === 1 ? "" : "s"}</span>
         </div>
         <div className="bg-surface border rounded-xl overflow-x-auto print-fit">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="bg-brand text-white text-center">
+              <tr className="bg-brand-fill text-white text-center">
                 <th rowSpan={2} className="p-2 text-left">BOM</th>
                 {/* the MO list and the day total are deliberately not columns:
                     the sheet is read per project per component. The total still

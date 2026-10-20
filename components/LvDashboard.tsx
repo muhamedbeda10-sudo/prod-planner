@@ -59,7 +59,7 @@ export function LvDashboard({ d, today }: { d: LvDashboardData; today: string })
       <section className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-left">
+            <tr className="bg-brand-fill text-white text-left">
               <th className="p-2">Day</th>
               {LV_CHAIN.map((s) => <th key={s} className="p-2 text-center" title={LV_STAGE_LABEL[s]}>{LV_STAGE_SHORT[s]}</th>)}
             </tr>

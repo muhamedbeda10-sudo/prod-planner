@@ -325,7 +325,7 @@ export function FloorCanvas({ dept, initial, board, canDraw, canAssign, updatedB
           </div>
           {dated.length > 0 && (
             <>
-              <div className="text-[11px] font-bold uppercase tracking-wide text-brand mt-1">📅 Weekly plan — dated, earliest first</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-brand-ink mt-1">📅 Weekly plan — dated, earliest first</div>
               <UnassignedList lines={dated} board={board} canAssign={canAssign} target={selCard?.machine ?? null} />
             </>
           )}
@@ -459,21 +459,21 @@ function Node({ n, card, board, machineName, selected, canDraw, onDown, onMove, 
           {card.running.slice(0, runShown).map((q) => (
             <div key={`${q.key}#${q.sheet}`} className="min-w-0" title={compact && q.sheet ? sheetKeyLabel(q.sheet) : undefined}>
               <div className="flex items-baseline gap-1 text-[11px] leading-tight min-w-0">
-                <span className="text-brand font-extrabold shrink-0">▶</span>
+                <span className="text-brand-ink font-extrabold shrink-0">▶</span>
                 {sheetJobOf(board, q.mo) ? <>
                   <span className="font-extrabold truncate">🧾 {jobSheetLabel(sheetJobOf(board, q.mo)!)}</span>
-                  <span className="font-extrabold tabnum text-brand shrink-0">{q.remaining} sh</span>
+                  <span className="font-extrabold tabnum text-brand-ink shrink-0">{q.remaining} sh</span>
                 </> : <>
                   <span className="font-extrabold truncate">{q.bom}</span>
                   <span className="font-bold shrink-0">{q.item}</span>
-                  <span className="font-extrabold tabnum text-brand shrink-0">×{q.remaining}</span>
+                  <span className="font-extrabold tabnum text-brand-ink shrink-0">×{q.remaining}</span>
                 </>}
                 {!compact && q.deliveryISO && <span className="text-[10px] text-muted shrink-0">📅 {ddmm(q.deliveryISO)}</span>}
               </div>
               {!compact && <LineSheet sheet={q.sheet} className="block ps-3 text-[10px] font-semibold leading-tight text-muted truncate" />}
             </div>
           ))}
-          {card.running.length > runShown && <div className="text-[10px] text-brand font-bold">+{card.running.length - runShown} more running</div>}
+          {card.running.length > runShown && <div className="text-[10px] text-brand-ink font-bold">+{card.running.length - runShown} more running</div>}
         </div>
       ) : (
         <div className="mt-1 text-[11px] text-muted">{card && card.waiting.length > 0 ? "nothing running yet" : "idle — nothing on it"}</div>
@@ -628,7 +628,7 @@ function MachineInspector({ n, card, board, canAssign, canDraw, onRemove }: {
       {a.err && <div className="text-[11px] text-bad-fg">{a.err}</div>}
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <Link href={`/worklist/machines?dept=${board.dept}&machine=${m.id}`} className="btn btn-sm btn-secondary" title="A sheet for the technician: what runs now, then what is next">🖨 Print sheet</Link>
-        <Link href={board.dept === "ShotBlast" ? "/shifts?dept=ShotBlast" : `/worklist/${board.dept === "Cut" ? "cut" : board.dept.toLowerCase()}`} className="text-xs text-accent font-semibold hover:underline">Open the worklist →</Link>
+        <Link href={board.dept === "ShotBlast" ? "/shifts?dept=ShotBlast" : `/worklist/${board.dept === "Cut" ? "cut" : board.dept.toLowerCase()}`} className="text-xs text-brand-ink font-semibold hover:underline">Open the worklist →</Link>
         {canDraw && <button type="button" className="btn btn-sm btn-ghost text-bad-fg ms-auto" onClick={onRemove} title="Off the drawing only — the machine stays on the list">Remove from floor</button>}
       </div>
     </div>

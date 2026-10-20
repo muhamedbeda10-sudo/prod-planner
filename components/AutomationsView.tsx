@@ -119,7 +119,7 @@ function TimingForm({ a, onDone, onCancel }: { a: AutomationView; onDone: () => 
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <label className="inline-flex items-center gap-1.5 font-semibold cursor-pointer">
-              <input type="checkbox" checked={limited} onChange={(e) => setLimited(e.target.checked)} className="accent-[var(--brand)] w-4 h-4" />
+              <input type="checkbox" checked={limited} onChange={(e) => setLimited(e.target.checked)} className="w-4 h-4" />
               Only on working days between
             </label>
             <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} disabled={!limited} className="px-2 py-1 text-sm tabnum" aria-label="From" />

@@ -52,8 +52,8 @@ const isImage = (a: ChatAttachment) => a.type.startsWith("image/");
 
 function docIcon(name: string) {
   const ext = name.toLowerCase().split(".").pop() ?? "";
-  if (["xls", "xlsx", "csv"].includes(ext)) return <FileSpreadsheet size={18} className="shrink-0 text-brand" />;
-  if (["pdf", "doc", "docx"].includes(ext)) return <FileText size={18} className="shrink-0 text-brand" />;
+  if (["xls", "xlsx", "csv"].includes(ext)) return <FileSpreadsheet size={18} className="shrink-0 text-brand-ink" />;
+  if (["pdf", "doc", "docx"].includes(ext)) return <FileText size={18} className="shrink-0 text-brand-ink" />;
   return <FileGlyph size={18} className="shrink-0" />;
 }
 
@@ -88,7 +88,7 @@ function MoChip({ mo, mine }: { mo: string; mine: boolean }) {
       href={traceHref({ mo })}
       className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 mb-1 text-xs font-bold border transition-colors ${
         mine ? "bg-white/40 border-black/10 hover:bg-white/60 dark:bg-black/20 dark:border-white/10 dark:hover:bg-black/30"
-             : "bg-brand-light text-brand border-transparent hover:opacity-80"
+             : "bg-brand-light text-brand-ink border-transparent hover:opacity-80"
       }`}
       title={`Open the trace for ${mo}`}
     >
@@ -513,10 +513,10 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
       {/* ===== contacts ===== */}
       <aside className={`${active !== null ? "hidden md:flex" : "flex"} w-full md:w-72 lg:w-80 shrink-0 flex-col border-r`}>
         <div className="px-4 py-3 border-b flex items-center gap-2 bg-surface-2">
-          <MessagesSquare size={17} className="text-brand shrink-0" />
+          <MessagesSquare size={17} className="text-brand-ink shrink-0" />
           <span className="font-bold text-sm">Chat</span>
           {totalUnread > 0 && (
-            <span className="grid place-items-center min-w-[20px] h-5 rounded-full bg-brand text-white text-[11px] font-extrabold px-1.5">
+            <span className="grid place-items-center min-w-[20px] h-5 rounded-full bg-brand-fill text-white text-[11px] font-extrabold px-1.5">
               {totalUnread > 99 ? "99+" : totalUnread}
             </span>
           )}
@@ -528,7 +528,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
               setGroupName("");
             }}
             title="New group"
-            className="ml-auto inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold text-brand hover:bg-brand-light transition-colors"
+            className="ml-auto inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-bold text-brand-ink hover:bg-brand-light transition-colors"
           >
             <Plus size={13} />
             Group
@@ -555,7 +555,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                     <span className="shrink-0 text-[9px] font-bold text-muted">{c.memberCount} 👥</span>
                   )}
                   {c.kind === "user" && c.isAdmin && (
-                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-brand bg-brand-light rounded px-1 py-0.5">Admin</span>
+                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-brand-ink bg-brand-light rounded px-1 py-0.5">Admin</span>
                   )}
                   {c.lastAt && <span className="ml-auto shrink-0 text-[10px] text-muted tabnum">{timeOf(c.lastAt)}</span>}
                 </span>
@@ -566,7 +566,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                 </span>
               </span>
               {c.unread > 0 && (
-                <span className="shrink-0 grid place-items-center min-w-[20px] h-5 rounded-full bg-brand text-white text-[11px] font-extrabold px-1.5">
+                <span className="shrink-0 grid place-items-center min-w-[20px] h-5 rounded-full bg-brand-fill text-white text-[11px] font-extrabold px-1.5">
                   {c.unread > 99 ? "99+" : c.unread}
                 </span>
               )}
@@ -611,7 +611,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                         setGroupPicks(new Set());
                       }}
                       title="Add members"
-                      className="rounded-lg p-2 text-muted hover:text-brand hover:bg-surface transition-colors"
+                      className="rounded-lg p-2 text-muted hover:text-brand-ink hover:bg-surface transition-colors"
                     >
                       <UserPlus size={16} />
                     </button>
@@ -634,7 +634,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                 <button
                   type="button"
                   onClick={() => setPinsOpen((v) => !v)}
-                  className="w-full px-4 py-2 flex items-center gap-2 text-xs font-bold text-brand hover:bg-surface-2 transition-colors"
+                  className="w-full px-4 py-2 flex items-center gap-2 text-xs font-bold text-brand-ink hover:bg-surface-2 transition-colors"
                 >
                   <Pin size={13} className="shrink-0" />
                   {pinned.length === 1 ? "1 pinned message" : `${pinned.length} pinned messages`}
@@ -719,7 +719,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                             {m.fromName}
                           </span>
                         )}
-                        {m.pinnedAt && <Pin size={11} className={`absolute -top-1.5 ${mine ? "right-2" : "left-2"} text-brand rotate-45`} />}
+                        {m.pinnedAt && <Pin size={11} className={`absolute -top-1.5 ${mine ? "right-2" : "left-2"} text-brand-ink rotate-45`} />}
                         {m.replyTo && (
                           <button
                             type="button"
@@ -800,7 +800,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
             {/* replying-to bar — what the next send will quote */}
             {replyTarget && (
               <div className="border-t bg-surface px-3 py-2 flex items-center gap-2.5">
-                <Reply size={15} className="shrink-0 text-brand" />
+                <Reply size={15} className="shrink-0 text-brand-ink" />
                 <button
                   type="button"
                   onClick={() => jumpToMessage(replyTarget.id)}
@@ -824,7 +824,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
             {(pendingFiles.length > 0 || pendingMo) && (
               <div className="border-t bg-surface-2 px-3 py-2 flex flex-wrap items-center gap-1.5">
                 {pendingMo && (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-light text-brand border border-brand/20 px-2 py-1 text-xs font-bold">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-light text-brand-ink border border-brand/20 px-2 py-1 text-xs font-bold">
                     <Package size={13} />
                     {pendingMo}
                     <button type="button" onClick={() => setPendingMo(null)} aria-label="Remove order" className="hover:opacity-70">
@@ -854,7 +854,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
             {moOpen && (
               <div className="border-t bg-surface px-3 py-2.5">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <Package size={14} className="text-brand shrink-0" />
+                  <Package size={14} className="text-brand-ink shrink-0" />
                   <input
                     autoFocus
                     value={moQuery}
@@ -916,7 +916,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                 onClick={() => fileInputRef.current?.click()}
                 title="Attach images, PDF, Excel or Word (max 10 MB each)"
                 aria-label="Attach files"
-                className="shrink-0 grid place-items-center w-10 h-10 rounded-full text-muted hover:text-brand hover:bg-surface transition-colors"
+                className="shrink-0 grid place-items-center w-10 h-10 rounded-full text-muted hover:text-brand-ink hover:bg-surface transition-colors"
               >
                 <Paperclip size={19} />
               </button>
@@ -926,7 +926,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                 title="Attach an order (MO) — the recipient can open its trace"
                 aria-label="Attach an order"
                 className={`shrink-0 grid place-items-center w-10 h-10 rounded-full transition-colors ${
-                  moOpen || pendingMo ? "text-brand bg-brand-light" : "text-muted hover:text-brand hover:bg-surface"
+                  moOpen || pendingMo ? "text-brand-ink bg-brand-light" : "text-muted hover:text-brand-ink hover:bg-surface"
                 }`}
               >
                 <Package size={19} />
@@ -951,7 +951,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
               <button
                 type="submit"
                 disabled={sending || (!draft.trim() && pendingFiles.length === 0 && !pendingMo)}
-                className="shrink-0 grid place-items-center w-10 h-10 rounded-full bg-brand text-white shadow-sm transition-opacity disabled:opacity-40"
+                className="shrink-0 grid place-items-center w-10 h-10 rounded-full bg-brand-fill text-white shadow-sm transition-opacity disabled:opacity-40"
                 aria-label="Send"
               >
                 <Send size={17} className={sending ? "animate-pulse" : ""} />
@@ -1043,7 +1043,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
           />
           <div className="relative w-full max-w-sm bg-surface border rounded-xl shadow-lg p-4">
             <div className="flex items-center gap-2 mb-3">
-              <Users size={17} className="text-brand" />
+              <Users size={17} className="text-brand-ink" />
               <span className="font-bold text-sm">{groupModal === "create" ? "New group" : "Add members"}</span>
               <button type="button" onClick={() => setGroupModal(null)} aria-label="Close" className="ml-auto text-muted hover:text-foreground">
                 <X size={17} />
@@ -1085,7 +1085,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
               type="button"
               onClick={() => void submitGroup()}
               disabled={groupPicks.size === 0 || (groupModal === "create" && !groupName.trim())}
-              className="w-full rounded-lg bg-brand text-white font-bold text-sm py-2.5 transition-opacity disabled:opacity-40"
+              className="w-full rounded-lg bg-brand-fill text-white font-bold text-sm py-2.5 transition-opacity disabled:opacity-40"
             >
               {groupModal === "create" ? `Create group (${groupPicks.size + 1} members)` : `Add ${groupPicks.size} member${groupPicks.size === 1 ? "" : "s"}`}
             </button>

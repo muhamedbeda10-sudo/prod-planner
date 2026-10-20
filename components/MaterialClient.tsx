@@ -1116,5 +1116,5 @@ export function MaterialClient({ lines, totals, month, knownBoms, canEdit, produ
 /** A line's BOM, opening its order's page (the trace: pipeline, orders, log). */
 function BomLink({ bom }: { bom: string }) {
   if (!bom) return <span className="text-muted">—</span>;
-  return <Link href={`/trace?bom=${encodeURIComponent(bom)}`} className="text-accent hover:underline" title="Open the order's details">{bom}</Link>;
+  return <Link href={`/trace?bom=${encodeURIComponent(bom)}`} className="text-brand-ink hover:underline" title="Open the order's details">{bom}</Link>;
 }

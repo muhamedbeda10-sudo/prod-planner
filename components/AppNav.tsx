@@ -136,9 +136,9 @@ function ToolLink({ href, label, title, icon: Icon, active }: { href: string; la
       href={href}
       role="menuitem"
       title={title}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold transition-colors ${active ? "bg-brand-light text-brand" : "hover:bg-surface-2"}`}
+      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold transition-colors ${active ? "bg-brand-light text-brand-ink" : "hover:bg-surface-2"}`}
     >
-      <Icon size={17} className={`shrink-0 ${active ? "text-brand" : "text-muted"}`} />
+      <Icon size={17} className={`shrink-0 ${active ? "text-brand-ink" : "text-muted"}`} />
       {label}
     </Link>
   );
@@ -387,10 +387,10 @@ export function AppNav({
                             href={d.href}
                             role="menuitem"
                             className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-bold whitespace-nowrap transition-colors ${
-                              isActive(d.href) ? "bg-brand-light text-brand" : "hover:bg-surface-2"
+                              isActive(d.href) ? "bg-brand-light text-brand-ink" : "hover:bg-surface-2"
                             }`}
                           >
-                            <d.icon size={16} className={`shrink-0 ${isActive(d.href) ? "text-brand" : "text-muted"}`} />
+                            <d.icon size={16} className={`shrink-0 ${isActive(d.href) ? "text-brand-ink" : "text-muted"}`} />
                             {d.label}
                           </Link>
                         ))}

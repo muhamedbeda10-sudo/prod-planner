@@ -269,7 +269,7 @@ export function CascadeTable({
                               type="button"
                               onClick={() => saveGroup(gk, gBom, gItem, members)}
                               disabled={pending}
-                              className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[`g|${gk}`] ? "bg-ok-fg" : "bg-brand hover:bg-brand-dark"} disabled:opacity-50`}
+                              className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[`g|${gk}`] ? "bg-ok-fill" : "bg-brand-fill hover:bg-brand-dark"} disabled:opacity-50`}
                               title={`Distributes over the ${members.length} MOs in order — each fills up to its own limit, the rest flows to the next`}
                             >
                               {savedFlash[`g|${gk}`] ? "✓ Saved" : "Save all"}
@@ -364,7 +364,7 @@ export function CascadeTable({
                             type="button"
                             onClick={() => { setDateEdit(k); setDateVal(day); setDateQty(String(r.available)); }}
                             disabled={pending}
-                            className="text-muted text-xs px-1 hover:text-accent align-middle"
+                            className="text-muted text-xs px-1 hover:text-brand-ink align-middle"
                             title="Schedule (part of) this line: pick a date and a quantity — repeat for more dates; the rest stays here"
                           >
                             📅✎
@@ -421,7 +421,7 @@ export function CascadeTable({
                         type="button"
                         onClick={() => save(r)}
                         disabled={pending}
-                        className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[k] ? "bg-ok-fg" : "bg-brand hover:bg-brand-dark"} disabled:opacity-50`}
+                        className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[k] ? "bg-ok-fill" : "bg-brand-fill hover:bg-brand-dark"} disabled:opacity-50`}
                       >
                         {savedFlash[k] ? "✓ Saved" : "Save"}
                       </button>

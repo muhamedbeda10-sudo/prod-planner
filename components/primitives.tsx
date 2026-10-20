@@ -146,7 +146,7 @@ export function CornerCard({ icon, title, children, actions, className = "", rol
       aria-label={label}
       className={`fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] left-4 flex w-[min(360px,calc(100vw-2rem))] gap-3 rounded-xl border border-l-4 border-l-brand bg-surface p-3 text-foreground shadow-xl animate-[navdrop_0.2s_ease-out] motion-reduce:animate-none no-print ${className}`}
     >
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand text-white">{drawIcon(icon, 17)}</span>
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-fill text-white">{drawIcon(icon, 17)}</span>
       <div className="min-w-0 flex-1">
         <b className="text-sm">{title}</b>
         <p className="mt-0.5 text-sm text-muted">{children}</p>

@@ -230,7 +230,7 @@ export function PowderScrap({ r, canRecord, isAdmin, today, earliest }: { r: Pow
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="bg-brand text-white text-left">
+              <tr className="bg-brand-fill text-white text-left">
                 <th className="p-2">Section</th>
                 <th className="p-2 text-end">Drawn (kg)</th>
                 <th className="p-2 text-end">Scrap (kg)</th>

@@ -71,7 +71,7 @@ export function WeldWorklistTable({ rows, day }: { rows: WeldRow[]; day: string 
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-left">
+            <tr className="bg-brand-fill text-white text-left">
               <th className="p-2">BOM</th>
               <th className="p-2">KVA</th>
               <th className="p-2 text-center">Item</th>

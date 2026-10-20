@@ -43,7 +43,7 @@ export function ImportForm({ defaultDate }: { defaultDate: string }) {
           <input name="sheet" type="text" placeholder="auto" className="w-full border rounded-md px-2 py-2" />
         </label>
         <div className="md:col-span-2">
-          <button type="submit" disabled={pending} className="bg-brand text-white font-extrabold rounded-md px-6 py-2.5 disabled:opacity-50">
+          <button type="submit" disabled={pending} className="bg-brand-fill text-white font-extrabold rounded-md px-6 py-2.5 disabled:opacity-50">
             {pending ? "Importing…" : "Import plan"}
           </button>
           <span className="text-xs text-muted ml-3">Re-importing the same number replaces that plan&apos;s rows (idempotent).</span>
@@ -68,7 +68,7 @@ export function ImportForm({ defaultDate }: { defaultDate: string }) {
               </ul>
             </div>
           )}
-          <a href={`/tracker?plan=${res.planNo}`} className="text-accent font-semibold text-sm">→ View tracker for plan {res.planNo}</a>
+          <a href={`/tracker?plan=${res.planNo}`} className="text-brand-ink font-semibold text-sm">→ View tracker for plan {res.planNo}</a>
         </div>
       )}
     </div>

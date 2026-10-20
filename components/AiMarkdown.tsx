@@ -80,7 +80,7 @@ function components(streaming: boolean): Components {
     // a row of data could tell the model to put figures in an address
     a: ({ children, href }) =>
       href && href.startsWith("/") && !href.startsWith("//") ? (
-        <a href={href} className="text-brand underline underline-offset-2">{children}</a>
+        <a href={href} className="text-brand-ink underline underline-offset-2">{children}</a>
       ) : (
         <span>{children}{href ? <span className="text-muted text-xs ltr"> ({href})</span> : null}</span>
       ),

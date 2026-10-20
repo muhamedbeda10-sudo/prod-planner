@@ -211,7 +211,7 @@ export function AiAdmin({ data, clock, automations }: { data: AiAdminData; clock
     <div className="space-y-4">
       <div className="page-head">
         <h1 className="page-title flex items-center gap-2">
-          <Bot size={20} className="text-brand" aria-hidden /> AI settings
+          <Bot size={20} className="text-brand-ink" aria-hidden /> AI settings
         </h1>
         <span className={`pill ${data.enabled ? "pill-ok" : "pill-muted"}`}>{data.enabled ? "Open to the team" : "Only you"}</span>
         {data.updatedBy && <span className="text-xs text-muted ms-auto">Last change by {data.updatedBy}</span>}
@@ -742,7 +742,7 @@ function RightsEditor({ u, onDone }: { u: AiAdminUser; onDone: () => void }) {
                 const d = permDef(k);
                 return (
                   <label key={k} className="flex items-start gap-2 text-sm cursor-pointer" title={d?.desc}>
-                    <input type="checkbox" checked={keys.has(k)} onChange={(e) => toggle(k, e.target.checked)} className="mt-0.5 accent-[var(--brand)]" />
+                    <input type="checkbox" checked={keys.has(k)} onChange={(e) => toggle(k, e.target.checked)} className="mt-0.5" />
                     <span className="font-semibold">{rightLabel(d?.label ?? k)}</span>
                   </label>
                 );

@@ -228,7 +228,7 @@ function BomValue({ bom }: { bom: OdooEntryView["bom"] }) {
       {bom.boms.map((b, i) => (
         <Fragment key={b}>
           {i > 0 && " / "}
-          <Link href={`/trace?bom=${encodeURIComponent(b)}`} onClick={(ev) => ev.stopPropagation()} className="text-accent hover:underline" title="Open the order's details">{b}</Link>
+          <Link href={`/trace?bom=${encodeURIComponent(b)}`} onClick={(ev) => ev.stopPropagation()} className="text-brand-ink hover:underline" title="Open the order's details">{b}</Link>
         </Fragment>
       ))}
       {bom.boms.length > 1 && <span className="pill pill-warn text-[10px]" title="The SOI has several BOMs — the row does not say which">{bom.boms.length} BOMs</span>}
@@ -397,7 +397,7 @@ function NotesCell({ e, canEdit }: { e: OdooEntryView; canEdit: boolean }) {
             !adding && <span className="text-muted">—</span>
           )}
           {e.notes.length > 0 && (earlier > 0 || expanded) && (
-            <button type="button" className="text-[11px] font-semibold text-accent hover:underline no-print" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
+            <button type="button" className="text-[11px] font-semibold text-brand-ink hover:underline no-print" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
               {expanded ? "Show the newest only" : `+${earlier} earlier`}
             </button>
           )}
@@ -990,7 +990,7 @@ export function OdooClient({
   const showAll = useShowAll();
   const elsewhere = day === "all" ? 0 : Math.max(0, totalRows - entries.length);
   const elsewhereLink = elsewhere > 0 && (
-    <button type="button" className="text-accent font-semibold hover:underline" onClick={showAll} title="Show every row ever logged">
+    <button type="button" className="text-brand-ink font-semibold hover:underline" onClick={showAll} title="Show every row ever logged">
       +{elsewhere} on other days{openRows > 0 ? ` (${openRows} open)` : ""} — show all
     </button>
   );
@@ -1037,7 +1037,7 @@ export function OdooClient({
               <CountFilter
                 n={ready}
                 label="ready to close"
-                tone="text-accent"
+                tone="text-brand-ink"
                 on={readyOn}
                 title="Still open and Odoo's MO is already on the row — nothing is missing but the closing itself"
                 onClick={() => setFilters(readyOn ? { ...filters, closed: "all", mo: "all" } : { ...filters, closed: "open", mo: "has" })}

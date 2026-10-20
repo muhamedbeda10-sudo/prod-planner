@@ -87,7 +87,7 @@ export function TankRepairPanel({ tanks, welders }: { tanks: TankDTO[]; welders:
                       type="button"
                       onClick={() => confirm(t.serial)}
                       disabled={pending || welders.length === 0}
-                      className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+                      className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50"
                     >
                       Repaired
                     </button>

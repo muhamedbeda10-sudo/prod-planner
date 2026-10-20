@@ -121,7 +121,7 @@ export function CalibrationPanel({ rows, stages, windowDays }: { rows: DayRow[];
         description={
           <>
             Summed per stage from what each department&apos;s supervisor records on the{" "}
-            <Link href="/shifts" className="text-brand font-semibold hover:underline">Shift log</Link> — present workers × their shift + overtime.
+            <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shift log</Link> — present workers × their shift + overtime.
           </>
         }
         padded={false}

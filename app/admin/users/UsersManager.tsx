@@ -46,7 +46,7 @@ function PermBox({ k, on, disabled, label }: { k: string; on: boolean; disabled?
       title={d?.desc}
       aria-label={label ?? d?.label ?? k}
       data-access={d?.notify || d?.optIn ? undefined : "1"}
-      className="w-4 h-4 accent-[var(--brand,#1b7a43)]"
+      className="w-4 h-4"
     />
   );
 }
@@ -131,7 +131,7 @@ function TabChecks({ hidden }: { hidden: Set<string> }) {
             <div className="space-y-1">
               {TABS.filter((t) => t.group === g).map((t) => (
                 <label key={t.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="checkbox" name="tabs" value={t.id} defaultChecked={!hidden.has(t.id)} className="accent-[var(--brand,#1b7a43)]" />
+                  <input type="checkbox" name="tabs" value={t.id} defaultChecked={!hidden.has(t.id)} />
                   <span className="font-semibold">{t.label}</span>
                 </label>
               ))}
@@ -150,7 +150,7 @@ function AiNote({ ai, owner }: { ai: Row["ai"] | null; owner?: boolean }) {
     <p className="text-sm border rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
       <span className="font-bold">AI assistant:</span>
       <span className="text-muted">{owner ? "always on for the owner" : ai?.enabled ? `on${ai.monthlyUsd > 0 ? ` · ${usdText(ai.monthlyUsd)}/month` : ""}` : "off"}</span>
-      <a href="/admin/ai#people" className="ms-auto underline text-brand font-semibold">Manage on AI settings</a>
+      <a href="/admin/ai#people" className="ms-auto underline text-brand-ink font-semibold">Manage on AI settings</a>
     </p>
   );
 }
@@ -165,7 +165,7 @@ function AdminCheck({ defaultChecked, label }: { defaultChecked?: boolean; label
         type="checkbox"
         name="isAdmin"
         defaultChecked={defaultChecked}
-        className="mt-0.5 accent-[var(--brand,#1b7a43)]"
+        className="mt-0.5"
         onChange={(e) => {
           if (!e.currentTarget.checked) return;
           e.currentTarget.form?.querySelectorAll<HTMLInputElement>('input[name="perms"][data-access]').forEach((c) => (c.checked = true));

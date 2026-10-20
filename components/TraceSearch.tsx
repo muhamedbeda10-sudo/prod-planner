@@ -23,7 +23,7 @@ export function TraceSearch({ initial = "", initialMode = "bom" }: { initial?: s
             key={m}
             type="button"
             onClick={() => setMode(m)}
-            className={`px-2.5 py-1.5 transition-colors ${mode === m ? "bg-brand text-white" : "bg-surface text-muted hover:text-foreground"}`}
+            className={`px-2.5 py-1.5 transition-colors ${mode === m ? "bg-brand-fill text-white" : "bg-surface text-muted hover:text-foreground"}`}
           >
             {m.toUpperCase()}
           </button>

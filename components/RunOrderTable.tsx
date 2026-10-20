@@ -18,7 +18,7 @@ export function RunOrderTable({ rows, deptWord }: { rows: RunOrderLineDTO[]; dep
       <div className="border-2 rounded-xl overflow-x-auto bg-surface" style={{ borderColor: "color-mix(in srgb, var(--brand) 45%, transparent)" }}>
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-left">
+            <tr className="bg-brand-fill text-white text-left">
               <th className="p-2 w-12 text-center">#</th>
               <th className="p-2">BOM</th>
               <th className="p-2">Description</th>
@@ -30,7 +30,7 @@ export function RunOrderTable({ rows, deptWord }: { rows: RunOrderLineDTO[]; dep
           <tbody>
             {rows.map((r) => (
               <tr key={`${r.rank}`}>
-                <td className="p-2 text-center font-extrabold tabnum text-brand">{r.rank}</td>
+                <td className="p-2 text-center font-extrabold tabnum text-brand-ink">{r.rank}</td>
                 <td className="p-2 font-bold whitespace-nowrap" title={r.mo}>{r.bom}</td>
                 <td className="p-2 text-xs text-muted whitespace-nowrap">{r.description}</td>
                 <td className="p-2 text-center font-bold">{r.item}</td>

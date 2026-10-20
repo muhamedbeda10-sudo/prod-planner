@@ -30,7 +30,7 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
         <PageHeader title="🖨 Machine sheets" />
         <p className="text-sm text-muted bg-surface border rounded-xl p-4">
           Machine planning is turned off, so no work is planned onto machines and there are no sheets to print.
-          {me.isAdmin ? <> Turn it on under <Link href="/admin/settings" className="text-accent font-semibold hover:underline">Admin → Settings</Link>.</> : " An admin can turn it on under Admin → Settings."}
+          {me.isAdmin ? <> Turn it on under <Link href="/admin/settings" className="text-brand-ink font-semibold hover:underline">Admin → Settings</Link>.</> : " An admin can turn it on under Admin → Settings."}
         </p>
       </div>
     );

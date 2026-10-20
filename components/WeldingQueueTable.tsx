@@ -423,7 +423,7 @@ export function WeldingQueueTable({
                 type="button"
                 onClick={() => setOpenTanks(openTanks === k ? null : k)}
                 disabled={pending}
-                className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+                className="rounded-md px-2.5 py-1 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50"
                 title="Tanks are painted by serial — pick the tanks and who painted them"
               >
                 🛢 Pick tanks ({(paintableTanks[r.mo] ?? []).length})
@@ -456,7 +456,7 @@ export function WeldingQueueTable({
                   type="button"
                   onClick={() => save(r)}
                   disabled={pending}
-                  className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[k] ? "bg-ok-fg" : "bg-brand hover:bg-brand-dark"} disabled:opacity-50`}
+                  className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[k] ? "bg-ok-fill" : "bg-brand-fill hover:bg-brand-dark"} disabled:opacity-50`}
                 >
                   {savedFlash[k] ? "✓ Saved" : "Save"}
                 </button>
@@ -583,7 +583,7 @@ export function WeldingQueueTable({
                                   type="button"
                                   onClick={() => { setEditingNote(n.id); setEditText(n.text); setNoteMsg(""); }}
                                   disabled={pending}
-                                  className="text-accent hover:underline"
+                                  className="text-brand-ink hover:underline"
                                 >
                                   ✏️ Edit
                                 </button>
@@ -592,7 +592,7 @@ export function WeldingQueueTable({
                                 type="button"
                                 onClick={() => toggleNoteStatus(n.id, n.status === "open" ? "resolved" : "open")}
                                 disabled={pending}
-                                className="text-accent hover:underline"
+                                className="text-brand-ink hover:underline"
                               >
                                 {n.status === "open" ? "Mark resolved" : "Reopen"}
                               </button>
@@ -624,7 +624,7 @@ export function WeldingQueueTable({
                                 type="button"
                                 onClick={() => saveNoteEdit(n.id)}
                                 disabled={pending}
-                                className="rounded-md px-3 py-1 font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50"
+                                className="rounded-md px-3 py-1 font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50"
                               >
                                 {pending ? "Saving…" : "Save"}
                               </button>
@@ -671,7 +671,7 @@ export function WeldingQueueTable({
                       <button
                         type="submit"
                         disabled={pending}
-                        className="rounded-md px-4 py-1.5 text-xs font-bold text-white bg-brand hover:bg-brand-dark disabled:opacity-50 transition-colors whitespace-nowrap"
+                        className="rounded-md px-4 py-1.5 text-xs font-bold text-white bg-brand-fill hover:bg-brand-dark disabled:opacity-50 transition-colors whitespace-nowrap"
                       >
                         {pending ? "Saving…" : "Save note"}
                       </button>
@@ -710,9 +710,9 @@ export function WeldingQueueTable({
               }
             >
               <span className="text-muted">{it}</span>
-              <b className="text-sm tabnum" style={{ color: avail > 0 ? "var(--brand)" : "var(--muted)" }}>{avail}</b>
+              <b className={`text-sm tabnum ${avail > 0 ? "text-brand-ink" : "text-muted"}`}>{avail}</b>
               {maxAge !== null && (
-                <span className="tabnum font-semibold" style={{ color: maxAge > 6 ? "var(--bad-fg)" : "var(--muted)" }}>
+                <span className={`tabnum font-semibold ${maxAge > 6 ? "text-bad-fg" : "text-muted"}`}>
                   ⏳{maxAge === 0 ? "0d" : `${maxAge}d`}
                 </span>
               )}
@@ -734,7 +734,7 @@ export function WeldingQueueTable({
       <div className="bg-surface border rounded-xl overflow-x-auto md:overflow-x-visible">
         <table className="w-full text-sm border-collapse">
           <thead className="md:sticky md:top-0 md:z-10">
-            <tr className="bg-brand text-white text-left">
+            <tr className="bg-brand-fill text-white text-left">
               <th className="p-2">Deliver on</th>
               <th className="p-2">MO</th>
               <th className="p-2" title="Sales order item">SOI</th>
@@ -849,7 +849,7 @@ export function WeldingQueueTable({
                               type="button"
                               onClick={() => saveGroup(gk, gBom, gItem, members, gAvailable)}
                               disabled={pending}
-                              className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[`g|${gk}`] ? "bg-ok-fg" : "bg-brand hover:bg-brand-dark"} disabled:opacity-50`}
+                              className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[`g|${gk}`] ? "bg-ok-fill" : "bg-brand-fill hover:bg-brand-dark"} disabled:opacity-50`}
                               title={`Distributes over the MOs in order — each fills up to its available, the rest flows to the next`}
                             >
                               {savedFlash[`g|${gk}`] ? "✓ Saved" : "Save all"}

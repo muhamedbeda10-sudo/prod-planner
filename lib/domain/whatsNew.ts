@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-20-green-contrast",
+    dateISO: "2026-10-20",
+    title: "Green buttons and green text are easier to read",
+    where: "Every page · dark theme most of all",
+    body: "White writing on green (Save and other main buttons, the green ✓ after saving, chosen toggles, counts, the assistant button) was too faint in the dark theme, so that green is a step darker now. Green writing on its own (the open tab, the page you are on in the menu, BOM and order links, chosen chips) is a lighter green in the dark theme and a slightly deeper green in the light one, so it stands out from the background.",
+  },
+  {
     id: "2026-10-20-app-updates-itself",
     dateISO: "2026-10-20",
     title: "The app picks up a new version without closing it",

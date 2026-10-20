@@ -78,7 +78,7 @@ export function ExecutionTable({
       <div className="bg-surface border rounded-xl overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-brand text-white text-left">
+            <tr className="bg-brand-fill text-white text-left">
               <th className="p-2">MO</th>
               <th className="p-2">BOM</th>
               <th className="p-2">Description</th>
@@ -139,7 +139,7 @@ export function ExecutionTable({
                           type="button"
                           onClick={() => save(r)}
                           disabled={pending}
-                          className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[k] ? "bg-ok-fg" : "bg-brand hover:bg-brand-dark"} disabled:opacity-50`}
+                          className={`rounded-md px-2.5 py-1 text-xs font-bold text-white transition-colors ${savedFlash[k] ? "bg-ok-fill" : "bg-brand-fill hover:bg-brand-dark"} disabled:opacity-50`}
                           title={blocked ? "Nothing cut and ready yet — recording anyway is allowed" : "Save"}
                         >
                           {savedFlash[k] ? "✓ Saved" : "Save"}

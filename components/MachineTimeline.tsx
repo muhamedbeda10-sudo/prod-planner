@@ -26,7 +26,7 @@ function Block({ b, horizon, word }: { b: TimelineBlock; horizon: number; word: 
   const tone = b.late
     ? "bg-bad-fg border-bad-fg text-white"
     : b.running
-      ? "bg-brand border-brand text-white"
+      ? "bg-brand-fill border-brand-fill text-white"
       : "bg-brand/25 border-brand/60 text-foreground";
   const title = [
     `${b.bom} ${b.item} ×${b.pieces}`,
@@ -132,7 +132,7 @@ export function MachineTimeline({ board }: { board: MachineBoardData }) {
         in a day, at the planner&apos;s own time per piece where there is one). They run in the queue&apos;s order — what is running
         now first. A block turns <span className="text-bad-fg font-semibold">red</span> when it is still running after the day
         its stage was owed, and the thin mark on the track is that day. Move the work with the cards below, or with{" "}
-        <Link href={`/worklist/machines?dept=${board.dept}`} className="text-accent font-semibold hover:underline">the printed sheets</Link>.
+        <Link href={`/worklist/machines?dept=${board.dept}`} className="text-brand-ink font-semibold hover:underline">the printed sheets</Link>.
       </p>
       </>)}
     </section>

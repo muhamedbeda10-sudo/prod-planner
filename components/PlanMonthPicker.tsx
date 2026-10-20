@@ -27,7 +27,7 @@ export function PlanMonthPicker({ plan, months }: { plan: string | null; months:
         value={plan ?? ""}
         onChange={(e) => go(e.target.value)}
         aria-label="Monthly plan"
-        className={`border rounded-md px-2 py-1.5 bg-surface font-bold text-sm ${plan ? "border-brand text-brand" : ""}`}
+        className={`border rounded-md px-2 py-1.5 bg-surface font-bold text-sm ${plan ? "border-brand text-brand-ink" : ""}`}
       >
         <option value="">All plans</option>
         {months.map((m) => <option key={m} value={m}>{m}</option>)}

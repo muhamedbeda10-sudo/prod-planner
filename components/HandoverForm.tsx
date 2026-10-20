@@ -63,7 +63,7 @@ export function HandoverForm({
         <div className="flex gap-2">
           {DEPTS.map((d) => (
             <button type="button" key={d} onClick={() => setDept(d)}
-              className={`flex-1 rounded-md px-3 py-2 font-bold text-sm border ${dept === d ? "bg-brand text-white border-brand" : "bg-surface"}`}>
+              className={`flex-1 rounded-md px-3 py-2 font-bold text-sm border ${dept === d ? "bg-brand-fill text-white border-brand-fill" : "bg-surface"}`}>
               {deptLabel(d)}
             </button>
           ))}
@@ -105,7 +105,7 @@ export function HandoverForm({
         <div className="flex gap-2">
           {ITEMS.map((it) => (
             <button type="button" key={it} onClick={() => setItem(it)}
-              className={`flex-1 rounded-md px-2 py-2 font-bold text-sm border ${item === it ? "bg-accent text-white border-accent" : "bg-surface"}`}>
+              className={`flex-1 rounded-md px-2 py-2 font-bold text-sm border ${item === it ? "bg-brand-fill text-white border-brand-fill" : "bg-surface"}`}>
               {it}
             </button>
           ))}
@@ -117,7 +117,7 @@ export function HandoverForm({
       </Field>
 
       <div className="flex items-end lg:col-span-1">
-        <button type="submit" disabled={pending || blocked} className="w-full bg-brand text-white font-extrabold rounded-md px-4 py-2.5 disabled:opacity-50">
+        <button type="submit" disabled={pending || blocked} className="w-full bg-brand-fill text-white font-extrabold rounded-md px-4 py-2.5 disabled:opacity-50">
           {pending ? "Saving…" : "Save"}
         </button>
       </div>
