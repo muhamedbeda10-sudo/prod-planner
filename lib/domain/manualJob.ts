@@ -32,9 +32,13 @@ export const jobsBySheet = (dept: string) => dept === "Cut";
  *  A whole count of pieces comes back as it was. */
 export const roundSheets = (n: number) => Math.round(n * 100) / 100;
 
-/** Whether a count of sheets is one a job may carry: above 0, to the
- *  hundredth at most (2, 2.5, 0.25 — not 0.125). */
-export const isSheetCount = (n: number) => Number.isFinite(n) && n > 0 && Math.abs(roundSheets(n) - n) < 1e-9;
+/** Whether a count of sheets is one a job may carry: a hundredth of a sheet
+ *  or more, to the hundredth at most (2, 2.5, 0.25 — not 0.125, and not a
+ *  speck like 2e-323 that rounds to no sheet at all). */
+export function isSheetCount(n: number): boolean {
+  const r = roundSheets(n);
+  return Number.isFinite(n) && r > 0 && Math.abs(r - n) < 1e-9;
+}
 
 /** What a sheet count box says when it is refused. */
 export const SHEET_COUNT_RULE = "a number above 0, to two decimals at most (2, 2.5, 0.25)";
