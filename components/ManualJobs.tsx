@@ -4,10 +4,12 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/Modal";
 import { EmptyState } from "@/components/primitives";
+import { TableFrame, Th } from "@/components/DataTable";
+import { SheetJobParts } from "@/components/SheetJobLine";
 import { ClipboardList } from "lucide-react";
 import { createManualJob, deleteManualJob, reopenManualJob, updateManualJob, type ManualActionResult } from "@/app/worklist/manualActions";
 import { assignLineMachine } from "@/app/worklist/machineActions";
-import { MANUAL_BOM, MANUAL_ITEM, MAX_JOB_PARTS, jobName, jobSheetLabel, jobsBySheet, manualMo, partNameSuggestions, partRowsOf, partsText, type ManualJobView } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, MAX_JOB_PARTS, jobName, jobSheetLabel, jobsBySheet, manualMo, partNameSuggestions, partRowsOf, type ManualJobView } from "@/lib/domain/manualJob";
 import { MATERIAL_PRESETS, SHEET_SIZE_PRESETS } from "@/lib/domain/material";
 import { ITEMS, ITEM_NAME } from "@/lib/domain/constants";
 import { machineWord } from "@/lib/domain/shifts";
@@ -357,80 +359,93 @@ export function ManualJobsList({ dept, jobs, machines, canEdit, boms = [] }: { d
           // Escape on a job's form goes back to the list, not out of it
           onClose={() => (form ? setForm(null) : setOpen(false))}
           busy={a.pending || formBusy}
-          width={form ? (sheets ? "max-w-3xl" : "max-w-xl") : "max-w-5xl"}
+          width={form ? (sheets ? "max-w-3xl" : "max-w-xl") : "max-w-7xl"}
+          // it opens on the list: a row's Move to… is no field to start in
+          focusField={false}
         >
           {form ? (
             <JobForm key={`${form.mode}-${form.job.id}`} dept={dept} mode={form.mode} job={form.job} machines={machines} boms={boms} partNames={partNames} onDone={() => setForm(null)} onCancel={() => setForm(null)} onBusy={setFormBusy} />
           ) : jobs.length === 0 ? (
             <EmptyState compact icon={ClipboardList} title="No jobs yet" hint={`✋ Add job puts one on a ${word}.`} />
           ) : (
-            <div className="overflow-x-auto max-h-[65vh] overflow-y-auto">
+            // the job column keeps room for its name and parts; the added date
+            // and the buttons wrap under a wide screen — so the whole row is
+            // in sight in the popup, and only a phone scrolls the table sideways
+            <TableFrame>
               <table className="w-full text-sm border-collapse">
-                <thead className="sticky top-0 bg-surface">
-                  <tr className="text-left text-xs text-muted border-b">
-                    <th className="p-2">Job</th>
-                    <th className="p-2 text-center">{sheets ? "Sheets cut" : "Done"}</th>
-                    <th className="p-2">Sheet</th>
-                    <th className="p-2">Where</th>
-                    <th className="p-2">Added</th>
-                    {canEdit && <th className="p-2"></th>}
+                <thead>
+                  <tr>
+                    <Th label="Job" className="min-w-[16rem]" />
+                    <Th label={sheets ? "Sheets cut" : "Done"} center />
+                    <Th label="Sheet" />
+                    <Th label="Where" />
+                    <Th label="Added" />
+                    {canEdit && <Th label={<span className="sr-only">Actions</span>} />}
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody>
                   {jobs.map((j) => {
                     const done = !!j.doneAtISO;
+                    const details = j.bySheet ? j.note ?? "" : [j.bom && `BOM ${j.bom}`, j.item, j.note].filter(Boolean).join(" · ");
+                    const nothingMore = !details && !(j.bySheet && j.parts.length > 0);
                     return (
-                      <tr key={j.id} className={done ? "opacity-70" : ""}>
-                        <td className="p-2">
+                      <tr key={j.id} className={`align-top ${done ? "opacity-70" : ""}`}>
+                        <td className="px-2">
                           <div className="font-bold">{jobName(j)} <span className="text-[10px] font-normal text-muted tabnum">#{j.id}</span></div>
-                          <div className="text-xs text-muted">
-                            {j.bySheet ? [partsText(j.parts), j.note].filter(Boolean).join(" · ") || "—" : [j.bom && `BOM ${j.bom}`, j.item, j.note].filter(Boolean).join(" · ") || "—"}
-                          </div>
+                          {j.bySheet && <SheetJobParts parts={j.parts} className="mt-0.5" />}
+                          {details && <div className="text-xs text-muted mt-0.5">{details}</div>}
+                          {nothingMore && <div className="text-xs text-muted">—</div>}
                           {oldPieces(j) && <div className="text-[11px] text-muted">typed in pieces, before jobs were counted in sheets</div>}
                         </td>
-                        <td className="p-2 text-center tabnum whitespace-nowrap"><b>{j.doneQty}</b> / {j.qty}{oldPieces(j) ? " pcs" : ""}</td>
-                        <td className="p-2 text-xs whitespace-nowrap">{sheetText(j) || "—"}</td>
-                        <td className="p-2 text-xs whitespace-nowrap">
+                        <td className="px-2 text-center tabnum whitespace-nowrap"><b>{j.doneQty}</b> / {j.qty}{oldPieces(j) ? " pcs" : ""}</td>
+                        <td className="px-2 text-xs whitespace-nowrap">{sheetText(j) || "—"}</td>
+                        <td className="px-2 text-xs whitespace-nowrap">
                           {done ? <span className="pill pill-ok">✓ done {formatDate(j.doneAtISO!.slice(0, 10))}</span>
                             : j.onMachines.length > 0 ? <span className="pill pill-muted">on {j.onMachines.join(", ")}</span>
                             : <span className="pill pill-warn">on no {word}</span>}
                           {j.lastMachine && <div className="text-muted mt-0.5">last on {j.lastMachine}</div>}
                         </td>
-                        <td className="p-2 text-xs text-muted whitespace-nowrap">{formatDate(j.createdAtISO.slice(0, 10))}{j.createdBy ? ` · ${j.createdBy}` : ""}</td>
+                        <td className="px-2 text-xs text-muted">
+                          <div className="whitespace-nowrap">{formatDate(j.createdAtISO.slice(0, 10))}</div>
+                          {j.createdBy && <div className="whitespace-nowrap">{j.createdBy}</div>}
+                        </td>
                         {canEdit && (
-                          <td className="p-2 whitespace-nowrap text-right">
-                            {!done && (
-                              <select
-                                className="border rounded-md px-1.5 py-1 bg-surface text-xs me-1"
-                                value=""
-                                disabled={a.pending}
-                                onChange={(e) => { if (e.target.value) putOn(j, e.target.value); }}
-                                title={`Put it on a ${word} — at the back of its queue`}
-                              >
-                                <option value="">{j.onMachines.length > 0 ? "Move to…" : "Put on…"}</option>
-                                {machines.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}
-                              </select>
-                            )}
-                            {done && !oldPieces(j) && (
-                              <button type="button" className="btn btn-sm btn-secondary me-1" disabled={a.pending} title={`Open it again for more ${unit(j)}`}
-                                onClick={() => { const v = prompt(`More ${unit(j)} of “${jobName(j)}” wanted:`, "1"); if (v === null) return; byId(reopenManualJob, j.id, { more: v.trim() || "0" }); }}>
-                                ↺ Again
+                          <td className="px-2">
+                            <div className="ms-auto flex w-[12.5rem] flex-wrap justify-end gap-1 xl:w-auto xl:flex-nowrap">
+                              {!done && (
+                                <select
+                                  className="w-full border rounded-md px-1.5 py-1 bg-surface text-xs xl:w-auto"
+                                  value=""
+                                  disabled={a.pending}
+                                  onChange={(e) => { if (e.target.value) putOn(j, e.target.value); }}
+                                  title={`Put it on a ${word} — at the back of its queue`}
+                                  aria-label={`${j.onMachines.length > 0 ? "Move" : "Put"} “${jobName(j)}” on a ${word}`}
+                                >
+                                  <option value="">{j.onMachines.length > 0 ? "Move to…" : "Put on…"}</option>
+                                  {machines.map((m) => <option key={m.id} value={m.id}>{m.code}</option>)}
+                                </select>
+                              )}
+                              {done && !oldPieces(j) && (
+                                <button type="button" className="btn btn-sm btn-secondary" disabled={a.pending} title={`Open it again for more ${unit(j)}`}
+                                  onClick={() => { const v = prompt(`More ${unit(j)} of “${jobName(j)}” wanted:`, "1"); if (v === null) return; byId(reopenManualJob, j.id, { more: v.trim() || "0" }); }}>
+                                  ↺ Again
+                                </button>
+                              )}
+                              {!oldPieces(j) && (
+                                <button type="button" className="btn btn-sm btn-secondary" disabled={a.pending} title={j.bySheet ? "Change the sheets, the parts on them, the name or the note" : "Change what it is, the pieces, the sheet or the note"}
+                                  onClick={() => setForm({ mode: "edit", job: j })}>
+                                  ✎ Edit
+                                </button>
+                              )}
+                              <button type="button" className="btn btn-sm btn-secondary" disabled={a.pending} title={`A new job with the same details — pick the ${word}, change what differs`}
+                                onClick={() => setForm({ mode: "copy", job: j })}>
+                                ⧉ Duplicate
                               </button>
-                            )}
-                            {!oldPieces(j) && (
-                              <button type="button" className="btn btn-sm btn-secondary me-1" disabled={a.pending} title={j.bySheet ? "Change the sheets, the parts on them, the name or the note" : "Change what it is, the pieces, the sheet or the note"}
-                                onClick={() => setForm({ mode: "edit", job: j })}>
-                                ✎ Edit
+                              <button type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={a.pending} title="Delete — typed by mistake" aria-label={`Delete “${jobName(j)}”`}
+                                onClick={() => { if (confirm(`Delete “${jobName(j)}”? It goes off every ${word} and out of the list.`)) byId(deleteManualJob, j.id); }}>
+                                ✕
                               </button>
-                            )}
-                            <button type="button" className="btn btn-sm btn-secondary me-1" disabled={a.pending} title={`A new job with the same details — pick the ${word}, change what differs`}
-                              onClick={() => setForm({ mode: "copy", job: j })}>
-                              ⧉ Duplicate
-                            </button>
-                            <button type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={a.pending} title="Delete — typed by mistake"
-                              onClick={() => { if (confirm(`Delete “${jobName(j)}”? It goes off every ${word} and out of the list.`)) byId(deleteManualJob, j.id); }}>
-                              ✕
-                            </button>
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -438,7 +453,7 @@ export function ManualJobsList({ dept, jobs, machines, canEdit, boms = [] }: { d
                   })}
                 </tbody>
               </table>
-            </div>
+            </TableFrame>
           )}
           {a.err && <p className="text-sm font-semibold text-bad-fg mt-2">{a.err}</p>}
         </Modal>

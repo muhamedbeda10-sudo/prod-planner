@@ -47,6 +47,8 @@ describe("sheet counts — part of a sheet", () => {
   it("takes a count above 0 with two decimals at most", () => {
     expect([2, 2.5, 0.25, 0.01, 1.2].map(isSheetCount)).toEqual([true, true, true, true, true]);
     expect([0, -1, 0.125, Number.NaN, Number.POSITIVE_INFINITY].map(isSheetCount)).toEqual([false, false, false, false, false]);
+    // a count that rounds to no sheet is none, however close to 0 it sits
+    expect([2e-323, 1e-10, Number.MIN_VALUE].map(isSheetCount)).toEqual([false, false, false]);
   });
 
   it("reads a decimal comma as the point, and nothing else", () => {

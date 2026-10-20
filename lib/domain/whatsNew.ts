@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-20-jobs-list-fits",
+    dateISO: "2026-10-20",
+    title: "📋 Jobs: the whole list fits the popup",
+    where: "Worklist → Fabrication → 📋 Jobs · Welding and Painting → 📋 Manual jobs",
+    body: "The jobs list is wider on a big screen and no longer opens scrolled sideways, so every job's name and the parts on its sheets are in sight, each part in its own pill. On a laptop the date added and the buttons take a second line instead of squeezing the job. On a phone the list opens on the job and the rest scrolls inside the table. A sheet count below a hundredth of a sheet (shown as 2e-323, say) is now refused wherever sheets are typed: adding, editing or duplicating a job, ✓ cut, sharing it between machines, ↺ Again and the assistant.",
+    href: "/worklist/cut",
+  },
+  {
     id: "2026-10-19-sheet-job-part-sheets",
     dateISO: "2026-10-19",
     title: "Add job: sheets can be part of a sheet — 2.5, 0.25",

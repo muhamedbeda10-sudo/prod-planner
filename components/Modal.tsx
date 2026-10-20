@@ -17,6 +17,7 @@ export function Modal({
   onClose,
   busy = false,
   width = "max-w-2xl",
+  focusField = true,
   children,
 }: {
   title: React.ReactNode;
@@ -25,11 +26,18 @@ export function Modal({
   /** A save is running: the popup stays until it answers. */
   busy?: boolean;
   width?: string;
+  /** Focus the first field when it opens — a form's. A list whose rows hold
+   *  controls passes false: the popup itself takes the focus, so it does not
+   *  open scrolled to the first row's control with the keys on it. Read when
+   *  it opens; a later change is not followed. */
+  focusField?: boolean;
   children: React.ReactNode;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   const busyRef = useRef(busy);
+  // read once, when it opens
+  const focusFieldRef = useRef(focusField);
   useEffect(() => {
     closeRef.current = onClose;
     busyRef.current = busy;
@@ -39,8 +47,8 @@ export function Modal({
     const before = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    // the first field, or the box itself
-    const first = box.current?.querySelector<HTMLElement>("input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])");
+    // the first field (unless told not to), or the box itself
+    const first = !focusFieldRef.current ? null : box.current?.querySelector<HTMLElement>("input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])");
     (first ?? box.current)?.focus();
     const onKey = (ev: KeyboardEvent) => { if (ev.key === "Escape" && !busyRef.current) closeRef.current(); };
     window.addEventListener("keydown", onKey);

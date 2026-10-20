@@ -1,4 +1,4 @@
-import { jobSheetLabel, type ManualJobView } from "@/lib/domain/manualJob";
+import { jobSheetLabel, type ManualJobPartView, type ManualJobView } from "@/lib/domain/manualJob";
 
 // A sheet job on a machine line: the sheet (what the technician sets the
 // machine for), the sheets left on this machine and how far the job is, then
@@ -21,16 +21,23 @@ export function SheetJobLine({ job, left, size = "sm" }: {
         {job.title.trim() && <span className="text-[11px] text-muted truncate">{job.title}</span>}
         <span className="text-[10px] text-muted tabnum">#{job.id}</span>
       </span>
-      {job.parts.length > 0 && (
-        <span className={`flex flex-wrap gap-1 ${print ? "text-xs" : "text-[11px]"}`}>
-          {job.parts.map((p) => (
-            <span key={p.id} className="pill pill-muted tabnum" title={`${p.pcs !== null ? `${p.pcs} piece(s) of ` : ""}${p.part}${p.bom ? ` for ${p.bom}` : ""} on these sheets`}>
-              {p.bom && <b>{p.bom}</b>} {p.item} {p.part}{p.pcs !== null && ` ×${p.pcs}`}
-            </span>
-          ))}
-        </span>
-      )}
+      <SheetJobParts parts={job.parts} />
       {print && job.note && <span className="text-xs text-muted">{job.note}</span>}
+    </span>
+  );
+}
+
+/** Every project's part a sheet job's sheets carry, a pill each — a part is
+ *  never split over two lines, the pills wrap. Nothing when it has none. */
+export function SheetJobParts({ parts, className = "" }: { parts: readonly ManualJobPartView[]; className?: string }) {
+  if (parts.length === 0) return null;
+  return (
+    <span className={`flex flex-wrap gap-1 ${className}`}>
+      {parts.map((p) => (
+        <span key={p.id} className="pill pill-muted tabnum" title={`${p.pcs !== null ? `${p.pcs} piece(s) of ` : ""}${p.part}${p.bom ? ` for ${p.bom}` : ""} on these sheets`}>
+          {p.bom && <b>{p.bom}</b>} {p.item} {p.part}{p.pcs !== null && ` ×${p.pcs}`}
+        </span>
+      ))}
     </span>
   );
 }
