@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { MANUAL_BOM, MANUAL_ITEM, manualDescription, manualIdOf, manualMo, roundSheets, withPlanSpelling, type ManualJobView } from "@/lib/domain/manualJob";
+import { MANUAL_BOM, MANUAL_ITEM, manualDescription, manualIdOf, manualMo, roundSheets, withPlanSpelling, type ManualJobView, type SheetCutView } from "@/lib/domain/manualJob";
 
 /** How many finished jobs the board's list keeps in sight — the rest stay
  *  in the table, only off the list. */
@@ -27,6 +27,24 @@ export async function getManualJobs(dept: string): Promise<ManualJobView[]> {
     onMachines: on.get(j.id) ?? [], lastMachine: j.machine?.code ?? null,
     createdBy: j.createdBy, createdAtISO: j.createdAt.toISOString(), doneAtISO: j.doneAt ? j.doneAt.toISOString() : null,
   }));
+}
+
+/** Every ✓ recorded on the open sheet jobs that have sheets cut, newest
+ *  first, by job id — what a job's details show of how it was cut. */
+export async function getJobCuts(dept: string, jobs: readonly ManualJobView[]): Promise<Record<number, SheetCutView[]>> {
+  const mos = jobs.filter((j) => j.bySheet && !j.doneAtISO && j.doneQty > 0).map((j) => manualMo(j.id));
+  if (mos.length === 0) return {};
+  const rows = await prisma.sheetCutLog.findMany({
+    where: { dept, bom: MANUAL_BOM, item: MANUAL_ITEM, mo: { in: mos } },
+    orderBy: [{ at: "desc" }, { id: "desc" }],
+    select: { id: true, at: true, mo: true, qty: true, createdBy: true, machine: { select: { code: true } } },
+  });
+  const out: Record<number, SheetCutView[]> = {};
+  for (const r of rows) {
+    const id = manualIdOf(r.mo);
+    if (id !== null) (out[id] ??= []).push({ id: r.id, atISO: r.at.toISOString(), machine: r.machine?.code ?? null, qty: r.qty, by: r.createdBy });
+  }
+  return out;
 }
 
 /** The open jobs as board lines — what is left of each (pieces, or a sheet
