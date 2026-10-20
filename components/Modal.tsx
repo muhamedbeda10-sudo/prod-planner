@@ -36,7 +36,6 @@ export function Modal({
   const box = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   const busyRef = useRef(busy);
-  // read once, when it opens
   const focusFieldRef = useRef(focusField);
   useEffect(() => {
     closeRef.current = onClose;
@@ -48,7 +47,7 @@ export function Modal({
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     // the first field (unless told not to), or the box itself
-    const first = !focusFieldRef.current ? null : box.current?.querySelector<HTMLElement>("input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])");
+    const first = focusFieldRef.current ? box.current?.querySelector<HTMLElement>("input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])") : null;
     (first ?? box.current)?.focus();
     const onKey = (ev: KeyboardEvent) => { if (ev.key === "Escape" && !busyRef.current) closeRef.current(); };
     window.addEventListener("keydown", onKey);
