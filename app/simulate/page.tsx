@@ -53,7 +53,7 @@ export default async function SimulatePage({ searchParams }: { searchParams: Pro
     const layout = startingFloor(saved.layout, board.machines.map((m) => m.id));
     return (
       <div>
-        <RememberLastVisit storageKey="simulate:last" />
+        <RememberLastVisit storageKey="simulate:last" view="floor" />
         <PageHead title="Floor" sub="Who is on what, where" views={viewSwitch}>
           <FloorDeptPicker dept={dept} />
         </PageHead>
@@ -79,7 +79,7 @@ export default async function SimulatePage({ searchParams }: { searchParams: Pro
 
   return (
     <div>
-      <RememberLastVisit storageKey="simulate:last" />
+      <RememberLastVisit storageKey="simulate:last" view="whatif" />
       <PageHead title="What-if Simulator" sub="Move the dates and the capacity and see what lands" views={viewSwitch} />
       <WhatIfSimulator
         inputs={inputs}

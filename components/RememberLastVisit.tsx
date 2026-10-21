@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { planLastVisit } from "@/lib/domain/lastVisit";
 
 /**
  * Keeps a tab where it was left. Every filter change on the page (a day, a
@@ -10,39 +11,45 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
  * bookmark, a reload of the plain path — reopens it exactly as it was left.
  * An explicit query in the URL on arrival (a shared link) wins, and is
  * remembered in turn.
+ *
+ * A tab whose views share one path (`?view=`) names the view on screen: each
+ * view then keeps its own memory, and the view switch alone (`?view=x` and
+ * nothing else — the switch's own link, or a bare link to that view) reopens
+ * the view as it was left (lib/domain/lastVisit.ts).
  */
-export function RememberLastVisit({ storageKey, forget = [] }: {
+export function RememberLastVisit({ storageKey, forget = [], viewKey = "view", view }: {
   storageKey: string;
   /** Query keys NOT carried to the next visit — the tab opens on its own
    *  default for them every time (the ODOO log's day: always every day). */
   forget?: string[];
+  /** The query key that picks the view ("view" unless said otherwise). */
+  viewKey?: string;
+  /** The view on screen as the page resolved it — set on a tab whose views
+   *  share one path; each view then keeps its own memory. */
+  view?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const arrived = useRef(false);
+  // the view switch moves between views of ONE route, so this component is
+  // not mounted again — a change of view is an arrival like the first render
+  const seen = useRef<{ view: string | undefined } | null>(null);
   useEffect(() => {
-    const qs = params.toString();
+    const arriving = seen.current === null || seen.current.view !== view;
+    seen.current = { view };
     try {
-      if (!arrived.current) {
-        // arriving on the tab: a bare path reopens what was left
-        arrived.current = true;
-        if (!qs) {
-          const saved = localStorage.getItem(storageKey);
-          if (saved && saved !== pathname && saved.startsWith(`${pathname}?`)) {
-            router.replace(saved);
-            return;
-          }
-        }
+      const plan = planLastVisit({
+        storageKey, pathname, qs: params.toString(), arriving, forget, viewKey, view,
+        read: (key) => localStorage.getItem(key),
+      });
+      if (plan.redirect) {
+        router.replace(plan.redirect);
+        return;
       }
-      // a change made on the page — the defaults included — is what is left
-      const kept = new URLSearchParams(qs);
-      for (const k of forget) kept.delete(k);
-      const keptQs = kept.toString();
-      localStorage.setItem(storageKey, keptQs ? `${pathname}?${keptQs}` : pathname);
+      for (const s of plan.save) localStorage.setItem(s.key, s.url);
     } catch {
       // storage unavailable (private mode, blocked) — the tab simply opens on its defaults
     }
-  }, [pathname, params, router, storageKey, forget.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pathname, params, router, storageKey, forget.join(","), viewKey, view]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }
