@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bomOptions, buildOdooDashboard, matchesBom, pctChange, periodLabel, previousPeriod, productSeries, resolveBasis, resolveBom, resolvePeriod, shortDayLabel, type OdooStatRow, comparePeriod } from "./odooStats";
+import { bomOptions, buildOdooDashboard, matchesBom, matchesProduct, pctChange, periodLabel, previousPeriod, productSeries, resolveBasis, resolveBom, resolvePeriod, resolveProduct, shortDayLabel, type OdooStatRow, comparePeriod } from "./odooStats";
 
 describe("productSeries", () => {
   it("folds the sheet's product names however typed, keeps any other product by name, Other only for none", () => {
@@ -294,6 +294,79 @@ describe("narrowing the dashboard to one BOM", () => {
     const d = buildOdooDashboard(rows, period, null, "closed");
     expect(d.kpi.qty).toBe(14);
     expect(d.bom).toBeNull();
+  });
+});
+
+describe("narrowing the dashboard to one product (a click on its card)", () => {
+  const period = { range: "custom" as const, fromISO: "2026-09-01", toISO: "2026-09-03" };
+  const r = (dateISO: string, product: string, qty: number, bom = "14003E11M11"): OdooStatRow =>
+    ({ dateISO, product, qty, status: "Done", doneISO: dateISO, bom });
+  const rows = [
+    r("2026-09-01", "Tank", 4),
+    r("2026-09-01", "Top Cover", 3),
+    r("2026-09-02", "tn", 5), // the sheet's abbreviation — a Tank row too
+    r("2026-09-02", "Cable Box", 2, "12008E16M18"),
+    r("2026-08-20", "Tank", 9), // outside the period
+  ];
+
+  it("reads the product from the URL, folded onto its series", () => {
+    expect(resolveProduct({})).toBeNull();
+    expect(resolveProduct({ product: " " })).toBeNull();
+    expect(resolveProduct({ product: "all" })).toBeNull();
+    expect(resolveProduct({ product: "Tank" })).toBe("Tank");
+    expect(resolveProduct({ product: "cb" })).toBe("Cable Box");
+    expect(resolveProduct({ product: "radiator" })).toBe("Radiator");
+  });
+
+  it("matches a row on its series, and every row when no product is chosen", () => {
+    expect(matchesProduct(rows[0], null)).toBe(true);
+    expect(matchesProduct(rows[0], "Tank")).toBe(true);
+    expect(matchesProduct(rows[2], "Tank")).toBe(true);
+    expect(matchesProduct(rows[1], "Tank")).toBe(false);
+  });
+
+  it("counts only the chosen product's rows, under the BOM narrowing", () => {
+    const d = buildOdooDashboard(rows, period, null, "closed", null, "prev", "Tank");
+    expect(d.product).toBe("Tank");
+    expect(d.kpi.qty).toBe(9);
+    expect(d.kpi.rows).toBe(2);
+    expect(d.series).toEqual(["Tank"]);
+    expect(d.totals).toEqual([{ series: "Tank", qty: 9, rows: 2, share: 100, prevQty: null }]);
+    expect(d.days.map((p) => p.qty)).toEqual([4, 5, 0]);
+    const both = buildOdooDashboard(rows, period, null, "closed", "14003E11M11", "prev", "Cable Box");
+    expect(both.kpi.rows).toBe(0);
+  });
+
+  it("still offers every product's card once one is chosen, with its share of the whole and its own days", () => {
+    const d = buildOdooDashboard(rows, period, null, "closed", null, "prev", "Tank");
+    expect(d.products.map((t) => t.series)).toEqual(["Tank", "Top Cover", "Cable Box"]);
+    expect(d.products.map((t) => t.share)).toEqual([64.3, 21.4, 14.3]);
+    expect(d.products.find((t) => t.series === "Top Cover")?.qty).toBe(3);
+    // the sparkline of a card that is NOT chosen still has its shape
+    expect(d.products.map((t) => t.daily)).toEqual([[4, 5, 0], [3, 0, 0], [0, 2, 0]]);
+  });
+
+  it("keeps the other products' days on the axis of a long period that only lists logged days", () => {
+    const d = buildOdooDashboard([r("2026-01-10", "Tank", 1), r("2026-06-10", "Top Cover", 2)], { range: "all", fromISO: null, toISO: "2026-09-07" }, null, "closed", null, "prev", "Tank");
+    expect(d.days.map((p) => p.dateISO)).toEqual(["2026-01-10", "2026-06-10"]);
+    expect(d.days.map((p) => p.qty)).toEqual([1, 0]);
+    expect(d.products.find((t) => t.series === "Top Cover")?.daily).toEqual([0, 2]);
+  });
+
+  it("narrows the comparison the same way, on the charts and on the cards", () => {
+    const prev = [r("2026-08-30", "Tank", 2), r("2026-08-30", "Top Cover", 100)];
+    const d = buildOdooDashboard(rows, period, prev, "closed", null, "prev", "Tank");
+    expect(d.kpi.prevQty).toBe(2);
+    expect(d.totals[0].prevQty).toBe(2);
+    expect(d.products.find((t) => t.series === "Top Cover")?.prevQty).toBe(100);
+  });
+
+  it("is the same dashboard as before when no product is chosen", () => {
+    const d = buildOdooDashboard(rows, period, null, "closed");
+    expect(d.product).toBeNull();
+    expect(d.products.map((t) => ({ series: t.series, qty: t.qty, rows: t.rows, share: t.share, prevQty: t.prevQty }))).toEqual(d.totals);
+    expect(d.products[0].daily).toEqual(d.days.map((p) => p.bySeries.Tank));
+    expect(d.kpi.qty).toBe(14);
   });
 });
 

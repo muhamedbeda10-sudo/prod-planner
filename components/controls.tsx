@@ -4,7 +4,8 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 import { FINISHING_LABEL } from "@/lib/domain/constants";
 
-function useSetParam() {
+/** Write one query parameter (an empty value removes it) and navigate, keeping the rest of the URL. */
+export function useSetParam() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();

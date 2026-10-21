@@ -1,7 +1,8 @@
 "use client";
 
 import { formatDate } from "@/lib/domain/format";
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useSetParam } from "@/components/controls";
 import { productColor, productInk } from "@/lib/domain/productColors";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
@@ -17,7 +18,8 @@ import {
 } from "@/lib/domain/odooStats";
 
 // The Odoo dashboard — what was logged each day, by product. One period row
-// scopes everything below it: the headline numbers, a card per product, how
+// scopes everything below it: the headline numbers, a card per product (each
+// a click away from narrowing the whole dashboard to that product), how
 // the close-out is going (components/OdooInsights.tsx: close-rate gauge,
 // funnel, status donut, lead time, aging, burn-up, BOM mix), the stacked
 // columns per day (every count written on its segment), one small chart per
@@ -159,28 +161,56 @@ function useBalancedColumns(n: number) {
   return [ref, style] as const;
 }
 
-function ProductCards({ d, present, pal }: { d: OdooDashboardData; present: OdooSeries[]; pal: Palette }) {
-  const [gridRef, gridStyle] = useBalancedColumns(present.length);
+/** The product the dashboard is narrowed to lives in the URL (`product=`),
+ *  beside the BOM and the period, so a narrowed view can be shared and the
+ *  back button undoes a click. */
+function useProductFilter() {
+  const set = useSetParam();
+  return useCallback((product: OdooSeries | null) => set("product", product ?? ""), [set]);
+}
+
+/**
+ * A card per product the period holds — every product, whatever the
+ * narrowing, so the cards are also the way between products. Each is a
+ * toggle: a click narrows every chart, table and export below to that
+ * product; a click on the chosen card (or on "every product") widens
+ * back. The card's own figures are the product's share of the WHOLE period
+ * (lib/domain/odooStats.ts: `products`), so they hold still while the
+ * narrowing moves.
+ */
+function ProductCards({ d, pal }: { d: OdooDashboardData; pal: Palette }) {
+  const products = d.products;
+  const [gridRef, gridStyle] = useBalancedColumns(products.length);
+  const setProduct = useProductFilter();
   return (
     <div ref={gridRef} className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(min(11rem,100%),1fr))]" style={gridStyle}>
-      {present.map((s) => {
-        const t = d.totals.find((x) => x.series === s)!;
-        const daily = d.days.map((p) => p.bySeries[s]);
-        const best = Math.max(0, ...daily);
+      {products.map((t) => {
+        const s = t.series;
+        const on = d.product === s;
+        const best = Math.max(0, ...t.daily);
         return (
-          <div key={s} className="min-w-0 bg-surface border rounded-xl px-4 py-3 border-t-4" style={{ borderTopColor: pal.color(s) }}>
-            <div className="flex items-center gap-2 text-xs font-bold text-muted">
+          <button
+            key={s}
+            type="button"
+            onClick={() => setProduct(on ? null : s)}
+            aria-pressed={on}
+            title={on ? `Showing ${s} only — click to show every product` : `Show ${s} only`}
+            className={`min-w-0 text-start bg-surface border rounded-xl px-4 py-3 border-t-4 cursor-pointer transition-shadow hover:shadow-md ${on ? "ring-2 ring-[var(--foreground)]" : ""}`}
+            style={{ borderTopColor: pal.color(s) }}
+          >
+            <span className="flex items-center gap-2 text-xs font-bold text-muted">
               <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: pal.color(s) }} />
-              {s}
-            </div>
-            <div className="flex items-baseline gap-2">
+              <span className="truncate">{s}</span>
+              {on && <span className="ms-auto text-[10px] font-extrabold uppercase tracking-wide text-brand-ink">only</span>}
+            </span>
+            <span className="flex items-baseline gap-2">
               <span className="text-[26px] font-semibold leading-tight ltr">{fmt(t.qty)}</span>
               <span className="text-xs text-muted">{t.rows} row{t.rows === 1 ? "" : "s"} · {t.share}%</span>
-            </div>
-            <div className="min-h-[1rem]"><Delta cur={t.qty} prev={t.prevQty} /></div>
-            <div className="mt-1.5"><Sparkline values={daily} color={pal.color(s)} /></div>
-            <div className="text-[11px] text-muted mt-0.5">best day {fmt(best)}</div>
-          </div>
+            </span>
+            <span className="block min-h-[1rem]"><Delta cur={t.qty} prev={t.prevQty} /></span>
+            <span className="block mt-1.5"><Sparkline values={t.daily} color={pal.color(s)} /></span>
+            <span className="block text-[11px] text-muted mt-0.5">best day {fmt(best)}</span>
+          </button>
         );
       })}
     </div>
@@ -375,6 +405,9 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
   const present = d.series;
   const pal = PAL;
   const title = periodLabel(d.period);
+  const setProduct = useProductFilter();
+  // the file name says what the numbers are of: the BOM, the product, the period
+  const fileScope = `${d.bom ? `${d.bom}-` : ""}${d.product ? `${d.product.replace(/\s+/g, "_")}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}`;
   // a narrowed dashboard must say so on the page, not only in the picker —
   // printed or screenshotted, the numbers are otherwise the whole plant's
   const bomLabel = d.bom === null ? null : d.bom === "" ? "rows with no known BOM" : d.bom;
@@ -400,11 +433,20 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
     const other = closedBasis
       ? d.kpi.loggedRows > 0 ? ` ${d.kpi.loggedRows} row(s) were logged in it — switch to "Logged day" to see them.` : ""
       : d.kpi.doneRows > 0 ? ` ${d.kpi.doneRows} row(s) were closed in it — switch to "Closed day" to see them.` : "";
+    const narrowed = [bomLabel ? "on this BOM" : "", d.product ? `for ${d.product}` : ""].filter(Boolean).join(" ");
+    const wider = [bomLabel ? "another BOM" : "", d.product ? "another product" : ""].filter(Boolean);
     return (
       <div className="space-y-3">
-        <p className="text-sm text-muted">{title}{bomLabel && <> · <b className="text-foreground">{bomLabel}</b></>}</p>
-        <p className="text-sm text-muted bg-surface border rounded-xl p-4">
-          Nothing {word} {bomLabel ? "on this BOM " : ""}in this period.{other} {other ? "" : `Pick a wider one${bomLabel ? " or another BOM" : ""}.`}
+        <p className="text-sm text-muted">
+          {title}
+          {bomLabel && <> · <b className="text-foreground">{bomLabel}</b></>}
+          {d.product && <> · <b className="text-foreground">{d.product}</b></>}
+        </p>
+        {/* the cards stay: they are the way to another product, or to all of them */}
+        {d.products.length > 0 && <ProductCards d={d} pal={pal} />}
+        <p className="text-sm text-muted bg-surface border rounded-xl p-4 flex flex-wrap items-center gap-2">
+          <span>Nothing {word} {narrowed ? `${narrowed} ` : ""}in this period.{other} {other ? "" : `Pick a wider one${wider.length ? ` or ${wider.join(" or ")}` : ""}.`}</span>
+          {d.product && <button type="button" className="btn btn-sm" onClick={() => setProduct(null)}>Show every product</button>}
         </p>
       </div>
     );
@@ -413,18 +455,27 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm">
+        <div className="text-sm flex flex-wrap items-center gap-x-1 gap-y-1">
           <span className="font-bold">{title}</span>
           {bomLabel && <span> · BOM <b className="text-brand-ink">{bomLabel}</b></span>}
+          {d.product && (
+            <span>
+              {" "}· <button type="button" className="pill pill-muted cursor-pointer" onClick={() => setProduct(null)} title="Show every product" aria-label={`${d.product} only — show every product`}>
+                <span className="inline-block w-2 h-2 rounded-sm" style={{ background: pal.color(d.product) }} /> {d.product} only ✕
+              </button>
+            </span>
+          )}
           {prevTitle && <span className="text-muted"> · compared with {prevTitle}{d.compare !== "prev" ? ` (${ODOO_COMPARE_LABEL[d.compare].toLowerCase()})` : ""}</span>}
         </div>
-        <ExportButton rows={exportRows} filename={`odoo-dashboard-${d.bom ? `${d.bom}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`} sheetName="By day" />
+        <ExportButton rows={exportRows} filename={`odoo-dashboard-${fileScope}.xlsx`} sheetName="By day" />
       </div>
 
       {/* the products first, centred across the page, then the day by day */}
       <section>
-        <h2 className="font-bold mb-2 text-center">Per product <span className="text-muted font-normal text-sm">· {word}</span></h2>
-        <ProductCards d={d} present={present} pal={pal} />
+        <h2 className="font-bold mb-2 text-center">
+          Per product <span className="text-muted font-normal text-sm">· {word} · {d.product ? "click the chosen card to show every product" : "click a card to show that product only"}</span>
+        </h2>
+        <ProductCards d={d} pal={pal} />
       </section>
 
       <Card title={`Quantity ${word} per day, by product`} sub={`Each column is a day (the day rows were ${word}); every segment carries its count, the cap the day's total. Hover a column for the full breakdown.`}>
@@ -434,7 +485,7 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
       <OdooInsightsSection
         ins={d.insights}
         colorOf={(product) => pal.color(product)}
-        file={(name) => `odoo-${name}-${d.bom ? `${d.bom}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}.xlsx`}
+        file={(name) => `odoo-${name}-${fileScope}.xlsx`}
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">

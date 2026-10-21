@@ -86,6 +86,12 @@ describe("the ODOO close-out insights", () => {
     expect(s.funnel.logged).toBe(1);
   });
 
+  it("narrows to one product like the cards, on the series the name folds onto", () => {
+    const s = buildOdooInsights([row({ product: "Tank" }), row({ product: "tn" }), row({ product: "Top Cover" })], period, null, "Tank");
+    expect(s.funnel.logged).toBe(2);
+    expect(s.bomMix.series).toEqual(["Tank"]);
+  });
+
   it("gives an empty period empty figures", () => {
     const s = buildOdooInsights([], period);
     expect(s.closeRate).toBe(0);

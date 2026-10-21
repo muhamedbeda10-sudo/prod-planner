@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-21-odoo-dashboard-product-cards",
+    dateISO: "2026-10-21",
+    title: "Click a product card to see that product only on the Odoo dashboard",
+    where: "ODOO → Dashboard → Per product",
+    href: "/odoo?view=dashboard",
+    body: "Each product card is now a filter: click Tank and every chart, the close-out figures, the table and the Excel export below show Tank only, with a \"Tank only ✕\" pill in the title line. Click the same card again, another card, or the ✕ to go back to every product or move on to the next one. The cards themselves keep showing every product with its share of the whole period, and the choice sits in the page address, so a narrowed view can be shared like the BOM one.",
+  },
+  {
     id: "2026-10-20-nav-tabs-contrast",
     dateISO: "2026-10-20",
     title: "The tabs in the green top bar are easier to read",
