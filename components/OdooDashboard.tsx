@@ -2,7 +2,7 @@
 
 import { formatDate } from "@/lib/domain/format";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { useSetParam } from "@/components/controls";
+import { useSetParam } from "@/components/useSetParam";
 import { productColor, productInk } from "@/lib/domain/productColors";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, LabelList,
@@ -201,7 +201,7 @@ function ProductCards({ d, pal }: { d: OdooDashboardData; pal: Palette }) {
             <span className="flex items-center gap-2 text-xs font-bold text-muted">
               <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: pal.color(s) }} />
               <span className="truncate">{s}</span>
-              {on && <span className="ms-auto text-[10px] font-extrabold uppercase tracking-wide text-brand-ink">only</span>}
+              {on && <span className="ms-auto filter-label text-brand-ink">only</span>}
             </span>
             <span className="flex items-baseline gap-2">
               <span className="text-[26px] font-semibold leading-tight ltr">{fmt(t.qty)}</span>
@@ -406,8 +406,9 @@ export function OdooDashboard({ data: d }: { data: OdooDashboardData & { insight
   const pal = PAL;
   const title = periodLabel(d.period);
   const setProduct = useProductFilter();
-  // the file name says what the numbers are of: the BOM, the product, the period
-  const fileScope = `${d.bom ? `${d.bom}-` : ""}${d.product ? `${d.product.replace(/\s+/g, "_")}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}`;
+  // the file name says what the numbers are of: the BOM, the product, the
+  // period — the product typed on a row or in the URL, kept to file-safe characters
+  const fileScope = `${d.bom ? `${d.bom}-` : ""}${d.product ? `${d.product.replace(/[^\w.-]+/g, "_")}-` : ""}${d.period.fromISO ?? "all"}-${d.period.toISO}`;
   // a narrowed dashboard must say so on the page, not only in the picker —
   // printed or screenshotted, the numbers are otherwise the whole plant's
   const bomLabel = d.bom === null ? null : d.bom === "" ? "rows with no known BOM" : d.bom;

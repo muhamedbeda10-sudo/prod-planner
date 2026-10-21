@@ -218,12 +218,13 @@ export function matchesProduct(r: OdooStatRow, product: OdooSeries | null): bool
   return product === null || productSeries(r.product) === product;
 }
 
-/** Read the product from the URL: absent or "all" is every product, anything
- *  else the series that name folds onto (`product=cb` is the Cable Box). */
+/** Read the product from the URL: absent (or blank) is every product,
+ *  anything else the series that name folds onto (`product=cb` is the Cable
+ *  Box). No "all" word: a product may be called anything, and the cards
+ *  clear the narrowing by dropping the parameter. */
 export function resolveProduct(sp: { product?: string }): OdooSeries | null {
   const raw = (sp.product ?? "").trim();
-  if (!raw || raw.toLowerCase() === "all") return null;
-  return productSeries(raw);
+  return raw ? productSeries(raw) : null;
 }
 
 /** The BOM picker's options: every BOM counted in the period on the basis,
@@ -398,7 +399,8 @@ export function buildOdooDashboard(
 ): OdooDashboardData {
   // the picker lists what the PERIOD holds, not what survives the narrowing —
   // otherwise choosing a BOM would leave the list with one entry and no way
-  // back to the others
+  // back to the others. The BOM is the OUTER narrowing: its list ignores the
+  // product, while the product cards respect the BOM.
   const boms = bomOptions(rows, period, basis);
   const onBom = rows.filter((r) => matchesBom(r, bom));
   const onBomPrev = prevRows === null ? null : prevRows.filter((r) => matchesBom(r, bom));

@@ -312,7 +312,7 @@ describe("narrowing the dashboard to one product (a click on its card)", () => {
   it("reads the product from the URL, folded onto its series", () => {
     expect(resolveProduct({})).toBeNull();
     expect(resolveProduct({ product: " " })).toBeNull();
-    expect(resolveProduct({ product: "all" })).toBeNull();
+    expect(resolveProduct({ product: "All" })).toBe("All"); // a product can be called anything
     expect(resolveProduct({ product: "Tank" })).toBe("Tank");
     expect(resolveProduct({ product: "cb" })).toBe("Cable Box");
     expect(resolveProduct({ product: "radiator" })).toBe("Radiator");
@@ -359,6 +359,28 @@ describe("narrowing the dashboard to one product (a click on its card)", () => {
     expect(d.kpi.prevQty).toBe(2);
     expect(d.totals[0].prevQty).toBe(2);
     expect(d.products.find((t) => t.series === "Top Cover")?.prevQty).toBe(100);
+  });
+
+  it("builds the cards on the BOM narrowing alone, so a BOM and a product together still leave the way back", () => {
+    const prev = [r("2026-08-30", "Tank", 2), r("2026-08-30", "Top Cover", 7), r("2026-08-30", "Top Cover", 50, "12008E16M18")];
+    const d = buildOdooDashboard(rows, period, prev, "closed", "14003E11M11", "prev", "Tank");
+    expect(d.products.map((t) => t.series)).toEqual(["Tank", "Top Cover"]);
+    expect(d.products.map((t) => t.share)).toEqual([75, 25]);
+    expect(d.products.map((t) => t.prevQty)).toEqual([2, 7]);
+    // the chosen product is on another BOM: nothing to draw, but the cards stay
+    const none = buildOdooDashboard(rows, period, null, "closed", "14003E11M11", "prev", "Cable Box");
+    expect(none.kpi.rows).toBe(0);
+    expect(none.products.map((t) => t.series)).toEqual(["Tank", "Top Cover"]);
+  });
+
+  it("keeps the other measure and the comparison honest under the narrowing", () => {
+    const d = buildOdooDashboard(rows, period, null, "logged", null, "prev", "Tank");
+    expect(d.kpi.doneRows).toBe(2);
+    expect(d.kpi.doneNowRows).toBe(2);
+    const prev = [r("2026-08-30", "Tank", 2)];
+    const noCompare = buildOdooDashboard(rows, period, prev, "closed", null, "none", "Tank");
+    expect(noCompare.products.every((t) => t.prevQty === null)).toBe(true);
+    expect(noCompare.totals[0].prevQty).toBeNull();
   });
 
   it("is the same dashboard as before when no product is chosen", () => {
