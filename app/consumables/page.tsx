@@ -106,7 +106,7 @@ export default async function ConsumablesPage({
     ];
     return (
       <div className="space-y-3">
-        <RememberLastVisit storageKey="consumables:last" view={view} />
+        <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
         <PrintHeader title="Powder scrap" subtitle={monthLong(month)} date={formatDate(factoryDayISO(new Date()))} />
         <PageHead
           title="Consumables" sub={`Powder scrap · ${monthLong(month)}`} views={viewSwitch}
@@ -144,7 +144,7 @@ export default async function ConsumablesPage({
     }));
     return (
       <div className="space-y-3">
-        <RememberLastVisit storageKey="consumables:last" view={view} />
+        <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
         <PageHead
           title="Consumables" sub="Catalogue & limits · where each stands now" views={viewSwitch}
           actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-limits-${today}.xlsx`, sheetName: "Limits" }]} />}
@@ -170,7 +170,7 @@ export default async function ConsumablesPage({
     if (sp.to) monthParams.set("to", to);
     return (
       <div className="space-y-3">
-        <RememberLastVisit storageKey="consumables:last" view={view} />
+        <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
         <PrintHeader title="Consumables — dashboard" subtitle={`${periodLabel} · monthly review ${monthLong(month)}`} date={formatDate(factoryDayISO(new Date()))} />
         <PageHead
           title="Consumables" sub={`Dashboard · ${periodLabel}`} views={viewSwitch}
@@ -206,7 +206,7 @@ export default async function ConsumablesPage({
     }));
     return (
       <div className="space-y-3">
-        <RememberLastVisit storageKey="consumables:last" view={view} />
+        <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
         <PageHead
           title="Consumables" sub={`Edits · ${periodLabel}`} views={viewSwitch}
           actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-edits-${period}.xlsx`, sheetName: "Edits" }]} />}
@@ -237,7 +237,7 @@ export default async function ConsumablesPage({
 
   return (
     <div className="space-y-3">
-      <RememberLastVisit storageKey="consumables:last" view={view} />
+      <RememberLastVisit storageKey="consumables:last" view={view} carry={["from", "to"]} />
       <PageHead
         title="Consumables" sub={`Log · ${periodLabel}`} views={viewSwitch}
         actions={<ExportMenu excel={[{ rows: exportRows, filename: `consumables-${period}.xlsx`, sheetName: "Consumables" }]} />}

@@ -21,7 +21,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     title: "The Odoo dashboard opens on the filters you left it on",
     where: "ODOO → Log / Dashboard · Floor / Simulator · Consumables",
     href: "/odoo?view=dashboard",
-    body: "The dashboard's period, Closed/Logged day, BOM, comparison and product are kept apart from the log now, so a visit to the log no longer wipes them, and the Dashboard button brings the dashboard back exactly as you left it instead of on its defaults. The Floor keeps its department the same way, and each Consumables view its own settings when no period is in the link. As before, this is remembered in the browser you use; a link that carries its own filters still opens on those.",
+    body: "The dashboard's period, Closed/Logged day, BOM, comparison and product are kept apart from the log now, so a visit to the log no longer wipes them, and the Dashboard button brings the dashboard back exactly as you left it instead of on its defaults. The Floor keeps its department the same way, and each Consumables view its own settings (the Powder month, say) under the period the switch carries along. As before, this is remembered in the browser you use; a link that carries its own filters still opens on those.",
   },
   {
     id: "2026-10-21-odoo-dashboard-product-cards",

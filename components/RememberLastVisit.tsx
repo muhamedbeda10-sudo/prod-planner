@@ -17,29 +17,30 @@ import { planLastVisit } from "@/lib/domain/lastVisit";
  * nothing else — the switch's own link, or a bare link to that view) reopens
  * the view as it was left (lib/domain/lastVisit.ts).
  */
-export function RememberLastVisit({ storageKey, forget = [], viewKey = "view", view }: {
+export function RememberLastVisit({ storageKey, forget = [], view, carry = [] }: {
   storageKey: string;
   /** Query keys NOT carried to the next visit — the tab opens on its own
    *  default for them every time (the ODOO log's day: always every day). */
   forget?: string[];
-  /** The query key that picks the view ("view" unless said otherwise). */
-  viewKey?: string;
   /** The view on screen as the page resolved it — set on a tab whose views
-   *  share one path; each view then keeps its own memory. */
+   *  share one path (`?view=`); each view then keeps its own memory. */
   view?: string;
+  /** Query keys the view switch carries from view to view (the Consumables period). */
+  carry?: string[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   // the view switch moves between views of ONE route, so this component is
-  // not mounted again — a change of view is an arrival like the first render
+  // not mounted again — a change of view is noticed here instead
   const seen = useRef<{ view: string | undefined } | null>(null);
   useEffect(() => {
-    const arriving = seen.current === null || seen.current.view !== view;
+    const arriving = seen.current === null;
+    const viewChanged = !arriving && seen.current!.view !== view;
     seen.current = { view };
     try {
       const plan = planLastVisit({
-        storageKey, pathname, qs: params.toString(), arriving, forget, viewKey, view,
+        storageKey, pathname, qs: params.toString(), arriving, viewChanged, forget, view, carry,
         read: (key) => localStorage.getItem(key),
       });
       if (plan.redirect) {
@@ -50,6 +51,6 @@ export function RememberLastVisit({ storageKey, forget = [], viewKey = "view", v
     } catch {
       // storage unavailable (private mode, blocked) — the tab simply opens on its defaults
     }
-  }, [pathname, params, router, storageKey, forget.join(","), viewKey, view]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pathname, params, router, storageKey, forget.join(","), view, carry.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }
