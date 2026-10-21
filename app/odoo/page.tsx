@@ -55,7 +55,7 @@ export default async function OdooPage({
     const today = factoryDayISO(new Date());
     return (
       <div className="space-y-3">
-        <RememberLastVisit storageKey="odoo:last" />
+        <RememberLastVisit storageKey="odoo:last" view="dashboard" />
         <PageHead title="ODOO" sub="Dashboard · both lines" views={viewSwitch}>
           <OdooBasisPicker basis={basis} />
           <OdooBomPicker bom={data.bom} boms={data.boms} />
@@ -95,7 +95,7 @@ export default async function OdooPage({
 
   return (
     <div className="space-y-3">
-      <RememberLastVisit storageKey="odoo:last" forget={["day"]} />
+      <RememberLastVisit storageKey="odoo:last" forget={["day"]} view="log" />
       <PageHead
         title="ODOO"
         sub="Close-out log · both lines"
