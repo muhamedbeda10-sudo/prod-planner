@@ -211,6 +211,22 @@ export function resolveBom(sp: { bom?: string }): string | null {
   return raw.toUpperCase();
 }
 
+/** Does this row belong to the product the dashboard is narrowed to?
+ *  `null` is every product. Rows are matched on their series, so "cb" and
+ *  "Cable Box" are one product here as they are on the cards. */
+export function matchesProduct(r: OdooStatRow, product: OdooSeries | null): boolean {
+  return product === null || productSeries(r.product) === product;
+}
+
+/** Read the product from the URL: absent (or blank) is every product,
+ *  anything else the series that name folds onto (`product=cb` is the Cable
+ *  Box). No "all" word: a product may be called anything, and the cards
+ *  clear the narrowing by dropping the parameter. */
+export function resolveProduct(sp: { product?: string }): OdooSeries | null {
+  const raw = (sp.product ?? "").trim();
+  return raw ? productSeries(raw) : null;
+}
+
 /** The BOM picker's options: every BOM counted in the period on the basis,
  *  by name, with the rows with no known BOM last. Built from the whole
  *  period so narrowing to one BOM never empties the list it was chosen from. */
@@ -254,6 +270,14 @@ export interface OdooSeriesTotal {
   prevQty: number | null;
 }
 
+/** A product's card: its figures over the whole period (on the BOM alone,
+ *  whatever product is chosen) and its quantity on each of `days`, so the
+ *  card holds still while the charts below narrow. */
+export interface OdooProductCard extends OdooSeriesTotal {
+  /** The product's quantity on the basis, one number per entry of `days`. */
+  daily: number[];
+}
+
 export interface OdooDashboardData {
   period: OdooPeriod;
   basis: OdooBasis;
@@ -261,6 +285,13 @@ export interface OdooDashboardData {
   bom: string | null;
   /** Every BOM the period holds, whatever the narrowing — the picker. */
   boms: OdooBomOption[];
+  /** The product everything below is narrowed to — null when it is all of them. */
+  product: OdooSeries | null;
+  /** Every product the period holds (on the BOM narrowing alone), in drawing
+   *  order — the cards. Narrowing to one product never hides the others, so
+   *  the cards stay the way back; the same figures as `totals` when none is
+   *  chosen. */
+  products: OdooProductCard[];
   /** The comparison window, when the period is bounded. */
   previous: { fromISO: string; toISO: string } | null;
   /** What the period is compared with. */
@@ -362,15 +393,26 @@ function tally(rows: readonly OdooStatRow[], window: { fromISO: string | null; t
  * and closed can sit side by side. `prevRows` are the previous period's
  * rows, for the comparisons; pass null when there is no previous period.
  */
-export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prevRows: OdooStatRow[] | null = null, basis: OdooBasis = "logged", bom: string | null = null, compare: OdooCompare = "prev"): OdooDashboardData {
+export function buildOdooDashboard(
+  rows: OdooStatRow[], period: OdooPeriod, prevRows: OdooStatRow[] | null = null, basis: OdooBasis = "logged",
+  bom: string | null = null, compare: OdooCompare = "prev", product: OdooSeries | null = null
+): OdooDashboardData {
   // the picker lists what the PERIOD holds, not what survives the narrowing —
   // otherwise choosing a BOM would leave the list with one entry and no way
-  // back to the others
+  // back to the others. The BOM is the OUTER narrowing: its list ignores the
+  // product, while the product cards respect the BOM.
   const boms = bomOptions(rows, period, basis);
-  const kept = bom === null ? rows : rows.filter((r) => matchesBom(r, bom));
-  const keptPrev = prevRows === null ? null : bom === null ? prevRows : prevRows.filter((r) => matchesBom(r, bom));
+  const onBom = rows.filter((r) => matchesBom(r, bom));
+  const onBomPrev = prevRows === null ? null : prevRows.filter((r) => matchesBom(r, bom));
+  // the cards are the same: every product on the BOM, so one click narrows
+  // and the next click (on another card, or the same one) moves on or clears
+  const kept = onBom.filter((r) => matchesProduct(r, product));
+  const keptPrev = onBomPrev === null ? null : onBomPrev.filter((r) => matchesProduct(r, product));
 
   const main = tally(kept, period, basis);
+  // the cards' own tally: every product on the BOM — `main` itself when no
+  // product is chosen
+  const cards = product === null ? main : tally(onBom, period, basis);
   const logged = basis === "logged" ? main : tally(kept, period, "logged");
   const closed = basis === "closed" ? main : tally(kept, period, "closed");
   const doneNowRows = kept.filter((r) => inWindow(r.dateISO, period) && isDoneStatus(r.status)).length;
@@ -380,6 +422,21 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
   // the previous period, per product, for the comparisons — on the same basis
   const prevWindow = comparePeriod(period, compare);
   const prev = keptPrev && prevWindow ? tally(keptPrev, prevWindow, basis) : null;
+
+  const seriesTotals = (t: Tally, p: Tally | null): OdooSeriesTotal[] =>
+    orderSeries(t.totals).map((s) => {
+      const tot = t.totals.get(s)!;
+      return {
+        series: s, qty: tot.qty, rows: tot.rows,
+        share: t.qty > 0 ? Math.round((tot.qty / t.qty) * 1000) / 10 : 0,
+        prevQty: p ? (p.totals.get(s)?.qty ?? 0) : null,
+      };
+    });
+  const totals = seriesTotals(main, prev);
+  // the cards: every product the period holds on the BOM, with ITS share of
+  // the whole and its own comparison — the same numbers as `totals` when no
+  // product is chosen
+  const cardTotals = product === null ? totals : seriesTotals(cards, onBomPrev && prevWindow ? tally(onBomPrev, prevWindow, basis) : null);
 
   const point = (iso: string): OdooDayPoint => {
     const m = main.byDay.get(iso);
@@ -393,8 +450,9 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
     };
   };
 
-  // the x-axis: every day of the period when it is short enough, else the days that have anything
-  const touched = [...new Set([...main.byDay.keys(), ...logged.byDay.keys(), ...closed.byDay.keys()])].sort();
+  // the x-axis: every day of the period when it is short enough, else the
+  // days that have anything — on any product, so the cards' days are all there
+  const touched = [...new Set([...main.byDay.keys(), ...logged.byDay.keys(), ...closed.byDay.keys(), ...cards.byDay.keys()])].sort();
   const firstISO = period.fromISO ?? touched[0] ?? period.toISO;
   const first = parseISODate(firstISO)!;
   const last = parseISODate(period.toISO)!;
@@ -408,23 +466,19 @@ export function buildOdooDashboard(rows: OdooStatRow[], period: OdooPeriod, prev
   }
 
   const activeDays = main.byDay.size;
+  const products: OdooProductCard[] = cardTotals.map((t) => ({ ...t, daily: days.map((p) => cards.byDay.get(p.dateISO)?.bySeries[t.series] ?? 0) }));
   return {
     period,
     basis,
     bom,
     boms,
+    product,
+    products,
     previous: prevRows ? prevWindow : null,
     compare,
     series,
     days,
-    totals: series.map((s) => {
-      const t = main.totals.get(s)!;
-      return {
-        series: s, qty: t.qty, rows: t.rows,
-        share: main.qty > 0 ? Math.round((t.qty / main.qty) * 1000) / 10 : 0,
-        prevQty: prev ? (prev.totals.get(s)?.qty ?? 0) : null,
-      };
-    }),
+    totals,
     kpi: {
       qty: main.qty, rows: main.rows,
       loggedQty: logged.qty, loggedRows: logged.rows,

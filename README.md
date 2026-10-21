@@ -147,7 +147,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
    tracker has it, else the newest month that does; a line not nested yet copies its BOM number and
    says so. A **Dashboard** view (Log · Dashboard switch) shows what was logged per day by
    product — a card per product (the sheet's six and any other product logged, by its own name)
-   with its trend and change vs the previous period, stacked columns
+   with its trend and change vs the previous period — **each card a filter**: a click narrows every
+   chart, figure, table and export below to that product (`product=` in the address, beside the BOM),
+   a second click widens back — stacked columns
    with every count written on, one small chart per product, totals, and logged vs closed per day —
    counted, by a **Closed day · Logged day** switch, on the day each row's status went to Done
    (the default: a row logged in August and closed in September is one of September's closings,

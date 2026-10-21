@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getActiveLine } from "./line";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { blockedItem, isDoneStatus, odooRowBom, odooRowBomLabel, parseOdooSheet, statusTone, type OdooEntryView, type OdooRowBom, type OdooScope } from "@/lib/domain/odoo";
-import { buildOdooDashboard, comparePeriod, type OdooBasis, type OdooCompare, type OdooDashboardData, type OdooPeriod } from "@/lib/domain/odooStats";
+import { buildOdooDashboard, comparePeriod, type OdooBasis, type OdooCompare, type OdooDashboardData, type OdooPeriod, type OdooSeries } from "@/lib/domain/odooStats";
 import { buildOdooInsights, type OdooInsightRow, type OdooInsights } from "@/lib/domain/odooInsights";
 import { candidateBoms, candidateMos, moKey, moParent, nestingKey, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
 
@@ -269,13 +269,13 @@ async function statRows(fromISO: string | null, toISO: string): Promise<OdooInsi
 /** The dashboard as drawn: the per-product numbers and the close-out insights. */
 export type OdooDashboardView = OdooDashboardData & { insights: OdooInsights };
 
-export async function getOdooDashboard(period: OdooPeriod, basis: OdooBasis = "closed", bom: string | null = null, compare: OdooCompare = "prev"): Promise<OdooDashboardView> {
+export async function getOdooDashboard(period: OdooPeriod, basis: OdooBasis = "closed", bom: string | null = null, compare: OdooCompare = "prev", product: OdooSeries | null = null): Promise<OdooDashboardView> {
   const prev = comparePeriod(period, compare);
   const [rows, prevRows] = await Promise.all([
     statRows(period.fromISO, period.toISO),
     prev ? statRows(prev.fromISO, prev.toISO) : Promise.resolve(null),
   ]);
-  return { ...buildOdooDashboard(rows, period, prevRows, basis, bom, compare), insights: buildOdooInsights(rows, period, bom) };
+  return { ...buildOdooDashboard(rows, period, prevRows, basis, bom, compare, product), insights: buildOdooInsights(rows, period, bom, product) };
 }
 
 // ---- import: the office's sheet, once, its first seven columns ----

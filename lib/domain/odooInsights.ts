@@ -14,7 +14,7 @@
 
 import { addDaysISO, daysBetweenISO } from "./dateSlicer";
 import { statusTone, type OdooTone } from "./odoo";
-import { matchesBom, productSeries, shortDayLabel, type OdooPeriod, type OdooSeries, type OdooStatRow } from "./odooStats";
+import { matchesBom, matchesProduct, productSeries, shortDayLabel, type OdooPeriod, type OdooSeries, type OdooStatRow } from "./odooStats";
 
 export interface OdooInsightRow extends OdooStatRow {
   /** Odoo's MO is on the row. */
@@ -78,8 +78,8 @@ function quantile(sorted: number[], q: number): number | null {
   return sorted[rank - 1];
 }
 
-export function buildOdooInsights(all: readonly OdooInsightRow[], period: OdooPeriod, bom: string | null = null): OdooInsights {
-  const rows = all.filter((r) => matchesBom(r, bom));
+export function buildOdooInsights(all: readonly OdooInsightRow[], period: OdooPeriod, bom: string | null = null, product: OdooSeries | null = null): OdooInsights {
+  const rows = all.filter((r) => matchesBom(r, bom) && matchesProduct(r, product));
   const from = period.fromISO;
   const to = period.toISO;
   const logged = rows.filter((r) => inWindow(r.dateISO, from, to));

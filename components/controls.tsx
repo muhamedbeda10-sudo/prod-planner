@@ -1,23 +1,7 @@
 "use client";
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useCallback } from "react";
 import { FINISHING_LABEL } from "@/lib/domain/constants";
-
-function useSetParam() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
-  return useCallback(
-    (key: string, value: string) => {
-      const p = new URLSearchParams(params.toString());
-      if (value) p.set(key, value);
-      else p.delete(key);
-      router.push(`${pathname}?${p.toString()}`);
-    },
-    [router, pathname, params]
-  );
-}
+import { useSetParam } from "@/components/useSetParam";
 
 /** Report department filter: MULTI-select toggle pills — scope every report
  *  section to any combination of stages (Painting includes the core's Shot
