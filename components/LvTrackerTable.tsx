@@ -15,15 +15,15 @@ import { closeDeliveredOrders, setOrderHold, setOrderStatus } from "@/app/orders
 import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
-import { LV_CHAIN, LV_FAMILIES, LV_FAMILY_LABEL, LV_STAGE_LABEL, LV_STAGE_SHORT, lvGroupMembers, lvStageOf, type LvChainStage } from "@/lib/domain/lv";
+import { LV_STAGES, LV_FAMILIES, LV_FAMILY_LABEL, LV_STAGE_LABEL, LV_STAGE_SHORT, lvGroupMembers, lvStageOf, type LvChainStage } from "@/lib/domain/lv";
 import { lvBottleneck } from "@/lib/domain/trackerView";
 import type { UserPrefs } from "@/lib/domain/userPrefs";
 import type { LvTrackerRow } from "@/lib/server/lvTracker";
 
 // The Plan Tracker's LV PANELS side.
 //
-// A panel is one thing that passes four stages in order, so its row is five
-// cells — punched, bent, welded, painted, delivered — where a transformer's
+// A panel is one thing that passes four stages in order, so its row is four
+// cells — punched, bent, welded, painted — where a transformer's
 // is a grid. The cells record the way the transformer tracker's do: click,
 // type the NEW total, the difference lands in today's daily log; a merged
 // BOM row spreads a total over its MOs in order and shows which before it
@@ -92,7 +92,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   const cols = useColumns("lvtracker:cols", prefs["lvtracker:cols"], DEFAULT_COLS);
   const show = cols.isOn;
   const [hiddenStages, toggleStage] = useAccountSet("lvtracker:hiddenStages", prefs["lvtracker:hiddenStages"]);
-  const stages = LV_CHAIN.filter((s) => !hiddenStages.has(s));
+  const stages = LV_STAGES.filter((s) => !hiddenStages.has(s));
   const moOn = show("mo");
   const idLayout = (() => {
     let left = 0;
@@ -129,10 +129,8 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   // the line's plans present — the panels' and the meter boxes'
   const families = useMemo(() => LV_FAMILIES.filter((f) => rows.some((r) => r.family === f)), [rows]);
 
-  // month and plan scope — an order carried across plans belongs to EVERY
-  // month it appeared in. The cards follow THESE filters (each month's plan
-  // on its own, panels and meter boxes apart); search, product, urgency and
-  // progress only narrow the table.
+  // Month and plan scope — an order carried across plans belongs to EVERY
+  // month it appeared in. All remaining filters narrow both cards and table.
   const monthRows = useMemo(
     () => rows.filter((r) => (!month || r.months.includes(month)) && (!family || r.family === (family === "PNL" ? "" : family))),
     [rows, month, family]
@@ -154,12 +152,11 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
     });
   }, [monthRows, q, product, status, urgent, progress]);
 
-  // the cards: every open order of the month, per stage — the plan as a whole
-  const cardRows = useMemo(() => monthRows.filter((r) => r.status === "open"), [monthRows]);
-  const cards = LV_CHAIN.map((stage) => ({
+  // The cards report exactly the orders currently shown in the table.
+  const cards = LV_STAGES.map((stage) => ({
     stage,
-    need: cardRows.reduce((s, r) => s + r.state.required, 0),
-    done: cardRows.reduce((s, r) => s + Math.min(lvStageOf(r.state, stage), r.state.required || Infinity), 0),
+    need: filtered.reduce((s, r) => s + r.state.required, 0),
+    done: filtered.reduce((s, r) => s + Math.min(lvStageOf(r.state, stage), r.state.required || Infinity), 0),
   }));
 
   // shared BOMs: one summary row per BOM, expandable to its MOs — the way the
@@ -178,7 +175,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   const exportRows = filtered.map((r) => ({
     MO: r.mo, SOI: r.soi ?? "", Customer: r.customer ?? "", Product: r.product ?? "", BoM: r.bom, "SEC Item": r.secItem ?? "",
     Required: r.state.required, Punched: r.state.punch, Bent: r.state.bend, Welded: r.state.weld, Painted: r.state.paint,
-    Delivered: r.state.delivered, Left: r.remaining, Status: r.status, "On hold": r.hold.onHold ? holdLabel(r.hold) : "",
+    Left: r.remaining, Status: r.status, "On hold": r.hold.onHold ? holdLabel(r.hold) : "",
   }));
 
   function run(fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData, after?: () => void) {
@@ -431,10 +428,10 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
     // filters stay put and ONLY the table scrolls (its header pinned).
     <div className="print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
       {head}
-      {/* the month's plan at a glance: panels through each stage */}
+      {/* the filtered orders at a glance: panels through each making stage */}
       <div className={`print-keep ${RING_GRID} mb-3`}>
         {cards.map((c) => (
-          <RingCard wide key={c.stage} label={LV_STAGE_SHORT[c.stage]} note={c.stage === "Delivered" ? "delivered" : `${c.stage.toLowerCase().replace(/ing$/, "ed")}`} done={c.done} need={c.need} />
+          <RingCard wide key={c.stage} label={LV_STAGE_SHORT[c.stage]} note={`${c.stage.toLowerCase().replace(/ing$/, "ed")}`} done={c.done} need={c.need} />
         ))}
       </div>
 
@@ -462,7 +459,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
           <div>
             <div className="filter-label mb-1.5">Stages</div>
             <div className="grid grid-cols-2 gap-x-3">
-              {LV_CHAIN.map((s) => (
+              {LV_STAGES.map((s) => (
                 <label key={s} className="flex items-center gap-2 py-0.5 cursor-pointer">
                   <input type="checkbox" checked={!hiddenStages.has(s)} onChange={() => toggleStage(s)} />{LV_STAGE_LABEL[s]}
                 </label>
