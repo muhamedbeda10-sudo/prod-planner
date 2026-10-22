@@ -22,8 +22,8 @@ import { formOf, type ReadTool, type WriteTool } from "./types";
 const TABS = ["shifts"] as const;
 const DAY = { type: "string", format: "date" } as const;
 const DEPT = { type: "string", enum: [...ROSTER_DEPTS], description: "Cut = Fabrication. LV panels: Punching, Bending, WeldingLV, PaintingLV." } as const;
-const SHIFT = { type: "string", enum: [...SHIFT_CODES], description: "S9 = the short shift, S11 = the long one (their hours are set on Settings)." } as const;
-const OVERTIME = { type: "number", minimum: 0, maximum: 12, description: "Overtime hours on top of the shift, 0–12 (kept to the half hour)." } as const;
+const SHIFT = { type: "string", enum: [...SHIFT_CODES], description: "S9 = day shift 07:00–16:00, S11 = night shift 19:00–07:00. Both include a one-hour break." } as const;
+const OVERTIME = { type: "number", minimum: 0, maximum: 12, description: "Day shift only: the fixed 16:00–19:00 overtime period. Use the configured overtime hours shown by get_shift_day." } as const;
 const MAX_STATE = 200_000;
 
 const label = (d: RosterDept) => WORKER_DEPT_LABEL[d];
@@ -43,7 +43,7 @@ interface DayLine {
 function lineText(l: DayLine, h: ShiftHours): string {
   const note = l.note ? ` · “${l.note}”` : "";
   if (!l.present) return `absent${note}`;
-  return `${hoursOfShift(l.shift, h)} h${l.overtimeH > 0 ? ` + ${l.overtimeH} h OT` : ""}${note}`;
+  return `${hoursOfShift(l.shift, h)} h${l.shift === "S9" && l.overtimeH > 0 ? ` + ${l.overtimeH} h OT` : ""}${note}`;
 }
 
 const sameLine = (a: DayLine, b: DayLine) => a.present === b.present && a.shift === b.shift && a.overtimeH === b.overtimeH && (a.note ?? null) === (b.note ?? null);
@@ -147,15 +147,19 @@ export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput
     if (asked.has(hit.workerId)) return { error: `${hit.empId} ${hit.name} is named twice.` };
     asked.set(hit.workerId, w);
   }
+  const invalidOvertime = [i.everyone, ...(i.workers ?? [])].find((change) => change?.shift === "S11" && (change.overtimeH ?? 0) > 0);
+  if (invalidOvertime) return { error: "Overtime is available to the day shift only (16:00–19:00)." };
   return lines.map((line) => {
     const before = asDayLine(line);
     const w = asked.get(line.workerId);
     const present = w?.present ?? before.present;
     const all = present ? i.everyone : undefined;
+    const shift = w?.shift ?? all?.shift ?? before.shift;
+    const requestedOvertime = halfHour(w?.overtimeH ?? all?.overtimeH ?? before.overtimeH);
     const after: DayLine = {
       present,
-      shift: w?.shift ?? all?.shift ?? before.shift,
-      overtimeH: halfHour(w?.overtimeH ?? all?.overtimeH ?? before.overtimeH),
+      shift,
+      overtimeH: present && shift === "S9" ? requestedOvertime : 0,
       note: w && w.note !== undefined ? w.note?.trim() || null : before.note,
     };
     return { line, before, after };
@@ -174,7 +178,7 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
   name: "record_shift_day",
   title: "Record a day on the shift roster",
   description:
-    "Record one department's day on the shift roster, as the Shifts tab does: who was absent, who worked the long shift, overtime and notes. `everyone` applies a shift or overtime to every worker present in the department; `workers` sets single workers (badge number or exact name) on top of that. The department's day is saved whole — workers not mentioned are recorded as the tab shows them (read it first with get_shift_day). No future days.",
+    "Record one department's day on the shift roster, as the Shifts tab does: who was absent, who worked the night shift, day-shift overtime and notes. `everyone` applies a shift or overtime to every worker present in the department; `workers` sets single workers (badge number or exact name) on top of that. The department's day is saved whole — workers not mentioned are recorded as the tab shows them (read it first with get_shift_day). No future days.",
   area: "data",
   // a few workers marked is small; the whole department, or many, is not
   risk: (i) => (!i.everyone && (i.workers?.length ?? 0) <= 3 ? "low" : "high"),
