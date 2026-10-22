@@ -6,8 +6,8 @@ import type { SheetItem } from "@/lib/domain/constants";
 // A department's day is its workers: each present or not, on the day or
 // night shift, with overtime on top of the day shift only, and on
 // a machine where the department has machines. A worker with no record for
-// a day counts as present on the default shift with no overtime — the
-// supervisor records the exceptions, not the rule.
+// a day remains unassigned until the supervisor records it. The master
+// roster and the daily attendance are deliberately separate.
 
 /** The shifts the plant runs. The CODE is what a day is recorded under and
  *  never changes; the HOURS behind it are the planner's to set (Settings), so

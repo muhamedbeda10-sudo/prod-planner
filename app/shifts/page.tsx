@@ -9,6 +9,7 @@ import { ShiftProductivity } from "@/components/ShiftProductivity";
 import { PageHeader } from "@/components/ui";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { ShiftRoster } from "@/components/ShiftRoster";
+import { ShiftsWorkspace } from "@/components/ShiftsWorkspace";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { parseRosterFilter, rosterDepts, rosterFilterLabel } from "@/lib/domain/roster";
@@ -34,17 +35,23 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
   const editableDepts = ROSTER_DEPTS.filter((d) => hasPerm(me, shiftPermKey(d)));
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-[calc(100dvh-5rem)] min-h-0 flex-col gap-3 overflow-hidden">
       <RememberLastVisit storageKey="shifts:last" />
-      <PageHeader title="🕘 Shift log" />
-      <UrlDateSlicer
-        encoding="day" mode="day" from={day} to={day} min={addDaysISO(today, -60)} max={today} today={today}
-        presets={["today", "yesterday"]} marks={history.map((h) => h.dateISO)}
+      <div className="shrink-0 space-y-2">
+        <PageHeader title="🕘 Shift log" />
+        <UrlDateSlicer
+          encoding="day" mode="day" from={day} to={day} min={addDaysISO(today, -60)} max={today} today={today}
+          presets={["today", "yesterday"]} marks={history.map((h) => h.dateISO)}
+        />
+      </div>
+      <ShiftsWorkspace
+        attendance={
+          /* keyed on the day so the draft starts fresh on every navigation; the
+             filter is a URL param and keeps the draft */
+          <ShiftRoster key={day} data={data} history={history} editableDepts={editableDepts} today={today} filter={filter} canSetHours={me.isAdmin} />
+        }
+        productivity={<ShiftProductivity data={productivity} dayISO={day} filterLabel={rosterFilterLabel(filter)} isAdmin={me.isAdmin} />}
       />
-      {/* keyed on the day so the draft starts fresh on every navigation; the
-          filter is a URL param and keeps the draft */}
-      <ShiftRoster key={day} data={data} history={history} editableDepts={editableDepts} today={today} filter={filter} canSetHours={me.isAdmin} />
-      <ShiftProductivity data={productivity} dayISO={day} filterLabel={rosterFilterLabel(filter)} isAdmin={me.isAdmin} />
     </div>
   );
 }

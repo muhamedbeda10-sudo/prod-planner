@@ -41,8 +41,9 @@ function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
   return <p className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
 }
 
-type Draft = Pick<ShiftLineDTO, "workerId" | "dept" | "present" | "shift" | "overtimeH" | "note">;
-const toDraft = (l: ShiftLineDTO): Draft => ({ workerId: l.workerId, dept: l.dept, present: l.present, shift: l.shift, overtimeH: l.overtimeH, note: l.note });
+type Draft = Pick<ShiftLineDTO, "workerId" | "dept" | "present" | "shift" | "overtimeH" | "note" | "recorded">;
+const toDraft = (l: ShiftLineDTO): Draft => ({ workerId: l.workerId, dept: l.dept, present: l.present, shift: l.shift, overtimeH: l.overtimeH, note: l.note, recorded: l.recorded });
+type RosterView = "all" | ShiftCode | "overtime" | "absent" | "unassigned";
 const keyOf = (l: { workerId: number; dept: string }) => `${l.dept}|${l.workerId}`;
 
 function Stat({ label, value, sub, tone = "" }: { label: string; value: string; sub?: string; tone?: string }) {
@@ -72,7 +73,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
   const clear = useAction();
   const [hoursOpen, setHoursOpen] = useState(false);
   const [q, setQ] = useState("");
-  const [activeShift, setActiveShift] = useState<ShiftCode | "all">("S9");
+  const [activeView, setActiveView] = useState<RosterView>("all");
   const [draft, setDraft] = useState<Draft[]>(() => data.lines.map(toDraft));
   const byKey = useMemo(() => new Map(data.lines.map((l) => [keyOf(l), l])), [data.lines]);
   const hrs = data.shiftHours ?? DEFAULT_SHIFT_HOURS;
@@ -89,10 +90,14 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
   const shown = useMemo(() => draft.filter((d) => {
     const l = byKey.get(keyOf(d))!;
     if (!rosterLineMatches(l, filter)) return false;
-    if (activeShift !== "all" && d.shift !== activeShift) return false;
+    if (activeView === "S9" && !(d.recorded && d.present && d.shift === "S9")) return false;
+    if (activeView === "S11" && !(d.recorded && d.present && d.shift === "S11")) return false;
+    if (activeView === "overtime" && !(d.recorded && d.present && d.shift === "S9" && d.overtimeH > 0)) return false;
+    if (activeView === "absent" && !(d.recorded && !d.present)) return false;
+    if (activeView === "unassigned" && d.recorded) return false;
     if (needle && !`${l.name} ${l.empId} ${l.jobTitle ?? ""}`.toLowerCase().includes(needle)) return false;
     return true;
-  }), [draft, byKey, filter, activeShift, needle]);
+  }), [draft, byKey, filter, activeView, needle]);
   const totals = useMemo(() => dayTotals(shown, hrs), [shown, hrs]);
   const depts = rosterDepts(filter);
   const capacity = depts.reduce<number | null>((s, d) => (data.capacityMh[d] == null ? s : (s ?? 0) + data.capacityMh[d]!), null);
@@ -104,14 +109,19 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
   const canEdit = (d: RosterDept) => editableDepts.includes(d);
-  const anyEditable = shown.some((d) => canEdit(d.dept));
+  const anyEditable = draft.some((d) => canEdit(d.dept) && rosterLineMatches(byKey.get(keyOf(d))!, filter));
   const recordedHere = depts.filter((d) => data.savedDepts.includes(d));
   const allRecorded = depts.length > 0 && recordedHere.length === depts.length;
 
-  const set = (k: string, patch: Partial<Draft>) => setDraft((d) => d.map((l) => (keyOf(l) === k ? { ...l, ...patch } : l)));
+  const set = (k: string, patch: Partial<Draft>) => setDraft((d) => d.map((l) => (keyOf(l) === k ? { ...l, ...patch, recorded: true } : l)));
+  const unset = (k: string) => setDraft((d) => d.map((l) => (keyOf(l) === k ? { ...l, present: false, shift: "S9", overtimeH: 0, note: "", recorded: false } : l)));
   const setShown = (patch: (l: Draft) => Partial<Draft>) => {
     const keys = new Set(shown.filter((d) => canEdit(d.dept)).map(keyOf));
-    setDraft((d) => d.map((l) => (keys.has(keyOf(l)) ? { ...l, ...patch(l) } : l)));
+    setDraft((d) => d.map((l) => (keys.has(keyOf(l)) ? { ...l, ...patch(l), recorded: true } : l)));
+  };
+  const unsetShown = () => {
+    const keys = new Set(shown.filter((d) => canEdit(d.dept)).map(keyOf));
+    setDraft((d) => d.map((l) => (keys.has(keyOf(l)) ? { ...l, present: false, shift: "S9", overtimeH: 0, note: "", recorded: false } : l)));
   };
 
   function submit() {
@@ -126,26 +136,41 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
 
   const capacityTone = capacity === null ? "" : totals.hours >= capacity ? "text-ok-fg" : totals.hours >= capacity * 0.8 ? "text-warn-fg" : "text-bad-fg";
   const filterLabel = rosterFilterLabel(filter);
-  const shiftScope = activeShift === "all" ? "all shifts" : activeShift === "S9" ? "day shift" : "night shift";
+  const viewLabel = activeView === "all" ? "all workers" : activeView === "S9" ? "day shift" : activeView === "S11" ? "night shift" : activeView === "overtime" ? "overtime" : activeView === "absent" ? "absent" : "not set";
+  const viewCount = (view: RosterView) => draft.filter((d) => {
+    const w = byKey.get(keyOf(d));
+    if (!w || !rosterLineMatches(w, filter)) return false;
+    if (view === "all") return true;
+    if (view === "S9") return d.recorded && d.present && d.shift === "S9";
+    if (view === "S11") return d.recorded && d.present && d.shift === "S11";
+    if (view === "overtime") return d.recorded && d.present && d.shift === "S9" && d.overtimeH > 0;
+    if (view === "absent") return d.recorded && !d.present;
+    return !d.recorded;
+  }).length;
+  const unassignedEditable = draft.filter((d) => canEdit(d.dept) && !d.recorded).length;
 
   return (
     <div className="space-y-4">
-      <section className="grid gap-2 md:grid-cols-[1fr_1fr_auto]" aria-label="Shift to record">
-        <button type="button" onClick={() => setActiveShift("S9")} className={`rounded-xl border p-4 text-start transition ${activeShift === "S9" ? "border-brand bg-brand-light ring-2 ring-brand/10" : "bg-surface hover:border-brand/40"}`}>
-          <span className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-lg bg-warn-bg text-warn-fg"><Sun size={20} aria-hidden /></span>
-            <span className="min-w-0"><b className="block">Day shift</b><span className="block text-xs text-muted mt-1">07:00–16:00 · 1 h break · {hrs.short} working h</span></span>
-            <span className="pill pill-muted ms-auto tabnum">{draft.filter((l) => l.shift === "S9").length}</span>
-          </span>
-        </button>
-        <button type="button" onClick={() => setActiveShift("S11")} className={`rounded-xl border p-4 text-start transition ${activeShift === "S11" ? "border-brand bg-brand-light ring-2 ring-brand/10" : "bg-surface hover:border-brand/40"}`}>
-          <span className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-lg bg-brand-light text-brand-ink"><Moon size={20} aria-hidden /></span>
-            <span className="min-w-0"><b className="block">Night shift</b><span className="block text-xs text-muted mt-1">19:00–07:00 · 1 h break · {hrs.long} working h</span></span>
-            <span className="pill pill-muted ms-auto tabnum">{draft.filter((l) => l.shift === "S11").length}</span>
-          </span>
-        </button>
-        <button type="button" onClick={() => setActiveShift("all")} className={`btn self-stretch ${activeShift === "all" ? "btn-primary" : ""}`}>All workers</button>
+      <section className="rounded-xl border bg-surface p-2" aria-label="Shift view">
+        <div className="no-scrollbar flex items-center gap-1 overflow-x-auto">
+          {([
+            ["all", "All workers", Users],
+            ["unassigned", "Not set", Users],
+            ["S9", "Day · 07–16", Sun],
+            ["S11", "Night · 19–07", Moon],
+            ["overtime", "Overtime · 16–19", Clock3],
+            ["absent", "Absent", Users],
+          ] as const).map(([view, label, Icon]) => (
+            <button key={view} type="button" onClick={() => setActiveView(view)} className={`chip shrink-0 ${activeView === view ? "chip-on" : ""}`} aria-pressed={activeView === view}>
+              <Icon size={14} aria-hidden />
+              {label}
+              <span className="chip-count">{viewCount(view)}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 px-1 text-xs text-muted">
+          “All workers” is the master list. Pick Present/Absent and a shift for today; workers are not put on the day shift automatically.
+        </p>
       </section>
 
       {/* the filter row: a line, then its sections */}
@@ -157,8 +182,8 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
               <button key={g.key} type="button" className={filter === `line:${g.key}` ? "on" : ""} onClick={() => setFilter(`line:${g.key}`)}>{g.label}</button>
             ))}
           </nav>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${shiftScope}…`} aria-label="Search" className="border rounded-md px-2 py-1.5 bg-surface text-sm min-w-[12rem]" />
-          <span className="ms-auto text-xs text-muted tabnum">{shown.length} of {draft.length} on the list</span>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${viewLabel}…`} aria-label="Search" className="border rounded-md px-2 py-1.5 bg-surface text-sm min-w-[12rem]" />
+          <span className="ms-auto text-xs text-muted tabnum">{shown.length} shown · {viewCount("unassigned")} not set</span>
         </div>
         {WORKER_GROUPS.map((g) => (
           <div key={g.key} className="flex flex-wrap items-center gap-1.5">
@@ -174,7 +199,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
 
       {/* the day at a glance — over what the filter shows */}
       <div className="kpi-strip">
-        <Stat label={`Present · ${shiftScope}`} value={`${totals.present} / ${totals.workers}`} sub={totals.workers - totals.present > 0 ? `${totals.workers - totals.present} absent` : totals.workers ? "everyone in" : "nobody registered"} />
+        <Stat label={`Present · ${viewLabel}`} value={`${totals.present} / ${totals.workers}`} sub={shown.some((l) => !l.recorded) ? `${shown.filter((l) => !l.recorded).length} not set yet` : totals.workers - totals.present > 0 ? `${totals.workers - totals.present} absent` : totals.workers ? "everyone in" : "no workers in this view"} />
         <Stat label="Man-hours" value={String(totals.hours)} sub={capacity !== null ? `${depts.length === 1 && filter !== "" && !filter.startsWith("line:") ? `${WORKER_DEPT_LABEL[depts[0]]} ` : ""}capacity ${round1(capacity)} mh/day` : "no capacity figure set"} tone={capacityTone} />
         <Stat label="Overtime" value={`${totals.overtimeH} h`} sub={`${shown.filter((l) => l.present && l.overtimeH > 0).length} worker(s)`} />
       </div>
@@ -183,9 +208,9 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
         {allRecorded ? (
             <span className="pill pill-ok">recorded{data.recordedBy ? ` · ${data.recordedBy}` : ""}</span>
           ) : recordedHere.length > 0 ? (
-            <span className="pill pill-warn pill-wrap">{recordedHere.map((d) => WORKER_DEPT_LABEL[d]).join(", ")} recorded — the rest shows defaults</span>
+            <span className="pill pill-warn pill-wrap">{recordedHere.map((d) => WORKER_DEPT_LABEL[d]).join(", ")} recorded — the rest is Not set</span>
           ) : (
-            <span className="pill pill-warn pill-wrap">not recorded yet — defaults shown</span>
+            <span className="pill pill-warn pill-wrap">not recorded yet — the master roster is shown as Not set</span>
           )}
         {dirty && <span className="pill pill-warn">unsaved changes</span>}
       </div>
@@ -195,14 +220,14 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
         {shown.length === 0 ? (
           <EmptyState
             icon={Users}
-            title={draft.length === 0 ? "Nobody is registered yet" : needle ? "Nobody matches the search" : `Nobody is registered in ${filterLabel} yet`}
-            hint={needle ? undefined : "Add people in Tools → Production Workers and tick their sections."}
+            title={draft.length === 0 ? "Nobody is registered yet" : needle ? "Nobody matches the search" : activeView === "all" ? `Nobody is registered in ${filterLabel} yet` : `No workers in ${viewLabel}`}
+            hint={needle ? undefined : draft.length === 0 ? "Add people in Tools → Production Workers and tick their sections." : "Open All workers to assign people for this day."}
           />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-brand-fill text-white text-left">
+                <tr className="sticky top-0 z-10 bg-brand-fill text-white text-left">
                   <th className="p-2 text-center">Attendance</th>
                   <th className="p-2">Worker</th>
                   <th className="p-2">Section</th>
@@ -219,11 +244,12 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
                   const h = lineHours(l, hrs);
                   const ro = !canEdit(l.dept) || save.pending;
                   return (
-                    <tr key={k} className={`border-t ${l.present ? "" : "opacity-60 bg-surface-2/50"}`}>
+                    <tr key={k} className={`border-t ${!l.recorded ? "bg-warn-bg/20" : l.present ? "" : "opacity-60 bg-surface-2/50"}`}>
                       <td className="p-2">
                         <div className="seg whitespace-nowrap" role="group" aria-label={`${w.name} attendance`}>
-                          <button type="button" disabled={ro} className={l.present ? "on" : ""} onClick={() => set(k, { present: true })}>Present</button>
-                          <button type="button" disabled={ro} className={!l.present ? "on !bg-bad-bg !text-bad-fg" : ""} onClick={() => set(k, { present: false, overtimeH: 0 })}>Absent</button>
+                          <button type="button" disabled={ro} className={!l.recorded ? "on !bg-warn-bg !text-warn-fg" : ""} onClick={() => unset(k)}>Not set</button>
+                          <button type="button" disabled={ro} className={l.recorded && l.present ? "on" : ""} onClick={() => set(k, { present: true })}>Present</button>
+                          <button type="button" disabled={ro} className={l.recorded && !l.present ? "on !bg-bad-bg !text-bad-fg" : ""} onClick={() => set(k, { present: false, overtimeH: 0 })}>Absent</button>
                         </div>
                       </td>
                       <td className="p-2 whitespace-nowrap">
@@ -238,7 +264,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
                         {w.sectionLabels.length > 0 ? w.sectionLabels.map((s) => <span key={s} className="pill pill-muted me-1">{s}</span>) : <span className="text-xs text-muted">{WORKER_DEPT_LABEL[l.dept]}</span>}
                       </td>
                       <td className="p-2">
-                        <select value={l.shift} disabled={ro || !l.present} aria-label="Shift" onChange={(e) => { const shift = e.target.value as ShiftCode; set(k, { shift, overtimeH: shift === "S9" ? l.overtimeH : 0 }); }} className="border rounded-md px-2 py-1 bg-surface font-semibold text-sm">
+                        <select value={l.shift} disabled={ro || !l.recorded || !l.present} aria-label="Shift" onChange={(e) => { const shift = e.target.value as ShiftCode; set(k, { shift, overtimeH: shift === "S9" ? l.overtimeH : 0 }); }} className="border rounded-md px-2 py-1 bg-surface font-semibold text-sm">
                           {SHIFT_CODES.map((c) => <option key={c} value={c}>{shiftLabel(c, hrs)}</option>)}
                         </select>
                       </td>
@@ -246,7 +272,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
                         {l.shift === "S9" ? (
                           <button
                             type="button"
-                            disabled={ro || !l.present}
+                            disabled={ro || !l.recorded || !l.present}
                             aria-pressed={l.overtimeH === OT}
                             className={`btn btn-sm ${l.overtimeH === OT ? "btn-primary" : ""}`}
                             onClick={() => set(k, { overtimeH: l.overtimeH === OT ? 0 : OT })}
@@ -257,7 +283,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
                           <span className="text-xs text-muted">Day shift only</span>
                         )}
                       </td>
-                      <td className={`p-2 text-center tabnum font-extrabold ${l.present ? "" : "text-muted"}`}>{h}</td>
+                      <td className={`p-2 text-center tabnum font-extrabold ${l.recorded && l.present ? "" : "text-muted"}`}>{l.recorded ? h : "—"}</td>
                       <td className="p-2">
                         <input value={l.note} disabled={ro} placeholder="…" aria-label="Note" onChange={(e) => set(k, { note: e.target.value })} className="w-full min-w-[8rem] px-2 py-1 text-xs" />
                       </td>
@@ -270,13 +296,17 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
         )}
         {anyEditable && (
           <div className="flex flex-wrap items-center gap-2 p-3 border-t no-print">
-            <button type="button" className="btn btn-primary" disabled={save.pending || (!dirty && allRecorded)} onClick={submit}>
+            <button type="button" className="btn btn-primary" disabled={save.pending || unassignedEditable > 0 || (!dirty && allRecorded)} onClick={submit}>
               {allRecorded ? "Save changes" : "Save day"}
             </button>
-            <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setShown(() => ({ present: true }))}>Everyone present</button>
-            {activeShift === "S9" && <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setShown((l) => ({ overtimeH: l.present ? OT : 0 }))}>Day team +{OT} h OT</button>}
-            <span className="text-[11px] text-muted">Day 07:00–16:00 · OT 16:00–19:00 · Night 19:00–07:00 · every shift includes a 1 h break</span>
-            {filter !== "" && <span className="text-[11px] text-muted">— the three buttons act on the {shown.length} shown</span>}
+            <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setShown(() => ({ present: true, shift: "S9", overtimeH: 0 }))}>Shown → Day</button>
+            <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setShown(() => ({ present: true, shift: "S11", overtimeH: 0 }))}>Shown → Night</button>
+            <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setShown(() => ({ present: false, overtimeH: 0 }))}>Shown → Absent</button>
+            {activeView === "S9" && <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setShown((l) => ({ overtimeH: l.present ? OT : 0 }))}>Shown +{OT} h OT</button>}
+            <button type="button" className="btn btn-sm btn-ghost" disabled={save.pending} onClick={unsetShown}>Clear shown</button>
+            <span className="text-[11px] text-muted">Day 07:00–16:00 · OT 16:00–19:00 · Night 19:00–07:00 · each shift includes a 1 h break</span>
+            {unassignedEditable > 0 && <span className="pill pill-warn pill-wrap">{unassignedEditable} worker(s) still not set — assign everyone before saving</span>}
+            {filter !== "" && <span className="text-[11px] text-muted">— bulk actions affect the {shown.length} shown</span>}
             {dirty && <button type="button" className="btn btn-sm btn-ghost" disabled={save.pending} onClick={() => setDraft(data.lines.map(toDraft))}>Reset</button>}
             {recordedHere.length > 0 && (
               <button
@@ -288,7 +318,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
                   const fd = new FormData();
                   fd.set("date", data.dateISO);
                   fd.set("depts", target.join(","));
-                  clear.run(clearShiftDay, fd, "Day cleared.", () => setDraft((d) => d.map((l) => (target.includes(l.dept) ? { ...l, present: !byKey.get(keyOf(l))!.onVacation, shift: "S9", overtimeH: 0, note: "" } : l))));
+                  clear.run(clearShiftDay, fd, "Day cleared.", () => setDraft((d) => d.map((l) => (target.includes(l.dept) ? { ...l, present: false, shift: "S9", overtimeH: 0, note: "", recorded: false } : l))));
                 }}
               >
                 Clear {filter === "" ? "the day" : filterLabel}
