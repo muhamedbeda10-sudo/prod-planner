@@ -70,8 +70,9 @@ export async function getShiftRoster(dateISO: string): Promise<ShiftRosterData> 
     lines.push({
       workerId: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle, dept,
       sections, sectionLabels: sections.map(sectionLabel), onVacation: w.onVacation,
-      // no record yet: present, unless he is away on vacation
-      present: r?.present ?? !w.onVacation,
+      // A worker belongs to the master roster, not automatically to the day shift.
+      // Until the supervisor records this day, leave the worker unassigned.
+      present: r?.present ?? false,
       shift: r && isShiftCode(r.shift) ? r.shift : DEFAULT_SHIFT,
       overtimeH: r?.overtimeH ?? 0,
       note: r?.note ?? "",
