@@ -42,9 +42,9 @@ export function ShiftHoursForm({ short, long, overtime, compact = false }: {
   const body = (
     <>
       <div className="flex flex-wrap gap-4">
-        {field("shiftShortH", "Short shift", "the default a worker is on")}
-        {field("shiftLongH", "Long shift", "the second option on the log")}
-        {field("overtimeH", "Overtime", "what “+OT” and “Everyone +OT” set")}
+        {field("shiftShortH", "Day working hours", "07:00–16:00 less the 1 h break")}
+        {field("shiftLongH", "Night working hours", "19:00–07:00 less the 1 h break")}
+        {field("overtimeH", "Day overtime", "the fixed 16:00–19:00 period")}
       </div>
       <div className="flex items-center gap-2 mt-3">
         <button
@@ -75,7 +75,7 @@ export function ShiftHoursForm({ short, long, overtime, compact = false }: {
     <section className="bg-surface border rounded-xl p-4 mt-4">
       <h2 className="text-base font-bold">🕘 Shift hours</h2>
       <p className="text-xs text-muted mt-0.5 mb-3">
-        What a shift is worth on the shift log, and the overtime the “+OT” button adds. Every man-hour the app counts uses
+        Net working hours after the one-hour break, plus the day team’s 16:00–19:00 overtime. Every man-hour the app counts uses
         these: the day’s total per department, the crew on a machine, and what the standard times are calibrated against.
         Days already recorded keep the shift they were recorded under and are re-counted with the new hours.
       </p>

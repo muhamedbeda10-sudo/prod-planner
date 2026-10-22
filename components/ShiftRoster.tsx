@@ -1,11 +1,11 @@
 "use client";
 
 import { EmptyState } from "@/components/primitives";
-import { CalendarDays, Users } from "lucide-react";
+import { CalendarDays, Clock3, Moon, Sun, Users } from "lucide-react";
 import { formatDate } from "@/lib/domain/format";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { DEFAULT_SHIFT_HOURS, SHIFT_CODES, dayTotals, lineHours, round1, shiftLabel, type RosterDept, type ShiftCode } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL, WORKER_GROUPS } from "@/lib/domain/tanks";
 import { ROSTER_SECTIONS, rosterDepts, rosterLineMatches, type RosterFilter, rosterFilterLabel } from "@/lib/domain/roster";
@@ -72,6 +72,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
   const clear = useAction();
   const [hoursOpen, setHoursOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [activeShift, setActiveShift] = useState<ShiftCode | "all">("S9");
   const [draft, setDraft] = useState<Draft[]>(() => data.lines.map(toDraft));
   const byKey = useMemo(() => new Map(data.lines.map((l) => [keyOf(l), l])), [data.lines]);
   const hrs = data.shiftHours ?? DEFAULT_SHIFT_HOURS;
@@ -88,13 +89,20 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
   const shown = useMemo(() => draft.filter((d) => {
     const l = byKey.get(keyOf(d))!;
     if (!rosterLineMatches(l, filter)) return false;
+    if (activeShift !== "all" && d.shift !== activeShift) return false;
     if (needle && !`${l.name} ${l.empId} ${l.jobTitle ?? ""}`.toLowerCase().includes(needle)) return false;
     return true;
-  }), [draft, byKey, filter, needle]);
+  }), [draft, byKey, filter, activeShift, needle]);
   const totals = useMemo(() => dayTotals(shown, hrs), [shown, hrs]);
   const depts = rosterDepts(filter);
   const capacity = depts.reduce<number | null>((s, d) => (data.capacityMh[d] == null ? s : (s ?? 0) + data.capacityMh[d]!), null);
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(data.lines.map(toDraft)), [draft, data.lines]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   const canEdit = (d: RosterDept) => editableDepts.includes(d);
   const anyEditable = shown.some((d) => canEdit(d.dept));
   const recordedHere = depts.filter((d) => data.savedDepts.includes(d));
@@ -118,9 +126,28 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
 
   const capacityTone = capacity === null ? "" : totals.hours >= capacity ? "text-ok-fg" : totals.hours >= capacity * 0.8 ? "text-warn-fg" : "text-bad-fg";
   const filterLabel = rosterFilterLabel(filter);
+  const shiftScope = activeShift === "all" ? "all shifts" : activeShift === "S9" ? "day shift" : "night shift";
 
   return (
     <div className="space-y-4">
+      <section className="grid gap-2 md:grid-cols-[1fr_1fr_auto]" aria-label="Shift to record">
+        <button type="button" onClick={() => setActiveShift("S9")} className={`rounded-xl border p-4 text-start transition ${activeShift === "S9" ? "border-brand bg-brand-light ring-2 ring-brand/10" : "bg-surface hover:border-brand/40"}`}>
+          <span className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-lg bg-warn-bg text-warn-fg"><Sun size={20} aria-hidden /></span>
+            <span className="min-w-0"><b className="block">Day shift</b><span className="block text-xs text-muted mt-1">07:00–16:00 · 1 h break · {hrs.short} working h</span></span>
+            <span className="pill pill-muted ms-auto tabnum">{draft.filter((l) => l.shift === "S9").length}</span>
+          </span>
+        </button>
+        <button type="button" onClick={() => setActiveShift("S11")} className={`rounded-xl border p-4 text-start transition ${activeShift === "S11" ? "border-brand bg-brand-light ring-2 ring-brand/10" : "bg-surface hover:border-brand/40"}`}>
+          <span className="flex items-center gap-3">
+            <span className="grid size-10 place-items-center rounded-lg bg-brand-light text-brand-ink"><Moon size={20} aria-hidden /></span>
+            <span className="min-w-0"><b className="block">Night shift</b><span className="block text-xs text-muted mt-1">19:00–07:00 · 1 h break · {hrs.long} working h</span></span>
+            <span className="pill pill-muted ms-auto tabnum">{draft.filter((l) => l.shift === "S11").length}</span>
+          </span>
+        </button>
+        <button type="button" onClick={() => setActiveShift("all")} className={`btn self-stretch ${activeShift === "all" ? "btn-primary" : ""}`}>All workers</button>
+      </section>
+
       {/* the filter row: a line, then its sections */}
       <div className="bg-surface border rounded-xl p-3 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -130,7 +157,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
               <button key={g.key} type="button" className={filter === `line:${g.key}` ? "on" : ""} onClick={() => setFilter(`line:${g.key}`)}>{g.label}</button>
             ))}
           </nav>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a name or ID…" aria-label="Search" className="border rounded-md px-2 py-1.5 bg-surface text-sm min-w-[12rem]" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${shiftScope}…`} aria-label="Search" className="border rounded-md px-2 py-1.5 bg-surface text-sm min-w-[12rem]" />
           <span className="ms-auto text-xs text-muted tabnum">{shown.length} of {draft.length} on the list</span>
         </div>
         {WORKER_GROUPS.map((g) => (
@@ -147,7 +174,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
 
       {/* the day at a glance — over what the filter shows */}
       <div className="kpi-strip">
-        <Stat label={`Present · ${filterLabel}`} value={`${totals.present} / ${totals.workers}`} sub={totals.workers - totals.present > 0 ? `${totals.workers - totals.present} absent` : totals.workers ? "everyone in" : "nobody registered"} />
+        <Stat label={`Present · ${shiftScope}`} value={`${totals.present} / ${totals.workers}`} sub={totals.workers - totals.present > 0 ? `${totals.workers - totals.present} absent` : totals.workers ? "everyone in" : "nobody registered"} />
         <Stat label="Man-hours" value={String(totals.hours)} sub={capacity !== null ? `${depts.length === 1 && filter !== "" && !filter.startsWith("line:") ? `${WORKER_DEPT_LABEL[depts[0]]} ` : ""}capacity ${round1(capacity)} mh/day` : "no capacity figure set"} tone={capacityTone} />
         <Stat label="Overtime" value={`${totals.overtimeH} h`} sub={`${shown.filter((l) => l.present && l.overtimeH > 0).length} worker(s)`} />
       </div>
@@ -176,11 +203,11 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-brand-fill text-white text-left">
-                  <th className="p-2 w-10 text-center" title="Present">✓</th>
+                  <th className="p-2 text-center">Attendance</th>
                   <th className="p-2">Worker</th>
                   <th className="p-2">Section</th>
                   <th className="p-2">Shift</th>
-                  <th className="p-2" title="Hours on top of the shift">Overtime</th>
+                  <th className="p-2" title="Day shift only, 16:00–19:00">Overtime · 16:00–19:00</th>
                   <th className="p-2 text-center" title="Shift + overtime, nothing when absent">Hours</th>
                   <th className="p-2">Note</th>
                 </tr>
@@ -193,8 +220,11 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
                   const ro = !canEdit(l.dept) || save.pending;
                   return (
                     <tr key={k} className={`border-t ${l.present ? "" : "opacity-60 bg-surface-2/50"}`}>
-                      <td className="p-2 text-center">
-                        <input type="checkbox" checked={l.present} disabled={ro} aria-label={`${w.name} present`} onChange={(e) => set(k, { present: e.target.checked })} className="scale-125" />
+                      <td className="p-2">
+                        <div className="seg whitespace-nowrap" role="group" aria-label={`${w.name} attendance`}>
+                          <button type="button" disabled={ro} className={l.present ? "on" : ""} onClick={() => set(k, { present: true })}>Present</button>
+                          <button type="button" disabled={ro} className={!l.present ? "on !bg-bad-bg !text-bad-fg" : ""} onClick={() => set(k, { present: false, overtimeH: 0 })}>Absent</button>
+                        </div>
                       </td>
                       <td className="p-2 whitespace-nowrap">
                         <span className="inline-flex items-baseline gap-2">
@@ -208,16 +238,23 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
                         {w.sectionLabels.length > 0 ? w.sectionLabels.map((s) => <span key={s} className="pill pill-muted me-1">{s}</span>) : <span className="text-xs text-muted">{WORKER_DEPT_LABEL[l.dept]}</span>}
                       </td>
                       <td className="p-2">
-                        <select value={l.shift} disabled={ro || !l.present} aria-label="Shift" onChange={(e) => set(k, { shift: e.target.value as ShiftCode })} className="border rounded-md px-2 py-1 bg-surface font-semibold text-sm">
+                        <select value={l.shift} disabled={ro || !l.present} aria-label="Shift" onChange={(e) => { const shift = e.target.value as ShiftCode; set(k, { shift, overtimeH: shift === "S9" ? l.overtimeH : 0 }); }} className="border rounded-md px-2 py-1 bg-surface font-semibold text-sm">
                           {SHIFT_CODES.map((c) => <option key={c} value={c}>{shiftLabel(c, hrs)}</option>)}
                         </select>
                       </td>
                       <td className="p-2 whitespace-nowrap">
-                        <input type="number" min={0} max={12} step={0.5} value={l.overtimeH || ""} placeholder="0" disabled={ro || !l.present} aria-label="Overtime hours" onChange={(e) => set(k, { overtimeH: Number(e.target.value) || 0 })} className="w-16 border rounded-md px-2 py-1 bg-surface text-center tabnum text-sm" />
-                        {!ro && l.present && (
-                          <button type="button" className="btn btn-sm btn-ghost ms-1" title={`Set ${OT} hours of overtime`} onClick={() => set(k, { overtimeH: l.overtimeH === OT ? 0 : OT })}>
-                            +{OT}
+                        {l.shift === "S9" ? (
+                          <button
+                            type="button"
+                            disabled={ro || !l.present}
+                            aria-pressed={l.overtimeH === OT}
+                            className={`btn btn-sm ${l.overtimeH === OT ? "btn-primary" : ""}`}
+                            onClick={() => set(k, { overtimeH: l.overtimeH === OT ? 0 : OT })}
+                          >
+                            <Clock3 size={14} aria-hidden /> {l.overtimeH === OT ? `Yes · ${OT} h` : "No"}
                           </button>
+                        ) : (
+                          <span className="text-xs text-muted">Day shift only</span>
                         )}
                       </td>
                       <td className={`p-2 text-center tabnum font-extrabold ${l.present ? "" : "text-muted"}`}>{h}</td>
@@ -237,8 +274,8 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
               {allRecorded ? "Save changes" : "Save day"}
             </button>
             <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setShown(() => ({ present: true }))}>Everyone present</button>
-            <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setShown(() => ({ shift: "S11" }))}>All on {shiftLabel("S11", hrs)}</button>
-            <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setShown((l) => ({ overtimeH: l.present ? OT : 0 }))}>Everyone +{OT} OT</button>
+            {activeShift === "S9" && <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => setShown((l) => ({ overtimeH: l.present ? OT : 0 }))}>Day team +{OT} h OT</button>}
+            <span className="text-[11px] text-muted">Day 07:00–16:00 · OT 16:00–19:00 · Night 19:00–07:00 · every shift includes a 1 h break</span>
             {filter !== "" && <span className="text-[11px] text-muted">— the three buttons act on the {shown.length} shown</span>}
             {dirty && <button type="button" className="btn btn-sm btn-ghost" disabled={save.pending} onClick={() => setDraft(data.lines.map(toDraft))}>Reset</button>}
             {recordedHere.length > 0 && (

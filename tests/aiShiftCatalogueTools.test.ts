@@ -58,7 +58,7 @@ const line = (workerId: number, empId: string, name: string, o: Record<string, u
   onVacation: false, present: true, shift: "S9", overtimeH: 0, note: "", recorded: false, ...o,
 });
 const roster = (lines = [line(1, "100", "Ahmed"), line(2, "101", "Mohamed"), line(3, "102", "Sayed", { onVacation: true, present: false }), line(9, "200", "Ali", { dept: "Cut" })]) => ({
-  dateISO: "2026-10-12", lines, totals: null, savedDepts: [], recordedBy: null, capacityMh: {}, shiftHours: { short: 9, long: 11, overtime: 3 },
+  dateISO: "2026-10-12", lines, totals: null, savedDepts: [], recordedBy: null, capacityMh: {}, shiftHours: { short: 8, long: 11, overtime: 3 },
 });
 const EMPTY = { rows: [], dayHours: [] };
 
@@ -83,24 +83,29 @@ describe("the shift roster", () => {
 
   it("saves the department's day whole: everyone's shift for the ones present, single workers on top", async () => {
     h.perms.add("shifts.welding");
-    const input = parsed(recordShiftDayTool, { date: "2026-10-12", dept: "Welding", everyone: { shift: "S11", overtimeH: 3 }, workers: [{ worker: "101", present: false }] });
+    const input = parsed(recordShiftDayTool, { date: "2026-10-12", dept: "Welding", everyone: { shift: "S11" }, workers: [{ worker: "101", present: false }] });
     const p = await recordShiftDayTool.describe(input, ctx);
     expect(p).toMatchObject({
       title: "Shift roster: Welding 2026-10-12",
       changes: [
-        { label: "100 Ahmed", before: "9 h", after: "11 h + 3 h OT" },
-        { label: "101 Mohamed", before: "9 h", after: "absent" },
-        { label: "Welding man-hours", before: "18 (2/3 present)", after: "14 (1/3 present)" },
+        { label: "100 Ahmed", before: "8 h", after: "11 h" },
+        { label: "101 Mohamed", before: "8 h", after: "absent" },
+        { label: "Welding man-hours", before: "16 (2/3 present)", after: "11 (1/3 present)" },
       ],
     });
     expect((p as { summary: string }).summary).toContain("and 1 more with no record yet");
     const out = await recordShiftDayTool.execute(input, ctx);
     expect(JSON.parse(String(fdOf(h.shifts.saveShiftRoster).get("lines")))).toEqual([
-      { dept: "Welding", workerId: 1, present: true, shift: "S11", overtimeH: 3, note: "" },
+      { dept: "Welding", workerId: 1, present: true, shift: "S11", overtimeH: 0, note: "" },
       { dept: "Welding", workerId: 2, present: false, shift: "S9", overtimeH: 0, note: "" },
       { dept: "Welding", workerId: 3, present: false, shift: "S9", overtimeH: 0, note: "" },
     ]);
     expect(out.undo).toEqual({ tool: "restore_shift_day", input: { date: "2026-10-12", depts: ["Welding"], state: JSON.stringify(EMPTY) } });
+  });
+
+  it("rejects overtime on the night shift", () => {
+    const lines = roster().lines.filter((l) => l.dept === "Welding") as Parameters<typeof planShiftDay>[0];
+    expect(planShiftDay(lines, { everyone: { shift: "S11", overtimeH: 3 } })).toEqual({ error: "Overtime is available to the day shift only (16:00–19:00)." });
   });
 
   it("finds a worker by badge or exact name, and says when it cannot", () => {
