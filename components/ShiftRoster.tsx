@@ -131,16 +131,16 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
   return (
     <div className="space-y-4">
       <section className="grid gap-2 md:grid-cols-[1fr_1fr_auto]" aria-label="Shift to record">
-        <button type="button" onClick={() => setActiveShift("S9")} className={`rounded-xl border p-4 text-start transition ${activeShift === "S9" ? "border-brand bg-brand-soft ring-2 ring-brand/10" : "bg-surface hover:border-brand/40"}`}>
+        <button type="button" onClick={() => setActiveShift("S9")} className={`rounded-xl border p-4 text-start transition ${activeShift === "S9" ? "border-brand bg-brand-light ring-2 ring-brand/10" : "bg-surface hover:border-brand/40"}`}>
           <span className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-lg bg-warn-soft text-warn-fg"><Sun size={20} aria-hidden /></span>
+            <span className="grid size-10 place-items-center rounded-lg bg-warn-bg text-warn-fg"><Sun size={20} aria-hidden /></span>
             <span className="min-w-0"><b className="block">Day shift</b><span className="block text-xs text-muted mt-1">07:00–16:00 · 1 h break · {hrs.short} working h</span></span>
             <span className="pill pill-muted ms-auto tabnum">{draft.filter((l) => l.shift === "S9").length}</span>
           </span>
         </button>
-        <button type="button" onClick={() => setActiveShift("S11")} className={`rounded-xl border p-4 text-start transition ${activeShift === "S11" ? "border-brand bg-brand-soft ring-2 ring-brand/10" : "bg-surface hover:border-brand/40"}`}>
+        <button type="button" onClick={() => setActiveShift("S11")} className={`rounded-xl border p-4 text-start transition ${activeShift === "S11" ? "border-brand bg-brand-light ring-2 ring-brand/10" : "bg-surface hover:border-brand/40"}`}>
           <span className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-lg bg-brand-soft text-brand-ink"><Moon size={20} aria-hidden /></span>
+            <span className="grid size-10 place-items-center rounded-lg bg-brand-light text-brand-ink"><Moon size={20} aria-hidden /></span>
             <span className="min-w-0"><b className="block">Night shift</b><span className="block text-xs text-muted mt-1">19:00–07:00 · 1 h break · {hrs.long} working h</span></span>
             <span className="pill pill-muted ms-auto tabnum">{draft.filter((l) => l.shift === "S11").length}</span>
           </span>
@@ -223,7 +223,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
                       <td className="p-2">
                         <div className="seg whitespace-nowrap" role="group" aria-label={`${w.name} attendance`}>
                           <button type="button" disabled={ro} className={l.present ? "on" : ""} onClick={() => set(k, { present: true })}>Present</button>
-                          <button type="button" disabled={ro} className={!l.present ? "on !bg-bad-soft !text-bad-fg" : ""} onClick={() => set(k, { present: false, overtimeH: 0 })}>Absent</button>
+                          <button type="button" disabled={ro} className={!l.present ? "on !bg-bad-bg !text-bad-fg" : ""} onClick={() => set(k, { present: false, overtimeH: 0 })}>Absent</button>
                         </div>
                       </td>
                       <td className="p-2 whitespace-nowrap">
