@@ -92,14 +92,14 @@ export function RingCard({
           <div className="flex items-baseline gap-1.5 min-w-0">
             <span className="kpi-code">{label}</span>
             {name && <span className="kpi-name">{name}</span>}
-            <span className="ms-auto text-lg font-bold leading-none tabnum" style={{ color: complete ? "var(--ok-fg)" : pct === null ? "var(--muted)" : "var(--foreground)" }}>
+            <span className="kpi-percent ms-auto text-lg font-bold leading-none tabnum" style={{ color: complete ? "var(--ok-fg)" : pct === null ? "var(--muted)" : "var(--foreground)" }}>
               {pct === null ? "—" : `${Math.round(f * 100)}%`}
             </span>
           </div>
           <div className="kpi-bar mt-1.5" aria-hidden>
-            <span style={{ width: `${f * 100}%`, background: ringColor(pct) }} />
+            <span style={{ width: `${f * 100}%`, background: complete ? "var(--ok-fg)" : `var(--kpi-progress, ${ringColor(pct)})` }} />
           </div>
-          <div className="mt-1 flex items-baseline gap-2 text-[10.5px] tabnum whitespace-nowrap min-w-0">
+          <div className="kpi-detail mt-1 flex items-baseline gap-2 text-[10.5px] tabnum whitespace-nowrap min-w-0">
             <span className="text-muted truncate min-w-0"><b className="text-foreground font-semibold">{done.toLocaleString("en-US")}</b> / {need.toLocaleString("en-US")} {note}</span>
             <span className="ms-auto shrink-0 font-semibold" style={{ color: leftColor }}>{leftText}</span>
           </div>

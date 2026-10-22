@@ -8,6 +8,7 @@ import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { Num, Soi } from "@/components/ui";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
+import { TrackerScope, type TrackerFilter } from "@/components/TrackerScope";
 import { useConfirm } from "@/components/DataTable";
 import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stageWords, stickAt, useAccountSet, useColumns } from "@/components/TrackerColumns";
 import { recordLvGroupTotal, recordLvTotal } from "@/app/lv/actions";
@@ -152,6 +153,16 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
     });
   }, [monthRows, q, product, status, urgent, progress]);
 
+  const resetFilters = () => { setQ(""); setProduct(""); setFamily(""); setStatus(""); setMonth(""); setUrgent(""); setProgress(""); };
+  const activeFilters: TrackerFilter[] = [];
+  if (q) activeFilters.push({ key: "q", label: "Search", value: q, onClear: () => setQ("") });
+  if (month) activeFilters.push({ key: "month", label: "Plan month", value: month, onClear: () => setMonth("") });
+  if (family) activeFilters.push({ key: "family", label: "Plan", value: family === "MB" ? "Meter boxes" : "LV panels", onClear: () => setFamily("") });
+  if (product) activeFilters.push({ key: "product", label: "Product", value: product, onClear: () => setProduct("") });
+  if (status && status !== "open") activeFilters.push({ key: "status", label: "Status", value: status === "hold" ? "On hold" : status === "closed" ? "Closed" : "All", onClear: () => setStatus("") });
+  if (progress) activeFilters.push({ key: "progress", label: "Progress", value: progress === "none" ? "Not started" : progress === "partial" ? "In progress" : "Complete", onClear: () => setProgress("") });
+  if (urgent) activeFilters.push({ key: "urgent", label: "Urgent", value: urgent === "yes" ? "Urgent only" : "Not urgent", onClear: () => setUrgent("") });
+
   // The cards report exactly the orders currently shown in the table.
   const cards = LV_STAGES.map((stage) => ({
     stage,
@@ -254,7 +265,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
     return (
       <td
         key={key}
-        className={`stage-cell ${state} ${meter ? "stage-meter" : ""} ${look.bottleneck ? "stage-bottleneck" : ""} p-1 text-center tabnum`}
+        className={`stage-cell ${editable ? "stage-editable" : ""} ${state} ${meter ? "stage-meter" : ""} ${look.bottleneck ? "stage-bottleneck" : ""} p-1 text-center tabnum`}
         style={meter}
         title={editable ? undefined : words}
         onClick={(e) => e.stopPropagation()}
@@ -426,16 +437,17 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   return (
     // On desktop the page fills the viewport below the nav so the cards and
     // filters stay put and ONLY the table scrolls (its header pinned).
-    <div className="print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
+    <div className="tracker-view print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
       {head}
+      <TrackerScope count={filtered.length} total={rows.length} basis={`${!status || status === "open" ? "Open orders" : status === "closed" ? "Closed orders" : status === "hold" ? "On hold" : "All statuses"} · through painting`} filters={activeFilters} onReset={resetFilters} />
       {/* the filtered orders at a glance: panels through each making stage */}
       <div className={`print-keep ${RING_GRID} mb-3`}>
         {cards.map((c) => (
-          <RingCard wide key={c.stage} label={LV_STAGE_SHORT[c.stage]} note={`${c.stage.toLowerCase().replace(/ing$/, "ed")}`} done={c.done} need={c.need} />
+          <RingCard wide compact key={c.stage} label={LV_STAGE_SHORT[c.stage]} note={`${c.stage.toLowerCase().replace(/ing$/, "ed")}`} done={c.done} need={c.need} />
         ))}
       </div>
 
-      <FilterBar count={filtered.length} total={rows.length} onReset={() => { setQ(""); setProduct(""); setFamily(""); setStatus(""); setMonth(""); setUrgent(""); setProgress(""); }} hasActive={!!(q || product || family || month || urgent || progress || (status && status !== "open"))}
+      <FilterBar count={filtered.length} total={rows.length} onReset={resetFilters} showReset={false} hasActive={activeFilters.length > 0}
         head={<SearchBox value={q} onChange={setQ} placeholder="Search MO / BOM / SOI / FG / SEC…" wide />}
       >
         <SelectFilter label="Plan month" value={month} onChange={setMonth} options={months.map((m) => ({ value: m, label: m }))} />

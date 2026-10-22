@@ -174,6 +174,7 @@ export function FilterBar({
   onReset,
   hasActive,
   showCount = true,
+  showReset = true,
 }: {
   children: React.ReactNode;
   /** An optional first row above the filters: the view switch and search. */
@@ -185,13 +186,14 @@ export function FilterBar({
   onReset: () => void;
   hasActive: boolean;
   showCount?: boolean; // worklists hide the row count — the bar stays lean
+  showReset?: boolean;
 }) {
   const countText = (
     <span className="text-xs text-muted tabnum whitespace-nowrap" aria-live="polite">
       {count === total ? `${total.toLocaleString("en-US")} rows` : <><b className="text-foreground font-semibold">{count.toLocaleString("en-US")}</b> of {total.toLocaleString("en-US")} rows</>}
     </span>
   );
-  const reset = hasActive && (
+  const reset = showReset && hasActive && (
     <button type="button" onClick={onReset} className="btn btn-ghost btn-sm text-bad-fg justify-self-start">
       <FilterX size={13} />
       Reset filters
