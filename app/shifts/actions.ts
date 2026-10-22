@@ -7,6 +7,7 @@ import { shiftPermKey } from "@/lib/domain/permissions";
 import { parseISODate } from "@/lib/domain/dates";
 import { DEFAULT_SHIFT, isRosterDept, isShiftCode, type RosterDept } from "@/lib/domain/shifts";
 import { syncDeptDayHours } from "@/lib/server/shifts";
+import { getShiftHours } from "@/lib/server/data";
 
 // The shift roster's writes. A day is saved whole per department: every
 // worker of the department gets a row (present or not), so the day's
@@ -48,6 +49,7 @@ export async function saveShiftRoster(fd: FormData): Promise<ShiftActionResult> 
   }
   if (!Array.isArray(parsed) || parsed.length === 0) return { ok: false, error: "There is nobody on the list yet — add workers first." };
 
+  const shiftHours = await getShiftHours();
   const lines: Line[] = [];
   for (const raw of parsed as Record<string, unknown>[]) {
     const workerId = Number(raw.workerId);
@@ -57,7 +59,13 @@ export async function saveShiftRoster(fd: FormData): Promise<ShiftActionResult> 
     if (!isShiftCode(shift)) return { ok: false, error: `Unknown shift "${shift}".` };
     const overtimeH = Number(raw.overtimeH ?? 0);
     if (!Number.isFinite(overtimeH) || overtimeH < 0 || overtimeH > 12) return { ok: false, error: "Overtime must be between 0 and 12 hours." };
-    lines.push({ dept, workerId, present: raw.present !== false, shift, overtimeH: Math.round(overtimeH * 2) / 2, note: String(raw.note ?? "").trim() || null });
+    const roundedOvertime = Math.round(overtimeH * 2) / 2;
+    if (shift !== DEFAULT_SHIFT && roundedOvertime > 0) return { ok: false, error: "Overtime is available to the day shift only." };
+    if (roundedOvertime > 0 && Math.abs(roundedOvertime - shiftHours.overtime) > 0.001) {
+      return { ok: false, error: `Overtime is the fixed ${shiftHours.overtime}-hour period from 16:00 to 19:00.` };
+    }
+    const present = raw.present !== false;
+    lines.push({ dept, workerId, present, shift, overtimeH: present ? roundedOvertime : 0, note: String(raw.note ?? "").trim() || null });
   }
 
   const depts = [...new Set(lines.map((l) => l.dept))];

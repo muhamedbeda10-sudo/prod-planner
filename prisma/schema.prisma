@@ -505,7 +505,7 @@ model Settings {
   // Editable: a roster changes (Ramadan, a second shift starting), and every
   // man-hour the app counts — the shift log, a machine's crew, the day's
   // capacity — is measured with these.
-  shiftShortH Float @default(9)
+  shiftShortH Float @default(8)
   shiftLongH  Float @default(11)
   overtimeH   Float @default(3)
 
@@ -674,7 +674,7 @@ model MachineItemTime {
 }
 
 // One worker's day in one department, as the supervisor records it: present
-// or not, which shift (9 or 11 hours), overtime on top, and the machine they
+// or not, which shift (day or night), overtime on the day shift, and the machine they
 // were on. A worker with no row for a day is taken as present on the default
 // shift with no overtime — the supervisor only records the exceptions. The
 // day's man-hours per department are summed into DeptDayHours from here.
