@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-22-lv-tracker-filters-and-stages",
+    dateISO: "2026-10-22",
+    title: "LV tracker cards follow the filters, through painting only",
+    where: "Plan Tracker → LV",
+    href: "/tracker",
+    body: "The LV tracker now shows the four production stages: Punching, Bending, Welding and Painting. Delivery is removed from the table, stage choices, summary cards and Excel export. The cards above the table now follow every filter, including search, product, plan, month, status, progress and urgency, so their quantities and percentages describe the orders currently shown. Clear the filters to return to the full view.",
+  },
+  {
     id: "2026-10-21-views-keep-their-filters",
     dateISO: "2026-10-21",
     title: "The Odoo dashboard opens on the filters you left it on",
