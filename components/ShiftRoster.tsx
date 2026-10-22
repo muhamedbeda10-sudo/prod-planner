@@ -109,7 +109,7 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
   const canEdit = (d: RosterDept) => editableDepts.includes(d);
-  const anyEditable = shown.some((d) => canEdit(d.dept));
+  const anyEditable = draft.some((d) => canEdit(d.dept) && rosterLineMatches(byKey.get(keyOf(d))!, filter));
   const recordedHere = depts.filter((d) => data.savedDepts.includes(d));
   const allRecorded = depts.length > 0 && recordedHere.length === depts.length;
 
@@ -208,9 +208,9 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
         {allRecorded ? (
             <span className="pill pill-ok">recorded{data.recordedBy ? ` · ${data.recordedBy}` : ""}</span>
           ) : recordedHere.length > 0 ? (
-            <span className="pill pill-warn pill-wrap">{recordedHere.map((d) => WORKER_DEPT_LABEL[d]).join(", ")} recorded — the rest shows defaults</span>
+            <span className="pill pill-warn pill-wrap">{recordedHere.map((d) => WORKER_DEPT_LABEL[d]).join(", ")} recorded — the rest is Not set</span>
           ) : (
-            <span className="pill pill-warn pill-wrap">not recorded yet — defaults shown</span>
+            <span className="pill pill-warn pill-wrap">not recorded yet — the master roster is shown as Not set</span>
           )}
         {dirty && <span className="pill pill-warn">unsaved changes</span>}
       </div>
@@ -220,14 +220,14 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
         {shown.length === 0 ? (
           <EmptyState
             icon={Users}
-            title={draft.length === 0 ? "Nobody is registered yet" : needle ? "Nobody matches the search" : `Nobody is registered in ${filterLabel} yet`}
-            hint={needle ? undefined : "Add people in Tools → Production Workers and tick their sections."}
+            title={draft.length === 0 ? "Nobody is registered yet" : needle ? "Nobody matches the search" : activeView === "all" ? `Nobody is registered in ${filterLabel} yet` : `No workers in ${viewLabel}`}
+            hint={needle ? undefined : draft.length === 0 ? "Add people in Tools → Production Workers and tick their sections." : "Open All workers to assign people for this day."}
           />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-brand-fill text-white text-left">
+                <tr className="sticky top-0 z-10 bg-brand-fill text-white text-left">
                   <th className="p-2 text-center">Attendance</th>
                   <th className="p-2">Worker</th>
                   <th className="p-2">Section</th>
