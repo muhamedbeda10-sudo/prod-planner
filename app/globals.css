@@ -1158,6 +1158,39 @@ html.dark { --grid-line: #3e4844; --grid-strong: #606d68; }
 main table.grid-lines tbody td { border-bottom-color: var(--grid-line); }
 main table.grid-lines td.border-border-strong, main table.grid-lines th.border-border-strong { border-right-color: var(--grid-strong); }
 
+/* Tracker controls remain readable above the sheet, including on phones. */
+.tracker-filter {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  min-height: 30px; padding: 3px 9px; border: 1px solid var(--border-strong);
+  border-radius: 999px; background: var(--surface); color: var(--foreground);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.tracker-filter:hover { background: var(--brand-light); border-color: var(--brand); }
+.tracker-filter:focus-visible { outline: 2px solid var(--brand-ink); outline-offset: 2px; }
+.tracker-view > .tracker-scope, .tracker-view > .print-keep, .tracker-view > .toolbar { flex-shrink: 0; }
+.tracker-view .kpi { border-radius: 10px; }
+.tracker-view { --kpi-progress: var(--info-fg); }
+.tracker-view .kpi-code { font-size: 13px; }
+.tracker-view .kpi-name { font-size: 11px; }
+.tracker-view .kpi-percent { font-size: 22px; }
+.tracker-view .kpi-detail { font-size: 11px; }
+@media (max-width: 639px) {
+  .tracker-view > .print-keep { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .tracker-filter { min-height: 36px; }
+}
+@media screen {
+  .tracker-view table.grid-lines :is(td, th) { border-right-color: color-mix(in srgb, var(--grid-line) 55%, transparent); }
+  main .tracker-view table.grid-lines tbody td { border-bottom-color: color-mix(in srgb, var(--grid-line) 70%, transparent); }
+  .tracker-view table.grid-lines :is(td, th).border-border-strong { border-right-color: var(--grid-strong); }
+  .tracker-view .stage-editable button.print-as-text::after {
+    content: ""; position: absolute; inset-inline-end: 4px; top: 4px;
+    width: 4px; height: 4px; border-inline-end: 1px solid var(--muted); border-top: 1px solid var(--muted);
+    opacity: 0.45; pointer-events: none;
+  }
+  .tracker-view .stage-editable button.print-as-text { position: relative; }
+  .tracker-view .stage-editable:focus-within { outline: 2px solid var(--brand-ink); outline-offset: -2px; }
+}
+
 /* Touch screens: a long press on a table row opens its menu (see
    TouchLongPress) rather than the system's text-selection callout. */
 @media (hover: none) and (pointer: coarse) {

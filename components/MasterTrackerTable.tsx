@@ -8,6 +8,7 @@ import { decidePlanQty, setOrderStatus, setExcludedItems, setOrderQty, setOrderS
 import { recordTrackerTotal, recordGroupOutput } from "@/app/worklist/actions";
 import { Num, PageHead, Soi } from "@/components/ui";
 import { RING_GRID, RingCard } from "@/components/ProgressRing";
+import { TrackerScope, type TrackerFilter } from "@/components/TrackerScope";
 import { ExportMenu } from "@/components/ExportMenu";
 import { PrintScope } from "@/components/PrintHeader";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
@@ -482,9 +483,7 @@ export function MasterTrackerTable({
   }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
   const hasNoMonth = useMemo(() => rows.some((r) => r.months.length === 0), [rows]);
 
-  // month scope — an order carried across plans belongs to EVERY month it
-  // appeared in. The summary cards follow THIS filter (each month's plan
-  // progress on its own), while search/progress/urgent only narrow the table
+  // An order carried across plans belongs to EVERY month it appeared in.
   const monthRows = useMemo(
     () => (month ? rows.filter((r) => (month === "—" ? r.months.length === 0 : r.months.includes(month))) : rows),
     [rows, month]
@@ -503,6 +502,14 @@ export function MasterTrackerTable({
   }, [monthRows, q, progress, urgent, status]);
 
   const hasActive = !!(q || progress || urgent || month || scoped || status);
+  const resetFilters = () => { setQ(""); setProgress(""); setUrgent(""); setStatus(""); setMonth(""); setStage(""); };
+  const activeFilters: TrackerFilter[] = [];
+  if (q) activeFilters.push({ key: "q", label: "Search", value: q, onClear: () => setQ("") });
+  if (month) activeFilters.push({ key: "month", label: "Plan month", value: month === "—" ? "No month" : month, onClear: () => setMonth("") });
+  if (status) activeFilters.push({ key: "status", label: "Status", value: status === "hold" ? "On hold" : status === "closed" ? "Closed" : "Open", onClear: () => setStatus("") });
+  if (progress) activeFilters.push({ key: "progress", label: "Progress", value: progress === "complete" ? "Complete" : progress === "inprogress" ? "In progress" : "Not started", onClear: () => setProgress("") });
+  if (urgent) activeFilters.push({ key: "urgent", label: "Urgent", value: "Urgent only", onClear: () => setUrgent("") });
+  for (const s of STAGE_OPTS.filter((o) => stages.includes(o.value))) activeFilters.push({ key: s.value, label: "Dept", value: s.label, onClear: () => toggleStage(s.value) });
 
   // table shape under the stage filter: only the picked columns per item, no
   // Complete/Left/Achv
@@ -725,8 +732,7 @@ export function MasterTrackerTable({
     });
   }
 
-  // per-component plan progress — follows the MONTH filter (each month's plan
-  // progress on its own; all months when no month is picked):
+  // Per-component progress for exactly the orders shown in the table:
   // need = required − OSP (excluded items don't count). Done = the FINAL stage
   // by default, or the FILTERED stage when a dept is picked — cards and table
   // always talk about the same stage.
@@ -749,7 +755,7 @@ export function MasterTrackerTable({
       : finalIsShp ? "shot blasted" : "painted";
     let need = 0;
     let done = 0;
-    for (const r of monthRows) {
+    for (const r of filtered) {
       const c = r.items[it];
       if (!c.eligible || c.excluded) continue; // AR/MB only count on orders that need them
       const n = Math.max(0, r.required - c.osp);
@@ -816,7 +822,7 @@ export function MasterTrackerTable({
     // filters stay put and ONLY the table scrolls (with its header pinned).
     // `print-flow` hands the height back to the paper: a fixed-height scroller
     // would print one page and clip everything under it.
-    <div className="print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
+    <div className="tracker-view print-flow md:flex md:flex-col md:h-[calc(100vh-5rem)]">
       {/* a plan import brought a different qty for these orders — waiting on the planner */}
       <PendingQtyBanner rows={rows} />
       {/* what the sheet is showing — filters don't survive onto paper otherwise */}
@@ -834,18 +840,21 @@ export function MasterTrackerTable({
 
       <PageHead title="Plan Tracker" sub="Transformers · one row per order, every stage" views={viewTabs} actions={<ExportMenu excel={[{ rows: exportRows, filename: exportName, sheetName: "Tracker" }]} print />} />
 
+      <TrackerScope count={filtered.length} total={rows.length} basis={scoped ? `${STAGE_OPTS.find((o) => o.value === cardStage)?.label} progress` : "Finishing progress"} filters={activeFilters} onReset={resetFilters} />
+
       {/* per-component plan progress — remaining / of total / execution % (display only) */}
       {/* the cards share the page's width between them */}
       <div className={`print-keep ${RING_GRID} mb-3`}>
         {itemStats.map(({ it, doneWord, need, done }) => (
-          <RingCard key={it} label={it} name={ITEM_NAME[it]} color={itemColor(it)} note={doneWord} done={done} need={need} wide />
+          <RingCard key={it} label={it} name={ITEM_NAME[it]} color={itemColor(it)} note={doneWord} done={done} need={need} wide compact />
         ))}
       </div>
 
       <FilterBar
         count={filtered.length}
         total={rows.length}
-        onReset={() => { setQ(""); setProgress(""); setUrgent(""); setStatus(""); setMonth(""); setStage(""); }}
+        onReset={resetFilters}
+        showReset={false}
         hasActive={hasActive}
         head={
           <>
@@ -1317,7 +1326,7 @@ export function MasterTrackerTable({
 
     return (
       <td
-        className={`stage-cell ${state} ${!editing && meterStyle(value, target) ? "stage-meter" : ""} ${bottleneck ? "stage-bottleneck" : ""} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`}
+        className={`stage-cell ${editable ? "stage-editable" : ""} ${state} ${!editing && meterStyle(value, target) ? "stage-meter" : ""} ${bottleneck ? "stage-bottleneck" : ""} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`}
         style={editing ? undefined : meterStyle(value, target)}
         title={editable ? undefined : `${deptLabel(dept)} · ${it}: ${status}${bottleneck ? " · the stage holding this order back" : ""}`}
       >
@@ -1448,7 +1457,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
 
     return (
       <td
-        className={`stage-cell ${state} ${!editing && meterStyle(value, target) ? "stage-meter" : ""} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`}
+        className={`stage-cell ${editable ? "stage-editable" : ""} ${state} ${!editing && meterStyle(value, target) ? "stage-meter" : ""} p-1 text-center tabnum ${borderR ? "border-r border-border-strong" : ""}`}
         style={editing ? undefined : meterStyle(value, target)}
         onClick={(e) => e.stopPropagation()}
       >

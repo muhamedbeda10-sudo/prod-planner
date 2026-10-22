@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-22-tracker-overview-and-filter-chips",
+    dateISO: "2026-10-22",
+    title: "A clearer tracker summary, with filters you can remove one by one",
+    where: "Plan Tracker → Transformers / LV",
+    href: "/tracker",
+    body: "The progress cards are shorter, leaving more room for the sheet. A line above them tells you how many orders they cover, and selected filters stay visible as chips, even when the phone's filter controls are folded. Click a chip to clear that filter, or Clear all to return to the default view. Transformer cards now follow every row filter too. The table has lighter grid lines and a small corner mark on stage cells you can edit. Cards use blue for work in progress and green for completion.",
+  },
+  {
     id: "2026-10-22-lv-tracker-filters-and-stages",
     dateISO: "2026-10-22",
     title: "LV tracker cards follow the filters, through painting only",
