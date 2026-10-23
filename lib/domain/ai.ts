@@ -366,8 +366,10 @@ export function questionContext(o: {
   notes: readonly string[];
   /** The What-if Simulator is open beside the chat. */
   simulatorOpen?: boolean;
+  line?: "TR" | "LV";
 }): string {
   const lines = [`Asked by ${o.askedBy} on ${FACTORY_CLOCK.format(o.now)}, Cairo time.`];
+  if (o.line) lines.push(`The app's selected production line is ${o.line === "LV" ? "LV panels (including meter boxes)" : "TR transformers"}. Use that line by default for this question unless the person explicitly asks for the other line or both. Filter SQL by the correct line; pass line explicitly to tools that accept it.`);
   if (o.paused) lines.push("The owner has paused every change by the assistant: you can only read and advise right now.");
   else if (o.areas.length === 0) lines.push("You may not change anything for this person — you only read and advise.");
   else {

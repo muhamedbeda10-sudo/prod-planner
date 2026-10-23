@@ -63,6 +63,7 @@ interface GetOrdersInput {
 export const getOrders: ReadTool<GetOrdersInput> = {
   kind: "read",
   name: "get_orders",
+  cacheable: true,
   title: "Reading the orders on the tracker",
   description:
     "The orders exactly as the Plan Tracker computes them: status, hold, priority, required quantity, the qty a plan import is holding back, plan months, the spec columns, and per component what is cut, welded, painted / shot blasted and delivered, what is made outside (OSP), which components the order does not need, and how many complete sets are done and left. Give MO numbers or a BOM. Read this before recording totals or changing an order.",

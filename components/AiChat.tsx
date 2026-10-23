@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
-  AlertCircle, BarChart3, Bot, Boxes, Check, ChevronDown, Clock, Copy, Factory, FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks, Loader2, MonitorPlay, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X,
+  AlertCircle, ArrowDown, BarChart3, Bot, Boxes, Check, ChevronDown, Clock, Copy, Factory, FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks, Loader2, MonitorPlay, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X,
 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
@@ -18,6 +18,10 @@ import { compressImage } from "@/lib/imageCompress";
 import { openSimulator, stageOnSimulator } from "@/lib/simulatorBridge";
 import type { AiActionView } from "@/lib/domain/aiActions";
 import type { AiChatStatus } from "@/lib/server/ai/panel";
+import { captureAiPage } from "@/lib/domain/aiScreen";
+import { tabForPath } from "@/lib/domain/tabs";
+import { useActiveLine } from "@/components/LineContext";
+import { readAiStream } from "@/lib/aiStream";
 
 // The AI assistant's chat: the person's conversations on the side (a drawer
 // below a laptop's width, and always in the narrow side panel), the open one
@@ -116,6 +120,8 @@ export function AiChat({
   onApi?: (api: ChatListApi) => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname() ?? "/ai";
+  const line = useActiveLine();
   const [convs, setConvs] = useState<Conv[]>(conversations);
   const [activeId, setActiveId] = useState<number | null>(initial?.id ?? null);
   const [turns, setTurns] = useState<Turn[]>(initial?.turns ?? []);
@@ -132,6 +138,9 @@ export function AiChat({
   const [uploading, setUploading] = useState(0);
   const [fileErr, setFileErr] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
+  const sending = useRef(false);
+  const [showLatest, setShowLatest] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   // deltas arrive token by token — gathered and drawn a few times a second
@@ -145,11 +154,15 @@ export function AiChat({
     (status.plantDayCap > 0 && spent.plantToday >= status.plantDayCap);
   const canAsk = status.ok && !capReached;
 
-  // keep the newest of the answer in view while it is written
+  // Keep following only while the person is at the bottom. Reading an older
+  // figure must not be interrupted by every token of the next answer.
   useEffect(() => {
     const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && following.current) el.scrollTop = el.scrollHeight;
+    else if (el) setShowLatest(true);
   }, [turns, live]);
+
+  useEffect(() => () => { if (flushTimer.current) clearTimeout(flushTimer.current); }, []);
 
   const patchLast = (f: (t: Turn) => Turn) =>
     setTurns((all) => {
@@ -184,6 +197,8 @@ export function AiChat({
         return;
       }
       setActiveId(id);
+      following.current = true;
+      setShowLatest(false);
       setTurns(r.turns ?? []);
       setActions(byCall(r.actions ?? []));
       setUrl(id);
@@ -194,6 +209,8 @@ export function AiChat({
   const newChat = useCallback(() => {
     if (busy) return;
     setActiveId(null);
+    following.current = true;
+    setShowLatest(false);
     setTurns([]);
     setActions({});
     setLoadErr(null);
@@ -308,7 +325,10 @@ export function AiChat({
 
   async function ask(text: string) {
     const question = text.trim();
-    if (!question || busy || !canAsk || uploading > 0) return;
+    if (!question || busy || sending.current || !canAsk || uploading > 0) return;
+    sending.current = true;
+    following.current = true;
+    setShowLatest(false);
     const sent = pending;
     setInput("");
     setPending([]);
@@ -326,34 +346,23 @@ export function AiChat({
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: activeId, question, fileIds: sent.map((f) => f.id), ...(sim ? { screen: { simulator: sim.scenario() } } : {}) }),
+        body: JSON.stringify({ conversationId: activeId, question, fileIds: sent.map((f) => f.id), page: captureAiPage(pathname, line, window.location.search, (key) => sessionStorage.getItem(key)), ...(sim ? { screen: { simulator: sim.scenario() } } : {}) }),
       });
       if (!res.ok || !res.body) {
         // refused before it began: the files wait for the next try
         setPending(sent);
+        setInput((draft) => draft || question);
         const j = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(j?.error ?? `The request failed (${res.status}).`);
       }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buf.indexOf("\n")) >= 0) {
-          const line = buf.slice(0, nl).trim();
-          buf = buf.slice(nl + 1);
-          if (line) handle(JSON.parse(line), question);
-        }
-      }
+      await readAiStream(res.body, (event) => handle(event, question));
     } catch (e) {
       flush();
       patchLast((t) => ({ ...t, error: e instanceof Error ? e.message : "The request failed." }));
     } finally {
       flush();
       setBusy(false);
+      sending.current = false;
       setLive(null);
     }
   }
@@ -437,7 +446,12 @@ export function AiChat({
         </div>
         )}
 
-        <div ref={scroller} className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">
+        <div ref={scroller} onScroll={() => {
+          const el = scroller.current;
+          if (!el) return;
+          following.current = el.scrollHeight - el.clientHeight - el.scrollTop < 100;
+          if (following.current) setShowLatest(false);
+        }} className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 md:px-8 md:py-6">
           {loadErr && <p className="text-sm font-semibold text-bad-fg mb-3">{loadErr}</p>}
           {turns.length === 0 ? (
             <Welcome onPick={(q) => (canAsk ? ask(q) : setInput(q))} disabled={!canAsk || busy} compact={compact} />
@@ -470,6 +484,15 @@ export function AiChat({
           )}
         </div>
 
+        {showLatest && (
+          <div className="flex justify-center py-1">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
+              following.current = true;
+              setShowLatest(false);
+              if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
+            }}><ArrowDown size={14} aria-hidden />Latest answer</button>
+          </div>
+        )}
         <form
           className="px-3 pb-3 pt-1 sm:px-5 md:px-8"
           onSubmit={(e) => {
@@ -478,6 +501,7 @@ export function AiChat({
           }}
         >
           <div className="max-w-3xl mx-auto">
+            <p className="mb-1.5 text-[11px] text-muted">{line === "LV" ? "LV panels" : "Transformers"}{tabForPath(pathname) ? ` · ${tabForPath(pathname)!.label} · page context included` : ""}</p>
             {!canAsk && (
               <div className="mb-2 flex items-start gap-2 rounded-lg border bg-surface-2 px-3 py-2 text-xs">
                 <AlertCircle size={14} className="text-warn-fg mt-0.5 shrink-0" aria-hidden />
