@@ -14,6 +14,7 @@ interface Input {
 
 export const queryDatabase: ReadTool<Input> = {
   kind: "read",
+  cacheable: true,
   name: "query_database",
   title: "Looking it up in the database",
   loaded: true,

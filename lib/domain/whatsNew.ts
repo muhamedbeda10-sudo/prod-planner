@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-24-ai-context-and-reliable-answers",
+    dateISO: "2026-10-24",
+    title: "The assistant understands your page and handles interrupted answers better",
+    where: "AI assistant · the side panel and full chat",
+    href: "/ai",
+    body: "Questions now carry the selected TR/LV line, the current screen and its filters (including the tracker's saved filters), so you can ask about the orders on this page. The assistant is instructed to verify current figures again for each question and state their scope. Identical successful lookups in one batch are reused; reads after a change are refreshed. Failed streams no longer replay text that has already arrived, and a cut-off or unsaved answer is clearly marked. Prepared change cards stay visible when you reopen a chat even if a later part of its answer failed. You can scroll back while an answer is being written and jump to the latest answer when ready. A refused question stays in the input, and concurrent questions from different tabs are blocked. Changes keep the same permissions and approval cards.",
+  },
+  {
     id: "2026-10-22-tracker-overview-and-filter-chips",
     dateISO: "2026-10-22",
     title: "A clearer tracker summary, with filters you can remove one by one",

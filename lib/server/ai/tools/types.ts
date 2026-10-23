@@ -98,6 +98,9 @@ interface ToolBase<I> {
 
 export interface ReadTool<I = Record<string, unknown>> extends ToolBase<I> {
   kind: "read";
+  /** Identical successful reads may be reused within ONE model tool batch.
+   * Never for a tool that changes a screen, and never across questions. */
+  cacheable?: true;
   /** The line shown while it runs (defaults to the title). */
   status?(input: I): string;
   run(input: I, ctx: ToolCtx): Promise<ReadResult>;
