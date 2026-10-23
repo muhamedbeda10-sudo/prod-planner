@@ -1205,7 +1205,7 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
 }
 
 /* ---- the AI assistant (components/AiPanel): a round button in the corner,
-   a card in the corner, a window in the middle, the whole screen on a phone ---- */
+   a card in the corner, the whole screen when expanded or on a phone ---- */
 .ai-fab {
   position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 29; /* under the bar (z-30): the phone drawer covers it */
   width: 56px; height: 56px; border-radius: 999px; display: grid; place-items: center;
@@ -1227,6 +1227,12 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
   width: min(1180px, calc(100vw - 48px)); height: min(860px, calc(100dvh - 48px));
   border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 32px 80px rgb(0 0 0 / 0.45);
   animation: aipop-grow 0.18s ease-out;
+}
+/* The assistant expands edge to edge; the inbox keeps its centred window. */
+.ai-pop-large.ai-pop-fullscreen {
+  inset: 0; width: auto; height: 100dvh; transform: none;
+  border: 0; border-radius: 0; box-shadow: none;
+  animation: drawerfade 0.18s ease-out;
 }
 .ai-pop-phone { inset: 0; }
 @keyframes aipop-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }

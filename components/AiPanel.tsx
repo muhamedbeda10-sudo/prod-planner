@@ -8,9 +8,9 @@ import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens,
 import { useInboxPanel } from "@/components/InboxPanel";
 
 // The AI assistant on every page: a round button in the corner opens it as
-// a card in the corner (the page stays usable beside it); one click widens it
-// to a window in the middle of the screen with the chats down its side; on a
-// phone it is the whole screen. It stays open — and a chat being answered
+// a card in the corner (the page stays usable beside it); one click fills
+// the viewport with the chats down its side; on a phone it is always the
+// whole screen. It stays open — and a chat being answered
 // keeps going — while the person moves between pages, steps back to the
 // corner when a link in it opens a page, closes on Escape, and reopens as it
 // was left. The inbox is a window of its own (components/InboxPanel); one of
@@ -171,7 +171,7 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
       {made && (
         <div hidden={!p.shown} className="no-print">
           {layout === "large" && p.shown && <div className="ai-overlay" onClick={p.close} aria-hidden />}
-          <section role="dialog" aria-modal={layout !== "compact"} aria-label="AI assistant" className={`ai-pop ai-pop-${layout}`}>
+          <section role="dialog" aria-modal={layout !== "compact"} aria-label="AI assistant" className={`ai-pop ai-pop-${layout}${layout === "large" ? " ai-pop-fullscreen" : ""}`}>
             <AiWorkspace
               tabs={p.tabs}
               view={state.view}
