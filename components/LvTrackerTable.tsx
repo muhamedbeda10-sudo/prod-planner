@@ -17,6 +17,7 @@ import { holdLabel } from "@/lib/domain/hold";
 import { ContextMenu, useContextMenu, type MenuEntry } from "@/components/ContextMenu";
 import { spreadOverGroup, spreadWords } from "@/lib/domain/groupSpread";
 import { LV_STAGES, LV_FAMILIES, LV_FAMILY_LABEL, LV_STAGE_LABEL, LV_STAGE_SHORT, lvGroupMembers, lvStageOf, type LvChainStage } from "@/lib/domain/lv";
+import { filterLvTracker, lvStageStats } from "@/lib/domain/trackerSummary";
 import { lvBottleneck } from "@/lib/domain/trackerView";
 import type { UserPrefs } from "@/lib/domain/userPrefs";
 import type { LvTrackerRow } from "@/lib/server/lvTracker";
@@ -130,28 +131,10 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   // the line's plans present — the panels' and the meter boxes'
   const families = useMemo(() => LV_FAMILIES.filter((f) => rows.some((r) => r.family === f)), [rows]);
 
-  // Month and plan scope — an order carried across plans belongs to EVERY
-  // month it appeared in. All remaining filters narrow both cards and table.
-  const monthRows = useMemo(
-    () => rows.filter((r) => (!month || r.months.includes(month)) && (!family || r.family === (family === "PNL" ? "" : family))),
-    [rows, month, family]
+  const filtered = useMemo(
+    () => filterLvTracker(rows, { q, month, family, product, status, urgent, progress }),
+    [rows, q, month, family, product, status, urgent, progress]
   );
-  const filtered = useMemo(() => {
-    const needle = q.trim().toUpperCase();
-    const want = status || "open";
-    return monthRows.filter((r) => {
-      if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.fgCode ?? ""} ${r.secItem ?? ""} ${r.customer ?? ""}`.toUpperCase().includes(needle))) return false;
-      if (product && r.product !== product) return false;
-      if (want === "hold") { if (!r.hold.onHold) return false; }
-      else if (want !== "all" && r.status !== want) return false;
-      if (urgent === "yes" && !r.urgent) return false;
-      if (urgent === "no" && r.urgent) return false;
-      if (progress === "none" && r.complete > 0) return false;
-      if (progress === "partial" && !(r.complete > 0 && r.remaining > 0)) return false;
-      if (progress === "done" && r.remaining > 0) return false;
-      return true;
-    });
-  }, [monthRows, q, product, status, urgent, progress]);
 
   const resetFilters = () => { setQ(""); setProduct(""); setFamily(""); setStatus(""); setMonth(""); setUrgent(""); setProgress(""); };
   const activeFilters: TrackerFilter[] = [];
@@ -164,11 +147,7 @@ export function LvTrackerTable({ rows, editableStages, canStatus, prefs = {}, he
   if (urgent) activeFilters.push({ key: "urgent", label: "Urgent", value: urgent === "yes" ? "Urgent only" : "Not urgent", onClear: () => setUrgent("") });
 
   // The cards report exactly the orders currently shown in the table.
-  const cards = LV_STAGES.map((stage) => ({
-    stage,
-    need: filtered.reduce((s, r) => s + r.state.required, 0),
-    done: filtered.reduce((s, r) => s + Math.min(lvStageOf(r.state, stage), r.state.required || Infinity), 0),
-  }));
+  const cards = lvStageStats(filtered);
 
   // shared BOMs: one summary row per BOM, expandable to its MOs — the way the
   // planner reads the transformer tracker

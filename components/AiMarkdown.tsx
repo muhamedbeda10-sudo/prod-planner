@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { AiChart } from "@/components/AiChart";
 import { isChartBlock } from "@/lib/domain/aiChart";
 import { humanizeKey, looksLikeColumn, readableDate } from "@/lib/domain/fieldNames";
+import { isEvidenceAnchor } from "@/lib/domain/aiEvidence";
 
 // An AI answer as it reads: Markdown (tables, lists, bold) in the app's own
 // type. The answer as a whole reads in the language it was written in — an
@@ -79,8 +80,13 @@ function components(streaming: boolean): Components {
     // a link into the app is a link; anything outside is shown, not followed —
     // a row of data could tell the model to put figures in an address
     a: ({ children, href }) =>
-      href && href.startsWith("/") && !href.startsWith("//") ? (
-        <a href={href} className="text-brand-ink underline underline-offset-2">{children}</a>
+      href && ((href.startsWith("/") && !href.startsWith("//")) || isEvidenceAnchor(href)) ? (
+        <a href={href} className="text-brand-ink underline underline-offset-2" onClick={isEvidenceAnchor(href) ? (event) => {
+          const source = document.getElementById(href.slice(1));
+          if (source instanceof HTMLDetailsElement) {
+            event.preventDefault(); source.open = true; source.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          }
+        } : undefined}>{children}</a>
       ) : (
         <span>{children}{href ? <span className="text-muted text-xs ltr"> ({href})</span> : null}</span>
       ),

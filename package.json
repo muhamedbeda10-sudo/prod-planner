@@ -12,6 +12,7 @@
     "test:run": "vitest run",
     "seed": "tsx scripts/seed.ts",
     "ai:schema": "tsx scripts/gen-ai-schema.ts",
+    "ai:eval": "vitest run --config vitest.ai-eval.config.ts",
     "db:reset": "prisma migrate reset --force"
   },
   "dependencies": {

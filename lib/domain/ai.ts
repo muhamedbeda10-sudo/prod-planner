@@ -3,6 +3,7 @@
 // and what the assistant's SQL may be and how its rows go back to it.
 
 import { filesOfNote, isAttachmentNote } from "./aiFiles";
+import { evidenceFromContent, type AiEvidence } from "./aiEvidence";
 import type { AiArea } from "./aiActions";
 
 export interface AiModelDef {
@@ -285,6 +286,7 @@ export function readerUrl(base: string, password: string): string {
 // ---- the chat as people read it ----
 
 export interface AiChatTurn {
+  sources?: AiEvidence[];
   role: "user" | "assistant";
   text: string;
   /** What the assistant looked up on the way (each look-up's purpose). */
@@ -295,7 +297,7 @@ export interface AiChatTurn {
   files?: { id: number; name: string; kind: string }[];
 }
 
-type Block = { type?: string; text?: string; id?: string; name?: string; input?: { purpose?: unknown } };
+type Block = { type?: string; text?: string; id?: string; name?: string; input?: { purpose?: unknown }; content?: unknown; tool_use_id?: string };
 
 /** The kept API messages as a chat: each question (the last text block of
  *  its message, with the files its note names), then one answer gathering
@@ -310,7 +312,15 @@ export function displayTurns(rows: readonly { role: string; content: unknown }[]
     const blocks: Block[] = Array.isArray(r.content) ? (r.content as Block[]) : typeof r.content === "string" ? [{ type: "text", text: r.content }] : [];
     if (r.role === "user") {
       // tool results belong to the answer being worked out
-      if (blocks.some((b) => b.type === "tool_result")) continue;
+      if (blocks.some((b) => b.type === "tool_result")) {
+        const answer = out.at(-1);
+        if (answer?.role === "assistant") for (const block of blocks) {
+          if (block.type !== "tool_result" || !block.tool_use_id) continue;
+          const source = evidenceFromContent(block.content, block.tool_use_id);
+          if (source) (answer.sources ??= []).push(source);
+        }
+        continue;
+      }
       const texts = blocks.filter((b) => b.type === "text");
       const note = texts.find((b) => typeof b.text === "string" && isAttachmentNote(b.text));
       const own = texts.filter((b) => b !== note);

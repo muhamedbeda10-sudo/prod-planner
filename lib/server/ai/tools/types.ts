@@ -3,6 +3,8 @@ import type { User } from "@prisma/client";
 import type { AiArea, AiChange, AiRisk } from "@/lib/domain/aiActions";
 import type { ObjectSchema } from "@/lib/domain/aiInput";
 import type { SimulatorShow } from "@/lib/domain/simulatorScreen";
+import type { AiPageContext } from "@/lib/domain/aiScreen";
+import type { ProductLine } from "@/lib/domain/lines";
 
 // The assistant's tools, as the app defines them. Each has the JSON Schema the
 // model reads, and the app checks every call against that same schema before
@@ -29,6 +31,8 @@ export interface ToolCtx {
   todayISO: string;
   conversationId: number | null;
   automationId: number | null;
+  line?: ProductLine;
+  page?: AiPageContext | null;
   /** What the person has open beside the chat, as their browser sent it with
    *  the question — only in a chat they are in. A tool that changes it
    *  (show_on_simulator) keeps it up to date for the calls after it. */
@@ -46,6 +50,8 @@ export interface ReadResult {
   ok: boolean;
   /** What goes back to the model — compact JSON or a short sentence. */
   text: string;
+  /** Links produced by the app, not by the model, supporting this result. */
+  links?: { label: string; href: string }[];
   /** A scenario to put on the person's Simulator (show_on_simulator). */
   simulator?: Omit<SimulatorShow, "toolUseId">;
 }

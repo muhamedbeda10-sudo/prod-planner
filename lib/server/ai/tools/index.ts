@@ -2,9 +2,10 @@ import "server-only";
 import type { User } from "@prisma/client";
 import { hasPerm } from "@/lib/server/auth";
 import { AI_AREA_KEY, AI_DELETE_KEY, type AiRisk } from "@/lib/domain/aiActions";
-import { validateInput } from "@/lib/domain/aiInput";
+export { checkToolInput } from "../input";
 import { queryDatabase } from "./sql";
 import { TRACKER_TOOLS } from "./tracker";
+import { getTrackerSummary } from "./planning";
 import { ORDER_TOOLS } from "./orders";
 import { DAILY_LOG_TOOLS } from "./dailyLog";
 import { MACHINE_TOOLS } from "./machines";
@@ -40,6 +41,7 @@ import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 export const AI_TOOLS: readonly AiTool[] = [
   queryDatabase,
   ...TRACKER_TOOLS,
+  getTrackerSummary,
   ...ORDER_TOOLS,
   ...DAILY_LOG_TOOLS,
   ...WORKLIST_TOOLS,
@@ -137,13 +139,4 @@ export function toolsFor(user: User, o: { hidden: ReadonlySet<string>; actionsPa
     if (t.risk === "destructive" && !hasPerm(user, AI_DELETE_KEY)) return false;
     return true;
   });
-}
-
-/** A call's input checked against the tool's schema, then its own parse. */
-export function checkToolInput<I>(tool: { schema: AiTool["schema"]; parse?: (raw: Record<string, unknown>) => I | string }, raw: unknown): { ok: true; input: I } | { ok: false; error: string } {
-  const v = validateInput(tool.schema, raw);
-  if (!v.ok) return v;
-  if (!tool.parse) return { ok: true, input: v.value as I };
-  const p = tool.parse(v.value);
-  return typeof p === "string" ? { ok: false, error: p } : { ok: true, input: p };
 }

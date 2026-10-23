@@ -72,7 +72,7 @@ export const getOrders: ReadTool<GetOrdersInput> = {
     properties: {
       mos: { ...MOS(60) },
       bom: { type: "string", minLength: 1, maxLength: 60, description: "A BOM — every order on it." },
-      line: { type: "string", enum: ["TR", "LV"], description: "TR transformers (the default) or LV panels." },
+      line: { type: "string", enum: ["TR", "LV"], description: "TR transformers or LV panels; defaults to the line selected beside this chat." },
     },
     additionalProperties: false,
   },
@@ -81,13 +81,14 @@ export const getOrders: ReadTool<GetOrdersInput> = {
     if (!i.mos?.length && !i.bom) return "Give the MO numbers or a BOM.";
     return { mos: i.mos ? uniq(i.mos) : undefined, bom: i.bom?.trim().toUpperCase(), line: i.line };
   },
-  async run(i) {
+  async run(i, ctx) {
     const want = (mo: string, bom: string) => (i.mos ? i.mos.includes(mo) : true) && (i.bom ? bom.toUpperCase() === i.bom : true);
-    if ((i.line ?? "TR") === "LV") {
+    if ((i.line ?? ctx.line ?? "TR") === "LV") {
       const rows = (await withLine("LV", () => getLvTracker())).filter((r) => want(r.mo, r.bom));
       if (rows.length === 0) return { ok: true, text: "No LV order matches." };
       return {
         ok: true,
+        links: rows.slice(0, 20).map((r) => ({ label: `${r.mo} · ${r.bom}`, href: `/trace?mo=${encodeURIComponent(r.mo)}&line=LV` })),
         text: JSON.stringify(rows.slice(0, 60).map((r) => ({
           mo: r.mo, bom: r.bom, soi: r.soi, product: r.product, status: r.status,
           onHold: r.hold.onHold ? { note: r.hold.holdNote, by: r.hold.holdBy, since: r.hold.holdSinceISO } : null,
@@ -101,6 +102,7 @@ export const getOrders: ReadTool<GetOrdersInput> = {
     if (rows.length === 0) return { ok: true, text: "No transformer order matches (for panels, ask with line LV)." };
     return {
       ok: true,
+      links: rows.slice(0, 20).map((r) => ({ label: `${r.mo} · ${r.bom}`, href: `/trace?mo=${encodeURIComponent(r.mo)}&line=TR` })),
       text: JSON.stringify(rows.slice(0, 60).map((r) => {
         const items: Record<string, Record<string, number>> = {};
         const notNeeded: string[] = [];

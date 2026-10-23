@@ -25,7 +25,7 @@ import type { UserPrefs } from "@/lib/domain/userPrefs";
 import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stickAt, useAccountSet, useColumns, type Columns } from "@/components/TrackerColumns";
 import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
-type Progress = "complete" | "inprogress" | "notstarted";
+import { filterMasterTracker, trackerItemStats } from "@/lib/domain/trackerSummary";
 
 /** The order's spec columns. Every one of them is the planner's own — the
  *  monthly import writes none of them, so a re-import can never blank what he
@@ -142,11 +142,6 @@ const STAGE_OPTS = [
   { value: "Delivered", label: "Delivered" },
 ] as const;
 
-function progressOf(r: MasterTrackerRow): Progress {
-  if (r.required > 0 && r.complete >= r.required) return "complete";
-  if (r.complete > 0 || ITEMS.some((it) => r.items[it].cut > 0 || r.items[it].weld > 0)) return "inprogress";
-  return "notstarted";
-}
 
 export interface RowEta {
   etaISO: string | null;
@@ -483,23 +478,10 @@ export function MasterTrackerTable({
   }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
   const hasNoMonth = useMemo(() => rows.some((r) => r.months.length === 0), [rows]);
 
-  // An order carried across plans belongs to EVERY month it appeared in.
-  const monthRows = useMemo(
-    () => (month ? rows.filter((r) => (month === "—" ? r.months.length === 0 : r.months.includes(month))) : rows),
-    [rows, month]
+  const filtered = useMemo(
+    () => filterMasterTracker(rows, { q, month, status, progress, urgent }),
+    [rows, q, month, status, progress, urgent]
   );
-
-  const filtered = useMemo(() => {
-    const needle = q.trim().toUpperCase();
-    return monthRows.filter((r) => {
-      if (status === "hold") { if (!r.hold.onHold) return false; }
-      else if (status && r.status !== status) return false;
-      if (needle && !(`${r.mo} ${r.bom} ${r.soi ?? ""} ${r.customer ?? ""} ${r.kva ?? ""}`.toUpperCase().includes(needle))) return false;
-      if (progress && progressOf(r) !== progress) return false;
-      if (urgent === "yes" && !r.urgent) return false;
-      return true;
-    });
-  }, [monthRows, q, progress, urgent, status]);
 
   const hasActive = !!(q || progress || urgent || month || scoped || status);
   const resetFilters = () => { setQ(""); setProgress(""); setUrgent(""); setStatus(""); setMonth(""); setStage(""); };
@@ -736,34 +718,7 @@ export function MasterTrackerTable({
   // need = required − OSP (excluded items don't count). Done = the FINAL stage
   // by default, or the FILTERED stage when a dept is picked — cards and table
   // always talk about the same stage.
-  const itemStats = ITEMS.map((it) => {
-    // final stage = SHOT BLAST for the paint-exempt core (CF), Painting otherwise
-    const finalIsShp = isPaintExempt(it);
-    const doneOf = (c: MasterTrackerRow["items"][Item]) => {
-      switch (cardStage) {
-        case "Cut": return c.cut;
-        case "Welding": return c.weld;
-        case "Painting": return finalIsShp ? c.shp : c.paint;
-        case "Delivered": return c.delivered;
-        default: return finalIsShp ? c.shp : c.paint;
-      }
-    };
-    const doneWord =
-      cardStage === "Cut" ? "fabricated"
-      : cardStage === "Welding" ? "welded"
-      : cardStage === "Delivered" ? "delivered"
-      : finalIsShp ? "shot blasted" : "painted";
-    let need = 0;
-    let done = 0;
-    for (const r of filtered) {
-      const c = r.items[it];
-      if (!c.eligible || c.excluded) continue; // AR/MB only count on orders that need them
-      const n = Math.max(0, r.required - c.osp);
-      need += n;
-      done += Math.min(doneOf(c), n);
-    }
-    return { it, doneWord, need, done, remaining: Math.max(0, need - done), pct: need > 0 ? done / need : null };
-  });
+  const itemStats = trackerItemStats(filtered, cardStage);
 
   // The export mirrors the CURRENT view: the rows already follow the search /
   // month / status / progress / urgent filters, and the columns now follow the
