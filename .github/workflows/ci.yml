@@ -47,3 +47,6 @@ jobs:
 
       - name: Unit tests
         run: npm run test:run
+
+      - name: Planning AI reference calculations (no API key)
+        run: npm run ai:eval

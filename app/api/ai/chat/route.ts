@@ -146,10 +146,11 @@ export async function POST(request: Request) {
           // the photos and PDFs go to the model as the files themselves
           expand: fileExpander(user.id),
           tools,
-          ctx: { user, hidden, now, todayISO: factoryDayISO(now), conversationId: conversation.id, automationId: null, screen },
+          ctx: { user, hidden, now, todayISO: factoryDayISO(now), conversationId: conversation.id, automationId: null, screen, line, page },
           settings,
           playbook,
           events: {
+            source: (source) => send({ type: "source", source }),
             status: (text) => send({ type: "status", text }),
             text: (delta) => send({ type: "text", delta }),
             action: (action) => send({ type: "action", action }),

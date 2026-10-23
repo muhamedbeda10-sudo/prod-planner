@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { guardTab } from "@/lib/server/auth";
 import { getTrace } from "@/lib/server/trace";
-import { getActiveLine } from "@/lib/server/line";
+import { getActiveLine, withLine } from "@/lib/server/line";
 import { getLvTrace } from "@/lib/server/lvTrace";
 import { LvTraceView } from "@/components/LvTraceView";
 import { PageHeader } from "@/components/ui";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function TracePage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string; bom?: string; mo?: string; view?: string }>;
+  searchParams: Promise<{ plan?: string; bom?: string; mo?: string; view?: string; line?: string }>;
 }) {
   // the proxy only sees that a session cookie is there; the session itself is
   // checked here, before any order or log row is read
@@ -23,6 +23,7 @@ export default async function TracePage({
   const planNo = Number(sp.plan) || 0;
   const mo = (sp.mo ?? "").trim();
   const bom = (sp.bom ?? "").trim();
+  const line = sp.line === "TR" || sp.line === "LV" ? sp.line : await getActiveLine();
   // which tracker view the visitor came from — `plan` alone can't say, and the
   // tracker opens MONTHLY unless the URL asks for weekly, so a reader who
   // arrived from the weekly plan would be sent back to the wrong table
@@ -44,8 +45,8 @@ export default async function TracePage({
 
   // a panel's trace is its own shape: orders on the chain and the rows that
   // moved them, not six components in a pipeline
-  if ((await getActiveLine()) === "LV") {
-    const lt = await getLvTrace({ mo, bom });
+  if (line === "LV") {
+    const lt = await withLine("LV", () => getLvTrace({ mo, bom }));
     if (!lt.exists) {
       return (
         <div className="space-y-6">
@@ -63,7 +64,7 @@ export default async function TracePage({
     return <LvTraceView t={lt} />;
   }
 
-  const t = await getTrace({ mo, bom });
+  const t = await withLine("TR", () => getTrace({ mo, bom }));
 
   if (!t.exists) {
     return (

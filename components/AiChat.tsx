@@ -22,6 +22,8 @@ import { captureAiPage } from "@/lib/domain/aiScreen";
 import { tabForPath } from "@/lib/domain/tabs";
 import { useActiveLine } from "@/components/LineContext";
 import { readAiStream } from "@/lib/aiStream";
+import { isAiEvidence } from "@/lib/domain/aiEvidence";
+import { AiSources } from "@/components/AiSources";
 
 // The AI assistant's chat: the person's conversations on the side (a drawer
 // below a laptop's width, and always in the narrow side panel), the open one
@@ -76,11 +78,11 @@ interface Pending {
 export type { AiChatStatus };
 
 const SUGGESTIONS: { q: string; icon: typeof Clock }[] = [
-  { q: "إيه الأوردرات المتأخرة دلوقتي، وواقفة في أنهي قسم؟", icon: Clock },
-  { q: "اعملي رسم بياني لإنتاج كل قسم في آخر 7 أيام", icon: BarChart3 },
+  { q: "لخصلي الخطة الشهرية حسب الفلاتر الظاهرة، بالإنجاز والمتبقي ومصادر الأرقام", icon: ListChecks },
+  { q: "اعملي مراجعة بداية اليوم للخط المختار واقترح أهم 3 أولويات بالأسباب", icon: Clock },
   { q: "أنهي ماكينة عليها أكبر حمل شغل دلوقتي؟", icon: Factory },
   { q: "إيه الـ MOs اللي مستنية تتقفل في الأودو؟", icon: Boxes },
-  { q: "لخصلي إنتاج امبارح واقترح أولويات النهارده", icon: ListChecks },
+  { q: "قارن إنتاج آخر 7 أيام بالفترة اللي قبلها ووضح فرص التحسين", icon: BarChart3 },
   { q: "Which open orders still have no nesting on the Material tab?", icon: Layers },
 ];
 
@@ -252,6 +254,11 @@ export function AiChat({
       setLive(null);
       delta.current += String(ev.delta ?? "");
       if (!flushTimer.current) flushTimer.current = setTimeout(flush, 60);
+    } else if (ev.type === "source") {
+      if (isAiEvidence(ev.source)) {
+        const source = ev.source;
+        patchLast((t) => ({ ...t, sources: [...(t.sources ?? []).filter((s) => s.id !== source.id), source] }));
+      }
     } else if (ev.type === "action") {
       const v = ev.action as AiActionView;
       putAction(v);
@@ -655,6 +662,7 @@ function Answer({
       <div className="flex-1 min-w-0">
         <Lookups items={turn.lookups} />
         {turn.text && <AiMarkdown text={turn.text} streaming={streaming} />}
+        <AiSources sources={turn.sources ?? []} />
         {live && (
           <div className="flex items-center gap-2 text-sm text-muted mt-1" dir="auto">
             <Loader2 size={14} className="animate-spin shrink-0" />

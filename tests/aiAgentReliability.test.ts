@@ -57,6 +57,19 @@ describe("AI reads and writes", () => {
       { type: "tool_result", tool_use_id: "b", content: "Current facts" },
     ]);
   });
+  it("streams and persists verified read sources while leaving failed reads uncited", async () => {
+    const source = vi.fn();
+    read.mockResolvedValueOnce({ ok: true, text: '{"remaining":6}', links: [{ label: "Order", href: "/trace?mo=A&line=LV" }, { label: "Hidden", href: "/odoo" }] })
+      .mockResolvedValueOnce({ ok: false, text: "Unavailable" });
+    h.stream.mockReturnValueOnce(reply([use("source_1")], "tool_use"))
+      .mockReturnValueOnce(reply([use("source_2")], "tool_use")).mockReturnValueOnce(done());
+    const result = await run({ ctx: { ...ctx, hidden: new Set(["odoo"]) }, events: { status: vi.fn(), text: vi.fn(), source } });
+    expect(source).toHaveBeenCalledTimes(1);
+    expect(source.mock.calls[0][0]).toMatchObject({ id: "source_1", links: [{ label: "Order", href: "/trace?mo=A&line=LV" }] });
+    expect(displayTurns(result.added).find((turn) => turn.role === "assistant")?.sources).toEqual([expect.objectContaining({ id: "source_1", snapshot: expect.stringContaining('"remaining": 6') })]);
+    expect(JSON.stringify(result.added)).toContain("#ai-source-source_1");
+    expect(JSON.stringify(result.added)).not.toContain("#ai-source-source_2");
+  });
   it("reads again after a write, and never deduplicates writes", async () => {
     h.stream.mockReturnValueOnce(reply([use("a"), use("b", "write_test"), use("c"), use("d", "write_test")], "tool_use")).mockReturnValueOnce(done());
     await run();

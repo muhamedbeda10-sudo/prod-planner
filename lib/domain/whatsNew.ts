@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-24-ai-planning-copilot",
+    dateISO: "2026-10-24",
+    title: "Planning summaries with the tracker's filters and saved sources",
+    where: "AI assistant → monthly Plan Tracker · Sources",
+    href: "/ai",
+    body: "Ask for a monthly plan summary: totals, remaining work and stage cards use the same calculations and filters as the TR or LV tracker, including outsourced and excluded parts. Successful lookups now keep a dated source snapshot with links to related screens and orders; source citations open it, even after reopening the conversation. New starter questions help with daily priorities and weekly reviews. These reviews run when asked; no new schedules or messages are activated. A reference benchmark checks planning calculations on every CI run; live model accuracy, speed and estimated cost can be measured separately.",
+  },
+  {
     id: "2026-10-24-ai-context-and-reliable-answers",
     dateISO: "2026-10-24",
     title: "The assistant understands your page and handles interrupted answers better",
