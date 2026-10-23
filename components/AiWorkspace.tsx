@@ -172,7 +172,7 @@ export function AiWorkspace({
             </Link>
           )}
           {onExpand && layout !== "phone" && (
-            <HeadBtn icon={large ? Minimize2 : Maximize2} label={large ? "Back to the corner" : "Expand"} onClick={() => onExpand(!large)} />
+            <HeadBtn icon={large ? Minimize2 : Maximize2} label={large ? "Back to the corner" : "Fill screen"} onClick={() => onExpand(!large)} />
           )}
           {onClose && <HeadBtn icon={X} label="Close" onClick={onClose} />}
         </div>

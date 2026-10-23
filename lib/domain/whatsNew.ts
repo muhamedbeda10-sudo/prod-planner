@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-24-ai-fill-screen",
+    dateISO: "2026-10-24",
+    title: "Expand the assistant to fill the screen",
+    where: "AI assistant → Fill screen",
+    body: "The assistant's expand button now fills the whole app viewport, giving chats and reports the full available height and width. Back to the corner returns to the small window, keeping the conversation and your draft in place.",
+  },
+  {
     id: "2026-10-24-ai-planning-copilot",
     dateISO: "2026-10-24",
     title: "Planning summaries with the tracker's filters and saved sources",
