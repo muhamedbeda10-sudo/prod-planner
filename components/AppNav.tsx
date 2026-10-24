@@ -8,7 +8,7 @@ import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
   Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
   CalendarDays, Users, Timer,
-  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot,
+  FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot, Gauge,
 } from "lucide-react";
 import { LaserCutterIcon, WeldingIcon, PowderCoatIcon } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -61,7 +61,9 @@ const LV_WORKLIST_DEPTS = [
 //   Floor        → the bay as it is, and the what-if simulator
 // Chat is not here at all — it is the icon in the right cluster.
 const REST: Item[] = [
-  // Material comes FIRST: nesting is decided before a single sheet is cut.
+  // the planner's cockpit leads: the five questions a day starts with
+  { href: "/cockpit", label: "Cockpit", icon: Gauge },
+  // Material comes next: nesting is decided before a single sheet is cut.
   { href: "/material", label: "Material", icon: Layers, also: ["/analytics"] },
   // the store's count against Odoo's stock, code by code
   { href: "/physical", label: "Physical Material", icon: Warehouse },

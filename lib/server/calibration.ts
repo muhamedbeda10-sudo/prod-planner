@@ -1,7 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { toISODate } from "@/lib/domain/dates";
-import { tierForOrder, itemHoursFor } from "@/lib/domain/stdEngine";
+import { tierForOrder, itemCentreHoursFor } from "@/lib/domain/stdEngine";
+import { byStage, earnedOfRecord } from "@/lib/domain/kpis";
 import { calibrate, type CalibrationSummary } from "@/lib/domain/calibration";
 import { getStdData } from "./standardTimes";
 import { loadMasterOrdersOf } from "./loads";
@@ -92,21 +93,19 @@ export async function earnedOnDays(dates: readonly string[], std: StdData, order
     else if (bomTier.get(o.bom) !== t) bomTier.set(o.bom, null);
   }
 
+  // per class, the hours a piece at each centre — typed, else the estimate
+  const perTier = new Map<number, ReturnType<typeof itemCentreHoursFor>>();
+  const centresOf = (tier: number) => perTier.get(tier) ?? perTier.set(tier, itemCentreHoursFor(std, tier)).get(tier)!;
   for (const e of entries) {
     const iso = toISODate(e.date);
     const tier = (e.mo ? moTier.get(e.mo) : bomTier.get(e.bom)) ?? null;
     if (tier === null) continue;
-    const per = itemHoursFor(std, tier)[e.item];
-    if (!per) continue; // AR / MB, panels
+    const per = centresOf(tier)[e.item];
+    if (!per) continue; // AR / MB with nothing typed, panels
     if (!earned.has(iso)) earned.set(iso, { Cut: 0, Welding: 0, ShotBlast: 0, Painting: 0 });
     const day = earned.get(iso)!;
-    if (e.dept === "Cut") day.Cut += per.cut * e.qty;
-    else if (e.dept === "Welding") day.Welding += per.weld * e.qty;
-    else if (e.dept === "ShotBlast") day.ShotBlast += per.shb * e.qty;
-    else if (e.dept === "Painting") {
-      day.ShotBlast += per.shb * e.qty;
-      day.Painting += per.paint * e.qty;
-    }
+    const got = byStage(earnedOfRecord(e.dept, e.qty, per));
+    for (const st of CAL_STAGES) day[st] += got[st];
   }
   return earned;
 }

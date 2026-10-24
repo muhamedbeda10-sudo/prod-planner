@@ -26,8 +26,9 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 "Done" everywhere = Welding output; Cut gates Welding.
 
 ## Navigation
-Seven tabs, one per QUESTION rather than per screen — Worklist · Material · ODOO · Consumables · Shifts ·
-Plan Tracker · Floor. There is **no Dashboard tab**: each dashboard lives with what it reads. Three tabs
+Tabs, one per QUESTION rather than per screen — Cockpit · Worklist · Material · ODOO · Consumables · Shifts ·
+Plan Tracker · Floor. The **Cockpit** is the planner's one page across departments (feature 13); otherwise each
+dashboard lives with what it reads. Three tabs
 hold several views behind their own switcher (`components/ViewTabs.tsx`): **Plan Tracker** carries the
 tracker, the plan's **Dashboard** (`/`, the home page), the **Daily log** it adds up and the printed
 **Report** of that log; **Material** the nesting sheets and the sheet **Analytics** built on them;
@@ -412,6 +413,23 @@ mobile drawer still lists every view flat, since it has the vertical room.
      working morning from 07:30 — suggestions only; every change waits.
    - **Playbook** (`/ai/playbook`): how this plant works, told to the assistant with every question; admins keep it there or
      through the assistant.
+
+13. **Planning cockpit** (`/cockpit`, the first tab) — the planner's one page, every figure in **standard hours**
+   (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
+   ten projects a day add up and departments compare. On top, what needs a decision today (lines behind, a centre
+   short in the horizon or behind and when it catches up, thin or heavy welding coverage, a slow centre, the
+   biggest loss, an unrecorded day), then five questions: **1** the newest weekly plan — each stage's pieces due by
+   today (the oven date less the Settings lead days) against done, by delivery day, and the lines behind with the
+   stage they are stuck at; **2** each work centre's earned std-hours against the man-hours the shift log booked
+   there — efficiency on the last recorded day and over the recent ones, people a day, machine availability, the
+   trend; **3** the load ahead — each centre's remaining plan hours over the next 10 working days against what it
+   can work (its usual man-hours × its measured pace); **4** welding coverage — days of cut parts waiting in front of
+   the welders; **5** what stopped the floor — machine stops by cause, absence and overtime. Each card has its
+   table and Excel export; the page prints. The figures are kept once a day (`KpiSnapshot`) for their trend. The
+   pure arithmetic is `lib/domain/kpis.ts` (tested); the loader `lib/server/kpis.ts` is the one both the page and
+   the assistant's `get_kpis` read — the morning review starts from it. The calibration reads the ledger through
+   the same `earnedOfRecord`. Admin → Standard Times shows, under each hours-a-piece cell, what the floor really
+   took there over the last 60 days (the centre's measured pace), to take with a click.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

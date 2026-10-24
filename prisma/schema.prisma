@@ -1924,3 +1924,14 @@ model AutomationRun {
 
   @@index([automationId, startedAt])
 }
+
+// The cockpit's figures as they read on a factory day — kept so the trend of
+// what cannot be recomputed later (how many plan lines were late THAT day,
+// the welding coverage then) survives. One row a day, rewritten while the day
+// lasts; the shape is lib/domain/kpis.ts KpiSnapshotData.
+model KpiSnapshot {
+  id        Int      @id @default(autoincrement())
+  date      DateTime @unique @db.Date
+  data      Json
+  updatedAt DateTime @default(now()) @updatedAt
+}
