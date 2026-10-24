@@ -690,6 +690,11 @@ model ShiftEntry {
   overtimeH  Float    @default(0)
   machineId  Int?
   machine    Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  // The work centre the worker was on that day, where the department has more
+  // than one (Fabrication: Cutting | Bending | Fins — lib/domain/shifts.ts
+  // WORK_CENTRES). The roster offers his section's centre and saves the one
+  // shown; null on other departments and on rows from before centres.
+  center     String?
   note       String?
   recordedBy String?
   updatedAt  DateTime @default(now()) @updatedAt
@@ -708,12 +713,31 @@ model MachineDowntime {
   machineId  Int
   machine    Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
   hours      Float
+  // Why, as one of the plant's codes (lib/domain/downtime.ts) so the stops can
+  // be counted by cause; `reason` keeps the supervisor's own words.
+  reasonCode String?
   reason     String?
   recordedBy String?
   createdAt  DateTime @default(now())
 
   @@index([date])
   @@index([machineId])
+}
+
+// The planner's own hours for ONE piece of an item at one work centre, for one
+// KVA class — typed by hand. Where a figure is set it replaces the estimate the
+// standard times split out of the stage total (lib/domain/stdEngine.ts), so
+// every earned hour, load and capacity check in the app is priced with it.
+model CenterStdTime {
+  id         Int      @id @default(autoincrement())
+  kva        Int // KVA class, as StdTime
+  item       String // CF | TC | TN | CB | AR | MB
+  center     String // Cutting | Bending | Fins | Welding | ShotBlast | Painting
+  hoursPerPc Float
+  setBy      String?
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([kva, item, center])
 }
 
 // Which machine a worklist line is on, and where it stands in that machine's

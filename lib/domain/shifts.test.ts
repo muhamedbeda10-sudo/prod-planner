@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CENTERS, MACHINE_DEPTS, ROUTING, SHIFTS, attendanceLine, attendanceOf, centerShares, dayTotals, isAttendance, shiftSplit, hoursOfShift, isShiftCode, isShiftDept, lineHours, machineAvailable, routeFor, shiftLabel } from "./shifts";
+import { CENTERS, DEPT_CENTRES, centreDept, centreOf, machineWorkCentre, MACHINE_DEPTS, ROUTING, SHIFTS, attendanceLine, attendanceOf, centerShares, dayTotals, isAttendance, shiftSplit, hoursOfShift, isShiftCode, isShiftDept, lineHours, machineAvailable, routeFor, shiftLabel } from "./shifts";
 import { SHEET_ITEMS } from "./constants";
 
 describe("lineHours", () => {
@@ -143,5 +143,28 @@ describe("who came on which shift", () => {
 
   it("an empty list is all zeros", () => {
     expect(shiftSplit([])).toEqual({ workers: 0, day: { people: 0, hours: 0, overtimePeople: 0, overtimeH: 0 }, night: { people: 0, hours: 0 }, absent: 0, unset: 0, hours: 0 });
+  });
+});
+
+describe("work centres", () => {
+  it("books a Fabrication worker to his section's centre, the day's own when it is Fabrication's", () => {
+    expect(centreOf("Cut", ["BendingTX"])).toBe("Bending");
+    expect(centreOf("Cut", ["Channels"])).toBe("Bending");
+    expect(centreOf("Cut", ["Fins"], "Cutting")).toBe("Cutting");
+    // a centre that is not Fabrication's is ignored
+    expect(centreOf("Cut", ["Fins"], "Welding")).toBe("Fins");
+    expect(centreOf("Cut", [])).toBe("Cutting");
+    expect(centreOf("Welding", ["WeldingTX"])).toBeNull();
+    expect(centreOf("WeldingLV", ["WeldingLV"])).toBeNull();
+  });
+
+  it("counts a machine's hours at its work centre — tubes and roll blanks are cutting", () => {
+    expect(machineWorkCentre("Cut", "Tubes")).toBe("Cutting");
+    expect(machineWorkCentre("Cut", "Bending")).toBe("Bending");
+    expect(machineWorkCentre("Painting", "Line")).toBe("Painting");
+    expect(machineWorkCentre("Punching", "Line")).toBeNull();
+    expect(machineWorkCentre("Cut", "SomethingNew")).toBeNull();
+    expect(centreDept("Fins")).toBe("Cut");
+    expect(DEPT_CENTRES.Cut).toEqual(["Cutting", "Bending", "Fins"]);
   });
 });

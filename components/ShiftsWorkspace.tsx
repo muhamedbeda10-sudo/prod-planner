@@ -1,15 +1,18 @@
 "use client";
 
-import { Activity, CalendarDays, ClipboardCheck, Clock3 } from "lucide-react";
+import { Activity, CalendarDays, ClipboardCheck, Clock3, Wrench } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { ShiftHistory } from "@/components/ShiftHistory";
 import type { RosterFilter } from "@/lib/domain/roster";
 import type { ShiftHistoryDay } from "@/lib/server/shifts";
 
-type WorkspaceTab = "attendance" | "productivity" | "history" | "hours";
+type WorkspaceTab = "attendance" | "downtime" | "productivity" | "history" | "hours";
 
-export function ShiftsWorkspace({ attendance, productivity, history, dayISO, filter, hours }: {
+export function ShiftsWorkspace({ attendance, downtime, downtimeCount, productivity, history, dayISO, filter, hours }: {
   attendance: ReactNode;
+  /** The day's machine stops. */
+  downtime: ReactNode;
+  downtimeCount: number;
   productivity: ReactNode;
   history: readonly ShiftHistoryDay[];
   dayISO: string;
@@ -21,6 +24,7 @@ export function ShiftsWorkspace({ attendance, productivity, history, dayISO, fil
   const id = useId();
   const tabs = [
     { key: "attendance", label: "Daily attendance", icon: ClipboardCheck },
+    { key: "downtime", label: downtimeCount > 0 ? `Machine stops · ${downtimeCount}` : "Machine stops", icon: Wrench },
     { key: "productivity", label: "Productivity", icon: Activity },
     { key: "history", label: "Recorded days", icon: CalendarDays },
     ...(hours ? [{ key: "hours", label: "Shift hours", icon: Clock3 }] : []),
@@ -41,6 +45,7 @@ export function ShiftsWorkspace({ attendance, productivity, history, dayISO, fil
       </nav>
       {/* Keep every pane mounted: switching to history or hours must retain an unsaved roster. */}
       <div id={`${id}-attendance`} role="tabpanel" aria-labelledby={`${id}-attendance-tab`} hidden={tab !== "attendance"} className="p-3 md:p-4 print:p-0">{attendance}</div>
+      <div id={`${id}-downtime`} role="tabpanel" aria-labelledby={`${id}-downtime-tab`} hidden={tab !== "downtime"} className="p-3 md:p-4 no-print">{downtime}</div>
       <div id={`${id}-productivity`} role="tabpanel" aria-labelledby={`${id}-productivity-tab`} hidden={tab !== "productivity"} className="p-3 md:p-4 print:p-0">{productivity}</div>
       <div id={`${id}-history`} role="tabpanel" aria-labelledby={`${id}-history-tab`} hidden={tab !== "history"} className="p-3 md:p-4 print:p-0"><ShiftHistory history={history} dayISO={dayISO} filter={filter} onOpenDay={() => setTab("attendance")} /></div>
       {hours && <div id={`${id}-hours`} role="tabpanel" aria-labelledby={`${id}-hours-tab`} hidden={tab !== "hours"} className="p-3 md:p-4 no-print">{hours}</div>}

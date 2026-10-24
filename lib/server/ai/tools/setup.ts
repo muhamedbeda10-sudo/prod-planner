@@ -3,13 +3,15 @@ import type { Machine } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
 import { CAL_STAGES, getCalibration, type CalStage } from "@/lib/server/calibration";
-import { applyCalibration, deleteFgMap, deleteLvStdTime, deleteStdTier, setStageCapacity, upsertFgMap, upsertLvStdTime, upsertStdTier } from "@/app/admin/standard-times/actions";
+import { applyCalibration, deleteFgMap, deleteLvStdTime, deleteStdTier, saveCentreTimes, setStageCapacity, upsertFgMap, upsertLvStdTime, upsertStdTier } from "@/app/admin/standard-times/actions";
 import { saveMachineItemTimes } from "@/app/admin/machine-times/actions";
 import { saveShiftHours, setMachinePlanning, setTankTracking } from "@/app/admin/settings/actions";
 import { readMachineTimes, readStdState, restoreMachineTimes, restoreStdState, type MachineTimeSnapshot, type StdKeys, type StdState } from "@/lib/server/rowSnapshots";
-import { normFg } from "@/lib/domain/stdEngine";
-import { DEFAULTS, ITEMS, deptLabel } from "@/lib/domain/constants";
-import { DEFAULT_SHIFT_HOURS } from "@/lib/domain/shifts";
+import { estimatedItemCentreHoursFor, normFg } from "@/lib/domain/stdEngine";
+import { MAX_CENTRE_HOURS, centreApplies, centreField } from "@/lib/domain/centreTimes";
+import { DEFAULTS, ITEMS, deptLabel, isPaintExempt, type Item } from "@/lib/domain/constants";
+import { DEFAULT_SHIFT_HOURS, WORK_CENTRES, WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
+import { getStdData } from "@/lib/server/standardTimes";
 import { cell } from "@/lib/domain/aiActions";
 import { answerOf, formOf, type ReadTool, type WriteTool } from "./types";
 
@@ -50,21 +52,23 @@ export const getStandardTimesTool: ReadTool<Record<string, never>> = {
   name: "get_standard_times",
   title: "Reading the standard times",
   description:
-    "The standard times as Admin → Standard times shows them: each KVA class's man-hours per tank at each stage, each stage's capacity (man-hours a working day), and the calibration — per stage, the hours the roster says were worked against the hours the output earned over the recent window, the factor that would rescale the stage, and whether it is ready to apply. The FG map and the LV panels' hours are in \"StdFgMap\" and \"LvStdTime\" (query_database).",
+    "The standard times as Admin → Standard times shows them: each KVA class's man-hours per tank at each stage, the hours a piece typed by hand per work centre (typedCentreHours: kva → item → centre → hours; each replaces that centre's estimate everywhere), each stage's capacity (man-hours a working day), and the calibration — per stage, the hours the roster says were worked against the hours the output earned over the recent window, the factor that would rescale the stage, and whether it is ready to apply. The FG map and the LV panels' hours are in \"StdFgMap\" and \"LvStdTime\" (query_database).",
   schema: { type: "object", properties: {}, additionalProperties: false },
   tabs: STD_TABS,
   async run() {
-    const [{ stages }, tiers, capacity, fgCount, lvCount] = await Promise.all([
+    const [{ stages }, tiers, capacity, fgCount, lvCount, std] = await Promise.all([
       getCalibration(),
       prisma.stdTime.findMany({ orderBy: { kva: "asc" } }),
       prisma.stageCapacity.findMany(),
       prisma.stdFgMap.count(),
       prisma.lvStdTime.count(),
+      getStdData(),
     ]);
     return {
       ok: true,
       text: JSON.stringify({
         classes: tiers.map((t) => ({ kva: t.kva, cutMh: t.cutMh, weldMh: t.weldMh, shbMh: t.shbMh, paintMh: t.paintMh })),
+        typedCentreHours: std.centre ?? {},
         capacityMhPerDay: Object.fromEntries(CAL_STAGES.map((d) => [d, capacity.find((c) => c.dept === d)?.mhPerDay ?? null])),
         calibration: stages.map((s) => ({
           stage: s.dept, days: s.days, actualH: round2(s.actualH), earnedH: round2(s.earnedH),
@@ -717,8 +721,79 @@ export const setPlantSwitchesTool: WriteTool<SwitchesInput> = {
   },
 };
 
+// ------------------------------------------------------------------ hours per work centre
+
+interface CentreHoursInput {
+  kva: number;
+  item: Item;
+  /** centre → hours a piece; null clears it back to the estimate. */
+  hours: Partial<Record<WorkCentre, number | null>>;
+}
+
+const centreText = (v: number | undefined, est: number) => (v !== undefined ? `${round2(v)} h (typed)` : `${round2(est)} h (estimate)`);
+
+export const setCentreHoursTool: WriteTool<CentreHoursInput> = {
+  kind: "write",
+  name: "set_centre_hours",
+  title: "Set the hours a piece takes at a work centre",
+  description:
+    "Type the hours ONE piece of an item takes at work centres, for one KVA class (Admin → Standard times → Hours a piece, by work centre): Cutting (laser / punch), Bending, Fins (fin folding), Welding, ShotBlast, Painting. Each figure replaces that centre's estimate in every earned hour, efficiency, load and capacity figure; null puts a centre back on the estimate. The core frame (CF) is never painted. Read get_standard_times first.",
+  area: "setup",
+  risk: "high",
+  tabs: STD_TABS,
+  schema: {
+    type: "object",
+    properties: {
+      kva: { type: "integer", minimum: 1, description: "The KVA class." },
+      item: { type: "string", enum: [...ITEMS] },
+      hours: {
+        type: "object",
+        properties: Object.fromEntries(WORK_CENTRES.map((c) => [c, { type: ["number", "null"], minimum: 0, maximum: MAX_CENTRE_HOURS, description: `${WORK_CENTRE_LABEL[c]}: hours one piece takes (null = back to the estimate).` }])),
+        additionalProperties: false,
+      },
+    },
+    required: ["kva", "item", "hours"],
+    additionalProperties: false,
+  },
+  parse(r) {
+    const i = r as unknown as CentreHoursInput;
+    if (Object.keys(i.hours ?? {}).length === 0) return "Say which centres' hours to set.";
+    if (isPaintExempt(i.item) && i.hours.Painting !== undefined && i.hours.Painting !== null) return "The core frame is not painted — it has no painting hours.";
+    const off = (Object.keys(i.hours) as WorkCentre[]).find((c) => !centreApplies(i.item, c));
+    if (off) return `A ${i.item} does not pass ${WORK_CENTRE_LABEL[off]} — it has no hours there.`;
+    return i;
+  },
+  async describe(i, ctx) {
+    if (!ctx.user.isAdmin) return { error: NOT_ADMIN };
+    if (!(await prisma.stdTime.findUnique({ where: { kva: i.kva } }))) return { error: `There is no ${i.kva} KVA class.` };
+    const std = await getStdData();
+    const typed = std.centre?.[i.kva]?.[i.item] ?? {};
+    const est = estimatedItemCentreHoursFor(std, i.kva)[i.item];
+    const changes = (Object.entries(i.hours) as [WorkCentre, number | null][])
+      .filter(([c, v]) => (v === null ? typed[c] !== undefined : typed[c] !== Math.round(v * 1000) / 1000))
+      .map(([c, v]) => ({ label: `${i.item} · ${WORK_CENTRE_LABEL[c]} · ${i.kva} kVA`, before: centreText(typed[c], est?.[c] ?? 0), after: v === null ? centreText(undefined, est?.[c] ?? 0) : `${round2(v)} h (typed)` }));
+    if (changes.length === 0) return { error: "Those hours read so already." };
+    return {
+      title: `Hours a piece: ${i.item} ${i.kva} kVA`,
+      summary: `Set the hours one ${i.item} takes at ${changes.length} work centre(s) for the ${i.kva} kVA class — every earned hour, load and capacity figure is priced with them.`,
+      changes,
+      snapshot: { kva: i.kva, item: i.item, typed },
+    };
+  },
+  async execute(i) {
+    const std = await getStdData();
+    const typed = std.centre?.[i.kva]?.[i.item] ?? {};
+    const fd = formOf(Object.fromEntries((Object.entries(i.hours) as [WorkCentre, number | null][]).map(([c, v]) => [centreField(i.kva, i.item, c), v === null ? "" : String(v)])));
+    const r = await saveCentreTimes(fd);
+    if (!r.ok) return { ok: false, error: r.error };
+    const back = Object.fromEntries(Object.keys(i.hours).map((c) => [c, typed[c as WorkCentre] ?? null]));
+    return { ok: true, message: `The hours a ${i.item} takes are set for ${i.kva} kVA.`, undo: { tool: "set_centre_hours", input: { kva: i.kva, item: i.item, hours: back } } };
+  },
+};
+
 export const SETUP_TOOLS = [
   getStandardTimesTool,
+  setCentreHoursTool,
   setStdClassTool,
   deleteStdClassTool,
   setStageCapacityTool,

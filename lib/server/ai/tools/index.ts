@@ -27,6 +27,7 @@ import { TASK_TOOLS } from "./tasks";
 import { CHAT_TOOLS } from "./chat";
 import { PLAYBOOK_TOOLS } from "./playbook";
 import { SHIFT_TOOLS } from "./shifts";
+import { DOWNTIME_TOOLS } from "./downtime";
 import { CATALOGUE_TOOLS } from "./catalogue";
 import { SETUP_TOOLS } from "./setup";
 import { USER_TOOLS } from "./users";
@@ -64,6 +65,7 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...CHAT_TOOLS,
   ...PLAYBOOK_TOOLS,
   ...SHIFT_TOOLS,
+  ...DOWNTIME_TOOLS,
   ...CATALOGUE_TOOLS,
   ...SETUP_TOOLS,
   ...IMPORT_TOOLS,

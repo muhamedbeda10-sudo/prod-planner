@@ -50,4 +50,12 @@ describe("saveShiftRoster", () => {
     expect(h.prisma.shiftEntry.upsert).toHaveBeenCalledTimes(2);
     expect(h.syncDeptDayHours).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps a Fabrication worker's work centre, refuses one that is not Fabrication's, and books none elsewhere", async () => {
+    await saveShiftRoster(form([line(1, { dept: "Cut", center: "Bending" }), line(2, { center: "Bending" })]));
+    const calls = h.prisma.shiftEntry.upsert.mock.calls.map((c) => c[0].create);
+    expect(calls.map((c: { dept: string; center: string | null }) => [c.dept, c.center])).toEqual([["Cut", "Bending"], ["Welding", null]]);
+    const r = await saveShiftRoster(form([line(1, { dept: "Cut", center: "Welding" })]));
+    expect(r).toEqual({ ok: false, error: '"Welding" is not a work centre of this department.' });
+  });
 });

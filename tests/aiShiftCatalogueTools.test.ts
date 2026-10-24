@@ -55,7 +55,7 @@ const parsed = <I,>(tool: Parameters<typeof checkToolInput<I>>[0], raw: unknown)
 
 const line = (workerId: number, empId: string, name: string, o: Record<string, unknown> = {}) => ({
   workerId, empId, name, jobTitle: null, dept: "Welding", sections: ["WeldingTX"], sectionLabels: ["Welding TX"],
-  onVacation: false, present: false, shift: "S9", overtimeH: 0, note: "", recorded: false, ...o,
+  onVacation: false, present: false, shift: "S9", overtimeH: 0, center: null, note: "", recorded: false, ...o,
 });
 const roster = (lines = [line(1, "100", "Ahmed"), line(2, "101", "Mohamed"), line(3, "102", "Sayed", { onVacation: true }), line(9, "200", "Ali", { dept: "Cut" })]) => ({
   dateISO: "2026-10-12", lines, totals: null, savedDepts: [], recordedBy: null, capacityMh: {}, shiftHours: { short: 8, long: 11, overtime: 3 },
@@ -99,9 +99,9 @@ describe("the shift roster", () => {
     expect(summary).toContain("0 day shift, 1 night shift, 2 absent; 11 man-hours");
     const out = await recordShiftDayTool.execute(input, ctx);
     expect(JSON.parse(String(fdOf(h.shifts.saveShiftRoster).get("lines")))).toEqual([
-      { dept: "Welding", workerId: 1, present: true, shift: "S11", overtimeH: 0, note: "" },
-      { dept: "Welding", workerId: 2, present: false, shift: "S9", overtimeH: 0, note: "" },
-      { dept: "Welding", workerId: 3, present: false, shift: "S9", overtimeH: 0, note: "" },
+      { dept: "Welding", workerId: 1, present: true, shift: "S11", overtimeH: 0, center: null, note: "" },
+      { dept: "Welding", workerId: 2, present: false, shift: "S9", overtimeH: 0, center: null, note: "" },
+      { dept: "Welding", workerId: 3, present: false, shift: "S9", overtimeH: 0, center: null, note: "" },
     ]);
     expect(out.undo).toEqual({ tool: "restore_shift_day", input: { date: "2026-10-12", depts: ["Welding"], state: JSON.stringify(EMPTY) } });
   });
@@ -163,8 +163,16 @@ describe("the shift roster", () => {
     const out = await getShiftDayTool.run({ date: "2026-10-12", depts: ["Welding"] }, ctx);
     const day = JSON.parse((out as { text: string }).text).departments[0];
     expect(day).toMatchObject({ dept: "Welding", workers: 4, dayShift: 1, nightShift: 1, absent: 1, notSet: 1, manHours: 22, overtimeH: 3 });
-    expect(day.columns).toEqual(["badge", "name", "sections", "attendance", "overtimeH", "note", "onVacation"]);
+    expect(day.columns).toEqual(["badge", "name", "sections", "attendance", "overtimeH", "center", "note", "onVacation"]);
     expect(day.rows.map((r: unknown[]) => r[3])).toEqual(["day", "night", "absent", "unset"]);
+  });
+
+  it("books a Fabrication worker to the centre named, and refuses a centre outside Fabrication", () => {
+    const cut = [line(9, "200", "Ali", { dept: "Cut", recorded: true, present: true, center: "Cutting" })] as Parameters<typeof planShiftDay>[0];
+    const plan = planShiftDay(cut, { workers: [{ worker: "200", center: "Bending" }] });
+    expect(Array.isArray(plan) && plan[0].after).toMatchObject({ present: true, center: "Bending" });
+    const weld = roster().lines.filter((l) => l.dept === "Welding") as Parameters<typeof planShiftDay>[0];
+    expect(planShiftDay(weld, { workers: [{ worker: "100", center: "Bending" }] })).toEqual({ error: expect.stringContaining("is not a work centre of Welding") });
   });
 
   it("rejects overtime on the night shift", () => {

@@ -214,6 +214,8 @@ export interface ShiftRowSnapshot {
   shift: string;
   overtimeH: number;
   machineId: number | null;
+  /** The work centre (absent in snapshots taken before centres were recorded). */
+  center?: string | null;
   note: string | null;
   recordedBy: string | null;
 }
@@ -244,7 +246,7 @@ export async function readShiftState(dateISO: string, depts: readonly string[]):
     prisma.deptDayHours.findMany({ where: { date, dept: { in: [...depts] } }, orderBy: { dept: "asc" } }),
   ]);
   return {
-    rows: rows.map((r) => ({ dept: r.dept, workerId: r.workerId, present: r.present, shift: r.shift, overtimeH: r.overtimeH, machineId: r.machineId, note: r.note, recordedBy: r.recordedBy })),
+    rows: rows.map((r) => ({ dept: r.dept, workerId: r.workerId, present: r.present, shift: r.shift, overtimeH: r.overtimeH, machineId: r.machineId, center: r.center, note: r.note, recordedBy: r.recordedBy })),
     dayHours: hours.map((h) => ({ dept: h.dept, hours: h.hours, people: h.people, hoursEach: h.hoursEach, source: h.source, recordedBy: h.recordedBy })),
   };
 }
@@ -264,7 +266,7 @@ export async function restoreShiftState(dateISO: string, depts: readonly RosterD
         const rows = state.rows.filter((r) => r.dept === dept);
         await tx.shiftEntry.deleteMany({ where: { date, dept, workerId: { notIn: rows.map((r) => r.workerId) } } });
         for (const r of rows) {
-          const data = { present: r.present, shift: r.shift, overtimeH: r.overtimeH, machineId: r.machineId, note: r.note, recordedBy: r.recordedBy };
+          const data = { present: r.present, shift: r.shift, overtimeH: r.overtimeH, machineId: r.machineId, center: r.center ?? null, note: r.note, recordedBy: r.recordedBy };
           await tx.shiftEntry.upsert({ where: { date_dept_workerId: { date, dept, workerId: r.workerId } }, create: { date, dept, workerId: r.workerId, ...data }, update: data });
         }
         const h = state.dayHours.find((x) => x.dept === dept);

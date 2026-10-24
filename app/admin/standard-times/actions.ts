@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/server/auth";
 import { normFg } from "@/lib/domain/stdEngine";
+import { readCentreTimes } from "@/lib/domain/centreTimes";
 import { getCalibration, CAL_STAGES, type CalStage } from "@/lib/server/calibration";
 
 export interface StdActionResult {
@@ -13,7 +14,7 @@ export interface StdActionResult {
 
 // every page whose figures are built on the standard times
 function revalidate() {
-  for (const p of ["/admin/standard-times", "/report", "/tracker"]) revalidatePath(p);
+  for (const p of ["/admin/standard-times", "/admin/machine-times", "/report", "/tracker", "/", "/shifts", "/cockpit", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
 }
 
 const num = (v: FormDataEntryValue | null): number => Number(String(v ?? "").trim());
@@ -53,9 +54,42 @@ export async function deleteStdTier(fd: FormData): Promise<StdActionResult> {
   const kva = num(fd.get("kva"));
   const remaining = await prisma.stdTime.count({ where: { kva: { not: kva } } });
   if (remaining === 0) return { ok: false, error: "The last class cannot be deleted — every figure in the app would go to zero." };
+  // its hours per work centre stay: unused while the class is gone, back with it (and its undo)
   await prisma.stdTime.deleteMany({ where: { kva } });
   revalidate();
   return { ok: true };
+}
+
+export interface CentreTimesResult extends StdActionResult {
+  saved?: number;
+  cleared?: number;
+}
+
+/** Save the planner's hours a piece per work centre. Fields are
+ *  `c:<kva>:<item>:<centre>`; an empty one goes back to the estimate. */
+export async function saveCentreTimes(fd: FormData): Promise<CentreTimesResult> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const classes = new Set((await prisma.stdTime.findMany({ select: { kva: true } })).map((t) => t.kva));
+  const edits = readCentreTimes(fd.entries(), classes);
+  if ("error" in edits) return { ok: false, error: edits.error };
+  if (edits.set.length === 0 && edits.clear.length === 0) return { ok: true, saved: 0, cleared: 0 };
+  const by = guard.user?.name ?? null;
+  const cleared = await prisma.$transaction(async (tx) => {
+    const { count } = edits.clear.length
+      ? await tx.centerStdTime.deleteMany({ where: { OR: edits.clear.map((c) => ({ kva: c.kva, item: c.item, center: c.center })) } })
+      : { count: 0 };
+    for (const s of edits.set) {
+      await tx.centerStdTime.upsert({
+        where: { kva_item_center: { kva: s.kva, item: s.item, center: s.center } },
+        create: { ...s, setBy: by },
+        update: { hoursPerPc: s.hoursPerPc, setBy: by },
+      });
+    }
+    return count;
+  });
+  revalidate();
+  return { ok: true, saved: edits.set.length, cleared };
 }
 
 /** Per-stage available man-hours per WORKING DAY. */

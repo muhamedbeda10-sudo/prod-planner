@@ -3,7 +3,7 @@ import { hasPerm } from "@/lib/server/auth";
 import { getShiftRoster, type ShiftLineDTO } from "@/lib/server/shifts";
 import { clearShiftDay, saveShiftRoster } from "@/app/shifts/actions";
 import { readShiftState, restoreShiftState, type ShiftState } from "@/lib/server/rowSnapshots";
-import { ATTENDANCES, ATTENDANCE_TIME, OVERTIME_TIME, ROSTER_DEPTS, SHIFT_CODES, UNSET_LINE, attendanceLine, attendanceOf, hoursOfShift, isAttendance, isRosterDept, shiftSplit, type Attendance, type RosterDept, type ShiftCode, type ShiftHours, type ShiftSplit } from "@/lib/domain/shifts";
+import { ATTENDANCES, ATTENDANCE_TIME, DEPT_CENTRES, OVERTIME_TIME, ROSTER_DEPTS, SHIFT_CODES, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, hoursOfShift, isAttendance, isRosterDept, isWorkCentre, workerCentres, shiftSplit, type Attendance, type RosterDept, type ShiftCode, type ShiftHours, type ShiftSplit, type WorkCentre } from "@/lib/domain/shifts";
 import { PERMISSIONS, shiftPermKey } from "@/lib/domain/permissions";
 import { WORKER_DEPT_LABEL, normalizeEmpId } from "@/lib/domain/tanks";
 import { formOf, type ReadTool, type WriteTool } from "./types";
@@ -39,6 +39,8 @@ interface DayLine {
   present: boolean;
   shift: ShiftCode;
   overtimeH: number;
+  /** The work centre, where the department has several (Fabrication). */
+  center?: string | null;
   note: string | null;
 }
 
@@ -46,11 +48,12 @@ function lineText(l: DayLine | null, h: ShiftHours): string {
   if (!l) return "not set";
   const note = l.note ? ` · “${l.note}”` : "";
   if (!l.present) return `absent${note}`;
-  return `${hoursOfShift(l.shift, h)} h${l.shift === "S9" && l.overtimeH > 0 ? ` + ${l.overtimeH} h OT` : ""}${note}`;
+  const at = l.center && isWorkCentre(l.center) ? ` at ${WORK_CENTRE_LABEL[l.center]}` : "";
+  return `${hoursOfShift(l.shift, h)} h${l.shift === "S9" && l.overtimeH > 0 ? ` + ${l.overtimeH} h OT` : ""}${at}${note}`;
 }
 
-const sameLine = (a: DayLine | null, b: DayLine | null): boolean => !!a && !!b && a.present === b.present && a.shift === b.shift && a.overtimeH === b.overtimeH && (a.note ?? null) === (b.note ?? null);
-const asDayLine = (l: ShiftLineDTO): DayLine | null => (l.recorded ? { present: l.present, shift: l.shift, overtimeH: l.overtimeH, note: l.note.trim() || null } : null);
+const sameLine = (a: DayLine | null, b: DayLine | null): boolean => !!a && !!b && a.present === b.present && a.shift === b.shift && a.overtimeH === b.overtimeH && (a.center ?? null) === (b.center ?? null) && (a.note ?? null) === (b.note ?? null);
+const asDayLine = (l: ShiftLineDTO): DayLine | null => (l.recorded ? { present: l.present, shift: l.shift, overtimeH: l.overtimeH, center: l.center, note: l.note.trim() || null } : null);
 const NOBODY: DayLine = { ...UNSET_LINE, note: null };
 
 /** The worker a reference names on a department's day: the badge number,
@@ -109,8 +112,8 @@ export const getShiftDayTool: ReadTool<DayInput> = {
             manHours: s.hours,
             overtimeH: s.day.overtimeH,
             capacityMhPerDay: r.capacityMh[d] ?? null,
-            columns: ["badge", "name", "sections", "attendance", "overtimeH", "note", "onVacation"],
-            rows: lines.map((l) => [l.empId, l.name, l.sectionLabels.join(", "), attendanceOf(l), l.overtimeH, l.note || null, l.onVacation]),
+            columns: ["badge", "name", "sections", "attendance", "overtimeH", "center", "note", "onVacation"],
+            rows: lines.map((l) => [l.empId, l.name, l.sectionLabels.join(", "), attendanceOf(l), l.overtimeH, l.center, l.note || null, l.onVacation]),
           };
         }),
         recordedBy: r.recordedBy,
@@ -126,6 +129,7 @@ interface WorkerChange {
   present?: boolean;
   shift?: ShiftCode;
   overtimeH?: number;
+  center?: WorkCentre;
   note?: string | null;
 }
 
@@ -158,6 +162,10 @@ export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput
     if (hit === "none") return { error: `${w.worker} is not on this department's roster for the day — check the badge with get_shift_day.` };
     if (hit === "many") return { error: `More than one worker is called ${w.worker} — use the badge number.` };
     if (asked.has(hit.workerId)) return { error: `${hit.empId} ${hit.name} is named twice.` };
+    if (w.center !== undefined) {
+      const own = workerCentres(hit.dept) ?? [];
+      if (!own.includes(w.center)) return { error: `${WORK_CENTRE_LABEL[w.center] ?? w.center} is not a work centre of ${label(hit.dept)} — only Fabrication's workers are booked to a centre (${DEPT_CENTRES.Cut.map((c) => WORK_CENTRE_LABEL[c]).join(", ")}).` };
+    }
     asked.set(hit.workerId, w);
   }
   const invalidOvertime = [i.everyone, ...(i.workers ?? [])].find((change) => change?.shift === "S11" && (change.overtimeH ?? 0) > 0);
@@ -183,6 +191,7 @@ export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput
       present,
       shift,
       overtimeH: present && shift === "S9" ? requestedOvertime : 0,
+      center: w?.center ?? from.center ?? line.center,
       note: w && w.note !== undefined ? w.note?.trim() || null : from.note,
     };
     if ((w?.overtimeH ?? 0) > 0 && after.overtimeH === 0) dropsOvertime.push(line);
@@ -249,6 +258,7 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
             present: { type: "boolean" },
             shift: SHIFT,
             overtimeH: OVERTIME,
+            center: { type: "string", enum: [...DEPT_CENTRES.Cut], description: "Fabrication only: the work centre he was on that day — Cutting (laser / punch), Bending or Fins. Left out, his section's centre." },
             note: { type: ["string", "null"], maxLength: 200, description: "The day's note for this worker (null clears it)." },
           },
           required: ["worker"],
@@ -262,8 +272,8 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
   parse(r) {
     const i = r as unknown as RecordInput;
     const everyone = i.everyone && (i.everyone.shift !== undefined || i.everyone.overtimeH !== undefined) ? i.everyone : undefined;
-    const bare = (i.workers ?? []).find((w) => w.present === undefined && w.shift === undefined && w.overtimeH === undefined && w.note === undefined);
-    if (bare) return `Say what changes for ${bare.worker}: present, shift, overtime or note.`;
+    const bare = (i.workers ?? []).find((w) => w.present === undefined && w.shift === undefined && w.overtimeH === undefined && w.center === undefined && w.note === undefined);
+    if (bare) return `Say what changes for ${bare.worker}: present, shift, overtime, work centre or note.`;
     const rest = i.rest && isAttendance(i.rest) ? i.rest : undefined;
     if (!everyone && !rest && !i.workers?.length) return "Say what to record: single workers, the rest of the department, or a shift or overtime for everyone.";
     return { date: i.date, dept: i.dept, ...(everyone ? { everyone } : {}), ...(i.workers?.length ? { workers: i.workers } : {}), ...(rest ? { rest } : {}) };
@@ -303,7 +313,7 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
     const plan = planShiftDay(lines, i);
     if ("error" in plan) return { ok: false, error: plan.error };
     const before = await readShiftState(i.date, [i.dept]);
-    const saved = plan.map((p) => ({ dept: i.dept, workerId: p.line.workerId, present: p.after.present, shift: p.after.shift, overtimeH: p.after.overtimeH, note: p.after.note ?? "" }));
+    const saved = plan.map((p) => ({ dept: i.dept, workerId: p.line.workerId, present: p.after.present, shift: p.after.shift, overtimeH: p.after.overtimeH, center: p.after.center ?? null, note: p.after.note ?? "" }));
     const r = await saveShiftRoster(formOf({ date: i.date, lines: JSON.stringify(saved) }));
     if (!r.ok) return { ok: false, error: r.error };
     const t = shiftSplit(plan.map((p) => p.after));
@@ -391,7 +401,7 @@ export function readShiftStateText(text: string, depts: readonly string[]): Shif
   if (!s || !Array.isArray(s.rows) || !Array.isArray(s.dayHours)) return "The day's earlier record is not whole.";
   const rowOk = (r: Record<string, unknown>) =>
     typeof r.dept === "string" && depts.includes(r.dept) && Number.isInteger(r.workerId) && typeof r.present === "boolean" && typeof r.shift === "string" &&
-    isNum(r.overtimeH) && (r.machineId === null || Number.isInteger(r.machineId)) && isStrOrNull(r.note) && isStrOrNull(r.recordedBy);
+    isNum(r.overtimeH) && (r.machineId === null || Number.isInteger(r.machineId)) && (r.center === undefined || isStrOrNull(r.center)) && isStrOrNull(r.note) && isStrOrNull(r.recordedBy);
   const hoursOk = (h: Record<string, unknown>) =>
     typeof h.dept === "string" && depts.includes(h.dept) && isNum(h.hours) && (h.people === null || Number.isInteger(h.people)) && (h.hoursEach === null || isNum(h.hoursEach)) &&
     typeof h.source === "string" && isStrOrNull(h.recordedBy);

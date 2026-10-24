@@ -6,6 +6,9 @@ import { getCalibration, CALIBRATION_WINDOW_DAYS } from "@/lib/server/calibratio
 import { StandardTimesManager } from "./StandardTimesManager";
 import { CalibrationPanel } from "./CalibrationPanel";
 import { LvStdTimesManager } from "./LvStdTimesManager";
+import { CentreTimesManager } from "./CentreTimesManager";
+import { getStdData } from "@/lib/server/standardTimes";
+import { estimatedItemCentreHoursFor } from "@/lib/domain/stdEngine";
 import { getLvOrderRates, getLvRates } from "@/lib/server/lvStd";
 
 export const metadata = { title: "Standard Times & Capacity — ATC" };
@@ -17,13 +20,17 @@ export default async function StandardTimesPage() {
   if (!me) redirect("/login");
   if (!me.isAdmin) redirect("/");
 
-  const [tiers, capacity, fgs, calibration, lvRates] = await Promise.all([
+  const [tiers, capacity, fgs, calibration, lvRates, std] = await Promise.all([
     prisma.stdTime.findMany({ orderBy: { kva: "asc" } }),
     prisma.stageCapacity.findMany(),
     prisma.stdFgMap.findMany({ orderBy: { fg: "asc" } }),
     getCalibration(),
     getLvRates(),
+    getStdData(),
   ]);
+  // the estimate each centre carries without a typed figure, per class
+  const classes = tiers.map((t) => t.kva);
+  const estimates = Object.fromEntries(classes.map((k) => [k, estimatedItemCentreHoursFor(std, k)]));
   const lvOrders = await getLvOrderRates(lvRates);
 
   return (
@@ -34,6 +41,7 @@ export default async function StandardTimesPage() {
         capacity={Object.fromEntries(capacity.map((c) => [c.dept, c.mhPerDay]))}
         fgs={fgs.map((f) => ({ fg: f.fg, kva: f.kva }))}
       />
+      <CentreTimesManager classes={classes} typed={std.centre ?? {}} estimates={estimates} />
       <CalibrationPanel rows={calibration.rows} stages={calibration.stages} windowDays={CALIBRATION_WINDOW_DAYS} />
       <LvStdTimesManager
         rates={lvRates}

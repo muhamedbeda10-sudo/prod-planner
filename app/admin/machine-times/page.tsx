@@ -6,8 +6,8 @@ import { getAllMachines } from "@/lib/server/machines";
 import { getMachineItemTimes } from "@/lib/server/machineTimes";
 import { getMeasuredRates } from "@/lib/server/machineRates";
 import { getStdData } from "@/lib/server/standardTimes";
-import { itemHoursFor } from "@/lib/domain/stdEngine";
-import { centerShares, routeFor } from "@/lib/domain/shifts";
+import { itemHoursFor, stageShares } from "@/lib/domain/stdEngine";
+import { routeFor } from "@/lib/domain/shifts";
 import { ITEMS } from "@/lib/domain/constants";
 import { PageHead } from "@/components/ui";
 import { SectionCard } from "@/components/primitives";
@@ -41,7 +41,7 @@ export default async function MachineTimesPage() {
       if (!p) continue;
       const stage = m.dept === "Cut" ? p.cut : m.dept === "Welding" ? p.weld : m.dept === "ShotBlast" ? p.shb : p.paint;
       if (!(stage > 0)) continue;
-      const shares = centerShares(m.dept, item);
+      const shares = stageShares(std, SHOWN_TIER, m.dept, item);
       // a machine off the item's route stands in for the route's first centre
       const route = routeFor(m.dept, item);
       const share = shares[m.center] ?? shares[route[0]] ?? 1;

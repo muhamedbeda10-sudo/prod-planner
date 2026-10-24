@@ -4,6 +4,8 @@ import { shiftPermKey } from "@/lib/domain/permissions";
 import { ROSTER_DEPTS } from "@/lib/domain/shifts";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { getShiftHistory, getShiftRoster } from "@/lib/server/shifts";
+import { getDowntimeDay } from "@/lib/server/downtime";
+import { ShiftDowntime } from "@/components/ShiftDowntime";
 import { getShiftProductivity } from "@/lib/server/productivity";
 import { ShiftProductivity } from "@/components/ShiftProductivity";
 import { PageHeader } from "@/components/ui";
@@ -32,7 +34,7 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
   const filter = parseRosterFilter(sp.sec);
 
   const depts = rosterDepts(filter);
-  const [data, history, productivity] = await Promise.all([getShiftRoster(day), getShiftHistory(depts), getShiftProductivity(day, depts)]);
+  const [data, history, productivity, downtime] = await Promise.all([getShiftRoster(day), getShiftHistory(depts), getShiftProductivity(day, depts), getDowntimeDay(day)]);
   const editableDepts = ROSTER_DEPTS.filter((d) => hasPerm(me, shiftPermKey(d)));
 
   return (
@@ -51,6 +53,8 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
              filter is a URL param and keeps the draft */
           <ShiftRoster key={day} data={data} editableDepts={editableDepts} filter={filter} />
         }
+        downtime={<ShiftDowntime key={day} data={downtime} editableDepts={editableDepts} />}
+        downtimeCount={downtime.rows.length}
         history={history}
         dayISO={day}
         filter={filter}

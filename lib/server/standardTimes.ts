@@ -2,18 +2,26 @@ import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import type { StdData } from "@/lib/domain/stdEngine";
+import { isWorkCentre } from "@/lib/domain/shifts";
 
 /** The standard-times data as the app uses it — straight from the DB (seeded
  *  by migration from the engineering timings sheet, edited in Admin →
  *  Standard Times). Cached per request. */
 export const getStdData = cache(async (): Promise<StdData> => {
-  const [tiers, fgs] = await Promise.all([
+  const [tiers, fgs, centres] = await Promise.all([
     prisma.stdTime.findMany(),
     prisma.stdFgMap.findMany(),
+    prisma.centerStdTime.findMany(),
   ]);
+  const centre: NonNullable<StdData["centre"]> = {};
+  for (const c of centres) {
+    if (!isWorkCentre(c.center)) continue;
+    ((centre[c.kva] ??= {})[c.item] ??= {})[c.center] = c.hoursPerPc;
+  }
   return {
     tiers: Object.fromEntries(tiers.map((t) => [t.kva, { cut: t.cutMh, weld: t.weldMh, shb: t.shbMh, paint: t.paintMh }])),
     fgMap: Object.fromEntries(fgs.map((f) => [f.fg, f.kva])),
+    centre,
   };
 });
 
