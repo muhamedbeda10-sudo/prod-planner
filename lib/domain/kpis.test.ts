@@ -100,13 +100,16 @@ describe("the load ahead", () => {
     expect(cockpitActions({ late: [], coverage: { wipH: 0, ratePerDay: 0, days: null, band: null, byItem: [] }, load: [l], centres: [], topLoss: null, todayRecorded: true, ddmm: (iso) => iso })[0].text)
       .toBe("Bending is behind — Bending by up to 100 h from 2026-10-21, caught up by 2026-10-24 at the usual pace.");
   });
+  it("reads a measured centre left with no capacity as short from the first day it owes anything", () => {
+    expect(loadAhead("ShotBlast", ["2026-10-20", "2026-10-21"], [{ dayISO: "2026-10-21", dueH: 8 }], 0)).toMatchObject({ measured: true, shortFromISO: "2026-10-21", shortH: 8, loadRate: null });
+  });
   it("judges nothing for a centre with no booked hours", () => {
     const l = loadAhead("Painting", ["2026-10-20", "2026-10-21"], [{ dayISO: "2026-10-20", dueH: 40 }], null);
     expect(l).toMatchObject({ measured: false, loadRate: null, behindH: 0, shortFromISO: null, shortH: 0 });
     expect(l.days.map((d) => [d.dueH, d.tone])).toEqual([[40, null], [0, null]]);
   });
   it("reads a load as over the capacity, within 10% of it, or clear", () => {
-    expect([loadTone(101, 100), loadTone(95, 100), loadTone(80, 100), loadTone(10, 0)]).toEqual(["bad", "warn", null, null]);
+    expect([loadTone(101, 100), loadTone(95, 100), loadTone(80, 100), loadTone(10, 0), loadTone(0, 0)]).toEqual(["bad", "warn", null, "bad", null]);
     // rounding is not a shortfall
     expect(loadTone(100.04, 100)).toBe("warn");
   });

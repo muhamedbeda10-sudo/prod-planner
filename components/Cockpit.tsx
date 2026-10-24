@@ -216,7 +216,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         <ChartCard
           title="Load against capacity"
           sub="Capacity a day = the man-hours the centre usually has × the pace it has measured. A centre is short once what it owes so far passes what it could have worked so far."
-          table={{ filename: `load-${data.todayISO}.xlsx`, rows: data.load.flatMap((l) => l.days.map((d) => ({ Centre: centreName(l.centre), Day: d.dayISO, "Due h": d.dueH, "Capacity h": d.capacityH }))) }}
+          table={{ filename: `load-${data.todayISO}.xlsx`, rows: data.load.flatMap((l) => l.days.map((d) => ({ Centre: centreName(l.centre), Day: d.dayISO, "Due h": d.dueH, "Capacity h": l.measured ? d.capacityH : "not measured" }))) }}
         >
           {data.load.length === 0 ? (
             <EmptyState compact icon={Info} title="No load to show" hint="The weekly plan has nothing left to make, or nothing is priced yet." />

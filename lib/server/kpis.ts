@@ -302,7 +302,10 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
     if (!(k.recent.workedH > 0)) return loadAhead(c, horizon, dueByCentre.get(c) ?? [], null);
     const pace = k.recent.efficiency !== null && k.recent.efficiency > 0 ? clampPace(k.recent.efficiency) : 1;
     // the shot-blast crew's day goes partly to the LV panels — what is left is the transformers'
-    const lvPerDay = c === "ShotBlast" ? [...recentWorked].reduce((s, iso) => s + (lvShotBlast.get(iso) ?? 0), 0) / k.recent.days : 0;
+    // (over the days the crew itself booked — the days its pace is measured on)
+    const lvPerDay = c === "ShotBlast"
+      ? [...recentWorked].filter((iso) => (days.get(iso)?.get("ShotBlast")?.workedH ?? 0) > 0).reduce((s, iso) => s + (lvShotBlast.get(iso) ?? 0), 0) / k.recent.days
+      : 0;
     return loadAhead(c, horizon, dueByCentre.get(c) ?? [], Math.max(0, (k.recent.workedH / k.recent.days) * pace - lvPerDay));
   }).filter((l) => l.days.some((d) => d.dueH > 0) || l.loadRate !== null);
 

@@ -268,7 +268,8 @@ const SHORT_EPS = 0.05;
 
 /** The tone a load rate reads in: over the capacity, or within 10% of it. */
 export function loadTone(owed: number, can: number): LoadTone {
-  if (!(can > 0)) return null;
+  // no capacity left at all: anything owed is short
+  if (!(can > 0)) return owed > SHORT_EPS ? "bad" : null;
   return owed > can + SHORT_EPS ? "bad" : owed > can * 0.9 ? "warn" : null;
 }
 

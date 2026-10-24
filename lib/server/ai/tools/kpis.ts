@@ -62,7 +62,7 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
         } : {}),
         loadAhead: c.load.map((l) => ({
           centre: l.centre, measured: l.measured, loadRate: r2(l.loadRate), behindH: l.behindH, shortFrom: l.shortFromISO, clears: l.clearsISO, shortAtEndH: l.shortH,
-          days: l.days.map((d) => ({ day: d.dayISO, dueH: d.dueH, capacityH: d.capacityH })),
+          days: l.days.map((d) => ({ day: d.dayISO, dueH: d.dueH, capacityH: l.measured ? d.capacityH : null })),
         })),
         weldingCoverage: {
           days: c.coverage.days, band: c.coverage.band, waitingWeldH: c.coverage.wipH, weldEarnedADay: c.coverage.ratePerDay,
