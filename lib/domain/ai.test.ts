@@ -186,6 +186,12 @@ describe("hidden screens close their tables to the assistant", () => {
     expect(blockedTableIn(`SELECT count(*) FROM "OdooEntry"`, blocked)).toBe("OdooEntry");
     expect(blockedTableIn(`SELECT count(*) FROM "MasterOrder"`, blocked)).toBeNull();
   });
+  it("closes the shift log's tables with Shifts — the machine stops and the cockpit's stored trend among them", () => {
+    const blocked = blockedTablesFor(new Set(["shifts"]));
+    expect(blockedTableIn(`SELECT date, data FROM "KpiSnapshot"`, blocked)).toBe("KpiSnapshot");
+    expect(blockedTableIn(`SELECT sum(hours) FROM "MachineDowntime"`, blocked)).toBe("MachineDowntime");
+    expect(blockedTableIn(`SELECT * FROM "Machine"`, blocked)).toBeNull();
+  });
   it("refuses the functions that run a query given as text while anything is closed", () => {
     const blocked = blockedTablesFor(new Set(["odoo"]));
     expect(blockedTableIn(`SELECT query_to_xml('select * from "Odoo' || 'Entry"', true, false, '')`, blocked)).not.toBeNull();

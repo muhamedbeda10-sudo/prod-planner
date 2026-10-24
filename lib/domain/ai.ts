@@ -180,7 +180,8 @@ export const AI_TAB_TABLES: Record<string, readonly string[]> = {
   ],
   physical: ["PhysicalStock"],
   material: ["MaterialUsage"],
-  shifts: ["ShiftEntry", "DeptDayHours"],
+  // the machine stops are recorded there, and the cockpit's stored trend is read off them and the shift log
+  shifts: ["ShiftEntry", "DeptDayHours", "MachineDowntime", "KpiSnapshot"],
   barcode: ["TankUnit", "TankEvent", "TankSerialCounter"],
   simulate: ["SimScenario", "FloorLayout"],
 };
