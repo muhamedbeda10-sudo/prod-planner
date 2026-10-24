@@ -26,8 +26,8 @@ export const dynamic = "force-dynamic";
 // its worklist); the order-level features each carry their own.
 const FEATURE_KEYS = ["tracker.status", "tracker.components", "tracker.qty", "tracker.priority", "tracker.push"];
 
-// No page header — the plan-level KPI cards (progress + OTD) live on the
-// Dashboard, and the title lives in the nav tab. The filter bar's Plan toggle
+// No page header — how the plan is doing lives on the home page (the
+// planner's cockpit), and the title lives in the nav tab. The filter bar's Plan toggle
 // switches between the two readings of "the plan":
 //   monthly — the order registry, one row per MO, capped at the order qty
 //   weekly  — one weekly plan day by day, cumulative uncapped progress

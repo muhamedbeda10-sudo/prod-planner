@@ -426,8 +426,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
    trend; **3** the load ahead — each centre's remaining plan hours over the next 10 working days against what it
    can work (its usual man-hours × its measured pace — "not measured" while no hours are booked there); **4** welding coverage — days of cut parts waiting in front of
    the welders; **5** what stopped the floor — machine stops by cause, absence and overtime. Each card has its
-   table and Excel export; the page prints. An account the Shifts screen is closed to sees no shift-log figures
-   (questions 2 and 5) — on the page or through the assistant. The day's figures are kept for their trend
+   table and Excel export; the page prints. An account the Shifts screen is closed to sees neither the centres'
+   efficiency nor the losses (questions 2 and 5) — on the page or through the assistant. The day's figures are kept for their trend
    (`KpiSnapshot`): after the page is served, and each hour by the automations' housekeeping. The
    pure arithmetic is `lib/domain/kpis.ts` (tested); the loader `lib/server/kpis.ts` is the one both the page and
    the assistant's `get_kpis` read — the morning review starts from it. The calibration reads the ledger through
