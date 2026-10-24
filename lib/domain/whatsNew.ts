@@ -16,12 +16,12 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
-    id: "2026-10-25-planning-cockpit",
-    dateISO: "2026-10-25",
-    title: "Planning cockpit: the plan, the centres, the crunch, welding's parts and the losses on one page",
-    where: "Cockpit (first tab) · Admin → Standard Times",
-    href: "/cockpit",
-    body: "A new first tab answers five questions in standard hours, so a day of Fabrication across many projects adds up: is the weekly plan on its day (and which lines are behind, at which stage), did each work centre work at the standard, where the load passes capacity in the next 10 working days, how many days of cut parts welding has, and what stopped the floor. What needs a decision today sits on top, every card has its table and Excel export, and the page prints. The assistant reads the same figures and the morning review starts from them. In Standard Times each hours-a-piece cell now shows what the floor really took there — click it to take it.",
+    id: "2026-10-24-planning-cockpit-home",
+    dateISO: "2026-10-24",
+    title: "The home page is now the Planning cockpit: the plan, the centres, the crunch, welding's parts and the losses",
+    where: "Cockpit (the home page) · Admin → Standard Times",
+    href: "/",
+    body: "The old plan dashboard is gone; the home page now answers five questions in standard hours, so a day of Fabrication across many projects adds up: is the weekly plan on its day (and which lines are behind, at which stage), did each work centre work at the standard, where the load passes capacity in the next 10 working days, how many days of cut parts welding has, and what stopped the floor. What needs a decision today sits on top, every card has its table and Excel export, and the page prints. The assistant reads the same figures and the morning review starts from them. In Standard Times each hours-a-piece cell now shows what the floor really took there — click it to take it.",
   },
   {
     id: "2026-10-24-work-centres-stops-hours",

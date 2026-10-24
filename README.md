@@ -26,12 +26,12 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 "Done" everywhere = Welding output; Cut gates Welding.
 
 ## Navigation
-Tabs, one per QUESTION rather than per screen — Cockpit · Worklist · Material · ODOO · Consumables · Shifts ·
-Plan Tracker · Floor. The **Cockpit** is the planner's one page across departments (feature 13); otherwise each
-dashboard lives with what it reads. Three tabs
+Tabs, one per QUESTION rather than per screen — Worklist · Cockpit · Material · ODOO · Consumables · Shifts ·
+Plan Tracker · Floor. The home page (`/`) is the **Cockpit**, the planner's one page across departments
+(feature 13; on the LV line it is the panels' own dashboard); otherwise each dashboard lives with what it
+reads. Three tabs
 hold several views behind their own switcher (`components/ViewTabs.tsx`): **Plan Tracker** carries the
-tracker, the plan's **Dashboard** (`/`, the home page), the **Daily log** it adds up and the printed
-**Report** of that log; **Material** the nesting sheets and the sheet **Analytics** built on them;
+tracker, the **Daily log** it adds up and the printed **Report** of that log; **Material** the nesting sheets and the sheet **Analytics** built on them;
 **Floor** the bay as it is and the what-if simulator. Two things left the strip entirely: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
@@ -81,11 +81,11 @@ mobile drawer still lists every view flat, since it has the vertical room.
    job, cut and left, which machines hold the rest, every project's part on the sheets, the note and every ✓
    (when, which machine, how many, by whom), with ✓, ✎ Edit and ⧉ Duplicate beside them. Closing sheets records no
    pieces in the plan — those are recorded on the weekly plan below. A machine's load there reads in sheets.
-5. **Daily report + Dashboard** (`/report`, `/` — views of the Plan Tracker tab; the report covers
+5. **Daily report** (`/report`, a view of the Plan Tracker tab; it covers
    ONE day or any period through its From→To picker, with the capacity its efficiency is measured
    against scaled to the working days the range really spans) — dept output, complete sets, efficiency/balance %,
-   projects worked today, tracker snapshot, charts. Dashboard: achievement per item, dept output
-   day/week, planned (oven−lead) vs welded.
+   projects worked today, tracker snapshot, charts. How the plan is doing overall is the home page's — the
+   Planning cockpit (feature 13).
 5b. **Fabrication analytics** (`/analytics`, a view of the Material tab) — the floor read in SHEETS instead of pieces, because a piece is
    not a unit of work: a tank cut from four sheets and one cut from half a sheet are both "1". Every daily-log
    cut record is converted through its BOM's bill of sheets off the Material tab, over a 30/60/90-day or
@@ -414,22 +414,26 @@ mobile drawer still lists every view flat, since it has the vertical room.
    - **Playbook** (`/ai/playbook`): how this plant works, told to the assistant with every question; admins keep it there or
      through the assistant.
 
-13. **Planning cockpit** (`/cockpit`, the first tab) — the planner's one page, every figure in **standard hours**
+13. **Planning cockpit** (`/`, the home page, in place of the old plan dashboard; the transformers only — on the
+   LV line the home page is the panels' own dashboard) — the planner's one page, every figure in **standard hours**
    (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
    ten projects a day add up and departments compare. On top, what needs a decision today (lines behind, a centre
-   short in the horizon or behind and when it catches up, thin or heavy welding coverage, a slow centre, the
+   short at the end of the horizon or falling behind in it and when it catches up, thin or heavy welding coverage, a slow centre, the
    biggest loss, an unrecorded day), then five questions: **1** the newest weekly plan — each stage's pieces due by
    today (the oven date less the Settings lead days) against done, by delivery day, and the lines behind with the
    stage they are stuck at; **2** each work centre's earned std-hours against the man-hours the shift log booked
    there — efficiency on the last recorded day and over the recent ones, people a day, machine availability, the
    trend; **3** the load ahead — each centre's remaining plan hours over the next 10 working days against what it
-   can work (its usual man-hours × its measured pace); **4** welding coverage — days of cut parts waiting in front of
+   can work (its usual man-hours × its measured pace — "not measured" while no hours are booked there); **4** welding coverage — days of cut parts waiting in front of
    the welders; **5** what stopped the floor — machine stops by cause, absence and overtime. Each card has its
-   table and Excel export; the page prints. The figures are kept once a day (`KpiSnapshot`) for their trend. The
+   table and Excel export; the page prints. An account the Shifts screen is closed to sees no shift-log figures
+   (questions 2 and 5) — on the page or through the assistant. The day's figures are kept for their trend
+   (`KpiSnapshot`): after the page is served, and each hour by the automations' housekeeping. The
    pure arithmetic is `lib/domain/kpis.ts` (tested); the loader `lib/server/kpis.ts` is the one both the page and
    the assistant's `get_kpis` read — the morning review starts from it. The calibration reads the ledger through
-   the same `earnedOfRecord`. Admin → Standard Times shows, under each hours-a-piece cell, what the floor really
-   took there over the last 60 days (the centre's measured pace), to take with a click.
+   the same `earnedOfRecord`. Admin → Standard Times shows, under each hours-a-piece cell,
+   what the floor really took there over the calibration's window and limits (the centre's measured pace), to take
+   with a click.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:

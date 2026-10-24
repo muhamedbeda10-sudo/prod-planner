@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { formatDate } from "@/lib/domain/format";
 import { useRouter } from "next/navigation";
 import { Save, Timer } from "lucide-react";
 import { ITEMS, ITEM_NAME } from "@/lib/domain/constants";
@@ -30,13 +31,11 @@ const key = centreField;
 const minutes = (h: number) => Math.round(h * 60);
 const fmt = (h: number) => String(Math.round(h * 100) / 100);
 
-/** Fewer recorded days than this and the measured pace is not offered. */
-const MIN_PACE_DAYS = 5;
-
 export function CentreTimesManager({ classes, typed, estimates, pace }: CentreTimesProps) {
   const paceOf = (c: WorkCentre) => {
     const p = pace?.centres.find((x) => x.centre === c);
-    return p && p.days >= MIN_PACE_DAYS && p.efficiency !== null && p.efficiency > 0 ? p : null;
+    // the loader offers a pace only with enough recorded days to trust it
+    return p && p.efficiency !== null ? p : null;
   };
   const router = useRouter();
   const [kva, setKva] = useState(() => (classes.includes(1000) ? 1000 : classes[0]));
@@ -89,7 +88,7 @@ export function CentreTimesManager({ classes, typed, estimates, pace }: CentreTi
               <Th label="Item" className="ps-4 md:ps-5" />
               {WORK_CENTRES.map((c) => {
                 const p = paceOf(c);
-                return <Th key={c} label={WORK_CENTRE_LABEL[c]} center full={`${WORK_CENTRE_LABEL[c]} — hours one piece takes`} hint={p ? `Measured since ${pace!.fromISO}: the floor worked at ${Math.round(p.efficiency! * 100)}% of these hours over ${p.days} recorded days, so a piece really took about ${Math.round((1 / p.efficiency!) * 100) / 100}× the figure. The ≈ under a cell is that figure; click it to take it.` : undefined} />;
+                return <Th key={c} label={WORK_CENTRE_LABEL[c]} center full={`${WORK_CENTRE_LABEL[c]} — hours one piece takes`} hint={p ? `Measured since ${formatDate(pace!.fromISO)}: the floor worked at ${Math.round(p.efficiency! * 100)}% of these hours over ${p.days} recorded days, so a piece really took about ${Math.round((1 / p.efficiency!) * 100) / 100}× the figure. The ≈ under a cell is that figure; click it to take it.` : undefined} />;
               })}
               <Th label="Fabrication" num className="text-right pe-4" hint="Laser / punch + bending + fin folding: the item's whole fabrication stage." />
             </tr>

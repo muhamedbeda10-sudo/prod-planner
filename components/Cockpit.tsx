@@ -9,8 +9,8 @@ import { TableFrame, Th } from "@/components/DataTable";
 import { useAiPanel } from "@/components/AiPanel";
 import { formatDate } from "@/lib/domain/format";
 import { ITEM_NAME, isItem } from "@/lib/domain/constants";
-import { WORK_CENTRE_LABEL, round1, type WorkCentre } from "@/lib/domain/shifts";
-import { efficiencyBand, type Stage } from "@/lib/domain/kpis";
+import { WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
+import { STAGE_LABEL, efficiencyBand, isFloorAction } from "@/lib/domain/kpis";
 import type { CockpitData } from "@/lib/server/kpis";
 
 // 🧭 The planner's cockpit — five questions, each answered with the figure
@@ -19,7 +19,6 @@ import type { CockpitData } from "@/lib/server/kpis";
 // add up. The figures come from lib/server/kpis.ts; the assistant reads the
 // same loader.
 
-const STAGE_LABEL: Record<Stage, string> = { cut: "Fabrication", weld: "Welding", finish: "Finishing" };
 const TONE_TEXT = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" } as const;
 const ACTION_ICON = { bad: CircleAlert, warn: AlertTriangle, info: Info } as const;
 const ACTION_TONE = { bad: "text-bad-fg", warn: "text-warn-fg", info: "text-info-fg" } as const;
@@ -40,15 +39,15 @@ function Section({ n, title, sub, children }: { n: number; title: string; sub?: 
   );
 }
 
-export function Cockpit({ data }: { data: CockpitData }) {
+/** `floor`: whether the account sees the Shifts screen — the shift log's
+ *  figures (each centre's pace, the losses) are shown only then. */
+export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boolean }) {
   const ai = useAiPanel();
   const finish = data.week.adherence.find((a) => a.stage === "finish");
-  const fab = ["Cutting", "Bending", "Fins"] as const;
-  const fabRecent = data.centres.filter((c) => (fab as readonly string[]).includes(c.centre));
-  const fabWorked = fabRecent.reduce((s, c) => s + c.recent.workedH, 0);
-  const fabEarned = fabRecent.reduce((s, c) => s + c.recent.earnedH, 0);
-  const fabEff = fabWorked > 0 ? fabEarned / fabWorked : null;
-  const spark = (k: "late" | "coverageDays") => data.trend.map((t) => Number(t[k] ?? 0));
+  const actions = floor ? data.actions : data.actions.filter((a) => !isFloorAction(a));
+  // a day the trend does not know is left out, never drawn as 0
+  const spark = (k: "late" | "coverageDays") => data.trend.flatMap((t) => (t[k] === null || t[k] === undefined ? [] : [t[k]]));
+  let q = 0; // the questions' numbers, over the sections this account sees
 
   return (
     <div className="space-y-5">
@@ -62,11 +61,11 @@ export function Cockpit({ data }: { data: CockpitData }) {
             </button>
           )}
         </div>
-        {data.actions.length === 0 ? (
+        {actions.length === 0 ? (
           <p className="text-sm text-ok-fg font-semibold">Nothing pressing — the plan, the centres and welding&apos;s parts are all on track.</p>
         ) : (
           <ul className="space-y-1.5">
-            {data.actions.map((a, i) => {
+            {actions.map((a, i) => {
               const Icon = ACTION_ICON[a.tone];
               return (
                 <li key={i} className="flex items-start gap-2 text-sm">
@@ -85,12 +84,16 @@ export function Cockpit({ data }: { data: CockpitData }) {
         <StatTile hero label="Plan delivered on its day" value={pctOrDash(finish?.rate)} sub={finish && finish.due > 0 ? `${finish.done} of ${finish.due} pcs due so far this plan` : "nothing due yet"} meter={finish?.rate ?? undefined} />
         <StatTile label="Plan lines behind" value={String(data.week.lateCount)} sub="past their stage date" spark={spark("late")} />
         <StatTile label="Welding covered" value={data.coverage.days === null ? "—" : `${data.coverage.days} d`} sub={data.coverage.band === "short" ? "short — welders may wait" : data.coverage.band === "heavy" ? "parts piling up" : "of cut parts in front of welding"} spark={spark("coverageDays")} />
-        <StatTile label="Fabrication efficiency" value={pctOrDash(fabEff)} sub={`${round1(fabEarned)} std-h earned of ${round1(fabWorked)} worked`} />
-        <StatTile label="Machine hours lost" value={`${data.losses.unplannedH} h`} sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : "recent days"} />
+        {floor && (
+          <>
+            <StatTile label="Fabrication efficiency" value={pctOrDash(data.fabrication.efficiency)} sub={`${data.fabrication.earnedH} std-h earned of ${data.fabrication.workedH} worked`} />
+            <StatTile label="Machine hours lost" value={`${data.losses.unplannedH} h`} sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : "recent days"} />
+          </>
+        )}
       </div>
 
       {/* 1 — the plan */}
-      <Section n={1} title="Are we on this week's plan?" sub={data.week.planNo ? `weekly plan ${data.week.planNo} · ${data.week.covered} of ${data.week.req} pcs finished` : "no weekly plan imported yet"}>
+      <Section n={++q} title="Are we on this week's plan?" sub={data.week.planNo ? `weekly plan ${data.week.planNo} · ${data.week.covered} of ${data.week.req} pcs finished` : "no weekly plan imported yet"}>
         {data.week.planNo === null ? (
           <div className="rounded-xl border border-dashed"><EmptyState compact icon={Info} title="No weekly plan yet" hint="Import the weekly delivery schedule under Orders & plan imports." /></div>
         ) : (
@@ -108,10 +111,10 @@ export function Cockpit({ data }: { data: CockpitData }) {
                   </div>
                 ))}
                 <div className="pt-1">
-                  <div className="text-xs font-bold text-muted mb-1">By delivery day</div>
+                  <div className="text-sm font-bold text-muted mb-1">By delivery day</div>
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-1.5">
                     {data.week.days.map((d) => (
-                      <div key={d.iso} className={`rounded-md border px-2 py-1 text-xs ${d.isToday ? "border-brand" : ""}`}>
+                      <div key={d.iso} className={`rounded-md border px-2 py-1 text-sm ${d.isToday ? "border-brand" : ""}`}>
                         <div className="font-bold">{d.label}</div>
                         <div className={`tabnum ${d.isPast && d.covered < d.req ? "text-bad-fg font-bold" : "text-muted"}`}>{d.covered} / {d.req}</div>
                       </div>
@@ -151,12 +154,15 @@ export function Cockpit({ data }: { data: CockpitData }) {
       </Section>
 
       {/* 2 — the centres */}
-      <Section n={2} title="Did each centre work at the standard?" sub={data.lastDayISO ? `the last recorded day (${formatDate(data.lastDayISO)}) and the recent ${Math.max(...data.centres.map((c) => c.recent.days), 0)} recorded days` : "no shift day recorded yet"}>
+      {floor && <Section n={++q} title="Did each centre work at the standard?" sub={data.lastDayISO ? `the last recorded day (${formatDate(data.lastDayISO)}) and the recent ${Math.max(...data.centres.map((c) => c.recent.days), 0)} recorded days` : "no shift day recorded yet"}>
         <ChartCard
           title="Earned against worked, by work centre"
           sub="Earned = the standard hours the output is worth; worked = the man-hours the shift log booked there. 100% is the standard pace."
-          table={{ filename: `centres-${data.todayISO}.xlsx`, rows: data.centres.map((c) => ({ Centre: centreName(c.centre), "Last day earned h": c.last.earnedH, "Last day worked h": c.last.workedH, "Last day %": c.last.efficiency === null ? "" : Math.round(c.last.efficiency * 100), "Recent earned h": c.recent.earnedH, "Recent worked h": c.recent.workedH, "Recent %": c.recent.efficiency === null ? "" : Math.round(c.recent.efficiency * 100), "People a day": c.recent.people, "Stopped h": c.recent.downtimeH })) }}
+          table={data.lastDayISO === null ? undefined : { filename: `centres-${data.todayISO}.xlsx`, rows: data.centres.map((c) => ({ Centre: centreName(c.centre), "Last day earned h": c.last.earnedH, "Last day worked h": c.last.workedH, "Last day %": c.last.efficiency === null ? "" : Math.round(c.last.efficiency * 100), "Recent earned h": c.recent.earnedH, "Recent worked h": c.recent.workedH, "Recent %": c.recent.efficiency === null ? "" : Math.round(c.recent.efficiency * 100), "People a day": c.recent.people, "Stopped h": c.recent.downtimeH })) }}
         >
+          {data.lastDayISO === null ? (
+            <EmptyState compact icon={Info} title="No shift day recorded yet" hint={<>Record the day&apos;s attendance on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts</Link> — each centre&apos;s pace is measured against the hours booked there.</>} />
+          ) : (
           <TableFrame>
             <table className="w-full text-sm">
               <thead>
@@ -195,6 +201,7 @@ export function Cockpit({ data }: { data: CockpitData }) {
               </tbody>
             </table>
           </TableFrame>
+          )}
           {data.pricedShare !== null && data.pricedShare < 0.95 && (
             <p className="text-xs text-muted mt-2">
               {Math.round(data.pricedShare * 100)}% of the recent output carries standard hours — the rest earns nothing and reads as slow.{" "}
@@ -202,10 +209,10 @@ export function Cockpit({ data }: { data: CockpitData }) {
             </p>
           )}
         </ChartCard>
-      </Section>
+      </Section>}
 
       {/* 3 — the load ahead */}
-      <Section n={3} title="Where is the crunch?" sub="the plan's remaining hours against what each centre can work, next 10 working days">
+      <Section n={++q} title="Where is the crunch?" sub="the plan's remaining hours against what each centre can work, next 10 working days">
         <ChartCard
           title="Load against capacity"
           sub="Capacity a day = the man-hours the centre usually has × the pace it has measured. A centre is short once what it owes so far passes what it could have worked so far."
@@ -220,26 +227,25 @@ export function Cockpit({ data }: { data: CockpitData }) {
                   <tr>
                     <Th label="Centre" />
                     <Th label="Load" num className="text-right" hint="All the hours owed over the horizon, over all the hours it can work" />
-                    <Th label="Status" hint="Behind now and when it catches up at its usual pace, or short at the end of the horizon" />
+                    <Th label="Status" hint="Falling behind and when it catches up at its usual pace, or short at the end of the horizon" />
                     {data.load[0].days.map((d) => <Th key={d.dayISO} label={formatDate(d.dayISO)} center />)}
                   </tr>
                 </thead>
                 <tbody>
                   {data.load.map((l) => {
-                    let owed = 0, can = 0;
+                    // the running total over the whole horizon is the last day's
+                    const rateTone = l.loadRate === null ? "text-muted" : l.days.at(-1)?.tone === "bad" ? "text-bad-fg" : l.days.at(-1)?.tone === "warn" ? "text-warn-fg" : "text-ok-fg";
+                    const catching = l.shortH === 0 && l.shortFromISO !== null && l.clearsISO !== null;
                     return (
                       <tr key={l.centre}>
                         <td className="px-2 font-semibold whitespace-nowrap">{centreName(l.centre)}</td>
-                        <td className={`px-2 text-right tabnum font-bold ${l.loadRate === null ? "text-muted" : l.loadRate > 1 ? "text-bad-fg" : l.loadRate > 0.9 ? "text-warn-fg" : "text-ok-fg"}`}>{pctOrDash(l.loadRate)}</td>
-                        <td className={`px-2 whitespace-nowrap ${l.shortH > 0 ? "text-bad-fg font-bold" : l.behindH > 0 ? "text-warn-fg font-semibold" : "text-ok-fg"}`}>
-                          {l.shortH > 0 ? `${l.shortH} h short` : l.behindH > 0 ? `${l.behindH} h behind · clear ${l.clearsISO ? formatDate(l.clearsISO) : "—"}` : "on track"}
+                        <td className={`px-2 text-right tabnum font-bold ${rateTone}`}>{pctOrDash(l.loadRate)}</td>
+                        <td className={`px-2 whitespace-nowrap ${!l.measured ? "text-muted" : l.shortH > 0 ? "text-bad-fg font-bold" : catching ? "text-warn-fg font-semibold" : "text-ok-fg"}`} title={!l.measured ? "No man-hours booked to this centre lately, so there is no capacity to judge by" : undefined}>
+                          {!l.measured ? "not measured" : l.shortH > 0 ? `${l.shortH} h short` : catching ? `${l.behindH} h behind · clear ${formatDate(l.clearsISO!)}` : "on track"}
                         </td>
-                        {l.days.map((d) => {
-                          owed += d.dueH;
-                          can += d.capacityH;
-                          const tone = owed > can + 0.05 ? "bg-bad-bg text-bad-fg" : can > 0 && owed > can * 0.9 ? "bg-warn-bg text-warn-fg" : "";
-                          return <td key={d.dayISO} className={`px-1 text-center tabnum ${tone}`} title={`Due ${d.dueH} h · can work ${d.capacityH} h · running ${round1(owed)} of ${round1(can)} h`}>{d.dueH > 0 ? Math.round(d.dueH) : "·"}</td>;
-                        })}
+                        {l.days.map((d) => (
+                          <td key={d.dayISO} className={`px-1 text-center tabnum ${d.tone === "bad" ? "bg-bad-bg text-bad-fg" : d.tone === "warn" ? "bg-warn-bg text-warn-fg" : ""}`} title={l.measured ? `Due ${d.dueH} h · can work ${d.capacityH} h` : `Due ${d.dueH} h`}>{d.dueH > 0 ? Math.round(d.dueH) : "·"}</td>
+                        ))}
                       </tr>
                     );
                   })}
@@ -250,9 +256,9 @@ export function Cockpit({ data }: { data: CockpitData }) {
         </ChartCard>
       </Section>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className={`grid gap-5 ${floor ? "lg:grid-cols-2" : ""}`}>
         {/* 4 — welding's parts */}
-        <Section n={4} title="Is welding covered?" sub="cut parts waiting for welding, in days of welding">
+        <Section n={++q} title="Is welding covered?" sub="cut parts waiting for welding, in days of welding">
           <ChartCard
             title={data.coverage.days === null ? "No recent welding to measure against" : `${data.coverage.days} days of work in front of the welders`}
             sub={`${data.coverage.wipH} welding std-h cut and waiting · welders earn ${data.coverage.ratePerDay} std-h on a recorded day. Under 1 day they may wait; over 4, parts pile up.`}
@@ -274,7 +280,7 @@ export function Cockpit({ data }: { data: CockpitData }) {
         </Section>
 
         {/* 5 — the losses */}
-        <Section n={5} title="What stopped us?" sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : undefined}>
+        {floor && <Section n={++q} title="What stopped us?" sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : undefined}>
           <ChartCard
             title={`${data.losses.unplannedH} machine hours lost${data.losses.plannedH > 0 ? ` · ${data.losses.plannedH} h planned maintenance` : ""}`}
             sub={`Absent: ${pctOrDash(data.losses.absentRate)} of the recorded rows · overtime worked: ${data.losses.overtimeH} h`}
@@ -293,7 +299,7 @@ export function Cockpit({ data }: { data: CockpitData }) {
               </div>
             )}
           </ChartCard>
-        </Section>
+        </Section>}
       </div>
     </div>
   );

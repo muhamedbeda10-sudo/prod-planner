@@ -7,29 +7,38 @@ import { LV_ITEM } from "@/lib/domain/lv";
 import { isPaintExempt, type Item } from "@/lib/domain/constants";
 import { itemCentreHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
 import {
-  DEPT_CENTRES, WORK_CENTRES, centreOf, deptCentre, isShiftCode, lineHours, machineWorkCentre, round1, type WorkCentre,
+  DEFAULT_SHIFT, DEPT_CENTRES, WORK_CENTRES, centreOf, deptCentre, isShiftCode, lineHours, machineWorkCentre, round1, type WorkCentre,
 } from "@/lib/domain/shifts";
-import { sectionDept, type WorkerSection } from "@/lib/domain/tanks";
+import { sectionDept } from "@/lib/domain/tanks";
+import { parseWorkerSections } from "@/lib/domain/workers";
 import { downtimeByCause, type DowntimeCause } from "@/lib/domain/downtime";
+import { FACTOR_MAX, FACTOR_MIN, MIN_CALIBRATION_DAYS } from "@/lib/domain/calibration";
 import {
-  centreStat, cockpitActions, earnedOfRecord, lateLines, loadAhead, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
-  type CentreDay, type CentreHours, type CentreStat, type CockpitAction, type Coverage, type CoverageInput, type LateLine, type LoadAhead, type PlanCell, type Stage, type StageAdherence,
+  centreStat, cockpitActions, combinedStat, earnedOfRecord, isFloorAction, lateLines, loadAhead, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
+  type CentreDay, type CentreHours, type CentreStat, type CockpitAction, type Coverage, type CoverageInput, type KpiSnapshotData, type KpiSnapshotPoint,
+  type LateLine, type LoadAhead, type PlanCell, type Stage, type StageAdherence,
 } from "@/lib/domain/kpis";
 import { getStdData } from "./standardTimes";
-import { getShiftHours } from "./data";
-import { loadHolidays, loadMasterOrdersOf, loadSettingsRow } from "./loads";
+import { getSettings, getShiftHours } from "./data";
+import { loadHolidays, loadMasterOrdersOf } from "./loads";
 import { getWeeklyPlanTracker } from "./weeklyPlanTracker";
+import { CALIBRATION_WINDOW_DAYS } from "./calibration";
+import { earnedLvOnDays } from "./lvStd";
+import { withLine } from "./line";
 
 // The planner's cockpit, read from what the floor records: the shift log's
 // hours by work centre, the Daily log's output priced in standard hours, the
 // machine stops, and the newest weekly plan. Every figure comes from the pure
 // functions in lib/domain/kpis.ts — the page and the assistant read this one
-// loader, so they never disagree.
+// loader, so they never disagree. It only reads: today's point of the trend
+// is written apart (recordKpiSnapshot).
 
 /** Days of history the trend and the rates read. */
 const HISTORY_DAYS = 21;
-/** Recorded days the "lately" figures cover. */
+/** Recorded days the "lately" figures cover — the Shifts page's productivity window. */
 const RECENT_DAYS = 7;
+/** Days of the stored trend shown. */
+const TREND_DAYS = 28;
 /** Working days the load ahead looks over. */
 const HORIZON = 10;
 
@@ -64,6 +73,8 @@ export interface CockpitData {
     lateCount: number;
   };
   centres: CentreKpi[];
+  /** Laser / punch, bending and fin folding together, over the recent days. */
+  fabrication: { workedH: number; earnedH: number; efficiency: number | null };
   load: LoadAhead[];
   coverage: Coverage;
   losses: {
@@ -78,19 +89,10 @@ export interface CockpitData {
   /** Share of the recent output that carries standard hours (a class and an item with hours). */
   pricedShare: number | null;
   actions: CockpitAction[];
+  /** Today's figures as the trend keeps them. */
+  snapshot: KpiSnapshotData;
+  /** The stored days, today's as it reads now. */
   trend: KpiSnapshotPoint[];
-}
-
-/** What a day keeps for the trend. */
-export interface KpiSnapshotData {
-  late: number;
-  adherence: Partial<Record<Stage, number | null>>;
-  coverageDays: number | null;
-  efficiency: Partial<Record<WorkCentre, number | null>>;
-  unplannedH: number;
-}
-export interface KpiSnapshotPoint extends KpiSnapshotData {
-  dateISO: string;
 }
 
 const dayStart = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -100,7 +102,7 @@ const dayStart = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
  *  stops — with what the cockpit's other figures need from the same reads. */
 async function readCentreDays(fromISO: string) {
   const from = dayStart(fromISO);
-  const [std, hrs, orders, shiftRows, ledger, stops, machines] = await Promise.all([
+  const [std, hrs, orders, shiftRows, ledger, stops, machines, lvShotBlast] = await Promise.all([
     getStdData(),
     getShiftHours(),
     loadMasterOrdersOf("TR"),
@@ -108,6 +110,9 @@ async function readCentreDays(fromISO: string) {
     prisma.handoverEntry.findMany({ where: { date: { gte: from }, item: { not: LV_ITEM } }, select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true } }),
     prisma.machineDowntime.findMany({ where: { date: { gte: from } }, select: { date: true, hours: true, reasonCode: true, reason: true, machine: { select: { dept: true, center: true } } } }),
     prisma.machine.findMany({ where: { active: true }, select: { dept: true, center: true, hoursPerDay: true } }),
+    // the one shot-blast crew blasts the LV panels as well — its booked hours
+    // cover both, so the panels' shot-blast hours count on its side (as the calibration does)
+    lvShotBlastSince(fromISO),
   ]);
 
   // ---- an order's KVA class, and the hours a piece per centre for it ----
@@ -124,7 +129,9 @@ async function readCentreDays(fromISO: string) {
     if (!perTier.has(tier)) perTier.set(tier, itemCentreHoursFor(std, tier));
     return perTier.get(tier)![item];
   };
-  const tierOf = (mo: string | null | undefined, bom: string) => ((mo ? tierByMo.get(mo) : undefined) ?? tierByBom.get(bom) ?? null);
+  // an order's class by its number, else by its project's — a plan line or a
+  // record whose order is not on the master list yet is still priced
+  const tierOf = (mo: string | null | undefined, bom: string) => (mo ? tierByMo.get(mo) : undefined) ?? tierByBom.get(bom) ?? null;
 
   // ---- each recorded day, centre by centre ----
   const days = new Map<string, Map<WorkCentre, CentreDay>>();
@@ -139,17 +146,20 @@ async function readCentreDays(fromISO: string) {
   const recentDates = new Set(recordedDates.slice(-RECENT_DAYS));
   for (const r of shiftRows) {
     const iso = toISODate(r.date);
+    // the worker's sections in this row's department (legacy codes translated, unknown ones dropped)
+    const sections = parseWorkerSections(r.worker.depts).filter((s) => sectionDept(s) === r.dept);
+    const c = centreOf(r.dept, sections, r.center) ?? deptCentre(r.dept);
+    if (!c) continue; // the LV panels — not the transformers' figures
+    const shift = isShiftCode(r.shift) ? r.shift : DEFAULT_SHIFT;
     if (recentDates.has(iso)) {
       rowsRecent += 1;
       if (!r.present) absent += 1;
-      else overtimeH += r.overtimeH;
+      // overtime rides on the day shift only, as the shift log counts it
+      else if (shift === DEFAULT_SHIFT && r.overtimeH > 0) overtimeH += r.overtimeH;
     }
     if (!r.present) continue;
-    const sections = (r.worker.depts ?? "").split(",").map((s) => s.trim()).filter((s) => s && (sectionDept(s as WorkerSection) as string) === r.dept);
-    const c = centreOf(r.dept, sections, r.center) ?? deptCentre(r.dept);
-    if (!c) continue; // the LV panels
     const d = cell(iso, c);
-    d.workedH += lineHours({ present: true, shift: isShiftCode(r.shift) ? r.shift : "S9", overtimeH: r.overtimeH }, hrs);
+    d.workedH += lineHours({ present: true, shift, overtimeH: r.overtimeH }, hrs);
     d.people += 1;
   }
   let pricedQty = 0, recentQty = 0;
@@ -162,8 +172,9 @@ async function readCentreDays(fromISO: string) {
       recentQty += e.qty;
       if (per) pricedQty += e.qty;
     }
-    for (const c of WORK_CENTRES) if (got[c] > 0) cell(iso, c).earnedH += got[c];
+    for (const c of WORK_CENTRES) if (got[c] !== 0) cell(iso, c).earnedH += got[c];
   }
+  for (const [iso, h] of lvShotBlast) cell(iso, "ShotBlast").earnedH += h;
   const machineH = zeroCentres();
   for (const m of machines) {
     const c = machineWorkCentre(m.dept, m.center);
@@ -178,29 +189,44 @@ async function readCentreDays(fromISO: string) {
     if (d.workedH > 0) d.machineH = machineH[d.centre];
     all.push(d);
   }
-  return { std, orders, stops, days, all, recordedDates, tierByMo, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty };
+  return { std, orders, stops, days, all, recordedDates, tierByBom, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty, lvShotBlast };
 }
+
+/** The LV panels' shot-blast std-hours by day since `fromISO`. */
+async function lvShotBlastSince(fromISO: string): Promise<Map<string, number>> {
+  const rows = await prisma.handoverEntry.findMany({ where: { date: { gte: dayStart(fromISO) }, item: LV_ITEM }, select: { date: true }, distinct: ["date"] });
+  const earned = await earnedLvOnDays([...new Set(rows.map((r) => toISODate(r.date)))]);
+  const out = new Map<string, number>();
+  for (const [iso, lv] of earned) if (lv.ShotBlast) out.set(iso, lv.ShotBlast);
+  return out;
+}
+
+/** The pace a centre's measured efficiency may stand for — the calibration's own sanity limits. */
+const clampPace = (e: number) => Math.min(1 / FACTOR_MIN, Math.max(1 / FACTOR_MAX, e));
 
 export interface CentrePace {
   centre: WorkCentre;
   days: number;
   workedH: number;
   earnedH: number;
-  /** earned ÷ worked over the window — the floor's pace against the hours a piece now in force. */
+  /** earned ÷ worked over the window — the floor's pace against the hours a
+   *  piece now in force; null until the centre has the calibration's minimum
+   *  of recorded days. Held to the calibration's limits. */
   efficiency: number | null;
 }
 
-/** How each centre has worked against its hours a piece over the last
- *  `windowDays` days — what the standard-times screen shows beside the typed
- *  figures: a piece takes about (hours a piece ÷ efficiency) on the floor. */
-export async function getCentrePace(windowDays = 60, now = new Date()): Promise<{ fromISO: string; centres: CentrePace[] }> {
-  const fromISO = addDaysISO(factoryDayISO(now), -windowDays);
+/** How each centre has worked against its hours a piece over the
+ *  calibration's window — what the standard-times screen shows beside the
+ *  typed figures: a piece takes about (hours a piece ÷ efficiency) on the floor. */
+export async function getCentrePace(now = new Date()): Promise<{ fromISO: string; centres: CentrePace[] }> {
+  const fromISO = addDaysISO(factoryDayISO(now), -CALIBRATION_WINDOW_DAYS);
   const { all } = await readCentreDays(fromISO);
   return {
     fromISO,
     centres: WORK_CENTRES.map((c) => {
       const s = centreStat(c, all);
-      return { centre: c, days: s.days, workedH: s.workedH, earnedH: s.earnedH, efficiency: s.efficiency };
+      const efficiency = s.days >= MIN_CALIBRATION_DAYS && s.efficiency !== null && s.efficiency > 0 ? clampPace(s.efficiency) : null;
+      return { centre: c, days: s.days, workedH: s.workedH, earnedH: s.earnedH, efficiency };
     }),
   };
 }
@@ -208,8 +234,12 @@ export async function getCentrePace(windowDays = 60, now = new Date()): Promise<
 export async function getCockpit(now = new Date()): Promise<CockpitData> {
   const todayISO = factoryDayISO(now);
   const fromISO = addDaysISO(todayISO, -HISTORY_DAYS);
-  const [read, settings, holidays, plan] = await Promise.all([readCentreDays(fromISO), loadSettingsRow(), loadHolidays(), getWeeklyPlanTracker()]);
-  const { orders, stops, days, all, recordedDates, tierByMo, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty } = read;
+  const [read, settings, holidays, plan] = await Promise.all([
+    readCentreDays(fromISO), getSettings(), loadHolidays(),
+    // the transformers' plan, whichever line the toggle is on
+    withLine("TR", () => getWeeklyPlanTracker()),
+  ]);
+  const { orders, stops, days, all, recordedDates, tierByBom, tierOf, perPiece, absent, rowsRecent, overtimeH, pricedQty, recentQty, lvShotBlast } = read;
 
   const workedDates = [...new Set(all.filter((d) => d.workedH > 0).map((d) => d.dateISO))].sort();
   const lastDayISO = workedDates.at(-1) ?? null;
@@ -227,7 +257,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   }));
 
   // ---- the weekly plan ----
-  const leads = { cut: settings?.leadCut ?? 4, weld: settings?.leadWeld ?? 1 };
+  const leads = { cut: settings.leadCut, weld: settings.leadWeld };
   const cells: (PlanCell & { tier: number | null; soi: string | null })[] = [];
   for (const d of plan.days) {
     for (const row of d.rows) {
@@ -267,42 +297,51 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   }
   const load = WORK_CENTRES.map((c) => {
     const k = centres.find((x) => x.centre === c)!;
-    // what the centre usually has, at the pace it has measured (the standard when unmeasured)
-    const perDay = k.recent.days > 0 ? k.recent.workedH / k.recent.days : 0;
-    const pace = k.recent.efficiency === null ? 1 : Math.min(1.5, Math.max(0.3, k.recent.efficiency));
-    return loadAhead(c, horizon, dueByCentre.get(c) ?? [], perDay * pace);
+    // what the centre usually has, at the pace it has measured (the standard
+    // while nothing it made is priced); no booked hours, no capacity to judge by
+    if (!(k.recent.workedH > 0)) return loadAhead(c, horizon, dueByCentre.get(c) ?? [], null);
+    const pace = k.recent.efficiency !== null && k.recent.efficiency > 0 ? clampPace(k.recent.efficiency) : 1;
+    // the shot-blast crew's day goes partly to the LV panels — what is left is the transformers'
+    const lvPerDay = c === "ShotBlast" ? [...recentWorked].reduce((s, iso) => s + (lvShotBlast.get(iso) ?? 0), 0) / k.recent.days : 0;
+    return loadAhead(c, horizon, dueByCentre.get(c) ?? [], Math.max(0, (k.recent.workedH / k.recent.days) * pace - lvPerDay));
   }).filter((l) => l.days.some((d) => d.dueH > 0) || l.loadRate !== null);
 
   // ---- welding coverage: cut and waiting, against the welders' pace ----
-  const openMos = orders.filter((o) => o.status === "open").map((o) => o.mo);
-  const sums = openMos.length
-    ? await prisma.handoverEntry.groupBy({ by: ["mo", "item", "dept"], where: { mo: { in: openMos }, dept: { in: ["Cut", "Welding"] } }, _sum: { qty: true } })
+  // netted project by project, over all its records: the Daily log's form
+  // records no order number, so cut on the form and welded against an order
+  // (or the other way round) still meet
+  const openBoms = [...new Set(orders.filter((o) => o.status === "open").map((o) => o.bom))];
+  const sums = openBoms.length
+    ? await prisma.handoverEntry.groupBy({
+      by: ["bom", "item", "dept"],
+      where: { dept: { in: ["Cut", "Welding"] }, item: { not: LV_ITEM }, bom: { in: openBoms } },
+      _sum: { qty: true },
+    })
     : [];
-  const byMoItem = new Map<string, { cut: number; weld: number }>();
+  const byBomItem = new Map<string, { bom: string; item: string; cut: number; weld: number }>();
   for (const s of sums) {
-    const k = `${s.mo}|${s.item}`;
-    const v = byMoItem.get(k) ?? { cut: 0, weld: 0 };
+    const k = `${s.bom}|${s.item}`;
+    const v = byBomItem.get(k) ?? { bom: s.bom, item: s.item, cut: 0, weld: 0 };
     if (s.dept === "Cut") v.cut += s._sum.qty ?? 0;
     else v.weld += s._sum.qty ?? 0;
-    byMoItem.set(k, v);
+    byBomItem.set(k, v);
   }
   const wip = new Map<string, CoverageInput>();
-  for (const [k, v] of byMoItem) {
+  for (const v of byBomItem.values()) {
     const pcs = Math.max(0, v.cut - v.weld);
     if (!(pcs > 0)) continue;
-    const [mo, item] = k.split("|");
-    const per = perPiece(tierByMo.get(mo) ?? null, item);
-    const w = wip.get(item) ?? { item, pcs: 0, weldH: 0 };
+    const per = perPiece(tierByBom.get(v.bom) ?? null, v.item);
+    const w = wip.get(v.item) ?? { item: v.item, pcs: 0, weldH: 0 };
     w.pcs += pcs;
     w.weldH += pcs * (per?.Welding ?? 0);
-    wip.set(item, w);
+    wip.set(v.item, w);
   }
   const weldRecent = centres.find((c) => c.centre === "Welding")!.trend.filter((t) => recentWorked.has(t.dateISO)).map((t) => t.earnedH);
   const coverage = weldingCoverage([...wip.values()], weldRecent);
 
   // ---- what was lost lately ----
   // the stops since the first of the recent recorded days (the last week when nothing is recorded)
-  const lossFrom = workedDates.at(-RECENT_DAYS) ?? addDaysISO(todayISO, -7);
+  const lossFrom = workedDates.at(-Math.min(RECENT_DAYS, workedDates.length)) ?? addDaysISO(todayISO, -7);
   const loss = downtimeByCause(stops.filter((s) => toISODate(s.date) >= lossFrom));
   const losses = {
     ...loss,
@@ -320,15 +359,16 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
     ddmm: (iso) => formatDate(iso),
   });
 
-  // ---- keep today's figures for the trend ----
-  const snap: KpiSnapshotData = {
+  // ---- today's figures, as the trend keeps them ----
+  const snapshot: KpiSnapshotData = {
     late: late.length,
     adherence: Object.fromEntries(adherence.map((a) => [a.stage, a.rate])),
     coverageDays: coverage.days,
     efficiency: Object.fromEntries(recentStats.map((s) => [s.centre, s.efficiency])),
     unplannedH: loss.unplannedH,
   };
-  const trend = await keepSnapshot(todayISO, snap);
+  const stored = await prisma.kpiSnapshot.findMany({ where: { date: { gte: dayStart(addDaysISO(todayISO, -TREND_DAYS)), lt: dayStart(todayISO) } }, orderBy: { date: "asc" } });
+  const trend: KpiSnapshotPoint[] = [...stored.map((r) => ({ dateISO: toISODate(r.date), ...parseKpiSnapshot(r.data) })), { dateISO: todayISO, ...snapshot }];
 
   return {
     todayISO,
@@ -343,24 +383,42 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
       lateCount: late.length,
     },
     centres,
+    fabrication: combinedStat(recentStats.filter((s) => (DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(s.centre))),
     load,
     coverage,
     losses,
     pricedShare: recentQty > 0 ? pricedQty / recentQty : null,
     actions,
+    snapshot,
     trend,
   };
 }
 
-/** Write today's figures (rewritten while the day lasts) and read the last
- *  fortnight back. A failure to write never stops the cockpit. */
-async function keepSnapshot(todayISO: string, data: KpiSnapshotData): Promise<KpiSnapshotPoint[]> {
-  const date = dayStart(todayISO);
+/** Keep the day's figures for the trend — rewritten while the day lasts, so
+ *  the day keeps its last reading. Called after the cockpit is served and by
+ *  the automations' hourly housekeeping; a failure only costs the point. */
+export async function recordKpiSnapshot(c: Pick<CockpitData, "todayISO" | "snapshot">): Promise<void> {
+  const date = dayStart(c.todayISO);
+  const data = c.snapshot as object;
   try {
-    await prisma.kpiSnapshot.upsert({ where: { date }, create: { date, data: data as object }, update: { data: data as object } });
-  } catch {
-    // the trend just misses today
+    await prisma.kpiSnapshot.upsert({ where: { date }, create: { date, data }, update: { data } });
+  } catch (e) {
+    console.error("kpis: could not keep today's snapshot", e);
   }
-  const rows = await prisma.kpiSnapshot.findMany({ where: { date: { gte: dayStart(addDaysISO(todayISO, -28)) } }, orderBy: { date: "asc" } });
-  return rows.map((r) => ({ dateISO: toISODate(r.date), ...(r.data as unknown as KpiSnapshotData) }));
+}
+
+/** The cockpit without the shift log's figures — for an account the Shifts
+ *  screen is closed to. Taken out on the server, so they never reach the
+ *  browser. */
+export function withoutFloor(c: CockpitData): CockpitData {
+  return {
+    ...c,
+    centres: [],
+    fabrication: { workedH: 0, earnedH: 0, efficiency: null },
+    losses: { causes: [], unplannedH: 0, plannedH: 0, absentRate: null, overtimeH: 0, fromISO: null },
+    pricedShare: null,
+    actions: c.actions.filter((a) => !isFloorAction(a)),
+    snapshot: { ...c.snapshot, efficiency: {}, unplannedH: null },
+    trend: c.trend.map((t) => ({ ...t, efficiency: {}, unplannedH: null })),
+  };
 }

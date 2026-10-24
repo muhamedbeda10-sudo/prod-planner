@@ -14,7 +14,7 @@ export interface StdActionResult {
 
 // every page whose figures are built on the standard times
 function revalidate() {
-  for (const p of ["/admin/standard-times", "/admin/machine-times", "/report", "/tracker", "/", "/shifts", "/cockpit", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
+  for (const p of ["/admin/standard-times", "/admin/machine-times", "/report", "/tracker", "/", "/shifts", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
 }
 
 const num = (v: FormDataEntryValue | null): number => Number(String(v ?? "").trim());

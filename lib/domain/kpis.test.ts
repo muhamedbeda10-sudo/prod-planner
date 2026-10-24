@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { byStage, centreStat, cockpitActions, workingDaysFrom, earnedOfRecord, efficiencyBand, lateLines, loadAhead, planAdherence, stageDueISO, weldingCoverage, zeroCentres, type CentreDay, type PlanCell } from "./kpis";
+import {
+  byStage, centreStat, cockpitActions, combinedStat, workingDaysFrom, earnedOfRecord, efficiencyBand, isFloorAction, lateLines, loadAhead, loadTone, parseKpiSnapshot,
+  planAdherence, stageDueISO, weldingCoverage, zeroCentres, type CentreDay, type PlanCell,
+} from "./kpis";
 
 const per = { ...zeroCentres(), Cutting: 1, Bending: 0.5, Fins: 0.25, Welding: 4, ShotBlast: 0.2, Painting: 0.8 };
 
@@ -16,6 +19,11 @@ describe("what a record earns at each centre", () => {
     expect(earnedOfRecord("Cut", 1, undefined)).toEqual(zeroCentres());
     expect(byStage(earnedOfRecord("Cut", 2, per)).Cut).toBeCloseTo(3.5, 10);
   });
+  it("takes a correction's hours back, so +10 then −3 earns what 7 pieces are worth", () => {
+    const day = [earnedOfRecord("Welding", 10, per), earnedOfRecord("Welding", -3, per)].reduce((s, e) => s + e.Welding, 0);
+    expect(day).toBe(28);
+    expect(earnedOfRecord("Welding", Number.NaN, per)).toEqual(zeroCentres());
+  });
 });
 
 describe("a centre over a window", () => {
@@ -31,9 +39,16 @@ describe("a centre over a window", () => {
     expect(s.efficiency).toBeCloseTo(0.9, 10);
     expect(s.availability).toBeCloseTo(1 - 22 / 200, 10);
     expect(efficiencyBand(s.efficiency)).toBe("ok");
-    expect(efficiencyBand(0.8)).toBe("warn");
+    // the Shifts page's own bands: 90% on the standard, 70% short of it
+    expect(efficiencyBand(0.72)).toBe("warn");
     expect(efficiencyBand(0.5)).toBe("bad");
+    expect(efficiencyBand(null)).toBeNull();
     expect(centreStat("Fins", []).efficiency).toBeNull();
+  });
+  it("adds centres up as one — Fabrication's three", () => {
+    const st = (centre: "Cutting" | "Bending", workedH: number, earnedH: number) => ({ centre, days: 3, workedH, earnedH, efficiency: earnedH / workedH, downtimeH: 0, availability: null, people: 2 });
+    expect(combinedStat([st("Cutting", 60, 54), st("Bending", 40, 26)])).toEqual({ workedH: 100, earnedH: 80, efficiency: 0.8 });
+    expect(combinedStat([]).efficiency).toBeNull();
   });
 });
 
@@ -71,11 +86,29 @@ describe("the load ahead", () => {
     const l = loadAhead("Welding", days, [{ dayISO: "2026-10-18", dueH: 30 }, { dayISO: "2026-10-20", dueH: 50 }, { dayISO: "2026-10-22", dueH: 40 }], 50);
     expect(l.days.map((d) => d.dueH)).toEqual([80, 0, 40]);
     // 30 h behind on the first day, caught up on the second
-    expect(l).toMatchObject({ behindH: 30, shortFromISO: "2026-10-20", clearsISO: "2026-10-21", shortH: 0 });
+    expect(l).toMatchObject({ measured: true, behindH: 30, shortFromISO: "2026-10-20", clearsISO: "2026-10-21", shortH: 0 });
+    expect(l.days.map((d) => d.tone)).toEqual(["bad", null, null]);
     expect(l.loadRate).toBeCloseTo(120 / 150, 10);
     // a Friday's hours land on the working day after it; past the horizon they are not its own
     expect(loadAhead("Welding", ["2026-10-22", "2026-10-24"], [{ dayISO: "2026-10-23", dueH: 10 }, { dayISO: "2026-11-30", dueH: 99 }], 50).days.map((d) => d.dueH)).toEqual([0, 10]);
-    expect(loadAhead("Welding", days, [{ dayISO: "2026-10-21", dueH: 200 }], 50)).toMatchObject({ shortFromISO: "2026-10-21", clearsISO: null, shortH: 50, behindH: 0 });
+    expect(loadAhead("Welding", days, [{ dayISO: "2026-10-21", dueH: 200 }], 50)).toMatchObject({ shortFromISO: "2026-10-21", clearsISO: null, shortH: 50, behindH: 100 });
+  });
+  it("names a centre that falls behind mid-horizon and catches up by the end — with the most it fell behind", () => {
+    const days = ["2026-10-20", "2026-10-21", "2026-10-22", "2026-10-24"];
+    const l = loadAhead("Bending", days, [{ dayISO: "2026-10-21", dueH: 200 }], 50);
+    expect(l).toMatchObject({ shortFromISO: "2026-10-21", clearsISO: "2026-10-24", shortH: 0, behindH: 100 });
+    expect(cockpitActions({ late: [], coverage: { wipH: 0, ratePerDay: 0, days: null, band: null, byItem: [] }, load: [l], centres: [], topLoss: null, todayRecorded: true, ddmm: (iso) => iso })[0].text)
+      .toBe("Bending is behind — Bending by up to 100 h from 2026-10-21, caught up by 2026-10-24 at the usual pace.");
+  });
+  it("judges nothing for a centre with no booked hours", () => {
+    const l = loadAhead("Painting", ["2026-10-20", "2026-10-21"], [{ dayISO: "2026-10-20", dueH: 40 }], null);
+    expect(l).toMatchObject({ measured: false, loadRate: null, behindH: 0, shortFromISO: null, shortH: 0 });
+    expect(l.days.map((d) => [d.dueH, d.tone])).toEqual([[40, null], [0, null]]);
+  });
+  it("reads a load as over the capacity, within 10% of it, or clear", () => {
+    expect([loadTone(101, 100), loadTone(95, 100), loadTone(80, 100), loadTone(10, 0)]).toEqual(["bad", "warn", null, null]);
+    // rounding is not a shortfall
+    expect(loadTone(100.04, 100)).toBe("warn");
   });
 });
 
@@ -92,8 +125,8 @@ describe("what to do today", () => {
       late: [{ dayISO: "2026-10-18", bom: "B1", item: "TN", owed: 4, stage: "weld", short: 2 }],
       coverage: { wipH: 10, ratePerDay: 60, days: 0.2, band: "short", byItem: [{ item: "TN", pcs: 1, weldH: 10 }] },
       load: [
-        { centre: "Welding", days: [], loadRate: 1.2, behindH: 0, shortFromISO: "2026-10-21", clearsISO: null, shortH: 30 },
-        { centre: "Bending", days: [], loadRate: 0.5, behindH: 12, shortFromISO: "2026-10-20", clearsISO: "2026-10-22", shortH: 0 },
+        { centre: "Welding", measured: true, days: [], loadRate: 1.2, behindH: 30, shortFromISO: "2026-10-21", clearsISO: null, shortH: 30 },
+        { centre: "Bending", measured: true, days: [], loadRate: 0.5, behindH: 12, shortFromISO: "2026-10-20", clearsISO: "2026-10-22", shortH: 0 },
       ],
       centres: [{ centre: "Bending", days: 5, workedH: 100, earnedH: 50, efficiency: 0.5, downtimeH: 0, availability: null, people: 3 }],
       topLoss: { label: "No material", hours: 6 },
@@ -103,9 +136,20 @@ describe("what to do today", () => {
     expect(a.map((x) => x.tone)).toEqual(["bad", "bad", "warn", "bad", "warn", "warn"]);
     expect(a[0].text).toContain("B1 TN due 18/10, is 2 pc short at Welding");
     expect(a[1].text).toContain("Welding owes 30 h more");
-    expect(a[2].text).toContain("Bending is behind — Bending by 12 h, caught up by 22/10");
+    expect(a[2].text).toContain("Bending is behind — Bending by up to 12 h from 20/10, caught up by 22/10");
     expect(a[3].text).toContain("cut TN next");
     // no more than six: the unrecorded day falls off here
     expect(a).toHaveLength(6);
+    // the shift log's own — a slow centre, the top loss — are marked for the people who see Shifts
+    expect(a.map(isFloorAction)).toEqual([false, false, false, false, true, true]);
+  });
+});
+
+describe("the stored trend", () => {
+  it("reads a day back, a field an older day lacks as unknown — never zero", () => {
+    expect(parseKpiSnapshot({ late: 4, adherence: { cut: 0.5, weld: null, bogus: 1 }, coverageDays: 2.2, efficiency: { Welding: 0.9 }, unplannedH: 3 }))
+      .toEqual({ late: 4, adherence: { cut: 0.5, weld: null }, coverageDays: 2.2, efficiency: { Welding: 0.9 }, unplannedH: 3 });
+    expect(parseKpiSnapshot({ late: 4 })).toEqual({ late: 4, adherence: {}, coverageDays: null, efficiency: {}, unplannedH: null });
+    expect(parseKpiSnapshot(null).late).toBeNull();
   });
 });

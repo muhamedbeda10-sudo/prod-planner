@@ -25,7 +25,7 @@ export interface DowntimeActionResult {
 
 // every page that reads a machine's stops: the board's hours left, the
 // cockpit's losses, the simulator's capacity
-const PATHS = ["/shifts", "/cockpit", "/", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate"];
+const PATHS = ["/shifts", "/", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate"];
 const revalidate = () => { for (const p of PATHS) revalidatePath(p); };
 
 

@@ -15,6 +15,7 @@
 //   adherence   the plan's pieces due so far that are done, ÷ those due
 
 import { DEPT_CENTRES, WORK_CENTRES, WORK_CENTRE_LABEL, round1, type WorkCentre } from "./shifts";
+import { efficiencyTone, type EfficiencyTone } from "./productivity";
 
 export type CentreHours = Record<WorkCentre, number>;
 export const zeroCentres = (): CentreHours => Object.fromEntries(WORK_CENTRES.map((c) => [c, 0])) as CentreHours;
@@ -23,10 +24,11 @@ export const zeroCentres = (): CentreHours => Object.fromEntries(WORK_CENTRES.ma
  *  Fabrication has passed every centre of its route, so each earns its share;
  *  a Painting record carries the shot blast before it (the app records no
  *  separate blasting for a painted part); a Shot Blast record is the core's
- *  finish. The calibration reads the ledger through this same function. */
+ *  finish. The calibration reads the ledger through this same function. A
+ *  correction (a negative quantity) takes its hours back. */
 export function earnedOfRecord(dept: string, qty: number, perPiece: CentreHours | undefined): CentreHours {
   const out = zeroCentres();
-  if (!perPiece || !(qty > 0)) return out;
+  if (!perPiece || !Number.isFinite(qty) || qty === 0) return out;
   if (dept === "Cut") for (const c of DEPT_CENTRES.Cut) out[c] = perPiece[c] * qty;
   else if (dept === "Welding") out.Welding = perPiece.Welding * qty;
   else if (dept === "ShotBlast") out.ShotBlast = perPiece.ShotBlast * qty;
@@ -52,12 +54,6 @@ export function workingDaysFrom(fromISO: string, n: number, holidays: ReadonlySe
     if (d.getUTCDay() !== 5 && !holidays.has(iso)) out.push(iso);
     d.setUTCDate(d.getUTCDate() + 1);
   }
-  return out;
-}
-
-export function addCentres(a: CentreHours, b: CentreHours): CentreHours {
-  const out = zeroCentres();
-  for (const c of WORK_CENTRES) out[c] = a[c] + b[c];
   return out;
 }
 
@@ -108,10 +104,17 @@ export function centreStat(centre: WorkCentre, days: readonly CentreDay[]): Cent
   };
 }
 
-/** The tone an efficiency reads in: at the standard, close to it, or short. */
-export function efficiencyBand(e: number | null): "ok" | "warn" | "bad" | null {
-  if (e === null) return null;
-  return e >= 0.9 ? "ok" : e >= 0.75 ? "warn" : "bad";
+/** The tone an efficiency reads in — the Shifts page's own bands. */
+export function efficiencyBand(e: number | null): EfficiencyTone | null {
+  return e === null ? null : efficiencyTone(e);
+}
+
+/** Several centres as one — Fabrication is laser / punch, bending and fin
+ *  folding together. */
+export function combinedStat(stats: readonly CentreStat[]): { workedH: number; earnedH: number; efficiency: number | null } {
+  const workedH = stats.reduce((s, c) => s + c.workedH, 0);
+  const earnedH = stats.reduce((s, c) => s + c.earnedH, 0);
+  return { workedH: round1(workedH), earnedH: round1(earnedH), efficiency: workedH > 0 ? earnedH / workedH : null };
 }
 
 // ------------------------------------------------------------------ coverage
@@ -158,6 +161,7 @@ export function weldingCoverage(wip: readonly CoverageInput[], recentWeldEarned:
 
 export type Stage = "cut" | "weld" | "finish";
 export const STAGES: readonly Stage[] = ["cut", "weld", "finish"];
+export const STAGE_LABEL: Record<Stage, string> = { cut: "Fabrication", weld: "Welding", finish: "Finishing" };
 
 /** One component of one project on one delivery day of the weekly plan. */
 export interface PlanCell {
@@ -233,12 +237,23 @@ export interface LoadDayInput {
   dueH: number;
 }
 
+export type LoadTone = "bad" | "warn" | null;
+
 export interface LoadAhead {
   centre: WorkCentre;
-  days: { dayISO: string; dueH: number; capacityH: number }[];
+  /** Whether the centre has booked man-hours to measure a capacity from —
+   *  without them nothing here can say it is short. */
+  measured: boolean;
+  days: {
+    dayISO: string;
+    dueH: number;
+    capacityH: number;
+    /** Running owed against running capacity at the end of the day: past it, or within 10% of it. */
+    tone: LoadTone;
+  }[];
   /** Σ owed ÷ Σ capacity over the horizon (work can be done early). */
   loadRate: number | null;
-  /** Std-hours already owed (due today or before) beyond today's capacity. */
+  /** The most the running total owed gets ahead of the running capacity in the horizon. */
   behindH: number;
   /** The first day the running total owed passes the running capacity. */
   shortFromISO: string | null;
@@ -248,9 +263,19 @@ export interface LoadAhead {
   shortH: number;
 }
 
+/** Hours owed past what could be worked count from this much on — rounding is not a shortfall. */
+const SHORT_EPS = 0.05;
+
+/** The tone a load rate reads in: over the capacity, or within 10% of it. */
+export function loadTone(owed: number, can: number): LoadTone {
+  if (!(can > 0)) return null;
+  return owed > can + SHORT_EPS ? "bad" : owed > can * 0.9 ? "warn" : null;
+}
+
 /** A centre's plan ahead against what it can do: its capacity a day is the
- *  man-hours it usually has, worked at the pace it has measured. */
-export function loadAhead(centre: WorkCentre, days: readonly string[], due: readonly LoadDayInput[], capacityPerDay: number): LoadAhead {
+ *  man-hours it usually has, worked at the pace it has measured — null when
+ *  it has no booked hours to measure them from. */
+export function loadAhead(centre: WorkCentre, days: readonly string[], due: readonly LoadDayInput[], capacityPerDay: number | null): LoadAhead {
   const byDay = new Map<string, number>();
   for (const d of due) {
     // owed before the horizon is owed now; owed on a Friday or a holiday is
@@ -259,23 +284,35 @@ export function loadAhead(centre: WorkCentre, days: readonly string[], due: read
     if (at === null) continue;
     byDay.set(at, (byDay.get(at) ?? 0) + d.dueH);
   }
+  const measured = capacityPerDay !== null;
+  const perDay = capacityPerDay ?? 0;
   let owed = 0;
   let can = 0;
+  let peak = 0;
   let shortFromISO: string | null = null;
   let clearsISO: string | null = null;
   const rows = days.map((iso) => {
     const dueH = byDay.get(iso) ?? 0;
     owed += dueH;
-    can += capacityPerDay;
-    const short = owed > can + 0.05;
-    if (short && shortFromISO === null) shortFromISO = iso;
-    if (short) clearsISO = null;
-    else if (shortFromISO !== null && clearsISO === null) clearsISO = iso;
-    return { dayISO: iso, dueH: round1(dueH), capacityH: round1(capacityPerDay) };
+    can += perDay;
+    const tone = measured ? loadTone(owed, can) : null;
+    if (measured) {
+      const short = tone === "bad";
+      peak = Math.max(peak, owed - can);
+      if (short && shortFromISO === null) shortFromISO = iso;
+      if (short) clearsISO = null;
+      else if (shortFromISO !== null && clearsISO === null) clearsISO = iso;
+    }
+    return { dayISO: iso, dueH: round1(dueH), capacityH: round1(perDay), tone };
   });
-  const behindH = days.length ? round1(Math.max(0, (byDay.get(days[0]) ?? 0) - capacityPerDay)) : 0;
   // what is owed after the horizon is not this horizon's to clear
-  return { centre, days: rows, loadRate: can > 0 ? owed / can : null, behindH, shortFromISO, clearsISO, shortH: round1(Math.max(0, owed - can)) };
+  return {
+    centre, measured, days: rows,
+    loadRate: can > 0 ? owed / can : null,
+    behindH: shortFromISO === null ? 0 : round1(peak),
+    shortFromISO, clearsISO,
+    shortH: measured ? round1(Math.max(0, owed - can)) : 0,
+  };
 }
 
 // ------------------------------------------------------------------ what to do
@@ -287,7 +324,12 @@ export interface CockpitAction {
   text: string;
   /** Where to act on it. */
   href: string;
+  /** Read off the shift log (a centre's pace, a stop, the attendance) — for
+   *  the people who see the Shifts screen. */
+  floor?: boolean;
 }
+
+export const isFloorAction = (a: CockpitAction) => a.floor === true;
 
 export interface ActionInputs {
   late: readonly LateLine[];
@@ -301,25 +343,23 @@ export interface ActionInputs {
   ddmm: (iso: string) => string;
 }
 
-const STAGE_WORD: Record<Stage, string> = { cut: "Fabrication", weld: "Welding", finish: "finishing" };
-
 /** The few things that need a decision today, worst first — each from a
  *  figure the cockpit shows, never more than six. */
 export function cockpitActions(i: ActionInputs): CockpitAction[] {
   const out: CockpitAction[] = [];
   if (i.late.length > 0) {
     const first = i.late[0];
-    out.push({ tone: "bad", href: "/tracker?view=weekly", text: `${i.lateCount ?? i.late.length} plan line(s) are behind — the oldest, ${first.bom} ${first.item} due ${i.ddmm(first.dayISO)}, is ${first.short} pc short at ${STAGE_WORD[first.stage]}.` });
+    out.push({ tone: "bad", href: "/tracker?view=weekly", text: `${i.lateCount ?? i.late.length} plan line(s) are behind — the oldest, ${first.bom} ${first.item} due ${i.ddmm(first.dayISO)}, is ${first.short} pc short at ${STAGE_LABEL[first.stage]}.` });
   }
   for (const l of i.load) {
     // short at the end of the horizon: the plan does not fit as it stands
     if (l.shortH > 0) out.push({ tone: "bad", href: "/simulate", text: `${WORK_CENTRE_LABEL[l.centre]} owes ${l.shortH} h more than it can work in the next ${l.days.length} working days${l.shortFromISO ? ` (short from ${i.ddmm(l.shortFromISO)})` : ""} — overtime, more people, or move work.` });
   }
-  // behind now but catching up: one line for all of them, the slowest named
-  const catching = i.load.filter((l) => l.shortH === 0 && l.behindH > 0 && l.clearsISO).sort((a, b) => b.behindH - a.behindH);
+  // falling behind in the horizon but catching up in it: one line for all of them, the furthest behind named
+  const catching = i.load.filter((l) => l.shortH === 0 && l.shortFromISO && l.clearsISO).sort((a, b) => b.behindH - a.behindH);
   if (catching.length > 0) {
     const top = catching[0];
-    out.push({ tone: "warn", href: "/simulate", text: `${catching.map((l) => WORK_CENTRE_LABEL[l.centre]).join(", ")} ${catching.length > 1 ? "are" : "is"} behind — ${WORK_CENTRE_LABEL[top.centre]} by ${top.behindH} h, caught up by ${i.ddmm(top.clearsISO!)} at the usual pace.` });
+    out.push({ tone: "warn", href: "/simulate", text: `${catching.map((l) => WORK_CENTRE_LABEL[l.centre]).join(", ")} ${catching.length > 1 ? "are" : "is"} behind — ${WORK_CENTRE_LABEL[top.centre]} by up to ${top.behindH} h from ${i.ddmm(top.shortFromISO!)}, caught up by ${i.ddmm(top.clearsISO!)} at the usual pace.` });
   }
   if (i.coverage.band === "short") {
     const top = i.coverage.byItem[0];
@@ -329,10 +369,43 @@ export function cockpitActions(i: ActionInputs): CockpitAction[] {
   }
   for (const c of i.centres) {
     if (c.days >= 3 && efficiencyBand(c.efficiency) === "bad") {
-      out.push({ tone: "warn", href: "/shifts", text: `${WORK_CENTRE_LABEL[c.centre]} worked at ${Math.round((c.efficiency ?? 0) * 100)}% of the standard over its last ${c.days} recorded days.` });
+      out.push({ tone: "warn", href: "/shifts", floor: true, text: `${WORK_CENTRE_LABEL[c.centre]} worked at ${Math.round((c.efficiency ?? 0) * 100)}% of the standard over its last ${c.days} recorded days.` });
     }
   }
-  if (i.topLoss && i.topLoss.hours > 0) out.push({ tone: "warn", href: "/shifts", text: `${i.topLoss.label} cost ${i.topLoss.hours} machine hours this week — the biggest loss.` });
-  if (!i.todayRecorded) out.push({ tone: "info", href: "/shifts", text: "Today's attendance is not recorded yet — the hours and the efficiency wait for it." });
+  if (i.topLoss && i.topLoss.hours > 0) out.push({ tone: "warn", href: "/shifts", floor: true, text: `${i.topLoss.label} cost ${i.topLoss.hours} machine hours this week — the biggest loss.` });
+  if (!i.todayRecorded) out.push({ tone: "info", href: "/shifts", floor: true, text: "Today's attendance is not recorded yet — the hours and the efficiency wait for it." });
   return out.slice(0, 6);
+}
+
+// ------------------------------------------------------------------ the trend
+
+/** What a day keeps for the trend (KpiSnapshot.data). */
+export interface KpiSnapshotData {
+  late: number | null;
+  adherence: Partial<Record<Stage, number | null>>;
+  coverageDays: number | null;
+  efficiency: Partial<Record<WorkCentre, number | null>>;
+  unplannedH: number | null;
+}
+export interface KpiSnapshotPoint extends KpiSnapshotData {
+  dateISO: string;
+}
+
+const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const keyed = <K extends string>(v: unknown, keys: readonly K[]): Partial<Record<K, number | null>> => {
+  const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  return Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, numOrNull(o[k])])) as Partial<Record<K, number | null>>;
+};
+
+/** A stored day read back — a field it does not carry (an older shape) reads
+ *  as unknown, never as zero. */
+export function parseKpiSnapshot(json: unknown): KpiSnapshotData {
+  const o = json && typeof json === "object" ? (json as Record<string, unknown>) : {};
+  return {
+    late: numOrNull(o.late),
+    adherence: keyed(o.adherence, STAGES),
+    coverageDays: numOrNull(o.coverageDays),
+    efficiency: keyed(o.efficiency, WORK_CENTRES),
+    unplannedH: numOrNull(o.unplannedH),
+  };
 }
