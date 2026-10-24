@@ -49,6 +49,10 @@ export async function saveShiftRoster(fd: FormData): Promise<ShiftActionResult> 
   }
   if (!Array.isArray(parsed) || parsed.length === 0) return { ok: false, error: "There is nobody on the list yet — add workers first." };
 
+  // a worker the page still shows as not set is never saved as absent
+  const unset = (parsed as Record<string, unknown>[]).filter((raw) => raw?.recorded === false).length;
+  if (unset > 0) return { ok: false, error: `${unset} worker(s) are not set yet — pick Day, Night or Absent for everyone, then save.` };
+
   const shiftHours = await getShiftHours();
   const lines: Line[] = [];
   for (const raw of parsed as Record<string, unknown>[]) {

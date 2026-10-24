@@ -675,8 +675,9 @@ model MachineItemTime {
 
 // One worker's day in one department, as the supervisor records it: present
 // or not, which shift (day or night), overtime on the day shift, and the machine they
-// were on. A worker with no row for a day is taken as present on the default
-// shift with no overtime — the supervisor only records the exceptions. The
+// were on. A worker with no row for a day is NOT SET yet — neither present nor
+// absent; the Shifts tab saves a department's day only once every worker on it
+// has a row (S9 day 07:00–16:00, S11 night 19:00–07:00, or absent). The
 // day's man-hours per department are summed into DeptDayHours from here.
 model ShiftEntry {
   id         Int      @id @default(autoincrement())
@@ -820,8 +821,9 @@ model Worker {
 
   depts         String    @default("") // CSV of section codes (lib/domain/tanks.ts WORKER_SECTIONS)
   active        Boolean   @default(true) // inactive workers stay on old records, leave the dropdowns
-  // On vacation until this day (inclusive): absent on the shift log by default
-  // and out of the dropdowns until then. Null = at work.
+  // On vacation until this day (inclusive): out of the dropdowns until then,
+  // and kept absent when the shift log fills today's not-set workers in one
+  // click. Null = at work.
   vacationUntil DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

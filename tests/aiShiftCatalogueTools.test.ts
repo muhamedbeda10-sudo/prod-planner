@@ -35,7 +35,7 @@ vi.mock("@/lib/server/consumables", () => ({ getCustomDepartments: async () => [
 
 import type { User } from "@prisma/client";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
-import { clearShiftDayTool, planShiftDay, recordShiftDayTool, restoreShiftDayTool } from "@/lib/server/ai/tools/shifts";
+import { clearShiftDayTool, getShiftDayTool, planShiftDay, recordShiftDayTool, restoreShiftDayTool } from "@/lib/server/ai/tools/shifts";
 import {
   correctPowderScrapTool, deleteConsumableLimitTool, deletePowderScrapTool, recordPowderScrapTool, restorePowderScrapTool, saveCatalogueItemTool, saveConsumableLimitTool,
 } from "@/lib/server/ai/tools/catalogue";
@@ -55,9 +55,9 @@ const parsed = <I,>(tool: Parameters<typeof checkToolInput<I>>[0], raw: unknown)
 
 const line = (workerId: number, empId: string, name: string, o: Record<string, unknown> = {}) => ({
   workerId, empId, name, jobTitle: null, dept: "Welding", sections: ["WeldingTX"], sectionLabels: ["Welding TX"],
-  onVacation: false, present: true, shift: "S9", overtimeH: 0, note: "", recorded: false, ...o,
+  onVacation: false, present: false, shift: "S9", overtimeH: 0, note: "", recorded: false, ...o,
 });
-const roster = (lines = [line(1, "100", "Ahmed"), line(2, "101", "Mohamed"), line(3, "102", "Sayed", { onVacation: true, present: false }), line(9, "200", "Ali", { dept: "Cut" })]) => ({
+const roster = (lines = [line(1, "100", "Ahmed"), line(2, "101", "Mohamed"), line(3, "102", "Sayed", { onVacation: true }), line(9, "200", "Ali", { dept: "Cut" })]) => ({
   dateISO: "2026-10-12", lines, totals: null, savedDepts: [], recordedBy: null, capacityMh: {}, shiftHours: { short: 8, long: 11, overtime: 3 },
 });
 const EMPTY = { rows: [], dayHours: [] };
@@ -81,19 +81,22 @@ describe("the shift roster", () => {
     expect(await recordShiftDayTool.describe(later, ctx)).toEqual({ error: expect.stringContaining("has not come yet") });
   });
 
-  it("saves the department's day whole: everyone's shift for the ones present, single workers on top", async () => {
+  it("saves the department's day whole: the rest of the not-set workers, single workers on top, vacation absent", async () => {
     h.perms.add("shifts.welding");
-    const input = parsed(recordShiftDayTool, { date: "2026-10-12", dept: "Welding", everyone: { shift: "S11" }, workers: [{ worker: "101", present: false }] });
+    const input = parsed(recordShiftDayTool, { date: "2026-10-12", dept: "Welding", rest: "night", workers: [{ worker: "101", present: false }] });
     const p = await recordShiftDayTool.describe(input, ctx);
     expect(p).toMatchObject({
       title: "Shift roster: Welding 2026-10-12",
       changes: [
-        { label: "100 Ahmed", before: "8 h", after: "11 h" },
-        { label: "101 Mohamed", before: "8 h", after: "absent" },
-        { label: "Welding man-hours", before: "16 (2/3 present)", after: "11 (1/3 present)" },
+        { label: "101 Mohamed", before: "not set", after: "absent" },
+        // kept absent by his vacation, not by what was asked: named on the card
+        { label: "102 Sayed", before: "not set", after: "absent" },
+        { label: "Welding man-hours", before: "0 (0 day shift, 0 night shift, 0 absent, 3 not set)", after: "11 (0 day shift, 1 night shift, 2 absent)" },
       ],
     });
-    expect((p as { summary: string }).summary).toContain("and 1 more with no record yet");
+    const summary = (p as { summary: string }).summary;
+    expect(summary).toContain("2 worker(s) change, and the 1 not set yet: 1 on the night shift");
+    expect(summary).toContain("0 day shift, 1 night shift, 2 absent; 11 man-hours");
     const out = await recordShiftDayTool.execute(input, ctx);
     expect(JSON.parse(String(fdOf(h.shifts.saveShiftRoster).get("lines")))).toEqual([
       { dept: "Welding", workerId: 1, present: true, shift: "S11", overtimeH: 0, note: "" },
@@ -101,6 +104,67 @@ describe("the shift roster", () => {
       { dept: "Welding", workerId: 3, present: false, shift: "S9", overtimeH: 0, note: "" },
     ]);
     expect(out.undo).toEqual({ tool: "restore_shift_day", input: { date: "2026-10-12", depts: ["Welding"], state: JSON.stringify(EMPTY) } });
+  });
+
+  it("refuses a day that would leave anyone not set — it never guesses absent", async () => {
+    h.perms.add("shifts.welding");
+    const input = parsed(recordShiftDayTool, { date: "2026-10-12", dept: "Welding", workers: [{ worker: "100", shift: "S11" }] });
+    expect(await recordShiftDayTool.describe(input, ctx)).toEqual({ error: expect.stringContaining("2 worker(s) have no record for the day yet (101 Mohamed, 102 Sayed)") });
+    expect(h.shifts.saveShiftRoster).not.toHaveBeenCalled();
+    // `everyone` reaches only the ones present, so it does not decide them either
+    const everyone = parsed(recordShiftDayTool, { date: "2026-10-12", dept: "Welding", everyone: { shift: "S11" } });
+    expect(await recordShiftDayTool.describe(everyone, ctx)).toEqual({ error: expect.stringContaining("3 worker(s) have no record") });
+  });
+
+  it("a shift named for a worker means he came; the rest on the day shift keep no overtime; vacation is listed, not folded in", () => {
+    const lines = roster().lines.filter((l) => l.dept === "Welding") as Parameters<typeof planShiftDay>[0];
+    const plan = planShiftDay(lines, { rest: "day", workers: [{ worker: "100", shift: "S11" }] });
+    expect(Array.isArray(plan) && plan.map((p) => [p.line.empId, p.after.present, p.after.shift, p.after.overtimeH, p.byRest])).toEqual([
+      ["100", true, "S11", 0, false],
+      ["101", true, "S9", 0, true],
+      // on vacation: kept absent, and shown on the card by name
+      ["102", false, "S9", 0, false],
+    ]);
+  });
+
+  it("`rest` reaches only the workers not set: a recorded one keeps his day, overtime and all", async () => {
+    h.perms.add("shifts.welding");
+    h.roster.mockResolvedValue(roster([line(1, "100", "Ahmed", { recorded: true, present: true, overtimeH: 3 }), line(2, "101", "Mohamed")]));
+    const lines = (await h.roster()).lines as Parameters<typeof planShiftDay>[0];
+    const plan = planShiftDay(lines, { rest: "absent" });
+    expect(Array.isArray(plan) && plan.map((p) => [p.line.empId, p.after.present, p.after.shift, p.after.overtimeH, p.byRest])).toEqual([
+      ["100", true, "S9", 3, false],
+      ["101", false, "S9", 0, true],
+    ]);
+    const input = parsed(recordShiftDayTool, { date: "2026-10-12", dept: "Welding", rest: "absent" });
+    expect(typeof recordShiftDayTool.risk === "function" && recordShiftDayTool.risk(input)).toBe("high");
+    const p = await recordShiftDayTool.describe(input, ctx);
+    expect((p as { summary: string }).summary).toContain("0 worker(s) change, and the 1 not set yet: 1 absent — 1 day shift, 0 night shift, 1 absent; 11 man-hours");
+  });
+
+  it("naming a shift for a worker recorded absent puts him on it", () => {
+    const lines = [line(1, "100", "Ahmed", { recorded: true })] as Parameters<typeof planShiftDay>[0];
+    const plan = planShiftDay(lines, { workers: [{ worker: "100", shift: "S11" }] });
+    expect(Array.isArray(plan) && plan[0].after).toMatchObject({ present: true, shift: "S11" });
+  });
+
+  it("refuses overtime that would not land on the day shift, rather than dropping it", () => {
+    const lines = roster().lines.filter((l) => l.dept === "Welding") as Parameters<typeof planShiftDay>[0];
+    expect(planShiftDay(lines, { rest: "night", workers: [{ worker: "100", overtimeH: 3 }] })).toEqual({ error: expect.stringContaining("100 Ahmed would not be on the day shift") });
+  });
+
+  it("reads the day as the tab shows it: day, night, absent and not set", async () => {
+    h.roster.mockResolvedValue(roster([
+      line(1, "100", "Ahmed", { recorded: true, present: true, overtimeH: 3 }),
+      line(2, "101", "Mohamed", { recorded: true, present: true, shift: "S11" }),
+      line(3, "102", "Sayed", { recorded: true }),
+      line(4, "103", "Ali"),
+    ]));
+    const out = await getShiftDayTool.run({ date: "2026-10-12", depts: ["Welding"] }, ctx);
+    const day = JSON.parse((out as { text: string }).text).departments[0];
+    expect(day).toMatchObject({ dept: "Welding", workers: 4, dayShift: 1, nightShift: 1, absent: 1, notSet: 1, manHours: 22, overtimeH: 3 });
+    expect(day.columns).toEqual(["badge", "name", "sections", "attendance", "overtimeH", "note", "onVacation"]);
+    expect(day.rows.map((r: unknown[]) => r[3])).toEqual(["day", "night", "absent", "unset"]);
   });
 
   it("rejects overtime on the night shift", () => {
@@ -118,7 +182,7 @@ describe("the shift roster", () => {
 
   it("a day that reads so already, all recorded, is not proposed", async () => {
     h.perms.add("shifts.welding");
-    h.roster.mockResolvedValue(roster([line(1, "100", "Ahmed", { recorded: true, shift: "S11" })]));
+    h.roster.mockResolvedValue(roster([line(1, "100", "Ahmed", { recorded: true, present: true, shift: "S11" })]));
     const input = parsed(recordShiftDayTool, { date: "2026-10-12", dept: "Welding", workers: [{ worker: "100", shift: "S11" }] });
     expect(await recordShiftDayTool.describe(input, ctx)).toEqual({ error: "Welding's day 2026-10-12 reads so already." });
   });

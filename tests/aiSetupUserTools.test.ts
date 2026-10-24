@@ -119,7 +119,7 @@ describe("the shift hours", () => {
   it("are undone by the hours they were", async () => {
     h.prisma.settings.findUnique.mockResolvedValue({ shiftShortH: 9, shiftLongH: 11, overtimeH: 3, tankTracking: false, machinePlanning: false });
     const input = parsed(setShiftHoursTool, { longH: 12 });
-    expect(await setShiftHoursTool.describe(input, admin)).toMatchObject({ changes: [{ label: "The long shift (S11)", before: "11 h", after: "12 h" }] });
+    expect(await setShiftHoursTool.describe(input, admin)).toMatchObject({ changes: [{ label: "The night shift (S11)", before: "11 h", after: "12 h" }] });
     const out = await setShiftHoursTool.execute(input, admin);
     expect(Object.fromEntries(fdOf(h.settings.saveShiftHours).entries())).toEqual({ shiftShortH: "9", shiftLongH: "12", overtimeH: "3" });
     expect(out.undo).toEqual({ tool: "set_shift_hours", input: { shortH: 9, longH: 11, overtimeH: 3 } });

@@ -15,9 +15,9 @@ export function ShiftsWorkspace({
   const [tab, setTab] = useState<WorkspaceTab>("attendance");
 
   return (
-    <section className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-surface shadow-sm">
-      <div className="flex h-full min-h-0 flex-col">
-        <nav className="tab-strip no-scrollbar flex shrink-0 items-center gap-1 px-3" aria-label="Shift workspace">
+    <section className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-surface shadow-sm print:overflow-visible print:border-0 print:shadow-none">
+      <div className="flex h-full min-h-0 flex-col print:h-auto">
+        <nav className="tab-strip no-scrollbar flex shrink-0 items-center gap-1 px-3 no-print" aria-label="Shift workspace">
           <button type="button" className={`tab ${tab === "attendance" ? "tab-active" : ""}`} onClick={() => setTab("attendance")}>
             <ClipboardCheck size={16} aria-hidden />
             Daily attendance
@@ -27,7 +27,7 @@ export function ShiftsWorkspace({
             Productivity
           </button>
         </nav>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 md:p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-pb-24 p-3 md:p-4 print:overflow-visible print:p-0">
           {tab === "attendance" ? attendance : productivity}
         </div>
       </div>

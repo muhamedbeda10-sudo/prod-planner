@@ -35,9 +35,9 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
   const editableDepts = ROSTER_DEPTS.filter((d) => hasPerm(me, shiftPermKey(d)));
 
   return (
-    <div className="flex h-[calc(100dvh-5rem)] min-h-0 flex-col gap-3 overflow-hidden">
+    <div className="flex h-[calc(100dvh-5rem)] min-h-0 flex-col gap-3 overflow-hidden print:h-auto print:overflow-visible">
       <RememberLastVisit storageKey="shifts:last" />
-      <div className="shrink-0 space-y-2">
+      <div className="shrink-0 space-y-2 no-print">
         <PageHeader title="🕘 Shift log" />
         <UrlDateSlicer
           encoding="day" mode="day" from={day} to={day} min={addDaysISO(today, -60)} max={today} today={today}

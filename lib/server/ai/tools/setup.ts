@@ -633,19 +633,19 @@ interface ShiftHoursInput {
 }
 
 const SHIFT_H = (what: string) => ({ type: "number", minimum: 0, maximum: 24, description: what }) as const;
-const SHIFT_LABELS = [["shortH", "The short shift (S9)"], ["longH", "The long shift (S11)"], ["overtimeH", "The +OT button"]] as const;
+const SHIFT_LABELS = [["shortH", "The day shift (S9)"], ["longH", "The night shift (S11)"], ["overtimeH", "The day shift's overtime"]] as const;
 
 export const setShiftHoursTool: WriteTool<ShiftHoursInput> = {
   kind: "write",
   name: "set_shift_hours",
   title: "Set the shift hours",
-  description: "Set the hours the plant's two shifts are worth and what the roster's +OT button adds (Settings) — every man-hour the app counts is measured with them, the days already recorded included.",
+  description: "Set the net hours the plant's day and night shifts are worth and what the day shift's overtime adds (Settings) — every man-hour the app counts is measured with them, the days already recorded included.",
   area: "setup",
   risk: "high",
   tabs: SETTINGS_TABS,
   schema: {
     type: "object",
-    properties: { shortH: SHIFT_H("Hours of the short shift (S9)."), longH: SHIFT_H("Hours of the long shift (S11)."), overtimeH: SHIFT_H("Hours the +OT button adds.") },
+    properties: { shortH: SHIFT_H("Net hours of the day shift (S9)."), longH: SHIFT_H("Net hours of the night shift (S11)."), overtimeH: SHIFT_H("Hours the day shift's overtime adds.") },
     additionalProperties: false,
   },
   parse: (r) => (Object.keys(r).length ? (r as ShiftHoursInput) : "Say which hours to set."),
@@ -668,7 +668,7 @@ export const setShiftHoursTool: WriteTool<ShiftHoursInput> = {
     const next = { shortH: i.shortH ?? s.shortH, longH: i.longH ?? s.longH, overtimeH: i.overtimeH ?? s.overtimeH };
     const r = await saveShiftHours(formOf({ shiftShortH: next.shortH, shiftLongH: next.longH, overtimeH: next.overtimeH }));
     return r.ok
-      ? { ok: true, message: `The shifts are ${round2(next.shortH)} h and ${round2(next.longH)} h, +OT ${round2(next.overtimeH)} h.`, undo: { tool: "set_shift_hours", input: { shortH: s.shortH, longH: s.longH, overtimeH: s.overtimeH } } }
+      ? { ok: true, message: `The day shift is ${round2(next.shortH)} h, the night shift ${round2(next.longH)} h, overtime ${round2(next.overtimeH)} h.`, undo: { tool: "set_shift_hours", input: { shortH: s.shortH, longH: s.longH, overtimeH: s.overtimeH } } }
       : { ok: false, error: r.error };
   },
 };

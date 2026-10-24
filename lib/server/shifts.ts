@@ -1,7 +1,7 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import { DEFAULT_SHIFT, ROSTER_DEPTS, dayTotals, isShiftCode, lineHours, type DayTotals, type RosterDept, type ShiftCode, type ShiftHours } from "@/lib/domain/shifts";
 import { sectionDept, sectionLabel, type WorkerSection } from "@/lib/domain/tanks";
 import { getShiftHours } from "./data";
@@ -23,7 +23,9 @@ export interface ShiftLineDTO {
   /** The sections of that department he is registered in — the roster's filter. */
   sections: WorkerSection[];
   sectionLabels: string[];
-  /** Away on vacation on this day as of today — absent unless the supervisor says otherwise. */
+  /** Away on vacation today, on today's roster only: the workers list keeps
+   *  when a vacation ends, not when it began, so an earlier day cannot tell.
+   *  "Set the rest" leaves such a worker absent. */
   onVacation: boolean;
   present: boolean;
   shift: ShiftCode;
@@ -63,13 +65,14 @@ export async function getShiftRoster(dateISO: string): Promise<ShiftRosterData> 
   const retired = extra.length ? await prisma.worker.findMany({ where: { id: { in: [...new Set(extra.map((r) => r.workerId))] } } }) : [];
   const retiredById = new Map(retired.map((w) => [w.id, w]));
 
+  const isToday = dateISO === factoryDayISO(new Date());
   const lines: ShiftLineDTO[] = [];
   const build = (dept: RosterDept, w: { id: number; empId: string; name: string; jobTitle: string | null; sections: WorkerSection[]; onVacation: boolean }) => {
     const r = byKey.get(`${dept}|${w.id}`);
     const sections = w.sections.filter((c) => (sectionDept(c) as string) === dept);
     lines.push({
       workerId: w.id, empId: w.empId, name: w.name, jobTitle: w.jobTitle, dept,
-      sections, sectionLabels: sections.map(sectionLabel), onVacation: w.onVacation,
+      sections, sectionLabels: sections.map(sectionLabel), onVacation: isToday && w.onVacation,
       // A worker belongs to the master roster, not automatically to the day shift.
       // Until the supervisor records this day, leave the worker unassigned.
       present: r?.present ?? false,
@@ -113,15 +116,42 @@ export async function syncDeptDayHours(tx: Prisma.TransactionClient, date: Date,
   return hours;
 }
 
+export interface ShiftHistoryDay {
+  dateISO: string;
+  hours: number;
+  people: number;
+  /** Present on the day shift and on the night shift — from the roster's rows. */
+  day: number;
+  night: number;
+}
+
 /** The last days recorded, newest first, with the man-hours of the given
- *  departments summed per day — the strip under the roster. */
-export async function getShiftHistory(depts: readonly RosterDept[], days = 14): Promise<{ dateISO: string; hours: number; people: number }[]> {
+ *  departments summed per day and who came on which shift — the strip under
+ *  the roster. */
+export async function getShiftHistory(depts: readonly RosterDept[], days = 14): Promise<ShiftHistoryDay[]> {
   const rows = await prisma.deptDayHours.findMany({ where: { dept: { in: [...depts] } }, orderBy: { date: "desc" }, take: days * depts.length });
-  const byDay = new Map<string, { hours: number; people: number }>();
+  const byDay = new Map<string, { hours: number; people: number; day: number; night: number; date: Date }>();
   for (const r of rows) {
     const iso = toISODate(r.date);
-    const cur = byDay.get(iso) ?? { hours: 0, people: 0 };
-    byDay.set(iso, { hours: Math.round((cur.hours + r.hours) * 10) / 10, people: cur.people + (r.people ?? 0) });
+    const cur = byDay.get(iso) ?? { hours: 0, people: 0, day: 0, night: 0, date: r.date };
+    byDay.set(iso, { ...cur, hours: Math.round((cur.hours + r.hours) * 10) / 10, people: cur.people + (r.people ?? 0) });
   }
-  return [...byDay.entries()].slice(0, days).map(([dateISO, v]) => ({ dateISO, ...v }));
+  const picked = [...byDay.entries()].slice(0, days);
+  if (picked.length > 0) {
+    const split = await prisma.shiftEntry.groupBy({
+      by: ["date", "shift"],
+      where: { dept: { in: [...depts] }, present: true, date: { in: picked.map(([, v]) => v.date) } },
+      _count: { _all: true },
+    });
+    for (const s of split) {
+      const cur = byDay.get(toISODate(s.date));
+      if (!cur) continue;
+      if (s.shift === "S11") cur.night += s._count._all;
+      else cur.day += s._count._all;
+    }
+  }
+  return picked.map(([dateISO]) => {
+    const { hours, people, day, night } = byDay.get(dateISO)!;
+    return { dateISO, hours, people, day, night };
+  });
 }

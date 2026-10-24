@@ -3,7 +3,7 @@ import { hasPerm } from "@/lib/server/auth";
 import { getShiftRoster, type ShiftLineDTO } from "@/lib/server/shifts";
 import { clearShiftDay, saveShiftRoster } from "@/app/shifts/actions";
 import { readShiftState, restoreShiftState, type ShiftState } from "@/lib/server/rowSnapshots";
-import { ROSTER_DEPTS, SHIFT_CODES, dayTotals, hoursOfShift, isRosterDept, type RosterDept, type ShiftCode, type ShiftHours } from "@/lib/domain/shifts";
+import { ATTENDANCES, ATTENDANCE_TIME, OVERTIME_TIME, ROSTER_DEPTS, SHIFT_CODES, UNSET_LINE, attendanceLine, attendanceOf, hoursOfShift, isAttendance, isRosterDept, shiftSplit, type Attendance, type RosterDept, type ShiftCode, type ShiftHours, type ShiftSplit } from "@/lib/domain/shifts";
 import { PERMISSIONS, shiftPermKey } from "@/lib/domain/permissions";
 import { WORKER_DEPT_LABEL, normalizeEmpId } from "@/lib/domain/tanks";
 import { formOf, type ReadTool, type WriteTool } from "./types";
@@ -14,16 +14,18 @@ import { formOf, type ReadTool, type WriteTool } from "./types";
 // actions, under the person's own shift-log permission for each department.
 //
 // A department's day is saved WHOLE, as the tab saves it: every worker of the
-// department gets a row, the ones not mentioned as the tab shows them
-// (recorded, or present on the usual shift — absent while on vacation), so
-// the day's man-hours stay a plain sum. Undone by putting the day back
-// exactly as it was, its man-hours figure included.
+// department gets a row, so the day's man-hours stay a plain sum. A worker
+// the day has no record for yet is "not set" on the tab, and the tab will not
+// save while anyone is — so neither does the assistant: it names them, or
+// says what `rest` they get (day, night or absent; vacation is absent), or
+// the change is refused. Undone by putting the day back exactly as it was,
+// its man-hours figure included.
 
 const TABS = ["shifts"] as const;
 const DAY = { type: "string", format: "date" } as const;
 const DEPT = { type: "string", enum: [...ROSTER_DEPTS], description: "Cut = Fabrication. LV panels: Punching, Bending, WeldingLV, PaintingLV." } as const;
-const SHIFT = { type: "string", enum: [...SHIFT_CODES], description: "S9 = day shift 07:00–16:00, S11 = night shift 19:00–07:00. Both include a one-hour break." } as const;
-const OVERTIME = { type: "number", minimum: 0, maximum: 12, description: "Day shift only: the fixed 16:00–19:00 overtime period. Use the configured overtime hours shown by get_shift_day." } as const;
+const SHIFT = { type: "string", enum: [...SHIFT_CODES], description: `S9 = day shift ${ATTENDANCE_TIME.day}, S11 = night shift ${ATTENDANCE_TIME.night}. Both include a one-hour break.` } as const;
+const OVERTIME = { type: "number", minimum: 0, maximum: 12, description: `Day shift only: the fixed ${OVERTIME_TIME} overtime period. Use the configured overtime hours shown by get_shift_day.` } as const;
 const MAX_STATE = 200_000;
 
 const label = (d: RosterDept) => WORKER_DEPT_LABEL[d];
@@ -40,14 +42,16 @@ interface DayLine {
   note: string | null;
 }
 
-function lineText(l: DayLine, h: ShiftHours): string {
+function lineText(l: DayLine | null, h: ShiftHours): string {
+  if (!l) return "not set";
   const note = l.note ? ` · “${l.note}”` : "";
   if (!l.present) return `absent${note}`;
   return `${hoursOfShift(l.shift, h)} h${l.shift === "S9" && l.overtimeH > 0 ? ` + ${l.overtimeH} h OT` : ""}${note}`;
 }
 
-const sameLine = (a: DayLine, b: DayLine) => a.present === b.present && a.shift === b.shift && a.overtimeH === b.overtimeH && (a.note ?? null) === (b.note ?? null);
-const asDayLine = (l: ShiftLineDTO): DayLine => ({ present: l.present, shift: l.shift, overtimeH: l.overtimeH, note: l.note.trim() || null });
+const sameLine = (a: DayLine | null, b: DayLine | null): boolean => !!a && !!b && a.present === b.present && a.shift === b.shift && a.overtimeH === b.overtimeH && (a.note ?? null) === (b.note ?? null);
+const asDayLine = (l: ShiftLineDTO): DayLine | null => (l.recorded ? { present: l.present, shift: l.shift, overtimeH: l.overtimeH, note: l.note.trim() || null } : null);
+const NOBODY: DayLine = { ...UNSET_LINE, note: null };
 
 /** The worker a reference names on a department's day: the badge number,
  *  or the exact name when no badge matches. */
@@ -73,7 +77,7 @@ export const getShiftDayTool: ReadTool<DayInput> = {
   name: "get_shift_day",
   title: "Reading the shift roster",
   description:
-    "One day of the shift roster, as the Shifts tab shows it: per department, every worker on its list (badge, name, sections) present or absent, the shift (S9 / S11), overtime and note — whether the department's day was saved, and its man-hours. A worker with no record reads as the tab shows him: present on the usual shift, or absent while on vacation. Read it before you prepare record_shift_day.",
+    `One day of the shift roster, as the Shifts tab shows it: per department, who came on the day shift (S9, ${ATTENDANCE_TIME.day}) and who on the night shift (S11, ${ATTENDANCE_TIME.night}), who was absent and who is not set yet, with each worker on its list (badge, name, sections, attendance day / night / absent / unset, overtime and note), whether the department's day was saved, and its man-hours. A worker whose attendance is "unset" is NOT SET: the day has no record for him yet, and the department's day cannot be saved until he is set. Read it before you prepare record_shift_day.`,
   schema: {
     type: "object",
     properties: { date: DAY, depts: { type: "array", minItems: 1, maxItems: ROSTER_DEPTS.length, items: DEPT, description: "The departments to read — all of them when left out." } },
@@ -92,18 +96,21 @@ export const getShiftDayTool: ReadTool<DayInput> = {
         shiftHours: { S9: r.shiftHours.short, S11: r.shiftHours.long, usualOvertime: r.shiftHours.overtime },
         departments: depts.map((d) => {
           const lines = r.lines.filter((l) => l.dept === d);
-          const t = dayTotals(lines, r.shiftHours);
+          const s = shiftSplit(lines, r.shiftHours);
           return {
             dept: d,
             name: label(d),
             saved: r.savedDepts.includes(d),
-            workers: t.workers,
-            present: t.present,
-            manHours: t.hours,
-            overtimeH: t.overtimeH,
+            workers: s.workers,
+            dayShift: s.day.people,
+            nightShift: s.night.people,
+            absent: s.absent,
+            notSet: s.unset,
+            manHours: s.hours,
+            overtimeH: s.day.overtimeH,
             capacityMhPerDay: r.capacityMh[d] ?? null,
-            columns: ["badge", "name", "sections", "present", "shift", "overtimeH", "note", "recorded", "onVacation"],
-            rows: lines.map((l) => [l.empId, l.name, l.sectionLabels.join(", "), l.present, l.shift, l.overtimeH, l.note || null, l.recorded, l.onVacation]),
+            columns: ["badge", "name", "sections", "attendance", "overtimeH", "note", "onVacation"],
+            rows: lines.map((l) => [l.empId, l.name, l.sectionLabels.join(", "), attendanceOf(l), l.overtimeH, l.note || null, l.onVacation]),
           };
         }),
         recordedBy: r.recordedBy,
@@ -127,18 +134,24 @@ interface RecordInput {
   dept: RosterDept;
   everyone?: { shift?: ShiftCode; overtimeH?: number };
   workers?: WorkerChange[];
+  rest?: Attendance;
 }
 
 interface PlannedLine {
   line: ShiftLineDTO;
-  before: DayLine;
+  /** null while the day has no record for this worker ("not set"). */
+  before: DayLine | null;
   after: DayLine;
+  /** Set by `rest`, not named on its own. */
+  byRest: boolean;
 }
 
 /** The department's day as it will be saved: every worker on it, the changes
- *  asked for applied — the whole department's first, each worker's on top. A
- *  shift or overtime for "everyone" goes to the ones present. */
-export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput, "everyone" | "workers">): PlannedLine[] | { error: string } {
+ *  asked for applied — `rest` for the ones not set yet and not named, then
+ *  "everyone" for the ones present, then each worker's own on top. Naming a
+ *  shift for a worker means he came, unless `present: false` says otherwise.
+ *  A worker still not set after all that refuses the day, as the tab does. */
+export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput, "everyone" | "workers" | "rest">): PlannedLine[] | { error: string } {
   const asked = new Map<number, WorkerChange>();
   for (const w of i.workers ?? []) {
     const hit = findLine(lines, w.worker);
@@ -148,23 +161,49 @@ export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput
     asked.set(hit.workerId, w);
   }
   const invalidOvertime = [i.everyone, ...(i.workers ?? [])].find((change) => change?.shift === "S11" && (change.overtimeH ?? 0) > 0);
-  if (invalidOvertime) return { error: "Overtime is available to the day shift only (16:00–19:00)." };
-  return lines.map((line) => {
+  if (invalidOvertime) return { error: `Overtime is available to the day shift only (${OVERTIME_TIME}).` };
+  const unset: ShiftLineDTO[] = [];
+  const dropsOvertime: ShiftLineDTO[] = [];
+  const plan = lines.map((line): PlannedLine => {
     const before = asDayLine(line);
     const w = asked.get(line.workerId);
-    const present = w?.present ?? before.present;
+    const decided = w?.present !== undefined || w?.shift !== undefined;
+    const useRest = !before && !decided && !!i.rest;
+    const base: DayLine | null = before ?? (useRest ? { ...attendanceLine(i.rest!, { overtimeH: 0 }, line.onVacation), note: null } : null);
+    // named on his own (a note, overtime), or kept absent by a vacation the
+    // person did not ask about, he is listed on the card like the others
+    const byRest = useRest && !w && !(line.onVacation && i.rest !== "absent");
+    if (!base && !decided) unset.push(line);
+    const from = base ?? NOBODY;
+    const present = w?.present ?? (w?.shift !== undefined ? true : from.present);
     const all = present ? i.everyone : undefined;
-    const shift = w?.shift ?? all?.shift ?? before.shift;
-    const requestedOvertime = halfHour(w?.overtimeH ?? all?.overtimeH ?? before.overtimeH);
+    const shift = w?.shift ?? all?.shift ?? from.shift;
+    const requestedOvertime = halfHour(w?.overtimeH ?? all?.overtimeH ?? from.overtimeH);
     const after: DayLine = {
       present,
       shift,
       overtimeH: present && shift === "S9" ? requestedOvertime : 0,
-      note: w && w.note !== undefined ? w.note?.trim() || null : before.note,
+      note: w && w.note !== undefined ? w.note?.trim() || null : from.note,
     };
-    return { line, before, after };
+    if ((w?.overtimeH ?? 0) > 0 && after.overtimeH === 0) dropsOvertime.push(line);
+    return { line, before, after, byRest };
   });
+  if (dropsOvertime.length > 0) {
+    return { error: `Overtime is available to the day shift only (${OVERTIME_TIME}) — ${dropsOvertime.map((l) => `${l.empId} ${l.name}`).join(", ")} would not be on the day shift.` };
+  }
+  if (unset.length > 0) {
+    const names = unset.slice(0, 5).map((l) => `${l.empId} ${l.name}`).join(", ");
+    return {
+      error:
+        `${unset.length} worker(s) have no record for the day yet (${names}${unset.length > 5 ? ", …" : ""}) — ` +
+        "the tab saves a day only when everyone is set. Ask which shift they came on, then name each with present or shift, or give `rest` (day, night or absent) for all of them.",
+    };
+  }
+  return plan;
 }
+
+/** "12 day shift, 3 night shift, 1 absent" — and the not set, while any are. */
+const splitText = (s: ShiftSplit) => `${s.day.people} day shift, ${s.night.people} night shift, ${s.absent} absent${s.unset ? `, ${s.unset} not set` : ""}`;
 
 async function deptDay(dateISO: string, dept: RosterDept) {
   const roster = await getShiftRoster(dateISO);
@@ -178,10 +217,10 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
   name: "record_shift_day",
   title: "Record a day on the shift roster",
   description:
-    "Record one department's day on the shift roster, as the Shifts tab does: who was absent, who worked the night shift, day-shift overtime and notes. `everyone` applies a shift or overtime to every worker present in the department; `workers` sets single workers (badge number or exact name) on top of that. The department's day is saved whole — workers not mentioned are recorded as the tab shows them (read it first with get_shift_day). No future days.",
+    `Record one department's day on the shift roster, as the Shifts tab does: who came on the day shift (S9, ${ATTENDANCE_TIME.day}) and who on the night shift (S11, ${ATTENDANCE_TIME.night}), who was absent, day-shift overtime (${OVERTIME_TIME}) and notes. \`workers\` sets single workers (badge number or exact name) — a shift named for a worker means he came. \`rest\` sets every worker the day has no record for yet and who is not named (day, night or absent; one on vacation is absent). \`everyone\` applies a shift or overtime to every worker present. The department's day is saved whole and only when nobody is left not set — read it first with get_shift_day, and never guess \`rest\`: ask when the person did not say. No future days.`,
   area: "data",
   // a few workers marked is small; the whole department, or many, is not
-  risk: (i) => (!i.everyone && (i.workers?.length ?? 0) <= 3 ? "low" : "high"),
+  risk: (i) => (!i.everyone && !i.rest && (i.workers?.length ?? 0) <= 3 ? "low" : "high"),
   tabs: TABS,
   schema: {
     type: "object",
@@ -192,7 +231,12 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
         type: "object",
         properties: { shift: SHIFT, overtimeH: OVERTIME },
         additionalProperties: false,
-        description: "For every worker present in the department — e.g. the whole department on the long shift, or 3 hours' overtime each.",
+        description: "For every worker present in the department — e.g. the whole department on the night shift, or 3 hours' overtime each.",
+      },
+      rest: {
+        type: "string",
+        enum: [...ATTENDANCES],
+        description: "For every worker with no record yet for the day and not named in `workers`: day, night or absent. A worker on vacation is absent. Only when the person said so.",
       },
       workers: {
         type: "array",
@@ -220,8 +264,9 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
     const everyone = i.everyone && (i.everyone.shift !== undefined || i.everyone.overtimeH !== undefined) ? i.everyone : undefined;
     const bare = (i.workers ?? []).find((w) => w.present === undefined && w.shift === undefined && w.overtimeH === undefined && w.note === undefined);
     if (bare) return `Say what changes for ${bare.worker}: present, shift, overtime or note.`;
-    if (!everyone && !i.workers?.length) return "Say what to record: a shift or overtime for everyone, or single workers.";
-    return { date: i.date, dept: i.dept, ...(everyone ? { everyone } : {}), ...(i.workers?.length ? { workers: i.workers } : {}) };
+    const rest = i.rest && isAttendance(i.rest) ? i.rest : undefined;
+    if (!everyone && !rest && !i.workers?.length) return "Say what to record: single workers, the rest of the department, or a shift or overtime for everyone.";
+    return { date: i.date, dept: i.dept, ...(everyone ? { everyone } : {}), ...(i.workers?.length ? { workers: i.workers } : {}), ...(rest ? { rest } : {}) };
   },
   async describe(i, ctx) {
     if (!hasPerm(ctx.user, shiftPermKey(i.dept))) return { error: noRight(i.dept) };
@@ -231,23 +276,24 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
     const plan = planShiftDay(lines, i);
     if ("error" in plan) return plan;
     const h = roster.shiftHours;
-    const moved = plan.filter((p) => !sameLine(p.before, p.after));
-    const unrecorded = plan.filter((p) => !p.line.recorded);
-    if (moved.length === 0 && unrecorded.length === 0) return { error: `${label(i.dept)}'s day ${i.date} reads so already.` };
-    // the ones saved for the first time as the tab shows them, unchanged
-    const asShown = unrecorded.filter((p) => sameLine(p.before, p.after)).length;
-    const before = dayTotals(plan.map((p) => p.before), h);
-    const after = dayTotals(plan.map((p) => p.after), h);
+    // the ones `rest` sets are summed up, not listed one by one
+    const moved = plan.filter((p) => !p.byRest && !sameLine(p.before, p.after));
+    const byRest = plan.filter((p) => p.byRest);
+    if (moved.length === 0 && byRest.length === 0) return { error: `${label(i.dept)}'s day ${i.date} reads so already.` };
+    const restSplit = shiftSplit(byRest.map((p) => p.after), h);
+    const restText = [restSplit.day.people && `${restSplit.day.people} on the day shift`, restSplit.night.people && `${restSplit.night.people} on the night shift`, restSplit.absent && `${restSplit.absent} absent`].filter(Boolean).join(", ");
+    const before = shiftSplit(plan.map((p) => (p.before ? p.before : { ...NOBODY, recorded: false })), h);
+    const split = shiftSplit(plan.map((p) => p.after), h);
     const state = await readShiftState(i.date, [i.dept]);
     return {
       title: `Shift roster: ${label(i.dept)} ${i.date}`,
       summary:
         `Save ${label(i.dept)}'s day ${i.date} on the shift roster: ${moved.length} worker(s) change` +
-        (asShown > 0 ? `, and ${asShown} more with no record yet are recorded as the tab shows them` : "") +
-        ` — ${after.present}/${after.workers} present, ${after.hours} man-hours.`,
+        (byRest.length > 0 ? `, and the ${byRest.length} not set yet: ${restText}` : "") +
+        ` — ${splitText(split)}; ${split.hours} man-hours.`,
       changes: [
         ...moved.map((p) => ({ label: `${p.line.empId} ${p.line.name}`, before: lineText(p.before, h), after: lineText(p.after, h) })),
-        { label: `${label(i.dept)} man-hours`, before: `${before.hours} (${before.present}/${before.workers} present)`, after: `${after.hours} (${after.present}/${after.workers} present)` },
+        { label: `${label(i.dept)} man-hours`, before: `${before.hours} (${splitText(before)})`, after: `${split.hours} (${splitText(split)})` },
       ],
       snapshot: { state, roster: lines.map((l) => l.workerId) },
     };
@@ -260,10 +306,10 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
     const saved = plan.map((p) => ({ dept: i.dept, workerId: p.line.workerId, present: p.after.present, shift: p.after.shift, overtimeH: p.after.overtimeH, note: p.after.note ?? "" }));
     const r = await saveShiftRoster(formOf({ date: i.date, lines: JSON.stringify(saved) }));
     if (!r.ok) return { ok: false, error: r.error };
-    const t = dayTotals(plan.map((p) => p.after));
+    const t = shiftSplit(plan.map((p) => p.after));
     return {
       ok: true,
-      message: `${label(i.dept)}'s day ${i.date} is saved — ${t.present}/${t.workers} present.`,
+      message: `${label(i.dept)}'s day ${i.date} is saved — ${splitText(t)}.`,
       undo: { tool: "restore_shift_day", input: { date: i.date, depts: [i.dept], state: SHIFT_STATE(before) } },
     };
   },
