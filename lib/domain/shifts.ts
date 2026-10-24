@@ -95,6 +95,74 @@ export function machineWord(dept: string, plural = false): string {
   return plural ? "machines" : "machine";
 }
 
+/** The work centres people are booked on: Fabrication's three — laser /
+ *  punch, bending and fin folding — and one for each later stage. The hours
+ *  a centre worked come from the shift log; what it earned, from the output. */
+export const WORK_CENTRES = ["Cutting", "Bending", "Fins", "Welding", "ShotBlast", "Painting"] as const;
+export type WorkCentre = (typeof WORK_CENTRES)[number];
+export function isWorkCentre(x: string): x is WorkCentre {
+  return (WORK_CENTRES as readonly string[]).includes(x);
+}
+export const WORK_CENTRE_LABEL: Record<WorkCentre, string> = {
+  Cutting: "Laser / punch",
+  Bending: "Bending",
+  Fins: "Fin folding",
+  Welding: "Welding",
+  ShotBlast: "Shot blast",
+  Painting: "Painting",
+};
+/** The centres of each transformer department, in shop-floor order. */
+export const DEPT_CENTRES: Record<ShiftDept, readonly WorkCentre[]> = {
+  Cut: ["Cutting", "Bending", "Fins"],
+  Welding: ["Welding"],
+  ShotBlast: ["ShotBlast"],
+  Painting: ["Painting"],
+};
+/** The department a centre belongs to. */
+export function centreDept(c: WorkCentre): ShiftDept {
+  return c === "Cutting" || c === "Bending" || c === "Fins" ? "Cut" : c;
+}
+/** The centre a Fabrication section works at, unless the day says otherwise.
+ *  Channels are formed on the presses, so they book to bending. */
+export const SECTION_CENTRE: Record<string, WorkCentre> = { LaserCutTX: "Cutting", BendingTX: "Bending", Channels: "Bending", Fins: "Fins" };
+
+/** Where each of Fabrication's machine centres books its hours and stops:
+ *  the lasers on tubes and roll blanks cut like any laser. A machine centre
+ *  added to CENTERS.Cut must be placed here. */
+const CUT_MACHINE_CENTRE: Record<string, WorkCentre> = { Cutting: "Cutting", Tubes: "Cutting", RollBlank: "Cutting", Bending: "Bending", Fins: "Fins" };
+
+/** The work centre a machine's hours and stops count at; outside
+ *  Fabrication a line or a partition is its stage. */
+export function machineWorkCentre(dept: string, center: string): WorkCentre | null {
+  if (dept === "Cut") return CUT_MACHINE_CENTRE[center] ?? null;
+  return isWorkCentre(dept) ? dept : null;
+}
+
+/** The centres a department books its workers to — only a department with
+ *  more than one (Fabrication) asks; the others are their own centre. */
+export function workerCentres(dept: string): readonly WorkCentre[] | null {
+  return isShiftDept(dept) && DEPT_CENTRES[dept].length > 1 ? DEPT_CENTRES[dept] : null;
+}
+
+/** The centre a department's hours count at when it has only one. */
+export function deptCentre(dept: string): WorkCentre | null {
+  return isShiftDept(dept) && DEPT_CENTRES[dept].length === 1 ? DEPT_CENTRES[dept][0] : null;
+}
+
+/** The centre a Fabrication worker's day books to: the one recorded for the
+ *  day when it is Fabrication's, else his section's, else the laser. Null for
+ *  a department that does not book workers to centres (see workerCentres). */
+export function centreOf(dept: string, sections: readonly string[], recorded?: string | null): WorkCentre | null {
+  const own = workerCentres(dept);
+  if (!own) return null;
+  if (recorded && isWorkCentre(recorded) && own.includes(recorded)) return recorded;
+  for (const sec of sections) {
+    const c = SECTION_CENTRE[sec];
+    if (c && own.includes(c)) return c;
+  }
+  return own[0];
+}
+
 /** The route each component takes through fabrication, in order: cut on a
  *  laser or punch, then bent, and the tank's fins folded — the planner's
  *  routing sheet. A piece owes work at EVERY centre on its route, so the load

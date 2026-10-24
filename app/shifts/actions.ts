@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { shiftPermKey } from "@/lib/domain/permissions";
 import { parseISODate } from "@/lib/domain/dates";
-import { DEFAULT_SHIFT, isRosterDept, isShiftCode, type RosterDept } from "@/lib/domain/shifts";
+import { DEFAULT_SHIFT, isRosterDept, isShiftCode, isWorkCentre, workerCentres, type RosterDept } from "@/lib/domain/shifts";
 import { syncDeptDayHours } from "@/lib/server/shifts";
 import { getShiftHours } from "@/lib/server/data";
 
@@ -32,7 +32,7 @@ function readDate(fd: FormData): Date | { error: string } {
   return date;
 }
 
-type Line = { dept: RosterDept; workerId: number; present: boolean; shift: string; overtimeH: number; note: string | null };
+type Line = { dept: RosterDept; workerId: number; present: boolean; shift: string; overtimeH: number; center: string | null; note: string | null };
 
 /** Save the day: `lines` is the JSON the page built — one entry per worker
  *  and department with present / shift / overtime / note. Every department
@@ -69,7 +69,12 @@ export async function saveShiftRoster(fd: FormData): Promise<ShiftActionResult> 
       return { ok: false, error: `Overtime is the fixed ${shiftHours.overtime}-hour period from 16:00 to 19:00.` };
     }
     const present = raw.present !== false;
-    lines.push({ dept, workerId, present, shift, overtimeH: present ? roundedOvertime : 0, note: String(raw.note ?? "").trim() || null });
+    // the work centre, where the department has several; anything else is none
+    const rawCenter = String(raw.center ?? "");
+    const own = workerCentres(dept);
+    const center = own && isWorkCentre(rawCenter) && own.includes(rawCenter) ? rawCenter : null;
+    if (rawCenter && own && !center) return { ok: false, error: `"${rawCenter}" is not a work centre of this department.` };
+    lines.push({ dept, workerId, present, shift, overtimeH: present ? roundedOvertime : 0, center, note: String(raw.note ?? "").trim() || null });
   }
 
   const depts = [...new Set(lines.map((l) => l.dept))];
@@ -87,8 +92,8 @@ export async function saveShiftRoster(fd: FormData): Promise<ShiftActionResult> 
     for (const l of lines) {
       await tx.shiftEntry.upsert({
         where: { date_dept_workerId: { date, dept: l.dept, workerId: l.workerId } },
-        create: { date, dept: l.dept, workerId: l.workerId, present: l.present, shift: l.shift, overtimeH: l.overtimeH, note: l.note, recordedBy: by },
-        update: { present: l.present, shift: l.shift, overtimeH: l.overtimeH, note: l.note, recordedBy: by },
+        create: { date, dept: l.dept, workerId: l.workerId, present: l.present, shift: l.shift, overtimeH: l.overtimeH, center: l.center, note: l.note, recordedBy: by },
+        update: { present: l.present, shift: l.shift, overtimeH: l.overtimeH, center: l.center, note: l.note, recordedBy: by },
       });
     }
     for (const d of depts) await syncDeptDayHours(tx, date, d);

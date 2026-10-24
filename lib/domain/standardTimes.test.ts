@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { KVA_TIERS, TIER_HOURS, TIER_ITEM_HOURS, FG_TIER } from "./standardTimes";
-import { nearestTierIn, tierForOrder, stdHoursFor, itemHoursFor, requiredHoursForLines, type StdData } from "./stdEngine";
+import { nearestTierIn, tierForOrder, stdHoursFor, itemHoursFor, itemCentreHoursFor, estimatedItemCentreHoursFor, stageShares, requiredHoursForLines, type StdData } from "./stdEngine";
 import { SHEET_ITEMS } from "./constants";
 
 // the engine under the SEED data — exactly what a fresh database holds
@@ -165,5 +165,69 @@ describe("requiredHoursForLines (the plan capacity check)", () => {
     expect(r.uncoveredPcs).toBe(3);
     expect(r.totalPcs).toBe(3);
     expect(r.byStage.Welding).toBe(0);
+  });
+});
+
+describe("hours typed per work centre", () => {
+  const tier = 1000;
+  it("with nothing typed, the per-centre split adds back to the stage's hours exactly", () => {
+    const per = itemHoursFor(SEED, tier);
+    const centres = itemCentreHoursFor(SEED, tier);
+    for (const [item, p] of Object.entries(per)) {
+      const c = centres[item];
+      expect(c.Cutting + c.Bending + c.Fins).toBeCloseTo(p.cut, 10);
+      expect(c.Welding).toBe(p.weld);
+      expect(c.ShotBlast).toBe(p.shb);
+    }
+    // a top cover never sees a press: its whole fabrication is cutting
+    expect(centres.TC.Bending).toBe(0);
+  });
+
+  it("a typed figure replaces that centre's estimate, and the item's stage total follows", () => {
+    const base = itemHoursFor(SEED, tier);
+    const est = itemCentreHoursFor(SEED, tier).TN;
+    const data: StdData = { ...SEED, centre: { [tier]: { TN: { Cutting: 1.5, Welding: 9 } } } };
+    const after = itemHoursFor(data, tier).TN;
+    expect(after.cut).toBeCloseTo(1.5 + est.Bending + est.Fins, 10);
+    expect(after.weld).toBe(9);
+    expect(after.paint).toBe(base.TN.paint);
+    // other items and other classes are untouched
+    expect(itemHoursFor(data, tier).TC).toEqual(base.TC);
+    expect(itemHoursFor(data, 500)).toEqual(itemHoursFor(SEED, 500));
+    // and every stage reads it: one tank's welding earns the typed hours
+    expect(stdHoursFor(data, "Welding", "TN", tier)).toBe(9);
+  });
+
+  it("gives an item with no standard time (AR) the hours typed for it, and never paints the core", () => {
+    const data: StdData = { ...SEED, centre: { [tier]: { AR: { Cutting: 0.2, Welding: 0.5 }, CF: { Painting: 4 } } } };
+    expect(itemHoursFor(SEED, tier).AR).toBeUndefined();
+    expect(itemHoursFor(data, tier).AR).toEqual({ cut: 0.2, weld: 0.5, shb: 0, paint: 0 });
+    expect(itemHoursFor(data, tier).CF.paint).toBe(0);
+  });
+});
+
+describe("typed hours reach the load and the machines' split", () => {
+  const tier = 1000;
+  it("prices AR in the plan's load once hours are typed for it — and not before", () => {
+    const order = { fgCode: null, kva: "1000" };
+    const plain = requiredHoursForLines(SEED, [{ item: "AR", qty: 10, order }]);
+    expect(plain).toMatchObject({ totalPcs: 0, uncoveredPcs: 0 });
+    const typed: StdData = { ...SEED, centre: { [tier]: { AR: { Cutting: 0.2, Welding: 0.5 } } } };
+    const r = requiredHoursForLines(typed, [{ item: "AR", qty: 10, order }]);
+    expect(r.byStage.Cut).toBeCloseTo(2, 10);
+    expect(r.byStage.Welding).toBeCloseTo(5, 10);
+    expect(r.totalPcs).toBe(10);
+  });
+
+  it("splits a tank's Fabrication over its route by the hours typed at each centre", () => {
+    const est = estimatedItemCentreHoursFor(SEED, tier).TN;
+    const typed: StdData = { ...SEED, centre: { [tier]: { TN: { Cutting: 3, Bending: 1 } } } };
+    const s = stageShares(typed, tier, "Cut", "TN");
+    const total = 3 + 1 + est.Fins;
+    expect(s.Cutting).toBeCloseTo(3 / total, 10);
+    expect(s.Bending).toBeCloseTo(1 / total, 10);
+    // outside Fabrication a stage is one centre; without a class, the crews' split
+    expect(stageShares(typed, tier, "Welding", "TN")).toEqual({ Zone: 1 });
+    expect(stageShares(typed, null, "Cut", "TC")).toEqual({ Cutting: 1 });
   });
 });

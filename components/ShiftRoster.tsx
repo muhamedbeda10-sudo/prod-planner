@@ -6,8 +6,8 @@ import { formatDate } from "@/lib/domain/format";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
-  ATTENDANCES, ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, OVERTIME_TIME, UNSET_LINE, attendanceLine, attendanceOf, lineHours, round1, shiftSplit,
-  type Attendance, type RosterDept,
+  ATTENDANCES, ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, DEPT_CENTRES, OVERTIME_TIME, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, centreOf, lineHours, round1, shiftSplit,
+  type Attendance, type RosterDept, type WorkCentre,
 } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL, WORKER_GROUPS } from "@/lib/domain/tanks";
 import { ROSTER_SECTIONS, rosterDepts, rosterLineMatches, type RosterFilter, rosterFilterLabel } from "@/lib/domain/roster";
@@ -49,8 +49,8 @@ function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
   return <p role="status" className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
 }
 
-type Draft = Pick<ShiftLineDTO, "workerId" | "dept" | "present" | "shift" | "overtimeH" | "note" | "recorded">;
-const toDraft = (l: ShiftLineDTO): Draft => ({ workerId: l.workerId, dept: l.dept, present: l.present, shift: l.shift, overtimeH: l.overtimeH, note: l.note, recorded: l.recorded });
+type Draft = Pick<ShiftLineDTO, "workerId" | "dept" | "present" | "shift" | "overtimeH" | "center" | "note" | "recorded">;
+const toDraft = (l: ShiftLineDTO): Draft => ({ workerId: l.workerId, dept: l.dept, present: l.present, shift: l.shift, overtimeH: l.overtimeH, center: l.center, note: l.note, recorded: l.recorded });
 const UNSET = { ...UNSET_LINE, recorded: false } as const;
 /** What the list is narrowed to by the figures on top. */
 type RosterPick = "all" | Attendance | "overtime" | "unset";
@@ -207,7 +207,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
     const fd = new FormData();
     fd.set("date", data.dateISO);
     fd.set("depts", target.join(","));
-    clear.run(clearShiftDay, fd, "Day cleared.", () => setDraft((d) => d.map((l) => (target.includes(l.dept) ? { ...l, ...UNSET, note: "" } : l))));
+    clear.run(clearShiftDay, fd, "Day cleared.", () => setDraft((d) => d.map((l) => (target.includes(l.dept) ? { ...l, ...UNSET, center: centreOf(l.dept, byKey.get(keyOf(l))?.sections ?? []), note: "" } : l))));
   }
 
   const capacityTone = capacity === null ? "" : split.hours >= capacity ? "text-ok-fg" : split.hours >= capacity * 0.8 ? "text-warn-fg" : "text-bad-fg";
@@ -222,6 +222,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
     return {
       key: keyOf(d), dept: d.dept, empId: w.empId, name: w.name, jobTitle: w.jobTitle, sectionLabels: w.sectionLabels, onVacation: w.onVacation,
       attendance: a, overtimeH: a === "day" ? d.overtimeH : 0, hours: a === "unset" ? 0 : lineHours(d, hrs), note: d.note,
+      centre: d.dept === "Cut" && d.center ? WORK_CENTRE_LABEL[d.center] : null,
     };
   });
   const exportRows = boardLines.map((l) => ({
@@ -231,6 +232,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
     "Job title": l.jobTitle ?? "",
     Department: WORKER_DEPT_LABEL[l.dept],
     Section: l.sectionLabels.join(", "),
+    "Work centre": l.centre ?? "",
     Attendance: l.attendance === "unset" ? "Not set" : ATTENDANCE_LABEL[l.attendance],
     Time: l.attendance === "day" || l.attendance === "night" ? ATTENDANCE_TIME[l.attendance] : "",
     "Overtime h": l.overtimeH || "",
@@ -247,6 +249,9 @@ export function ShiftRoster({ data, editableDepts, filter }: {
 
   // the record view's rows, by department
   const groups = staffed.map((dept) => ({ dept, rows: shown.filter((d) => d.dept === dept) })).filter((g) => g.rows.length > 0);
+  // Fabrication books each worker to a centre — the column shows while it is on screen
+  const showCentre = groups.some((g) => g.dept === "Cut");
+  const cols = showCentre ? 7 : 6;
 
   return (
     <div className="space-y-3">
@@ -327,6 +332,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
                     <Th label="Worker" />
                     <Th label="Section" className="max-md:hidden" />
                     <Th label="Attendance" full="Attendance — the shift he came on" hint={`Day ${ATTENDANCE_TIME.day} · Night ${ATTENDANCE_TIME.night}. Click the picked one again to clear it.`} />
+                    {showCentre && <Th label="Work centre" hint="Fabrication: laser / punch, bending or fin folding — his section's unless he moved that day. Each centre's hours are measured against what it produced." />}
                     <Th label="Overtime" full={`Overtime ${OVERTIME_TIME}`} hint="Day shift only." />
                     <Th label="Hours" num className="text-right" hint="Shift plus overtime; nothing when absent." />
                     <Th label="Note" />
@@ -337,7 +343,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
                     const gs = shiftSplit(g.rows, hrs);
                     return [
                       <tr key={`h-${g.dept}`} className="bg-surface-2">
-                        <th colSpan={6} scope="colgroup" className="px-2 py-1.5 text-start text-xs font-bold">
+                        <th colSpan={cols} scope="colgroup" className="px-2 py-1.5 text-start text-xs font-bold">
                           <span className="uppercase tracking-wide">{WORKER_DEPT_LABEL[g.dept]}</span>
                           <span className="ms-2 inline-flex flex-wrap items-center gap-1.5 align-middle font-semibold normal-case">
                             <span className="shift-tag shift-tag-day"><Sun size={12} aria-hidden />{gs.day.people}</span>
@@ -369,6 +375,20 @@ export function ShiftRoster({ data, editableDepts, filter }: {
                             <td className="px-2">
                               <AttendancePicker value={a} disabled={ro} name={w.name} onPick={(v) => setAttendance(k, v)} />
                             </td>
+                            {showCentre && (
+                              <td className="px-2">
+                                {l.dept === "Cut" ? (
+                                  <select
+                                    value={l.center ?? ""} disabled={ro || a === "absent" || a === "unset"}
+                                    aria-label={`${w.name}: work centre`}
+                                    onChange={(e) => patch(new Set([k]), () => ({ center: e.target.value as WorkCentre }))}
+                                    className="ctl"
+                                  >
+                                    {DEPT_CENTRES.Cut.map((c) => <option key={c} value={c}>{WORK_CENTRE_LABEL[c]}</option>)}
+                                  </select>
+                                ) : <span className="text-xs text-muted">—</span>}
+                              </td>
+                            )}
                             <td className="px-2 whitespace-nowrap">
                               {a === "day" ? (
                                 <button

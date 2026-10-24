@@ -12,6 +12,7 @@ export const APP_EVENT_TYPES = [
   "order.held",
   "order.released",
   "work.returned",
+  "machine.stopped",
   "tank.leak_failed",
   "tank.qa_failed",
   "tank.rewelding",
@@ -39,6 +40,7 @@ export const APP_EVENTS: Record<AppEventType, AppEventDef> = {
   "order.held": { label: "Order put on hold", group: "Orders", desc: "An order is put on hold, with the reason given." },
   "order.released": { label: "Order released from hold", group: "Orders", desc: "An order on hold is released." },
   "work.returned": { label: "Work returned to the department before", group: "Production", desc: "A department sends pieces back to the one before it (rework), with the reason." },
+  "machine.stopped": { label: "Machine stop recorded", group: "Production", desc: "A machine stop is recorded on the shift log — the sentence names the machine, the hours it stood and why (breakdown, no material, setup …)." },
   "tank.leak_failed": { label: "Leak test failed", group: "Quality", desc: "Tanks fail their leak test and need repair." },
   "tank.qa_failed": { label: "Quality check failed", group: "Quality", desc: "A tank is found not OK at the quality check." },
   "tank.rewelding": { label: "Tank sent back to welding", group: "Quality", desc: "A tank is sent back to welding, with the reason." },
@@ -62,6 +64,7 @@ export const EVENT_TAB: Partial<Record<AppEventType, string>> = {
   "tank.qa_failed": "barcode",
   "tank.rewelding": "worklist.welding",
   "plan.imported": "orders",
+  "machine.stopped": "shifts",
 };
 
 /** A task's events are its people's own: only someone on the task hears of them. */

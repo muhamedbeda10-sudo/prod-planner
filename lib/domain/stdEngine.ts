@@ -9,15 +9,23 @@
 
 import { isPaintExempt, type Item } from "./constants";
 import { KVA_TIERS, TIER_ITEM_HOURS, type TierStageHours } from "./standardTimes";
+import { DEPT_CENTRES, WORK_CENTRES, centerShares, routeFor, type WorkCentre } from "./shifts";
 
 /** Per-piece hours of ONE component across the chain. EVERY component passes
  *  Shot Blast before its finish — the paint-exempt core ends there (paint = 0),
  *  the painted components (TC/TN/CB) continue to the paint line. */
 export interface ItemStageHours { cut: number; weld: number; shb: number; paint: number }
 
+/** The planner's own hours a piece at some work centres — typed by hand. */
+export type CentreHours = Partial<Record<WorkCentre, number>>;
+
 export interface StdData {
   tiers: Record<number, TierStageHours>; // KVA class -> stage hours per tank
   fgMap: Record<string, number>; // normalized FG code -> KVA class
+  /** KVA class -> item -> hours a piece typed per work centre (Admin →
+   *  Standard Times → Hours per work centre). Each figure replaces the estimate
+   *  for that centre; the rest of the item keeps the estimate. */
+  centre?: Record<number, Record<string, CentreHours>>;
 }
 
 export const normFg = (code: string): string => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -59,6 +67,74 @@ export function tierForOrder(data: StdData, order: { fgCode?: string | null; kva
  *  components in proportion to their finishing shares — so Σshb = the class's
  *  shb total and Σpaint = its paint total. */
 export function itemHoursFor(data: StdData, tier: number): Record<string, ItemStageHours> {
+  const base = estimatedItemHoursFor(data, tier);
+  const typed = data.centre?.[tier];
+  if (!typed) return base;
+  const out: Record<string, ItemStageHours> = { ...base };
+  for (const [item, hrs] of Object.entries(typed)) {
+    const c = itemCentreHours(base[item], item, hrs);
+    out[item] = { cut: c.Cutting + c.Bending + c.Fins, weld: c.Welding, shb: c.ShotBlast, paint: c.Painting };
+  }
+  return out;
+}
+
+/** One item's hours a piece at every work centre: what was typed, else the
+ *  stage's estimate — Fabrication's split over the centres the item routes
+ *  through, in proportion to their crews. */
+function itemCentreHours(base: ItemStageHours | undefined, item: string, typed: CentreHours = {}): Record<WorkCentre, number> {
+  const b = base ?? { cut: 0, weld: 0, shb: 0, paint: 0 };
+  const shares = centerShares("Cut", item);
+  const est: Record<WorkCentre, number> = {
+    Cutting: (shares.Cutting ?? 0) * b.cut,
+    Bending: (shares.Bending ?? 0) * b.cut,
+    Fins: (shares.Fins ?? 0) * b.cut,
+    Welding: b.weld,
+    ShotBlast: b.shb,
+    Painting: isPaintExempt(item as Item) ? 0 : b.paint,
+  };
+  const out = { ...est };
+  const route = routeFor("Cut", item);
+  for (const c of WORK_CENTRES) {
+    const v = typed[c];
+    if (v === undefined || !Number.isFinite(v) || v < 0) continue;
+    if (c === "Painting" && isPaintExempt(item as Item)) continue; // the core is never painted
+    if (DEPT_CENTRES.Cut.includes(c) && !route.includes(c)) continue; // a centre the item never passes
+    out[c] = v;
+  }
+  return out;
+}
+
+/** Per-piece hours of each item at each work centre for a class — what a
+ *  centre earns when the piece is recorded at its stage. Fabrication is one
+ *  stage on the floor: a piece recorded there has passed every centre of its
+ *  route, so each of them earns its share. */
+export function itemCentreHoursFor(data: StdData, tier: number): Record<string, Record<WorkCentre, number>> {
+  const base = estimatedItemHoursFor(data, tier);
+  const typed = data.centre?.[tier] ?? {};
+  const out: Record<string, Record<WorkCentre, number>> = {};
+  for (const item of new Set([...Object.keys(base), ...Object.keys(typed)])) out[item] = itemCentreHours(base[item], item, typed[item]);
+  return out;
+}
+
+/** The per-centre hours WITHOUT anything typed — what an empty cell falls back to. */
+export function estimatedItemCentreHoursFor(data: StdData, tier: number): Record<string, Record<WorkCentre, number>> {
+  return itemCentreHoursFor({ ...data, centre: undefined }, tier);
+}
+
+/** How ONE piece's stage hours divide over the centres of its route: in
+ *  proportion to its hours at each (typed, else the estimate). Outside
+ *  Fabrication a stage is one centre. Without a class, the crews' split. */
+export function stageShares(data: StdData, tier: number | null, dept: string, item: string): Record<string, number> {
+  if (dept !== "Cut" || tier === null) return centerShares(dept, item);
+  const c = itemCentreHoursFor(data, tier)[item];
+  const route = routeFor("Cut", item);
+  const total = c ? route.reduce((s, r) => s + (c[r as WorkCentre] ?? 0), 0) : 0;
+  if (!c || !(total > 0)) return centerShares(dept, item);
+  return Object.fromEntries(route.map((r) => [r, (c[r as WorkCentre] ?? 0) / total]));
+}
+
+/** The estimate alone: the class's stage totals split by the engineering shares. */
+export function estimatedItemHoursFor(data: StdData, tier: number): Record<string, ItemStageHours> {
   const t = data.tiers[tier];
   if (!t) return {};
   // shares come from the seed matrix — nearest seed class when the admin
@@ -126,15 +202,15 @@ export function requiredHoursForLines(
   let uncoveredPcs = 0;
   let totalPcs = 0;
   for (const l of lines) {
-    if (l.item === "AR" || l.item === "MB") continue; // no standard times
-    totalPcs += l.qty;
     const tier = l.order ? tierForOrder(data, l.order) : null;
-    if (tier === null) {
+    const per = tier === null ? undefined : itemHoursFor(data, tier)[l.item];
+    // AR / MB carry no standard time unless the planner typed one
+    if (!per && (l.item === "AR" || l.item === "MB")) continue;
+    totalPcs += l.qty;
+    if (!per) {
       uncoveredPcs += l.qty;
       continue;
     }
-    const per = itemHoursFor(data, tier)[l.item];
-    if (!per) continue;
     byStage.Cut += per.cut * l.qty;
     byStage.Welding += per.weld * l.qty;
     // EVERY component loads the shot-blast station before its finish — the

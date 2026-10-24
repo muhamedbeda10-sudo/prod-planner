@@ -24,6 +24,8 @@ export interface BoardLine {
   overtimeH: number;
   hours: number;
   note: string;
+  /** Fabrication: the work centre he was on. */
+  centre?: string | null;
 }
 
 const byDept = (lines: readonly BoardLine[]) =>
@@ -36,7 +38,7 @@ function Person({ l, showOt }: { l: BoardLine; showOt: boolean }) {
       <span className="min-w-0 flex-1">
         <span className="block truncate" title={[l.name, l.jobTitle, ...l.sectionLabels].filter(Boolean).join(" · ")}>
           <span className="font-semibold">{l.name}</span>
-          {l.sectionLabels.length > 0 && <span className="text-muted"> · {l.sectionLabels.join(", ")}</span>}
+          {l.centre ? <span className="text-muted"> · {l.centre}</span> : l.sectionLabels.length > 0 && <span className="text-muted"> · {l.sectionLabels.join(", ")}</span>}
         </span>
         {l.note && <span className="block truncate text-muted" title={l.note}>{l.note}</span>}
       </span>

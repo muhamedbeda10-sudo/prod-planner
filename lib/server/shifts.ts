@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { factoryDayISO, toISODate } from "@/lib/domain/dates";
-import { DEFAULT_SHIFT, ROSTER_DEPTS, dayTotals, isShiftCode, lineHours, type DayTotals, type RosterDept, type ShiftCode, type ShiftHours } from "@/lib/domain/shifts";
+import { DEFAULT_SHIFT, ROSTER_DEPTS, centreOf, dayTotals, isShiftCode, lineHours, type DayTotals, type RosterDept, type ShiftCode, type ShiftHours, type WorkCentre } from "@/lib/domain/shifts";
 import { sectionDept, sectionLabel, type WorkerSection } from "@/lib/domain/tanks";
 import { getShiftHours } from "./data";
 import { getRosterFor } from "./workers";
@@ -30,6 +30,9 @@ export interface ShiftLineDTO {
   present: boolean;
   shift: ShiftCode;
   overtimeH: number;
+  /** The work centre the day books him to — the one recorded, else his
+   *  section's. Null outside the transformer departments. */
+  center: WorkCentre | null;
   note: string;
   /** False while the day has no row for this worker — the defaults are shown. */
   recorded: boolean;
@@ -78,6 +81,7 @@ export async function getShiftRoster(dateISO: string): Promise<ShiftRosterData> 
       present: r?.present ?? false,
       shift: r && isShiftCode(r.shift) ? r.shift : DEFAULT_SHIFT,
       overtimeH: r?.overtimeH ?? 0,
+      center: centreOf(dept, sections, r?.center),
       note: r?.note ?? "",
       recorded: !!r,
     });

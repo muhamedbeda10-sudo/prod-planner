@@ -173,6 +173,21 @@ mobile drawer still lists every view flat, since it has the vertical room.
    guessed, unless the person says what the `rest` of them get (day, night or absent) — an automation
    that records shifts has to say it in its instruction. The vacation rule applies to today only: the
    workers list keeps when a vacation ends, not when it began.
+   **Work centres**: a Fabrication worker is booked to the centre he was on — laser / punch, bending or fin
+   folding — his section's by default (Channels book to bending), changed on the row when he moved that
+   day, so each centre's man-hours can be set against what it produced.
+   **Machine stops** (a tab of the shift log): which machine stood, the hours, and why — one of the plant's
+   codes (`lib/domain/downtime.ts`: breakdown mechanical / electrical, no material, no operator, no drawing
+   or program, setup, quality, power or air, planned maintenance, other) with an optional note; each stop
+   is deleted on its own. Recording needs the machine's department's `shifts.<dept>`. The assistant records
+   and deletes them too (`record_machine_stop`, `delete_machine_stop`), never guessing a reason.
+   **Hours a piece, by work centre** (Admin → Standard Times, admin): the hours ONE piece of each item takes
+   at each centre — laser / punch, bending, fin folding, welding, shot blast, painting — typed by hand per
+   KVA class. An empty cell keeps the estimate (the stage's hours split over the centres the item routes
+   through); a typed figure replaces it in the standard-hours engine itself (`lib/domain/stdEngine.ts`), so
+   every earned hour, efficiency, calibration, load and capacity figure in the app is priced with it — and
+   an item the timings sheet never priced (AR, MB) gets hours at last. The assistant sets them with
+   `set_centre_hours`.
    **Times per machine** (Tools → Times per Machine, `machines.manage`): what ONE piece of each item really
    takes on each machine, in hours. A figure here **outranks the standard time** for that machine — its queue
    on the board is priced with it and the machine plan schedules with it, so a 6 kW laser and a punch stop being planned

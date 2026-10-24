@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-24-work-centres-stops-hours",
+    dateISO: "2026-10-24",
+    title: "Work centres, machine stops and your own hours a piece",
+    where: "Shifts → Daily attendance · Machine stops · Admin → Standard Times",
+    href: "/shifts",
+    body: "Fabrication workers now show the work centre they were on — laser / punch, bending or fin folding — taken from their section and changed on the row when someone moved. A new Machine stops tab records which machine stood, for how long and why, from a list of reasons. In Admin → Standard Times you can type the hours one piece of each item takes at each centre for every kVA class; a typed figure replaces the estimate in every earned hour, efficiency and capacity figure. The assistant can record stops and set these hours too.",
+  },
+  {
     id: "2026-10-24-shifts-separate-history-hours",
     dateISO: "2026-10-24",
     title: "A clearer shift log: recorded days and hours in their own tabs",

@@ -1,8 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { itemHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
+import { itemHoursFor, stageShares, tierForOrder } from "@/lib/domain/stdEngine";
 import { boardTakesLine, buildMachineBoard, lineKey, type Assignment, type BoardLine, type LinePlacement, type MachineBoard } from "@/lib/domain/machineBoard";
-import { centerShares, hoursOfShift, isShiftCode, round1, routeFor } from "@/lib/domain/shifts";
+import { hoursOfShift, isShiftCode, round1, routeFor } from "@/lib/domain/shifts";
 import { dateForOffsetISO, offsetForDateISO } from "@/lib/domain/whatif";
 import { boardPins, type OptLine, type OptMachine, type OptPin } from "@/lib/domain/optimizePlan";
 import { machineVerdict, type MachineRuleLike, type WorkFacts } from "@/lib/domain/machineRules";
@@ -119,9 +119,12 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
     if (!per) return null; // AR / MB carry no standard times
     return dept === "Cut" ? per.cut : dept === "Welding" ? per.weld : dept === "ShotBlast" ? per.shb : per.paint;
   };
+  const tierOfLine = (l: { bom: string; mo: string }) => (l.mo ? tierByMo.get(l.mo) : tierByBom.get(l.bom)) ?? null;
   /** Standard hours ONE piece of this line costs the whole stage. */
-  const perPiece = (l: { bom: string; mo: string; item: string }): number | null =>
-    stageHours((l.mo ? tierByMo.get(l.mo) : tierByBom.get(l.bom)) ?? null, l.item);
+  const perPiece = (l: { bom: string; mo: string; item: string }): number | null => stageHours(tierOfLine(l), l.item);
+  /** How that stage's hours divide over the centres of the item's route —
+   *  the planner's typed hours a piece per centre, else the crews' split. */
+  const sharesOf = (l: { bom: string; mo: string; item: string }) => stageShares(std, tierOfLine(l), dept, l.item);
 
   const price = (lines: readonly BoardLineInput[]): BoardLine[] =>
     lines.map((l) => {
@@ -129,7 +132,7 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
       const hours = per === null ? null : Math.round(per * l.remaining * 10) / 10;
       // the stage's hours split over the centres the item routes through —
       // a tank is cut, bent and finned, and each centre carries its share
-      const shares = centerShares(dept, l.item);
+      const shares = sharesOf(l);
       const route = routeFor(dept, l.item).map((center) => ({ center, hours: hours === null ? null : round1(hours * (shares[center] ?? 1)) }));
       return {
         key: lineKey(l.bom, l.mo, l.item),
@@ -159,7 +162,7 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
   for (const o of orders) if (o.status === "open") requiredByBom.set(o.bom, (requiredByBom.get(o.bom) ?? 0) + o.planQty);
   /** The kVA class a line's order belongs to — what a machine's kVA rule reads. */
   const tierOf = (l: { bom: string; mo: string }): number | null => (l.mo ? tierByMo.get(l.mo) : tierByBom.get(l.bom)) ?? null;
-  return { machines, assignments, price, perPiece, tierOf, urgentByMo, downtimeH, crewH, crew, rates, orderOf: (mo: string) => orderByMo.get(mo), requiredByBom, orders };
+  return { machines, assignments, price, perPiece, sharesOf, tierOf, urgentByMo, downtimeH, crewH, crew, rates, orderOf: (mo: string) => orderByMo.get(mo), requiredByBom, orders };
 }
 
 export async function getMachineBoard(dept: BoardDept, planLines: readonly BoardLineInput[], dayISO: string, planNo = 0): Promise<MachineBoardData> {
@@ -276,13 +279,13 @@ export async function getOptimizerInputs(dept: BoardDept, dayISO: string, mayPla
 
   // one row per line — the same line can arrive as several tranches
   const holidaySet = new Set(holidays.map((h) => toISODate(h.date)));
-  const merged = new Map<string, { key: string; item: string; pieces: number; perPiece: number | null; dueISO: string | null; urgent: boolean }>();
+  const merged = new Map<string, { key: string; item: string; pieces: number; perPiece: number | null; shares: Record<string, number>; dueISO: string | null; urgent: boolean }>();
   for (const l of inputs) {
     if (!(l.remaining > 0) || !mayPlan(l.item)) continue;
     const key = lineKey(l.bom, l.mo, l.item);
     const due = l.dueISO ?? l.deliveryISO ?? null;
     const prev = merged.get(key);
-    if (!prev) merged.set(key, { key, item: l.item, pieces: l.remaining, perPiece: ctx.perPiece(l), dueISO: due, urgent: !!ctx.urgentByMo.get(l.mo) });
+    if (!prev) merged.set(key, { key, item: l.item, pieces: l.remaining, perPiece: ctx.perPiece(l), shares: ctx.sharesOf(l), dueISO: due, urgent: !!ctx.urgentByMo.get(l.mo) });
     else {
       prev.pieces += l.remaining;
       if (due && (!prev.dueISO || due < prev.dueISO)) prev.dueISO = due;
@@ -313,7 +316,7 @@ export async function getOptimizerInputs(dept: BoardDept, dayISO: string, mayPla
   for (const r of rules) (rulesOf.get(r.machineId) ?? rulesOf.set(r.machineId, []).get(r.machineId)!).push(r);
 
   const lines: OptLine[] = [...merged.values()].map((l) => {
-    const shares = centerShares(dept, l.item);
+    const shares = l.shares;
     const route = routeFor(dept, l.item).map((center) => {
       const left = Math.max(0, l.pieces - (pinned.get(`${l.key}#${center}`) ?? 0));
       const perPc = l.perPiece === null ? 0 : l.perPiece * (shares[center] ?? 1);
