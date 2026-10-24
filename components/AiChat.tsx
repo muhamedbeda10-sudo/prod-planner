@@ -80,7 +80,7 @@ export type { AiChatStatus };
 const SUGGESTIONS: { q: string; icon: typeof Clock }[] = [
   { q: "لخصلي الخطة الشهرية حسب الفلاتر الظاهرة، بالإنجاز والمتبقي ومصادر الأرقام", icon: ListChecks },
   { q: "اعملي مراجعة بداية اليوم للخط المختار واقترح أهم 3 أولويات بالأسباب", icon: Clock },
-  { q: "أنهي ماكينة عليها أكبر حمل شغل دلوقتي؟", icon: Factory },
+  { q: "راجع جاهزية توقعات المحولات ووضح البيانات الناقصة قبل ما نعتمد عليها", icon: Factory },
   { q: "إيه الـ MOs اللي مستنية تتقفل في الأودو؟", icon: Boxes },
   { q: "قارن إنتاج آخر 7 أيام بالفترة اللي قبلها ووضح فرص التحسين", icon: BarChart3 },
   { q: "Which open orders still have no nesting on the Material tab?", icon: Layers },

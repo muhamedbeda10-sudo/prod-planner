@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-24-simulation-decision-review",
+    dateISO: "2026-10-24",
+    title: "Compare planning alternatives, stress-test disruptions and check forecast readiness",
+    where: "Simulator → What-if · AI assistant",
+    href: "/simulate?view=whatif",
+    body: "Keep up to three alternatives beside the current scenario and compare them against the plant baseline on one shared data snapshot. Test independent station outages, worker reductions and material delays, with affected orders and a provisional resilience ranking. Forecast readiness identifies missing standard times, absent due dates, capacity gaps, holds and incomplete weekly-plan costing. AI tools can run the same reviews without changing the screen or factory. Counts group components and batches by MO; blocked and undated orders are separate from on-time orders. This is the TR fabrication model; LV forecasting and verification of physical stock or individual-machine effects are outside this model.",
+  },
+  {
     id: "2026-10-24-ai-fill-screen",
     dateISO: "2026-10-24",
     title: "Expand the assistant to fill the screen",

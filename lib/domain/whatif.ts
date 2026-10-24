@@ -52,6 +52,7 @@ export interface WhatIfJob {
 }
 
 export interface WhatIfInputs {
+  coverage?: import("./simulationReview").ForecastCoverage;
   todayISO: string;
   holidayISOs: string[];
   rates: Record<EtaStage, number>; // trailing std-h/working day (today's crew)

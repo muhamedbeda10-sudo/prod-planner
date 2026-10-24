@@ -9,6 +9,7 @@ import {
   simulate, defaultScenario, optimizeQueue, dateForOffsetISO, blackoutsOf, WI_STAGES,
   type WhatIfInputs, type Scenario, type WiStage, type WhatIfResult,
 } from "@/lib/domain/whatif";
+import { SimulationReview } from "@/components/SimulationReview";
 import { describeScenario, kpisOf, loadScenario, scenarioCost } from "@/lib/domain/whatifScenario";
 import type { EtaStage, StageBlackout } from "@/lib/domain/eta";
 import { saveScenario, deleteScenario, applyRunOrder, clearRunOrder } from "@/app/simulate/actions";
@@ -582,18 +583,18 @@ export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, save
         <Kpi
           label="Orders on time"
           value={`${k.onTime} / ${k.active}`}
-          tone={k.late === 0 ? "ok" : k.late > kBase.late ? "bad" : k.late < kBase.late ? "ok" : "warn"}
+          tone={k.blocked > 0 || k.undated > 0 ? "warn" : k.late === 0 ? "ok" : k.late > kBase.late ? "bad" : k.late < kBase.late ? "ok" : "warn"}
           pinned={kPin ? `${kPin.onTime} / ${kPin.active}` : undefined}
-          sub={k.late === kBase.late ? `${k.late} late — same as today` : k.late < kBase.late ? `▲ ${kBase.late - k.late} rescued vs today` : `▼ ${k.late - kBase.late} MORE late than today`}
+          sub={k.blocked > 0 || k.undated > 0 ? `${k.blocked} blocked · ${k.undated} without due date · ${k.late} late` : k.late === kBase.late ? `${k.late} late — same as today` : k.late < kBase.late ? `▲ ${kBase.late - k.late} rescued vs today` : `▼ ${k.late - kBase.late} MORE late than today`}
         />
         <Kpi
-          label="All orders clear by"
+          label="Priced orders clear by"
           value={k.lastEta ? dd(k.lastEta) : "—"}
           tone={clearDelta < 0 ? "ok" : clearDelta > 0 ? "bad" : undefined}
           pinned={kPin ? dd(kPin.lastEta) : undefined}
           sub={
             <>
-              {clearDelta === 0 ? "same as today" : clearDelta < 0 ? `▲ ${-clearDelta} calendar days earlier` : `▼ ${clearDelta} calendar days later`}
+              {k.blocked > 0 ? `${k.blocked} blocked orders — clearance unresolved` : clearDelta === 0 ? "same as today" : clearDelta < 0 ? `▲ ${-clearDelta} calendar days earlier` : `▼ ${clearDelta} calendar days later`}
               {(() => {
                 const early = kpisOf(fast).lastEta;
                 const late = kpisOf(slow).lastEta;
@@ -610,13 +611,15 @@ export function WhatIfSimulator({ inputs, isAdmin = false, canSave = false, save
           sub={k.worst ? `${deptLabel(k.worst.dept)} · weekly plan ${inputs.plan?.planNo ?? ""}` : "no weekly plan"}
         />
         <Kpi
-          label="Scenario cost"
+          label="Extra resource effort"
           value={addedMh === 0 ? "±0" : `${addedMh > 0 ? "+" : ""}${fmt(addedMh)} mh/day`}
           tone={addedMh > 0 ? "warn" : undefined}
           pinned={pinned ? (scenarioCost(pinned) === 0 ? "±0" : `${scenarioCost(pinned) > 0 ? "+" : ""}${fmt(scenarioCost(pinned))} mh/day`) : undefined}
           sub={touched ? "scenario active — nothing is saved" : "reality — no knobs turned"}
         />
       </div>
+
+      <SimulationReview inputs={inputs} scenario={scenario} onLoad={setScenario} />
 
       {/* ================= the knobs: the scenario's settings, then capacity per station ================= */}
       <section className="bg-surface border rounded-[10px] overflow-hidden">

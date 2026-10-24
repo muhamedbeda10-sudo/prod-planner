@@ -226,24 +226,25 @@ export function loadScenario(inputs: WhatIfInputs, raw: unknown): Scenario {
 /** The headline figures of one run: orders still to finish, late, on time,
  *  the day the last one clears, and the most loaded department of the plan. */
 export function kpisOf(result: WhatIfResult) {
-  const byMo = new Map<string, { late: boolean; blocked: boolean; anyActive: boolean }>();
+  const byMo = new Map<string, { blocked: boolean; eta: string | null; due: string | null }>();
   for (const j of result.jobs) {
-    const cur = byMo.get(j.mo) ?? { late: false, blocked: false, anyActive: false };
-    if (j.blockedBy) cur.blocked = true;
-    else if (!j.done) {
-      cur.anyActive = true;
-      if (j.late) cur.late = true;
-    }
+    if (j.done) continue;
+    const cur = byMo.get(j.mo) ?? { blocked: false, eta: null, due: null };
+    cur.blocked ||= !!j.blockedBy || !j.etaISO;
+    if (j.etaISO && (!cur.eta || j.etaISO > cur.eta)) cur.eta = j.etaISO;
+    if (j.dueISO && (!cur.due || j.dueISO > cur.due)) cur.due = j.dueISO;
     byMo.set(j.mo, cur);
   }
-  const active = [...byMo.values()].filter((m) => m.anyActive && !m.blocked);
-  const late = active.filter((m) => m.late).length;
-  const activeJobs = result.jobs.filter((j) => !j.done && !j.blockedBy);
-  const lastEta = activeJobs.reduce<string | null>((m, j) => (j.etaISO && (!m || j.etaISO > m) ? j.etaISO : m), null);
+  const active = [...byMo.values()];
+  const dated = active.filter((m) => !m.blocked && m.due !== null);
+  const late = dated.filter((m) => m.eta! > m.due!).length;
+  const blocked = active.filter((m) => m.blocked).length;
+  const undated = active.filter((m) => m.due === null).length;
+  const lastEta = blocked ? null : active.reduce<string | null>((last, m) => m.eta && (!last || m.eta > last) ? m.eta : last, null);
   const worst = result.stages
     .filter((s) => s.required > 0 && s.load !== null)
     .reduce<(typeof result.stages)[number] | null>((w, s) => (!w || s.load! > w.load! ? s : w), null);
-  return { active: active.length, late, onTime: active.length - late, lastEta, worst };
+  return { active: active.length, late, onTime: dated.length - late, blocked, undated, lastEta, worst };
 }
 
 /** Man-hours a day the scenario's extra workers add (negative: take away). */
