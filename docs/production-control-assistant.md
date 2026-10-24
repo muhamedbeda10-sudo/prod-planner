@@ -46,9 +46,37 @@ The live score checks reference totals, use of the read tool and an exact source
 ## Useful next capabilities
 
 1. **Material and readiness exceptions:** combine missing nesting, material shortages, holds and aging queues into a reviewed action list with owners and due dates. Establish reliable material and hold records first.
-2. **Capacity and delivery risk:** compare due dates with available shifts, standard times, calendars and machine rules; show the baseline and alternative simulations before changing the plan.
+2. **Extend capacity and delivery risk:** add an LV-specific flow model and individual-machine constraints beyond the TR station-level comparisons described below.
 3. **Improvement tracking:** agree a KPI, baseline, target and review period for each intervention; compare the outcome with the baseline while accounting for product mix and calendar changes.
 4. **Approved recurring reviews:** after choosing timing and recipients, configure a morning report and an end-of-day follow-up using existing automations; monitor their actual execution and failures.
 5. **Broader evaluation:** add anonymized, reviewed shop-floor questions about capacity, material, holds and action permissions, with expected sources and clear acceptance criteria.
 
-These are proposed next steps, not capabilities activated by this release. Integrations and clean records remain necessary; the assistant cannot replace missing factory measurements or engineering judgement.
+These remain proposed extensions; the comparison, stress-testing and readiness features implemented below use the current TR station model. Integrations and clean records remain necessary; the assistant cannot replace missing factory measurements or engineering judgement.
+
+## Planning comparison, resilience and forecast readiness
+
+The What-if Simulator now has **Compare alternatives & test disruptions**. Keep up to three named alternatives, adjust the ordinary simulator controls, and compare them with the current scenario and plant baseline. All rows are recomputed on the same input set; kept alternatives are local to the page and do not save or apply a run order. Load restores a kept alternative into the controls.
+
+**Stress tests** compare up to three independent cases: entire-station outages over inclusive calendar dates, worker reductions for the full modeled horizon, or material arriving on a chosen date for an exact job. Each case applies separately to each alternative. Worker losses are added to its existing crew change; existing stoppages stay in place and a material stress never brings an existing later hold forward. A stoppage at one physical machine cannot be treated as a whole-station outage without explicitly accepting that assumption.
+
+Results group components and split batches into MOs. Orders without due dates and orders blocked by a zero production rate remain separate from on-time/late counts. Clearance dates cover only the priced queue and stay unresolved while any of those orders is blocked. Resource effort is extra man-hours per working day, not currency or added overtime for the existing workforce. `shiftHours` affects only added/removed workers in this model.
+
+A provisional resilience ordering minimises worst blocked orders, then worst late orders, then worst total calendar days of lateness, then normal extra man-hours/day. Each worst metric may come from a different independent case. Ties retain table order; the ranking does not claim probabilities, simultaneous disruptions, a globally optimal plan or a financial optimum. Unknown coverage, missing capacity/due dates, blocking readiness gaps or invalid trials withhold the ranking.
+
+**Forecast readiness** identifies missing engineering times (including required components excluded from the queue), held orders, pending plan-quantity decisions, absent due dates, zero/volatile production rates, missing capacity and unpriced weekly-plan quantities. Zero engineering time for required work no longer produces a zero-duration forecast. Physical stock, nesting, individual machine constraints and customer commitments remain explicit checks outside this model; no confidence percentage is invented.
+
+The assistant can run the same shared calculations through three read-only tools:
+
+- `compare_scenarios`: one common start (plant, saved scenario or the current simulator) plus up to four labeled alternatives. Variants inherit the start independently. Optional queue optimization has a bounded search and reports whether it completed.
+- `stress_test_plan`: plant baseline and up to four alternatives against up to three explicit independent disruptions. Without alternatives it includes the selected starting scenario.
+- `get_simulation_readiness`: coverage, data gaps and assumptions from current live inputs.
+
+These tools never write plant data, change the screen, send messages or create schedules. Ask the assistant to show a chosen variant using the existing screen tool when wanted; saving/applying continues through the existing permissions and approval cards. Successful reads retain their source snapshot and related record links.
+
+This release uses the **TR fabrication model**, with combined shot blast/painting finishing. It does not forecast LV punching/bending; from an LV chat the tools require an explicit TR scope instead of silently mixing lines. Engineering rates and simulator loaders are fixed to TR even when the navigation toggle is LV.
+
+Example requests:
+
+- «قارن الخطة الحالية ببديل افتراضي فيه عاملين زيادة في اللحام، من نفس البيانات، ووضح فرق التأخير وساعات العمل».
+- «اختبر الخطة على توقف قسم اللحام بالكامل يوم [التاريخ]، ووضح الأوامر المتأثرة».
+- «راجع جاهزية توقعات المحولات ووضح البيانات اللي ناقصة قبل ما نعتمد على المواعيد».

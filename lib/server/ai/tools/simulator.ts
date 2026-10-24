@@ -31,7 +31,7 @@ const DAY = { type: "string", format: "date" } as const;
 const WORKERS = { type: "integer", minimum: -500, maximum: 500 } as const;
 const JOB = { type: "string", minLength: 3, maxLength: 120, description: "A job: \"MO|ITEM\", as simulate_scenario lists them." } as const;
 
-const KNOB_PROPS: ObjectSchema["properties"] = {
+export const KNOB_PROPS: ObjectSchema["properties"] = {
   saved: { type: "string", minLength: 1, maxLength: 60, description: "Start from this saved scenario (its exact name — list_scenarios). Leave out to start from the plant as it stands." },
   workersDelta: {
     type: "object",
@@ -74,7 +74,7 @@ const KNOB_PROPS: ObjectSchema["properties"] = {
 
 const OPTIMIZE = { type: "boolean", description: "Reorder the queue for the fewest late jobs, then the least lateness (the screen's ⚡ optimiser). Not with first." } as const;
 
-const FROM = {
+export const FROM = {
   type: "string",
   enum: ["screen", "plant"],
   description:
@@ -86,7 +86,7 @@ interface KnobInput extends ScenarioKnobs {
 }
 
 /** A scenario that may start from the person's Simulator. */
-interface ScreenInput extends KnobInput {
+export interface ScreenInput extends KnobInput {
   from?: "screen" | "plant";
   optimize?: boolean;
 }
@@ -99,7 +99,7 @@ function knobsOf(i: KnobInput): ScenarioKnobs {
   };
 }
 
-function parseScreenInput(r: Record<string, unknown>): ScreenInput | string {
+export function parseScreenInput(r: Record<string, unknown>): ScreenInput | string {
   if (r.optimize === true && Array.isArray(r.first) && r.first.length > 0) return "Either rush jobs with first, or let optimize order the queue — not both.";
   if (r.saved !== undefined && r.from !== undefined) return "Start from a saved scenario (saved), or from the screen or the plant (from) — not both.";
   return r as unknown as ScreenInput;
@@ -108,7 +108,7 @@ function parseScreenInput(r: Record<string, unknown>): ScreenInput | string {
 /** The scenario on the person's Simulator a call starts from — null when it
  *  starts from a saved one or the plant, or there is none (an automation, a
  *  Simulator that is not open). */
-function screenStart(i: ScreenInput, ctx: ToolCtx): unknown {
+export function screenStart(i: ScreenInput, ctx: ToolCtx): unknown {
   return i.saved || i.from === "plant" ? null : (ctx.screen?.simulator.scenario ?? null);
 }
 
@@ -124,8 +124,8 @@ interface Built {
 /** The scenario the input names: its starting point (a saved scenario, the
  *  one on the person's Simulator, or the plant as it stands) with the knobs
  *  turned. The screen's is read against today's jobs as a saved one is. */
-async function buildScenario(i: KnobInput, screen: unknown = null): Promise<Built | { error: string }> {
-  const inputs = await getWhatIfInputs();
+export async function buildScenario(i: KnobInput, screen: unknown = null, snapshot?: WhatIfInputs): Promise<Built | { error: string }> {
+  const inputs = snapshot ?? await getWhatIfInputs();
   let start = defaultScenario(inputs);
   let from: unknown = null;
   let named = "the plant as it stands";
@@ -155,7 +155,7 @@ function optimised(b: Built, optimize: boolean | undefined): { scenario: Scenari
 
 const kpiView = (r: WhatIfResult) => {
   const k = kpisOf(r);
-  return { ordersOpen: k.active, ordersLate: k.late, ordersOnTime: k.onTime, lastClearsISO: k.lastEta };
+  return { ordersOpen: k.active, ordersLate: k.late, ordersOnTime: k.onTime, ordersBlocked: k.blocked, ordersUndated: k.undated, lastClearsISO: k.lastEta };
 };
 
 const MAX_JOB_ROWS = 60;

@@ -31,6 +31,7 @@ import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import {
   applyRunOrderTool, clearRunOrderTool, deleteScenarioTool, restoreRunOrderTool, restoreScenarioTool, saveScenarioTool, showOnSimulatorTool, simulateScenarioTool,
 } from "@/lib/server/ai/tools/simulator";
+import { compareScenariosTool, stressTestPlanTool, simulationReadinessTool } from "@/lib/server/ai/tools/simulationReview";
 import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
 
 const job = (id: string, o: Partial<WhatIfJob> = {}): WhatIfJob => ({
@@ -232,5 +233,53 @@ describe("who is offered the Simulator", () => {
     expect(names).not.toContain("restore_run_order");
     const hidden = toolsFor(user(), { hidden: new Set(["simulate"]), actionsPaused: false }).map((t) => t.name);
     expect(hidden.filter((n) => /scenario|run_order/.test(n))).toEqual([]);
+  });
+});
+
+
+describe("single-snapshot planning reviews", () => {
+  it("loads live inputs once for all alternatives and keeps the person's screen untouched", async () => {
+    const c = onScreen({ workFridays: true });
+    const before = structuredClone(c.screen);
+    const r = await compareScenariosTool.run({ variants: [{ label: "As shown" }, { label: "Crew", workersDelta: { Welding: 1 } }] }, c);
+    expect(r.ok).toBe(true);
+    expect(h.getWhatIfInputs).toHaveBeenCalledTimes(1);
+    const data = JSON.parse(r.text);
+    expect(data.scope).toMatchObject({ line: "TR", startedFrom: "the scenario on the person's Simulator" });
+    expect(data.variants).toHaveLength(2);
+    expect(data.alternatives[1].knobs).toMatchObject({ workFridays: true, workersDelta: { Welding: 1 } });
+    expect(c.screen).toEqual(before);
+    expect(h.actions.saveScenario).not.toHaveBeenCalled();
+    expect(h.actions.applyRunOrder).not.toHaveBeenCalled();
+  });
+  it("checks access and refuses to pretend transformer forecasts describe panels", async () => {
+    for (const tool of [compareScenariosTool, stressTestPlanTool, simulationReadinessTool]) {
+      const input = { from: "plant" as const, variants: [{ label: "One" }], stresses: [{ label: "Absence", workersDelta: { Welding: -1 } }] };
+      expect((await tool.run(input, { ...ctx, hidden: new Set(["simulate"]) })).ok).toBe(false);
+      expect((await tool.run(input, { ...ctx, line: "LV" })).ok).toBe(false);
+    }
+    expect(h.getWhatIfInputs).not.toHaveBeenCalled();
+    expect((await simulationReadinessTool.run({ line: "TR" }, { ...ctx, line: "LV" })).ok).toBe(true);
+  });
+  it("validates bounded batches, labels, worker reductions and conflicting knobs", () => {
+    for (const input of [ { variants: [] }, { variants: Array.from({ length: 5 }, (_, i) => ({ label: String(i) })) }, { variants: [{ label: "Same" }, { label: "same" }] }, { variants: [{ label: "Plant baseline" }] }, { variants: [{ label: "Bad", first: ["A"], optimize: true }] }, { from: "plant", saved: "One", variants: [{ label: "One" }] } ]) expect(checkToolInput(compareScenariosTool, input).ok).toBe(false);
+    for (const input of [ { stresses: [] }, { stresses: [{ label: "Empty" }] }, { stresses: [{ label: "Adds workers", workersDelta: { Welding: 1 } }] }, { stresses: [{ label: "No change", workersDelta: { Welding: 0 } }] } ]) expect(checkToolInput(stressTestPlanTool, input).ok).toBe(false);
+  });
+  it("runs independent stress cases from a common saved start with no writes", async () => {
+    h.prisma.simScenario.findUnique.mockResolvedValue({ data: { workFridays: true } });
+    const r = await stressTestPlanTool.run({ saved: "Friday", stresses: [{ label: "Absent", workersDelta: { Welding: -1 } }, { label: "Station down", downtimes: [{ stage: "cut", fromISO: "2026-10-12", toISO: "2026-10-13" }] }] }, ctx);
+    expect(r.ok).toBe(true);
+    expect(h.getWhatIfInputs).toHaveBeenCalledTimes(1);
+    const data = JSON.parse(r.text);
+    expect(data.rows).toHaveLength(2);
+    expect(data.rows[1].label).toBe("Selected scenario");
+    expect(data.rows[1].trials).toHaveLength(2);
+    expect(h.actions.saveScenario).not.toHaveBeenCalled();
+    expect(h.actions.applyRunOrder).not.toHaveBeenCalled();
+  });
+  it("reports missing coverage explicitly and returns saved-source navigation", async () => {
+    const r = await simulationReadinessTool.run({}, ctx);
+    expect(JSON.parse(r.text)).toMatchObject({ coverage: null, issues: expect.arrayContaining([expect.objectContaining({ code: "unknown-coverage" })]) });
+    expect(r.links).toContainEqual({ label: "What-if Simulator", href: "/simulate?view=whatif" });
   });
 });

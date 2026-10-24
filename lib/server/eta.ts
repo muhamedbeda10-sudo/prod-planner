@@ -2,11 +2,12 @@ import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { loadAllSchedules, loadHolidays, loadMasterOrders } from "./loads";
-import { toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import { isPaintExempt, type Item, ITEMS } from "@/lib/domain/constants";
 import { tierForOrder, itemHoursFor } from "@/lib/domain/stdEngine";
 import { forecastEta, ETA_STAGES, type EtaOrder, type EtaStage, type EtaResult } from "@/lib/domain/eta";
 import { getStdData } from "./standardTimes";
+import { withLine } from "./line";
 import { getMasterTracker } from "./masterTracker";
 
 // how much history feeds the run-rate: enough to smooth a slow day, short
@@ -19,10 +20,11 @@ const isWorkday = (d: Date, off: Set<string>) => d.getUTCDay() !== 5 && !off.has
 
 /** The plant's ACTUAL std-hours per working day per ETA stage, over the last
  *  RATE_WINDOW_WD working days (ending yesterday). */
-export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, number>; sigma: Record<EtaStage, number>; windowDays: number }> => {
+export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, number>; sigma: Record<EtaStage, number>; windowDays: number }> => withLine("TR", async () => {
   const holidays = new Set((await loadHolidays()).map((h) => toISODate(h.date)));
   // walk back from yesterday until the window holds RATE_WINDOW_WD working days
-  const end = new Date(Math.floor(Date.now() / DAY) * DAY - DAY);
+  const end = new Date(`${factoryDayISO(new Date())}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() - 1);
   let start = new Date(end);
   let wd = isWorkday(end, holidays) ? 1 : 0;
   while (wd < RATE_WINDOW_WD) {
@@ -76,7 +78,7 @@ export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, n
     sigma[s] = Math.sqrt(values.reduce((a, v) => a + (v - mean) ** 2, 0) / wd);
   }
   return { rates, sigma, windowDays: wd };
-});
+}));
 
 /** One order-component as the forecast schedules it: its own remaining
  *  pieces per station. Pieces flow — the TC of an order can be welding while
@@ -92,6 +94,7 @@ export interface EtaJob extends EtaOrder {
 /** Everything the baseline forecast is made of — shared by the live ETA
  *  column and the what-if simulator (which re-runs scenarios over it). */
 export interface EtaBase {
+  coverage?: Omit<import("@/lib/domain/simulationReview").ForecastCoverage, "unpricedPlanPieces" | "totalPlanPieces">;
   jobs: EtaJob[]; // open (MO × item) jobs, FIFO by due date
   results: EtaResult[]; // baseline forecast, same order as `jobs`
   rates: Record<EtaStage, number>;
@@ -101,7 +104,8 @@ export interface EtaBase {
   todayISO: string;
 }
 
-export const getEtaBase = cache(async (): Promise<EtaBase> => {
+// Engineering standard times and this flow model are TR-specific, regardless of the page toggle.
+export const getEtaBase = cache(async (): Promise<EtaBase> => withLine("TR", async () => {
   const [tracker, std, { rates, sigma, windowDays }, schedules, holidayRows, masters] = await Promise.all([
     getMasterTracker(),
     getStdData(),
@@ -122,22 +126,25 @@ export const getEtaBase = cache(async (): Promise<EtaBase> => {
   // a held order is not in any queue, so it has no forecast — its cell says so
   const open = tracker.filter((r) => r.status === "open" && !r.hold.onHold);
   const jobs: EtaJob[] = [];
+  const missingTimes: { mo: string; bom: string; item: string }[] = [];
   for (const r of open) {
     // resolve through the registry row itself so the FG map gets its say
     const tier = tierForOrder(std, masterByMo.get(r.mo) ?? { fgCode: null, kva: r.kva });
     const per = tier !== null ? itemHoursFor(std, tier) : null;
-    if (!per) continue; // no standard times — no honest forecast for this MO
     for (const it of ITEMS) {
       const c = r.items[it];
       if (!c.eligible || c.excluded) continue;
-      const p = per[it];
-      if (!p) continue; // AR / MB — no standard times
+      const p = per?.[it];
       const reqInHouse = Math.max(0, r.required - c.osp);
       const left = {
         cut: Math.max(0, reqInHouse - c.cut),
         weld: Math.max(0, reqInHouse - c.weld),
         finish: Math.max(0, reqInHouse - (isPaintExempt(it as Item) ? c.shp : c.paint)),
       };
+      if (!p || (left.cut > 0 && !(p.cut > 0)) || (left.weld > 0 && !(p.weld > 0)) || (left.finish > 0 && !(p.shb + p.paint > 0))) {
+        if (Object.values(left).some((n) => n > 0)) missingTimes.push({ mo: r.mo, bom: r.bom, item: it });
+        continue; // incomplete engineering time cannot support a dated promise
+      }
       const perPc: Record<EtaStage, number> = { cut: p.cut, weld: p.weld, finish: p.shb + p.paint };
       jobs.push({
         id: `${r.mo}|${it}`,
@@ -153,15 +160,21 @@ export const getEtaBase = cache(async (): Promise<EtaBase> => {
   }
 
   return {
+    coverage: {
+      openOrders: tracker.filter((r) => r.status === "open" && r.remaining > 0).length,
+      heldOrders: tracker.filter((r) => r.status === "open" && r.hold.onHold && r.remaining > 0).length,
+      pendingQuantityOrders: tracker.filter((r) => r.status === "open" && r.pendingQty !== null).length,
+      missingTimes,
+    },
     jobs,
     results: forecastEta(jobs, rates),
     rates,
     sigma,
     windowDays,
     holidayISOs: holidayRows.map((h) => toISODate(h.date)),
-    todayISO: toISODate(new Date(Math.floor(Date.now() / DAY) * DAY)),
+    todayISO: factoryDayISO(new Date()),
   };
-});
+}));
 
 export interface OrderEta {
   etaISO: string | null; // forecast completion date; null when blocked or done
