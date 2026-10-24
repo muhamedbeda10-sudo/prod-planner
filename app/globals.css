@@ -843,6 +843,11 @@ div.overflow-x-auto:has(> table) {
   max-height: 78vh;
   overflow-y: auto;
 }
+/* Shifts uses document scrolling; its tables only scroll horizontally on narrow screens. */
+.shifts-workspace div.overflow-x-auto:has(> table) {
+  max-height: none;
+  overflow-y: hidden;
+}
 div.overflow-x-auto > table thead {
   position: sticky;
   top: 0;

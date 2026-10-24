@@ -1,9 +1,8 @@
 "use client";
 
 import { EmptyState } from "@/components/primitives";
-import { CalendarDays, Clock3, ClipboardList, Gauge, LayoutGrid, Moon, Sun, UserX, Users, CircleHelp } from "lucide-react";
+import { Clock3, ClipboardList, Gauge, LayoutGrid, Moon, Sun, UserX, Users, CircleHelp } from "lucide-react";
 import { formatDate } from "@/lib/domain/format";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
@@ -12,9 +11,8 @@ import {
 } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL, WORKER_GROUPS } from "@/lib/domain/tanks";
 import { ROSTER_SECTIONS, rosterDepts, rosterLineMatches, type RosterFilter, rosterFilterLabel } from "@/lib/domain/roster";
-import type { ShiftHistoryDay, ShiftLineDTO, ShiftRosterData } from "@/lib/server/shifts";
+import type { ShiftLineDTO, ShiftRosterData } from "@/lib/server/shifts";
 import { clearShiftDay, saveShiftRoster } from "@/app/shifts/actions";
-import { ShiftHoursForm } from "@/components/ShiftHoursForm";
 import { ShiftBoard, type BoardLine } from "@/components/ShiftBoard";
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
 import { TableFrame, Th, useConfirm } from "@/components/DataTable";
@@ -99,15 +97,11 @@ function PickCard({ on, onClick, label, time, timeOnPhone = true, icon: Icon, va
   );
 }
 
-export function ShiftRoster({ data, history, editableDepts, today, filter, canSetHours = false }: {
+export function ShiftRoster({ data, editableDepts, filter }: {
   data: ShiftRosterData;
-  history: ShiftHistoryDay[];
   /** The departments this user may record — the rest are read-only rows. */
   editableDepts: RosterDept[];
-  today: string;
   filter: RosterFilter;
-  /** The planner may set what a shift is worth without leaving this page. */
-  canSetHours?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -115,7 +109,6 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
   const save = useAction();
   const clear = useAction();
   const [confirm, confirmDialog] = useConfirm();
-  const [hoursOpen, setHoursOpen] = useState(false);
   const [q, setQ] = useState("");
   const [pick, setPick] = useState<RosterPick>("all");
   const [view, setView] = useState<View>("record");
@@ -439,54 +432,6 @@ export function ShiftRoster({ data, history, editableDepts, today, filter, canSe
         </div>
       )}
 
-      {/* the days recorded, for what the filter shows */}
-      <section className="no-print">
-        <h2>Last days recorded — {filterLabel}</h2>
-        {history.length === 0 ? (
-          <div className="rounded-xl border border-dashed"><EmptyState compact icon={CalendarDays} title="Nothing recorded yet" hint="Save a day and it is listed here." /></div>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {history.map((h) => (
-              <Link
-                key={h.dateISO} href={`/shifts?day=${h.dateISO}${filter ? `&sec=${filter}` : ""}`}
-                className={`chip tabnum ${h.dateISO === data.dateISO ? "chip-on" : ""}`}
-                title={h.day + h.night > 0 ? `Open ${formatDate(h.dateISO)}: ${h.day} on the day shift, ${h.night} on the night shift, ${h.hours} man-hours` : `Open ${formatDate(h.dateISO)}: ${h.people} present, ${h.hours} man-hours`}
-              >
-                {formatDate(h.dateISO)}
-                {h.day + h.night > 0 ? (
-                  <>
-                    <span className="shift-tag shift-tag-day"><Sun size={11} aria-hidden />{h.day}</span>
-                    <span className="shift-tag shift-tag-night"><Moon size={11} aria-hidden />{h.night}</span>
-                  </>
-                ) : h.people > 0 && <span>{h.people} present</span>}
-                <span className="text-muted">{h.hours} mh</span>
-              </Link>
-            ))}
-            {history[0].dateISO !== today && !allRecorded && data.dateISO === today && <span className="pill pill-warn">today not recorded</span>}
-          </div>
-        )}
-      </section>
-
-      {/* What a shift is worth — the codes on every line are the day and the
-          night shift; the hours behind them are the plant's to set. */}
-      {canSetHours && (
-        <section className="bg-surface border rounded-xl no-print">
-          <button type="button" onClick={() => setHoursOpen((v) => !v)} className="w-full flex items-center gap-2 p-3 text-start" aria-expanded={hoursOpen}>
-            <span className={`inline-block transition-transform duration-150 ${hoursOpen ? "rotate-90" : ""}`} aria-hidden>▶</span>
-            <b className="text-sm">Shift hours</b>
-            <span className="text-xs text-muted tabnum">day {round1(hrs.short)} h · night {round1(hrs.long)} h · overtime {round1(hrs.overtime)} h</span>
-            <span className="ms-auto text-xs text-muted">{hoursOpen ? "Close" : "Change"}</span>
-          </button>
-          {hoursOpen && (
-            <div className="px-3 pb-3 border-t pt-3">
-              <p className="text-xs text-muted mb-3">
-                The net hours the day and the night shift are worth, and what the {OVERTIME_TIME} overtime adds. Every man-hour the app counts uses them; days already recorded are re-counted with the new figures.
-              </p>
-              <ShiftHoursForm short={hrs.short} long={hrs.long} overtime={hrs.overtime} compact />
-            </div>
-          )}
-        </section>
-      )}
     </div>
   );
 }
