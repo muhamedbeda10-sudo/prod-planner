@@ -12,8 +12,7 @@ import { saveShiftHours } from "@/app/admin/settings/actions";
 
 export function ShiftHoursForm({ short, long, overtime, compact = false }: {
   short: number; long: number; overtime: number;
-  /** On the shift log the panel sits under the roster, where the heading and
-   *  the explanation are the page's own. */
+  /** Embed the fields where a caller supplies its own heading and explanation. */
   compact?: boolean;
 }) {
   const router = useRouter();
@@ -72,7 +71,7 @@ export function ShiftHoursForm({ short, long, overtime, compact = false }: {
   if (compact) return body;
 
   return (
-    <section className="bg-surface border rounded-xl p-4 mt-4">
+    <section className="bg-surface border rounded-xl p-4">
       <h2 className="text-base font-bold">🕘 Shift hours</h2>
       <p className="text-xs text-muted mt-0.5 mb-3">
         Net working hours after the one-hour break, plus the day team’s 16:00–19:00 overtime. Every man-hour the app counts uses

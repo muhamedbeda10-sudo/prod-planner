@@ -9,6 +9,7 @@ import { ShiftProductivity } from "@/components/ShiftProductivity";
 import { PageHeader } from "@/components/ui";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
 import { ShiftRoster } from "@/components/ShiftRoster";
+import { ShiftHoursForm } from "@/components/ShiftHoursForm";
 import { ShiftsWorkspace } from "@/components/ShiftsWorkspace";
 import { UrlDateSlicer } from "@/components/UrlDateSlicer";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
@@ -35,7 +36,7 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
   const editableDepts = ROSTER_DEPTS.filter((d) => hasPerm(me, shiftPermKey(d)));
 
   return (
-    <div className="flex h-[calc(100dvh-5rem)] min-h-0 flex-col gap-3 overflow-hidden print:h-auto print:overflow-visible">
+    <div className="space-y-3">
       <RememberLastVisit storageKey="shifts:last" />
       <div className="shrink-0 space-y-2 no-print">
         <PageHeader title="🕘 Shift log" />
@@ -48,8 +49,12 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
         attendance={
           /* keyed on the day so the draft starts fresh on every navigation; the
              filter is a URL param and keeps the draft */
-          <ShiftRoster key={day} data={data} history={history} editableDepts={editableDepts} today={today} filter={filter} canSetHours={me.isAdmin} />
+          <ShiftRoster key={day} data={data} editableDepts={editableDepts} filter={filter} />
         }
+        history={history}
+        dayISO={day}
+        filter={filter}
+        hours={me.isAdmin ? <ShiftHoursForm short={data.shiftHours.short} long={data.shiftHours.long} overtime={data.shiftHours.overtime} /> : undefined}
         productivity={<ShiftProductivity data={productivity} dayISO={day} filterLabel={rosterFilterLabel(filter)} isAdmin={me.isAdmin} />}
       />
     </div>

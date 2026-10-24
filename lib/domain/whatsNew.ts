@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-24-shifts-separate-history-hours",
+    dateISO: "2026-10-24",
+    title: "A clearer shift log: recorded days and hours in their own tabs",
+    where: "Shifts → Daily attendance · Recorded days · Shift hours",
+    href: "/shifts",
+    body: "Recorded days now open as a separate list, and admins edit the shift hours in their own tab. The attendance page uses normal page scrolling, with no second vertical scrollbar inside its table. Switching tabs keeps unsaved attendance and hours drafts. Opening a recorded day returns to attendance with the selected line or section retained.",
+  },
+  {
     id: "2026-10-24-shifts-day-night",
     dateISO: "2026-10-24",
     title: "Shift log: who came on the day shift and who on the night shift",

@@ -184,7 +184,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    standard hours they earned, or by pieces when nothing that day is priced — so AR and MB get a figure too).
    Click it to take it as the figure. Only a ✓ on a machine card carries the machine, so the page says what
    share of the recorded output can be measured at all.
-   **Shift hours** (Tools → Settings, admin): what the day shift, the night shift and the day shift's overtime are
+   **Shift hours** (Shifts → Shift hours, admin): what the day shift, the night shift and the day shift's overtime are
    worth. Every man-hour the app counts is measured with them — the shift log's day, a machine's crew, the
    figure the standard times are calibrated against — so a new roster is a setting, not a code change. A day
    already recorded keeps the shift it was recorded under and is re-counted with the new hours.
