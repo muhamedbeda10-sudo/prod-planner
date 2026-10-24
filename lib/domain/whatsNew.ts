@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-24-shifts-day-night",
+    dateISO: "2026-10-24",
+    title: "Shift log: who came on the day shift and who on the night shift",
+    where: "Shifts → Daily attendance",
+    href: "/shifts",
+    body: "Each worker now has one choice — Day (07:00–16:00), Night (19:00–07:00) or Absent — instead of Present plus a shift list. The figures on top count the day shift, the night shift, overtime, absent and not set, and each one filters the list. The new Day / Night board puts the two shifts' people side by side by department, and it is what Print / PDF and Export Excel now give you. Save stays at the bottom of the screen, and \"Set … not set to\" fills the rest in one click (anyone on vacation stays absent). The last days recorded show their day and night counts, and the assistant asks before treating workers you did not mention as present or absent.",
+  },
+  {
     id: "2026-10-24-simulation-decision-review",
     dateISO: "2026-10-24",
     title: "Compare planning alternatives, stress-test disruptions and check forecast readiness",

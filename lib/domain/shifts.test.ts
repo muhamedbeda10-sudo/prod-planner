@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CENTERS, MACHINE_DEPTS, ROUTING, SHIFTS, centerShares, dayTotals, hoursOfShift, isShiftCode, isShiftDept, lineHours, machineAvailable, routeFor, shiftLabel } from "./shifts";
+import { CENTERS, MACHINE_DEPTS, ROUTING, SHIFTS, attendanceLine, attendanceOf, centerShares, dayTotals, isAttendance, shiftSplit, hoursOfShift, isShiftCode, isShiftDept, lineHours, machineAvailable, routeFor, shiftLabel } from "./shifts";
 import { SHEET_ITEMS } from "./constants";
 
 describe("lineHours", () => {
@@ -98,3 +98,50 @@ describe("shift hours the planner sets", () => {
   });
 });
 
+
+describe("who came on which shift", () => {
+  const hrs = { short: 8, long: 11, overtime: 3 };
+  it("reads one choice — day, night or absent — off a line, and unset while the day has no record", () => {
+    expect(attendanceOf({ recorded: false, present: false, shift: "S9" })).toBe("unset");
+    expect(attendanceOf({ recorded: true, present: false, shift: "S11" })).toBe("absent");
+    expect(attendanceOf({ recorded: true, present: true, shift: "S9" })).toBe("day");
+    expect(attendanceOf({ recorded: true, present: true, shift: "S11" })).toBe("night");
+    // a line from the database is recorded by being there
+    expect(attendanceOf({ present: true, shift: "S11" })).toBe("night");
+    expect(isAttendance("night")).toBe(true);
+    expect(isAttendance("unset")).toBe(false);
+  });
+
+  it("turns a choice into a line: overtime stays on the day shift only, vacation is absent", () => {
+    expect(attendanceLine("day", { overtimeH: 3 })).toEqual({ present: true, shift: "S9", overtimeH: 3 });
+    expect(attendanceLine("night", { overtimeH: 3 })).toEqual({ present: true, shift: "S11", overtimeH: 0 });
+    expect(attendanceLine("absent", { overtimeH: 3 })).toEqual({ present: false, shift: "S9", overtimeH: 0 });
+    expect(attendanceLine("day", { overtimeH: 0 }, true)).toEqual({ present: false, shift: "S9", overtimeH: 0 });
+  });
+
+  it("splits the day's people and man-hours by shift", () => {
+    const s = shiftSplit([
+      { recorded: true, present: true, shift: "S9", overtimeH: 3 },
+      { recorded: true, present: true, shift: "S9", overtimeH: 0 },
+      { recorded: true, present: true, shift: "S11", overtimeH: 0 },
+      { recorded: true, present: false, shift: "S9", overtimeH: 0 },
+      { recorded: false, present: false, shift: "S9", overtimeH: 0 },
+    ], hrs);
+    expect(s).toEqual({
+      workers: 5,
+      day: { people: 2, hours: 19, overtimePeople: 1, overtimeH: 3 },
+      night: { people: 1, hours: 11 },
+      absent: 1,
+      unset: 1,
+      hours: 30,
+    });
+    // the same man-hours the day's total counts
+    expect(s.hours).toBe(dayTotals([
+      { present: true, shift: "S9", overtimeH: 3 }, { present: true, shift: "S9", overtimeH: 0 }, { present: true, shift: "S11", overtimeH: 0 },
+    ], hrs).hours);
+  });
+
+  it("an empty list is all zeros", () => {
+    expect(shiftSplit([])).toEqual({ workers: 0, day: { people: 0, hours: 0, overtimePeople: 0, overtimeH: 0 }, night: { people: 0, hours: 0 }, absent: 0, unset: 0, hours: 0 });
+  });
+});

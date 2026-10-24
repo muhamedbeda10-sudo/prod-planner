@@ -90,8 +90,8 @@ export async function saveShiftHours(formData: FormData): Promise<SettingsAction
     if (!Number.isFinite(n) || n < 0 || n > 24) return { error: `${what} must be between 0 and 24 hours.` };
     return Math.round(n * 100) / 100;
   };
-  const short = read("shiftShortH", "The short shift");
-  const long = read("shiftLongH", "The long shift");
+  const short = read("shiftShortH", "The day shift");
+  const long = read("shiftLongH", "The night shift");
   const overtime = read("overtimeH", "Overtime");
   for (const v of [short, long, overtime]) if (typeof v === "object") return { ok: false, error: v.error };
   const hours = { shiftShortH: short as number, shiftLongH: long as number, overtimeH: overtime as number };
