@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Wrench } from "lucide-react";
+import { Pencil, Plus, Trash2, Wrench } from "lucide-react";
 import { EmptyState, Note } from "@/components/primitives";
 import { Badge } from "@/components/Badge";
 import { ExportButton } from "@/components/ExportButton";
@@ -11,8 +11,8 @@ import { DOWNTIME_REASONS, MAX_STOP_HOURS, STOP_STEP, downtimeByCause, downtimeL
 import { WORK_CENTRE_LABEL, isRosterDept, round1, type RosterDept } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL } from "@/lib/domain/tanks";
 import { formatDate } from "@/lib/domain/format";
-import type { DowntimeDay } from "@/lib/server/downtime";
-import { addDowntime, deleteDowntime } from "@/app/shifts/downtimeActions";
+import type { DowntimeDay, DowntimeRowDTO } from "@/lib/server/downtime";
+import { addDowntime, deleteDowntime, updateDowntime } from "@/app/shifts/downtimeActions";
 
 // The day's machine stops: which machine stood, how long, and why — one of the
 // plant's codes, so the losses can be counted by cause. The supervisor
@@ -27,7 +27,14 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const canRecord = (dept: string) => isRosterDept(dept) && editableDepts.includes(dept);
   const machines = useMemo(() => data.machines.filter((m) => isRosterDept(m.dept) && editableDepts.includes(m.dept)), [data.machines, editableDepts]);
+  const editor = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState<DowntimeRowDTO | null>(null);
   const [form, setForm] = useState({ machineId: "", hours: "", reasonCode: "", reason: "" });
+  useEffect(() => {
+    if (!editing) return;
+    editor.current?.scrollIntoView({ block: "nearest" });
+    editor.current?.querySelector<HTMLInputElement>("input[aria-label='Hours stopped']")?.focus({ preventScroll: true });
+  }, [editing]);
   const byDept = useMemo(() => {
     const groups = new Map<string, typeof machines>();
     for (const m of machines) groups.set(m.dept, [...(groups.get(m.dept) ?? []), m]);
@@ -39,13 +46,18 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
     const fd = new FormData();
     fd.set("date", data.dateISO);
     for (const [k, v] of Object.entries(form)) fd.set(k, v);
+    if (editing) {
+      fd.set("id", String(editing.id));
+      fd.set("before", JSON.stringify({ hours: editing.hours, reasonCode: editing.reasonCode, reason: editing.reason }));
+    }
     setMsg(null);
     start(async () => {
-      const res = await addDowntime(fd);
+      const res = editing ? await updateDowntime(fd) : await addDowntime(fd);
       if (res.ok) {
         const m = machines.find((x) => String(x.id) === form.machineId);
-        setMsg({ ok: true, text: `Recorded — ${m?.code ?? "the machine"} stood ${res.hours} h.` });
-        setForm({ machineId: form.machineId, hours: "", reasonCode: "", reason: "" });
+        setMsg({ ok: true, text: `${editing ? "Updated" : "Recorded"} — ${editing?.machineCode ?? m?.code ?? "the machine"} stood ${res.hours} h.` });
+        setEditing(null);
+        setForm({ machineId: "", hours: "", reasonCode: "", reason: "" });
         router.refresh();
       } else setMsg({ ok: false, text: res.error ?? "Could not record the stop." });
     });
@@ -58,7 +70,7 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
     start(async () => {
       const res = await deleteDowntime(fd);
       setMsg(res.ok ? { ok: true, text: "Stop deleted." } : { ok: false, text: res.error ?? "Could not delete." });
-      if (res.ok) router.refresh();
+      if (res.ok) { if (editing?.id === id) { setEditing(null); setForm({ machineId: "", hours: "", reasonCode: "", reason: "" }); } router.refresh(); }
     });
   };
 
@@ -83,11 +95,13 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
         )}
       </div>
 
-      {machines.length > 0 && (
-        <div className="toolbar !mb-0">
+      {(machines.length > 0 || editing) && (
+        <div ref={editor} className="toolbar !mb-0">
+          {editing && <p className="text-xs font-semibold px-3 pt-2">Editing {editing.machineCode} · {formatDate(data.dateISO)}</p>}
           <div className="toolbar-row">
-            <select value={form.machineId} onChange={(e) => setForm((f) => ({ ...f, machineId: e.target.value }))} aria-label="Machine" className="ctl" disabled={pending}>
+            <select value={form.machineId} onChange={(e) => setForm((f) => ({ ...f, machineId: e.target.value }))} aria-label="Machine" className="ctl" disabled={pending || !!editing}>
               <option value="">Machine…</option>
+              {editing && !machines.some((m) => m.id === editing.machineId) && <option value={editing.machineId}>{editing.machineCode} — {editing.machineName}</option>}
               {byDept.map(([dept, ms]) => (
                 <optgroup key={dept} label={deptName(dept)}>
                   {ms.map((m) => <option key={m.id} value={m.id}>{m.code} — {m.name}</option>)}
@@ -104,8 +118,9 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
             </select>
             <input value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} aria-label="Note" placeholder="Note (optional)" maxLength={200} className="ctl min-w-[12rem] flex-1" disabled={pending} />
             <button type="button" className="btn btn-primary btn-sm" disabled={pending || !ready} onClick={add}>
-              <Plus size={14} aria-hidden /> Add stop
+              {editing ? <Pencil size={14} aria-hidden /> : <Plus size={14} aria-hidden />}{editing ? "Save stop changes" : "Add stop"}
             </button>
+            {editing && <button type="button" disabled={pending} className="btn btn-ghost btn-sm" onClick={() => { setEditing(null); setForm({ machineId: "", hours: "", reasonCode: "", reason: "" }); }}>Cancel edit</button>}
           </div>
         </div>
       )}
@@ -133,7 +148,7 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
                     <Th label="Why" />
                     <Th label="Note" className="max-md:hidden" />
                     <Th label="By" className="max-md:hidden" />
-                    <th className="w-10" aria-label="Delete" />
+                    <th className="w-20" aria-label="Actions" />
                   </tr>
                 </thead>
                 <tbody>
@@ -147,9 +162,11 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
                       <td className="px-2 text-muted max-md:hidden">{r.recordedBy ?? ""}</td>
                       <td className="px-1 text-center">
                         {canRecord(r.dept) && (
+                          <span className="inline-flex gap-1">
+                          <button type="button" className="btn btn-sm btn-ghost" disabled={pending} aria-label={`Edit the stop of ${r.machineCode}`} onClick={() => { setEditing(r); setForm({ machineId: String(r.machineId), hours: String(r.hours), reasonCode: r.reasonCode ?? "", reason: r.reason ?? "" }); }}><Pencil size={14} aria-hidden /></button>
                           <button type="button" className="btn btn-sm btn-ghost" disabled={pending} aria-label={`Delete the stop of ${r.machineCode}`} onClick={() => remove(r.id, `${r.machineCode} · ${r.hours} h · ${downtimeLabel(r.reasonCode, r.reason)}`)}>
                             <Trash2 size={14} aria-hidden />
-                          </button>
+                          </button></span>
                         )}
                       </td>
                     </tr>

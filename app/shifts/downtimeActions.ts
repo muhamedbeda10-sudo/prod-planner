@@ -96,3 +96,35 @@ export async function deleteDowntime(fd: FormData): Promise<DowntimeActionResult
   revalidate();
   return { ok: true, id };
 }
+
+/** Correct a past stop in place; its machine and factory day stay attached to the original record. */
+export async function updateDowntime(fd: FormData): Promise<DowntimeActionResult> {
+  const id = Number(fd.get("id"));
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Pick the stop to edit." };
+  const row = await prisma.machineDowntime.findUnique({ where: { id } });
+  if (!row) return { ok: false, error: "That stop is already gone — reload the page." };
+  const g = await machineGuard(row.machineId);
+  if ("error" in g) return { ok: false, error: g.error };
+  if (row.date.toISOString().slice(0, 10) > factoryDayISO(new Date())) return { ok: false, error: "That day has not come yet." };
+  let before: { hours?: unknown; reasonCode?: unknown; reason?: unknown };
+  try { before = JSON.parse(String(fd.get("before") ?? "")); } catch { return { ok: false, error: "Reload this stop before editing it." }; }
+  if (!before || before.hours !== row.hours || before.reasonCode !== row.reasonCode || before.reason !== row.reason) return { ok: false, error: "This stop changed since you opened it. Reload before saving." };
+  const hours = stopHours(Number(String(fd.get("hours") ?? "").trim()));
+  if (!Number.isFinite(hours) || hours <= 0 || hours > MAX_STOP_HOURS) return { ok: false, error: `Give stopped hours between ${0.25} and ${MAX_STOP_HOURS}.` };
+  const reasonCode = String(fd.get("reasonCode") ?? "");
+  if (!isDowntimeCode(reasonCode)) return { ok: false, error: "Pick why it stopped." };
+  const reason = String(fd.get("reason") ?? "").trim().slice(0, 200) || null;
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const other = await tx.machineDowntime.aggregate({ where: { date: row.date, machineId: row.machineId, id: { not: id } }, _sum: { hours: true } });
+      if ((other._sum.hours ?? 0) + hours > MAX_STOP_HOURS) return { ok: false, error: "The machine's total stopped hours would exceed the day." };
+      const saved = await tx.machineDowntime.updateMany({ where: { id, date: row.date, machineId: row.machineId, hours: row.hours, reasonCode: row.reasonCode, reason: row.reason }, data: { hours, reasonCode, reason, recordedBy: g.by } });
+      return saved.count ? { ok: true, id, hours } : { ok: false, error: "This stop changed or was deleted. Reload before saving." };
+    }, { isolationLevel: "Serializable" });
+    if (result.ok) revalidate();
+    return result;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return { ok: false, error: "The machine's stops changed at the same time. Reload and try again." };
+    throw error;
+  }
+}

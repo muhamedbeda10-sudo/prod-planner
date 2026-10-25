@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-shift-history-table-actions",
+    dateISO: "2026-10-25",
+    title: "Recorded shift days in a table — edit or delete a day's shift data",
+    where: "Shifts → Recorded days · Machine stops",
+    href: "/shifts?view=history",
+    body: "Recorded days now appear in a compact table with day/night attendance, absences, man-hours, machine-stop counts and clear actions. Open attendance or stops for any recorded date, including older dates chosen from the date field. Delete day removes attendance, notes, stops and daily man-hour totals together for the confirmed departments, under their shift-log permissions. Production output and worker profiles are retained. Days with only stops are included; machine-stop hours, causes and notes can also be edited in place. Live productivity and planning figures refresh after changes.",
+  },
+  {
     id: "2026-10-25-night-shift-overtime",
     dateISO: "2026-10-25",
     title: "Night shift: 8 base hours, with optional 3-hour overtime",

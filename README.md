@@ -168,7 +168,11 @@ mobile drawer still lists every view flat, since it has the vertical room.
    department, with the absent under them; it is what Print / PDF prints and what Export Excel carries.
    "Save day" (pinned to the bottom of the screen) writes every row and re-sums each department's
    man-hours into the figure the calibration and the plan's capacity check read (Admin → Standard Times
-   shows it read-only). The last days recorded show their day and night counts. Recording needs
+   shows it read-only). **Recorded days** is a table of day/night attendance, absences, man-hours and
+   machine-stop counts. Each row opens attendance or stops for editing; the date field also opens older
+   dates. Delete day removes attendance, notes, stops and daily hour totals together for the confirmed
+   departments, requiring recording permission for all of them. Production output and worker profiles
+   are retained. Recording needs
    `shifts.<dept>`; viewing is free, and the save action itself refuses a worker still not set, and a row under a
    department the worker is not registered in (a worker moved or retired since keeps the rows already recorded). The
    assistant's `record_shift_day` follows the same rule: workers it is not told about are refused, not
@@ -181,7 +185,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    **Machine stops** (a tab of the shift log): which machine stood, the hours, and why — one of the plant's
    codes (`lib/domain/downtime.ts`: breakdown mechanical / electrical, no material, no operator, no drawing
    or program, setup, quality, power or air, planned maintenance, other) with an optional note; each stop
-   is deleted on its own. Recording needs the machine's department's `shifts.<dept>`. The assistant records
+   can be corrected in place (hours, cause and note) or deleted on its own. Recording needs the machine's department's `shifts.<dept>`. The assistant records
    and deletes them too (`record_machine_stop`, `delete_machine_stop`), never guessing a reason.
    **Hours a piece, by work centre** (Admin → Standard Times, admin): the hours ONE piece of each item takes
    at each centre — laser / punch, bending, fin folding, welding, shot blast, painting — typed by hand per
@@ -201,7 +205,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    standard hours they earned, or by pieces when nothing that day is priced — so AR and MB get a figure too).
    Click it to take it as the figure. Only a ✓ on a machine card carries the machine, so the page says what
    share of the recorded output can be measured at all.
-   **Shift hours** (Shifts → Shift hours, admin): what the day shift, the night shift and the day shift's overtime are
+   **Shift hours** (Shifts → Shift hours, admin): what the day shift, the night shift and each shift's overtime are
    worth. Every man-hour the app counts is measured with them — the shift log's day, a machine's crew, the
    figure the standard times are calibrated against — so a new roster is a setting, not a code change. A day
    already recorded keeps the shift it was recorded under and is re-counted with the new hours.
