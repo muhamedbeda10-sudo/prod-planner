@@ -85,7 +85,7 @@ export function InboxWorkspace({
 
   const body = (t: Exclude<InboxTab, "tasks">) =>
     inbox.data ? (
-      <div className={`p-3 md:p-4 ${wide ? "max-w-3xl mx-auto" : ""}`}>
+      <div className={`p-3 md:p-4 ${wide ? "max-w-[1600px] mx-auto md:px-6" : ""}`}>
         <InboxView key={`${inbox.version}:${openItem ?? 0}`} items={inbox.data.items} actions={inbox.data.actions} openId={openItem} kinds={TAB_KINDS[t]} device={false} emptyHint={EMPTY_HINT[t]} />
       </div>
     ) : (
