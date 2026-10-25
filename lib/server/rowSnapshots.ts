@@ -281,7 +281,7 @@ export async function restoreShiftState(dateISO: string, depts: readonly RosterD
   } catch (e) {
     return { ok: false, error: `The day could not be put back: ${e instanceof Error ? e.message : String(e)}` };
   }
-  for (const p of ["/shifts", "/admin/standard-times", "/report", "/tracker", "/"]) revalidatePath(p);
+  for (const p of ["/shifts", "/admin/standard-times", "/tracker", "/"]) revalidatePath(p);
   return { ok: true };
 }
 
@@ -352,7 +352,7 @@ export async function restoreStdState(s: StdState): Promise<RestoreResult> {
   } catch (e) {
     return { ok: false, error: `The standard times could not be put back: ${e instanceof Error ? e.message : String(e)}` };
   }
-  for (const p of ["/admin/standard-times", "/report", "/tracker", "/shifts"]) revalidatePath(p);
+  for (const p of ["/admin/standard-times", "/tracker", "/shifts"]) revalidatePath(p);
   return { ok: true };
 }
 
@@ -578,7 +578,7 @@ export async function restoreQueueNote(s: QueueNoteSnapshot): Promise<RestoreRes
   return { ok: true };
 }
 
-const RETURN_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"];
+const RETURN_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace"];
 
 export interface ReturnSnapshot {
   id: number;

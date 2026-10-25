@@ -2,9 +2,9 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { requiredHoursForLines, tierForOrder, itemHoursFor } from "@/lib/domain/stdEngine";
 import { projectPace } from "@/lib/domain/eta";
+import { workingDaysInclusive } from "@/lib/domain/insights";
 import { getStdData, getStageCapacity } from "./standardTimes";
 import { loadHolidays, loadMasterOrders } from "./loads";
-import { countWorkingDays } from "./report";
 import { toISODate } from "@/lib/domain/dates";
 import { owedAcrossDays, promiseCeiling } from "@/lib/domain/planPromises";
 
@@ -77,7 +77,8 @@ export async function getPlanCapacity(planNo: number | null): Promise<PlanCapaci
     if (s.ovenDate < min) min = s.ovenDate;
     if (s.ovenDate > max) max = s.ovenDate;
   }
-  const workingDays = await countWorkingDays(min, max);
+  // the working days (Sat–Thu, the calendar's days off out) the plan's man-hours a day are scaled by — never zero
+  const workingDays = Math.max(1, workingDaysInclusive(toISODate(min), toISODate(max), new Set(holidays.map((h) => toISODate(h.date)))));
 
   // ---- mid-window pace: at the run-rate so far, where does the week close? ----
   // "actual" = std hours EARNED on the plan's own orders since the window

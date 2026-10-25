@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-cockpit-in-plan-tracker",
+    dateISO: "2026-10-25",
+    title: "The cockpit sits inside Plan Tracker; the printed Report is gone",
+    where: "Plan Tracker → Cockpit",
+    href: "/",
+    body: "The Cockpit tab has left the strip: the home page is now the first view of Plan Tracker, beside the tracker and the Daily log, and its cards are laid out on one grid — the plan beside the lines behind, the load beside welding's parts, each centre's pace beside the losses — so every row fills the width. The printed daily Report is removed; what it showed is on the cockpit, the tracker and the Daily log.",
+  },
+  {
     id: "2026-10-24-planning-cockpit-home",
     dateISO: "2026-10-24",
     title: "The home page is now the Planning cockpit: the plan, the centres, the crunch, welding's parts and the losses",

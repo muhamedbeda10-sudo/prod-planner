@@ -10,7 +10,7 @@ import { Modal } from "@/components/Modal";
 import { SectionCard } from "@/components/primitives";
 
 /* Admin editor for everything the standard-hours features read:
-   1. KVA classes — man-hours ONE tank costs each stage (feeds the report's
+   1. KVA classes — man-hours ONE tank costs each stage (feeds the cockpit's
       earned hours and the weekly capacity check)
    2. Stage capacity — available man-hours per working day
    3. FG map — which KVA class an FG code belongs to (outranks the numeric KVA)
@@ -95,7 +95,7 @@ export function StandardTimesManager({
       <SectionCard
         icon={Timer}
         title="KVA classes — man-hours per tank"
-        description="What one tank of this class costs each stage. The report's earned hours and the plan capacity check are priced from these."
+        description="What one tank of this class costs each stage. The cockpit's earned hours and the plan capacity check are priced from these."
         padded={false}
         end={
           <button

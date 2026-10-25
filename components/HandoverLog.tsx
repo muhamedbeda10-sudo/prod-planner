@@ -20,8 +20,8 @@ import type { ProductLine } from "@/lib/domain/lines";
 const LOG_DEPTS = [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE];
 
 // A calendar day (UTC) offset from today — the log's exact-day presets.
-// 0 = today (what has been recorded so far), -1 = yesterday (the day the Daily
-// Report opens on by default, so both screens agree).
+// 0 = today (what has been recorded so far), -1 = yesterday (the last whole
+// recorded day).
 function dayISO(offset: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + offset);

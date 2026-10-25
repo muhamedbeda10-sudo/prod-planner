@@ -39,7 +39,6 @@ const TANK_PATHS = [
   "/handover",
   "/tracker",
   "/trace",
-  "/report",
   "/",
   "/odoo", // painting a batch writes its row on the ODOO tab
 ];

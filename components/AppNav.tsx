@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Menu, X, LogOut, Settings, LayoutDashboard, ClipboardList, Warehouse,
-  Table2, FileBarChart2, BookOpenCheck, ListChecks, ChevronDown,
+  Table2, BookOpenCheck, ListChecks, ChevronDown,
   CalendarDays, Users, Timer,
   FlaskConical, MessagesSquare, Droplets, QrCode, HardHat, SlidersHorizontal, Layers, Boxes, Clock, Factory, ChartColumnBig, PackageMinus, Bot, Gauge,
 } from "lucide-react";
@@ -52,18 +52,15 @@ const LV_WORKLIST_DEPTS = [
 ] as const;
 
 // Tabs after Worklist, ordered by shop-floor flow: work → log → track →
-// review. The home page (/) is the planner's cockpit, the first of them.
+// review. There is no Dashboard tab: each dashboard lives with what it reads.
 // One tab per QUESTION, not per screen. Several of these hold more than one
 // view behind their own switcher (see components/ViewTabs.tsx), which is what
 // keeps the strip short enough to read:
 //   Material     → the nesting sheets, and the sheet analytics built on them
-//   Plan Tracker → the tracker, the daily log and its report
+//   Plan Tracker → the planner's cockpit (the home page), the tracker and the daily log
 //   Floor        → the bay as it is, and the what-if simulator
 // Chat is not here at all — it is the icon in the right cluster.
 const REST: Item[] = [
-  // the home page is the planner's cockpit: the five questions a day starts
-  // with (the LV panels keep their own dashboard there — see `named`)
-  { href: "/", label: "Cockpit", icon: Gauge },
   // Material comes next: nesting is decided before a single sheet is cut.
   { href: "/material", label: "Material", icon: Layers, also: ["/analytics"] },
   // the store's count against Odoo's stock, code by code
@@ -73,7 +70,8 @@ const REST: Item[] = [
   { href: "/consumables", label: "Consumables", icon: PackageMinus },
   // who worked today, how long, on what — the supervisors' page
   { href: "/shifts", label: "Shifts", icon: Clock },
-  { href: "/tracker", label: "Plan Tracker", icon: Table2, also: ["/handover", "/report"] },
+  // the home page (/) is the planner's cockpit — a view of this tab
+  { href: "/tracker", label: "Plan Tracker", icon: Table2, also: ["/", "/handover"] },
   // the tanks' sticker sheet — its own tab while per-piece tracking is on
   // (TANK_ONLY drops it otherwise), and still a button on the painting worklist
   { href: "/barcode", label: "Tank Barcodes", icon: QrCode, match: "/barcode" },
@@ -92,8 +90,8 @@ const DRAWER: Item[] = [
 // The drawer has room for the views that ride inside a tab on desktop, so a
 // phone reaches them in one tap instead of two.
 const DRAWER_VIEWS: Item[] = [
+  { href: "/", label: "Cockpit", icon: Gauge },
   { href: "/handover", label: "Daily log", icon: BookOpenCheck },
-  { href: "/report", label: "Report", icon: FileBarChart2 },
   { href: "/analytics", label: "Material analytics", icon: ChartColumnBig },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
 ];
@@ -222,11 +220,11 @@ export function AppNav({
   // the leak test and the barcodes are the tanks' — with tracking off, or the
   // panels on screen, they are not part of the app
   const tankTabs = tankTracking && line !== "LV";
-  const named = (l: Item): Item => (l.href === "/simulate" && !machinePlanning ? { ...l, label: "Simulator" } : l);
-  // the cockpit is the transformers'; on the panels the home page is their
-  // own dashboard, a view of the Plan Tracker tab as it always was
-  const ofLine = (items: Item[]): Item[] =>
-    line !== "LV" ? items : items.filter((l) => l.href !== "/").map((l) => (l.href === "/tracker" ? { ...l, also: ["/", ...(l.also ?? [])] } : l));
+  const named = (l: Item): Item =>
+    l.href === "/simulate" && !machinePlanning ? { ...l, label: "Simulator" }
+    // the cockpit is the transformers'; on the panels the home page is their own dashboard
+    : l.label === "Cockpit" && line === "LV" ? { ...l, label: "Dashboard", icon: LayoutDashboard }
+    : l;
   // the screens the owner switched off for this account leave the menus too
   const canSee = useCanSee();
   const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => (tankTabs || !TANK_ONLY.has(d.href)) && canSee(d.href));
@@ -236,16 +234,15 @@ export function AppNav({
     const to = [l.href, ...(l.also ?? [])].find(canSee);
     return to ? (to === l.href ? l : { ...l, href: to, match: l.match ?? l.href }) : null;
   };
-  const restTabs = ofLine(REST).filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
+  const restTabs = REST.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
     .map(reachable).filter((l): l is Item => l !== null).map(named);
-  const drawerTabs = ofLine(!machinePlanning
+  const drawerTabs = (!machinePlanning
     ? DRAWER.filter((l) => !l.href.startsWith("/worklist/"))
     : line === "LV"
     ? [...LV_WORKLIST_DEPTS.map((d): Item => ({ href: d.href, label: `${d.label} Worklist`, icon: d.icon })), ...DRAWER.filter((l) => !l.href.startsWith("/worklist/"))]
     : DRAWER
   ).filter(shown).map(named);
-  // the printed report is the transformers' — the panels' dashboard carries its own
-  const drawerViews = (line === "LV" ? [{ href: "/", label: "Dashboard", icon: LayoutDashboard } as Item, ...DRAWER_VIEWS] : DRAWER_VIEWS).filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && !(line === "LV" && l.href === "/report") && canSee(l.href));
+  const drawerViews = DRAWER_VIEWS.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && canSee(l.href)).map(named);
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
   const singleDeptHref = worklistDepts.length === 1 ? worklistDepts[0].href : !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;
 

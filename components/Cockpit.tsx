@@ -13,11 +13,14 @@ import { WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
 import { STAGE_LABEL, efficiencyBand, isFloorAction } from "@/lib/domain/kpis";
 import type { CockpitData } from "@/lib/server/kpis";
 
-// 🧭 The planner's cockpit — five questions, each answered with the figure
-// and the list to act on, worst news first. Every number is standard hours
-// (what the work is worth), never pieces, so Fabrication's ten projects a day
-// add up. The figures come from lib/server/kpis.ts; the assistant reads the
-// same loader.
+// 🧭 The planner's cockpit — five questions, each a card with the figure and
+// the list to act on, worst news first. Every number is standard hours (what
+// the work is worth), never pieces, so Fabrication's ten projects a day add
+// up. The figures come from lib/server/kpis.ts; the assistant reads the same
+// loader.
+//
+// The page is a 12-column grid: a short card sits beside a long one, so no
+// card leaves a hole under it, and every row fills the width.
 
 const TONE_TEXT = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" } as const;
 const ACTION_ICON = { bad: CircleAlert, warn: AlertTriangle, info: Info } as const;
@@ -27,15 +30,18 @@ const pctOrDash = (v: number | null | undefined) => (v === null || v === undefin
 const itemName = (it: string) => (isItem(it) ? ITEM_NAME[it] : it);
 const centreName = (c: WorkCentre) => WORK_CENTRE_LABEL[c];
 
-function Section({ n, title, sub, children }: { n: number; title: string; sub?: string; children: React.ReactNode }) {
+/** A list of named amounts, the longest bar the full width. */
+function Bars({ rows, unit }: { rows: { key: string; label: string; value: number; text: React.ReactNode }[]; unit: string }) {
+  const max = Math.max(1, ...rows.map((r) => r.value));
   return (
-    <section className="space-y-2" aria-labelledby={`q${n}`}>
-      <div className="flex flex-wrap items-baseline gap-x-3">
-        <h2 id={`q${n}`} className="!mb-0"><span className="text-muted tabnum">{n}.</span> {title}</h2>
-        {sub && <span className="text-sm text-muted">{sub}</span>}
-      </div>
-      {children}
-    </section>
+    <div className="space-y-2">
+      {rows.map((r) => (
+        <div key={r.key}>
+          <div className="flex justify-between gap-2 text-sm mb-1"><span className="font-semibold">{r.label}</span><span className="tabnum">{r.text}</span></div>
+          <Meter value={r.value / max} label={`${r.label}: ${r.value} ${unit}`} />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -47,10 +53,10 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
   const actions = floor ? data.actions : data.actions.filter((a) => !isFloorAction(a));
   // a day the trend does not know is left out, never drawn as 0
   const spark = (k: "late" | "coverageDays") => data.trend.flatMap((t) => (t[k] === null || t[k] === undefined ? [] : [t[k]]));
-  let q = 0; // the questions' numbers, over the sections this account sees
+  const recentDays = Math.max(...data.centres.map((c) => c.recent.days), 0);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* today's decisions, worst first */}
       <section className="bg-surface border rounded-xl p-3 md:p-4" aria-labelledby="decide">
         <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -79,8 +85,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         )}
       </section>
 
-      {/* the headline figures */}
-      <div className="flex flex-wrap gap-3">
+      {/* the headline figures, spread over the width */}
+      <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
         <StatTile hero label="Plan delivered on its day" value={pctOrDash(finish?.rate)} sub={finish && finish.due > 0 ? `${finish.done} of ${finish.due} pcs due so far this plan` : "nothing due yet"} meter={finish?.rate ?? undefined} />
         <StatTile label="Plan lines behind" value={String(data.week.lateCount)} sub="past their stage date" spark={spark("late")} />
         <StatTile label="Welding covered" value={data.coverage.days === null ? "—" : `${data.coverage.days} d`} sub={data.coverage.band === "short" ? "short — welders may wait" : data.coverage.band === "heavy" ? "parts piling up" : "of cut parts in front of welding"} spark={spark("coverageDays")} />
@@ -92,130 +98,76 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         )}
       </div>
 
-      {/* 1 — the plan */}
-      <Section n={++q} title="Are we on this week's plan?" sub={data.week.planNo ? `weekly plan ${data.week.planNo} · ${data.week.covered} of ${data.week.req} pcs finished` : "no weekly plan imported yet"}>
-        {data.week.planNo === null ? (
-          <div className="rounded-xl border border-dashed"><EmptyState compact icon={Info} title="No weekly plan yet" hint="Import the weekly delivery schedule under Orders & plan imports." /></div>
-        ) : (
-          <div className="grid gap-3 items-start xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-            <ChartCard
-              title="Each stage against what it owed by today"
-              sub="Pieces due at the stage (the oven date less its lead days) and how many are done"
-              table={{ filename: `plan-adherence-${data.todayISO}.xlsx`, rows: data.week.adherence.map((a) => ({ Stage: STAGE_LABEL[a.stage], "Due by today": a.due, Done: a.done, "On time %": a.rate === null ? "" : Math.round(a.rate * 100) })) }}
-            >
-              <div className="space-y-2.5">
-                {data.week.adherence.map((a) => (
-                  <div key={a.stage}>
-                    <div className="flex justify-between text-sm mb-1"><span className="font-semibold">{STAGE_LABEL[a.stage]}</span><span className="tabnum">{a.done} / {a.due} · <b>{pctOrDash(a.rate)}</b></span></div>
-                    <Meter value={a.rate ?? 0} label={`${STAGE_LABEL[a.stage]}: ${pctOrDash(a.rate)}`} />
-                  </div>
-                ))}
-                <div className="pt-1">
-                  <div className="text-sm font-bold text-muted mb-1">By delivery day</div>
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-1.5">
-                    {data.week.days.map((d) => (
-                      <div key={d.iso} className={`rounded-md border px-2 py-1 text-sm ${d.isToday ? "border-brand" : ""}`}>
-                        <div className="font-bold">{d.label}</div>
-                        <div className={`tabnum ${d.isPast && d.covered < d.req ? "text-bad-fg font-bold" : "text-muted"}`}>{d.covered} / {d.req}</div>
-                      </div>
-                    ))}
-                  </div>
+      {/* 1 — the plan: what each stage owed, and the lines behind */}
+      {data.week.planNo === null ? (
+        <ChartCard title="Are we on this week's plan?" sub="No weekly plan imported yet">
+          <EmptyState compact icon={Info} title="No weekly plan yet" hint="Import the weekly delivery schedule under Orders & plan imports." />
+        </ChartCard>
+      ) : (
+        <div className="grid gap-3 xl:grid-cols-12">
+          <ChartCard
+            className="xl:col-span-5"
+            title="Are we on this week's plan?"
+            sub={`Weekly plan ${data.week.planNo} · ${data.week.covered} of ${data.week.req} pcs finished. Pieces due at each stage by today (the oven date less its lead days), and how many are done.`}
+            table={{ filename: `plan-adherence-${data.todayISO}.xlsx`, rows: data.week.adherence.map((a) => ({ Stage: STAGE_LABEL[a.stage], "Due by today": a.due, Done: a.done, "On time %": a.rate === null ? "" : Math.round(a.rate * 100) })) }}
+          >
+            <div className="space-y-2.5">
+              {data.week.adherence.map((a) => (
+                <div key={a.stage}>
+                  <div className="flex justify-between text-sm mb-1"><span className="font-semibold">{STAGE_LABEL[a.stage]}</span><span className="tabnum">{a.done} / {a.due} · <b>{pctOrDash(a.rate)}</b></span></div>
+                  <Meter value={a.rate ?? 0} label={`${STAGE_LABEL[a.stage]}: ${pctOrDash(a.rate)}`} />
+                </div>
+              ))}
+              <div className="pt-2 border-t">
+                <div className="text-sm font-bold text-muted mb-1.5">Finished, by delivery day</div>
+                <div className="grid gap-1.5 grid-cols-3 sm:grid-cols-6">
+                  {data.week.days.map((d) => (
+                    <div key={d.iso} className={`rounded-md border px-2 py-1 text-sm text-center ${d.isToday ? "border-brand" : ""}`}>
+                      <div className="font-bold whitespace-nowrap">{d.label}</div>
+                      <div className={`tabnum ${d.isPast && d.covered < d.req ? "text-bad-fg font-bold" : "text-muted"}`}>{d.covered} / {d.req}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </ChartCard>
-            <ChartCard
-              title="Behind — where each line is stuck"
-              sub={data.week.lateCount > data.week.late.length ? `The oldest ${data.week.late.length} of ${data.week.lateCount}; the first stage that is short` : "Oldest first; the first stage that is short"}
-              table={{ filename: `plan-behind-${data.todayISO}.xlsx`, rows: data.week.late.map((l) => ({ Day: l.dayISO, Project: l.bom, SOI: l.soi ?? "", Item: itemName(l.item), "Stuck at": STAGE_LABEL[l.stage], Owed: l.owed, Short: l.short })) }}
-            >
-              {data.week.late.length === 0 ? (
-                <EmptyState compact icon={Info} title="Nothing behind" hint="Every line is at or ahead of its stage date." />
-              ) : (
-                <TableFrame className="max-h-[22rem]">
-                  <table className="w-full text-sm">
-                    <thead><tr><Th label="Due" /><Th label="Project" /><Th label="Item" /><Th label="Stuck at" /><Th label="Short" num className="text-right" /></tr></thead>
-                    <tbody>
-                      {data.week.late.map((l, i) => (
-                        <tr key={i}>
-                          <td className="px-2 tabnum whitespace-nowrap">{formatDate(l.dayISO)}</td>
-                          <td className="px-2 whitespace-nowrap"><Link href={`/trace?bom=${encodeURIComponent(l.bom)}`} className="font-semibold hover:underline">{l.bom}</Link>{l.soi && <span className="text-muted ms-1">{l.soi}</span>}</td>
-                          <td className="px-2">{itemName(l.item)}</td>
-                          <td className="px-2"><Badge tone={l.stage === "cut" ? "danger" : "warning"}>{STAGE_LABEL[l.stage]}</Badge></td>
-                          <td className="px-2 text-right tabnum font-bold">{l.short} <span className="text-muted font-normal">/ {l.owed}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </TableFrame>
-              )}
-            </ChartCard>
-          </div>
-        )}
-      </Section>
+            </div>
+          </ChartCard>
+          <ChartCard
+            className="xl:col-span-7"
+            title="Behind — where each line is stuck"
+            sub={data.week.lateCount > data.week.late.length ? `The oldest ${data.week.late.length} of ${data.week.lateCount}; the first stage that is short` : "Oldest first; the first stage that is short"}
+            table={{ filename: `plan-behind-${data.todayISO}.xlsx`, rows: data.week.late.map((l) => ({ Day: l.dayISO, Project: l.bom, SOI: l.soi ?? "", Item: itemName(l.item), "Stuck at": STAGE_LABEL[l.stage], Owed: l.owed, Short: l.short })) }}
+          >
+            {data.week.late.length === 0 ? (
+              <EmptyState compact icon={Info} title="Nothing behind" hint="Every line is at or ahead of its stage date." />
+            ) : (
+              // clamped so the card stays the height of the plan beside it (the global frame rule says 78vh)
+              <TableFrame className="!max-h-[20rem]">
+                <table className="w-full text-sm">
+                  <thead><tr><Th label="Due" /><Th label="Project" /><Th label="Item" /><Th label="Stuck at" /><Th label="Short" num className="text-right" /></tr></thead>
+                  <tbody>
+                    {data.week.late.map((l, i) => (
+                      <tr key={i}>
+                        <td className="px-2 tabnum whitespace-nowrap">{formatDate(l.dayISO)}</td>
+                        <td className="px-2 whitespace-nowrap"><Link href={`/trace?bom=${encodeURIComponent(l.bom)}`} className="font-semibold hover:underline">{l.bom}</Link>{l.soi && <span className="text-muted ms-1">{l.soi}</span>}</td>
+                        <td className="px-2">{itemName(l.item)}</td>
+                        <td className="px-2"><Badge tone={l.stage === "cut" ? "danger" : "warning"}>{STAGE_LABEL[l.stage]}</Badge></td>
+                        <td className="px-2 text-right tabnum font-bold">{l.short} <span className="text-muted font-normal">/ {l.owed}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableFrame>
+            )}
+          </ChartCard>
+        </div>
+      )}
 
-      {/* 2 — the centres */}
-      {floor && <Section n={++q} title="Did each centre work at the standard?" sub={data.lastDayISO ? `the last recorded day (${formatDate(data.lastDayISO)}) and the recent ${Math.max(...data.centres.map((c) => c.recent.days), 0)} recorded days` : "no shift day recorded yet"}>
+      {/* 2 — the load ahead, with welding's parts beside it */}
+      <div className="grid gap-3 2xl:grid-cols-12">
         <ChartCard
-          title="Earned against worked, by work centre"
-          sub="Earned = the standard hours the output is worth; worked = the man-hours the shift log booked there. 100% is the standard pace."
-          table={data.lastDayISO === null ? undefined : { filename: `centres-${data.todayISO}.xlsx`, rows: data.centres.map((c) => ({ Centre: centreName(c.centre), "Last day earned h": c.last.earnedH, "Last day worked h": c.last.workedH, "Last day %": c.last.efficiency === null ? "" : Math.round(c.last.efficiency * 100), "Recent earned h": c.recent.earnedH, "Recent worked h": c.recent.workedH, "Recent %": c.recent.efficiency === null ? "" : Math.round(c.recent.efficiency * 100), "People a day": c.recent.people, "Stopped h": c.recent.downtimeH })) }}
-        >
-          {data.lastDayISO === null ? (
-            <EmptyState compact icon={Info} title="No shift day recorded yet" hint={<>Record the day&apos;s attendance on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts</Link> — each centre&apos;s pace is measured against the hours booked there.</>} />
-          ) : (
-          <TableFrame>
-            <table className="w-full text-sm">
-              <thead>
-                <tr>
-                  <Th label="Centre" />
-                  <Th label="Last day" num className="text-right" hint="Efficiency on the last recorded day" />
-                  <Th label="Recent" num className="text-right" hint="Efficiency over the recent recorded days — the figure to read; one day swings with late logging" />
-                  <Th label="Earned" num className="text-right" unit="h" />
-                  <Th label="Worked" num className="text-right" unit="h" />
-                  <Th label="People" num className="text-right" hint="Present on an average recorded day" />
-                  <Th label="Availability" num className="text-right" hint="Machine hours less the stops, over the machine hours" />
-                  <Th label="Trend" hint="Efficiency per recorded day" />
-                </tr>
-              </thead>
-              <tbody>
-                {data.centres.map((c) => {
-                  const band = efficiencyBand(c.recent.efficiency);
-                  const lastBand = efficiencyBand(c.last.efficiency);
-                  return (
-                    <tr key={c.centre}>
-                      <td className="px-2 font-semibold whitespace-nowrap">{centreName(c.centre)}</td>
-                      <td className={`px-2 text-right tabnum ${lastBand ? TONE_TEXT[lastBand] : "text-muted"}`}>{pctOrDash(c.last.efficiency)}</td>
-                      <td className={`px-2 text-right tabnum font-bold ${band ? TONE_TEXT[band] : "text-muted"}`}>{pctOrDash(c.recent.efficiency)}</td>
-                      <td className="px-2 text-right tabnum">{c.recent.earnedH}</td>
-                      <td className="px-2 text-right tabnum">{c.recent.workedH}</td>
-                      <td className="px-2 text-right tabnum">{c.recent.people || "—"}</td>
-                      <td className="px-2 text-right tabnum">{pctOrDash(c.recent.availability)}</td>
-                      <td className="px-2">{(() => {
-                        // a day with nothing to measure is left out, never drawn as 0%
-                        const pts = c.trend.flatMap((t) => (t.efficiency === null ? [] : [Math.round(t.efficiency * 100)]));
-                        return pts.length > 1 ? <Sparkline values={pts} /> : <span className="text-muted">—</span>;
-                      })()}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </TableFrame>
-          )}
-          {data.pricedShare !== null && data.pricedShare < 0.95 && (
-            <p className="text-xs text-muted mt-2">
-              {Math.round(data.pricedShare * 100)}% of the recent output carries standard hours — the rest earns nothing and reads as slow.{" "}
-              <Link href="/admin/standard-times" className="text-brand-ink font-semibold hover:underline">Type its hours a piece →</Link>
-            </p>
-          )}
-        </ChartCard>
-      </Section>}
-
-      {/* 3 — the load ahead */}
-      <Section n={++q} title="Where is the crunch?" sub="the plan's remaining hours against what each centre can work, next 10 working days">
-        <ChartCard
-          title="Load against capacity"
-          sub="Capacity a day = the man-hours the centre usually has × the pace it has measured. A centre is short once what it owes so far passes what it could have worked so far."
+          className="2xl:col-span-8"
+          title="Where is the crunch?"
+          sub="The plan's remaining hours against what each centre can work over the next 10 working days. Capacity a day = the man-hours the centre usually has × the pace it has measured; a centre is short once what it owes so far passes what it could have worked so far."
           table={{ filename: `load-${data.todayISO}.xlsx`, rows: data.load.flatMap((l) => l.days.map((d) => ({ Centre: centreName(l.centre), Day: d.dayISO, "Due h": d.dueH, "Capacity h": l.measured ? d.capacityH : "not measured" }))) }}
         >
           {data.load.length === 0 ? (
@@ -254,53 +206,94 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
             </TableFrame>
           )}
         </ChartCard>
-      </Section>
+        <ChartCard
+          className="2xl:col-span-4"
+          title="Is welding covered?"
+          sub={data.coverage.days === null
+            ? "No recent welding to measure against."
+            : `${data.coverage.days} days of cut parts in front of the welders: ${data.coverage.wipH} welding std-h waiting, against ${data.coverage.ratePerDay} std-h earned on a recorded day. Under 1 day they may wait; over 4, parts pile up.`}
+          table={{ filename: `welding-coverage-${data.todayISO}.xlsx`, rows: data.coverage.byItem.map((b) => ({ Item: itemName(b.item), "Pieces waiting": b.pcs, "Welding std-h": b.weldH })) }}
+        >
+          {data.coverage.byItem.length === 0 ? (
+            <EmptyState compact icon={Info} title="Nothing cut and waiting" hint="Every cut piece has been welded." />
+          ) : (
+            <Bars unit="welding std-h" rows={data.coverage.byItem.map((b) => ({ key: b.item, label: itemName(b.item), value: b.weldH, text: <><b>{b.weldH} h</b> <span className="text-muted">· {b.pcs} pcs</span></> }))} />
+          )}
+        </ChartCard>
+      </div>
 
-      <div className={`grid gap-5 ${floor ? "lg:grid-cols-2" : ""}`}>
-        {/* 4 — welding's parts */}
-        <Section n={++q} title="Is welding covered?" sub="cut parts waiting for welding, in days of welding">
+      {/* 3 — the shift log's side: each centre's pace, and what stopped the machines */}
+      {floor && (
+        <div className="grid gap-3 xl:grid-cols-12">
           <ChartCard
-            title={data.coverage.days === null ? "No recent welding to measure against" : `${data.coverage.days} days of work in front of the welders`}
-            sub={`${data.coverage.wipH} welding std-h cut and waiting · welders earn ${data.coverage.ratePerDay} std-h on a recorded day. Under 1 day they may wait; over 4, parts pile up.`}
-            table={{ filename: `welding-coverage-${data.todayISO}.xlsx`, rows: data.coverage.byItem.map((b) => ({ Item: itemName(b.item), "Pieces waiting": b.pcs, "Welding std-h": b.weldH })) }}
+            className="xl:col-span-7"
+            title="Did each centre work at the standard?"
+            sub={data.lastDayISO
+              ? `Earned = the standard hours the output is worth; worked = the man-hours the shift log booked there; 100% is the standard pace. Last recorded day ${formatDate(data.lastDayISO)}; recent = the last ${recentDays} recorded days.`
+              : "No shift day recorded yet."}
+            table={data.lastDayISO === null ? undefined : { filename: `centres-${data.todayISO}.xlsx`, rows: data.centres.map((c) => ({ Centre: centreName(c.centre), "Last day earned h": c.last.earnedH, "Last day worked h": c.last.workedH, "Last day %": c.last.efficiency === null ? "" : Math.round(c.last.efficiency * 100), "Recent earned h": c.recent.earnedH, "Recent worked h": c.recent.workedH, "Recent %": c.recent.efficiency === null ? "" : Math.round(c.recent.efficiency * 100), "People a day": c.recent.people, "Stopped h": c.recent.downtimeH })) }}
           >
-            {data.coverage.byItem.length === 0 ? (
-              <EmptyState compact icon={Info} title="Nothing cut and waiting" hint="Every cut piece has been welded." />
+            {data.lastDayISO === null ? (
+              <EmptyState compact icon={Info} title="No shift day recorded yet" hint={<>Record the day&apos;s attendance on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts</Link> — each centre&apos;s pace is measured against the hours booked there.</>} />
             ) : (
-              <div className="space-y-2">
-                {data.coverage.byItem.map((b) => (
-                  <div key={b.item}>
-                    <div className="flex justify-between text-sm mb-1"><span className="font-semibold">{itemName(b.item)}</span><span className="tabnum"><b>{b.weldH} h</b> <span className="text-muted">· {b.pcs} pcs</span></span></div>
-                    <Meter value={b.weldH / Math.max(1, data.coverage.byItem[0].weldH)} label={`${itemName(b.item)}: ${b.weldH} welding std-h`} />
-                  </div>
-                ))}
-              </div>
+              <TableFrame>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <Th label="Centre" />
+                      <Th label="Last day" num className="text-right" hint="Efficiency on the last recorded day" />
+                      <Th label="Recent" num className="text-right" hint="Efficiency over the recent recorded days — the figure to read; one day swings with late logging" />
+                      <Th label="Earned" num className="text-right" unit="h" />
+                      <Th label="Worked" num className="text-right" unit="h" />
+                      <Th label="People" num className="text-right" hint="Present on an average recorded day" />
+                      <Th label="Avail." num className="text-right" hint="Availability: machine hours less the stops, over the machine hours" />
+                      <Th label="Trend" hint="Efficiency per recorded day" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.centres.map((c) => {
+                      const band = efficiencyBand(c.recent.efficiency);
+                      const lastBand = efficiencyBand(c.last.efficiency);
+                      // a day with nothing to measure is left out, never drawn as 0%
+                      const pts = c.trend.flatMap((t) => (t.efficiency === null ? [] : [Math.round(t.efficiency * 100)]));
+                      return (
+                        <tr key={c.centre}>
+                          <td className="px-2 font-semibold whitespace-nowrap">{centreName(c.centre)}</td>
+                          <td className={`px-2 text-right tabnum ${lastBand ? TONE_TEXT[lastBand] : "text-muted"}`}>{pctOrDash(c.last.efficiency)}</td>
+                          <td className={`px-2 text-right tabnum font-bold ${band ? TONE_TEXT[band] : "text-muted"}`}>{pctOrDash(c.recent.efficiency)}</td>
+                          <td className="px-2 text-right tabnum">{c.recent.earnedH}</td>
+                          <td className="px-2 text-right tabnum">{c.recent.workedH}</td>
+                          <td className="px-2 text-right tabnum">{c.recent.people || "—"}</td>
+                          <td className="px-2 text-right tabnum">{pctOrDash(c.recent.availability)}</td>
+                          <td className="px-2">{pts.length > 1 ? <Sparkline values={pts} /> : <span className="text-muted">—</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </TableFrame>
+            )}
+            {data.pricedShare !== null && data.pricedShare < 0.95 && (
+              <p className="text-xs text-muted mt-2">
+                {Math.round(data.pricedShare * 100)}% of the recent output carries standard hours — the rest earns nothing and reads as slow.{" "}
+                <Link href="/admin/standard-times" className="text-brand-ink font-semibold hover:underline">Type its hours a piece →</Link>
+              </p>
             )}
           </ChartCard>
-        </Section>
-
-        {/* 5 — the losses */}
-        {floor && <Section n={++q} title="What stopped us?" sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : undefined}>
           <ChartCard
-            title={`${data.losses.unplannedH} machine hours lost${data.losses.plannedH > 0 ? ` · ${data.losses.plannedH} h planned maintenance` : ""}`}
-            sub={`Absent: ${pctOrDash(data.losses.absentRate)} of the recorded rows · overtime worked: ${data.losses.overtimeH} h`}
+            className="xl:col-span-5"
+            title="What stopped us?"
+            sub={`${data.losses.unplannedH} machine hours lost${data.losses.fromISO ? ` since ${formatDate(data.losses.fromISO)}` : ""}${data.losses.plannedH > 0 ? ` · ${data.losses.plannedH} h planned maintenance` : ""} · absent ${pctOrDash(data.losses.absentRate)} of the recorded rows · overtime ${data.losses.overtimeH} h`}
             table={{ filename: `losses-${data.todayISO}.xlsx`, rows: data.losses.causes.map((c) => ({ Cause: c.label, Hours: c.hours, Stops: c.stops, "Share of lost %": c.share === null ? "" : Math.round(c.share * 100) })) }}
           >
             {data.losses.causes.length === 0 ? (
               <EmptyState compact icon={Info} title="No machine stops recorded" hint={<>Record stops on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts → Machine stops</Link> to see what costs the most.</>} />
             ) : (
-              <div className="space-y-2">
-                {data.losses.causes.map((c) => (
-                  <div key={c.code}>
-                    <div className="flex justify-between text-sm mb-1"><span className="font-semibold">{c.label}</span><span className="tabnum"><b>{c.hours} h</b> <span className="text-muted">· {c.stops} stop(s){c.share !== null ? ` · ${Math.round(c.share * 100)}%` : " · planned"}</span></span></div>
-                    <Meter value={c.hours / Math.max(1, data.losses.causes[0].hours)} label={`${c.label}: ${c.hours} h`} />
-                  </div>
-                ))}
-              </div>
+              <Bars unit="h" rows={data.losses.causes.map((c) => ({ key: c.code, label: c.label, value: c.hours, text: <><b>{c.hours} h</b> <span className="text-muted">· {c.stops} stop(s){c.share !== null ? ` · ${Math.round(c.share * 100)}%` : " · planned"}</span></> }))} />
             )}
           </ChartCard>
-        </Section>}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

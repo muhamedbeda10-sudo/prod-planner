@@ -3,7 +3,7 @@ import { ViewTabsNav } from "@/components/ViewTabsNav";
 // One tab in the strip can hold several screens: the pages stay separate
 // routes (each is big, and each deep-links), and this switcher reads them as
 // one place with views. The Plan Tracker tab holds the tracker, the plan's
-// dashboard, the daily log and its report; the Material tab holds the nesting
+// cockpit, the tracker and the daily log; the Material tab holds the nesting
 // sheets and the analytics built on them.
 
 export interface View {
@@ -21,21 +21,20 @@ export function ViewTabs(props: { views: View[]; current: string; label: string 
   return <ViewTabsNav {...props} />;
 }
 
-/** The Plan Tracker tab's screens: the tracker, the raw ledger the tracker
- *  adds up, and the report printed from that ledger. How the plant is doing
- *  is the home page's — the planner's cockpit. */
+/** The Plan Tracker tab's screens: the planner's cockpit (the home page —
+ *  how the plant is doing, in standard hours), the tracker, and the raw
+ *  ledger the tracker adds up. */
 export const TRACKER_VIEWS: View[] = [
+  { href: "/", label: "Cockpit", title: "The plan, each centre's pace, the load ahead, welding's parts and the losses — what needs a decision today" },
   { href: "/tracker", label: "Plan Tracker", title: "One row per order, every stage" },
   { href: "/handover", label: "Daily log", title: "The raw entries the tracker adds up — edit and correct them here" },
-  { href: "/report", label: "Report", title: "The daily log as one day or a period, ready to print" },
 ];
 
-/** The same, for the product line on screen. The panels keep their own
- *  dashboard on the home page (the cockpit is the transformers') with its
- *  own period table, so they have it here and no printed report. */
+/** The same, for the product line on screen: the cockpit is the
+ *  transformers'; on the panels the home page is their own dashboard. */
 export function trackerViews(line: string): View[] {
   if (line !== "LV") return TRACKER_VIEWS;
-  const [tracker, handover] = TRACKER_VIEWS;
+  const [, tracker, handover] = TRACKER_VIEWS;
   return [tracker, { href: "/", label: "Dashboard", title: "The panels' plan through its four stages" }, handover];
 }
 

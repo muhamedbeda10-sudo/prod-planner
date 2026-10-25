@@ -10,10 +10,9 @@ import { slicerPresets, type PresetKey, type SlicerPreset } from "@/lib/domain/d
 //   fromTo   ?from=&to=            (the dashboards; `defaultRange` clears them)
 //   odooDay  ?day=D | A..B | all   (the ODOO log)
 //   odooDash ?range=preset | custom&from=&to=   (the ODOO dashboard)
-//   report   ?day=B [&from=A]      (the report: `day` is the last day)
 //   day      ?day=D                (one day: the shift log)
 
-type Encoding = "fromTo" | "odooDay" | "odooDash" | "report" | "day";
+type Encoding = "fromTo" | "odooDay" | "odooDash" | "day";
 
 const ODOO_DASH_CODE: Partial<Record<string, string>> = { today: "today", yesterday: "yesterday", last7: "7d", last30: "30d", last90: "90d", thisMonth: "month" };
 
@@ -64,9 +63,6 @@ export function UrlDateSlicer({
         else { p.set("range", "custom"); p.set("from", f); p.set("to", t); }
         break;
       }
-      case "report":
-        if (f && t) { p.set("day", t); if (f !== t) p.set("from", f); else p.delete("from"); }
-        break;
       case "day":
         if (f) p.set("day", f);
         break;

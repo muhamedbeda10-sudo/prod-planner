@@ -36,7 +36,7 @@ describe("get_kpis", () => {
     expect(j.fabrication).toEqual({ earnedH: 240, workedH: 300, efficiency: 0.8 });
     expect(j.losses).toMatchObject({ unplannedH: 6.5, absentRate: 0.11, overtimeH: 126 });
     expect(j.trend[0]).toMatchObject({ day: "2026-10-25", behind: 29, efficiency: { Welding: 0.9 } });
-    expect(out.links).toEqual([{ label: "Planning cockpit", href: "/" }]);
+    expect(out.links).toEqual([{ label: "Cockpit", href: "/" }]);
   });
 
   it("leaves the shift log's figures out for a person the Shifts screen is closed to", async () => {

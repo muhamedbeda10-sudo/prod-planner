@@ -58,7 +58,7 @@ export const DEPT_SHORT: Record<Dept, string> = {
   Painting: "Paint",
 };
 
-/** Display name for the finishing stage on the dashboard / report / tracker:
+/** Display name for the finishing stage on the cockpit / tracker:
  *  Painting handles the painted components AND the core's Shot Blast, so those
  *  screens label it together. (The nav tab and the Painting worklist keep the
  *  plain "Painting" from deptLabel — shot blast is recorded on the tracker.) */
