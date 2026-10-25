@@ -164,7 +164,7 @@ export const AI_PRIVATE_TABLES = [
   "Session", "LoginFailure", "UserPref", "ChatMessage", "ChatGroup", "ChatGroupMember", "ChatMessageHide", "ChatReaction",
   "AiSettings", "AiAccess", "AiConversation", "AiMessage", "AiUsage", "AiAction",
   "AiPlaybookEntry", "AiPlaybookRevision", "AiInboxItem", "PushSubscription", "PushKeys", "Automation", "AutomationRun", "AiFile",
-  "Task", "TaskAssignee", "TaskUpdate", "AppEvent",
+  "Task", "TaskAssignee", "TaskUpdate", "AppEvent", "AiFeedback", "AiMemory", "AiCheck",
 ] as const;
 export const AI_USER_COLUMNS = ["id", "name", "active"] as const;
 
@@ -393,6 +393,8 @@ export function questionContext(o: {
   /** The What-if Simulator is open beside the chat. */
   simulatorOpen?: boolean;
   line?: "TR" | "LV";
+  /** What the assistant keeps about this person (lib/domain/aiLearn memoryNote). */
+  memory?: string;
 }): string {
   const lines = [`Asked by ${o.askedBy} on ${FACTORY_CLOCK.format(o.now)}, Cairo time.`];
   if (o.line) lines.push(`The app's selected production line is ${o.line === "LV" ? "LV panels (including meter boxes)" : "TR transformers"}. Use that line by default for this question unless the person explicitly asks for the other line or both. Filter SQL by the correct line; pass line explicitly to tools that accept it.`);
@@ -406,6 +408,7 @@ export function questionContext(o: {
     lines.push("The person has the What-if Simulator open beside this chat: show_on_simulator changes what it shows, at once and with no card (the plant's data does not change, and the scenario it replaces stays one click away), and it and simulate_scenario start from what it shows unless told otherwise.");
   }
   if (o.notes.length > 0) lines.push("Since your last answer:", ...o.notes.map((n) => `- ${n}`));
+  if (o.memory) lines.push(o.memory);
   return lines.join("\n");
 }
 

@@ -439,6 +439,14 @@ mobile drawer still lists every view flat, since it has the vertical room.
      numbers as a table and their export. A chart's JSON draws however its fence was labelled, and other names for a
      form (column, donut, bullet, slope, step …) draw as the form that does that job. The same blocks draw in the chat and in the
      inbox's reports (expanded, the inbox fills the screen); **Print / PDF** on an answer or a report prints it alone under the company header, charts and all.
+   - **It learns and is measured** (`lib/domain/aiLearn.ts`, `lib/server/ai/memory.ts`, `lib/server/ai/checks.ts`,
+     `components/AiFeedback.tsx`, `components/AiQuality.tsx`): it keeps a few lines about each person between chats
+     (`AiMemory` — what they told it about their work and how they like answers; the brain button lists them to correct
+     or delete; never plant figures or secrets); 👍 / 👎 under each answer (`AiFeedback`), a thumbs-down with what was
+     wrong, which the owner turns into a playbook rule or a quality check on AI settings → Quality; quality checks
+     (`AiCheck`) — real questions, what a right answer must say and optional reference SQL run read-only — asked as the
+     owner with changes off and graded by Haiku, the run counted like a question; and the chat's model may be **Auto**:
+     Haiku for a short look-up, Sonnet for a change, Opus for analysis, plans and files, never stepping down in a chat.
    - **Owner's reach**: the app's owner lists everyone's automations and pauses, retimes
      (`set_automation_timing`) or deletes any, as AI assistant settings lets them; what one does stays its owner's to
      change.

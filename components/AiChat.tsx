@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  AlertCircle, ArrowDown, BarChart3, Bot, Boxes, Check, ChevronDown, Clock, Copy, Factory, FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks, Loader2, MonitorPlay, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X,
+  AlertCircle, ArrowDown, BarChart3, Bot, Brain, Boxes, Check, ChevronDown, Clock, Copy, Factory, FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks, Loader2, MonitorPlay, PanelLeft, Paperclip, Plus, Search, Send, Trash2, X,
 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
 import { AiActionCard, ApproveAll } from "@/components/AiActionCard";
@@ -24,6 +24,8 @@ import { useActiveLine } from "@/components/LineContext";
 import { readAiStream } from "@/lib/aiStream";
 import { isAiEvidence } from "@/lib/domain/aiEvidence";
 import { AiSources } from "@/components/AiSources";
+import { AnswerRating } from "@/components/AiFeedback";
+import type { AiFeedbackRating } from "@/lib/domain/aiLearn";
 
 // The AI assistant's chat: the person's conversations on the side (a drawer
 // below a laptop's width, and always in the narrow side panel), the open one
@@ -42,6 +44,8 @@ interface Turn extends AiChatTurn {
   /** Scenarios the assistant showed on the Simulator during this answer —
    *  kept for this page's life only. */
   simulator?: SimulatorNote[];
+  /** What it began to remember about the person during this answer. */
+  remembered?: string[];
 }
 
 /** A scenario the assistant showed, and whether it is on the Simulator yet. */
@@ -110,7 +114,7 @@ export function AiChat({
   isOwner: boolean;
   status: AiChatStatus;
   conversations: Conv[];
-  initial: { id: number; turns: AiChatTurn[]; actions: AiActionView[] } | null;
+  initial: { id: number; turns: AiChatTurn[]; actions: AiActionView[]; ratings?: Record<number, AiFeedbackRating> } | null;
   /** Narrow (the side panel): the chats are always a drawer. */
   compact?: boolean;
   /** Keep the open chat in the address bar (the /ai page). */
@@ -130,6 +134,8 @@ export function AiChat({
   // the cards, by the tool call that prepared them
   const [actions, setActions] = useState<Record<string, AiActionView>>(() => byCall(initial?.actions ?? []));
   const putAction = (v: AiActionView) => setActions((m) => (v.toolUseId ? { ...m, [v.toolUseId]: v } : m));
+  // the person's 👍 / 👎, by the answer's place among the chat's answers
+  const [ratings, setRatings] = useState<Record<number, AiFeedbackRating>>(initial?.ratings ?? {});
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<string | null>(null);
@@ -203,6 +209,7 @@ export function AiChat({
       setShowLatest(false);
       setTurns(r.turns ?? []);
       setActions(byCall(r.actions ?? []));
+      setRatings(r.ratings ?? {});
       setUrl(id);
     },
     [busy, setUrl],
@@ -215,6 +222,7 @@ export function AiChat({
     setShowLatest(false);
     setTurns([]);
     setActions({});
+    setRatings({});
     setLoadErr(null);
     setSideOpen(false);
     setUrl(null);
@@ -273,6 +281,9 @@ export function AiChat({
       const sim = openSimulator();
       if (sim) sim.show(show.scenario, show.label);
       patchLast((t) => ({ ...t, simulator: [...(t.simulator ?? []), { ...show, shown: sim !== null }] }));
+    } else if (ev.type === "memory") {
+      const text = String(ev.text ?? "");
+      if (text) patchLast((t) => ({ ...t, remembered: [...(t.remembered ?? []), text] }));
     } else if (ev.type === "done") {
       flush();
       const cost = Number(ev.costUsd ?? 0);
@@ -387,6 +398,13 @@ export function AiChat({
     ? `${sideOpen ? "flex absolute z-20 inset-y-0 start-0 w-[min(18rem,85%)] shadow-2xl border-e" : "hidden"}`
     : `${sideOpen ? "flex fixed z-50 inset-y-0 start-0 w-[min(20rem,85vw)] shadow-2xl" : "hidden"} lg:static lg:z-auto lg:flex lg:w-64 lg:shadow-none lg:border-e`;
   const narrowOnly = compact ? "" : "lg:hidden";
+  // each answer's place among the chat's answers — what a 👍 / 👎 is kept by
+  const answerNo: number[] = [];
+  let answers = 0;
+  for (const t of turns) {
+    answerNo.push(answers);
+    if (t.role === "assistant") answers += 1;
+  }
   const now = new Date();
   const grouped = GROUPS.map((g) => ({ g, items: convs.filter((c) => groupOf(c.updatedAt, now) === g) })).filter((x) => x.items.length > 0);
 
@@ -484,6 +502,13 @@ export function AiChat({
                     actions={(t.actionIds ?? []).flatMap((id) => (actions[id] ? [actions[id]] : []))}
                     onAction={putAction}
                     onSimulator={showOnSimulator}
+                    rating={activeId !== null && !(busy && i === turns.length - 1) ? {
+                      conversationId: activeId,
+                      answer: answerNo[i],
+                      text: t.text,
+                      value: ratings[answerNo[i]] ?? null,
+                      onRated: (r: AiFeedbackRating) => setRatings((m) => ({ ...m, [answerNo[i]]: r })),
+                    } : null}
                   />
                 ),
               )}
@@ -643,6 +668,7 @@ function Answer({
   actions,
   onAction,
   onSimulator,
+  rating,
 }: {
   turn: Turn;
   /** The question it answers — the printout's title. */
@@ -652,6 +678,8 @@ function Answer({
   actions: AiActionView[];
   onAction: (v: AiActionView) => void;
   onSimulator: (s: SimulatorNote) => void;
+  /** The 👍 / 👎 of a saved answer — none while it is still being written. */
+  rating: { conversationId: number; answer: number; text: string; value: AiFeedbackRating | null; onRated: (r: AiFeedbackRating) => void } | null;
 }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -670,13 +698,19 @@ function Answer({
           </div>
         )}
         {turn.simulator?.map((s) => <SimulatorLine key={s.toolUseId} note={s} onShow={() => onSimulator(s)} />)}
+        {turn.remembered?.map((m, k) => (
+          <p key={k} className="mt-2 flex items-start gap-1.5 text-xs text-muted" dir="auto">
+            <Brain size={13} className="mt-0.5 shrink-0" aria-hidden />
+            <span><span className="font-semibold">Remembered:</span> {m} <span className="opacity-80">— the brain button above lists what it remembers, to correct or delete.</span></span>
+          </p>
+        ))}
         {actions.map((v) => <AiActionCard key={v.id} view={v} onChange={onAction} />)}
         {!streaming && <ApproveAll views={actions} onChange={onAction} />}
         {turn.error && (
           <p className="text-sm font-semibold text-bad-fg mt-2 flex items-start gap-1.5"><AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden /> {turn.error}</p>
         )}
         {!streaming && turn.text && (
-          <div className="mt-1.5 -ms-1">
+          <div className="mt-1.5 -ms-1 flex flex-wrap items-center gap-x-0.5">
             <button
               type="button"
               className="btn btn-ghost btn-sm text-xs"
@@ -690,6 +724,7 @@ function Answer({
               {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
             </button>
             <AiPrintButton title={question.length > 90 ? `${question.slice(0, 89)}…` : question || "AI assistant"} subtitle="AI assistant" text={turn.text} className="text-xs" />
+            {rating && !turn.error && <AnswerRating conversationId={rating.conversationId} answer={rating.answer} text={rating.text} rating={rating.value} onRated={rating.onRated} />}
           </div>
         )}
       </div>

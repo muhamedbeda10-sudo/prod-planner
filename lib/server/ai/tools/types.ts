@@ -54,6 +54,8 @@ export interface ReadResult {
   links?: { label: string; href: string }[];
   /** A scenario to put on the person's Simulator (show_on_simulator). */
   simulator?: Omit<SimulatorShow, "toolUseId">;
+  /** A line the assistant now remembers about the person — shown to them under the answer. */
+  memory?: string;
 }
 
 export interface Proposal {

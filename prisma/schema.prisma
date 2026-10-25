@@ -336,6 +336,8 @@ model User {
   pushDevices      PushSubscription[]
   automations      Automation[]
   aiFiles          AiFile[]
+  aiFeedback       AiFeedback[]
+  aiMemories       AiMemory[]
   tasksCreated     Task[]             @relation("tasksCreated")
   taskAssignments  TaskAssignee[]
   taskUpdates      TaskUpdate[]
@@ -1709,6 +1711,72 @@ model AiPlaybookRevision {
   at      DateTime        @default(now())
 
   @@index([entryId])
+}
+
+// What a person thought of one of the assistant's answers: a thumbs up or
+// down, and for a down what was wrong or what the right answer is. The owner
+// reads them on AI settings → Quality and turns a lesson into a playbook rule
+// or a quality check. The question and the answer are kept as they were, so
+// the note still reads when the chat is deleted.
+model AiFeedback {
+  id             Int      @id @default(autoincrement())
+  // kept (unnamed) when the account goes
+  userId         Int?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  conversationId Int?
+  // which answer of the chat: its place among the chat's answers (0 = the first)
+  turn           Int
+  rating         String // up | down
+  note           String   @default("")
+  question       String
+  answer         String
+  model          String   @default("")
+  status         String   @default("new") // new | done
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([conversationId, turn])
+  @@index([status, createdAt])
+}
+
+// What the assistant keeps about one person between chats: their work, how
+// they like their answers, what they follow — a short line each, written when
+// they told it something lasting, and theirs to read and delete. Given to the
+// assistant with each of their questions; never plant data, never a secret.
+model AiMemory {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// A quality check of the assistant: a real question, what a right answer must
+// say, and optionally the SQL that gives the right figures from the live
+// data. The owner runs them after a change of model, effort or playbook; a
+// cheap model judges each answer against the reference. The last run is kept.
+model AiCheck {
+  id           Int       @id @default(autoincrement())
+  question     String
+  // what a right answer must say or contain
+  expect       String
+  // read-only SQL giving the figures it must agree with (run as ai_reader)
+  referenceSql String?
+  active       Boolean   @default(true)
+  createdBy    String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastRunAt    DateTime?
+  lastPass     Boolean?
+  lastAnswer   String?
+  lastWhy      String?
+  lastModel    String?
+  lastCostUsd  Float?
+
+  @@index([active])
 }
 
 // What the assistant sends a person: a report an automation wrote, a message

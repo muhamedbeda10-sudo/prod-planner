@@ -36,10 +36,15 @@ export default async function AiAdminPage() {
     prisma.aiUsage.aggregate({ where: { at: { gte: lastFrom, lt: from } }, _sum: { costUsd: true } }),
     prisma.aiUsage.findMany({ orderBy: { at: "desc" }, take: 60, include: { user: { select: { name: true } } } }),
   ]);
-  const [changes, clock, automations] = await Promise.all([
+  const since30 = new Date(now.getTime() - 30 * 86_400_000);
+  const [changes, clock, automations, feedback, rated30, checks, openCount] = await Promise.all([
     prisma.aiAction.findMany({ orderBy: { id: "desc" }, take: 80, include: { user: { select: { name: true } } } }),
     schedulerStatus(),
     automationViews({}),
+    prisma.aiFeedback.findMany({ orderBy: [{ status: "desc" }, { id: "desc" }], take: 120, include: { user: { select: { name: true } } } }),
+    prisma.aiFeedback.groupBy({ by: ["rating"], where: { createdAt: { gte: since30 } }, _count: { _all: true } }),
+    prisma.aiCheck.findMany({ orderBy: { id: "asc" } }),
+    prisma.aiFeedback.count({ where: { status: "new", rating: "down" } }),
   ]);
   const accessOf = new Map(access.map((a) => [a.userId, a]));
   const usageOf = new Map(byUser.map((u) => [u.userId, u]));
@@ -114,6 +119,19 @@ export default async function AiAdminPage() {
           error: r.error,
           running: !r.finishedAt,
         })),
+        quality: {
+          feedback: feedback.map((f) => ({
+            id: f.id, at: f.createdAt.toISOString(), who: f.user?.name ?? "(deleted account)", rating: f.rating === "up" ? "up" : "down",
+            note: f.note, question: f.question, answer: f.answer, model: f.model, done: f.status === "done",
+          })),
+          up30: rated30.find((r) => r.rating === "up")?._count._all ?? 0,
+          down30: rated30.find((r) => r.rating === "down")?._count._all ?? 0,
+          openCount,
+          checks: checks.map((c) => ({
+            id: c.id, question: c.question, expect: c.expect, referenceSql: c.referenceSql, active: c.active, lastRunAt: c.lastRunAt?.toISOString() ?? null,
+            lastPass: c.lastPass, lastWhy: c.lastWhy, lastAnswer: c.lastAnswer, lastCostUsd: c.lastCostUsd,
+          })),
+        },
       }}
     />
   );
