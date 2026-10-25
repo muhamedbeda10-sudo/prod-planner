@@ -1,0 +1,27 @@
+{
+  "$comment": "Local prototype copy of the planner's machine list (prisma/migrations/20260910120000_machines_and_shifts and 20260910230000_bending_machine_hours). Codes, names, departments, work centres and hours a day are the app's own. Every capability field marked null is NOT in the app and must be confirmed with the floor before it is used for real; the prototype treats null as 'unknown', never as 'yes'. 'process' is inferred from the machine's name where noted and must be confirmed too.",
+  "source": "prod-planner Machine table (seed migrations), read-only copy taken 2026-10-25",
+  "machines": [
+    { "code": "B4-10", "name": "Bodor 3K watt", "dept": "Cut", "center": "Cutting", "hoursPerDay": 15, "active": true, "process": "laser-flat", "processSource": "inferred-from-name", "laserPowerKw": 3, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "Flat-sheet laser by its name; bed size, thickness range, materials and controller are not recorded in the app." },
+    { "code": "B4-09", "name": "Bodor 6K watt", "dept": "Cut", "center": "Cutting", "hoursPerDay": 15, "active": true, "process": "laser-flat", "processSource": "inferred-from-name", "laserPowerKw": 6, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "" },
+    { "code": "B4-07", "name": "Yawy 1K watt", "dept": "Cut", "center": "Cutting", "hoursPerDay": 15, "active": true, "process": "laser-flat", "processSource": "inferred-from-name", "laserPowerKw": 1, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "" },
+    { "code": "B4-06", "name": "Yawy Punching", "dept": "Cut", "center": "Cutting", "hoursPerDay": 15, "active": true, "process": "punching", "processSource": "inferred-from-name", "laserPowerKw": null, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "Punching: needs tooling definitions; no program export in this prototype." },
+    { "code": "B4-05", "name": "Yawy Punching", "dept": "Cut", "center": "Cutting", "hoursPerDay": 15, "active": true, "process": "punching", "processSource": "inferred-from-name", "laserPowerKw": null, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "" },
+    { "code": "B4-04", "name": "Yawy Punching", "dept": "Cut", "center": "Cutting", "hoursPerDay": 15, "active": true, "process": "punching", "processSource": "inferred-from-name", "laserPowerKw": null, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "" },
+    { "code": "B4-03", "name": "Yawy Punching", "dept": "Cut", "center": "Cutting", "hoursPerDay": 15, "active": true, "process": "punching", "processSource": "inferred-from-name", "laserPowerKw": null, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "" },
+    { "code": "B4-18", "name": "Laser Tubes", "dept": "Cut", "center": "Tubes", "hoursPerDay": 15, "active": true, "process": "laser-tube", "processSource": "app-work-centre", "laserPowerKw": null, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "Tube laser — never a flat-sheet nesting." },
+    { "code": "B5-02", "name": "Fins", "dept": "Cut", "center": "Fins", "hoursPerDay": 110, "active": true, "process": "fin-folding", "processSource": "app-work-centre", "laserPowerKw": null, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "Not a cutting machine." },
+    { "code": "B4-16", "name": "Laser Roll Blank", "dept": "Cut", "center": "RollBlank", "hoursPerDay": 15, "active": true, "process": "laser-roll-blank", "processSource": "app-work-centre", "laserPowerKw": null, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "Coil-fed blanking; not a sheet-nesting bed." },
+    { "code": "B4-12", "name": "GF 6k watt", "dept": "Cut", "center": "Cutting", "hoursPerDay": 15, "active": true, "process": "laser-flat", "processSource": "inferred-from-name", "laserPowerKw": 6, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "" },
+    { "code": "B4-11", "name": "GF 6k watt", "dept": "Cut", "center": "Cutting", "hoursPerDay": 15, "active": true, "process": "laser-flat", "processSource": "inferred-from-name", "laserPowerKw": 6, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "" },
+    { "code": "BND-1", "name": "Bending presses", "dept": "Cut", "center": "Bending", "hoursPerDay": 88, "active": true, "process": "bending", "processSource": "app-work-centre", "laserPowerKw": null, "bedMm": null, "thicknessMm": null, "materials": null, "controller": null, "exportProfiles": [], "notes": "Not a cutting machine." }
+  ],
+  "rules": {
+    "$comment": "The app's MachineRule rows (only / never / prefer by item, line, thickness, material, kVA) live in the database and were not copied: they are the planner's live data. At integration time machineVerdict() from lib/domain/machineRules.ts is applied as-is. Add rows here only to try the prototype.",
+    "items": []
+  },
+  "queue": {
+    "$comment": "Hours of work already queued per machine (WorklistMachine / ManualJob). Not available offline; null = unknown. Fill in to try the ranking.",
+    "hoursAhead": {}
+  }
+}

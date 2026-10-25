@@ -1,0 +1,2190 @@
+{
+  "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+  "bytes": 563331,
+  "acadVersion": "AC1018",
+  "units": {
+    "code": 0,
+    "name": "unitless",
+    "stated": false,
+    "chosen": "mm",
+    "factorToMm": 1
+  },
+  "extents": {
+    "stated": {
+      "minX": 0,
+      "minY": 0,
+      "maxX": 1220,
+      "maxY": 2440
+    },
+    "computed": {
+      "minX": 0,
+      "minY": 0,
+      "maxX": 1220,
+      "maxY": 2440
+    }
+  },
+  "layers": [
+    {
+      "name": "02___PRT_ALL_AXES",
+      "defined": false,
+      "entities": [
+        {
+          "type": "CIRCLE",
+          "count": 368
+        }
+      ],
+      "total": 368,
+      "role": "cut"
+    },
+    {
+      "name": "0",
+      "defined": true,
+      "entities": [
+        {
+          "type": "LWPOLYLINE",
+          "count": 241
+        },
+        {
+          "type": "CIRCLE",
+          "count": 64
+        },
+        {
+          "type": "LINE",
+          "count": 4
+        }
+      ],
+      "total": 309,
+      "role": "cut"
+    },
+    {
+      "name": "1",
+      "defined": false,
+      "entities": [
+        {
+          "type": "LWPOLYLINE",
+          "count": 48
+        }
+      ],
+      "total": 48,
+      "role": "cut"
+    }
+  ],
+  "entityCounts": [
+    {
+      "type": "CIRCLE",
+      "count": 216
+    },
+    {
+      "type": "LWPOLYLINE",
+      "count": 145
+    },
+    {
+      "type": "LINE",
+      "count": 2
+    }
+  ],
+  "extraction": {
+    "ignoredByLayer": [],
+    "annotations": [],
+    "unsupported": [],
+    "insertsExpanded": [],
+    "warnings": [],
+    "dropped": {
+      "zeroLength": 0
+    },
+    "nonPlanar": {
+      "entities": 0,
+      "note": null
+    },
+    "mirroredByExtrusion": 0
+  },
+  "topology": {
+    "nodes": 771,
+    "edges": 1085,
+    "faces": 360,
+    "openChains": 0,
+    "duplicatesRemoved": 0,
+    "splitsApplied": 78,
+    "maxGapClosed": 0.00002301101676494405,
+    "snapTolMm": 0.01
+  },
+  "kind": "nesting-ready",
+  "sheetSize": {
+    "w": 1220,
+    "h": 2440
+  },
+  "pieces": [
+    {
+      "id": "P1",
+      "widthMm": 1125,
+      "heightMm": 670,
+      "areaMm2": 625386.8023871329,
+      "holes": 125,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "50% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1"
+      ],
+      "at": {
+        "x": 3,
+        "y": 3
+      }
+    },
+    {
+      "id": "P2",
+      "widthMm": 1031.01184,
+      "heightMm": 1045.05,
+      "areaMm2": 524948.384775745,
+      "holes": 16,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "67% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 49% of its box, 38 segments) — check it is a part and not scrap between neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 3.00000000000011,
+        "y": 793.00785
+      }
+    },
+    {
+      "id": "P3",
+      "widthMm": 270.48296000001363,
+      "heightMm": 955,
+      "areaMm2": 201328.2324878819,
+      "holes": 8,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 273.48296,
+        "y": 793.00785
+      }
+    },
+    {
+      "id": "P4",
+      "widthMm": 270.48295999999993,
+      "heightMm": 955,
+      "areaMm2": 201328.23248787568,
+      "holes": 8,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "69% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 3.00000000000006,
+        "y": 793.00785
+      }
+    },
+    {
+      "id": "P5",
+      "widthMm": 560,
+      "heightMm": 324.9999999999998,
+      "areaMm2": 172019.16013954548,
+      "holes": 36,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "82% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 3,
+        "y": 1928.10785
+      }
+    },
+    {
+      "id": "P6",
+      "widthMm": 999.9999999999999,
+      "heightMm": 120.00784999999996,
+      "areaMm2": 114444.97950484142,
+      "holes": 5,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "94% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1"
+      ],
+      "at": {
+        "x": 3.00000000000011,
+        "y": 673
+      }
+    },
+    {
+      "id": "P7",
+      "widthMm": 145.3539800000001,
+      "heightMm": 600,
+      "areaMm2": 82997.33052602707,
+      "holes": 2,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "60% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1034.01184,
+        "y": 673
+      }
+    },
+    {
+      "id": "P8",
+      "widthMm": 600,
+      "heightMm": 145.35398000000032,
+      "areaMm2": 82997.33052602707,
+      "holes": 2,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "57% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 563,
+        "y": 2158.39479
+      }
+    },
+    {
+      "id": "P9",
+      "widthMm": 145.3539800000001,
+      "heightMm": 600,
+      "areaMm2": 82997.33052602707,
+      "holes": 2,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "58% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1057,
+        "y": 1273
+      }
+    },
+    {
+      "id": "P10",
+      "widthMm": 779.9999999999999,
+      "heightMm": 90.05000000000018,
+      "areaMm2": 59439.00000000006,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "95% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 3.00000000000011,
+        "y": 1838.05785
+      }
+    },
+    {
+      "id": "P11",
+      "widthMm": 560,
+      "heightMm": 94.92500001000008,
+      "areaMm2": 47511.72931477863,
+      "holes": 11,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "46% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 3,
+        "y": 2253.20784999
+      }
+    },
+    {
+      "id": "P12",
+      "widthMm": 560,
+      "heightMm": 94.92500000999985,
+      "areaMm2": 47511.72931477833,
+      "holes": 11,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "89% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 563,
+        "y": 1968.1158099900001
+      }
+    },
+    {
+      "id": "P13",
+      "widthMm": 210,
+      "heightMm": 170,
+      "areaMm2": 34569.026644707716,
+      "holes": 10,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 163.12898,
+        "y": 1503.00785
+      }
+    },
+    {
+      "id": "P14",
+      "widthMm": 210,
+      "heightMm": 170,
+      "areaMm2": 34569.0266447077,
+      "holes": 10,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 163.12898,
+        "y": 873.00785
+      }
+    },
+    {
+      "id": "P15",
+      "widthMm": 274,
+      "heightMm": 110.00397999999996,
+      "areaMm2": 27318.62171578112,
+      "holes": 6,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 783,
+        "y": 1748.00785
+      }
+    },
+    {
+      "id": "P16",
+      "widthMm": 274,
+      "heightMm": 110.00398000000018,
+      "areaMm2": 27318.62171578135,
+      "holes": 6,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 783,
+        "y": 1858.01183
+      }
+    },
+    {
+      "id": "P17",
+      "widthMm": 80,
+      "heightMm": 335,
+      "areaMm2": 26100.1239199482,
+      "holes": 2,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "50% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1"
+      ],
+      "at": {
+        "x": 1128,
+        "y": 3
+      }
+    },
+    {
+      "id": "P18",
+      "widthMm": 80,
+      "heightMm": 335,
+      "areaMm2": 26100.1239199482,
+      "holes": 2,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "56% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1128,
+        "y": 338
+      }
+    },
+    {
+      "id": "P19",
+      "widthMm": 235,
+      "heightMm": 95.35397999999986,
+      "areaMm2": 21842.698622354077,
+      "holes": 5,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "99% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1"
+      ],
+      "at": {
+        "x": 798,
+        "y": 2063.04081
+      }
+    },
+    {
+      "id": "P20",
+      "widthMm": 235,
+      "heightMm": 95.35397999999986,
+      "areaMm2": 21842.698622353844,
+      "holes": 5,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 563,
+        "y": 2063.04081
+      }
+    },
+    {
+      "id": "P21",
+      "widthMm": 27.988159316703786,
+      "heightMm": 475.00784999999996,
+      "areaMm2": 10924.921503014513,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1029.0118406832962,
+        "y": 1273
+      }
+    },
+    {
+      "id": "P22",
+      "widthMm": 222.70796,
+      "heightMm": 155,
+      "areaMm2": 8853.494372500048,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 26% of its box, 18 segments) — check it is a part and not scrap between neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 163.12898,
+        "y": 1193.00785
+      }
+    },
+    {
+      "id": "P23",
+      "widthMm": 95,
+      "heightMm": 93,
+      "areaMm2": 6285,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 288.83694,
+        "y": 1193.00785
+      }
+    },
+    {
+      "id": "P24",
+      "widthMm": 95.00000000000003,
+      "heightMm": 93,
+      "areaMm2": 6284.999999999971,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 243.83694,
+        "y": 1193.00785
+      }
+    },
+    {
+      "id": "P25",
+      "widthMm": 205,
+      "heightMm": 34.95398,
+      "areaMm2": 5712.4999750000425,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 603,
+        "y": 1823.05785
+      }
+    },
+    {
+      "id": "P26",
+      "widthMm": 180,
+      "heightMm": 30,
+      "areaMm2": 5400,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 213,
+        "y": 1823.05785
+      }
+    },
+    {
+      "id": "P27",
+      "widthMm": 87,
+      "heightMm": 50,
+      "areaMm2": 3972.0619599741003,
+      "holes": 1,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 603,
+        "y": 1913.10785
+      }
+    },
+    {
+      "id": "P28",
+      "widthMm": 87,
+      "heightMm": 50,
+      "areaMm2": 3972.0619599741003,
+      "holes": 1,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 690,
+        "y": 1913.10785
+      }
+    },
+    {
+      "id": "P29",
+      "widthMm": 50,
+      "heightMm": 87,
+      "areaMm2": 3972.0619599741003,
+      "holes": 1,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 163.12898,
+        "y": 1193.00785
+      }
+    },
+    {
+      "id": "P30",
+      "widthMm": 87,
+      "heightMm": 50,
+      "areaMm2": 3972.0619599741585,
+      "holes": 1,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 163.12898,
+        "y": 1298.00785
+      }
+    },
+    {
+      "id": "P31",
+      "widthMm": 87,
+      "heightMm": 50,
+      "areaMm2": 3972.0619599741003,
+      "holes": 1,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "45% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 1123,
+        "y": 1978.01581
+      }
+    },
+    {
+      "id": "P32",
+      "widthMm": 115,
+      "heightMm": 45,
+      "areaMm2": 3925.7394275402476,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 250.12898,
+        "y": 1303.00785
+      }
+    },
+    {
+      "id": "P33",
+      "widthMm": 45,
+      "heightMm": 114.99999999999977,
+      "areaMm2": 3925.7394274999388,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "49% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 1163,
+        "y": 2043.39479
+      }
+    },
+    {
+      "id": "P34",
+      "widthMm": 45,
+      "heightMm": 114.99999999999977,
+      "areaMm2": 3925.7393972587306,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "68% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 1138,
+        "y": 2043.39479
+      }
+    },
+    {
+      "id": "P35",
+      "widthMm": 45,
+      "heightMm": 115,
+      "areaMm2": 3925.739391412819,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "50% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 1163,
+        "y": 2158.39479
+      }
+    },
+    {
+      "id": "P36",
+      "widthMm": 31.011839999999893,
+      "heightMm": 125.00784931670353,
+      "areaMm2": 3727.029288902442,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1003,
+        "y": 673
+      }
+    },
+    {
+      "id": "P37",
+      "widthMm": 245,
+      "heightMm": 54.90796,
+      "areaMm2": 3092.2511750000995,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 23% of its box, 9 segments) — check it is a part and not scrap between neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 563,
+        "y": 1913.10785
+      }
+    },
+    {
+      "id": "P38",
+      "widthMm": 224.70796,
+      "heightMm": 175,
+      "areaMm2": 2929.893000000011,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 7% of its box, 12 segments) — check it is a part and not scrap between neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 161.12898,
+        "y": 868.00785
+      }
+    },
+    {
+      "id": "P39",
+      "widthMm": 224.70796,
+      "heightMm": 175,
+      "areaMm2": 2929.8929999999673,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 7% of its box, 12 segments) — check it is a part and not scrap between neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 161.12898,
+        "y": 1498.00785
+      }
+    },
+    {
+      "id": "P40",
+      "widthMm": 180,
+      "heightMm": 15,
+      "areaMm2": 2700,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 603,
+        "y": 1748.00785
+      }
+    },
+    {
+      "id": "P41",
+      "widthMm": 180,
+      "heightMm": 15,
+      "areaMm2": 2700,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 213,
+        "y": 1748.00785
+      }
+    },
+    {
+      "id": "P42",
+      "widthMm": 180,
+      "heightMm": 15,
+      "areaMm2": 2700,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 213,
+        "y": 1913.10785
+      }
+    },
+    {
+      "id": "P43",
+      "widthMm": 44,
+      "heightMm": 50.024999999999864,
+      "areaMm2": 2201.0999999998603,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 563,
+        "y": 2013.01581
+      }
+    },
+    {
+      "id": "P44",
+      "widthMm": 50,
+      "heightMm": 80.00000133530989,
+      "areaMm2": 2150.0000892512035,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "60% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 1152.92861,
+        "y": 1873
+      }
+    },
+    {
+      "id": "P45",
+      "widthMm": 50,
+      "heightMm": 80.00000133531012,
+      "areaMm2": 2150.0000892509706,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "86% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 1162,
+        "y": 1898.01580866469
+      }
+    },
+    {
+      "id": "P46",
+      "widthMm": 50,
+      "heightMm": 80.00000026705993,
+      "areaMm2": 2150.0000228898134,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "75% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 1033,
+        "y": 2069.5059
+      }
+    },
+    {
+      "id": "P47",
+      "widthMm": 50,
+      "heightMm": 80.00000026705993,
+      "areaMm2": 2150.0000228895806,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1033,
+        "y": 2078.39478973294
+      }
+    },
+    {
+      "id": "P48",
+      "widthMm": 50,
+      "heightMm": 80,
+      "areaMm2": 2150.0000000004657,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1057,
+        "y": 1879.12693
+      }
+    },
+    {
+      "id": "P49",
+      "widthMm": 50,
+      "heightMm": 80,
+      "areaMm2": 2150.000000000233,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 1165.94454,
+        "y": 2225.79844
+      }
+    },
+    {
+      "id": "P50",
+      "widthMm": 50,
+      "heightMm": 80,
+      "areaMm2": 2150,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1107,
+        "y": 1888.01581
+      }
+    },
+    {
+      "id": "P51",
+      "widthMm": 50,
+      "heightMm": 80,
+      "areaMm2": 2150,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1112,
+        "y": 1888.01581
+      }
+    },
+    {
+      "id": "P52",
+      "widthMm": 50,
+      "heightMm": 80,
+      "areaMm2": 2150,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "75% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1088,
+        "y": 2078.39479
+      }
+    },
+    {
+      "id": "P53",
+      "widthMm": 50,
+      "heightMm": 80,
+      "areaMm2": 2150,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "97% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1083,
+        "y": 2078.39479
+      }
+    },
+    {
+      "id": "P54",
+      "widthMm": 50,
+      "heightMm": 80,
+      "areaMm2": 2149.999616880901,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 1057,
+        "y": 1888.01581
+      }
+    },
+    {
+      "id": "P55",
+      "widthMm": 110.00000237389008,
+      "heightMm": 25.0158100000001,
+      "areaMm2": 1181.2915264111944,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 43% of its box, 9 segments) — check it is a part and not scrap between neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1057,
+        "y": 1873
+      }
+    },
+    {
+      "id": "P56",
+      "widthMm": 49,
+      "heightMm": 10,
+      "areaMm2": 440,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1123,
+        "y": 1968.01581
+      }
+    },
+    {
+      "id": "P57",
+      "widthMm": 30,
+      "heightMm": 14,
+      "areaMm2": 377.9380400258997,
+      "holes": 0,
+      "marks": 0,
+      "depth": 2,
+      "flags": [
+        "nested inside another piece's cut-out (depth 2)",
+        "small (378 mm²) — check it is a part and not a corner scrap"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 728,
+        "y": 166
+      }
+    },
+    {
+      "id": "P58",
+      "widthMm": 35,
+      "heightMm": 24.999998000000005,
+      "areaMm2": 362.49997499992605,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "small (362 mm²) — check it is a part and not a corner scrap"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 1032,
+        "y": 1943.015812
+      }
+    },
+    {
+      "id": "P59",
+      "widthMm": 25,
+      "heightMm": 24.999998000000005,
+      "areaMm2": 312.49997499992605,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "small (312 mm²) — check it is a part and not a corner scrap"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 1032,
+        "y": 1833.011832
+      }
+    },
+    {
+      "id": "P60",
+      "widthMm": 17,
+      "heightMm": 15,
+      "areaMm2": 114.5000000000291,
+      "holes": 0,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "small (115 mm²) — check it is a part and not a corner scrap"
+      ],
+      "layers": [
+        "0"
+      ],
+      "at": {
+        "x": 368.83694,
+        "y": 1193.00785
+      }
+    }
+  ],
+  "ignoredFaces": [
+    {
+      "area": 224.68086000002222,
+      "bbox": {
+        "minX": 444,
+        "minY": 341.06383,
+        "maxX": 458,
+        "maxY": 358.93617
+      },
+      "reason": "island inside a small cut-out of 417 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 224.68076297875086,
+      "bbox": {
+        "minX": 605.5,
+        "minY": 341.06383,
+        "maxX": 619.49999,
+        "maxY": 358.93617
+      },
+      "reason": "island inside a small cut-out of 417 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 90.63835500003188,
+      "bbox": {
+        "minX": 468,
+        "minY": 351.78723,
+        "maxX": 480.5,
+        "maxY": 359.44681
+      },
+      "reason": "island inside a cut-out, smaller than 100 mm²"
+    },
+    {
+      "area": 90.63835500001733,
+      "bbox": {
+        "minX": 512.5,
+        "minY": 351.78723,
+        "maxX": 525,
+        "maxY": 359.44681
+      },
+      "reason": "island inside a cut-out, smaller than 100 mm²"
+    },
+    {
+      "area": 90.63835499998822,
+      "bbox": {
+        "minX": 398.5,
+        "minY": 351.78723,
+        "maxX": 411,
+        "maxY": 359.44681
+      },
+      "reason": "island inside a cut-out, smaller than 100 mm²"
+    },
+    {
+      "area": 90.63835499995912,
+      "bbox": {
+        "minX": 421,
+        "minY": 351.78723,
+        "maxX": 433.5,
+        "maxY": 359.44681
+      },
+      "reason": "island inside a cut-out, smaller than 100 mm²"
+    },
+    {
+      "area": 72.2222271100618,
+      "bbox": {
+        "minX": 1077.99999952522,
+        "minY": 2148.39479,
+        "maxX": 1093,
+        "maxY": 2158.39479
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 72.22219999972731,
+      "bbox": {
+        "minX": 1102,
+        "minY": 1958.01581,
+        "maxX": 1117,
+        "maxY": 1968.01581
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 55.99999439995736,
+      "bbox": {
+        "minX": 3,
+        "minY": 2253.10785,
+        "maxX": 563,
+        "maxY": 2253.20784999
+      },
+      "reason": "sliver 0.100 mm wide — two edges drawn almost on top of each other, not a part"
+    },
+    {
+      "area": 55.99999439995736,
+      "bbox": {
+        "minX": 563,
+        "minY": 1968.01581,
+        "maxX": 1123,
+        "maxY": 1968.1158099900001
+      },
+      "reason": "sliver 0.100 mm wide — two edges drawn almost on top of each other, not a part"
+    },
+    {
+      "area": 50,
+      "bbox": {
+        "minX": 1033,
+        "minY": 2148.39479,
+        "maxX": 1043,
+        "maxY": 2158.39479
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 50,
+      "bbox": {
+        "minX": 1163,
+        "minY": 2158.39479,
+        "maxX": 1173,
+        "maxY": 2168.39479
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 49.9999999597494,
+      "bbox": {
+        "minX": 250.12898,
+        "minY": 1338.00785,
+        "maxX": 260.12897999195525,
+        "maxY": 1348.00785
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 49.26058774092235,
+      "bbox": {
+        "minX": 1153,
+        "minY": 2148.54267245184,
+        "maxX": 1164.71341172306,
+        "maxY": 2158.39479
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 22.222227110294625,
+      "bbox": {
+        "minX": 1033,
+        "minY": 2069.5059,
+        "maxX": 1038.00000047478,
+        "maxY": 2078.39479
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 22.222183119039983,
+      "bbox": {
+        "minX": 1057,
+        "minY": 1879.12693,
+        "maxX": 1061.99999620178,
+        "maxY": 1888.0158121365
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 10.730091917039747,
+      "bbox": {
+        "minX": 538.96592,
+        "minY": 793.00785,
+        "maxX": 548.9659193167035,
+        "maxY": 798.0078493167035
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 10.730091917010643,
+      "bbox": {
+        "minX": 783.98888,
+        "minY": 793.00785,
+        "maxX": 793.9888793167036,
+        "maxY": 798.0078493167035
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 2.000000000029104,
+      "bbox": {
+        "minX": 161.12898,
+        "minY": 1347.00785,
+        "maxX": 163.12898,
+        "maxY": 1348.00785
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 2,
+      "bbox": {
+        "minX": 161.12898,
+        "minY": 1042.00785,
+        "maxX": 163.12898,
+        "maxY": 1043.00785
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 2,
+      "bbox": {
+        "minX": 161.12898,
+        "minY": 1193.00785,
+        "maxX": 163.12898,
+        "maxY": 1194.00785
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 2,
+      "bbox": {
+        "minX": 161.12898,
+        "minY": 1672.00785,
+        "maxX": 163.12898,
+        "maxY": 1673.00785
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    }
+  ],
+  "partTypes": [
+    {
+      "id": "T1",
+      "instances": [
+        {
+          "piece": "P1",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P1",
+      "flags": [
+        "50% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T2",
+      "instances": [
+        {
+          "piece": "P2",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P2",
+      "flags": [
+        "67% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 49% of its box, 38 segments) — check it is a part and not scrap between neighbours"
+      ]
+    },
+    {
+      "id": "T3",
+      "instances": [
+        {
+          "piece": "P3",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P4",
+          "rotationDeg": -180,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P3",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T4",
+      "instances": [
+        {
+          "piece": "P5",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P5",
+      "flags": [
+        "82% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T5",
+      "instances": [
+        {
+          "piece": "P6",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P6",
+      "flags": [
+        "94% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T6",
+      "instances": [
+        {
+          "piece": "P7",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P8",
+          "rotationDeg": 90,
+          "mirrored": false
+        },
+        {
+          "piece": "P9",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P7",
+      "flags": [
+        "60% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T7",
+      "instances": [
+        {
+          "piece": "P10",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P10",
+      "flags": [
+        "95% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T8",
+      "instances": [
+        {
+          "piece": "P11",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P12",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P11",
+      "flags": [
+        "46% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T9",
+      "instances": [
+        {
+          "piece": "P13",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P14",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P13",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T10",
+      "instances": [
+        {
+          "piece": "P15",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P16",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P15",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T11",
+      "instances": [
+        {
+          "piece": "P17",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P18",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P17",
+      "flags": [
+        "50% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T12",
+      "instances": [
+        {
+          "piece": "P19",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P20",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P19",
+      "flags": [
+        "99% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T13",
+      "instances": [
+        {
+          "piece": "P21",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P21",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T14",
+      "instances": [
+        {
+          "piece": "P22",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P22",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 26% of its box, 18 segments) — check it is a part and not scrap between neighbours"
+      ]
+    },
+    {
+      "id": "T15",
+      "instances": [
+        {
+          "piece": "P23",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P24",
+          "rotationDeg": -180,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P23",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T16",
+      "instances": [
+        {
+          "piece": "P25",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P25",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T17",
+      "instances": [
+        {
+          "piece": "P26",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P26",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T18",
+      "instances": [
+        {
+          "piece": "P27",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P28",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P29",
+          "rotationDeg": 270,
+          "mirrored": false
+        },
+        {
+          "piece": "P30",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P31",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P27",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T19",
+      "instances": [
+        {
+          "piece": "P32",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P33",
+          "rotationDeg": -90,
+          "mirrored": false
+        },
+        {
+          "piece": "P35",
+          "rotationDeg": -270,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P32",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T20",
+      "instances": [
+        {
+          "piece": "P34",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P34",
+      "flags": [
+        "68% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T21",
+      "instances": [
+        {
+          "piece": "P36",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P36",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T22",
+      "instances": [
+        {
+          "piece": "P37",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P37",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 23% of its box, 9 segments) — check it is a part and not scrap between neighbours"
+      ]
+    },
+    {
+      "id": "T23",
+      "instances": [
+        {
+          "piece": "P38",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P39",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P38",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 7% of its box, 12 segments) — check it is a part and not scrap between neighbours"
+      ]
+    },
+    {
+      "id": "T24",
+      "instances": [
+        {
+          "piece": "P40",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P41",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P42",
+          "rotationDeg": 180,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P40",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T25",
+      "instances": [
+        {
+          "piece": "P43",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P43",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T26",
+      "instances": [
+        {
+          "piece": "P44",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P45",
+          "rotationDeg": 180,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P44",
+      "flags": [
+        "60% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T27",
+      "instances": [
+        {
+          "piece": "P46",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P47",
+          "rotationDeg": 180,
+          "mirrored": false
+        },
+        {
+          "piece": "P54",
+          "rotationDeg": 180,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P46",
+      "flags": [
+        "75% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T28",
+      "instances": [
+        {
+          "piece": "P48",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P50",
+          "rotationDeg": 180,
+          "mirrored": false
+        },
+        {
+          "piece": "P51",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P52",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P53",
+          "rotationDeg": 180,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P48",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T29",
+      "instances": [
+        {
+          "piece": "P49",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": "T28",
+      "representative": "P49",
+      "flags": []
+    },
+    {
+      "id": "T30",
+      "instances": [
+        {
+          "piece": "P55",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P55",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "irregular outline (fills 43% of its box, 9 segments) — check it is a part and not scrap between neighbours"
+      ]
+    },
+    {
+      "id": "T31",
+      "instances": [
+        {
+          "piece": "P56",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P56",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T32",
+      "instances": [
+        {
+          "piece": "P57",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P57",
+      "flags": [
+        "nested inside another piece's cut-out (depth 2)",
+        "small (378 mm²) — check it is a part and not a corner scrap"
+      ]
+    },
+    {
+      "id": "T33",
+      "instances": [
+        {
+          "piece": "P58",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P58",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "small (362 mm²) — check it is a part and not a corner scrap"
+      ]
+    },
+    {
+      "id": "T34",
+      "instances": [
+        {
+          "piece": "P59",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P59",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "small (312 mm²) — check it is a part and not a corner scrap"
+      ]
+    },
+    {
+      "id": "T35",
+      "instances": [
+        {
+          "piece": "P60",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P60",
+      "flags": [
+        "100% of its outline is a common-line cut shared with neighbours",
+        "small (115 mm²) — check it is a part and not a corner scrap"
+      ]
+    }
+  ],
+  "warnings": [
+    "Layer \"02___PRT_ALL_AXES\" is used by 368 entities but is not defined in the LAYER table (the file came from a converter).",
+    "Layer \"1\" is used by 48 entities but is not defined in the LAYER table (the file came from a converter).",
+    "$INSUNITS = 0 (unitless): the file does not state its unit. Choose the unit the drawing was made in before using its geometry.",
+    "78 segment split(s) at crossings or shared edges — the file uses common-line cuts or overlapping entities; pieces were reconstructed from the planar faces.",
+    "34 round hole(s) are smaller than the sheet thickness (5 mm) — a laser cannot cut them cleanly; they may be marks."
+  ]
+}

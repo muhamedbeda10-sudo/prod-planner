@@ -1,0 +1,17 @@
+{
+  "$comment": "Copied from lib/domain/material.ts (MATERIAL_PRESETS, SHEET_SIZE_PRESETS) and lib/domain/fabAnalytics.ts (densities, kg/m3). Thickness list: the values the planner's tracker uses most; it is a typing aid, any thickness can be typed.",
+  "materials": [
+    { "name": "Steel", "densityKgM3": 7850 },
+    { "name": "Stainless steel", "densityKgM3": 8000 },
+    { "name": "Galvanized steel", "densityKgM3": 7850 },
+    { "name": "Aluminium", "densityKgM3": 2700 },
+    { "name": "Copper", "densityKgM3": 8960 }
+  ],
+  "sheetSizes": [
+    { "label": "1220*2440", "widthMm": 1220, "heightMm": 2440 },
+    { "label": "1250*2500", "widthMm": 1250, "heightMm": 2500 },
+    { "label": "1500*3000", "widthMm": 1500, "heightMm": 3000 },
+    { "label": "2000*6000", "widthMm": 2000, "heightMm": 6000 }
+  ],
+  "thicknessesMm": [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12]
+}

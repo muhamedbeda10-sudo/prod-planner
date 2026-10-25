@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1807" viewBox="-48.6 -145.8 1307.2 2624.4">
+<title>1210*2430 — sheet 2/2 — 4 parts — utilization 11.9% — run sample-12003E14M13-A-spacing5-margin5</title>
+<text x="605" y="-72.9" font-family="system-ui, sans-serif" font-size="48.6" text-anchor="middle" fill="#0f172a">1210*2430 — sheet 2/2 — 4 parts — utilization 11.9% — run sample-12003E14M13-A-spacing5-margin5</text>
+<g transform="translate(0 2430) scale(1,-1)">
+<rect x="0" y="0" width="1210" height="2430" fill="#f8fafc" stroke="#334155" stroke-width="3.038"/>
+<rect x="5" y="5" width="1200" height="2420" fill="none" stroke="#94a3b8" stroke-dasharray="12.1 12.1" stroke-width="1.62"/>
+<path d="M5 5L150.208 5L150.208 605L5 605L5 5ZM110.708 183A9.5 9.5 0 0 0 129.708 183L129.708 87A9.5 9.5 0 0 0 110.708 87L110.708 183ZM110.708 523A9.5 9.5 0 0 0 129.708 523L129.708 427A9.5 9.5 0 0 0 110.708 427L110.708 523Z" fill="#7c3aed" fill-opacity="0.35" fill-rule="evenodd" stroke="#7c3aed" stroke-width="2.025" stroke-linejoin="round"/>
+<text transform="translate(77.604 305) scale(1,-1)" font-family="system-ui, sans-serif" font-size="29.042" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T5 #1</text>
+<path d="M155.508 5L300.716 5L300.716 605L155.508 605L155.508 5ZM261.216 183A9.5 9.5 0 0 0 280.216 183L280.216 87A9.5 9.5 0 0 0 261.216 87L261.216 183ZM261.216 523A9.5 9.5 0 0 0 280.216 523L280.216 427A9.5 9.5 0 0 0 261.216 427L261.216 523Z" fill="#7c3aed" fill-opacity="0.35" fill-rule="evenodd" stroke="#7c3aed" stroke-width="2.025" stroke-linejoin="round"/>
+<text transform="translate(228.112 305) scale(1,-1)" font-family="system-ui, sans-serif" font-size="29.042" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T5 #2</text>
+<path d="M306.016 5L451.224 5L451.224 605L306.016 605L306.016 5ZM411.724 183A9.5 9.5 0 0 0 430.724 183L430.724 87A9.5 9.5 0 0 0 411.724 87L411.724 183ZM411.724 523A9.5 9.5 0 0 0 430.724 523L430.724 427A9.5 9.5 0 0 0 411.724 427L411.724 523Z" fill="#7c3aed" fill-opacity="0.35" fill-rule="evenodd" stroke="#7c3aed" stroke-width="2.025" stroke-linejoin="round"/>
+<text transform="translate(378.62 305) scale(1,-1)" font-family="system-ui, sans-serif" font-size="29.042" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T5 #3</text>
+<path d="M456.524 5L601.732 5L601.732 605L456.524 605L456.524 5ZM562.232 183A9.5 9.5 0 0 0 581.232 183L581.232 87A9.5 9.5 0 0 0 562.232 87L562.232 183ZM562.232 523A9.5 9.5 0 0 0 581.232 523L581.232 427A9.5 9.5 0 0 0 562.232 427L562.232 523Z" fill="#7c3aed" fill-opacity="0.35" fill-rule="evenodd" stroke="#7c3aed" stroke-width="2.025" stroke-linejoin="round"/>
+<text transform="translate(529.128 305) scale(1,-1)" font-family="system-ui, sans-serif" font-size="29.042" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T5 #4</text>
+</g>
+</svg>

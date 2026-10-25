@@ -1,0 +1,2068 @@
+{
+  "schema": "nesting-lab/report/1",
+  "runId": "sample-12005E14M13-B-spacing2-margin2",
+  "engineVersion": "nesting-lab/0.1.0 (NFP true-shape, Clipper 6.4.2)",
+  "createdAt": "2026-10-25T00:00:00.000Z",
+  "settings": {
+    "sheet": {
+      "widthMm": 1220,
+      "heightMm": 2440,
+      "quantity": null,
+      "material": "Steel",
+      "thicknessMm": 5,
+      "label": "1220*2440"
+    },
+    "spacingMm": 2,
+    "marginMm": 2,
+    "rotationsDeg": [
+      0,
+      90,
+      180,
+      270
+    ],
+    "allowMirror": false,
+    "noGoZones": [],
+    "timeBudgetMs": 60000
+  },
+  "parts": [
+    {
+      "id": "T1",
+      "label": "T1",
+      "bom": "12005E14M13",
+      "name": "1125.0×670.0, 125 holes",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 1125,
+      "heightMm": 670,
+      "grossAreaMm2": 753749.9999999999,
+      "netAreaMm2": 625386.8023871322,
+      "perimeterMm": 3590,
+      "holes": 125,
+      "geometryHash": "AADDCCD065026D52",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P1"
+        ],
+        "geometryHash": "AADDCCD065026D52"
+      }
+    },
+    {
+      "id": "T2",
+      "label": "T2",
+      "bom": "12005E14M13",
+      "name": "1031.0×1045.0, 16 holes",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 1031.01184,
+      "heightMm": 1045.05,
+      "grossAreaMm2": 527411.3934161593,
+      "netAreaMm2": 524948.3847757449,
+      "perimeterMm": 6634.439617729175,
+      "holes": 16,
+      "geometryHash": "FBB6B7369D213204",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P2"
+        ],
+        "geometryHash": "FBB6B7369D213204"
+      }
+    },
+    {
+      "id": "T3",
+      "label": "T3",
+      "bom": "12005E14M13",
+      "name": "270.5×955.0, 8 holes",
+      "quantity": 2,
+      "placed": 2,
+      "widthMm": 270.48296000001363,
+      "heightMm": 955,
+      "grossAreaMm2": 202559.7368080892,
+      "netAreaMm2": 201328.232487882,
+      "perimeterMm": 3132.7977632505613,
+      "holes": 8,
+      "geometryHash": "61C242BA385E6C7E",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P3",
+          "P4"
+        ],
+        "geometryHash": "61C242BA385E6C7E"
+      }
+    },
+    {
+      "id": "T4",
+      "label": "T4",
+      "bom": "12005E14M13",
+      "name": "560.0×325.0, 36 holes",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 560,
+      "heightMm": 324.9999999999998,
+      "grossAreaMm2": 182000,
+      "netAreaMm2": 172019.16013954525,
+      "perimeterMm": 1769.9999999999993,
+      "holes": 36,
+      "geometryHash": "386BDAA944A44FA5",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P5"
+        ],
+        "geometryHash": "386BDAA944A44FA5"
+      }
+    },
+    {
+      "id": "T5",
+      "label": "T5",
+      "bom": "12005E14M13",
+      "name": "1000.0×120.0, 5 holes",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 999.9999999999999,
+      "heightMm": 120.00784999999996,
+      "grossAreaMm2": 120007.85000000005,
+      "netAreaMm2": 114444.97950484141,
+      "perimeterMm": 2240.0157,
+      "holes": 5,
+      "geometryHash": "07B7FBAC12E7EC66",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P6"
+        ],
+        "geometryHash": "07B7FBAC12E7EC66"
+      }
+    },
+    {
+      "id": "T6",
+      "label": "T6",
+      "bom": "12005E14M13",
+      "name": "145.4×600.0, 2 holes",
+      "quantity": 3,
+      "placed": 3,
+      "widthMm": 145.3539800000001,
+      "heightMm": 600,
+      "grossAreaMm2": 87212.38800000004,
+      "netAreaMm2": 82997.33052602707,
+      "perimeterMm": 1490.7079600000002,
+      "holes": 2,
+      "geometryHash": "933C9CDCC769581E",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P7",
+          "P8",
+          "P9"
+        ],
+        "geometryHash": "933C9CDCC769581E"
+      }
+    },
+    {
+      "id": "T7",
+      "label": "T7",
+      "bom": "12005E14M13",
+      "name": "780.0×90.1",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 779.9999999999999,
+      "heightMm": 90.05000000000018,
+      "grossAreaMm2": 59439.00000000006,
+      "netAreaMm2": 59439.00000000006,
+      "perimeterMm": 1800.1000000000004,
+      "holes": 0,
+      "geometryHash": "1422044B68E79C95",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P10"
+        ],
+        "geometryHash": "1422044B68E79C95"
+      }
+    },
+    {
+      "id": "T8",
+      "label": "T8",
+      "bom": "12005E14M13",
+      "name": "560.0×94.9, 11 holes",
+      "quantity": 2,
+      "placed": 2,
+      "widthMm": 560,
+      "heightMm": 94.92500001000008,
+      "grossAreaMm2": 48755.80000560016,
+      "netAreaMm2": 47511.729314778604,
+      "perimeterMm": 1309.8500000200002,
+      "holes": 11,
+      "geometryHash": "1F4F3CAD0760F7A9",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P11",
+          "P12"
+        ],
+        "geometryHash": "1F4F3CAD0760F7A9"
+      }
+    },
+    {
+      "id": "T9",
+      "label": "T9",
+      "bom": "12005E14M13",
+      "name": "210.0×170.0, 10 holes",
+      "quantity": 2,
+      "placed": 2,
+      "widthMm": 210,
+      "heightMm": 170,
+      "grossAreaMm2": 35700.000000000015,
+      "netAreaMm2": 34569.02664470769,
+      "perimeterMm": 760,
+      "holes": 10,
+      "geometryHash": "7ECE37F1B19F0C71",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P13",
+          "P14"
+        ],
+        "geometryHash": "7ECE37F1B19F0C71"
+      }
+    },
+    {
+      "id": "T10",
+      "label": "T10",
+      "bom": "12005E14M13",
+      "name": "274.0×110.0, 6 holes",
+      "quantity": 2,
+      "placed": 2,
+      "widthMm": 274,
+      "heightMm": 110.00397999999996,
+      "grossAreaMm2": 29516.090570000117,
+      "netAreaMm2": 27318.62171578112,
+      "perimeterMm": 738.7186392902277,
+      "holes": 6,
+      "geometryHash": "CB56C3EC73962CB0",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P15",
+          "P16"
+        ],
+        "geometryHash": "CB56C3EC73962CB0"
+      }
+    },
+    {
+      "id": "T11",
+      "label": "T11",
+      "bom": "12005E14M13",
+      "name": "80.0×335.0, 2 holes",
+      "quantity": 2,
+      "placed": 2,
+      "widthMm": 80,
+      "heightMm": 335,
+      "grossAreaMm2": 26800,
+      "netAreaMm2": 26100.1239199482,
+      "perimeterMm": 830,
+      "holes": 2,
+      "geometryHash": "78463F891EF7DE33",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P17",
+          "P18"
+        ],
+        "geometryHash": "78463F891EF7DE33"
+      }
+    },
+    {
+      "id": "T12",
+      "label": "T12",
+      "bom": "12005E14M13",
+      "name": "235.0×95.4, 5 holes",
+      "quantity": 2,
+      "placed": 2,
+      "widthMm": 235,
+      "heightMm": 95.35397999999986,
+      "grossAreaMm2": 22408.185300000245,
+      "netAreaMm2": 21842.69862235408,
+      "perimeterMm": 660.7079599999997,
+      "holes": 5,
+      "geometryHash": "D2685F2CC026DF78",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P19",
+          "P20"
+        ],
+        "geometryHash": "D2685F2CC026DF78"
+      }
+    },
+    {
+      "id": "T13",
+      "label": "T13",
+      "bom": "12005E14M13",
+      "name": "28.0×475.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 27.988159316703786,
+      "heightMm": 475.00784999999996,
+      "grossAreaMm2": 10924.921503014513,
+      "netAreaMm2": 10924.921503014513,
+      "perimeterMm": 1003.8460002586883,
+      "holes": 0,
+      "geometryHash": "04709758F336B2C6",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P21"
+        ],
+        "geometryHash": "04709758F336B2C6"
+      }
+    },
+    {
+      "id": "T14",
+      "label": "T14",
+      "bom": "12005E14M13",
+      "name": "222.7×155.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 222.70796,
+      "heightMm": 155,
+      "grossAreaMm2": 8853.494372500048,
+      "netAreaMm2": 8853.494372500048,
+      "perimeterMm": 766.0875293357822,
+      "holes": 0,
+      "geometryHash": "269A67475491C4FD",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P22"
+        ],
+        "geometryHash": "269A67475491C4FD"
+      }
+    },
+    {
+      "id": "T15",
+      "label": "T15",
+      "bom": "12005E14M13",
+      "name": "95.0×93.0",
+      "quantity": 2,
+      "placed": 2,
+      "widthMm": 95,
+      "heightMm": 93,
+      "grossAreaMm2": 6285,
+      "netAreaMm2": 6285,
+      "perimeterMm": 321.01523203749537,
+      "holes": 0,
+      "geometryHash": "886218BCD985F348",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P23",
+          "P24"
+        ],
+        "geometryHash": "886218BCD985F348"
+      }
+    },
+    {
+      "id": "T16",
+      "label": "T16",
+      "bom": "12005E14M13",
+      "name": "205.0×35.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 205,
+      "heightMm": 34.95398,
+      "grossAreaMm2": 5712.4999750000425,
+      "netAreaMm2": 5712.4999750000425,
+      "perimeterMm": 465.2632996451138,
+      "holes": 0,
+      "geometryHash": "6AF029AD465E41BB",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P25"
+        ],
+        "geometryHash": "6AF029AD465E41BB"
+      }
+    },
+    {
+      "id": "T17",
+      "label": "T17",
+      "bom": "12005E14M13",
+      "name": "180.0×30.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 180,
+      "heightMm": 30,
+      "grossAreaMm2": 5400,
+      "netAreaMm2": 5400,
+      "perimeterMm": 420,
+      "holes": 0,
+      "geometryHash": "145CE678FA2E7E50",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P26"
+        ],
+        "geometryHash": "145CE678FA2E7E50"
+      }
+    },
+    {
+      "id": "T18",
+      "label": "T18",
+      "bom": "12005E14M13",
+      "name": "87.0×50.0, 1 holes",
+      "quantity": 5,
+      "placed": 5,
+      "widthMm": 87,
+      "heightMm": 50,
+      "grossAreaMm2": 4350,
+      "netAreaMm2": 3972.0619599741003,
+      "perimeterMm": 274,
+      "holes": 1,
+      "geometryHash": "3D0634825B954976",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P27",
+          "P28",
+          "P29",
+          "P30",
+          "P31"
+        ],
+        "geometryHash": "3D0634825B954976"
+      }
+    },
+    {
+      "id": "T19",
+      "label": "T19",
+      "bom": "12005E14M13",
+      "name": "115.0×45.0",
+      "quantity": 3,
+      "placed": 3,
+      "widthMm": 115,
+      "heightMm": 45,
+      "grossAreaMm2": 3925.7394275402476,
+      "netAreaMm2": 3925.7394275402476,
+      "perimeterMm": 291.17413465508,
+      "holes": 0,
+      "geometryHash": "3A083D4C2D757950",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P32",
+          "P33",
+          "P35"
+        ],
+        "geometryHash": "3A083D4C2D757950"
+      }
+    },
+    {
+      "id": "T20",
+      "label": "T20",
+      "bom": "12005E14M13",
+      "name": "45.0×115.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 45,
+      "heightMm": 114.99999999999977,
+      "grossAreaMm2": 3925.7393972587306,
+      "netAreaMm2": 3925.7393972587306,
+      "perimeterMm": 291.174134471787,
+      "holes": 0,
+      "geometryHash": "98062675FAEE13D3",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P34"
+        ],
+        "geometryHash": "98062675FAEE13D3"
+      }
+    },
+    {
+      "id": "T21",
+      "label": "T21",
+      "bom": "12005E14M13",
+      "name": "31.0×125.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 31.011839999999893,
+      "heightMm": 125.00784931670353,
+      "grossAreaMm2": 3727.029288902442,
+      "netAreaMm2": 3727.029288902442,
+      "perimeterMm": 309.8933602586876,
+      "holes": 0,
+      "geometryHash": "111AA579CDDFFA01",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P36"
+        ],
+        "geometryHash": "111AA579CDDFFA01"
+      }
+    },
+    {
+      "id": "T22",
+      "label": "T22",
+      "bom": "12005E14M13",
+      "name": "245.0×54.9",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 245,
+      "heightMm": 54.90796,
+      "grossAreaMm2": 3092.2511750000995,
+      "netAreaMm2": 3092.2511750000995,
+      "perimeterMm": 655.1712596451139,
+      "holes": 0,
+      "geometryHash": "84530BCDD3B13593",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P37"
+        ],
+        "geometryHash": "84530BCDD3B13593"
+      }
+    },
+    {
+      "id": "T23",
+      "label": "T23",
+      "bom": "12005E14M13",
+      "name": "224.7×175.0",
+      "quantity": 2,
+      "placed": 2,
+      "widthMm": 224.70796,
+      "heightMm": 175,
+      "grossAreaMm2": 2929.893000000011,
+      "netAreaMm2": 2929.893000000011,
+      "perimeterMm": 803.41592,
+      "holes": 0,
+      "geometryHash": "22EE2D8B2E1C6CE5",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P38",
+          "P39"
+        ],
+        "geometryHash": "22EE2D8B2E1C6CE5"
+      }
+    },
+    {
+      "id": "T24",
+      "label": "T24",
+      "bom": "12005E14M13",
+      "name": "180.0×15.0",
+      "quantity": 3,
+      "placed": 3,
+      "widthMm": 180,
+      "heightMm": 15,
+      "grossAreaMm2": 2700,
+      "netAreaMm2": 2700,
+      "perimeterMm": 390,
+      "holes": 0,
+      "geometryHash": "AD44B0D0E26C04F0",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P40",
+          "P41",
+          "P42"
+        ],
+        "geometryHash": "AD44B0D0E26C04F0"
+      }
+    },
+    {
+      "id": "T25",
+      "label": "T25",
+      "bom": "12005E14M13",
+      "name": "44.0×50.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 44,
+      "heightMm": 50.024999999999864,
+      "grossAreaMm2": 2201.0999999998603,
+      "netAreaMm2": 2201.0999999998603,
+      "perimeterMm": 188.04999999999973,
+      "holes": 0,
+      "geometryHash": "992DCF2C820E65E0",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P43"
+        ],
+        "geometryHash": "992DCF2C820E65E0"
+      }
+    },
+    {
+      "id": "T26",
+      "label": "T26",
+      "bom": "12005E14M13",
+      "name": "50.0×80.0",
+      "quantity": 2,
+      "placed": 2,
+      "widthMm": 50,
+      "heightMm": 80.00000133530989,
+      "grossAreaMm2": 2150.0000892512035,
+      "netAreaMm2": 2150.0000892512035,
+      "perimeterMm": 220.9299367510474,
+      "holes": 0,
+      "geometryHash": "C8EA76189857A368",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P44",
+          "P45"
+        ],
+        "geometryHash": "C8EA76189857A368"
+      }
+    },
+    {
+      "id": "T27",
+      "label": "T27",
+      "bom": "12005E14M13",
+      "name": "50.0×80.0",
+      "quantity": 3,
+      "placed": 3,
+      "widthMm": 50,
+      "heightMm": 80.00000026705993,
+      "grossAreaMm2": 2150.0000228898134,
+      "netAreaMm2": 2150.0000228898134,
+      "perimeterMm": 220.92993485193676,
+      "holes": 0,
+      "geometryHash": "F0309EE80D7E4888",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P46",
+          "P47",
+          "P54"
+        ],
+        "geometryHash": "F0309EE80D7E4888"
+      }
+    },
+    {
+      "id": "T28",
+      "label": "T28",
+      "bom": "12005E14M13",
+      "name": "50.0×80.0",
+      "quantity": 5,
+      "placed": 5,
+      "widthMm": 50,
+      "heightMm": 80,
+      "grossAreaMm2": 2150.0000000003492,
+      "netAreaMm2": 2150.0000000003492,
+      "perimeterMm": 220.92993437716007,
+      "holes": 0,
+      "geometryHash": "791069F13207C0DB",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P48",
+          "P50",
+          "P51",
+          "P52",
+          "P53"
+        ],
+        "geometryHash": "791069F13207C0DB"
+      }
+    },
+    {
+      "id": "T29",
+      "label": "T29",
+      "bom": "12005E14M13",
+      "name": "50.0×80.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 50,
+      "heightMm": 80,
+      "grossAreaMm2": 2150.0000000004657,
+      "netAreaMm2": 2150.0000000004657,
+      "perimeterMm": 220.92993437716007,
+      "holes": 0,
+      "geometryHash": "8DB06AEDAF78FC33",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P49"
+        ],
+        "geometryHash": "8DB06AEDAF78FC33"
+      }
+    },
+    {
+      "id": "T30",
+      "label": "T30",
+      "bom": "12005E14M13",
+      "name": "110.0×25.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 110.00000237389008,
+      "heightMm": 25.0158100000001,
+      "grossAreaMm2": 1181.2915264111944,
+      "netAreaMm2": 1181.2915264111944,
+      "perimeterMm": 250.15275876346345,
+      "holes": 0,
+      "geometryHash": "44DBAD81E979F9FB",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P55"
+        ],
+        "geometryHash": "44DBAD81E979F9FB"
+      }
+    },
+    {
+      "id": "T31",
+      "label": "T31",
+      "bom": "12005E14M13",
+      "name": "49.0×10.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 49,
+      "heightMm": 10,
+      "grossAreaMm2": 440,
+      "netAreaMm2": 440,
+      "perimeterMm": 112.14213562373095,
+      "holes": 0,
+      "geometryHash": "37865F10286800B0",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P56"
+        ],
+        "geometryHash": "37865F10286800B0"
+      }
+    },
+    {
+      "id": "T33",
+      "label": "T33",
+      "bom": "12005E14M13",
+      "name": "35.0×25.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 35,
+      "heightMm": 24.999998000000005,
+      "grossAreaMm2": 362.49997499992605,
+      "netAreaMm2": 362.49997499992605,
+      "perimeterMm": 99.4974712688448,
+      "holes": 0,
+      "geometryHash": "64F899D0A00B9D18",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P58"
+        ],
+        "geometryHash": "64F899D0A00B9D18"
+      }
+    },
+    {
+      "id": "T34",
+      "label": "T34",
+      "bom": "12005E14M13",
+      "name": "25.0×25.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 25,
+      "heightMm": 24.999998000000005,
+      "grossAreaMm2": 312.49997499992605,
+      "netAreaMm2": 312.49997499992605,
+      "perimeterMm": 85.35533564511385,
+      "holes": 0,
+      "geometryHash": "E66166AD39D3B1B3",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P59"
+        ],
+        "geometryHash": "E66166AD39D3B1B3"
+      }
+    },
+    {
+      "id": "T35",
+      "label": "T35",
+      "bom": "12005E14M13",
+      "name": "17.0×15.0",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 17,
+      "heightMm": 15,
+      "grossAreaMm2": 114.5000000000291,
+      "netAreaMm2": 114.5000000000291,
+      "perimeterMm": 55.21320343559643,
+      "holes": 0,
+      "geometryHash": "565F223511A7E103",
+      "source": {
+        "file": "12005E14M13-5mm-50U-Result1-1.dxf",
+        "pieceIds": [
+          "P60"
+        ],
+        "geometryHash": "565F223511A7E103"
+      }
+    }
+  ],
+  "sheets": [
+    {
+      "index": 0,
+      "placements": [
+        {
+          "partId": "T1",
+          "instance": 0,
+          "x": 2,
+          "y": 2,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 2,
+            "minY": 2,
+            "maxX": 1127,
+            "maxY": 672
+          }
+        },
+        {
+          "partId": "T2",
+          "instance": 0,
+          "x": 2,
+          "y": 674.3,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 2,
+            "minY": 674.3,
+            "maxX": 1047.0500000000002,
+            "maxY": 1705.3118399999996
+          }
+        },
+        {
+          "partId": "T3",
+          "instance": 0,
+          "x": 94.35,
+          "y": 674.3,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 94.35,
+            "minY": 674.3,
+            "maxX": 1049.35,
+            "maxY": 944.7829600000136
+          }
+        },
+        {
+          "partId": "T3",
+          "instance": 1,
+          "x": 2,
+          "y": 1707.612,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 2,
+            "minY": 1707.612,
+            "maxX": 957,
+            "maxY": 1978.0949600000138
+          }
+        },
+        {
+          "partId": "T4",
+          "instance": 0,
+          "x": 2,
+          "y": 1980.395,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 2,
+            "minY": 1980.395,
+            "maxX": 562,
+            "maxY": 2305.3949999999995
+          }
+        },
+        {
+          "partId": "T5",
+          "instance": 0,
+          "x": 94.35,
+          "y": 947.083,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 94.35,
+            "minY": 947.083,
+            "maxX": 1094.35,
+            "maxY": 1067.09085
+          }
+        },
+        {
+          "partId": "T6",
+          "instance": 0,
+          "x": 959.3,
+          "y": 1707.612,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 959.3,
+            "minY": 1707.612,
+            "maxX": 1104.65398,
+            "maxY": 2307.612
+          }
+        },
+        {
+          "partId": "T6",
+          "instance": 1,
+          "x": 1049.35,
+          "y": 1069.391,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1049.35,
+            "minY": 1069.391,
+            "maxX": 1194.70398,
+            "maxY": 1669.391
+          }
+        },
+        {
+          "partId": "T7",
+          "instance": 0,
+          "x": 94.35,
+          "y": 1069.391,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 94.35,
+            "minY": 1069.391,
+            "maxX": 874.3499999999999,
+            "maxY": 1159.4410000000003
+          }
+        },
+        {
+          "partId": "T8",
+          "instance": 0,
+          "x": 1106.954,
+          "y": 1671.691,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1106.954,
+            "minY": 1671.691,
+            "maxX": 1201.87900001,
+            "maxY": 2231.691
+          }
+        },
+        {
+          "partId": "T8",
+          "instance": 1,
+          "x": 2,
+          "y": 2307.695,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 2,
+            "minY": 2307.695,
+            "maxX": 562,
+            "maxY": 2402.6200000100002
+          }
+        },
+        {
+          "partId": "T9",
+          "instance": 0,
+          "x": 564.3,
+          "y": 1980.395,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 564.3,
+            "minY": 1980.395,
+            "maxX": 774.3,
+            "maxY": 2150.395
+          }
+        },
+        {
+          "partId": "T9",
+          "instance": 1,
+          "x": 776.6,
+          "y": 1980.395,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 776.6,
+            "minY": 1980.395,
+            "maxX": 946.6,
+            "maxY": 2190.395
+          }
+        },
+        {
+          "partId": "T10",
+          "instance": 0,
+          "x": 1073.817,
+          "y": 674.3,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1073.817,
+            "minY": 674.3,
+            "maxX": 1183.82098,
+            "maxY": 948.2999999999998
+          }
+        },
+        {
+          "partId": "T10",
+          "instance": 1,
+          "x": 564.3,
+          "y": 2192.695,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 564.3,
+            "minY": 2192.695,
+            "maxX": 838.3,
+            "maxY": 2302.69898
+          }
+        },
+        {
+          "partId": "T11",
+          "instance": 0,
+          "x": 564.3,
+          "y": 2304.999,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 564.3,
+            "minY": 2304.999,
+            "maxX": 899.3,
+            "maxY": 2384.999
+          }
+        },
+        {
+          "partId": "T11",
+          "instance": 1,
+          "x": 1129.3,
+          "y": 2,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1129.3,
+            "minY": 2,
+            "maxX": 1209.3,
+            "maxY": 337
+          }
+        },
+        {
+          "partId": "T12",
+          "instance": 0,
+          "x": 901.6,
+          "y": 2309.912,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 901.6,
+            "minY": 2309.912,
+            "maxX": 1136.6,
+            "maxY": 2405.2659799999997
+          }
+        },
+        {
+          "partId": "T13",
+          "instance": 0,
+          "x": 1181.121,
+          "y": 478.444,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1181.121,
+            "minY": 478.444,
+            "maxX": 1209.1091593167039,
+            "maxY": 953.4518499999999
+          }
+        },
+        {
+          "partId": "T15",
+          "instance": 0,
+          "x": 171.65,
+          "y": 674.231,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 171.65,
+            "minY": 674.231,
+            "maxX": 264.65,
+            "maxY": 769.231
+          }
+        },
+        {
+          "partId": "T15",
+          "instance": 1,
+          "x": 496.65,
+          "y": 674.231,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 496.65,
+            "minY": 674.231,
+            "maxX": 589.65,
+            "maxY": 769.231
+          }
+        },
+        {
+          "partId": "T16",
+          "instance": 0,
+          "x": 1129.3,
+          "y": 339.298,
+          "rotationDeg": 270,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1129.3,
+            "minY": 339.298,
+            "maxX": 1164.25398,
+            "maxY": 544.298
+          }
+        },
+        {
+          "partId": "T17",
+          "instance": 0,
+          "x": 696.65,
+          "y": 1146.741,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 696.65,
+            "minY": 1146.741,
+            "maxX": 876.65,
+            "maxY": 1176.741
+          }
+        },
+        {
+          "partId": "T18",
+          "instance": 0,
+          "x": 1129.3,
+          "y": 546.598,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1129.3,
+            "minY": 546.598,
+            "maxX": 1179.3,
+            "maxY": 633.598
+          }
+        },
+        {
+          "partId": "T18",
+          "instance": 1,
+          "x": 266.95,
+          "y": 674.3,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 266.95,
+            "minY": 674.3,
+            "maxX": 316.95,
+            "maxY": 761.3
+          }
+        },
+        {
+          "partId": "T18",
+          "instance": 2,
+          "x": 591.95,
+          "y": 674.3,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 591.95,
+            "minY": 674.3,
+            "maxX": 641.95,
+            "maxY": 761.3
+          }
+        },
+        {
+          "partId": "T18",
+          "instance": 3,
+          "x": 801.65,
+          "y": 674.3,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 801.65,
+            "minY": 674.3,
+            "maxX": 888.65,
+            "maxY": 724.3
+          }
+        },
+        {
+          "partId": "T18",
+          "instance": 4,
+          "x": 890.95,
+          "y": 674.3,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 890.95,
+            "minY": 674.3,
+            "maxX": 940.95,
+            "maxY": 761.3
+          }
+        },
+        {
+          "partId": "T19",
+          "instance": 0,
+          "x": 1161.583,
+          "y": 339.3,
+          "rotationDeg": 270,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1161.583,
+            "minY": 339.3,
+            "maxX": 1206.583,
+            "maxY": 454.3
+          }
+        },
+        {
+          "partId": "T19",
+          "instance": 1,
+          "x": 1096.65,
+          "y": 950.6,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1096.65,
+            "minY": 950.6,
+            "maxX": 1141.65,
+            "maxY": 1065.6
+          }
+        },
+        {
+          "partId": "T19",
+          "instance": 2,
+          "x": 1123.984,
+          "y": 950.6,
+          "rotationDeg": 270,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1123.984,
+            "minY": 950.6,
+            "maxX": 1168.984,
+            "maxY": 1065.6
+          }
+        },
+        {
+          "partId": "T20",
+          "instance": 0,
+          "x": 876.65,
+          "y": 1069.374,
+          "rotationDeg": 270,
+          "mirrored": false,
+          "bbox": {
+            "minX": 876.65,
+            "minY": 1069.374,
+            "maxX": 991.65,
+            "maxY": 1114.374
+          }
+        },
+        {
+          "partId": "T21",
+          "instance": 0,
+          "x": 993.95,
+          "y": 1069.384,
+          "rotationDeg": 180,
+          "mirrored": false,
+          "bbox": {
+            "minX": 993.95,
+            "minY": 1069.384,
+            "maxX": 1024.96184,
+            "maxY": 1194.3918493167034
+          }
+        },
+        {
+          "partId": "T22",
+          "instance": 0,
+          "x": 94.35,
+          "y": 1146.741,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 94.35,
+            "minY": 1146.741,
+            "maxX": 339.35,
+            "maxY": 1201.64896
+          }
+        },
+        {
+          "partId": "T23",
+          "instance": 0,
+          "x": 968.9,
+          "y": 2195.566,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 968.9,
+            "minY": 2195.566,
+            "maxX": 1143.9,
+            "maxY": 2420.27396
+          }
+        },
+        {
+          "partId": "T23",
+          "instance": 1,
+          "x": 976.2,
+          "y": 2210.574,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 976.2,
+            "minY": 2210.574,
+            "maxX": 1151.2,
+            "maxY": 2435.2819600000003
+          }
+        },
+        {
+          "partId": "T24",
+          "instance": 0,
+          "x": 1051.65,
+          "y": 674.3,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1051.65,
+            "minY": 674.3,
+            "maxX": 1066.65,
+            "maxY": 854.3
+          }
+        },
+        {
+          "partId": "T24",
+          "instance": 1,
+          "x": 317.692,
+          "y": 1161.741,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 317.692,
+            "minY": 1161.741,
+            "maxX": 497.692,
+            "maxY": 1176.741
+          }
+        },
+        {
+          "partId": "T24",
+          "instance": 2,
+          "x": 499.992,
+          "y": 1161.741,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 499.992,
+            "minY": 1161.741,
+            "maxX": 679.992,
+            "maxY": 1176.741
+          }
+        },
+        {
+          "partId": "T25",
+          "instance": 0,
+          "x": 801.65,
+          "y": 726.6,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 801.65,
+            "minY": 726.6,
+            "maxX": 845.65,
+            "maxY": 776.6249999999999
+          }
+        },
+        {
+          "partId": "T26",
+          "instance": 0,
+          "x": 878.95,
+          "y": 1114.866,
+          "rotationDeg": 180,
+          "mirrored": false,
+          "bbox": {
+            "minX": 878.95,
+            "minY": 1114.866,
+            "maxX": 928.95,
+            "maxY": 1194.8660013353099
+          }
+        },
+        {
+          "partId": "T26",
+          "instance": 1,
+          "x": 887.605,
+          "y": 1116.674,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 887.605,
+            "minY": 1116.674,
+            "maxX": 937.605,
+            "maxY": 1196.6740013353099
+          }
+        },
+        {
+          "partId": "T27",
+          "instance": 0,
+          "x": 934.57,
+          "y": 1116.674,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 934.57,
+            "minY": 1116.674,
+            "maxX": 984.57,
+            "maxY": 1196.67400026706
+          }
+        },
+        {
+          "partId": "T27",
+          "instance": 1,
+          "x": 2,
+          "y": 1441.156,
+          "rotationDeg": 180,
+          "mirrored": false,
+          "bbox": {
+            "minX": 2,
+            "minY": 1441.156,
+            "maxX": 52,
+            "maxY": 1521.1560002670599
+          }
+        },
+        {
+          "partId": "T27",
+          "instance": 2,
+          "x": 18.326,
+          "y": 1456.6,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 18.326,
+            "minY": 1456.6,
+            "maxX": 68.326,
+            "maxY": 1536.6000002670598
+          }
+        },
+        {
+          "partId": "T28",
+          "instance": 0,
+          "x": 2,
+          "y": 1519.347,
+          "rotationDeg": 180,
+          "mirrored": false,
+          "bbox": {
+            "minX": 2,
+            "minY": 1519.347,
+            "maxX": 52,
+            "maxY": 1599.347
+          }
+        },
+        {
+          "partId": "T28",
+          "instance": 1,
+          "x": 18.327,
+          "y": 1534.793,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 18.327,
+            "minY": 1534.793,
+            "maxX": 68.327,
+            "maxY": 1614.793
+          }
+        },
+        {
+          "partId": "T28",
+          "instance": 2,
+          "x": 2,
+          "y": 1597.538,
+          "rotationDeg": 180,
+          "mirrored": false,
+          "bbox": {
+            "minX": 2,
+            "minY": 1597.538,
+            "maxX": 52,
+            "maxY": 1677.538
+          }
+        },
+        {
+          "partId": "T28",
+          "instance": 3,
+          "x": 18.328,
+          "y": 1612.986,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 18.328,
+            "minY": 1612.986,
+            "maxX": 68.328,
+            "maxY": 1692.986
+          }
+        },
+        {
+          "partId": "T28",
+          "instance": 4,
+          "x": 79.3,
+          "y": 1692.565,
+          "rotationDeg": 180,
+          "mirrored": false,
+          "bbox": {
+            "minX": 79.3,
+            "minY": 1692.565,
+            "maxX": 129.3,
+            "maxY": 1772.565
+          }
+        },
+        {
+          "partId": "T29",
+          "instance": 0,
+          "x": 117.77,
+          "y": 1707.464,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 117.77,
+            "minY": 1707.464,
+            "maxX": 197.76999999999998,
+            "maxY": 1757.464
+          }
+        },
+        {
+          "partId": "T30",
+          "instance": 0,
+          "x": 847.889,
+          "y": 754.704,
+          "rotationDeg": 180,
+          "mirrored": false,
+          "bbox": {
+            "minX": 847.889,
+            "minY": 754.704,
+            "maxX": 957.8890023738901,
+            "maxY": 779.71981
+          }
+        },
+        {
+          "partId": "T31",
+          "instance": 0,
+          "x": 1161.6,
+          "y": 456.598,
+          "rotationDeg": 270,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1161.6,
+            "minY": 456.598,
+            "maxX": 1171.6,
+            "maxY": 505.598
+          }
+        },
+        {
+          "partId": "T33",
+          "instance": 0,
+          "x": 1158.821,
+          "y": 632.327,
+          "rotationDeg": 270,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1158.821,
+            "minY": 632.327,
+            "maxX": 1183.820998,
+            "maxY": 667.327
+          }
+        },
+        {
+          "partId": "T34",
+          "instance": 0,
+          "x": 1177.991,
+          "y": 451.144,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1177.991,
+            "minY": 451.144,
+            "maxX": 1202.991,
+            "maxY": 476.143998
+          }
+        },
+        {
+          "partId": "T35",
+          "instance": 0,
+          "x": 1129.298,
+          "y": 339.3,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 1129.298,
+            "minY": 339.3,
+            "maxX": 1146.298,
+            "maxY": 354.3
+          }
+        }
+      ],
+      "grossPartArea": 2647205.7968289223,
+      "netPartArea": 2476942.8017931213,
+      "utilization": 0.8892790233905276,
+      "usedBBox": {
+        "minX": 2,
+        "minY": 2,
+        "maxX": 1209.3,
+        "maxY": 2435.2819600000003
+      }
+    },
+    {
+      "index": 1,
+      "placements": [
+        {
+          "partId": "T6",
+          "instance": 2,
+          "x": 2,
+          "y": 2,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 2,
+            "minY": 2,
+            "maxX": 147.3539800000001,
+            "maxY": 602
+          }
+        },
+        {
+          "partId": "T12",
+          "instance": 1,
+          "x": 2,
+          "y": 604.3,
+          "rotationDeg": 90,
+          "mirrored": false,
+          "bbox": {
+            "minX": 2,
+            "minY": 604.3,
+            "maxX": 97.35397999999986,
+            "maxY": 839.3000000000001
+          }
+        },
+        {
+          "partId": "T14",
+          "instance": 0,
+          "x": 21.652,
+          "y": 714.593,
+          "rotationDeg": 270,
+          "mirrored": false,
+          "bbox": {
+            "minX": 21.652,
+            "minY": 714.593,
+            "maxX": 176.652,
+            "maxY": 937.30096
+          }
+        }
+      ],
+      "grossPartArea": 118474.06767250033,
+      "netPartArea": 113693.5235208812,
+      "utilization": 0.039799135874932924,
+      "usedBBox": {
+        "minX": 2,
+        "minY": 2,
+        "maxX": 176.652,
+        "maxY": 937.30096
+      }
+    }
+  ],
+  "unplaced": [],
+  "chosenStrategy": {
+    "ordering": "area-desc",
+    "objective": "min-bbox"
+  },
+  "strategiesTried": [
+    {
+      "strategy": {
+        "ordering": "area-desc",
+        "objective": "bottom-left"
+      },
+      "sheets": 2,
+      "utilization": 0.4645390796327301,
+      "lastSheetUtilization": 0.04699975308132914,
+      "ms": 0,
+      "unplaced": 0
+    },
+    {
+      "strategy": {
+        "ordering": "longest-side-desc",
+        "objective": "bottom-left"
+      },
+      "sheets": 2,
+      "utilization": 0.46453907963273,
+      "lastSheetUtilization": 0.0611394786347756,
+      "ms": 0,
+      "unplaced": 0
+    },
+    {
+      "strategy": {
+        "ordering": "area-desc",
+        "objective": "left-bottom"
+      },
+      "sheets": 2,
+      "utilization": 0.4645390796327301,
+      "lastSheetUtilization": 0.04781240614458506,
+      "ms": 0,
+      "unplaced": 0
+    },
+    {
+      "strategy": {
+        "ordering": "area-desc",
+        "objective": "min-bbox"
+      },
+      "sheets": 2,
+      "utilization": 0.4645390796327302,
+      "lastSheetUtilization": 0.039799135874932924,
+      "ms": 0,
+      "unplaced": 0
+    },
+    {
+      "strategy": {
+        "ordering": "perimeter-desc",
+        "objective": "bottom-left"
+      },
+      "sheets": 2,
+      "utilization": 0.4645390796327302,
+      "lastSheetUtilization": 0.054267955243886265,
+      "ms": 0,
+      "unplaced": 0
+    },
+    {
+      "strategy": {
+        "ordering": "longest-side-desc",
+        "objective": "min-bbox"
+      },
+      "sheets": 2,
+      "utilization": 0.46453907963273,
+      "lastSheetUtilization": 0.08512496640687987,
+      "ms": 0,
+      "unplaced": 0
+    }
+  ],
+  "stats": {
+    "nfpComputed": 4864,
+    "nfpCacheHits": 27706,
+    "candidatesEvaluated": 52532,
+    "placementsAttempted": 374,
+    "nfpMs": 0,
+    "booleanMs": 0
+  },
+  "timings": {
+    "totalMs": 0,
+    "verifyMs": 0,
+    "exportMs": 0
+  },
+  "notes": [
+    "Positions come from a greedy bottom-left-fill over no-fit polygons; the result is a good layout, not a proven optimum.",
+    "Nesting polygons circumscribe the true arcs (0.3 mm tolerance), are simplified by 0.05 mm and grown conservatively, so parts are never closer than the spacing but may end up to 0.30 mm farther apart than needed; the independent verifier checks the exact contours afterwards.",
+    "Part spacing is a geometric clearance between contours. Kerf is NOT compensated here — the machine's program must apply it, once.",
+    "Utilization = Σ outer-contour areas of the placed parts ÷ sheet area (holes count as used material)."
+  ],
+  "verification": {
+    "ok": true,
+    "violations": [],
+    "tolerances": {
+      "sagittaMm": 0.01,
+      "distanceTolMm": 0.02,
+      "areaRelTol": 0.000001
+    },
+    "stats": {
+      "pairsChecked": 137,
+      "minClearanceMm": 2.152160000000322,
+      "minEdgeDistanceMm": 2,
+      "placementsChecked": 59
+    }
+  },
+  "roundTrip": [
+    {
+      "sheetIndex": 0,
+      "fileName": "sheet-01.dxf",
+      "report": {
+        "ok": true,
+        "unitsStated": true,
+        "insunits": 4,
+        "acadVersion": "AC1015",
+        "entityCounts": [
+          {
+            "type": "LWPOLYLINE",
+            "count": 116
+          },
+          {
+            "type": "CIRCLE",
+            "count": 211
+          },
+          {
+            "type": "TEXT",
+            "count": 56
+          }
+        ],
+        "piecesExpected": 56,
+        "piecesFound": 56,
+        "matched": 56,
+        "maxAreaDeltaMm2": 0.000020389874407555908,
+        "maxBBoxDeltaMm": 0.000005500345423570252,
+        "maxPerimeterDeltaMm": 0.000010022164701695147,
+        "holesExpected": 270,
+        "holesFound": 270,
+        "mismatches": []
+      }
+    },
+    {
+      "sheetIndex": 1,
+      "fileName": "sheet-02.dxf",
+      "report": {
+        "ok": true,
+        "unitsStated": true,
+        "insunits": 4,
+        "acadVersion": "AC1015",
+        "entityCounts": [
+          {
+            "type": "LWPOLYLINE",
+            "count": 6
+          },
+          {
+            "type": "TEXT",
+            "count": 3
+          },
+          {
+            "type": "CIRCLE",
+            "count": 5
+          }
+        ],
+        "piecesExpected": 3,
+        "piecesFound": 3,
+        "matched": 3,
+        "maxAreaDeltaMm2": 0.000007499993444071151,
+        "maxBBoxDeltaMm": 1.4210854715202004e-13,
+        "maxPerimeterDeltaMm": 1.7076388303394197e-7,
+        "holesExpected": 7,
+        "holesFound": 7,
+        "mismatches": []
+      }
+    }
+  ],
+  "machines": [
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-09",
+      "name": "Bodor 6K watt",
+      "rank": 1,
+      "reasons": [
+        "flat-sheet laser (by its name — confirm)",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "that it is a flat-sheet laser",
+        "bed size takes a 1220×2440 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-11",
+      "name": "GF 6k watt",
+      "rank": 2,
+      "reasons": [
+        "flat-sheet laser (by its name — confirm)",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "that it is a flat-sheet laser",
+        "bed size takes a 1220×2440 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-12",
+      "name": "GF 6k watt",
+      "rank": 3,
+      "reasons": [
+        "flat-sheet laser (by its name — confirm)",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "that it is a flat-sheet laser",
+        "bed size takes a 1220×2440 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-10",
+      "name": "Bodor 3K watt",
+      "rank": 4,
+      "reasons": [
+        "flat-sheet laser (by its name — confirm)",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "that it is a flat-sheet laser",
+        "bed size takes a 1220×2440 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-07",
+      "name": "Yawy 1K watt",
+      "rank": 5,
+      "reasons": [
+        "flat-sheet laser (by its name — confirm)",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "that it is a flat-sheet laser",
+        "bed size takes a 1220×2440 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-03",
+      "name": "Yawy Punching",
+      "rank": 6,
+      "reasons": [
+        "punching machine: the nested geometry can go to its CAM, but hole and contour feasibility depend on its tooling, which this prototype does not know",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "tool library and station assignment for these contours",
+        "bed size takes a 1220×2440 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-04",
+      "name": "Yawy Punching",
+      "rank": 7,
+      "reasons": [
+        "punching machine: the nested geometry can go to its CAM, but hole and contour feasibility depend on its tooling, which this prototype does not know",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "tool library and station assignment for these contours",
+        "bed size takes a 1220×2440 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-05",
+      "name": "Yawy Punching",
+      "rank": 8,
+      "reasons": [
+        "punching machine: the nested geometry can go to its CAM, but hole and contour feasibility depend on its tooling, which this prototype does not know",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "tool library and station assignment for these contours",
+        "bed size takes a 1220×2440 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-06",
+      "name": "Yawy Punching",
+      "rank": 9,
+      "reasons": [
+        "punching machine: the nested geometry can go to its CAM, but hole and contour feasibility depend on its tooling, which this prototype does not know",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "tool library and station assignment for these contours",
+        "bed size takes a 1220×2440 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "incompatible",
+      "code": "B4-16",
+      "name": "Laser Roll Blank",
+      "rank": 10,
+      "reasons": [
+        "coil-fed blanking line, not a sheet bed"
+      ],
+      "toConfirm": [],
+      "exportProfile": null
+    },
+    {
+      "compatibility": "incompatible",
+      "code": "B4-18",
+      "name": "Laser Tubes",
+      "rank": 11,
+      "reasons": [
+        "tube laser — flat-sheet nesting never goes here"
+      ],
+      "toConfirm": [],
+      "exportProfile": null
+    },
+    {
+      "compatibility": "incompatible",
+      "code": "B5-02",
+      "name": "Fins",
+      "rank": 12,
+      "reasons": [
+        "Fins work centre, not a cutting machine"
+      ],
+      "toConfirm": [],
+      "exportProfile": null
+    },
+    {
+      "compatibility": "incompatible",
+      "code": "BND-1",
+      "name": "Bending presses",
+      "rank": 13,
+      "reasons": [
+        "Bending work centre, not a cutting machine"
+      ],
+      "toConfirm": [],
+      "exportProfile": null
+    }
+  ],
+  "exports": [
+    {
+      "fileName": "sheet-01.dxf",
+      "profileId": "dxf-r2000-mm",
+      "bytes": 75678,
+      "sheetIndex": 0
+    },
+    {
+      "fileName": "sheet-01.svg",
+      "profileId": "svg-preview",
+      "bytes": 44634,
+      "sheetIndex": 0
+    },
+    {
+      "fileName": "sheet-02.dxf",
+      "profileId": "dxf-r2000-mm",
+      "bytes": 7016,
+      "sheetIndex": 1
+    },
+    {
+      "fileName": "sheet-02.svg",
+      "profileId": "svg-preview",
+      "bytes": 2518,
+      "sheetIndex": 1
+    },
+    {
+      "fileName": "cutlist.csv",
+      "profileId": "csv-cutlist",
+      "bytes": 5787
+    },
+    {
+      "fileName": "report.json",
+      "profileId": "json-report",
+      "bytes": 0
+    }
+  ]
+}

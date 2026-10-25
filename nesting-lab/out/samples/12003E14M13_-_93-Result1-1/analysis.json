@@ -1,0 +1,589 @@
+{
+  "file": "12003E14M13 - 93-Result1-1.dxf",
+  "bytes": 594785,
+  "acadVersion": "AC1018",
+  "units": {
+    "code": 0,
+    "name": "unitless",
+    "stated": false,
+    "chosen": "mm",
+    "factorToMm": 1
+  },
+  "extents": {
+    "stated": {
+      "minX": 0,
+      "minY": 0,
+      "maxX": 1210,
+      "maxY": 2430
+    },
+    "computed": {
+      "minX": 0,
+      "minY": 0,
+      "maxX": 1210,
+      "maxY": 2430
+    }
+  },
+  "layers": [
+    {
+      "name": "02___PRT_ALL_AXES",
+      "defined": false,
+      "entities": [
+        {
+          "type": "CIRCLE",
+          "count": 518
+        }
+      ],
+      "total": 518,
+      "role": "cut"
+    },
+    {
+      "name": "0",
+      "defined": true,
+      "entities": [
+        {
+          "type": "LWPOLYLINE",
+          "count": 187
+        }
+      ],
+      "total": 187,
+      "role": "cut"
+    },
+    {
+      "name": "1",
+      "defined": false,
+      "entities": [
+        {
+          "type": "LWPOLYLINE",
+          "count": 8
+        }
+      ],
+      "total": 8,
+      "role": "cut"
+    }
+  ],
+  "entityCounts": [
+    {
+      "type": "CIRCLE",
+      "count": 259
+    },
+    {
+      "type": "LWPOLYLINE",
+      "count": 98
+    }
+  ],
+  "extraction": {
+    "ignoredByLayer": [],
+    "annotations": [],
+    "unsupported": [],
+    "insertsExpanded": [],
+    "warnings": [],
+    "dropped": {
+      "zeroLength": 0
+    },
+    "nonPlanar": {
+      "entities": 0,
+      "note": null
+    },
+    "mirroredByExtrusion": 0
+  },
+  "topology": {
+    "nodes": 1184,
+    "edges": 1453,
+    "faces": 357,
+    "openChains": 0,
+    "duplicatesRemoved": 0,
+    "splitsApplied": 33,
+    "maxGapClosed": 0.000006831186510680803,
+    "snapTolMm": 0.01
+  },
+  "kind": "nesting-ready",
+  "sheetSize": {
+    "w": 1210,
+    "h": 2430
+  },
+  "pieces": [
+    {
+      "id": "P1",
+      "widthMm": 1050,
+      "heightMm": 630.000000000001,
+      "areaMm2": 544951.660979889,
+      "holes": 101,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "81% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 2.00000000000005,
+        "y": 631.999999999999
+      }
+    },
+    {
+      "id": "P2",
+      "widthMm": 1050,
+      "heightMm": 630,
+      "areaMm2": 544951.6609798882,
+      "holes": 101,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "76% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1"
+      ],
+      "at": {
+        "x": 2.00000000000005,
+        "y": 1262
+      }
+    },
+    {
+      "id": "P3",
+      "widthMm": 1049.9999999999995,
+      "heightMm": 630.0000000000008,
+      "areaMm2": 544951.6609798876,
+      "holes": 101,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "50% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1"
+      ],
+      "at": {
+        "x": 2.00000000000045,
+        "y": 1.9999999999992
+      }
+    },
+    {
+      "id": "P4",
+      "widthMm": 879.9999999999999,
+      "heightMm": 215.02295999999978,
+      "areaMm2": 187967.24029595844,
+      "holes": 8,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "80% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1"
+      ],
+      "at": {
+        "x": 2.00000000000011,
+        "y": 1892
+      }
+    },
+    {
+      "id": "P5",
+      "widthMm": 879.9999999999999,
+      "heightMm": 240.48296000000028,
+      "areaMm2": 162943.47938787573,
+      "holes": 8,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "30% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 2.00000000000011,
+        "y": 2107.02296
+      }
+    },
+    {
+      "id": "P6",
+      "widthMm": 145.20795999999996,
+      "heightMm": 600,
+      "areaMm2": 82909.7185260271,
+      "holes": 2,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "15% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 1052,
+        "y": 1802
+      }
+    },
+    {
+      "id": "P7",
+      "widthMm": 145.20795999999996,
+      "heightMm": 600,
+      "areaMm2": 82909.71852602699,
+      "holes": 2,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "60% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1052,
+        "y": 602
+      }
+    },
+    {
+      "id": "P8",
+      "widthMm": 145.20795999999996,
+      "heightMm": 600,
+      "areaMm2": 82909.71852602699,
+      "holes": 2,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "50% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "1",
+        "0"
+      ],
+      "at": {
+        "x": 1052,
+        "y": 2
+      }
+    },
+    {
+      "id": "P9",
+      "widthMm": 145.20795999999996,
+      "heightMm": 600,
+      "areaMm2": 82909.71852602687,
+      "holes": 2,
+      "marks": 0,
+      "depth": 0,
+      "flags": [
+        "60% of its outline is a common-line cut shared with neighbours"
+      ],
+      "layers": [
+        "0",
+        "1"
+      ],
+      "at": {
+        "x": 1052,
+        "y": 1202
+      }
+    }
+  ],
+  "ignoredFaces": [
+    {
+      "area": 263.68808305851417,
+      "bbox": {
+        "minX": 659.29166,
+        "minY": 555.319149,
+        "maxX": 674.45834,
+        "maxY": 574.680851
+      },
+      "reason": "island inside a small cut-out of 489 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 263.68808305845596,
+      "bbox": {
+        "minX": 379.54166,
+        "minY": 1185.319149,
+        "maxX": 394.70834,
+        "maxY": 1204.680851
+      },
+      "reason": "island inside a small cut-out of 489 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 263.68808305845596,
+      "bbox": {
+        "minX": 379.54166,
+        "minY": 1815.319149,
+        "maxX": 394.70834,
+        "maxY": 1834.680851
+      },
+      "reason": "island inside a small cut-out of 489 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 263.68787284579594,
+      "bbox": {
+        "minX": 484.33334,
+        "minY": 555.319149,
+        "maxX": 499.5,
+        "maxY": 574.680851
+      },
+      "reason": "island inside a small cut-out of 489 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 263.68787284579594,
+      "bbox": {
+        "minX": 554.5,
+        "minY": 1185.319149,
+        "maxX": 569.66666,
+        "maxY": 1204.680851
+      },
+      "reason": "island inside a small cut-out of 489 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 263.6878728456795,
+      "bbox": {
+        "minX": 554.5,
+        "minY": 1815.319149,
+        "maxX": 569.66666,
+        "maxY": 1834.680851
+      },
+      "reason": "island inside a small cut-out of 489 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.37419686315116,
+      "bbox": {
+        "minX": 405.54166,
+        "minY": 1826.93617,
+        "maxX": 419.08334,
+        "maxY": 1835.234043
+      },
+      "reason": "island inside a small cut-out of 302 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.37419686306384,
+      "bbox": {
+        "minX": 405.54166,
+        "minY": 1196.93617,
+        "maxX": 419.08334,
+        "maxY": 1205.234043
+      },
+      "reason": "island inside a small cut-out of 302 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.37419686303474,
+      "bbox": {
+        "minX": 634.91666,
+        "minY": 566.93617,
+        "maxX": 648.45834,
+        "maxY": 575.234043
+      },
+      "reason": "island inside a small cut-out of 302 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.3741415439581,
+      "bbox": {
+        "minX": 710.20833,
+        "minY": 566.93617,
+        "maxX": 723.75,
+        "maxY": 575.234043
+      },
+      "reason": "island inside a small cut-out of 302 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.374141543929,
+      "bbox": {
+        "minX": 453.75,
+        "minY": 1196.93617,
+        "maxX": 467.29167,
+        "maxY": 1205.234043
+      },
+      "reason": "island inside a small cut-out of 346 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.374141543929,
+      "bbox": {
+        "minX": 586.70833,
+        "minY": 566.93617,
+        "maxX": 600.25,
+        "maxY": 575.234043
+      },
+      "reason": "island inside a small cut-out of 346 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.3741415438999,
+      "bbox": {
+        "minX": 354.625,
+        "minY": 1196.93617,
+        "maxX": 368.16667,
+        "maxY": 1205.234043
+      },
+      "reason": "island inside a small cut-out of 346 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.3741415438999,
+      "bbox": {
+        "minX": 685.83333,
+        "minY": 566.93617,
+        "maxX": 699.375,
+        "maxY": 575.234043
+      },
+      "reason": "island inside a small cut-out of 346 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.37414154387079,
+      "bbox": {
+        "minX": 330.25,
+        "minY": 1826.93617,
+        "maxX": 343.79167,
+        "maxY": 1835.234043
+      },
+      "reason": "island inside a small cut-out of 302 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.37414154384169,
+      "bbox": {
+        "minX": 330.25,
+        "minY": 1196.93617,
+        "maxX": 343.79167,
+        "maxY": 1205.234043
+      },
+      "reason": "island inside a small cut-out of 302 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.37414154381258,
+      "bbox": {
+        "minX": 354.625,
+        "minY": 1826.93617,
+        "maxX": 368.16667,
+        "maxY": 1835.234043
+      },
+      "reason": "island inside a small cut-out of 346 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 106.37414154369617,
+      "bbox": {
+        "minX": 453.75,
+        "minY": 1826.93617,
+        "maxX": 467.29167,
+        "maxY": 1835.234043
+      },
+      "reason": "island inside a small cut-out of 346 mm² (lettering or a marking shape), not a part"
+    },
+    {
+      "area": 10.730091917109966,
+      "bbox": {
+        "minX": 1047,
+        "minY": 627,
+        "maxX": 1052,
+        "maxY": 636.99999932
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    },
+    {
+      "area": 10.73009191709318,
+      "bbox": {
+        "minX": 1047.0000006832963,
+        "minY": 1257.00000068,
+        "maxX": 1052,
+        "maxY": 1267
+      },
+      "reason": "smaller than the minimum part area (100 mm²)"
+    }
+  ],
+  "partTypes": [
+    {
+      "id": "T1",
+      "instances": [
+        {
+          "piece": "P1",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P2",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P1",
+      "flags": [
+        "81% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T2",
+      "instances": [
+        {
+          "piece": "P3",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": "T1",
+      "representative": "P3",
+      "flags": [
+        "50% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T3",
+      "instances": [
+        {
+          "piece": "P4",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P4",
+      "flags": [
+        "80% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T4",
+      "instances": [
+        {
+          "piece": "P5",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P5",
+      "flags": [
+        "30% of its outline is a common-line cut shared with neighbours"
+      ]
+    },
+    {
+      "id": "T5",
+      "instances": [
+        {
+          "piece": "P6",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P7",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P8",
+          "rotationDeg": 0,
+          "mirrored": false
+        },
+        {
+          "piece": "P9",
+          "rotationDeg": 0,
+          "mirrored": false
+        }
+      ],
+      "mirrorOf": null,
+      "representative": "P6",
+      "flags": [
+        "15% of its outline is a common-line cut shared with neighbours"
+      ]
+    }
+  ],
+  "warnings": [
+    "Layer \"02___PRT_ALL_AXES\" is used by 518 entities but is not defined in the LAYER table (the file came from a converter).",
+    "Layer \"1\" is used by 8 entities but is not defined in the LAYER table (the file came from a converter).",
+    "$INSUNITS = 0 (unitless): the file does not state its unit. Choose the unit the drawing was made in before using its geometry.",
+    "33 segment split(s) at crossings or shared edges — the file uses common-line cuts or overlapping entities; pieces were reconstructed from the planar faces.",
+    "102 round hole(s) are smaller than the sheet thickness (5 mm) — a laser cannot cut them cleanly; they may be marks."
+  ]
+}

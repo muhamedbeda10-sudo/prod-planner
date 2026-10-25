@@ -1,0 +1,33 @@
+{
+  "name": "nesting-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone local prototype: DXF analysis, true-shape nesting, machine selection and export. Not wired into the production planner.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "samples": "tsx scripts/run-samples.ts",
+    "cli": "tsx scripts/nest-cli.ts"
+  },
+  "dependencies": {
+    "clipper-lib": "6.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "dxf-parser": "1.1.2",
+    "tsx": "4.23.15",
+    "typescript": "^5.9",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}

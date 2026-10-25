@@ -1,0 +1,705 @@
+{
+  "schema": "nesting-lab/report/1",
+  "runId": "sample-12003E14M13-A-spacing5-margin5",
+  "engineVersion": "nesting-lab/0.1.0 (NFP true-shape, Clipper 6.4.2)",
+  "createdAt": "2026-10-25T00:00:00.000Z",
+  "settings": {
+    "sheet": {
+      "widthMm": 1210,
+      "heightMm": 2430,
+      "quantity": null,
+      "material": "Steel",
+      "thicknessMm": 5,
+      "label": "1210*2430"
+    },
+    "spacingMm": 5,
+    "marginMm": 5,
+    "rotationsDeg": [
+      0,
+      90,
+      180,
+      270
+    ],
+    "allowMirror": false,
+    "noGoZones": [],
+    "timeBudgetMs": 60000
+  },
+  "parts": [
+    {
+      "id": "T1",
+      "label": "T1",
+      "bom": "12003E14M13",
+      "name": "1050.0×630.0, 101 holes",
+      "quantity": 2,
+      "placed": 2,
+      "widthMm": 1050,
+      "heightMm": 630.000000000001,
+      "grossAreaMm2": 661478.5398161662,
+      "netAreaMm2": 544951.6609798885,
+      "perimeterMm": 3351.4159265011235,
+      "holes": 101,
+      "geometryHash": "57052554DA4CE8E4",
+      "source": {
+        "file": "12003E14M13 - 93-Result1-1.dxf",
+        "pieceIds": [
+          "P1",
+          "P2"
+        ],
+        "geometryHash": "57052554DA4CE8E4"
+      }
+    },
+    {
+      "id": "T2",
+      "label": "T2",
+      "bom": "12003E14M13",
+      "name": "1050.0×630.0, 101 holes",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 1049.9999999999995,
+      "heightMm": 630.0000000000008,
+      "grossAreaMm2": 661478.5398161655,
+      "netAreaMm2": 544951.6609798868,
+      "perimeterMm": 3351.4159265011217,
+      "holes": 101,
+      "geometryHash": "0344C1519A838C97",
+      "source": {
+        "file": "12003E14M13 - 93-Result1-1.dxf",
+        "pieceIds": [
+          "P3"
+        ],
+        "geometryHash": "0344C1519A838C97"
+      }
+    },
+    {
+      "id": "T3",
+      "label": "T3",
+      "bom": "12003E14M13",
+      "name": "880.0×215.0, 8 holes",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 879.9999999999999,
+      "heightMm": 215.02295999999978,
+      "grossAreaMm2": 189198.74461616573,
+      "netAreaMm2": 187967.24029595853,
+      "perimeterMm": 2181.4618465011217,
+      "holes": 8,
+      "geometryHash": "A7579200F13F5F4E",
+      "source": {
+        "file": "12003E14M13 - 93-Result1-1.dxf",
+        "pieceIds": [
+          "P4"
+        ],
+        "geometryHash": "A7579200F13F5F4E"
+      }
+    },
+    {
+      "id": "T4",
+      "label": "T4",
+      "bom": "12003E14M13",
+      "name": "880.0×240.5, 8 holes",
+      "quantity": 1,
+      "placed": 1,
+      "widthMm": 879.9999999999999,
+      "heightMm": 240.48296000000028,
+      "grossAreaMm2": 164174.98370808302,
+      "netAreaMm2": 162943.47938787582,
+      "perimeterMm": 2928.797763250561,
+      "holes": 8,
+      "geometryHash": "FA5D2A2C45C5D796",
+      "source": {
+        "file": "12003E14M13 - 93-Result1-1.dxf",
+        "pieceIds": [
+          "P5"
+        ],
+        "geometryHash": "FA5D2A2C45C5D796"
+      }
+    },
+    {
+      "id": "T5",
+      "label": "T5",
+      "bom": "12003E14M13",
+      "name": "145.2×600.0, 2 holes",
+      "quantity": 4,
+      "placed": 4,
+      "widthMm": 145.20795999999996,
+      "heightMm": 600,
+      "grossAreaMm2": 87124.77600000007,
+      "netAreaMm2": 82909.7185260271,
+      "perimeterMm": 1490.41592,
+      "holes": 2,
+      "geometryHash": "D05B354DB8D360E3",
+      "source": {
+        "file": "12003E14M13 - 93-Result1-1.dxf",
+        "pieceIds": [
+          "P6",
+          "P7",
+          "P8",
+          "P9"
+        ],
+        "geometryHash": "D05B354DB8D360E3"
+      }
+    }
+  ],
+  "sheets": [
+    {
+      "index": 0,
+      "placements": [
+        {
+          "partId": "T1",
+          "instance": 0,
+          "x": 5,
+          "y": 5,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 5,
+            "minY": 5,
+            "maxX": 1055,
+            "maxY": 635.000000000001
+          }
+        },
+        {
+          "partId": "T1",
+          "instance": 1,
+          "x": 5,
+          "y": 640.3,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 5,
+            "minY": 640.3,
+            "maxX": 1055,
+            "maxY": 1270.300000000001
+          }
+        },
+        {
+          "partId": "T2",
+          "instance": 0,
+          "x": 5,
+          "y": 1275.6,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 5,
+            "minY": 1275.6,
+            "maxX": 1054.9999999999995,
+            "maxY": 1905.6000000000008
+          }
+        },
+        {
+          "partId": "T3",
+          "instance": 0,
+          "x": 5,
+          "y": 1910.9,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 5,
+            "minY": 1910.9,
+            "maxX": 884.9999999999999,
+            "maxY": 2125.92296
+          }
+        },
+        {
+          "partId": "T4",
+          "instance": 0,
+          "x": 5,
+          "y": 2131.223,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 5,
+            "minY": 2131.223,
+            "maxX": 884.9999999999999,
+            "maxY": 2371.7059600000002
+          }
+        }
+      ],
+      "grossPartArea": 2337809.347772747,
+      "netPartArea": 1985765.7026234982,
+      "utilization": 0.7950921156932105,
+      "usedBBox": {
+        "minX": 5,
+        "minY": 5,
+        "maxX": 1055,
+        "maxY": 2371.7059600000002
+      }
+    },
+    {
+      "index": 1,
+      "placements": [
+        {
+          "partId": "T5",
+          "instance": 0,
+          "x": 5,
+          "y": 5,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 5,
+            "minY": 5,
+            "maxX": 150.20795999999996,
+            "maxY": 605
+          }
+        },
+        {
+          "partId": "T5",
+          "instance": 1,
+          "x": 155.508,
+          "y": 5,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 155.508,
+            "minY": 5,
+            "maxX": 300.71596,
+            "maxY": 605
+          }
+        },
+        {
+          "partId": "T5",
+          "instance": 2,
+          "x": 306.016,
+          "y": 5,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 306.016,
+            "minY": 5,
+            "maxX": 451.22396,
+            "maxY": 605
+          }
+        },
+        {
+          "partId": "T5",
+          "instance": 3,
+          "x": 456.524,
+          "y": 5,
+          "rotationDeg": 0,
+          "mirrored": false,
+          "bbox": {
+            "minX": 456.524,
+            "minY": 5,
+            "maxX": 601.73196,
+            "maxY": 605
+          }
+        }
+      ],
+      "grossPartArea": 348499.1040000003,
+      "netPartArea": 331638.8741041084,
+      "utilization": 0.11852501581471288,
+      "usedBBox": {
+        "minX": 5,
+        "minY": 5,
+        "maxX": 601.73196,
+        "maxY": 605
+      }
+    }
+  ],
+  "unplaced": [],
+  "chosenStrategy": {
+    "ordering": "area-desc",
+    "objective": "bottom-left"
+  },
+  "strategiesTried": [
+    {
+      "strategy": {
+        "ordering": "area-desc",
+        "objective": "bottom-left"
+      },
+      "sheets": 2,
+      "utilization": 0.45680856575396167,
+      "lastSheetUtilization": 0.11852501581471288,
+      "ms": 0,
+      "unplaced": 0
+    },
+    {
+      "strategy": {
+        "ordering": "longest-side-desc",
+        "objective": "bottom-left"
+      },
+      "sheets": 2,
+      "utilization": 0.45680856575396167,
+      "lastSheetUtilization": 0.11852501581471288,
+      "ms": 0,
+      "unplaced": 0
+    },
+    {
+      "strategy": {
+        "ordering": "area-desc",
+        "objective": "left-bottom"
+      },
+      "sheets": 2,
+      "utilization": 0.45680856575396167,
+      "lastSheetUtilization": 0.11852501581471288,
+      "ms": 0,
+      "unplaced": 0
+    },
+    {
+      "strategy": {
+        "ordering": "area-desc",
+        "objective": "min-bbox"
+      },
+      "sheets": 2,
+      "utilization": 0.4568085657539616,
+      "lastSheetUtilization": 0.22496974452136362,
+      "ms": 0,
+      "unplaced": 0
+    },
+    {
+      "strategy": {
+        "ordering": "perimeter-desc",
+        "objective": "bottom-left"
+      },
+      "sheets": 2,
+      "utilization": 0.45680856575396167,
+      "lastSheetUtilization": 0.11852501581471288,
+      "ms": 0,
+      "unplaced": 0
+    },
+    {
+      "strategy": {
+        "ordering": "longest-side-desc",
+        "objective": "min-bbox"
+      },
+      "sheets": 2,
+      "utilization": 0.4568085657539616,
+      "lastSheetUtilization": 0.22496974452136362,
+      "ms": 0,
+      "unplaced": 0
+    }
+  ],
+  "stats": {
+    "nfpComputed": 68,
+    "nfpCacheHits": 436,
+    "candidatesEvaluated": 818,
+    "placementsAttempted": 72,
+    "nfpMs": 0,
+    "booleanMs": 0
+  },
+  "timings": {
+    "totalMs": 0,
+    "verifyMs": 0,
+    "exportMs": 0
+  },
+  "notes": [
+    "Positions come from a greedy bottom-left-fill over no-fit polygons; the result is a good layout, not a proven optimum.",
+    "Nesting polygons circumscribe the true arcs (0.3 mm tolerance), are simplified by 0.05 mm and grown conservatively, so parts are never closer than the spacing but may end up to 0.30 mm farther apart than needed; the independent verifier checks the exact contours afterwards.",
+    "Part spacing is a geometric clearance between contours. Kerf is NOT compensated here — the machine's program must apply it, once.",
+    "Utilization = Σ outer-contour areas of the placed parts ÷ sheet area (holes count as used material)."
+  ],
+  "verification": {
+    "ok": true,
+    "violations": [],
+    "tolerances": {
+      "sagittaMm": 0.01,
+      "distanceTolMm": 0.02,
+      "areaRelTol": 0.000001
+    },
+    "stats": {
+      "pairsChecked": 7,
+      "minClearanceMm": 5.299999999998818,
+      "minEdgeDistanceMm": 4.9999997903991416,
+      "placementsChecked": 9
+    }
+  },
+  "roundTrip": [
+    {
+      "sheetIndex": 0,
+      "fileName": "sheet-01.dxf",
+      "report": {
+        "ok": true,
+        "unitsStated": true,
+        "insunits": 4,
+        "acadVersion": "AC1015",
+        "entityCounts": [
+          {
+            "type": "LWPOLYLINE",
+            "count": 66
+          },
+          {
+            "type": "CIRCLE",
+            "count": 259
+          },
+          {
+            "type": "TEXT",
+            "count": 5
+          }
+        ],
+        "piecesExpected": 5,
+        "piecesFound": 5,
+        "matched": 5,
+        "maxAreaDeltaMm2": 0.000033311545848846436,
+        "maxBBoxDeltaMm": 3.2889246881495637e-12,
+        "maxPerimeterDeltaMm": 0.000006662335636065109,
+        "holesExpected": 319,
+        "holesFound": 319,
+        "mismatches": []
+      }
+    },
+    {
+      "sheetIndex": 1,
+      "fileName": "sheet-02.dxf",
+      "report": {
+        "ok": true,
+        "unitsStated": true,
+        "insunits": 4,
+        "acadVersion": "AC1015",
+        "entityCounts": [
+          {
+            "type": "LWPOLYLINE",
+            "count": 13
+          },
+          {
+            "type": "TEXT",
+            "count": 4
+          }
+        ],
+        "piecesExpected": 4,
+        "piecesFound": 4,
+        "matched": 4,
+        "maxAreaDeltaMm2": 4.3655745685100555e-11,
+        "maxBBoxDeltaMm": 5.684341886080802e-14,
+        "maxPerimeterDeltaMm": 0,
+        "holesExpected": 8,
+        "holesFound": 8,
+        "mismatches": []
+      }
+    }
+  ],
+  "machines": [
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-09",
+      "name": "Bodor 6K watt",
+      "rank": 1,
+      "reasons": [
+        "flat-sheet laser (by its name — confirm)",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "that it is a flat-sheet laser",
+        "bed size takes a 1210×2430 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-11",
+      "name": "GF 6k watt",
+      "rank": 2,
+      "reasons": [
+        "flat-sheet laser (by its name — confirm)",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "that it is a flat-sheet laser",
+        "bed size takes a 1210×2430 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-12",
+      "name": "GF 6k watt",
+      "rank": 3,
+      "reasons": [
+        "flat-sheet laser (by its name — confirm)",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "that it is a flat-sheet laser",
+        "bed size takes a 1210×2430 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-10",
+      "name": "Bodor 3K watt",
+      "rank": 4,
+      "reasons": [
+        "flat-sheet laser (by its name — confirm)",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "that it is a flat-sheet laser",
+        "bed size takes a 1210×2430 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-07",
+      "name": "Yawy 1K watt",
+      "rank": 5,
+      "reasons": [
+        "flat-sheet laser (by its name — confirm)",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "that it is a flat-sheet laser",
+        "bed size takes a 1210×2430 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-03",
+      "name": "Yawy Punching",
+      "rank": 6,
+      "reasons": [
+        "punching machine: the nested geometry can go to its CAM, but hole and contour feasibility depend on its tooling, which this prototype does not know",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "tool library and station assignment for these contours",
+        "bed size takes a 1210×2430 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-04",
+      "name": "Yawy Punching",
+      "rank": 7,
+      "reasons": [
+        "punching machine: the nested geometry can go to its CAM, but hole and contour feasibility depend on its tooling, which this prototype does not know",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "tool library and station assignment for these contours",
+        "bed size takes a 1210×2430 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-05",
+      "name": "Yawy Punching",
+      "rank": 8,
+      "reasons": [
+        "punching machine: the nested geometry can go to its CAM, but hole and contour feasibility depend on its tooling, which this prototype does not know",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "tool library and station assignment for these contours",
+        "bed size takes a 1210×2430 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "unconfirmed",
+      "code": "B4-06",
+      "name": "Yawy Punching",
+      "rank": 9,
+      "reasons": [
+        "punching machine: the nested geometry can go to its CAM, but hole and contour feasibility depend on its tooling, which this prototype does not know",
+        "no machine-specific program format is configured; a mm DXF (R2000) is what can be handed to its CAM today"
+      ],
+      "toConfirm": [
+        "tool library and station assignment for these contours",
+        "bed size takes a 1210×2430 mm sheet",
+        "it cuts 5 mm Steel",
+        "hours already queued (read from the machine board at integration)"
+      ],
+      "exportProfile": "dxf-r2000-mm"
+    },
+    {
+      "compatibility": "incompatible",
+      "code": "B4-16",
+      "name": "Laser Roll Blank",
+      "rank": 10,
+      "reasons": [
+        "coil-fed blanking line, not a sheet bed"
+      ],
+      "toConfirm": [],
+      "exportProfile": null
+    },
+    {
+      "compatibility": "incompatible",
+      "code": "B4-18",
+      "name": "Laser Tubes",
+      "rank": 11,
+      "reasons": [
+        "tube laser — flat-sheet nesting never goes here"
+      ],
+      "toConfirm": [],
+      "exportProfile": null
+    },
+    {
+      "compatibility": "incompatible",
+      "code": "B5-02",
+      "name": "Fins",
+      "rank": 12,
+      "reasons": [
+        "Fins work centre, not a cutting machine"
+      ],
+      "toConfirm": [],
+      "exportProfile": null
+    },
+    {
+      "compatibility": "incompatible",
+      "code": "BND-1",
+      "name": "Bending presses",
+      "rank": 13,
+      "reasons": [
+        "Bending work centre, not a cutting machine"
+      ],
+      "toConfirm": [],
+      "exportProfile": null
+    }
+  ],
+  "exports": [
+    {
+      "fileName": "sheet-01.dxf",
+      "profileId": "dxf-r2000-mm",
+      "bytes": 68616,
+      "sheetIndex": 0
+    },
+    {
+      "fileName": "sheet-01.svg",
+      "profileId": "svg-preview",
+      "bytes": 31690,
+      "sheetIndex": 0
+    },
+    {
+      "fileName": "sheet-02.dxf",
+      "profileId": "dxf-r2000-mm",
+      "bytes": 7785,
+      "sheetIndex": 1
+    },
+    {
+      "fileName": "sheet-02.svg",
+      "profileId": "svg-preview",
+      "bytes": 2929,
+      "sheetIndex": 1
+    },
+    {
+      "fileName": "cutlist.csv",
+      "profileId": "csv-cutlist",
+      "bytes": 1478
+    },
+    {
+      "fileName": "report.json",
+      "profileId": "json-report",
+      "bytes": 0
+    }
+  ]
+}

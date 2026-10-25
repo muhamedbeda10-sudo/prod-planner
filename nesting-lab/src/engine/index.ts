@@ -1,0 +1,25 @@
+// Public surface of the engine — what a future integration imports.
+export { analyzeDxf, analyzeDocument, type DxfAnalysis, type AnalyzeOptions } from "./dxf/analyze";
+export { parseDxf, type DxfDocument } from "./dxf/parse";
+export { DxfFormatError } from "./dxf/tokenize";
+export { SELECTABLE_UNITS, type SelectableUnit, unitInfo } from "./dxf/units";
+export type { LayerRole } from "./dxf/primitives";
+export type { Piece, Classification, FileKind } from "./geometry/classify";
+export type { Loop, Seg, Point, BBox, Transform } from "./geometry/types";
+export { nest, validateSettings, DEFAULT_STRATEGIES, type NestProgress } from "./nesting/nest";
+export { placementTransform, placedGeometry } from "./nesting/placement";
+export { partsFromAnalysis, partIdOf, type PartSelection, type PartOverride } from "./parts";
+export { exportRun, sheetFileName, type ExportedRun, type RunArtifact } from "./export/exportRun";
+export { suggestFromFileName, type FileNameHints } from "./dxf/fileName";
+export type { NestPartInput, NestSettings, NestResult, Placement, SheetLayout, UnplacedPart, StrategySpec } from "./nesting/types";
+export { ENGINE_VERSION } from "./nesting/types";
+export { verifyLayout, type VerifyReport, type Violation } from "./nesting/verify";
+export { sheetDxf, partDxf, SHEET_LAYERS } from "./export/sheetExport";
+export { sheetSvg, loopPath, segsPath, colorForIndex } from "./export/svg";
+export { cutListCsv } from "./export/csv";
+export { verifyDxfRoundTrip, type RoundTripReport } from "./export/roundtrip";
+export { buildReport, type RunReport } from "./export/report";
+export { EXPORT_PROFILES, profileById } from "./export/postprocessors";
+export { geometryHash } from "./geometry/hash";
+export { rankMachines, assessMachine, jobFactsOf, contextFromFile } from "./machines/select";
+export type { MachineConfig, MachinesFile, JobFacts, MachineAssessment } from "./machines/types";

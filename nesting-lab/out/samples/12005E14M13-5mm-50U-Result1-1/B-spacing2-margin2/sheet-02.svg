@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1800" viewBox="-48.8 -146.4 1317.6 2635.2">
+<title>1220*2440 — sheet 2/2 — 3 parts — utilization 4.0% — run sample-12005E14M13-B-spacing2-margin2</title>
+<text x="610" y="-73.2" font-family="system-ui, sans-serif" font-size="48.8" text-anchor="middle" fill="#0f172a">1220*2440 — sheet 2/2 — 3 parts — utilization 4.0% — run sample-12005E14M13-B-spacing2-margin2</text>
+<g transform="translate(0 2440) scale(1,-1)">
+<rect x="0" y="0" width="1220" height="2440" fill="#f8fafc" stroke="#334155" stroke-width="3.05"/>
+<rect x="2" y="2" width="1216" height="2436" fill="none" stroke="#94a3b8" stroke-dasharray="12.2 12.2" stroke-width="1.627"/>
+<path d="M2 2L147.354 2L147.354 602L2 602L2 2ZM107.854 520A9.5 9.5 0 0 0 126.854 520L126.854 424A9.5 9.5 0 0 0 107.854 424L107.854 520ZM107.854 180A9.5 9.5 0 0 0 126.854 180L126.854 84A9.5 9.5 0 0 0 107.854 84L107.854 180Z" fill="#0891b2" fill-opacity="0.35" fill-rule="evenodd" stroke="#0891b2" stroke-width="2.033" stroke-linejoin="round"/>
+<text transform="translate(74.677 302) scale(1,-1)" font-family="system-ui, sans-serif" font-size="29.071" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T6 #3</text>
+<path d="M97.354 839.3L2 839.3L2 604.3L97.354 604.3L97.354 839.3ZM22 827.8A6 6 0 1 0 22 815.8A6 6 0 1 0 22 827.8ZM22 677.8A6 6 0 1 0 22 665.8A6 6 0 1 0 22 677.8ZM22 727.8A6 6 0 1 0 22 715.8A6 6 0 1 0 22 727.8ZM22 627.8A6 6 0 1 0 22 615.8A6 6 0 1 0 22 627.8ZM22 777.8A6 6 0 1 0 22 765.8A6 6 0 1 0 22 777.8Z" fill="#9333ea" fill-opacity="0.35" fill-rule="evenodd" stroke="#9333ea" stroke-width="2.033" stroke-linejoin="round"/>
+<text transform="translate(49.677 721.8) scale(1,-1)" font-family="system-ui, sans-serif" font-size="19.071" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T12 #2</text>
+<path d="M21.652 841.593L36.652 856.593L99.652 856.593L114.652 841.593L114.652 731.593L99.652 716.593L175.652 716.593L175.652 714.593L176.652 714.593L176.652 735.301L161.652 735.301L149.939 745.153L131.652 850.301L126.652 850.301L126.652 937.301L108.652 937.301L108.652 887.301L21.652 887.301L21.652 841.593Z" fill="#0e7490" fill-opacity="0.35" fill-rule="evenodd" stroke="#0e7490" stroke-width="2.033" stroke-linejoin="round"/>
+<text transform="translate(99.152 825.947) scale(1,-1)" font-family="system-ui, sans-serif" font-size="30" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T14 #1</text>
+</g>
+</svg>

@@ -1,0 +1,24 @@
+﻿Nesting run,sample-12003E14M13-A-spacing5-margin5
+Engine,"nesting-lab/0.1.0 (NFP true-shape, Clipper 6.4.2)"
+Created,2026-10-25T00:00:00.000Z
+Material,Steel,Thickness mm,5,Sheet mm,1210 x 2430
+Part spacing mm,5,Edge margin mm,5,Rotations,0 / 90 / 180 / 270,Mirror,not allowed
+Sheets used,2,Parts placed,9,Parts unplaced,0
+
+Sheet,Part,BOM,Part no.,Name,Qty on sheet,Width mm,Height mm,Area mm2 (outer),Rotations used,Mirrored,Source file,Source pieces
+1,T1,12003E14M13,,"1050.0×630.0, 101 holes",2,1050,630,661478.54,0,no,12003E14M13 - 93-Result1-1.dxf,P1 P2
+1,T2,12003E14M13,,"1050.0×630.0, 101 holes",1,1050,630,661478.54,0,no,12003E14M13 - 93-Result1-1.dxf,P3
+1,T3,12003E14M13,,"880.0×215.0, 8 holes",1,880,215.023,189198.745,0,no,12003E14M13 - 93-Result1-1.dxf,P4
+1,T4,12003E14M13,,"880.0×240.5, 8 holes",1,880,240.483,164174.984,0,no,12003E14M13 - 93-Result1-1.dxf,P5
+2,T5,12003E14M13,,"145.2×600.0, 2 holes",4,145.208,600,87124.776,0,no,12003E14M13 - 93-Result1-1.dxf,P6 P7 P8 P9
+
+Sheet,Parts,Utilization %,Gross part area mm2,Net part area mm2,Used box mm
+1,5,79.5,2337809.348,1985765.703,1050 x 2367
+2,4,11.9,348499.104,331638.874,597 x 600
+
+Part,BOM,Part no.,Name,Requested,Placed,Unplaced,Reason
+T1,12003E14M13,,"1050.0×630.0, 101 holes",2,2,0,
+T2,12003E14M13,,"1050.0×630.0, 101 holes",1,1,0,
+T3,12003E14M13,,"880.0×215.0, 8 holes",1,1,0,
+T4,12003E14M13,,"880.0×240.5, 8 holes",1,1,0,
+T5,12003E14M13,,"145.2×600.0, 2 holes",4,4,0,
