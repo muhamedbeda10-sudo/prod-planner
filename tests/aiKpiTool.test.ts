@@ -35,6 +35,9 @@ describe("get_kpis", () => {
     expect(j.centres[0].lastDay.efficiency).toBe(0.53);
     expect(j.loadAhead[0]).toMatchObject({ centre: "Welding", measured: true, loadRate: 0.73, behindH: 256.1, clears: "2026-11-02", shortAtEndH: 0, days: [{ day: "2026-10-25", dueH: 40, capacityH: 30 }] });
     expect(j.fabrication).toEqual({ earnedH: 240, workedH: 300, efficiency: 0.8 });
+    expect(j.monthPace[0]).toMatchObject({ centre: "Welding", planH: 4000, doneH: 3000, doneShare: 0.75, evenPaceShare: 0.8 });
+    expect(j.dailyOutput[0]).toMatchObject({ day: "2026-10-24", weldingH: 90, earnedH: 90, bookedH: 100, efficiency: 0.9 });
+    expect(j.weekChange.linesBehind).toBeNull();
     expect(j.manpower).toMatchObject({ month: "October 2026", workingDaysLeft: 5, centres: [{ centre: "Welding", peopleNeeded: 20, peopleNeededFromToday: 25, peoplePresent: 22, gap: -3 }] });
     expect(j.losses).toMatchObject({ unplannedH: 6.5, absentRate: 0.11, overtimeH: 126 });
     expect(j.trend[0]).toMatchObject({ day: "2026-10-25", behind: 29, efficiency: { Welding: 0.9 } });
@@ -48,8 +51,27 @@ describe("get_kpis", () => {
     expect(j.losses).toBeUndefined();
     expect(j.fabrication).toBeUndefined();
     expect(j.trend[0].efficiency).toBeUndefined();
+    expect(j.dailyOutput).toBeUndefined();
+    expect(Object.keys(j.weekChange)).toEqual(["planDeliveredOnItsDay", "linesBehind", "weldingCoverageDays"]);
     expect(j.manpower.centres[0]).toEqual({ centre: "Welding", requiredH: 4000, doneH: 3000, leftH: 1000, peopleNeeded: 20, peopleNeededFromToday: 25 });
     expect(j.decisions).toEqual(["bad: 29 plan line(s) are behind"]);
     expect(j.weeklyPlan.behindCount).toBe(29);
+  });
+
+  it("hands the model the oldest 20 lines behind and the count of them all", async () => {
+    const late = Array.from({ length: 23 }, (_, i) => ({ dayISO: `2026-10-${String(i + 1).padStart(2, "0")}`, bom: `B${i}`, soi: null, item: "TN", stage: "weld", short: 1, owed: 1 }));
+    h.getCockpit.mockResolvedValue({
+      todayISO: "2026-10-25", lastDayISO: null,
+      week: { planNo: 43, req: 0, covered: 0, days: [], adherence: [], late, lateCount: late.length },
+      centres: [], fabrication: { workedH: 0, earnedH: 0, efficiency: null }, load: [], coverage: { wipH: 0, ratePerDay: 0, days: 0, band: "ok", byItem: [] },
+      manpower: { monthLabel: "October 2026", monthWd: 25, leftWd: 5, hoursPerPersonDay: 8, pieces: 0, rows: [] },
+      losses: { causes: [], unplannedH: 0, plannedH: 0, absentRate: null, overtimeH: 0, fromISO: null },
+      pricedShare: null, actions: [], snapshot: { late: 23, adherence: {}, coverageDays: 0, efficiency: {}, unplannedH: 0 }, trend: [],
+    });
+    const j = JSON.parse((await getKpisTool.run({}, { now: new Date(), hidden: new Set() } as never)).text);
+    expect(j.weeklyPlan.behindCount).toBe(23);
+    expect(j.weeklyPlan.behind).toHaveLength(20);
+    expect(j.weeklyPlan.behind[0]).toMatchObject({ day: "2026-10-01", bom: "B0", stuckAt: "weld" });
+    expect(j.weeklyPlan.behind[19].bom).toBe("B19");
   });
 });

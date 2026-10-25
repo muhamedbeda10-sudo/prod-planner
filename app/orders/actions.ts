@@ -12,6 +12,8 @@ import { isLvFamily } from "@/lib/domain/lv";
 import { linePermKey } from "@/lib/domain/permissions";
 import { fullyDeliveredOpenOrders } from "@/lib/server/deliveredOrders";
 import { orderDeletePreview, type OrderDeletePreview } from "@/lib/server/orderDelete";
+import { userMessage } from "@/lib/server/errors";
+import { ORDER_TEXT_KEYS, orderTextValue, type OrderTextField } from "@/lib/domain/orderFields";
 
 /** Order lifecycle: close a finished order (drops out of the daily screens) or
  *  reopen it. Closing is a display/lifecycle state — the logs are untouched. */
@@ -38,7 +40,7 @@ export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean;
     type: status === "closed" ? "order.closed" : "order.reopened",
     subject: listed(done),
     summary: `${status === "closed" ? "Closed" : "Reopened"} ${listed(done, 6)}`,
-    data: { mos: done },
+    data: { mos: done, reason: "tracker" },
   });
   return { ok: true };
 }
@@ -287,6 +289,7 @@ export async function pushOrderToWorklist(formData: FormData): Promise<{ ok: boo
   const order = await prisma.masterOrder.findUnique({ where: { mo } });
   if (!order) return { ok: false, error: `MO ${mo} not found.` };
   if (order.status !== "open") return { ok: false, error: `MO ${mo} is closed.` };
+  if (order.line === "LV") return { ok: false, error: `MO ${mo} is an LV panel order — panels are not pushed to the transformer worklists.` };
 
   const sums = await prisma.handoverEntry.groupBy({
     by: ["item"],
@@ -409,10 +412,20 @@ export async function importMonthlyAction(formData: FormData): Promise<MonthlyIm
         summary: `Imported the ${label} plan${line === "LV" ? ` (LV${family ? `, ${family}` : ""})` : ""} — ${res.added ?? 0} new orders, ${res.updatedMos ?? 0} revised${removed ? `, ${removed} taken out` : ""}`,
         data: { kind: "monthly", month: label, line, added: res.added ?? 0, updated: res.updatedMos ?? 0, removed },
       });
+      // the orders taken out with history behind them were closed, not deleted — say so as a close
+      const closed = (res.removed ?? []).filter((r) => r.action === "closed").map((r) => r.mo);
+      if (closed.length > 0) {
+        await emitEvent({
+          type: "order.closed",
+          subject: listed(closed),
+          summary: `Closed ${listed(closed, 6)} — not on the ${label} plan any more`,
+          data: { mos: closed, reason: "import" },
+        });
+      }
     }
     return res;
   } catch (e) {
-    return { ok: false, error: `Import failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "import the plan") };
   }
 }
 
@@ -508,20 +521,35 @@ export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: str
   if (done.length === 0) return { ok: true, closed: 0, mos: [] };
 
   const at = new Date();
+  const mos = done.map((o) => o.mo);
   await prisma.masterOrder.updateMany({
-    where: { mo: { in: done.map((o) => o.mo) } },
+    where: { mo: { in: mos } },
     data: { status: "closed", closedAt: at },
   });
   for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/trace", "/"]) revalidatePath(p);
-  return { ok: true, closed: done.length, mos: done.map((o) => o.mo) };
+  // the same event a close on the tracker records, so "order closed" automations hear of these too
+  await emitEvent({
+    type: "order.closed",
+    subject: listed(mos),
+    summary: `Closed ${listed(mos, 6)} — fully delivered`,
+    data: { mos, reason: "delivered" },
+  });
+  return { ok: true, closed: done.length, mos };
 }
 
 // ---- editing an order on the registry ----
 
+const STALE_ORDER = "This order was changed by someone else meanwhile — reload and try again.";
+
 /** The registry's own edit: every plan field of one order at once, from the
  *  row on the Orders Registry. Admin-only like the page. The qty may go down
  *  here as well — the registry is where planning's word is kept. Fins, colour,
- *  CRC and SFM are the tracker's columns and are not touched. */
+ *  CRC and SFM are the tracker's columns and are not touched.
+ *
+ *  The form carries the row's `updatedAt` as it was rendered: the write only
+ *  lands while the row still reads so, so two people editing the same order
+ *  cannot overwrite each other unawares. A form without it (an older page)
+ *  writes as before. */
 export async function updateOrder(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const guard = await requireAdmin();
   if (guard.error) return { ok: false, error: guard.error };
@@ -529,12 +557,16 @@ export async function updateOrder(formData: FormData): Promise<{ ok: boolean; er
   if (!mo) return { ok: false, error: "Missing MO." };
   const order = await prisma.masterOrder.findUnique({ where: { mo } });
   if (!order) return { ok: false, error: `MO ${mo} not found.` };
+  const seenRaw = String(formData.get("updatedAt") ?? "").trim();
+  const seen = seenRaw ? new Date(seenRaw) : null;
+  if (seen && Number.isNaN(seen.getTime())) return { ok: false, error: "This page is out of date — reload and try again." };
 
-  const text = (k: string, max = 120) => {
-    const v = String(formData.get(k) ?? "").trim();
-    if (v.length > max) throw new Error(`Keep ${k} under ${max} characters.`);
-    return v || null;
-  };
+  const texts: Partial<Record<OrderTextField, string | null>> = {};
+  for (const k of ORDER_TEXT_KEYS) {
+    const r = orderTextValue(k, formData.get(k));
+    if ("error" in r) return { ok: false, error: r.error };
+    texts[k] = r.value;
+  }
   try {
     const bom = String(formData.get("bom") ?? "").trim().toUpperCase();
     if (!bom) return { ok: false, error: "The BOM cannot be empty." };
@@ -542,27 +574,20 @@ export async function updateOrder(formData: FormData): Promise<{ ok: boolean; er
     if (!Number.isInteger(planQty) || planQty < 0) return { ok: false, error: "Plan qty must be a whole number ≥ 0." };
     const ospEncloser = Number(formData.get("ospEncloser") ?? order.ospEncloser);
     if (!Number.isInteger(ospEncloser) || ospEncloser < 0) return { ok: false, error: "OSP Encloser must be a whole number ≥ 0." };
-    await prisma.masterOrder.update({
-      where: { mo },
+    // only the row as it was read: someone else's save in between wins, and this one is told
+    const written = await prisma.masterOrder.updateMany({
+      where: { mo, ...(seen ? { updatedAt: seen } : {}) },
       data: {
         bom,
         planQty,
         urgent: String(formData.get("urgent") ?? "") === "true",
-        soi: text("soi", 40),
-        customer: text("customer", 80),
-        fgCode: text("fgCode", 40),
-        kva: text("kva", 20),
-        rating: text("rating", 40),
-        colorRal: text("colorRal", 40),
-        remarks: text("remarks", 400),
-        product: text("product", 20),
-        secItem: text("secItem", 40),
-        materialsRemarks: text("materialsRemarks", 400),
+        ...texts,
         ospEncloser,
       },
     });
+    if (written.count === 0) return { ok: false, error: STALE_ORDER };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, error: userMessage(e, "save the order") };
   }
   for (const p of ["/orders", "/tracker", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/trace", "/"]) revalidatePath(p);
   return { ok: true };

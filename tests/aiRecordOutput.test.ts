@@ -22,7 +22,7 @@ const h = vi.hoisted(() => {
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/server/auth", () => ({ hasPerm: (_u: unknown, k: string) => h.perms.has(k) }));
-vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.chain }));
+vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.chain, recheckLvChainLocked: async () => {}, ChainRefused: class extends Error {} }));
 vi.mock("@/lib/server/data", () => ({ getSettings: async () => ({ tankTracking: h.tankTracking }), getPlanWindows: async () => [{ planNo: 40 }, { planNo: 41 }] }));
 vi.mock("@/lib/server/handover", () => ({ getDefaultPlanForDate: h.planFor }));
 vi.mock("@/lib/server/workers", () => ({ resolveWorkerByEmpId: h.resolveWelder }));
@@ -125,5 +125,13 @@ describe("record_output", () => {
       { date: "2026-10-11", dept: "Cut", mo: "SF01/MO/1", item: "CF", qty: 2 },
     ] }), ctx);
     expect(out).toEqual({ ok: true, message: expect.stringContaining("Recorded 1 of 2 row(s) — stopped at SF01/MO/1 CF Cut 2026-10-11: Cut would pass the order."), undo: { tool: "delete_log_entries", input: { ids: [700] } } });
+  });
+});
+
+describe("record_output — the two finishing stages", () => {
+  it("refuses painting the core frame, as the worklists do", async () => {
+    h.perms.add("painting.edit");
+    const i = parsed({ rows: [{ date: "2026-10-12", dept: "Painting", mo: "SF01/MO/1", item: "CF", qty: 2 }] });
+    expect(await recordOutputTool.describe(i, ctx)).toEqual({ error: expect.stringContaining("CF is shot blasted, not painted") });
   });
 });

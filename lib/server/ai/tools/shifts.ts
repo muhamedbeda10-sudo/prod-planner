@@ -3,7 +3,7 @@ import { hasPerm } from "@/lib/server/auth";
 import { getShiftRoster, type ShiftLineDTO } from "@/lib/server/shifts";
 import { clearShiftDay, saveShiftRoster } from "@/app/shifts/actions";
 import { readShiftState, restoreShiftState, type ShiftState } from "@/lib/server/rowSnapshots";
-import { ATTENDANCES, ATTENDANCE_TIME, DEPT_CENTRES, OVERTIME_TIME, NIGHT_OVERTIME_TIME, ROSTER_DEPTS, SHIFT_CODES, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, hoursOfShift, isAttendance, isRosterDept, isWorkCentre, workerCentres, shiftSplit, type Attendance, type RosterDept, type ShiftCode, type ShiftHours, type ShiftSplit, type WorkCentre } from "@/lib/domain/shifts";
+import { ATTENDANCES, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, DEPT_CENTRES, OVERTIME_TIME, NIGHT_OVERTIME_TIME, ROSTER_DEPTS, SHIFT_CODES, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, hoursOfShift, isAttendance, isRosterDept, isWorkCentre, overtimeFits, overtimeHoursFor, overtimeTime, roundOvertime, workerCentres, shiftSplit, type Attendance, type RosterDept, type ShiftCode, type ShiftHours, type ShiftSplit, type WorkCentre } from "@/lib/domain/shifts";
 import { PERMISSIONS, shiftPermKey } from "@/lib/domain/permissions";
 import { WORKER_DEPT_LABEL, normalizeEmpId } from "@/lib/domain/tanks";
 import { formOf, type ReadTool, type WriteTool } from "./types";
@@ -31,9 +31,8 @@ const MAX_STATE = 200_000;
 const label = (d: RosterDept) => WORKER_DEPT_LABEL[d];
 const permLabel = (key: string) => PERMISSIONS.find((p) => p.key === key)?.label ?? key;
 const noRight = (d: RosterDept) => `Recording ${label(d)} on the shift log needs the "${permLabel(shiftPermKey(d))}" permission — the owner ticks it on Users & Permissions.`;
-const halfHour = (h: number) => Math.round(h * 2) / 2;
-/** The roster action's own rule: a day whose midnight (UTC) has not come is refused. */
-const notYet = (iso: string, now: Date) => new Date(`${iso}T00:00:00.000Z`).getTime() > now.getTime();
+/** The roster action's own rule: a day after the factory's current day (Cairo) is refused. */
+const notYet = (iso: string, todayISO: string) => iso > todayISO;
 
 interface DayLine {
   present: boolean;
@@ -156,7 +155,7 @@ interface PlannedLine {
  *  "everyone" for the ones present, then each worker's own on top. Naming a
  *  shift for a worker means he came, unless `present: false` says otherwise.
  *  A worker still not set after all that refuses the day, as the tab does. */
-export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput, "everyone" | "workers" | "rest">): PlannedLine[] | { error: string } {
+export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput, "everyone" | "workers" | "rest">, hours: ShiftHours = DEFAULT_SHIFT_HOURS): PlannedLine[] | { error: string } {
   const asked = new Map<number, WorkerChange>();
   for (const w of i.workers ?? []) {
     const hit = findLine(lines, w.worker);
@@ -171,6 +170,7 @@ export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput
   }
   const unset: ShiftLineDTO[] = [];
   const dropsOvertime: ShiftLineDTO[] = [];
+  const wrongOvertime: { line: ShiftLineDTO; shift: ShiftCode }[] = [];
   const plan = lines.map((line): PlannedLine => {
     const before = asDayLine(line);
     const w = asked.get(line.workerId);
@@ -185,7 +185,11 @@ export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput
     const present = w?.present ?? (w?.shift !== undefined ? true : from.present);
     const all = present ? i.everyone : undefined;
     const shift = w?.shift ?? all?.shift ?? from.shift;
-    const requestedOvertime = halfHour(w?.overtimeH ?? all?.overtimeH ?? (shift === from.shift ? from.overtimeH : 0));
+    const asksOvertime = w?.overtimeH ?? all?.overtimeH;
+    const requestedOvertime = roundOvertime(asksOvertime ?? (shift === from.shift ? from.overtimeH : 0));
+    // the roster saves the fixed period of Settings (or what the row holds
+    // already) — any other figure the card would promise fails on approval
+    if (asksOvertime !== undefined && !overtimeFits(requestedOvertime, overtimeHoursFor(shift, hours), from.overtimeH)) wrongOvertime.push({ line, shift });
     const after: DayLine = {
       present,
       shift,
@@ -196,6 +200,10 @@ export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput
     if ((w?.overtimeH ?? 0) > 0 && after.overtimeH === 0) dropsOvertime.push(line);
     return { line, before, after, byRest };
   });
+  if (wrongOvertime.length > 0) {
+    const { shift } = wrongOvertime[0];
+    return { error: `Overtime is the fixed ${overtimeHoursFor(shift, hours)}-hour period (${overtimeTime(shift)}) — ${wrongOvertime.map((x) => `${x.line.empId} ${x.line.name}`).join(", ")}.` };
+  }
   if (dropsOvertime.length > 0) {
     return { error: `Overtime needs a present worker — ${dropsOvertime.map((l) => `${l.empId} ${l.name}`).join(", ")} would be absent.` };
   }
@@ -279,12 +287,12 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
   },
   async describe(i, ctx) {
     if (!hasPerm(ctx.user, shiftPermKey(i.dept))) return { error: noRight(i.dept) };
-    if (notYet(i.date, ctx.now)) return { error: `${i.date} has not come yet — the roster records days that have begun.` };
+    if (notYet(i.date, ctx.todayISO)) return { error: `${i.date} has not come yet — the roster records days that have begun.` };
     const { roster, lines } = await deptDay(i.date, i.dept);
     if (lines.length === 0) return { error: `Nobody is on ${label(i.dept)}'s list of workers — add workers first.` };
-    const plan = planShiftDay(lines, i);
-    if ("error" in plan) return plan;
     const h = roster.shiftHours;
+    const plan = planShiftDay(lines, i, h);
+    if ("error" in plan) return plan;
     // the ones `rest` sets are summed up, not listed one by one
     const moved = plan.filter((p) => !p.byRest && !sameLine(p.before, p.after));
     const byRest = plan.filter((p) => p.byRest);
@@ -308,8 +316,8 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
     };
   },
   async execute(i) {
-    const { lines } = await deptDay(i.date, i.dept);
-    const plan = planShiftDay(lines, i);
+    const { roster, lines } = await deptDay(i.date, i.dept);
+    const plan = planShiftDay(lines, i, roster.shiftHours);
     if ("error" in plan) return { ok: false, error: plan.error };
     const before = await readShiftState(i.date, [i.dept]);
     const saved = plan.map((p) => ({ dept: i.dept, workerId: p.line.workerId, present: p.after.present, shift: p.after.shift, overtimeH: p.after.overtimeH, center: p.after.center ?? null, note: p.after.note ?? "" }));

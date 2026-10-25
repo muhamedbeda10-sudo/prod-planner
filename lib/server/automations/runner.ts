@@ -109,13 +109,15 @@ async function skipOutsideWindow(now: Date, hours: string): Promise<void> {
 async function runAll(due: Automation[], deadline: number, result: TickResult): Promise<void> {
   for (const a of due) {
     if (Date.now() > deadline) break;
+    // the claim is for the row AS FETCHED: a tick that overlapped this one may
+    // have run it already and moved nextRunAt on — then it is not due any more
     const claim = await prisma.automation.updateMany({
-      where: { id: a.id, enabled: true, deletedAt: null, OR: [{ lockedUntil: null }, { lockedUntil: { lt: new Date() } }] },
+      where: { id: a.id, enabled: true, deletedAt: null, nextRunAt: a.nextRunAt, OR: [{ lockedUntil: null }, { lockedUntil: { lt: new Date() } }] },
       data: { lockedUntil: new Date(Date.now() + LOCK_MS) },
     });
     if (claim.count === 0) continue;
     try {
-      const fired = await runAutomation(a, { cause: a.trigger === "schedule" ? "schedule" : "condition", now: new Date() });
+      const fired = await runAutomation(a, { cause: a.trigger === "schedule" ? "schedule" : "condition", now: new Date(), deadline });
       if (fired) result.ran++;
       else result.checked++;
     } catch (e) {
@@ -194,6 +196,19 @@ interface RunOptions {
   /** A test run: everything goes to this person alone, marked as a test, and
    *  the schedule and the condition's keys are left as they are. */
   testTo?: User;
+  /** The tick's deadline (ms since the epoch): a run started late in the tick
+   *  is given less time to think, so its result and cost are always written
+   *  before the function's own life ends. */
+  deadline?: number;
+}
+
+/** How long the assistant may take for one run: the tick's own default (ask's
+ *  240 s), or what is left of the tick plus the minute the route keeps in hand
+ *  (app/api/automations/tick/route.ts: maxDuration − 60 s), less the seconds
+ *  the run needs to write its result. */
+function askTimeout(o: RunOptions): number | undefined {
+  if (o.deadline === undefined) return undefined;
+  return Math.max(20_000, Math.min(240_000, o.deadline + 50_000 - Date.now()));
 }
 
 /** Run one automation. True when it fired (sent or prepared something, or
@@ -227,7 +242,7 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
     else {
       const { keys, fresh } = freshRows(a.lastKeys, r.rows);
       if (fresh.length === 0) {
-        await prisma.automation.update({ where: { id: a.id }, data: { lastKeys: keys, lastCheckAt: o.now, nextRunAt: next, lockedUntil: null } });
+        await endRun(a, { lastKeys: keys, lastCheckAt: o.now }, { nextRunAt: next });
         return false;
       }
       o = { ...o, keys };
@@ -279,6 +294,7 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
         : rows.length > 0 ? `${config.prompt}\n\nThese rows started matching the automation's condition:\n\n${rowsTable(rows, AUTOMATION_LIMITS.conditionRows)}` : config.prompt!;
     const usage = await prisma.aiUsage.create({ data: { userId: owner.id, model: settings.autoModel, question: `Automation: ${a.name}`.slice(0, 500) } });
     const actionIds: number[] = [];
+    const timeoutMs = askTimeout(o);
     const answer = await ask({
       apiKey,
       model: settings.autoModel,
@@ -292,6 +308,11 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
       events: { status: () => {}, text: () => {}, action: (v) => actionIds.push(v.id) },
       via: "automation",
       maxCalls: settings.maxCalls,
+      // a test run never changes data on its own — every change waits for the
+      // click, as the morning review's do; the real run follows the owner's
+      // "small changes without asking"
+      ...(o.testTo ? { allowAuto: false } : {}),
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     });
     const cost = costUsd(settings.autoModel, answer.tokens);
     await prisma.aiUsage.update({
@@ -316,21 +337,27 @@ async function finishRun(a: Automation, runId: number, o: RunOptions, r: { summa
     where: { id: runId },
     data: { status: "ok", finishedAt: new Date(), summary: r.summary, inboxIds: r.inboxIds, actionIds: r.actionIds ?? [], costUsd: r.cost ?? 0 },
   });
-  await prisma.automation.update({
-    where: { id: a.id },
-    data: o.testTo ? { lockedUntil: null } : { lastRunAt: o.now, lastStatus: "ok", lastNote: r.summary, failures: 0, nextRunAt: next, lockedUntil: null, ...keysOf(o) },
-  });
+  if (o.testTo) await prisma.automation.update({ where: { id: a.id }, data: { lockedUntil: null } });
+  else await endRun(a, { lastRunAt: o.now, lastStatus: "ok", lastNote: r.summary, failures: 0, ...keysOf(o) }, { nextRunAt: next });
   return true;
 }
 
 const keysOf = (o: RunOptions) => (o.keys ? { lastKeys: o.keys, lastCheckAt: o.now } : {});
 
+/** The end-of-run write. The run's own record (when, how it went, which rows
+ *  a condition has now reported) is always written; the SCHEDULE (the next
+ *  run) only while the row still reads as it did when the run was claimed — a
+ *  new time saved meanwhile stands, instead of being put back by a run that
+ *  was computed from the old one. */
+async function endRun(a: Automation, status: Record<string, unknown>, schedule: Record<string, unknown>): Promise<void> {
+  const kept = await prisma.automation.updateMany({ where: { id: a.id, nextRunAt: a.nextRunAt }, data: { ...status, ...schedule, lockedUntil: null } });
+  if (kept.count === 0) await prisma.automation.update({ where: { id: a.id }, data: { ...status, lockedUntil: null } });
+}
+
 async function skipRun(a: Automation, runId: number, o: RunOptions, why: string, next: Date | null): Promise<boolean> {
   await prisma.automationRun.update({ where: { id: runId }, data: { status: "skipped", finishedAt: new Date(), summary: why.slice(0, 1000) } });
-  await prisma.automation.update({
-    where: { id: a.id },
-    data: o.testTo ? { lockedUntil: null } : { lastRunAt: o.now, lastStatus: "skipped", lastNote: why.slice(0, 1000), nextRunAt: next, lockedUntil: null, ...keysOf(o) },
-  });
+  if (o.testTo) await prisma.automation.update({ where: { id: a.id }, data: { lockedUntil: null } });
+  else await endRun(a, { lastRunAt: o.now, lastStatus: "skipped", lastNote: why.slice(0, 1000), ...keysOf(o) }, { nextRunAt: next });
   return true;
 }
 
@@ -346,10 +373,7 @@ async function failRun(a: Automation, runId: number | null, o: RunOptions, error
   }
   const failures = a.failures + 1;
   const stop = failures >= AUTOMATION_LIMITS.failures;
-  await prisma.automation.update({
-    where: { id: a.id },
-    data: { lastRunAt: o.now, lastStatus: "failed", lastNote: err.slice(0, 1000), failures, nextRunAt: next, lockedUntil: null, ...(stop ? { enabled: false } : {}) },
-  });
+  await endRun(a, { lastRunAt: o.now, lastStatus: "failed", lastNote: err.slice(0, 1000), failures, ...(stop ? { enabled: false } : {}) }, { nextRunAt: next });
   if (stop) {
     await deliverToInbox([{
       userId: a.ownerId, kind: "message", title: `Automation stopped: ${isolate(a.name)}`, automationId: a.id,

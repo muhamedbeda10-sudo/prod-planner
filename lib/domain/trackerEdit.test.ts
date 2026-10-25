@@ -19,7 +19,9 @@ describe("readBase", () => {
     expect(readBase("0")).toBe(0);
     expect(readBase(null)).toBeNull();
     expect(readBase("  ")).toBeNull();
-    expect(readBase("1.5")).toBeNull();
+    // a fractional ledger total is a base like any other — it must still be compared
+    expect(readBase("1.5")).toBe(1.5);
+    expect(readBase("abc")).toBeNull();
   });
 });
 
@@ -32,5 +34,10 @@ describe("staleTotalError", () => {
   it("refuses a total typed from a page the ledger has moved on from", () => {
     // the page showed 10; welding recorded 4 more since
     expect(staleTotalError(10, 14)).toMatch(/now 14, not the 10 on your screen/);
+  });
+
+  it("does not call a decimal figure stale for a last-bit difference between two sums", () => {
+    expect(staleTotalError(0.1 + 0.2, 0.3)).toBeNull();
+    expect(staleTotalError(2.5, 2.6)).toMatch(/now 2.6, not the 2.5/);
   });
 });

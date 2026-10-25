@@ -22,7 +22,8 @@ import { useOdooAlerts } from "@/components/OdooAlerts";
 import { LineTabs } from "@/components/LineTabs";
 import { Avatar, UserMenu } from "@/components/UserMenu";
 import type { ProductLine } from "@/lib/domain/lines";
-import { logoutAction } from "@/app/login/actions";
+import { signOut } from "@/lib/signOut";
+import { trapTab } from "@/components/Modal";
 
 type Item = {
   href: string;
@@ -256,6 +257,8 @@ export function AppNav({
   const wlRef = useRef<HTMLLIElement>(null);
   const wlBtnRef = useRef<HTMLButtonElement>(null);
   const navRef = useRef<HTMLElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null); // the drawer panel
+  const drawerCloseRef = useRef<HTMLButtonElement>(null); // its ✕, focused on open
   // The tab strip scrolls horizontally, so it CLIPS anything that reaches below
   // it. An absolutely-positioned menu inside it is simply never visible. The
   // panel is therefore fixed to the viewport and anchored to the button's
@@ -291,6 +294,21 @@ export function AppNav({
       document.removeEventListener("keydown", onKey);
     };
   }, []);
+
+  // The drawer is a dialog: focus moves onto its close button when it opens,
+  // Tab and Shift+Tab stay inside it (the page behind is dimmed, not inert),
+  // and focus goes back to where it came from — the ☰ button — when it closes.
+  useEffect(() => {
+    if (!drawer) return;
+    const before = document.activeElement as HTMLElement | null;
+    drawerCloseRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => trapTab(e, drawerRef.current);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      before?.focus?.();
+    };
+  }, [drawer]);
 
   // The worklist panel is fixed to where the button WAS. Resizing the window or
   // scrolling the tab strip moves the button out from under it, so close it
@@ -493,7 +511,7 @@ export function AppNav({
             onClick={() => setDrawer(false)}
             className="absolute inset-0 bg-black/45 backdrop-blur-[2px] animate-[drawerfade_0.2s_ease-out]"
           />
-          <div className="absolute left-0 top-0 h-full w-[300px] max-w-[85vw] bg-surface text-foreground shadow-2xl flex flex-col animate-[drawerslide_0.22s_ease-out]">
+          <div ref={drawerRef} className="absolute left-0 top-0 h-full w-[300px] max-w-[85vw] bg-surface text-foreground shadow-2xl flex flex-col animate-[drawerslide_0.22s_ease-out]">
             {/* drawer head */}
             <div className="bg-[var(--nav-bg)] text-white px-4 py-3 flex items-center justify-between">
               <Image
@@ -504,6 +522,7 @@ export function AppNav({
                 className="h-6 w-auto"
               />
               <button
+                ref={drawerCloseRef}
                 type="button"
                 onClick={() => setDrawer(false)}
                 aria-label="Close menu"
@@ -568,7 +587,7 @@ export function AppNav({
             <div className="border-t p-3 space-y-2">
               <span className="sm:hidden block"><ThemeToggle wide /></span>
               <InstallApp wide />
-              <form action={logoutAction}>
+              <form action={signOut}>
                 <button type="submit" className="btn btn-secondary w-full text-bad-fg">
                   <LogOut size={16} />
                   Sign out

@@ -77,12 +77,14 @@ export async function importPhysicalStock(buf: ArrayBuffer, by: string | null, p
   const gone = existing.filter((r) => !seen.has(r.code.toUpperCase()));
   if (preview) return { ok: true, preview: true, added, updated, unchanged, missing: gone.length, removed: 0, issues: parsed.issues };
 
-  await prisma.$transaction(async (tx) => {
-    for (const w of writes) {
-      if ("create" in w) await tx.physicalStock.create({ data: w.create });
-      else await tx.physicalStock.update({ where: { id: w.id }, data: w.update });
-    }
-  });
+  // in bulk — hundreds of rows written one by one inside one transaction
+  // outlast its timeout (the nesting sheet's own lesson)
+  const creates = writes.flatMap((w) => ("create" in w ? [w.create] : []));
+  const updates = writes.flatMap((w) => ("create" in w ? [] : [w]));
+  if (creates.length) await prisma.physicalStock.createMany({ data: creates, skipDuplicates: true });
+  for (let i = 0; i < updates.length; i += 100) {
+    await prisma.$transaction(updates.slice(i, i + 100).map((w) => prisma.physicalStock.update({ where: { id: w.id }, data: w.update })));
+  }
   let removed = 0;
   if (prune && gone.length > 0) removed = (await prisma.physicalStock.deleteMany({ where: { id: { in: gone.map((r) => r.id) } } })).count;
   return { ok: true, added, updated, unchanged, missing: gone.length, removed, issues: parsed.issues };

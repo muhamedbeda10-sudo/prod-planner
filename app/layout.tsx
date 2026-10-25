@@ -21,6 +21,7 @@ import { aiVisibleFor } from "@/lib/server/ai/access";
 import { inboxState } from "@/lib/server/inbox";
 import { getNeedingMo, getReadyToClose } from "@/lib/server/odooAlerts";
 import { ODOO_ALERTS_PERM, ODOO_NEED_MO_PERM } from "@/lib/domain/odooAlerts";
+import { THEME_INIT_SCRIPT } from "@/components/themeInit";
 
 const inter = Inter({
   variable: "--font-sans-latin",
@@ -46,11 +47,6 @@ export const viewport: Viewport = {
   ],
 };
 
-// Applied before paint so there is no light/dark flash on load. The dark
-// industrial theme is the default; light stays one click away on the toggle,
-// and a choice made there is remembered.
-const themeInit = `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"){document.documentElement.classList.add("dark")}}catch(e){document.documentElement.classList.add("dark")}})()`;
-
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -71,7 +67,10 @@ export default async function RootLayout({
   return (
     <html lang="en" dir="ltr" className={`${inter.variable} h-full`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        {/* Applied before paint so there is no light/dark flash on load. The
+            dark industrial theme is the default; light stays one click away on
+            the toggle, and a choice made there is remembered. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col antialiased">
         <TouchLongPress />

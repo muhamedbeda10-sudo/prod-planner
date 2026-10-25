@@ -74,21 +74,16 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   );
 }
 
-/** Red→amber→green scale for a 0..1 fraction (workbook semantics, ATC-green endpoint). */
-export function pctStyle(fraction: number | null): { background: string; color: string } {
-  if (fraction === null || Number.isNaN(fraction)) return { background: "transparent", color: "inherit" };
+/** Red→amber→green scale for a 0..1 fraction (workbook semantics, ATC-green
+ *  endpoint): the class of one of five status washes (`.pct-0` … `.pct-4` in
+ *  globals.css), each on the theme's own ok / warn / bad tokens so the cell
+ *  reads in light and dark alike. Quarter steps — red below 25%, red→amber,
+ *  amber, amber→green, and green only at 100%. No fraction → no class, so
+ *  the cell keeps its row's colours. */
+export function pctClass(fraction: number | null): string {
+  if (fraction === null || Number.isNaN(fraction)) return "";
   const f = Math.max(0, Math.min(1, fraction));
-  // interpolate red(247,205,197) -> amber(252,228,166) -> ATC green tint(168,214,187)
-  const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
-  let r, g, b;
-  if (f < 0.5) {
-    const t = f / 0.5;
-    r = lerp(247, 252, t); g = lerp(205, 228, t); b = lerp(197, 166, t);
-  } else {
-    const t = (f - 0.5) / 0.5;
-    r = lerp(252, 168, t); g = lerp(228, 214, t); b = lerp(166, 187, t);
-  }
-  return { background: `rgb(${r},${g},${b})`, color: "#1d2521" };
+  return f >= 1 ? "pct-4" : `pct-${Math.floor(f * 4)}`;
 }
 
 export function StatusPill({ status }: { status: string }) {
@@ -164,6 +159,13 @@ export function soiOf(
   if (b && lookup.byBom[b]) return lookup.byBom[b];
   return null;
 }
+
+/**
+ * What a save form shows when the server action threw before answering (the
+ * connection dropped, the deploy rolled over): the write may or may not have
+ * landed, so the person checks before saving again instead of doubling it.
+ */
+export const SAVE_UNCONFIRMED = "Could not confirm the save — refresh and check the records before trying again.";
 
 /** One row of a dropdown menu — the account menu's. */
 export const MENU_ROW = "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold text-start transition-colors hover:bg-surface-2 disabled:opacity-50";

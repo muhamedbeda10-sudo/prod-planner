@@ -8,7 +8,8 @@
 // rows. That dedup is a multiset diff done in the server layer on a stable
 // signature (day|dept|bom|mo|item|qty|planNo). This module only parses + validates.
 
-import { isItem, isDept } from "./constants";
+import { sheetNumberOr } from "./material";
+import { isItem, isDept, stageItemError } from "./constants";
 import { calendarDate, excelSerialToDate } from "./dates";
 
 export interface HandoverImportRow {
@@ -85,8 +86,11 @@ export function parseHandoverGrid(grid: unknown[][]): ParsedHandover {
     const anyVal =
       S(row[cols.DATE]) || S(row[cols.DEPT]) || S(row[cols.BOM]) || S(row[cols.ITEM]) || S(row[cols.QTY]);
     if (!anyVal) continue; // skip blank rows
+    // "1,200" is twelve hundred, as the other sheets read it; a figure with a
+    // note beside it ("5 (rework)") is still the number it starts with
     const qtyRaw = row[cols.QTY];
-    const qty = typeof qtyRaw === "number" ? qtyRaw : parseFloat(S(qtyRaw));
+    // (anything else is NaN, which validateHandoverRow rejects)
+    const qty = sheetNumberOr(qtyRaw, NaN);
     const weekRaw = row[cols.WEEK];
     const planNo = typeof weekRaw === "number" ? weekRaw : parseInt(S(weekRaw), 10);
     rows.push({
@@ -96,7 +100,7 @@ export function parseHandoverGrid(grid: unknown[][]): ParsedHandover {
       bom: S(row[cols.BOM]),
       mo: hasMo ? S(row[cols.MO]) || null : null,
       item: S(row[cols.ITEM]).toUpperCase(),
-      qty: Number.isFinite(qty) ? qty : NaN,
+      qty,
       planNo: Number.isInteger(planNo) ? planNo : null,
     });
   }
@@ -109,6 +113,9 @@ export function validateHandoverRow(row: HandoverImportRow): string | null {
   if (!isDept(row.dept)) return `Invalid department "${row.dept}" (row ${row.rowNum})`;
   if (!row.bom) return `Empty BOM code (row ${row.rowNum})`;
   if (!isItem(row.item)) return `Invalid component "${row.item}" (row ${row.rowNum})`;
+  // the one rule for every path that records output: the core is never painted
+  const stage = stageItemError(row.dept, row.item);
+  if (stage) return `${stage.replace(/\.$/, "")} (row ${row.rowNum})`;
   if (!Number.isFinite(row.qty) || row.qty <= 0) return `Invalid quantity (row ${row.rowNum})`;
   if (!row.planNo) return `Invalid week/plan number (row ${row.rowNum})`;
   return null;

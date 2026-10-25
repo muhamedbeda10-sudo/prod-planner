@@ -35,7 +35,7 @@ export interface AppEventDef {
 
 export const APP_EVENTS: Record<AppEventType, AppEventDef> = {
   "output.recorded": { label: "Output recorded", group: "Production", desc: "Someone records output — on a worklist, the Plan Tracker, the Daily log or the LV panels. The sentence names the department, the order and the quantity." },
-  "order.closed": { label: "Order closed", group: "Orders", desc: "An order (MO) is closed on the Plan Tracker." },
+  "order.closed": { label: "Order closed", group: "Orders", desc: "An order (MO) is closed — on the Plan Tracker, by “Close N delivered”, or by a monthly import that takes it off the plan." },
   "order.reopened": { label: "Order reopened", group: "Orders", desc: "A closed order is reopened." },
   "order.held": { label: "Order put on hold", group: "Orders", desc: "An order is put on hold, with the reason given." },
   "order.released": { label: "Order released from hold", group: "Orders", desc: "An order on hold is released." },

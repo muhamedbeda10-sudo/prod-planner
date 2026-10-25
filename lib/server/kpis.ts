@@ -69,9 +69,10 @@ export interface CockpitData {
     covered: number;
     days: { iso: string; label: string; req: number; covered: number; isPast: boolean; isToday: boolean }[];
     adherence: StageAdherence[];
-    /** The first lines behind, oldest first … */
+    /** Every line behind, oldest first — the page shows the first few and
+     *  exports them all. */
     late: (LateLine & { soi: string | null })[];
-    /** … of all of them. */
+    /** How many, so a reader of a prefix knows what it is a prefix of. */
     lateCount: number;
   };
   centres: CentreKpi[];
@@ -209,7 +210,8 @@ async function readCentreDays(fromISO: string) {
 
 /** The LV panels' shot-blast std-hours by day since `fromISO`. */
 async function lvShotBlastSince(fromISO: string): Promise<Map<string, number>> {
-  const rows = await prisma.handoverEntry.findMany({ where: { date: { gte: dayStart(fromISO) }, item: LV_ITEM }, select: { date: true }, distinct: ["date"] });
+  // groupBy: Prisma's `distinct` dedupes in memory after reading every row
+  const rows = await prisma.handoverEntry.groupBy({ by: ["date"], where: { date: { gte: dayStart(fromISO) }, item: LV_ITEM } });
   const earned = await earnedLvOnDays([...new Set(rows.map((r) => toISODate(r.date)))]);
   const out = new Map<string, number>();
   for (const [iso, lv] of earned) if (lv.ShotBlast) out.set(iso, lv.ShotBlast);
@@ -406,13 +408,19 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
           { date: { gte: dayStart(monthStartISO) }, bom: { in: soleBoms }, OR: [{ mo: null }, { mo: "" }] },
         ],
       },
-      select: { dept: true, mo: true, bom: true, item: true, qty: true },
+      select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true },
     })
     : [];
   const doneH = zeroCentres();
+  const doneBeforeH = zeroCentres();
+  const monthStart = dayStart(monthStartISO);
   for (const e of monthLedger) {
     const got = earnedOfRecord(e.dept, e.qty, perPiece(tierOf(e.mo, e.bom), e.item));
-    for (const c of WORK_CENTRES) doneH[c] += got[c];
+    const before = e.date < monthStart;
+    for (const c of WORK_CENTRES) {
+      doneH[c] += got[c];
+      if (before) doneBeforeH[c] += got[c];
+    }
   }
   const cal = { hoursPerPersonDay: settings.shiftShortH, monthWd: workingDaysInclusive(monthStartISO, monthEndISO, holidaySet), leftWd: workingDaysInclusive(todayISO, monthEndISO, holidaySet) };
   const manpower = {
@@ -420,7 +428,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
     rows: manpowerPlan(
       WORK_CENTRES.map((c) => {
         const k = centres.find((x) => x.centre === c)!;
-        return { centre: c, requiredH: requiredH[c], doneH: doneH[c], present: k.recent.days > 0 ? k.recent.people : null };
+        return { centre: c, requiredH: requiredH[c], doneH: doneH[c], doneBeforeH: doneBeforeH[c], present: k.recent.days > 0 ? k.recent.people : null };
       }),
       cal,
     ),
@@ -435,11 +443,13 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   });
 
   // ---- today's figures, as the trend keeps them ----
+  const fabrication = combinedStat(recentStats.filter((s) => (DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(s.centre)));
   const snapshot: KpiSnapshotData = {
     late: late.length,
     adherence: Object.fromEntries(adherence.map((a) => [a.stage, a.rate])),
     coverageDays: coverage.days,
     efficiency: Object.fromEntries(recentStats.map((s) => [s.centre, s.efficiency])),
+    fabEfficiency: fabrication.efficiency,
     unplannedH: loss.unplannedH,
   };
   const stored = await prisma.kpiSnapshot.findMany({ where: { date: { gte: dayStart(addDaysISO(todayISO, -TREND_DAYS)), lt: dayStart(todayISO) } }, orderBy: { date: "asc" } });
@@ -454,11 +464,11 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
       covered: plan.covered,
       days: plan.days.map((d) => ({ iso: d.iso, label: d.label, req: d.req, covered: d.covered, isPast: d.isPast, isToday: d.isToday })),
       adherence,
-      late: late.slice(0, 20),
+      late,
       lateCount: late.length,
     },
     centres,
-    fabrication: combinedStat(recentStats.filter((s) => (DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(s.centre))),
+    fabrication,
     load,
     coverage,
     manpower,
@@ -495,7 +505,7 @@ export function withoutFloor(c: CockpitData): CockpitData {
     pricedShare: null,
     manpower: { ...c.manpower, rows: c.manpower.rows.map((r) => ({ ...r, present: null, gap: null, tone: null })) },
     actions: c.actions.filter((a) => !isFloorAction(a)),
-    snapshot: { ...c.snapshot, efficiency: {}, unplannedH: null },
-    trend: c.trend.map((t) => ({ ...t, efficiency: {}, unplannedH: null })),
+    snapshot: { ...c.snapshot, efficiency: {}, fabEfficiency: null, unplannedH: null },
+    trend: c.trend.map((t) => ({ ...t, efficiency: {}, fabEfficiency: null, unplannedH: null })),
   };
 }

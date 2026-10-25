@@ -383,6 +383,8 @@ export async function ask(opts: {
   let badRequest = false;
   let resumed = false;
   let safeTurnLength = 1;
+  /** The text of an answer cut off at the length limit — kept, with the note. */
+  let partial: ContentBlockParam[] | null = null;
   const expand = opts.expand ?? (async (msgs: MessageParam[]) => msgs);
 
   const events: AskEvents = {
@@ -452,6 +454,9 @@ export async function ask(opts: {
       }
       turn.push({ role: "assistant", content: msg.content as ContentBlockParam[] });
       if (msg.stop_reason === "max_tokens") {
+        // what was streamed stays the answer (its text blocks; a half-written
+        // call would not be trusted anyway and there is none here)
+        partial = msg.content.filter((b) => b.type === "text") as ContentBlockParam[];
         error = "The answer reached its length limit and is incomplete — narrow the question before continuing.";
         break;
       }
@@ -546,9 +551,14 @@ export async function ask(opts: {
   // visible and the next request never contains an unanswered tool call.
   const last = turn[turn.length - 1];
   const complete = !error && last.role === "assistant";
-  const kept: MessageParam[] = complete ? turn : safeTurnLength > 1
-    ? [...turn.slice(0, safeTurnLength), { role: "assistant", content: [{ type: "text", text: `This answer did not finish: ${error} Any change cards retain their recorded status; check them before repeating a change.` }] }]
-    : turn.slice(0, 1);
+  const note: ContentBlockParam = { type: "text", text: `This answer did not finish: ${error} Any change cards retain their recorded status; check them before repeating a change.` };
+  const kept: MessageParam[] = complete ? turn
+    : partial && partial.length > 0 && last.role === "assistant"
+      // the cut-off text the person was shown, then the note, as one turn
+      ? [...turn.slice(0, turn.length - 1), { role: "assistant", content: [...partial, note] }]
+      : safeTurnLength > 1
+        ? [...turn.slice(0, safeTurnLength), { role: "assistant", content: [note] }]
+        : turn.slice(0, 1);
   const added = kept.map((t) => ({ role: t.role as "user" | "assistant" | "system", content: t.content as ContentBlockParam[] | string }));
   return { added, tokens, calls, queries, changes, stop, error, ...(badRequest ? { badRequest } : {}), text: answer };
 }

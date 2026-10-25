@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { spreadOverGroup } from "./groupSpread";
-import { LV_CHAIN, LV_STAGES, LV_WORKLISTS, lvCaps, lvChainError, lvChainViolation, lvComplete, lvDeptPermKey, lvGroupMembers, lvPermKey, lvStageAt, lvWaiting, type LvState } from "./lv";
+import { LV_CHAIN, LV_STAGES, LV_WORKLISTS, lvCaps, lvChainError, lvChainViolation, lvComplete, lvDeptPermKey, lvFed, lvGroupMembers, lvPermKey, lvStageAt, lvWaiting, lvWorklistBucket, type LvState } from "./lv";
 
 const st = (over: Partial<LvState> = {}): LvState => ({ required: 10, punch: 0, bend: 0, weld: 0, paint: 0, delivered: 0, ...over });
 
@@ -73,6 +73,33 @@ describe("an LV stage's worklist", () => {
 
   it("owes nothing on an order with no quantity — there is no plan to work from", () => {
     expect(lvWaiting(st({ required: 0 }), "Punching")).toBe(0);
+  });
+
+  it("knows what the stage before has handed over — the plan, for punching", () => {
+    expect(lvFed(st({ punch: 4 }), "Punching")).toBe(10);
+    expect(lvFed(st({ required: 0, punch: 4 }), "Punching")).toBe(0);
+    expect(lvFed(st({ punch: 4, bend: 1 }), "Bending")).toBe(4);
+    expect(lvFed(st({ weld: 6 }), "Painting")).toBe(6);
+  });
+
+  it("puts every open order in exactly one place on the list", () => {
+    // 4 punched, all 4 bent, 10 ordered: bending has caught up with punching
+    // and waits for more — it must not vanish from the bending list
+    const caughtUp = st({ required: 10, punch: 4, bend: 4 });
+    expect(lvWorklistBucket(caughtUp, "Bending")).toBe("upstream");
+    expect(lvWorklistBucket(caughtUp, "Welding")).toBe("rows");
+    expect(lvWaiting(caughtUp, "Welding")).toBe(4);
+    expect(lvWorklistBucket(caughtUp, "Punching")).toBe("rows");
+    expect(lvWorklistBucket(st({ required: 10, punch: 0 }), "Bending")).toBe("upstream");
+    expect(lvWorklistBucket(st({ required: 10, punch: 10, bend: 10 }), "Bending")).toBe("finished");
+  });
+
+  it("names an order with no quantity rather than hiding it among the unfed", () => {
+    expect(lvWorklistBucket(st({ required: 0, punch: 3 }), "Punching")).toBe("unplanned");
+    expect(lvWorklistBucket(st({ required: 0 }), "Bending")).toBe("unplanned");
+    // what the stages before did on it is still real work for the next one
+    expect(lvWorklistBucket(st({ required: 0, punch: 3 }), "Bending")).toBe("rows");
+    expect(lvWorklistBucket(st({ required: 0, punch: 3, bend: 3 }), "Bending")).toBe("upstream");
   });
 
   it("opens each worklist with the panels' own key for that stage", () => {

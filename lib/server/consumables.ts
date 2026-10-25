@@ -139,10 +139,10 @@ const SECTION_CODES = WORKER_SECTIONS.map((s) => s.code as string);
 /** The departments typed on live rows that are not worker sections. A
  *  department whose every row was deleted leaves the dropdown with them. */
 export async function getCustomDepartments(): Promise<string[]> {
-  const rows = await prisma.consumableIssue.findMany({
+  // groupBy: Prisma's `distinct` dedupes in memory after fetching every row
+  const rows = await prisma.consumableIssue.groupBy({
+    by: ["department"],
     where: { deletedAt: null, department: { notIn: SECTION_CODES } },
-    select: { department: true },
-    distinct: ["department"],
     orderBy: { department: "asc" },
   });
   return rows.map((r) => r.department);
@@ -189,10 +189,9 @@ export async function getConsumablesData(fromISO: string, toISO: string, viewer:
     }),
     getCustomDepartments(),
     getAllWorkers(),
-    prisma.consumableIssue.findMany({
+    prisma.consumableIssue.groupBy({
+      by: ["item"],
       where: { deletedAt: null },
-      select: { item: true },
-      distinct: ["item"],
       orderBy: { item: "asc" },
       take: 500,
     }),

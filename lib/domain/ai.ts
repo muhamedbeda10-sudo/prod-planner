@@ -176,7 +176,7 @@ export const AI_TAB_TABLES: Record<string, readonly string[]> = {
   odoo: ["OdooEntry", "OdooNote"],
   consumables: [
     "ConsumableIssue", "ConsumableIssueRevision", "ConsumableItem", "ConsumableLimit",
-    "ConsumableCatalogueChange", "ConsumableIssueRecipient", "PowderScrap", "PowderScrapRevision",
+    "ConsumableCatalogueChange", "ConsumableIssueRecipient", "PowderScrap", "PowderScrapRevision", "ConsumableHeadcount",
   ],
   physical: ["PhysicalStock"],
   material: ["MaterialUsage"],
@@ -204,7 +204,12 @@ export function blockedTableIn(sql: string, blocked: readonly string[]): string 
   // a Unicode-escaped identifier (U&"\004FdooEntry") names a table without
   // spelling it, so it is refused the same way
   if (/\bU&"/i.test(sql)) return blocked[0];
-  return blocked.find((t) => sql.includes(`"${t}"`)) ?? null;
+  // the planner's statistics (pg_stats, pg_statistic …) carry sampled VALUES
+  // of every readable table's columns, keyed by the table's name as text; the
+  // catalog and information_schema name a closed table's columns and counts
+  if (/\b(pg_stat\w*|pg_catalog|pg_class|pg_attribute|pg_description|information_schema)\b/i.test(sql)) return blocked[0];
+  // the name as a string literal reaches those same views and the catalog
+  return blocked.find((t) => sql.includes(`"${t}"`) || sql.includes(`'${t}'`)) ?? null;
 }
 
 /** Rows handed back per query — anything bigger is for SQL to aggregate. */
@@ -233,6 +238,15 @@ export function prepareSql(raw: string, limit = AI_ROW_LIMIT): { sql: string } |
   if (!head) return { error: "Empty query." };
   if (!/^(select|with)\b/i.test(head)) return { error: "Only a SELECT (or WITH … SELECT) query can run." };
   if (body.includes(";")) return { error: "One statement only — remove the semicolons." };
+  // a Unicode-escaped name (U&"pg_\0073leep", or any UESCAPE) spells a
+  // function the list below cannot see — no reading query needs one
+  if (/\bU&["']/i.test(body) || /\bUESCAPE\b/i.test(body)) return { error: "Unicode-escaped names are not allowed — write the name plainly." };
+  // a SELECT can still change the session or hold the connection: a lifted
+  // statement timeout, a sleep, a cancelled or terminated backend, a lock —
+  // named plainly, quoted ("pg_sleep"), schema-qualified or with a comment
+  // before the parenthesis, so the name alone is what is looked for
+  const held = /\b(set_config|pg_sleep\w*|pg_cancel_backend|pg_terminate_backend|pg_advisory_\w+|pg_try_advisory_\w+|pg_reload_conf|lo_\w+|pg_read_\w+|pg_ls_\w+|dblink\w*)\b/i.exec(body);
+  if (held) return { error: `${held[1]}() is not for reading the data — leave it out.` };
   return { sql: `SELECT * FROM (\n${body}\n) AS ai_q LIMIT ${limit + 1}` };
 }
 

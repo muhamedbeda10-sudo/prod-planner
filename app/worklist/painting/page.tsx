@@ -5,10 +5,10 @@ import { getSoiLookup } from "@/lib/server/soi";
 import { getPaintingQueue } from "@/lib/server/execution";
 import { getSettings } from "@/lib/server/data";
 import { getQueueNotes } from "@/lib/server/queueNotes";
-import { getWorklistExtras, getRunOrderLines } from "@/lib/server/worklistExtras";
+import { getWorklistExtras, getRunOrderLines, pushedAsCascadeRows } from "@/lib/server/worklistExtras";
 import { getPaintableTanks } from "@/lib/server/tanks";
 import { getWorkersFor } from "@/lib/server/workers";
-import { toISODate } from "@/lib/domain/dates";
+import { factoryToday, toISODate } from "@/lib/domain/dates";
 import { WeldingQueueTable } from "@/components/WeldingQueueTable";
 import { CascadeTable } from "@/components/CascadeTable";
 import { PriorityOrdersTable } from "@/components/PriorityOrdersTable";
@@ -17,7 +17,7 @@ import { RunOrderTable } from "@/components/RunOrderTable";
 import { HiddenLinesPanel } from "@/components/HiddenLinesPanel";
 import { PrintHeader } from "@/components/PrintHeader";
 import { getCurrentUser, canEditDept, hasPerm, guardTab } from "@/lib/server/auth";
-import { getMachineBoard } from "@/lib/server/machineBoard";
+import { getMachineBoard, queueBoardLines } from "@/lib/server/machineBoard";
 import { MachineBoard } from "@/components/MachineBoard";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,9 @@ export default async function PaintingWorklistPage() {
   await guardTab("/worklist/painting");
   // the panels have their own painting worklist — same route, the line decides
   if ((await getActiveLine()) === "LV") return <LvWorklistPage stage="Painting" />;
-  const today = new Date();
+  // the factory's day (Cairo), not the server's UTC date: the night shift
+  // records after midnight, and its rows belong to the day it works
+  const today = factoryToday();
   const dayISO = toISODate(today);
   const [queue, notes, settings, user, extras, runOrder, tanksByMo, painters, soi] = await Promise.all([
     getPaintingQueue(today),
@@ -48,16 +50,11 @@ export default async function PaintingWorklistPage() {
   const isAdmin = !!user?.isAdmin;
   const canManage = !!user && hasPerm(user, "machines.manage");
   // tracker-pushed lines render on the shared date-less table shape
-  const pushedRows = extras.pushed.map((p) => ({
-    bom: p.bom, mo: p.mo, description: p.description, item: p.item,
-    target: p.orderQty, scheduled: 0, done: p.done, available: p.qty, deliveryISO: null,
-  }));
+  const pushedRows = pushedAsCascadeRows(extras.pushed);
   // the paint lines' board: what is ready to paint on each line
-  // the machine board only while the plant plans by machine (Settings)
-  const board = settings.machinePlanning ? await getMachineBoard("Painting", [
-    ...queue.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO, dueISO: r.dueISO })),
-    ...pushedRows.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: null })),
-  ], dayISO) : null;
+  // the machine board only while the plant plans by machine (Settings); a
+  // line both in the queue and pushed from the tracker is one line on it
+  const board = settings.machinePlanning ? await getMachineBoard("Painting", queueBoardLines(queue, extras.pushed), dayISO) : null;
   const machines = board?.machines ?? [];
   const assigned = board?.assigned ?? {};
 

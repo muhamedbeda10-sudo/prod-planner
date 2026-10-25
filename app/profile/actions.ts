@@ -7,6 +7,7 @@ import { put, del } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
 import { AVATAR_TYPES, avatarFileError } from "@/lib/domain/avatar";
+import { userMessage } from "@/lib/server/errors";
 
 // A person's own photo for the bar's round button. Only ever their own: the
 // account comes from the session, never from the form. Stored the way note
@@ -64,7 +65,7 @@ export async function setAvatar(formData: FormData): Promise<Result> {
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: `Failed to save the photo: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "save the photo") };
   }
 }
 
@@ -78,6 +79,6 @@ export async function removeAvatar(): Promise<Result> {
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: `Failed to remove the photo: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "remove the photo") };
   }
 }

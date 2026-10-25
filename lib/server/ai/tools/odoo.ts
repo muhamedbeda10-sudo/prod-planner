@@ -5,7 +5,7 @@ import { withLine } from "@/lib/server/line";
 import { readOdooRows, restoreOdooRows, type OdooRowSnapshot } from "@/lib/server/rowSnapshots";
 import { addOdooNote, createOdooEntry, deleteOdooEntry, deleteOdooNote, setOdooFgCode, setOdooMo, setOdooStatus, updateOdooEntry, updateOdooGroup } from "@/app/odoo/actions";
 import { linePermKey } from "@/lib/domain/permissions";
-import { ODOO_STATUSES } from "@/lib/domain/odoo";
+import { ODOO_STATUSES, isDoneStatus } from "@/lib/domain/odoo";
 import { cell } from "@/lib/domain/aiActions";
 import { answerOf, formOf, type WriteTool } from "./types";
 
@@ -42,7 +42,8 @@ export const setOdooStatusTool: WriteTool<{ ids: number[]; status: string }> = {
   title: "Set the status of ODOO rows",
   description: "Move the status of one or more ODOO log rows (Done closes them now; a row Done already keeps the moment it was closed).",
   area: "data",
-  risk: "low",
+  // a closing, or several rows at once, waits for the click
+  risk: (i) => (i.ids.length > 3 || isDoneStatus(i.status) ? "high" : "low"),
   tabs: TABS,
   schema: { type: "object", properties: { ids: IDS, status: STATUS }, required: ["ids", "status"], additionalProperties: false },
   async describe(i, ctx) {
@@ -71,7 +72,7 @@ export const setOdooMoTool: WriteTool<{ ids: number[]; odooMo: string }> = {
   title: "Fill the Odoo MO of ODOO rows",
   description: "Type Odoo's MO number onto one or more ODOO log rows — a row born from a closing waits for it.",
   area: "data",
-  risk: "low",
+  risk: (i) => (i.ids.length > 3 ? "high" : "low"),
   tabs: TABS,
   schema: { type: "object", properties: { ids: IDS, odooMo: { type: "string", minLength: 1, maxLength: 60, description: "Odoo's MO, e.g. SF01/MO/06234." } }, required: ["ids", "odooMo"], additionalProperties: false },
   parse: (r) => ({ ids: r.ids as number[], odooMo: String(r.odooMo).trim().toUpperCase() }),
@@ -110,7 +111,7 @@ export const updateOdooEntryTool: WriteTool<UpdateInput> = {
   title: "Correct an ODOO row",
   description: "Correct one ODOO log row: its day, SOI, product, Odoo MO, quantity or status — only the fields given change.",
   area: "data",
-  risk: "low",
+  risk: (i) => (i.qty !== undefined || (i.status !== undefined && isDoneStatus(i.status)) ? "high" : "low"),
   tabs: TABS,
   schema: {
     type: "object",
@@ -408,7 +409,7 @@ export const updateOdooGroupTool: WriteTool<GroupInput> = {
   description:
     "A merged ODOO line's head, edited as the tab does: the SOI, product, Odoo MO and status land on EVERY row of the line; each row keeps its own day and quantity. A field not given must read the same on every row — it is written to all of them. Undo puts the rows back.",
   area: "data",
-  risk: "low",
+  risk: (i) => (i.ids.length > 3 || (i.status !== undefined && isDoneStatus(i.status)) ? "high" : "low"),
   tabs: TABS,
   schema: {
     type: "object",

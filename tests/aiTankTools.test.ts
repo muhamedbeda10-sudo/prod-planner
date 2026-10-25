@@ -25,7 +25,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/server/auth", () => ({ hasPerm: (_u: unknown, k: string) => h.perms.has(k) }));
 vi.mock("@/lib/server/data", () => ({ getSettings: async () => h.settings }));
-vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChain }));
+vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChain, recheckLvChainLocked: async () => {}, ChainRefused: class extends Error {} }));
 vi.mock("@/lib/server/workers", () => ({
   resolveWorkerByEmpId: async (badge: string, dept: string) => {
     const w = h.workers.get(badge) as { depts: string[]; name: string } | undefined;
@@ -104,6 +104,13 @@ describe("record_leak_test", () => {
     });
   });
 
+  it("carries the day in what is approved: today by default, the day given otherwise", async () => {
+    h.perms.add("leaktest.edit");
+    const i = parsed<Parameters<typeof recordLeakTestTool.describe>[0]>(recordLeakTestTool, raw);
+    expect(await recordLeakTestTool.describe(i, ctx())).toMatchObject({ snapshot: { tanks: [{ serial: "S-001" }, { serial: "S-002" }], date: "2026-10-12" } });
+    expect(await recordLeakTestTool.describe({ ...i, date: "2026-10-10" }, ctx())).toMatchObject({ snapshot: { date: "2026-10-10" } });
+  });
+
   it("runs the leak test's own action and is undone by the tanks as they were", async () => {
     h.perms.add("leaktest.edit");
     const i = parsed<Parameters<typeof recordLeakTestTool.describe>[0]>(recordLeakTestTool, { ...raw, result: "repair", note: "leak at the flange" });
@@ -123,6 +130,9 @@ describe("paint_tanks", () => {
     h.checkOutputChain.mockResolvedValueOnce("Chain check: M1 TN would have 9 painted but only 8 welded.");
     expect(await paintTanksTool.describe({ ...i, serials: ["S-003"] }, ctx())).toEqual({ error: expect.stringContaining("Chain check") });
     expect(await paintTanksTool.describe({ ...i, serials: ["S-003"] }, ctx())).toMatchObject({ summary: "Record S-003 as painted by Mona on 2026-10-12 — 1 Daily log row(s), one per MO (M1 ×1)." });
+    // the day is part of what was approved
+    expect(await paintTanksTool.describe({ ...i, serials: ["S-003"] }, ctx())).toMatchObject({ snapshot: { tanks: [{ serial: "S-003" }], date: "2026-10-12" } });
+    expect(await paintTanksTool.describe({ ...i, serials: ["S-003"], date: "2026-10-10" }, ctx())).toMatchObject({ snapshot: { date: "2026-10-10" } });
     expect(h.checkOutputChain).toHaveBeenLastCalledWith({ dept: "Painting", bom: "B1", mo: "M1", item: "TN", qty: 1 });
     h.actions.paintTanks.mockResolvedValue({ ok: true, count: 1, ledgerIds: [501] });
     expect(await paintTanksTool.execute({ ...i, serials: ["S-003"] }, ctx())).toEqual({ ok: true, message: "1 tank(s) are painted.", undo: { tool: "delete_log_entries", input: { ids: [501] } } });

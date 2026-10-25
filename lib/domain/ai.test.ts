@@ -75,6 +75,36 @@ describe("prepareSql", () => {
       expect("error" in prepareSql(bad)).toBe(true);
     }
   });
+  it("refuses a SELECT that changes the session or holds the connection", () => {
+    for (const bad of [
+      "SELECT set_config('statement_timeout', '0', false)",
+      "SELECT SET_CONFIG ( 'statement_timeout', '0', true ), count(*) FROM \"MasterOrder\"",
+      "SELECT pg_sleep(30)",
+      "SELECT pg_sleep_for('5 minutes')",
+      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity",
+      "SELECT pg_advisory_lock(1)",
+      "SELECT pg_read_file('/etc/passwd')",
+      "SELECT lo_import('/etc/passwd')",
+      "WITH x AS (SELECT dblink_connect('host=evil')) SELECT 1",
+    ]) {
+      const r = prepareSql(bad);
+      expect("error" in r, bad).toBe(true);
+    }
+    // quoted, schema-qualified or commented spellings of the same call are the same call
+    for (const bad of [`SELECT pg_sleep /* x */ (30)`, `SELECT "pg_sleep"(30)`, `SELECT pg_catalog."set_config"('statement_timeout','0',true)`]) {
+      expect("error" in prepareSql(bad), bad).toBe(true);
+    }
+    // a Unicode-escaped name spells the same function where the name list cannot see it
+    for (const bad of [
+      `SELECT U&"pg_advisory_\\006Cock"(52613, 1)`,
+      `SELECT u&"pg_\\0073leep"(30)`,
+      `SELECT U&"set_!0063onfig" UESCAPE '!'('statement_timeout','0',true)`,
+    ]) {
+      expect(prepareSql(bad), bad).toEqual({ error: "Unicode-escaped names are not allowed — write the name plainly." });
+    }
+    // an unrelated column name is still fine
+    expect("sql" in prepareSql(`SELECT "statement_note", sleep_minutes FROM "Settings"`)).toBe(true);
+  });
 });
 
 describe("formatRows / jsonSafe", () => {
@@ -192,6 +222,10 @@ describe("hidden screens close their tables to the assistant", () => {
     expect(blockedTableIn(`SELECT sum(hours) FROM "MachineDowntime"`, blocked)).toBe("MachineDowntime");
     expect(blockedTableIn(`SELECT * FROM "Machine"`, blocked)).toBeNull();
   });
+  it("closes the consumables' headcount with the Consumables screen, and only with it", () => {
+    expect(blockedTableIn(`SELECT * FROM "ConsumableHeadcount"`, blockedTablesFor(new Set(["consumables"])))).toBe("ConsumableHeadcount");
+    expect(blockedTableIn(`SELECT * FROM "ConsumableHeadcount"`, blockedTablesFor(new Set(["odoo"])))).toBeNull();
+  });
   it("refuses the functions that run a query given as text while anything is closed", () => {
     const blocked = blockedTablesFor(new Set(["odoo"]));
     expect(blockedTableIn(`SELECT query_to_xml('select * from "Odoo' || 'Entry"', true, false, '')`, blocked)).not.toBeNull();
@@ -199,5 +233,22 @@ describe("hidden screens close their tables to the assistant", () => {
     expect(blockedTableIn(`SELECT * FROM U&"\\004FdooEntry"`, blocked)).not.toBeNull();
     expect(blockedTableIn(`SELECT * FROM u&"\\004FdooEntry"`, blocked)).not.toBeNull();
     expect(blockedTableIn(`SELECT * FROM U&"\\004FdooEntry"`, [])).toBeNull();
+  });
+  it("refuses the planner's statistics and the table's name as text while anything is closed", () => {
+    const blocked = blockedTablesFor(new Set(["odoo"]));
+    // pg_stats carries sampled values of every column, keyed by the table's name as text
+    expect(blockedTableIn(`SELECT most_common_vals FROM pg_stats WHERE tablename = 'Odoo' || 'Entry'`, blocked)).not.toBeNull();
+    expect(blockedTableIn(`SELECT * FROM pg_catalog.pg_statistic`, blocked)).not.toBeNull();
+    expect(blockedTableIn(`SELECT * FROM pg_stats_ext`, blocked)).not.toBeNull();
+    expect(blockedTableIn(`SELECT histogram_bounds FROM pg_stats WHERE tablename = 'MasterOrder'`, [])).toBeNull();
+    // the closed table's name spelt as a literal reaches the same views
+    expect(blockedTableIn(`SELECT * FROM information_schema.columns WHERE table_name = 'OdooEntry'`, blocked)).toBe("OdooEntry");
+    expect(blockedTableIn(`SELECT * FROM "MasterOrder" WHERE "soi" = 'MasterOrder'`, blocked)).toBeNull();
+    // the catalog names a closed table's columns and row counts — closed too while anything is
+    expect(blockedTableIn(`SELECT column_name FROM information_schema.columns WHERE table_name = 'Odoo' || 'Entry'`, blocked)).not.toBeNull();
+    expect(blockedTableIn(`SELECT relname, reltuples FROM pg_class`, blocked)).not.toBeNull();
+    expect(blockedTableIn(`SELECT relname FROM pg_catalog.pg_class`, [])).toBeNull();
+    // the stop-tracking statistics the app keeps itself are not the planner's
+    expect(blockedTableIn(`SELECT count(*) FROM "MasterOrder" WHERE "status" = 'done'`, blocked)).toBeNull();
   });
 });

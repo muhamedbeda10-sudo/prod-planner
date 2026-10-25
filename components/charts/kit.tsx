@@ -18,12 +18,17 @@ import { ExportButton } from "@/components/ExportButton";
 
 export const CAT = ["var(--viz-1)", "var(--viz-2)", "var(--viz-3)", "var(--viz-4)", "var(--viz-5)", "var(--viz-6)"] as const;
 export const OTHER = "var(--viz-other)";
-/** Ink that clears contrast INSIDE each categorical fill (slot order), then Other. */
-export const INK_ON = ["#ffffff", "#ffffff", "#14201a", "#ffffff", "#14201a", "#14201a"] as const;
-export const INK_ON_OTHER = "#14201a";
+/** Ink that clears contrast INSIDE each categorical fill (slot order), then
+ *  Other — the theme's own (--viz-N-ink), since the dark series are mid-tones
+ *  that white no longer clears. */
+export const INK_ON = ["var(--viz-1-ink)", "var(--viz-2-ink)", "var(--viz-3-ink)", "var(--viz-4-ink)", "var(--viz-5-ink)", "var(--viz-6-ink)"] as const;
+export const INK_ON_OTHER = "var(--viz-other-ink)";
 
 /** The lighter track of the accent a meter, progress bar or dial fills. */
 export const TRACK = "color-mix(in srgb, var(--viz-1) 16%, var(--surface))";
+
+/** Text in a status's own ink — always beside a word that says the same. */
+export const TONE_TEXT = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" } as const;
 
 export const catColor = (i: number) => (i >= 0 && i < CAT.length ? CAT[i] : OTHER);
 export const catInk = (i: number) => (i >= 0 && i < INK_ON.length ? INK_ON[i] : INK_ON_OTHER);

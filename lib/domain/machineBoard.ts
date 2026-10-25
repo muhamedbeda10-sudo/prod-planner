@@ -369,6 +369,27 @@ export function loadTone(load: number | null): "ok" | "warn" | "bad" | null {
 
 export const lineKey = (bom: string, mo: string, item: string) => `${bom}|${mo}|${item}`;
 
+/** One board input per line out of a department's queue and the lines the
+ *  tracker pushed to it. A line on both is ONE line, not two tranches: it
+ *  keeps the queue row (it carries the delivery and due dates) with the larger
+ *  of the two quantities — the queue counts what the stage before has handed
+ *  over, the push what the order still owes this stage, and a push is there
+ *  precisely so the planner can load work the stage before has not reached
+ *  yet. A pushed line the queue has not got is added as it is. Cut's dated
+ *  tranches of one line are a different case and still sum in
+ *  buildMachineBoard. */
+export function mergeQueueAndPushed<Q extends { bom: string; mo: string; item: string; remaining: number }, P extends { bom: string; mo: string; item: string; remaining: number }>(queue: readonly Q[], pushed: readonly P[]): (Q | P)[] {
+  const pushedBy = new Map(pushed.map((p) => [lineKey(p.bom, p.mo, p.item), p]));
+  const inQueue = new Set<string>();
+  const merged: (Q | P)[] = queue.map((q) => {
+    const k = lineKey(q.bom, q.mo, q.item);
+    inQueue.add(k);
+    const p = pushedBy.get(k);
+    return p && p.remaining > q.remaining ? { ...q, remaining: p.remaining } : q;
+  });
+  return [...merged, ...pushed.filter((p) => !inQueue.has(lineKey(p.bom, p.mo, p.item)))];
+}
+
 /** What a department's machines take. The fabrication machines carry SHEET
  *  JOBS — sheets carrying the parts of several projects, typed on the board —
  *  and the panels' punching on the shared punches; a transformer plan line

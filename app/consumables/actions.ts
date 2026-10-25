@@ -231,6 +231,46 @@ class Refused {
   constructor(readonly result: ConsumableActionResult) {}
 }
 
+/** A correction or restore of a saved row, checked against the item's limits
+ *  as a correction is: on the day it was handed out, the row itself left out
+ *  of the count — and written — under the item's lock. A row already over
+ *  keeps its reason only while the change asks no more of the limit. */
+async function writeCheckedChange(
+  prev: IssueRow,
+  next: { itemId: number | null; department: string; qty: number },
+  reason: string | null,
+  data: Omit<Prisma.ConsumableIssueUncheckedUpdateManyInput, "overLimit" | "overLimitReason" | "overLimitNote" | "editedAt" | "editedBy">,
+  revision: ChangeRevision,
+  user: { id: number; name: string },
+  where: { deletedAt?: null },
+  logTag: string
+): Promise<ConsumableActionResult | "ok" | "stale" | "failed"> {
+  const keep = prev.overLimit && keepsOverLimitReason(
+    { itemId: prev.itemId, department: prev.department, qty: prev.qty.toNumber() },
+    next,
+  ) ? prev.overLimitReason : null;
+  try {
+    const out = await prisma.$transaction(async (tx: Tx) => {
+      await lockItemLimits(tx, next.itemId);
+      const breaches = await checkIssueLimits({
+        itemId: next.itemId, department: next.department, workerIds: [], qty: next.qty,
+        dayISO: factoryDayISO(prev.issuedAt), excludeIssueId: prev.id,
+      }, tx);
+      const verdict = overLimitVerdict(breaches, reason, keep);
+      if (verdict.refuse) return new Refused(verdict.refuse);
+      return writeChangeIn(
+        tx, prev.id, prev.updatedAt,
+        { ...data, ...verdict.data!, editedAt: new Date(), editedBy: user.name },
+        revision, user, where
+      );
+    }, { timeout: 15_000 });
+    return out instanceof Refused ? out.result : out;
+  } catch (e) {
+    console.error(logTag, e);
+    return "failed";
+  }
+}
+
 export async function createConsumableIssue(formData: FormData): Promise<ConsumableActionResult> {
   const guard = await requirePerm("consumables.edit");
   if (guard.error) return { ok: false, error: guard.error };
@@ -350,40 +390,13 @@ export async function updateConsumableIssue(formData: FormData): Promise<Consuma
   // a row already over keeps its reason only while the correction asks no
   // more of the limit; anything else over needs a reason of its own
   const itemId = picked.itemId ?? null;
-  const keep = prev.overLimit && keepsOverLimitReason(
-    { itemId: prev.itemId, department: prev.department, qty: prev.qty.toNumber() },
-    { itemId, department, qty: f.qty },
-  ) ? prev.overLimitReason : null;
-
-  // checked on the day it was handed out, the row itself left out of the
-  // count — and written — under the item's lock
-  let done: "ok" | "stale" | "failed";
-  try {
-    const out = await prisma.$transaction(async (tx: Tx) => {
-      await lockItemLimits(tx, itemId);
-      const breaches = await checkIssueLimits({
-        itemId, department, workerIds: [], qty: f.qty,
-        dayISO: factoryDayISO(prev.issuedAt), excludeIssueId: id,
-      }, tx);
-      const verdict = overLimitVerdict(breaches, reason.reason, keep);
-      if (verdict.refuse) return new Refused(verdict.refuse);
-      return writeChangeIn(
-        tx, id, prev.updatedAt,
-        {
-          item: f.item, itemId, ...verdict.data!,
-          qty: new Prisma.Decimal(f.qty), notes: f.notes, department, workerId: receiver!.id,
-          editedAt: new Date(), editedBy: user.name,
-        },
-        { action: "edit", before, after },
-        user
-      );
-    }, { timeout: 15_000 });
-    if (out instanceof Refused) return out.result;
-    done = out;
-  } catch (e) {
-    console.error("updateConsumableIssue", e);
-    done = "failed";
-  }
+  const done = await writeCheckedChange(
+    prev, { itemId, department, qty: f.qty }, reason.reason,
+    { item: f.item, itemId, qty: new Prisma.Decimal(f.qty), notes: f.notes, department, workerId: receiver!.id },
+    { action: "edit", before, after },
+    user, { deletedAt: null }, "updateConsumableIssue"
+  );
+  if (typeof done === "object") return done;
   if (done !== "ok") return { ok: false, error: done === "stale" ? STALE : SAVE_FAILED };
 
   revalidateConsumables();
@@ -422,7 +435,9 @@ export async function deleteConsumableIssue(formData: FormData): Promise<Consuma
  * restore is itself a change: it writes its own revision, so it can be undone
  * the same way. A deleted row comes back onto the log. The worker is restored
  * as he was, even if he has since been deactivated: this is history, not a
- * new hand-out.
+ * new hand-out. The version is checked against the item's limits as a
+ * correction is: one that takes a limit over is not restored without a
+ * reason, and the row's over-limit flag is recomputed either way.
  */
 export async function restoreConsumableRevision(formData: FormData): Promise<ConsumableActionResult> {
   const guard = await requireAdmin();
@@ -438,6 +453,9 @@ export async function restoreConsumableRevision(formData: FormData): Promise<Con
   const target = parseSnapshot(rev.before);
   if (!target) return { ok: false, error: "That version cannot be read back." };
 
+  const reason = readOverLimitReason((n) => formData.get(n));
+  if (reason.error) return { ok: false, error: reason.error };
+
   const prev = await loadIssue(rev.issueId);
   if (!prev) return { ok: false, error: GONE };
   if (prev.updatedAt.getTime() !== version.getTime()) return { ok: false, error: STALE };
@@ -448,23 +466,20 @@ export async function restoreConsumableRevision(formData: FormData): Promise<Con
   // a version restores the item, the quantity, the department and the notes;
   // the worker an older row named is left as it is now
   const who = { workerId: current.workerId, workerEmpId: current.workerEmpId, workerName: current.workerName };
+  // a revision from before the catalogue carries no item link: the row keeps its own
+  const itemId = target.itemId === undefined ? prev.itemId : target.itemId;
 
-  const now = new Date();
-  const done = await writeChange(
-    prev.id, prev.updatedAt,
+  // the version is checked against the limits like a correction would be
+  const done = await writeCheckedChange(
+    prev, { itemId, department: target.department, qty: target.qty }, reason.reason,
     {
-      item: target.item, qty: new Prisma.Decimal(target.qty), notes: target.notes, department: target.department,
-      // a revision from before the catalogue carries no item link: the row keeps its own
-      itemId: target.itemId === undefined ? prev.itemId : target.itemId,
-      editedAt: now, editedBy: user.name, deletedAt: null, deletedBy: null,
+      item: target.item, itemId, qty: new Prisma.Decimal(target.qty), notes: target.notes,
+      department: target.department, deletedAt: null, deletedBy: null,
     },
-    {
-      action: "restore", before: current,
-      after: { ...target, ...who },
-    },
-    user,
-    {}
+    { action: "restore", before: current, after: { ...target, ...who } },
+    user, {}, "restoreConsumableRevision"
   );
+  if (typeof done === "object") return done;
   if (done !== "ok") return { ok: false, error: done === "stale" ? STALE : SAVE_FAILED };
 
   revalidateConsumables();

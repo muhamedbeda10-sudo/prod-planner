@@ -7,6 +7,7 @@ import { serializeWorkerDepts } from "@/lib/server/workers";
 import { snapshotHeadcount } from "@/lib/server/consumableHeadcount";
 import { normalizeEmpId } from "@/lib/domain/tanks";
 import { parseISODate } from "@/lib/domain/dates";
+import { isUniqueViolation, uniqueViolationTarget, userMessage } from "@/lib/server/errors";
 
 // The shop-floor workers list: who can be credited with welding, testing,
 // painting or checking a tank. Deactivating is the way to retire someone —
@@ -30,6 +31,13 @@ async function afterListChange() {
 
 function revalidateWorkers() {
   for (const p of PATHS) revalidatePath(p);
+}
+
+/** Which unique column a save hit when two saves passed the checks above at
+ *  once (Prisma P2002): the ID, or the name. Null for any other error. */
+function duplicateField(e: unknown): "empId" | "name" | null {
+  if (!isUniqueViolation(e)) return null;
+  return uniqueViolationTarget(e).some((col) => col.includes("empId")) ? "empId" : "name";
 }
 
 function readForm(formData: FormData) {
@@ -59,9 +67,16 @@ export async function createWorker(formData: FormData): Promise<WorkerActionResu
     return { ok: false, error: "A worker with this name already exists." };
   }
 
-  await prisma.worker.create({
-    data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts, vacationUntil },
-  });
+  try {
+    await prisma.worker.create({
+      data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts, vacationUntil },
+    });
+  } catch (e) {
+    const dup = duplicateField(e);
+    if (dup === "empId") return { ok: false, error: `ID ${empId} is already taken by another worker.` };
+    if (dup === "name") return { ok: false, error: "A worker with this name already exists." };
+    return { ok: false, error: userMessage(e, "add the worker") };
+  }
   await afterListChange();
   return { ok: true };
 }
@@ -82,10 +97,17 @@ export async function updateWorker(formData: FormData): Promise<WorkerActionResu
   const clash = await prisma.worker.findUnique({ where: { name } });
   if (clash && clash.id !== id) return { ok: false, error: "Another worker already has this name." };
 
-  await prisma.worker.update({
-    where: { id },
-    data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts, vacationUntil },
-  });
+  try {
+    await prisma.worker.update({
+      where: { id },
+      data: { empId, name, jobTitle: jobTitle || null, stamp: stamp || null, depts, vacationUntil },
+    });
+  } catch (e) {
+    const dup = duplicateField(e);
+    if (dup === "empId") return { ok: false, error: `ID ${empId} is already taken by another worker.` };
+    if (dup === "name") return { ok: false, error: "Another worker already has this name." };
+    return { ok: false, error: userMessage(e, "save the worker") };
+  }
   await afterListChange();
   return { ok: true };
 }

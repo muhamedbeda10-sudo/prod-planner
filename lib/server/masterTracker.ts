@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { holdView, type HoldView } from "@/lib/domain/hold";
 import { prisma } from "@/lib/db";
 import { loadMasterOrders, loadSettingsRow } from "./loads";
@@ -50,7 +51,7 @@ export interface MasterTrackerRow {
   pendingQty: { to: number; month: string | null } | null;
 }
 
-export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
+async function computeMasterTracker(): Promise<MasterTrackerRow[]> {
   const [orders, sums, odoo, settings] = await Promise.all([
     loadMasterOrders(),
     prisma.handoverEntry.groupBy({
@@ -126,3 +127,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
     };
   });
 }
+
+/** Computed once per request — the tracker page and the ETA column (via the
+ *  ETA base) both read it, and its ledger aggregate is the page's heaviest read. */
+export const getMasterTracker = cache(computeMasterTracker);

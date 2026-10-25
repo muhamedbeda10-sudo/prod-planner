@@ -61,13 +61,6 @@ export async function getWorkersFor(dept: WorkerDept): Promise<WorkerDTO[]> {
   return rows.map(toDTO).filter((w) => w.depts.includes(dept) && !w.onVacation);
 }
 
-/** The ACTIVE workers of one department INCLUDING those on vacation — the
- *  shift roster lists them (absent by default) so the day still adds up. */
-export async function getRosterFor(dept: WorkerDept): Promise<WorkerDTO[]> {
-  const rows = await prisma.worker.findMany({ where: { active: true }, orderBy: { empId: "asc" } });
-  return rows.map(toDTO).filter((w) => w.depts.includes(dept));
-}
-
 /** Look one worker up for an action, refusing an inactive or unknown id.
  *  `dept` is the department the action credits them in. */
 export async function resolveWorker(

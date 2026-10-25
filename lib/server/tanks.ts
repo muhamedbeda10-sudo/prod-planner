@@ -374,7 +374,8 @@ async function tanksOfLedgerRow(
   return tx.tankUnit.findMany({
     where: {
       mo: entry.mo,
-      ...(painting ? { status: TANK_QUEUE_STATUS.finished } : { weldLedgerId: null }),
+      // only tanks no live row accounts for — a linked row's tanks are its own
+      ...(painting ? { status: TANK_QUEUE_STATUS.finished, paintLedgerId: null } : { weldLedgerId: null }),
     },
     orderBy: { seq: "desc" },
     take: Math.max(0, Math.trunc(entry.qty)),
@@ -442,6 +443,45 @@ export async function syncTanksToLedgerQty(
   }
   await tx.tankUnit.deleteMany({ where: { id: { in: drop.map((t) => t.id) } } });
   return { removed: drop.length };
+}
+
+/**
+ * Move a log row's tanks to the row's NEW date. A welding row's tanks were
+ * welded on the row's day and a painting row's were painted on it, so re-dating
+ * the row re-dates that stage — the tank page, the leak-test queue's order and
+ * the barcode sheet otherwise keep telling the old day while the Daily log
+ * tells the new one. The stage's event moves with it; later stages (the leak
+ * test, QA) happened when they happened and stay. An older row that no tank
+ * is linked to moves no tank: which of the MO's tanks it made is not known.
+ */
+export async function syncTanksToLedgerDate(
+  tx: Prisma.TransactionClient,
+  entry: { id: number; dept: string; mo: string | null; item: string; qty: number; date: Date },
+  date: Date
+): Promise<{ redated: number }> {
+  if (entry.item !== TANK_ITEM) return { redated: 0 };
+  if (entry.dept !== "Welding" && entry.dept !== "Painting") return { redated: 0 };
+  if (date.getTime() === entry.date.getTime()) return { redated: 0 };
+
+  // only the tanks linked to THIS row: the guess used for an older unlinked
+  // row (the MO's newest tanks) is fine for giving pieces back, but would
+  // move another row's tanks to this row's day
+  const painting = entry.dept === "Painting";
+  const tanks = await tx.tankUnit.findMany({
+    where: painting ? { paintLedgerId: entry.id } : { weldLedgerId: entry.id },
+    select: { id: true },
+  });
+  if (tanks.length === 0) return { redated: 0 };
+  const ids = tanks.map((t) => t.id);
+  await tx.tankUnit.updateMany({
+    where: { id: { in: ids } },
+    data: painting ? { paintedAt: date } : { weldedAt: date },
+  });
+  await tx.tankEvent.updateMany({
+    where: { tankId: { in: ids }, kind: painting ? "painted" : "welded" },
+    data: { at: date },
+  });
+  return { redated: tanks.length };
 }
 
 /**

@@ -13,6 +13,10 @@ function Placeholder({ h }: { h: number }) {
   return <div className="rounded-xl bg-surface-2/60 animate-pulse" style={{ height: h }} aria-hidden />;
 }
 
+export const BurnUpChart = dynamic(() => import("./CockpitCharts").then((m) => m.BurnUpChart), { ssr: false, loading: () => <Placeholder h={260} /> });
+export const LoadChart = dynamic(() => import("./CockpitCharts").then((m) => m.LoadChart), { ssr: false, loading: () => <Placeholder h={270} /> });
+export const OutputChart = dynamic(() => import("./CockpitCharts").then((m) => m.OutputChart), { ssr: false, loading: () => <Placeholder h={290} /> });
+export const PaceMultiples = dynamic(() => import("./CockpitCharts").then((m) => m.PaceMultiples), { ssr: false, loading: () => <Placeholder h={260} /> });
 export const SheetsPerDayChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.SheetsPerDayChart), { ssr: false, loading: () => <Placeholder h={260} /> });
 export const ThicknessChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.ThicknessChart), { ssr: false, loading: () => <Placeholder h={220} /> });
 export const OdooDashboard = dynamic(() => import("./OdooDashboard").then((m) => m.OdooDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });

@@ -24,6 +24,9 @@ export interface OrderRow {
   remarks: string | null;
   source: string | null;
   createdAt: string; // ISO
+  /** When the row was last written (ISO) — the edit form posts it back, so a
+   *  save from a row someone else changed meanwhile is refused, not written. */
+  updatedAt: string;
   /** The LV panels' own columns — empty on a transformer. */
   product: string | null;
   secItem: string | null;
@@ -327,7 +330,9 @@ function EditRow({ r, lv, pending, err, onSave, onCancel }: { r: OrderRow; lv: b
   return (
     <tr className="bg-brand-light/30 align-top" onKeyDown={keys}>
       <td className="p-2 text-center">
-        <form id={formId} onSubmit={(e) => { e.preventDefault(); onSave(e.currentTarget); }} />
+        <form id={formId} onSubmit={(e) => { e.preventDefault(); onSave(e.currentTarget); }}>
+          <input type="hidden" name="updatedAt" value={r.updatedAt} />
+        </form>
       </td>
       <td className="p-2 font-bold whitespace-nowrap text-xs">{r.mo}</td>
       <td className="p-1"><input form={formId} name="bom" defaultValue={r.bom} required aria-label="BOM" className={`${cell} font-bold uppercase ltr`} autoFocus /></td>

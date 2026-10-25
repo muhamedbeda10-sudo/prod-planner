@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseCellDate, parseHandoverGrid, validateHandoverRow } from "./importHandover";
+import { parseCellDate, parseHandoverGrid, validateHandoverRow, type HandoverImportRow } from "./importHandover";
 import { excelSerialToDate, toDisplayDate } from "./dates";
 
 describe("parseCellDate", () => {
@@ -87,5 +87,28 @@ describe("validateHandoverRow", () => {
     expect(validateHandoverRow({ ...base, date: null })).toMatch(/date/i);
     expect(validateHandoverRow({ ...base, planNo: null })).toMatch(/week\/plan/i);
     expect(validateHandoverRow(base)).toBeNull();
+  });
+});
+
+describe("parseHandoverGrid — numbers and identities as the other sheets read them", () => {
+  it('reads "1,200" as twelve hundred, and keeps the MO as the sheet spells it', () => {
+    const { rows } = parseHandoverGrid([
+      ["Date", "DEPT", "BOM", "MO", "Item", "QTY", "Week"],
+      [46207, "Cut", "12011E14M12", "SF01/MO/31429", "TN", "1,200", 27],
+      [46207, "Cut", "12011E14M12", "SF01/MO/31429", "TN", "5 (rework)", 27],
+    ]);
+    expect(rows[0]).toMatchObject({ mo: "SF01/MO/31429", qty: 1200 });
+    expect(rows[1].qty).toBe(5);
+  });
+});
+
+describe("validateHandoverRow — one stage rule for every path that records output", () => {
+  const row = (dept: string, item: string): HandoverImportRow => ({ rowNum: 7, date: new Date("2026-10-05T00:00:00Z"), dept, bom: "B-1", mo: "MO-1", item, qty: 3, planNo: 41 });
+  it("refuses the core as painted, as every other recording path does", () => {
+    expect(validateHandoverRow(row("Painting", "CF"))).toBe("CF is shot blasted, not painted — record it on the SHB cell (row 7)");
+  });
+  it("lets the painted components and the core's other stages through", () => {
+    expect(validateHandoverRow(row("Painting", "TN"))).toBeNull();
+    expect(validateHandoverRow(row("Welding", "CF"))).toBeNull();
   });
 });

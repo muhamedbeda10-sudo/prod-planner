@@ -112,6 +112,19 @@ describe("getWeeklyPlanTracker — outsourced (OSP) pieces", () => {
     expect(t.days[0].covered).toBe(5); // arrives without our departments working
   });
 
+  it("measures an order with a quantity against all of it — the OSP pieces are not taken off twice", async () => {
+    // 10 TN, 4 bought out, nothing painted here yet: the promise of 10 is 4/10 met, not 4/6
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1", { planQty: 10, ospTN: 4 })]);
+    h.prisma.planSchedule.findMany.mockResolvedValue([sched("MO-1", "TN", 10, D1)]);
+
+    const t = await getWeeklyPlanTracker(34);
+    const cell = t.days[0].rows[0].items.TN!;
+
+    expect(cell).toMatchObject({ req: 10, over: 0, osp: 4, finish: 4 });
+    expect(t.days[0].req).toBe(10);
+    expect(t.covered).toBe(4);
+  });
+
   it("waterfalls the OSP credit to the earliest promise first", async () => {
     h.prisma.masterOrder.findMany.mockResolvedValue([order("MO-1", { ospCB: 5 })]);
     h.prisma.planSchedule.findMany.mockResolvedValue([

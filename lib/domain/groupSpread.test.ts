@@ -100,6 +100,16 @@ describe("isFullyDelivered — which orders the bulk close may touch", () => {
     expect(isFullyDelivered(10, [line(10, false)])).toBe(false);
     expect(isFullyDelivered(10, [])).toBe(false);
   });
+
+  it("judges a component against what the plant makes of it — the outsourced share is never delivered here", () => {
+    // 10 ordered, 4 of the core bought out: 6 delivered closes the core's line
+    expect(isFullyDelivered(10, [{ counts: true, delivered: 6, osp: 4 }, line(10)])).toBe(true);
+    expect(isFullyDelivered(10, [{ counts: true, delivered: 5, osp: 4 }, line(10)])).toBe(false);
+    // a component bought out in full owes nothing and does not count
+    expect(isFullyDelivered(10, [{ counts: true, delivered: 0, osp: 10 }, line(10)])).toBe(true);
+    // …but an order made of nothing but bought-out parts is nobody's to close by the bulk action
+    expect(isFullyDelivered(10, [{ counts: true, delivered: 0, osp: 10 }])).toBe(false);
+  });
 });
 
 describe("capsFor — the chain guard as room to move", () => {

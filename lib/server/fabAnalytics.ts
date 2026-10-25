@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { getActiveLine } from "./line";
 import { buildMaterialDashboard, type DoneRow, type MaterialDashboard, type SheetLine } from "@/lib/domain/materialDashboard";
-import { factoryDayISO, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, factoryToday, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 
 // The material dashboard's one query pair: every MO closed on Odoo, and every
@@ -31,8 +31,7 @@ export interface MaterialDashboardData extends MaterialDashboard {
 export async function getMaterialDashboard(windowDays: Window): Promise<MaterialDashboardData> {
   let from: Date | null = null;
   if (windowDays > 0) {
-    from = new Date();
-    from.setUTCHours(0, 0, 0, 0);
+    from = factoryToday();
     from.setUTCDate(from.getUTCDate() - windowDays);
   }
 

@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { itemHoursFor, stageShares, tierForOrder } from "@/lib/domain/stdEngine";
-import { boardTakesLine, buildMachineBoard, lineKey, type Assignment, type BoardLine, type LinePlacement, type MachineBoard } from "@/lib/domain/machineBoard";
+import { boardTakesLine, buildMachineBoard, lineKey, mergeQueueAndPushed, type Assignment, type BoardLine, type LinePlacement, type MachineBoard } from "@/lib/domain/machineBoard";
 import { hoursOfShift, isShiftCode, round1, routeFor } from "@/lib/domain/shifts";
 import { dateForOffsetISO, offsetForDateISO } from "@/lib/domain/whatif";
 import { boardPins, type OptLine, type OptMachine, type OptPin } from "@/lib/domain/optimizePlan";
@@ -10,7 +10,8 @@ import { getStdData } from "./standardTimes";
 import { getAllMachines, type MachineDTO } from "./machines";
 import { getMachineItemTimes } from "./machineTimes";
 import { getPaintingQueue, getWeldingQueue } from "./execution";
-import { getWorklistExtras } from "./worklistExtras";
+import type { WeldQueueRow } from "@/lib/domain/execution";
+import { getWorklistExtras, type PushedLineDTO } from "./worklistExtras";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
 import { downtimeHoursInRange, downtimeWindowWhere } from "@/lib/domain/downtimePeriods";
 import { loadHolidays, loadMasterOrdersOf } from "./loads";
@@ -79,6 +80,16 @@ export interface MachineBoardData extends MachineBoard {
 }
 
 const dayOf = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
+
+/** A Welding or Painting board's lines: the department's queue and the lines
+ *  the tracker pushed to it, a line on both counted once (at the larger of
+ *  the two quantities — see mergeQueueAndPushed). */
+export function queueBoardLines(queue: readonly WeldQueueRow[], pushed: readonly PushedLineDTO[]): BoardLineInput[] {
+  return mergeQueueAndPushed(
+    queue.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO, dueISO: r.dueISO })),
+    pushed.map((p) => ({ bom: p.bom, mo: p.mo, item: p.item, description: p.description, remaining: p.qty, deliveryISO: null })),
+  );
+}
 
 /** How far ahead the board's timeline is drawn — four working weeks is more
  *  than any queue a planner works with, and the picture zooms into it. */
@@ -368,10 +379,7 @@ async function transformerBoardLines(dept: BoardDept, dayISO: string): Promise<B
   if (dept === "Cut") return [];
   if (dept === "ShotBlast") return [];
   const [queue, extras] = await Promise.all([dept === "Welding" ? getWeldingQueue(day) : getPaintingQueue(day), getWorklistExtras(dept)]);
-  return [
-    ...queue.map((r) => ({ bom: r.bom, mo: r.mo, item: r.item, description: r.description, remaining: r.available, deliveryISO: r.deliveryISO, dueISO: r.dueISO })),
-    ...extras.pushed.map((p) => ({ bom: p.bom, mo: p.mo, item: p.item, description: p.description, remaining: p.qty, deliveryISO: null })),
-  ];
+  return queueBoardLines(queue, extras.pushed);
 }
 
 /** The panels on a bay: punching on the fabrication bay's punches, welding

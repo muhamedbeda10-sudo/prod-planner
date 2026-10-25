@@ -3,7 +3,7 @@ const h = vi.hoisted(() => ({ totals: vi.fn(), entries: vi.fn(), stops: vi.fn() 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: { deptDayHours: { findMany: h.totals }, shiftEntry: { groupBy: h.entries }, machineDowntime: { groupBy: h.stops } } }));
 vi.mock("@/lib/server/data", () => ({ getShiftHours: async () => ({ short: 8, long: 8, overtime: 3, nightOvertime: 3 }) }));
-vi.mock("@/lib/server/workers", () => ({ getRosterFor: vi.fn() }));
+vi.mock("@/lib/server/workers", () => ({ getAllWorkers: vi.fn() }));
 vi.mock("@/lib/server/standardTimes", () => ({ getStageCapacity: vi.fn() }));
 import { getShiftHistory } from "@/lib/server/shifts";
 const day = (s: string) => new Date(`${s}T00:00:00Z`);

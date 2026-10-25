@@ -8,6 +8,7 @@ import { deleteOrders, removeOrderMonth, setGroupFins, updateOrder } from "@/app
 import { finsGroup, spreadOverGroup } from "@/lib/domain/groupSpread";
 import { cell, type AiChange } from "@/lib/domain/aiActions";
 import { formOf, type ToolCtx, type WriteTool } from "./types";
+import { ORDER_TEXT_FIELDS as TEXT_FIELDS, ORDER_TEXT_KEYS as TEXTS, type OrderTextField as TextField } from "@/lib/domain/orderFields";
 
 // The Orders Registry for the assistant, beside the tracker's own tools: an
 // admin's edit of an order's plan fields, a plan month taken off an order,
@@ -27,22 +28,6 @@ function adminDenied(ctx: ToolCtx): string | null {
 
 // ------------------------------------------------------------- the edit
 
-/** The registry row's fields, as its edit form posts them. */
-const TEXT_FIELDS = {
-  soi: { max: 40, label: "SOI" },
-  customer: { max: 80, label: "Customer" },
-  fgCode: { max: 40, label: "FG code" },
-  kva: { max: 20, label: "kVA" },
-  rating: { max: 40, label: "Rating" },
-  colorRal: { max: 40, label: "Colour (RAL)" },
-  remarks: { max: 400, label: "Remarks" },
-  product: { max: 20, label: "Product" },
-  secItem: { max: 40, label: "Secondary item" },
-  materialsRemarks: { max: 400, label: "Materials remarks" },
-} as const;
-type TextField = keyof typeof TEXT_FIELDS;
-const TEXTS = Object.keys(TEXT_FIELDS) as TextField[];
-
 interface OrderEditInput {
   mo: string;
   bom?: string;
@@ -61,11 +46,16 @@ interface OrderEditInput {
   materialsRemarks?: string;
 }
 
-type OrderForm = Required<Omit<OrderEditInput, TextField>> & Record<TextField, string>;
+/** The fields plus the row's `updatedAt` as read (ISO): the action writes only
+ *  while the order still reads so, as the registry's own form does. */
+type OrderForm = Required<Omit<OrderEditInput, TextField>> & Record<TextField, string> & { updatedAt: string };
 
 /** The whole form the registry posts: what is given, the order's own values for the rest. */
 function formFor(o: MasterOrder, i: OrderEditInput): OrderForm {
-  const out = { mo: o.mo, bom: i.bom ?? o.bom, planQty: i.planQty ?? o.planQty, urgent: i.urgent ?? o.urgent, ospEncloser: i.ospEncloser ?? o.ospEncloser } as OrderForm;
+  const out = {
+    mo: o.mo, bom: i.bom ?? o.bom, planQty: i.planQty ?? o.planQty, urgent: i.urgent ?? o.urgent, ospEncloser: i.ospEncloser ?? o.ospEncloser,
+    updatedAt: o.updatedAt.toISOString(),
+  } as OrderForm;
   for (const k of TEXTS) out[k] = i[k] !== undefined ? i[k]! : (o[k] ?? "");
   return out;
 }
@@ -73,7 +63,7 @@ function formFor(o: MasterOrder, i: OrderEditInput): OrderForm {
 /** What the order reads now, field by field, as the form would post it back. */
 const asForm = (o: MasterOrder): OrderForm => formFor(o, { mo: o.mo });
 
-const FIELD_LABEL: Record<keyof Omit<OrderForm, "mo">, string> = {
+const FIELD_LABEL: Record<keyof Omit<OrderForm, "mo" | "updatedAt">, string> = {
   bom: "BOM", planQty: "Plan qty", urgent: "Urgent", ospEncloser: "OSP enclosures",
   ...Object.fromEntries(TEXTS.map((k) => [k, TEXT_FIELDS[k].label])) as Record<TextField, string>,
 };

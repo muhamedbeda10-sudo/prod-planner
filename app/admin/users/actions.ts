@@ -120,7 +120,24 @@ export async function deleteUser(formData: FormData): Promise<UserActionResult> 
   if (!target) return { ok: false, error: "User not found." };
   if (target.id === guard.user!.id || target.isOwner) return { ok: false, error: "The owner's account cannot be deleted." };
 
-  await prisma.user.delete({ where: { id } }); // sessions go with it (cascade)
+  // Their chat messages (other people's threads included), the assistant's
+  // log of what it did for them, their automations' runs and their places on
+  // tasks would go with the account (cascade) — that history keeps its person, so the account is
+  // deactivated instead. Mirrors deleteWorker / deleteMachine.
+  const [onChat, onAi, onRuns, onTasks] = await Promise.all([
+    prisma.chatMessage.count({ where: { OR: [{ fromId: id }, { toId: id }] } }),
+    prisma.aiAction.count({ where: { userId: id } }),
+    prisma.automationRun.count({ where: { automation: { ownerId: id } } }),
+    prisma.taskAssignee.count({ where: { userId: id } }),
+  ]);
+  if (onChat > 0 || onAi > 0 || onRuns > 0 || onTasks > 0) {
+    return {
+      ok: false,
+      error: `They are on ${onChat} chat message(s), ${onAi} assistant change(s), ${onRuns} automation run(s) and ${onTasks} task(s) — deactivate the account instead of deleting it, so that history keeps its person.`,
+    };
+  }
+
+  await prisma.user.delete({ where: { id } }); // sessions, settings and automations go with it (cascade)
   revalidatePath("/admin/users");
   return { ok: true };
 }

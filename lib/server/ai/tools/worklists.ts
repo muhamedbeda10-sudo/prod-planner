@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { hasPerm } from "@/lib/server/auth";
 import { getSettings } from "@/lib/server/data";
 import { getCutSheet } from "@/lib/server/execution";
+import { orderLineError } from "@/lib/server/returns";
 import { chatFile, uploadOf } from "@/lib/server/ai/files";
 import {
   cancelReturn, readQueueNote, readReturn, readWorklistDates, reopenReturn, restoreQueueNote, restoreWorklistDates,
@@ -125,7 +126,8 @@ export const setWorklistDateTool: WriteTool<DateInput> = {
   description:
     "An admin's re-dating on the fabrication worklist (the plan itself is never touched; clear_worklist_date reverts it). A plan tranche moves whole: origISO its original plan date, date the new one. A date-less line is scheduled in parts: origISO \"\", date the day and qty the pieces of its open pool (the same day again replaces that day's pieces); or fromISO the day of a part already scheduled, to move that part (its pieces with it) to date. Read get_cut_worklist first.",
   area: "tracker",
-  risk: "low",
+  // a part scheduled by quantity waits for the click; a whole tranche moved does not
+  risk: (i) => (i.qty !== undefined ? "high" : "low"),
   schema: {
     type: "object",
     properties: {
@@ -658,6 +660,8 @@ export const returnToUpstreamTool: WriteTool<ReturnInput> = {
     if (i.item === TANK_ITEM && i.fromDept === "Painting" && (await getSettings()).tankTracking) {
       return { error: "A tank goes back to welding by its serial — use send_tank_back_to_welding." };
     }
+    const lineError = await orderLineError(i.bom, i.mo ?? null);
+    if (lineError) return { error: lineError };
     const w = await waiting(i);
     const free = Math.max(0, w.up - w.here);
     if (i.qty > free) return { error: `Only ${cell(free)} pcs of ${lineName(i)} wait in the ${i.fromDept} queue — cannot send back ${cell(i.qty)}.` };

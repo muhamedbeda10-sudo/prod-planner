@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
 import type { ConsumableRevisionView } from "@/lib/server/consumables";
+import { OVER_LIMIT_REASON_MIN } from "@/lib/domain/consumables";
 import { restoreConsumableRevision } from "@/app/consumables/actions";
+import { SAVE_UNCONFIRMED } from "@/components/ui";
 
 // What the CONSUMABLES log and the admin's Edits view share: running a server
 // action with its message, and one line of a row's history with its Restore.
@@ -18,13 +20,19 @@ export function useConsumableAction() {
   const run = useCallback(
     (fn: ActionFn, fd: FormData, okText: string, after?: (res: ConsumableActionResultLike) => void, onFail?: (res: ConsumableActionResultLike) => void) => {
       startTransition(async () => {
-        const res = await fn(fd);
-        setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
-        if (res.ok) {
-          after?.(res);
-          router.refresh();
-        } else {
-          onFail?.(res);
+        // A rejected action must stay a message here, not reach the route's
+        // error boundary — that replaces the whole log and claims nothing changed.
+        try {
+          const res = await fn(fd);
+          setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
+          if (res.ok) {
+            after?.(res);
+            router.refresh();
+          } else {
+            onFail?.(res);
+          }
+        } catch {
+          setMsg({ ok: false, text: SAVE_UNCONFIRMED });
         }
       });
     },
@@ -48,10 +56,27 @@ export function RevisionPill({ action }: { action: ConsumableRevisionView["actio
 /**
  * One change to a row: who, when, what changed (before → after), and — for
  * the admin — "Restore" to put the row back the way it read before it.
- * `version` is the row's current optimistic-lock token.
+ * `version` is the row's current optimistic-lock token. A version that takes
+ * a limit over is not restored without a reason: the server refuses it with
+ * the breaches, and the admin is asked for the reason, then it is sent again.
  */
 export function RevisionItem({ r, version, deleted }: { r: ConsumableRevisionView; version: string; deleted?: boolean }) {
   const act = useConsumableAction();
+  const restore = (reason?: string) => {
+    const fd = new FormData();
+    fd.set("revisionId", String(r.id));
+    fd.set("version", version);
+    if (reason) fd.set("overLimitReason", reason);
+    act.run(restoreConsumableRevision, fd, reason ? "Restored over the limit — flagged with your reason." : "Restored.", undefined, (res) => {
+      if (!res.needsReason || !res.breaches) return;
+      const why = prompt(
+        `⚠ This version takes ${res.breaches.length > 1 ? `${res.breaches.length} limits` : "a limit"} over — it is not restored without a reason.\n\n${res.breaches.join("\n")}` +
+        `${reason && res.error ? `\n\n${res.error}` : ""}\n\nReason — required (at least ${OVER_LIMIT_REASON_MIN} characters):`,
+        reason ?? ""
+      );
+      if (why !== null) restore(why);
+    });
+  };
   return (
     <li className="py-1.5 border-t first:border-t-0">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -64,10 +89,7 @@ export function RevisionItem({ r, version, deleted }: { r: ConsumableRevisionVie
             title="Put the row back the way it read before this change — the restore is itself kept in the history"
             onClick={() => {
               if (!confirm(`Restore this version?\n\n${r.before}${deleted ? "\n\nThe row is deleted — it comes back onto the log." : ""}`)) return;
-              const fd = new FormData();
-              fd.set("revisionId", String(r.id));
-              fd.set("version", version);
-              act.run(restoreConsumableRevision, fd, "Restored.");
+              restore();
             }}
           >
             ↺ Restore this version

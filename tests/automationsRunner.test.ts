@@ -60,7 +60,13 @@ const auto = (o: Partial<Automation> = {}): Automation => ({
   recipientIds: [9], lastKeys: [], nextRunAt: now, lastRunAt: null, lastCheckAt: null, lastStatus: null, lastNote: null, failures: 0,
   lockedUntil: null, deletedAt: null, createdBy: "Sara (AI)", updatedBy: null, createdAt: now, updatedAt: now, ...o,
 });
-const lastUpdate = () => h.prisma.automation.update.mock.calls.at(-1)![0].data;
+/** The data of the last write to the automation's row — the schedule goes
+ *  through updateMany (kept only while the row is as it was), the rest through update. */
+const lastUpdate = () => {
+  const of = (m: ReturnType<typeof vi.fn>) => m.mock.calls.map((c, i) => ({ data: c[0].data, n: m.mock.invocationCallOrder[i] }));
+  return [...of(h.prisma.automation.update), ...of(h.prisma.automation.updateMany)].sort((a, b) => a.n - b.n).at(-1)!.data;
+};
+const askAnswer = { added: [], tokens: { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 }, calls: 1, queries: 0, changes: 0, stop: "end_turn", text: "Report" };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -78,6 +84,7 @@ beforeEach(() => {
   h.prisma.automationRun.create.mockResolvedValue({ id: 50 });
   h.prisma.aiUsage.create.mockResolvedValue({ id: 70 });
   h.prisma.automation.update.mockResolvedValue({});
+  h.prisma.automation.updateMany.mockResolvedValue({ count: 1 });
   h.deliverToInbox.mockImplementation(async (items: unknown[]) => items.map((_, i) => 100 + i));
   h.toolsFor.mockReturnValue([{ kind: "read", name: "query_database" }]);
 });
@@ -182,6 +189,14 @@ describe("a test run", () => {
     expect(h.deliverToInbox.mock.calls[0][0][0]).toMatchObject({ userId: 1, title: "[Test] \u2068Late welding\u2069" });
     expect(lastUpdate()).toEqual({ lockedUntil: null });
   });
+
+  it("a test of an act automation prepares its changes and runs none of them unasked", async () => {
+    h.perms.add("ai.automations.act");
+    h.ask.mockResolvedValue(askAnswer);
+    await runAutomation(auto({ action: "act", message: null, prompt: "Move held orders' dates", recipientIds: [] }), { cause: "manual", now, testTo: { ...owner, id: 1, name: "Owner" } as never });
+    expect(h.ask).toHaveBeenCalledTimes(1);
+    expect(h.ask.mock.calls[0][0]).toMatchObject({ allowAuto: false });
+  });
 });
 
 describe("a tick", () => {
@@ -193,9 +208,35 @@ describe("a tick", () => {
 
   it("runs what is due, each claimed first so two ticks never run it twice", async () => {
     h.prisma.automation.findMany.mockResolvedValue([auto({ id: 3 }), auto({ id: 4 })]);
-    h.prisma.automation.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    // #4's claim fails: another tick has it
+    const isClaim = (data: Record<string, unknown>) => Object.keys(data).length === 1 && "lockedUntil" in data;
+    h.prisma.automation.updateMany.mockImplementation(async ({ where, data }: { where: { id: number }; data: Record<string, unknown> }) => ({ count: isClaim(data) && where.id === 4 ? 0 : 1 }));
     expect(await runDueAutomations({ now, deadline: Date.now() + 60_000 })).toEqual({ ran: 1, checked: 0 });
     expect(h.deliverToInbox).toHaveBeenCalledTimes(1);
+    // the claim is for the row as fetched: one another tick ran meanwhile (nextRunAt moved on) is not due any more
+    expect(h.prisma.automation.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: 3, nextRunAt: now, enabled: true }, data: { lockedUntil: expect.any(Date) } });
+  });
+
+  it("gives a run started late in the tick only the time the tick has left", async () => {
+    h.ask.mockResolvedValue(askAnswer);
+    const deadline = Date.now() + 100_000;
+    await runAutomation(auto({ action: "report", message: null, prompt: "Welding vs plan" }), { cause: "schedule", now, deadline });
+    const t = h.ask.mock.calls[0][0].timeoutMs as number;
+    expect(t).toBeGreaterThan(140_000);
+    expect(t).toBeLessThanOrEqual(150_000);
+    expect(h.ask.mock.calls[0][0]).not.toHaveProperty("allowAuto");
+  });
+
+  it("keeps a time or condition saved while the run was going, instead of writing the old schedule back", async () => {
+    // the row moved on (nextRunAt changed by an edit): the schedule write finds nothing
+    h.prisma.automation.updateMany.mockResolvedValue({ count: 0 });
+    expect(await runAutomation(auto(), { cause: "schedule", now })).toBe(true);
+    const schedule = h.prisma.automation.updateMany.mock.calls.at(-1)![0];
+    expect(schedule).toMatchObject({ where: { id: 3, nextRunAt: now }, data: { lastStatus: "ok", nextRunAt: new Date("2026-10-13T04:30:00Z") } });
+    // the run's own record is still written — without touching the schedule
+    const fallback = h.prisma.automation.update.mock.calls.at(-1)![0];
+    expect(fallback.data).toMatchObject({ lastStatus: "ok", failures: 0, lockedUntil: null });
+    expect(fallback.data).not.toHaveProperty("nextRunAt");
   });
 });
 
