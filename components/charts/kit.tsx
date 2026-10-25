@@ -27,6 +27,9 @@ export const INK_ON_OTHER = "var(--viz-other-ink)";
 /** The lighter track of the accent a meter, progress bar or dial fills. */
 export const TRACK = "color-mix(in srgb, var(--viz-1) 16%, var(--surface))";
 
+/** Text in a status's own ink — always beside a word that says the same. */
+export const TONE_TEXT = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" } as const;
+
 export const catColor = (i: number) => (i >= 0 && i < CAT.length ? CAT[i] : OTHER);
 export const catInk = (i: number) => (i >= 0 && i < INK_ON.length ? INK_ON[i] : INK_ON_OTHER);
 

@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-cockpit-charts",
+    dateISO: "2026-10-25",
+    title: "The cockpit in charts: the week's burn-up, the month's pace, each day's output and more",
+    where: "Plan Tracker → Cockpit",
+    href: "/",
+    body: "Every cockpit card now answers with a chart, its numbers still one click away under Table: the week's plan as a burn-up (asked against finished, summed day by day — the gap is what is behind); the crunch as a centre's running load against what it can work, the short days shaded, beside every centre's status; two new cards — the month's pace (each centre's share of the month's plan done, against where an even pace stands today) and each day's output in standard hours by department against the man-hours booked; the people as bullets (who comes against who is needed); each centre's efficiency day by day, one small chart each against the standard; and the stops ranked as a Pareto. The headline figures now read against a week ago, ▲ or ▼. The assistant reads the same new figures.",
+  },
+  {
     id: "2026-10-25-second-pass-queues-lv-tanks-trace-limits",
     dateISO: "2026-10-25",
     title: "A second pass: live queues only, panels stay on the LV line, tanks follow their rows, and exports carry everything",

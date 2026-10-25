@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  byStage, centreStat, cockpitActions, combinedStat, workingDaysFrom, earnedOfRecord, efficiencyBand, inMonthPlan, isFloorAction, lateLines, loadAhead, loadTone, manpowerPlan, parseKpiSnapshot,
+  burnUp, byStage, centreStat, cockpitActions, combinedStat, dailyOutput, workingDaysFrom, earnedOfRecord, efficiencyBand, inMonthPlan, isFloorAction, lateLines, loadAhead, loadSeries, loadTone,
+  manpowerPlan, monthPace, paretoOf, parseKpiSnapshot, weekChange,
   planAdherence, stageDueISO, weldingCoverage, zeroCentres, type CentreDay, type PlanCell,
 } from "./kpis";
 
@@ -204,11 +205,80 @@ describe("the month's manpower", () => {
   });
 });
 
+describe("the charts' series", () => {
+  it("sums the week's plan and what is finished day by day", () => {
+    const b = burnUp([
+      { iso: "2026-10-22", label: "Thu", req: 10, covered: 8, isToday: false },
+      { iso: "2026-10-24", label: "Sat", req: 5, covered: 5, isToday: true },
+      { iso: "2026-10-25", label: "Sun", req: 6, covered: 1, isToday: false },
+    ]);
+    expect(b.map((d) => [d.planCum, d.doneCum])).toEqual([[10, 8], [15, 13], [21, 14]]);
+    expect(b[1].isToday).toBe(true);
+  });
+  it("keeps the running totals unrounded until shown, so a day that is not short never reads as short", () => {
+    const l = loadAhead("Welding", ["2026-10-20", "2026-10-21", "2026-10-22"], [{ dayISO: "2026-10-22", dueH: 100 }], 100 / 3);
+    expect(loadSeries(l).at(-1)).toMatchObject({ owedCum: 100, canCum: 100, tone: "warn" });
+  });
+  it("runs a centre's load as what it owes so far against what it could have worked so far", () => {
+    const l = loadAhead("Welding", ["2026-10-20", "2026-10-21", "2026-10-22"], [{ dayISO: "2026-10-20", dueH: 80 }, { dayISO: "2026-10-22", dueH: 40 }], 50);
+    expect(loadSeries(l).map((d) => [d.owedCum, d.canCum, d.tone])).toEqual([[80, 50, "bad"], [80, 100, null], [120, 150, null]]);
+    // no capacity to judge by: the owed line alone
+    expect(loadSeries(loadAhead("Painting", ["2026-10-20"], [{ dayISO: "2026-10-20", dueH: 5 }], null))[0]).toMatchObject({ owedCum: 5, canCum: null });
+  });
+  it("adds a day's output up by department, Fabrication's three centres as one, against the hours booked", () => {
+    const out = dailyOutput([
+      { centre: "Cutting", trend: [{ dateISO: "2026-10-21", earnedH: 10, workedH: 20 }, { dateISO: "2026-10-20", earnedH: 4, workedH: 8 }] },
+      { centre: "Fins", trend: [{ dateISO: "2026-10-21", earnedH: 5, workedH: 5 }] },
+      { centre: "Welding", trend: [{ dateISO: "2026-10-21", earnedH: 30, workedH: 25 }] },
+    ]);
+    expect(out.map((d) => d.dateISO)).toEqual(["2026-10-20", "2026-10-21"]);
+    expect(out[1]).toMatchObject({ Fabrication: 15, Welding: 30, ShotBlast: 0, Painting: 0, earnedH: 45, workedH: 50 });
+    expect(out[1].efficiency).toBeCloseTo(0.9, 10);
+    expect(dailyOutput([{ centre: "Painting", trend: [{ dateISO: "2026-10-20", earnedH: 3, workedH: 0 }] }])[0].efficiency).toBeNull();
+  });
+  it("sets each centre's month against an even pace through its working days", () => {
+    const rows = monthPace([
+      { centre: "Welding", requiredH: 1000, doneH: 300 },
+      { centre: "Painting", requiredH: 400, doneH: 180 },
+      { centre: "Bending", requiredH: 200, doneH: 75 },
+      { centre: "Fins", requiredH: 0, doneH: 12 },
+    ], { monthWd: 26, leftWd: 13 });
+    // half the working days are behind us: an even pace stands at 50%
+    expect(rows[0]).toMatchObject({ doneShare: 0.3, expectedShare: 0.5, aheadH: -200, tone: "bad" });
+    expect(rows[1]).toMatchObject({ aheadH: -20, tone: "warn" });
+    expect(rows[2].tone).toBe("bad");
+    expect(rows[3]).toMatchObject({ doneShare: null, tone: null });
+    // an order carried over at 60% done starts the month's pace there: half the days gone, 80% is even
+    const carried = monthPace([{ centre: "Welding", requiredH: 100, doneH: 60, doneBeforeH: 60 }], { monthWd: 26, leftWd: 13 })[0];
+    expect(carried).toMatchObject({ doneShare: 0.6, expectedShare: 0.8, aheadH: -20, tone: "bad" });
+    expect(monthPace([{ centre: "Welding", requiredH: 100, doneH: 60, doneBeforeH: 60 }], { monthWd: 26, leftWd: 26 })[0]).toMatchObject({ expectedShare: 0.6, tone: "ok" });
+    expect(monthPace([{ centre: "Welding", requiredH: 100, doneH: 100 }], { monthWd: 26, leftWd: 0 })[0]).toMatchObject({ expectedShare: 1, tone: "ok" });
+  });
+  it("ranks the unplanned stops with the share of the loss the causes above account for", () => {
+    const p = paretoOf([
+      { code: "NOMAT", label: "No material", hours: 3, stops: 1, planned: false },
+      { code: "PM", label: "Planned maintenance", hours: 4, stops: 1, planned: true },
+      { code: "MECH", label: "Breakdown", hours: 5, stops: 2, planned: false },
+      { code: "AIR", label: "Power or air", hours: 2, stops: 1, planned: false },
+    ]);
+    expect(p.map((c) => c.code)).toEqual(["MECH", "NOMAT", "AIR"]);
+    expect(p.map((c) => Math.round(c.cumShare * 100))).toEqual([50, 80, 100]);
+    expect(paretoOf([])).toEqual([]);
+  });
+  it("finds a figure a week ago — the newest kept day at least seven days back that knows it", () => {
+    const pt = (dateISO: string, late: number | null) => ({ dateISO, late, adherence: {}, coverageDays: null, efficiency: {}, fabEfficiency: null, unplannedH: null });
+    const trend = [pt("2026-10-15", 30), pt("2026-10-17", 25), pt("2026-10-18", null), pt("2026-10-21", 22), pt("2026-10-25", 29)];
+    expect(weekChange(trend, "2026-10-25", (p) => p.late)).toEqual({ now: 29, before: 25, beforeISO: "2026-10-17" });
+    expect(weekChange(trend.slice(3), "2026-10-25", (p) => p.late)).toBeNull();
+    expect(weekChange(trend, "2026-10-26", (p) => p.late)).toBeNull();
+  });
+});
+
 describe("the stored trend", () => {
   it("reads a day back, a field an older day lacks as unknown — never zero", () => {
-    expect(parseKpiSnapshot({ late: 4, adherence: { cut: 0.5, weld: null, bogus: 1 }, coverageDays: 2.2, efficiency: { Welding: 0.9 }, unplannedH: 3 }))
-      .toEqual({ late: 4, adherence: { cut: 0.5, weld: null }, coverageDays: 2.2, efficiency: { Welding: 0.9 }, unplannedH: 3 });
-    expect(parseKpiSnapshot({ late: 4 })).toEqual({ late: 4, adherence: {}, coverageDays: null, efficiency: {}, unplannedH: null });
+    expect(parseKpiSnapshot({ late: 4, adherence: { cut: 0.5, weld: null, bogus: 1 }, coverageDays: 2.2, efficiency: { Welding: 0.9 }, fabEfficiency: 0.7, unplannedH: 3 }))
+      .toEqual({ late: 4, adherence: { cut: 0.5, weld: null }, coverageDays: 2.2, efficiency: { Welding: 0.9 }, fabEfficiency: 0.7, unplannedH: 3 });
+    expect(parseKpiSnapshot({ late: 4 })).toEqual({ late: 4, adherence: {}, coverageDays: null, efficiency: {}, fabEfficiency: null, unplannedH: null });
     expect(parseKpiSnapshot(null).late).toBeNull();
   });
 });

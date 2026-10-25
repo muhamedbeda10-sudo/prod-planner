@@ -251,6 +251,9 @@ export interface LoadAhead {
     capacityH: number;
     /** Running owed against running capacity at the end of the day: past it, or within 10% of it. */
     tone: LoadTone;
+    /** What it owes so far, and could have worked so far (null unmeasured) — the totals the tone is judged on. */
+    owedCum: number;
+    canCum: number | null;
   }[];
   /** Σ owed ÷ Σ capacity over the horizon (work can be done early). */
   loadRate: number | null;
@@ -305,7 +308,7 @@ export function loadAhead(centre: WorkCentre, days: readonly string[], due: read
       if (short) clearsISO = null;
       else if (shortFromISO !== null && clearsISO === null) clearsISO = iso;
     }
-    return { dayISO: iso, dueH: round1(dueH), capacityH: round1(perDay), tone };
+    return { dayISO: iso, dueH: round1(dueH), capacityH: round1(perDay), tone, owedCum: round1(owed), canCum: measured ? round1(can) : null };
   });
   // what is owed after the horizon is not this horizon's to clear
   return {
@@ -323,8 +326,10 @@ export interface ManpowerInput {
   centre: WorkCentre;
   /** Std-hours the month's plan asks of the centre, outsourced pieces left out. */
   requiredH: number;
-  /** Std-hours of that plan the centre has earned since the month began. */
+  /** Std-hours of that plan the centre has earned — all of it, an order carried over bringing its earlier work. */
   doneH: number;
+  /** Of them, earned before the month began. */
+  doneBeforeH?: number;
   /** People present on an average recorded day lately; null while none is recorded. */
   present: number | null;
 }
@@ -333,6 +338,8 @@ export interface ManpowerRow {
   centre: WorkCentre;
   requiredH: number;
   doneH: number;
+  /** Of it, earned before the month began (carried-over orders). */
+  doneBeforeH: number;
   leftH: number;
   /** People the month's plan needs on an average working day of the month. */
   needed: number | null;
@@ -381,6 +388,7 @@ export function manpowerPlan(rows: readonly ManpowerInput[], cal: ManpowerCalend
       centre: r.centre,
       requiredH: round1(r.requiredH),
       doneH: round1(r.doneH),
+      doneBeforeH: round1(r.doneBeforeH ?? 0),
       leftH: round1(leftH),
       needed: needed === null ? null : round1(needed),
       neededNow: neededNow === null ? null : round1(neededNow),
@@ -469,6 +477,8 @@ export interface KpiSnapshotData {
   adherence: Partial<Record<Stage, number | null>>;
   coverageDays: number | null;
   efficiency: Partial<Record<WorkCentre, number | null>>;
+  /** Laser / punch, bending and fin folding together — null on days kept before it was. */
+  fabEfficiency: number | null;
   unplannedH: number | null;
 }
 export interface KpiSnapshotPoint extends KpiSnapshotData {
@@ -490,6 +500,135 @@ export function parseKpiSnapshot(json: unknown): KpiSnapshotData {
     adherence: keyed(o.adherence, STAGES),
     coverageDays: numOrNull(o.coverageDays),
     efficiency: keyed(o.efficiency, WORK_CENTRES),
+    fabEfficiency: numOrNull(o.fabEfficiency),
     unplannedH: numOrNull(o.unplannedH),
   };
+}
+
+/** A figure today against the same figure a week ago — the newest kept day at
+ *  least seven days back that knows it. Null while there is none. */
+export function weekChange(trend: readonly KpiSnapshotPoint[], todayISO: string, pick: (p: KpiSnapshotData) => number | null | undefined): { now: number; before: number; beforeISO: string } | null {
+  const today = trend.find((p) => p.dateISO === todayISO);
+  const now = today ? pick(today) : null;
+  if (now === null || now === undefined) return null;
+  const weekAgo = new Date(`${todayISO}T00:00:00.000Z`);
+  weekAgo.setUTCDate(weekAgo.getUTCDate() - 7);
+  const limit = weekAgo.toISOString().slice(0, 10);
+  for (let i = trend.length - 1; i >= 0; i--) {
+    const p = trend[i];
+    if (p.dateISO > limit) continue;
+    const v = pick(p);
+    if (v !== null && v !== undefined) return { now, before: v, beforeISO: p.dateISO };
+  }
+  return null;
+}
+
+// ------------------------------------------------------------------ the charts' series
+
+/** The weekly plan, delivery day by delivery day: pieces asked and finished, each summed from the first day. */
+export function burnUp(days: readonly { iso: string; label: string; req: number; covered: number; isToday: boolean }[]): { iso: string; label: string; req: number; covered: number; planCum: number; doneCum: number; isToday: boolean }[] {
+  let plan = 0;
+  let done = 0;
+  return days.map((d) => {
+    plan += d.req;
+    done += d.covered;
+    return { iso: d.iso, label: d.label, req: d.req, covered: d.covered, planCum: plan, doneCum: done, isToday: d.isToday };
+  });
+}
+
+/** A centre's load ahead as running totals — what it owes so far against what
+ *  it could have worked so far, the comparison its "short" is judged on. */
+export function loadSeries(l: Pick<LoadAhead, "days">): { dayISO: string; dueH: number; owedCum: number; canCum: number | null; tone: LoadTone }[] {
+  // the running totals loadAhead judged the tone on, unrounded until shown
+  return l.days.map((d) => ({ dayISO: d.dayISO, dueH: d.dueH, owedCum: d.owedCum, canCum: d.canCum, tone: d.tone }));
+}
+
+/** The departments a day's output is told in: Fabrication's three centres as one. */
+export const OUTPUT_GROUPS = ["Fabrication", "Welding", "ShotBlast", "Painting"] as const;
+export type OutputGroup = (typeof OUTPUT_GROUPS)[number];
+export const OUTPUT_GROUP_LABEL: Record<OutputGroup, string> = { Fabrication: "Fabrication", Welding: "Welding", ShotBlast: "Shot blast", Painting: "Painting" };
+const groupOf = (c: WorkCentre): OutputGroup => ((DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(c) ? "Fabrication" : (c as OutputGroup));
+
+export interface OutputDay extends Record<OutputGroup, number> {
+  dateISO: string;
+  /** Standard hours earned that day, every centre. */
+  earnedH: number;
+  /** Man-hours the shift log booked that day, every centre. */
+  workedH: number;
+  efficiency: number | null;
+}
+
+/** Each recorded day's output in standard hours, by department, against the
+ *  man-hours booked — the plant's productivity day by day, one unit for all. */
+export function dailyOutput(centres: readonly { centre: WorkCentre; trend: readonly { dateISO: string; earnedH: number; workedH: number }[] }[]): OutputDay[] {
+  const days = new Map<string, OutputDay>();
+  for (const c of centres) {
+    for (const t of c.trend) {
+      const d = days.get(t.dateISO) ?? { dateISO: t.dateISO, Fabrication: 0, Welding: 0, ShotBlast: 0, Painting: 0, earnedH: 0, workedH: 0, efficiency: null };
+      d[groupOf(c.centre)] += t.earnedH;
+      d.earnedH += t.earnedH;
+      d.workedH += t.workedH;
+      days.set(t.dateISO, d);
+    }
+  }
+  return [...days.values()]
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+    .map((d) => ({
+      ...d,
+      Fabrication: round1(d.Fabrication), Welding: round1(d.Welding), ShotBlast: round1(d.ShotBlast), Painting: round1(d.Painting),
+      earnedH: round1(d.earnedH), workedH: round1(d.workedH),
+      efficiency: d.workedH > 0 ? d.earnedH / d.workedH : null,
+    }));
+}
+
+export interface MonthPaceRow {
+  centre: WorkCentre;
+  requiredH: number;
+  doneH: number;
+  /** done ÷ the month's plan. */
+  doneShare: number | null;
+  /** The share of the month's working days already behind us — where an even pace would stand today. */
+  expectedShare: number;
+  /** Hours ahead (+) or behind (−) of that even pace. */
+  aheadH: number;
+  tone: "ok" | "warn" | "bad" | null;
+}
+
+/** Behind the month's even pace by a tenth of its plan or more is a month that will not finish without help. */
+const PACE_BEHIND = 0.1;
+
+/** Each centre's month so far against an even pace through its working days:
+ *  what it has done of the plan, and where it should stand by today. Work a
+ *  carried-over order brought from before the month starts the pace there —
+ *  the month owes only the rest, evenly over its working days. */
+export function monthPace(rows: readonly (Pick<ManpowerRow, "centre" | "requiredH" | "doneH"> & { doneBeforeH?: number })[], cal: Pick<ManpowerCalendar, "monthWd" | "leftWd">): MonthPaceRow[] {
+  const elapsed = cal.monthWd > 0 ? Math.min(1, Math.max(0, (cal.monthWd - cal.leftWd) / cal.monthWd)) : 0;
+  return rows.map((r) => {
+    if (!(r.requiredH > 0)) return { centre: r.centre, requiredH: 0, doneH: round1(r.doneH), doneShare: null, expectedShare: elapsed, aheadH: 0, tone: null };
+    const startShare = Math.min(1, Math.max(0, (r.doneBeforeH ?? 0) / r.requiredH));
+    const expectedShare = startShare + (1 - startShare) * elapsed;
+    const doneShare = r.doneH / r.requiredH;
+    const gap = doneShare - expectedShare;
+    return {
+      centre: r.centre,
+      requiredH: round1(r.requiredH),
+      doneH: round1(r.doneH),
+      doneShare,
+      expectedShare,
+      aheadH: round1(r.doneH - r.requiredH * expectedShare),
+      tone: gap >= 0 ? "ok" : gap > -PACE_BEHIND ? "warn" : "bad",
+    };
+  });
+}
+
+/** The unplanned stops by cause, most hours first, each with the share of the
+ *  loss it and the causes above it account for — where to look first. */
+export function paretoOf(causes: readonly { code: string; label: string; hours: number; stops: number; planned: boolean }[]): { code: string; label: string; hours: number; stops: number; share: number; cumShare: number }[] {
+  const unplanned = causes.filter((c) => !c.planned && c.hours > 0).sort((a, b) => b.hours - a.hours);
+  const total = unplanned.reduce((s, c) => s + c.hours, 0);
+  let cum = 0;
+  return unplanned.map((c) => {
+    cum += c.hours;
+    return { code: c.code, label: c.label, hours: c.hours, stops: c.stops, share: total > 0 ? c.hours / total : 0, cumShare: total > 0 ? cum / total : 0 };
+  });
 }
