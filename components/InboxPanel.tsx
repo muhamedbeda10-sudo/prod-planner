@@ -113,7 +113,7 @@ export function InboxPanel() {
   return (
     <div hidden={!p.shown} className="no-print">
       {layout === "large" && p.shown && <div className="ai-overlay" onClick={p.close} aria-hidden />}
-      <section role="dialog" aria-modal={layout !== "compact"} aria-label="Inbox" className={`ai-pop ai-pop-${layout} ${layout === "compact" ? "inbox-pop" : ""}`}>
+      <section role="dialog" aria-modal={layout !== "compact"} aria-label="Inbox" className={`ai-pop ai-pop-${layout} ${layout === "compact" ? "inbox-pop" : layout === "large" ? "ai-pop-fullscreen" : ""}`}>
         <InboxWorkspace
           layout={layout}
           tab={p.state.tab}

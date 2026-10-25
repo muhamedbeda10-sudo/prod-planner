@@ -1253,7 +1253,7 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
   border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 32px 80px rgb(0 0 0 / 0.45);
   animation: aipop-grow 0.18s ease-out;
 }
-/* The assistant expands edge to edge; the inbox keeps its centred window. */
+/* The assistant and the inbox expand edge to edge. */
 .ai-pop-large.ai-pop-fullscreen {
   inset: 0; width: auto; height: 100dvh; transform: none;
   border: 0; border-radius: 0; box-shadow: none;

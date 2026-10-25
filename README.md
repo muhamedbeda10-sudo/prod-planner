@@ -381,9 +381,12 @@ mobile drawer still lists every view flat, since it has the vertical room.
      report draws its figures from a ```chart block — bar, line, area and combo (stacked or as shares of 100%, target
      lines, one thing picked out with the rest in gray), pie, KPI cards (with a trend and progress), Pareto (the causes
      that make 80% stand out), histogram, scatter, heatmap, progress against target, funnel, waterfall, Gantt, dumbbell,
-     radar and treemap — on one value scale each, in the palette's slots, every chart with its numbers as a table and
-     their export. A chart's JSON draws however its fence was labelled. The same blocks draw in the chat and in the
-     inbox's reports; **Print / PDF** on an answer or a report prints it alone under the company header, charts and all.
+     radar, treemap, gauge (a dial against its target), box plot (spread per group), Sankey (flows between stages),
+     calendar (a value per day as the month) and control chart (3-sigma limits, the points outside marked) — on one
+     value scale each, in the palette's slots, the values written on the marks wherever they fit, every chart with its
+     numbers as a table and their export. A chart's JSON draws however its fence was labelled, and other names for a
+     form (column, donut, bullet, slope, step …) draw as the form that does that job. The same blocks draw in the chat and in the
+     inbox's reports (expanded, the inbox fills the screen); **Print / PDF** on an answer or a report prints it alone under the company header, charts and all.
    - **Owner's reach and the floor's new stations**: the app's owner lists everyone's automations and pauses, retimes
      (`set_automation_timing`) or deletes any, as AI assistant settings lets them; what one does stays its owner's to
      change. A new partition, line or machine is made and placed on the floor in one edit (`edit_floor_layout` kind

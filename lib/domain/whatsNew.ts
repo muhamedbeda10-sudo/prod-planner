@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-ai-charts-values-new-forms",
+    dateISO: "2026-10-25",
+    title: "The assistant's charts show their values, five new kinds of chart, and the inbox opens full screen",
+    where: "AI assistant · Inbox → Reports",
+    body: "Every chart the assistant draws now writes its numbers on the marks: each bar's value at its tip (a stack's parts inside it and its total at the end), the points of a line, each slice's share, a Pareto's count and share, a waterfall's moves — wherever they fit without colliding; the tooltip and the Table view still hold every figure. The assistant can now also draw a gauge (one reading on a dial against its target), a box plot (how times or quantities spread, machine beside machine), a Sankey (where pieces flowed, stage to stage), a calendar (a value per day laid out as the month, weeks from Saturday) and a control chart (a measure inside its 3-sigma limits, the points outside marked) — and step lines. Expanding the inbox now fills the whole screen, and reports spread across it instead of a narrow column.",
+  },
+  {
     id: "2026-10-24-planning-cockpit-home",
     dateISO: "2026-10-24",
     title: "The home page is now the Planning cockpit: the plan, the centres, the crunch, welding's parts and the losses",

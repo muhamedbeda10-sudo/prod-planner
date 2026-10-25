@@ -22,6 +22,9 @@ export const OTHER = "var(--viz-other)";
 export const INK_ON = ["#ffffff", "#ffffff", "#14201a", "#ffffff", "#14201a", "#14201a"] as const;
 export const INK_ON_OTHER = "#14201a";
 
+/** The lighter track of the accent a meter, progress bar or dial fills. */
+export const TRACK = "color-mix(in srgb, var(--viz-1) 16%, var(--surface))";
+
 export const catColor = (i: number) => (i >= 0 && i < CAT.length ? CAT[i] : OTHER);
 export const catInk = (i: number) => (i >= 0 && i < INK_ON.length ? INK_ON[i] : INK_ON_OTHER);
 
@@ -126,7 +129,7 @@ export function Meter({ value, label }: { value: number; label?: string }) {
   const v = Math.max(0, Math.min(1, value));
   return (
     <div className="w-full" title={label}>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "color-mix(in srgb, var(--viz-1) 16%, var(--surface))" }}>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: TRACK }}>
         <div className="h-full rounded-full" style={{ width: `${v * 100}%`, background: "var(--viz-1)" }} />
       </div>
     </div>
