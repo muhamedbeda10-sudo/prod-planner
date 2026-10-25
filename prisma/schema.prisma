@@ -779,11 +779,10 @@ model WorklistMachine {
   @@index([machineId])
 }
 
-// One department's floor as the planner drew it on the Simulator's Floor
-// canvas: where each machine (or welding partition) stands, the areas and
-// labels around them — positions and sizes only, as one JSON blob
-// (lib/domain/floor.ts says its shape). What each machine is ON comes from
-// WorklistMachine and who stands at it from ShiftEntry, live.
+// One department's floor as the planner drew it on the old Floor canvas —
+// positions and sizes of machine blocks, areas and labels, as one JSON blob.
+// The Floor screen is gone from the app; nothing reads or writes this table
+// any more, and it stays only until it is dropped.
 model FloorLayout {
   id        Int      @id @default(autoincrement())
   dept      String   @unique // Cut | Welding | ShotBlast | Painting

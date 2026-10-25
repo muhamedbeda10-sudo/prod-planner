@@ -59,8 +59,8 @@ describe("planLastVisit", () => {
   });
 
   it("remembers a view under the name the page resolved, not the link's alias", () => {
-    const p = planLastVisit({ storageKey: "simulate:last", pathname: "/simulate", qs: "view=floor&dept=Welding", arriving: false, view: "whatif", read: store({}) });
-    expect(p.save).toEqual([{ key: "simulate:last", url: "/simulate?view=floor&dept=Welding" }, { key: "simulate:last:whatif", url: "/simulate?view=whatif&dept=Welding" }]);
+    const p = planLastVisit({ storageKey: "consumables:last", pathname: "/consumables", qs: "view=monthly&from=2026-10-01", arriving: false, view: "dashboard", read: store({}) });
+    expect(p.save).toEqual([{ key: "consumables:last", url: "/consumables?view=monthly&from=2026-10-01" }, { key: "consumables:last:dashboard", url: "/consumables?view=dashboard&from=2026-10-01" }]);
   });
 
   it("drops the forgotten keys from what is remembered", () => {

@@ -57,7 +57,7 @@ function alternatives(inputs: WhatIfInputs, base: NamedSimulation["scenario"], v
   return { result, optimization };
 }
 const scope = (inputs: WhatIfInputs, start: string) => ({ line: "TR", snapshotAt: new Date().toISOString(), todayISO: inputs.todayISO, startedFrom: start, weeklyPlan: inputs.plan ? { planNo: inputs.plan.planNo, fromISO: inputs.plan.minISO, toISO: inputs.plan.maxISO } : null });
-const links = [{ label: "What-if Simulator", href: "/simulate?view=whatif" }];
+const links = [{ label: "What-if Simulator", href: "/simulate" }];
 const recordLinks = (mos: string[]) => [...links, ...[...new Set(mos)].slice(0, 20).map((mo) => ({ label: mo, href: `/trace?mo=${encodeURIComponent(mo)}&line=TR` }))];
 export const compareScenariosTool: ReadTool<CompareInput> = {
   kind: "read", name: "compare_scenarios", title: "Comparing planning alternatives on one snapshot", tabs: ["simulate"],

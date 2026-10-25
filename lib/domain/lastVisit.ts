@@ -2,7 +2,7 @@
 //
 // A tab's page writes its URL (its filters) to the browser each time it
 // changes, and a bare arrival reopens that URL. A tab whose views share one
-// path and differ by `?view=` (ODOO: log / dashboard; Consumables; the Floor)
+// path and differ by `?view=` (ODOO: log / dashboard; Consumables)
 // keeps one memory per VIEW as well, so the dashboard's period, BOM and
 // product survive a visit to the log, and the view switch (`?view=dashboard`,
 // nothing else) reopens the dashboard as it was left, not on its defaults.

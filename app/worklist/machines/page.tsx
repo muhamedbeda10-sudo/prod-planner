@@ -17,8 +17,7 @@ export const dynamic = "force-dynamic";
 // 🖨 The technician's sheet: one machine (or every machine of a department,
 // each on its own page) with what runs on it NOW and what comes next, in
 // the order the planner set — the paper handed over at the start of the
-// shift. Reached from the board's "Print sheet", the Floor's inspector, or
-// "Print all sheets" on the board.
+// shift. Reached from the board's "Print sheet" or "Print all sheets".
 export default async function MachineSheetsPage({ searchParams }: { searchParams: Promise<{ dept?: string; machine?: string }> }) {
   await guardTab("/worklist/machines");
   const me = await getCurrentUser();
@@ -51,12 +50,11 @@ export default async function MachineSheetsPage({ searchParams }: { searchParams
     <div>
       <PageHeader label={only && cards[0] ? `🖨 ${cards[0].machine.code} · ${cards[0].machine.name}` : `🖨 ${deptLabel(dept)} — ${machineWord(dept, true)} sheets`}>
         <Link href={back} className="btn btn-sm">← Worklist</Link>
-        <Link href={`/simulate?view=floor&dept=${dept}`} className="btn btn-sm">🗺 Floor</Link>
         {only && <Link href={`/worklist/machines?dept=${dept}`} className="btn btn-sm">All {machineWord(dept, true)}</Link>}
         <PrintButton />
       </PageHeader>
       {cards.length === 0 ? (
-        <p className="text-sm text-muted">Nothing is on {only ? `this ${word}` : `any ${word}`} yet — put lines on it from the worklist or the Floor first.</p>
+        <p className="text-sm text-muted">Nothing is on {only ? `this ${word}` : `any ${word}`} yet — put lines on it from the worklist first.</p>
       ) : (
         cards.map((c, i) => <MachineSheet key={c.machine.id} c={c} dept={dept} dateLabel={dateLabel} required={board.required} material={board.material} jobs={jobs} first={i === 0} />)
       )}

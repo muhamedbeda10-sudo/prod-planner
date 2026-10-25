@@ -280,6 +280,6 @@ describe("single-snapshot planning reviews", () => {
   it("reports missing coverage explicitly and returns saved-source navigation", async () => {
     const r = await simulationReadinessTool.run({}, ctx);
     expect(JSON.parse(r.text)).toMatchObject({ coverage: null, issues: expect.arrayContaining([expect.objectContaining({ code: "unknown-coverage" })]) });
-    expect(r.links).toContainEqual({ label: "What-if Simulator", href: "/simulate?view=whatif" });
+    expect(r.links).toContainEqual({ label: "What-if Simulator", href: "/simulate" });
   });
 });

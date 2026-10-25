@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-floor-gone-simulator-in-tracker",
+    dateISO: "2026-10-25",
+    title: "The Floor tab is gone; the What-if Simulator lives in Plan Tracker",
+    where: "Plan Tracker → Simulator · the top bar · Users & Permissions",
+    href: "/simulate",
+    body: "The drawn floors (the bays with the machine blocks) are no longer part of the app, and the Floor tab left the top bar. The What-if Simulator is now a view of the Plan Tracker tab, beside the Daily log and the Report — the same screen, the same saved scenarios and run order, at the same address, so the assistant's links and your bookmarks still open it. On Users & Permissions it is listed under Plan Tracker as \"What-if Simulator\", keeping whatever was ticked for the old Floor / Simulator tab. The machine boards on the worklists and the Machines sheets are unchanged.",
+  },
+  {
     id: "2026-10-25-shift-history-table-actions",
     dateISO: "2026-10-25",
     title: "Recorded shift days in a table — edit or delete a day's shift data",
@@ -454,7 +462,6 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     title: "Floor: each sheet of an item is named, and goes on a machine as that sheet",
     where: "Floor → Cut → ▸ to place · a machine's block and queue",
     body: "Picking one sheet of an item from a machine's ＋ Put a line on it… list — its 5 mm, say, while its 3 mm is on another laser — put the WHOLE item on that machine. It now goes on as that sheet only, as the → button in the \"to place\" list always did; a whole item already placed this way stays whole until it is taken off and the sheet placed again. The Floor now also names the sheet of each line — 3 mm MS 1220×2440 — waiting in both lists, on a machine's block and in its queue, so two sheets of one item, or two lasers on the same item, no longer look alike.",
-    href: "/simulate?view=floor&dept=Cut",
   },
   {
     id: "2026-10-11-phones-tablets",
