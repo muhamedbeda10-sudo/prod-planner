@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-attendance-save-department",
+    dateISO: "2026-10-25",
+    title: "Daily attendance: record and save one department at a time",
+    where: "Shifts → Daily attendance",
+    href: "/shifts?view=attendance",
+    body: "Choose a department to see its workers, attendance figures and capacity. Save that department as soon as all its workers are set; unfinished departments no longer block it or enter its save. The department picker shows recording progress, and Save & next department moves on after a successful save. Switching departments or refreshing after a save keeps other departments' unsaved drafts. Undo and Clear affect the chosen department only. Search and section filters never omit hidden workers from that department's save, and the Day / Night board still offers the full line or factory for printing and export.",
+  },
+  {
     id: "2026-10-25-stop-clock-times-unlisted-equipment",
     dateISO: "2026-10-25",
     title: "Machine stops: from/to times, automatic duration and unlisted equipment",

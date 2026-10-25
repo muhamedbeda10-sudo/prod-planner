@@ -156,14 +156,19 @@ mobile drawer still lists every view flat, since it has the vertical room.
    section (Tools → Production Workers), narrowed to a line, a section or a search. Each worker gets ONE
    choice that says whether he came and on which shift — ☀ **Day** (07:00–16:00), 🌙 **Night** (19:00–04:00)
    or ✕ **Absent** — plus optional overtime (day 16:00–19:00, night 04:00–07:00 the next morning) and a note. Both shifts default to 8 net base hours plus 3 optional OT hours. A worker with no record for the
-   day is **not set** (never silently present or absent), and a day is saved only when nobody is: "Set …
+   day is **not set** (never silently present or absent). Record **one department at a time**: choose its
+   tab and save as soon as everyone in that department is set, even when the other departments are still
+   unfinished. **Save & next department** saves then advances; the department tabs show recording progress.
+   Switching departments and a successful save preserve other departments' drafts. "Set …
    not set to Day / Night / Absent" fills the rest in one click, keeping anyone on vacation absent. The
    figures on top — day shift, night shift, overtime, absent, not set — are also the list's filters,
    beside the man-hours against the capacity. The **Day / Night board** lists the two shifts' people side by side by
    department, with the absent under them; it is what Print / PDF prints and what Export Excel carries.
-   "Save day" (pinned to the bottom of the screen) writes every row and re-sums each department's
+   **Save [department]** (pinned to the bottom of the screen) writes every worker in that department,
+   including those hidden by search, section or attendance filters, and re-sums its
    man-hours into the figure the calibration and the plan's capacity check read (Admin → Standard Times
-   shows it read-only). **Recorded days** is a table of day/night attendance, absences, man-hours and
+   shows it read-only). Undo and Clear also affect only the chosen department. The **Day / Night board**
+   still covers the whole selected line/factory for print and export. **Recorded days** is a table of day/night attendance, absences, man-hours and
    machine-stop counts for every recorded date. Use From/To filters, pagination or **All days**; check
    individual rows, a page or all matching dates across pages for bulk deletion. Each row opens attendance
    or stops for editing; the date field also opens older dates. Delete day (or Delete selected) removes

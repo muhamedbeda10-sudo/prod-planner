@@ -44,6 +44,14 @@ beforeEach(() => {
 });
 
 describe("saveShiftRoster", () => {
+  it("saves one department independently without requiring, writing or recalculating any other department", async () => {
+    // Worker 1 also belongs to Fabrication; recording Welding does not book that other row.
+    expect(await saveShiftRoster(form([line(1), line(2)]))).toEqual({ ok: true });
+    expect(h.requirePerm.mock.calls).toEqual([["shifts.welding"]]);
+    expect(h.prisma.shiftEntry.upsert.mock.calls.map(([args]) => args.create.dept)).toEqual(["Welding", "Welding"]);
+    expect(h.syncDeptDayHours).toHaveBeenCalledTimes(1);
+    expect(h.syncDeptDayHours).toHaveBeenCalledWith(h.prisma, new Date("2026-10-12T00:00:00Z"), "Welding");
+  });
   it("refuses a day while any worker is not set, and writes nothing", async () => {
     const r = await saveShiftRoster(form([line(1), line(2, { present: false, recorded: false })]));
     expect(r).toEqual({ ok: false, error: "1 worker(s) are not set yet — pick Day, Night or Absent for everyone, then save." });
