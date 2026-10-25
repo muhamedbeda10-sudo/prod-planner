@@ -20,8 +20,8 @@ export const SIM_SCREEN = {
   label: 200,
 } as const;
 
-/** Where the Simulator opens. */
-export const SIMULATOR_HREF = "/simulate?view=whatif";
+/** Where the Simulator opens — a view of the Plan Tracker tab. */
+export const SIMULATOR_HREF = "/simulate";
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 

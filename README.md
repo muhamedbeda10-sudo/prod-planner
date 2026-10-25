@@ -27,12 +27,13 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 
 ## Navigation
 Tabs, one per QUESTION rather than per screen — Worklist · Cockpit · Material · ODOO · Consumables · Shifts ·
-Plan Tracker · Floor. The home page (`/`) is the **Cockpit**, the planner's one page across departments
+Plan Tracker. The home page (`/`) is the **Cockpit**, the planner's one page across departments
 (feature 13; on the LV line it is the panels' own dashboard); otherwise each dashboard lives with what it
-reads. Three tabs
+reads. Two tabs
 hold several views behind their own switcher (`components/ViewTabs.tsx`): **Plan Tracker** carries the
-tracker, the **Daily log** it adds up and the printed **Report** of that log; **Material** the nesting sheets and the sheet **Analytics** built on them;
-**Floor** the bay as it is and the what-if simulator. Two things left the strip entirely: **chat** is the icon in the nav's
+tracker, the **Daily log** it adds up, the printed **Report** of that log and the **What-if Simulator** the plan is
+tried out on (`/simulate`, transformers only); **Material** the nesting sheets and the sheet **Analytics** built on them.
+Two things left the strip entirely: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
 worklist, where the tanks it prints for finish. In Admin the two plan imports share one page. The
@@ -77,7 +78,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    goes on them by itself, and the nest runs are gone. A job is shared between machines in sheets (the box beside
    the picker, ✂ on a card), and closed on each machine **in sheets cut** (✓), each ✓ on the sheet cut log with
    the machine and the day; the job leaves the board when its last sheet is cut. A click on a sheet job's sheet — on
-   a machine card, in the list of what waits on no machine, or on the Floor — opens its details: sheets for the
+   a machine card or in the list of what waits on no machine — opens its details: sheets for the
    job, cut and left, which machines hold the rest, every project's part on the sheets, the note and every ✓
    (when, which machine, how many, by whom), with ✓, ✎ Edit and ⧉ Duplicate beside them. Closing sheets records no
    pieces in the plan — those are recorded on the weekly plan below. A machine's load there reads in sheets.
@@ -241,7 +242,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    **🏭 on a machine / not on a machine** chips that filter every table to what the floor is running, or to
    what still has to be placed. The month's undated backlog is no longer a table on the page at all — it
    is the pool the board and the machine plan draw from, so the worklist ends at the work the shift actually runs.
-   **Print sheet** on a card (or in the Floor's inspector) opens the technician's sheet for that
+   **Print sheet** on a card opens the technician's sheet for that
    machine — what runs now, then what is next in order, with pieces, standard hours, delivery date, the
    crew and a Done column to tick — and **Print all sheets** prints every machine of the department, one per
    page, to hand out at the start of the shift (`/worklist/machines?dept=Cut&machine=…`).
@@ -280,20 +281,11 @@ mobile drawer still lists every view flat, since it has the vertical room.
    done early, so it names the day everything promised so far passes everything workable so far, and by how
    many hours. Work with no date, work owed past the picture and lines with no standard time are named under
    it rather than folded in.
-10. **Floor** (the Floor tab) — each department's bay drawn as the planner sees it: place the machines
-   (or partitions) as blocks, drag them where they stand, pull a corner to resize, draw areas ("Laser hall",
-   "Bending & fins") and labels around them, zoom — the drawing saves itself a moment after every change, so
-   it is there for everyone who opens that department's floor next. Every block is live: what it is on now, how many
-   lines wait, its load colour, the crew on it today. **Clicking a block opens it over the floor** — a wide
-   panel with every order on that machine in full (BOM, item, pieces, standard hours, delivery date, MO and
-   description), its crew, and the buttons to run one next, split it, take it off or ✓ record what it
-   finished; a long queue scrolls inside the panel, and Esc or the backdrop closes it. A press that moves is
-   still a drag, so the floor is re-drawn with the same hand. "＋ New partition" creates one on the
-   spot. The floor itself keeps the **whole width of the screen** — no side list: the lines not on any machine sit behind the toolbar's
-   **"n to place"** button — open it and the weekly plan's dated ones come first (earliest first), the month's
-   undated ones after; click a block, then "→ code" sends a line to it in one click (the board on each
-   worklist lists them the same way). Drawing needs
-   `machines.manage`; working a queue needs the department's worklist permission; viewing is free.
+10. **What-if Simulator** (`/simulate`, a view of the Plan Tracker tab; the transformers only) — the planner's
+   sandbox: move the delivery dates, the capacity and the crew, reorder and split the queue, and see what lands
+   on time and what slips, in standard hours. A scenario can be saved by name for everyone (`simulator.edit`),
+   and an admin can apply one as the plant's run order. The AI assistant reads and puts scenarios on it (feature
+   12). Viewing is free.
 11. **Consumables** (`/consumables`) — the store's log of what it hands out to the floor. A hand-out is recorded
    on **one line above the log** (after a save the department and the person stay and the item box is ready for the
    next paste); a correction opens in a popup. Item (typed
@@ -357,7 +349,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
      on a machine too), the jobs — the fabrication board's sheet jobs (sheets carrying several projects' parts, spread
      over the machines and closed in sheets) and the other boards' jobs in pieces — the worklists' notes (with photos from the chat),
      returns upstream, an admin's dates and hidden lines, tanks piece by piece (welder, leak test, repair, painting,
-     quality), the Simulator, the run order and the departments' drawn floors, the ODOO log (FG codes and merged lines
+     quality), the Simulator and the run order, the ODOO log (FG codes and merged lines
      too), Material (new lines, an LV order's sheets, SOI groups), physical stock, consumables with their catalogue,
      limits and powder scrap, the shift roster, the calendar, workers and machines, the standard times, capacity,
      calibration, times per machine and settings (key "AI — standard times and settings"), automations (a test run too)
@@ -394,10 +386,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
      numbers as a table and their export. A chart's JSON draws however its fence was labelled, and other names for a
      form (column, donut, bullet, slope, step …) draw as the form that does that job. The same blocks draw in the chat and in the
      inbox's reports (expanded, the inbox fills the screen); **Print / PDF** on an answer or a report prints it alone under the company header, charts and all.
-   - **Owner's reach and the floor's new stations**: the app's owner lists everyone's automations and pauses, retimes
+   - **Owner's reach**: the app's owner lists everyone's automations and pauses, retimes
      (`set_automation_timing`) or deletes any, as AI assistant settings lets them; what one does stays its owner's to
-     change. A new partition, line or machine is made and placed on the floor in one edit (`edit_floor_layout` kind
-     new), and its undo takes it off the list again while nothing uses it.
+     change.
    - **Attached files and imports** (`lib/server/ai/files.ts`, `lib/server/ai/tools/imports.ts`): a photo, a PDF, an Excel
      or CSV sheet attached with the 📎 is checked by its bytes (a photo shrunk in the browser first; a photo or PDF also
      measured by the model's own token count, so one it refuses never reaches a chat), kept in `AiFile` for 14 days (out

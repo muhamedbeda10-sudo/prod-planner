@@ -164,7 +164,7 @@ describe("users and permissions", () => {
       changes: [
         { label: "Ahmed — Painting — record", before: "no", after: "yes" },
         { label: "Ahmed — Order quantity — edit", before: "yes", after: "no" },
-        { label: "Ahmed — screen Floor / Simulator", before: "hidden", after: "shown" },
+        { label: "Ahmed — screen What-if Simulator", before: "hidden", after: "shown" },
         { label: "Ahmed — AI assistant", before: "off", after: "on, $15 a month" },
       ],
     });
