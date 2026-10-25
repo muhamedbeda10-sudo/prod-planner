@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
   return {
-    prisma: { machine: { findFirst: fn(), findUnique: fn(), findMany: fn() }, masterOrder: { findMany: fn() } },
+    prisma: { machine: { findFirst: fn(), findUnique: fn(), findMany: fn() }, masterOrder: { groupBy: fn() } },
     perms: new Set<string>(),
     planningOn: true,
     board: null as unknown,
@@ -32,7 +32,7 @@ import type { ManualJobSnapshot } from "@/lib/server/rowSnapshots";
 import {
   createManualJobTool, deleteManualJobTool, getJobsTool, recordManualJobDoneTool, reopenManualJobTool, restoreManualJobTool, updateManualJobTool,
 } from "@/lib/server/ai/tools/cutFloor";
-import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
+import { checkToolInput, riskOf, toolsFor } from "@/lib/server/ai/tools";
 
 const ctx: ToolCtx = { user: { id: 1, name: "Sara" } as User, hidden: new Set(), now: new Date("2026-10-12T08:00:00Z"), todayISO: "2026-10-12", conversationId: 1, automationId: null };
 const L1 = { id: 1, code: "B4-10", name: "Laser", dept: "Cut", center: "Cutting", active: true };
@@ -76,7 +76,7 @@ beforeEach(() => {
   h.prisma.machine.findFirst.mockImplementation(async ({ where }: { where: { dept: string; code: { equals: string } } }) =>
     [L1, L2, W1].find((m) => m.dept === where.dept && m.code.toLowerCase() === where.code.equals.toLowerCase()) ?? null);
   // the plan knows B1 and B2 — as the plan spells them
-  h.prisma.masterOrder.findMany.mockImplementation(async ({ where }: { where: { OR: { bom: { equals: string } }[] } }) =>
+  h.prisma.masterOrder.groupBy.mockImplementation(async ({ where }: { where: { OR: { bom: { equals: string } }[] } }) =>
     ["B1", "B2"].filter((b) => where.OR.some((o) => o.bom.equals.toUpperCase() === b)).map((bom) => ({ bom })));
   h.board = {
     cards: [
@@ -172,6 +172,8 @@ describe("record_manual_job_done — sheets cut", () => {
     expect(await recordManualJobDoneTool.describe({ id: 12, qty: 6, machine: "B4-10" }, ctx)).toMatchObject({
       summary: expect.stringContaining("6 sheet(s) of job #12"),
       changes: [{ before: "4 of 10 sheets cut", after: "10 of 10 sheets cut" }],
+      // the day the card shows is part of what is approved: on another day the proposal reads stale
+      snapshot: { date: "2026-10-12" },
     });
     // the ✓ wrote row 77 on the sheet cut log: its undo takes that row off too
     h.jobs.recordManualDone.mockResolvedValue({ ok: true, cutLogId: 77 });
@@ -246,6 +248,16 @@ describe("delete_manual_job", () => {
     expect(deleteManualJobTool.risk).toBe("destructive");
     expect(await deleteManualJobTool.describe({ id: 12 }, ctx)).toMatchObject({ summary: expect.stringContaining("(4 of 10 sheets cut)") });
     expect(await deleteManualJobTool.execute({ id: 12 }, ctx)).toMatchObject({ ok: true, undo: { tool: "restore_manual_job" } });
+  });
+});
+
+describe("a quantity waits for the person's click", () => {
+  it("sheets cut or pieces done, more wanted and a changed quantity are high; a reopening by mistake or a new name is low", () => {
+    expect(riskOf(recordManualJobDoneTool, { id: 12, qty: 1 })).toBe("high");
+    expect(riskOf(reopenManualJobTool, { id: 12, more: 2 })).toBe("high");
+    expect(riskOf(reopenManualJobTool, { id: 12, more: 0 })).toBe("low");
+    expect(riskOf(updateManualJobTool, { id: 12, qty: 12 })).toBe("high");
+    expect(riskOf(updateManualJobTool, { id: 12, title: "Brackets" })).toBe("low");
   });
 });
 

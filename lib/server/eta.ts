@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { loadAllSchedules, loadHolidays, loadMasterOrders } from "./loads";
-import { factoryDayISO, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, factoryToday, toISODate } from "@/lib/domain/dates";
 import { isPaintExempt, type Item, ITEMS } from "@/lib/domain/constants";
 import { tierForOrder, itemHoursFor } from "@/lib/domain/stdEngine";
 import { forecastEta, ETA_STAGES, type EtaOrder, type EtaStage, type EtaResult } from "@/lib/domain/eta";
@@ -23,7 +23,7 @@ const isWorkday = (d: Date, off: Set<string>) => d.getUTCDay() !== 5 && !off.has
 export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, number>; sigma: Record<EtaStage, number>; windowDays: number }> => withLine("TR", async () => {
   const holidays = new Set((await loadHolidays()).map((h) => toISODate(h.date)));
   // walk back from yesterday until the window holds RATE_WINDOW_WD working days
-  const end = new Date(`${factoryDayISO(new Date())}T00:00:00Z`);
+  const end = factoryToday();
   end.setUTCDate(end.getUTCDate() - 1);
   let start = new Date(end);
   let wd = isWorkday(end, holidays) ? 1 : 0;

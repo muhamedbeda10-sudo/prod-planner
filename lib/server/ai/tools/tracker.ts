@@ -8,6 +8,7 @@ import { getLvTracker } from "@/lib/server/lvTracker";
 import { getSettings } from "@/lib/server/data";
 import { checkOutputChain } from "@/lib/server/outputGuard";
 import { groupTotal, loadGroupMembers, spreadGroupChange } from "@/lib/server/groupRecord";
+import { readWorklistPush, restoreWorklistPush, type WorklistPushSnapshot } from "@/lib/server/rowSnapshots";
 import { fullyDeliveredOpenOrders } from "@/lib/server/deliveredOrders";
 import {
   closeDeliveredOrders, decidePlanQty, pushOrderToWorklist, setExcludedItems, setGroupOrderSpec,
@@ -15,7 +16,7 @@ import {
 } from "@/app/orders/actions";
 import { recordGroupOutput, recordTrackerTotal } from "@/app/worklist/actions";
 import { recordLvGroupTotal, recordLvTotal } from "@/app/lv/actions";
-import { DELIVERED_STAGE, ITEMS, SHOTBLAST_STAGE, applicableItems, isItem, isPaintExempt, ospOf, type Item } from "@/lib/domain/constants";
+import { DELIVERED_STAGE, ITEMS, SHOTBLAST_STAGE, applicableItems, isItem, isPaintExempt, ospOf, stageItemError, type Item } from "@/lib/domain/constants";
 import { linePermKey, trackerPermKey } from "@/lib/domain/permissions";
 import { LV_CHAIN, LV_ITEM, lvChainError, lvGroupMembers, lvPermKey, lvStageOf, type LvChainStage, type LvState } from "@/lib/domain/lv";
 import { spreadOverGroup } from "@/lib/domain/groupSpread";
@@ -239,13 +240,17 @@ export const setOrderHoldTool: WriteTool<HoldInput> = {
     const r: ActionAnswer = await setOrderHold(formOf({ mos: moving.map((x) => x.mo).join(","), hold: i.hold, note: i.note ?? "" }));
     if (!r.ok) return { ok: false, error: r.error };
     const mos = moving.map((x) => x.mo);
-    // releasing can be undone only when every order had the same reason
+    // the undo puts each order back as it WAS: one that was running is
+    // released, one that was already on hold (its note changed) is re-held
+    // with its earlier note — one set_order_hold call can say only one of
+    // those, so a mixed set has no undo; a release is undone only when every
+    // order had the same reason
     const notes = new Set(moving.map((x) => x.holdNote ?? ""));
-    const undo = i.hold
-      ? { tool: "set_order_hold", input: { mos, hold: false } }
-      : notes.size === 1 && moving.every((x) => x.holdAt)
-        ? { tool: "set_order_hold", input: { mos, hold: true, ...([...notes][0] ? { note: [...notes][0] } : {}) } }
-        : undefined;
+    const note = [...notes][0];
+    const reHold = notes.size === 1 && moving.every((x) => x.holdAt)
+      ? { tool: "set_order_hold", input: { mos, hold: true, ...(note ? { note } : {}) } }
+      : undefined;
+    const undo = i.hold && moving.every((x) => !x.holdAt) ? { tool: "set_order_hold", input: { mos, hold: false } } : reHold;
     return { ok: true, message: `${i.hold ? "Put on hold" : "Released"}: ${mos.join(", ")}.`, undo };
   },
 };
@@ -303,7 +308,10 @@ export const setOrderQtyTool: WriteTool<QtyInput> = {
     const o = await prisma.masterOrder.findUnique({ where: { mo: i.mo } });
     if (!o) return { error: `${i.mo} is not in the orders registry.` };
     if (o.planQty === i.qty) return { error: `${i.mo} is ${i.qty} already.` };
-    const sums = await prisma.handoverEntry.groupBy({ by: ["dept"], where: { mo: i.mo }, _sum: { qty: true } });
+    // the most recorded of ONE component at one stage — the figure the order's
+    // quantity is compared against (a sum over all components would warn on
+    // every order with two components recorded)
+    const sums = await prisma.handoverEntry.groupBy({ by: ["dept", "item"], where: { mo: i.mo }, _sum: { qty: true } });
     const most = Math.max(0, ...sums.map((s) => s._sum.qty ?? 0));
     const changes: AiChange[] = [{ label: `${i.mo} required`, before: cell(o.planQty), after: cell(i.qty) }];
     if (i.qty < most) changes.push({ label: "⚠ already recorded at a stage", before: cell(most), after: "more than the order" });
@@ -565,7 +573,9 @@ export const pushToWorklistTool: WriteTool<PushInput> = {
   description:
     "Send an order DOWN from the Plan Tracker to a department's worklist with a chosen quantity per component (at most what that department still owes). It replaces any earlier push of the same order to that department; all-zero quantities clear it.",
   area: "tracker",
-  risk: "low",
+  // pieces sent down are a quantity — they wait for the person's click;
+  // clearing a push is not
+  risk: (i) => (ITEMS.some((it) => (i.qty[it] ?? 0) > 0) ? "high" : "low"),
   schema: {
     type: "object",
     properties: { mo: MO, dept: { type: "string", enum: ["Cut", "Welding", "Painting"], description: "The worklist." }, qty: pushQtySchema },
@@ -577,6 +587,7 @@ export const pushToWorklistTool: WriteTool<PushInput> = {
     const o = await prisma.masterOrder.findUnique({ where: { mo: i.mo } });
     if (!o) return { error: `${i.mo} is not in the orders registry.` };
     if (o.status !== "open") return { error: `${i.mo} is closed.` };
+    if (o.line === "LV") return { error: `${i.mo} is an LV panel order — panels are not pushed to the transformer worklists.` };
     const [current, sums] = await Promise.all([
       prisma.worklistPush.findMany({ where: { dept: i.dept, mo: i.mo } }),
       prisma.handoverEntry.groupBy({ by: ["item"], where: { mo: i.mo, dept: i.dept }, _sum: { qty: true } }),
@@ -604,9 +615,12 @@ export const pushToWorklistTool: WriteTool<PushInput> = {
     };
   },
   async execute(i) {
-    const before = await prisma.worklistPush.findMany({ where: { dept: i.dept, mo: i.mo } });
+    // the undo writes the rows back AS THEY WERE — quantity and the output
+    // already counted against them (baseDone); pushing the old quantity again
+    // would count the output consumed since from zero
+    const before = await readWorklistPush(i.dept, i.mo);
     const r: ActionAnswer = await pushOrderToWorklist(formOf({ mo: i.mo, dept: i.dept, ...Object.fromEntries(ITEMS.map((it) => [`qty${it}`, i.qty[it] ?? 0])) }));
-    const undo = { tool: "push_to_worklist", input: { mo: i.mo, dept: i.dept, qty: Object.fromEntries(before.map((p) => [p.item, p.qty])) } };
+    const undo = { tool: "restore_worklist_push", input: { mo: i.mo, dept: i.dept, rows: JSON.stringify(before) } };
     if (r.ok) return { ok: true, message: `Pushed ${i.mo} to ${i.dept}.`, undo };
     // all zero: the action clears the push and answers "nothing sent" — what
     // was asked for, so read the table rather than the words
@@ -616,6 +630,55 @@ export const pushToWorklistTool: WriteTool<PushInput> = {
     return { ok: false, error: r.error };
   },
 };
+
+/** The undo of a push — never offered to the model. */
+export const restoreWorklistPushTool: WriteTool<{ mo: string; dept: "Cut" | "Welding" | "Painting"; rows: string }> = {
+  kind: "write",
+  name: "restore_worklist_push",
+  internal: true,
+  title: "Put a push back",
+  description: "Put an order's pushed lines on one worklist back exactly as they were (the undo of a push).",
+  area: "tracker",
+  risk: "low",
+  schema: {
+    type: "object",
+    properties: { mo: MO, dept: { type: "string", enum: ["Cut", "Welding", "Painting"] }, rows: { type: "string", minLength: 2, maxLength: 100_000 } },
+    required: ["mo", "dept", "rows"],
+    additionalProperties: false,
+  },
+  parse(r) {
+    const i = r as { mo: string; dept: "Cut" | "Welding" | "Painting"; rows: string };
+    const state = pushState(i.rows);
+    return typeof state === "string" ? state : i;
+  },
+  async describe(i, ctx) {
+    if (!hasPerm(ctx.user, "tracker.push")) return { error: NO_RIGHT };
+    const then = pushState(i.rows) as WorklistPushSnapshot[];
+    const now = await readWorklistPush(i.dept, i.mo);
+    const text = (rows: WorklistPushSnapshot[]) => (rows.length ? rows.map((p) => `${p.qty} ${p.item}`).join(", ") : "—");
+    return {
+      title: `Put ${i.mo}'s push to ${i.dept} back`,
+      summary: `Put ${i.mo}'s pushed lines on the ${i.dept} worklist back as they were.`,
+      changes: [{ label: `${i.mo} → ${i.dept}`, before: text(now), after: text(then) }],
+      snapshot: now,
+    };
+  },
+  async execute(i) {
+    const r = await restoreWorklistPush(i.dept, i.mo, pushState(i.rows) as WorklistPushSnapshot[]);
+    return r.ok ? { ok: true, message: `${i.mo}'s push to ${i.dept} is back as it was.` } : { ok: false, error: r.error };
+  },
+};
+
+function pushState(text: string): WorklistPushSnapshot[] | string {
+  let v: unknown;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    return "The earlier push could not be read.";
+  }
+  const ok = Array.isArray(v) && v.every((r) => r && typeof r === "object" && isItem(r.item) && typeof r.qty === "number" && r.qty >= 0 && typeof r.baseDone === "number" && r.baseDone >= 0 && typeof r.createdAt === "string");
+  return ok ? (v as WorklistPushSnapshot[]) : "The earlier push is not whole.";
+}
 
 // ------------------------------------------------------- close delivered
 
@@ -667,7 +730,8 @@ async function stageTotals(dept: string, item: string, mos: readonly string[]): 
 }
 
 async function stageRuleError(dept: string, item: string): Promise<string | null> {
-  if (dept === SHOTBLAST_STAGE && !isPaintExempt(item)) return `${item} is painted, not shot blasted — ShotBlast is the core frame's (CF) stage.`;
+  const pair = stageItemError(dept, item);
+  if (pair) return pair;
   if (dept === "Painting" && item === TANK_ITEM && (await getSettings()).tankTracking) return "Tanks are painted from the Painting worklist, tank by tank — not as a total.";
   return null;
 }
@@ -710,6 +774,7 @@ export const recordStageTotalsTool: WriteTool<TotalsInput> = {
     const byMo = new Map(o.orders.map((x) => [x.mo, x]));
     const cur = await stageTotals(i.dept, i.item, i.totals.map((t) => t.mo));
     const changes: AiChange[] = [];
+    const moving: TotalsInput["totals"] = [];
     for (const t of i.totals) {
       const was = cur.get(t.mo) ?? 0;
       if (was === t.total) continue;
@@ -718,11 +783,13 @@ export const recordStageTotalsTool: WriteTool<TotalsInput> = {
       const chain = await checkOutputChain({ dept: i.dept, bom: ord.bom, mo: t.mo, item: i.item, qty: t.total - was });
       if (chain) return { error: chain };
       changes.push({ label: `${t.mo} ${i.item} ${i.dept}`, before: cell(was), after: `${cell(t.total)} (${t.total > was ? "+" : ""}${t.total - was} today)` });
+      moving.push(t);
     }
     if (changes.length === 0) return { error: "Every total reads so already." };
     return {
-      title: changes.length === 1 ? `${i.totals[0].mo} ${i.item} ${i.dept}: ${changes[0].before} → ${i.totals[0].total}` : `${i.item} ${i.dept} on ${changes.length} orders`,
-      summary: `Record the ${i.dept} totals of ${i.item}: ${i.totals.filter((t) => (cur.get(t.mo) ?? 0) !== t.total).map((t) => `${t.mo} ${cur.get(t.mo) ?? 0} → ${t.total}`).join(", ")} — the differences go into today's Daily log.`,
+      // the headline names the order that changes, not the first one listed
+      title: changes.length === 1 ? `${moving[0].mo} ${i.item} ${i.dept}: ${changes[0].before} → ${moving[0].total}` : `${i.item} ${i.dept} on ${changes.length} orders`,
+      summary: `Record the ${i.dept} totals of ${i.item}: ${moving.map((t) => `${t.mo} ${cur.get(t.mo) ?? 0} → ${t.total}`).join(", ")} — the differences go into today's Daily log.`,
       changes,
       snapshot: i.totals.map((t) => ({ mo: t.mo, total: cur.get(t.mo) ?? 0 })),
     };
@@ -790,7 +857,13 @@ export const recordBomTotalTool: WriteTool<BomTotalInput> = {
     const rule = await stageRuleError(i.dept, i.item);
     if (rule) return { error: rule };
     const members = await loadGroupMembers(i.bom, i.item, i.mos);
-    if (!members) return { error: `An MO listed is not on BOM ${i.bom}.` };
+    if (!members) return { error: `An MO listed is not on BOM ${i.bom}, or is in no plan or log.` };
+    // the tracker's group row lists registry orders only; a typed MO outside it
+    // has no quantity to bound it and would take every piece the others cannot
+    const ghost = members.filter((m) => !m.o).map((m) => m.mo);
+    if (ghost.length) return { error: `Not in the orders registry: ${ghost.join(", ")}. Check the MO numbers.` };
+    const panel = members.find((m) => m.o?.line === "LV");
+    if (panel) return { error: `${panel.mo} is an LV panel order — use record_lv_bom_total.` };
     const current = groupTotal(members, i.dept);
     const delta = i.total - current;
     if (delta === 0) return { error: `The group total is ${current} already.` };
@@ -803,12 +876,15 @@ export const recordBomTotalTool: WriteTool<BomTotalInput> = {
         const was = stageOfMember(members.find((m) => m.mo === a.mo)!, i.dept);
         return { label: `${a.mo} ${i.item} ${i.dept}`, before: cell(was), after: `${was + a.qty} (${a.qty > 0 ? "+" : ""}${a.qty} today)` };
       }),
-      snapshot: members.map((m) => ({ mo: m.mo, cut: m.cut, weld: m.weld, paint: m.paint, shp: m.shp, delivered: m.delivered, planQty: m.o?.planQty ?? null })),
+      // everything the spread reads: the stage figures, each order's quantity,
+      // its outsourced share and whether it needs the component at all
+      snapshot: members.map((m) => ({ mo: m.mo, cut: m.cut, weld: m.weld, paint: m.paint, shp: m.shp, delivered: m.delivered, planQty: m.o?.planQty ?? null, osp: m.o ? ospOf(m.o, i.item) : 0, eligible: m.eligible })),
     };
   },
   async execute(i) {
     const members = await loadGroupMembers(i.bom, i.item, i.mos);
-    if (!members) return { ok: false, error: `An MO listed is not on BOM ${i.bom}.` };
+    if (!members) return { ok: false, error: `An MO listed is not on BOM ${i.bom}, or is in no plan or log.` };
+    if (members.some((m) => !m.o)) return { ok: false, error: `Not in the orders registry: ${members.filter((m) => !m.o).map((m) => m.mo).join(", ")}.` };
     const before = new Map(members.map((m) => [m.mo, stageOfMember(m, i.dept)]));
     const r: ActionAnswer = await recordGroupOutput(formOf({ source: "tracker", dept: i.dept, bom: i.bom, item: i.item, mos: i.mos.join(","), total: i.total }));
     if (!r.ok) return { ok: false, error: r.error };
@@ -888,6 +964,7 @@ export const recordLvTotalsTool: WriteTool<LvTotalsInput> = {
     const states = await lvStates(i.totals.map((t) => t.mo));
     if ("error" in states) return states;
     const changes: AiChange[] = [];
+    const moving: LvTotalsInput["totals"] = [];
     for (const t of i.totals) {
       const s = states.get(t.mo)!;
       const was = lvStageOf(s, i.stage);
@@ -895,11 +972,12 @@ export const recordLvTotalsTool: WriteTool<LvTotalsInput> = {
       const err = lvChainError(s, i.stage, t.total - was, t.mo);
       if (err) return { error: err };
       changes.push({ label: `${t.mo} ${i.stage}`, before: cell(was), after: `${t.total} (${t.total > was ? "+" : ""}${t.total - was} today)` });
+      moving.push(t);
     }
     if (changes.length === 0) return { error: "Every total reads so already." };
     return {
-      title: changes.length === 1 ? `${changes[0].label}: ${changes[0].before} → ${i.totals[0].total}` : `LV ${i.stage} on ${changes.length} orders`,
-      summary: `Record the LV ${i.stage} totals: ${i.totals.map((t) => `${t.mo} → ${t.total}`).join(", ")} — the differences go into today's Daily log.`,
+      title: changes.length === 1 ? `${changes[0].label}: ${changes[0].before} → ${moving[0].total}` : `LV ${i.stage} on ${changes.length} orders`,
+      summary: `Record the LV ${i.stage} totals: ${moving.map((t) => `${t.mo} → ${t.total}`).join(", ")} — the differences go into today's Daily log.`,
       changes,
       snapshot: i.totals.map((t) => ({ mo: t.mo, state: states.get(t.mo) })),
     };
@@ -1007,6 +1085,7 @@ export const recordLvBomTotalTool: WriteTool<LvBomTotalInput> = {
 };
 
 export const TRACKER_TOOLS = [
+  restoreWorklistPushTool,
   getOrders,
   setOrderStatusTool,
   setOrderHoldTool,

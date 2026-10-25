@@ -1,4 +1,5 @@
 import "server-only";
+import { AI_RESULT_CHARS } from "@/lib/domain/ai";
 import { createHash } from "node:crypto";
 import type { AiFile } from "@prisma/client";
 import { hasPerm } from "@/lib/server/auth";
@@ -23,6 +24,7 @@ import { monthLabelFromInput } from "@/lib/domain/dates";
 import { stableJson } from "@/lib/domain/aiActions";
 import type { JsonSchema } from "@/lib/domain/aiInput";
 import { formOf, type ReadTool, type ToolCtx, type WriteTool } from "./types";
+import { userMessage } from "@/lib/server/errors";
 
 // Files attached in the assistant's chat, read and imported: the same six
 // imports the screens run (the monthly and weekly plans, the Daily-log
@@ -89,7 +91,23 @@ export const readAttachedFileTool: ReadTool<ReadInput> = {
     if ("error" in f) return { ok: false, text: f.error };
     const r = readSheet(f, i);
     if ("error" in r) return { ok: false, text: r.error };
-    return { ok: true, text: JSON.stringify({ file: f.name, ...r }) };
+    // bounded like a query's result: a wide sheet is cut to the rows (then the
+    // columns) that fit, and the cut is said — an answer that outgrows the
+    // model's window would break the chat for good
+    let rows = r.rows;
+    let text = JSON.stringify({ file: f.name, ...r });
+    const widest = Math.max(0, ...r.rows.map((row) => row.length));
+    let columns = widest;
+    while (text.length > AI_RESULT_CHARS && (rows.length > 1 || columns > 4)) {
+      if (rows.length > 1) rows = rows.slice(0, Math.ceil(rows.length / 2));
+      else { columns = Math.max(4, Math.ceil(columns / 2)); rows = rows.map((row) => row.slice(0, columns)); }
+      const cuts = [
+        rows.length < r.rows.length ? `only ${rows.length} of the ${r.rows.length} rows read fit — read on from row ${r.fromRow + rows.length}` : "",
+        columns < widest ? `only the first ${columns} of ${widest} columns are shown — ask for the others by name` : "",
+      ].filter(Boolean);
+      text = JSON.stringify({ file: f.name, ...r, rows, note: `The sheet is too wide for one answer: ${cuts.join("; ")}.` });
+    }
+    return { ok: true, text };
   },
 };
 
@@ -132,7 +150,7 @@ function importTool<I extends ImportBase, R extends { ok: boolean; error?: strin
       try {
         r = await o.preview(i, f, ctx);
       } catch (e) {
-        return { error: `The importer could not read the file: ${e instanceof Error ? e.message : String(e)}` };
+        return { error: userMessage(e, "read the file") };
       }
       if (!r.ok) return failed(r);
       const c = o.card(i, r, f);

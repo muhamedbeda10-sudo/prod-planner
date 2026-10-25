@@ -7,7 +7,7 @@
 // Each is told the same way: a count on the ODOO tab and a popup when a row
 // they have not seen yet appears, workable from the popup. Pure, tested.
 
-import { isDoneStatus, statusTone } from "./odoo";
+import { statusTone } from "./odoo";
 
 /** Subscribes a person to "ready to close". Not an access right, so an admin
  *  does not get it automatically — it is ticked. */
@@ -35,8 +35,17 @@ export interface ReadyRow {
   source: string; // manual | import | painting | shotblast
 }
 
+/** The statuses a row is finished under — closed, or not waiting on anyone
+ *  (blocked, cancelled). The alert polls leave these rows in the database;
+ *  isReadyToClose and needsMo are the same rule read in JavaScript. */
+export const FINISHED_STATUSES = ["Done", "Closed", "Blocked", "Cancelled", "Canceled"] as const;
+
+/** Has Odoo's MO and still waits to be closed — Done, Blocked and Cancelled
+ *  rows are not ready for anyone. */
 export function isReadyToClose(e: { odooMo: string; status: string }): boolean {
-  return e.odooMo.trim() !== "" && !isDoneStatus(e.status);
+  if (e.odooMo.trim() === "") return false;
+  const tone = statusTone(e.status);
+  return tone === "muted" || tone === "warn";
 }
 
 /** No MO yet and still to be closed — Done, Blocked and Cancelled rows are

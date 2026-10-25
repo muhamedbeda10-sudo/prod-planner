@@ -1,7 +1,7 @@
 import { PageHead } from "@/components/ui";
 import { getLeakTestQueue } from "@/lib/server/tanks";
 import { getWorkersFor } from "@/lib/server/workers";
-import { toISODate } from "@/lib/domain/dates";
+import { factoryToday, toISODate } from "@/lib/domain/dates";
 import { formatDate } from "@/lib/domain/format";
 import { LeakTestTable } from "@/components/LeakTestTable";
 import { PrintHeader } from "@/components/PrintHeader";
@@ -30,7 +30,9 @@ function TrackingOff({ what }: { what: string }) {
 
 export default async function LeakTestPage() {
   await guardTab("/worklist/leak-test");
-  const today = new Date();
+  // the factory's day (Cairo), not the server's UTC date: the night shift
+  // records after midnight, and its rows belong to the day it works
+  const today = factoryToday();
   const dayISO = toISODate(today);
   const [tanks, testers, user, settings] = await Promise.all([
     getLeakTestQueue(),

@@ -31,6 +31,9 @@ export interface ParsedLvMaterial {
   rows: LvMaterialRow[];
   issues: string[];
   headerRow: number;
+  /** Data rows the parser could not read and left out (each also named in
+   *  `issues`) — they ARE in the file, so the import must not prune. */
+  skipped: number;
 }
 
 const HEADERS = {
@@ -87,6 +90,16 @@ export function parseConsumedCell(raw: unknown): { producedQty: number | null; c
   };
 }
 
+/** The rate a running block states: sheets consumed over the units they
+ *  made, 14.4 for 8 → 1.8. Null when the block is Done (the job's sheets over
+ *  the whole job is the per-unit figure already), when the cell gave no unit
+ *  count (a bare 14.4 — the tab divides by what it knows) or when nothing was
+ *  consumed. */
+export function lvActualRate(r: { done: boolean; producedQty: number | null; consumed: number | null }): number | null {
+  if (r.done || r.consumed === null || r.producedQty === null || !(r.producedQty > 0)) return null;
+  return round4(r.consumed / r.producedQty);
+}
+
 /** Units still to make on a block: planned less produced, never negative. */
 export function lvRemainingUnits(units: number, produced: number | null): number {
   return Math.max(0, units - (produced ?? 0));
@@ -94,15 +107,16 @@ export function lvRemainingUnits(units: number, produced: number | null): number
 
 export function parseLvConsumption(grid: unknown[][]): ParsedLvMaterial {
   const headerIdx = findHeaderRow(grid);
-  if (headerIdx < 0) return { rows: [], issues: ["No header row found — expected a row with 'MO' and 'Thickness'."], headerRow: 0 };
+  if (headerIdx < 0) return { rows: [], issues: ["No header row found — expected a row with 'MO' and 'Thickness'."], headerRow: 0, skipped: 0 };
   const col = mapColumns(grid[headerIdx] ?? []);
   const issues: string[] = [];
   for (const k of ["mo", "thickness", "perUnit"] as const) {
     if (col[k] < 0) issues.push(`Column for ${k === "perUnit" ? "sheets for one unit" : k} not found in the header row.`);
   }
-  if (issues.length) return { rows: [], issues, headerRow: headerIdx + 1 };
+  if (issues.length) return { rows: [], issues, headerRow: headerIdx + 1, skipped: 0 };
 
   const rows: LvMaterialRow[] = [];
+  let skipped = 0;
   // the block's head — repeated down the thickness rows the sheet leaves blank
   let head: { product: string; secItem: string; mo: string; bom: string; units: number; material: string; note: string | null; done: boolean } | null = null;
   const at = (r: unknown[], i: number) => (i >= 0 ? r[i] : null);
@@ -127,9 +141,9 @@ export function parseLvConsumption(grid: unknown[][]): ParsedLvMaterial {
       if (units === null) issues.push(`Row ${rowNum}: ${mo} has no planned qty — 0 assumed.`);
     }
     if (thickness === null || thickness <= 0) continue; // a spacer or a text row
-    if (!head) { issues.push(`Row ${rowNum}: a thickness row before any order — skipped.`); continue; }
+    if (!head) { issues.push(`Row ${rowNum}: a thickness row before any order — skipped.`); skipped++; continue; }
     const perUnit = parseSheetNumber(at(r, col.perUnit));
-    if (perUnit === null) { issues.push(`Row ${rowNum}: ${head.mo} ${thickness} mm has no sheets-per-unit — skipped.`); continue; }
+    if (perUnit === null) { issues.push(`Row ${rowNum}: ${head.mo} ${thickness} mm has no sheets-per-unit — skipped.`); skipped++; continue; }
     const material = normalizeMaterialType(at(r, col.material)) || head.material;
     const sheetSize = normalizeSheetSize(at(r, col.size)) || "1220*2440";
     const forJob = round4(perUnit * head.units);
@@ -146,5 +160,5 @@ export function parseLvConsumption(grid: unknown[][]): ParsedLvMaterial {
     });
   }
   if (rows.length === 0) issues.push("No thickness rows found under any MO.");
-  return { rows, issues, headerRow: headerIdx + 1 };
+  return { rows, issues, headerRow: headerIdx + 1, skipped };
 }

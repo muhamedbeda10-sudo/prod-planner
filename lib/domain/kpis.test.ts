@@ -148,6 +148,22 @@ describe("what to do today", () => {
   });
 });
 
+describe("the top loss in what to do today", () => {
+  const top = (hours: number) =>
+    cockpitActions({
+      late: [], coverage: { wipH: 0, ratePerDay: 0, days: null, band: null, byItem: [] }, load: [], centres: [],
+      topLoss: { label: "No material", hours }, todayRecorded: true, ddmm: (iso) => iso,
+    });
+  it("says the machine time lost in hours and minutes, as the stops are shown", () => {
+    expect(top(2.5)).toEqual([{ tone: "warn", href: "/shifts", floor: true, text: "No material cost 2 h 30 min of machine time this week — the biggest loss." }]);
+    expect(top(0.75)[0].text).toBe("No material cost 45 min of machine time this week — the biggest loss.");
+    expect(top(3)[0].text).toBe("No material cost 3 h of machine time this week — the biggest loss.");
+  });
+  it("names no loss when nothing was lost", () => {
+    expect(top(0)).toEqual([]);
+  });
+});
+
 describe("the month's manpower", () => {
   const cal = { hoursPerPersonDay: 8, monthWd: 25, leftWd: 10 };
   it("turns the plan's hours into people over the month's working days, and what is left into people from today", () => {

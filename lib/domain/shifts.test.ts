@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CENTERS, DEPT_CENTRES, centreDept, centreOf, machineWorkCentre, MACHINE_DEPTS, ROUTING, SHIFTS, attendanceLine, attendanceOf, centerShares, dayTotals, isAttendance, shiftSplit, hoursOfShift, isShiftCode, isShiftDept, lineHours, machineAvailable, routeFor, shiftLabel } from "./shifts";
+import { CENTERS, DEPT_CENTRES, centreDept, centreOf, machineWorkCentre, MACHINE_DEPTS, ROUTING, SHIFTS, attendanceLine, attendanceOf, centerShares, dayTotals, isAttendance, overtimeFits, roundOvertime, shiftSplit, hoursOfShift, isShiftCode, isShiftDept, lineHours, machineAvailable, routeFor, shiftLabel } from "./shifts";
 import { SHEET_ITEMS } from "./constants";
 
 describe("lineHours", () => {
@@ -179,5 +179,38 @@ describe("night overtime", () => {
     expect(dayTotals([night])).toMatchObject({ hours: 11, overtimeH: 3, byMachine: { 7: 11 } });
     expect(shiftSplit([night]).night).toEqual({ people: 1, hours: 11, overtimePeople: 1, overtimeH: 3 });
     expect(shiftSplit([{ ...night, present: false }]).hours).toBe(0);
+  });
+});
+
+describe("shiftSplit rounds the day's hours once", () => {
+  it("agrees with dayTotals when both shifts end in a quarter hour", () => {
+    const h = { short: 7.75, long: 7.75, overtime: 0, nightOvertime: 0 };
+    const day = { present: true, shift: "S9" as const, overtimeH: 0 };
+    const night = { present: true, shift: "S11" as const, overtimeH: 0 };
+    const s = shiftSplit([day, day, day, night, night, night], h);
+    // 23.25 + 23.25 = 46.5 — not 23.3 + 23.3 = 46.6
+    expect(s.hours).toBe(46.5);
+    expect(s.day.hours).toBe(23.3);
+    expect(s.hours).toBe(dayTotals([day, day, day, night, night, night].map((l) => ({ ...l, dept: "Welding", workerId: 1, center: null, note: null })) as never, h).hours);
+  });
+});
+
+describe("overtimeFits", () => {
+  it("accepts none, the fixed period, or the figure the row already holds", () => {
+    expect(overtimeFits(0, 3, undefined)).toBe(true);
+    expect(overtimeFits(3, 3, undefined)).toBe(true);
+    expect(overtimeFits(3.0005, 3, undefined)).toBe(true);
+    expect(overtimeFits(3.002, 3, undefined)).toBe(false);
+    expect(overtimeFits(2.25, 3, 2.25)).toBe(true);
+    expect(overtimeFits(2.5, 3, undefined)).toBe(false);
+    expect(overtimeFits(2.5, 3, 0)).toBe(false);
+  });
+});
+
+describe("roundOvertime", () => {
+  it("keeps the hundredth Settings keeps", () => {
+    expect(roundOvertime(2.254)).toBe(2.25);
+    expect(roundOvertime(2.25)).toBe(2.25);
+    expect(roundOvertime(3)).toBe(3);
   });
 });

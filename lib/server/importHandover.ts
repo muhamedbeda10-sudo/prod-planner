@@ -41,7 +41,9 @@ export async function importHandoverFile(buffer: ArrayBuffer, preview = false): 
   }
   const ws = wb.Sheets[wb.SheetNames[0]];
   if (!ws) return { ok: false, error: "The file has no sheets." };
-  const opts: XLSX.Sheet2JSONOpts = { header: 1, raw: true, defval: null, blankrows: false };
+  // blank rows stay in the grid so "row N" in a message is the sheet's row N;
+  // the parser skips them itself
+  const opts: XLSX.Sheet2JSONOpts = { header: 1, raw: true, defval: null, blankrows: true };
   if (ws["!ref"]) {
     const range = XLSX.utils.decode_range(ws["!ref"]);
     range.s.r = 0;
@@ -100,8 +102,11 @@ export async function importHandoverFile(buffer: ArrayBuffer, preview = false): 
     return { ok: false, error: "No valid rows to import.", invalid, issues };
   }
 
-  // existing multiset across ALL sources (so manual/seed rows aren't duplicated)
+  // existing multiset across ALL sources (so manual/seed rows aren't
+  // duplicated) — of the plans the file names: the signature carries the plan,
+  // so rows of other plans can never match, and the ledger grows for ever
   const existing = await prisma.handoverEntry.findMany({
+    where: { planNo: { in: [...new Set([...desired.values()].map((d) => d.rec.planNo))] } },
     select: { date: true, dept: true, bom: true, mo: true, item: true, qty: true, planNo: true },
   });
   const existingCount = new Map<string, number>();

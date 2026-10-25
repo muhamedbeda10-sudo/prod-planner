@@ -10,6 +10,7 @@ import { isProductLine, type ProductLine } from "@/lib/domain/lines";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { isDoneStatus } from "@/lib/domain/odoo";
 import { importOdooSheet, type OdooImportResult } from "@/lib/server/odoo";
+import { UserError, userMessage } from "@/lib/server/errors";
 
 // The ODOO tab's writes — a daily log of close attempts. Rows are plain
 // entries: no identity key, because the same Odoo MO retried tomorrow is a
@@ -68,6 +69,10 @@ const text = (v: FormDataEntryValue | null) => String(v ?? "").replace(/[\r\n]+/
 
 const STALE = "Someone changed this row since the page was loaded — refresh and try again.";
 
+/** A row of a merged line that moved between updateOdooGroup's check and its
+ *  write: thrown inside the transaction so the whole line rolls back. */
+class StaleRow extends UserError {}
+
 /** The row's last change as the page drew it ("version") — the edit's
  *  optimistic lock; null when the caller sent none (the assistant, which
  *  re-reads the row before it writes). */
@@ -103,17 +108,22 @@ function validate(f: Fields, born = false): string | null {
   return null;
 }
 
-/**
- * The moment a row counts as closed. Moving to Done stamps now; moving away
- * clears it; staying Done keeps the first stamp. A row that is Done the moment
- * it is created for a PAST day was closed that day (the clerk is typing up
- * yesterday's sheet), not today.
- */
-function doneAtFor(nextStatus: string, prev: { status: string; doneAt: Date | null } | null, rowDate: Date): Date | null {
+/** A NEW row that is Done the moment it is created is closed now — unless it
+ *  is logged for a PAST day: then it was closed that day (the clerk is typing
+ *  up yesterday's sheet), not today. Not Done → no stamp. */
+function doneAtOnCreate(nextStatus: string, rowDate: Date): Date | null {
   if (!isDoneStatus(nextStatus)) return null;
-  if (prev && isDoneStatus(prev.status) && prev.doneAt) return prev.doneAt;
   const now = new Date();
   return toISODate(rowDate) < factoryDayISO(now) ? rowDate : now;
+}
+
+/** An EXISTING row moved to Done is closed now, whatever day it was logged —
+ *  the status pill's rule (setOdooStatus), so the dashboard's closed day and
+ *  lead time read the same whichever control the planner used; a row already
+ *  Done keeps the moment it was closed on. */
+function doneAtOnEdit(nextStatus: string, prev: { status: string; doneAt: Date | null }, now: Date): Date | null {
+  if (!isDoneStatus(nextStatus)) return null;
+  return isDoneStatus(prev.status) && prev.doneAt ? prev.doneAt : now;
 }
 
 export async function createOdooEntry(formData: FormData): Promise<OdooActionResult> {
@@ -128,7 +138,7 @@ export async function createOdooEntry(formData: FormData): Promise<OdooActionRes
     data: {
       line,
       date: f.date!, soi: f.soi, fgCode: f.fgCode ?? "", product: f.product, odooMo: f.odooMo,
-      qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, null, f.date!), recordedBy: guard.user?.name ?? null,
+      qty: f.qty!, status: f.status, doneAt: doneAtOnCreate(f.status, f.date!), recordedBy: guard.user?.name ?? null,
     },
     select: { id: true },
   });
@@ -161,7 +171,7 @@ export async function updateOdooEntry(formData: FormData): Promise<OdooActionRes
     where: { id, updatedAt: prev.updatedAt },
     data: {
       date: f.date!, soi: f.soi, fgCode: f.fgCode ?? prev.fgCode, product: f.product, odooMo: f.odooMo,
-      qty: f.qty!, status: f.status, doneAt: doneAtFor(f.status, prev, f.date!), recordedBy: guard.user?.name ?? null,
+      qty: f.qty!, status: f.status, doneAt: doneAtOnEdit(f.status, prev, new Date()), recordedBy: guard.user?.name ?? null,
       // a corrected FG-CODE is a guess no more; an untouched one stays flagged
       // (this edit may have been about the qty)
       fgGuessed: prev.fgGuessed && (f.fgCode ?? prev.fgCode) === prev.fgCode,
@@ -268,9 +278,9 @@ export async function deleteOdooEntry(formData: FormData): Promise<OdooActionRes
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid entry." };
   const guard = await guardRows([id]);
   if (guard.error) return { ok: false, error: guard.error };
-  await prisma.odooEntry.delete({ where: { id } });
+  const gone = await prisma.odooEntry.deleteMany({ where: { id } });
   revalidateOdoo();
-  return { ok: true };
+  return gone.count === 0 ? { ok: false, error: "That row no longer exists." } : { ok: true };
 }
 
 /** A merged line's head, edited like a row: the SOI, product, MO and status
@@ -283,14 +293,39 @@ export async function updateOdooGroup(formData: FormData): Promise<OdooActionRes
   if (guard.error) return { ok: false, error: guard.error };
   const f = read(formData);
   if (!f.product) return { ok: false, error: "Enter the product (Tank, Top Cover, …)." };
-  const prev = await prisma.odooEntry.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, doneAt: true, date: true, ledgerId: true } });
+  const prev = await prisma.odooEntry.findMany({ where: { id: { in: ids } }, select: { id: true, status: true, doneAt: true, date: true, ledgerId: true, updatedAt: true } });
   if (prev.length === 0) return { ok: false, error: "That row no longer exists." };
+  if (prev.length < ids.length) return { ok: false, error: STALE };
+  // the modal sends each row's last change as it drew them: saving a modal
+  // opened before someone closed one of the rows must not put it back
+  const versions = String(formData.get("versions") ?? "").split(",").map((v) => v.trim()).filter(Boolean);
+  if (versions.length > 0) {
+    const posted = String(formData.get("ids") ?? "").split(",").map((x) => Number(x.trim()));
+    const seen = new Map(posted.map((id, n) => [id, versions[n]]));
+    if (prev.some((p) => seen.get(p.id) !== undefined && new Date(seen.get(p.id)!).getTime() !== p.updatedAt.getTime())) return { ok: false, error: STALE };
+  }
   if (!f.odooMo && prev.some((p) => p.ledgerId === null)) return { ok: false, error: "Enter the Odoo MO number." };
   const by = guard.user?.name ?? null;
-  await prisma.$transaction(prev.map((p) => prisma.odooEntry.update({
-    where: { id: p.id },
-    data: { soi: f.soi, product: f.product, odooMo: f.odooMo, status: f.status, doneAt: doneAtFor(f.status, p, p.date), recordedBy: by },
-  })));
+  const now = new Date();
+  // all or nothing: a row that moved between the check and the write rolls
+  // the whole line back, so "refresh and try again" is the truth
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const p of prev) {
+        const moved = await tx.odooEntry.updateMany({
+          where: { id: p.id, updatedAt: p.updatedAt },
+          data: { soi: f.soi, product: f.product, odooMo: f.odooMo, status: f.status, doneAt: doneAtOnEdit(f.status, p, now), recordedBy: by },
+        });
+        if (moved.count === 0) throw new StaleRow(STALE);
+      }
+    });
+  } catch (e) {
+    if (e instanceof StaleRow) {
+      revalidateOdoo();
+      return { ok: false, error: STALE };
+    }
+    throw e;
+  }
   revalidateOdoo();
   return { ok: true };
 }
@@ -321,6 +356,6 @@ export async function importOdooAction(formData: FormData): Promise<OdooImportRe
     if (res.ok && !preview) revalidateOdoo();
     return res;
   } catch (e) {
-    return { ok: false, error: `Import failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "import the sheet") };
   }
 }

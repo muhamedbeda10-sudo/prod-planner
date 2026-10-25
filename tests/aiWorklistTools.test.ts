@@ -12,7 +12,8 @@ const h = vi.hoisted(() => {
     prisma: {
       masterOrder: { findUnique: fn() },
       worklistLineHide: { count: fn() },
-      handoverEntry: { groupBy: fn(), findUnique: fn() },
+      handoverEntry: { groupBy: fn(), findUnique: fn(), findFirst: fn() },
+      planSchedule: { findFirst: fn() },
     },
     perms: new Set<string>(),
     settings: { tankTracking: false },
@@ -47,7 +48,7 @@ import {
   addQueueNoteTool, clearWorklistDateTool, deleteQueueNoteTool, getCutWorklistTool, hideWorklistLineTool, redeliverReturnTool, restoreQueueNoteTool,
   restoreWorklistDatesTool, returnToUpstreamTool, setQueueNoteStatusTool, setWorklistDateTool, unhideWorklistLineTool, updateQueueNoteTool,
 } from "@/lib/server/ai/tools/worklists";
-import { checkToolInput, toolsFor } from "@/lib/server/ai/tools";
+import { checkToolInput, riskOf, toolsFor } from "@/lib/server/ai/tools";
 
 const sara = { id: 1, name: "Sara", isAdmin: false, isOwner: false } as User;
 const admin = { ...sara, isAdmin: true } as User;
@@ -83,6 +84,8 @@ beforeEach(() => {
   };
   h.prisma.masterOrder.findUnique.mockImplementation(async ({ where }: { where: { mo: string } }) => ({ bom: where.mo === "M2" ? "B2" : "B1" }));
   h.prisma.worklistLineHide.count.mockResolvedValue(0);
+  h.prisma.handoverEntry.findFirst.mockResolvedValue(null);
+  h.prisma.planSchedule.findFirst.mockResolvedValue(null);
   for (const f of Object.values(h.actions)) f.mockResolvedValue({ ok: true });
   h.snaps.readWorklistDates.mockResolvedValue([]);
   for (const f of [h.snaps.restoreQueueNote, h.snaps.cancelReturn, h.snaps.reopenReturn, h.snaps.restoreWorklistDates]) f.mockResolvedValue({ ok: true });
@@ -143,6 +146,14 @@ describe("set_worklist_date", () => {
     const i = parsed<Parameters<typeof setWorklistDateTool.describe>[0]>(setWorklistDateTool, { bom: "B2", mo: "M2", item: "TC", origISO: "", fromISO: "2026-10-19", date: "2026-10-21" });
     expect(await setWorklistDateTool.describe(i, ctx(admin))).toEqual({ error: "M2 TC has no part scheduled on 2026-10-19." });
     expect(await setWorklistDateTool.describe({ ...i, fromISO: "2026-10-20" }, ctx(admin))).toMatchObject({ summary: "Move the part of M2 TC scheduled on 2026-10-20 (4 pcs) to 2026-10-21." });
+  });
+});
+
+describe("set_worklist_date — a quantity waits for the click", () => {
+  it("a part scheduled by its pieces is high; a whole tranche moved or a part moved by its day is low", () => {
+    expect(riskOf(setWorklistDateTool, { bom: "B2", mo: "M2", item: "TC", origISO: "", date: "2026-10-20", qty: 4 })).toBe("high");
+    expect(riskOf(setWorklistDateTool, { bom: "B1", mo: "M1", item: "CF", origISO: "2026-10-14", date: "2026-10-20" })).toBe("low");
+    expect(riskOf(setWorklistDateTool, { bom: "B2", mo: "M2", item: "TC", origISO: "", fromISO: "2026-10-20", date: "2026-10-21" })).toBe("low");
   });
 });
 
@@ -241,6 +252,19 @@ describe("returns", () => {
     h.actions.returnToUpstream.mockResolvedValue({ ok: true, id: 9, ledgerId: 77 });
     expect(await returnToUpstreamTool.execute(i, ctx())).toMatchObject({ undo: { tool: "cancel_return", input: { id: 9 } } });
     expect(fd(h.actions.returnToUpstream)).toEqual({ fromDept: "Welding", bom: "B1", mo: "M1", item: "CF", qty: "3", reason: "burrs on the edges" });
+  });
+
+  it("files the return under the order's own BOM, never a typed one", async () => {
+    h.perms.add("welding.edit");
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([{ dept: "Cut", _sum: { qty: 10 } }, { dept: "Welding", _sum: { qty: 4 } }]);
+    // M2 is BOM B2 in the registry
+    expect(await returnToUpstreamTool.describe(parsed(returnToUpstreamTool, { ...raw, mo: "M2" }), ctx())).toEqual({ error: "M2 is on BOM B2, not B1." });
+    // an MO the registry does not know is accepted only with the log's own rows on that BOM
+    h.prisma.masterOrder.findUnique.mockResolvedValue(null);
+    h.prisma.handoverEntry.findFirst.mockResolvedValue(null);
+    expect(await returnToUpstreamTool.describe(parsed(returnToUpstreamTool, { ...raw, mo: "M9" }), ctx())).toEqual({ error: "M9 is not in the orders registry or the log for B1." });
+    h.prisma.handoverEntry.findFirst.mockResolvedValue({ id: 1 });
+    expect(await returnToUpstreamTool.describe(parsed(returnToUpstreamTool, { ...raw, mo: "M9" }), ctx())).toMatchObject({ title: "↩ 3 × M9 CF back to Cut" });
   });
 
   it("sends a tank back by its serial while tanks are tracked", async () => {

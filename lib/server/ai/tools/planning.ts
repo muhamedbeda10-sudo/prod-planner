@@ -53,7 +53,7 @@ export function trackerSummaryTool(loaders = { tr: getMasterTracker, lv: getLvTr
           mo: r.mo, bom: r.bom, required: r.state.required, complete: r.complete, remaining: r.remaining,
           onHold: r.hold.onHold, urgent: r.urgent, bottleneck: lvBottleneck(r.state), href: trace(r.mo, "LV"),
         }));
-        return { ok: true, text: JSON.stringify({ scope, asOf, totals: trackerTotals(rows, (r) => r.state.required), stages: lvStageStats(rows), attention, attentionTruncated: rows.filter((r) => r.remaining > 0 || r.hold.onHold).length > limit, note: "Units are panels; completion is painting, not delivery. Attention is ordered by hold, urgency, then remaining quantity. No schedule lateness or root cause is inferred." }), links: [{ label: "LV Plan Tracker", href: "/tracker" }, ...attention.map((r) => ({ label: `${r.mo} · ${r.bom}`, href: r.href }))] };
+        return { ok: true, text: JSON.stringify({ scope, asOf, totals: trackerTotals(rows, (r) => r.state.required), stages: lvStageStats(rows), attention, attentionTruncated: rows.filter((r) => r.remaining > 0 || r.hold.onHold).length > limit, note: `${emptyScope(rows.length)}Units are panels; completion is painting, not delivery. Attention is ordered by hold, urgency, then remaining quantity. No schedule lateness or root cause is inferred.` }), links: [{ label: "LV Plan Tracker", href: "/tracker" }, ...attention.map((r) => ({ label: `${r.mo} · ${r.bom}`, href: r.href }))] };
       }
       if (filters.product || filters.family || filters.urgent === "no") return { ok: false, text: "Product, plan family and non-urgent-only are LV filters. Use the transformer's search/month/status/progress/urgent filters." };
       if (filters.deptStage?.split(",").some((s) => !["Cut", "Welding", "Painting", "Delivered"].includes(s))) return { ok: false, text: "Unknown transformer department." };
@@ -66,11 +66,17 @@ export function trackerSummaryTool(loaders = { tr: getMasterTracker, lv: getLvTr
         onHold: r.hold.onHold, urgent: r.urgent, progress: masterProgress(r), bottleneck: rowBottleneck(r.required, r.items),
         pendingQuantityDecision: r.pendingQty, href: trace(r.mo, "TR"),
       }));
-      return { ok: true, text: JSON.stringify({ scope, asOf, totals: trackerTotals(rows, (r) => r.required), components: trackerItemStats(rows, summaryStage(filters.deptStage)), attention, attentionTruncated: rows.filter((r) => r.remaining > 0 || r.hold.onHold || r.pendingQty).length > limit, note: "Totals count complete transformer sets; component cards count pieces. OSP reduces in-house targets; CF finishes at shot blast. Attention is ordered by hold, urgency, then remaining sets. No schedule lateness or root cause is inferred." }), links: [{ label: "Transformer Plan Tracker", href: "/tracker" }, ...attention.map((r) => ({ label: `${r.mo} · ${r.bom}`, href: r.href }))] };
+      return { ok: true, text: JSON.stringify({ scope, asOf, totals: trackerTotals(rows, (r) => r.required), components: trackerItemStats(rows, summaryStage(filters.deptStage)), attention, attentionTruncated: rows.filter((r) => r.remaining > 0 || r.hold.onHold || r.pendingQty).length > limit, note: `${emptyScope(rows.length)}Totals count complete transformer sets; component cards count pieces. OSP reduces in-house targets; CF finishes at shot blast. Attention is ordered by hold, urgency, then remaining sets. No schedule lateness or root cause is inferred.` }), links: [{ label: "Transformer Plan Tracker", href: "/tracker" }, ...attention.map((r) => ({ label: `${r.mo} · ${r.bom}`, href: r.href }))] };
     },
   };
 }
 export const getTrackerSummary = trackerSummaryTool();
+
+/** Zero orders is an empty scope, not finished work — said in so many words,
+ *  so "0 remaining" is never read as "all done". */
+function emptyScope(orders: number): string {
+  return orders === 0 ? "No order matches these filters — the zeros are an empty scope, not finished work. " : "";
+}
 
 function attentionOrder(a: { mo: string; remaining: number; urgent: boolean; hold: { onHold: boolean } }, b: typeof a) {
   return Number(b.hold.onHold) - Number(a.hold.onHold) || Number(b.urgent) - Number(a.urgent) || b.remaining - a.remaining || a.mo.localeCompare(b.mo);

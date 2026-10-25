@@ -19,7 +19,7 @@ import { sourceLabel } from "@/lib/domain/odooMirror";
 import { LV_PRODUCTS } from "@/lib/domain/lv";
 import type { ProductLine } from "@/lib/domain/lines";
 import { useActiveLine } from "@/components/LineContext";
-import { Soi } from "@/components/ui";
+import { SAVE_UNCONFIRMED, Soi } from "@/components/ui";
 import { OdooMaterialPopup } from "@/components/OdooMaterialPopup";
 import { Modal } from "@/components/Modal";
 import { MO_MATERIAL_FLAG, entryMaterialNeed, rowMaterialState, type NeedContext, type NestingLookup } from "@/lib/domain/odooMaterial";
@@ -42,12 +42,19 @@ function useAction() {
   const run = useCallback(
     (fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData, okText: string, after?: () => void) => {
       startTransition(async () => {
-        const res = await fn(fd);
-        setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
-        if (res.ok) {
-          after?.();
-          router.refresh();
-          window.dispatchEvent(new Event(ODOO_CHANGED_EVENT)); // the ODOO tab's count follows now
+        // A rejected action (network cut, server fault) must stay a message on
+        // this row — thrown, React hands it to the route's error boundary, which
+        // replaces the whole tab and says nothing was changed when it may have been.
+        try {
+          const res = await fn(fd);
+          setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
+          if (res.ok) {
+            after?.();
+            router.refresh();
+            window.dispatchEvent(new Event(ODOO_CHANGED_EVENT)); // the ODOO tab's count follows now
+          }
+        } catch {
+          setMsg({ ok: false, text: SAVE_UNCONFIRMED });
         }
       });
     },
@@ -730,6 +737,8 @@ function MergedRow({ g, day, knownSois, nesting, needCtx, canEdit }: {
               ev.preventDefault();
               const fd = new FormData(ev.currentTarget);
               fd.set("ids", ids.join(","));
+              // each row's last change as drawn — a stale modal must not revert a row closed meanwhile
+              fd.set("versions", g.rows.map((r) => r.version).join(","));
               edit.run(updateOdooGroup, fd, "Saved.", () => setEditing(false));
             }}
           >

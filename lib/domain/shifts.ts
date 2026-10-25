@@ -260,6 +260,15 @@ export const OVERTIME_TIME = "16:00–19:00";
 export const NIGHT_OVERTIME_TIME = "04:00–07:00";
 export const overtimeTime = (shift: ShiftCode) => shift === "S11" ? NIGHT_OVERTIME_TIME : OVERTIME_TIME;
 export const overtimeHoursFor = (shift: ShiftCode, hours: ShiftHours = DEFAULT_SHIFT_HOURS) => shift === "S11" ? hours.nightOvertime ?? DEFAULT_OVERTIME : hours.overtime;
+/** Overtime to the hundredth, the precision Settings keeps (a 2.25 h period is one). */
+export const roundOvertime = (h: number) => Math.round(h * 100) / 100;
+/** The roster's overtime rule, shared by the Shifts tab's save and the
+ *  assistant's card: none at all, the fixed period of Settings, or the figure
+ *  the worker's row already holds (the period may have changed since the day
+ *  was first saved). */
+export function overtimeFits(requested: number, fixed: number, stored: number | undefined): boolean {
+  return !(requested > 0 && Math.abs(requested - fixed) > 0.001 && (stored === undefined || Math.abs(requested - stored) > 0.001));
+}
 /** A worker the day has no record for yet: not set, worth nothing. */
 export const UNSET_LINE = { present: false, shift: DEFAULT_SHIFT, overtimeH: 0 } as const;
 
@@ -305,11 +314,13 @@ export function shiftSplit(lines: readonly { recorded?: boolean; present: boolea
       if (Number.isFinite(l.overtimeH) && l.overtimeH > 0) { part.overtimePeople += 1; part.overtimeH += l.overtimeH; }
     }
   }
+  // the total is rounded ONCE, as dayTotals and the stored DeptDayHours round
+  // it — rounding each shift first can land 0.1 h away from them
+  s.hours = round1(s.day.hours + s.night.hours);
   s.day.hours = round1(s.day.hours);
   s.day.overtimeH = round1(s.day.overtimeH);
   s.night.hours = round1(s.night.hours);
   s.night.overtimeH = round1(s.night.overtimeH);
-  s.hours = round1(s.day.hours + s.night.hours);
   return s;
 }
 

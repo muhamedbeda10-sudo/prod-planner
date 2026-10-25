@@ -13,13 +13,22 @@ export const ODOO_STATUSES = ["MO to be close", "Pending", "Done", "Blocked", "C
 
 export type OdooTone = "ok" | "warn" | "bad" | "muted";
 
+/** The words statusTone reads, lower-case; anything else is "muted". "ok" and
+ *  "bad" are the finished tones — odooAlerts' FINISHED_STATUSES must name the
+ *  same words (a test holds the two together). */
+export const STATUS_TONE_WORDS: { readonly [T in Exclude<OdooTone, "muted">]: readonly string[] } = {
+  ok: ["done", "closed"],
+  warn: ["pending"],
+  bad: ["blocked", "cancelled", "canceled"],
+};
+
 /** How a status reads at a glance: green when done, amber while pending,
  *  red when it will not close, grey while it is still just queued. */
 export function statusTone(status: string | null | undefined): OdooTone {
   const s = (status ?? "").trim().toLowerCase();
-  if (s === "done" || s === "closed") return "ok";
-  if (s === "pending") return "warn";
-  if (s === "blocked" || s === "cancelled" || s === "canceled") return "bad";
+  if (STATUS_TONE_WORDS.ok.includes(s)) return "ok";
+  if (STATUS_TONE_WORDS.warn.includes(s)) return "warn";
+  if (STATUS_TONE_WORDS.bad.includes(s)) return "bad";
   return "muted";
 }
 

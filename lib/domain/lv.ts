@@ -199,6 +199,30 @@ export function lvWaiting(s: LvState, stage: LvStage): number {
   return Number.isFinite(c.add) ? c.add : 0;
 }
 
+/** What the stage before has handed this one so far — the order quantity for
+ *  punching, which starts from the plan (0 while the order has none). */
+export function lvFed(s: LvState, stage: LvStage): number {
+  const i = LV_STAGES.indexOf(stage);
+  return i === 0 ? s.required : lvStageOf(s, LV_STAGES[i - 1]);
+}
+
+/** Where an open, un-held order sits on a stage's worklist — every order
+ *  lands in exactly one place:
+ *   - `rows`: the stage owes something on it;
+ *   - `finished`: the stage has done the whole order;
+ *   - `unplanned`: the order has no quantity and nothing has reached this
+ *     stage — there is no plan to work from;
+ *   - `upstream`: everything the stage before handed over is done here, and
+ *     the order is not — more has to come from the stage before. */
+export type LvWorklistBucket = "rows" | "finished" | "upstream" | "unplanned";
+
+export function lvWorklistBucket(s: LvState, stage: LvStage): LvWorklistBucket {
+  if (lvWaiting(s, stage) > 0) return "rows";
+  if (s.required > 0 && lvStageOf(s, stage) >= s.required) return "finished";
+  if (s.required === 0 && lvFed(s, stage) === 0) return "unplanned";
+  return "upstream";
+}
+
 /**
  * The first link of the chain a state breaks, or null when it holds:
  *

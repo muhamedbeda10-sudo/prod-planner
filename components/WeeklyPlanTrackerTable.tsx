@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { recordGroupOutput } from "@/app/worklist/actions";
-import { pctStyle, Soi } from "@/components/ui";
+import { pctClass, Soi } from "@/components/ui";
 import { SearchBox, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { PlanViewToggle, WeekPlanPicker } from "@/components/PlanViewToggle";
 import { PrintScope } from "@/components/PrintHeader";
@@ -357,7 +357,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
         return (
           <tr key={r.bom} className="text-center border-t hover:bg-brand-light/20 transition-colors">
             <td className="px-2 py-1 text-left whitespace-nowrap font-bold">
-              {r.urgent && <span className="text-danger mr-1" title="Urgent">★</span>}
+              {r.urgent && <span className="text-bad-fg mr-1" title="Urgent">★</span>}
               {/* the code opens its full Trace — the same all-plan history the
                   monthly view opens, and the trip back returns to THIS week */}
               <Link
@@ -371,7 +371,7 @@ function DayBlock({ day, stages, metric, planNo, rec }: { day: WeeklyPlanDay; st
             <td className="px-2 py-1 text-left whitespace-nowrap">
               <Soi soi={r.soi} />
             </td>
-            <td className="px-2 py-1 tabnum font-bold" style={cov === null ? undefined : pctStyle(cov)}>
+            <td className={`px-2 py-1 tabnum font-bold ${pctClass(cov)}`}>
               {cov === null ? <span className="text-muted opacity-40">—</span> : `${Math.round(cov * 100)}%`}
             </td>
             {day.items.map((it) => {

@@ -219,6 +219,20 @@ describe("a question's files", () => {
   });
 });
 
+describe("a wide sheet is read within one answer's room", () => {
+  it("cuts the rows (then the columns) to what fits, and says so", async () => {
+    const wide = workbook(Array.from({ length: 150 }, (_, r) => Array.from({ length: 80 }, (_, c) => `cell ${r}-${c} ${"x".repeat(50)}`)));
+    h.prisma.aiFile.findUnique.mockResolvedValue(kept({ data: wide, size: wide.length }));
+    const r = await readAttachedFileTool.run({ fileId: 12, rows: 150 }, ctx);
+    expect(r.ok).toBe(true);
+    expect(r.text.length).toBeLessThanOrEqual(30_000);
+    const parsed = JSON.parse(r.text) as { rows: string[][]; totalRows: number; note: string };
+    expect(parsed.totalRows).toBe(150);
+    expect(parsed.rows.length).toBeLessThan(150);
+    expect(parsed.note).toContain(`read on from row ${1 + parsed.rows.length}`);
+  });
+});
+
 describe("importing an attached file", () => {
   const preview = { ok: true, preview: true, added: 2, existing: 1, updatedMos: 1, addedMos: ["SF01/MO/1", "SF01/MO/2"], changes: [{ mo: "SF01/MO/3", field: "soi", from: "", to: "SOI9" }], qtyProposals: [], removed: [], issues: [] };
 

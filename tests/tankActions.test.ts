@@ -29,7 +29,7 @@ const h = vi.hoisted(() => {
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("next/cache", () => ({ revalidatePath: h.revalidatePath }));
-vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChain }));
+vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChain, recheckLvChainLocked: async () => {}, ChainRefused: class extends Error {} }));
 vi.mock("@/lib/server/auth", () => ({
   requireDeptEdit: h.requireDeptEdit,
   requirePerm: h.requirePerm,

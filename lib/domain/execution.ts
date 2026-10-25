@@ -553,8 +553,13 @@ export function computeDeptQueue(opts: {
   inhouseCap?: Map<string, number>; // bom|mo|item -> planQty − OSP; the outsourced share never reaches our queues
   skipItems?: (item: string) => boolean; // components this dept never handles (e.g. painting skips the core CF)
   orderQty?: ReadonlyMap<string, number>; // bom|mo|item -> planQty − OSP (see supersededTranches)
+  /** MOs that leave the queue whatever upstream produced — closed and held
+   *  orders. Their schedules still take part in attributing upstream output,
+   *  so a closed order's pieces never bleed onto a live one; only their rows
+   *  are not listed. BOM-level rows (no MO) are never excluded. */
+  excludeMos?: ReadonlySet<string>;
 }): WeldQueueRow[] {
-  const { schedules, entries, day, fromDept, toDept, inhouseCap } = opts;
+  const { schedules, entries, day, fromDept, toDept, inhouseCap, excludeMos } = opts;
   const skipItems = opts.skipItems ?? (() => false);
   const lead = opts.lead ?? 0;
   const dt = dayNumber(day);
@@ -622,6 +627,7 @@ export function computeDeptQueue(opts: {
   for (const key of keys) {
     const [bom, mo, item] = key.split("|");
     if (skipItems(item)) continue; // this dept doesn't handle this component (e.g. paint skips CF)
+    if (mo && excludeMos?.has(mo)) continue; // closed and held orders leave the daily screens
     const cut = num(cutAttr, key);
     const welded = num(weldAttr, key);
     // OSP: only the in-house share needs this dept — upstream credit beyond it
@@ -698,6 +704,7 @@ export function computeWeldingQueue(opts: {
   lead?: number;
   inhouseCap?: Map<string, number>;
   orderQty?: ReadonlyMap<string, number>;
+  excludeMos?: ReadonlySet<string>;
 }): WeldQueueRow[] {
   return computeDeptQueue({ ...opts, fromDept: "Cut", toDept: "Welding", lead: opts.lead ?? 1 });
 }
@@ -710,6 +717,7 @@ export function computePaintingQueue(opts: {
   day: Date;
   inhouseCap?: Map<string, number>;
   orderQty?: ReadonlyMap<string, number>;
+  excludeMos?: ReadonlySet<string>;
 }): WeldQueueRow[] {
   // the core (CF) is never painted — it must not show up in the painting queue
   return computeDeptQueue({ ...opts, fromDept: "Welding", toDept: "Painting", lead: 0, skipItems: isPaintExempt });

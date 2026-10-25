@@ -18,6 +18,9 @@ const h = vi.hoisted(() => {
       machine: { findFirst: fn() },
       machineRule: { count: fn() },
       worklistMachine: { count: fn() },
+      machineItemTime: { count: fn() },
+      manualJob: { count: fn() },
+      sheetCutLog: { count: fn() },
       consumableItem: { findMany: fn() },
       consumableIssue: { findUnique: fn() },
       consumableIssueRevision: { findFirst: fn() },
@@ -58,8 +61,10 @@ vi.mock("@/lib/server/consumableLimits", () => ({ checkIssueLimits: h.checkIssue
 
 import type { User } from "@prisma/client";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
-import { addOdooEntryTool, deleteOdooEntriesTool, restoreOdooRowsTool, setOdooFgCodeTool, setOdooStatusTool, updateOdooGroupTool } from "@/lib/server/ai/tools/odoo";
-import { addLvOrderMaterialTool, addMaterialLineTool, setMaterialCellsTool, updateMaterialGroupTool } from "@/lib/server/ai/tools/material";
+import {
+  addOdooEntryTool, deleteOdooEntriesTool, restoreOdooRowsTool, setOdooFgCodeTool, setOdooMoTool, setOdooStatusTool, updateOdooEntryTool, updateOdooGroupTool,
+} from "@/lib/server/ai/tools/odoo";
+import { addLvOrderMaterialTool, addMaterialLineTool, setMaterialCellsTool, updateMaterialGroupTool, updateMaterialLineTool } from "@/lib/server/ai/tools/material";
 import { updatePhysicalItemsTool } from "@/lib/server/ai/tools/physical";
 import { addHolidaysTool, deleteHolidaysTool, restoreHolidaysTool } from "@/lib/server/ai/tools/calendar";
 import { deleteWorkerTool, updateWorkerTool } from "@/lib/server/ai/tools/workers";
@@ -237,6 +242,8 @@ describe("the physical stock", () => {
   it("refuses a count that is not a number of 0 or more before anything runs", () => {
     expect(checkToolInput(updatePhysicalItemsTool, { changes: [{ id: 1, field: "physical", value: "-3" }] })).toEqual({ ok: false, error: "The physical count of #1 must be a number of 0 or more." });
     expect(checkToolInput(updatePhysicalItemsTool, { changes: [{ id: 1, field: "physical", value: "1,250" }] })).toMatchObject({ ok: true });
+    // a blank count is not 0 — the table refuses it, so the card must not promise 0
+    expect(checkToolInput(updatePhysicalItemsTool, { changes: [{ id: 1, field: "physical", value: "" }] })).toMatchObject({ ok: false });
   });
 });
 
@@ -303,7 +310,18 @@ describe("the machines list", () => {
     h.prisma.machine.findFirst.mockResolvedValue(laser);
     h.prisma.machineRule.count.mockResolvedValue(1);
     h.prisma.worklistMachine.count.mockResolvedValue(0);
+    for (const m of [h.prisma.machineItemTime.count, h.prisma.manualJob.count, h.prisma.sheetCutLog.count]) m.mockResolvedValue(0);
     expect(await deleteMachineTool.describe({ machine: "B4-10" }, ctx)).toEqual({ error: expect.stringContaining("1 rule(s) and 0 queue line(s)") });
+  });
+
+  it("will not delete a machine with typed times per piece or jobs on it — they would go with it, and the undo cannot bring them back", async () => {
+    h.perms.add("machines.manage");
+    h.prisma.machine.findFirst.mockResolvedValue(laser);
+    for (const m of [h.prisma.machineRule.count, h.prisma.worklistMachine.count, h.prisma.manualJob.count, h.prisma.sheetCutLog.count]) m.mockResolvedValue(0);
+    h.prisma.machineItemTime.count.mockResolvedValue(2);
+    expect(await deleteMachineTool.describe({ machine: "B4-10" }, ctx)).toEqual({ error: expect.stringContaining("2 typed time(s) per piece") });
+    h.prisma.machineItemTime.count.mockResolvedValue(0);
+    expect(await deleteMachineTool.describe({ machine: "B4-10" }, ctx)).toMatchObject({ title: "Delete machine B4-10" });
   });
 });
 
@@ -340,5 +358,46 @@ describe("who is offered the data tools", () => {
     expect(names.filter((n) => n.startsWith("restore_"))).toEqual([]);
     // deletions only with the deletions key
     expect(names).not.toContain("delete_material_lines");
+  });
+});
+
+describe("a quantity, a closing or several rows wait for the person's click", () => {
+  const risk = <I,>(t: { risk: unknown }, i: I) => (typeof t.risk === "function" ? (t.risk as (i: I) => string)(i) : t.risk);
+  it("ODOO: a Done status and more than three rows are high; one row's MO is low", () => {
+    expect(risk(setOdooStatusTool, { ids: [1], status: "Done" })).toBe("high");
+    expect(risk(setOdooStatusTool, { ids: [1], status: "Pending" })).toBe("low");
+    expect(risk(setOdooStatusTool, { ids: [1, 2, 3, 4], status: "Pending" })).toBe("high");
+    expect(risk(updateOdooGroupTool, { ids: [1, 2], status: "Done" })).toBe("high");
+    expect(risk(updateOdooGroupTool, { ids: [1, 2], odooMo: "SF01/MO/9" })).toBe("low");
+    expect(risk(setOdooMoTool, { ids: [1, 2, 3], odooMo: "SF01/MO/9" })).toBe("low");
+    expect(risk(setOdooMoTool, { ids: [1, 2, 3, 4], odooMo: "SF01/MO/9" })).toBe("high");
+  });
+  it("ODOO: one row's quantity or its closing is high, its SOI or a status short of Done is low", () => {
+    expect(risk(updateOdooEntryTool, { id: 1, qty: 6 })).toBe("high");
+    expect(risk(updateOdooEntryTool, { id: 1, qty: 0 })).toBe("high");
+    expect(risk(updateOdooEntryTool, { id: 1, status: "Done" })).toBe("high");
+    expect(risk(updateOdooEntryTool, { id: 1, soi: "SOI-9" })).toBe("low");
+    expect(risk(updateOdooEntryTool, { id: 1, status: "Pending" })).toBe("low");
+  });
+  it("MATERIAL: cells with quantities are high, a note alone is low", () => {
+    expect(risk(setMaterialCellsTool, { changes: [] })).toBe("high");
+    expect(risk(updateMaterialGroupTool, { ids: [1, 2], mtr: "MT-9" })).toBe("low");
+    expect(risk(updateMaterialGroupTool, { ids: [1, 2], units: 40 })).toBe("high");
+    expect(risk(updateMaterialGroupTool, { ids: [1, 2, 3, 4], mtr: "MT-9" })).toBe("high");
+    // one line: the units, the BOM's sheets per unit or a sheet's weight carry a quantity
+    expect(risk(updateMaterialLineTool, { id: 1, units: 40 })).toBe("high");
+    expect(risk(updateMaterialLineTool, { id: 1, sheetsPerUnit: 2 })).toBe("high");
+    expect(risk(updateMaterialLineTool, { id: 1, weightKg: 120 })).toBe("high");
+    expect(risk(updateMaterialLineTool, { id: 1, weightKg: null })).toBe("high");
+    expect(risk(updateMaterialLineTool, { id: 1, mtr: "MT-9", note: "late" })).toBe("low");
+  });
+  it("stock: a count is high, a name is low", () => {
+    expect(risk(updatePhysicalItemsTool, { changes: [{ id: 1, field: "physical", value: "3" }] })).toBe("high");
+    expect(risk(updatePhysicalItemsTool, { changes: [{ id: 1, field: "name", value: "Bolt" }] })).toBe("low");
+    expect(risk(updatePhysicalItemsTool, { changes: [{ id: 1, field: "odoo", value: "3" }] })).toBe("high");
+    // more than three rows wait even with no count among them
+    const names = (n: number) => Array.from({ length: n }, (_, k) => ({ id: k + 1, field: "name", value: `Bolt ${k}` }));
+    expect(risk(updatePhysicalItemsTool, { changes: names(3) })).toBe("low");
+    expect(risk(updatePhysicalItemsTool, { changes: names(4) })).toBe("high");
   });
 });

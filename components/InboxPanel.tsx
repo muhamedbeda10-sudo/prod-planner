@@ -2,9 +2,18 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { InboxWorkspace } from "@/components/InboxWorkspace";
+import dynamic from "next/dynamic";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
 import { isInboxTab, type InboxTab } from "@/lib/domain/inbox";
+
+// The workspace renders its reports as Markdown with charts, which every page
+// would otherwise carry for a window most of them never open. It is split
+// into its own chunk and fetched the first time the window opens; the window
+// is only ever made in the browser (see `made` below), so nothing prerenders.
+const InboxWorkspace = dynamic(() => import("./InboxWorkspace").then((m) => m.InboxWorkspace), {
+  ssr: false,
+  loading: () => <div className="h-full grid place-items-center text-sm text-muted" role="status">Opening the inbox…</div>,
+});
 
 // The inbox as a window of its own, opened from the bell in the bar: a card
 // under the bar on the right (the page stays usable beside it), a window in

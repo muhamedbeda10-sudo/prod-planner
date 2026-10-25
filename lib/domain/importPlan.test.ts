@@ -171,3 +171,15 @@ describe("parseWeeklyPlan — grid located from the header, not assumed", () => 
     expect(parseWeeklyPlan(g).layout.gridFirst).toBe(5);
   });
 });
+
+describe("parseWeeklyPlan — numbers and identities as the other sheets read them", () => {
+  it('reads a required quantity typed as "1,500" as fifteen hundred', () => {
+    const grid: unknown[][] = [];
+    grid[5] = row({ 0: "12011E13M12", 1: "S001", 2: "MO1", 3: "1000kva", 4: "1,500", [dayCell(0, 0)]: "1,200" });
+    const parsed = parseWeeklyPlan(grid);
+    const o = parsed.orders.find((x) => x.mo === "MO1" && x.item === "CF");
+    expect(o).toBeDefined();
+    expect(o!.requiredQty).toBe(1500);
+    expect(parsed.schedules.find((s) => s.mo === "MO1" && s.item === "CF")?.qty).toBe(1200);
+  });
+});

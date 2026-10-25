@@ -17,7 +17,7 @@ const h = vi.hoisted(() => {
       handoverEntry: { findUnique: fn(), findMany: fn(), updateMany: fn() },
       masterOrder: { findUnique: fn() },
       plan: { findUnique: fn() },
-      returnEntry: { findMany: fn() },
+      returnEntry: { findMany: fn(), findFirst: fn() },
       $transaction: fn(),
     },
   };
@@ -27,8 +27,8 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "session-token" }) }) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
-vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: async () => null }));
-vi.mock("@/lib/server/tanks", () => ({ syncTanksToLedgerQty: async () => ({}) }));
+vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: async () => null, recheckLvChainLocked: async () => {}, ChainRefused: class extends Error {} }));
+vi.mock("@/lib/server/tanks", () => ({ syncTanksToLedgerQty: async () => ({}), syncTanksToLedgerDate: async () => ({ redated: 0 }) }));
 vi.mock("@/lib/server/odooMirror", () => ({ mirrorLedgerToOdoo: async () => {}, syncMirroredOdoo: async () => {} }));
 vi.mock("@/lib/server/handover", () => ({ getKnownBoms: async () => [] }));
 vi.mock("@/lib/server/importHandover", () => ({ importHandoverFile: vi.fn() }));
@@ -100,6 +100,17 @@ describe("a panel's row on the Daily log follows the LV keys", () => {
     expect(writes).toEqual(["update", "delete"]);
   });
 
+  it("is edited by the piece — a fraction of a panel is refused before any write", async () => {
+    // every other LV write path insists on whole panels; the Daily log's edit
+    // used to let 2.5 through, and the Bending worklist then waited on half a panel
+    h.prisma.handoverEntry.findUnique.mockResolvedValue(panelRow("Punching"));
+    holding("lv.punching");
+    expect(await updateHandover(form({ id: "7", qty: "2.5" }))).toEqual({ ok: false, error: "Panels are recorded by the piece — enter a whole number." });
+    expect(writes).toEqual([]);
+    expect(await updateHandover(form({ id: "7", qty: "2" }))).toEqual({ ok: true });
+    expect(writes).toEqual(["update"]);
+  });
+
   it("is added with the LV stage's key, not the transformer department's", async () => {
     h.prisma.masterOrder.findUnique.mockResolvedValue({ bom: "FG-LV-1", line: "LV" });
     h.prisma.plan.findUnique.mockResolvedValue({ planNo: 1 });
@@ -123,6 +134,7 @@ describe("a panel's row on the Daily log follows the LV keys", () => {
     holding("lv.welding", "lv.painting");
     expect(await bulkSetHandoverDate(selection)).toEqual({ ok: true, updated: 2 });
     expect(await bulkDeleteHandover(selection)).toEqual({ ok: true, deleted: 2 });
+    // re-dating groups the rows by their resulting note (both carry none here), so one write
     expect(writes).toEqual(["updateMany", "deleteMany"]);
   });
 });
@@ -137,5 +149,13 @@ describe("a transformer's row stays on the transformer keys", () => {
     expect(await updateHandover(form({ id: "7", qty: "3" }))).toEqual({ ok: true });
     expect(await deleteHandover(form({ id: "7" }))).toEqual({ ok: true });
     expect(writes).toEqual(["update", "delete"]);
+  });
+});
+
+describe("the two finishing stages on the Daily log form", () => {
+  it("refuses painting the core frame — it is shot blasted — before any write", async () => {
+    holding("painting.edit");
+    expect(await addHandover(form({ date: "2026-10-05", dept: "Painting", bom: "T-1", item: "CF", qty: "2", planNo: "1" }))).toEqual({ ok: false, error: "CF is shot blasted, not painted — record it on the SHB cell." });
+    expect(writes).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@ import { Prisma, type MachineDowntime } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { shiftPermKey } from "@/lib/domain/permissions";
-import { factoryDayISO, factoryWallClockMs, parseISODate, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, factoryWallClockMs, parseISODate, toISODate, factoryToday } from "@/lib/domain/dates";
 import { deptCentre, isRosterDept, workerCentres } from "@/lib/domain/shifts";
 import { MAX_STOP_HOURS, downtimeLabel, isDowntimeCode, stopHours, stopTiming } from "@/lib/domain/downtime";
 import { downtimeHoursInRange, stopPeriodBounds, type StopPeriod } from "@/lib/domain/downtimePeriods";
@@ -89,7 +89,7 @@ async function checkStop(tx: Prisma.TransactionClient, target: Target, date: Dat
   const equipment = equipmentWhere(target), exclude = excludeId ? { id: { not: excludeId } } : {};
   const before = await tx.machineDowntime.aggregate({ where: { date, ...equipment, ...exclude }, _sum: { hours: true } });
   const proposed: StopPeriod = { date, ...duration }, bounds = stopPeriodBounds(proposed);
-  const upper = duration.isOpen ? parseISODate(factoryDayISO(new Date()))! : duration.endDate ?? new Date(date.getTime() + (duration.endsNextDay ? 86400000 : 0));
+  const upper = duration.isOpen ? factoryToday() : duration.endDate ?? new Date(date.getTime() + (duration.endsNextDay ? 86400000 : 0));
   const rows = await tx.machineDowntime.findMany({ where: { ...equipment, ...exclude, date: { lte: upper }, OR: [{ isOpen: true }, { endDate: { gte: date } }, { date: { gte: new Date(date.getTime() - 86400000) } }] }, select: { date: true, hours: true, startTime: true, endTime: true, endsNextDay: true, isOpen: true, endDate: true } });
   const now = new Date();
   const bookedToday = rows.length ? rows.reduce((sum, row) => sum + downtimeHoursInRange(row, toISODate(date), toISODate(date), now), 0) : before._sum.hours ?? 0;

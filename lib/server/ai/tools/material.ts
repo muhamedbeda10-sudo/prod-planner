@@ -56,7 +56,8 @@ export const setMaterialCellsTool: WriteTool<CellsInput> = {
   description:
     "Type figures into MATERIAL lines, as the table does: sheetsUsed (sheets actually nested for the job), producedQty (units produced so far), actualPerUnit (sheets one unit takes — typed, it is kept over a re-import), utilization (average utilization). null clears the cell (\"not yet\", which is not 0). Typing sheetsUsed clears a per-unit rate that came from the sheet, as the table does.",
   area: "data",
-  risk: "low",
+  // quantities (sheets used, produced) — they wait for the click
+  risk: "high",
   tabs: TABS,
   schema: {
     type: "object",
@@ -134,7 +135,7 @@ export const updateMaterialLineTool: WriteTool<UpdateInput> = {
   description:
     "Correct one MATERIAL line's other figures: units (quantity of units), partName, materialCode, sheetsPerUnit (sheets one unit needs per the nesting BOM), weightKg (one sheet), soi, mtr, note — only the fields given change. The line's identity (BOM, MO, part, material, thickness, sheet size) stays: to change it, delete the line and have it entered again.",
   area: "data",
-  risk: "low",
+  risk: (i) => (i.units !== undefined || i.sheetsPerUnit !== undefined || i.weightKg !== undefined ? "high" : "low"),
   tabs: TABS,
   schema: {
     type: "object",
@@ -488,7 +489,7 @@ export const updateMaterialGroupTool: WriteTool<GroupInput> = {
   description:
     "An SOI group's head row on the MATERIAL tab, edited as the tab does: what is given lands on EVERY line of the group — MTR, SOI, MO, BOM, units, utilization, units produced, note (null clears a number or the note). Each line keeps its own sheet figures. Undo puts the lines back.",
   area: "data",
-  risk: "low",
+  risk: (i) => (i.ids.length > 3 || i.units !== undefined || i.utilization !== undefined ? "high" : "low"),
   tabs: TABS,
   schema: {
     type: "object",

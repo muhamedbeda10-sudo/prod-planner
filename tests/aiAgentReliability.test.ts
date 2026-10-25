@@ -139,9 +139,15 @@ describe("failed and limited model calls", () => {
     expect((await run()).error).toContain("Unavailable attachment");
     expect(h.stream).toHaveBeenCalledTimes(1);
   });
-  it("reports a truncated textual answer as incomplete", async () => {
+  it("reports a truncated textual answer as incomplete and keeps the text the person saw, with the note", async () => {
     h.stream.mockReturnValue(reply([{ type: "text", text: "Partial" }], "max_tokens"));
-    expect((await run()).error).toContain("incomplete");
+    const r = await run();
+    expect(r.error).toContain("incomplete");
+    // the question stays, and the answer is the cut-off text plus the note — one assistant turn
+    expect(r.added.map((m) => m.role)).toEqual(["user", "system", "assistant"]);
+    const content = r.added[2].content as { type: string; text: string }[];
+    expect(content.map((b) => b.text)).toEqual(["Partial", expect.stringContaining("This answer did not finish: The answer reached its length limit")]);
+    expect(displayTurns(r.added as never).at(-1)).toMatchObject({ role: "assistant", text: expect.stringContaining("Partial") });
   });
   it("does not start the model for an already aborted request", async () => {
     const result = await run({ signal: AbortSignal.abort() });

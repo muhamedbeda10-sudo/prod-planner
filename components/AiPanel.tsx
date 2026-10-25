@@ -2,10 +2,21 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Bot } from "lucide-react";
-import { AiWorkspace, type AiLayout, type AiTab, type AiView } from "@/components/AiWorkspace";
+import type { AiLayout, AiTab, AiView } from "@/components/AiWorkspace";
 import { announceOpen, floatStore, isPhone, parseStored, useCloseWhenOtherOpens, usePhone, useWindowChrome } from "@/components/floatWindow";
 import { useInboxPanel } from "@/components/InboxPanel";
+
+// The workspace (the chat, its Markdown and its charts) is the heaviest thing
+// this layout could ship, and every page carries the button. So it is split
+// into its own chunk and fetched the first time the window opens — a page
+// that never opens it never downloads it. The window is only ever made in
+// the browser (see `made` below), so there is nothing to prerender.
+const AiWorkspace = dynamic(() => import("./AiWorkspace").then((m) => m.AiWorkspace), {
+  ssr: false,
+  loading: () => <div className="h-full grid place-items-center text-sm text-muted" role="status">Opening the assistant…</div>,
+});
 
 // The AI assistant on every page: a round button in the corner opens it as
 // a card in the corner (the page stays usable beside it); one click fills

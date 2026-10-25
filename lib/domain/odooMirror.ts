@@ -1,4 +1,4 @@
-import { SHOTBLAST_STAGE, type Item } from "@/lib/domain/constants";
+import { SHOTBLAST_STAGE, isPaintExempt, type Item } from "@/lib/domain/constants";
 import { productSeries } from "@/lib/domain/odooStats";
 
 // A closing in the ledger → a row on the ODOO tab. Painting is the last stage
@@ -29,7 +29,8 @@ export const MIRROR_STATUS = "MO to be close";
 /** Which closing a ledger row is, or null when it is not one: painting of
  *  any component, or the core's shot blast. */
 export function mirrorSource(dept: string, item: string): Extract<OdooSource, "painting" | "shotblast"> | null {
-  if (dept === "Painting") return "painting";
+  // the core is never painted: a Painting row on it is no closing (and is refused where it is typed)
+  if (dept === "Painting") return isPaintExempt(item) ? null : "painting";
   if (dept === SHOTBLAST_STAGE && item === "CF") return "shotblast";
   return null;
 }

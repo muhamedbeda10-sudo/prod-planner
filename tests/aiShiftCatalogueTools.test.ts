@@ -11,7 +11,7 @@ const h = vi.hoisted(() => {
   return {
     prisma: {
       consumableItem: { findUnique: fn(), findMany: fn(), findFirst: fn() },
-      consumableLimit: { findUnique: fn(), findMany: fn() },
+      consumableLimit: { findUnique: fn(), groupBy: fn() },
       powderScrap: { findUnique: fn() },
     },
     perms: new Set<string>(),
@@ -69,7 +69,7 @@ beforeEach(() => {
   h.roster.mockResolvedValue(roster());
   h.snap.readShiftState.mockResolvedValue(EMPTY);
   h.snap.restoreShiftState.mockResolvedValue({ ok: true });
-  h.prisma.consumableLimit.findMany.mockResolvedValue([]);
+  h.prisma.consumableLimit.groupBy.mockResolvedValue([]);
 });
 
 describe("the shift roster", () => {
@@ -331,5 +331,24 @@ describe("powder scrap", () => {
     h.prisma.powderScrap.findUnique.mockResolvedValue(scrap({ deletedAt: new Date(), updatedAt: new Date("2026-10-12T07:00:00Z") }));
     expect(await restorePowderScrapTool.execute({ id: 9 }, admin)).toMatchObject({ ok: true });
     expect(Object.fromEntries(fdOf(h.powder.restorePowderScrap).entries())).toEqual({ id: "9", version: "2026-10-12T07:00:00.000Z" });
+  });
+});
+
+describe("planShiftDay — overtime is the fixed period of Settings", () => {
+  const hours = { short: 8, long: 11, overtime: 3, nightOvertime: 2.25 };
+  it("refuses another figure, naming the period and the man, and accepts the period to the hundredth", () => {
+    const lines = roster().lines.filter((l) => l.dept === "Welding") as Parameters<typeof planShiftDay>[0];
+    const wrong = planShiftDay(lines, { rest: "day", workers: [{ worker: "100", overtimeH: 2 }] }, hours);
+    expect(wrong).toEqual({ error: "Overtime is the fixed 3-hour period (16:00–19:00) — 100 Ahmed." });
+    const right = planShiftDay(lines, { rest: "day", workers: [{ worker: "100", overtimeH: 3 }, { worker: "101", shift: "S11", overtimeH: 2.25 }] }, hours);
+    expect(Array.isArray(right) && right.map((p) => [p.line.empId, p.after.shift, p.after.overtimeH])).toEqual([["100", "S9", 3], ["101", "S11", 2.25], ["102", "S9", 0]]);
+  });
+  it("keeps the overtime a recorded row holds from before the period changed", () => {
+    const lines = [line(1, "100", "Ahmed", { recorded: true, present: true, overtimeH: 2 }), line(2, "101", "Mohamed")] as Parameters<typeof planShiftDay>[0];
+    // not asked about: the row's 2 h stand; asked for the same 2 h: still the row's own figure
+    const kept = planShiftDay(lines, { rest: "absent" }, hours);
+    expect(Array.isArray(kept) && kept[0].after.overtimeH).toBe(2);
+    const same = planShiftDay(lines, { rest: "absent", workers: [{ worker: "100", overtimeH: 2 }] }, hours);
+    expect(Array.isArray(same) && same[0].after.overtimeH).toBe(2);
   });
 });
