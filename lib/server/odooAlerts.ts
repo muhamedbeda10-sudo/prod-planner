@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { toISODate } from "@/lib/domain/dates";
-import { isReadyToClose, needsMo, type ReadyRow } from "@/lib/domain/odooAlerts";
+import { FINISHED_STATUSES, isReadyToClose, needsMo, type ReadyRow } from "@/lib/domain/odooAlerts";
 import { odooRowBomLabel } from "@/lib/domain/odoo";
 import { resolveRowBoms } from "@/lib/server/odoo";
 
@@ -21,20 +21,25 @@ async function view(rows: Row[]): Promise<ReadyRow[]> {
 /** Every row, both lines, that has Odoo's MO and is still open — oldest first,
  *  the order they wait in. */
 export async function getReadyToClose(): Promise<ReadyRow[]> {
+  // the closed rows — the bulk of the log, growing for ever — stay in the
+  // database; the domain rule still has the last word on what comes back
   const rows = await prisma.odooEntry.findMany({
-    where: { NOT: { odooMo: "" } },
+    where: { NOT: { odooMo: "" }, status: { notIn: [...FINISHED_STATUSES], mode: "insensitive" } },
     select: SELECT,
     orderBy: [{ date: "asc" }, { id: "asc" }],
+    take: 400,
   });
   return view(rows.filter(isReadyToClose).slice(0, 200));
 }
 
+
 /** Every row, both lines, still waiting for Odoo's MO number — oldest first. */
 export async function getNeedingMo(): Promise<ReadyRow[]> {
   const rows = await prisma.odooEntry.findMany({
-    where: { odooMo: "" },
+    where: { odooMo: "", status: { notIn: [...FINISHED_STATUSES], mode: "insensitive" } },
     select: SELECT,
     orderBy: [{ date: "asc" }, { id: "asc" }],
+    take: 400,
   });
   return view(rows.filter(needsMo).slice(0, 200));
 }

@@ -6,6 +6,7 @@ import { checkOutputChain } from "@/lib/server/outputGuard";
 import { deptPermKey, linePermKey, shiftPermKey } from "@/lib/domain/permissions";
 import { MANUAL_BOM, MANUAL_ITEM, manualMo } from "@/lib/domain/manualJob";
 import type { RosterDept } from "@/lib/domain/shifts";
+import { userMessage } from "@/lib/server/errors";
 
 // Rows of the ODOO log, the MATERIAL tab, the physical stock, the shift
 // roster, the standard times and the accounts' access exactly as they stand
@@ -103,7 +104,7 @@ export async function restoreOdooRows(rows: readonly OdooRowSnapshot[]): Promise
       }
     });
   } catch (e) {
-    return { ok: false, error: `The rows could not be put back: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "put the rows back") };
   }
   revalidatePath("/odoo");
   revalidatePath("/tracker");
@@ -160,7 +161,7 @@ export async function restoreMaterialRows(rows: readonly MaterialRowSnapshot[]):
       }
     });
   } catch (e) {
-    return { ok: false, error: `The lines could not be put back: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "put the lines back") };
   }
   revalidatePath("/material");
   return { ok: true };
@@ -199,7 +200,7 @@ export async function restorePhysicalRows(rows: readonly PhysicalRowSnapshot[]):
       }
     });
   } catch (e) {
-    return { ok: false, error: `The items could not be put back: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "put the items back") };
   }
   revalidatePath("/physical");
   return { ok: true };
@@ -280,7 +281,7 @@ export async function restoreShiftState(dateISO: string, depts: readonly RosterD
       }
     });
   } catch (e) {
-    return { ok: false, error: `The day could not be put back: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "put the day back") };
   }
   for (const p of ["/shifts", "/admin/standard-times", "/tracker", "/"]) revalidatePath(p);
   return { ok: true };
@@ -351,7 +352,7 @@ export async function restoreStdState(s: StdState): Promise<RestoreResult> {
       }
     });
   } catch (e) {
-    return { ok: false, error: `The standard times could not be put back: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "put the standard times back") };
   }
   for (const p of ["/admin/standard-times", "/tracker", "/shifts"]) revalidatePath(p);
   return { ok: true };
@@ -392,7 +393,7 @@ export async function restoreMachineTimes(rows: readonly MachineTimeSnapshot[]):
       }
     });
   } catch (e) {
-    return { ok: false, error: `The times could not be put back: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "put the times back") };
   }
   for (const p of ["/admin/machine-times", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/simulate"]) revalidatePath(p);
   return { ok: true };
@@ -435,7 +436,7 @@ export async function restoreUserAccess(s: UserAccessSnapshot): Promise<RestoreR
       if (!s.active) await tx.session.deleteMany({ where: { userId: s.id } });
     });
   } catch (e) {
-    return { ok: false, error: `The account could not be put back: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "put the account back") };
   }
   revalidatePath("/admin/users");
   revalidatePath("/admin/ai");
@@ -539,7 +540,7 @@ export async function restoreManualJob(s: ManualJobSnapshot, opts: { cutLogId?: 
       if (opts.cutLogId !== undefined) await tx.sheetCutLog.deleteMany({ where: { id: opts.cutLogId, dept: s.dept, ...key } });
     });
   } catch (e) {
-    return { ok: false, error: `The job could not be put back: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "put the job back") };
   }
   for (const path of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate", "/shifts"]) revalidatePath(path);
   return { ok: true };
@@ -678,6 +679,43 @@ export async function restoreWorklistDates(line: WorklistLineKey, rows: readonly
     }
   });
   revalidatePath("/worklist/cut");
+  return { ok: true };
+}
+
+// ------------------------------------------------------ WORKLIST PUSHES
+
+export interface WorklistPushSnapshot {
+  item: string;
+  qty: number;
+  /** The department's total when the push was made — output after it consumes the push. */
+  baseDone: number;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+/** An order's pushed lines on one worklist, as they stand. */
+export async function readWorklistPush(dept: string, mo: string): Promise<WorklistPushSnapshot[]> {
+  const rows = await prisma.worklistPush.findMany({ where: { dept, mo }, orderBy: { item: "asc" } });
+  return rows.map((r) => ({ item: r.item, qty: r.qty, baseDone: r.baseDone, createdBy: r.createdBy, createdAt: r.createdAt.toISOString() }));
+}
+
+/** Put an order's pushed lines on one worklist back exactly — quantity AND
+ *  the output already counted against them — under the push permission the
+ *  tracker's panel asks for. */
+export async function restoreWorklistPush(dept: string, mo: string, rows: readonly WorklistPushSnapshot[]): Promise<RestoreResult> {
+  const guard = await requirePerm("tracker.push");
+  if (guard.error) return { ok: false, error: guard.error };
+  const order = await prisma.masterOrder.findUnique({ where: { mo }, select: { bom: true } });
+  if (!order) return { ok: false, error: `MO ${mo} is not in the orders registry.` };
+  await prisma.$transaction(async (tx) => {
+    await tx.worklistPush.deleteMany({ where: { dept, mo } });
+    if (rows.length > 0) {
+      await tx.worklistPush.createMany({
+        data: rows.map((r) => ({ dept, bom: order.bom, mo, item: r.item, qty: r.qty, baseDone: r.baseDone, createdBy: r.createdBy, createdAt: new Date(r.createdAt) })),
+      });
+    }
+  });
+  for (const p of ["/tracker", "/worklist/cut", "/worklist/welding", "/worklist/painting"]) revalidatePath(p);
   return { ok: true };
 }
 

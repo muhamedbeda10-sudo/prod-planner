@@ -8,7 +8,7 @@ import { InstallApp } from "@/components/InstallApp";
 import { MENU_ROW } from "@/components/ui";
 import { useWhatsNew } from "@/components/WhatsNew";
 import { AVATAR_PX, avatarColor, initials } from "@/lib/domain/avatar";
-import { logoutAction } from "@/app/login/actions";
+import { signOut } from "@/lib/signOut";
 import { removeAvatar, setAvatar } from "@/app/profile/actions";
 
 // The account's round button at the end of the bar: the person's photo, or
@@ -145,7 +145,7 @@ export function UserMenu({ user, whatsNewSeen }: {
           <ThemeToggle row />
           <InstallApp row />
           <div className="border-t my-1" />
-          <form action={logoutAction}>
+          <form action={signOut}>
             <button type="submit" role="menuitem" className={`${MENU_ROW} text-bad-fg`}>
               <LogOut size={17} className="shrink-0" />
               Sign out

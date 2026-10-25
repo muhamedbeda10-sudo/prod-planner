@@ -206,7 +206,7 @@ function UserRow({ user, myId }: { user: Row; myId: number }) {
     act.run(setUserActive, fd, user.active ? "Deactivated." : "Reactivated.");
   };
   const remove = () => {
-    if (!confirm(`Delete ${user.name} (${user.email}) permanently? They are signed out immediately and the account cannot be recovered.`)) return;
+    if (!confirm(`Delete ${user.name} (${user.email}) permanently? They are signed out immediately; their settings, automations and assistant conversations go with the account, and it cannot be recovered. An account with chat messages, assistant changes, automation runs or tasks behind it is refused — deactivate it instead.`)) return;
     const fd = new FormData();
     fd.set("id", String(user.id));
     del.run(deleteUser, fd, "Account deleted.");

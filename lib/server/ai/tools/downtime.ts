@@ -6,6 +6,7 @@ import { DOWNTIME_REASONS, MAX_STOP_HOURS, downtimeLabel, isDowntimeCode, stopHo
 import { shiftPermKey } from "@/lib/domain/permissions";
 import { ROSTER_DEPTS, WORK_CENTRES, workerCentres, isRosterDept } from "@/lib/domain/shifts";
 import { clockMinutes } from "@/lib/domain/downtime";
+import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { elapsedStopHours, stopPeriodBounds } from "@/lib/domain/downtimePeriods";
 import { formOf, type WriteTool } from "./types";
 
@@ -89,14 +90,21 @@ export const recordMachineStopTool: WriteTool<StopInput> = {
       if (clockMinutes(String(r.startTime ?? "")) === null || r.endTime || r.endDate) return "An open stop needs a start time and no end.";
       return { ...(r as unknown as StopInput), hours: 0 };
     }
-    if (r.startTime && r.endTime && r.endDate) {
-      const bounds = stopPeriodBounds({ date: String(r.date), hours: 0, startTime: String(r.startTime), endTime: String(r.endTime), endDate: String(r.endDate) });
-      return bounds ? { ...(r as unknown as StopInput), hours: (bounds.end - bounds.start) / 3600000 } : "Give an actual closing date/time after the start.";
+    if (r.startTime && r.endTime) {
+      // a timed stop always carries its end date, as the Shifts tab writes
+      // it, so its hours fall on the factory days it really spanned and an
+      // end still to come is refused
+      const date = String(r.date);
+      let endDate = r.endDate ? String(r.endDate) : null;
+      if (!endDate) {
+        const timing = stopTiming(String(r.startTime), String(r.endTime), r.endsNextDay as boolean | undefined);
+        if (!timing) return "Give valid start/end times within 24 hours.";
+        endDate = addDaysISO(date, timing.endsNextDay ? 1 : 0);
+      }
+      const bounds = stopPeriodBounds({ date, hours: 0, startTime: String(r.startTime), endTime: String(r.endTime), endDate });
+      return bounds ? { ...(r as unknown as StopInput), endDate, endsNextDay: endDate > date, hours: (bounds.end - bounds.start) / 3600000 } : "Give an actual closing date/time after the start.";
     }
-    if (r.startTime || r.endTime) {
-      const timing = stopTiming(String(r.startTime ?? ""), String(r.endTime ?? ""), r.endsNextDay as boolean | undefined);
-      return timing ? { ...(r as unknown as StopInput), hours: timing.hours, endsNextDay: timing.endsNextDay } : "Give valid start/end times within 24 hours.";
-    }
+    if (r.startTime || r.endTime) return "Give both the start and the end time, or mark the stop as still open.";
     const hours = stopHours(Number(r.hours));
     return Number.isFinite(hours) && hours > 0 && hours <= MAX_STOP_HOURS ? { ...(r as unknown as StopInput), hours } : "Give start/end times or legacy stopped hours.";
   },

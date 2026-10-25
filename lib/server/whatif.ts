@@ -4,6 +4,7 @@ import { loadMasterOrders } from "./loads";
 import { toISODate } from "@/lib/domain/dates";
 import { requiredHoursForLines } from "@/lib/domain/stdEngine";
 import { etaQueueOrder } from "@/lib/domain/eta";
+import { owedPlanQtys } from "@/lib/domain/planPromises";
 import type { WhatIfInputs, WhatIfJob } from "@/lib/domain/whatif";
 import { getStdData, getStageCapacity } from "./standardTimes";
 import { withLine } from "./line";
@@ -33,9 +34,12 @@ export async function getWhatIfInputs(): Promise<WhatIfInputs> {
       ]);
       if (schedules.length > 0) {
         const byMo = new Map(orders.map((o) => [o.mo, o]));
+        // a promise repeated on two days is one order's pieces once, and the
+        // outsourced share is no work here — the capacity card's own reading
+        const owed = owedPlanQtys(schedules, (mo) => byMo.get(mo));
         const { byStage, uncoveredPcs, totalPcs } = requiredHoursForLines(
           std,
-          schedules.map((s) => ({ item: s.item, qty: s.qty, order: byMo.get(s.mo) ?? null }))
+          schedules.map((s, i) => ({ item: s.item, qty: owed[i], order: byMo.get(s.mo) ?? null })).filter((l) => l.qty > 0)
         );
         unpricedPlanPieces = uncoveredPcs;
         totalPlanPieces = totalPcs;

@@ -12,13 +12,10 @@ export default async function LoginPage() {
   if (user) redirect("/");
   return (
     <div className="min-h-[78vh] flex items-center justify-center">
-      {/* full-bleed ATC-branded backdrop — login page only: brand-green
-          gradient with the company logo repeating as a subtle watermark */}
-      <div
-        aria-hidden
-        className="fixed inset-0 -z-10"
-        style={{ background: "linear-gradient(160deg, #1f9660 0%, #1a8150 35%, #136041 75%, #0d4530 100%)" }}
-      />
+      {/* full-bleed ATC-branded backdrop — login page only: the brand-green
+          gradient (--login-gradient, one per theme) with the company logo
+          repeating as a subtle watermark */}
+      <div aria-hidden className="login-backdrop fixed inset-0 -z-10" />
       {/* the tile is taller than the logo needs, so the SVG letterboxes and
           the rows get breathing room; the second offset layer staggers them */}
       <div

@@ -10,6 +10,7 @@ import {
   factoryDayISO,
   factoryDaysBefore,
   factoryWallClockMs,
+  factoryToday,
 } from "./dates";
 
 describe("excel serial dates", () => {
@@ -23,6 +24,11 @@ describe("excel serial dates", () => {
     for (const s of [46205, 46207, 46211, 46213, 40000]) {
       expect(dateToExcelSerial(excelSerialToDate(s))).toBe(s);
     }
+  });
+  it("a cell carrying a time of day (a datetime pasted from Odoo) is still that day", () => {
+    expect(toDisplayDate(excelSerialToDate(46211.479))).toBe("08/07/2026");
+    expect(excelSerialToDate(46211.479).getTime()).toBe(excelSerialToDate(46211).getTime());
+    expect(excelSerialToDate(46211.9999).toISOString()).toBe("2026-07-08T00:00:00.000Z");
   });
   it("consecutive serials are consecutive day numbers", () => {
     const a = dayNumber(excelSerialToDate(46207));
@@ -64,5 +70,15 @@ describe("calendar dates", () => {
     expect(parseISODate("2026-00-10")).toBeNull();
     expect(calendarDate(2028, 2, 29)?.toISOString()).toBe("2028-02-29T00:00:00.000Z");
     expect(calendarDate(2026, 2, 29)).toBeNull();
+  });
+});
+
+describe("the factory's today", () => {
+  it("is the Cairo calendar day as a day-only date, even when UTC is still yesterday", () => {
+    // 21:30 UTC on 25 Oct is 00:30 on 26 Oct in Cairo (UTC+3 in October)
+    expect(factoryToday(new Date("2026-10-25T21:30:00Z")).toISOString()).toBe("2026-10-26T00:00:00.000Z");
+    expect(factoryToday(new Date("2026-10-25T12:00:00Z")).toISOString()).toBe("2026-10-25T00:00:00.000Z");
+    // 22:30 UTC on 15 Jan is 00:30 on 16 Jan in Cairo (UTC+2 in winter)
+    expect(factoryToday(new Date("2026-01-15T22:30:00Z")).toISOString()).toBe("2026-01-16T00:00:00.000Z");
   });
 });

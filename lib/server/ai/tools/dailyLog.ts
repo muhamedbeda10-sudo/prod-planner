@@ -9,7 +9,7 @@ import { resolveWorkerByEmpId } from "@/lib/server/workers";
 import { bulkDeleteHandover, bulkSetHandoverDate, updateHandover } from "@/app/handover/actions";
 import { recordOutput } from "@/app/worklist/actions";
 import { ledgerPermKey } from "@/lib/domain/permissions";
-import { DEPTS, ITEMS, deptLabel, isDept } from "@/lib/domain/constants";
+import { DEPTS, ITEMS, deptLabel, isDept, stageItemError } from "@/lib/domain/constants";
 import { LV_ITEM, LV_STAGES } from "@/lib/domain/lv";
 import { TANK_ITEM } from "@/lib/domain/tanks";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
@@ -241,6 +241,8 @@ async function planOutput(i: OutputInput, todayISO: string, user: Parameters<typ
       return { error: `${what}: ${panel ? "a panel is recorded at Punching, Bending, Welding or Painting" : `a part is recorded at ${DEPTS.join(", ")}`}.` };
     }
     if (!hasPerm(user, ledgerPermKey(r.dept, r.item))) return { error: `${what}: you do not have the permission to record ${panel ? "panels" : deptLabel(r.dept)} output — the owner ticks it on Users & Permissions.` };
+    const pair = panel ? null : stageItemError(r.dept, r.item);
+    if (pair) return { error: `${what}: ${pair}` };
     if (r.date > todayISO) return { error: `${what}: that day has not come yet.` };
     if (r.date < earliest) return { error: `${what}: that is more than ${OUTPUT_DAYS_BACK} days back — check the date; an old record goes on the Daily log by hand.` };
     if (tankTracking && r.item === TANK_ITEM && r.dept === "Painting") return { error: `${what}: tanks are painted from the Painting worklist, tank by tank — not as a quantity.` };

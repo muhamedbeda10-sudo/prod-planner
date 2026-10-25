@@ -8,9 +8,12 @@
 const EXCEL_EPOCH_OFFSET = 25569;
 const MS_PER_DAY = 86400000;
 
-/** Excel serial number (e.g. 46211) -> JS Date at UTC midnight. */
+/** Excel serial number (e.g. 46211) -> JS Date at UTC midnight. A cell that
+ *  carries a time of day (46211.479, a datetime pasted from Odoo) is that
+ *  day: the day columns hold midnight, and a row at 11:30 would never meet
+ *  the clerk's row for the same MO and day. */
 export function excelSerialToDate(serial: number): Date {
-  return new Date(Math.round((serial - EXCEL_EPOCH_OFFSET) * MS_PER_DAY));
+  return new Date(Math.round((Math.floor(serial) - EXCEL_EPOCH_OFFSET) * MS_PER_DAY));
 }
 
 /** JS Date -> Excel serial number (integer day). */
@@ -149,12 +152,20 @@ export function factoryClockHHMM(at: Date): string {
   return `${p.hour}:${p.minute}`;
 }
 
+/** Today as a day-only Date (UTC midnight of the FACTORY's calendar day,
+ *  Africa/Cairo) — what every "today" comparison against a stored day column
+ *  must use. `new Date()` alone is the UTC day, which is still yesterday
+ *  between midnight and 02:00–03:00 Cairo, when the night shift is recorded. */
+export function factoryToday(now: Date = new Date()): Date {
+  return parseISODate(factoryDayISO(now))!;
+}
+
 /** Whole factory days from one moment back to another: 0 on the same Cairo
  *  day, 1 for the day before it. What "Today" and "Yesterday" mean on screen —
  *  the same on the server and in a browser in any zone, so a page rendered on
  *  one and hydrated on the other agrees. */
 export function factoryDaysBefore(at: Date, now: Date): number {
-  return dayNumber(parseISODate(factoryDayISO(now))!) - dayNumber(parseISODate(factoryDayISO(at))!);
+  return dayNumber(factoryToday(now)) - dayNumber(factoryToday(at));
 }
 
 /** The factory clock's reading at an instant, to the minute, written as if it
@@ -162,5 +173,5 @@ export function factoryDaysBefore(at: Date, now: Date): number {
  *  drawn in UTC whose times are the factory's wall clock. */
 export function factoryWallClockMs(at: Date): number {
   const [h, m] = factoryClockHHMM(at).split(":").map(Number);
-  return parseISODate(factoryDayISO(at))!.getTime() + (h * 60 + m) * 60_000;
+  return factoryToday(at).getTime() + (h * 60 + m) * 60_000;
 }

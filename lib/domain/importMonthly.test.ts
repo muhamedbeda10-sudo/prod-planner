@@ -59,6 +59,14 @@ describe("parseMonthlyPlan", () => {
     expect(parsed2.rows[1].osp).toEqual({ CF: 0, TC: 0, TN: 0, CB: 0 }); // "-" cells → 0
   });
 
+  it("reads an OSP below zero — a typo in the sheet — as none outsourced", () => {
+    const g2 = grid.map((r) => [...r]);
+    g2[3][14] = "-2"; // Tank OSP, typed as text
+    g2[3][15] = -3; // Core OSP, a number
+    const parsed2 = parseMonthlyPlan(g2);
+    expect(parsed2.rows[0].osp).toEqual({ CF: 0, TC: 0, TN: 0, CB: 0 });
+  });
+
   it("flags in-file duplicate MOs and keeps the first", () => {
     expect(parsed.issues.some((i) => i.includes("duplicate MO"))).toBe(true);
     expect(parsed.rows.filter((r) => r.mo === "PF01/MO/36039-002")).toHaveLength(1);
@@ -275,5 +283,18 @@ describe("parseMonthlyPlan — the LV meter boxes' sheet", () => {
 
   it("is still refused as a transformer sheet, which must have its BOM", () => {
     expect(parseMonthlyPlan(grid, "TR").rows).toEqual([]);
+  });
+});
+
+describe("parseMonthlyPlan — numbers and identities as the other sheets read them", () => {
+  it('reads "1,200" typed as text as twelve hundred, and an annotated figure as the number it starts with', () => {
+    const g = grid.map((r) => [...r]);
+    g[3] = [...g[3]];
+    g[3][12] = "1,200"; // the quantity as text with a thousands separator
+    g[4] = [...g[4]];
+    g[4][12] = "60 (urgent)"; // a figure with a note beside it, as the old reading took it
+    const parsed = parseMonthlyPlan(g);
+    expect(parsed.rows[0]).toMatchObject({ planQty: 1200 });
+    expect(parsed.rows[1]).toMatchObject({ planQty: 60 });
   });
 });

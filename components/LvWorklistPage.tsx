@@ -3,7 +3,7 @@ import { formatDate } from "@/lib/domain/format";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
 import { getLvWorklist } from "@/lib/server/lvWorklist";
 import { LV_WORKLISTS, lvDeptPermKey, type LvStage } from "@/lib/domain/lv";
-import { toISODate } from "@/lib/domain/dates";
+import { factoryToday, toISODate } from "@/lib/domain/dates";
 import { LvWorklist } from "@/components/LvWorklist";
 import { PrintHeader } from "@/components/PrintHeader";
 import { ViewTabs } from "@/components/ViewTabs";
@@ -13,7 +13,9 @@ import { ViewTabs } from "@/components/ViewTabs";
 // pages share one loader and one permission rule.
 
 export async function LvWorklistPage({ stage }: { stage: LvStage }) {
-  const today = new Date();
+  // the factory's day (Cairo), as the transformer worklists date their rows
+  const today = factoryToday();
+  const todayISO = toISODate(today);
   const [data, user] = await Promise.all([getLvWorklist(stage), getCurrentUser()]);
   const canEdit = !!user && hasPerm(user, lvDeptPermKey(stage));
   return (
@@ -23,7 +25,7 @@ export async function LvWorklistPage({ stage }: { stage: LvStage }) {
         title={`${stage} Worklist`} sub={`LV Panels · ${formatDate(today)}`}
         views={<ViewTabs views={LV_WORKLISTS.map((w) => ({ href: w.href, label: w.label, title: `${w.label} — what the panels owe this stage` }))} current={LV_WORKLISTS.find((w) => w.stage === stage)!.href} label="LV stage" />}
       />
-      <LvWorklist data={data} canEdit={canEdit} todayISO={toISODate(today)} />
+      <LvWorklist data={data} canEdit={canEdit} todayISO={todayISO} />
     </>
   );
 }

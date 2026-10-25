@@ -46,7 +46,8 @@ export async function getOdooData(scope: OdooScope): Promise<OdooPageData> {
       orderBy: [{ date: "desc" }, { id: "asc" }],
       include: { notes: { orderBy: { id: "desc" } } },
     }),
-    prisma.odooEntry.findMany({ select: { date: true }, distinct: ["date"], orderBy: { date: "desc" } }),
+    // grouped in SQL: `distinct` would read every row and dedupe in memory
+    prisma.odooEntry.groupBy({ by: ["date"], orderBy: { date: "desc" } }),
     prisma.masterOrder.findMany({ select: { soi: true, fgCode: true, bom: true, mo: true, line: true } }),
     prisma.odooEntry.count(),
     // grouped and judged in JS, so "off-screen, still open" counts a status
@@ -203,10 +204,16 @@ async function linesByMo(mosPerRow: string[][], line: string): Promise<NestingLo
   const mos = [...new Set(mosPerRow.flat())];
   if (mos.length === 0) return {};
   // a backorder (…-002) reads the lines of the MO it came from and of its
-  // sibling backorders — fetch the whole family (linesOfMo picks within it)
+  // sibling backorders — fetch the whole family (linesOfMo picks within it).
+  // The siblings are found by prefix in JS over the line's MO column: one
+  // pattern predicate per parent made a query as long as the day's MO list.
   const parents = [...new Set(mos.map(moParent))];
+  const family = [...new Set([...mos, ...parents])];
+  const prefixes = parents.map((p) => `${p}-`);
+  const named = await prisma.materialUsage.findMany({ where: { line, mo: { not: "" } }, select: { id: true, mo: true } });
+  const childIds = named.filter((r) => isBackorderOf(r.mo, prefixes)).map((r) => r.id);
   const rows = await prisma.materialUsage.findMany({
-    where: { line, OR: [{ mo: { in: mos, mode: "insensitive" } }, { mo: { in: parents, mode: "insensitive" } }, ...parents.map((p) => ({ mo: { startsWith: `${p}-`, mode: "insensitive" as const } }))] },
+    where: { line, OR: [{ mo: { in: family, mode: "insensitive" } }, ...(childIds.length ? [{ id: { in: childIds } }] : [])] },
     select: {
       id: true, month: true, bom: true, mo: true, partCode: true, partName: true, materialCode: true, material: true,
       thicknessMm: true, sheetSize: true, units: true, sheetsPerUnit: true, actualPerUnit: true, sheetsUsed: true, note: true,
@@ -217,6 +224,13 @@ async function linesByMo(mosPerRow: string[][], line: string): Promise<NestingLo
   for (const { mo, ...r } of rows) (out[moKey(mo)] ??= []).push(r);
   return out;
 }
+
+/** Whether a stored MO sits under one of the parents ("SF01/MO/15337-" ⊂
+ *  "SF01/MO/15337-002") — the case-insensitive prefix match the query made. */
+const isBackorderOf = (mo: string, prefixes: readonly string[]) => {
+  const up = mo.toUpperCase();
+  return prefixes.some((p) => up.startsWith(p));
+};
 
 /** Each row's BOM, the way the log reads it: the closing's, else the SOI's
  *  order, else the FG code's suffix (a top cover's suffix is its drawing
@@ -344,17 +358,25 @@ export async function importOdooSheet(
   }
 
   let added = 0, updated = 0, unchanged = 0;
+  // the import's own memory of the rows it has created or changed (or, in a
+  // dry run, would have): a second line for the same MO and day is judged
+  // against the first, never against the row as it was read, so the preview's
+  // counts are the import's and the last line of the file is what is kept
+  const wouldWrite = new Map<string, { soi: string | null; fgCode: string; product: string; qty: number }>();
   for (const { date, row } of dated) {
     const k = key(toISODate(date), row.odooMo);
-    const cur = byKey.get(k);
+    const stored = byKey.get(k);
+    const cur = wouldWrite.get(k) ?? stored;
     const same = cur && (cur.soi ?? null) === row.soi && cur.fgCode === row.fgCode && cur.product === row.product
       && cur.qty === row.qty;
     if (!cur) added += 1; else if (same) unchanged += 1; else updated += 1;
-    if (preview || same) continue;
+    if (same) continue;
+    wouldWrite.set(k, { soi: row.soi, fgCode: row.fgCode, product: row.product, qty: row.qty });
+    if (preview) continue;
 
     const data = { soi: row.soi, fgCode: row.fgCode, product: row.product, qty: row.qty, recordedBy };
-    if (cur) {
-      await prisma.odooEntry.update({ where: { id: cur.id }, data });
+    if (stored) {
+      await prisma.odooEntry.update({ where: { id: stored.id }, data });
     } else {
       // a row the sheet already marks Done was closed on its own day — the
       // only day known for it

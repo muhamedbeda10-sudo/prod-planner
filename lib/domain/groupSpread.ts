@@ -81,6 +81,9 @@ export interface DeliveryLine {
   counts: boolean;
   /** Pieces the customer has received. */
   delivered: number;
+  /** Pieces of this component made OUTSIDE (OSP): never ours to deliver, so
+   *  the order is done once the IN-HOUSE share has reached the customer. */
+  osp?: number;
 }
 
 /**
@@ -88,15 +91,20 @@ export interface DeliveryLine {
  * in full — not merely painted, not merely welded. Delivery is the last word,
  * so an order that clears this can be closed without looking at anything else.
  *
+ * A component's share bought out (OSP) is never made or delivered here, so
+ * each line is judged against what the plant owes of it: required − osp — the
+ * same target the Dlvd cell and the chain guard use. A component bought out
+ * in full owes nothing and does not count.
+ *
  * An order with no quantity, or with no component that counts, is never
  * "finished" — there is nothing to have delivered, and closing it silently
  * would hide a row that needs a human's eye instead.
  */
 export function isFullyDelivered(required: number, lines: readonly DeliveryLine[]): boolean {
   if (!(required > 0)) return false;
-  const needed = lines.filter((l) => l.counts);
+  const needed = lines.map((l) => ({ ...l, owed: Math.max(0, required - Math.max(0, l.osp ?? 0)) })).filter((l) => l.counts && l.owed > 0);
   if (needed.length === 0) return false;
-  return needed.every((l) => l.delivered >= required);
+  return needed.every((l) => l.delivered >= l.owed);
 }
 
 // ---- how much room one MO has at one stage ----

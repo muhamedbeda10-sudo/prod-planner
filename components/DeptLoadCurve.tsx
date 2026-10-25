@@ -32,8 +32,11 @@ export function DeptLoadCurve({ board, horizon }: { board: MachineBoardData; hor
     ];
     // today counts the downtime the shift log recorded; the days after it can
     // only go on the machines' hours a day
-    const today = board.cards.reduce((s, c) => s + (c.availableH ?? 0), 0);
-    const plain = board.cards.reduce((s, c) => s + (c.machine.hoursPerDay ?? 0), 0);
+    // a retired machine stays on the board while work sits on it, but its
+    // hours a day are no capacity any more (the board's own total leaves it out)
+    const live = board.cards.filter((c) => c.machine.active);
+    const today = live.reduce((s, c) => s + (c.availableH ?? 0), 0);
+    const plain = live.reduce((s, c) => s + (c.machine.hoursPerDay ?? 0), 0);
     const capacity = days.map((_, i) => (i === 0 ? today : plain));
     return buildDeptLoad(lines, days, capacity);
   }, [board.cards, board.unassigned, days]);

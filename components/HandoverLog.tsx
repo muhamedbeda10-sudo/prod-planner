@@ -5,10 +5,10 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateHandover, deleteHandover, bulkDeleteHandover, bulkSetHandoverDate } from "@/app/handover/actions";
-import { toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import type { SoiLookup } from "@/lib/server/soi";
 import { ExportButton } from "@/components/ExportButton";
-import { Soi, soiOf } from "@/components/ui";
+import { SAVE_UNCONFIRMED, Soi, soiOf } from "@/components/ui";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { DateSlicer } from "@/components/DateSlicer";
 import { addDaysISO, slicerPresets } from "@/lib/domain/dateSlicer";
@@ -19,13 +19,12 @@ import type { ProductLine } from "@/lib/domain/lines";
 // every ledger stage the log can carry — production depts + tracker-only stages
 const LOG_DEPTS = [...DEPTS, SHOTBLAST_STAGE, DELIVERED_STAGE];
 
-// A calendar day (UTC) offset from today — the log's exact-day presets.
+// A factory day (Cairo) offset from today — the log's exact-day presets.
 // 0 = today (what has been recorded so far), -1 = yesterday (the last whole
-// recorded day).
+// recorded day). The rows are dated with the factory day, so the night
+// shift's records after midnight are today's.
 function dayISO(offset: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + offset);
-  return d.toISOString().slice(0, 10);
+  return addDaysISO(factoryDayISO(new Date()), offset);
 }
 
 export interface LogRow {
@@ -156,12 +155,18 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
     fd.set("ids", selectedVisible.join(","));
     setBulkMsg("");
     startTransition(async () => {
-      const r = await bulkDeleteHandover(fd);
-      if (r.ok) {
-        setSelected(new Set());
-        router.refresh();
-      } else {
-        setBulkMsg(r.error ?? "Failed");
+      // A rejected action stays a message on the bar — thrown, it would replace
+      // the whole log with the route's error page and claim nothing changed.
+      try {
+        const r = await bulkDeleteHandover(fd);
+        if (r.ok) {
+          setSelected(new Set());
+          router.refresh();
+        } else {
+          setBulkMsg(r.error ?? "Failed");
+        }
+      } catch {
+        setBulkMsg(SAVE_UNCONFIRMED);
       }
     });
   }
@@ -174,13 +179,17 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
     fd.set("date", bulkDate);
     setBulkMsg("");
     startTransition(async () => {
-      const r = await bulkSetHandoverDate(fd);
-      if (r.ok) {
-        setSelected(new Set());
-        setBulkDate("");
-        router.refresh();
-      } else {
-        setBulkMsg(r.error ?? "Failed");
+      try {
+        const r = await bulkSetHandoverDate(fd);
+        if (r.ok) {
+          setSelected(new Set());
+          setBulkDate("");
+          router.refresh();
+        } else {
+          setBulkMsg(r.error ?? "Failed");
+        }
+      } catch {
+        setBulkMsg(SAVE_UNCONFIRMED);
       }
     });
   }
@@ -205,13 +214,17 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
     fd.set("qty", qty);
     fd.set("date", date);
     startTransition(async () => {
-      const r = await updateHandover(fd);
-      if (r.ok) {
-        setEditing(null);
-        setRowErr((s) => ({ ...s, [id]: "" }));
-        router.refresh();
-      } else {
-        setRowErr((s) => ({ ...s, [id]: r.error ?? "Failed" }));
+      try {
+        const r = await updateHandover(fd);
+        if (r.ok) {
+          setEditing(null);
+          setRowErr((s) => ({ ...s, [id]: "" }));
+          router.refresh();
+        } else {
+          setRowErr((s) => ({ ...s, [id]: r.error ?? "Failed" }));
+        }
+      } catch {
+        setRowErr((s) => ({ ...s, [id]: SAVE_UNCONFIRMED }));
       }
     });
   }
@@ -220,12 +233,16 @@ export function HandoverLog({ rows, editableDepts = [], soi, viewTabs, line = "T
     const fd = new FormData();
     fd.set("id", String(id));
     startTransition(async () => {
-      const r = await deleteHandover(fd);
-      if (r.ok) {
-        setRowErr((s) => ({ ...s, [id]: "" }));
-        router.refresh();
-      } else {
-        setRowErr((s) => ({ ...s, [id]: r.error ?? "Failed" }));
+      try {
+        const r = await deleteHandover(fd);
+        if (r.ok) {
+          setRowErr((s) => ({ ...s, [id]: "" }));
+          router.refresh();
+        } else {
+          setRowErr((s) => ({ ...s, [id]: r.error ?? "Failed" }));
+        }
+      } catch {
+        setRowErr((s) => ({ ...s, [id]: SAVE_UNCONFIRMED }));
       }
     });
   }

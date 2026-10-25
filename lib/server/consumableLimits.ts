@@ -82,7 +82,7 @@ async function loadRawRules(itemIds?: number[], db: Db = prisma): Promise<LimitR
 
 /** Every department a live hand-out went to. */
 async function departmentsUsed(db: Db = prisma): Promise<string[]> {
-  const rows = await db.consumableIssue.findMany({ where: { deletedAt: null }, select: { department: true }, distinct: ["department"] });
+  const rows = await db.consumableIssue.groupBy({ by: ["department"], where: { deletedAt: null } });
   return rows.map((r) => r.department);
 }
 

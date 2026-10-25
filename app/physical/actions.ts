@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { importPhysicalStock, type PhysicalImportResult } from "@/lib/server/physicalStock";
 import { stockNumber } from "@/lib/domain/physicalStock";
+import { userMessage } from "@/lib/server/errors";
 
 // PHYSICAL MATERIAL's writes — all behind "stock.edit". The figures are the
 // store's count and Odoo's stock as the sheet carries them; nothing here
@@ -29,7 +30,7 @@ export async function importPhysicalAction(formData: FormData): Promise<Physical
     if (res.ok) done();
     return res;
   } catch (e) {
-    return { ok: false, error: `Import failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "import the stock") };
   }
 }
 

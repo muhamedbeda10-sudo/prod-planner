@@ -14,7 +14,7 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
   title: "Reading the planning cockpit",
   description:
     "The planner's KPIs as the Cockpit (the home page, /, a view of Plan Tracker) shows them, all in STANDARD HOURS (what the work is worth, never pieces) — the transformers only: " +
-    "the decisions it flags today; the newest weekly plan — each stage's pieces due by today against done (adherence), and the lines behind with the stage they are stuck at; " +
+    "the decisions it flags today; the newest weekly plan — each stage's pieces due by today against done (adherence), and the lines behind with the stage they are stuck at (the oldest 20 of them; behindCount counts them all); " +
     "each work centre (laser / punch, bending, fin folding, welding, shot blast, painting) — earned std-hours against the man-hours the shift log booked there (efficiency, 100% = the standard pace) on the last recorded day and over the recent recorded days, people a day, machine availability, the daily trend, and Fabrication's three centres together; " +
     "the load ahead — each centre's remaining plan hours over the next 10 working days against what it can work (falling behind and when it catches up, or short at the end; not measured without booked hours); " +
     "welding coverage — days of cut parts waiting in front of the welders; the month's manpower — the people each centre needs for the month's plan (its standard hours over the working days × the net hours a person works) and from today for what is left, against the people who come; the losses — machine stops by cause, absence and overtime; and the daily trend of these. " +
@@ -42,7 +42,8 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
           planNo: c.week.planNo, piecesRequired: c.week.req, piecesFinished: c.week.covered,
           adherence: c.week.adherence.map((a) => ({ stage: a.stage, dueByToday: a.due, done: a.done, rate: r2(a.rate) })),
           behindCount: c.week.lateCount,
-          behind: c.week.late.map((l) => ({ day: l.dayISO, bom: l.bom, soi: l.soi, item: l.item, stuckAt: l.stage, short: l.short, owed: l.owed })),
+          // the oldest 20 keep the answer readable; behindCount says how many there are
+          behind: c.week.late.slice(0, 20).map((l) => ({ day: l.dayISO, bom: l.bom, soi: l.soi, item: l.item, stuckAt: l.stage, short: l.short, owed: l.owed })),
           days: c.week.days.map((d) => ({ day: d.iso, required: d.req, finished: d.covered })),
         },
         ...(floor ? {

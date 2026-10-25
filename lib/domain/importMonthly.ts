@@ -8,6 +8,7 @@
 // The import's contract (per the factory's flow): check each MO — if it already
 // exists in the registry it is left untouched; if it is new it is added.
 
+import { sheetNumberOr } from "./material";
 import type { ProductLine } from "./lines";
 
 export type CoreItem = "CF" | "TC" | "TN" | "CB";
@@ -151,10 +152,10 @@ export function diffRevisionRow(row: MonthlyOrderRow, cur: ExistingOrderFields):
 }
 
 const S = (v: unknown): string => (v == null ? "" : String(v).replace(/\r?\n/g, " ").trim());
-const N = (v: unknown): number => {
-  const n = typeof v === "number" ? v : parseFloat(S(v));
-  return Number.isFinite(n) ? n : 0;
-};
+// the same reading of a number as the nesting and stock sheets: "1,200" is
+// twelve hundred, a blank or a dash is nothing; a figure with a note beside it
+// ("60 (urgent)") is still the number it starts with, as it always read
+const N = (v: unknown): number => sheetNumberOr(v);
 const norm = (s: string) => s.toUpperCase().replace(/[^A-Z]/g, "");
 
 // header aliases (normalized: letters only) -> field
@@ -296,7 +297,7 @@ export function parseMonthlyPlan(grid: unknown[][], line: ProductLine = "TR"): P
     const osp: Record<CoreItem, number> = { CF: 0, TC: 0, TN: 0, CB: 0 };
     for (const it of ["CF", "TC", "TN", "CB"] as const) {
       const c = sectionCols.osp[it];
-      if (c !== undefined) osp[it] = N(row[c]);
+      if (c !== undefined) osp[it] = Math.max(0, N(row[c]));
     }
     // an outsourced tank comes WITH its top cover — the sheet only has a Tank
     // column, so TN's OSP share implies the same TC share

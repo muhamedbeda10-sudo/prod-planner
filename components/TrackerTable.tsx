@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import type { TrackerRow } from "@/lib/domain/tracker";
-import { pctStyle, Num } from "@/components/ui";
+import { pctClass, Num } from "@/components/ui";
 import { ExportButton } from "@/components/ExportButton";
 import { SearchBox, SelectFilter, FilterBar, useSavedFilter } from "@/components/FilterControls";
 import { ITEMS } from "@/lib/domain/constants";
@@ -106,7 +106,7 @@ export function TrackerTable({ rows, planNo }: { rows: TrackerRow[]; planNo: num
                 <td className="p-2 text-center font-bold" style={{ color: r.remaining > 0 ? "var(--bad-fg)" : "var(--ok-fg)" }}>
                   <Num v={r.remaining} />
                 </td>
-                <td className="p-2 text-center font-bold tabnum" style={pctStyle(r.achievement)}>
+                <td className={`p-2 text-center font-bold tabnum ${pctClass(r.achievement)}`}>
                   {r.achievement === null ? "—" : `${(r.achievement * 100).toFixed(0)}%`}
                 </td>
               </tr>

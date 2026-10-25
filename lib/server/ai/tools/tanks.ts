@@ -270,7 +270,8 @@ export const recordLeakTestTool: WriteTool<LeakInput> = {
       title: `Leak test: ${tanks.length} tank(s) ${i.result === "pass" ? "passed" : "to repair"}`,
       summary: `Record ${w.name}'s leak test on ${i.date ?? ctx.todayISO}: ${serialList(tanks)} ${verdict}${i.note ? ` ("${i.note}")` : ""}.`,
       changes: tanks.map((t): AiChange => ({ label: t.serial, before: "waiting for the leak test", after: i.result === "pass" ? "passed — to painting" : "repair — to welding" })),
-      snapshot: tanks,
+      // the day is part of what was approved (see record_manual_job_done)
+      snapshot: { tanks, date: i.date ?? ctx.todayISO },
     };
   },
   async execute(i, ctx) {
@@ -328,7 +329,7 @@ export const paintTanksTool: WriteTool<PaintInput> = {
       title: `Paint ${tanks.length} tank(s)`,
       summary: `Record ${serialList(tanks)} as painted by ${w.name} on ${i.date ?? ctx.todayISO} — ${byMo.size} Daily log row(s), one per MO (${[...byMo].map(([mo, g]) => `${mo} ×${g.n}`).join(", ")}).`,
       changes: tanks.map((t): AiChange => ({ label: t.serial, before: "passed the leak test", after: "painted" })),
-      snapshot: tanks,
+      snapshot: { tanks, date: i.date ?? ctx.todayISO },
     };
   },
   async execute(i, ctx) {

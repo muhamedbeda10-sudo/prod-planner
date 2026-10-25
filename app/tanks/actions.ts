@@ -12,6 +12,7 @@ import { deleteTanksWithRecords } from "@/lib/server/tanks";
 import { getSettings } from "@/lib/server/data";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
 import { TANK_ITEM, blockedReason, isLeakTestResult, isQaResult, statusAfterLeakTest } from "@/lib/domain/tanks";
+import { UserError, userMessage } from "@/lib/server/errors";
 
 // Everything that happens to a tank AS A PIECE: the welder's name, the leak
 // test between welding and painting, the repair loop, painting by selection,
@@ -69,7 +70,7 @@ function workerIdFromForm(formData: FormData): number | null {
 }
 
 /** A tank that another screen moved on between the read and the write. */
-class TankMovedError extends Error {}
+class TankMovedError extends UserError {}
 
 /** Move a tank to its next stage inside the write, only while it still stands
  *  where it was read: two tablets (or a retried tap) acting on the same tank
@@ -82,7 +83,7 @@ async function moveTank(tx: Prisma.TransactionClient, tank: { id: number; serial
 
 function failed(e: unknown): TankActionResult {
   if (e instanceof TankMovedError) return { ok: false, error: e.message };
-  return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+  return { ok: false, error: userMessage(e, "save the tank record") };
 }
 
 /** Read a "serials" field: one serial, or several separated by commas. */
@@ -492,6 +493,6 @@ export async function deleteTanks(formData: FormData): Promise<TankActionResult>
     revalidateTanks();
     return { ok: true, count: res.deleted };
   } catch (e) {
-    return { ok: false, error: `Failed to remove: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "remove the tanks") };
   }
 }

@@ -33,7 +33,8 @@ async function rowsFor(ids: readonly number[]): Promise<{ rows: PhysicalRowSnaps
 /** A cell as the table stores it — what the person would see after typing it. */
 function stored(field: Field, value: string): string | number | null {
   const t = value.replace(/\s+/g, " ").trim();
-  if (field === "physical" || field === "odoo") return Number(t.replace(/,/g, ""));
+  // a blank count is not a count of 0 — the table refuses it, so the card must not promise 0
+  if (field === "physical" || field === "odoo") return t === "" ? null : Number(t.replace(/,/g, ""));
   if (field === "uom") return t.toUpperCase().slice(0, 20);
   if (field === "note") return t.slice(0, 500) || null;
   if (field === "name") return t.slice(0, 300);
@@ -50,7 +51,8 @@ export const updatePhysicalItemsTool: WriteTool<CellsInput> = {
   title: "Edit physical stock items",
   description: "Edit cells of the physical stock, as the table does: code, name, uom, note, physical (the store's count) or odoo (Odoo's stock) — counts as numbers of 0 or more.",
   area: "data",
-  risk: "low",
+  // a count, or several rows at once, waits for the click
+  risk: (i) => (i.changes.length > 3 || i.changes.some((c) => c.field === "physical" || c.field === "odoo") ? "high" : "low"),
   tabs: TABS,
   schema: {
     type: "object",

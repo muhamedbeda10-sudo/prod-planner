@@ -11,6 +11,26 @@ import { createPortal } from "react-dom";
 // a table row included, without breaking the markup there. Only ever
 // rendered after a click, so the document is there.
 
+const FOCUSABLE = "a[href], button:not([disabled]), input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
+// Keeps Tab and Shift+Tab inside `box` while it is open as a dialog: the page
+// behind is only dimmed, not inert, so without this the keys walk focus out
+// into it. Called from a keydown handler; a key other than Tab is left alone.
+// Focus that is already outside the box (or on the box itself) goes to its
+// first or last control, so the trap also recovers it.
+export function trapTab(ev: KeyboardEvent, box: HTMLElement | null) {
+  if (ev.key !== "Tab" || !box) return;
+  const items = Array.from(box.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null || el === document.activeElement);
+  if (items.length === 0) { ev.preventDefault(); box.focus(); return; }
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement as HTMLElement | null;
+  const inside = active !== null && active !== box && box.contains(active);
+  if (ev.shiftKey) {
+    if (!inside || active === first) { ev.preventDefault(); last.focus(); }
+  } else if (!inside || active === last) { ev.preventDefault(); first.focus(); }
+}
+
 export function Modal({
   title,
   sub,
@@ -49,7 +69,10 @@ export function Modal({
     // the first field (unless told not to), or the box itself
     const first = focusFieldRef.current ? box.current?.querySelector<HTMLElement>("input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])") : null;
     (first ?? box.current)?.focus();
-    const onKey = (ev: KeyboardEvent) => { if (ev.key === "Escape" && !busyRef.current) closeRef.current(); };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape" && !busyRef.current) closeRef.current();
+      trapTab(ev, box.current);
+    };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);

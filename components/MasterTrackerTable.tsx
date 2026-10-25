@@ -444,7 +444,7 @@ export function MasterTrackerTable({
     () =>
       rows.filter((r) =>
         r.status === "open" &&
-        isFullyDelivered(r.required, ITEMS.map((it) => ({ counts: r.items[it].eligible && !r.items[it].excluded, delivered: r.items[it].delivered })))
+        isFullyDelivered(r.required, ITEMS.map((it) => ({ counts: r.items[it].eligible && !r.items[it].excluded, delivered: r.items[it].delivered, osp: r.items[it].osp })))
       ),
     [rows]
   );
@@ -644,7 +644,7 @@ export function MasterTrackerTable({
         const done = groupDone(t.members);
         const closed = t.members.filter((m) => m.status === "closed");
         e.push(
-          { key: "close", icon: "✓", label: `Close ${done.length} finished MO${done.length === 1 ? "" : "s"}`, disabled: done.length === 0, hint: "Only an order the customer has received in full can close", onSelect: () => void changeGroupStatus(t.bom, done, "closed") },
+          { key: "close", icon: "✓", label: `Close ${done.length} finished MO${done.length === 1 ? "" : "s"}`, disabled: done.length === 0, hint: "Only a finished order — every component through its last stage — can close; the toolbar's Close N delivered closes the ones the customer received", onSelect: () => void changeGroupStatus(t.bom, done, "closed") },
           { key: "reopen", icon: "↩", label: `Reopen ${closed.length} closed MO${closed.length === 1 ? "" : "s"}`, disabled: closed.length === 0, onSelect: () => void changeGroupStatus(t.bom, closed, "open") },
           { sep: true }
         );
@@ -666,7 +666,7 @@ export function MasterTrackerTable({
     if (can("tracker.status")) {
       e.push({ sep: true });
       if (closed) e.push({ key: "reopen", icon: "↩", label: "Reopen order", onSelect: () => changeStatus(r.mo, "open") });
-      else e.push({ key: "close", icon: "✓", label: "Close order", disabled: !done, hint: done ? "It leaves the daily screens; reopen any time" : "Only an order the customer has received in full can close", onSelect: () => changeStatus(r.mo, "closed") });
+      else e.push({ key: "close", icon: "✓", label: "Close order", disabled: !done, hint: done ? "It leaves the daily screens; reopen any time" : "Only a finished order — every component through its last stage — can close", onSelect: () => changeStatus(r.mo, "closed") });
     }
     e.push({ sep: true }, { key: "trace", icon: "🔍", label: "Open trace", href: `/trace?mo=${encodeURIComponent(r.mo)}` });
     return e;
@@ -712,9 +712,11 @@ export function MasterTrackerTable({
     const fd = new FormData();
     fd.set("mo", mo);
     fd.set("status", next);
+    setCloseMsg("");
     startTransition(async () => {
-      await setOrderStatus(fd);
-      router.refresh();
+      const res = await setOrderStatus(fd);
+      if (res.ok) router.refresh();
+      else setCloseMsg(res.error ?? "Failed");
     });
   }
 
@@ -896,7 +898,7 @@ export function MasterTrackerTable({
           <Link href={`/trace?bom=${encodeURIComponent(odooDetail.bom)}#on-odoo`} className="inline-flex text-sm text-brand-ink font-semibold hover:underline mb-3">Open this BOM&apos;s On Odoo records →</Link>
           <div className="overflow-x-auto"><table className="w-full text-sm grid-lines" aria-label="Odoo allocation by plan month">
             <thead><tr><th className="p-2 text-left">Original plan month</th><th className="p-2 text-left">MO</th><th className="p-2 text-right">Required</th><th className="p-2 text-right">Odoo allocated</th></tr></thead>
-            <tbody>{members.map((r) => <tr key={r.mo} className={month && r.odooPlanMonth === month ? "bg-brand-soft" : ""}>
+            <tbody>{members.map((r) => <tr key={r.mo} className={month && r.odooPlanMonth === month ? "bg-brand-light" : ""}>
               <td className="p-2">{r.odooPlanMonth ?? "No plan month"}{r.months.length > 1 && <span className="block text-xs text-muted">Carried into {r.months.filter((m) => m !== r.odooPlanMonth).join(", ")}</span>}</td>
               <td className="p-2 font-semibold">{r.mo}</td><td className="p-2 text-right tabnum"><Num v={r.required} /></td><td className="p-2 text-right tabnum font-semibold">{r.items[odooDetail.item].odooTracked === false ? "Not tracked" : <Num v={r.items[odooDetail.item].odooClosed ?? 0} />}</td>
             </tr>)}</tbody>
@@ -1387,11 +1389,15 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
       : dept === "ShotBlast" ? r.items[it].shp
       : dept === "Delivered" ? r.items[it].delivered
       : r.items[it].paint;
-    const value = members.reduce((s, r) => s + at(r), 0);
     const eligible = members.filter((m) => m.items[it].eligible && !m.items[it].excluded);
     const eligibleMos = eligible.map((m) => m.mo);
+    // the figure shown, the base the server checks and the MOs the difference
+    // lands on are ONE set: the members that need the component. Output once
+    // recorded on a member whose component is N/A now is hidden on its own row
+    // too, and must not inflate the total the planner types over.
+    const value = eligible.reduce((s, r) => s + at(r), 0);
     // what the BOM's MOs need of this component, less what is bought out
-    const target = members.reduce((s, m) => s + (m.items[it].eligible && !m.items[it].excluded ? Math.max(0, m.required - m.items[it].osp) : 0), 0);
+    const target = eligible.reduce((s, m) => s + Math.max(0, m.required - m.items[it].osp), 0);
     const state = stageState(value, target, members.some((m) => etas[m.mo]?.late), members.some((m) => m.urgent), members.every((m) => m.hold.onHold));
     const k = `g|${gBom}|${it}|${dept}`;
     const col = `${it}|${dept}`;
@@ -1490,7 +1496,12 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     const applicable = members.filter((r) => r.items[it].eligible && !r.items[it].excluded);
     if (!applicable.length) return <td className="na-cell border-r border-border-strong" aria-label={`${it} Odoo not applicable`} />;
     const { qty, unallocated } = trackerOdooTotal(applicable, it, month);
-    const unknown = applicable.filter((r) => (!month || (month === "—" ? !r.odooPlanMonth : r.odooPlanMonth === month)) && r.items[it].odooTracked === false).length;
+    // An MO older than the tracking start has no known closing. It stays unknown
+    // wherever it is listed — under its own plan month, in the all-months view,
+    // and under a later month it was carried into (where it adds nothing to the
+    // allocation) — so an unknown history never reads as a confirmed zero. The
+    // export's "Not tracked" follows the same rule.
+    const unknown = applicable.filter((r) => r.items[it].odooTracked === false).length;
     const title = `${ITEM_NAME[it]} Odoo allocation: ${qty} pcs for ${month || "all plan months"}, oldest plan first.${unknown ? ` ${unknown} older order(s) have no tracked closing; — means unknown, not zero.` : ""}${unallocated ? ` Another ${unallocated} pcs have no allocation to a plan quantity.` : ""} Click to see the original plan month of each MO.`;
     return <td className={`stage-cell p-1 text-center tabnum font-semibold border-r border-border-strong ${qty > 0 ? "text-ok-fg" : "text-muted"}`} aria-label={`${members.length > 1 ? "BOM " + members[0].bom : members[0].mo} ${it} Odoo closed`} title={title}><button type="button" className="w-full hover:underline" aria-label={`View ${members[0].bom} ${it} Odoo plan allocation`} onClick={(e) => { e.stopPropagation(); setOdooDetail({ bom: members[0].bom, item: it }); }}>{unknown && qty === 0 ? "—" : <Num v={qty} />}{unallocated > 0 || unknown > 0 && qty > 0 ? <span className="ms-1 text-warn-fg" aria-label="Odoo quantity has incomplete plan allocation">*</span> : null}</button></td>;
   }

@@ -90,6 +90,17 @@ export const PAINT_EXEMPT = ["CF"] as const;
 export function isPaintExempt(x: string): boolean {
   return (PAINT_EXEMPT as readonly string[]).includes(x);
 }
+
+/** Why a stage cannot take a component at all — the two finishing stages
+ *  belong to one kind of part each: ShotBlast is the core frame's, Painting
+ *  everyone else's. One rule for every path that records output (the tracker
+ *  cells, the worklists, the Daily log, the assistant); null when the pair
+ *  is fine. */
+export function stageItemError(dept: string, item: string): string | null {
+  if (dept === SHOTBLAST_STAGE && !isPaintExempt(item)) return `${item} is painted, not shot blasted — SHB applies to the core (CF) only.`;
+  if (dept === "Painting" && isPaintExempt(item)) return `${item} is shot blasted, not painted — record it on the SHB cell.`;
+  return null;
+}
 /** The components that DO go through Painting (all items minus the exempt ones). */
 export const PAINTED_ITEMS: readonly Item[] = ITEMS.filter((i) => !isPaintExempt(i));
 
@@ -181,11 +192,12 @@ export function ospOf(
   o: { ospCF?: number | null; ospTC?: number | null; ospTN?: number | null; ospCB?: number | null },
   item: Item,
 ): number {
+  // a count below zero is a typo in the sheet, never pieces made here
   switch (item) {
-    case "CF": return o.ospCF ?? 0;
-    case "TC": return o.ospTC ?? 0;
-    case "TN": return o.ospTN ?? 0;
-    case "CB": return o.ospCB ?? 0;
+    case "CF": return Math.max(0, o.ospCF ?? 0);
+    case "TC": return Math.max(0, o.ospTC ?? 0);
+    case "TN": return Math.max(0, o.ospTN ?? 0);
+    case "CB": return Math.max(0, o.ospCB ?? 0);
     default: return 0; // AR, MB — no OSP
   }
 }

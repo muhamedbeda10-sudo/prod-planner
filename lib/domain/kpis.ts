@@ -16,6 +16,7 @@
 
 import { DEPT_CENTRES, WORK_CENTRES, WORK_CENTRE_LABEL, round1, type WorkCentre } from "./shifts";
 import { efficiencyTone, type EfficiencyTone } from "./productivity";
+import { stopDurationLabel } from "./downtime";
 
 export type CentreHours = Record<WorkCentre, number>;
 export const zeroCentres = (): CentreHours => Object.fromEntries(WORK_CENTRES.map((c) => [c, 0])) as CentreHours;
@@ -455,7 +456,7 @@ export function cockpitActions(i: ActionInputs): CockpitAction[] {
       out.push({ tone: "warn", href: "/shifts", floor: true, text: `${WORK_CENTRE_LABEL[c.centre]} worked at ${Math.round((c.efficiency ?? 0) * 100)}% of the standard over its last ${c.days} recorded days.` });
     }
   }
-  if (i.topLoss && i.topLoss.hours > 0) out.push({ tone: "warn", href: "/shifts", floor: true, text: `${i.topLoss.label} cost ${i.topLoss.hours} machine hours this week — the biggest loss.` });
+  if (i.topLoss && i.topLoss.hours > 0) out.push({ tone: "warn", href: "/shifts", floor: true, text: `${i.topLoss.label} cost ${stopDurationLabel(i.topLoss.hours)} of machine time this week — the biggest loss.` });
   if (!i.todayRecorded) out.push({ tone: "info", href: "/shifts", floor: true, text: "Today's attendance is not recorded yet — the hours and the efficiency wait for it." });
   return out.slice(0, 6);
 }

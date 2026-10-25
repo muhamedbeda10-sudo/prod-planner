@@ -14,11 +14,12 @@ const h = vi.hoisted(() => {
       planOrder: { findFirst: fn() },
       returnEntry: { findUnique: fn() },
       handoverEntry: { findFirst: fn(), create: fn(), aggregate: fn(), groupBy: fn() },
-      plan: { upsert: fn() },
+      plan: { upsert: fn(), findUnique: fn() },
       $transaction: fn(),
     },
     revalidatePath: vi.fn(),
     checkOutputChain: vi.fn(),
+    recheck: vi.fn(),
     mintTankSerials: vi.fn(),
     unmintTankSerials: vi.fn(),
     resolveWorker: vi.fn(),
@@ -34,7 +35,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("next/cache", () => ({ revalidatePath: h.revalidatePath }));
 vi.mock("@vercel/blob", () => ({ put: vi.fn(), del: vi.fn() }));
-vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChain }));
+vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChain, recheckLvChainLocked: h.recheck, ChainRefused: class extends Error {} }));
 vi.mock("@/lib/server/data", () => ({ getPlanWindows: h.getPlanWindows, getSettings: h.getSettings }));
 vi.mock("@/lib/server/auth", () => ({
   requireDeptEdit: h.requireDeptEdit,
@@ -193,7 +194,7 @@ describe("recordOutput — a panel off a machine card takes the LV stage's key, 
   });
 
   it("the transformer welder's key no longer records a panel; the LV welder's does", async () => {
-    h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "MO-LV" });
+    h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "MO-LV", line: "LV", bom: "FG-LV-1" });
     holding("welding.edit");
     expect(await recordOutput(panel("Welding"))).toEqual({ ok: false, error: NO.error });
     expect(txWrites).toEqual([]);
@@ -207,6 +208,43 @@ describe("recordOutput — a panel off a machine card takes the LV stage's key, 
     const res = await recordOutput(form({ date: DATE, dept: "Welding", bom: "B", mo: "MO-1", item: "CF", qty: "1", planNo: "0" }));
     expect(res).toEqual({ ok: false, error: NO.error });
     expect(h.requirePerm).toHaveBeenCalledExactlyOnceWith("welding.edit");
+  });
+
+  it("refuses a panel on a transformer order — the row would count on the LV dashboard and show on no tracker", async () => {
+    holding("lv.welding");
+    h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "T-1", line: "TR", bom: "TB-1" });
+    const res = await recordOutput(form({ date: DATE, dept: "Welding", bom: "TB-1", mo: "T-1", item: "PNL", qty: "2", planNo: "0" }));
+    expect(res).toEqual({ ok: false, error: "T-1 is not an LV panel order." });
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+    expect(txWrites).toEqual([]);
+  });
+
+  it("refuses a transformer component on a panel order", async () => {
+    holding("welding.edit");
+    h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "P-1", line: "LV", bom: "FG-LV-1" });
+    const res = await recordOutput(form({ date: DATE, dept: "Welding", bom: "FG-LV-1", mo: "P-1", item: "CF", qty: "1", planNo: "0" }));
+    expect(res).toEqual({ ok: false, error: "P-1 is an LV panel order — panels are recorded on the LV tracker." });
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("files a panel under its order's BOM, whatever the form said", async () => {
+    holding("lv.punching");
+    h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "MO-LV", line: "LV", bom: "FG-LV-1" });
+    const res = await recordOutput(form({ date: DATE, dept: "Punching", bom: "WRONG", mo: "MO-LV", item: "PNL", qty: "2", planNo: "0" }));
+    expect(res).toEqual({ ok: true, ledgerId: 1 });
+    expect(h.checkOutputChain).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ bom: "FG-LV-1", mo: "MO-LV", item: "PNL" }));
+    expect(txWrites).toEqual([expect.objectContaining({ dept: "Punching", bom: "FG-LV-1", mo: "MO-LV", item: "PNL", qty: 2 })]);
+    // judged again under the order's lock, inside the write — the LV tracker may be recording on it too
+    expect(h.recheck).toHaveBeenCalledExactlyOnceWith(expect.anything(), { dept: "Punching", bom: "FG-LV-1", mo: "MO-LV", item: "PNL", qty: 2 });
+  });
+
+  it("writes nothing when the locked re-check refuses the panel", async () => {
+    holding("lv.punching");
+    h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "MO-LV", line: "LV", bom: "FG-LV-1" });
+    h.recheck.mockRejectedValueOnce(new Error("Chain check: 6 punched would pass the order's 4."));
+    const res = await recordOutput(form({ date: DATE, dept: "Punching", bom: "FG-LV-1", mo: "MO-LV", item: "PNL", qty: "2", planNo: "0" }));
+    expect(res.ok).toBe(false);
+    expect(txWrites).toEqual([]);
   });
 });
 
@@ -251,6 +289,18 @@ describe("recordTrackerTotal — delta accounting", () => {
     const res = await recordTrackerTotal(form({ dept: "Cut", bom: "B", mo: "MO-1", item: "CF", total: "9", base: "10" }));
     expect(res.ok).toBe(true);
     expect(txWrites[0]).toMatchObject({ qty: -3 });
+  });
+
+  it("refuses to ADD to a cell whose ledger already stands above the order quantity, but still lets it be lowered", async () => {
+    h.prisma.handoverEntry.aggregate.mockResolvedValue({ _sum: { qty: 12 } });
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ planQty: 10 });
+    const up = await recordTrackerTotal(form({ dept: "Cut", bom: "B", mo: "MO-1", item: "CF", total: "11", base: "10" }));
+    expect(up.ok).toBe(false);
+    expect(up.error).toMatch(/MO-1 has 12 recorded at Fabrication but the order is for 10/);
+    expect(txWrites).toHaveLength(0);
+    const down = await recordTrackerTotal(form({ dept: "Cut", bom: "B", mo: "MO-1", item: "CF", total: "10", base: "10" }));
+    expect(down.ok).toBe(true);
+    expect(txWrites[0]).toMatchObject({ qty: -2 });
   });
 
   it("records the DIFFERENCE as a dated entry when the total goes up", async () => {
@@ -338,6 +388,12 @@ describe("tanks (TN) — the ledger row and the serials move together", () => {
     const group = await recordGroupOutput(form({ source: "worklist", dept: "Painting", bom: "B", item: "TN", qty: "3", mos: "MO-1" }));
     expect(group.ok).toBe(false);
     expect(group.error).toMatch(/Painting worklist/);
+
+    // the worklist / machine-card quantity box too — the leak-test gate has no other guard
+    const worklist = await recordOutput(form({ date: DATE, dept: "Painting", bom: "B", mo: "MO-1", item: "TN", qty: "3", planNo: "0" }));
+    expect(worklist.ok).toBe(false);
+    expect(worklist.error).toMatch(/Painting worklist/);
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
     expect(txWrites).toEqual([]);
   });
 
@@ -467,6 +523,25 @@ describe("recordGroupOutput — recording from the weekly plan", () => {
     expect(txWrites).toHaveLength(0);
   });
 
+  it("refuses a group whose MO exists nowhere — a mistyped MO would take every piece the real ones cannot", async () => {
+    h.prisma.planSchedule.findFirst.mockResolvedValue(null);
+    h.prisma.planOrder.findFirst.mockResolvedValue(null);
+    h.prisma.handoverEntry.findFirst.mockResolvedValue(null);
+    const res = await recordGroupOutput(form({ source: "tracker", dept: "Cut", bom: "B-1", item: "CF", mos: "MO-1,MO-9", total: "500", base: "5" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/MO-9|not on B-1, or is in no plan or log/);
+    expect(txWrites).toHaveLength(0);
+  });
+
+  it("refuses a group total while a member's ledger stands above its order quantity", async () => {
+    // 12 cut on an order of 10: the page shows 10; typing a group total over it would record from the wrong base
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([{ mo: "MO-1", dept: "Cut", _sum: { qty: 12 } }]);
+    const res = await recordGroupOutput(form({ source: "tracker", dept: "Cut", bom: "B-1", item: "CF", mos: "MO-1", total: "13", base: "10" }));
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/MO-1 has 12 recorded at Fabrication but the order is for 10/);
+    expect(txWrites).toHaveLength(0);
+  });
+
   it("asks for the weekly permission — not a tracker column permission", async () => {
     await recordGroupOutput(weeklyForm());
     expect(h.requirePerm).toHaveBeenCalledWith("weekly.record");
@@ -541,5 +616,82 @@ describe("redeliverReturn", () => {
     const res = await redeliverReturn(form({ id: "5" }));
     expect(res).toEqual({ ok: false, error: "Already re-delivered." });
     expect(txWrites).toEqual([]);
+  });
+});
+
+
+describe("one rule for the two finishing stages — every recording path", () => {
+  it("refuses painting the core frame on a worklist line, a tracker cell and a merged row, and shot blast on a painted part", async () => {
+    const cf = "CF is shot blasted, not painted — record it on the SHB cell.";
+    expect(await recordOutput(form({ date: DATE, dept: "Painting", bom: "B", mo: "MO-1", item: "CF", qty: "1", planNo: "0" }))).toEqual({ ok: false, error: cf });
+    expect(await recordTrackerTotal(form({ dept: "Painting", bom: "B", mo: "MO-1", item: "CF", total: "1" }))).toEqual({ ok: false, error: cf });
+    expect(await recordGroupOutput(form({ source: "tracker", dept: "Painting", bom: "B", item: "CF", mos: "MO-1", total: "1" }))).toEqual({ ok: false, error: cf });
+    expect(await recordTrackerTotal(form({ dept: "ShotBlast", bom: "B", mo: "MO-1", item: "TN", total: "1" }))).toEqual({ ok: false, error: "TN is painted, not shot blasted — SHB applies to the core (CF) only." });
+    expect(h.prisma.handoverEntry.create).not.toHaveBeenCalled();
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("recordOutput — the plan it files under", () => {
+  beforeEach(() => {
+    h.prisma.masterOrder.findFirst.mockResolvedValue({ mo: "MO-1", bom: "B" });
+  });
+  it("creates the global bucket (plan 0) when it is missing", async () => {
+    expect(await recordOutput(form({ date: DATE, dept: "Cut", bom: "B", mo: "MO-1", item: "CF", qty: "1", planNo: "0" }))).toMatchObject({ ok: true });
+    expect(h.prisma.plan.upsert).toHaveBeenCalledExactlyOnceWith({ where: { planNo: 0 }, create: { planNo: 0, startDate: new Date(`${DATE}T00:00:00.000Z`) }, update: {} });
+    expect(h.prisma.plan.findUnique).not.toHaveBeenCalled();
+  });
+  it("refuses a plan number that was never imported instead of creating it", async () => {
+    h.prisma.plan.findUnique.mockResolvedValue(null);
+    expect(await recordOutput(form({ date: DATE, dept: "Cut", bom: "B", mo: "MO-1", item: "CF", qty: "1", planNo: "77" }))).toEqual({ ok: false, error: "Plan 77 does not exist — refresh the page." });
+    expect(h.prisma.plan.upsert).not.toHaveBeenCalled();
+    expect(txWrites).toEqual([]);
+    h.prisma.plan.findUnique.mockResolvedValue({ planNo: 77 });
+    expect(await recordOutput(form({ date: DATE, dept: "Cut", bom: "B", mo: "MO-1", item: "CF", qty: "1", planNo: "77" }))).toMatchObject({ ok: true });
+    expect(txWrites[0]).toMatchObject({ planNo: 77 });
+  });
+});
+
+describe("recordGroupOutput — a panel order is not a transformer order", () => {
+  it("refuses a merged row that holds an LV order", async () => {
+    h.prisma.masterOrder.findMany.mockResolvedValue([
+      { mo: "MO-1", bom: "B", line: "TR", planQty: 5, status: "open", ospCF: 0, ospTC: 0, ospTN: 0, ospCB: 0, excludedItems: null, includedItems: null, kva: "", rating: null },
+      { mo: "P-1", bom: "B", line: "LV", planQty: 5, status: "open", ospCF: 0, ospTC: 0, ospTN: 0, ospCB: 0, excludedItems: null, includedItems: null, kva: "", rating: null },
+    ]);
+    const res = await recordGroupOutput(form({ source: "tracker", dept: "Cut", bom: "B", item: "CF", mos: "MO-1,P-1", total: "4" }));
+    expect(res).toEqual({ ok: false, error: "P-1 is an LV panel order — panels are recorded on the LV tracker." });
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Plan Tracker cell typed on an LV order — a transformer key writes nothing onto a panel MO", async () => {
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ planQty: 10, line: "LV" });
+    const res = await recordTrackerTotal(form({ dept: "Cut", bom: "LVB-1", mo: "P-100", item: "TN", total: "5" }));
+    expect(res).toEqual({ ok: false, error: "P-100 is an LV panel order — panels are recorded on the LV tracker." });
+    expect(h.checkOutputChain).not.toHaveBeenCalled();
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("returnToUpstream — the line is the order's", () => {
+  it("refuses a BOM that is not the MO's, and an MO unknown to the registry and the log", async () => {
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ bom: "B1" });
+    h.prisma.handoverEntry.findFirst.mockResolvedValue(null);
+    h.prisma.planSchedule.findFirst.mockResolvedValue(null);
+    expect(await returnToUpstream(form({ fromDept: "Welding", bom: "B9", mo: "MO-1", item: "CF", qty: "1", reason: "burrs" }))).toEqual({ ok: false, error: "MO-1 is on BOM B1, not B9." });
+    h.prisma.masterOrder.findUnique.mockResolvedValue(null);
+    h.prisma.handoverEntry.findFirst.mockResolvedValue(null);
+    expect(await returnToUpstream(form({ fromDept: "Welding", bom: "B9", mo: "MO-X", item: "CF", qty: "1", reason: "burrs" }))).toEqual({ ok: false, error: "MO-X is not in the orders registry or the log for B9." });
+    expect(h.prisma.handoverEntry.groupBy).not.toHaveBeenCalled();
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("takes the plan sheet's spelling of the BOM when a plan holds the MO under it", async () => {
+    // the registry spells it B1; the worklist row comes from a plan that wrote B-1
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ bom: "B1" });
+    h.prisma.handoverEntry.findFirst.mockResolvedValue(null);
+    h.prisma.planSchedule.findFirst.mockResolvedValue({ id: 5 });
+    const res = await returnToUpstream(form({ fromDept: "Welding", bom: "B-1", mo: "MO-1", item: "CF", qty: "1", reason: "burrs" }));
+    expect(res.error ?? "").not.toMatch(/is on BOM/);
+    expect(h.prisma.planSchedule.findFirst).toHaveBeenCalledWith({ where: { bom: "B-1", mo: "MO-1" }, select: { id: true } });
   });
 });

@@ -5,7 +5,7 @@ import { factoryDayISO, toISODate } from "@/lib/domain/dates";
 import { DEFAULT_SHIFT, ROSTER_DEPTS, centreOf, dayTotals, isShiftCode, lineHours, type DayTotals, type RosterDept, type ShiftCode, type ShiftHours, type WorkCentre } from "@/lib/domain/shifts";
 import { sectionDept, sectionLabel, type WorkerSection } from "@/lib/domain/tanks";
 import { getShiftHours } from "./data";
-import { getRosterFor } from "./workers";
+import { getAllWorkers } from "./workers";
 import { getStageCapacity } from "./standardTimes";
 import { downtimeScope } from "@/lib/domain/downtime";
 
@@ -60,7 +60,13 @@ export async function getShiftRoster(dateISO: string): Promise<ShiftRosterData> 
     getShiftHours(),
     prisma.shiftEntry.findMany({ where: { date } }),
     getStageCapacity(),
-    Promise.all(ROSTER_DEPTS.map(async (dept) => ({ dept, workers: await getRosterFor(dept) }))),
+    // one read of the list, split per department here: each department's
+    // ACTIVE workers, those on vacation included (listed absent by default so
+    // the day still adds up) — instead of the same read once per department
+    getAllWorkers().then((all) => {
+      const active = all.filter((w) => w.active);
+      return ROSTER_DEPTS.map((dept) => ({ dept, workers: active.filter((w) => w.depts.includes(dept)) }));
+    }),
   ]);
   const byKey = new Map(rows.map((r) => [`${r.dept}|${r.workerId}`, r]));
   // a worker retired since the day was recorded still shows on that day

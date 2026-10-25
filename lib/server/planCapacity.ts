@@ -5,8 +5,8 @@ import { projectPace } from "@/lib/domain/eta";
 import { workingDaysInclusive } from "@/lib/domain/insights";
 import { getStdData, getStageCapacity } from "./standardTimes";
 import { loadHolidays, loadMasterOrders } from "./loads";
-import { toISODate } from "@/lib/domain/dates";
-import { owedAcrossDays, promiseCeiling } from "@/lib/domain/planPromises";
+import { factoryToday, toISODate } from "@/lib/domain/dates";
+import { owedPlanQtys } from "@/lib/domain/planPromises";
 
 /** The capacity check for ONE weekly plan: the standard hours the plan's
  *  promises require per stage, against the stage's available man-hours over
@@ -49,24 +49,12 @@ export async function getPlanCapacity(planNo: number | null): Promise<PlanCapaci
   // A plan that asks for the same pieces twice does not need twice the hours.
   // Walk each order+component's promises in date order and keep only what the
   // order can still owe — the repeats carry no work (see lib/domain/planPromises).
-  const owedQty = new Map<number, number>(); // index into `schedules` -> pcs really owed
-  const byOrderItem = new Map<string, number[]>(); // "mo|item" -> indexes, date order
-  const ordered = schedules.map((s, i) => i).sort((a, b) => +schedules[a].ovenDate - +schedules[b].ovenDate);
-  for (const i of ordered) {
-    const k = `${schedules[i].mo}|${schedules[i].item}`;
-    if (!byOrderItem.has(k)) byOrderItem.set(k, []);
-    byOrderItem.get(k)!.push(i);
-  }
-  for (const [k, idx] of byOrderItem) {
-    const [mo, item] = k.split("|");
-    const owed = owedAcrossDays(idx.map((i) => schedules[i].qty), promiseCeiling(byMo.get(mo), item));
-    idx.forEach((i, n) => owedQty.set(i, owed[n]));
-  }
+  const owedQty = owedPlanQtys(schedules, (mo) => byMo.get(mo));
 
   const { byStage, uncoveredPcs, totalPcs } = requiredHoursForLines(
     std,
     schedules
-      .map((s, i) => ({ item: s.item, qty: owedQty.get(i) ?? s.qty, order: byMo.get(s.mo) ?? null }))
+      .map((s, i) => ({ item: s.item, qty: owedQty[i], order: byMo.get(s.mo) ?? null }))
       .filter((l) => l.qty > 0)
   );
 
@@ -84,7 +72,7 @@ export async function getPlanCapacity(planNo: number | null): Promise<PlanCapaci
   // "actual" = std hours EARNED on the plan's own orders since the window
   // opened; each stage projected on its own, the headline on the total.
   let pace: PlanCapacityCheck["pace"] = null;
-  const today = new Date(Math.floor(Date.now() / 86400000) * 86400000);
+  const today = factoryToday(); // the factory's day, not the UTC date
   if (today >= min && today <= max) {
     const off = new Set(holidays.map((h) => toISODate(h.date)));
     // elapsed FULL working days — today is still being worked, so it doesn't count
@@ -94,8 +82,10 @@ export async function getPlanCapacity(planNo: number | null): Promise<PlanCapaci
     }
     if (elapsedWd >= 1) {
       const planMos = [...new Set(schedules.map((sc) => sc.mo))];
+      // the elapsed FULL days' output: today's rows would be divided over the
+      // days before it and read as a faster pace than the plant has
       const done = await prisma.handoverEntry.findMany({
-        where: { mo: { in: planMos }, date: { gte: min } },
+        where: { mo: { in: planMos }, date: { gte: min, lt: today } },
         select: { mo: true, dept: true, item: true, qty: true },
       });
       const moOrder = new Map(orders.map((o) => [o.mo, o]));
@@ -139,11 +129,14 @@ export async function getPlanCapacity(planNo: number | null): Promise<PlanCapaci
     stages: (["Cut", "Welding", "ShotBlast", "Painting"] as const).map((dept) => {
       const perDay = capacity[dept];
       const available = perDay !== undefined ? perDay * workingDays : null;
+      // a stage the admin set to 0 h/day has a figure — none at all — so
+      // work owed there is an overload, not an unconfigured stage
+      const load = available === null ? null : available > 0 ? byStage[dept] / available : byStage[dept] > 0 ? Infinity : 0;
       return {
         dept,
         required: byStage[dept],
         available,
-        load: available ? byStage[dept] / available : null,
+        load,
       };
     }),
     uncoveredPcs,

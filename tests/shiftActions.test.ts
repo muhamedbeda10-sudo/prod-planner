@@ -52,6 +52,20 @@ describe("saveShiftRoster", () => {
     expect(h.syncDeptDayHours).toHaveBeenCalledTimes(1);
     expect(h.syncDeptDayHours).toHaveBeenCalledWith(h.prisma, new Date("2026-10-12T00:00:00Z"), "Welding");
   });
+  it("accepts today's roster after midnight Cairo while UTC is still yesterday, and refuses tomorrow", async () => {
+    // 01:30 on 26 Oct in Cairo = 22:30 UTC on 25 Oct — the night shift is recorded now
+    vi.useFakeTimers({ now: new Date("2026-10-25T22:30:00Z"), toFake: ["Date"] });
+    try {
+      const today = form([line(1), line(2)]);
+      today.set("date", "2026-10-26");
+      expect(await saveShiftRoster(today)).toEqual({ ok: true });
+      const tomorrow = form([line(1), line(2)]);
+      tomorrow.set("date", "2026-10-27");
+      expect(await saveShiftRoster(tomorrow)).toEqual({ ok: false, error: "That day has not come yet." });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("refuses a day while any worker is not set, and writes nothing", async () => {
     const r = await saveShiftRoster(form([line(1), line(2, { present: false, recorded: false })]));
     expect(r).toEqual({ ok: false, error: "1 worker(s) are not set yet — pick Day, Night or Absent for everyone, then save." });
@@ -86,9 +100,38 @@ describe("saveShiftRoster", () => {
     });
   });
 
-  it("looks nothing up when everyone is in his department", async () => {
+  it("reads only the day's own rows when everyone is in his department", async () => {
     expect(await saveShiftRoster(form([line(1), line(2)]))).toEqual({ ok: true });
-    expect(h.prisma.shiftEntry.findMany).not.toHaveBeenCalled();
+    // one read of the day's stored overtime — no lookup of the workers' departments
+    expect(h.prisma.shiftEntry.findMany).toHaveBeenCalledExactlyOnceWith({
+      where: { date: new Date("2026-10-12T00:00:00.000Z"), dept: { in: ["Welding"] }, workerId: { in: [1, 2] } },
+      select: { dept: true, workerId: true, overtimeH: true },
+    });
+  });
+
+  describe("overtime is the fixed period of Settings", () => {
+    it("accepts the configured period to the hundredth — a 2.25 h setting is not rounded to 2.5", async () => {
+      vi.doMock("@/lib/server/data", () => ({ getShiftHours: async () => ({ short: 8, long: 8, overtime: 2.25, nightOvertime: 3 }) }));
+      vi.resetModules();
+      const { saveShiftRoster: save } = await import("@/app/shifts/actions");
+      expect(await save(form([line(1, { overtimeH: 2.25 }), line(2)]))).toEqual({ ok: true });
+      expect(h.prisma.shiftEntry.upsert.mock.calls.map(([a]) => a.create.overtimeH)).toEqual([2.25, 0]);
+      vi.doUnmock("@/lib/server/data");
+      vi.resetModules();
+    });
+    it("refuses another figure, names the period, and writes nothing", async () => {
+      expect(await saveShiftRoster(form([line(1, { overtimeH: 1.5 }), line(2)]))).toEqual({ ok: false, error: "Overtime is the fixed 2-hour period (16:00–19:00)." });
+      expect(await saveShiftRoster(form([line(1, { shift: "S11", overtimeH: 2 }), line(2)]))).toEqual({ ok: false, error: "Overtime is the fixed 3-hour period (04:00–07:00)." });
+      expect(h.prisma.shiftEntry.upsert).not.toHaveBeenCalled();
+    });
+    it("keeps the overtime a row already holds from before the period changed, so the day can be re-saved", async () => {
+      // the day was saved with 3 h when the day period was 3; it is 2 now, and one man is marked absent
+      h.prisma.shiftEntry.findMany.mockResolvedValue([{ dept: "Welding", workerId: 1, overtimeH: 3 }, { dept: "Welding", workerId: 2, overtimeH: 3 }]);
+      expect(await saveShiftRoster(form([line(1, { overtimeH: 3 }), line(2, { present: false, overtimeH: 0 })]))).toEqual({ ok: true });
+      expect(h.prisma.shiftEntry.upsert.mock.calls.map(([a]) => a.create.overtimeH)).toEqual([3, 0]);
+      // but a NEW figure that is neither the period nor the row's is still refused
+      expect(await saveShiftRoster(form([line(1, { overtimeH: 2.5 }), line(2)]))).toEqual({ ok: false, error: "Overtime is the fixed 2-hour period (16:00–19:00)." });
+    });
   });
 
   // worker 2 welded on that day and was moved to Fabrication afterwards

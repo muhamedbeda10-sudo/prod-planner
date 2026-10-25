@@ -66,15 +66,17 @@ const ACCEPT = ".png,.jpg,.jpeg,.gif,.webp,.bmp,.pdf,.xls,.xlsx,.csv,.doc,.docx"
 const MAX_FILES = 6;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
-const AVATAR_COLORS = ["#1a8150", "#2b6cb0", "#d97706", "#7c3aed", "#c2410c", "#0e7490"];
-const avatarColor = (id: number) => AVATAR_COLORS[id % AVATAR_COLORS.length];
+// six hues cycled by account id — the theme's own (--avatar-1..6 in
+// app/globals.css, lifted on the dark sheet so a sender's name stays
+// readable): `.avatar-h1`…`.avatar-h6` set --avatar, which the disc, the
+// sender's name and a quote's edge read
+const avatarClass = (id: number) => `avatar-h${(id % 6) + 1}`;
 
 function Avatar({ contact, size = 9 }: { contact: { kind: ThreadKind; id: number; name: string }; size?: 8 | 9 | 10 }) {
   const px = { 8: "w-8 h-8 text-xs", 9: "w-9 h-9 text-sm", 10: "w-10 h-10 text-sm" }[size];
   return (
     <span
-      className={`${px} shrink-0 rounded-full text-white font-extrabold grid place-items-center shadow-sm`}
-      style={{ background: avatarColor(contact.id + (contact.kind === "group" ? 3 : 0)) }}
+      className={`${px} ${avatarClass(contact.id + (contact.kind === "group" ? 3 : 0))} avatar-disc shrink-0 rounded-full font-extrabold grid place-items-center shadow-sm`}
     >
       {contact.kind === "group" ? <Users size={size * 2 - 2} /> : contact.name.trim().charAt(0).toUpperCase()}
     </span>
@@ -620,7 +622,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                     type="button"
                     onClick={() => (leaveArmed ? void leaveGroup() : setLeaveArmed(true))}
                     title={leaveArmed ? "Tap again to confirm leaving" : "Leave group"}
-                    className={`rounded-lg p-2 transition-colors ${leaveArmed ? "text-white bg-red-600" : "text-muted hover:text-danger hover:bg-surface"}`}
+                    className={`rounded-lg p-2 transition-colors ${leaveArmed ? "text-bad-fg bg-bad-bg" : "text-muted hover:text-bad-fg hover:bg-surface"}`}
                   >
                     <LogOut size={16} />
                   </button>
@@ -715,7 +717,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                         </button>
 
                         {showSender && (
-                          <span className="block text-[11px] font-extrabold mb-0.5" style={{ color: avatarColor(m.fromId) }}>
+                          <span className={`block text-[11px] font-extrabold mb-0.5 ${avatarClass(m.fromId)} avatar-name`}>
                             {m.fromName}
                           </span>
                         )}
@@ -727,11 +729,10 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                               e.stopPropagation();
                               jumpToMessage(m.replyTo!.id);
                             }}
-                            className="block w-full text-left mb-1 rounded-lg px-2 py-1.5 bg-black/5 dark:bg-white/5 border-l-[3px] hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-                            style={{ borderLeftColor: avatarColor(m.replyTo.fromId) }}
+                            className={`block w-full text-left mb-1 rounded-lg px-2 py-1.5 bg-black/5 dark:bg-white/5 border-l-[3px] hover:bg-black/10 dark:hover:bg-white/10 transition-colors ${avatarClass(m.replyTo.fromId)} avatar-quote`}
                             title="Go to the quoted message"
                           >
-                            <span className="block text-[10px] font-extrabold" style={{ color: avatarColor(m.replyTo.fromId) }}>
+                            <span className={`block text-[10px] font-extrabold ${avatarClass(m.replyTo.fromId)} avatar-name`}>
                               {m.replyTo.fromId === me.id ? "You" : m.replyTo.fromName}
                             </span>
                             <span className="block truncate text-[11px] opacity-70" dir="auto">
@@ -759,7 +760,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                             if (!t) return null;
                             return (
                               <span title={t.title} aria-label={t.title} className="inline-flex">
-                                <CheckCheck size={14} className={`shrink-0 ${t.seen ? "text-sky-500" : "opacity-50"}`} />
+                                <CheckCheck size={14} className={`shrink-0 ${t.seen ? "text-info-fg" : "opacity-50"}`} />
                               </span>
                             );
                           })()}
@@ -795,7 +796,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
               <div ref={bottomRef} />
             </div>
 
-            {error && <p className="px-4 py-2 text-xs font-semibold text-danger border-t bg-surface">{error}</p>}
+            {error && <p className="px-4 py-2 text-xs font-semibold text-bad-fg border-t bg-surface">{error}</p>}
 
             {/* replying-to bar — what the next send will quote */}
             {replyTarget && (
@@ -804,10 +805,9 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                 <button
                   type="button"
                   onClick={() => jumpToMessage(replyTarget.id)}
-                  className="min-w-0 flex-1 text-left rounded-lg px-2 py-1 bg-surface-2 border-l-[3px] hover:opacity-80 transition-opacity"
-                  style={{ borderLeftColor: avatarColor(replyTarget.fromId) }}
+                  className={`min-w-0 flex-1 text-left rounded-lg px-2 py-1 bg-surface-2 border-l-[3px] hover:opacity-80 transition-opacity ${avatarClass(replyTarget.fromId)} avatar-quote`}
                 >
-                  <span className="block text-[10px] font-extrabold" style={{ color: avatarColor(replyTarget.fromId) }}>
+                  <span className={`block text-[10px] font-extrabold ${avatarClass(replyTarget.fromId)} avatar-name`}>
                     {replyTarget.fromId === me.id ? "You" : replyTarget.fromName}
                   </span>
                   <span className="block truncate text-[11px] text-muted" dir="auto">
@@ -1019,7 +1019,7 @@ export function ChatClient({ me, initialContacts, fill = false, openOn = null }:
                 <button
                   type="button"
                   onClick={() => (armedDelete === m.id ? void deleteForMe(m.id) : setArmedDelete(m.id))}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors text-danger"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold whitespace-nowrap hover:bg-surface-2 transition-colors text-bad-fg"
                 >
                   <Trash2 size={13} className="shrink-0" />
                   {armedDelete === m.id ? "Tap again to confirm" : "Delete for me"}

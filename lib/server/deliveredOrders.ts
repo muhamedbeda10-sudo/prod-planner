@@ -1,7 +1,7 @@
 import "server-only";
 import type { MasterOrder } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { DELIVERED_STAGE, ITEMS, applicableItems } from "@/lib/domain/constants";
+import { DELIVERED_STAGE, ITEMS, applicableItems, ospOf } from "@/lib/domain/constants";
 import { isFullyDelivered } from "@/lib/domain/groupSpread";
 import { LV_ITEM } from "@/lib/domain/lv";
 import type { ProductLine } from "@/lib/domain/lines";
@@ -33,6 +33,7 @@ export async function fullyDeliveredOpenOrders(line: ProductLine): Promise<Maste
       ITEMS.map((it) => ({
         counts: needed.includes(it),
         delivered: got.get(`${o.mo}|${it}`) ?? 0,
+        osp: ospOf(o, it),
       })),
     );
   });

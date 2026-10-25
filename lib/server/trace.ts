@@ -105,6 +105,8 @@ export interface TraceOdooRow {
   qty: number;
   status: string;
   done: boolean;
+  /** The moment it was closed, as an ISO instant (unlike `dateISO`, which is a
+   *  day) — formatted on the factory clock, so it reads as the ODOO tab does. */
   doneAtISO: string | null;
   fgCode: string;
   by: string | null;
@@ -122,7 +124,7 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
   const [orders, handover, allBoms, masters, plans, notes, returns, masterRows] = await Promise.all([
     prisma.planOrder.findMany({ where: scope, orderBy: [{ planNo: "asc" }, { mo: "asc" }, { item: "asc" }] }),
     prisma.handoverEntry.findMany({ where: { ...scope, ...ledgerItemWhere(line) }, orderBy: [{ date: "asc" }, { id: "asc" }] }),
-    isMo ? Promise.resolve([]) : prisma.planOrder.findMany({ select: { bom: true }, distinct: ["bom"] }),
+    isMo ? Promise.resolve([]) : prisma.planOrder.groupBy({ by: ["bom"] }),
     prisma.masterOrder.findMany({ where: { ...scope, line } }),
     prisma.plan.findMany(),
     prisma.queueNote.findMany({ where: scope, orderBy: { createdAt: "asc" } }),
@@ -267,7 +269,7 @@ export async function getTrace(scopeIn: { mo?: string; bom?: string }): Promise<
     : [];
   const odoo: TraceOdooRow[] = odooRows.map((r) => ({
     id: r.id, dateISO: toISODate(r.date), item: itemOfLedger.get(r.ledgerId!) ?? "", product: r.product, odooMo: r.odooMo, qty: r.qty,
-    status: r.status, done: isDoneStatus(r.status), doneAtISO: r.doneAt ? toISODate(r.doneAt) : null, fgCode: r.fgCode, by: r.recordedBy,
+    status: r.status, done: isDoneStatus(r.status), doneAtISO: r.doneAt ? r.doneAt.toISOString() : null, fgCode: r.fgCode, by: r.recordedBy,
   }));
 
   return {

@@ -5,8 +5,8 @@ import { stdHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
 import { getStdData } from "./standardTimes";
 import { getShiftHours } from "./data";
 import { hoursOfShift, isShiftCode } from "@/lib/domain/shifts";
-import { toISODate } from "@/lib/domain/dates";
-import { loadMasterOrders } from "./loads";
+import { factoryToday, toISODate } from "@/lib/domain/dates";
+import { loadMasterOrdersOf } from "./loads";
 
 // What each item really takes on each machine, measured from the floor: the
 // pieces a machine finished (recorded with ✓ on its card, which is the only
@@ -28,7 +28,7 @@ export interface MachineRatesReport {
 }
 
 export async function getMeasuredRates(dept?: string): Promise<MachineRatesReport> {
-  const from = new Date();
+  const from = factoryToday();
   from.setUTCDate(from.getUTCDate() - WINDOW_DAYS);
 
   const [entries, shifts, std, orders, shiftHours] = await Promise.all([
@@ -41,7 +41,10 @@ export async function getMeasuredRates(dept?: string): Promise<MachineRatesRepor
       select: { date: true, machineId: true, shift: true, overtimeH: true },
     }),
     getStdData(),
-    loadMasterOrders(),
+    // the machines are one physical floor, and the records above carry no
+    // line: priced against the transformer registry whatever the nav toggle
+    // says, else an LV toggle would leave every machine row unpriced
+    loadMasterOrdersOf("TR"),
     getShiftHours(),
   ]);
 
@@ -62,7 +65,9 @@ export async function getMeasuredRates(dept?: string): Promise<MachineRatesRepor
     totalPcs += e.qty;
     if (e.machineId === null) continue;
     attributedPcs += e.qty;
-    const tier = (e.mo ? tierByMo.get(e.mo) : tierByBom.get(e.bom)) ?? null;
+    // an order's class by its number, else by its project's — a record whose
+    // order is not on the master list yet is still priced (as the cockpit does)
+    const tier = (e.mo ? tierByMo.get(e.mo) : undefined) ?? tierByBom.get(e.bom) ?? null;
     output.push({
       dateISO: toISODate(e.date),
       machineId: e.machineId,

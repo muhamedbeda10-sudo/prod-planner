@@ -21,7 +21,7 @@ const h = vi.hoisted(() => {
     prisma: {
       manualJob: { findUnique: fn(), update: fn() },
       machine: { findUnique: fn() },
-      masterOrder: { findMany: fn() },
+      masterOrder: { groupBy: fn() },
       $transaction: vi.fn(async (f: (t: typeof tx) => Promise<unknown>) => f(tx)),
     },
     guard: fn(),
@@ -58,7 +58,7 @@ beforeEach(() => {
   h.prisma.manualJob.findUnique.mockResolvedValue({ ...JOB });
   h.guard.mockResolvedValue({ user: { name: "Sara" } });
   // the plan carries B1 and B2, as it spells them
-  h.prisma.masterOrder.findMany.mockImplementation(async ({ where }: { where: { OR: { bom: { equals: string } }[] } }) =>
+  h.prisma.masterOrder.groupBy.mockImplementation(async ({ where }: { where: { OR: { bom: { equals: string } }[] } }) =>
     ["B1", "B2"].filter((b) => where.OR.some((o) => o.bom.equals.toUpperCase() === b)).map((bom) => ({ bom })));
   h.prisma.machine.findUnique.mockResolvedValue({ id: 1, dept: "Cut", active: true, code: "L1" });
   h.tx.manualJob.create.mockResolvedValue({ id: 31 });
