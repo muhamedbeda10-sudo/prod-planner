@@ -291,7 +291,7 @@ describe("isChartBlock", () => {
     expect(isChartBlock("Chart", kpi)).toBe(true);
     expect(isChartBlock("kpi", kpi)).toBe(true);
     expect(isChartBlock("", kpi)).toBe(true);
-    expect(isChartBlock("json", JSON.stringify({ type: "donut", data: [] }))).toBe(true);
+    expect(isChartBlock("json", JSON.stringify({ type: "donut", data: [{ name: "A", n: 1 }] }))).toBe(true);
     expect(isChartBlock("gauge", JSON.stringify({ type: "gauge", value: 3 }))).toBe(true);
   });
   it("leaves other code as code", () => {

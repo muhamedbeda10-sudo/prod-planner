@@ -90,13 +90,20 @@ export function useWidth<T extends HTMLElement>() {
 /** About how wide a value written at 11px is. */
 export const textWidth = (text: string) => text.length * 6.4 + 2;
 
+/** The room each of `count` categories has across a plot `width` wide, less
+ *  what its axis and margins take (`aside`); 600 before the width is measured. */
+export const perSlot = (width: number, count: number, aside = 60) => Math.max(0, (width || 600) - aside) / Math.max(1, count);
+
+/** Every one of `texts` fits over its own category, with `pad` to spare. */
+export const fits = (width: number, texts: readonly string[], pad = 0) => perSlot(width, texts.length) >= Math.max(0, ...texts.map(textWidth)) + pad;
+
 /** A value written on the plot: the surface's colour drawn under the
  *  letters keeps it readable over grid lines, lines and other marks. */
 const HALO = { stroke: "var(--surface)", strokeWidth: 3, paintOrder: "stroke", strokeLinejoin: "round" } as const;
 
 type Box = { x: number; y: number; width: number; height: number };
 /** What recharts hands a label's content: the mark's box, its value and its index. */
-export type MarkLabelProps = { viewBox?: unknown; x?: unknown; y?: unknown; width?: unknown; height?: unknown; value?: unknown; index?: number };
+type MarkLabelProps = { viewBox?: unknown; x?: unknown; y?: unknown; width?: unknown; height?: unknown; value?: unknown; index?: number };
 
 /** The mark's box, its width and height made positive. */
 function boxOf(p: MarkLabelProps): Box {
@@ -110,7 +117,7 @@ function boxOf(p: MarkLabelProps): Box {
 }
 
 /** A label's words for the mark at `index` with `value` — or null for none. */
-export type LabelTextOf = (value: number, index: number) => string | null;
+type LabelTextOf = (value: number, index: number) => string | null;
 
 /** A value at a bar's tip: past its end on a bar, over its cap on a column —
  *  on the other side of the baseline for a value below zero (`signOf` gives
@@ -120,12 +127,11 @@ export function tipLabel(horizontal: boolean, text: LabelTextOf, signOf?: (index
     const own = Number(p.value);
     const t = Number.isFinite(own) ? text(own, p.index ?? 0) : null;
     if (!t) return null;
-    const v = signOf ? signOf(p.index ?? 0) : own;
+    const neg = (signOf ? signOf(p.index ?? 0) : own) < 0;
     const b = boxOf(p);
-    if (horizontal) {
-      return <text x={v < 0 ? b.x - 5 : b.x + b.width + 5} y={b.y + b.height / 2} dy="0.35em" textAnchor={v < 0 ? "end" : "start"} fontSize={11} fontWeight={600} fill="var(--foreground)" {...HALO}>{t}</text>;
-    }
-    return <text x={b.x + b.width / 2} y={v < 0 ? b.y + b.height + 13 : b.y - 5} textAnchor="middle" fontSize={11} fontWeight={600} fill="var(--foreground)" {...HALO}>{t}</text>;
+    return horizontal
+      ? <PlotText x={neg ? b.x - 5 : b.x + b.width + 5} y={b.y + b.height / 2} dy="0.35em" textAnchor={neg ? "end" : "start"} fontWeight={600}>{t}</PlotText>
+      : <PlotText x={b.x + b.width / 2} y={neg ? b.y + b.height + 13 : b.y - 5} textAnchor="middle" fontWeight={600}>{t}</PlotText>;
   }
   return TipLabel;
 }
@@ -157,9 +163,9 @@ export function pointLabel(below: (index: number) => boolean, text: LabelTextOf,
     const b = boxOf(p);
     const anchor = count > 1 && k === 0 ? "start" : count > 1 && k === count - 1 ? "end" : "middle";
     return (
-      <text x={b.x + b.width / 2 + (anchor === "start" ? -3 : anchor === "end" ? 3 : 0)} y={below(k) ? b.y + b.height + 16 : b.y - 8} textAnchor={anchor} fontSize={11} fontWeight={600} fill="var(--foreground)" {...HALO}>
+      <PlotText x={b.x + b.width / 2 + (anchor === "start" ? -3 : anchor === "end" ? 3 : 0)} y={below(k) ? b.y + b.height + 16 : b.y - 8} textAnchor={anchor} fontWeight={600}>
         {t}
-      </text>
+      </PlotText>
     );
   }
   return PointLabel;
@@ -171,7 +177,7 @@ export function sideLabel(text: (index: number) => string | null) {
     const t = text(p.index ?? 0);
     if (!t) return null;
     const b = boxOf(p);
-    return <text x={b.x + b.width + 4} y={b.y + b.height / 2} dy="0.35em" fontSize={11} fill="var(--muted)" {...HALO}>{t}</text>;
+    return <PlotText x={b.x + b.width + 4} y={b.y + b.height / 2} dy="0.35em" fill="var(--muted)">{t}</PlotText>;
   }
   return SideLabel;
 }

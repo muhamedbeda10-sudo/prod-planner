@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import { INK_ON_OTHER, Meter, OTHER, Sparkline, catColor, catInk, compact, fmt, pct } from "@/components/charts/kit";
 import {
-  ChartFrame, PlotText, TICK, Tip, ToneIcon, insideLabel, pointLabel, textWidth, tipLabel, unitOf, useWidth, valueText, type TipProps,
+  ChartFrame, PlotText, TICK, Tip, ToneIcon, fits, insideLabel, perSlot, pointLabel, textWidth, tipLabel, unitOf, useWidth, valueText, type TipProps,
 } from "@/components/AiChartFrame";
 import {
   BoxplotFigure, CalendarFigure, ControlFigure, DumbbellFigure, FunnelFigure, GanttFigure, GaugeFigure, HeatmapFigure, ProgressFigure, SankeyFigure, ScatterFigure, TreemapFigure, WaterfallFigure,
@@ -113,8 +113,9 @@ function XYFigure({ spec }: { spec: AiXYSpec }) {
   const one = spec.series.length === 1;
   const hl = new Set(spec.highlight);
   // what the chart is about keeps its colour; the rest steps back to gray
-  const seriesColor = (s: string, i: number) => (!one && hl.size > 0 && !hl.has(s) ? OTHER : catColor(i));
-  const seriesInk = (s: string, i: number) => (!one && hl.size > 0 && !hl.has(s) ? INK_ON_OTHER : catInk(i));
+  const dim = (s: string) => !one && hl.size > 0 && !hl.has(s);
+  const seriesColor = (s: string, i: number) => (dim(s) ? OTHER : catColor(i));
+  const seriesInk = (s: string, i: number) => (dim(s) ? INK_ON_OTHER : catInk(i));
   const rows = spec.data.map((d) => ({ name: d.name, ...d.values }));
   const totals = new Map(spec.data.map((d) => [d.name, spec.series.reduce((t, s) => t + (d.values[s] ?? 0), 0)]));
   const lastBar = spec.series.reduce((k, s, i) => (spec.kinds[s] === "bar" ? i : k), -1);
@@ -137,7 +138,8 @@ function XYFigure({ spec }: { spec: AiXYSpec }) {
 
   const longest = Math.max(...spec.data.map((d) => d.name.length));
   const nameWidth = Math.min(180, Math.max(48, longest * 7));
-  const bars = spec.series.filter((s) => spec.kinds[s] === "bar").length;
+  const barSeries = spec.series.filter((s) => spec.kinds[s] === "bar");
+  const bars = barSeries.length;
   const lines = spec.series.filter((s) => spec.kinds[s] !== "bar");
   const height = h ? Math.max(140, spec.data.length * (bars > 1 && !spec.stacked ? 14 * bars + 12 : 28) + 40) : 280;
 
@@ -147,16 +149,14 @@ function XYFigure({ spec }: { spec: AiXYSpec }) {
     return t ? pct(v / t) : "";
   };
   // a stack's height: its bars only — a combo's lines stand beside it
-  const barSeries = spec.series.filter((s) => spec.kinds[s] === "bar");
   const stackOf = (k: number) => barSeries.reduce((t, s) => t + (spec.data[k]?.values[s] ?? 0), 0);
   const onTip = spec.stacked ? spec.data.map((_, k) => stackOf(k)) : spec.data.flatMap((d) => barSeries.map((s) => d.values[s] ?? 0));
   const below0 = spec.labels && onTip.some((v) => v < 0);
   const widest = Math.max(0, ...onTip.map((v) => textWidth(compact(v))));
-  const plot = Math.max(0, (width || 600) - (h ? nameWidth + 20 + widest : 60));
-  const perCategory = plot / Math.max(1, spec.data.length);
+  const perCategory = perSlot(width, spec.data.length, h ? nameWidth + 20 + widest : 60);
   const barRoom = h || perCategory / (spec.stacked ? 1 : Math.max(1, bars)) >= widest + 2;
   const tipLabels = spec.labels && bars > 0 && !percent && barRoom;
-  const lineRoom = lines.length <= 2 && perCategory >= Math.max(0, ...spec.data.flatMap((d) => lines.map((s) => textWidth(compact(d.values[s] ?? 0))))) + 4;
+  const lineRoom = perCategory >= Math.max(0, ...spec.data.flatMap((d) => lines.map((s) => textWidth(compact(d.values[s] ?? 0))))) + 4;
   const marked = (s: string) => (lines.length > 2 || (spec.stacked && spec.kinds[s] === "area") ? new Set([spec.data.length - 1]) : pointsToLabel(spec.data.map((d) => d.values[s] ?? 0), lineRoom));
   const curve = spec.curve === "step" ? "stepAfter" : spec.curve === "linear" ? "linear" : "monotone";
   const valueAxis = {
@@ -207,7 +207,7 @@ function XYFigure({ spec }: { spec: AiXYSpec }) {
                       return v === 0 ? null : percent ? shareOf(v, k) : compact(v);
                     })} />}
                     {tipLabels && (!spec.stacked || i === lastBar) && (
-                      <LabelList dataKey={s} content={spec.stacked ? tipLabel(h, (_, k) => compact(stackOf(k)), stackOf) : tipLabel(h, (v) => compact(v))} />
+                      <LabelList dataKey={s} content={spec.stacked ? tipLabel(h, (_, k) => compact(onTip[k]), (k) => onTip[k]) : tipLabel(h, (v) => compact(v))} />
                     )}
                   </Bar>
                 );
@@ -309,7 +309,7 @@ function SliceShare({ cx, cy, midAngle, innerRadius, outerRadius, percent, ink }
   const a = (-Number(midAngle ?? 0) * Math.PI) / 180;
   return (
     <text x={Number(cx) + r * Math.cos(a)} y={Number(cy) + r * Math.sin(a)} dy="0.35em" textAnchor="middle" fontSize={11} fontWeight={700} fill={ink}>
-      {Math.round(share * 100)}%
+      {pct(share)}
     </text>
   );
 }
@@ -354,7 +354,7 @@ function ParetoFigure({ spec }: { spec: AiParetoSpec }) {
 function HistogramFigure({ spec }: { spec: AiHistogramSpec }) {
   const [box, width] = useWidth<HTMLDivElement>();
   const rows = spec.bins.map((b) => ({ name: `${fmt(b.from)}–${fmt(b.to)}`, count: b.count }));
-  const room = ((width || 600) - 60) / Math.max(1, rows.length) >= Math.max(...spec.bins.map((b) => textWidth(fmt(b.count))));
+  const room = fits(width, spec.bins.map((b) => fmt(b.count)));
   return (
     <ChartFrame
       title={spec.title}

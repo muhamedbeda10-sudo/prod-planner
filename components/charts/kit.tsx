@@ -31,7 +31,8 @@ export const catInk = (i: number) => (i >= 0 && i < INK_ON.length ? INK_ON[i] : 
 export const fmt = (n: number, digits = 3) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: digits }));
 export const pct = (f: number, digits = 0) => `${(f * 100).toFixed(digits)}%`;
 /** 1,284 · 12.9K · 4.2M — for big standalone numbers. */
-export const compact = (n: number) => (Math.abs(n) < 10_000 ? fmt(Math.round(n * 10) / 10, 1) : new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n));
+const COMPACT = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
+export const compact = (n: number) => (Math.abs(n) < 10_000 ? fmt(Math.round(n * 10) / 10, 1) : COMPACT.format(n));
 
 // ---------------------------------------------------------------- cards
 

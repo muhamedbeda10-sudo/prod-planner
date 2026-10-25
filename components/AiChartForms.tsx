@@ -2,12 +2,13 @@
 
 import { useSyncExternalStore } from "react";
 import { factoryWallClockMs } from "@/lib/domain/dates";
+import { formatDate } from "@/lib/domain/format";
 import {
   Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, ReferenceLine, ResponsiveContainer, Sankey, Scatter, ScatterChart, Tooltip, Treemap, XAxis, YAxis, ZAxis,
 } from "recharts";
 import { HeatScale, Heatmap, INK_ON_OTHER, OTHER, TRACK, catColor, catInk, compact, fmt, heat, pct } from "@/components/charts/kit";
 import {
-  ChartFrame, PlotText, TICK, Tip, ToneIcon, pointLabel, sideLabel, textWidth, tipLabel, unitOf, useWidth, valueText, type TipProps,
+  ChartFrame, PlotText, TICK, Tip, ToneIcon, fits, pointLabel, sideLabel, tipLabel, unitOf, useWidth, valueText, type TipProps,
 } from "@/components/AiChartFrame";
 import {
   OTHER_NAME, pointsToLabel, type AiBoxplotSpec, type AiCalendarSpec, type AiControlSpec, type AiGaugeSpec, type AiSankeySpec, type AiDumbbellSpec, type AiFunnelSpec, type AiGanttSpec, type AiHeatmapSpec, type AiProgressSpec, type AiScatterSpec, type AiTreemapSpec, type AiWaterfallSpec,
@@ -120,11 +121,12 @@ export function HeatmapFigure({ spec }: { spec: AiHeatmapSpec }) {
  *  own hue, the target a tick across it — the track runs past the target
  *  when the work did. */
 export function ProgressFigure({ spec }: { spec: AiProgressSpec }) {
+  const anyTarget = spec.items.some((it) => it.target !== null);
   return (
     <ChartFrame
       title={spec.title}
       sub={spec.unit ? `In ${spec.unit}` : undefined}
-      rows={spec.items.map((it) => ({ Item: it.label, Done: it.value, ...(spec.items.some((x) => x.target !== null) ? { Target: it.target ?? "" } : {}), Reached: pct(it.target !== null ? it.value / it.target : it.value / 100) }))}
+      rows={spec.items.map((it) => ({ Item: it.label, Done: it.value, ...(anyTarget ? { Target: it.target ?? "" } : {}), Reached: pct(it.target !== null ? it.value / it.target : it.value / 100) }))}
     >
       <ul className="space-y-3">
         {spec.items.map((it, k) => {
@@ -204,7 +206,7 @@ export function WaterfallFigure({ spec }: { spec: AiWaterfallSpec }) {
   // a step says how much it moved, a total what it came to
   const stepText = (d: AiWaterfallSpec["data"][number] | undefined) => (!d ? null : d.total ? compact(d.end) : `${d.value >= 0 ? "+" : "−"}${compact(Math.abs(d.value))}`);
   const [box, width] = useWidth<HTMLDivElement>();
-  const room = ((width || 600) - 60) / Math.max(1, spec.data.length) >= Math.max(...spec.data.map((d) => textWidth(stepText(d) ?? "")));
+  const room = fits(width, spec.data.map((d) => stepText(d) ?? ""));
   return (
     <ChartFrame
       title={spec.title}
@@ -371,8 +373,9 @@ export function DumbbellFigure({ spec }: { spec: AiDumbbellSpec }) {
               <span className="absolute top-1/2 w-3 h-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-[var(--surface)]" style={{ left: `${at(d.a)}%`, background: A }} aria-label={`${a} ${fmt(d.a)}`} />
               <span className="absolute top-1/2 w-3 h-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-[var(--surface)]" style={{ left: `${at(d.b)}%`, background: B }} aria-label={`${b} ${fmt(d.b)}`} />
               {/* each value outside its own dot: the smaller to the left, the larger to the right */}
-              <span className={`absolute top-1/2 -translate-y-1/2 text-[11px] font-semibold tabnum whitespace-nowrap ${d.a <= d.b ? "-translate-x-full pe-2.5" : "ps-2.5"}`} style={{ left: `${at(d.a)}%` }} aria-hidden>{compact(d.a)}</span>
-              {d.a !== d.b && <span className={`absolute top-1/2 -translate-y-1/2 text-[11px] font-semibold tabnum whitespace-nowrap ${d.b > d.a ? "ps-2.5" : "-translate-x-full pe-2.5"}`} style={{ left: `${at(d.b)}%` }} aria-hidden>{compact(d.b)}</span>}
+              {[Math.min(d.a, d.b), Math.max(d.a, d.b)].filter((v, k, two) => k === 0 || v !== two[0]).map((v, k) => (
+                <span key={k} className={`absolute top-1/2 -translate-y-1/2 text-[11px] font-semibold tabnum whitespace-nowrap ${k === 0 ? "-translate-x-full pe-2.5" : "ps-2.5"}`} style={{ left: `${at(v)}%` }} aria-hidden>{compact(v)}</span>
+              ))}
             </div>
           ))}
           <div className="relative h-5">
@@ -454,11 +457,12 @@ const arcPath = (from: number, to: number, r: number) => {
 /** One reading on a half dial: the fill in the accent on a lighter track of
  *  its own hue, the target a tick across it, the reading in the middle. */
 export function GaugeFigure({ spec }: { spec: AiGaugeSpec }) {
+  const anyTarget = spec.items.some((it) => it.target !== null);
   return (
     <ChartFrame
       title={spec.title}
       sub={spec.unit ? `In ${spec.unit}` : undefined}
-      rows={spec.items.map((it) => ({ Item: it.label || spec.title || "Value", Value: it.value, ...(spec.items.some((x) => x.target !== null) ? { Target: it.target ?? "" } : {}), Min: it.min, Max: it.max }))}
+      rows={spec.items.map((it) => ({ Item: it.label || spec.title || "Value", Value: it.value, ...(anyTarget ? { Target: it.target ?? "" } : {}), Min: it.min, Max: it.max }))}
     >
       <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr))]">
         {spec.items.map((it, k) => {
@@ -524,7 +528,7 @@ export function BoxplotFigure({ spec }: { spec: AiBoxplotSpec }) {
               <div className="absolute top-1/2 h-px bg-[var(--viz-other)]" style={{ left: `${at(d.lo)}%`, width: `${at(d.hi) - at(d.lo)}%` }} />
               {[d.lo, d.hi].map((v, k) => <div key={k} className="absolute top-1/2 h-3 -translate-y-1/2 border-l border-[var(--viz-other)]" style={{ left: `${at(v)}%` }} />)}
               <div className="absolute top-1/2 h-4 -translate-y-1/2 rounded-[3px] border border-[var(--viz-1)]"
-                style={{ left: `${at(d.q1)}%`, width: `max(2px, ${at(d.q3) - at(d.q1)}%)`, background: "color-mix(in srgb, var(--viz-1) 22%, var(--surface))" }} />
+                style={{ left: `${at(d.q1)}%`, width: `max(2px, ${at(d.q3) - at(d.q1)}%)`, background: TRACK }} />
               <div className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 bg-[var(--foreground)]" style={{ left: `${at(d.median)}%` }} />
               {d.outliers.map((v, k) => <span key={k} className="absolute top-1/2 w-1.5 h-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[var(--viz-other)]" style={{ left: `${at(v)}%` }} />)}
               {/* the median over its line */}
@@ -611,15 +615,15 @@ export function CalendarFigure({ spec }: { spec: AiCalendarSpec }) {
           <table key={m.key} className="border-separate border-spacing-0.5">
             <caption className="text-xs font-bold text-start pb-1">{m.label}</caption>
             <thead>
-              <tr>{WEEK_HEAD.map((d) => <th key={d} className="!bg-transparent !p-0 !normal-case !tracking-normal !text-center text-[11px] font-semibold text-muted">{d}</th>)}</tr>
+              <tr>{WEEK_HEAD.map((d) => <th key={d} className="text-[11px] font-semibold text-muted">{d}</th>)}</tr>
             </thead>
             <tbody>
               {m.weeks.map((w, i) => (
                 <tr key={i}>
-                  {w.map((d, j) => d === null ? <td key={j} className="!p-0 !border-0" /> : (
-                    <td key={j} className={`w-11 h-10 rounded align-top !p-0.5 !border-0 tabnum hover:outline hover:outline-2 hover:outline-[var(--foreground)] ${d.value !== null && d.value > 0 ? "" : "bg-surface-2"}`}
+                  {w.map((d, j) => d === null ? <td key={j} /> : (
+                    <td key={j} className={`w-11 h-10 rounded align-top p-0.5 tabnum hover:outline hover:outline-2 hover:outline-[var(--foreground)] ${d.value !== null && d.value > 0 ? "" : "bg-surface-2"}`}
                       style={d.value !== null && d.value > 0 ? heat(d.value, spec.max) : undefined}
-                      title={`${d.date}: ${d.value === null ? "no figure" : valueText(d.value, spec.unit)}`}>
+                      title={`${formatDate(d.date)}: ${d.value === null ? "no figure" : valueText(d.value, spec.unit)}`}>
                       <div className="text-[11px] leading-none opacity-70">{d.day}</div>
                       <div className="text-[11px] font-bold text-center leading-tight mt-0.5">{d.value === null ? "" : compact(d.value)}</div>
                     </td>
@@ -646,7 +650,7 @@ const OUT = "var(--bad-fg)";
 export function ControlFigure({ spec }: { spec: AiControlSpec }) {
   const [box, width] = useWidth<HTMLDivElement>();
   const outs = spec.data.filter((d) => d.out).length;
-  const room = ((width || 600) - 60) / spec.data.length >= Math.max(...spec.data.map((d) => textWidth(compact(d.value)))) + 4;
+  const room = fits(width, spec.data.map((d) => compact(d.value)), 4);
   const shown = pointsToLabel(spec.data.map((d) => d.value), room);
   const line = (y: number, label: string, solid = false) => (
     <ReferenceLine y={y} ifOverflow="extendDomain" stroke="var(--foreground)" strokeOpacity={solid ? 0.45 : 0.7} strokeDasharray={solid ? undefined : "4 3"}

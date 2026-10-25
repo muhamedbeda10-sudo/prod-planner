@@ -33,7 +33,7 @@
 // Other names a model reaches for (column, donut, bullet, slope, step …)
 // are read as the form that does the same job (AI_CHART_ALIASES).
 
-import { monthLabelFromInput } from "./dates";
+import { monthLabelFromInput, parseISODate, toISODate, utcDate } from "./dates";
 
 export const AI_CHART_TYPES = [
   "bar", "line", "area", "combo", "pie", "kpi", "pareto", "histogram", "scatter", "heatmap", "progress", "funnel", "waterfall", "gantt", "dumbbell", "radar", "treemap",
@@ -63,6 +63,13 @@ export const AI_CHART_ALIASES: Record<string, AiChartType> = {
   "box-plot": "boxplot",
   flow: "sankey",
   spc: "control",
+};
+
+/** What another name says beyond its form — merged under the chart's own fields. */
+const ALIAS_DEFAULTS: Record<string, Record<string, unknown>> = {
+  step: { curve: "step" },
+  stackedbar: { stacked: true },
+  stackedarea: { stacked: true },
 };
 
 /** The form a chart's "type" names, by its own name or another. */
@@ -385,9 +392,6 @@ const toneOf = (v: unknown): AiTone | null => {
 };
 const round = (n: number, digits = 6) => Math.round(n * 10 ** digits) / 10 ** digits;
 
-/** Where a chart keeps what it draws, whatever its form. */
-const CHART_DATA_KEYS = ["data", "items", "values", "points", "rows", "tasks", "links", "days", "groups", "value"];
-
 /** A fenced block the chat draws as a chart: one in the language "chart" —
  *  or a JSON object naming a chart type, whatever the fence says (json, kpi,
  *  Chart …), so a block the model labelled loosely still draws. */
@@ -400,23 +404,24 @@ export function isChartBlock(lang: string, text: string): boolean {
   try {
     const o = JSON.parse(t) as unknown;
     // a type that is also an everyday word (control, step, flow …) makes a
-    // chart only with something to draw — other JSON stays code
-    return isObj(o) && chartTypeOf(o.type) !== null && CHART_DATA_KEYS.some((k) => k in o);
+    // chart only when it draws as one — other JSON stays code
+    return isObj(o) && chartTypeOf(o.type) !== null && !("error" in parseAiChart(t));
   } catch {
     return false;
   }
 }
 
 export function parseAiChart(source: string): AiChartSpec | Fail {
-  let raw: unknown;
+  let parsed: unknown;
   try {
-    raw = JSON.parse(source);
+    parsed = JSON.parse(source);
   } catch {
     return { error: "The chart's data is not valid JSON." };
   }
-  if (!isObj(raw)) return { error: "A chart is one JSON object." };
-  const named = str(raw.type).toLowerCase();
+  if (!isObj(parsed)) return { error: "A chart is one JSON object." };
+  const named = str(parsed.type).toLowerCase();
   const type = chartTypeOf(named);
+  const raw: Raw = { ...ALIAS_DEFAULTS[named], ...parsed };
   const title = str(raw.title, 160);
   const unit = str(raw.unit, 20);
   switch (type) {
@@ -424,7 +429,7 @@ export function parseAiChart(source: string): AiChartSpec | Fail {
     case "line":
     case "area":
     case "combo":
-      return parseXY(raw, type, title, unit, named);
+      return parseXY(raw, type, title, unit);
     case "pie":
       return parsePie(raw, title, unit);
     case "kpi":
@@ -512,14 +517,14 @@ function targetsOf(v: unknown): AiXYSpec["targets"] {
     .slice(0, AI_CHART_LIMITS.targets);
 }
 
-function curveOf(v: unknown, named: string): AiXYSpec["curve"] {
+function curveOf(v: unknown): AiXYSpec["curve"] {
   const c = str(v).toLowerCase();
-  if (c === "step" || c === "steps" || named === "step") return "step";
+  if (c === "step" || c === "steps") return "step";
   if (c === "linear" || c === "straight") return "linear";
   return "smooth";
 }
 
-function parseXY(raw: Raw, type: AiXYSpec["type"], title: string, unit: string, named = type as string): AiXYSpec | Fail {
+function parseXY(raw: Raw, type: AiXYSpec["type"], title: string, unit: string): AiXYSpec | Fail {
   const rows = objects(raw.data);
   const nameKey = typeof raw.x === "string" && raw.x ? raw.x : "name";
   const { series, kinds } = seriesOf(raw, rows, nameKey, AI_CHART_LIMITS.series);
@@ -530,8 +535,7 @@ function parseXY(raw: Raw, type: AiXYSpec["type"], title: string, unit: string, 
   const drawn: Record<string, AiSeriesKind> = {};
   // a combo with no kinds given: the first series as bars, the rest as lines
   series.forEach((s, i) => (drawn[s] = type === "combo" ? kinds[s] ?? (i === 0 ? "bar" : "line") : own));
-  // a "stackedbar" or "stackedarea" is stacked unless told otherwise
-  const stacked = stackedOf(raw.stacked ?? (named.startsWith("stacked") ? true : undefined));
+  const stacked = stackedOf(raw.stacked);
   return {
     type,
     title,
@@ -546,7 +550,7 @@ function parseXY(raw: Raw, type: AiXYSpec["type"], title: string, unit: string, 
     targets: targetsOf(raw.targets ?? raw.target),
     highlight: strings(raw.highlight, AI_CHART_LIMITS.highlight),
     labels: raw.labels !== false,
-    curve: curveOf(raw.curve, named),
+    curve: curveOf(raw.curve),
   };
 }
 
@@ -948,16 +952,13 @@ function parseSankey(raw: Raw, title: string, unit: string): AiSankeySpec | Fail
     const target = nodes.indexOf(to);
     merged.set(`${source}>${target}`, { source, target, value });
   }
-  const links = [...merged.values()];
-  // a node only a dropped link named goes too, the indices following
-  const used = nodes.filter((_, i) => links.some((l) => l.source === i || l.target === i));
+  // a stage is named only with a link that is kept, so every one is drawn
+  const links = [...merged.values()].map((l) => ({ ...l, value: round(l.value) }));
   if (links.length === 0) return { error: "A Sankey needs links with a from, a to and a value above zero." };
-  const at = (i: number) => used.indexOf(nodes[i]);
-  const kept = links.map((l) => ({ source: at(l.source), target: at(l.target), value: round(l.value) }));
   // each stage's column: one past the farthest stage that flows into it
-  const column = used.map(() => 0);
-  for (let pass = 0; pass < used.length; pass++) for (const l of kept) column[l.target] = Math.max(column[l.target], column[l.source] + 1);
-  return { type: "sankey", title, unit, nodes: used, links: kept, columns: Math.max(...column) + 1 };
+  const column = nodes.map(() => 0);
+  for (let pass = 0; pass < nodes.length; pass++) for (const l of links) column[l.target] = Math.max(column[l.target], column[l.source] + 1);
+  return { type: "sankey", title, unit, nodes, links, columns: Math.max(...column) + 1 };
 }
 
 // ---------------------------------------------------------------- calendar
@@ -967,30 +968,28 @@ function parseCalendar(raw: Raw, title: string, unit: string): AiCalendarSpec | 
   for (const d of objects(raw.days ?? raw.data)) {
     const date = str(d.date ?? d.day ?? d.name, 10);
     const value = num(d.value);
-    // a day that is not on the calendar (2026-02-30) would roll over: dropped
-    const ms = DATE_ONLY.test(date) ? Date.parse(`${date}T00:00:00Z`) : NaN;
-    if (value === null || !Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== date) continue;
+    // a day that is not on the calendar (2026-02-30) is dropped, not rolled over
+    if (value === null || !parseISODate(date)) continue;
     byDay.set(date, (byDay.get(date) ?? 0) + value);
   }
   const dates = [...byDay.keys()].sort();
   if (dates.length === 0) return { error: "A calendar needs days with a date (YYYY-MM-DD) and a value." };
   // the latest six months when the days run further back
-  const last = new Date(`${dates[dates.length - 1]}T00:00:00Z`);
-  const since = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() - (AI_CHART_LIMITS.calendarMonths - 1), 1)).toISOString().slice(0, 10);
+  const last = parseISODate(dates[dates.length - 1])!;
+  const since = toISODate(utcDate(last.getUTCFullYear(), last.getUTCMonth() + 2 - AI_CHART_LIMITS.calendarMonths, 1));
   const kept = dates.filter((d) => d >= since);
-  const first = new Date(`${kept[0]}T00:00:00Z`);
-  const shown = new Set(kept);
+  const first = parseISODate(kept[0])!;
   const months: AiCalendarSpec["months"] = [];
   let y = first.getUTCFullYear();
   let m = first.getUTCMonth();
   while (y * 12 + m <= last.getUTCFullYear() * 12 + last.getUTCMonth()) {
-    const daysIn = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const daysIn = utcDate(y, m + 2, 0).getUTCDate();
     // the plant's week starts on Saturday: column 0
-    const lead = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 1) % 7;
+    const lead = (utcDate(y, m + 1, 1).getUTCDay() + 1) % 7;
     const cells: AiCalendarSpec["months"][number]["weeks"][number] = Array.from({ length: lead }, () => null);
     for (let day = 1; day <= daysIn; day++) {
-      const date = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      cells.push({ date, day, value: shown.has(date) ? byDay.get(date)! : null });
+      const date = toISODate(utcDate(y, m + 1, day));
+      cells.push({ date, day, value: byDay.get(date) ?? null });
     }
     while (cells.length % 7) cells.push(null);
     const key = `${y}-${String(m + 1).padStart(2, "0")}`;
