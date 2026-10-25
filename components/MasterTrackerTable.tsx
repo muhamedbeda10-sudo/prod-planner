@@ -26,6 +26,7 @@ import { AchCell, ColumnMenu, FoldButton, meterStyle, stageState, stickAt, useAc
 import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
 import { filterMasterTracker, trackerItemStats } from "@/lib/domain/trackerSummary";
+import { trackerOdooTotal } from "@/lib/domain/trackerOdoo";
 
 /** The order's spec columns. Every one of them is the planner's own — the
  *  monthly import writes none of them, so a re-import can never blank what he
@@ -498,7 +499,7 @@ export function MasterTrackerTable({
   // +1 for Status, +1 for the ETA forecast column
   // MO, SOI, BOM, KVA, Required lead the row before the per-item stage columns
   // MO · SOI · Customer · BOM · KVA · Fins · Color · CRC · SFM · Required, then the items
-  const itemColsOf = (it: Item) => (!itemShown(it) ? 0 : folded(it) ? 1 : scoped ? stages.length : 4);
+  const itemColsOf = (it: Item) => (!itemShown(it) ? 0 : (folded(it) ? 1 : scoped ? stages.length : 4) + 1);
   const tableCols =
     1 + COLS.filter((c) => show(c.key) && !(scoped && (c.key === "complete" || c.key === "left" || c.key === "achv"))).length +
     ITEMS.reduce((n, it) => n + itemColsOf(it), 0);
@@ -753,6 +754,9 @@ export function MasterTrackerTable({
         // N/A components (rule or manual) export blank, like the table's dashes
         row[`${it} ${stageColLabel(s, it)}`] = !c.eligible || c.excluded ? "" : stageColValue(c, s, it);
       }
+      const odoo = trackerOdooTotal([r], it);
+      row[`${it} Odoo closed`] = !c.eligible || c.excluded ? "" : odoo.qty || !odoo.unallocated ? odoo.qty : "Unallocated project quantity";
+      if (odoo.unallocated) row[`${it} Odoo project qty awaiting MO allocation`] = `${odoo.unallocated} shared project pcs (not assigned to this MO)`;
     }
     row.OSP = ITEMS.filter((it) => r.items[it].osp > 0).map((it) => `${it}×${r.items[it].osp}`).join(" ");
     if (!scoped) {
@@ -770,7 +774,7 @@ export function MasterTrackerTable({
   // the printed sheet is very wide unfiltered (six components × four stages);
   // it only fits A4 landscape at the tighter `print-tight` step. A dept-scoped
   // view has far fewer columns and keeps the roomier size.
-  const stageCols = ITEMS.length * (scoped ? stages.length : 4);
+  const stageCols = ITEMS.length * ((scoped ? stages.length : 4) + 1);
 
   return (
     // On desktop the page fills the viewport below the nav so the cards +
@@ -934,19 +938,14 @@ export function MasterTrackerTable({
               {show("status") && <th rowSpan={2} className="p-2 no-print">Status</th>}
             </tr>
             <tr>
-              {ITEMS.filter(itemShown).map((it) =>
-                folded(it) ? (
-                  <th key={it} className="p-1 font-semibold on-tint border-r border-border-strong" title={`${ITEM_NAME[it]} made through its last stage (${isPaintExempt(it) ? "shot blast" : "painting"}), of what the order needs`}>Made %</th>
-                ) : scoped ? (
-                  <Fragment key={it}>
-                    {stages.map((s, si) => (
-                      <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={si === stages.length - 1} />
-                    ))}
-                  </Fragment>
-                ) : (
-                  <StageHead key={it} shp={isPaintExempt(it)} />
-                )
-              )}
+              {ITEMS.filter(itemShown).map((it) => (
+                <Fragment key={it}>
+                  {folded(it) ? <th className="p-1 font-semibold on-tint" title={`${ITEM_NAME[it]} made through its final stage`}>Made %</th>
+                    : scoped ? stages.map((s) => <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={false} />)
+                    : <StageHead shp={isPaintExempt(it)} borderR={false} />}
+                  <th className="p-1 font-semibold on-tint border-r border-border-strong" aria-label={`${it} Odoo closed`} title="Closed quantity from the Odoo tab (Done / Closed). Read-only; project imports without a planner MO count once on the full merged BOM row.">Odoo</th>
+                </Fragment>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -1023,19 +1022,21 @@ export function MasterTrackerTable({
                     {show("fins") && groupFinsCell(gBom, members)}
                     {ITEMS.filter(itemShown).map((it) =>
                       folded(it) ? (
-                        <Fragment key={it}>{groupShareCell(members, it)}</Fragment>
+                        <Fragment key={it}>{groupShareCell(members, it)}{odooCell(members, it)}</Fragment>
                       ) : scoped ? (
                         <Fragment key={it}>
-                          {stages.map((s, si) => (
-                            <Fragment key={s}>{groupCell(gBom, members, it, s, si === stages.length - 1)}</Fragment>
+                          {stages.map((s) => (
+                            <Fragment key={s}>{groupCell(gBom, members, it, s, false)}</Fragment>
                           ))}
+                          {odooCell(members, it)}
                         </Fragment>
                       ) : (
                         <Fragment key={it}>
                           {groupCell(gBom, members, it, "Cut", false)}
                           {groupCell(gBom, members, it, "Welding", false)}
                           {groupCell(gBom, members, it, "Painting", false)}
-                          {groupCell(gBom, members, it, "Delivered", true)}
+                          {groupCell(gBom, members, it, "Delivered", false)}
+                          {odooCell(members, it)}
                         </Fragment>
                       )
                     )}
@@ -1461,12 +1462,21 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     );
   }
 
+  /** Closed Odoo quantity follows the log, with project-only imports kept distinct from MO attribution. */
+  function odooCell(members: MasterTrackerRow[], it: Item) {
+    const applicable = members.filter((r) => r.items[it].eligible && !r.items[it].excluded);
+    if (!applicable.length) return <td className="na-cell border-r border-border-strong" aria-label={`${it} Odoo not applicable`} />;
+    const { qty, unallocated } = trackerOdooTotal(applicable, it);
+    const title = `${ITEM_NAME[it]} closed in the Odoo tab: ${qty} pcs (Done / Closed).${unallocated ? ` Another ${unallocated} pcs belong to this project but cannot be assigned to a specific visible MO; see the full merged BOM row.` : ""}`;
+    return <td className={`stage-cell p-1 text-center tabnum font-semibold border-r border-border-strong ${qty > 0 ? "text-ok-fg" : "text-muted"}`} aria-label={`${members.length > 1 ? "BOM " + members[0].bom : members[0].mo} ${it} Odoo closed`} title={title}><Num v={qty} />{unallocated > 0 && <span className="ms-1 text-warn-fg" aria-label="Project quantity not allocated to this MO">*</span>}</td>;
+  }
+
   /** A folded component: how much of it is made through its last stage. */
   function shareCell(share: number | null, it: Item, label: string) {
     const pct = share === null ? null : Math.round(share * 100);
     const cls = pct === null ? "" : pct >= 100 ? "stage-done" : pct > 0 ? "stage-part" : "stage-idle";
     return (
-      <td className={`stage-cell ${cls} p-1 text-center tabnum font-semibold border-r border-border-strong`} title={`${label} · ${ITEM_NAME[it]}: ${pct === null ? "nothing owed" : `${pct}% made through ${isPaintExempt(it) ? "shot blast" : "painting"}`} — open the column for its stages`}>
+      <td className={`stage-cell ${cls} p-1 text-center tabnum font-semibold`} title={`${label} · ${ITEM_NAME[it]}: ${pct === null ? "nothing owed" : `${pct}% made through ${isPaintExempt(it) ? "shot blast" : "painting"}`} — open the column for its stages`}>
         {pct === null ? "" : `${pct}%`}
       </td>
     );
@@ -1682,7 +1692,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                   // every piece bought out (OSP): nothing for our departments —
                   // hatched like a component the order does not need
                   if (c.osp > 0 && c.osp >= r.required) {
-                    const n = itemColsOf(it);
+                    const n = itemColsOf(it) - 1;
                     return (
                       <Fragment key={it}>
                         {Array.from({ length: n }, (_, i) => (
@@ -1690,17 +1700,18 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                             {i === 0 && <span className="sr-only">OSP</span>}
                           </td>
                         ))}
+                        {odooCell([r], it)}
                       </Fragment>
                     );
                   }
-                  if (folded(it)) return <Fragment key={it}>{shareCell(itemFinishShare(r.required, it, c), it, r.mo)}</Fragment>;
+                  if (folded(it)) return <Fragment key={it}>{shareCell(itemFinishShare(r.required, it, c), it, r.mo)}{odooCell([r], it)}</Fragment>;
                   // stage scope: only the picked depts' columns (the core's
                   // Painting column is its SHOT BLAST — same as unfiltered)
                   if (scoped) {
                     return (
                       <Fragment key={it}>
-                        {stages.map((s, si) => {
-                          const last = si === stages.length - 1;
+                        {stages.map((s) => {
+                          const last = false;
                           return (
                             <Fragment key={s}>
                               {s === "Cut" && stageCell(r, it, "Cut", c.cut, last, isBn(it, "Cut"))}
@@ -1712,6 +1723,7 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                             </Fragment>
                           );
                         })}
+                        {odooCell([r], it)}
                       </Fragment>
                     );
                   }
@@ -1724,7 +1736,8 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
                       ) : (
                         stageCell(r, it, "Painting", c.paint, false, isBn(it, "Painting"))
                       )}
-                      {stageCell(r, it, "Delivered", c.delivered, true)}
+                      {stageCell(r, it, "Delivered", c.delivered, false)}
+                      {odooCell([r], it)}
                     </Fragment>
                   );
                 })}
@@ -1885,7 +1898,7 @@ function StageHead({ shp = false, only, borderR = true }: { shp?: boolean; only?
       ) : (
         <th className="p-1 font-semibold on-tint">Paint</th>
       )}
-      <th className="p-1 font-semibold on-tint border-r border-border-strong" title="Delivered — received by the customer">Dlvd</th>
+      <th className={`p-1 font-semibold on-tint ${borderR ? "border-r border-border-strong" : ""}`} title="Delivered — received by the customer">Dlvd</th>
     </>
   );
 }

@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, Bot, CircleAlert, Info } from "lucide-react";
-import { ChartCard, Meter, Sparkline, StatTile, pct } from "@/components/charts/kit";
+import { ChartCard, Meter, Sparkline, StatTile, fmt, pct } from "@/components/charts/kit";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
 import { TableFrame, Th } from "@/components/DataTable";
 import { useAiPanel } from "@/components/AiPanel";
 import { formatDate } from "@/lib/domain/format";
+import { stopDurationLabel } from "@/lib/domain/downtime";
 import { ITEM_NAME, isItem } from "@/lib/domain/constants";
 import { WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
 import { STAGE_LABEL, efficiencyBand, isFloorAction } from "@/lib/domain/kpis";
@@ -31,14 +32,14 @@ const itemName = (it: string) => (isItem(it) ? ITEM_NAME[it] : it);
 const centreName = (c: WorkCentre) => WORK_CENTRE_LABEL[c];
 
 /** A list of named amounts, the longest bar the full width. */
-function Bars({ rows, unit }: { rows: { key: string; label: string; value: number; text: React.ReactNode }[]; unit: string }) {
+function Bars({ rows, unit }: { rows: { key: string; label: string; value: number; valueLabel?: string; text: React.ReactNode }[]; unit: string }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <div className="space-y-2">
       {rows.map((r) => (
         <div key={r.key}>
           <div className="flex justify-between gap-2 text-sm mb-1"><span className="font-semibold">{r.label}</span><span className="tabnum">{r.text}</span></div>
-          <Meter value={r.value / max} label={`${r.label}: ${r.value} ${unit}`} />
+          <Meter value={r.value / max} label={`${r.label}: ${r.valueLabel ?? `${fmt(r.value, 1)} ${unit}`}`} />
         </div>
       ))}
     </div>
@@ -92,11 +93,11 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
       <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
         <StatTile hero label="Plan delivered on its day" value={pctOrDash(finish?.rate)} sub={finish && finish.due > 0 ? `${finish.done} of ${finish.due} pcs due so far this plan` : "nothing due yet"} meter={finish?.rate ?? undefined} />
         <StatTile label="Plan lines behind" value={String(data.week.lateCount)} sub="past their stage date" spark={spark("late")} />
-        <StatTile label="Welding covered" value={data.coverage.days === null ? "—" : `${data.coverage.days} d`} sub={data.coverage.band === "short" ? "short — welders may wait" : data.coverage.band === "heavy" ? "parts piling up" : "of cut parts in front of welding"} spark={spark("coverageDays")} />
+        <StatTile label="Welding covered" value={data.coverage.days === null ? "—" : `${fmt(data.coverage.days, 1)} d`} sub={data.coverage.band === "short" ? "short — welders may wait" : data.coverage.band === "heavy" ? "parts piling up" : "of cut parts in front of welding"} spark={spark("coverageDays")} />
         {floor && (
           <>
-            <StatTile label="Fabrication efficiency" value={pctOrDash(data.fabrication.efficiency)} sub={`${data.fabrication.earnedH} std-h earned of ${data.fabrication.workedH} worked`} />
-            <StatTile label="Machine hours lost" value={`${data.losses.unplannedH} h`} sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : "recent days"} />
+            <StatTile label="Fabrication efficiency" value={pctOrDash(data.fabrication.efficiency)} sub={`${fmt(data.fabrication.earnedH, 1)} std-h earned of ${fmt(data.fabrication.workedH, 1)} worked`} />
+            <StatTile label="Machine hours lost" value={stopDurationLabel(data.losses.unplannedH)} sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : "recent days"} />
             <StatTile label="People short" value={mp.leftWd > 0 && mp.rows.some((r) => r.gap !== null) ? String(Math.ceil(peopleShort)) : "—"} sub={mp.leftWd > 0 ? `to finish ${mp.monthLabel}'s plan from today` : "the month's working days are over"} />
           </>
         )}
@@ -195,10 +196,10 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
                         <td className="px-2 font-semibold whitespace-nowrap">{centreName(l.centre)}</td>
                         <td className={`px-2 text-right tabnum font-bold ${rateTone}`}>{pctOrDash(l.loadRate)}</td>
                         <td className={`px-2 whitespace-nowrap ${!l.measured ? "text-muted" : l.shortH > 0 ? "text-bad-fg font-bold" : catching ? "text-warn-fg font-semibold" : "text-ok-fg"}`} title={!l.measured ? "No man-hours booked to this centre lately, so there is no capacity to judge by" : undefined}>
-                          {!l.measured ? "not measured" : l.shortH > 0 ? `${l.shortH} h short` : catching ? `${l.behindH} h behind · clear ${formatDate(l.clearsISO!)}` : "on track"}
+                          {!l.measured ? "not measured" : l.shortH > 0 ? `${fmt(l.shortH, 1)} h short` : catching ? `${fmt(l.behindH, 1)} h behind · clear ${formatDate(l.clearsISO!)}` : "on track"}
                         </td>
                         {l.days.map((d) => (
-                          <td key={d.dayISO} className={`px-1 text-center tabnum ${d.tone === "bad" ? "bg-bad-bg text-bad-fg" : d.tone === "warn" ? "bg-warn-bg text-warn-fg" : ""}`} title={l.measured ? `Due ${d.dueH} h · can work ${d.capacityH} h` : `Due ${d.dueH} h`}>{d.dueH > 0 ? Math.round(d.dueH) : "·"}</td>
+                          <td key={d.dayISO} className={`px-1 text-center tabnum ${d.tone === "bad" ? "bg-bad-bg text-bad-fg" : d.tone === "warn" ? "bg-warn-bg text-warn-fg" : ""}`} title={l.measured ? `Due ${fmt(d.dueH, 1)} h · can work ${fmt(d.capacityH, 1)} h` : `Due ${fmt(d.dueH, 1)} h`}>{d.dueH > 0 ? Math.round(d.dueH) : "·"}</td>
                         ))}
                       </tr>
                     );
@@ -214,7 +215,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         <ChartCard
           className="xl:col-span-7"
           title="Do we have the people?"
-          sub={`${mp.monthLabel}: the plan's ${mp.pieces} transformers in standard hours over ${mp.monthWd} working days × ${mp.hoursPerPersonDay} h a person; "from today" is what is left over the ${mp.leftWd} working days left.${floor ? " Present = people on an average recorded day lately." : ""}`}
+          sub={`${mp.monthLabel}: the plan's ${mp.pieces} transformers in standard hours over ${mp.monthWd} working days × ${fmt(mp.hoursPerPersonDay, 1)} h a person; "from today" is what is left over the ${mp.leftWd} working days left.${floor ? " Present = people on an average recorded day lately." : ""}`}
           table={{ filename: `people-${data.todayISO}.xlsx`, rows: mp.rows.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) })) }}
         >
           {mp.pieces === 0 ? (
@@ -238,13 +239,13 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
                   {mp.rows.map((r) => (
                     <tr key={r.centre}>
                       <td className="px-2 font-semibold whitespace-nowrap">{centreName(r.centre)}</td>
-                      <td className="px-2 text-right tabnum">{r.requiredH}</td>
-                      <td className="px-2 text-right tabnum">{r.doneH}</td>
-                      <td className="px-2 text-right tabnum">{r.leftH}</td>
-                      <td className="px-2 text-right tabnum">{r.needed ?? "—"}</td>
-                      <td className="px-2 text-right tabnum font-bold">{r.neededNow ?? "—"}</td>
-                      {floor && <td className="px-2 text-right tabnum">{r.present ?? "—"}</td>}
-                      {floor && <td className={`px-2 text-right tabnum font-bold ${r.tone ? TONE_TEXT[r.tone] : "text-muted"}`}>{r.gap === null ? "—" : r.gap > 0 ? `+${r.gap}` : r.gap}</td>}
+                      <td className="px-2 text-right tabnum">{fmt(r.requiredH, 1)}</td>
+                      <td className="px-2 text-right tabnum">{fmt(r.doneH, 1)}</td>
+                      <td className="px-2 text-right tabnum">{fmt(r.leftH, 1)}</td>
+                      <td className="px-2 text-right tabnum">{r.needed === null ? "—" : fmt(r.needed, 1)}</td>
+                      <td className="px-2 text-right tabnum font-bold">{r.neededNow === null ? "—" : fmt(r.neededNow, 1)}</td>
+                      {floor && <td className="px-2 text-right tabnum">{r.present === null ? "—" : fmt(r.present, 1)}</td>}
+                      {floor && <td className={`px-2 text-right tabnum font-bold ${r.tone ? TONE_TEXT[r.tone] : "text-muted"}`}>{r.gap === null ? "—" : r.gap > 0 ? `+${fmt(r.gap, 1)}` : fmt(r.gap, 1)}</td>}
                     </tr>
                   ))}
                 </tbody>
@@ -257,13 +258,13 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           title="Is welding covered?"
           sub={data.coverage.days === null
             ? "No recent welding to measure against."
-            : `${data.coverage.days} days of cut parts in front of the welders: ${data.coverage.wipH} welding std-h waiting, against ${data.coverage.ratePerDay} std-h earned on a recorded day. Under 1 day they may wait; over 4, parts pile up.`}
+            : `${fmt(data.coverage.days, 1)} days of cut parts in front of the welders: ${fmt(data.coverage.wipH, 1)} welding std-h waiting, against ${fmt(data.coverage.ratePerDay, 1)} std-h earned on a recorded day. Under 1 day they may wait; over 4, parts pile up.`}
           table={{ filename: `welding-coverage-${data.todayISO}.xlsx`, rows: data.coverage.byItem.map((b) => ({ Item: itemName(b.item), "Pieces waiting": b.pcs, "Welding std-h": b.weldH })) }}
         >
           {data.coverage.byItem.length === 0 ? (
             <EmptyState compact icon={Info} title="Nothing cut and waiting" hint="Every cut piece has been welded." />
           ) : (
-            <Bars unit="welding std-h" rows={data.coverage.byItem.map((b) => ({ key: b.item, label: itemName(b.item), value: b.weldH, text: <><b>{b.weldH} h</b> <span className="text-muted">· {b.pcs} pcs</span></> }))} />
+            <Bars unit="welding std-h" rows={data.coverage.byItem.map((b) => ({ key: b.item, label: itemName(b.item), value: b.weldH, text: <><b>{fmt(b.weldH, 1)} h</b> <span className="text-muted">· {b.pcs} pcs</span></> }))} />
           )}
         </ChartCard>
       </div>
@@ -307,9 +308,9 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
                           <td className="px-2 font-semibold whitespace-nowrap">{centreName(c.centre)}</td>
                           <td className={`px-2 text-right tabnum ${lastBand ? TONE_TEXT[lastBand] : "text-muted"}`}>{pctOrDash(c.last.efficiency)}</td>
                           <td className={`px-2 text-right tabnum font-bold ${band ? TONE_TEXT[band] : "text-muted"}`}>{pctOrDash(c.recent.efficiency)}</td>
-                          <td className="px-2 text-right tabnum">{c.recent.earnedH}</td>
-                          <td className="px-2 text-right tabnum">{c.recent.workedH}</td>
-                          <td className="px-2 text-right tabnum">{c.recent.people || "—"}</td>
+                          <td className="px-2 text-right tabnum">{fmt(c.recent.earnedH, 1)}</td>
+                          <td className="px-2 text-right tabnum">{fmt(c.recent.workedH, 1)}</td>
+                          <td className="px-2 text-right tabnum">{c.recent.people ? fmt(c.recent.people, 1) : "—"}</td>
                           <td className="px-2 text-right tabnum">{pctOrDash(c.recent.availability)}</td>
                           <td className="px-2">{pts.length > 1 ? <Sparkline values={pts} /> : <span className="text-muted">—</span>}</td>
                         </tr>
@@ -329,13 +330,13 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           <ChartCard
             className="xl:col-span-5"
             title="What stopped us?"
-            sub={`${data.losses.unplannedH} machine hours lost${data.losses.fromISO ? ` since ${formatDate(data.losses.fromISO)}` : ""}${data.losses.plannedH > 0 ? ` · ${data.losses.plannedH} h planned maintenance` : ""} · absent ${pctOrDash(data.losses.absentRate)} of the recorded rows · overtime ${data.losses.overtimeH} h`}
-            table={{ filename: `losses-${data.todayISO}.xlsx`, rows: data.losses.causes.map((c) => ({ Cause: c.label, Hours: c.hours, Stops: c.stops, "Share of lost %": c.share === null ? "" : Math.round(c.share * 100) })) }}
+            sub={`${stopDurationLabel(data.losses.unplannedH)} machine time lost${data.losses.fromISO ? ` since ${formatDate(data.losses.fromISO)}` : ""}${data.losses.plannedH > 0 ? ` · ${stopDurationLabel(data.losses.plannedH)} planned maintenance` : ""} · absent ${pctOrDash(data.losses.absentRate)} of the recorded rows · overtime ${stopDurationLabel(data.losses.overtimeH)}`}
+            table={{ filename: `losses-${data.todayISO}.xlsx`, rows: data.losses.causes.map((c) => ({ Cause: c.label, Duration: stopDurationLabel(c.hours), Hours: c.hours, Stops: c.stops, "Share of lost %": c.share === null ? "" : Math.round(c.share * 100) })) }}
           >
             {data.losses.causes.length === 0 ? (
               <EmptyState compact icon={Info} title="No machine stops recorded" hint={<>Record stops on <Link href="/shifts" className="text-brand-ink font-semibold hover:underline">Shifts → Machine stops</Link> to see what costs the most.</>} />
             ) : (
-              <Bars unit="h" rows={data.losses.causes.map((c) => ({ key: c.code, label: c.label, value: c.hours, text: <><b>{c.hours} h</b> <span className="text-muted">· {c.stops} stop(s){c.share !== null ? ` · ${Math.round(c.share * 100)}%` : " · planned"}</span></> }))} />
+              <Bars unit="h" rows={data.losses.causes.map((c) => ({ key: c.code, label: c.label, value: c.hours, valueLabel: stopDurationLabel(c.hours), text: <><b>{stopDurationLabel(c.hours)}</b> <span className="text-muted">· {c.stops} stop(s){c.share !== null ? ` · ${Math.round(c.share * 100)}%` : " · planned"}</span></> }))} />
             )}
           </ChartCard>
         </div>

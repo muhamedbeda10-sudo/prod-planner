@@ -106,6 +106,7 @@ export async function restoreOdooRows(rows: readonly OdooRowSnapshot[]): Promise
     return { ok: false, error: `The rows could not be put back: ${e instanceof Error ? e.message : String(e)}` };
   }
   revalidatePath("/odoo");
+  revalidatePath("/tracker");
   return { ok: true };
 }
 

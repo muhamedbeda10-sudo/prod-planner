@@ -51,6 +51,7 @@ export async function closeOdooReady(formData: FormData): Promise<{ ok: boolean;
   const now = new Date();
   await prisma.odooEntry.updateMany({ where: { id: { in: allowed.map((r) => r.id) } }, data: { status: "Done", doneAt: now, recordedBy: me.name } });
   revalidatePath("/odoo");
+  revalidatePath("/tracker");
   return { ok: true, closed: allowed.length };
 }
 
@@ -69,6 +70,7 @@ export async function fillOdooMo(formData: FormData): Promise<{ ok: boolean; err
   if (row.odooMo.trim() !== "") return { ok: false, error: `Already has ${row.odooMo}.` };
   await prisma.odooEntry.update({ where: { id }, data: { odooMo, recordedBy: me.name } });
   revalidatePath("/odoo");
+  revalidatePath("/tracker");
   return { ok: true };
 }
 

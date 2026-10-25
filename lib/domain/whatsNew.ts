@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-dashboard-duration-odoo-component-counts",
+    dateISO: "2026-10-25",
+    title: "Readable dashboard figures and Odoo closed quantities per component",
+    where: "Plan Tracker · Planning cockpit · Odoo",
+    href: "/tracker",
+    body: "Machine downtime now reads as hours and minutes (50 min instead of 0.833333… h), with bounded decimals for other dashboard hours and averages. Headline values wrap within their cards. Each transformer component now ends with a read-only Odoo column, populated automatically from Done/Closed quantities in the Odoo tab. The column remains available when stages are filtered or folded, and appears in exports. Linked planner MOs are matched through their production log; imported quantities shared by several MOs count once on the complete merged BOM row, with unallocated quantities flagged on individual or filtered MO views. Production, delivery and completion calculations are unchanged.",
+  },
+  {
     id: "2026-10-25-open-machine-stops-resolution",
     dateISO: "2026-10-25",
     title: "Unresolved machine stops: save the start now, record the repair later",

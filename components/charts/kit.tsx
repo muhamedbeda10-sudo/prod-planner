@@ -158,8 +158,8 @@ export function StatTile({
   return (
     <div className={`bg-surface border rounded-xl px-4 py-3 min-w-[10.5rem] flex-1 flex flex-col gap-1 ${hero ? "sm:min-w-[15rem]" : ""}`}>
       <div className="text-xs font-bold text-muted">{label}</div>
-      <div className="flex items-end justify-between gap-3">
-        <div className={`${hero ? "text-[44px]" : "text-[28px]"} font-semibold leading-none ltr`}>{value}</div>
+      <div className="flex min-w-0 items-end justify-between gap-3">
+        <div className={`${hero ? "text-[44px]" : "text-[28px]"} min-w-0 [overflow-wrap:anywhere] font-semibold leading-none ltr`}>{value}</div>
         {spark && <Sparkline values={spark} />}
       </div>
       {meter !== undefined && <Meter value={meter} />}

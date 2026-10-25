@@ -28,6 +28,7 @@ export interface OdooActionResult {
 
 function revalidateOdoo() {
   revalidatePath("/odoo");
+  revalidatePath("/tracker");
 }
 
 // The tab shows both product lines at once: a write is guarded by the Odoo
