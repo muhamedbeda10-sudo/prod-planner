@@ -1,3 +1,4 @@
+import type { AiFeedbackRating } from "@/lib/domain/aiLearn";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, hasPerm } from "@/lib/server/auth";
@@ -30,7 +31,9 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
       ? prisma.aiConversation.findFirst({ where: { id: wanted, userId: user.id }, include: { messages: { orderBy: { id: "asc" } } } })
       : null,
   ]);
-  const actions = open ? await actionsOfConversation(open.id) : [];
+  const [actions, feedback] = open
+    ? await Promise.all([actionsOfConversation(open.id), prisma.aiFeedback.findMany({ where: { conversationId: open.id }, select: { turn: true, rating: true } })])
+    : [[], []];
   const tabs: AiTab[] = ["chat", ...(hasPerm(user, "ai.automations") ? (["automations"] as const) : []), "playbook"];
 
   return (
@@ -41,7 +44,7 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<{
         isOwner: user.isOwner,
         status: chat.status,
         conversations,
-        open: open ? { id: open.id, turns: displayTurns(open.messages, READ_TOOL_TITLES), actions } : null,
+        open: open ? { id: open.id, turns: displayTurns(open.messages, READ_TOOL_TITLES), actions, ratings: Object.fromEntries(feedback.map((f) => [f.turn, f.rating as AiFeedbackRating])) } : null,
       }}
     />
   );

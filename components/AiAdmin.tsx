@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Activity, Bot, ChevronDown, Clock, Cpu, Gauge, KeyRound, ListChecks, MessageSquare, PlugZap, Save, Settings2, Trash2, Users,
+  Activity, Bot, ChevronDown, ShieldCheck, Sparkles, Clock, Cpu, Gauge, KeyRound, ListChecks, MessageSquare, PlugZap, Save, Settings2, Trash2, Users,
 } from "lucide-react";
 import { AI_CALLS_RANGE, AI_EFFORTS, AI_EFFORT_LABEL, AI_MODELS, aiModel, usdText, type AiEffort } from "@/lib/domain/ai";
 import { WEEKDAY_NAMES, describeWindow } from "@/lib/domain/automations";
@@ -14,6 +14,8 @@ import {
   setAutomationHours, setupAutomationClock, testAi, type AiActionResult,
 } from "@/app/admin/ai/actions";
 import { AutomationsView } from "@/components/AutomationsView";
+import { AiQuality, type AiQualityData } from "@/components/AiQuality";
+import { AI_AUTO_MODEL, modelChoiceLabel } from "@/lib/domain/aiLearn";
 import { EmptyState, Note, SectionCard, SettingRow, Switch, Tabs } from "@/components/primitives";
 import type { AutomationView } from "@/lib/server/automations/views";
 import type { SchedulerStatus } from "@/lib/server/automations/scheduler";
@@ -69,6 +71,7 @@ export interface AiAdminData {
   users: AiAdminUser[];
   changes: { id: number; at: string; who: string; title: string; summary: string; status: string; risk: string; auto: boolean; automationId: number | null; error: string | null }[];
   recent: { id: number; at: string; who: string; question: string; model: string; queries: number; tokens: number; costUsd: number; error: string | null; running: boolean }[];
+  quality: AiQualityData;
 }
 
 type Msg = { ok: boolean; text: string } | null;
@@ -189,6 +192,7 @@ const SECTIONS = [
   { id: "automations", label: "Automations", desc: "Hours, the morning review, the scheduler", icon: Clock },
   { id: "people", label: "People", desc: "Access, caps and rights", icon: Users },
   { id: "activity", label: "Activity", desc: "What it changed and was asked", icon: Activity },
+  { id: "quality", label: "Quality", desc: "👍 / 👎 on its answers, quality checks", icon: ShieldCheck },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -258,6 +262,7 @@ export function AiAdmin({ data, clock, automations }: { data: AiAdminData; clock
           {section === "limits" && <LimitsCard data={data} />}
           {section === "automations" && <AutomationsSection data={data} clock={clock} automations={automations} />}
           {section === "people" && <PeopleCard data={data} />}
+          {section === "quality" && <AiQuality data={data.quality} />}
           {section === "activity" && (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
               <ChangesCard data={data} />
@@ -380,7 +385,7 @@ function ModelCard({ scope, title, description, current }: { scope: "chat" | "au
       icon={scope === "chat" ? MessageSquare : Clock}
       title={title}
       description={description}
-      end={<span className="text-xs text-muted whitespace-nowrap">{aiModel(current.model).label} · {AI_EFFORT_LABEL[current.effort as AiEffort] ?? current.effort}</span>}
+      end={<span className="text-xs text-muted whitespace-nowrap">{modelChoiceLabel(current.model)} · {AI_EFFORT_LABEL[current.effort as AiEffort] ?? current.effort}</span>}
     >
       <form
         onSubmit={(e) => {
@@ -391,6 +396,16 @@ function ModelCard({ scope, title, description, current }: { scope: "chat" | "au
         <fieldset>
           <legend className="filter-label mb-2">Model</legend>
           <div className="space-y-1.5">
+            {scope === "chat" && (
+              <label className={`option ${model === AI_AUTO_MODEL ? "option-on" : ""}`}>
+                <input type="radio" name={`model-${scope}`} value={AI_AUTO_MODEL} checked={model === AI_AUTO_MODEL} onChange={() => setModel(AI_AUTO_MODEL)} className="sr-only" />
+                <span className="option-radio" aria-hidden />
+                <span className="flex-1 min-w-0">
+                  <span className="text-sm font-bold flex items-center gap-1"><Sparkles size={13} aria-hidden /> Auto</span>
+                  <span className="block text-xs text-muted">Picks per question: Haiku for a quick look-up, Sonnet for a change, Opus for analysis, plans and files. A chat never steps down.</span>
+                </span>
+              </label>
+            )}
             {AI_MODELS.map((m) => (
               <label key={m.id} className={`option ${model === m.id ? "option-on" : ""}`}>
                 <input type="radio" name={`model-${scope}`} value={m.id} checked={model === m.id} onChange={() => setModel(m.id)} className="sr-only" />

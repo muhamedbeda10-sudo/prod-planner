@@ -5,7 +5,7 @@ import {
   automationsData, chatStatusFor, conversationsOf, inboxData, playbookData,
   type AiChatStatus, type AiConversationItem, type AutomationsData, type InboxItemView, type PlaybookRuleView,
 } from "@/lib/server/ai/panel";
-import { aiModel } from "@/lib/domain/ai";
+import { modelChoiceLabel } from "@/lib/domain/aiLearn";
 import type { InboxTab } from "@/lib/domain/inbox";
 import type { AiActionView } from "@/lib/domain/aiActions";
 
@@ -22,7 +22,7 @@ export async function loadAiChat(): Promise<Loaded<{ isOwner: boolean; model: st
   if (!me) return NOT_LOGGED_IN;
   const [chat, conversations] = await Promise.all([chatStatusFor(me), conversationsOf(me.id)]);
   if (!chat.visible) return CLOSED;
-  return { ok: true, isOwner: me.isOwner, model: aiModel(chat.model).label, status: chat.status, conversations };
+  return { ok: true, isOwner: me.isOwner, model: modelChoiceLabel(chat.model), status: chat.status, conversations };
 }
 
 export async function loadInbox(): Promise<Loaded<{ items: InboxItemView[]; actions: AiActionView[]; unread: Record<InboxTab, number> }>> {

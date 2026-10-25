@@ -2,10 +2,12 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, BookOpen, Bot, Clock, History, Maximize2, MessageSquare, Minimize2, Plus, Search, Settings, Trash2, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, Brain, Clock, History, Maximize2, MessageSquare, Minimize2, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { AiChat, GROUPS, groupOf, type ChatListApi } from "@/components/AiChat";
 import { AutomationsView } from "@/components/AutomationsView";
 import { PlaybookView } from "@/components/PlaybookView";
+import { MemoryDialog } from "@/components/AiFeedback";
+import type { AiFeedbackRating } from "@/lib/domain/aiLearn";
 import { EmptyState } from "@/components/primitives";
 import { loadAiChat, loadAutomations, loadPlaybook } from "@/app/ai/panel/actions";
 import { Loading, useTabData } from "@/components/useTabData";
@@ -35,7 +37,7 @@ export interface InitialChat {
   isOwner: boolean;
   status: Parameters<typeof AiChat>[0]["status"];
   conversations: Parameters<typeof AiChat>[0]["conversations"];
-  open: { id: number; turns: AiChatTurn[]; actions: AiActionView[] } | null;
+  open: { id: number; turns: AiChatTurn[]; actions: AiActionView[]; ratings?: Record<number, AiFeedbackRating> } | null;
 }
 
 /** One button of the head: an icon, its name as the tooltip, lit when its view is open. */
@@ -140,6 +142,7 @@ export function AiWorkspace({
   const [visited, setVisited] = useState<Set<AiView>>(() => new Set([view]));
   if (visible && !visited.has(view)) setVisited(new Set(visited).add(view));
 
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const back = () => onView("chat");
   const pickChat = (id: number) => {
     chat?.open(id);
@@ -154,6 +157,7 @@ export function AiWorkspace({
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-surface">
+      {memoryOpen && <MemoryDialog onClose={() => setMemoryOpen(false)} />}
       <header className="ai-pop-head">
         <span className="ai-pop-logo"><Bot size={18} aria-hidden /></span>
         <div className="min-w-0 flex-1">
@@ -164,6 +168,7 @@ export function AiWorkspace({
           {hasChat && <HeadBtn icon={Plus} label="New chat" onClick={newChat} disabled={!!chat?.busy} />}
           {hasChat && !large && <HeadBtn icon={History} label="Chats" on={view === "history"} onClick={() => onView(view === "history" ? "chat" : "history")} />}
           {hasChat && large && <HeadBtn icon={History} label="Chats" on={view === "chat"} onClick={() => onView("chat")} />}
+          {hasChat && <HeadBtn icon={Brain} label="What it remembers about you" on={memoryOpen} onClick={() => setMemoryOpen(true)} />}
           {tabs.includes("playbook") && <HeadBtn icon={BookOpen} label="Playbook" on={view === "playbook"} onClick={() => onView("playbook")} />}
           {tabs.includes("automations") && <HeadBtn icon={Clock} label="Automations" on={view === "automations"} onClick={() => onView("automations")} />}
           {isOwner && (

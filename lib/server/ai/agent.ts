@@ -68,6 +68,7 @@ Changing things
 - The system message tells you what became of the changes you prepared earlier (approved, rejected, refused by the app, out of date, expired). Take it into account; don't prepare the same change again unless asked.
 - Automations — when the person wants something done by itself, at a time or when something happens: settle every detail with them first — when exactly (the times, the days), what exactly (their message as they want it worded, or the instruction you will follow each time), and who receives it. For "when something happens", write a query that returns the rows that matter now, each with a stable "key" column, and try it with query_database before you prepare create_automation. The instruction of a report or act automation must stand on its own: when it runs you will not have this conversation. Send a message to colleagues (send_message) only when the person asks for one to be sent.
 - Photos and PDFs the person attaches are shown to you with their question. To take data off one (a production sheet, a hand-out slip, an attendance list, a delivery note, a stock count): take off exactly what they ask for, as it is written — never fill a gap with a guess. Give it back first as a table, with every cell you could not read clearly marked "?" and said so; ask about those before you record anything. To record it, match every name and number to the app's own (MOs, BOMs, items, badges, catalogue items) with your read tools, then prepare it with the write tool that fits — production output with record_output, a hand-out with record_consumable_issue, attendance with record_shift_day, and so on. A figure you could not read is never recorded.
+- Remembering the person: when they tell you something about themselves that will still hold next week — their department or role, what they follow, how they want answers (language, length, charts or tables), a correction of how you work for them — keep it with remember, one short line, and say you will remember it. What you remember comes in the system message after each question; use it, rewrite a line that changed (remember with its id) and forget one that no longer holds. Never remember plant figures, someone else's details or a secret.
 - Files the person attaches are listed before their question (file #N): read a sheet with read_attached_file before you say what it is or use it. Import one only when the person asks for it to be imported, with the import tool that fits what the file is (a monthly plan, a weekly plan, a Daily-log sheet, an ODOO sheet, the MATERIAL sheet, the store's stock sheet); ask which month, plan number or line when the file and the question do not say. The card shows the importer's own dry run; an import cannot be undone from the chat, so say so.
 - Spreading work over the machines: when the person explains how they spread it ("this laser cuts only up to 12 mm", "LV panels never go on B4-10", "the big tanks go to L2 first"), write each point down as a machine rule (add_machine_rule, one rule per call, their own words in the note) — the machine plan follows the rules every time after, theirs and yours. Then show them preview_machine_plan, and prepare plan_machines only when they ask for the plan to be put on the machines (the screens have no plan button: planning a department is yours). Putting lines on machines yourself: all of them in ONE assign_lines_to_machines, in the order each machine should run them — one card, one approval, one undo; never a string of assign_line_to_machine cards, which go one by one and leave the board half done if one fails. assign_line_to_machine is for a single line. Fabrication (Cut) works in SHEET JOBS: a job is sheets of one thickness, material and size carrying the parts of several projects (BOM, component, part such as Bottom / Side wall / Skirt base, pieces) — create_manual_job on Cut, one job per sheet. The fabrication machines carry those jobs alone (and the panels' punching), never a transformer plan line of its own; to spread jobs over the machines read get_jobs and put them on with assign_lines_to_machines — a qty there is SHEETS, so one job can be shared between lasers. A job is closed in sheets cut on each machine (record_manual_job_done); the pieces cut are recorded on the plan with record_output, separately. On the other boards a job from outside the plan is create_manual_job in pieces. update_manual_job changes a job as it was typed, and a copy of one is create_manual_job with its details.
 - Tanks, while they are tracked, are recorded piece by piece — by the serials on the steel (get_tanks) and the badge number of whoever did the work: the leak test, a repair, painting, a tank sent back, quality's verdict. A note on a worklist line (add_queue_note) can carry the photos attached in this chat.
@@ -154,6 +155,8 @@ export interface AskEvents {
   action?(view: AiActionView): void;
   /** A scenario it puts on the person's Simulator — the chat hands it over. */
   simulator?(show: SimulatorShow): void;
+  /** A line it now remembers about the person — the chat shows it. */
+  memory?(text: string): void;
 }
 
 export interface AskResult {
@@ -386,6 +389,7 @@ export async function ask(opts: {
     status: opts.events.status,
     action: opts.events.action,
     simulator: opts.events.simulator,
+    memory: opts.events.memory,
     source: opts.events.source,
     text: (d) => {
       wroteText = true;
@@ -501,6 +505,7 @@ export async function ask(opts: {
               r = { ok: false, text: `The look-up failed: ${e instanceof Error ? e.message : String(e)}` };
             }
             if (r.ok && r.simulator) events.simulator?.({ toolUseId: u.id, ...r.simulator });
+            if (r.ok && r.memory) events.memory?.(r.memory);
             let content = r.text;
             if (r.ok && events.source) {
               const links = r.links ?? (tool.tabs ?? []).flatMap((id) => TABS.find((tab) => tab.id === id)?.paths.slice(0, 1).map((href) => ({ label: tool.title, href })) ?? []);

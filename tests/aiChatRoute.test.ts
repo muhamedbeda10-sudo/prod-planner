@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   reserve: vi.fn(), ask: vi.fn(), messages: vi.fn(), link: vi.fn(), usage: vi.fn(), transaction: vi.fn(),
-  message: vi.fn(), update: vi.fn(), outcomes: vi.fn(), hidden: new Set<string>(),
+  message: vi.fn(), update: vi.fn(), outcomes: vi.fn(), hidden: new Set<string>(), model: "claude-opus-5-5",
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: {
@@ -9,7 +9,8 @@ vi.mock("@/lib/db", () => ({ prisma: {
 } }));
 vi.mock("@/lib/server/auth", () => ({ getCurrentUser: async () => ({ id: 1, name: "Sara" }), hasPerm: () => false, hiddenTabsOf: () => h.hidden }));
 vi.mock("@/lib/server/line", () => ({ getActiveLine: async () => "LV" }));
-vi.mock("@/lib/server/ai/access", () => ({ aiStatusFor: async () => ({ ok: true }), apiKeyOf: () => "test", getAiSettings: async () => ({ model: "claude-opus-5-5", actionsPaused: false }) }));
+vi.mock("@/lib/server/ai/access", () => ({ aiStatusFor: async () => ({ ok: true }), apiKeyOf: () => "test", getAiSettings: async () => ({ model: h.model, actionsPaused: false }) }));
+vi.mock("@/lib/server/ai/memory", () => ({ memoriesOf: async () => [{ id: 7, text: "Works in Welding" }] }));
 vi.mock("@/lib/server/ai/chatReservation", () => ({ reserveChatTurn: h.reserve }));
 vi.mock("@/lib/server/ai/agent", () => ({ ask: h.ask, questionMessages: h.messages }));
 vi.mock("@/lib/server/ai/changes", () => ({ markOutcomesTold: h.outcomes, pendingOutcomes: async () => ({ ids: [], notes: [] }) }));
@@ -21,6 +22,7 @@ import { POST } from "@/app/api/ai/chat/route";
 beforeEach(() => {
   vi.resetAllMocks();
   h.hidden.clear();
+  h.model = "claude-opus-5-5";
   vi.spyOn(console, "error").mockImplementation(() => {});
   h.reserve.mockResolvedValue({ conversation: { id: 4, title: "Chat", model: "claude-opus-5-5" }, usage: { id: 5 } });
   h.messages.mockReturnValue([]);
@@ -45,6 +47,19 @@ describe("the AI chat route", () => {
     expect(h.messages.mock.calls[0][1]).toContain("LV panels");
     expect(h.messages.mock.calls[0][4]).toEqual({ path: "/tracker", filters: { month: "October 2026" } });
     expect(h.transaction).toHaveBeenCalledTimes(1);
+  });
+  it("hands the assistant what it remembers about the person", async () => {
+    await events(await POST(request()));
+    expect(h.messages.mock.calls[0][1]).toContain("- [7] Works in Welding");
+  });
+  it("on Auto, picks the model the question needs and steps the chat up to it", async () => {
+    h.model = "auto";
+    h.update.mockResolvedValue({ id: 4, title: "Chat", model: "claude-haiku-5-5" });
+    h.reserve.mockResolvedValue({ conversation: { id: 4, title: "Chat", model: "claude-opus-5-5" }, usage: { id: 5 } });
+    await events(await POST(request()));
+    // a short look-up on a new chat: the cheapest model
+    expect(h.reserve.mock.calls[0][0].model).toBe("claude-haiku-5-5");
+    expect(h.update).toHaveBeenCalledWith({ where: { id: 4 }, data: { model: "claude-haiku-5-5" } });
   });
   it("does not forward a hidden screen's context", async () => {
     h.hidden.add("tracker");

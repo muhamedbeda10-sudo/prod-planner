@@ -16,6 +16,8 @@ import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiAct
 import { simulatorOnScreen } from "@/lib/domain/simulatorScreen";
 import { factoryDayISO } from "@/lib/domain/dates";
 import type { ScreenState } from "@/lib/server/ai/tools/types";
+import { AI_AUTO_MODEL, memoryNote, routeModel } from "@/lib/domain/aiLearn";
+import { memoriesOf } from "@/lib/server/ai/memory";
 
 // One question to the AI assistant, answered as a stream of JSON lines:
 //   {type:"start", conversationId, title}
@@ -83,9 +85,17 @@ export async function POST(request: Request) {
   const files = await questionFiles(user.id, fileIds, existing?.id ?? null);
   if (!files.ok) return fail(400, files.error);
 
-  const reservation = await reserveChatTurn({ userId: user.id, question, model: settings.model, existing, now: new Date(), runningWindowMs: (maxDuration + 30) * 1000 });
+  // "Auto": the model this question needs — never weaker than the chat's own
+  const model = settings.model === AI_AUTO_MODEL ? routeModel(question, { files: files.files.length, current: existing?.model }) : settings.model;
+  const reservation = await reserveChatTurn({ userId: user.id, question, model, existing, now: new Date(), runningWindowMs: (maxDuration + 30) * 1000 });
   if (!reservation) return fail(429, "One question at a time — wait for the answer, then ask again.");
-  const { conversation, usage } = reservation;
+  const { usage } = reservation;
+  let { conversation } = reservation;
+  if (settings.model === AI_AUTO_MODEL && conversation.model !== model) {
+    // stepped up to a stronger model: the chat goes on with it
+    conversation = await prisma.aiConversation.update({ where: { id: conversation.id }, data: { model } });
+    await prisma.aiUsage.update({ where: { id: usage.id }, data: { model } });
+  }
   try {
     await linkFiles(user.id, fileIds, conversation.id);
     // logged before the first call, finished after the last — what the caps
@@ -99,7 +109,7 @@ export async function POST(request: Request) {
     const line = await getActiveLine();
     const tools = toolsFor(user, { hidden, actionsPaused: settings.actionsPaused });
     const areas = [...new Set(tools.flatMap((t) => (t.kind === "write" ? [t.area] : [])))] as AiArea[];
-    const [outcomes, playbook] = await Promise.all([existing ? pendingOutcomes(conversation.id) : { ids: [], notes: [] }, getPlaybookText()]);
+    const [outcomes, playbook, memories] = await Promise.all([existing ? pendingOutcomes(conversation.id) : { ids: [], notes: [] }, getPlaybookText(), memoriesOf(user.id)]);
     // the Simulator open beside the chat — its scenario as this browser has it
     // (read against today's jobs only where a tool starts from it)
     const onScreen = hidden.has("simulate") ? null : simulatorOnScreen(body.screen);
@@ -114,6 +124,7 @@ export async function POST(request: Request) {
       notes: outcomes.notes,
       simulatorOpen: onScreen !== null,
       line,
+      memory: memoryNote(memories),
     });
 
     const enc = new TextEncoder();
@@ -155,6 +166,7 @@ export async function POST(request: Request) {
             text: (delta) => send({ type: "text", delta }),
             action: (action) => send({ type: "action", action }),
             simulator: (show) => send({ type: "simulator", show }),
+            memory: (text) => send({ type: "memory", text }),
           },
         }).catch(async () => {
           const error = "The answer could not finish. Reopen the chat and check any change cards before trying again.";

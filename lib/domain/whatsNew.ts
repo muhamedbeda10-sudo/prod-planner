@@ -16,6 +16,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-ai-learns-memory-feedback-checks",
+    dateISO: "2026-10-26",
+    title: "The assistant learns: it remembers you, takes 👍 / 👎, and picks its model per question",
+    where: "AI assistant · AI settings → Quality, Models",
+    body: "Tell the assistant about your work and how you like your answers (“I follow Welding”, “answer in Arabic, with a chart”) and it remembers it in every chat — the brain button at the top shows what it remembers, to correct or delete. Under each answer, 👍 or 👎: a thumbs-down asks what was wrong, and the owner turns it into a playbook rule or a quality check in two clicks on AI settings → Quality. Quality checks are real questions with what a right answer must say; run them after changing the model or the playbook, and a cheap model grades each answer. On Models, the chat can now be set to Auto: Haiku for a quick look-up, Sonnet for a change, Opus for analysis, plans and files — cheaper, with the strong model where it counts.",
+  },
+  {
     id: "2026-10-25-odoo-recording-start-six-september",
     dateISO: "2026-10-25",
     title: "Odoo recording starts on 6 September 2026",

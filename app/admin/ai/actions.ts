@@ -13,6 +13,9 @@ import { encryptSecret } from "@/lib/server/ai/secret";
 import { testReader } from "@/lib/server/ai/reader";
 import { apiErrorText } from "@/lib/server/ai/agent";
 import { removeScheduler, setupScheduler, tickUrlFor } from "@/lib/server/automations/scheduler";
+import { AI_AUTO_MODEL, AI_CHECK_LIMITS, checkAiCheck } from "@/lib/domain/aiLearn";
+import { savePlaybookEntry } from "@/lib/server/ai/playbook";
+import { runCheck, type CheckRun } from "@/lib/server/ai/checks";
 
 // The AI assistant's settings — the owner's alone, like Users & Permissions:
 // the Claude API key, who may use it and how much of the month's spend.
@@ -103,14 +106,17 @@ export async function setAiModel(fd: FormData): Promise<AiActionResult> {
   const id = String(fd.get("model") ?? "");
   const effort = fd.get("effort");
   if (scope !== "chat" && scope !== "auto") return { ok: false, error: "Unknown setting." };
-  if (!AI_MODELS.some((m) => m.id === id)) return { ok: false, error: "Unknown model." };
+  // "Auto" picks the model per question — the chat's alone: an automation's
+  // instruction is the same every run, so it keeps one model
+  const auto = scope === "chat" && id === AI_AUTO_MODEL;
+  if (!auto && !AI_MODELS.some((m) => m.id === id)) return { ok: false, error: "Unknown model." };
   if (!isAiEffort(effort)) return { ok: false, error: "Unknown effort." };
   await getAiSettings();
   await prisma.aiSettings.update({
     where: { id: 1 },
     data: { ...(scope === "chat" ? { model: id, effort } : { autoModel: id, autoEffort: effort }), updatedBy: g.user!.name },
   });
-  return done(`${scope === "chat" ? "Chat" : "Automations"}: ${aiModel(id).label}, ${AI_EFFORT_LABEL[effort]} effort.`);
+  return done(`${scope === "chat" ? "Chat" : "Automations"}: ${auto ? "Auto" : aiModel(id).label}, ${AI_EFFORT_LABEL[effort]} effort.`);
 }
 
 function usdOf(v: FormDataEntryValue | null): number | null {
@@ -240,4 +246,99 @@ export async function removeAutomationClock(): Promise<AiActionResult> {
   const r = await removeScheduler();
   if (!r.ok) return { ok: false, error: r.error };
   return done("Removed — automations now run only while the app is open somewhere.");
+}
+
+// ---- Quality: what people thought of the answers, and the quality checks ----
+
+/** A Quality change touches only this page — not the bar's AI button. */
+function qualityDone(message?: string): AiActionResult {
+  revalidatePath("/admin/ai");
+  return { ok: true, message };
+}
+
+const idOf = (v: FormDataEntryValue | null) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+
+/** A thumbs-down read and dealt with (or a thumbs-up noted). */
+export async function setFeedbackDone(id: number, isDone: boolean): Promise<AiActionResult> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Which note?" };
+  await prisma.aiFeedback.updateMany({ where: { id }, data: { status: isDone ? "done" : "new" } });
+  return qualityDone();
+}
+
+/** A correction kept as a playbook rule — given to the assistant with every
+ *  question from now on, for everyone. */
+export async function feedbackToRule(fd: FormData): Promise<AiActionResult> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  const id = idOf(fd.get("id"));
+  if (!id) return { ok: false, error: "Which note?" };
+  const r = await savePlaybookEntry(null, { topic: String(fd.get("topic") ?? "general"), title: String(fd.get("title") ?? ""), body: String(fd.get("body") ?? "") }, g.user!.name);
+  if (!r.ok) return { ok: false, error: r.error };
+  await prisma.aiFeedback.updateMany({ where: { id }, data: { status: "done" } });
+  revalidatePath("/ai/playbook");
+  return qualityDone(`Rule #${r.entry.id} is in the playbook.`);
+}
+
+/** Add a quality check, or rewrite one (id); from a note, the note is dealt with. */
+export async function saveAiCheck(fd: FormData): Promise<AiActionResult> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  const clean = checkAiCheck({ question: fd.get("question"), expect: fd.get("expect"), referenceSql: fd.get("referenceSql") });
+  if ("error" in clean) return { ok: false, error: clean.error };
+  const id = idOf(fd.get("id"));
+  const fromFeedback = idOf(fd.get("feedbackId"));
+  const error = await prisma.$transaction(async (tx) => {
+    if (id) {
+      const r = await tx.aiCheck.updateMany({ where: { id }, data: clean });
+      if (r.count === 0) return "That check is not there any more.";
+    } else {
+      // one owner, one page: the lock keeps two quick clicks from passing the limit
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(1095320393::int)`;
+      if ((await tx.aiCheck.count()) >= AI_CHECK_LIMITS.count) return `Keep at most ${AI_CHECK_LIMITS.count} checks — delete one first.`;
+      await tx.aiCheck.create({ data: { ...clean, createdBy: g.user!.name } });
+    }
+    if (fromFeedback) await tx.aiFeedback.updateMany({ where: { id: fromFeedback }, data: { status: "done" } });
+    return null;
+  });
+  if (error) return { ok: false, error };
+  return qualityDone(id ? "Check saved." : "Check added.");
+}
+
+export async function setAiCheckActive(id: number, active: boolean): Promise<AiActionResult> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Which check?" };
+  await prisma.aiCheck.updateMany({ where: { id }, data: { active } });
+  return qualityDone();
+}
+
+export async function deleteAiCheck(id: number): Promise<AiActionResult> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Which check?" };
+  await prisma.aiCheck.deleteMany({ where: { id } });
+  return qualityDone("Check deleted.");
+}
+
+/** Run one check now — the page runs them one after another, so each stays
+ *  inside the request's time limit. */
+export async function runAiCheck(id: number): Promise<CheckRun> {
+  const g = await requireOwner();
+  if (g.error) return { ok: false, error: g.error };
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "Which check?" };
+  const check = await prisma.aiCheck.findUnique({ where: { id } });
+  if (!check) return { ok: false, error: "That check is not there any more." };
+  try {
+    const r = await runCheck(check, g.user!);
+    revalidatePath("/admin/ai");
+    return r;
+  } catch (e) {
+    console.error("AI: a quality check failed", e);
+    return { ok: false, error: apiErrorText(e) };
+  }
 }
