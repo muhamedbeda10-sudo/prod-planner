@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boardTakesLine, buildMachineBoard, clearWords, lineKey, loadTone, unassignedKey, urgencyOrder, type BoardLine, type BoardMachine } from "./machineBoard";
+import { boardTakesLine, buildMachineBoard, clearWords, lineKey, loadTone, mergeQueueAndPushed, unassignedKey, urgencyOrder, type BoardLine, type BoardMachine } from "./machineBoard";
 
 const m = (id: number, over: Partial<BoardMachine> = {}): BoardMachine => ({ id, code: `B4-${id}`, name: `Laser ${id}`, center: "Cutting", hoursPerDay: 9, active: true, ...over });
 const l = (bom: string, item: string, remaining: number, hours: number | null, deliveryISO: string | null = "2026-09-12", mo = "MO-1"): BoardLine => ({
@@ -283,5 +283,41 @@ describe("boardTakesLine — what a department's machines carry", () => {
       expect(boardTakesLine(dept, "B1", "TN")).toBe(true);
       expect(boardTakesLine(dept, "MANUAL", "JOB")).toBe(true);
     }
+  });
+});
+
+describe("mergeQueueAndPushed — a pushed line already in the queue is one line, not two", () => {
+  const queue = [{ bom: "A", mo: "MO-1", item: "TN", description: "", remaining: 10, deliveryISO: "2026-09-12", dueISO: "2026-09-11" }];
+  const pushed = [
+    { bom: "A", mo: "MO-1", item: "TN", description: "", remaining: 10, deliveryISO: null }, // the same open pieces, pushed from the tracker
+    { bom: "B", mo: "MO-2", item: "CB", description: "", remaining: 4, deliveryISO: null }, // pushed, nothing cut yet — not in the queue
+  ];
+
+  it("keeps the queue row (it carries the dates) and adds only the pushed lines the queue lacks", () => {
+    const merged = mergeQueueAndPushed(queue, pushed);
+    expect(merged.map((l) => [l.bom, l.remaining, l.deliveryISO])).toEqual([["A", 10, "2026-09-12"], ["B", 4, null]]);
+  });
+
+  it("the board then counts the pieces and hours once, and the load is not doubled", () => {
+    const price = (x: { bom: string; mo: string; item: string; description: string; remaining: number; deliveryISO: string | null }): BoardLine =>
+      ({ key: lineKey(x.bom, x.mo, x.item), ...x, hours: x.remaining, route: [{ center: "Cutting", hours: x.remaining }] });
+    const assignments = [{ key: lineKey("A", "MO-1", "TN"), machineId: 1, rank: 1 }];
+    const doubled = buildMachineBoard([m(1, { hoursPerDay: 8 })], [...queue, ...pushed].map(price), assignments);
+    expect(doubled.cards[0].queue[0].remaining).toBe(20); // what the pages used to hand the board
+    const once = buildMachineBoard([m(1, { hoursPerDay: 8 })], mergeQueueAndPushed(queue, pushed).map(price), assignments);
+    expect(once.cards[0].queue).toHaveLength(1);
+    expect(once.cards[0].queue[0]).toMatchObject({ remaining: 10, lineRemaining: 10, hours: 10, deliveryISO: "2026-09-12" });
+    expect(once.cards[0].load).toBe(1.25);
+    // the pushed-only line still waits for a machine
+    expect(once.unassigned.map((u) => [u.bom, u.remaining])).toEqual([["B", 4]]);
+  });
+
+  it("takes the larger quantity when the push owes more than the stage before has handed over", () => {
+    // 10 pushed, 2 cut and both welded today: the queue row is 0, the push still owes 8
+    const q = [{ ...queue[0], remaining: 0 }];
+    const p = [{ ...pushed[0], remaining: 8 }];
+    expect(mergeQueueAndPushed(q, p).map((l) => [l.bom, l.remaining, l.deliveryISO])).toEqual([["A", 8, "2026-09-12"]]);
+    // and the other way round: the queue holds more than the push owes
+    expect(mergeQueueAndPushed([{ ...queue[0], remaining: 6 }], [{ ...pushed[0], remaining: 2 }])[0].remaining).toBe(6);
   });
 });

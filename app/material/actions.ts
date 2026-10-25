@@ -8,6 +8,7 @@ import { getActiveLine } from "@/lib/server/line";
 import { MANUAL_SORT, importNestingTracker, type MaterialImportResult } from "@/lib/server/material";
 import { normalizeMaterialType, normalizeSheetSize, parseSheetNumber, partNameFor, rateIsTyped } from "@/lib/domain/material";
 import { monthLabelFromInput } from "@/lib/domain/dates";
+import { isUniqueViolation, userMessage } from "@/lib/server/errors";
 
 // The MATERIAL tab's writes. The tab is one living table — no month: every
 // line is keyed on its MO × BOM × part × material × thickness × sheet size
@@ -234,7 +235,7 @@ export async function updateMaterialGroup(formData: FormData): Promise<MaterialA
     if (res.count === 0) return { ok: false, error: "Those material lines are gone — refresh the page." };
   } catch (e) {
     // a new MO / BOM can collide with a line already recorded under it
-    if ((e as { code?: string }).code === "P2002") return { ok: false, error: "A line with the same part, material, thickness and size is already on that MO / BOM — edit or delete it first." };
+    if (isUniqueViolation(e)) return { ok: false, error: "A line with the same part, material, thickness and size is already on that MO / BOM — edit or delete it first." };
     throw e;
   }
   revalidateMaterial();
@@ -276,7 +277,7 @@ export async function importMaterialAction(formData: FormData): Promise<Material
     if (res.ok && !preview) revalidateMaterial();
     return res;
   } catch (e) {
-    return { ok: false, error: `Import failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "import the sheet") };
   }
 }
 

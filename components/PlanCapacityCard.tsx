@@ -9,6 +9,8 @@ const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-US");
 
 function loadTone(load: number | null): { bg: string; fg: string; label: string } {
   if (load === null) return { bg: "var(--surface-2)", fg: "var(--muted)", label: "no capacity set" };
+  // 0 h/day with hours owed: over capacity, not a percentage
+  if (!Number.isFinite(load)) return { bg: "var(--bad-bg)", fg: "var(--bad-fg)", label: "no hours — over capacity" };
   const pct = `${Math.round(load * 100)}%`;
   if (load > 1) return { bg: "var(--bad-bg)", fg: "var(--bad-fg)", label: pct };
   if (load > 0.9) return { bg: "var(--warn-bg)", fg: "var(--warn-fg)", label: pct };

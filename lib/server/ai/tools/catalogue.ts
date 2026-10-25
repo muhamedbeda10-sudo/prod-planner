@@ -50,7 +50,7 @@ const DEPARTMENTS = {
 export async function readLimitDepartments(list: readonly string[]): Promise<{ departments: string } | { error: string }> {
   const folded = list.map((d) => d.trim().replace(/\s+/g, " ").toLowerCase());
   if (folded.some((d) => d === "*" || d === "all" || d === "all departments")) return { departments: ALL_DEPARTMENTS };
-  const [custom, limits] = await Promise.all([getCustomDepartments(), prisma.consumableLimit.findMany({ select: { departments: true }, distinct: ["departments"] })]);
+  const [custom, limits] = await Promise.all([getCustomDepartments(), prisma.consumableLimit.groupBy({ by: ["departments"] })]);
   const known = new Set([...custom, ...limits.flatMap((l) => { const d = parseDepartments(l.departments); return d === ALL_DEPARTMENTS ? [] : d; }).filter((d) => !isWorkerSection(d))]);
   const keys: string[] = [];
   for (const [n, d] of list.entries()) {

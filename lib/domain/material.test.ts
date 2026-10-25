@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetsForJob, sheetsDifference,
+  normalizeMaterialType, normalizeSheetSize, parseSheetNumber, sheetNumberOr, sheetsForJob, sheetsDifference,
   actualPerUnit, rateIsTyped, sheetsForProduced, summarizeMaterial, parseNestingTracker, materialKey, round3, partNameFor,
   filterMaterialLines, EMPTY_MATERIAL_FILTERS, groupMaterialBySoi,
   type MaterialLineView,
@@ -45,6 +45,27 @@ describe("parseSheetNumber", () => {
     expect(parseSheetNumber(" ")).toBeNull();
     expect(parseSheetNumber("#VALUE!")).toBeNull();
     expect(parseSheetNumber(NaN)).toBeNull();
+  });
+});
+
+describe("sheetNumberOr", () => {
+  it("is parseSheetNumber where that reads a number", () => {
+    expect(sheetNumberOr(0.429)).toBe(0.429);
+    expect(sheetNumberOr("1,220")).toBe(1220);
+    expect(sheetNumberOr(" 7 ")).toBe(7);
+    expect(sheetNumberOr(0, 5)).toBe(0); // a real zero is not the fallback
+  });
+  it("reads a figure with a note beside it as the number it starts with", () => {
+    expect(sheetNumberOr("60 (urgent)")).toBe(60);
+    expect(sheetNumberOr("1,200 pcs")).toBe(1200);
+    expect(sheetNumberOr("5 (rework)", NaN)).toBe(5);
+  });
+  it("is the fallback for blanks, text and Excel errors — 0 unless told otherwise", () => {
+    for (const v of [null, undefined, "", " ", "-", "#VALUE!", "abc", NaN, Infinity, "Infinity"]) {
+      expect(sheetNumberOr(v)).toBe(0);
+      expect(sheetNumberOr(v, NaN)).toBeNaN();
+      expect(sheetNumberOr(v, -1)).toBe(-1);
+    }
   });
 });
 
@@ -197,9 +218,10 @@ describe("parseNestingTracker", () => {
       ["10017E11M11", 22, "Steel", 5, "1220*2440", 1.243, 27.346, 17, 10.346, null],
       ["10017E11M11", 22, "Stainless steal", 5, "1220*2440", 0.3034, 6.6748, 5, 1.6748, "check"],
     ];
-    const { rows, issues, headerRow } = parseNestingTracker(grid);
+    const { rows, issues, headerRow, skipped } = parseNestingTracker(grid);
     expect(headerRow).toBe(2);
     expect(issues).toEqual([]);
+    expect(skipped).toBe(0);
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ bom: "10017E11M11", units: 22, material: "Steel", thicknessMm: 5, sheetSize: "1220*2440", sheetsPerUnit: 1.243, sheetsUsed: 17, note: null, partCode: "", partName: "", materialCode: "" });
     expect(rows[1]).toMatchObject({ material: "Stainless steel", note: "check" });
@@ -253,9 +275,10 @@ describe("parseNestingTracker", () => {
       ["14003E14M15", 3, "FB-022", "TANK", "T-SSS-5MM", "Stainless Steel", 5, "1220*2440", 0.0547, 0.1641, null, null, null, null],
       ["14003E14M15", 3, "FB-022", "TANK", "T-SSS-5MM", "Stainless Steel", 5, "1220*2440", 0.054, 0.162, null, null, null, null],
     ];
-    const { rows, issues } = parseNestingTracker(grid);
+    const { rows, issues, skipped } = parseNestingTracker(grid);
     expect(rows).toHaveLength(2);
     expect(issues).toEqual([expect.stringMatching(/^Row 3 .* repeats row 2/)]);
+    expect(skipped).toBe(0); // a repeat is read, not skipped
   });
   it("falls back to the job column on a sheet that has no per-unit rate", () => {
     const { rows, recomputed } = parseNestingTracker([HEADER, ["10017E11M11", 22, "Steel", 5, "1220*2440", 1.243, 27.346, 17, 10.346, null]]);
@@ -272,9 +295,10 @@ describe("parseNestingTracker", () => {
   });
   it("skips the blank template rows the tracker is padded with", () => {
     const grid: unknown[][] = [HEADER, [null, null, null, null, null, null, "=IF(...)", null, "=IF(...)", null]];
-    const { rows, issues } = parseNestingTracker(grid);
+    const { rows, issues, skipped } = parseNestingTracker(grid);
     expect(rows).toEqual([]);
     expect(issues).toContain("No material rows found under the header.");
+    expect(skipped).toBe(0); // template rows carry no BOM — not data rows
   });
   it("leaves the actual nesting empty when the sheet has none", () => {
     const { rows } = parseNestingTracker([HEADER, ["81004E12M11", 3, "Steel", 3, "1220*2440", 0.429, 1.287, null, null, null]]);
@@ -286,9 +310,25 @@ describe("parseNestingTracker", () => {
       ["40013E11M11", 90, "Steel", 5, "1220*2440", " ", " ", 90, "#VALUE!", null],
       ["40013E11M11", 90, "Steel", 4, "1220*2440", 0.568, 51.12, 51, 0.12, null],
     ];
-    const { rows, issues } = parseNestingTracker(grid);
+    const { rows, issues, skipped } = parseNestingTracker(grid);
     expect(rows).toHaveLength(1);
     expect(issues[0]).toMatch(/Row 2 \(40013E11M11\): sheets per unit/);
+    expect(skipped).toBe(1);
+  });
+  it("counts every row it had to leave out, whatever the reason", () => {
+    const grid: unknown[][] = [
+      HEADER,
+      ["B1", 1, null, 5, "1220*2440", 0.5, 0.5, null, null, null], // no material
+      ["B2", 1, "Steel", "#VALUE!", "1220*2440", 0.5, 0.5, null, null, null], // no thickness
+      ["B3", 1, "Steel", 5, null, 0.5, 0.5, null, null, null], // no size
+      ["B4", 1, "Steel", 5, "1220*2440", null, null, null, null, null], // no sheets per unit
+      ["B5", null, "Steel", 5, "1220*2440", 0.5, null, null, null, null], // no units
+      ["B6", 2, "Steel", 5, "1220*2440", 0.5, 1, null, null, null], // read
+    ];
+    const { rows, issues, skipped } = parseNestingTracker(grid);
+    expect(rows.map((r) => r.bom)).toEqual(["B6"]);
+    expect(skipped).toBe(5);
+    expect(issues).toHaveLength(5);
   });
   it("finds the columns wherever the planner moved them", () => {
     const grid: unknown[][] = [
@@ -300,9 +340,10 @@ describe("parseNestingTracker", () => {
     expect(rows[0]).toMatchObject({ bom: "12005E14M13", thicknessMm: 8, sheetSize: "1500*3000", material: "Steel", sheetsPerUnit: 0.015, units: 65, note: "re-nest", sheetsUsed: null });
   });
   it("says so when the file is not a nesting tracker at all", () => {
-    const { rows, issues } = parseNestingTracker([["Plan No", "MO", "Qty"], [1, "MO-1", 5]]);
+    const { rows, issues, skipped } = parseNestingTracker([["Plan No", "MO", "Qty"], [1, "MO-1", 5]]);
     expect(rows).toEqual([]);
     expect(issues[0]).toMatch(/No header row found/);
+    expect(skipped).toBe(0);
   });
 });
 

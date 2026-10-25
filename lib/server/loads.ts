@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getActiveLine, ledgerItemWhere } from "./line";
 import type { ProductLine } from "@/lib/domain/lines";
@@ -26,10 +27,20 @@ export async function loadMasterOrders() {
   return loadMasterOrdersOf(await getActiveLine());
 }
 
+// What the daily screens read off a ledger row: the key it is counted under
+// (plan, department, project, order, component), the quantity and the day.
+// The audit columns (note, source, machine, who logged it) never reach the
+// queue maths, and the ledger is the largest table the request touches, so
+// they stay on the server.
+const LEDGER_SELECT = { planNo: true, dept: true, bom: true, mo: true, item: true, qty: true, date: true } satisfies Prisma.HandoverEntrySelect;
+export type LedgerRow = Prisma.HandoverEntryGetPayload<{ select: typeof LEDGER_SELECT }>;
+
 /** The daily log of ONE product line — the ledger carries no line, so a
  *  panel's rows are the ones under its item code and a transformer's are
  *  every other. Memoised per line. */
-export const loadAllHandoverOf = cache(async (line: ProductLine) => prisma.handoverEntry.findMany({ where: ledgerItemWhere(line) }));
+export const loadAllHandoverOf = cache(
+  async (line: ProductLine): Promise<LedgerRow[]> => prisma.handoverEntry.findMany({ where: ledgerItemWhere(line), select: LEDGER_SELECT }),
+);
 
 /** Every schedule line of every weekly plan, in import order. */
 export const loadAllSchedules = cache(async () => prisma.planSchedule.findMany({ orderBy: { id: "asc" } }));

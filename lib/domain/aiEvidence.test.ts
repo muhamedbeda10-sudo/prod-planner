@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { displayTurns } from "./ai";
-import { evidenceFromContent, isAiEvidence, isEvidenceAnchor, readEvidence } from "./aiEvidence";
+import { evidenceFromContent, isAiEvidence, isEvidenceAnchor, readEvidence, safeHref } from "./aiEvidence";
 
 const at = "2026-10-24T08:00:00Z";
 describe("saved answer evidence", () => {
@@ -37,5 +37,11 @@ describe("saved answer evidence", () => {
     expect(evidenceFromContent(content.replace(at, "invalid"), "tool_3")).toBeNull();
     expect(isEvidenceAnchor("#ai-source-tool_3")).toBe(true);
     expect(isEvidenceAnchor("#ai-source-<script>")).toBe(false);
+  });
+  it("safeHref is the one rule for a link the assistant may render — in-app paths only", () => {
+    expect(safeHref("/tracker?view=monthly#row-3")).toBe(true);
+    for (const bad of ["//evil.test", "https://evil.test", "javascript:alert(1)", "/\\evil", "/trace\n", "/a\u0000b", "tracker", "", "/" + "x".repeat(500)]) {
+      expect(safeHref(bad), JSON.stringify(bad)).toBe(false);
+    }
   });
 });

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { CENTERS, isShiftDept } from "@/lib/domain/shifts";
+import { isUniqueViolation, userMessage } from "@/lib/server/errors";
 
 // The machines list: every laser, punch, press, line and cabinet the shift
 // log and the worklists can name. Retiring is the way to take one out of
@@ -50,7 +51,14 @@ export async function createMachine(formData: FormData): Promise<MachineActionRe
   const bad = validate(f);
   if (bad) return { ok: false, error: bad };
   if (await prisma.machine.findUnique({ where: { code: f.code } })) return { ok: false, error: `Code ${f.code} is already taken.` };
-  await prisma.machine.create({ data: f });
+  try {
+    await prisma.machine.create({ data: f });
+  } catch (e) {
+    // two saves that both passed the code check at once: the second hits the
+    // unique index and gets the same sentence the check gives
+    if (isUniqueViolation(e)) return { ok: false, error: `Code ${f.code} is already taken.` };
+    return { ok: false, error: userMessage(e, "add the machine") };
+  }
   revalidate();
   return { ok: true };
 }
@@ -65,7 +73,12 @@ export async function updateMachine(formData: FormData): Promise<MachineActionRe
   if (bad) return { ok: false, error: bad };
   const clash = await prisma.machine.findUnique({ where: { code: f.code } });
   if (clash && clash.id !== id) return { ok: false, error: `Code ${f.code} is already taken.` };
-  await prisma.machine.update({ where: { id }, data: f });
+  try {
+    await prisma.machine.update({ where: { id }, data: f });
+  } catch (e) {
+    if (isUniqueViolation(e)) return { ok: false, error: `Code ${f.code} is already taken.` };
+    return { ok: false, error: userMessage(e, "save the machine") };
+  }
   revalidate();
   return { ok: true };
 }
@@ -91,13 +104,21 @@ export async function deleteMachine(formData: FormData): Promise<MachineActionRe
   if (guard.error) return { ok: false, error: guard.error };
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return { ok: false, error: "Invalid machine." };
-  const [shifts, downs, output] = await Promise.all([
+  const [shifts, downs, output, times, jobs, cuts] = await Promise.all([
     prisma.shiftEntry.count({ where: { machineId: id } }),
     prisma.machineDowntime.count({ where: { machineId: id } }),
     prisma.handoverEntry.count({ where: { machineId: id } }),
+    prisma.machineItemTime.count({ where: { machineId: id } }),
+    prisma.manualJob.count({ where: { machineId: id } }),
+    prisma.sheetCutLog.count({ where: { machineId: id } }),
   ]);
   if (shifts > 0 || downs > 0 || output > 0) {
     return { ok: false, error: `It is on ${shifts} shift row(s), ${downs} downtime row(s) and ${output} Daily log row(s) — retire it instead of deleting, so that history keeps its machine.` };
+  }
+  // the typed hours per piece would be dropped with it, and the jobs and
+  // sheets cut on it would lose their machine
+  if (times > 0 || jobs > 0 || cuts > 0) {
+    return { ok: false, error: `It has ${times} typed time(s) per piece, ${jobs} job(s) and ${cuts} sheet-cut record(s) — retire it instead of deleting, so they keep their machine.` };
   }
   await prisma.machine.delete({ where: { id } });
   revalidate();

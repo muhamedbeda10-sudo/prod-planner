@@ -62,10 +62,9 @@ export function manualBoardLines(jobs: readonly ManualJobView[]) {
 async function knownBoms(boms: readonly string[]): Promise<Map<string, string>> {
   const want = [...new Set(boms.map((b) => b.trim()).filter(Boolean))];
   if (want.length === 0) return new Map();
-  const rows = await prisma.masterOrder.findMany({
+  const rows = await prisma.masterOrder.groupBy({
+    by: ["bom"],
     where: { OR: want.map((b) => ({ bom: { equals: b, mode: "insensitive" as const } })) },
-    select: { bom: true },
-    distinct: ["bom"],
   });
   return new Map(rows.map((r) => [r.bom.toUpperCase(), r.bom]));
 }
@@ -78,6 +77,6 @@ export async function partsWithPlanBoms<P extends { bom: string }>(parts: readon
 
 /** The open transformer projects, A→Z — the BOMs the job form suggests. */
 export async function openJobBoms(): Promise<string[]> {
-  const rows = await prisma.masterOrder.findMany({ where: { status: "open", line: "TR" }, select: { bom: true }, distinct: ["bom"], orderBy: { bom: "asc" } });
+  const rows = await prisma.masterOrder.groupBy({ by: ["bom"], where: { status: "open", line: "TR" }, orderBy: { bom: "asc" } });
   return rows.map((r) => r.bom);
 }

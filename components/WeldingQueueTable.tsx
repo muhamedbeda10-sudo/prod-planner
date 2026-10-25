@@ -168,9 +168,11 @@ export function WeldingQueueTable({
     const fd = new FormData();
     fd.set("id", String(id));
     fd.set("status", next);
+    setNoteMsg("");
     startTransition(async () => {
-      await setQueueNoteStatus(fd);
-      router.refresh();
+      const res = await setQueueNoteStatus(fd);
+      if (res.ok) router.refresh();
+      else setNoteMsg(res.error ?? "Failed");
     });
   }
 

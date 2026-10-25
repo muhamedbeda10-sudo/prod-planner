@@ -25,6 +25,24 @@ async function readerClient(): Promise<PrismaClient> {
 }
 
 const QUERY_TIMEOUT_MS = 20_000;
+/** The database's own limit on one query — set for the transaction alone, so
+ *  a SELECT set_config(...) in an earlier query cannot have lifted it. */
+const STATEMENT_TIMEOUT = "15s";
+
+/** One query under the role's limits, on a connection handed back clean: the
+ *  statement timeout is set LOCAL to the transaction, which the query itself
+ *  cannot change for the next one. */
+async function readRows(sql: string): Promise<Record<string, unknown>[]> {
+  const client = await readerClient();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    client.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}'`);
+      return tx.$queryRawUnsafe<Record<string, unknown>[]>(sql);
+    }, { timeout: QUERY_TIMEOUT_MS, maxWait: 5_000 }),
+    new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("The query took too long — narrow it down.")), QUERY_TIMEOUT_MS); }),
+  ]).finally(() => clearTimeout(timer));
+}
 
 /** Runs the model's query and returns what goes back to it: the rows as
  *  compact JSON, or the database's error (the model reads it and fixes the
@@ -33,12 +51,7 @@ export async function runAiQuery(sql: string): Promise<{ ok: boolean; text: stri
   const prepared = prepareSql(sql);
   if ("error" in prepared) return { ok: false, text: prepared.error, rows: 0 };
   try {
-    const client = await readerClient();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const rows = await Promise.race([
-      client.$queryRawUnsafe<Record<string, unknown>[]>(prepared.sql),
-      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("The query took too long — narrow it down.")), QUERY_TIMEOUT_MS); }),
-    ]).finally(() => clearTimeout(timer));
+    const rows = await readRows(prepared.sql);
     return { ok: true, text: formatRows(rows), rows: rows.length };
   } catch (e) {
     return { ok: false, text: errorText(e), rows: 0 };
@@ -52,12 +65,7 @@ export async function runAiRows(sql: string, limit: number): Promise<{ ok: true;
   const prepared = prepareSql(sql, limit);
   if ("error" in prepared) return { ok: false, error: prepared.error };
   try {
-    const client = await readerClient();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const rows = await Promise.race([
-      client.$queryRawUnsafe<Record<string, unknown>[]>(prepared.sql),
-      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("The query took too long — narrow it down.")), QUERY_TIMEOUT_MS); }),
-    ]).finally(() => clearTimeout(timer));
+    const rows = await readRows(prepared.sql);
     return { ok: true, rows: rows.slice(0, limit).map((r) => jsonSafe(r) as Record<string, unknown>), truncated: rows.length > limit };
   } catch (e) {
     return { ok: false, error: errorText(e) };

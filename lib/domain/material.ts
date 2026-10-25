@@ -97,6 +97,16 @@ export function parseSheetNumber(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** parseSheetNumber, but a figure with a note beside it ("60 (urgent)") still
+ *  reads as the number it starts with (comma-stripped parseFloat); anything
+ *  else — blank, text, #VALUE! — is `fallback`. */
+export function sheetNumberOr(v: unknown, fallback = 0): number {
+  const n = parseSheetNumber(v);
+  if (n !== null) return n;
+  const lead = parseFloat(String(v ?? "").replace(/,/g, ""));
+  return Number.isFinite(lead) ? lead : fallback;
+}
+
 // ---- the sheet's formula columns ----
 
 /** Sheets the nesting BOM says the whole job needs. */
@@ -278,6 +288,9 @@ export interface ParsedNesting {
   /** Rows whose "for Job" column disagrees with their own per-unit rate by
    *  more than rounding — kept as written, counted so the planner can look. */
   recomputed: number;
+  /** Data rows the parser could not read and left out (each also named in
+   *  `issues`) — they ARE in the file, so the import must not prune. */
+  skipped: number;
 }
 
 // Columns are found BY HEADER TEXT, so the planner may reorder or add columns
@@ -354,7 +367,7 @@ const STALE_FRAC = 0.02;
 export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
   const headerIdx = findHeaderRow(grid);
   if (headerIdx < 0) {
-    return { rows: [], issues: ["No header row found — expected a row with 'BOM Ref' and 'Thickness'."], headerRow: 0, recomputed: 0 };
+    return { rows: [], issues: ["No header row found — expected a row with 'BOM Ref' and 'Thickness'."], headerRow: 0, recomputed: 0, skipped: 0 };
   }
   const col = mapColumns(grid[headerIdx] ?? []);
   // the newer sheet carries Odoo's MO per part: a column headed exactly "MO"
@@ -368,10 +381,11 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
   for (const [key, idx] of Object.entries(col)) {
     if (idx < 0 && !OPTIONAL_HEADERS.has(key)) issues.push(`Column "${key}" was not found in the header row.`);
   }
-  if (issues.length > 0) return { rows: [], issues, headerRow: headerIdx + 1, recomputed: 0 };
+  if (issues.length > 0) return { rows: [], issues, headerRow: headerIdx + 1, recomputed: 0, skipped: 0 };
 
   const rows: NestingRow[] = [];
   let recomputed = 0;
+  let skipped = 0;
   const seen = new Map<string, number>(); // identity → sheet row
   for (let r = headerIdx + 1; r < grid.length; r++) {
     const line = grid[r] ?? [];
@@ -384,11 +398,11 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
     const perUnit = parseSheetNumber(line[col.perUnit]);
     const units = parseSheetNumber(line[col.units]);
 
-    if (!material) { issues.push(`Row ${rowNum} (${bom}): no material type — skipped.`); continue; }
-    if (thickness === null || thickness <= 0) { issues.push(`Row ${rowNum} (${bom}): thickness is missing or not a number — skipped.`); continue; }
-    if (!sheetSize) { issues.push(`Row ${rowNum} (${bom}): no sheet size — skipped.`); continue; }
-    if (perUnit === null || perUnit < 0) { issues.push(`Row ${rowNum} (${bom}): sheets per unit is missing or not a number — skipped.`); continue; }
-    if (units === null || units < 0) { issues.push(`Row ${rowNum} (${bom}): quantity of units is missing or not a number — skipped.`); continue; }
+    if (!material) { issues.push(`Row ${rowNum} (${bom}): no material type — skipped.`); skipped++; continue; }
+    if (thickness === null || thickness <= 0) { issues.push(`Row ${rowNum} (${bom}): thickness is missing or not a number — skipped.`); skipped++; continue; }
+    if (!sheetSize) { issues.push(`Row ${rowNum} (${bom}): no sheet size — skipped.`); skipped++; continue; }
+    if (perUnit === null || perUnit < 0) { issues.push(`Row ${rowNum} (${bom}): sheets per unit is missing or not a number — skipped.`); skipped++; continue; }
+    if (units === null || units < 0) { issues.push(`Row ${rowNum} (${bom}): quantity of units is missing or not a number — skipped.`); skipped++; continue; }
 
     // what the sheet says the job used, and what it measured for ONE unit —
     // both as written; the product stands in only for a blank job column
@@ -426,7 +440,7 @@ export function parseNestingTracker(grid: unknown[][]): ParsedNesting {
     });
   }
   if (rows.length === 0) issues.push("No material rows found under the header.");
-  return { rows, issues, headerRow: headerIdx + 1, recomputed };
+  return { rows, issues, headerRow: headerIdx + 1, recomputed, skipped };
 }
 
 // ---- filters: narrowing the month's lines on the page ----

@@ -2,6 +2,7 @@ import { heldOrders, isOnHold, type HeldOrderDTO } from "@/lib/domain/hold";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { applicableItems, ospOf, isPaintExempt, type Dept, type Item } from "@/lib/domain/constants";
+import type { CascadeRow } from "@/lib/domain/execution";
 import { loadMasterOrders } from "./loads";
 
 /** A tracker-pushed line as shown on a dept worklist (qty clamped to the
@@ -14,6 +15,15 @@ export interface PushedLineDTO {
   qty: number; // min(pushed qty, order remainder for this dept)
   done: number; // dept output on the whole order
   orderQty: number; // in-house qty (planQty − OSP)
+}
+
+/** Tracker-pushed lines on the shared date-less table shape (CascadeTable) —
+ *  the same rows on the Cut, Welding and Painting worklists. */
+export function pushedAsCascadeRows(pushed: readonly PushedLineDTO[]): CascadeRow[] {
+  return pushed.map((p) => ({
+    bom: p.bom, mo: p.mo, description: p.description, item: p.item,
+    target: p.orderQty, scheduled: 0, done: p.done, available: p.qty, deliveryISO: null,
+  }));
 }
 
 /** A line the admin removed from this dept's worklist (restorable). */
@@ -77,7 +87,7 @@ export async function getRunOrderLines(dept: Dept): Promise<RunOrderLineDTO[]> {
   const out: RunOrderLineDTO[] = [];
   for (const e of entries) {
     const o = byMo.get(e.mo);
-    if (!o || o.status !== "open") continue;
+    if (!o || o.status !== "open" || isOnHold(o)) continue; // closed and held orders leave the daily screens
     const item = e.item as Item;
     if (!applicableItems(o).includes(item)) continue;
     if (dept === "Painting" && isPaintExempt(item)) continue; // the core is never painted

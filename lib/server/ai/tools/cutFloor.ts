@@ -279,7 +279,8 @@ export const recordManualJobDoneTool: WriteTool<JobDoneInput> = {
   title: "Record a job's sheets cut (or pieces done)",
   description: "✓ on a job's line on a machine: on Cut the SHEETS of the sheet job cut on that machine (they go on the sheet cut log with the machine and the day); elsewhere the pieces finished. They go on the job, never in the plan's ledger — the parts' cut pieces are recorded on the weekly plan with record_output. Give the machine that cut them: a share of the job fixed on it shrinks by them. When every sheet is cut the job leaves every machine and stays in the list as finished. Undo puts the job back as it was and takes the ✓ off the sheet cut log.",
   area: "machines",
-  risk: "low",
+  // sheets cut or pieces done are a quantity — they wait for the person's click
+  risk: "high",
   schema: {
     type: "object",
     properties: {
@@ -311,7 +312,9 @@ export const recordManualJobDoneTool: WriteTool<JobDoneInput> = {
       title: `✓ ${i.qty} ${unitOf(job)} of "${name}"`,
       summary: `Record ${i.qty} ${unitOf(job)} of job #${job.id} "${name}" as ${job.bySheet ? "cut" : "done"}${i.machine ? ` on ${i.machine}` : ""} on ${date}${roundSheets(job.doneQty + i.qty) >= roundSheets(job.qty) ? " — its last; it leaves every machine, finished" : ""}.`,
       changes: [{ label: name, before: progress(job), after: progress({ ...job, doneQty: roundSheets(job.doneQty + i.qty) }) }],
-      snapshot: job,
+      // the day is part of what was approved: approved after midnight, the
+      // card is re-described on the new day and reads stale
+      snapshot: { job, date },
     };
   },
   async execute(i, ctx) {
@@ -330,7 +333,7 @@ export const reopenManualJobTool: WriteTool<{ id: number; more: number }> = {
   title: "Open a job again",
   description: "Open a finished job again — more wanted (more: sheets on Cut, pieces elsewhere), or it was ticked by mistake (more 0); it is back in the list as open, on no machine until it is put on one. On a job still open, more adds to it where it is. Undo puts it back as it was.",
   area: "machines",
-  risk: "low",
+  risk: (i) => (i.more > 0 ? "high" : "low"),
   schema: {
     type: "object",
     properties: { id: { type: "integer", minimum: 1 }, more: { type: "number", minimum: 0, maximum: 100000, description: "Extra sheets (Cut — part of a sheet too, 2.5) or whole pieces wanted (0 = none)." } },
@@ -410,7 +413,7 @@ export const updateManualJobTool: WriteTool<UpdateJobInput> = {
   description:
     "Change a job as it was typed, as ✎ Edit in the jobs list does — only the fields given change; where it is queued stays as it is. A sheet job (Cut): its sheets (qty), the sheet (material, thickness, size), its parts (parts replaces the whole list), its name and note. Another board's job: what it is, the pieces, its BOM and part, the sheet and the note. Never fewer than are already cut or done; exactly that finishes it; more opens a finished one again, on no machine. To copy a job, use create_manual_job with its details. Undo puts it back as it was.",
   area: "machines",
-  risk: "low",
+  risk: (i) => (i.qty !== undefined ? "high" : "low"),
   schema: {
     type: "object",
     properties: {

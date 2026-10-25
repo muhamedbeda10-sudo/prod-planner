@@ -24,13 +24,25 @@ export interface GroupMember {
   delivered: number;
 }
 
-/** The members in the given order, or null when one of them is on another BOM. */
+/** The members in the given order, or null when one of them is on another
+ *  BOM — or exists nowhere: an MO outside the registry is still recordable
+ *  when a plan or the daily log already names it (as recordOutput allows),
+ *  but a mistyped one, with no quantity to bound it, would take every piece
+ *  the real orders cannot. */
 export async function loadGroupMembers(bom: string, item: string, mos: readonly string[]): Promise<GroupMember[] | null> {
   const [orders, sums] = await Promise.all([
     prisma.masterOrder.findMany({ where: { mo: { in: [...mos] } } }),
     prisma.handoverEntry.groupBy({ by: ["mo", "dept"], where: { mo: { in: [...mos] }, item }, _sum: { qty: true } }),
   ]);
   const orderOf = new Map(orders.map((o) => [o.mo, o]));
+  for (const mo of mos) {
+    if (orderOf.has(mo) || sums.some((s) => s.mo === mo)) continue;
+    const known =
+      (await prisma.planSchedule.findFirst({ where: { bom, mo }, select: { id: true } })) ??
+      (await prisma.planOrder.findFirst({ where: { bom, mo }, select: { id: true } })) ??
+      (await prisma.handoverEntry.findFirst({ where: { bom, mo }, select: { id: true } }));
+    if (!known) return null;
+  }
   const sumOf = (mo: string, d: string) => sums.find((s) => s.mo === mo && s.dept === d)?._sum.qty ?? 0;
   const members: GroupMember[] = [];
   for (const mo of mos) {
@@ -52,8 +64,8 @@ export async function loadGroupMembers(bom: string, item: string, mos: readonly 
   return members;
 }
 
-/** One member's ledger total at one stage. */
-function memberAt(m: GroupMember, dept: string): number {
+/** One group member's ledger total at a stage, as loadGroupMembers read it. */
+export function memberAt(m: GroupMember, dept: string): number {
   switch (dept) {
     case "Cut": return m.cut;
     case "Welding": return m.weld;

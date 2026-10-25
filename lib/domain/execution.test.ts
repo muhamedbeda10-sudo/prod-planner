@@ -344,6 +344,29 @@ describe("computeWeldingQueue — the welding screen is ONLY what was cut", () =
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ bom: "US05-134M12", mo: "", item: "CB", available: 4 });
   });
+
+  it("a closed or held order (excludeMos) leaves the queue, and comes back once it is live again", () => {
+    const scheds = [
+      ...schedules,
+      { planNo: 28, bom: "B1", mo: "MO-B", description: "1000kva", item: "CF", ovenDate: utcDate(2026, 7, 20), qty: 5 },
+    ];
+    const entries = [
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-A", item: "CF", qty: 4, date: day },
+      { planNo: 28, dept: "Cut", bom: "B1", mo: "MO-B", item: "CF", qty: 3, date: day },
+      { planNo: 27, dept: "Cut", bom: "US05-134M12", mo: null, item: "CB", qty: 4, date: utcDate(2026, 7, 9) }, // BOM-level: no MO to exclude
+    ];
+    const held = computeWeldingQueue({ schedules: scheds, entries, day, excludeMos: new Set(["MO-A"]) });
+    expect(held.map((r) => [r.mo, r.available])).toEqual([["MO-B", 3], ["", 4]]);
+    // the other line's attribution is untouched: MO-A's own cut stays its own
+    expect(held.find((r) => r.mo === "MO-B")!.cutToDate).toBe(3);
+    // released (or re-opened): nothing was recorded against it, so it is simply listed again
+    const live = computeWeldingQueue({ schedules: scheds, entries, day, excludeMos: new Set() });
+    expect(live.map((r) => [r.mo, r.available])).toEqual([["MO-A", 4], ["MO-B", 3], ["", 4]]);
+    // the painting wrapper takes the same set
+    const weld = [{ planNo: 28, dept: "Welding", bom: "B1", mo: "MO-A", item: "TN", qty: 2, date: day }];
+    expect(computePaintingQueue({ schedules: scheds, entries: weld, day, excludeMos: new Set(["MO-A"]) })).toHaveLength(0);
+    expect(computePaintingQueue({ schedules: scheds, entries: weld, day })).toHaveLength(1);
+  });
 });
 
 describe("computeCutTranches — due today / overdue-with-date / future hidden", () => {

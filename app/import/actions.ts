@@ -5,6 +5,7 @@ import { importWeeklyPlan, type ImportResult } from "@/lib/server/import";
 import { parseISODate } from "@/lib/domain/dates";
 import { requirePerm } from "@/lib/server/auth";
 import { emitEvent } from "@/lib/server/events";
+import { userMessage } from "@/lib/server/errors";
 
 export async function importPlanAction(formData: FormData): Promise<ImportResult> {
   const guard = await requirePerm("plans.import");
@@ -30,7 +31,6 @@ export async function importPlanAction(formData: FormData): Promise<ImportResult
     return res;
   } catch (e) {
     // never crash the page — surface the failure as a readable message
-    const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: `Import failed: ${msg}` };
+    return { ok: false, error: userMessage(e, "import the plan") };
   }
 }

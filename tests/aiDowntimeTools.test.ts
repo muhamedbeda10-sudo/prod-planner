@@ -51,3 +51,13 @@ it("records and can undo an unresolved stop without inventing an end or treating
   expect(removed.undo?.input).not.toHaveProperty("endTime");
   expect(validateInput(recordMachineStopTool.schema, removed.undo?.input).ok).toBe(true);
 });
+
+it("gives a timed stop its end date — the next day when it crosses midnight — so the Shifts tab's day split applies, and refuses a lone time", () => {
+  const raw = { date: "2026-10-24", machine: "LSR-1", startTime: "23:00", endTime: "01:00", reason: "MECH" };
+  expect(recordMachineStopTool.parse!(raw)).toMatchObject({ endDate: "2026-10-25", endsNextDay: true, hours: 2 });
+  expect(recordMachineStopTool.parse!({ ...raw, endTime: "23:30" })).toMatchObject({ endDate: "2026-10-24", endsNextDay: false, hours: 0.5 });
+  // an explicit end date is kept, and judged
+  expect(recordMachineStopTool.parse!({ ...raw, endDate: "2026-10-26" })).toMatchObject({ endDate: "2026-10-26", endsNextDay: true, hours: 26 });
+  expect(typeof recordMachineStopTool.parse!({ ...raw, endDate: "2026-10-23" })).toBe("string");
+  expect(typeof recordMachineStopTool.parse!({ ...raw, endTime: undefined })).toBe("string");
+});

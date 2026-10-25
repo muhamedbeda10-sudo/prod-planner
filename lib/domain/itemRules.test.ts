@@ -10,6 +10,7 @@ import {
   itemDailyTarget,
   sumItemTargets,
   ospOf,
+  stageItemError,
   ITEMS,
   SHEET_ITEMS,
   PAINTED_ITEMS,
@@ -131,5 +132,21 @@ describe("ospOf", () => {
   it("returns 0 for AR/MB (always in-house)", () => {
     expect(ospOf(o, "AR")).toBe(0);
     expect(ospOf(o, "MB")).toBe(0);
+  });
+  it("reads a missing or negative count as none outsourced", () => {
+    expect(ospOf({ ospCF: null, ospTN: -2 }, "CF")).toBe(0);
+    expect(ospOf({ ospCF: null, ospTN: -2 }, "TN")).toBe(0);
+  });
+});
+
+describe("stageItemError", () => {
+  it("keeps shot blast for the core frame and painting for everyone else", () => {
+    expect(stageItemError("ShotBlast", "TN")).toBe("TN is painted, not shot blasted — SHB applies to the core (CF) only.");
+    expect(stageItemError("Painting", "CF")).toBe("CF is shot blasted, not painted — record it on the SHB cell.");
+    expect(stageItemError("ShotBlast", "CF")).toBeNull();
+    expect(stageItemError("Painting", "TN")).toBeNull();
+    expect(stageItemError("Cut", "CF")).toBeNull();
+    expect(stageItemError("Welding", "CF")).toBeNull();
+    expect(stageItemError("Delivered", "CF")).toBeNull();
   });
 });

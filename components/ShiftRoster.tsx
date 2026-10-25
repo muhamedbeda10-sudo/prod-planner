@@ -17,6 +17,7 @@ import { ShiftBoard, type BoardLine } from "@/components/ShiftBoard";
 import { FilterSelect, SearchBox } from "@/components/FilterControls";
 import { TableFrame, Th, useConfirm } from "@/components/DataTable";
 import { ExportButton } from "@/components/ExportButton";
+import { SAVE_UNCONFIRMED } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader, PrintScope } from "@/components/PrintHeader";
 import { reconcileShiftDrafts, replaceShiftDepartment, shiftDepartmentDirty, type ShiftDraft } from "@/lib/domain/shiftDraft";
@@ -39,7 +40,7 @@ function useAction() {
         const res = await fn(fd);
         setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
         if (res.ok) { after?.(); router.refresh(); }
-      } catch { setMsg({ ok: false, text: "Could not confirm the save. Refresh and check the department's records before trying again." }); }
+      } catch { setMsg({ ok: false, text: SAVE_UNCONFIRMED }); }
     });
   };
   return { pending, msg, run };

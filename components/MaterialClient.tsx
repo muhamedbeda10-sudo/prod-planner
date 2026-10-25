@@ -13,6 +13,7 @@ import {
   type MaterialLineView, type MaterialTotal, type MaterialFilters, type MaterialStatusFilter, type MaterialSoiGroup,
 } from "@/lib/domain/material";
 import { Modal } from "@/components/Modal";
+import { SAVE_UNCONFIRMED } from "@/components/ui";
 import { FIELD_DP, formatNumber, formatQty } from "@/lib/domain/format";
 import { FilterSelect, PhoneFold } from "@/components/FilterControls";
 import { Check, ChevronDown, ChevronRight, FilterX, Plus, Search, Upload } from "lucide-react";
@@ -60,9 +61,15 @@ function useAction() {
   const run = useCallback(
     (fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData, okText: string, after?: () => void) => {
       startTransition(async () => {
-        const res = await fn(fd);
-        setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
-        if (res.ok) { after?.(); router.refresh(); }
+        // A rejected action must stay a message here, not reach the route's
+        // error boundary — that replaces the whole tab and claims nothing changed.
+        try {
+          const res = await fn(fd);
+          setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
+          if (res.ok) { after?.(); router.refresh(); }
+        } catch {
+          setMsg({ ok: false, text: SAVE_UNCONFIRMED });
+        }
       });
     },
     [router]

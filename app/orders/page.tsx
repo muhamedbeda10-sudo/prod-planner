@@ -49,6 +49,7 @@ export default async function OrdersPage() {
             remarks: o.remarks,
             source: o.source,
             createdAt: o.createdAt.toISOString(),
+            updatedAt: o.updatedAt.toISOString(),
             product: o.product,
             secItem: o.secItem,
             ospEncloser: o.ospEncloser,

@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { shiftPermKey } from "@/lib/domain/permissions";
-import { parseISODate } from "@/lib/domain/dates";
-import { DEFAULT_SHIFT, isRosterDept, overtimeHoursFor, overtimeTime, isShiftCode, isWorkCentre, workerCentres, type RosterDept } from "@/lib/domain/shifts";
+import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
+import { DEFAULT_SHIFT, isRosterDept, overtimeFits, overtimeHoursFor, overtimeTime, roundOvertime, isShiftCode, isWorkCentre, workerCentres, type RosterDept, type ShiftCode } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL } from "@/lib/domain/tanks";
 import { parseWorkerSections, workerDepts } from "@/lib/domain/workers";
 import { syncDeptDayHours } from "@/lib/server/shifts";
@@ -30,7 +30,8 @@ function revalidate() {
 function readDate(fd: FormData): Date | { error: string } {
   const date = parseISODate(String(fd.get("date") ?? ""));
   if (!date) return { error: "Pick a day." };
-  if (date.getTime() > Date.now()) return { error: "That day has not come yet." };
+  // the factory's own day (Cairo): a night shift recorded at 01:00 is today's
+  if (toISODate(date) > factoryDayISO(new Date())) return { error: "That day has not come yet." };
   return date;
 }
 
@@ -65,10 +66,9 @@ export async function saveShiftRoster(fd: FormData): Promise<ShiftActionResult> 
     if (!isShiftCode(shift)) return { ok: false, error: `Unknown shift "${shift}".` };
     const overtimeH = Number(raw.overtimeH ?? 0);
     if (!Number.isFinite(overtimeH) || overtimeH < 0 || overtimeH > 12) return { ok: false, error: "Overtime must be between 0 and 12 hours." };
-    const roundedOvertime = Math.round(overtimeH * 2) / 2;
-    if (roundedOvertime > 0 && Math.abs(roundedOvertime - overtimeHoursFor(shift, shiftHours)) > 0.001) {
-      return { ok: false, error: `Overtime is the fixed ${overtimeHoursFor(shift, shiftHours)}-hour period (${overtimeTime(shift)}).` };
-    }
+    // to the hundredth, the precision Settings keeps (a 2.25 h period is one);
+    // whether it is the fixed period is judged against the day's own rows below
+    const roundedOvertime = roundOvertime(overtimeH);
     const present = raw.present !== false;
     // the work centre, where the department has several; anything else is none
     const rawCenter = String(raw.center ?? "");
@@ -93,6 +93,18 @@ export async function saveShiftRoster(fd: FormData): Promise<ShiftActionResult> 
     // rows recorded then (getShiftRoster shows them). Checked with the writes.
     const workers = await tx.worker.findMany({ where: { id: { in: workerIds } }, select: { id: true, empId: true, name: true, active: true, depts: true } });
     const byId = new Map(workers.map((w) => [w.id, { ...w, depts: new Set<string>(w.active ? workerDepts(parseWorkerSections(w.depts)) : []) }]));
+    // a worker's overtime is the fixed period of Settings — or what his row
+    // already holds, when the period changed after the day was first saved:
+    // re-saving the day to mark one man absent must not fail on the others
+    const stored = await tx.shiftEntry.findMany({ where: { date, dept: { in: depts }, workerId: { in: workerIds } }, select: { dept: true, workerId: true, overtimeH: true } });
+    const storedOt = new Map(stored.map((r) => [`${r.dept}|${r.workerId}`, r.overtimeH]));
+    for (const l of lines) {
+      if (l.overtimeH <= 0) continue;
+      const fixed = overtimeHoursFor(l.shift as ShiftCode, shiftHours);
+      if (!overtimeFits(l.overtimeH, fixed, storedOt.get(`${l.dept}|${l.workerId}`))) {
+        return `Overtime is the fixed ${fixed}-hour period (${overtimeTime(l.shift as ShiftCode)}).`;
+      }
+    }
     const outside = lines.filter((l) => !byId.get(l.workerId)?.depts.has(l.dept));
     if (outside.length > 0) {
       const key = (r: { dept: string; workerId: number }) => `${r.dept}|${r.workerId}`;

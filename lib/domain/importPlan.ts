@@ -19,6 +19,7 @@
 // Plan dates are OVEN dates: day g -> startDate + g.
 // targetQty(item) = sum of the item's day cells (the scheduled total).
 
+import { sheetNumberOr } from "./material";
 import { SHEET_ITEMS, type Item } from "./constants";
 
 const GRID_FIRST_ROW = 6; // 1-based
@@ -139,10 +140,10 @@ const colName = (i: number): string => {
 };
 
 const S = (v: unknown): string => (v == null ? "" : String(v).trim());
-const N = (v: unknown): number => {
-  const n = typeof v === "number" ? v : parseFloat(String(v));
-  return Number.isFinite(n) ? n : 0;
-};
+// the same reading of a number as the nesting and stock sheets: "1,200" is
+// twelve hundred, a blank or a dash is nothing; a figure with a note beside it
+// ("60 (urgent)") is still the number it starts with, as it always read
+const N = (v: unknown): number => sheetNumberOr(v);
 
 /** grid: 2D array of the sheet, 0-based (grid[0] = sheet row 1). */
 export function parseWeeklyPlan(grid: unknown[][]): ParsedPlan {

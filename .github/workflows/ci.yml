@@ -34,6 +34,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # a critical advisory against a shipped dependency (Next itself in 16.2.x)
+      # must not reach production unnoticed; majors with a fix are reported, not blocked
+      - name: Audit shipped dependencies for critical advisories
+        run: npm audit --omit=dev --audit-level=critical
+
       # lib/server/* is typed against the generated Prisma client, so the types
       # have to exist before anything type-checks
       - name: Generate Prisma client
@@ -48,5 +53,5 @@ jobs:
       - name: Unit tests
         run: npm run test:run
 
-      - name: Planning AI reference calculations (no API key)
+      - name: AI reference evaluations — planning figures and assistant behaviour (no API key)
         run: npm run ai:eval

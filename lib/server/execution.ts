@@ -14,7 +14,7 @@ import {
   type CascadeRow,
   type CutTranche,
 } from "@/lib/domain/execution";
-import { toISODate } from "@/lib/domain/dates";
+import { factoryToday, toISODate } from "@/lib/domain/dates";
 import { applicableItems, ospOf } from "@/lib/domain/constants";
 import type { HiddenLineDTO, PriorityLineDTO } from "@/lib/server/worklistExtras";
 import { findPlanForDate } from "@/lib/domain/findPlan";
@@ -50,7 +50,7 @@ export interface CutSheet {
  *    bucket; unscheduled+unremarked lines feed the machine board, not a table.
  *  - Admin date overrides re-date any line; reverting restores the plan date. */
 export async function getCutSheet(): Promise<CutSheet> {
-  const today = new Date();
+  const today = factoryToday();
   const settings = await getSettings();
   const planNo = findPlanForDate(await getPlanWindows(), today, settings.leadCut);
 
@@ -266,7 +266,12 @@ async function loadQueueInputs() {
   const inhouseCap = new Map<string, number>();
   const orderQtyOf = new Map<string, number>(); // mo|item -> planQty − OSP (whole-order fraction denominator)
   const lineOrderQty = new Map<string, number>(); // bom|mo|item -> planQty − OSP (what a re-promise leaves the old plans)
+  // closed and held orders leave the daily screens (the held ones are named on
+  // the page by HeldOrdersStrip); rows with no MO stay, so the BOM-level
+  // fallback still lists output logged on codes the registry does not know
+  const excludeMos = new Set<string>();
   for (const m of masters) {
+    if (m.status !== "open" || isOnHold(m)) excludeMos.add(m.mo);
     for (const it of applicableItems(m)) {
       const osp = ospOf(m, it);
       if (osp > 0) inhouseCap.set(`${m.bom}|${m.mo}|${it}`, Math.max(0, m.planQty - osp));
@@ -280,6 +285,7 @@ async function loadQueueInputs() {
     inhouseCap,
     orderQty: lineOrderQty,
     orderQtyOf,
+    excludeMos,
   };
 }
 

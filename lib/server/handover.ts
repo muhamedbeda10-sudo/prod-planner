@@ -6,7 +6,7 @@ import { findPlanForDate } from "@/lib/domain/findPlan";
 
 /** Distinct known BOM codes across Plan Orders (for autocomplete + classification). */
 export async function getKnownBoms(): Promise<string[]> {
-  const rows = await prisma.planOrder.findMany({ select: { bom: true }, distinct: ["bom"], orderBy: { bom: "asc" } });
+  const rows = await prisma.planOrder.groupBy({ by: ["bom"], orderBy: { bom: "asc" } });
   return rows.map((r) => r.bom).filter(Boolean);
 }
 

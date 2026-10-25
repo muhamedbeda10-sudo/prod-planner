@@ -53,10 +53,13 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
     { key: "Delivered", name: "Delivery", icon: <Truck size={17} />, done: sum((p) => p.delivered) },
   ].map((s) => ({ ...s, pct: pctOf(s.done, totalReq), left: Math.max(0, totalReq - s.done) }));
 
+  // one export, whichever button is pressed — a code's page spans several
+  // orders, so each row says which; the MO's slashes cannot be in a filename
   const exportLedger = t.ledger.map((l) => ({
-    Date: l.dateISO, Plan: l.planLabel, Dept: deptLabel(l.dept), Item: l.item, Qty: l.qty,
+    Date: l.dateISO, MO: l.mo ?? "", Plan: l.planLabel, Dept: deptLabel(l.dept), Item: l.item, Qty: l.qty,
     Source: l.source, By: l.by ?? "", "Corrected from": l.corrected ?? "",
   }));
+  const exportFilename = `trace-${t.key.replace(/[^A-Za-z0-9-]+/g, "_")}.xlsx`;
 
   return (
     <div className="space-y-6">
@@ -81,7 +84,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
             <button type="button" onClick={() => router.refresh()} className="btn btn-ghost btn-sm" title="Refresh the data">
               <RotateCw size={14} />
             </button>
-            <ExportButton rows={exportLedger} filename={`trace-${t.key}.xlsx`} sheetName="Trace" />
+            <ExportButton rows={exportLedger} filename={exportFilename} sheetName="Trace" />
             <Link href={trackerHref(planNo, view)} className="btn btn-ghost btn-sm whitespace-nowrap">← Tracker</Link>
             <button
               type="button"
@@ -116,7 +119,7 @@ export function TraceView({ t, planNo, view = "" }: { t: TraceResult; planNo: nu
           <StagePipeline stages={stages} totalReq={totalReq} pipeline={t.pipeline} />
           <ComponentProgress pipeline={t.pipeline} />
           <OnOdoo rows={t.odoo} />
-          <Records t={t} />
+          <Records t={t} exportRows={exportLedger} exportFilename={exportFilename} />
         </div>
 
         {sidebar && (
@@ -424,7 +427,7 @@ function ComponentProgress({ pipeline }: { pipeline: TracePipelineRow[] }) {
 
 /* ============================== records (tabbed) ============================== */
 
-function Records({ t }: { t: TraceResult }) {
+function Records({ t, exportRows, exportFilename }: { t: TraceResult; exportRows: Record<string, string | number>[]; exportFilename: string }) {
   // the plan rows name an MO; its SOI already sits on the linked order card
   const soiOfMo = (mo: string) => t.members.find((m) => m.mo === mo)?.soi ?? null;
   const [tab, setTab] = useState<"ledger" | "orders">("ledger");
@@ -432,10 +435,6 @@ function Records({ t }: { t: TraceResult }) {
   const ledger = useMemo(() => [...t.ledger].reverse(), [t.ledger]);
   // a code's page spans several orders: each record says which
   const byOrder = t.scope === "bom";
-  const exportLedger = t.ledger.map((l) => ({
-    Date: l.dateISO, MO: l.mo ?? "", Plan: l.planLabel, Dept: deptLabel(l.dept), Item: l.item, Qty: l.qty,
-    Source: l.source, By: l.by ?? "", "Corrected from": l.corrected ?? "",
-  }));
   const TABS = [
     { key: "ledger", label: "Full ledger", count: t.ledgerCount },
     { key: "orders", label: "Plan orders", count: t.orders.length },
@@ -446,7 +445,7 @@ function Records({ t }: { t: TraceResult }) {
       title="Records"
       actions={
         <div className="flex items-center gap-2">
-          {tab === "ledger" && <ExportButton rows={exportLedger} filename={`trace-${t.key}.xlsx`} sheetName="Trace" />}
+          {tab === "ledger" && <ExportButton rows={exportRows} filename={exportFilename} sheetName="Trace" />}
           <div className="inline-flex rounded-lg border border-border/60 overflow-hidden text-xs font-bold">
             {TABS.map((tb) => (
               <button key={tb.key} type="button" onClick={() => setTab(tb.key)}

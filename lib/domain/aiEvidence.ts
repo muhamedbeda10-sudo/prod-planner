@@ -9,7 +9,7 @@ export interface AiEvidence {
 
 export const evidenceAnchor = (id: string) => `ai-source-${id}`;
 export const isEvidenceAnchor = (href: string) => /^#ai-source-[A-Za-z0-9_-]{1,180}$/.test(href);
-const safeHref = (href: string) => href.startsWith("/") && !href.startsWith("//") && !/[\\\u0000-\u001f\u007f]/.test(href) && href.length <= 500;
+export const safeHref = (href: string) => href.startsWith("/") && !href.startsWith("//") && !/[\\\u0000-\u001f\u007f]/.test(href) && href.length <= 500;
 const MAX_SNAPSHOT = 16_000;
 
 /** The wrapper is produced by the agent, never by the model or a database row. */

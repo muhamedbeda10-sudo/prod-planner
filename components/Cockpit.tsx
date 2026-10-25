@@ -81,6 +81,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
   const ai = useAiPanel();
   const finish = data.week.adherence.find((a) => a.stage === "finish");
   const actions = floor ? data.actions : data.actions.filter((a) => !isFloorAction(a));
+  // the card shows the oldest lines behind; the export carries them all
+  const lateShown = data.week.late.slice(0, 20);
   const recentDays = Math.max(...data.centres.map((c) => c.recent.days), 0);
   const mp = data.manpower;
   // the centres short by half a person or more — the ones the card colours red
@@ -178,10 +180,10 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           <ChartCard
             className="xl:col-span-6"
             title="Behind — where each line is stuck"
-            sub={data.week.lateCount > data.week.late.length ? `The oldest ${data.week.late.length} of ${data.week.lateCount}; the first stage that is short` : "Oldest first; the first stage that is short"}
+            sub={data.week.lateCount > lateShown.length ? `The oldest ${lateShown.length} of ${data.week.lateCount} — the export has them all; the first stage that is short` : "Oldest first; the first stage that is short"}
             table={{ filename: `plan-behind-${data.todayISO}.xlsx`, rows: data.week.late.map((l) => ({ Day: l.dayISO, Project: l.bom, SOI: l.soi ?? "", Item: itemName(l.item), "Stuck at": STAGE_LABEL[l.stage], Owed: l.owed, Short: l.short })) }}
           >
-            {data.week.late.length === 0 ? (
+            {lateShown.length === 0 ? (
               <EmptyState compact icon={Info} title="Nothing behind" hint="Every line is at or ahead of its stage date." />
             ) : (
               // clamped so the card stays the height of the plan beside it (the global frame rule says 78vh)
@@ -189,7 +191,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
                 <table className="w-full text-sm">
                   <thead><tr><Th label="Due" /><Th label="Project" /><Th label="Item" /><Th label="Stuck at" /><Th label="Short" num className="text-right" /></tr></thead>
                   <tbody>
-                    {data.week.late.map((l, i) => (
+                    {lateShown.map((l, i) => (
                       <tr key={i}>
                         <td className="px-2 tabnum whitespace-nowrap">{formatDate(l.dayISO)}</td>
                         <td className="px-2 whitespace-nowrap"><Link href={`/trace?bom=${encodeURIComponent(l.bom)}`} className="font-semibold hover:underline">{l.bom}</Link>{l.soi && <span className="text-muted ms-1">{l.soi}</span>}</td>

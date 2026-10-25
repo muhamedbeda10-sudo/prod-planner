@@ -28,10 +28,11 @@ const h = vi.hoisted(() => {
     manualJobPart: { deleteMany: vi.fn(), upsert: vi.fn() },
     worklistMachine: { deleteMany: vi.fn(), upsert: vi.fn() },
     sheetCutLog: { deleteMany: vi.fn() },
+    worklistPush: { deleteMany: vi.fn(), createMany: vi.fn() },
   };
   return {
     tx,
-    prisma: { $transaction: vi.fn(async (f: (t: typeof tx) => Promise<unknown>) => f(tx)), odooEntry: { findMany: vi.fn() }, user: { findUnique: vi.fn() } },
+    prisma: { $transaction: vi.fn(async (f: (t: typeof tx) => Promise<unknown>) => f(tx)), odooEntry: { findMany: vi.fn() }, user: { findUnique: vi.fn() }, masterOrder: { findUnique: vi.fn() } },
     requirePerm: vi.fn(),
     requireAdmin: vi.fn(),
     requireOwner: vi.fn(),
@@ -45,7 +46,7 @@ vi.mock("@/lib/server/auth", () => ({ requirePerm: h.requirePerm, requireAdmin: 
 
 import {
   readOdooRows, restoreMachineTimes, restoreManualJob, restoreOdooRows, restorePhysicalRows, restoreShiftState, restoreStdState, restoreUserAccess,
-  type ManualJobSnapshot, type OdooRowSnapshot,
+  restoreWorklistPush, type ManualJobSnapshot, type OdooRowSnapshot, type WorklistPushSnapshot,
 } from "@/lib/server/rowSnapshots";
 
 const row: OdooRowSnapshot = {
@@ -87,7 +88,7 @@ describe("ODOO rows", () => {
     expect(await restoreOdooRows([row])).toEqual({ ok: false, error: "No permission." });
     expect(h.prisma.$transaction).not.toHaveBeenCalled();
     h.prisma.$transaction.mockRejectedValueOnce(new Error("Unique constraint failed on ledgerId"));
-    expect(await restoreOdooRows([row])).toEqual({ ok: false, error: "The rows could not be put back: Unique constraint failed on ledgerId" });
+    expect(await restoreOdooRows([row])).toEqual({ ok: false, error: "Could not put the rows back — the server did not finish it. Check the records, then try again." });
   });
 });
 
@@ -200,7 +201,7 @@ describe("a manual job", () => {
 
   it("a log row that cannot be taken off puts nothing back, and says so", async () => {
     h.tx.sheetCutLog.deleteMany.mockRejectedValueOnce(new Error("connection lost"));
-    expect(await restoreManualJob(job, { cutLogId: 77 })).toEqual({ ok: false, error: "The job could not be put back: connection lost" });
+    expect(await restoreManualJob(job, { cutLogId: 77 })).toEqual({ ok: false, error: "Could not put the job back — the server did not finish it. Check the records, then try again." });
   });
 
   it("the undo of a change or a deletion leaves the sheet cut log alone", async () => {
@@ -214,5 +215,46 @@ describe("a manual job", () => {
     expect(await restoreManualJob(job, { cutLogId: 77 })).toMatchObject({ ok: false });
     expect(h.prisma.$transaction).not.toHaveBeenCalled();
     expect(h.tx.sheetCutLog.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("an order's pushed lines on one worklist", () => {
+  const pushes: WorklistPushSnapshot[] = [
+    { item: "CF", qty: 6, baseDone: 4, createdBy: "Omar", createdAt: "2026-10-10T07:15:00.000Z" },
+    { item: "TC", qty: 2, baseDone: 0, createdBy: null, createdAt: "2026-10-11T12:00:00.000Z" },
+  ];
+
+  it("need the push permission the tracker's panel asks for — nothing is written without it", async () => {
+    h.requirePerm.mockResolvedValue({ error: "You do not have permission to push." });
+    expect(await restoreWorklistPush("Welding", "M1", pushes)).toEqual({ ok: false, error: "You do not have permission to push." });
+    expect(h.requirePerm).toHaveBeenCalledWith("tracker.push");
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("refuse an MO the orders registry does not hold", async () => {
+    h.prisma.masterOrder.findUnique.mockResolvedValue(null);
+    expect(await restoreWorklistPush("Welding", "M9", pushes)).toEqual({ ok: false, error: "MO M9 is not in the orders registry." });
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("go back exactly: the order's pushes on that worklist replaced, each with its output already counted and its stamp", async () => {
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ bom: "B1" });
+    expect(await restoreWorklistPush("Welding", "M1", pushes)).toEqual({ ok: true });
+    expect(h.prisma.masterOrder.findUnique).toHaveBeenCalledWith({ where: { mo: "M1" }, select: { bom: true } });
+    expect(h.tx.worklistPush.deleteMany).toHaveBeenCalledWith({ where: { dept: "Welding", mo: "M1" } });
+    expect(h.tx.worklistPush.createMany).toHaveBeenCalledWith({
+      data: [
+        { dept: "Welding", bom: "B1", mo: "M1", item: "CF", qty: 6, baseDone: 4, createdBy: "Omar", createdAt: new Date("2026-10-10T07:15:00.000Z") },
+        { dept: "Welding", bom: "B1", mo: "M1", item: "TC", qty: 2, baseDone: 0, createdBy: null, createdAt: new Date("2026-10-11T12:00:00.000Z") },
+      ],
+    });
+    expect(h.tx.worklistPush.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(h.tx.worklistPush.createMany.mock.invocationCallOrder[0]);
+  });
+
+  it("an order with no push before is left with none", async () => {
+    h.prisma.masterOrder.findUnique.mockResolvedValue({ bom: "B1" });
+    expect(await restoreWorklistPush("Cut", "M1", [])).toEqual({ ok: true });
+    expect(h.tx.worklistPush.deleteMany).toHaveBeenCalledWith({ where: { dept: "Cut", mo: "M1" } });
+    expect(h.tx.worklistPush.createMany).not.toHaveBeenCalled();
   });
 });

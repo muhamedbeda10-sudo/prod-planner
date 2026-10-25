@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { buildBomClassifier } from "@/lib/domain/normalizeBoms";
 import { ITEMS, DEPTS, deptLabel } from "@/lib/domain/constants";
 import { addHandover, type ActionResult } from "@/app/handover/actions";
+import { SAVE_UNCONFIRMED } from "@/components/ui";
 
 export function HandoverForm({
   knownBoms,
@@ -43,12 +44,18 @@ export function HandoverForm({
     fd.set("qty", qty);
     fd.set("planNo", planNo);
     startTransition(async () => {
-      const res = await addHandover(fd);
-      setMsg(res);
-      if (res.ok) {
-        setBom("");
-        setQty("");
-        router.refresh();
+      // A rejected action stays a message under the form — thrown, it would
+      // replace the whole page with the route's error page and lose the draft.
+      try {
+        const res = await addHandover(fd);
+        setMsg(res);
+        if (res.ok) {
+          setBom("");
+          setQty("");
+          router.refresh();
+        }
+      } catch {
+        setMsg({ ok: false, error: SAVE_UNCONFIRMED });
       }
     });
   }

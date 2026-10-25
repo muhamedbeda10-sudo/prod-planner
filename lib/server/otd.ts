@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { computeOtd, otdGateItems, type OtdStats } from "@/lib/domain/otd";
 import { PAINT_EXEMPT, PAINTED_ITEMS, applicableItems } from "@/lib/domain/constants";
+import { factoryToday } from "@/lib/domain/dates";
 import { getActiveLine } from "./line";
 
 /** On-Time Delivery stats over the whole registry. An order is "delivered"
@@ -33,7 +34,7 @@ export async function getOtdStats(): Promise<OtdStats> {
     })),
     schedules,
     finalLogs,
-    new Date()
+    factoryToday()
   );
 }
 

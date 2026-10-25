@@ -6,16 +6,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => {
   const fn = () => vi.fn();
+  // the undo of a push runs the real restoreWorklistPush (lib/server/rowSnapshots.ts) inside this transaction
+  const tx = { worklistPush: { deleteMany: fn(), createMany: fn() } };
   return {
+    tx,
     prisma: {
       masterOrder: { findMany: fn(), findUnique: fn() },
       handoverEntry: { groupBy: fn(), findUnique: fn(), findMany: fn() },
       worklistPush: { findMany: fn(), count: fn() },
+      $transaction: vi.fn(async (f: (t: typeof tx) => Promise<unknown>) => f(tx)),
     },
     perms: new Set<string>(),
     actions: {
       setOrderStatus: fn(), setOrderQty: fn(), decidePlanQty: fn(), setOrderSpec: fn(), setGroupOrderSpec: fn(),
       setOrderPriority: fn(), setOrderHold: fn(), pushOrderToWorklist: fn(), setExcludedItems: fn(), closeDeliveredOrders: fn(),
+      updateOrder: fn(), deleteOrders: fn(), removeOrderMonth: fn(), setGroupFins: fn(),
       recordTrackerTotal: fn(), recordGroupOutput: fn(), recordLvTotal: fn(), recordLvGroupTotal: fn(),
       updateHandover: fn(), bulkSetHandoverDate: fn(), bulkDeleteHandover: fn(),
     },
@@ -26,13 +31,18 @@ const h = vi.hoisted(() => {
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
-vi.mock("@/lib/server/auth", () => ({ hasPerm: (_u: unknown, k: string) => h.perms.has(k) }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/server/auth", () => ({
+  hasPerm: (_u: unknown, k: string) => h.perms.has(k),
+  requirePerm: async (k: string) => (h.perms.has(k) ? { user: { id: 1, name: "Sara" } } : { error: "You do not have permission to do this." }),
+}));
 vi.mock("@/lib/server/line", () => ({ withLine: (_l: string, f: () => unknown) => f() }));
 vi.mock("@/lib/server/masterTracker", () => ({ getMasterTracker: vi.fn() }));
 vi.mock("@/lib/server/lvTracker", () => ({ getLvTracker: vi.fn() }));
 vi.mock("@/lib/server/data", () => ({ getSettings: h.getSettings }));
-vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChain }));
+vi.mock("@/lib/server/outputGuard", () => ({ checkOutputChain: h.checkOutputChain, recheckLvChainLocked: async () => {}, ChainRefused: class extends Error {} }));
 vi.mock("@/lib/server/deliveredOrders", () => ({ fullyDeliveredOpenOrders: vi.fn() }));
+vi.mock("@/lib/server/orderDelete", () => ({ orderDeletePreview: vi.fn() }));
 vi.mock("@/app/orders/actions", () => h.actions);
 vi.mock("@/app/worklist/actions", () => h.actions);
 vi.mock("@/app/lv/actions", () => h.actions);
@@ -41,9 +51,10 @@ vi.mock("@/app/handover/actions", () => h.actions);
 import type { User } from "@prisma/client";
 import type { ToolCtx } from "@/lib/server/ai/tools/types";
 import {
-  pushToWorklistTool, recordBomTotalTool, recordLvBomTotalTool, recordStageTotalsTool, setOrderHoldTool, setOrderSpecsTool, setOrderStatusTool,
+  pushToWorklistTool, recordBomTotalTool, recordLvBomTotalTool, recordStageTotalsTool, restoreWorklistPushTool, setOrderHoldTool, setOrderQtyTool, setOrderSpecsTool, setOrderStatusTool,
 } from "@/lib/server/ai/tools/tracker";
 import { deleteLogEntriesTool, setLogDatesTool } from "@/lib/server/ai/tools/dailyLog";
+import { updateOrderTool } from "@/lib/server/ai/tools/orders";
 import { AI_TOOLS, checkToolInput, writeToolNamed } from "@/lib/server/ai/tools";
 
 const ctx: ToolCtx = { user: { id: 1, name: "Sara" } as User, hidden: new Set(), now: new Date(), todayISO: "2026-10-12", conversationId: 1, automationId: null };
@@ -70,6 +81,29 @@ describe("the registry", () => {
       expect(t.description.length, t.name).toBeGreaterThan(40);
       for (const r of t.schema.required ?? []) expect(t.schema.properties, `${t.name}.${r}`).toHaveProperty(r);
     }
+  });
+});
+
+describe("update_order", () => {
+  const admin: ToolCtx = { ...ctx, user: { id: 1, name: "Sara", isAdmin: true } as User };
+  const row = {
+    ...order("SF01/MO/1"), id: 4, soi: null, customer: "EEHC", fgCode: null, remarks: null, product: null, secItem: null, materialsRemarks: null,
+    ospEncloser: 0, urgent: false, updatedAt: new Date("2026-10-20T08:00:00.000Z"),
+  };
+  it("posts the registry's own form with the row's updatedAt, so the edit lands only on the row as read", async () => {
+    h.prisma.masterOrder.findUnique.mockResolvedValue(row);
+    const input = checkToolInput(updateOrderTool, { mo: "SF01/MO/1", customer: "SEC" });
+    if (!input.ok) throw new Error(input.error);
+    const d = await updateOrderTool.describe(input.input, admin);
+    expect(d).toMatchObject({ changes: [{ label: "SF01/MO/1 Customer", before: "EEHC", after: "SEC" }], snapshot: expect.objectContaining({ updatedAt: "2026-10-20T08:00:00.000Z" }) });
+    const out = await updateOrderTool.execute(input.input, admin);
+    expect(out).toMatchObject({ ok: true, undo: { tool: "update_order", input: { mo: "SF01/MO/1", customer: "EEHC" } } });
+    expect(fdOf(h.actions.updateOrder)).toMatchObject({ mo: "SF01/MO/1", customer: "SEC", bom: "12011E16M13", planQty: "10", urgent: "false", updatedAt: "2026-10-20T08:00:00.000Z" });
+  });
+  it("passes the action's refusal on when the row moved under it", async () => {
+    h.prisma.masterOrder.findUnique.mockResolvedValue(row);
+    h.actions.updateOrder.mockResolvedValue({ ok: false, error: "This order was changed by someone else meanwhile — reload and try again." });
+    expect(await updateOrderTool.execute({ mo: "SF01/MO/1", customer: "SEC" }, admin)).toEqual({ ok: false, error: expect.stringContaining("changed by someone else") });
   });
 });
 
@@ -127,6 +161,19 @@ describe("set_order_hold", () => {
     const out = await setOrderHoldTool.execute({ mos: ["A", "B"], hold: true, note: "no steel" }, ctx);
     expect(fdOf(h.actions.setOrderHold)).toEqual({ mos: "A", hold: "true", note: "no steel" });
     expect(out.undo).toEqual({ tool: "set_order_hold", input: { mos: ["A"], hold: false } });
+  });
+
+  it("undoes a note change by re-holding with the earlier note, and has no undo for a mixed set", async () => {
+    h.perms.add("tracker.status");
+    // A was already on hold for steel; the assistant changes the reason
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("A", { holdAt: new Date("2026-10-01T00:00:00Z"), holdNote: "no steel" })]);
+    const renote = await setOrderHoldTool.execute({ mos: ["A"], hold: true, note: "waiting paint" }, ctx);
+    expect(renote.undo).toEqual({ tool: "set_order_hold", input: { mos: ["A"], hold: true, note: "no steel" } });
+    // A held, B running: one call cannot put both back
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("A", { holdAt: new Date("2026-10-01T00:00:00Z"), holdNote: "no steel" }), order("B")]);
+    const mixed = await setOrderHoldTool.execute({ mos: ["A", "B"], hold: true, note: "waiting paint" }, ctx);
+    expect(mixed.ok).toBe(true);
+    expect(mixed.undo).toBeUndefined();
   });
 
   it("is refused without the line's close/hold permission", async () => {
@@ -199,6 +246,18 @@ describe("record_stage_totals", () => {
   it("refuses an MO listed twice", () => {
     expect(checkToolInput(recordStageTotalsTool, { dept: "Welding", item: "TN", totals: [{ mo: "A", total: 1 }, { mo: "A", total: 2 }] })).toEqual({ ok: false, error: "totals: an MO is listed twice." });
   });
+
+  it("names the order that changes in the headline, not the first one listed", async () => {
+    // A reads 4 already; only B moves
+    const p = await recordStageTotalsTool.describe({ dept: "Welding", item: "TN", totals: [{ mo: "A", total: 4 }, { mo: "B", total: 2 }] }, ctx);
+    expect(p).toMatchObject({ title: "B TN Welding: 0 → 2", summary: expect.stringContaining("B 0 → 2") });
+    expect("summary" in p && p.summary).not.toContain("A 4");
+  });
+
+  it("refuses painting the core frame, as the tracker cell does", async () => {
+    h.perms.add("painting.edit");
+    expect(await recordStageTotalsTool.describe({ dept: "Painting", item: "CF", totals: [{ mo: "A", total: 1 }] }, ctx)).toEqual({ error: "CF is shot blasted, not painted — record it on the SHB cell." });
+  });
 });
 
 describe("record_bom_total", () => {
@@ -221,24 +280,72 @@ describe("record_bom_total", () => {
     expect(out.undo).toEqual({ tool: "record_stage_totals", input: { dept: "Cut", item: "TC", totals: [{ mo: "A", total: 3 }, { mo: "B", total: 0 }] } });
   });
 
+  it("refuses an MO the orders registry does not hold — it has no quantity to bound it — on the card and when run", async () => {
+    h.perms.add("cut.edit");
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("A", { planQty: 5 })]);
+    // G is known to the Daily log, so it is a member — but no registry order bounds it
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([{ mo: "G", dept: "Cut", _sum: { qty: 2 } }]);
+    const input = { dept: "Cut" as const, bom: "12011E16M13", item: "TC" as const, mos: ["A", "G"], total: 9 };
+    expect(await recordBomTotalTool.describe(input, ctx)).toEqual({ error: "Not in the orders registry: G. Check the MO numbers." });
+    expect(await recordBomTotalTool.execute(input, ctx)).toEqual({ ok: false, error: "Not in the orders registry: G." });
+    expect(h.actions.recordGroupOutput).not.toHaveBeenCalled();
+  });
+
   it("says how much fits when the total does not", async () => {
     h.perms.add("cut.edit");
     h.prisma.masterOrder.findMany.mockResolvedValue([order("A", { planQty: 5 })]);
     h.prisma.handoverEntry.groupBy.mockResolvedValue([]);
     expect(await recordBomTotalTool.describe({ dept: "Cut", bom: "12011E16M13", item: "TC", mos: ["A"], total: 9 }, ctx)).toEqual({ error: "Only 5 more pieces fit on these orders (the chain and the order quantities)." });
   });
+
+  it("snapshots everything the spread reads — an order's outsourced share and N/A tick included — and refuses a panel order", async () => {
+    h.perms.add("cut.edit");
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("A", { planQty: 5, ospTC: 2 }), order("B", { planQty: 5, excludedItems: "TC" })]);
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([]);
+    const p = await recordBomTotalTool.describe({ dept: "Cut", bom: "12011E16M13", item: "TC", mos: ["A", "B"], total: 3 }, ctx);
+    expect("snapshot" in p && p.snapshot).toEqual([
+      { mo: "A", cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, planQty: 5, osp: 2, eligible: true },
+      { mo: "B", cut: 0, weld: 0, paint: 0, shp: 0, delivered: 0, planQty: 5, osp: 0, eligible: false },
+    ]);
+    h.prisma.masterOrder.findMany.mockResolvedValue([order("A", { planQty: 5 }), order("P1", { line: "LV", planQty: 5 })]);
+    expect(await recordBomTotalTool.describe({ dept: "Cut", bom: "12011E16M13", item: "TC", mos: ["A", "P1"], total: 3 }, ctx)).toEqual({ error: "P1 is an LV panel order — use record_lv_bom_total." });
+  });
 });
 
 describe("push_to_worklist", () => {
-  it("clearing a push is a success when the push is gone, whatever the action's words", async () => {
+  const pushed = { item: "TC", qty: 3, baseDone: 1, createdBy: "Sara", createdAt: new Date("2026-10-01T00:00:00Z") };
+  const pushedThen = JSON.stringify([{ item: "TC", qty: 3, baseDone: 1, createdBy: "Sara", createdAt: "2026-10-01T00:00:00.000Z" }]);
+
+  it("clearing a push is a success when the push is gone, whatever the action's words — undone by the rows as they were", async () => {
     h.perms.add("tracker.push");
     h.prisma.masterOrder.findUnique.mockResolvedValue(order("A"));
-    h.prisma.worklistPush.findMany.mockResolvedValue([{ item: "TC", qty: 3 }]);
+    h.prisma.worklistPush.findMany.mockResolvedValue([pushed]);
     h.prisma.handoverEntry.groupBy.mockResolvedValue([]);
     h.prisma.worklistPush.count.mockResolvedValue(0);
     h.actions.pushOrderToWorklist.mockResolvedValue({ ok: false, error: "Nothing sent — … (the Cut push was cleared)." });
     const out = await pushToWorklistTool.execute({ mo: "A", dept: "Cut", qty: {} }, ctx);
-    expect(out).toMatchObject({ ok: true, undo: { tool: "push_to_worklist", input: { mo: "A", dept: "Cut", qty: { TC: 3 } } } });
+    // the undo writes the rows back with the output already counted against them (baseDone), not a fresh push
+    expect(out).toMatchObject({ ok: true, undo: { tool: "restore_worklist_push", input: { mo: "A", dept: "Cut", rows: pushedThen } } });
+    expect(restoreWorklistPushTool.parse!({ mo: "A", dept: "Cut", rows: pushedThen })).toMatchObject({ mo: "A" });
+    expect(typeof restoreWorklistPushTool.parse!({ mo: "A", dept: "Cut", rows: "[{\"item\":\"TC\"}]" })).toBe("string");
+    const p = await restoreWorklistPushTool.describe({ mo: "A", dept: "Cut", rows: pushedThen }, ctx);
+    expect(p).toMatchObject({ title: "Put A's push to Cut back", changes: [{ label: "A → Cut", before: "3 TC", after: "3 TC" }] });
+  });
+
+  it("its undo writes the rows back through the push permission, and an MO gone from the registry is refused", async () => {
+    const out = { mo: "A", dept: "Cut" as const, rows: pushedThen };
+    expect(await restoreWorklistPushTool.execute(out, ctx)).toEqual({ ok: false, error: "You do not have permission to do this." });
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+    h.perms.add("tracker.push");
+    h.prisma.masterOrder.findUnique.mockResolvedValue(null);
+    expect(await restoreWorklistPushTool.execute(out, ctx)).toEqual({ ok: false, error: "MO A is not in the orders registry." });
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+    h.prisma.masterOrder.findUnique.mockResolvedValue(order("A"));
+    expect(await restoreWorklistPushTool.execute(out, ctx)).toEqual({ ok: true, message: "A's push to Cut is back as it was." });
+    expect(h.tx.worklistPush.deleteMany).toHaveBeenCalledWith({ where: { dept: "Cut", mo: "A" } });
+    expect(h.tx.worklistPush.createMany).toHaveBeenCalledWith({
+      data: [{ dept: "Cut", bom: "12011E16M13", mo: "A", item: "TC", qty: 3, baseDone: 1, createdBy: "Sara", createdAt: new Date("2026-10-01T00:00:00.000Z") }],
+    });
   });
 
   it("refuses more than the department still owes", async () => {
@@ -247,6 +354,16 @@ describe("push_to_worklist", () => {
     h.prisma.worklistPush.findMany.mockResolvedValue([]);
     h.prisma.handoverEntry.groupBy.mockResolvedValue([{ item: "TC", _sum: { qty: 8 } }]);
     expect(await pushToWorklistTool.describe({ mo: "A", dept: "Cut", qty: { TC: 5 } }, ctx)).toEqual({ error: "TC: only 2 still owed by Cut — cannot send 5." });
+  });
+
+  it("is a quantity when pieces are sent — it waits for the click — and low only when clearing; a panel order is refused", async () => {
+    const risk = pushToWorklistTool.risk as (i: { mo: string; dept: "Cut"; qty: Record<string, number> }) => string;
+    expect(risk({ mo: "A", dept: "Cut", qty: { TC: 5 } })).toBe("high");
+    expect(risk({ mo: "A", dept: "Cut", qty: {} })).toBe("low");
+    expect(risk({ mo: "A", dept: "Cut", qty: { TC: 0 } })).toBe("low");
+    h.perms.add("tracker.push");
+    h.prisma.masterOrder.findUnique.mockResolvedValue(order("P1", { line: "LV" }));
+    expect(await pushToWorklistTool.describe({ mo: "P1", dept: "Cut", qty: { TC: 1 } }, ctx)).toEqual({ error: "P1 is an LV panel order — panels are not pushed to the transformer worklists." });
   });
 });
 
@@ -273,5 +390,21 @@ describe("the Daily log", () => {
     expect(h.actions.bulkSetHandoverDate).toHaveBeenCalledTimes(1);
     expect(fdOf(h.actions.bulkSetHandoverDate)).toEqual({ date: "2026-10-11", ids: "5,6" });
     expect(out.undo).toEqual({ tool: "set_log_dates", input: { items: [{ id: 5, date: "2026-10-10" }, { id: 6, date: "2026-10-09" }] } });
+  });
+});
+
+describe("set_order_qty", () => {
+  it("warns only when ONE component's stage total is above the new quantity — not the sum over components", async () => {
+    h.perms.add("tracker.qty");
+    h.prisma.masterOrder.findUnique.mockResolvedValue(order("A", { planQty: 10 }));
+    // four components at Cut, 3 each: 12 in all, but no component is above 3
+    h.prisma.handoverEntry.groupBy.mockResolvedValue([
+      { dept: "Cut", item: "CF", _sum: { qty: 3 } }, { dept: "Cut", item: "TC", _sum: { qty: 3 } }, { dept: "Cut", item: "TN", _sum: { qty: 3 } }, { dept: "Cut", item: "CB", _sum: { qty: 3 } },
+    ]);
+    const raise = await setOrderQtyTool.describe({ mo: "A", qty: 11 }, ctx);
+    expect("changes" in raise && raise.changes).toEqual([{ label: "A required", before: "10", after: "11" }]);
+    expect(h.prisma.handoverEntry.groupBy.mock.calls[0][0]).toMatchObject({ by: ["dept", "item"] });
+    const lower = await setOrderQtyTool.describe({ mo: "A", qty: 2 }, ctx);
+    expect("changes" in lower && lower.changes).toEqual([{ label: "A required", before: "10", after: "2" }, { label: "⚠ already recorded at a stage", before: "3", after: "more than the order" }]);
   });
 });

@@ -46,14 +46,28 @@ export function HolidayManager({ rows }: { rows: HolidayRow[] }) {
     if (!confirm(`Remove "${name}"? The day becomes a normal working day again.`)) return;
     const fd = new FormData();
     fd.set("id", String(id));
+    setMsg("");
     startTransition(async () => {
-      await deleteHoliday(fd);
-      router.refresh();
+      const r = await deleteHoliday(fd);
+      if (r.ok) router.refresh();
+      else setMsg(r.error ?? "Failed");
     });
   }
 
+  // Opening or closing the Add form drops any pending message so an error
+  // raised inside the form never lingers under the page header once it closes.
+  function openAdd() {
+    setMsg("");
+    setAdding(true);
+  }
+
+  function closeAdd() {
+    setMsg("");
+    setAdding(false);
+  }
+
   const addButton = (
-    <button type="button" className="btn btn-primary btn-sm" onClick={() => { setMsg(""); setAdding(true); }}>
+    <button type="button" className="btn btn-primary btn-sm" onClick={openAdd}>
       <Plus size={14} aria-hidden /> Add a day off
     </button>
   );
@@ -61,8 +75,9 @@ export function HolidayManager({ rows }: { rows: HolidayRow[] }) {
   return (
     <div className="space-y-4">
       <PageHead title="Factory Calendar" sub="Holidays and shutdowns besides Fridays" actions={addButton} />
+      {msg && !adding && <p className="alert alert-bad">{msg}</p>}
       {adding && (
-        <Modal title="Add a day off" sub="Fridays are always off — add holidays and shutdowns." onClose={() => setAdding(false)} busy={pending} width="max-w-lg">
+        <Modal title="Add a day off" sub="Fridays are always off — add holidays and shutdowns." onClose={closeAdd} busy={pending} width="max-w-lg">
           <form onSubmit={submit} className="space-y-3">
             <div className="flex flex-wrap items-end gap-3">
               <label className="block">
@@ -76,7 +91,7 @@ export function HolidayManager({ rows }: { rows: HolidayRow[] }) {
             </div>
             {msg && <p className="alert alert-bad">{msg}</p>}
             <div className="flex justify-end gap-2 pt-3 border-t">
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setAdding(false)} disabled={pending}>Cancel</button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={closeAdd} disabled={pending}>Cancel</button>
               <button type="submit" disabled={pending} className="btn btn-primary btn-sm">{pending ? "Saving…" : "Add"}</button>
             </div>
           </form>

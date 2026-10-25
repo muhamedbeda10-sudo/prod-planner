@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { requireDeptEdit } from "@/lib/server/auth";
 import { MANUAL_BOM, MANUAL_ITEM, SHEET_COUNT_RULE, editedJobQty, isSheetCount, jobSheetKey, jobsBySheet, manualMo, readJobParts, roundSheets, typedCount, type ManualJobPartView } from "@/lib/domain/manualJob";
 import { normalizeMaterialType, normalizeSheetSize } from "@/lib/domain/material";
-import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
+import { parseISODate, factoryToday } from "@/lib/domain/dates";
 import { partsWithPlanBoms } from "@/lib/server/manualJobs";
 
 // Jobs from outside the plan, put on a machine by hand. The dept's worklist
@@ -220,7 +220,7 @@ export async function recordManualDone(fd: FormData): Promise<ManualActionResult
   if (job.bySheet ? !isSheetCount(qty) : !Number.isInteger(qty) || qty <= 0) return { ok: false, error: job.bySheet ? `Enter the sheets cut — ${SHEET_COUNT_RULE}.` : "Enter whole pieces above 0." };
   if (qty > left) return { ok: false, error: job.bySheet ? `Only ${left} sheet(s) left on this job.` : `Only ${left} left on this job.` };
   const machineId = Number(text(fd, "machineId")) || null;
-  const date = parseISODate(text(fd, "date")) ?? parseISODate(factoryDayISO(new Date()))!;
+  const date = parseISODate(text(fd, "date")) ?? factoryToday();
   const doneQty = roundSheets(job.doneQty + qty);
   const finished = doneQty >= roundSheets(job.qty);
   const key = { dept: job.dept, bom: MANUAL_BOM, mo: manualMo(job.id), item: MANUAL_ITEM };

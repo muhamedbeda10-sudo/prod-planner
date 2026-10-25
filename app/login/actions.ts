@@ -21,10 +21,14 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
 
   // too many wrong passwords lately: wait, before any password is checked
   const h = await headers();
-  const ip = clientAddress((name) => h.get(name));
+  // forwarding headers are only trusted where a proxy we control sets them
+  const trustProxy = !!process.env.VERCEL || process.env.TRUST_PROXY === "1";
+  const ip = clientAddress((name) => h.get(name), { trustProxy });
   const since = new Date(Date.now() - LOGIN_WINDOW_MS);
+  // the failures are kept under the first 200 characters: counted under the same
+  const failKey = email.slice(0, 200);
   const [account, address] = await Promise.all([
-    prisma.loginFailure.count({ where: { email, ip, at: { gte: since } } }),
+    prisma.loginFailure.count({ where: { email: failKey, ip, at: { gte: since } } }),
     prisma.loginFailure.count({ where: { ip, at: { gte: since } } }),
   ]);
   if (loginThrottled({ account, address })) return { ok: false, error: LOGIN_THROTTLED };
@@ -34,7 +38,7 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
   const valid = verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
   if (!user || !valid) {
     await prisma.$transaction([
-      prisma.loginFailure.create({ data: { email: email.slice(0, 200), ip } }),
+      prisma.loginFailure.create({ data: { email: failKey, ip } }),
       prisma.loginFailure.deleteMany({ where: { at: { lt: new Date(Date.now() - LOGIN_FAILURE_KEEP_MS) } } }),
     ]);
     return { ok: false, error: "Wrong email or password." };
@@ -42,7 +46,7 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
   if (!user.active) return { ok: false, error: "This account is deactivated — ask the admin." };
 
   // signed in: this account's mistakes from here are forgiven
-  await prisma.loginFailure.deleteMany({ where: { email, ip } });
+  await prisma.loginFailure.deleteMany({ where: { email: failKey, ip } });
   await createSession(user.id);
   redirect("/");
 }

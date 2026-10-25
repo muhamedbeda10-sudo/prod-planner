@@ -6,6 +6,7 @@ import { Pencil, Plus, Trash2, Wrench } from "lucide-react";
 import { EmptyState, Note } from "@/components/primitives";
 import { Badge } from "@/components/Badge";
 import { ExportButton } from "@/components/ExportButton";
+import { SAVE_UNCONFIRMED } from "@/components/ui";
 import { TableFrame, Th, useConfirm } from "@/components/DataTable";
 import { DOWNTIME_REASONS, downtimeByCause, downtimeLabel, clockMinutes, stopDurationLabel } from "@/lib/domain/downtime";
 import { WORK_CENTRE_LABEL, isRosterDept, workerCentres, type RosterDept } from "@/lib/domain/shifts";
@@ -99,7 +100,7 @@ export function ShiftDowntime({ data, editableDepts }: { data: DowntimeDay; edit
           setForm(blankForm());
           router.refresh();
         } else setMsg({ ok: false, text: res.error ?? "Could not record the stop." });
-      } catch { setMsg({ ok: false, text: "Could not confirm the save. Refresh and check the records before trying again." }); }
+      } catch { setMsg({ ok: false, text: SAVE_UNCONFIRMED }); }
     });
   };
 

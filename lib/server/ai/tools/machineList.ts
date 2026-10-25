@@ -217,8 +217,16 @@ export const deleteMachineTool: WriteTool<{ machine: string }> = {
     if (!hasPerm(ctx.user, PERM)) return { error: NO_RIGHT };
     const m = await byCode(i.machine);
     if (!m) return { error: `No machine ${i.machine} on the list.` };
-    const [rules, queue] = await Promise.all([prisma.machineRule.count({ where: { machineId: m.id } }), prisma.worklistMachine.count({ where: { machineId: m.id } })]);
+    const [rules, queue, times, jobs, cuts] = await Promise.all([
+      prisma.machineRule.count({ where: { machineId: m.id } }),
+      prisma.worklistMachine.count({ where: { machineId: m.id } }),
+      prisma.machineItemTime.count({ where: { machineId: m.id } }),
+      prisma.manualJob.count({ where: { machineId: m.id } }),
+      prisma.sheetCutLog.count({ where: { machineId: m.id } }),
+    ]);
     if (rules > 0 || queue > 0) return { error: `${m.code} has ${rules} rule(s) and ${queue} queue line(s) — they would go with it. Retire it instead (set_machines_active), or take those off first.` };
+    // its typed hours per piece would be dropped silently, and the undo cannot bring them back
+    if (times > 0 || jobs > 0 || cuts > 0) return { error: `${m.code} has ${times} typed time(s) per piece, ${jobs} job(s) and ${cuts} sheet-cut record(s) — they would go or lose their machine. Retire it instead (set_machines_active).` };
     return {
       title: `Delete machine ${m.code}`,
       summary: `Delete ${m.code} ${m.name} from the machines list.`,

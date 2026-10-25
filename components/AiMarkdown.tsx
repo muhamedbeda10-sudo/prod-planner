@@ -1,12 +1,12 @@
 "use client";
 
 import { Children, isValidElement, type ReactNode } from "react";
+import dynamic from "next/dynamic";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AiChart } from "@/components/AiChart";
 import { isChartBlock } from "@/lib/domain/aiChart";
 import { humanizeKey, looksLikeColumn, readableDate } from "@/lib/domain/fieldNames";
-import { isEvidenceAnchor } from "@/lib/domain/aiEvidence";
+import { isEvidenceAnchor, safeHref } from "@/lib/domain/aiEvidence";
 
 // An AI answer as it reads: Markdown (tables, lists, bold) in the app's own
 // type. The answer as a whole reads in the language it was written in — an
@@ -18,6 +18,15 @@ import { isEvidenceAnchor } from "@/lib/domain/aiEvidence";
 // and dates as the app writes them. A ```chart block is drawn
 // as a chart. No raw HTML is rendered — only Markdown — and nothing in an
 // answer is fetched from outside: no images, and outside links are text.
+
+// The chart (and Recharts under it) is the heaviest thing an answer can carry,
+// and most answers, reports and tasks carry none. It is split into its own
+// chunk and fetched the first time a chart block is drawn, with a quiet
+// placeholder of a chart's height in the meantime — the text around it
+// paints first.
+const AiChart = dynamic(() => import("@/components/AiChart").then((m) => m.AiChart), {
+  loading: () => <div className="my-3 h-24 rounded-xl bg-surface-2/60 animate-pulse" aria-hidden />,
+});
 
 type HastNode = { type: string; tagName?: string; value?: string; properties?: { className?: unknown }; children?: HastNode[] };
 
@@ -80,7 +89,7 @@ function components(streaming: boolean): Components {
     // a link into the app is a link; anything outside is shown, not followed —
     // a row of data could tell the model to put figures in an address
     a: ({ children, href }) =>
-      href && ((href.startsWith("/") && !href.startsWith("//")) || isEvidenceAnchor(href)) ? (
+      href && (safeHref(href) || isEvidenceAnchor(href)) ? (
         <a href={href} className="text-brand-ink underline underline-offset-2" onClick={isEvidenceAnchor(href) ? (event) => {
           const source = document.getElementById(href.slice(1));
           if (source instanceof HTMLDetailsElement) {

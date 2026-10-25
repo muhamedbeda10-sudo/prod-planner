@@ -12,6 +12,9 @@ describe("mirrorSource", () => {
     expect(mirrorSource("Welding", "TN")).toBeNull();
     expect(mirrorSource("Cut", "CF")).toBeNull();
   });
+  it("is nothing for painting on the core frame — that component skips the booth, so such a row is a mistake, not a close", () => {
+    expect(mirrorSource("Painting", "CF")).toBeNull();
+  });
 });
 
 describe("ITEM_PRODUCT", () => {

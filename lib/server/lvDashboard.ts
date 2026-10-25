@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { dateFromDayNumber, dayNumber, toISODate } from "@/lib/domain/dates";
+import { dateFromDayNumber, dayNumber, factoryToday, toISODate } from "@/lib/domain/dates";
 import { LV_CHAIN, LV_ITEM, type LvChainStage } from "@/lib/domain/lv";
 import { getLvTracker } from "./lvTracker";
 
@@ -49,7 +49,7 @@ const zero = (): Record<LvChainStage, number> => ({ Punching: 0, Bending: 0, Wel
  *  when `opts` names it — the same day-or-period the transformer dashboard
  *  answers, which is what makes it the panels' report too. */
 export async function getLvDashboard(opts?: { from?: Date | null; to?: Date | null }): Promise<LvDashboardData> {
-  const todayNum = dayNumber(new Date());
+  const todayNum = dayNumber(factoryToday());
   let from = todayNum - (DAYS - 1);
   let today = todayNum;
   let ranged = false;
@@ -61,9 +61,8 @@ export async function getLvDashboard(opts?: { from?: Date | null; to?: Date | nu
     if (today < from) [from, today] = [today, from];
     if (today - from >= MAX_DAYS) { today = from + MAX_DAYS - 1; clamped = true; }
   }
-  const monthStart = new Date();
+  const monthStart = factoryToday();
   monthStart.setUTCDate(1);
-  monthStart.setUTCHours(0, 0, 0, 0);
   const since = new Date(Math.min(dateFromDayNumber(from).getTime(), monthStart.getTime()));
 
   const [entries, tracker] = await Promise.all([

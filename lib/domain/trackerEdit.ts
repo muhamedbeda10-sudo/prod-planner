@@ -18,14 +18,18 @@ export function readBase(v: FormDataEntryValue | null): number | null {
   if (v === null) return null;
   const raw = String(v).trim();
   if (raw === "") return null;
+  // a fractional stage total (the ledger takes decimals) is a figure like any
+  // other — refusing it would switch the stale check off exactly there
   const n = Number(raw);
-  return Number.isInteger(n) ? n : null;
+  return Number.isFinite(n) ? n : null;
 }
 
 /** Refuse a typed total worked out from a figure the ledger has since moved
  *  away from: recording the difference from a stale page would double-count
  *  output, or take back pieces (and tank serials) recorded meanwhile. */
 export function staleTotalError(base: number | null, shownNow: number): string | null {
-  if (base === null || base === shownNow) return null;
+  // the two figures are summed by different reads; with decimals they can
+  // differ in the last bit without anyone having recorded anything
+  if (base === null || Math.abs(base - shownNow) < 1e-6) return null;
   return `This figure is now ${shownNow}, not the ${base} on your screen — someone recorded meanwhile. Refresh the page and type the total again.`;
 }

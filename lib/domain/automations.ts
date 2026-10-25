@@ -22,7 +22,7 @@
 //              inbox for approval (small ones run on their own only if the
 //              person opted into that).
 
-import { parseISODate, toISODate, factoryClockHHMM, factoryDayISO, factoryTimeAt } from "./dates";
+import { parseISODate, toISODate, factoryClockHHMM, factoryDayISO, factoryTimeAt, factoryToday } from "./dates";
 import { jsonSafe, prepareSql } from "./ai";
 import { APP_EVENTS, isAppEventType } from "./appEvents";
 import { humanizeKey, readableValue } from "./fieldNames";
@@ -380,7 +380,7 @@ export function checkWindow(i: { from?: string | null; to?: string | null; weekd
  *  ticked, and the clock is inside the hours (from included, to not). Over
  *  midnight, the small hours count on the day they fall on. */
 export function inAutomationWindow(now: Date, w: AutomationWindow): boolean {
-  const day = parseISODate(factoryDayISO(now))!.getUTCDay();
+  const day = factoryToday(now).getUTCDay();
   if (!w.weekdays.includes(day)) return false;
   if (!w.from || !w.to) return true;
   const t = factoryClockHHMM(now);

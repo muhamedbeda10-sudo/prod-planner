@@ -524,7 +524,7 @@ export function MachineBoard({ board, canEdit, canManage = false }: {
         )}
       </h2>
       {note && (
-        <div className={`text-xs rounded-lg px-3 py-2 mb-2 border no-print ${note.error ? "bg-bad-light border-bad-fg/30 text-bad-fg" : "bg-brand-light/40 border-brand/30"}`}>
+        <div className={`text-xs rounded-lg px-3 py-2 mb-2 border no-print ${note.error ? "bg-bad-bg border-bad-fg/30 text-bad-fg" : "bg-brand-light/40 border-brand/30"}`}>
           {note.error ?? note.summary}
         </div>
       )}

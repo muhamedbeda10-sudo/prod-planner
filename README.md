@@ -43,9 +43,13 @@ mobile drawer still lists every view flat, since it has the vertical room.
    (bidirectional digit/letter split, RC→TC), `targetQty = balance + gridSum` (or `requiredQty`),
    idempotent re-import, warnings (oversize / misaligned remark column / suspected double-count).
 2. **Daily handover entry** (`/handover`) — fast RTL form, BOM autocomplete with **entry-time
-   normalization** (green auto-correct badge, red block for unknown/ambiguous), editable audited log.
+   normalization** (green auto-correct badge, red block for unknown/ambiguous), editable audited log. An
+   edit appends to the row's note rather than replacing it, and a return's own rows — the deduction upstream
+   and the re-delivery's credit — are re-dated, never re-quantified by hand: deleting the deduction cancels the
+   return, deleting the credit reopens it.
 3. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
-   Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows.
+   Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows; the trace's
+   **On Odoo → Closed on** is the real closing moment on the factory clock, as the ODOO tab shows it.
    Each component ends with a read-only **Odoo** column sourced from Done/Closed quantities in the Odoo tab.
    The BOM trace's **On Odoo** closing rows are the primary source per component; separate imports
    are used only where that component has no linked closing records. The ledger identifies the part
@@ -63,8 +67,11 @@ mobile drawer still lists every view flat, since it has the vertical room.
    the LAST MOs first. The cell says which MOs the number will land on, in fill order, **before** it is saved;
    the preview and the write are the same functions (`lib/domain/groupSpread.ts`), so they cannot disagree.
    A **Close N delivered** button closes every open order whose components have all reached the customer —
-   the server recounts from the ledger rather than trusting the page, so a stale or filtered view can never
-   close an order that is still short.
+   the in-house share of each (outsourced pieces never pass through the plant), so an order with an outsourced
+   component closes too — and the server recounts from the ledger rather than trusting the page, so a stale or
+   filtered view can never close an order that is still short. A merged row's cell records exactly the figure
+   it shows (the same eligible orders, the same capped totals), and an order whose quantity was lowered below
+   what is already recorded is refused with a message instead of being written around.
    The grid is coloured by COMPONENT, not by stage: all four of an item's stage columns wear one wash, so
    twenty-four numbers read as six components instead of one field. The hues are ordered to separate
    NEIGHBOURING components best (every adjacent pair ≥ 8 ΔE OKLab in both themes; non-adjacent ones never
@@ -77,7 +84,16 @@ mobile drawer still lists every view flat, since it has the vertical room.
    brand green leave free) so the eye finds it without counting across. Click a cell to type it. A merged BOM row shows a spec only when its MOs agree on it, "…" when they
    differ. All four export with the rest.
 4. **Daily worklists** (`/worklist/cut`, `/worklist/welding`) — due/still/today-target with capacity
-   allocation, overdue rollover, fill-up rows, Cut Alarm (Cut ready / Partial / NOT CUT YET).
+   allocation, overdue rollover, fill-up rows, Cut Alarm (Cut ready / Partial / NOT CUT YET). Every worklist,
+   the Daily log's day presets and the shift roster date a record with the factory's day (Africa/Cairo,
+   `factoryDayISO`), so the night shift's output after midnight belongs to the day it works. One rule for the
+   two finishing stages everywhere output is recorded (`stageItemError`): the core frame is shot blasted, never
+   painted; everything else is painted, never shot blasted. Closed and on-hold orders leave every daily
+   screen — the Welding and Painting queues, their machine boards and run order, the Floor and the machine
+   plan — and a line the Plan Tracker sent to a worklist that is already in that queue counts once on the
+   board. Every department worklist carries the same three layers above its own lists: the lines **sent from
+   the Plan Tracker** (date-less, recorded straight on the row), the ⭐ **priority orders**, and, for admins,
+   the **hidden lines** panel.
    The **Fabrication** worklist (`/worklist/cut`) works in **sheet jobs**: its machine board on top, the orders on
    hold and the pieces Welding sent back, then the **weekly plan measured at Fabrication** (one block per delivery
    day, one row per project, Req and Fab per component, the week picker beside it) — what each day still needs
@@ -167,7 +183,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
 8. **Shift log** (`/shifts`) — the supervisors' page, one day at a time: every worker registered in a
    section (Tools → Production Workers), narrowed to a line, a section or a search. Each worker gets ONE
    choice that says whether he came and on which shift — ☀ **Day** (07:00–16:00), 🌙 **Night** (19:00–04:00)
-   or ✕ **Absent** — plus optional overtime (day 16:00–19:00, night 04:00–07:00 the next morning) and a note. Both shifts default to 8 net base hours plus 3 optional OT hours. A worker with no record for the
+   or ✕ **Absent** — plus optional overtime (day 16:00–19:00, night 04:00–07:00 the next morning) and a note. Both shifts default to 8 net base hours plus 3 optional OT hours. The overtime saved is the period Settings names, to the hundredth of an hour (2.25 h is a period), and a day recorded under an earlier period keeps the figures already on its rows when it is re-saved. A worker with no record for the
    day is **not set** (never silently present or absent). Record **one department at a time**: choose its
    tab and save as soon as everyone in that department is set, even when the other departments are still
    unfinished. **Save & next department** saves then advances; the department tabs show recording progress.
@@ -179,7 +195,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
    **Save [department]** (pinned to the bottom of the screen) writes every worker in that department,
    including those hidden by search, section or attendance filters, and re-sums its
    man-hours into the figure the calibration and the plan's capacity check read (Admin → Standard Times
-   shows it read-only). Undo and Clear also affect only the chosen department. The **Day / Night board**
+   shows it read-only). The capacity check (Plan Tracker) and the What-if Simulator price the plan's promises the
+   same way (`owedPlanQtys`): one order's pieces once however often a line is repeated, the in-house share only
+   (outsourced and N/A components owe no hours), the pace over the full days elapsed, and a stage set to 0 h/day
+   as over capacity rather than unset. Undo and Clear also affect only the chosen department. The **Day / Night board**
    still covers the whole selected line/factory for print and export. **Recorded days** is a table of day/night attendance, absences, man-hours and
    machine-stop counts for every recorded date. Use From/To filters, pagination or **All days**; check
    individual rows, a page or all matching dates across pages for bulk deletion. Each row opens attendance
@@ -202,7 +221,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
    **Still open** clears a previously guessed end. Notes can be updated while it stays open. A dated
    repair can span multiple days; daily losses and available machine hours count only its actual overlap
    with each factory day (up to now while open). Previously recorded rows without an explicit end date
-   keep their original start-day booking. Open rows store `isOpen=true`, no end and `hours=0` as a marker;
+   keep their original start-day booking; a timed stop recorded through the assistant carries its end date
+   too (the next day when it crosses midnight) and is refused while its end is still to come. Open rows store `isOpen=true`, no end and `hours=0` as a marker;
    loaders calculate live elapsed hours, so that marker must never be reported as zero downtime.
    A clock end earlier than the start automatically suggests the next date; adjust **End date** when needed.
    Choose **Other equipment** to type an unlisted asset's name and department (and work centre for
@@ -233,7 +253,9 @@ mobile drawer still lists every view flat, since it has the vertical room.
    finished against the man-hours the shift log put on it, a day's hours split between the items it ran (by the
    standard hours they earned, or by pieces when nothing that day is priced — so AR and MB get a figure too).
    Click it to take it as the figure. Only a ✓ on a machine card carries the machine, so the page says what
-   share of the recorded output can be measured at all.
+   share of the recorded output can be measured at all. The machines are one physical floor: the measured
+   figures are priced against the transformer registry whichever line the nav toggle shows, and a record whose
+   MO is not on the master list is priced by its project's class.
    **Shift hours** (Shifts → Shift hours, admin): what the day shift, the night shift and each shift's overtime are
    worth. Every man-hour the app counts is measured with them — the shift log's day, a machine's crew, the
    figure the standard times are calibrated against — so a new roster is a setting, not a code change. A day
@@ -334,8 +356,12 @@ mobile drawer still lists every view flat, since it has the vertical room.
    admin's: the "edited" pill opens it under the row, and the **Log · Edits** switch lists every correction,
    delete and restore in the period (who, when, "Qty: 10 → 8"), with **↺ Restore this version** on each —
    it puts the row back the way it read before that change, brings a deleted row back onto the log, and is
-   itself kept as a change. An edit made on a page older than the row is refused rather than overwriting
+   itself kept as a change. A restore is checked against the item's limits like a correction: a version that
+   would take a limit over asks for the reason first, and the row's over-limit flag is recomputed either way.
+   An edit made on a page older than the row is refused rather than overwriting
    someone else's. A worker with hand-outs cannot be deleted from the workers list, only deactivated.
+   Likewise a user account that chat messages, assistant changes or automation runs name is deactivated,
+   never deleted, so that history keeps its person.
    Opens on today; the slicer reaches a year back; Excel export of the log and of the edits.
    **Powder** (the switch's Powder view) — the painting lines' **powder scrap**: the storekeeper records each
    weighing (day, Transformer Painting / USS Painting, kg, note — `PowderScrap`, corrected by its recorder or
@@ -392,7 +418,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
      — one approval, one board refresh, one undo). Undo runs only while nothing changed since; where an
      action stamps things as it goes, the undo writes the rows back exactly from the snapshot (`lib/server/rowSnapshots.ts`,
      reachable only from an undo). Deletions need their own key and always wait; "small changes without asking" is a
-     per-person opt-in. The owner can pause every change, or every automation, at once (AI assistant settings).
+     per-person opt-in — and a change that carries a quantity (pieces pushed, sheets cut, counts, closings) or
+     touches more than a few rows waits for the click whatever the opt-in. The owner can pause every change, or every automation, at once (AI assistant settings).
    - **The Simulator on the person's screen** (`show_on_simulator`, `lib/simulatorBridge.ts`): with the What-if Simulator
      open beside the chat, a question carries the scenario on it (at most 800 k characters, read against today's jobs only
      where a tool starts from it), and the assistant turns the knobs on that screen at once — workers, hours, Fridays,
@@ -448,7 +475,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    short at the end of the horizon or falling behind in it and when it catches up, thin or heavy welding coverage, a slow centre, the
    biggest loss, an unrecorded day), then five questions: **1** the newest weekly plan — each stage's pieces due by
    today (the oven date less the Settings lead days) against done, by delivery day, and the lines behind with the
-   stage they are stuck at; **2** each work centre's earned std-hours against the man-hours the shift log booked
+   stage they are stuck at (the card shows the oldest 20; its Excel export carries them all); **2** each work centre's earned std-hours against the man-hours the shift log booked
    there — efficiency on the last recorded day and over the recent ones, people a day, machine availability, the
    trend; **3** the load ahead — each centre's remaining plan hours over the next 10 working days against what it
    can work (its usual man-hours × its measured pace — "not measured" while no hours are booked there); **4** welding coverage — days of cut parts waiting in front of

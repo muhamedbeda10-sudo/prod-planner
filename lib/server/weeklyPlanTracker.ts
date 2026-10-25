@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { loadMasterOrders } from "./loads";
 import { ITEMS, isPaintExempt, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
-import { dayNumber, toISODate } from "@/lib/domain/dates";
+import { dayNumber, factoryToday, toISODate } from "@/lib/domain/dates";
 import { owedAcrossDays, promiseCeiling } from "@/lib/domain/planPromises";
 
 // Plan Tracker on a WEEKLY plan, grouped BY DELIVERY DAY.
@@ -104,20 +104,25 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
   const active = planNo && planNos.includes(planNo) ? planNo : (planNos[0] ?? null);
   if (active === null) return { planNo: null, planNos, days: [], req: 0, covered: 0 };
 
-  const [schedules, orders, sums] = await Promise.all([
+  const [schedules, orders] = await Promise.all([
     prisma.planSchedule.findMany({
       where: { planNo: active },
       select: { bom: true, mo: true, soi: true, description: true, item: true, ovenDate: true, qty: true },
     }),
     loadMasterOrders(),
-    // every entry ever logged — work done ahead of the delivery date still
-    // counts. Rows with no MO are kept: they are the Daily Logs entries, read
-    // at project level below.
-    prisma.handoverEntry.groupBy({
-      by: ["mo", "bom", "dept", "item"],
-      _sum: { qty: true },
-    }),
   ]);
+  // every entry ever logged for THIS plan's orders and projects — work done
+  // ahead of the delivery date still counts, whatever week it was logged in.
+  // Rows with no MO are kept for the plan's projects: they are the Daily Logs
+  // entries, read at project level below. Nothing else on the ledger is ever
+  // looked up here, so the ledger is read for these keys and no further.
+  const planMos = [...new Set(schedules.map((s) => s.mo).filter(Boolean))];
+  const planBoms = [...new Set(schedules.map((s) => s.bom).filter(Boolean))];
+  const sums = await prisma.handoverEntry.groupBy({
+    by: ["mo", "bom", "dept", "item"],
+    where: { OR: [{ mo: { in: planMos } }, { OR: [{ mo: null }, { mo: "" }], bom: { in: planBoms } }] },
+    _sum: { qty: true },
+  });
 
   const orderOf = new Map(orders.map((o) => [o.mo, o]));
   // manual N/A per order: components the order does not need at all. The weekly
@@ -228,7 +233,7 @@ export async function getWeeklyPlanTracker(planNo?: number | null): Promise<Week
     na: Partial<Record<Item, number>>; // the slice of req scheduled from N/A orders
     mos: Set<string>; // the orders this project owes on this day — the progress to read
   };
-  const todayD = dayNumber(new Date());
+  const todayD = dayNumber(factoryToday());
   const dayMeta = new Map<number, { iso: string }>();
   const drafts = new Map<string, Draft>(); // "<dayNumber>|<bom>"
 

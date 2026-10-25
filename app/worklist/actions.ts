@@ -9,19 +9,21 @@ import { isItem, isDept, deptLabel } from "@/lib/domain/constants";
 import { factoryDayISO, parseISODate, toISODate } from "@/lib/domain/dates";
 import { findPlanForDate } from "@/lib/domain/findPlan";
 import { getPlanWindows, getSettings } from "@/lib/server/data";
-import { checkOutputChain } from "@/lib/server/outputGuard";
+import { checkOutputChain, recheckLvChainLocked } from "@/lib/server/outputGuard";
 import { requireDeptEdit, requireAdmin, requirePerm } from "@/lib/server/auth";
 import { ledgerPermKey, trackerPermKey } from "@/lib/domain/permissions";
-import { DELIVERED_STAGE, SHOTBLAST_STAGE, isPaintExempt } from "@/lib/domain/constants";
+import { DELIVERED_STAGE, SHOTBLAST_STAGE, stageItemError } from "@/lib/domain/constants";
 import { TANK_ITEM } from "@/lib/domain/tanks";
 import { mintTankSerials, unmintTankSerials } from "@/lib/server/tanks";
 import { resolveWorker } from "@/lib/server/workers";
 import { mirrorLedgerToOdoo } from "@/lib/server/odooMirror";
-import { loadGroupMembers, groupTotal, groupShownTotal, spreadGroupChange } from "@/lib/server/groupRecord";
+import { loadGroupMembers, groupTotal, groupShownTotal, spreadGroupChange, memberAt } from "@/lib/server/groupRecord";
 import { readBase, shownStageTotal, staleTotalError } from "@/lib/domain/trackerEdit";
 import { LV_ITEM, LV_STAGES, lvStageAt } from "@/lib/domain/lv";
 import { emitEvent } from "@/lib/server/events";
 import { outputSentence } from "@/lib/domain/appEvents";
+import { UserError, userMessage } from "@/lib/server/errors";
+import { orderLineError } from "@/lib/server/returns";
 
 export interface RecordResult {
   ok: boolean;
@@ -38,7 +40,8 @@ export interface RecordResult {
 
 /** Thrown inside a tank transaction to roll it back with a message the shop
  *  floor can act on, instead of a raw constraint error. */
-class TankSyncError extends Error {}
+class TankSyncError extends UserError {}
+
 
 // Every screen a production record moves. TANK_PATHS adds the two the
 // per-piece layer feeds: the leak-test stage and the barcode sheet.
@@ -55,13 +58,16 @@ const TANK_PATHS = [...RECORD_PATHS, "/worklist/leak-test", "/barcode"];
 const PAINT_TANKS_ELSEWHERE =
   "Tanks are painted from the Painting worklist — pick the tanks themselves and who painted them there. A tank cannot be painted until it passes the leak test.";
 
+/** An LV order's panels are recorded on the LV tracker, never through a transformer write. */
+const panelOrderRefusal = (mo: string) => `${mo} is an LV panel order — panels are recorded on the LV tracker.`;
+
 /** Record output against a plan order line (MO × item) from the execution sheet.
  *  Creates a dated HandoverEntry — the analytics log stays the single source of truth. */
 export async function recordOutput(formData: FormData): Promise<RecordResult> {
   try {
     const dateStr = String(formData.get("date") ?? "");
     let dept = String(formData.get("dept") ?? "");
-    const bom = String(formData.get("bom") ?? "").trim();
+    let bom = String(formData.get("bom") ?? "").trim();
     const mo = String(formData.get("mo") ?? "").trim();
     const item = String(formData.get("item") ?? "").trim().toUpperCase();
     const qty = Number(formData.get("qty"));
@@ -86,6 +92,10 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     if (guard.error) return { ok: false, error: guard.error };
     if (!bom) return { ok: false, error: "Missing BOM." };
     if (!lvPanel && !isItem(item)) return { ok: false, error: "Invalid component." };
+    if (!lvPanel) {
+      const stageRule = stageItemError(dept, item);
+      if (stageRule) return { ok: false, error: stageRule };
+    }
     if (lvPanel && !mo) return { ok: false, error: "A panel is recorded on its MO." };
     if (lvPanel && !Number.isInteger(qty)) return { ok: false, error: "Panels are recorded by the piece — enter a whole number." };
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a quantity greater than zero." };
@@ -95,6 +105,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     // whole number of tanks and the batch has to say who welded them — unless
     // per-piece tracking is switched off, when a tank is just a quantity again.
     const tankTracking = (await getSettings()).tankTracking;
+    if (tankTracking && dept === "Painting" && item === TANK_ITEM) return { ok: false, error: PAINT_TANKS_ELSEWHERE };
     const mintsTanks = tankTracking && dept === "Welding" && item === TANK_ITEM;
     if (mintsTanks && !Number.isInteger(qty)) {
       return { ok: false, error: "Tanks are recorded by the piece — enter a whole number." };
@@ -115,12 +126,21 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     // plan) is the source of truth; weekly schedule/plan lines and prior log
     // entries (setup balances) are accepted as fallbacks.
     if (mo) {
-      const line =
-        (await prisma.masterOrder.findFirst({ where: { mo } })) ??
-        (await prisma.planSchedule.findFirst({ where: { bom, mo, item } })) ??
-        (await prisma.planOrder.findFirst({ where: { bom, mo, item } })) ??
-        (await prisma.handoverEntry.findFirst({ where: { bom, mo } }));
-      if (!line) return { ok: false, error: "This MO is not in the orders registry or any plan." };
+      const order = await prisma.masterOrder.findFirst({ where: { mo }, select: { bom: true, line: true } });
+      // a panel is the LV order's and is filed under ITS plan's BOM; a
+      // transformer component never goes on a panel order
+      if (order?.line === "LV" && !lvPanel) return { ok: false, error: panelOrderRefusal(mo) };
+      if (lvPanel) {
+        if (!order || order.line !== "LV") return { ok: false, error: `${mo} is not an LV panel order.` };
+        bom = order.bom;
+      } else {
+        const line =
+          order ??
+          (await prisma.planSchedule.findFirst({ where: { bom, mo, item } })) ??
+          (await prisma.planOrder.findFirst({ where: { bom, mo, item } })) ??
+          (await prisma.handoverEntry.findFirst({ where: { bom, mo } }));
+        if (!line) return { ok: false, error: "This MO is not in the orders registry or any plan." };
+      }
     } else {
       const known = await prisma.handoverEntry.findFirst({ where: { bom } });
       if (!known) return { ok: false, error: "This code has no history." };
@@ -130,16 +150,20 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     const chainError = await checkOutputChain({ dept, bom, mo, item, qty });
     if (chainError) return { ok: false, error: chainError };
 
-    // queue recordings land in the global bucket (plan 0) — make sure it exists
-    await prisma.plan.upsert({
-      where: { planNo },
-      create: { planNo, startDate: date },
-      update: {},
-    });
+    // queue recordings land in the global bucket (plan 0) — make sure it
+    // exists; any other plan has to be one that was imported
+    if (planNo === 0) {
+      await prisma.plan.upsert({ where: { planNo: 0 }, create: { planNo: 0, startDate: date }, update: {} });
+    } else if (!(await prisma.plan.findUnique({ where: { planNo }, select: { planNo: true } }))) {
+      return { ok: false, error: `Plan ${planNo} does not exist — refresh the page.` };
+    }
 
     // the ledger row and the tanks' serials are ONE write: a serial must never
     // survive a welding record that failed to save, nor the other way round
     const made = await prisma.$transaction(async (tx) => {
+      // a panel waits on its order's lock and is judged again under it — the
+      // LV tracker may be recording on the same MO this very moment
+      await recheckLvChainLocked(tx, { dept, bom, mo, item, qty });
       const ledger = await tx.handoverEntry.create({
         data: { date, dept, bom, mo: mo || null, item, qty, planNo, source: "worklist", machineId, createdBy: guard.user?.name ?? null },
       });
@@ -159,7 +183,7 @@ export async function recordOutput(formData: FormData): Promise<RecordResult> {
     await emitEvent({ type: "output.recorded", subject: mo || bom, summary: outputSentence({ qty, item, on: mo || bom, stage: dept }), data: { dept, mo, bom, item, qty } });
     return { ok: true, serials: made.serials.length > 0 ? made.serials : undefined, ledgerId: made.ledgerId };
   } catch (e) {
-    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "save the output") };
   }
 }
 
@@ -185,24 +209,31 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     if (guard.error) return { ok: false, error: guard.error };
     if (!bom || !mo) return { ok: false, error: "Missing MO / BOM." };
     if (!isItem(item)) return { ok: false, error: "Invalid component." };
-    if (dept === SHOTBLAST_STAGE && !isPaintExempt(item)) {
-      return { ok: false, error: `${item} is painted, not shot blasted — SHB applies to the core (CF) only.` };
-    }
+    const stageRule = stageItemError(dept, item);
+    if (stageRule) return { ok: false, error: stageRule };
     if (!Number.isInteger(newTotal) || newTotal < 0) return { ok: false, error: "Enter a whole number ≥ 0." };
     const tankTracking = (await getSettings()).tankTracking;
     if (tankTracking && item === TANK_ITEM && dept === "Painting") return { ok: false, error: PAINT_TANKS_ELSEWHERE };
 
     const [agg, order] = await Promise.all([
       prisma.handoverEntry.aggregate({ where: { mo, item, dept }, _sum: { qty: true } }),
-      prisma.masterOrder.findUnique({ where: { mo }, select: { planQty: true } }),
+      prisma.masterOrder.findUnique({ where: { mo }, select: { planQty: true, line: true } }),
     ]);
+    if (order?.line === "LV") return { ok: false, error: panelOrderRefusal(mo) };
     const current = agg._sum.qty ?? 0;
     // the total was typed from the figure on the page; if the ledger moved
     // since, the difference below would be counted from the wrong figure
-    const stale = staleTotalError(readBase(formData.get("base")), shownStageTotal(current, order?.planQty ?? 0));
+    const shown = shownStageTotal(current, order?.planQty ?? 0);
+    const stale = staleTotalError(readBase(formData.get("base")), shown);
     if (stale) return { ok: false, error: stale };
     const delta = newTotal - current;
     if (delta === 0) return { ok: false, error: "Nothing changed — the total is already " + current + "." };
+    // the cell shows the ledger capped at the order quantity; when the ledger
+    // already stands above it, only a correction downwards can be typed —
+    // adding to a figure the page does not show would record from the wrong base
+    if (current > shown && newTotal > shown) {
+      return { ok: false, error: `${mo} has ${current} recorded at ${deptLabel(dept)} but the order is for ${order?.planQty} — lower the total or correct the order quantity first.` };
+    }
 
     // physical chain guard, checked AFTER the proposed change in BOTH
     // directions: an increase can't out-run upstream/order qty, and a
@@ -260,7 +291,7 @@ export async function recordTrackerTotal(formData: FormData): Promise<RecordResu
     await emitEvent({ type: "output.recorded", subject: mo, summary: outputSentence({ qty: delta, item, on: mo, stage: dept, total: newTotal }), data: { dept, mo, bom, item, qty: delta } });
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "save the total") };
   }
 }
 
@@ -311,9 +342,8 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     }
     if (!bom) return { ok: false, error: "Missing BOM." };
     if (!isItem(item)) return { ok: false, error: "Invalid component." };
-    if (dept === SHOTBLAST_STAGE && !isPaintExempt(item)) {
-      return { ok: false, error: `${item} is painted, not shot blasted — SHB applies to the core (CF) only.` };
-    }
+    const stageRule = stageItemError(dept, item);
+    if (stageRule) return { ok: false, error: stageRule };
     const tankTracking = (await getSettings()).tankTracking;
     if (tankTracking && item === TANK_ITEM && dept === "Painting") return { ok: false, error: PAINT_TANKS_ELSEWHERE };
     if (mos.length === 0) return { ok: false, error: "The group has no MOs to distribute over." };
@@ -321,7 +351,15 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     // the member orders + their per-dept ledger totals for this component,
     // per MO in the GIVEN order (the order shown on screen)
     const list = await loadGroupMembers(bom, item, mos);
-    if (!list) return { ok: false, error: "An MO in the group belongs to a different BOM — refresh the page." };
+    if (!list) return { ok: false, error: `An MO in the group is not on ${bom}, or is in no plan or log — refresh the page.` };
+    const panelOrder = list.find((m) => m.o?.line === "LV");
+    if (panelOrder) return { ok: false, error: panelOrderRefusal(panelOrder.mo) };
+    // the page shows each member capped at its order quantity; an order whose
+    // ledger already stands above it (the quantity was lowered after the work
+    // was recorded) cannot be typed over as a group — the difference would be
+    // taken from a figure the page never showed
+    const over = source === "tracker" ? list.find((m) => m.o && m.o.planQty > 0 && memberAt(m, dept) > m.o.planQty) : undefined;
+    if (over) return { ok: false, error: `${over.mo} has ${memberAt(over, dept)} recorded at ${deptLabel(dept)} but the order is for ${over.o!.planQty} — correct that order's own cell or its quantity first.` };
     const current = groupTotal(list, dept);
 
     // the requested change
@@ -425,7 +463,7 @@ export async function recordGroupOutput(formData: FormData): Promise<RecordResul
     await emitEvent({ type: "output.recorded", subject: on, summary: outputSentence({ qty: delta, item, on, stage: dept, total: newTotal }), data: { dept, bom, mos, item, qty: delta } });
     return { ok: true, serials: outcome.length > 0 ? outcome : undefined };
   } catch (e) {
-    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "save the output") };
   }
 }
 
@@ -494,8 +532,12 @@ export async function setWorklistDate(formData: FormData): Promise<RecordResult>
     if (order) {
       const osp = { CF: order.ospCF, TC: order.ospTC, TN: order.ospTN, CB: order.ospCB } as const;
       const open = Math.max(0, order.planQty - (osp[item as keyof typeof osp] ?? 0) - done);
-      // other parts' still-open share (same FIFO math the worklist displays)
-      const others = parts.filter((p) => p.qty != null).sort((a, b) => (a.newDate < b.newDate ? -1 : 1));
+      // other parts' still-open share (same FIFO math the worklist displays);
+      // the part already on the chosen date is REPLACED below, so its old
+      // quantity neither claims nor consumes
+      const others = parts
+        .filter((p) => p.qty != null && toISODate(p.newDate) !== toISODate(newDate))
+        .sort((a, b) => (a.newDate < b.newDate ? -1 : 1));
       const base = others.length > 0 ? Math.min(...others.map((p) => p.baseDone)) : done;
       let consumed = Math.max(0, done - base);
       let claimed = 0;
@@ -519,7 +561,7 @@ export async function setWorklistDate(formData: FormData): Promise<RecordResult>
     revalidatePath("/worklist/cut");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "save the date") };
   }
 }
 
@@ -543,7 +585,7 @@ export async function clearWorklistDate(formData: FormData): Promise<RecordResul
     revalidatePath("/worklist/cut");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "clear the date") };
   }
 }
 
@@ -569,7 +611,7 @@ export async function hideWorklistLine(formData: FormData): Promise<RecordResult
     for (const p of ALL_WORKLIST_PATHS) revalidatePath(p);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "hide the line") };
   }
 }
 
@@ -587,7 +629,7 @@ export async function unhideWorklistLine(formData: FormData): Promise<RecordResu
     for (const p of ALL_WORKLIST_PATHS) revalidatePath(p);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "show the line again") };
   }
 }
 
@@ -604,7 +646,7 @@ export async function removeWorklistPush(formData: FormData): Promise<RecordResu
     for (const p of ALL_WORKLIST_PATHS) revalidatePath(p);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "remove the line") };
   }
 }
 
@@ -634,6 +676,8 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
     }
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, error: "Enter a quantity greater than zero." };
     if (!reason) return { ok: false, error: "Write the reason — the upstream dept needs to know what to fix." };
+    const lineError = await orderLineError(bom, mo || null);
+    if (lineError) return { ok: false, error: lineError };
 
     // can only return what is actually WAITING in this queue (upstream − consumed)
     const scope = mo ? { mo, item } : { bom, item };
@@ -666,7 +710,7 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
     });
     return { ok: true, ...made };
   } catch (e) {
-    return { ok: false, error: `Failed to return: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "return it") };
   }
 }
 
@@ -704,7 +748,7 @@ export async function redeliverReturn(formData: FormData): Promise<RecordResult>
     }
     return { ok: true, ledgerId };
   } catch (e) {
-    return { ok: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "deliver it again") };
   }
 }
 
@@ -773,7 +817,7 @@ export async function addQueueNote(formData: FormData): Promise<RecordResult> {
     revalidatePath("/worklist/painting");
     return { ok: true, id: note.id };
   } catch (e) {
-    return { ok: false, error: `Failed to save note: ${e instanceof Error ? e.message : String(e)}` };
+    return { ok: false, error: userMessage(e, "save the note") };
   }
 }
 

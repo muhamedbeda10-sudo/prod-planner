@@ -7,7 +7,7 @@ import { resolveBasis, resolveBom, resolveCompare, resolvePeriod, resolveProduct
 import { OdooBasisPicker, OdooBomPicker, OdooComparePicker } from "@/components/OdooPickers";
 import { OdooDashboard } from "@/components/LazyCharts";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
-import { factoryDayISO } from "@/lib/domain/dates";
+import { factoryDayISO, factoryToday } from "@/lib/domain/dates";
 import { odooScopeKey, parseOdooScope } from "@/lib/domain/odoo";
 import { PageHead } from "@/components/ui";
 import { ExportMenu } from "@/components/ExportMenu";
@@ -49,7 +49,8 @@ export default async function OdooPage({
   );
 
   if (view === "dashboard") {
-    const period = resolvePeriod(sp);
+    // the factory's day (Cairo), as the slicer and the closed-day buckets read it
+    const period = resolvePeriod(sp, factoryToday());
     const basis = resolveBasis(sp);
     const data = await getOdooDashboard(period, basis, resolveBom(sp), resolveCompare(sp), resolveProduct(sp));
     const today = factoryDayISO(new Date());
