@@ -154,8 +154,8 @@ async function readCentreDays(fromISO: string) {
     if (recentDates.has(iso)) {
       rowsRecent += 1;
       if (!r.present) absent += 1;
-      // overtime rides on the day shift only, as the shift log counts it
-      else if (shift === DEFAULT_SHIFT && r.overtimeH > 0) overtimeH += r.overtimeH;
+      // Both day and night overtime contribute to resource effort.
+      else if (r.overtimeH > 0) overtimeH += r.overtimeH;
     }
     if (!r.present) continue;
     const d = cell(iso, c);

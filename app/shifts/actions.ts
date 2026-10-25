@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { requirePerm } from "@/lib/server/auth";
 import { shiftPermKey } from "@/lib/domain/permissions";
 import { parseISODate } from "@/lib/domain/dates";
-import { DEFAULT_SHIFT, isRosterDept, isShiftCode, isWorkCentre, workerCentres, type RosterDept } from "@/lib/domain/shifts";
+import { DEFAULT_SHIFT, isRosterDept, overtimeHoursFor, overtimeTime, isShiftCode, isWorkCentre, workerCentres, type RosterDept } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL } from "@/lib/domain/tanks";
 import { parseWorkerSections, workerDepts } from "@/lib/domain/workers";
 import { syncDeptDayHours } from "@/lib/server/shifts";
@@ -66,9 +66,8 @@ export async function saveShiftRoster(fd: FormData): Promise<ShiftActionResult> 
     const overtimeH = Number(raw.overtimeH ?? 0);
     if (!Number.isFinite(overtimeH) || overtimeH < 0 || overtimeH > 12) return { ok: false, error: "Overtime must be between 0 and 12 hours." };
     const roundedOvertime = Math.round(overtimeH * 2) / 2;
-    if (shift !== DEFAULT_SHIFT && roundedOvertime > 0) return { ok: false, error: "Overtime is available to the day shift only." };
-    if (roundedOvertime > 0 && Math.abs(roundedOvertime - shiftHours.overtime) > 0.001) {
-      return { ok: false, error: `Overtime is the fixed ${shiftHours.overtime}-hour period from 16:00 to 19:00.` };
+    if (roundedOvertime > 0 && Math.abs(roundedOvertime - overtimeHoursFor(shift, shiftHours)) > 0.001) {
+      return { ok: false, error: `Overtime is the fixed ${overtimeHoursFor(shift, shiftHours)}-hour period (${overtimeTime(shift)}).` };
     }
     const present = raw.present !== false;
     // the work centre, where the department has several; anything else is none

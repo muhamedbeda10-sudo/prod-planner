@@ -19,7 +19,7 @@ vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server/auth", () => ({ requirePerm: h.requirePerm }));
 vi.mock("@/lib/server/shifts", () => ({ syncDeptDayHours: h.syncDeptDayHours }));
-vi.mock("@/lib/server/data", () => ({ getShiftHours: async () => ({ short: 8, long: 11, overtime: 3 }) }));
+vi.mock("@/lib/server/data", () => ({ getShiftHours: async () => ({ short: 8, long: 8, overtime: 2, nightOvertime: 3 }) }));
 
 import { saveShiftRoster } from "@/app/shifts/actions";
 
@@ -126,4 +126,13 @@ describe("saveShiftRoster", () => {
     expect(await saveShiftRoster(form([line(1, { dept: "Cut", center: "Cutting" }), line(2)]))).toEqual({ ok: true });
     expect(h.prisma.shiftEntry.upsert).toHaveBeenCalledTimes(2);
   });
+});
+
+
+it("records night overtime with the night setting and rejects the day duration", async () => {
+  expect(await saveShiftRoster(form([line(1, { shift: "S11", overtimeH: 3 })]))).toEqual({ ok: true });
+  expect(h.prisma.shiftEntry.upsert.mock.calls[0][0].create).toMatchObject({ shift: "S11", overtimeH: 3 });
+  vi.clearAllMocks();
+  expect(await saveShiftRoster(form([line(1, { shift: "S11", overtimeH: 2 })]))).toEqual({ ok: false, error: expect.stringContaining("3-hour period (04:00–07:00)") });
+  expect(h.prisma.shiftEntry.upsert).not.toHaveBeenCalled();
 });

@@ -3,7 +3,7 @@ import { hasPerm } from "@/lib/server/auth";
 import { getShiftRoster, type ShiftLineDTO } from "@/lib/server/shifts";
 import { clearShiftDay, saveShiftRoster } from "@/app/shifts/actions";
 import { readShiftState, restoreShiftState, type ShiftState } from "@/lib/server/rowSnapshots";
-import { ATTENDANCES, ATTENDANCE_TIME, DEPT_CENTRES, OVERTIME_TIME, ROSTER_DEPTS, SHIFT_CODES, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, hoursOfShift, isAttendance, isRosterDept, isWorkCentre, workerCentres, shiftSplit, type Attendance, type RosterDept, type ShiftCode, type ShiftHours, type ShiftSplit, type WorkCentre } from "@/lib/domain/shifts";
+import { ATTENDANCES, ATTENDANCE_TIME, DEPT_CENTRES, OVERTIME_TIME, NIGHT_OVERTIME_TIME, ROSTER_DEPTS, SHIFT_CODES, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, hoursOfShift, isAttendance, isRosterDept, isWorkCentre, workerCentres, shiftSplit, type Attendance, type RosterDept, type ShiftCode, type ShiftHours, type ShiftSplit, type WorkCentre } from "@/lib/domain/shifts";
 import { PERMISSIONS, shiftPermKey } from "@/lib/domain/permissions";
 import { WORKER_DEPT_LABEL, normalizeEmpId } from "@/lib/domain/tanks";
 import { formOf, type ReadTool, type WriteTool } from "./types";
@@ -25,7 +25,7 @@ const TABS = ["shifts"] as const;
 const DAY = { type: "string", format: "date" } as const;
 const DEPT = { type: "string", enum: [...ROSTER_DEPTS], description: "Cut = Fabrication. LV panels: Punching, Bending, WeldingLV, PaintingLV." } as const;
 const SHIFT = { type: "string", enum: [...SHIFT_CODES], description: `S9 = day shift ${ATTENDANCE_TIME.day}, S11 = night shift ${ATTENDANCE_TIME.night}. Both include a one-hour break.` } as const;
-const OVERTIME = { type: "number", minimum: 0, maximum: 12, description: `Day shift only: the fixed ${OVERTIME_TIME} overtime period. Use the configured overtime hours shown by get_shift_day.` } as const;
+const OVERTIME = { type: "number", minimum: 0, maximum: 12, description: `Optional overtime on either shift: day ${OVERTIME_TIME}, night ${NIGHT_OVERTIME_TIME} the following morning. Use the configured overtime hours shown by get_shift_day.` } as const;
 const MAX_STATE = 200_000;
 
 const label = (d: RosterDept) => WORKER_DEPT_LABEL[d];
@@ -49,7 +49,7 @@ function lineText(l: DayLine | null, h: ShiftHours): string {
   const note = l.note ? ` · “${l.note}”` : "";
   if (!l.present) return `absent${note}`;
   const at = l.center && isWorkCentre(l.center) ? ` at ${WORK_CENTRE_LABEL[l.center]}` : "";
-  return `${hoursOfShift(l.shift, h)} h${l.shift === "S9" && l.overtimeH > 0 ? ` + ${l.overtimeH} h OT` : ""}${at}${note}`;
+  return `${hoursOfShift(l.shift, h)} h${l.overtimeH > 0 ? ` + ${l.overtimeH} h OT` : ""}${at}${note}`;
 }
 
 const sameLine = (a: DayLine | null, b: DayLine | null): boolean => !!a && !!b && a.present === b.present && a.shift === b.shift && a.overtimeH === b.overtimeH && (a.center ?? null) === (b.center ?? null) && (a.note ?? null) === (b.note ?? null);
@@ -96,7 +96,7 @@ export const getShiftDayTool: ReadTool<DayInput> = {
       ok: true,
       text: JSON.stringify({
         date: r.dateISO,
-        shiftHours: { S9: r.shiftHours.short, S11: r.shiftHours.long, usualOvertime: r.shiftHours.overtime },
+        shiftHours: { S9: r.shiftHours.short, S11: r.shiftHours.long, usualOvertime: r.shiftHours.overtime, nightOvertime: r.shiftHours.nightOvertime ?? 3 },
         departments: depts.map((d) => {
           const lines = r.lines.filter((l) => l.dept === d);
           const s = shiftSplit(lines, r.shiftHours);
@@ -110,7 +110,8 @@ export const getShiftDayTool: ReadTool<DayInput> = {
             absent: s.absent,
             notSet: s.unset,
             manHours: s.hours,
-            overtimeH: s.day.overtimeH,
+            overtimeH: s.day.overtimeH + s.night.overtimeH,
+            dayOvertimeH: s.day.overtimeH, nightOvertimeH: s.night.overtimeH,
             capacityMhPerDay: r.capacityMh[d] ?? null,
             columns: ["badge", "name", "sections", "attendance", "overtimeH", "center", "note", "onVacation"],
             rows: lines.map((l) => [l.empId, l.name, l.sectionLabels.join(", "), attendanceOf(l), l.overtimeH, l.center, l.note || null, l.onVacation]),
@@ -168,8 +169,6 @@ export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput
     }
     asked.set(hit.workerId, w);
   }
-  const invalidOvertime = [i.everyone, ...(i.workers ?? [])].find((change) => change?.shift === "S11" && (change.overtimeH ?? 0) > 0);
-  if (invalidOvertime) return { error: `Overtime is available to the day shift only (${OVERTIME_TIME}).` };
   const unset: ShiftLineDTO[] = [];
   const dropsOvertime: ShiftLineDTO[] = [];
   const plan = lines.map((line): PlannedLine => {
@@ -186,11 +185,11 @@ export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput
     const present = w?.present ?? (w?.shift !== undefined ? true : from.present);
     const all = present ? i.everyone : undefined;
     const shift = w?.shift ?? all?.shift ?? from.shift;
-    const requestedOvertime = halfHour(w?.overtimeH ?? all?.overtimeH ?? from.overtimeH);
+    const requestedOvertime = halfHour(w?.overtimeH ?? all?.overtimeH ?? (shift === from.shift ? from.overtimeH : 0));
     const after: DayLine = {
       present,
       shift,
-      overtimeH: present && shift === "S9" ? requestedOvertime : 0,
+      overtimeH: present ? requestedOvertime : 0,
       center: w?.center ?? from.center ?? line.center,
       note: w && w.note !== undefined ? w.note?.trim() || null : from.note,
     };
@@ -198,7 +197,7 @@ export function planShiftDay(lines: readonly ShiftLineDTO[], i: Pick<RecordInput
     return { line, before, after, byRest };
   });
   if (dropsOvertime.length > 0) {
-    return { error: `Overtime is available to the day shift only (${OVERTIME_TIME}) — ${dropsOvertime.map((l) => `${l.empId} ${l.name}`).join(", ")} would not be on the day shift.` };
+    return { error: `Overtime needs a present worker — ${dropsOvertime.map((l) => `${l.empId} ${l.name}`).join(", ")} would be absent.` };
   }
   if (unset.length > 0) {
     const names = unset.slice(0, 5).map((l) => `${l.empId} ${l.name}`).join(", ");
@@ -226,7 +225,7 @@ export const recordShiftDayTool: WriteTool<RecordInput> = {
   name: "record_shift_day",
   title: "Record a day on the shift roster",
   description:
-    `Record one department's day on the shift roster, as the Shifts tab does: who came on the day shift (S9, ${ATTENDANCE_TIME.day}) and who on the night shift (S11, ${ATTENDANCE_TIME.night}), who was absent, day-shift overtime (${OVERTIME_TIME}) and notes. \`workers\` sets single workers (badge number or exact name) — a shift named for a worker means he came. \`rest\` sets every worker the day has no record for yet and who is not named (day, night or absent; one on vacation is absent). \`everyone\` applies a shift or overtime to every worker present. The department's day is saved whole and only when nobody is left not set — read it first with get_shift_day, and never guess \`rest\`: ask when the person did not say. No future days.`,
+    `Record one department's day on the shift roster, as the Shifts tab does: who came on the day shift (S9, ${ATTENDANCE_TIME.day}) and who on the night shift (S11, ${ATTENDANCE_TIME.night}), who was absent, optional overtime on either shift (day ${OVERTIME_TIME}, night ${NIGHT_OVERTIME_TIME}) and notes. \`workers\` sets single workers (badge number or exact name) — a shift named for a worker means he came. \`rest\` sets every worker the day has no record for yet and who is not named (day, night or absent; one on vacation is absent). \`everyone\` applies a shift or overtime to every worker present. The department's day is saved whole and only when nobody is left not set — read it first with get_shift_day, and never guess \`rest\`: ask when the person did not say. No future days.`,
   area: "data",
   // a few workers marked is small; the whole department, or many, is not
   risk: (i) => (!i.everyone && !i.rest && (i.workers?.length ?? 0) <= 3 ? "low" : "high"),

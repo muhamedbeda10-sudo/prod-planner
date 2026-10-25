@@ -627,6 +627,7 @@ async function settingsNow() {
     shortH: s?.shiftShortH ?? DEFAULT_SHIFT_HOURS.short,
     longH: s?.shiftLongH ?? DEFAULT_SHIFT_HOURS.long,
     overtimeH: s?.overtimeH ?? DEFAULT_SHIFT_HOURS.overtime,
+    nightOvertimeH: s?.nightOvertimeH ?? DEFAULT_SHIFT_HOURS.nightOvertime!,
   };
 }
 
@@ -634,29 +635,30 @@ interface ShiftHoursInput {
   shortH?: number;
   longH?: number;
   overtimeH?: number;
+  nightOvertimeH?: number;
 }
 
 const SHIFT_H = (what: string) => ({ type: "number", minimum: 0, maximum: 24, description: what }) as const;
-const SHIFT_LABELS = [["shortH", "The day shift (S9)"], ["longH", "The night shift (S11)"], ["overtimeH", "The day shift's overtime"]] as const;
+const SHIFT_LABELS = [["shortH", "The day shift (S9)"], ["longH", "The night shift (S11)"], ["overtimeH", "The day shift's overtime"], ["nightOvertimeH", "The night shift's overtime"]] as const;
 
 export const setShiftHoursTool: WriteTool<ShiftHoursInput> = {
   kind: "write",
   name: "set_shift_hours",
   title: "Set the shift hours",
-  description: "Set the net hours the plant's day and night shifts are worth and what the day shift's overtime adds (Settings) — every man-hour the app counts is measured with them, the days already recorded included.",
+  description: "Set the net hours the plant's day and night shifts are worth and what each shift's overtime adds (Settings) — every man-hour the app counts is measured with them, the days already recorded included.",
   area: "setup",
   risk: "high",
   tabs: SETTINGS_TABS,
   schema: {
     type: "object",
-    properties: { shortH: SHIFT_H("Net hours of the day shift (S9)."), longH: SHIFT_H("Net hours of the night shift (S11)."), overtimeH: SHIFT_H("Hours the day shift's overtime adds.") },
+    properties: { shortH: SHIFT_H("Net hours of the day shift (S9)."), longH: SHIFT_H("Net hours of the night shift (S11)."), overtimeH: SHIFT_H("Hours the day shift's overtime adds."), nightOvertimeH: SHIFT_H("Hours the night shift's overtime adds.") },
     additionalProperties: false,
   },
   parse: (r) => (Object.keys(r).length ? (r as ShiftHoursInput) : "Say which hours to set."),
   async describe(i, ctx) {
     if (!ctx.user.isAdmin) return { error: NOT_ADMIN };
     const s = await settingsNow();
-    const next = { shortH: round2(i.shortH ?? s.shortH), longH: round2(i.longH ?? s.longH), overtimeH: round2(i.overtimeH ?? s.overtimeH) };
+    const next = { shortH: round2(i.shortH ?? s.shortH), longH: round2(i.longH ?? s.longH), overtimeH: round2(i.overtimeH ?? s.overtimeH), nightOvertimeH: round2(i.nightOvertimeH ?? s.nightOvertimeH) };
     if (next.shortH <= 0 || next.longH <= 0) return { error: "A shift has to be longer than nothing." };
     const changes = SHIFT_LABELS.filter(([k]) => s[k] !== next[k]).map(([k, l]) => ({ label: l, before: `${s[k]} h`, after: `${next[k]} h` }));
     if (changes.length === 0) return { error: "The shift hours read so already." };
@@ -664,15 +666,15 @@ export const setShiftHoursTool: WriteTool<ShiftHoursInput> = {
       title: "Shift hours",
       summary: `Set the shift hours: ${changes.map((c) => `${c.label} ${c.before} → ${c.after}`).join("; ")} — every man-hour figure is recounted with them.`,
       changes,
-      snapshot: { shortH: s.shortH, longH: s.longH, overtimeH: s.overtimeH },
+      snapshot: { shortH: s.shortH, longH: s.longH, overtimeH: s.overtimeH, nightOvertimeH: s.nightOvertimeH },
     };
   },
   async execute(i) {
     const s = await settingsNow();
-    const next = { shortH: i.shortH ?? s.shortH, longH: i.longH ?? s.longH, overtimeH: i.overtimeH ?? s.overtimeH };
-    const r = await saveShiftHours(formOf({ shiftShortH: next.shortH, shiftLongH: next.longH, overtimeH: next.overtimeH }));
+    const next = { shortH: i.shortH ?? s.shortH, longH: i.longH ?? s.longH, overtimeH: i.overtimeH ?? s.overtimeH, nightOvertimeH: i.nightOvertimeH ?? s.nightOvertimeH };
+    const r = await saveShiftHours(formOf({ shiftShortH: next.shortH, shiftLongH: next.longH, overtimeH: next.overtimeH, nightOvertimeH: next.nightOvertimeH }));
     return r.ok
-      ? { ok: true, message: `The day shift is ${round2(next.shortH)} h, the night shift ${round2(next.longH)} h, overtime ${round2(next.overtimeH)} h.`, undo: { tool: "set_shift_hours", input: { shortH: s.shortH, longH: s.longH, overtimeH: s.overtimeH } } }
+      ? { ok: true, message: `The day shift is ${round2(next.shortH)} h, the night shift ${round2(next.longH)} h, day overtime ${round2(next.overtimeH)} h, night overtime ${round2(next.nightOvertimeH)} h.`, undo: { tool: "set_shift_hours", input: { shortH: s.shortH, longH: s.longH, overtimeH: s.overtimeH, nightOvertimeH: s.nightOvertimeH } } }
       : { ok: false, error: r.error };
   },
 };

@@ -20,7 +20,7 @@ describe("dayTotals", () => {
       { present: false, shift: "S9", overtimeH: 3, machineId: 2 },
       { present: true, shift: "S9", overtimeH: 1.5, machineId: null },
     ]);
-    expect(t).toEqual({ workers: 4, present: 3, hours: 31.5, overtimeH: 4.5, byMachine: { 1: 22 } });
+    expect(t).toEqual({ workers: 4, present: 3, hours: 28.5, overtimeH: 4.5, byMachine: { 1: 19 } });
   });
   it("is all zero for an empty department", () => {
     expect(dayTotals([])).toEqual({ workers: 0, present: 0, hours: 0, overtimeH: 0, byMachine: {} });
@@ -36,8 +36,8 @@ describe("machineAvailable", () => {
 });
 
 describe("the plant's shape", () => {
-  it("runs 8 working hours by day and 11 by night after each break", () => {
-    expect(SHIFTS).toEqual({ S9: 8, S11: 11 });
+  it("runs 8 base hours on both shifts after each break", () => {
+    expect(SHIFTS).toEqual({ S9: 8, S11: 8 });
     expect(isShiftCode("S11")).toBe(true);
     expect(isShiftCode("S8")).toBe(false);
   });
@@ -77,12 +77,12 @@ describe("shift hours the planner sets", () => {
   const hrs = { short: 8, long: 12, overtime: 2 };
   it("counts a day with the hours in force, not the ones in the code", () => {
     expect(lineHours({ present: true, shift: "S9", overtimeH: 0 }, hrs)).toBe(8);
-    expect(lineHours({ present: true, shift: "S11", overtimeH: 2 }, hrs)).toBe(12);
+    expect(lineHours({ present: true, shift: "S11", overtimeH: 2 }, hrs)).toBe(14);
     expect(lineHours({ present: false, shift: "S11", overtimeH: 2 }, hrs)).toBe(0);
     expect(hoursOfShift("S11", hrs)).toBe(12);
     expect(shiftLabel("S9", hrs)).toBe("Day · 8 h");
   });
-  it("falls back to the plant's net 8 and 11 hours when nothing is set", () => {
+  it("uses 8 base hours and optional 3 overtime hours by default", () => {
     expect(lineHours({ present: true, shift: "S9", overtimeH: 0 })).toBe(8);
     expect(lineHours({ present: true, shift: "S11", overtimeH: 3 })).toBe(11);
   });
@@ -92,8 +92,8 @@ describe("shift hours the planner sets", () => {
       { present: true, shift: "S9", overtimeH: 0, machineId: 1 },
       { present: false, shift: "S9", overtimeH: 0 },
     ], hrs);
-    expect(t.hours).toBe(20);
-    expect(t.byMachine[1]).toBe(20);
+    expect(t.hours).toBe(22);
+    expect(t.byMachine[1]).toBe(22);
     expect(t.present).toBe(2);
   });
 });
@@ -112,9 +112,10 @@ describe("who came on which shift", () => {
     expect(isAttendance("unset")).toBe(false);
   });
 
-  it("turns a choice into a line: overtime stays on the day shift only, vacation is absent", () => {
+  it("keeps overtime on either shift, clearing it for absence or a different shift", () => {
     expect(attendanceLine("day", { overtimeH: 3 })).toEqual({ present: true, shift: "S9", overtimeH: 3 });
-    expect(attendanceLine("night", { overtimeH: 3 })).toEqual({ present: true, shift: "S11", overtimeH: 0 });
+    expect(attendanceLine("night", { shift: "S11", overtimeH: 3 })).toEqual({ present: true, shift: "S11", overtimeH: 3 });
+    expect(attendanceLine("night", { shift: "S9", overtimeH: 3 })).toEqual({ present: true, shift: "S11", overtimeH: 0 });
     expect(attendanceLine("absent", { overtimeH: 3 })).toEqual({ present: false, shift: "S9", overtimeH: 0 });
     expect(attendanceLine("day", { overtimeH: 0 }, true)).toEqual({ present: false, shift: "S9", overtimeH: 0 });
   });
@@ -130,7 +131,7 @@ describe("who came on which shift", () => {
     expect(s).toEqual({
       workers: 5,
       day: { people: 2, hours: 19, overtimePeople: 1, overtimeH: 3 },
-      night: { people: 1, hours: 11 },
+      night: { people: 1, hours: 11, overtimePeople: 0, overtimeH: 0 },
       absent: 1,
       unset: 1,
       hours: 30,
@@ -142,7 +143,7 @@ describe("who came on which shift", () => {
   });
 
   it("an empty list is all zeros", () => {
-    expect(shiftSplit([])).toEqual({ workers: 0, day: { people: 0, hours: 0, overtimePeople: 0, overtimeH: 0 }, night: { people: 0, hours: 0 }, absent: 0, unset: 0, hours: 0 });
+    expect(shiftSplit([])).toEqual({ workers: 0, day: { people: 0, hours: 0, overtimePeople: 0, overtimeH: 0 }, night: { people: 0, hours: 0, overtimePeople: 0, overtimeH: 0 }, absent: 0, unset: 0, hours: 0 });
   });
 });
 
@@ -166,5 +167,17 @@ describe("work centres", () => {
     expect(machineWorkCentre("Cut", "SomethingNew")).toBeNull();
     expect(centreDept("Fins")).toBe("Cut");
     expect(DEPT_CENTRES.Cut).toEqual(["Cutting", "Bending", "Fins"]);
+  });
+});
+
+
+describe("night overtime", () => {
+  it("counts 8 without OT and 11 with OT, including machine and split totals", () => {
+    const night = { present: true, shift: "S11" as const, overtimeH: 3, machineId: 7 };
+    expect(lineHours({ ...night, overtimeH: 0 })).toBe(8);
+    expect(lineHours(night)).toBe(11);
+    expect(dayTotals([night])).toMatchObject({ hours: 11, overtimeH: 3, byMachine: { 7: 11 } });
+    expect(shiftSplit([night]).night).toEqual({ people: 1, hours: 11, overtimePeople: 1, overtimeH: 3 });
+    expect(shiftSplit([{ ...night, present: false }]).hours).toBe(0);
   });
 });
