@@ -6,6 +6,8 @@ import { requirePerm } from "@/lib/server/auth";
 import { shiftPermKey } from "@/lib/domain/permissions";
 import { parseISODate } from "@/lib/domain/dates";
 import { DEFAULT_SHIFT, isRosterDept, overtimeHoursFor, overtimeTime, isShiftCode, isWorkCentre, workerCentres, type RosterDept } from "@/lib/domain/shifts";
+import { WORKER_DEPT_LABEL } from "@/lib/domain/tanks";
+import { parseWorkerSections, workerDepts } from "@/lib/domain/workers";
 import { syncDeptDayHours } from "@/lib/server/shifts";
 import { getShiftHours } from "@/lib/server/data";
 
@@ -83,11 +85,29 @@ export async function saveShiftRoster(fd: FormData): Promise<ShiftActionResult> 
     if (guard.error) return { ok: false, error: guard.error };
     by = guard.user?.name ?? by;
   }
-  const workers = await prisma.worker.findMany({ where: { id: { in: [...new Set(lines.map((l) => l.workerId))] } }, select: { id: true } });
-  const workerIds = new Set(workers.map((w) => w.id));
-  if (lines.some((l) => !workerIds.has(l.workerId))) return { ok: false, error: "A worker on the page is no longer on the list — reload the page." };
-
-  await prisma.$transaction(async (tx) => {
+  const workerIds = [...new Set(lines.map((l) => l.workerId))];
+  const refused = await prisma.$transaction(async (tx) => {
+    // A row is saved under a department the worker is registered in (and he
+    // is still active) — the permission is per department — or under one the
+    // day already has his row in: a worker moved or retired since keeps the
+    // rows recorded then (getShiftRoster shows them). Checked with the writes.
+    const workers = await tx.worker.findMany({ where: { id: { in: workerIds } }, select: { id: true, empId: true, name: true, active: true, depts: true } });
+    const byId = new Map(workers.map((w) => [w.id, { ...w, depts: new Set<string>(w.active ? workerDepts(parseWorkerSections(w.depts)) : []) }]));
+    const outside = lines.filter((l) => !byId.get(l.workerId)?.depts.has(l.dept));
+    if (outside.length > 0) {
+      const key = (r: { dept: string; workerId: number }) => `${r.dept}|${r.workerId}`;
+      const recorded = await tx.shiftEntry.findMany({
+        where: { date, dept: { in: [...new Set(outside.map((l) => l.dept))] }, workerId: { in: [...new Set(outside.map((l) => l.workerId))] } },
+        select: { dept: true, workerId: true },
+      });
+      const keys = new Set(recorded.map(key));
+      const bad = outside.find((l) => !keys.has(key(l)));
+      if (bad) {
+        const w = byId.get(bad.workerId);
+        if (!w?.active) return "A worker on the page is no longer on the list — reload the page.";
+        return `${w.empId} — ${w.name} is not registered in ${WORKER_DEPT_LABEL[bad.dept]} — reload the page.`;
+      }
+    }
     for (const l of lines) {
       await tx.shiftEntry.upsert({
         where: { date_dept_workerId: { date, dept: l.dept, workerId: l.workerId } },
@@ -96,7 +116,9 @@ export async function saveShiftRoster(fd: FormData): Promise<ShiftActionResult> 
       });
     }
     for (const d of depts) await syncDeptDayHours(tx, date, d);
+    return null;
   });
+  if (refused) return { ok: false, error: refused };
   revalidate();
   return { ok: true };
 }
