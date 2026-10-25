@@ -1247,21 +1247,13 @@ main table.grid-lines td.border-border-strong, main table.grid-lines th.border-b
   border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 24px 64px rgb(0 0 0 / 0.3), var(--shadow-lg);
   animation: aipop-in 0.18s ease-out;
 }
+/* The assistant and the inbox expand edge to edge. */
 .ai-pop-large {
-  left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: min(1180px, calc(100vw - 48px)); height: min(860px, calc(100dvh - 48px));
-  border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 32px 80px rgb(0 0 0 / 0.45);
-  animation: aipop-grow 0.18s ease-out;
-}
-/* The assistant expands edge to edge; the inbox keeps its centred window. */
-.ai-pop-large.ai-pop-fullscreen {
-  inset: 0; width: auto; height: 100dvh; transform: none;
-  border: 0; border-radius: 0; box-shadow: none;
+  inset: 0; height: 100dvh;
   animation: drawerfade 0.18s ease-out;
 }
 .ai-pop-phone { inset: 0; }
 @keyframes aipop-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
-@keyframes aipop-grow { from { opacity: 0; transform: translate(-50%, -50%) scale(0.97); } to { opacity: 1; transform: translate(-50%, -50%); } }
 @media (prefers-reduced-motion: reduce) { .ai-pop-compact, .ai-pop-large, .ai-overlay { animation: none; } }
 html.ai-modal { overflow: hidden; }
 .ai-pop-head { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
@@ -1379,18 +1371,18 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 .ai-md > :first-child { margin-top: 0 !important; }
 .ai-md > :last-child { margin-bottom: 0 !important; }
 .ai-md strong { font-weight: 700; }
-.ai-md table { font-size: var(--fs-body); border-collapse: separate; border-spacing: 0; }
-.ai-md th { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 650; color: var(--muted); background: var(--surface-2); padding: 7px 10px; text-align: start; white-space: nowrap; }
-.ai-md td { padding: 6px 10px; text-align: start; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; vertical-align: top; }
-.ai-md td.num { text-align: end; }
-.ai-md td.cell-wide { min-width: 16rem; }
+.ai-md .md-table { font-size: var(--fs-body); border-collapse: separate; border-spacing: 0; }
+.ai-md .md-table th { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 650; color: var(--muted); background: var(--surface-2); padding: 7px 10px; text-align: start; white-space: nowrap; }
+.ai-md .md-table td { padding: 6px 10px; text-align: start; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; vertical-align: top; }
+.ai-md .md-table td.num { text-align: end; }
+.ai-md .md-table td.cell-wide { min-width: 16rem; }
 /* a list of "**Label:** value" read as a panel of fields */
 .ai-md .ai-fields { list-style: none; margin: 10px 0; padding: 10px 14px; display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 20px; row-gap: 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
 .ai-md .ai-fields > li { display: contents; }
 .ai-md .ai-field-label { color: var(--muted); font-size: var(--fs-sm); font-weight: 600; padding-top: 1px; white-space: nowrap; }
 .ai-md .ai-field-value { min-width: 0; overflow-wrap: anywhere; }
 .ai-md hr + ul, .ai-md ul + hr { margin-top: 0.75rem; }
-.ai-md tbody tr:hover td { background: var(--row-hover); }
+.ai-md .md-table tbody tr:hover td { background: var(--row-hover); }
 .ai-md code { font-size: 0.875em; }
 
 /* the "looked up" line under an answer */

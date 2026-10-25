@@ -1,13 +1,18 @@
 "use client";
 
 import {
-  Area, Bar, CartesianGrid, Cell, ComposedChart, Line, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  type PieLabelRenderProps,
+  Area, Bar, CartesianGrid, Cell, ComposedChart, LabelList, Line, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Meter, OTHER, Sparkline, catColor, compact, fmt, pct } from "@/components/charts/kit";
-import { ChartFrame, TICK, Tip, ToneIcon, unitOf, useWidth, valueText, type TipProps } from "@/components/AiChartFrame";
-import { DumbbellFigure, FunnelFigure, GanttFigure, HeatmapFigure, ProgressFigure, ScatterFigure, TreemapFigure, WaterfallFigure } from "@/components/AiChartForms";
+import { INK_ON_OTHER, Meter, OTHER, Sparkline, catColor, catInk, compact, fmt, pct } from "@/components/charts/kit";
 import {
-  OTHER_NAME, parseAiChart, type AiHistogramSpec, type AiKpiSpec, type AiParetoSpec, type AiPieSpec, type AiRadarSpec, type AiXYSpec,
+  ChartFrame, PlotText, TICK, Tip, ToneIcon, fits, insideLabel, perSlot, pointLabel, textWidth, tipLabel, unitOf, useWidth, valueText, type TipProps,
+} from "@/components/AiChartFrame";
+import {
+  BoxplotFigure, CalendarFigure, ControlFigure, DumbbellFigure, FunnelFigure, GanttFigure, GaugeFigure, HeatmapFigure, ProgressFigure, SankeyFigure, ScatterFigure, TreemapFigure, WaterfallFigure,
+} from "@/components/AiChartForms";
+import {
+  OTHER_NAME, parseAiChart, pointsToLabel, type AiHistogramSpec, type AiKpiSpec, type AiParetoSpec, type AiPieSpec, type AiRadarSpec, type AiXYSpec,
 } from "@/lib/domain/aiChart";
 
 // A chart the assistant put in its answer (a ```chart block) — in the chat,
@@ -56,6 +61,16 @@ export function AiChart({ source, streaming }: { source: string; streaming: bool
       return <DumbbellFigure spec={spec} />;
     case "treemap":
       return <TreemapFigure spec={spec} />;
+    case "gauge":
+      return <GaugeFigure spec={spec} />;
+    case "boxplot":
+      return <BoxplotFigure spec={spec} />;
+    case "sankey":
+      return <SankeyFigure spec={spec} />;
+    case "calendar":
+      return <CalendarFigure spec={spec} />;
+    case "control":
+      return <ControlFigure spec={spec} />;
     default:
       return <XYFigure spec={spec} />;
   }
@@ -93,11 +108,14 @@ function KpiRow({ spec }: { spec: AiKpiSpec }) {
 }
 
 function XYFigure({ spec }: { spec: AiXYSpec }) {
+  const [box, width] = useWidth<HTMLDivElement>();
   const percent = spec.stacked === "percent";
   const one = spec.series.length === 1;
   const hl = new Set(spec.highlight);
   // what the chart is about keeps its colour; the rest steps back to gray
-  const seriesColor = (s: string, i: number) => (!one && hl.size > 0 && !hl.has(s) ? OTHER : catColor(i));
+  const dim = (s: string) => !one && hl.size > 0 && !hl.has(s);
+  const seriesColor = (s: string, i: number) => (dim(s) ? OTHER : catColor(i));
+  const seriesInk = (s: string, i: number) => (dim(s) ? INK_ON_OTHER : catInk(i));
   const rows = spec.data.map((d) => ({ name: d.name, ...d.values }));
   const totals = new Map(spec.data.map((d) => [d.name, spec.series.reduce((t, s) => t + (d.values[s] ?? 0), 0)]));
   const lastBar = spec.series.reduce((k, s, i) => (spec.kinds[s] === "bar" ? i : k), -1);
@@ -118,15 +136,37 @@ function XYFigure({ spec }: { spec: AiXYSpec }) {
     );
   };
 
+  const longest = Math.max(...spec.data.map((d) => d.name.length));
+  const nameWidth = Math.min(180, Math.max(48, longest * 7));
+  const barSeries = spec.series.filter((s) => spec.kinds[s] === "bar");
+  const bars = barSeries.length;
+  const lines = spec.series.filter((s) => spec.kinds[s] !== "bar");
+  const height = h ? Math.max(140, spec.data.length * (bars > 1 && !spec.stacked ? 14 * bars + 12 : 28) + 40) : 280;
+
+  // the values on the marks — each where it has the room, never clipped
+  const shareOf = (v: number, i: number) => {
+    const t = totals.get(spec.data[i]?.name ?? "") ?? 0;
+    return t ? pct(v / t) : "";
+  };
+  // a stack's height: its bars only — a combo's lines stand beside it
+  const stackOf = (k: number) => barSeries.reduce((t, s) => t + (spec.data[k]?.values[s] ?? 0), 0);
+  const onTip = spec.stacked ? spec.data.map((_, k) => stackOf(k)) : spec.data.flatMap((d) => barSeries.map((s) => d.values[s] ?? 0));
+  const below0 = spec.labels && onTip.some((v) => v < 0);
+  const widest = Math.max(0, ...onTip.map((v) => textWidth(compact(v))));
+  const perCategory = perSlot(width, spec.data.length, h ? nameWidth + 20 + widest : 60);
+  const barRoom = h || perCategory / (spec.stacked ? 1 : Math.max(1, bars)) >= widest + 2;
+  const tipLabels = spec.labels && bars > 0 && !percent && barRoom;
+  const lineRoom = perCategory >= Math.max(0, ...spec.data.flatMap((d) => lines.map((s) => textWidth(compact(d.values[s] ?? 0))))) + 4;
+  const marked = (s: string) => (lines.length > 2 || (spec.stacked && spec.kinds[s] === "area") ? new Set([spec.data.length - 1]) : pointsToLabel(spec.data.map((d) => d.values[s] ?? 0), lineRoom));
+  const curve = spec.curve === "step" ? "stepAfter" : spec.curve === "linear" ? "linear" : "monotone";
   const valueAxis = {
     tick: TICK,
     axisLine: false,
     tickLine: false,
+    // room past the lowest bar for its value, clear of the category names
+    ...(below0 && !percent ? { domain: [(m: number) => (m < 0 ? m * 1.15 : m), "auto"] as [(m: number) => number, "auto"] } : {}),
     tickFormatter: percent ? (v: number) => `${Math.round(v * 100)}%` : (v: number) => compact(v),
   };
-  const longest = Math.max(...spec.data.map((d) => d.name.length));
-  const bars = spec.series.filter((s) => spec.kinds[s] === "bar").length;
-  const height = h ? Math.max(140, spec.data.length * (bars > 1 && !spec.stacked ? 14 * bars + 12 : 28) + 40) : 280;
 
   return (
     <ChartFrame
@@ -135,14 +175,15 @@ function XYFigure({ spec }: { spec: AiXYSpec }) {
       rows={spec.data.map((d) => ({ " ": d.name, ...d.values }))}
       legend={spec.series.map((s, i) => ({ label: s, color: seriesColor(s, i), line: spec.kinds[s] === "line" }))}
     >
-      <div style={{ height }} dir="ltr">
+      <div ref={box} style={{ height }} dir="ltr">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={rows} layout={h ? "vertical" : "horizontal"} stackOffset={percent ? "expand" : undefined} margin={{ top: 12, right: 16, left: h ? 4 : -6, bottom: 0 }} barGap={2}>
+          <ComposedChart data={rows} layout={h ? "vertical" : "horizontal"} stackOffset={percent ? "expand" : undefined}
+            margin={{ top: spec.labels ? 22 : 12, right: h && tipLabels ? 16 + widest : 16, left: (h ? 4 : -6) + (h && below0 ? widest : 0), bottom: spec.labels && (lines.length > 1 || (!h && below0)) ? 14 : 0 }} barGap={2}>
             <CartesianGrid stroke="var(--border)" vertical={h} horizontal={!h} />
             {h ? (
               <>
                 <XAxis type="number" {...valueAxis} />
-                <YAxis type="category" dataKey="name" tick={TICK} axisLine={{ stroke: "var(--border-strong)" }} tickLine={false} width={Math.min(180, Math.max(48, longest * 7))} />
+                <YAxis type="category" dataKey="name" tick={TICK} axisLine={{ stroke: "var(--border-strong)" }} tickLine={false} width={nameWidth} />
               </>
             ) : (
               <>
@@ -157,19 +198,43 @@ function XYFigure({ spec }: { spec: AiXYSpec }) {
               if (kind === "bar") {
                 const end = !spec.stacked || i === lastBar;
                 return (
-                  <Bar key={s} dataKey={s} name={s} fill={color} stackId={spec.stacked ? "bars" : undefined} maxBarSize={24} isAnimationActive={false}
+                  <Bar key={s} dataKey={s} name={s} fill={color} stackId={spec.stacked ? "bars" : undefined} maxBarSize={spec.stacked ? 40 : 24} isAnimationActive={false}
                     radius={end ? (h ? [0, 4, 4, 0] : [4, 4, 0, 0]) : 0}>
                     {one && hl.size > 0 ? spec.data.map((d) => <Cell key={d.name} fill={hl.has(d.name) ? catColor(0) : OTHER} />) : null}
+                    {/* a stack: each part inside it where it fits, the whole at its tip */}
+                    {spec.labels && spec.stacked && <LabelList dataKey={s} content={insideLabel(seriesInk(s, i), (_, k) => {
+                      const v = spec.data[k]?.values[s] ?? 0;
+                      return v === 0 ? null : percent ? shareOf(v, k) : compact(v);
+                    })} />}
+                    {tipLabels && (!spec.stacked || i === lastBar) && (
+                      <LabelList dataKey={s} content={spec.stacked ? tipLabel(h, (_, k) => compact(onTip[k]), (k) => onTip[k]) : tipLabel(h, (v) => compact(v))} />
+                    )}
                   </Bar>
                 );
               }
+              const shown = spec.labels ? marked(s) : new Set<number>();
+              // under the point where another series runs above it there
+              const below = (k: number) => {
+                const d = spec.data[k];
+                const v = d?.values[s] ?? 0;
+                return !spec.stacked && !!d && spec.series.some((o) => o !== s && (d.values[o] ?? 0) > v);
+              };
+              const label = shown.size > 0
+                ? <LabelList dataKey={s} content={pointLabel(below, (_, k) => (shown.has(k) ? compact(spec.data[k]?.values[s] ?? 0) : null), spec.data.length)} />
+                : null;
               if (kind === "line") {
                 return (
-                  <Line key={s} type="monotone" dataKey={s} name={s} stroke={color} strokeWidth={2} isAnimationActive={false}
-                    dot={spec.data.length <= 24 ? { r: 4, fill: color, stroke: "var(--surface)", strokeWidth: 2 } : false} activeDot={{ r: 5, stroke: "var(--surface)", strokeWidth: 2 }} />
+                  <Line key={s} type={curve} dataKey={s} name={s} stroke={color} strokeWidth={2} isAnimationActive={false}
+                    dot={spec.data.length <= 24 ? { r: 4, fill: color, stroke: "var(--surface)", strokeWidth: 2 } : false} activeDot={{ r: 5, stroke: "var(--surface)", strokeWidth: 2 }}>
+                    {label}
+                  </Line>
                 );
               }
-              return <Area key={s} type="monotone" dataKey={s} name={s} stroke={color} strokeWidth={2} fill={color} fillOpacity={0.12} stackId={spec.stacked ? "areas" : undefined} isAnimationActive={false} />;
+              return (
+                <Area key={s} type={curve} dataKey={s} name={s} stroke={color} strokeWidth={2} fill={color} fillOpacity={0.12} stackId={spec.stacked ? "areas" : undefined} isAnimationActive={false}>
+                  {percent ? null : label}
+                </Area>
+              );
             })}
             {!percent && spec.targets.map((t, k) => (
               <ReferenceLine
@@ -178,7 +243,7 @@ function XYFigure({ spec }: { spec: AiXYSpec }) {
                 stroke="var(--foreground)"
                 strokeOpacity={0.7}
                 strokeDasharray="4 3"
-                label={{ value: t.label ? `${t.label} ${compact(t.value)}` : compact(t.value), position: h ? "insideTopRight" : "insideTopRight", fill: "var(--muted)", fontSize: 11 }}
+                label={{ value: t.label ? `${t.label} ${compact(t.value)}` : compact(t.value), position: "insideTopRight", fill: "var(--muted)", fontSize: 11 }}
               />
             ))}
           </ComposedChart>
@@ -192,7 +257,9 @@ function PieFigure({ spec }: { spec: AiPieSpec }) {
   const s = spec.series[0];
   const rows = spec.data.map((d) => ({ name: d.name, ...d.values }));
   const total = spec.data.reduce((t, d) => t + d.values[s], 0);
-  const sliceColor = (d: { name: string }, i: number) => (d.name === OTHER_NAME && i === spec.data.length - 1 && i > 0 ? OTHER : catColor(i));
+  const isOther = (d: { name: string } | undefined, i: number) => d?.name === OTHER_NAME && i === spec.data.length - 1 && i > 0;
+  const sliceColor = (d: { name: string }, i: number) => (isOther(d, i) ? OTHER : catColor(i));
+  const sliceInk = (d: { name: string } | undefined, i: number) => (isOther(d, i) ? INK_ON_OTHER : catInk(i));
   return (
     <ChartFrame title={spec.title} sub={spec.unit ? `In ${spec.unit}` : undefined} rows={spec.data.map((d) => ({ Name: d.name, [s]: d.values[s], Share: `${total > 0 ? Math.round((d.values[s] / total) * 100) : 0}%` }))}>
       <div className="flex flex-wrap items-center gap-4">
@@ -205,7 +272,8 @@ function PieFigure({ spec }: { spec: AiPieSpec }) {
                 const v = Number(r[s] ?? 0);
                 return <Tip title={String(r.name ?? "")} rows={[{ label: s, value: valueText(v, spec.unit) }, { label: "Share", value: total > 0 ? `${Math.round((v / total) * 100)}%` : "—" }]} />;
               }} />
-              <Pie data={rows} dataKey={s} nameKey="name" innerRadius="58%" outerRadius="100%" stroke="var(--surface)" strokeWidth={2} isAnimationActive={false}>
+              <Pie data={rows} dataKey={s} nameKey="name" innerRadius="58%" outerRadius="100%" stroke="var(--surface)" strokeWidth={2} isAnimationActive={false}
+                labelLine={false} label={(p: PieLabelRenderProps) => <SliceShare {...p} ink={sliceInk(spec.data[p.index ?? 0], p.index ?? 0)} />}>
                 {spec.data.map((d, i) => <Cell key={d.name} fill={sliceColor(d, i)} />)}
               </Pie>
             </PieChart>
@@ -233,11 +301,26 @@ function PieFigure({ spec }: { spec: AiPieSpec }) {
   );
 }
 
+/** A slice's share, written across its middle where the slice is wide enough. */
+function SliceShare({ cx, cy, midAngle, innerRadius, outerRadius, percent, ink }: PieLabelRenderProps & { ink: string }) {
+  const share = Number(percent ?? 0);
+  if (share < 0.07) return null;
+  const r = (Number(innerRadius) + Number(outerRadius)) / 2;
+  const a = (-Number(midAngle ?? 0) * Math.PI) / 180;
+  return (
+    <text x={Number(cx) + r * Math.cos(a)} y={Number(cy) + r * Math.sin(a)} dy="0.35em" textAnchor="middle" fontSize={11} fontWeight={700} fill={ink}>
+      {pct(share)}
+    </text>
+  );
+}
+
 /** Causes ranked: the vital few that make the first 80% in the accent, the
  *  rest in gray — on one scale, the running share in the tooltip and table. */
 function ParetoFigure({ spec }: { spec: AiParetoSpec }) {
   const total = spec.data.reduce((t, d) => t + d.value, 0);
   const longest = Math.max(...spec.data.map((d) => d.name.length));
+  const text = (v: number, k: number) => `${compact(v)} · ${pct(spec.data[k]?.share ?? 0)}`;
+  const widest = Math.max(...spec.data.map((d, k) => textWidth(text(d.value, k))));
   return (
     <ChartFrame
       title={spec.title}
@@ -247,7 +330,7 @@ function ParetoFigure({ spec }: { spec: AiParetoSpec }) {
     >
       <div style={{ height: Math.max(140, spec.data.length * 28 + 40) }} dir="ltr">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={spec.data} layout="vertical" margin={{ top: 4, right: 16, left: 4, bottom: 0 }}>
+          <ComposedChart data={spec.data} layout="vertical" margin={{ top: 4, right: 16 + widest, left: 4, bottom: 0 }}>
             <CartesianGrid stroke="var(--border)" horizontal={false} />
             <XAxis type="number" tick={TICK} axisLine={false} tickLine={false} tickFormatter={(v: number) => compact(v)} />
             <YAxis type="category" dataKey="name" tick={TICK} axisLine={{ stroke: "var(--border-strong)" }} tickLine={false} width={Math.min(180, Math.max(48, longest * 7))} />
@@ -258,6 +341,7 @@ function ParetoFigure({ spec }: { spec: AiParetoSpec }) {
             }} />
             <Bar dataKey="value" maxBarSize={20} radius={[0, 4, 4, 0]} isAnimationActive={false}>
               {spec.data.map((d) => <Cell key={d.name} fill={d.vital ? catColor(0) : OTHER} />)}
+              <LabelList dataKey="value" content={tipLabel(true, text)} />
             </Bar>
           </ComposedChart>
         </ResponsiveContainer>
@@ -268,16 +352,18 @@ function ParetoFigure({ spec }: { spec: AiParetoSpec }) {
 
 /** How values spread: a count per bin, one hue. */
 function HistogramFigure({ spec }: { spec: AiHistogramSpec }) {
+  const [box, width] = useWidth<HTMLDivElement>();
   const rows = spec.bins.map((b) => ({ name: `${fmt(b.from)}–${fmt(b.to)}`, count: b.count }));
+  const room = fits(width, spec.bins.map((b) => fmt(b.count)));
   return (
     <ChartFrame
       title={spec.title}
       sub={`${fmt(spec.n)} values · median ${fmt(spec.median)}${unitOf(spec.unit)} · mean ${fmt(spec.mean)}${unitOf(spec.unit)}`}
       rows={spec.bins.map((b) => ({ From: b.from, To: b.to, Count: b.count }))}
     >
-      <div style={{ height: 260 }} dir="ltr">
+      <div ref={box} style={{ height: 260 }} dir="ltr">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={rows} margin={{ top: 12, right: 12, left: -6, bottom: 0 }} barCategoryGap={2}>
+          <ComposedChart data={rows} margin={{ top: 22, right: 12, left: -6, bottom: 0 }} barCategoryGap={2}>
             <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="name" tick={TICK} axisLine={{ stroke: "var(--border-strong)" }} tickLine={false} interval="preserveStartEnd" minTickGap={12} />
             <YAxis tick={TICK} axisLine={false} tickLine={false} allowDecimals={false} />
@@ -286,7 +372,9 @@ function HistogramFigure({ spec }: { spec: AiHistogramSpec }) {
               if (!r) return null;
               return <Tip title={`${String(r.name)}${unitOf(spec.unit)}`} rows={[{ label: "Count", value: fmt(Number(r.count)) }]} />;
             }} />
-            <Bar dataKey="count" fill={catColor(0)} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+            <Bar dataKey="count" fill={catColor(0)} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+              {room && <LabelList dataKey="count" content={tipLabel(false, (v) => (v > 0 ? fmt(v) : null))} />}
+            </Bar>
           </ComposedChart>
         </ResponsiveContainer>
       </div>
@@ -318,11 +406,25 @@ function RadarFigure({ spec }: { spec: AiRadarSpec }) {
             <PolarRadiusAxis tick={{ fontSize: 10, fill: "var(--muted)" }} axisLine={false} tickFormatter={(v: number) => compact(v)} angle={90 - 180 / spec.data.length} />
             <Tooltip content={({ active, payload, label }: TipProps) => (active && payload?.length ? <Tip title={String(label ?? "")} rows={payload.map((p) => ({ label: String(p.name ?? ""), value: valueText(Number(p.value ?? 0), spec.unit), color: p.color, line: true }))} /> : null)} />
             {spec.series.map((s, i) => (
-              <Radar key={s} dataKey={s} name={s} stroke={catColor(i)} strokeWidth={2} fill={catColor(i)} fillOpacity={0.1} isAnimationActive={false} dot={{ r: 3, fill: catColor(i), stroke: "var(--surface)", strokeWidth: 1.5 }} />
+              <Radar key={s} dataKey={s} name={s} stroke={catColor(i)} strokeWidth={2} fill={catColor(i)} fillOpacity={0.1} isAnimationActive={false}
+                dot={(d: RadarDot) => <RadarPoint key={d.index} {...d} color={catColor(i)} labelled={spec.series.length <= 2} below={i === 1} />} />
             ))}
           </RadarChart>
         </ResponsiveContainer>
       </div>
     </ChartFrame>
+  );
+}
+
+type RadarDot = { cx?: number; cy?: number; value?: unknown; index?: number };
+
+/** A point of a radar's shape, its value beside it while there are two shapes at most. */
+function RadarPoint({ cx = 0, cy = 0, value, color, labelled, below }: RadarDot & { color: string; labelled: boolean; below: boolean }) {
+  const v = Number(Array.isArray(value) ? value[1] : value);
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={3} fill={color} stroke="var(--surface)" strokeWidth={1.5} />
+      {labelled && Number.isFinite(v) && <PlotText x={cx} y={below ? cy + 15 : cy - 7} textAnchor="middle" fontWeight={600}>{compact(v)}</PlotText>}
+    </g>
   );
 }

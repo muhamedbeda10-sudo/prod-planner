@@ -132,20 +132,15 @@ export interface ShiftHistoryDay {
   legacyHours?: number;
 }
 
-/** Recent department days, including days with only machine stops. An explicitly selected older day is included when it has data. */
-export async function getShiftHistory(depts: readonly RosterDept[], days = 14, selectedDateISO?: string): Promise<ShiftHistoryDay[]> {
-  const [recent, stopDays] = await Promise.all([
-    prisma.deptDayHours.findMany({ where: { dept: { in: [...depts] } }, orderBy: { date: "desc" }, take: days * depts.length, select: { date: true } }),
-    prisma.machineDowntime.groupBy({ by: ["date"], where: { machine: { dept: { in: [...depts] } } }, orderBy: { date: "desc" }, take: days, _count: { _all: true } }),
-  ]);
-  const dates = [...new Set([...recent, ...stopDays].map((r) => toISODate(r.date)))].sort().reverse().slice(0, days);
-  if (selectedDateISO && !dates.includes(selectedDateISO)) dates.push(selectedDateISO);
-  if (!dates.length) return [];
-  const where = { date: { in: dates.map(dayOf) }, dept: { in: [...depts] } };
+/** Every recorded department day, including attendance without a saved total and stop-only days.
+ * Aggregate identical attendance lines in SQL so a long history never downloads every worker row. */
+export async function getShiftHistory(depts: readonly RosterDept[]): Promise<ShiftHistoryDay[]> {
+  if (!depts.length) return [];
+  const where = { dept: { in: [...depts] } };
   const [totals, entries, stops, hours] = await Promise.all([
     prisma.deptDayHours.findMany({ where, select: { date: true, dept: true, hours: true, people: true } }),
-    prisma.shiftEntry.findMany({ where, select: { date: true, dept: true, present: true, shift: true, overtimeH: true } }),
-    prisma.machineDowntime.groupBy({ by: ["date"], where: { date: where.date, machine: { dept: where.dept } }, _count: { _all: true } }),
+    prisma.shiftEntry.groupBy({ by: ["date", "dept", "present", "shift", "overtimeH"], where, _count: { _all: true } }),
+    prisma.machineDowntime.groupBy({ by: ["date"], where: { machine: { dept: where.dept } }, _count: { _all: true } }),
     getShiftHours(),
   ]);
   const byDay = new Map<string, ShiftHistoryDay>();
@@ -158,18 +153,20 @@ export async function getShiftHistory(depts: readonly RosterDept[], days = 14, s
   for (const row of entries) {
     const day = get(row.date);
     recorded.add(`${day.dateISO}|${row.dept}`);
-    day.entries! += 1;
-    day.hours = Math.round((day.hours + lineHours({ ...row, shift: isShiftCode(row.shift) ? row.shift : DEFAULT_SHIFT }, hours)) * 10) / 10;
-    if (row.present) { day.people += 1; if (row.shift === "S11") day.night += 1; else day.day += 1; }
+    const count = row._count._all;
+    day.entries! += count;
+    day.hours += count * lineHours({ ...row, shift: isShiftCode(row.shift) ? row.shift : DEFAULT_SHIFT }, hours);
+    if (row.present) { day.people += count; if (row.shift === "S11") day.night += count; else day.day += count; }
   }
   // Legacy department totals without individual attendance remain part of the day's hours.
   for (const row of totals) {
     const day = get(row.date);
     if (recorded.has(`${day.dateISO}|${row.dept}`)) continue;
-    day.hours = Math.round((day.hours + row.hours) * 10) / 10;
+    day.hours += row.hours;
     day.people += row.people ?? 0;
     day.legacyHours = Math.round(((day.legacyHours ?? 0) + row.hours) * 10) / 10;
   }
   for (const row of stops) get(row.date).stops = row._count._all;
+  for (const day of byDay.values()) day.hours = Math.round(day.hours * 10) / 10;
   return [...byDay.values()].sort((a, b) => b.dateISO.localeCompare(a.dateISO));
 }

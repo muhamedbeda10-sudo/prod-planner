@@ -22,13 +22,17 @@ export const OTHER = "var(--viz-other)";
 export const INK_ON = ["#ffffff", "#ffffff", "#14201a", "#ffffff", "#14201a", "#14201a"] as const;
 export const INK_ON_OTHER = "#14201a";
 
+/** The lighter track of the accent a meter, progress bar or dial fills. */
+export const TRACK = "color-mix(in srgb, var(--viz-1) 16%, var(--surface))";
+
 export const catColor = (i: number) => (i >= 0 && i < CAT.length ? CAT[i] : OTHER);
 export const catInk = (i: number) => (i >= 0 && i < INK_ON.length ? INK_ON[i] : INK_ON_OTHER);
 
 export const fmt = (n: number, digits = 3) => (Number.isInteger(n) ? n.toLocaleString("en") : n.toLocaleString("en", { maximumFractionDigits: digits }));
 export const pct = (f: number, digits = 0) => `${(f * 100).toFixed(digits)}%`;
 /** 1,284 · 12.9K · 4.2M — for big standalone numbers. */
-export const compact = (n: number) => (Math.abs(n) < 10_000 ? fmt(Math.round(n * 10) / 10, 1) : new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n));
+const COMPACT = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
+export const compact = (n: number) => (Math.abs(n) < 10_000 ? fmt(Math.round(n * 10) / 10, 1) : COMPACT.format(n));
 
 // ---------------------------------------------------------------- cards
 
@@ -126,7 +130,7 @@ export function Meter({ value, label }: { value: number; label?: string }) {
   const v = Math.max(0, Math.min(1, value));
   return (
     <div className="w-full" title={label}>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "color-mix(in srgb, var(--viz-1) 16%, var(--surface))" }}>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: TRACK }}>
         <div className="h-full rounded-full" style={{ width: `${v * 100}%`, background: "var(--viz-1)" }} />
       </div>
     </div>

@@ -170,8 +170,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
    "Save day" (pinned to the bottom of the screen) writes every row and re-sums each department's
    man-hours into the figure the calibration and the plan's capacity check read (Admin → Standard Times
    shows it read-only). **Recorded days** is a table of day/night attendance, absences, man-hours and
-   machine-stop counts. Each row opens attendance or stops for editing; the date field also opens older
-   dates. Delete day removes attendance, notes, stops and daily hour totals together for the confirmed
+   machine-stop counts for every recorded date. Use From/To filters, pagination or **All days**; check
+   individual rows, a page or all matching dates across pages for bulk deletion. Each row opens attendance
+   or stops for editing; the date field also opens older dates. Delete day (or Delete selected) removes
+   attendance, notes, stops and daily hour totals in one transaction for the confirmed dates and
    departments, requiring recording permission for all of them. Production output and worker profiles
    are retained. Recording needs
    `shifts.<dept>`; viewing is free, and the save action itself refuses a worker still not set, and a row under a
@@ -378,9 +380,12 @@ mobile drawer still lists every view flat, since it has the vertical room.
      report draws its figures from a ```chart block — bar, line, area and combo (stacked or as shares of 100%, target
      lines, one thing picked out with the rest in gray), pie, KPI cards (with a trend and progress), Pareto (the causes
      that make 80% stand out), histogram, scatter, heatmap, progress against target, funnel, waterfall, Gantt, dumbbell,
-     radar and treemap — on one value scale each, in the palette's slots, every chart with its numbers as a table and
-     their export. A chart's JSON draws however its fence was labelled. The same blocks draw in the chat and in the
-     inbox's reports; **Print / PDF** on an answer or a report prints it alone under the company header, charts and all.
+     radar, treemap, gauge (a dial against its target), box plot (spread per group), Sankey (flows between stages),
+     calendar (a value per day as the month) and control chart (3-sigma limits, the points outside marked) — on one
+     value scale each, in the palette's slots, the values written on the marks wherever they fit, every chart with its
+     numbers as a table and their export. A chart's JSON draws however its fence was labelled, and other names for a
+     form (column, donut, bullet, slope, step …) draw as the form that does that job. The same blocks draw in the chat and in the
+     inbox's reports (expanded, the inbox fills the screen); **Print / PDF** on an answer or a report prints it alone under the company header, charts and all.
    - **Owner's reach**: the app's owner lists everyone's automations and pauses, retimes
      (`set_automation_timing`) or deletes any, as AI assistant settings lets them; what one does stays its owner's to
      change.

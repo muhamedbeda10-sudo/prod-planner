@@ -98,7 +98,7 @@ function components(streaming: boolean): Components {
       const head = (node as HastNode | undefined)?.children?.find((c) => c.tagName === "thead");
       return (
         <div className="my-3 overflow-x-auto rounded-lg border" dir={textDirection(textOf(head))}>
-          <table className="w-full">{children}</table>
+          <table className="md-table w-full">{children}</table>
         </div>
       );
     },

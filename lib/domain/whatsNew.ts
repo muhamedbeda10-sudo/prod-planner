@@ -24,6 +24,21 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The drawn floors (the bays with the machine blocks) are no longer part of the app, and the Floor tab left the top bar. The What-if Simulator is now a view of the Plan Tracker tab, beside the Daily log and the Report — the same screen, the same saved scenarios and run order, at the same address, so the assistant's links and your bookmarks still open it. On Users & Permissions it is listed under Plan Tracker as \"What-if Simulator\", keeping whatever was ticked for the old Floor / Simulator tab. The machine boards on the worklists and the Machines sheets are unchanged.",
   },
   {
+    id: "2026-10-25-all-shift-days-bulk-delete",
+    dateISO: "2026-10-25",
+    title: "All recorded shift days — date filters and bulk deletion",
+    where: "Shifts → Recorded days",
+    href: "/shifts?view=history",
+    body: "The history table now includes every recorded date, including older attendance-only and machine-stop-only days. See the total, page through dates or choose All days, and narrow the list with From/To filters. Select individual days, the current page, or all matching dates across pages, then delete them together after reviewing the exact dates and departments. Attendance, notes, machine stops and daily hour totals are deleted in one permission-checked transaction; production output and worker profiles stay in place.",
+  },
+  {
+    id: "2026-10-25-ai-charts-values-new-forms",
+    dateISO: "2026-10-25",
+    title: "The assistant's charts show their values, five new kinds of chart, and the inbox opens full screen",
+    where: "AI assistant · Inbox → Reports",
+    body: "Every chart the assistant draws now writes its numbers on the marks: each bar's value at its tip (a stack's parts inside it and its total at the end), the points of a line, each slice's share, a Pareto's count and share, a waterfall's moves — wherever they fit without colliding; the tooltip and the Table view still hold every figure. The assistant can now also draw a gauge (one reading on a dial against its target), a box plot (how times or quantities spread, machine beside machine), a Sankey (where pieces flowed, stage to stage), a calendar (a value per day laid out as the month, weeks from Saturday) and a control chart (a measure inside its 3-sigma limits, the points outside marked) — and step lines. Expanding the inbox now fills the whole screen, and reports spread across it instead of a narrow column.",
+  },
+  {
     id: "2026-10-25-shift-history-table-actions",
     dateISO: "2026-10-25",
     title: "Recorded shift days in a table — edit or delete a day's shift data",
