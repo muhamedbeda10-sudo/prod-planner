@@ -711,8 +711,17 @@ model ShiftEntry {
 model MachineDowntime {
   id         Int      @id @default(autoincrement())
   date       DateTime
-  machineId  Int
-  machine    Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  machineId  Int?
+  machine    Machine? @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  // An unlisted asset can be logged without creating a schedulable machine.
+  customName   String?
+  customDept   String?
+  customCentre String?
+  // Factory wall-clock times on `date`; a next-day end belongs to this starting day.
+  // Null for historical duration-only records. Timed records keep minute precision.
+  startTime    String? @db.VarChar(5)
+  endTime      String? @db.VarChar(5)
+  endsNextDay  Boolean @default(false)
   hours      Float
   // Why, as one of the plant's codes (lib/domain/downtime.ts) so the stops can
   // be counted by cause; `reason` keeps the supervisor's own words.
@@ -723,6 +732,7 @@ model MachineDowntime {
 
   @@index([date])
   @@index([machineId])
+  @@index([customDept, customName, date])
 }
 
 // The planner's own hours for ONE piece of an item at one work centre, for one

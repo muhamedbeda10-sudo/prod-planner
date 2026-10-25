@@ -7,6 +7,7 @@ import { requirePerm } from "@/lib/server/auth";
 import { shiftPermKey } from "@/lib/domain/permissions";
 import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 import { isRosterDept } from "@/lib/domain/shifts";
+import { downtimeScope } from "@/lib/domain/downtime";
 
 type DeleteResult = { ok: boolean; error?: string; attendance?: number; stops?: number; totals?: number };
 
@@ -30,7 +31,7 @@ async function removeDays(fd: FormData, values: unknown, single: boolean): Promi
   try {
     const removed = await prisma.$transaction(async (tx) => {
       const attendance = await tx.shiftEntry.deleteMany({ where: { date, dept: { in: depts } } });
-      const stops = await tx.machineDowntime.deleteMany({ where: { date, machine: { dept: { in: depts } } } });
+      const stops = await tx.machineDowntime.deleteMany({ where: { date, ...downtimeScope(depts) } });
       const totals = await tx.deptDayHours.deleteMany({ where: { date, dept: { in: depts } } });
       return { attendance: attendance.count, stops: stops.count, totals: totals.count };
     }, { isolationLevel: "Serializable" });

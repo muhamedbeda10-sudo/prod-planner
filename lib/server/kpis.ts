@@ -8,7 +8,7 @@ import { applicableItems, isPaintExempt, ospOf, type Item } from "@/lib/domain/c
 import { workingDaysInclusive } from "@/lib/domain/insights";
 import { itemCentreHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
 import {
-  DEFAULT_SHIFT, DEPT_CENTRES, WORK_CENTRES, centreOf, deptCentre, isShiftCode, lineHours, machineWorkCentre, round1, type WorkCentre,
+  DEFAULT_SHIFT, DEPT_CENTRES, WORK_CENTRES, centreOf, deptCentre, isShiftCode, isWorkCentre, lineHours, machineWorkCentre, round1, type WorkCentre,
 } from "@/lib/domain/shifts";
 import { sectionDept } from "@/lib/domain/tanks";
 import { parseWorkerSections } from "@/lib/domain/workers";
@@ -121,7 +121,7 @@ async function readCentreDays(fromISO: string) {
     loadMasterOrdersOf("TR"),
     prisma.shiftEntry.findMany({ where: { date: { gte: from } }, select: { date: true, dept: true, present: true, shift: true, overtimeH: true, center: true, worker: { select: { depts: true } } } }),
     prisma.handoverEntry.findMany({ where: { date: { gte: from }, item: { not: LV_ITEM } }, select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true } }),
-    prisma.machineDowntime.findMany({ where: { date: { gte: from } }, select: { date: true, hours: true, reasonCode: true, reason: true, machine: { select: { dept: true, center: true } } } }),
+    prisma.machineDowntime.findMany({ where: { date: { gte: from } }, select: { date: true, hours: true, reasonCode: true, reason: true, customDept: true, customCentre: true, machine: { select: { dept: true, center: true } } } }),
     prisma.machine.findMany({ where: { active: true }, select: { dept: true, center: true, hoursPerDay: true } }),
     // the one shot-blast crew blasts the LV panels as well — its booked hours
     // cover both, so the panels' shot-blast hours count on its side (as the calibration does)
@@ -194,7 +194,7 @@ async function readCentreDays(fromISO: string) {
     if (c) machineH[c] += m.hoursPerDay ?? 0;
   }
   for (const s of stops) {
-    const c = machineWorkCentre(s.machine.dept, s.machine.center);
+    const c = s.machine ? machineWorkCentre(s.machine.dept, s.machine.center) : s.customCentre && isWorkCentre(s.customCentre) ? s.customCentre : null;
     if (c) cell(toISODate(s.date), c).downtimeH += s.hours;
   }
   const all: CentreDay[] = [];

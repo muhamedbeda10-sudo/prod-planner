@@ -59,7 +59,7 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
              filter is a URL param and keeps the draft */
           <ShiftRoster key={day} data={data} editableDepts={editableDepts} filter={filter} />
         }
-        downtime={<ShiftDowntime key={`${day}:${filter}`} data={scopedDowntime} editableDepts={editableDepts} />}
+        downtime={<ShiftDowntime key={`${day}:${filter}`} data={scopedDowntime} editableDepts={editableDepts.filter((d) => depts.includes(d))} />}
         downtimeCount={scopedDowntime.rows.length}
         history={history}
         dayISO={day}

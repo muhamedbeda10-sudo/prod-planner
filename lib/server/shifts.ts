@@ -7,6 +7,7 @@ import { sectionDept, sectionLabel, type WorkerSection } from "@/lib/domain/tank
 import { getShiftHours } from "./data";
 import { getRosterFor } from "./workers";
 import { getStageCapacity } from "./standardTimes";
+import { downtimeScope } from "@/lib/domain/downtime";
 
 // The day's roster: every worker of every department joined with what was
 // recorded for him. Saving rewrites each department's rows for the day and
@@ -140,7 +141,7 @@ export async function getShiftHistory(depts: readonly RosterDept[]): Promise<Shi
   const [totals, entries, stops, hours] = await Promise.all([
     prisma.deptDayHours.findMany({ where, select: { date: true, dept: true, hours: true, people: true } }),
     prisma.shiftEntry.groupBy({ by: ["date", "dept", "present", "shift", "overtimeH"], where, _count: { _all: true } }),
-    prisma.machineDowntime.groupBy({ by: ["date"], where: { machine: { dept: where.dept } }, _count: { _all: true } }),
+    prisma.machineDowntime.groupBy({ by: ["date"], where: downtimeScope(depts), _count: { _all: true } }),
     getShiftHours(),
   ]);
   const byDay = new Map<string, ShiftHistoryDay>();
