@@ -12,7 +12,9 @@ import { analyzeDxf } from "../src/engine/dxf/analyze";
 import type { NestSettings } from "../src/engine/nesting/types";
 import { partDxf } from "../src/engine/export/sheetExport";
 import type { MachinesFile } from "../src/engine/machines/types";
-import { partsFromAnalysis } from "../src/engine/parts";
+import { bboxHeight, bboxWidth } from "../src/engine/geometry/types";
+import { partIdOf, partsFromAnalysis } from "../src/engine/parts";
+import { sheetLabel } from "../src/engine/nesting/types";
 import { runPipeline } from "./lib/runPipeline";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -45,9 +47,9 @@ for (const f of files) {
     topology: a.topology,
     kind: cls.kind,
     sheetSize: cls.sheetSize,
-    pieces: cls.pieces.map((p) => ({ id: p.id, widthMm: p.bbox.maxX - p.bbox.minX, heightMm: p.bbox.maxY - p.bbox.minY, areaMm2: p.area, holes: p.holes.length, marks: p.marks.length, depth: p.depth, flags: p.flags, layers: p.outer.layers, at: { x: p.bbox.minX, y: p.bbox.minY } })),
+    pieces: cls.pieces.map((p) => ({ id: p.id, widthMm: bboxWidth(p.bbox), heightMm: bboxHeight(p.bbox), areaMm2: p.area, holes: p.holes.length, marks: p.marks.length, depth: p.depth, flags: p.flags, review: p.review, layers: p.outer.layers, at: { x: p.bbox.minX, y: p.bbox.minY } })),
     ignoredFaces: cls.ignoredFaces,
-    partTypes: a.parts!.groups.map((g, i) => ({ id: `T${i + 1}`, instances: g.instances.map((x) => ({ piece: x.pieceId, rotationDeg: Math.round(x.transform.rotationDeg * 100) / 100, mirrored: x.transform.mirror })), mirrorOf: g.mirrorOf === null ? null : `T${g.mirrorOf + 1}`, representative: g.representative.id, flags: g.representative.flags })),
+    partTypes: a.parts!.groups.map((g, i) => ({ id: partIdOf(undefined, i), instances: g.instances.map((x) => ({ piece: x.pieceId, rotationDeg: Math.round(x.transform.rotationDeg * 100) / 100, mirrored: x.transform.mirror })), mirrorOf: g.mirrorOf === null ? null : partIdOf(undefined, g.mirrorOf), representative: g.representative.id, flags: g.representative.flags, review: g.representative.review })),
     warnings: a.warnings,
   };
   writeFileSync(join(dir, "analysis.json"), JSON.stringify(analysisOut, null, 2));
@@ -57,9 +59,10 @@ for (const f of files) {
   for (const p of parts) writeFileSync(join(dir, "parts", `${p.id}.dxf`), partDxf(p, `nesting-lab part ${p.id} from ${f} (${p.source?.geometryHash}) — units mm`));
   writeFileSync(join(dir, "parts", "skipped.json"), JSON.stringify(skipped, null, 2));
   const sheet = cls.sheetSize ?? { w: 1220, h: 2440 };
+  const common: NestSettings = { sheet: { widthMm: sheet.w, heightMm: sheet.h, quantity: null, material: "Steel", thicknessMm: THICKNESS, label: sheetLabel(sheet.w, sheet.h) }, spacingMm: 5, marginMm: 5, rotationsDeg: [0, 90, 180, 270], allowMirror: false, noGoZones: [], timeBudgetMs: 60_000 };
   const scenarios: { id: string; title: string; settings: NestSettings }[] = [
-    { id: "A-spacing5-margin5", title: "5 mm spacing, 5 mm margin, 4 rotations", settings: { sheet: { widthMm: sheet.w, heightMm: sheet.h, quantity: null, material: "Steel", thicknessMm: THICKNESS, label: `${sheet.w}*${sheet.h}` }, spacingMm: 5, marginMm: 5, rotationsDeg: [0, 90, 180, 270], allowMirror: false, noGoZones: [], timeBudgetMs: 60_000 } },
-    { id: "B-spacing2-margin2", title: "2 mm spacing, 2 mm margin, 4 rotations (closest to the original file's gaps)", settings: { sheet: { widthMm: sheet.w, heightMm: sheet.h, quantity: null, material: "Steel", thicknessMm: THICKNESS, label: `${sheet.w}*${sheet.h}` }, spacingMm: 2, marginMm: 2, rotationsDeg: [0, 90, 180, 270], allowMirror: false, noGoZones: [], timeBudgetMs: 60_000 } },
+    { id: "A-spacing5-margin5", title: "5 mm spacing, 5 mm margin, 4 rotations", settings: common },
+    { id: "B-spacing2-margin2", title: "2 mm spacing, 2 mm margin, 4 rotations (closest to the original file's gaps)", settings: { ...common, spacingMm: 2, marginMm: 2 } },
   ];
   summary.push(`## ${f}`, "", `- Kind: **${cls.kind}**, sheet boundary ${cls.sheetSize?.w} × ${cls.sheetSize?.h}, ${cls.pieces.length} pieces → ${a.parts!.groups.length} part types (${parts.reduce((n, p) => n + p.quantity, 0)} parts nested, ${skipped.length} types skipped: ${skipped.map((s) => `${s.id} — ${s.reason}`).join("; ") || "none"})`, `- Warnings: ${a.warnings.length}. (Timings vary by machine and are printed on the console, not kept here.)`, "");
   for (const sc of scenarios) {

@@ -85,8 +85,8 @@
 <text transform="translate(589.992 1169.241) scale(1,-1)" font-family="system-ui, sans-serif" font-size="6" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T24 #3</text>
 <path d="M845.65 776.625L801.65 776.625L801.65 726.6L845.65 726.6L845.65 776.625Z" fill="#b45309" fill-opacity="0.35" fill-rule="evenodd" stroke="#b45309" stroke-width="2.033" stroke-linejoin="round"/>
 <text transform="translate(823.65 751.613) scale(1,-1)" font-family="system-ui, sans-serif" font-size="8.8" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T25 #1</text>
-<path d="M914.879 1169.85L928.95 1194.866L888.95 1194.866L878.95 1184.866L878.95 1114.866L883.95 1114.866L914.879 1169.85Z" fill="#1d4ed8" fill-opacity="0.35" fill-rule="evenodd" stroke="#1d4ed8" stroke-width="2.033" stroke-linejoin="round"/>
-<text transform="translate(903.95 1154.866) scale(1,-1)" font-family="system-ui, sans-serif" font-size="10" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T26 #1</text>
+<path d="M914.879 1169.849L928.95 1194.865L888.95 1194.865L878.95 1184.865L878.95 1114.865L883.95 1114.865L914.879 1169.849Z" fill="#1d4ed8" fill-opacity="0.35" fill-rule="evenodd" stroke="#1d4ed8" stroke-width="2.033" stroke-linejoin="round"/>
+<text transform="translate(903.95 1154.865) scale(1,-1)" font-family="system-ui, sans-serif" font-size="10" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T26 #1</text>
 <path d="M901.676 1141.69L887.605 1116.674L927.605 1116.674L937.605 1126.674L937.605 1196.674L932.605 1196.674L901.676 1141.69Z" fill="#1d4ed8" fill-opacity="0.35" fill-rule="evenodd" stroke="#1d4ed8" stroke-width="2.033" stroke-linejoin="round"/>
 <text transform="translate(912.605 1156.674) scale(1,-1)" font-family="system-ui, sans-serif" font-size="10" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T26 #2</text>
 <path d="M979.57 1196.674L939.57 1125.563L934.57 1116.674L974.57 1116.674L984.57 1126.674L984.57 1196.674L979.57 1196.674Z" fill="#059669" fill-opacity="0.35" fill-rule="evenodd" stroke="#059669" stroke-width="2.033" stroke-linejoin="round"/>
@@ -105,8 +105,8 @@
 <text transform="translate(43.328 1652.986) scale(1,-1)" font-family="system-ui, sans-serif" font-size="10" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T28 #4</text>
 <path d="M84.3 1692.565L129.3 1772.565L89.3 1772.565L79.3 1762.565L79.3 1692.565L84.3 1692.565Z" fill="#9333ea" fill-opacity="0.35" fill-rule="evenodd" stroke="#9333ea" stroke-width="2.033" stroke-linejoin="round"/>
 <text transform="translate(104.3 1732.565) scale(1,-1)" font-family="system-ui, sans-serif" font-size="10" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T28 #5</text>
-<path d="M197.77 1757.464L127.77 1757.464L117.77 1747.464L117.77 1707.464L197.77 1752.464L197.77 1757.464Z" fill="#c026d3" fill-opacity="0.35" fill-rule="evenodd" stroke="#c026d3" stroke-width="2.033" stroke-linejoin="round"/>
-<text transform="translate(157.77 1732.464) scale(1,-1)" font-family="system-ui, sans-serif" font-size="10" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T29 #1</text>
+<path d="M197.771 1757.464L127.771 1757.464L117.771 1747.464L117.771 1707.464L197.771 1752.464L197.771 1757.464Z" fill="#c026d3" fill-opacity="0.35" fill-rule="evenodd" stroke="#c026d3" stroke-width="2.033" stroke-linejoin="round"/>
+<text transform="translate(157.771 1732.464) scale(1,-1)" font-family="system-ui, sans-serif" font-size="10" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T29 #1</text>
 <path d="M862.889 764.704L907.889 764.704L907.889 763.593L917.889 773.593L957.889 773.593L957.889 779.72L861.96 779.72L847.889 754.704L852.889 754.704L862.889 764.704Z" fill="#0e7490" fill-opacity="0.35" fill-rule="evenodd" stroke="#0e7490" stroke-width="2.033" stroke-linejoin="round"/>
 <text transform="translate(902.889 767.212) scale(1,-1)" font-family="system-ui, sans-serif" font-size="6" text-anchor="middle" dominant-baseline="middle" fill="#0f172a">T30 #1</text>
 <path d="M1161.6 505.598L1161.6 466.598L1171.6 456.598L1171.6 505.598L1161.6 505.598Z" fill="#ca8a04" fill-opacity="0.35" fill-rule="evenodd" stroke="#ca8a04" stroke-width="2.033" stroke-linejoin="round"/>

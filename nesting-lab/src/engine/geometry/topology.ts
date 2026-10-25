@@ -14,7 +14,8 @@ import type { ArcSeg, Point, Seg } from "./types";
 import type { SegTag, TaggedSeg } from "./types";
 
 type TaggedArc = ArcSeg & { tag: SegTag };
-import { angleOf, arcSweep, dist, normAngle, reverseSeg, segBBox, segCurvature, segLength, segTangent, TWO_PI } from "./arc";
+import { angleOf, arcPointAt, arcSweep, dist, normAngle, reverseSeg, segBBox, segCurvature, segLength, segTangent } from "./arc";
+import { bboxUnion, emptyBBox } from "./types";
 import { loopArea } from "./polygon";
 
 export interface TopologyOptions {
@@ -122,10 +123,7 @@ function paramOn(s: Seg, p: Point, tol: number): number | null {
 
 function pointAt(s: Seg, t: number): Point {
   if (s.kind === "line") return { x: s.a.x + (s.b.x - s.a.x) * t, y: s.a.y + (s.b.y - s.a.y) * t };
-  const a0 = angleOf(s.center, s.a);
-  const sweep = arcSweep(s);
-  const ang = s.ccw ? a0 + sweep * t : a0 - sweep * t;
-  return { x: s.center.x + s.r * Math.cos(ang), y: s.center.y + s.r * Math.sin(ang) };
+  return arcPointAt(s, t);
 }
 
 function lineLine(p: Seg, q: Seg, tol: number): [Hit[], Hit[]] {
@@ -341,12 +339,12 @@ class NodeIndex {
 }
 
 function splitSeg(seg: TaggedSeg, params: number[]): TaggedSeg[] {
-  const ts = [...new Set(params.map((t) => Math.round(t * 1e9) / 1e9))].filter((t) => t > 1e-9 && t < 1 - 1e-9).sort((a, b) => a - b);
+  const cuts = [...new Set(params.map((t) => Math.round(t * 1e9) / 1e9))].sort((a, b) => a - b);
+  const ts = cuts.filter((t) => t > 1e-9 && t < 1 - 1e-9);
   if (seg.kind === "arc" && seg.full) {
     // a circle: split into arcs between the sorted parameters (needs ≥ 1 point;
     // with one point the arc runs the full way round from it)
     if (ts.length === 0) return [seg];
-    const cuts = params.map((t) => Math.round(t * 1e9) / 1e9).filter((t, i, arr) => arr.indexOf(t) === i).sort((a, b) => a - b);
     const out: TaggedSeg[] = [];
     for (let i = 0; i < cuts.length; i++) {
       const t0 = cuts[i];
@@ -359,18 +357,17 @@ function splitSeg(seg: TaggedSeg, params: number[]): TaggedSeg[] {
   }
   if (ts.length === 0) return [seg];
   const out: TaggedSeg[] = [];
-  let prev = 0;
   let prevP = seg.a;
   for (const t of [...ts, 1]) {
     const p = t === 1 ? seg.b : pointAt(seg, t);
     if (seg.kind === "line") out.push({ kind: "line", a: prevP, b: p, tag: seg.tag });
     else out.push({ ...seg, a: prevP, b: p, full: undefined, tag: seg.tag });
-    prev = t;
     prevP = p;
   }
-  void prev;
   return out;
 }
+
+const circleKey = (s: ArcSeg) => `C:${s.center.x.toFixed(4)}:${s.center.y.toFixed(4)}:${s.r.toFixed(4)}`;
 
 function geomKey(s: Seg, u: number, v: number): string {
   const lo = Math.min(u, v);
@@ -388,10 +385,10 @@ export function buildTopology(input: TaggedSeg[], opts: TopologyOptions): Topolo
   const bboxes = segs.map((s) => segBBox(s));
   // cell size from the typical segment and the overall extent, not from the
   // single longest segment (one long construction line must not collapse the grid)
-  let all = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  let all = emptyBBox();
   const extents: number[] = [];
   for (const b of bboxes) {
-    all = { minX: Math.min(all.minX, b.minX), minY: Math.min(all.minY, b.minY), maxX: Math.max(all.maxX, b.maxX), maxY: Math.max(all.maxY, b.maxY) };
+    all = bboxUnion(all, b);
     extents.push(Math.max(b.maxX - b.minX, b.maxY - b.minY));
   }
   extents.sort((a, b) => a - b);
@@ -422,7 +419,7 @@ export function buildTopology(input: TaggedSeg[], opts: TopologyOptions): Topolo
   const circles: TaggedArc[] = [];
   for (const s of pieces) {
     if (s.kind === "arc" && s.full) {
-      const key = `C:${s.center.x.toFixed(4)}:${s.center.y.toFixed(4)}:${s.r.toFixed(4)}`;
+      const key = circleKey(s);
       if (seen.has(key)) {
         duplicatesRemoved++;
         continue;
@@ -436,7 +433,7 @@ export function buildTopology(input: TaggedSeg[], opts: TopologyOptions): Topolo
     if (u === v) {
       // closed on itself after snapping: only a (near) full arc is meaningful
       if (s.kind === "arc" && arcSweep(s) > Math.PI) {
-        const key = `C:${s.center.x.toFixed(4)}:${s.center.y.toFixed(4)}:${s.r.toFixed(4)}`;
+        const key = circleKey(s);
         if (!seen.has(key)) {
           seen.add(key);
           circles.push({ ...(s as TaggedArc), full: true, b: { ...s.a } });
@@ -515,6 +512,10 @@ export function buildTopology(input: TaggedSeg[], opts: TopologyOptions): Topolo
   const open: OpenChain[] = [];
   const bounded = new Array<boolean>(rawCycles.length).fill(false);
   const cycleSegs = new Map<number, { hs: number[]; spikes: number[] }>();
+  const toSeg = (h: number): TaggedSeg => {
+    const e = edges[halves[h].edge];
+    return halves[h].forward ? e.seg : ({ ...reverseSeg(e.seg), tag: e.seg.tag } as TaggedSeg);
+  };
   rawCycles.forEach((rc, ci) => {
     // remove spikes (a half-edge immediately followed by its twin) in one
     // stack pass; nested spikes collapse as the stack unwinds, and the wrap-
@@ -530,18 +531,10 @@ export function buildTopology(input: TaggedSeg[], opts: TopologyOptions): Topolo
       spikes.push(hs.pop()!);
       hs.shift();
     }
-    const toSeg = (h: number): TaggedSeg => {
-      const e = edges[halves[h].edge];
-      return halves[h].forward ? e.seg : ({ ...reverseSeg(e.seg), tag: e.seg.tag } as TaggedSeg);
-    };
     cycleSegs.set(ci, { hs, spikes });
     if (hs.length > 0 && loopArea({ segs: hs.map(toSeg) }) > 1e-9) bounded[ci] = true;
   });
   for (const [ci, { hs, spikes }] of cycleSegs) {
-    const toSeg = (h: number): TaggedSeg => {
-      const e = edges[halves[h].edge];
-      return halves[h].forward ? e.seg : ({ ...reverseSeg(e.seg), tag: e.seg.tag } as TaggedSeg);
-    };
     const spikeSegs = spikes.map(toSeg);
     if (hs.length === 0) {
       if (spikeSegs.length > 0) open.push(chainOf(spikeSegs));
@@ -602,4 +595,3 @@ function chainOf(segs: TaggedSeg[]): OpenChain {
   return { segs: uniq, length: len, endpoints: [first, last] };
 }
 
-export { TWO_PI };

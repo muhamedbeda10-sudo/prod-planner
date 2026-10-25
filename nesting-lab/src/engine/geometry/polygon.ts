@@ -3,7 +3,7 @@
 // verifier uses, so it must not share code with the Clipper-based nesting core.
 
 import type { BBox, Loop, Point, Polygon, Seg, Transform } from "./types";
-import { emptyBBox } from "./types";
+import { bboxUnion, emptyBBox } from "./types";
 import { arcSweep, dist, reverseSeg, sampleSeg, segBBox, segLength } from "./arc";
 
 export function polygonArea(poly: Polygon): number {
@@ -226,12 +226,6 @@ export function transformLoop(loop: Loop, t: Transform): Loop {
   return { segs };
 }
 
-export function transformPolygon(poly: Polygon, t: Transform): Polygon {
-  const out = poly.map((p) => transformPoint(p, t));
-  if (t.mirror) out.reverse();
-  return out;
-}
-
 // ---- loops ----
 
 /** Exact signed area of a loop with arcs (ccw positive). */
@@ -257,10 +251,7 @@ export function loopPerimeter(loop: Loop): number {
 
 export function loopBBox(loop: Loop): BBox {
   let b = emptyBBox();
-  for (const s of loop.segs) {
-    const sb = segBBox(s);
-    b = { minX: Math.min(b.minX, sb.minX), minY: Math.min(b.minY, sb.minY), maxX: Math.max(b.maxX, sb.maxX), maxY: Math.max(b.maxY, sb.maxY) };
-  }
+  for (const s of loop.segs) b = bboxUnion(b, segBBox(s));
   return b;
 }
 

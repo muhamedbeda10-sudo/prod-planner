@@ -4,7 +4,7 @@
 
 import type { DxfDocument, DxfEntity, DxfInsert } from "./parse";
 import type { Point, Seg, SegTag, TaggedSeg } from "../geometry/types";
-import { fullCircle, segFromBulge } from "../geometry/arc";
+import { arcFromAngles, dist, fullCircle, segFromBulge } from "../geometry/arc";
 import { DxfFormatError } from "./tokenize";
 
 export type LayerRole = "cut" | "mark" | "ignore";
@@ -19,12 +19,16 @@ export function layerRoleOf(roles: Record<string, LayerRole>, layer: string): La
 }
 
 /** Limits that keep a hostile file from freezing the analysis. */
-export const LIMITS = {
-  insertGrid: 10_000, // rows × columns of one INSERT
-  insertSide: 1_000,
-  segments: 2_000_000, // extracted segments per file
-  radiusMm: 1e7,
-};
+export interface ExtractLimits {
+  /** rows × columns of one INSERT */
+  insertGrid: number;
+  insertSide: number;
+  /** extracted segments per file */
+  segments: number;
+  radiusMm: number;
+}
+
+export const DEFAULT_LIMITS: Readonly<ExtractLimits> = Object.freeze({ insertGrid: 10_000, insertSide: 1_000, segments: 2_000_000, radiusMm: 1e7 });
 
 /** Entity types that never cut: text, dimensions, points, hatches… They are
  *  reported, never silently dropped. */
@@ -67,6 +71,7 @@ export interface ExtractOptions {
   zeroLengthTol?: number;
   /** maximum INSERT nesting depth */
   maxInsertDepth?: number;
+  limits?: Partial<ExtractLimits>;
 }
 
 interface Matrix {
@@ -110,6 +115,7 @@ function account(list: EntityAccount[], type: string, layer: string) {
 export function extractPrimitives(doc: DxfDocument, opts: ExtractOptions): PrimitiveExtraction {
   const zeroTol = opts.zeroLengthTol ?? 1e-6;
   const maxDepth = opts.maxInsertDepth ?? 8;
+  const LIMITS: ExtractLimits = { ...DEFAULT_LIMITS, ...opts.limits };
   const out: PrimitiveExtraction = { segs: [], ignoredByLayer: [], annotations: [], unsupported: [], insertsExpanded: [], warnings: [], dropped: { zeroLength: 0 }, nonPlanar: { entities: 0, note: null }, mirroredByExtrusion: 0 };
   const roleOf = (layer: string): LayerRole => layerRoleOf(opts.layerRoles, layer);
   const unit = opts.unitFactor;
@@ -117,12 +123,9 @@ export function extractPrimitives(doc: DxfDocument, opts: ExtractOptions): Primi
   const nonPlanarTypes = new Set<string>();
 
   const pushSeg = (seg: Seg, e: DxfEntity, role: "cut" | "mark") => {
-    if (!(seg.kind === "arc" && seg.full)) {
-      const len = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y);
-      if (len <= zeroTol && seg.kind === "line") {
-        out.dropped.zeroLength++;
-        return;
-      }
+    if (seg.kind === "line" && dist(seg.a, seg.b) <= zeroTol) {
+      out.dropped.zeroLength++;
+      return;
     }
     if (seg.kind === "arc" && !(seg.r <= LIMITS.radiusMm)) {
       account(out.unsupported, `${e.type} (radius ${seg.r} mm beyond the ${LIMITS.radiusMm} mm limit)`, e.layer);
@@ -132,6 +135,9 @@ export function extractPrimitives(doc: DxfDocument, opts: ExtractOptions): Primi
     out.segs.push({ ...seg, tag: { layer: e.layer, handle: e.handle, entityType: e.type, entityIndex: e.index, role } });
   };
   const blockStack: string[] = [];
+  /** an arc built in drawing space, carried through the block matrix */
+  const mapArc = (seg: Seg, m: Matrix): Seg =>
+    seg.kind === "line" ? { kind: "line", a: apply(m, seg.a), b: apply(m, seg.b) } : { kind: "arc", a: apply(m, seg.a), b: apply(m, seg.b), center: apply(m, seg.center), r: seg.r * scaleOf(m), ccw: isReflection(m) ? !seg.ccw : seg.ccw, full: seg.full };
 
   const visit = (ents: DxfEntity[], mIn: Matrix, depth: number) => {
     for (const e of ents) {
@@ -172,13 +178,11 @@ export function extractPrimitives(doc: DxfDocument, opts: ExtractOptions): Primi
             account(out.unsupported, "CIRCLE (non-uniform block scale)", e.layer);
             break;
           }
-          const c = apply(m, { x: e.center.x * unit, y: e.center.y * unit });
-          const r = e.r * unit * scaleOf(m);
-          if (r <= zeroTol) {
+          if (e.r * unit * scaleOf(m) <= zeroTol) {
             out.dropped.zeroLength++;
             break;
           }
-          pushSeg(fullCircle(c, r), e, role);
+          pushSeg(mapArc(fullCircle({ x: e.center.x * unit, y: e.center.y * unit }, e.r * unit), m), e, role);
           break;
         }
         case "ARC": {
@@ -190,15 +194,7 @@ export function extractPrimitives(doc: DxfDocument, opts: ExtractOptions): Primi
             account(out.unsupported, "ARC (non-uniform block scale)", e.layer);
             break;
           }
-          const r = e.r * unit * scaleOf(m);
-          const s0 = (e.startDeg * Math.PI) / 180;
-          const s1 = (e.endDeg * Math.PI) / 180;
-          const c0 = { x: e.center.x * unit, y: e.center.y * unit };
-          const a = apply(m, { x: c0.x + e.r * unit * Math.cos(s0), y: c0.y + e.r * unit * Math.sin(s0) });
-          const b = apply(m, { x: c0.x + e.r * unit * Math.cos(s1), y: c0.y + e.r * unit * Math.sin(s1) });
-          const c = apply(m, c0);
-          const ccw = !isReflection(m);
-          pushSeg({ kind: "arc", a, b, center: c, r, ccw }, e, role);
+          pushSeg(mapArc(arcFromAngles({ x: e.center.x * unit, y: e.center.y * unit }, e.r * unit, (e.startDeg * Math.PI) / 180, (e.endDeg * Math.PI) / 180), m), e, role);
           break;
         }
         case "LWPOLYLINE":
@@ -217,7 +213,6 @@ export function extractPrimitives(doc: DxfDocument, opts: ExtractOptions): Primi
             break;
           }
           const n = e.closed ? vs.length : vs.length - 1;
-          const reflect = isReflection(m);
           for (let i = 0; i < n; i++) {
             const v0 = vs[i];
             const v1 = vs[(i + 1) % vs.length];
@@ -227,11 +222,9 @@ export function extractPrimitives(doc: DxfDocument, opts: ExtractOptions): Primi
               account(out.unsupported, `${e.type} bulge (non-uniform block scale)`, e.layer);
               continue;
             }
-            // build the arc in drawing space, then transform it (a uniform scale
-            // keeps it circular; a reflection flips its direction of travel)
-            const seg = segFromBulge(p0, p1, v0.bulge);
-            if (seg.kind === "line") pushSeg({ kind: "line", a: apply(m, p0), b: apply(m, p1) }, e, role);
-            else pushSeg({ kind: "arc", a: apply(m, seg.a), b: apply(m, seg.b), center: apply(m, seg.center), r: seg.r * scaleOf(m), ccw: reflect ? !seg.ccw : seg.ccw }, e, role);
+            // build the arc in drawing space, then carry it through the matrix (a
+            // uniform scale keeps it circular; a reflection flips its direction)
+            pushSeg(mapArc(segFromBulge(p0, p1, v0.bulge), m), e, role);
           }
           break;
         }

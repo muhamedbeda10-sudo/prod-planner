@@ -5,7 +5,7 @@ import { DEFAULT_STRATEGIES, validateSettings } from "../engine/nesting/nest";
 import type { MachinesFile } from "../engine/machines/types";
 import machinesJson from "../../config/machines.local.json";
 import materialsJson from "../../config/materials.local.json";
-import { buildParts, toSettings, type LoadedFile, type PartRow, type RunState, type SettingsForm } from "./state";
+import { buildParts, IDLE_RUN, toSettings, type LoadedFile, type PartRow, type RunState, type SettingsForm } from "./state";
 import { FilesPanel } from "./FilesPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { ResultsPanel } from "./ResultsPanel";
@@ -37,57 +37,53 @@ const DEFAULT_FORM: SettingsForm = {
 
 let fileSeq = 0;
 
+function analyze(f: LoadedFile): LoadedFile {
+  try {
+    const analysis = analyzeDxf(f.name, f.bytes, { unit: f.unit, layerRoles: f.layerRoles, thicknessMm: f.thicknessMm });
+    return { ...f, analysis, error: null };
+  } catch (err) {
+    return { ...f, analysis: null, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export function App() {
   const [tab, setTab] = useState(0);
   const [files, setFiles] = useState<LoadedFile[]>([]);
   const [rows, setRows] = useState<Record<string, PartRow>>({});
   const [form, setForm] = useState<SettingsForm>(DEFAULT_FORM);
   const [machines, setMachines] = useState<MachinesFile>(machinesJson as unknown as MachinesFile);
-  const [run, setRun] = useState<RunState>({ status: "idle", progress: null, result: null, verification: null, error: null, startedAt: 0, parts: [] });
+  const [run, setRun] = useState<RunState>(IDLE_RUN);
   const workerRef = useRef<Worker | null>(null);
-
-  const analyze = useCallback((f: LoadedFile): LoadedFile => {
-    try {
-      const analysis = analyzeDxf(f.name, f.bytes, { unit: f.unit, layerRoles: f.layerRoles, thicknessMm: f.thicknessMm });
-      return { ...f, analysis, error: null };
-    } catch (err) {
-      return { ...f, analysis: null, error: err instanceof Error ? err.message : String(err) };
-    }
-  }, []);
 
   // the first detected sheet boundary / thickness become the form's defaults
   // (only while the form is still untouched)
-  const adoptDefaults = useCallback((fs: LoadedFile[]) => {
+  const adoptDefaults = (fs: LoadedFile[]) => {
     const first = fs.find((f) => f.analysis?.classification?.sheetSize);
     const size = first?.analysis?.classification?.sheetSize;
     if (!size) return;
     setForm((cur) => (cur === DEFAULT_FORM ? { ...DEFAULT_FORM, sheetPreset: "custom", widthMm: size.w, heightMm: size.h, thicknessMm: first?.thicknessMm ?? DEFAULT_FORM.thicknessMm } : cur));
-  }, []);
+  };
 
-  const addFiles = useCallback(
-    async (list: FileList | File[]) => {
-      const loaded: LoadedFile[] = [];
-      for (const file of Array.from(list)) {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const hints = suggestFromFileName(file.name);
-        const f: LoadedFile = { id: `f${++fileSeq}`, name: file.name, bytes, unit: null, layerRoles: {}, thicknessMm: null, bom: "", hints, analysis: null, error: null };
-        loaded.push(analyze(f));
-      }
-      setFiles((prev) => [...prev, ...loaded]);
-      adoptDefaults(loaded);
-    },
-    [analyze, adoptDefaults],
-  );
+  const addFiles = useCallback(async (list: FileList | File[]) => {
+    const loaded: LoadedFile[] = [];
+    for (const file of Array.from(list)) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const hints = suggestFromFileName(file.name);
+      loaded.push(analyze({ id: `f${++fileSeq}`, name: file.name, bytes, unit: null, layerRoles: {}, thicknessMm: null, bom: "", hints, analysis: null, error: null }));
+    }
+    setFiles((prev) => [...prev, ...loaded]);
+    adoptDefaults(loaded);
+  }, []);
 
   const updateFile = useCallback(
     (id: string, patch: Partial<Pick<LoadedFile, "unit" | "layerRoles" | "thicknessMm" | "bom">>) => {
-      setFiles((prev) => {
-        const next = prev.map((f) => (f.id === id ? analyze({ ...f, ...patch }) : f));
-        adoptDefaults(next);
-        return next;
-      });
+      // only the unit, the layer roles and the thickness enter the analysis; a BOM label does not
+      const reanalyze = "unit" in patch || "layerRoles" in patch || "thicknessMm" in patch;
+      const next = files.map((f) => (f.id === id ? (reanalyze ? analyze({ ...f, ...patch }) : { ...f, ...patch }) : f));
+      setFiles(next);
+      if (reanalyze) adoptDefaults(next);
     },
-    [analyze, adoptDefaults],
+    [files],
   );
 
   const removeFile = useCallback((id: string) => {
@@ -105,7 +101,7 @@ export function App() {
     const worker = new Worker(new URL("./nest.worker.ts", import.meta.url), { type: "module" });
     workerRef.current = worker;
     const parts = built.parts;
-    setRun({ status: "running", progress: null, result: null, verification: null, error: null, startedAt: performance.now(), parts });
+    setRun({ ...IDLE_RUN, status: "running", startedAt: performance.now(), parts });
     worker.onmessage = (e: MessageEvent) => {
       const msg = e.data;
       if (msg.type === "progress") setRun((r) => ({ ...r, progress: msg.progress }));
@@ -147,7 +143,7 @@ export function App() {
       </nav>
       {tab === 0 && <FilesPanel files={files} rows={rows} onAdd={addFiles} onUpdate={updateFile} onRemove={removeFile} onRows={setRows} onNext={() => setTab(1)} />}
       {tab === 1 && <SettingsPanel form={form} onChange={setForm} materials={materials} parts={built.parts} skipped={built.skipped} errors={settingsErrors} onRun={startNest} running={run.status === "running"} />}
-      {tab === 2 && <ResultsPanel run={run} settings={settings} onCancel={cancelNest} onRerun={startNest} canRun={settingsErrors.length === 0} />}
+      {tab === 2 && <ResultsPanel run={run} onCancel={cancelNest} onRerun={startNest} canRun={settingsErrors.length === 0} />}
       {tab === 3 && <MachinesPanel machines={machines} onChange={setMachines} settings={settings} result={run.result} />}
       {tab === 4 && <ExportPanel run={run} machines={machines} />}
     </div>

@@ -19,7 +19,11 @@ export function SheetView({ result, sheet, parts, violations, showLabels, showHo
   const W = s.sheet.widthMm;
   const H = s.sheet.heightMm;
   const pad = Math.max(W, H) * 0.03;
-  const [view, setView] = useState({ x: -pad, y: -pad, w: W + 2 * pad, h: H + 2 * pad });
+  const fitView = { x: -pad, y: -pad, w: W + 2 * pad, h: H + 2 * pad };
+  const [view, setView] = useState(fitView);
+  /** zoom about the centre by factor f (< 1 zooms in) */
+  const zoom = (f: number) => setView((v) => ({ x: v.x + (v.w * (1 - f)) / 2, y: v.y + (v.h * (1 - f)) / 2, w: v.w * f, h: v.h * f }));
+  const viewScale = (r: DOMRect) => Math.max(view.w / r.width, view.h / r.height);
   const [hover, setHover] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -47,11 +51,8 @@ export function SheetView({ result, sheet, parts, violations, showLabels, showHo
     [sheet, byId, showHoles],
   );
   const toSvgPoint = (e: React.MouseEvent) => {
-    const svg = svgRef.current!;
-    const r = svg.getBoundingClientRect();
-    const sx = view.w / r.width;
-    const sy = view.h / r.height;
-    const scale = Math.max(sx, sy);
+    const r = svgRef.current!.getBoundingClientRect();
+    const scale = viewScale(r);
     return { x: view.x + (e.clientX - r.left) * scale, y: view.y + (e.clientY - r.top) * scale, scale };
   };
   const onWheel = (e: React.WheelEvent) => {
@@ -75,9 +76,9 @@ export function SheetView({ result, sheet, parts, violations, showLabels, showHo
           else if (e.key === "ArrowRight") setView((v) => ({ ...v, x: v.x + v.w * step }));
           else if (e.key === "ArrowUp") setView((v) => ({ ...v, y: v.y - v.h * step }));
           else if (e.key === "ArrowDown") setView((v) => ({ ...v, y: v.y + v.h * step }));
-          else if (e.key === "+" || e.key === "=") setView((v) => ({ x: v.x + v.w * 0.1, y: v.y + v.h * 0.1, w: v.w * 0.8, h: v.h * 0.8 }));
-          else if (e.key === "-") setView((v) => ({ x: v.x - v.w * 0.125, y: v.y - v.h * 0.125, w: v.w * 1.25, h: v.h * 1.25 }));
-          else if (e.key === "0") setView({ x: -pad, y: -pad, w: W + 2 * pad, h: H + 2 * pad });
+          else if (e.key === "+" || e.key === "=") zoom(0.8);
+          else if (e.key === "-") zoom(1.25);
+          else if (e.key === "0") setView(fitView);
           else return;
           e.preventDefault();
         }}
@@ -87,8 +88,7 @@ export function SheetView({ result, sheet, parts, violations, showLabels, showHo
         }}
         onMouseMove={(e) => {
           if (!drag.current) return;
-          const r = svgRef.current!.getBoundingClientRect();
-          const scale = Math.max(view.w / r.width, view.h / r.height);
+          const scale = viewScale(svgRef.current!.getBoundingClientRect());
           setView((v) => ({ ...v, x: drag.current!.vx - (e.clientX - drag.current!.x) * scale, y: drag.current!.vy - (e.clientY - drag.current!.y) * scale }));
         }}
         onMouseUp={() => (drag.current = null)}
@@ -130,13 +130,13 @@ export function SheetView({ result, sheet, parts, violations, showLabels, showHo
             })}
         </svg>
         <div className="hud">
-          <button className="small" onClick={() => setView({ x: -pad, y: -pad, w: W + 2 * pad, h: H + 2 * pad })}>
+          <button className="small" onClick={() => setView(fitView)}>
             fit
           </button>
-          <button className="small" aria-label="Zoom in" onClick={() => setView((v) => ({ x: v.x + v.w * 0.1, y: v.y + v.h * 0.1, w: v.w * 0.8, h: v.h * 0.8 }))}>
+          <button className="small" aria-label="Zoom in" onClick={() => zoom(0.8)}>
             +
           </button>
-          <button className="small" aria-label="Zoom out" onClick={() => setView((v) => ({ x: v.x - v.w * 0.125, y: v.y - v.h * 0.125, w: v.w * 1.25, h: v.h * 1.25 }))}>
+          <button className="small" aria-label="Zoom out" onClick={() => zoom(1.25)}>
             −
           </button>
         </div>

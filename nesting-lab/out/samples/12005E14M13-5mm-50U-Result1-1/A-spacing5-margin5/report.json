@@ -1729,9 +1729,9 @@
     }
   ],
   "stats": {
-    "nfpComputed": 4674,
-    "nfpCacheHits": 26894,
-    "candidatesEvaluated": 43598,
+    "nfpComputed": 2396,
+    "nfpCacheHits": 16178,
+    "candidatesEvaluated": 43599,
     "placementsAttempted": 384,
     "nfpMs": 0,
     "booleanMs": 0

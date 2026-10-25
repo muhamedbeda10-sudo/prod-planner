@@ -1367,14 +1367,14 @@
           "partId": "T26",
           "instance": 0,
           "x": 878.95,
-          "y": 1114.866,
+          "y": 1114.865,
           "rotationDeg": 180,
           "mirrored": false,
           "bbox": {
             "minX": 878.95,
-            "minY": 1114.866,
+            "minY": 1114.865,
             "maxX": 928.95,
-            "maxY": 1194.8660013353099
+            "maxY": 1194.86500133531
           }
         },
         {
@@ -1506,14 +1506,14 @@
         {
           "partId": "T29",
           "instance": 0,
-          "x": 117.77,
+          "x": 117.771,
           "y": 1707.464,
           "rotationDeg": 90,
           "mirrored": false,
           "bbox": {
-            "minX": 117.77,
+            "minX": 117.771,
             "minY": 1707.464,
-            "maxX": 197.76999999999998,
+            "maxX": 197.77100000000002,
             "maxY": 1757.464
           }
         },
@@ -1729,9 +1729,9 @@
     }
   ],
   "stats": {
-    "nfpComputed": 4864,
-    "nfpCacheHits": 27706,
-    "candidatesEvaluated": 52532,
+    "nfpComputed": 2402,
+    "nfpCacheHits": 16690,
+    "candidatesEvaluated": 52533,
     "placementsAttempted": 374,
     "nfpMs": 0,
     "booleanMs": 0
@@ -2033,13 +2033,13 @@
     {
       "fileName": "sheet-01.dxf",
       "profileId": "dxf-r2000-mm",
-      "bytes": 75678,
+      "bytes": 75685,
       "sheetIndex": 0
     },
     {
       "fileName": "sheet-01.svg",
       "profileId": "svg-preview",
-      "bytes": 44634,
+      "bytes": 44643,
       "sheetIndex": 0
     },
     {

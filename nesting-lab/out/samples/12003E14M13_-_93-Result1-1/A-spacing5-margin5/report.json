@@ -370,8 +370,8 @@
     }
   ],
   "stats": {
-    "nfpComputed": 68,
-    "nfpCacheHits": 436,
+    "nfpComputed": 47,
+    "nfpCacheHits": 251,
     "candidatesEvaluated": 818,
     "placementsAttempted": 72,
     "nfpMs": 0,

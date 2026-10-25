@@ -1,19 +1,17 @@
 import { useState } from "react";
 import type { RunState } from "./state";
-import type { NestSettings } from "../engine/nesting/types";
 import { SheetView } from "./SheetView";
 import { colorForIndex } from "../engine/export/svg";
 import { int, mm, ms, pct } from "./format";
 
 interface Props {
   run: RunState;
-  settings: NestSettings;
   onCancel: () => void;
   onRerun: () => void;
   canRun: boolean;
 }
 
-export function ResultsPanel({ run, settings, onCancel, onRerun, canRun }: Props) {
+export function ResultsPanel({ run, onCancel, onRerun, canRun }: Props) {
   const [sheetIdx, setSheetIdx] = useState(0);
   const [labels, setLabels] = useState(true);
   const [holes, setHoles] = useState(true);
@@ -51,6 +49,7 @@ export function ResultsPanel({ run, settings, onCancel, onRerun, canRun }: Props
     );
   }
   const r = run.result;
+  const settings = r.settings; // what the run actually used, not the form as edited since
   const v = run.verification;
   const parts = run.parts;
   const sheet: (typeof r.sheets)[number] | undefined = r.sheets[Math.min(sheetIdx, r.sheets.length - 1)];

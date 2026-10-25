@@ -3,10 +3,10 @@
 // emptiest last sheet so the remnant is the largest), and report everything
 // that was tried. Deterministic: the same inputs give the same layout.
 
-import { loopArea } from "../geometry/polygon";
+import { loopArea, polygonArea, polygonPerimeter } from "../geometry/polygon";
+import { bboxUnion } from "../geometry/types";
 import { conservativenessMm, makeVariant, NfpCache, type Variant } from "./nfp";
-import { polygonArea } from "../geometry/polygon";
-import { tryPlace, zoneObstacles, type Placed, type SheetContext } from "./placer";
+import { newSheetContext, tryPlace, zoneObstacles, type Placed } from "./placer";
 import { ENGINE_VERSION, type NestPartInput, type NestResult, type NestSettings, type SheetLayout, type StrategyRun, type StrategySpec, type UnplacedPart } from "./types";
 
 export const DEFAULT_SAGITTA = 0.3;
@@ -80,7 +80,19 @@ export function nest(parts: NestPartInput[], settings: NestSettings, opts: NestO
   const sagitta = settings.sagittaMm ?? DEFAULT_SAGITTA;
   const simplifyTol = settings.simplifyTolMm ?? DEFAULT_SIMPLIFY;
   const variantOpts = { sagittaMm: sagitta, simplifyTolMm: simplifyTol, spacingMm: settings.spacingMm };
-  const cache = new NfpCache();
+  const byId = new Map(parts.map((p) => [p.id, p]));
+  const variantMemo = new Map<string, Variant>();
+  const variantFor = (partId: string, rotationDeg: number, mirrored: boolean): Variant => {
+    const key = `${partId}@${rotationDeg}${mirrored ? "m" : ""}`;
+    let v = variantMemo.get(key);
+    if (!v) {
+      v = makeVariant(partId, byId.get(partId)!.outer, rotationDeg, mirrored, variantOpts);
+      variantMemo.set(key, v);
+    }
+    return v;
+  };
+  const cache = new NfpCache(variantFor);
+  const areas = new Map<string, { gross: number; net: number }>();
   const notes: string[] = [
     "Positions come from a greedy bottom-left-fill over no-fit polygons; the result is a good layout, not a proven optimum.",
     `Nesting polygons circumscribe the true arcs (${sagitta} mm tolerance), are simplified by ${simplifyTol} mm and grown conservatively, so parts are never closer than the spacing but may end up to ${conservativenessMm(variantOpts).toFixed(2)} mm farther apart than needed; the independent verifier checks the exact contours afterwards.`,
@@ -96,19 +108,15 @@ export function nest(parts: NestPartInput[], settings: NestSettings, opts: NestO
     const mirrors = (p.allowMirror ?? settings.allowMirror) ? [false, true] : [false];
     const variants: Variant[] = [];
     for (const m of mirrors) for (const r of rots) {
-      const v = makeVariant(p.id, p.outer, r, m, variantOpts);
+      const v = variantFor(p.id, r, m);
       // a symmetric part gives the same polygon at two rotations: keep one
       if (!variants.some((o) => samePolygon(o.poly, v.poly))) variants.push(v);
     }
     const gross = Math.abs(loopArea(p.outer));
     const net = gross - p.holes.reduce((s, h) => s + Math.abs(loopArea(h)), 0);
+    areas.set(p.id, { gross, net });
     const v0 = variants[0];
-    let perimeter = 0;
-    for (let i = 0; i < v0.poly.length; i++) {
-      const a = v0.poly[i];
-      const b = v0.poly[(i + 1) % v0.poly.length];
-      perimeter += Math.hypot(b.x - a.x, b.y - a.y);
-    }
+    const perimeter = polygonPerimeter(v0.poly);
     for (let i = 0; i < p.quantity; i++) instances.push({ part: p, instance: i, variants, area: gross, longest: Math.max(v0.width, v0.height), perimeter });
     partSummary.push({ id: p.id, label: p.label, quantity: p.quantity, placed: 0, grossArea: gross, netArea: net, bom: p.bom, partNo: p.partNo, name: p.name, source: p.source });
   }
@@ -134,7 +142,6 @@ export function nest(parts: NestPartInput[], settings: NestSettings, opts: NestO
       if (Math.abs(k) > 1e-9) return k;
       return a.part.id < b.part.id ? -1 : a.part.id > b.part.id ? 1 : a.instance - b.instance;
     });
-    const ctx: SheetContext = { settings, cache, stats, zones };
     const sheets: SheetLayout[] = [];
     const unplaced = new Map<string, { qty: number; reason: string }>();
     let remaining = order;
@@ -149,6 +156,7 @@ export function nest(parts: NestPartInput[], settings: NestSettings, opts: NestO
         for (const inst of remaining) bump(unplaced, inst.part.id, `stopped at the ${maxSheets}-sheet limit`);
         break;
       }
+      const ctx = newSheetContext(settings, cache, stats, zones);
       const placed: Placed[] = [];
       const next: Instance[] = [];
       const reasons = new Map<Instance, string>();
@@ -177,7 +185,7 @@ export function nest(parts: NestPartInput[], settings: NestSettings, opts: NestO
         for (const inst of next) bump(unplaced, inst.part.id, reasons.get(inst) ?? "does not fit the sheet");
         break;
       }
-      sheets.push(layoutOf(sheetIndex, placed, sheetArea, parts));
+      sheets.push(layoutOf(sheetIndex, placed, sheetArea, areas));
       sheetIndex++;
       remaining = next;
       opts.onProgress?.({ phase: "strategy", strategyIndex: si, strategyCount: strategies.length, placed: instances.length - remaining.length, total: instances.length, sheets: sheets.length, message: `${strategy.ordering} / ${strategy.objective}: sheet ${sheets.length}` });
@@ -191,15 +199,14 @@ export function nest(parts: NestPartInput[], settings: NestSettings, opts: NestO
     const lastUtil = sheets.length ? sheets[sheets.length - 1].utilization : 0;
     const unplacedList = [...unplaced.entries()].map(([partId, v]) => ({ partId, quantity: v.qty, reason: v.reason }));
     tried.push({ strategy, sheets: sheets.length, utilization: util, lastSheetUtilization: lastUtil, ms: now() - ts, unplaced: instances.length - placedCount });
-    const better =
-      !best ||
-      placedCount > instances.length - best.unplaced.reduce((n, u) => n + u.quantity, 0) ||
-      (placedCount === instances.length - best.unplaced.reduce((n, u) => n + u.quantity, 0) && (sheets.length < best.sheets.length || (sheets.length === best.sheets.length && lastUtil < best.lastUtil - 1e-9)));
+    const bestPlaced = best ? instances.length - best.unplaced.reduce((n, u) => n + u.quantity, 0) : -1;
+    const better = !best || placedCount > bestPlaced || (placedCount === bestPlaced && (sheets.length < best.sheets.length || (sheets.length === best.sheets.length && lastUtil < best.lastUtil - 1e-9)));
     if (better) best = { sheets, unplaced: unplacedList, strategy, util, lastUtil };
   }
   if (!best) throw new Error("No strategy ran.");
+  const summaryById = new Map(partSummary.map((p) => [p.id, p]));
   for (const s of best.sheets) for (const pl of s.placements) {
-    const row = partSummary.find((p) => p.id === pl.partId);
+    const row = summaryById.get(pl.partId);
     if (row) row.placed++;
   }
   return {
@@ -239,17 +246,15 @@ function bump(map: Map<string, { qty: number; reason: string }>, id: string, rea
   else map.set(id, { qty: 1, reason });
 }
 
-function layoutOf(index: number, placed: Placed[], sheetArea: number, parts: NestPartInput[]): SheetLayout {
+function layoutOf(index: number, placed: Placed[], sheetArea: number, areas: Map<string, { gross: number; net: number }>): SheetLayout {
   let gross = 0;
   let net = 0;
   let bb: SheetLayout["usedBBox"] = null;
   for (const p of placed) {
-    const part = parts.find((x) => x.id === p.placement.partId)!;
-    const g = Math.abs(loopArea(part.outer));
-    gross += g;
-    net += g - part.holes.reduce((s, h) => s + Math.abs(loopArea(h)), 0);
-    const b = p.placement.bbox;
-    bb = bb ? { minX: Math.min(bb.minX, b.minX), minY: Math.min(bb.minY, b.minY), maxX: Math.max(bb.maxX, b.maxX), maxY: Math.max(bb.maxY, b.maxY) } : { ...b };
+    const a = areas.get(p.placement.partId)!;
+    gross += a.gross;
+    net += a.net;
+    bb = bb ? bboxUnion(bb, p.placement.bbox) : { ...p.placement.bbox };
   }
   return { index, placements: placed.map((p) => p.placement), grossPartArea: gross, netPartArea: net, utilization: gross / sheetArea, usedBBox: bb };
 }
@@ -260,4 +265,3 @@ function makeRunId(): string {
   return `nest-${t}-${r}`;
 }
 
-export { placementTransform } from "./placement";

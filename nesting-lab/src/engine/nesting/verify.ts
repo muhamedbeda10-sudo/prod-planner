@@ -3,7 +3,7 @@
 // polygons that circumscribe every arc (so a pass here implies the true shapes
 // pass too). Tolerances are explicit and reported.
 
-import { discretizeLoop, loopArea, loopPerimeter, pointInPolygon, polygonBoundaryDistance, polygonsOverlap } from "../geometry/polygon";
+import { discretizeLoop, loopArea, loopPerimeter, pointInPolygon, polygonBBox, polygonBoundaryDistance, polygonsOverlap } from "../geometry/polygon";
 import type { BBox, Loop, Polygon } from "../geometry/types";
 import { bboxOverlaps } from "../geometry/types";
 import { placedGeometry } from "./placement";
@@ -76,8 +76,7 @@ export function verifyLayout(parts: NestPartInput[], result: NestResult, opts: V
         violations.push({ sheet: sh.index, kind: "geometry", message: `${part.label} #${pl.instance + 1}: placed contour differs from the source (area ${a0.toFixed(3)} → ${a1.toFixed(3)}, perimeter ${p0.toFixed(3)} → ${p1.toFixed(3)}).`, a: { partId: pl.partId, instance: pl.instance } });
       }
       const poly = discretizeLoop(loop, sagitta, true);
-      let bbox: BBox = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-      for (const q of poly) bbox = { minX: Math.min(bbox.minX, q.x), minY: Math.min(bbox.minY, q.y), maxX: Math.max(bbox.maxX, q.x), maxY: Math.max(bbox.maxY, q.y) };
+      const bbox: BBox = polygonBBox(poly);
       // in bounds (the sheet is convex: vertices inside ⇒ polygon inside)
       const m = s.marginMm;
       const edge = Math.min(bbox.minX, bbox.minY, W - bbox.maxX, H - bbox.maxY);

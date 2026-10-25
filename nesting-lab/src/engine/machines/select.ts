@@ -6,6 +6,9 @@ import type { Compatibility, JobFacts, MachineAssessment, MachineConfig, Machine
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
+/** Best first. */
+const COMPAT_ORDER: readonly Compatibility[] = ["compatible", "conditional", "unconfirmed", "incompatible"];
+
 /** The same contract as the planner's lib/domain/machineRules.ts ruleMatches:
  *  every given field must match; a kVA rule never matches a job without a kVA. */
 function ruleMatches(r: MachineRuleConfig, job: JobFacts): boolean {
@@ -38,8 +41,7 @@ export function assessMachine(m: MachineConfig, job: JobFacts, ctx: MachineConte
   const toConfirm: string[] = [];
   const state: { compat: Compatibility } = { compat: "compatible" };
   const worsen = (c: Compatibility) => {
-    const order: Compatibility[] = ["compatible", "conditional", "unconfirmed", "incompatible"];
-    if (order.indexOf(c) > order.indexOf(state.compat)) state.compat = c;
+    if (COMPAT_ORDER.indexOf(c) > COMPAT_ORDER.indexOf(state.compat)) state.compat = c;
   };
   const compat = () => state.compat;
   if (!m.active) {
@@ -138,10 +140,9 @@ export function jobFactsOf(settings: { sheet: { material: string; thicknessMm: n
 }
 
 export function rankMachines(job: JobFacts, file: MachinesFile): MachineAssessment[] {
-  const order: Record<Compatibility, number> = { compatible: 0, conditional: 1, unconfirmed: 2, incompatible: 3 };
   const list = file.machines.map((m) => assessMachine(m, job, contextFromFile(m, file)));
   list.sort((a, b) => {
-    const d = order[a.compatibility] - order[b.compatibility];
+    const d = COMPAT_ORDER.indexOf(a.compatibility) - COMPAT_ORDER.indexOf(b.compatibility);
     if (d !== 0) return d;
     if (a.preferred !== b.preferred) return a.preferred ? -1 : 1;
     const qa = a.queueHoursAhead ?? Infinity;

@@ -2,8 +2,9 @@
 // arcs (LWPOLYLINE bulges, CIRCLE), every entity has a handle and the standard
 // tables are present so AutoCAD-family readers open the file without repair.
 
-import type { Loop, Point, Seg } from "../geometry/types";
-import { bulgeOf } from "../geometry/arc";
+import { bboxUnion, emptyBBox, type Loop, type Point, type Seg } from "../geometry/types";
+import { bulgeOf, dist } from "../geometry/arc";
+import { loopBBox } from "../geometry/polygon";
 import { INSUNITS_MM } from "../dxf/units";
 
 export interface DxfLayerSpec {
@@ -70,30 +71,14 @@ export function writeDxf(entities: DxfOutEntity[], opts: DxfWriteOptions): strin
   // compute extents when not given
   let ext = opts.extents;
   if (!ext) {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    const add = (q: Point) => {
-      minX = Math.min(minX, q.x);
-      minY = Math.min(minY, q.y);
-      maxX = Math.max(maxX, q.x);
-      maxY = Math.max(maxY, q.y);
-    };
+    let b = emptyBBox();
     for (const e of entities) {
-      if (e.kind === "lwpolyline") for (const s of e.loop.segs) {
-        add(s.a);
-        add(s.b);
-      }
-      else if (e.kind === "circle") {
-        add({ x: e.center.x - e.r, y: e.center.y - e.r });
-        add({ x: e.center.x + e.r, y: e.center.y + e.r });
-      } else if (e.kind === "line") {
-        add(e.a);
-        add(e.b);
-      } else add(e.at);
+      if (e.kind === "lwpolyline") b = bboxUnion(b, loopBBox(e.loop));
+      else if (e.kind === "circle") b = bboxUnion(b, { minX: e.center.x - e.r, minY: e.center.y - e.r, maxX: e.center.x + e.r, maxY: e.center.y + e.r });
+      else if (e.kind === "line") b = bboxUnion(b, { minX: Math.min(e.a.x, e.b.x), minY: Math.min(e.a.y, e.b.y), maxX: Math.max(e.a.x, e.b.x), maxY: Math.max(e.a.y, e.b.y) });
+      else b = bboxUnion(b, { minX: e.at.x, minY: e.at.y, maxX: e.at.x, maxY: e.at.y });
     }
-    ext = Number.isFinite(minX) ? { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } } : { min: { x: 0, y: 0 }, max: { x: 0, y: 0 } };
+    ext = Number.isFinite(b.minX) ? { min: { x: b.minX, y: b.minY }, max: { x: b.maxX, y: b.maxY } } : { min: { x: 0, y: 0 }, max: { x: 0, y: 0 } };
   }
   if (opts.comment) p(999, opts.comment.replace(/[\r\n]+/g, " "));
   // ---- HEADER ----
@@ -322,7 +307,7 @@ export function writeDxf(entities: DxfOutEntity[], opts: DxfWriteOptions): strin
         // closed when the last segment ends where the first starts
         const first = segs[0].a;
         const last = segs[segs.length - 1].b;
-        const closed = Math.hypot(first.x - last.x, first.y - last.y) < 1e-9;
+        const closed = dist(first, last) < 1e-9;
         common("LWPOLYLINE", e.layer);
         p(100, "AcDbPolyline");
         pi(90, closed ? segs.length : segs.length + 1);

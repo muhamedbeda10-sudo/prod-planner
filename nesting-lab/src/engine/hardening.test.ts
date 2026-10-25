@@ -3,7 +3,7 @@
 // the time budget, and the CSV guard.
 import { describe, expect, it } from "vitest";
 import { parseDxf } from "./dxf/parse";
-import { extractPrimitives, LIMITS, layerRoleOf } from "./dxf/primitives";
+import { extractPrimitives, DEFAULT_LIMITS, layerRoleOf } from "./dxf/primitives";
 import { analyzeDxf } from "./dxf/analyze";
 import { DxfFormatError } from "./dxf/tokenize";
 import { dxfText, lwpolyline, circle, line, rect } from "./test-support/dxf";
@@ -92,7 +92,7 @@ describe("hostile or odd files", () => {
     const prim = extractPrimitives(parseDxf(dxfText(circle(0, 0, 1e15))), { unitFactor: 1, layerRoles: {} });
     expect(prim.segs).toHaveLength(0);
     expect(prim.unsupported[0].type).toMatch(/radius/);
-    expect(LIMITS.radiusMm).toBe(1e7);
+    expect(DEFAULT_LIMITS.radiusMm).toBe(1e7);
   });
   it("is immune to layers and blocks named like Object.prototype members", () => {
     expect(layerRoleOf({}, "constructor")).toBe("cut");
@@ -110,13 +110,8 @@ describe("hostile or odd files", () => {
     const blocks = ["0", "BLOCK", "8", "0", "2", "SQ", "70", "0", "10", "0", "20", "0", "30", "0", "3", "SQ", ...rect(0, 0, 10, 10).split("\n"), "0", "ENDBLK", "8", "0"].join("\n");
     // 9000 copies × 4 segments = 36 000 segments, fine; the budget test uses a lowered limit
     const ins = ["0", "INSERT", "8", "0", "2", "SQ", "10", "0", "20", "0", "30", "0", "70", "90", "71", "100", "44", "20", "45", "20"].join("\n");
-    const saved = LIMITS.segments;
-    LIMITS.segments = 1000;
-    try {
-      expect(() => extractPrimitives(parseDxf(dxfText(ins, { blocks })), { unitFactor: 1, layerRoles: {} })).toThrow(DxfFormatError);
-    } finally {
-      LIMITS.segments = saved;
-    }
+    expect(() => extractPrimitives(parseDxf(dxfText(ins, { blocks })), { unitFactor: 1, layerRoles: {}, limits: { segments: 1000 } })).toThrow(DxfFormatError);
+    expect(DEFAULT_LIMITS.segments).toBe(2_000_000);
   });
   it("noding survives one very long construction line among many short segments", () => {
     const segs: TaggedSeg[] = [];

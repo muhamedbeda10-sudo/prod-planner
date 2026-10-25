@@ -4,7 +4,7 @@
 // tolerance. A mirror image is NOT the same part (a left and a right bracket
 // are different pieces to cut); it is recorded as "mirror of" instead.
 
-import type { Loop, Point, Seg, Transform } from "./types";
+import { IDENTITY, type Loop, type Point, type Seg, type Transform } from "./types";
 import type { Piece } from "./classify";
 import { dist, segLength } from "./arc";
 import { transformLoop, transformPoint } from "./polygon";
@@ -48,13 +48,11 @@ function sameSegShape(a: Seg, b: Seg, tol: number): boolean {
 function frameTransform(p0: Point, d0: Point, p1: Point, d1: Point, mirror: boolean): Transform {
   const a0 = Math.atan2(d0.y, d0.x);
   const a1 = Math.atan2(d1.y, d1.x);
-  let rot = a1 - (mirror ? Math.PI - a0 : a0);
-  const deg = (rot * 180) / Math.PI;
+  const deg = ((a1 - (mirror ? Math.PI - a0 : a0)) * 180) / Math.PI;
   const t: Transform = { rotationDeg: deg, mirror, dx: 0, dy: 0 };
   const moved = transformPoint(p0, t);
   t.dx = p1.x - moved.x;
   t.dy = p1.y - moved.y;
-  void rot;
   return t;
 }
 
@@ -113,8 +111,9 @@ export function alignPieces(a: Piece, b: Piece, tol: number, mirror: boolean): T
   const lb = b.outer.loop;
   if (la.segs.length !== lb.segs.length) return null;
   // mirrored A: reflect then re-orient ccw (transformLoop handles reversal)
-  const aLoop = mirror ? transformLoop(la, { rotationDeg: 0, mirror: true, dx: 0, dy: 0 }) : la;
-  const aHoles = mirror ? a.holes.map((h) => transformLoop(h.loop, { rotationDeg: 0, mirror: true, dx: 0, dy: 0 })) : a.holes.map((h) => h.loop);
+  const MIRROR: Transform = { ...IDENTITY, mirror: true };
+  const aLoop = mirror ? transformLoop(la, MIRROR) : la;
+  const aHoles = mirror ? a.holes.map((h) => transformLoop(h.loop, MIRROR)) : a.holes.map((h) => h.loop);
   const s0 = aLoop.segs[0];
   if (s0.kind === "arc" && s0.full) {
     // circle: translation only
@@ -151,7 +150,7 @@ export function dedupePieces(pieces: Piece[], opts: DedupeOptions): DedupeResult
         break;
       }
     }
-    if (!placed) groups.push({ representative: p, instances: [{ pieceId: p.id, transform: { rotationDeg: 0, mirror: false, dx: 0, dy: 0 } }], mirrorOf: null });
+    if (!placed) groups.push({ representative: p, instances: [{ pieceId: p.id, transform: IDENTITY }], mirrorOf: null });
   }
   // mirror relations between groups
   for (let i = 0; i < groups.length; i++) {

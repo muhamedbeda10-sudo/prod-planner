@@ -2,6 +2,9 @@ import type { BBox, Loop, Seg } from "../geometry/types";
 
 export const ENGINE_VERSION = "nesting-lab/0.1.0 (NFP true-shape, Clipper 6.4.2)";
 
+/** The planner writes a sheet size as "1220*2440". */
+export const sheetLabel = (widthMm: number, heightMm: number): string => `${widthMm}*${heightMm}`;
+
 export interface NestPartInput {
   /** stable id of the part type within this run */
   id: string;

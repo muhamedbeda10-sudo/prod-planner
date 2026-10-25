@@ -4,8 +4,9 @@ import type { NestPartInput, NestResult } from "../nesting/types";
 import type { VerifyReport } from "../nesting/verify";
 import type { RoundTripReport } from "./roundtrip";
 import type { MachineAssessment } from "../machines/types";
-import { geometryHash } from "./hash";
+import { geometryHash } from "../geometry/hash";
 import { loopArea, loopBBox, loopPerimeter } from "../geometry/polygon";
+import { bboxHeight, bboxWidth } from "../geometry/types";
 
 export interface ExportedFile {
   fileName: string;
@@ -60,8 +61,8 @@ export function buildReport(input: { parts: NestPartInput[]; result: NestResult;
     settings: result.settings,
     parts: parts.map((p) => {
       const b = loopBBox(p.outer);
-      const gross = Math.abs(loopArea(p.outer));
       const summary = result.parts.find((x) => x.id === p.id);
+      const gross = summary?.grossArea ?? Math.abs(loopArea(p.outer));
       return {
         id: p.id,
         label: p.label,
@@ -70,10 +71,10 @@ export function buildReport(input: { parts: NestPartInput[]; result: NestResult;
         name: p.name,
         quantity: p.quantity,
         placed: summary?.placed ?? 0,
-        widthMm: b.maxX - b.minX,
-        heightMm: b.maxY - b.minY,
+        widthMm: bboxWidth(b),
+        heightMm: bboxHeight(b),
         grossAreaMm2: gross,
-        netAreaMm2: gross - p.holes.reduce((s, h) => s + Math.abs(loopArea(h)), 0),
+        netAreaMm2: summary?.netArea ?? gross - p.holes.reduce((s, h) => s + Math.abs(loopArea(h)), 0),
         perimeterMm: loopPerimeter(p.outer),
         holes: p.holes.length,
         geometryHash: geometryHash(p.outer, p.holes),

@@ -3,7 +3,7 @@
 // boolean operation is exact to a thousandth of a millimetre.
 
 import ClipperLib, { type Path, type Paths } from "clipper-lib";
-import type { Point, Polygon } from "../geometry/types";
+import type { Polygon } from "../geometry/types";
 
 export const SCALE = 1000;
 
@@ -21,10 +21,6 @@ export function pathArea(path: IPath): number {
 }
 export function orientation(path: IPath): boolean {
   return ClipperLib.Clipper.Orientation(path);
-}
-/** 1 inside, 0 outside, -1 on the boundary */
-export function pointIn(p: Point, path: IPath): number {
-  return ClipperLib.Clipper.PointInPolygon({ X: Math.round(p.x * SCALE), Y: Math.round(p.y * SCALE) }, path);
 }
 
 export function unionPaths(paths: IPaths): IPaths {
@@ -44,15 +40,6 @@ export function differencePaths(subject: IPaths, clip: IPaths): IPaths {
   return out;
 }
 
-export function intersectionPaths(subject: IPaths, clip: IPaths): IPaths {
-  const c = new ClipperLib.Clipper();
-  c.AddPaths(subject, ClipperLib.PolyType.ptSubject, true);
-  c.AddPaths(clip, ClipperLib.PolyType.ptClip, true);
-  const out: IPaths = [];
-  c.Execute(ClipperLib.ClipType.ctIntersection, out, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
-  return out;
-}
-
 /** Offset closed polygons by `delta` mm with round joins. */
 export function offsetPaths(paths: IPaths, deltaMm: number, arcToleranceMm = 0.02): IPaths {
   const co = new ClipperLib.ClipperOffset(2, arcToleranceMm * SCALE);
@@ -62,23 +49,10 @@ export function offsetPaths(paths: IPaths, deltaMm: number, arcToleranceMm = 0.0
   return out;
 }
 
-/** Minkowski sum of a pattern with a closed path (the path's boundary). */
-export function minkowski(pattern: IPath, path: IPath): IPaths {
-  return ClipperLib.Clipper.MinkowskiSum(pattern, path, true);
-}
-
-export function cleanPaths(paths: IPaths, distanceMm = 0.001): IPaths {
-  return ClipperLib.Clipper.CleanPolygons(paths, distanceMm * SCALE);
-}
-
 export function translatePath(path: IPath, dx: number, dy: number): IPath {
   const X = Math.round(dx * SCALE);
   const Y = Math.round(dy * SCALE);
   return path.map((p) => ({ X: p.X + X, Y: p.Y + Y }));
-}
-
-export function negatePath(path: IPath): IPath {
-  return path.map((p) => ({ X: -p.X, Y: -p.Y }));
 }
 
 export function rectPath(x0: number, y0: number, x1: number, y1: number): IPath {
@@ -88,18 +62,4 @@ export function rectPath(x0: number, y0: number, x1: number, y1: number): IPath 
     { x: x1, y: y1 },
     { x: x0, y: y1 },
   ]);
-}
-
-export function pathBounds(path: IPath): { minX: number; minY: number; maxX: number; maxY: number } {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const p of path) {
-    if (p.X < minX) minX = p.X;
-    if (p.Y < minY) minY = p.Y;
-    if (p.X > maxX) maxX = p.X;
-    if (p.Y > maxY) maxY = p.Y;
-  }
-  return { minX: minX / SCALE, minY: minY / SCALE, maxX: maxX / SCALE, maxY: maxY / SCALE };
 }

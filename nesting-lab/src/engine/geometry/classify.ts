@@ -2,11 +2,11 @@
 // are parts, which are holes (or slugs) inside parts, and what the file is —
 // a single part, several parts, or a finished nesting.
 
-import type { BBox, Loop, Point, Polygon, Seg } from "./types";
+import { bboxHeight, bboxUnion, bboxWidth, type BBox, type Loop, type Point, type Polygon, type Seg } from "./types";
 import type { Cycle, TopologyResult } from "./topology";
 import type { SegTag, TaggedSeg } from "./types";
-import { discretizeLoop, interiorPoint, isAxisAlignedRectangle, loopArea, loopBBox, loopPerimeter, orientLoop, pointInPolygon } from "./polygon";
-import { dist, reverseSeg, segLength } from "./arc";
+import { discretizeLoop, interiorPoint, isAxisAlignedRectangle, loopBBox, loopPerimeter, orientLoop, pointInPolygon } from "./polygon";
+import { dist, segBBox, segLength } from "./arc";
 import { simplifyLoop } from "./simplifyLoop";
 
 export interface PieceLoop {
@@ -32,7 +32,10 @@ export interface Piece {
   bbox: BBox;
   /** mark-role geometry that lies inside this piece (engraving, centre marks) */
   marks: TaggedSeg[];
+  /** facts about the piece (common-line cuts, nesting depth) */
   flags: string[];
+  /** reasons a person should check it is a part at all (scrap between cuts, tiny) */
+  review: string[];
 }
 
 export interface ClassifyOptions {
@@ -104,10 +107,8 @@ export function classify(topo: TopologyResult, marks: TaggedSeg[], opts: Classif
   }
   // overall bbox of all cut geometry (faces + open chains)
   let overall: BBox = { ...faces[0].loop.bbox };
-  for (const f of faces) overall = { minX: Math.min(overall.minX, f.loop.bbox.minX), minY: Math.min(overall.minY, f.loop.bbox.minY), maxX: Math.max(overall.maxX, f.loop.bbox.maxX), maxY: Math.max(overall.maxY, f.loop.bbox.maxY) };
-  for (const o of topo.open) for (const s of o.segs) {
-    overall = { minX: Math.min(overall.minX, s.a.x, s.b.x), minY: Math.min(overall.minY, s.a.y, s.b.y), maxX: Math.max(overall.maxX, s.a.x, s.b.x), maxY: Math.max(overall.maxY, s.a.y, s.b.y) };
-  }
+  for (const f of faces) overall = bboxUnion(overall, f.loop.bbox);
+  for (const o of topo.open) for (const s of o.segs) overall = bboxUnion(overall, segBBox(s));
   // containment: parent = smallest face strictly containing this one (faces sorted by area desc)
   for (let i = 0; i < faces.length; i++) {
     const f = faces[i];
@@ -173,12 +174,13 @@ export function classify(topo: TopologyResult, marks: TaggedSeg[], opts: Classif
     const outerLoop = orientLoop(f.loop.loop, true);
     const outer: PieceLoop = { ...f.loop, loop: outerLoop, segs: outerLoop.segs as TaggedSeg[] };
     const flags: string[] = [];
+    const review: string[] = [];
     if (f.depth > 0) flags.push(`nested inside another piece's cut-out (depth ${f.depth})`);
     if (f.loop.sharedFraction > 0) flags.push(`${Math.round(f.loop.sharedFraction * 100)}% of its outline is a common-line cut shared with neighbours`);
-    const fill = f.loop.area / Math.max(1e-9, (f.loop.bbox.maxX - f.loop.bbox.minX) * (f.loop.bbox.maxY - f.loop.bbox.minY));
-    if (fill < 0.5 && f.loop.segs.length > 8) flags.push(`irregular outline (fills ${Math.round(fill * 100)}% of its box, ${f.loop.segs.length} segments) — check it is a part and not scrap between neighbours`);
-    if (f.loop.area < opts.reviewArea) flags.push(`small (${f.loop.area.toFixed(0)} mm²) — check it is a part and not a corner scrap`);
-    const piece: Piece = { id: `P${++seq}`, outer, holes: [], depth: f.depth, area: f.loop.area, bbox: f.loop.bbox, marks: [], flags };
+    const fill = f.loop.area / Math.max(1e-9, bboxWidth(f.loop.bbox) * bboxHeight(f.loop.bbox));
+    if (fill < 0.5 && f.loop.segs.length > 8) review.push(`irregular outline (fills ${Math.round(fill * 100)}% of its box, ${f.loop.segs.length} segments) — check it is a part and not scrap between neighbours`);
+    if (f.loop.area < opts.reviewArea) review.push(`small (${f.loop.area.toFixed(0)} mm²) — check it is a part and not a corner scrap`);
+    const piece: Piece = { id: `P${++seq}`, outer, holes: [], depth: f.depth, area: f.loop.area, bbox: f.loop.bbox, marks: [], flags, review };
     pieces.push(piece);
     pieceByFace.set(f, piece);
   }
@@ -224,11 +226,10 @@ export function classify(topo: TopologyResult, marks: TaggedSeg[], opts: Classif
     kind,
     pieces,
     sheetBoundary: sheet ? sheet.loop : null,
-    sheetSize: sheet ? { w: sheet.loop.bbox.maxX - sheet.loop.bbox.minX, h: sheet.loop.bbox.maxY - sheet.loop.bbox.minY } : null,
+    sheetSize: sheet ? { w: bboxWidth(sheet.loop.bbox), h: bboxHeight(sheet.loop.bbox) } : null,
     ignoredFaces: ignored,
     overallBBox: overall,
     warnings,
   };
 }
 
-export { reverseSeg, loopArea };

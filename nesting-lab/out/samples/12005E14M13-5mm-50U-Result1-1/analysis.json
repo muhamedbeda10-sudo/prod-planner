@@ -125,6 +125,7 @@
       "flags": [
         "50% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1"
       ],
@@ -142,7 +143,9 @@
       "marks": 0,
       "depth": 0,
       "flags": [
-        "67% of its outline is a common-line cut shared with neighbours",
+        "67% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 49% of its box, 38 segments) — check it is a part and not scrap between neighbours"
       ],
       "layers": [
@@ -165,6 +168,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -185,6 +189,7 @@
       "flags": [
         "69% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -205,6 +210,7 @@
       "flags": [
         "82% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -224,6 +230,7 @@
       "flags": [
         "94% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1"
       ],
@@ -243,6 +250,7 @@
       "flags": [
         "60% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -263,6 +271,7 @@
       "flags": [
         "57% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -283,6 +292,7 @@
       "flags": [
         "58% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -303,6 +313,7 @@
       "flags": [
         "95% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -322,6 +333,7 @@
       "flags": [
         "46% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -342,6 +354,7 @@
       "flags": [
         "89% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -362,6 +375,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -381,6 +395,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -401,6 +416,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -421,6 +437,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -441,6 +458,7 @@
       "flags": [
         "50% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1"
       ],
@@ -460,6 +478,7 @@
       "flags": [
         "56% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -480,6 +499,7 @@
       "flags": [
         "99% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1"
       ],
@@ -499,6 +519,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -519,6 +540,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -537,7 +559,9 @@
       "marks": 0,
       "depth": 0,
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 26% of its box, 18 segments) — check it is a part and not scrap between neighbours"
       ],
       "layers": [
@@ -559,6 +583,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -578,6 +603,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -597,6 +623,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -617,6 +644,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -636,6 +664,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -656,6 +685,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -676,6 +706,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -695,6 +726,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -714,6 +746,7 @@
       "flags": [
         "45% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -734,6 +767,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -753,6 +787,7 @@
       "flags": [
         "49% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -773,6 +808,7 @@
       "flags": [
         "68% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -793,6 +829,7 @@
       "flags": [
         "50% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -812,6 +849,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -830,7 +868,9 @@
       "marks": 0,
       "depth": 0,
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 23% of its box, 9 segments) — check it is a part and not scrap between neighbours"
       ],
       "layers": [
@@ -851,7 +891,9 @@
       "marks": 0,
       "depth": 0,
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 7% of its box, 12 segments) — check it is a part and not scrap between neighbours"
       ],
       "layers": [
@@ -872,7 +914,9 @@
       "marks": 0,
       "depth": 0,
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 7% of its box, 12 segments) — check it is a part and not scrap between neighbours"
       ],
       "layers": [
@@ -894,6 +938,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -913,6 +958,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -933,6 +979,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -952,6 +999,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -972,6 +1020,7 @@
       "flags": [
         "60% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -991,6 +1040,7 @@
       "flags": [
         "86% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -1010,6 +1060,7 @@
       "flags": [
         "75% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -1029,6 +1080,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -1049,6 +1101,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -1067,6 +1120,7 @@
       "marks": 0,
       "depth": 0,
       "flags": [],
+      "review": [],
       "layers": [
         "0"
       ],
@@ -1086,6 +1140,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -1106,6 +1161,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -1126,6 +1182,7 @@
       "flags": [
         "75% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -1146,6 +1203,7 @@
       "flags": [
         "97% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -1166,6 +1224,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "0",
         "1"
@@ -1184,7 +1243,9 @@
       "marks": 0,
       "depth": 0,
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 43% of its box, 9 segments) — check it is a part and not scrap between neighbours"
       ],
       "layers": [
@@ -1207,6 +1268,7 @@
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
       ],
+      "review": [],
       "layers": [
         "1",
         "0"
@@ -1225,7 +1287,9 @@
       "marks": 0,
       "depth": 2,
       "flags": [
-        "nested inside another piece's cut-out (depth 2)",
+        "nested inside another piece's cut-out (depth 2)"
+      ],
+      "review": [
         "small (378 mm²) — check it is a part and not a corner scrap"
       ],
       "layers": [
@@ -1245,7 +1309,9 @@
       "marks": 0,
       "depth": 0,
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "small (362 mm²) — check it is a part and not a corner scrap"
       ],
       "layers": [
@@ -1266,7 +1332,9 @@
       "marks": 0,
       "depth": 0,
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "small (312 mm²) — check it is a part and not a corner scrap"
       ],
       "layers": [
@@ -1287,7 +1355,9 @@
       "marks": 0,
       "depth": 0,
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "small (115 mm²) — check it is a part and not a corner scrap"
       ],
       "layers": [
@@ -1535,7 +1605,8 @@
       "representative": "P1",
       "flags": [
         "50% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T2",
@@ -1549,7 +1620,9 @@
       "mirrorOf": null,
       "representative": "P2",
       "flags": [
-        "67% of its outline is a common-line cut shared with neighbours",
+        "67% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 49% of its box, 38 segments) — check it is a part and not scrap between neighbours"
       ]
     },
@@ -1571,7 +1644,8 @@
       "representative": "P3",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T4",
@@ -1586,7 +1660,8 @@
       "representative": "P5",
       "flags": [
         "82% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T5",
@@ -1601,7 +1676,8 @@
       "representative": "P6",
       "flags": [
         "94% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T6",
@@ -1626,7 +1702,8 @@
       "representative": "P7",
       "flags": [
         "60% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T7",
@@ -1641,7 +1718,8 @@
       "representative": "P10",
       "flags": [
         "95% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T8",
@@ -1661,7 +1739,8 @@
       "representative": "P11",
       "flags": [
         "46% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T9",
@@ -1681,7 +1760,8 @@
       "representative": "P13",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T10",
@@ -1701,7 +1781,8 @@
       "representative": "P15",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T11",
@@ -1721,7 +1802,8 @@
       "representative": "P17",
       "flags": [
         "50% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T12",
@@ -1741,7 +1823,8 @@
       "representative": "P19",
       "flags": [
         "99% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T13",
@@ -1756,7 +1839,8 @@
       "representative": "P21",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T14",
@@ -1770,7 +1854,9 @@
       "mirrorOf": null,
       "representative": "P22",
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 26% of its box, 18 segments) — check it is a part and not scrap between neighbours"
       ]
     },
@@ -1792,7 +1878,8 @@
       "representative": "P23",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T16",
@@ -1807,7 +1894,8 @@
       "representative": "P25",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T17",
@@ -1822,7 +1910,8 @@
       "representative": "P26",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T18",
@@ -1857,7 +1946,8 @@
       "representative": "P27",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T19",
@@ -1882,7 +1972,8 @@
       "representative": "P32",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T20",
@@ -1897,7 +1988,8 @@
       "representative": "P34",
       "flags": [
         "68% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T21",
@@ -1912,7 +2004,8 @@
       "representative": "P36",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T22",
@@ -1926,7 +2019,9 @@
       "mirrorOf": null,
       "representative": "P37",
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 23% of its box, 9 segments) — check it is a part and not scrap between neighbours"
       ]
     },
@@ -1947,7 +2042,9 @@
       "mirrorOf": null,
       "representative": "P38",
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 7% of its box, 12 segments) — check it is a part and not scrap between neighbours"
       ]
     },
@@ -1974,7 +2071,8 @@
       "representative": "P40",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T25",
@@ -1989,7 +2087,8 @@
       "representative": "P43",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T26",
@@ -2009,7 +2108,8 @@
       "representative": "P44",
       "flags": [
         "60% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T27",
@@ -2034,7 +2134,8 @@
       "representative": "P46",
       "flags": [
         "75% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T28",
@@ -2069,7 +2170,8 @@
       "representative": "P48",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T29",
@@ -2082,7 +2184,8 @@
       ],
       "mirrorOf": "T28",
       "representative": "P49",
-      "flags": []
+      "flags": [],
+      "review": []
     },
     {
       "id": "T30",
@@ -2096,7 +2199,9 @@
       "mirrorOf": null,
       "representative": "P55",
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "irregular outline (fills 43% of its box, 9 segments) — check it is a part and not scrap between neighbours"
       ]
     },
@@ -2113,7 +2218,8 @@
       "representative": "P56",
       "flags": [
         "100% of its outline is a common-line cut shared with neighbours"
-      ]
+      ],
+      "review": []
     },
     {
       "id": "T32",
@@ -2127,7 +2233,9 @@
       "mirrorOf": null,
       "representative": "P57",
       "flags": [
-        "nested inside another piece's cut-out (depth 2)",
+        "nested inside another piece's cut-out (depth 2)"
+      ],
+      "review": [
         "small (378 mm²) — check it is a part and not a corner scrap"
       ]
     },
@@ -2143,7 +2251,9 @@
       "mirrorOf": null,
       "representative": "P58",
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "small (362 mm²) — check it is a part and not a corner scrap"
       ]
     },
@@ -2159,7 +2269,9 @@
       "mirrorOf": null,
       "representative": "P59",
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "small (312 mm²) — check it is a part and not a corner scrap"
       ]
     },
@@ -2175,7 +2287,9 @@
       "mirrorOf": null,
       "representative": "P60",
       "flags": [
-        "100% of its outline is a common-line cut shared with neighbours",
+        "100% of its outline is a common-line cut shared with neighbours"
+      ],
+      "review": [
         "small (115 mm²) — check it is a part and not a corner scrap"
       ]
     }

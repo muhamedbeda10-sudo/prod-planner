@@ -5,7 +5,11 @@ import type { FileNameHints } from "../engine/dxf/fileName";
 import type { NestPartInput, NestResult, NestSettings, StrategySpec } from "../engine/nesting/types";
 import type { NestProgress } from "../engine/nesting/nest";
 import type { VerifyReport } from "../engine/nesting/verify";
-import { partsFromAnalysis, type PartOverride, type SkippedPart } from "../engine/parts";
+import { fileShort, partsFromAnalysis, type PartOverride, type SkippedPart } from "../engine/parts";
+import { sheetLabel } from "../engine/nesting/types";
+export { fileShort };
+
+export const IDLE_RUN: RunState = { status: "idle", progress: null, result: null, verification: null, error: null, startedAt: 0, parts: [] };
 
 export interface RunState {
   status: "idle" | "running" | "done" | "error";
@@ -63,7 +67,7 @@ export interface SettingsForm {
 
 export function toSettings(f: SettingsForm): NestSettings {
   return {
-    sheet: { widthMm: f.widthMm, heightMm: f.heightMm, quantity: f.unlimited ? null : f.quantity, material: f.material, thicknessMm: f.thicknessMm, label: `${f.widthMm}*${f.heightMm}` },
+    sheet: { widthMm: f.widthMm, heightMm: f.heightMm, quantity: f.unlimited ? null : f.quantity, material: f.material, thicknessMm: f.thicknessMm, label: sheetLabel(f.widthMm, f.heightMm) },
     spacingMm: f.spacingMm,
     marginMm: f.marginMm,
     rotationsDeg: f.rotations,
@@ -78,10 +82,6 @@ export function toSettings(f: SettingsForm): NestSettings {
 
 export function partKey(fileId: string, groupIndex: number): string {
   return `${fileId}:${groupIndex}`;
-}
-
-export function fileShort(index: number): string {
-  return `F${index + 1}`;
 }
 
 /** The default row for a part type: included when it is a top-level piece, with the count found. */

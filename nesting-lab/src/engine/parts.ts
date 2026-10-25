@@ -5,6 +5,7 @@
 import type { DxfAnalysis } from "./dxf/analyze";
 import type { NestPartInput } from "./nesting/types";
 import { geometryHash } from "./geometry/hash";
+import { bboxHeight, bboxWidth } from "./geometry/types";
 
 export interface PartOverride {
   include?: boolean;
@@ -35,6 +36,11 @@ export function partIdOf(prefix: string | undefined, groupIndex: number): string
   return `${prefix ? `${prefix}-` : ""}T${groupIndex + 1}`;
 }
 
+/** The short tag of the n-th file loaded ("F1", "F2"…). */
+export function fileShort(index: number): string {
+  return `F${index + 1}`;
+}
+
 export function partsFromAnalysis(a: DxfAnalysis, sel: PartSelection = {}): { parts: NestPartInput[]; skipped: SkippedPart[] } {
   const parts: NestPartInput[] = [];
   const skipped: SkippedPart[] = [];
@@ -48,9 +54,8 @@ export function partsFromAnalysis(a: DxfAnalysis, sel: PartSelection = {}): { pa
       skipped.push({ id, reason: o.include === false ? "left out" : `nested inside another piece's cut-out (depth ${rep.depth})` });
       return;
     }
-    const reviewFlags = rep.flags.filter((f) => f.startsWith("irregular") || f.startsWith("small"));
-    if (sel.excludeFlagged && reviewFlags.length > 0) {
-      skipped.push({ id, reason: reviewFlags.join("; ") });
+    if (sel.excludeFlagged && rep.review.length > 0) {
+      skipped.push({ id, reason: rep.review.join("; ") });
       return;
     }
     const qty = Math.round(o.quantity ?? g.instances.length);
@@ -64,7 +69,7 @@ export function partsFromAnalysis(a: DxfAnalysis, sel: PartSelection = {}): { pa
       label: partNo ?? id,
       bom: o.bom?.trim() || sel.bom || undefined,
       partNo,
-      name: o.name?.trim() || `${(rep.bbox.maxX - rep.bbox.minX).toFixed(1)}×${(rep.bbox.maxY - rep.bbox.minY).toFixed(1)}${rep.holes.length ? `, ${rep.holes.length} holes` : ""}`,
+      name: o.name?.trim() || `${bboxWidth(rep.bbox).toFixed(1)}×${bboxHeight(rep.bbox).toFixed(1)}${rep.holes.length ? `, ${rep.holes.length} holes` : ""}`,
       quantity: qty,
       priority: o.priority ?? 0,
       outer: rep.outer.loop,

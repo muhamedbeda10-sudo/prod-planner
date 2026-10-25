@@ -4,6 +4,7 @@
 // cheaper than unioning n×m parallelograms.
 
 import type { Point, Polygon } from "../geometry/types";
+import { dist } from "../geometry/arc";
 
 function cross(o: Point, a: Point, b: Point): number {
   return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
@@ -13,7 +14,7 @@ function cross(o: Point, a: Point, b: Point): number {
 export function cleanPolygon(poly: Polygon, eps = 1e-7): Polygon {
   let pts = poly.filter((p, i) => {
     const q = poly[(i + 1) % poly.length];
-    return Math.hypot(q.x - p.x, q.y - p.y) > eps;
+    return dist(p, q) > eps;
   });
   let changed = true;
   while (changed && pts.length > 3) {
@@ -22,7 +23,7 @@ export function cleanPolygon(poly: Polygon, eps = 1e-7): Polygon {
       const a = pts[(i - 1 + pts.length) % pts.length];
       const b = pts[i];
       const c = pts[(i + 1) % pts.length];
-      const l = Math.hypot(c.x - a.x, c.y - a.y) || 1;
+      const l = dist(a, c) || 1;
       if (Math.abs(cross(a, b, c)) / l <= eps) {
         pts.splice(i, 1);
         changed = true;

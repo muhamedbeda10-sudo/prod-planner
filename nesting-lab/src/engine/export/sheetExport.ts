@@ -2,7 +2,6 @@
 
 import type { NestPartInput, NestResult, SheetLayout } from "../nesting/types";
 import { placedGeometry } from "../nesting/placement";
-import { transformLoop, transformSeg, loopBBox } from "../geometry/polygon";
 import { loopEntities, segEntities, writeDxf, type DxfOutEntity, type DxfLayerSpec } from "./dxfWriter";
 import { lineSeg } from "../geometry/arc";
 
@@ -52,11 +51,10 @@ export function sheetDxf(result: NestResult, sheet: SheetLayout, parts: NestPart
 
 /** One part on its own, bbox min at the origin, for a part library. */
 export function partDxf(part: NestPartInput, comment?: string): string {
-  const b = loopBBox(part.outer);
-  const t = { rotationDeg: 0, mirror: false, dx: -b.minX, dy: -b.minY };
+  const g = placedGeometry(part, { rotationDeg: 0, mirrored: false, x: 0, y: 0 });
   const ents: DxfOutEntity[] = [];
-  for (const h of part.holes) ents.push(...loopEntities(transformLoop(h, t), "CUT_INNER"));
-  ents.push(...loopEntities(transformLoop(part.outer, t), "CUT_OUTER"));
-  if (part.marks?.length) ents.push(...segEntities(part.marks.map((m) => transformSeg(m, t)), "MARK"));
+  for (const h of g.holes) ents.push(...loopEntities(h, "CUT_INNER"));
+  ents.push(...loopEntities(g.outer, "CUT_OUTER"));
+  if (g.marks.length) ents.push(...segEntities(g.marks, "MARK"));
   return writeDxf(ents, { layers: SHEET_LAYERS, comment: comment ?? `nesting-lab part ${part.label} — units mm` });
 }

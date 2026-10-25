@@ -72,7 +72,3 @@ export const EXPORT_PROFILES: ExportProfile[] = [
     missing: ["Punching is not a path: it needs the turret/tool library, station assignment and hit sequencing. The nesting geometry (DXF) can be imported into the punch CAM, but no program is produced here."],
   },
 ];
-
-export function profileById(id: string): ExportProfile | undefined {
-  return EXPORT_PROFILES.find((p) => p.id === id);
-}

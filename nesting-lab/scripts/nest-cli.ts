@@ -14,7 +14,8 @@ import type { SelectableUnit } from "../src/engine/dxf/units";
 import type { NestPartInput, NestSettings } from "../src/engine/nesting/types";
 import type { MachinesFile } from "../src/engine/machines/types";
 import { partDxf } from "../src/engine/export/sheetExport";
-import { partIdOf, partsFromAnalysis, type PartOverride } from "../src/engine/parts";
+import { fileShort, partIdOf, partsFromAnalysis, type PartOverride } from "../src/engine/parts";
+import { sheetLabel } from "../src/engine/nesting/types";
 import { runPipeline } from "./lib/runPipeline";
 
 function parseArgs(argv: string[]): Record<string, string[]> {
@@ -54,7 +55,7 @@ mkdirSync(join(outDir, "parts"), { recursive: true });
 const parts: NestPartInput[] = [];
 files.forEach((f, fi) => {
   const a = analyzeDxf(basename(f), new Uint8Array(readFileSync(f)), { unit, layerRoles, thicknessMm: thickness });
-  const tag = `F${fi + 1}`;
+  const tag = fileShort(fi);
   console.log(`\n== ${tag} ${basename(f)}: ${a.acadVersion}, units ${a.units.stated ? a.units.name : `not stated → ${unit ?? "MISSING (use --unit)"}`}`);
   for (const w of a.warnings) console.log(`   ! ${w}`);
   if (a.needsUnit) {
@@ -75,7 +76,7 @@ files.forEach((f, fi) => {
     const rep = g.representative;
     const part = built.parts.find((p) => p.id === id);
     const skip = built.skipped.find((x) => x.id === id);
-    console.log(`   ${id}: ${(rep.bbox.maxX - rep.bbox.minX).toFixed(1)}×${(rep.bbox.maxY - rep.bbox.minY).toFixed(1)} mm, ${rep.holes.length} holes, found ×${g.instances.length}${g.mirrorOf !== null ? ` (mirror of ${partIdOf(tag, g.mirrorOf)})` : ""} → ${part ? `nest ×${part.quantity}` : `skipped (${skip?.reason})`}${rep.flags.length ? ` [${rep.flags.join("; ")}]` : ""}`);
+    console.log(`   ${id}: ${(rep.bbox.maxX - rep.bbox.minX).toFixed(1)}×${(rep.bbox.maxY - rep.bbox.minY).toFixed(1)} mm, ${rep.holes.length} holes, found ×${g.instances.length}${g.mirrorOf !== null ? ` (mirror of ${partIdOf(tag, g.mirrorOf)})` : ""} → ${part ? `nest ×${part.quantity}` : `skipped (${skip?.reason})`}${rep.review.length ? ` [${rep.review.join("; ")}]` : ""}`);
     // the part library holds every type, nested or not
     const lib: NestPartInput = part ?? { id, label: id, quantity: 0, outer: rep.outer.loop, holes: rep.holes.map((h) => h.loop), marks: rep.marks };
     writeFileSync(join(outDir, "parts", `${id}.dxf`), partDxf(lib));
@@ -83,7 +84,7 @@ files.forEach((f, fi) => {
   parts.push(...built.parts);
 });
 const settings: NestSettings = {
-  sheet: { widthMm: sw, heightMm: sh, quantity: one("sheets") ? Number(one("sheets")) : null, material: one("material", "Steel") as string, thicknessMm: thickness, label: `${sw}*${sh}` },
+  sheet: { widthMm: sw, heightMm: sh, quantity: one("sheets") ? Number(one("sheets")) : null, material: one("material", "Steel") as string, thicknessMm: thickness, label: sheetLabel(sw, sh) },
   spacingMm: Number(one("spacing", "5")),
   marginMm: Number(one("margin", "5")),
   rotationsDeg: (one("rotations", "0,90,180,270") as string).split(",").map(Number),

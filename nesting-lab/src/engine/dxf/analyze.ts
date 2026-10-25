@@ -6,9 +6,9 @@ import { decodeDxfBytes } from "./tokenize";
 import { parseDxf, type DxfDocument } from "./parse";
 import { extractPrimitives, layerUsage, type LayerRole, type LayerUsage, type PrimitiveExtraction, type TaggedSeg } from "./primitives";
 import { buildTopology } from "../geometry/topology";
-import { classify, type Classification, type Piece } from "../geometry/classify";
+import { classify, type Classification } from "../geometry/classify";
 import { dedupePieces, type DedupeResult } from "../geometry/dedupe";
-import type { BBox } from "../geometry/types";
+import { bboxHeight, bboxWidth, type BBox } from "../geometry/types";
 import { factorForSelectable, type SelectableUnit } from "./units";
 
 export interface AnalyzeOptions {
@@ -125,12 +125,8 @@ export function analyzeDocument(fileName: string, byteLength: number, doc: DxfDo
     const c = cls.overallBBox;
     const sx = (extStated.maxX - extStated.minX) * factor;
     const sy = (extStated.maxY - extStated.minY) * factor;
-    if (Math.abs(sx - (c.maxX - c.minX)) > 1 || Math.abs(sy - (c.maxY - c.minY)) > 1) warnings.push(`$EXTMAX−$EXTMIN says ${sx.toFixed(1)} × ${sy.toFixed(1)} mm but the cut geometry spans ${(c.maxX - c.minX).toFixed(1)} × ${(c.maxY - c.minY).toFixed(1)} mm.`);
+    if (Math.abs(sx - bboxWidth(c)) > 1 || Math.abs(sy - bboxHeight(c)) > 1) warnings.push(`$EXTMAX−$EXTMIN says ${sx.toFixed(1)} × ${sy.toFixed(1)} mm but the cut geometry spans ${bboxWidth(c).toFixed(1)} × ${bboxHeight(c).toFixed(1)} mm.`);
   }
   base.timings = { parseMs, topologyMs: t3 - t2, classifyMs: t4 - t3, totalMs: performance.now() - t0 };
   return base;
-}
-
-export function pieceById(a: DxfAnalysis, id: string): Piece | undefined {
-  return a.classification?.pieces.find((p) => p.id === id);
 }

@@ -74,9 +74,6 @@ export function bboxHeight(b: BBox): number {
 export function bboxUnion(a: BBox, b: BBox): BBox {
   return { minX: Math.min(a.minX, b.minX), minY: Math.min(a.minY, b.minY), maxX: Math.max(a.maxX, b.maxX), maxY: Math.max(a.maxY, b.maxY) };
 }
-export function bboxExpand(b: BBox, d: number): BBox {
-  return { minX: b.minX - d, minY: b.minY - d, maxX: b.maxX + d, maxY: b.maxY + d };
-}
 export function bboxOverlaps(a: BBox, b: BBox, tol = 0): boolean {
   return a.minX <= b.maxX + tol && b.minX <= a.maxX + tol && a.minY <= b.maxY + tol && b.minY <= a.maxY + tol;
 }

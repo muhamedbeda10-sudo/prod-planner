@@ -27,6 +27,8 @@ export interface ExportedRun {
 }
 
 export const sheetFileName = (stem: string, sheetIndex: number, ext: string) => `${stem}sheet-${String(sheetIndex + 1).padStart(2, "0")}${ext}`;
+export const cutListFileName = (stem: string) => `${stem}cutlist.csv`;
+export const reportFileName = (stem: string) => `${stem}report.json`;
 
 export function exportRun(parts: NestPartInput[], result: NestResult, verification: VerifyReport | null, machines: MachinesFile | null, opts: { stem?: string; timings?: { verifyMs?: number; exportMs?: number } } = {}): ExportedRun {
   const t0 = performance.now();
@@ -41,10 +43,10 @@ export function exportRun(parts: NestPartInput[], result: NestResult, verificati
     files.push({ fileName: sheetFileName(stem, sh.index, ".svg"), profileId: "svg-preview", mediaType: "image/svg+xml", text: sheetSvg(result, sh, parts), sheetIndex: sh.index });
     roundTrip.push({ sheetIndex: sh.index, fileName: dxfName, report: verifyDxfRoundTrip(dxf, result, sh, parts) });
   }
-  files.push({ fileName: `${stem}cutlist.csv`, profileId: "csv-cutlist", mediaType: "text/csv", text: cutListCsv(result, parts) });
+  files.push({ fileName: cutListFileName(stem), profileId: "csv-cutlist", mediaType: "text/csv", text: cutListCsv(result, parts) });
   const ranking = machines ? rankMachines(jobFactsOf(result.settings, result.sheets.length), machines) : null;
   const exports: ExportedFile[] = files.map((f) => ({ fileName: f.fileName, profileId: f.profileId, bytes: bytes(f.text), sheetIndex: f.sheetIndex }));
-  const reportName = `${stem}report.json`;
+  const reportName = reportFileName(stem);
   exports.push({ fileName: reportName, profileId: "json-report", bytes: 0 });
   const report = buildReport({ parts, result, verification, roundTrip, machines: ranking, exports, timings: { ...opts.timings, exportMs: opts.timings?.exportMs ?? performance.now() - t0 } });
   files.push({ fileName: reportName, profileId: "json-report", mediaType: "application/json", text: JSON.stringify(report, null, 2) });

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { LoadedFile, PartRow } from "./state";
-import { partKey, fileShort } from "./state";
+import { defaultRow, fileShort, partKey } from "./state";
+import { partIdOf } from "../engine/parts";
 import { SELECTABLE_UNITS, type SelectableUnit } from "../engine/dxf/units";
 import type { LayerRole } from "../engine/dxf/primitives";
 import { PartThumb } from "./PartThumb";
@@ -67,14 +68,15 @@ function FileCard({ file: f, index, rows, onUpdate, onRemove, onRows }: { file: 
   const a = f.analysis;
   const cls = a?.classification ?? null;
   const groups = a?.parts?.groups ?? [];
+  const rowOf = (gi: number): PartRow => rows[partKey(f.id, gi)] ?? defaultRow(f.id, gi, groups[gi].representative.depth, groups[gi].instances.length);
   const setRow = (gi: number, patch: Partial<PartRow>) => {
-    const key = partKey(f.id, gi);
-    const g = groups[gi];
-    const cur: PartRow = rows[key] ?? { key, include: g.representative.depth === 0, qty: g.instances.length, bom: "", partNo: "", name: "", priority: 0 };
-    onRows({ ...rows, [key]: { ...cur, ...patch } });
+    const cur = rowOf(gi);
+    onRows({ ...rows, [cur.key]: { ...cur, ...patch } });
   };
-  const rowOf = (gi: number): PartRow => rows[partKey(f.id, gi)] ?? { key: partKey(f.id, gi), include: groups[gi].representative.depth === 0, qty: groups[gi].instances.length, bom: "", partNo: "", name: "", priority: 0 };
-  const included = groups.reduce((n, _g, gi) => n + (rowOf(gi).include ? rowOf(gi).qty : 0), 0);
+  const included = groups.reduce((n, _g, gi) => {
+    const r = rowOf(gi);
+    return n + (r.include ? r.qty : 0);
+  }, 0);
   return (
     <div className="card">
       <div className="row between">
@@ -238,11 +240,9 @@ function FileCard({ file: f, index, rows, onUpdate, onRemove, onRows }: { file: 
                       return (
                         <tr key={gi} style={{ opacity: r.include ? 1 : 0.55 }}>
                           <td>
-                            <input type="checkbox" checked={r.include} onChange={(e) => setRow(gi, { include: e.target.checked })} aria-label={`Use part type T${gi + 1}`} />
+                            <input type="checkbox" checked={r.include} onChange={(e) => setRow(gi, { include: e.target.checked })} aria-label={`Use part type ${partIdOf(fileShort(index), gi)}`} />
                           </td>
-                          <td className="mono">
-                            {fileShort(index)}-T{gi + 1}
-                          </td>
+                          <td className="mono">{partIdOf(fileShort(index), gi)}</td>
                           <td>
                             <PartThumb outer={p.outer.loop} holes={p.holes.map((h) => h.loop)} marks={p.marks} color={colorForIndex(gi)} />
                           </td>
@@ -260,7 +260,7 @@ function FileCard({ file: f, index, rows, onUpdate, onRemove, onRows }: { file: 
                               <>
                                 {" "}
                                 <span className="badge info" title="A mirror image of another type: kept separate, because a left and a right part are different pieces to cut">
-                                  mirror of T{g.mirrorOf + 1}
+                                  mirror of {partIdOf(undefined, g.mirrorOf)}
                                 </span>
                               </>
                             )}
@@ -278,8 +278,13 @@ function FileCard({ file: f, index, rows, onUpdate, onRemove, onRows }: { file: 
                             <input type="text" value={r.bom} onChange={(e) => setRow(gi, { bom: e.target.value })} style={{ width: "8em" }} placeholder={f.bom || "BOM"} aria-label="BOM" />
                           </td>
                           <td className="small">
+                            {p.review.map((fl, i) => (
+                              <div key={i} className="err">
+                                {fl}
+                              </div>
+                            ))}
                             {p.flags.map((fl, i) => (
-                              <div key={i} className={/check/.test(fl) ? "err" : "muted"}>
+                              <div key={i} className="muted">
                                 {fl}
                               </div>
                             ))}

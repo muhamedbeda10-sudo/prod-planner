@@ -1,15 +1,20 @@
-// No-fit polygons via Minkowski sums (Clipper). For a fixed polygon A and a
+// No-fit polygons from convex decompositions. For a fixed polygon A and a
 // moving polygon B, NFP(A,B) is the set of translations t of B's origin for
-// which B+t overlaps A. We compute ∂A ⊕ (−B): the Minkowski sum of A's
-// boundary with the reflected B. Its outer boundary is the NFP; a hole in the
-// result is either a pocket of A where B fits (kept — a valid position) or the
-// interior of A where B would sit fully inside solid material (filled in).
+// which B+t overlaps A — the Minkowski sum A ⊕ (−B). Both polygons are split
+// into convex pieces; the sum of two convex polygons is a simple edge merge,
+// and the union of all piece sums is exactly the NFP of the filled shapes
+// (pockets come out as holes, solid interiors stay solid).
+//
+// NFPs are rotation-covariant — NFP(A@r, B@s) = rot_r(NFP(A@0, B@(s−r))) up to
+// the parts' bbox shifts — so the cache is keyed on the relative rotation and
+// a cached result is rotated and shifted on retrieval.
 
 import { discretizeLoop, loopBBox, polygonArea, polygonBBox, simplifyPolygon } from "../geometry/polygon";
 import type { Loop, Polygon } from "../geometry/types";
-import { transformLoop } from "../geometry/polygon";
-import { fromPath, minkowski, negatePath, offsetPaths, orientation, pathArea, pointIn, toPath, unionPaths, type IPath, type IPaths } from "./clipper";
+import { fromPath, offsetPaths, orientation, pathArea, toPath, unionPaths, SCALE, type IPath, type IPaths } from "./clipper";
 import { convexMinkowski, convexPieces } from "./convex";
+import { placementTransform } from "./placement";
+import { transformLoop } from "../geometry/polygon";
 
 export interface Variant {
   /** "partId@rot[m]" */
@@ -52,14 +57,12 @@ export function conservativenessMm(opts: VariantOptions): number {
 export const DEFAULT_ARC_TOL = 0.1;
 
 export function makeVariant(partId: string, outer: Loop, rotationDeg: number, mirrored: boolean, opts: VariantOptions): Variant {
-  const rotated = transformLoop(outer, { rotationDeg, mirror: mirrored, dx: 0, dy: 0 });
-  let poly = discretizeLoop(rotated, opts.sagittaMm, true);
+  // the pose at (0,0): the same definition every consumer of a placement uses
+  const t = placementTransform({ outer }, { rotationDeg, mirrored, x: 0, y: 0 });
+  const loop = transformLoop(outer, t);
+  const shift = { dx: t.dx, dy: t.dy };
+  let poly = discretizeLoop(loop, opts.sagittaMm, true);
   if (polygonArea(poly) < 0) poly = poly.slice().reverse();
-  // the shift comes from the EXACT contour so placement boxes are true sizes
-  const b = loopBBox(rotated);
-  const shift = { dx: -b.minX, dy: -b.minY };
-  const loop = transformLoop(rotated, { rotationDeg: 0, mirror: false, dx: shift.dx, dy: shift.dy });
-  poly = poly.map((p) => ({ x: p.x + shift.dx, y: p.y + shift.dy }));
   const simplified = simplifyPolygon(poly, opts.simplifyTolMm);
   // Simplification may move the boundary inward by up to simplifyTol and the
   // round joins of the offset are inscribed chords up to arcTol inside the true
@@ -75,6 +78,7 @@ export function makeVariant(partId: string, outer: Loop, rotationDeg: number, mi
   if (!orientation(grown)) grown = grown.slice().reverse();
   const grownPoly = fromPath(grown);
   const gb = polygonBBox(grownPoly);
+  const b = loopBBox(loop);
   return {
     key: `${partId}@${rotationDeg}${mirrored ? "m" : ""}`,
     convex: convexPieces(grownPoly),
@@ -92,28 +96,78 @@ export function makeVariant(partId: string, outer: Loop, rotationDeg: number, mi
   };
 }
 
+/** A fixed obstacle that is not a part (a no-go zone): cached by key only. */
+export interface FixedObstacle {
+  key: string;
+  grown: IPath;
+  convex?: Polygon[];
+}
+
+function rotatePath(path: IPath, deg: number): IPath {
+  const r = ((deg % 360) + 360) % 360;
+  if (r === 0) return path;
+  if (r === 90) return path.map((p) => ({ X: -p.Y, Y: p.X }));
+  if (r === 180) return path.map((p) => ({ X: -p.X, Y: -p.Y }));
+  if (r === 270) return path.map((p) => ({ X: p.Y, Y: -p.X }));
+  const rad = (r * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const sn = Math.sin(rad);
+  return path.map((p) => ({ X: Math.round(p.X * c - p.Y * sn), Y: Math.round(p.X * sn + p.Y * c) }));
+}
+
+function translateIntPath(path: IPath, dx: number, dy: number): IPath {
+  const X = Math.round(dx * SCALE);
+  const Y = Math.round(dy * SCALE);
+  return path.map((p) => ({ X: p.X + X, Y: p.Y + Y }));
+}
+
 export class NfpCache {
-  private cache = new Map<string, IPaths>();
+  private base = new Map<string, IPaths>();
+  private direct = new Map<string, IPaths>();
   computed = 0;
   hits = 0;
   /** milliseconds spent computing NFPs */
   ms = 0;
 
+  /** @param variantFor builds (or fetches) the variant of a part at any rotation/mirror */
+  constructor(private variantFor: (partId: string, rotationDeg: number, mirrored: boolean) => Variant) {}
+
   /** NFP of moving `b` around fixed `a` placed at the origin. */
-  get(a: { key: string; grown: IPath; convex?: Polygon[] }, b: { key: string; grown: IPath; convex?: Polygon[] }): IPaths {
+  get(a: Variant | FixedObstacle, b: Variant): IPaths {
+    if (!("partId" in a)) return this.getDirect(a, b);
+    // NFP(A@ra, B@rb) = rot_ra( NFP(A@0, B@(rb−ra)) ) + (shift_a − shift_b), with the
+    // base NFP computed on the UNSHIFTED grown polygons
+    const rel = (((b.rotationDeg - a.rotationDeg) % 360) + 360) % 360;
+    const key = `${a.partId}${a.mirrored ? "m" : ""}|${b.partId}${b.mirrored ? "m" : ""}|${rel}`;
+    let base = this.base.get(key);
+    if (base) this.hits++;
+    else {
+      this.computed++;
+      const t0 = performance.now();
+      const a0 = this.variantFor(a.partId, 0, a.mirrored);
+      const bRel = this.variantFor(b.partId, rel, b.mirrored);
+      const unshift = (v: Variant) => convexPieces(fromPath(translateIntPath(v.grown, -v.shift.dx, -v.shift.dy)));
+      base = computeNfpConvex(unshift(a0), unshift(bRel));
+      this.ms += performance.now() - t0;
+      this.base.set(key, base);
+    }
+    const dx = a.shift.dx - b.shift.dx;
+    const dy = a.shift.dy - b.shift.dy;
+    return base.map((path) => translateIntPath(rotatePath(path, a.rotationDeg), dx, dy));
+  }
+
+  private getDirect(a: FixedObstacle, b: Variant): IPaths {
     const k = `${a.key}|${b.key}`;
-    const hit = this.cache.get(k);
+    const hit = this.direct.get(k);
     if (hit) {
       this.hits++;
       return hit;
     }
     this.computed++;
     const t0 = performance.now();
-    const ca = a.convex ?? convexPieces(fromPath(a.grown));
-    const cb = b.convex ?? convexPieces(fromPath(b.grown));
-    const nfp = computeNfpConvex(ca, cb);
+    const nfp = computeNfpConvex(a.convex ?? convexPieces(fromPath(a.grown)), b.convex);
     this.ms += performance.now() - t0;
-    this.cache.set(k, nfp);
+    this.direct.set(k, nfp);
     return nfp;
   }
 }
@@ -121,43 +175,11 @@ export class NfpCache {
 /** NFP from convex decompositions: ∪ (Ai ⊕ −Bj) is exactly A ⊕ −B for filled
  *  polygons, so pockets come out as holes and solid interiors stay solid. */
 export function computeNfpConvex(fixedPieces: Polygon[], movingPieces: Polygon[]): IPaths {
+  // a point reflection is a 180° rotation: orientation stays ccw
+  const negated = movingPieces.map((B) => B.map((p) => ({ x: -p.x, y: -p.y })));
   const sums: IPaths = [];
-  for (const A of fixedPieces) {
-    for (const B of movingPieces) {
-      const negB = B.map((p) => ({ x: -p.x, y: -p.y })); // a point reflection is a 180° rotation: orientation stays ccw
-      sums.push(toPath(convexMinkowski(A, negB)));
-    }
-  }
+  for (const A of fixedPieces) for (const negB of negated) sums.push(toPath(convexMinkowski(A, negB)));
   if (sums.length === 1) return sums;
   return unionPaths(sums);
 }
 
-/** Both inputs are closed ccw integer paths. */
-export function computeNfp(fixed: IPath, moving: IPath): IPaths {
-  const raw = minkowski(negatePath(moving), fixed);
-  const merged = unionPaths(raw);
-  const out: IPaths = [];
-  const outers = merged.filter((p) => orientation(p));
-  const holes = merged.filter((p) => !orientation(p));
-  out.push(...outers);
-  const ref = moving[0];
-  for (const h of holes) {
-    // a point strictly inside the hole: average of the vertices works for the
-    // convex-ish holes this produces; fall back to the first vertex nudged in
-    let cx = 0;
-    let cy = 0;
-    for (const p of h) {
-      cx += p.X;
-      cy += p.Y;
-    }
-    cx /= h.length;
-    cy /= h.length;
-    let probe = { X: Math.round(cx), Y: Math.round(cy) };
-    if (pointIn({ x: probe.X / 1000, y: probe.Y / 1000 }, h) === 0) probe = h[0];
-    // B translated by probe: is its reference vertex inside A's solid?
-    const inside = pointIn({ x: (ref.X + probe.X) / 1000, y: (ref.Y + probe.Y) / 1000 }, fixed) !== 0;
-    if (!inside) out.push(h); // a real pocket: B fits there
-    // else: B would be inside A's material — the hole is not a valid position, drop it
-  }
-  return out;
-}

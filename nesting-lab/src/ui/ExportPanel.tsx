@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { RunState } from "./state";
 import type { MachinesFile } from "../engine/machines/types";
 import { EXPORT_PROFILES } from "../engine/export/postprocessors";
-import { exportRun, type ExportedRun } from "../engine/export/exportRun";
+import { cutListFileName, exportRun, reportFileName, sheetFileName, type ExportedRun } from "../engine/export/exportRun";
 import { partDxf } from "../engine/export/sheetExport";
 import { download, int, mm } from "./format";
 
@@ -24,9 +24,10 @@ export function ExportPanel({ run, machines }: Props) {
       </div>
     );
   }
-  // every artifact is produced once, read back and compared, then offered for download
+  // every artifact is produced once per run, read back and compared, then offered for download
+  const cur = built && built.report.runId === r.runId ? built : null;
   const ensure = (): ExportedRun => {
-    if (built && built.report.runId === r.runId) return built;
+    if (cur) return cur;
     const out = exportRun(parts, r, run.verification, machines, { stem });
     setBuilt(out);
     return out;
@@ -35,9 +36,9 @@ export function ExportPanel({ run, machines }: Props) {
     const f = ensure().files.find((x) => x.fileName === fileName);
     if (f) download(f.fileName, f.text, f.mediaType);
   };
-  const files = built && built.report.runId === r.runId ? built.files : null;
-  const rtFor = (sheetIndex: number) => (built && built.report.runId === r.runId ? built.roundTrip.find((x) => x.sheetIndex === sheetIndex)?.report : undefined);
-  const sheetName = (i: number, ext: string) => `${stem}sheet-${String(i + 1).padStart(2, "0")}${ext}`;
+  const files = cur?.files ?? null;
+  const rtFor = (sheetIndex: number) => cur?.roundTrip.find((x) => x.sheetIndex === sheetIndex)?.report;
+  const sheetName = (i: number, ext: string) => sheetFileName(stem, i, ext);
   return (
     <div>
       {run.verification && !run.verification.ok && (
@@ -56,8 +57,8 @@ export function ExportPanel({ run, machines }: Props) {
           >
             Download all sheet DXFs
           </button>
-          <button onClick={() => dl(`${stem}cutlist.csv`)}>Cut list (CSV)</button>
-          <button onClick={() => dl(`${stem}report.json`)}>Run report (JSON)</button>
+          <button onClick={() => dl(cutListFileName(stem))}>Cut list (CSV)</button>
+          <button onClick={() => dl(reportFileName(stem))}>Run report (JSON)</button>
         </div>
         <div className="tablewrap">
           <table>
