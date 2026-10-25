@@ -15,6 +15,7 @@ import { ViewTabs, TRACKER_VIEWS, trackerViews } from "@/components/ViewTabs";
 import { PageHead } from "@/components/ui";
 import { LvTrackerTable } from "@/components/LvTrackerTable";
 import { getActiveLine } from "@/lib/server/line";
+import { loadSettingsRow } from "@/lib/server/loads";
 import { getLvTracker } from "@/lib/server/lvTracker";
 import { LV_CHAIN, lvPermKey } from "@/lib/domain/lv";
 import { getUserPrefs } from "@/lib/server/userPrefs";
@@ -86,7 +87,7 @@ export default async function TrackerPage({
     );
   }
 
-  const [rows, user, { byMo, windowDays }] = await Promise.all([getMasterTracker(), getCurrentUser(), getOrderEtas()]);
+  const [rows, user, { byMo, windowDays }, settings] = await Promise.all([getMasterTracker(), getCurrentUser(), getOrderEtas(), loadSettingsRow()]);
   // this person's own sheet: columns, folded and hidden components
   const prefs = await getUserPrefs(user?.id, TRACKER_PREF_KEYS);
   return (
@@ -95,6 +96,7 @@ export default async function TrackerPage({
       <MasterTrackerTable
         viewTabs={<ViewTabs views={TRACKER_VIEWS} current="/tracker" label="Tracker view" />}
         rows={rows}
+        odooTrackingFrom={settings?.odooTrackingFrom ?? null}
         etas={Object.fromEntries(byMo)}
         etaWindowDays={windowDays}
         prefs={prefs}

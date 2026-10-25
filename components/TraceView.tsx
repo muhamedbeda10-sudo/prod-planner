@@ -574,7 +574,7 @@ function OnOdoo({ rows }: { rows: TraceOdooRow[] }) {
     byItem.set(k, v);
   }
   return (
-    <section className="rounded-2xl bg-surface border border-border/60 shadow-sm overflow-hidden">
+    <section id="on-odoo" className="rounded-2xl bg-surface border border-border/60 shadow-sm overflow-hidden scroll-mt-28">
       <div className="px-5 py-3 border-b border-border/40 flex flex-wrap items-center gap-x-3 gap-y-1">
         <div>
           <h2 className="text-sm font-extrabold uppercase tracking-wide">On ODOO</h2>

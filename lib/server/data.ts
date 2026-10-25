@@ -13,6 +13,7 @@ export async function getSettings() {
     leadWeld: s?.leadWeld ?? DEFAULTS.leadWeld,
     capacityPerItem: s?.capacityPerItem ?? DEFAULTS.capacityPerItem,
     dailyTarget: s?.dailyTarget ?? DEFAULTS.dailyTarget,
+    odooTrackingFrom: s?.odooTrackingFrom ?? null,
     tankTracking: s?.tankTracking ?? DEFAULTS.tankTracking,
     machinePlanning: s?.machinePlanning ?? DEFAULTS.machinePlanning,
     shiftShortH: s?.shiftShortH ?? DEFAULT_SHIFT_HOURS.short,

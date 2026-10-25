@@ -486,6 +486,9 @@ model Settings {
   leadWeld        Int @default(1)
   capacityPerItem Int @default(27)
   dailyTarget     Int @default(27)
+  // First monthly plan included in automatic Odoo allocation (YYYY-MM).
+  // Null until chosen: older imported orders must not silently consume new closings.
+  odooTrackingFrom String?
 
   // Master switch for tracking tanks PIECE BY PIECE — serials, the leak-test
   // stage, painting by selection and the barcode tab. OFF by default: the

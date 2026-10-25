@@ -14,6 +14,17 @@ export interface SettingsActionResult {
   error?: string;
 }
 
+/** The shared baseline for monthly Odoo allocation, independently of imported history. */
+export async function saveOdooTrackingStart(formData: FormData): Promise<SettingsActionResult> {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+  const month = String(formData.get("month") ?? "").trim();
+  if (month && !/^(20\d{2})-(0[1-9]|1[0-2])$/.test(month)) return { ok: false, error: "Choose a valid starting month." };
+  await prisma.settings.upsert({ where: { id: 1 }, create: { id: 1, odooTrackingFrom: month || null }, update: { odooTrackingFrom: month || null } });
+  for (const path of ["/admin/settings", "/tracker", "/trace"]) revalidatePath(path);
+  return { ok: true };
+}
+
 export async function setTankTracking(formData: FormData): Promise<SettingsActionResult> {
   const guard = await requireAdmin();
   if (guard.error) return { ok: false, error: guard.error };

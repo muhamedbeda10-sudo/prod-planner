@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-odoo-oldest-monthly-plan-allocation",
+    dateISO: "2026-10-25",
+    title: "Odoo quantities belong to a monthly plan: oldest first",
+    where: "Plan Tracker → Monthly → Odoo columns",
+    href: "/tracker",
+    body: "Odoo figures now use the BOM’s On Odoo production closings as the primary source per component, so separate project imports are not added on top. The linked ledger identifies the part and planner MO. An admin chooses the first tracked plan month once, on the Tracker or Admin → Settings. Project-only quantities fill the oldest matching plan from that starting point, up to each order’s requirement; older imported backlog stays untracked (—), while an explicit linked closing still confirms its own older order. Until the start is set, project quantities remain unallocated. Filtering never redistributes quantities, and a carried MO stays with its original plan. Excess quantities are flagged separately. Click an Odoo figure for its month/MO allocation and the source BOM records. Exports use the same allocation; production and delivery progress are unchanged.",
+  },
+  {
     id: "2026-10-25-dashboard-duration-odoo-component-counts",
     dateISO: "2026-10-25",
     title: "Readable dashboard figures and Odoo closed quantities per component",

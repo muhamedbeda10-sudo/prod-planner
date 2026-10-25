@@ -8,6 +8,7 @@ import { PageHead, ReadingColumn } from "@/components/ui";
 import { TankTrackingToggle } from "./TankTrackingToggle";
 import { MachinePlanningToggle } from "./MachinePlanningToggle";
 import { BackupLogin } from "./BackupLogin";
+import { OdooTrackingStart } from "@/components/OdooTrackingStart";
 
 export const metadata = { title: "Settings — ATC" };
 export const dynamic = "force-dynamic";
@@ -32,6 +33,10 @@ export default async function SettingsPage() {
       <PageHead title="Settings" sub="Plant-wide switches — what changes how several screens behave at once" />
       <TankTrackingToggle initialOn={settings.tankTracking} />
       <MachinePlanningToggle initialOn={settings.machinePlanning} />
+      <section className="bg-surface border rounded-xl p-4 space-y-3">
+        <h2 className="font-bold">Odoo monthly plan tracking</h2>
+        <OdooTrackingStart initialMonth={settings.odooTrackingFrom} />
+      </section>
       {backup && (
         <BackupLogin
           exists={backup.exists}

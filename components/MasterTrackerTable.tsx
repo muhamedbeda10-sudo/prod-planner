@@ -27,6 +27,7 @@ import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
 import { filterMasterTracker, trackerItemStats } from "@/lib/domain/trackerSummary";
 import { trackerOdooTotal } from "@/lib/domain/trackerOdoo";
+import { OdooTrackingStart } from "@/components/OdooTrackingStart";
 
 /** The order's spec columns. Every one of them is the planner's own — the
  *  monthly import writes none of them, so a re-import can never blank what he
@@ -233,10 +234,12 @@ export function MasterTrackerTable({
   etaWindowDays = 0,
   viewTabs,
   prefs = {},
+  odooTrackingFrom = null,
 }: {
   /** This person's saved view settings (columns, folded / hidden components). */
   prefs?: UserPrefs;
   rows: MasterTrackerRow[];
+  odooTrackingFrom?: string | null;
   /** Completion forecast per MO (server-computed flow-shop ETA). */
   etas?: Record<string, RowEta>;
   etaWindowDays?: number;
@@ -392,6 +395,7 @@ export function MasterTrackerTable({
   const [urgent, setUrgent] = useSavedFilter("tracker.urgent");
   const [status, setStatus] = useSavedFilter("tracker.status"); // lifecycle: every order shows unless the planner narrows it
   const [month, setMonth] = useSavedFilter("tracker.month"); // monthly plan (import source), "" = all months
+  const [odooDetail, setOdooDetail] = useState<{ bom: string; item: Item } | null>(null);
   // stage scope: only the picked depts' columns per item (one or SEVERAL), and
   // the summary cards report the furthest picked stage — the wide table
   // becomes readable per department. Stored as a comma-separated list.
@@ -737,6 +741,7 @@ export function MasterTrackerTable({
       MO: r.mo,
       BOM: r.bom,
       "Plan months": r.months.join(", "),
+      "Odoo allocated to plan": r.odooPlanMonth ?? "No plan month",
       SOI: r.soi ?? "",
       Customer: r.customer ?? "",
       Urgent: r.urgent ? "Yes" : "",
@@ -754,9 +759,9 @@ export function MasterTrackerTable({
         // N/A components (rule or manual) export blank, like the table's dashes
         row[`${it} ${stageColLabel(s, it)}`] = !c.eligible || c.excluded ? "" : stageColValue(c, s, it);
       }
-      const odoo = trackerOdooTotal([r], it);
-      row[`${it} Odoo closed`] = !c.eligible || c.excluded ? "" : odoo.qty || !odoo.unallocated ? odoo.qty : "Unallocated project quantity";
-      if (odoo.unallocated) row[`${it} Odoo project qty awaiting MO allocation`] = `${odoo.unallocated} shared project pcs (not assigned to this MO)`;
+      const odoo = trackerOdooTotal([r], it, month);
+      row[`${it} Odoo closed`] = !c.eligible || c.excluded ? "" : c.odooTracked === false && odoo.qty === 0 ? "Not tracked" : odoo.qty;
+      if (odoo.unallocated) row[`${it} Odoo not allocated`] = `${odoo.unallocated} project pcs outside the allocated plan quantities`;
     }
     row.OSP = ITEMS.filter((it) => r.items[it].osp > 0).map((it) => `${it}×${r.items[it].osp}`).join(" ");
     if (!scoped) {
@@ -883,6 +888,35 @@ export function MasterTrackerTable({
         <ColumnChooser cols={cols} hiddenItems={hiddenItems} onHideItem={toggleHiddenItem} collapsed={collapsed} onCollapse={toggleCollapsed} />
       </FilterBar>
 
+      <p className="text-xs text-muted mb-2" role="note">
+        <b>Odoo: {month ? month === "—" ? "No plan month" : month : "All plan months"}.</b>{" "}
+        {odooTrackingFrom ? `Automatic allocation starts with plan ${odooTrackingFrom}, oldest first.` : "Set the first tracked plan month before automatically distributing project quantities."}{" "}
+        Older quantities without linked evidence are untracked (—). Click an Odoo figure for its month allocation.
+      </p>
+      {can("admin") && <details className="border rounded-lg bg-surface px-3 py-2 mb-2" open={!odooTrackingFrom}>
+        <summary className="text-xs font-semibold cursor-pointer">Odoo tracking start: {odooTrackingFrom ?? "not set"} · Change</summary>
+        <div className="mt-2"><OdooTrackingStart initialMonth={odooTrackingFrom} /></div>
+      </details>}
+
+      {odooDetail && (() => {
+        const members = rows.filter((r) => r.bom === odooDetail.bom && r.items[odooDetail.item].eligible && !r.items[odooDetail.item].excluded);
+        const total = trackerOdooTotal(members, odooDetail.item);
+        return <Modal title={`${ITEM_NAME[odooDetail.item]} · Odoo plan allocation`} sub={odooDetail.bom} onClose={() => setOdooDetail(null)} width="max-w-3xl">
+          <p className="text-sm text-muted mb-3">The BOM&apos;s On Odoo production closings are the primary source. Separate imported project rows are used only when that component has no linked closing rows. Done / Closed quantities fill the oldest matching plan first, up to each order&apos;s requirement; linked records keep their own MO. A carried MO does not create another quantity.</p>
+          <p className="text-sm text-muted mb-3">{odooTrackingFrom ? `Automatic allocation begins with plan ${odooTrackingFrom}. Earlier plans do not consume these quantities.` : "No starting plan month has been set: project-only quantities remain unallocated."} A linked production closing still confirms its own MO, including an older order. “Not tracked” means the historical closing is unknown.</p>
+          <Link href={`/trace?bom=${encodeURIComponent(odooDetail.bom)}#on-odoo`} className="inline-flex text-sm text-brand-ink font-semibold hover:underline mb-3">Open this BOM&apos;s On Odoo records →</Link>
+          <div className="overflow-x-auto"><table className="w-full text-sm grid-lines" aria-label="Odoo allocation by plan month">
+            <thead><tr><th className="p-2 text-left">Original plan month</th><th className="p-2 text-left">MO</th><th className="p-2 text-right">Required</th><th className="p-2 text-right">Odoo allocated</th></tr></thead>
+            <tbody>{members.map((r) => <tr key={r.mo} className={month && r.odooPlanMonth === month ? "bg-brand-soft" : ""}>
+              <td className="p-2">{r.odooPlanMonth ?? "No plan month"}{r.months.length > 1 && <span className="block text-xs text-muted">Carried into {r.months.filter((m) => m !== r.odooPlanMonth).join(", ")}</span>}</td>
+              <td className="p-2 font-semibold">{r.mo}</td><td className="p-2 text-right tabnum"><Num v={r.required} /></td><td className="p-2 text-right tabnum font-semibold">{r.items[odooDetail.item].odooTracked === false ? "Not tracked" : <Num v={r.items[odooDetail.item].odooClosed ?? 0} />}</td>
+            </tr>)}</tbody>
+          </table></div>
+          <p className="text-sm mt-3 font-semibold">Allocated across all plans: <Num v={total.qty} /> pcs.</p>
+          {total.unallocated > 0 && <p className="text-sm mt-2 text-warn-fg">{total.unallocated} additional Odoo pcs are not assigned to a plan quantity. They stay separate from the monthly figures.</p>}
+        </Modal>;
+      })()}
+
       <div className={`print-flow print-fit print-tracker ${stageCols > 12 ? "print-tight" : ""} erp-scroll bg-surface border rounded-[10px] overflow-auto md:flex-1 md:min-h-0`}>
         <table className="erp-table grid-lines w-full border-collapse">
           <thead className="sticky top-0 z-10">
@@ -943,7 +977,7 @@ export function MasterTrackerTable({
                   {folded(it) ? <th className="p-1 font-semibold on-tint" title={`${ITEM_NAME[it]} made through its final stage`}>Made %</th>
                     : scoped ? stages.map((s) => <StageHead key={s} shp={isPaintExempt(it)} only={s} borderR={false} />)
                     : <StageHead shp={isPaintExempt(it)} borderR={false} />}
-                  <th className="p-1 font-semibold on-tint border-r border-border-strong" aria-label={`${it} Odoo closed`} title="Closed quantity from the Odoo tab (Done / Closed). Read-only; project imports without a planner MO count once on the full merged BOM row.">Odoo</th>
+                  <th className="p-1 font-semibold on-tint border-r border-border-strong" aria-label={`${it} Odoo closed`} title={`Done / Closed quantities from Odoo allocated to ${month || "all plan months"}, oldest matching plan first. Click a figure for the allocation.`}>Odoo</th>
                 </Fragment>
               ))}
             </tr>
@@ -1462,13 +1496,14 @@ function spreadPreview(members: MasterTrackerRow[], it: Item, dept: string, delt
     );
   }
 
-  /** Closed Odoo quantity follows the log, with project-only imports kept distinct from MO attribution. */
+  /** The month filter displays the fixed FIFO allocation; it never redistributes it. */
   function odooCell(members: MasterTrackerRow[], it: Item) {
     const applicable = members.filter((r) => r.items[it].eligible && !r.items[it].excluded);
     if (!applicable.length) return <td className="na-cell border-r border-border-strong" aria-label={`${it} Odoo not applicable`} />;
-    const { qty, unallocated } = trackerOdooTotal(applicable, it);
-    const title = `${ITEM_NAME[it]} closed in the Odoo tab: ${qty} pcs (Done / Closed).${unallocated ? ` Another ${unallocated} pcs belong to this project but cannot be assigned to a specific visible MO; see the full merged BOM row.` : ""}`;
-    return <td className={`stage-cell p-1 text-center tabnum font-semibold border-r border-border-strong ${qty > 0 ? "text-ok-fg" : "text-muted"}`} aria-label={`${members.length > 1 ? "BOM " + members[0].bom : members[0].mo} ${it} Odoo closed`} title={title}><Num v={qty} />{unallocated > 0 && <span className="ms-1 text-warn-fg" aria-label="Project quantity not allocated to this MO">*</span>}</td>;
+    const { qty, unallocated } = trackerOdooTotal(applicable, it, month);
+    const unknown = applicable.filter((r) => (!month || (month === "—" ? !r.odooPlanMonth : r.odooPlanMonth === month)) && r.items[it].odooTracked === false).length;
+    const title = `${ITEM_NAME[it]} Odoo allocation: ${qty} pcs for ${month || "all plan months"}, oldest plan first.${unknown ? ` ${unknown} older order(s) have no tracked closing; — means unknown, not zero.` : ""}${unallocated ? ` Another ${unallocated} pcs have no allocation to a plan quantity.` : ""} Click to see the original plan month of each MO.`;
+    return <td className={`stage-cell p-1 text-center tabnum font-semibold border-r border-border-strong ${qty > 0 ? "text-ok-fg" : "text-muted"}`} aria-label={`${members.length > 1 ? "BOM " + members[0].bom : members[0].mo} ${it} Odoo closed`} title={title}><button type="button" className="w-full hover:underline" aria-label={`View ${members[0].bom} ${it} Odoo plan allocation`} onClick={(e) => { e.stopPropagation(); setOdooDetail({ bom: members[0].bom, item: it }); }}>{unknown && qty === 0 ? "—" : <Num v={qty} />}{unallocated > 0 || unknown > 0 && qty > 0 ? <span className="ms-1 text-warn-fg" aria-label="Odoo quantity has incomplete plan allocation">*</span> : null}</button></td>;
   }
 
   /** A folded component: how much of it is made through its last stage. */

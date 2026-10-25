@@ -2,15 +2,42 @@ import { ITEMS, isItem, type Item } from "./constants";
 import { isDoneStatus, odooRowBom } from "./odoo";
 import { ITEM_PRODUCT, sameProduct } from "./odooMirror";
 
-export interface OdooSharedQuantity { key: string; item: Item; qty: number; mos: string[] }
-interface Order { mo: string; bom: string; soi: string | null; line?: string }
+/** Closed quantities exceeding the matching plans stay visible as unallocated. */
+export interface OdooUnallocatedQuantity { key: string; item: Item; qty: number; mos: string[] }
+interface Order {
+  mo: string; bom: string; soi: string | null; line?: string; planQty: number;
+  source?: string | null; months?: string | readonly string[]; eligibleItems?: readonly Item[];
+}
 interface Entry { id: number; line: string; ledgerId: number | null; soi: string | null; fgCode: string; product: string; qty: number; status: string }
 interface Ledger { id: number; mo: string | null; bom: string; item: string }
 const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase();
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+function monthRank(month: string) {
+  const iso = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
+  if (iso) return Number(iso[1]) * 12 + Number(iso[2]) - 1;
+  const m = /^(\w+)\s+(\d{4})$/.exec(month.trim());
+  const index = m ? MONTHS.findIndex((name) => norm(name) === norm(m[1])) : -1;
+  return m && index >= 0 ? Number(m[2]) * 12 + index : Infinity;
+}
+
+/** A carried MO is the same demand, owned by the plan that first introduced it. */
+export function odooPlanMonth(order: Pick<Order, "source" | "months">): string | null {
+  const months = typeof order.months === "string" ? order.months.split(",").map((m) => m.trim()).filter(Boolean) : [...(order.months ?? [])];
+  const source = order.source?.trim();
+  if (source && (!months.length || months.includes(source))) return source;
+  return months.sort((a, b) => monthRank(a) - monthRank(b) || a.localeCompare(b))[0] ?? null;
+}
+
+function inTrackingWindow(order: Order, trackingFrom: string | null): boolean {
+  const month = odooPlanMonth(order);
+  return !!trackingFrom && !!month && Number.isFinite(monthRank(month)) && Number.isFinite(monthRank(trackingFrom)) && monthRank(month) >= monthRank(trackingFrom);
+}
 
 /** Each Odoo log quantity is read once. The planner's MO comes from its linked ledger,
- * never from Odoo's different MO numbering. Ambiguous imports remain a project pool. */
-export function trackerOdooQuantities(orders: readonly Order[], entries: readonly Entry[], ledgers: readonly Ledger[]) {
+ * never from Odoo's different MO numbering. Project imports fill the oldest plan
+ * first, once per MO/component, up to that MO's requirement. Allocation happens
+ * against the whole registry BEFORE any month, search or status filter. */
+export function trackerOdooQuantities(orders: readonly Order[], entries: readonly Entry[], ledgers: readonly Ledger[], trackingFrom: string | null = null) {
   const byMo = new Map(orders.filter((o) => !o.line || o.line === "TR").map((o) => [norm(o.mo), o]));
   const byBom = new Map<string, Order[]>(), bySoi = new Map<string, Order[]>();
   for (const order of byMo.values()) {
@@ -19,43 +46,85 @@ export function trackerOdooQuantities(orders: readonly Order[], entries: readonl
     if (soi) bySoi.set(soi, [...(bySoi.get(soi) ?? []), order]);
   }
   const linked = new Map(ledgers.map((l) => [l.id, l]));
+  const tracked = new Set<string>();
+  for (const order of byMo.values()) {
+    if (inTrackingWindow(order, trackingFrom)) for (const item of ITEMS) tracked.add(JSON.stringify([order.mo, item]));
+  }
+  const itemOf = (entry: Entry, ledger?: Ledger): Item | undefined => {
+    // The BOM trace identifies the part through the production record, even
+    // when an office row's freely typed product/FG code names something else.
+    if (ledger && isItem(norm(ledger.item))) return norm(ledger.item) as Item;
+    const code = norm(entry.product);
+    return isItem(code) ? code : ITEMS.find((it) => sameProduct(entry.product, ITEM_PRODUCT[it].product));
+  };
+  // The existing BOM → On Odoo table is the primary record for a component.
+  // Do not add separately imported/typed project rows on top of its closings.
+  // Even an open linked row establishes this source: an import must not turn
+  // a still-open production closing into a closed one on the tracker.
+  const linkedProjects = new Set(entries.flatMap((entry) => {
+    const ledger = entry.ledgerId === null ? undefined : linked.get(entry.ledgerId);
+    const item = itemOf(entry, ledger);
+    const order = ledger?.mo ? byMo.get(norm(ledger.mo)) : undefined;
+    if (entry.line === "TR" && ledger && order && item && norm(order.bom) === norm(ledger.bom)) tracked.add(JSON.stringify([order.mo, item]));
+    return entry.line === "TR" && ledger && item ? [JSON.stringify([norm(ledger.bom), item])] : [];
+  }));
   const counts = new Map<string, Partial<Record<Item, number>>>();
-  const pools = new Map<string, OdooSharedQuantity>();
+  const pools = new Map<string, OdooUnallocatedQuantity>();
+  const pending: { item: Item; qty: number; candidates: Order[]; id: number; exact: boolean }[] = [];
   const add = (mo: string, item: Item, qty: number) => { const row = counts.get(mo) ?? {}; row[item] = (row[item] ?? 0) + qty; counts.set(mo, row); };
   for (const entry of entries) {
     if (entry.line !== "TR" || !isDoneStatus(entry.status) || !Number.isFinite(entry.qty) || entry.qty <= 0) continue;
     const ledger = entry.ledgerId === null ? undefined : linked.get(entry.ledgerId);
-    const code = norm(entry.product);
-    const item = isItem(code) ? code : ITEMS.find((it) => sameProduct(entry.product, ITEM_PRODUCT[it].product));
+    const item = itemOf(entry, ledger);
     if (!item) continue;
     if (ledger?.mo) {
       const order = byMo.get(norm(ledger.mo));
-      if (order) add(order.mo, item, entry.qty);
+      if (order && norm(order.bom) === norm(ledger.bom)) pending.push({ item, qty: entry.qty, candidates: [order], id: entry.id, exact: true });
       continue;
     }
     const soi = norm(entry.soi), sameSoi = bySoi.get(soi) ?? [];
     const bom = odooRowBom(entry.fgCode, ledger?.bom, sameSoi.map((o) => o.bom));
     if (bom.boms.length !== 1) continue;
+    if (!ledger && linkedProjects.has(JSON.stringify([norm(bom.boms[0]), item]))) continue;
     let candidates = byBom.get(norm(bom.boms[0])) ?? [];
     const withinSoi = candidates.filter((o) => norm(o.soi) === soi && !!soi);
     if (withinSoi.length) candidates = withinSoi;
-    if (candidates.length === 1) { add(candidates[0].mo, item, entry.qty); continue; }
+    else if (soi) candidates = candidates.filter((o) => !norm(o.soi)); // never credit a different customer's SOI
     if (!candidates.length) continue;
-    const mos = candidates.map((o) => o.mo).sort(), key = JSON.stringify([item, mos]);
-    const pool = pools.get(key) ?? { key, item, qty: 0, mos };
-    pool.qty += entry.qty; pools.set(key, pool);
+    pending.push({ item, qty: entry.qty, candidates, id: entry.id, exact: false });
   }
-  return { counts, pools: [...pools.values()] };
+  // Reserve explicitly attributed quantities before distributing broader imports.
+  pending.sort((a, b) => Number(b.exact) - Number(a.exact) || a.candidates.length - b.candidates.length || a.id - b.id);
+  for (const { item, qty, candidates, exact } of pending) {
+    let left = qty;
+    const fifo = [...candidates].sort((a, b) => monthRank(odooPlanMonth(a) ?? "") - monthRank(odooPlanMonth(b) ?? "") || a.mo.localeCompare(b.mo, undefined, { numeric: true }));
+    for (const order of fifo) {
+      if (order.eligibleItems && !order.eligibleItems.includes(item)) continue;
+      // Linked production MOs are evidence even before tracking began. A
+      // project-only quantity cannot be spent on the untracked old backlog.
+      if (!exact && !inTrackingWindow(order, trackingFrom)) continue;
+      const room = Math.max(0, order.planQty - (counts.get(order.mo)?.[item] ?? 0));
+      const allocated = Math.min(left, room);
+      if (allocated > 0) { add(order.mo, item, allocated); left -= allocated; }
+      if (left <= 0) break;
+    }
+    if (left > 0) {
+      const mos = candidates.map((o) => o.mo).sort(), key = JSON.stringify([item, mos]);
+      const pool = pools.get(key) ?? { key, item, qty: 0, mos };
+      pool.qty += left; pools.set(key, pool);
+    }
+  }
+  return { counts, unallocated: [...pools.values()], tracked };
 }
 
-/** A shared project import counts once only when all candidate MOs are in this visible group.
- * Partial/expanded MO views expose the uncertainty instead of repeating the project's qty. */
-export function trackerOdooTotal(rows: readonly { mo: string; items: Record<Item, { odooClosed?: number }>; odooShared?: readonly OdooSharedQuantity[] }[], item: Item) {
-  const mos = new Set(rows.map((r) => r.mo)), pools = new Map(rows.flatMap((r) => (r.odooShared ?? []).filter((p) => p.item === item).map((p) => [p.key, p] as const)));
-  let qty = rows.reduce((sum, row) => sum + (row.items[item].odooClosed ?? 0), 0), unallocated = 0;
-  for (const pool of pools.values()) {
-    if (pool.mos.every((mo) => mos.has(mo))) qty += pool.qty;
-    else unallocated += pool.qty;
+/** Display a fixed allocation; filtering must never reassign old quantities to a new month. */
+export function trackerOdooTotal(rows: readonly { mo: string; odooPlanMonth?: string | null; items: Record<Item, { odooClosed?: number }>; odooUnallocated?: readonly OdooUnallocatedQuantity[] }[], item: Item, month = "") {
+  const pools = new Map(rows.flatMap((r) => (r.odooUnallocated ?? []).filter((p) => p.item === item).map((p) => [p.key, p] as const)));
+  let qty = 0, unallocated = [...pools.values()].reduce((sum, pool) => sum + pool.qty, 0);
+  for (const row of rows) {
+    const value = row.items[item].odooClosed ?? 0;
+    if (!month || (month === "—" ? !row.odooPlanMonth : row.odooPlanMonth === month)) qty += value;
+    else if (!row.odooPlanMonth) unallocated += value;
   }
   return { qty, unallocated };
 }

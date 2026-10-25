@@ -47,9 +47,16 @@ mobile drawer still lists every view flat, since it has the vertical room.
 3. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
    Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows.
    Each component ends with a read-only **Odoo** column sourced from Done/Closed quantities in the Odoo tab.
-   Linked production rows identify the planner MO; project-only imports count once on the full merged BOM,
-   with unallocated quantities flagged in individual or partial MO views. Odoo updates refresh the tracker;
-   the columns remain visible when stages are folded or filtered and are included in exports.
+   The BOM trace's **On Odoo** closing rows are the primary source per component; separate imports
+   are used only where that component has no linked closing records. The ledger identifies the part
+   and planner MO, even if a freely typed product or FG code differs. Project-only quantities fill the
+   oldest matching tracked plan first, up to each MO/component requirement. An admin chooses the first
+   tracked plan month once (Tracker or Admin → Settings); old imported backlog stays untracked (—),
+   while an explicit linked closing still confirms its own older MO. Until the start is set, quantities
+   without an MO remain unallocated. Allocation uses the whole registry before filters: a carried MO
+   keeps its original plan month, so it cannot be counted again in a newer month. Excess quantities are
+   flagged separately. Click a figure for the month/MO breakdown and a link to the BOM's On Odoo records.
+   Folded/stage-filtered columns and exports show the same allocation; production stages are unchanged.
    Recording on a MERGED BOM row fills its MOs **one at a time**: the first order is closed to its own chain
    limit before the second is touched, then the third — never spread evenly — and a correction comes back off
    the LAST MOs first. The cell says which MOs the number will land on, in fill order, **before** it is saved;
