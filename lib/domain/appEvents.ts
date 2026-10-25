@@ -79,6 +79,8 @@ export interface AppEventView {
   actorName: string;
   /** A task's event: its giver and its people — the only ones it may reach. */
   participants?: number[];
+  /** Recorded by an automation's own run (a task it gave, say). */
+  byAutomation?: boolean;
   /** What it is about — an MO, a tank, a task — when there is one thing. */
   subject: string | null;
   /** The sentence: "Sara closed SF01/MO/06326". */

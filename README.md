@@ -473,8 +473,13 @@ mobile drawer still lists every view flat, since it has the vertical room.
      the machine plan follows them (`lib/domain/machineRules.ts`, `optimizePlan`'s `allowed` / `preferred`).
    - **Automations** (`/automations`, `lib/domain/automations.ts`, `lib/server/automations/*`): on a schedule (Cairo times on
      working days, every day or weekdays) or when a read-only query finds rows it did not at its last check (edge-triggered by
-     a `key` column); notify (no AI), report, or act (changes wait for approval). They run as their owner, count against the
-     month's caps, stop after five failures in a row. The clock: Supabase pg_cron + pg_net call `/api/automations/tick`
+     a `key` column); notify (no AI), report, act (changes wait for approval), or task (one task per new row, from a
+     template (title, then details; `{name}`, `{count}` and each row's `{column}`), given to the people named, due in so many working days — needs
+     "Tasks — assign"). A condition can escalate: a row still found after `escalateAfterMin` minutes is sent once to the
+     app's owners and the automation's owner (`keySeenAt`, `escalatedKeys`). Built on /automations with a form that shows
+     the next runs, the rows a condition finds now, or what an event would have caught in the last 7 days, or from ten
+     ready-made recipes (`AUTOMATION_RECIPES`). They run as their owner, count against the month's caps, stop after five
+     failures in a row. The clock: Supabase pg_cron + pg_net call `/api/automations/tick`
      every minute with a secret kept in Supabase Vault — set up in one click on AI assistant settings; until then open pages
      tick, at most once a minute for the whole plant.
    - **Inbox and push** (`/inbox`): reports, messages and suggestions, with Web Push to phones (VAPID keys made on first use,

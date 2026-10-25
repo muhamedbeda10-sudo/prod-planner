@@ -112,11 +112,17 @@ export interface AutomationsData {
   hours: string;
   /** No scheduler, and no tick for a while: they run only while the app is open. */
   stale: boolean;
+  /** For the builder: who is looking, and the people an automation may go to. */
+  meId: number;
+  people: { id: number; name: string }[];
 }
 
 export async function automationsData(me: User): Promise<AutomationsData> {
   const now = new Date();
-  const [automations, clock, s] = await Promise.all([automationViews({ ownerId: me.id }), automationsClock(now), getAiSettings()]);
+  const [automations, clock, s, people] = await Promise.all([
+    automationViews({ ownerId: me.id }), automationsClock(now), getAiSettings(),
+    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
   const window = automationWindowOf(s);
   return {
     automations,
@@ -125,6 +131,8 @@ export async function automationsData(me: User): Promise<AutomationsData> {
     inHours: inAutomationWindow(now, window),
     hours: describeWindow(window),
     stale: clock.stale,
+    meId: me.id,
+    people,
   };
 }
 

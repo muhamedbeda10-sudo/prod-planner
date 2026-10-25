@@ -244,6 +244,7 @@ export function AiWorkspace({
                       canTime={automations.data.allowed}
                       onChanged={automations.reload}
                       status={{ paused: automations.data.paused, inHours: automations.data.inHours, hours: automations.data.hours, stale: automations.data.stale, allowed: automations.data.allowed }}
+                      builder={{ meId: automations.data.meId, people: automations.data.people }}
                     />
                   </div>
                 ) : (

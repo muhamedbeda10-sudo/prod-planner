@@ -18,6 +18,8 @@
 //              to them and whoever they name — no AI, no cost;
 //   report     the assistant writes a report from the live data, sent to
 //              them and whoever they name;
+//   task       a task given to the people named (none: the owner) — one
+//              for each new row of a condition — due in so many days; no AI;
 //   act        the assistant prepares changes; they wait in the person's
 //              inbox for approval (small ones run on their own only if the
 //              person opted into that).
@@ -26,15 +28,19 @@ import { parseISODate, toISODate, factoryClockHHMM, factoryDayISO, factoryTimeAt
 import { jsonSafe, prepareSql } from "./ai";
 import { APP_EVENTS, isAppEventType } from "./appEvents";
 import { humanizeKey, readableValue } from "./fieldNames";
+import { stopDurationLabel } from "./downtime";
 
 export const AUTOMATION_TRIGGERS = ["schedule", "condition", "event"] as const;
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
-export const AUTOMATION_ACTIONS = ["notify", "report", "act"] as const;
+export const AUTOMATION_ACTIONS = ["notify", "report", "act", "task"] as const;
 export type AutomationAction = (typeof AUTOMATION_ACTIONS)[number];
 export const SCHEDULE_DAYS = ["working", "every", "weekdays"] as const;
 export type ScheduleDays = (typeof SCHEDULE_DAYS)[number];
 /** How often a condition may be checked, in minutes. */
 export const CHECK_EVERY = [15, 30, 60, 120, 240, 480, 1440] as const;
+/** A condition's row still matching this long (minutes) goes up to the
+ *  plant's owner — the escalation. */
+export const ESCALATE_AFTER = [30, 60, 120, 240, 480, 1440, 2880] as const;
 
 export const AUTOMATION_LIMITS = {
   name: 80,
@@ -58,6 +64,10 @@ export const AUTOMATION_LIMITS = {
   eventNotifiesPerHour: 30,
   /** event: a report or an act run at most this often, in minutes — each costs. */
   eventAiEveryMin: 15,
+  /** task: tasks one run gives at most (one per new row) — past it, one task lists them. */
+  tasksPerRun: 10,
+  /** task: days until a task is due (0 = the same day). */
+  taskDueDays: 30,
 } as const;
 
 export const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
@@ -86,8 +96,15 @@ export interface AutomationConfig {
   /** report / act: what the assistant is to do. */
   prompt: string | null;
   /** Who receives it — user ids, the owner among them only if named; none =
-   *  the owner alone. Never for act: its changes are the owner's to approve. */
+   *  the owner alone. Never for act: its changes are the owner's to approve.
+   *  For task: who the task is given to. */
   recipientIds: number[];
+  /** task: days until it is due; urgent or not. */
+  taskDueDays: number;
+  taskUrgent: boolean;
+  /** condition: a row still matching this many minutes after it first did
+   *  goes up to the plant's owner; null = never. */
+  escalateAfterMin: number | null;
 }
 
 /** A configuration as it comes in — from a form or the assistant — before it is checked. */
@@ -108,6 +125,9 @@ export interface AutomationInput {
   message?: string | null;
   prompt?: string | null;
   recipientIds?: readonly number[];
+  taskDueDays?: number;
+  taskUrgent?: boolean;
+  escalateAfterMin?: number | null;
 }
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -120,7 +140,7 @@ export function checkAutomation(i: AutomationInput): { ok: true; config: Automat
   if (!name) return { ok: false, error: "Give the automation a name." };
   if (name.length > L.name) return { ok: false, error: `Keep the name under ${L.name} characters.` };
   if (!(AUTOMATION_TRIGGERS as readonly string[]).includes(i.trigger ?? "")) return { ok: false, error: "The trigger is a schedule, a condition or an event." };
-  if (!(AUTOMATION_ACTIONS as readonly string[]).includes(i.action ?? "")) return { ok: false, error: "The action is notify, report or act." };
+  if (!(AUTOMATION_ACTIONS as readonly string[]).includes(i.action ?? "")) return { ok: false, error: "The action is notify, report, act or task." };
   const trigger = i.trigger as AutomationTrigger;
   const action = i.action as AutomationAction;
 
@@ -172,10 +192,12 @@ export function checkAutomation(i: AutomationInput): { ok: true; config: Automat
     if (activeFrom && activeFrom >= activeTo!) return { ok: false, error: "The working hours must start before they end." };
   }
 
-  const message = action === "notify" ? clean(i.message) : null;
-  const prompt = action === "notify" ? null : clean(i.prompt);
+  const plain = action === "notify" || action === "task";
+  const message = plain ? clean(i.message) : null;
+  const prompt = plain ? null : clean(i.prompt);
   if (action === "notify" && !message) return { ok: false, error: "Write the message to send." };
-  if (action !== "notify" && !prompt) return { ok: false, error: "Say what the assistant is to do each time." };
+  if (action === "task" && !message) return { ok: false, error: "Write the task: its title on the first line, what to do after it." };
+  if (!plain && !prompt) return { ok: false, error: "Say what the assistant is to do each time." };
   if ((message ?? prompt ?? "").length > L.text) return { ok: false, error: `Keep the text under ${L.text} characters.` };
 
   const recipientIds = [...new Set(i.recipientIds ?? [])];
@@ -183,7 +205,18 @@ export function checkAutomation(i: AutomationInput): { ok: true; config: Automat
   if (recipientIds.length > L.recipients) return { ok: false, error: `At most ${L.recipients} recipients.` };
   if (action === "act" && recipientIds.length > 0) return { ok: false, error: "Changes an automation prepares are its owner's to approve — they go to no one else." };
 
-  return { ok: true, config: { name, trigger, times, days, weekdays, conditionSql, checkEveryMin, activeFrom, activeTo, eventTypes, eventActorIds, eventMatch, action, message, prompt, recipientIds } };
+  const taskDueDays = action === "task" ? Number(i.taskDueDays ?? 1) : 1;
+  if (!Number.isInteger(taskDueDays) || taskDueDays < 0 || taskDueDays > L.taskDueDays) return { ok: false, error: `A task is due 0 to ${L.taskDueDays} days after it is given.` };
+  const taskUrgent = action === "task" && i.taskUrgent === true;
+  const escalateAfterMin = trigger === "condition" && i.escalateAfterMin != null ? Number(i.escalateAfterMin) : null;
+  if (escalateAfterMin !== null && !(ESCALATE_AFTER as readonly number[]).includes(escalateAfterMin)) {
+    return { ok: false, error: `Escalate after ${ESCALATE_AFTER.map(minutesText).join(", ")}.` };
+  }
+
+  return {
+    ok: true,
+    config: { name, trigger, times, days, weekdays, conditionSql, checkEveryMin, activeFrom, activeTo, eventTypes, eventActorIds, eventMatch, action, message, prompt, recipientIds, taskDueDays, taskUrgent, escalateAfterMin },
+  };
 }
 
 /** A day the plant does not work: a Friday or a holiday. */
@@ -343,12 +376,18 @@ export function recipientsOf(c: Pick<AutomationConfig, "action" | "recipientIds"
 }
 
 /** The action as a person reads it — `recipients` by name, none = the owner. */
-export function describeAction(c: Pick<AutomationConfig, "action">, recipients: readonly string[]): string {
+export function describeAction(c: Pick<AutomationConfig, "action"> & Partial<Pick<AutomationConfig, "taskDueDays" | "taskUrgent" | "escalateAfterMin">>, recipients: readonly string[]): string {
   const to = recipients.length > 0 ? ` to ${recipients.join(", ")}` : " to its owner";
-  if (c.action === "notify") return `sends a message${to}`;
-  if (c.action === "report") return `the assistant writes a report${to}`;
-  return "the assistant prepares changes for approval";
+  const up = c.escalateAfterMin ? `; still there after ${minutesText(c.escalateAfterMin)}, it goes up to the plant's owner` : "";
+  const days = c.taskDueDays ?? 1;
+  if (c.action === "task") return `gives ${c.taskUrgent ? "an urgent" : "a"} task${to}, due ${days === 0 ? "the same day" : `in ${days} working day${days === 1 ? "" : "s"}`}${up}`;
+  if (c.action === "notify") return `sends a message${to}${up}`;
+  if (c.action === "report") return `the assistant writes a report${to}${up}`;
+  return `the assistant prepares changes for approval${up}`;
 }
+
+/** A span of minutes as people say it: "45 min", "2 h", "1 h 30 min". */
+export const minutesText = (min: number): string => stopDurationLabel(min / 60);
 
 // ---- the hours automations may run in (the owner's, for the whole plant) ----
 
@@ -413,3 +452,184 @@ export function retimeAutomation(c: AutomationConfig, t: AutomationTiming): Retu
   }
   return checkAutomation(input);
 }
+
+// ---- a task from a template ----
+
+/** A task from the automation's text: its first line the title, the rest
+ *  what to do — {name} {count} and an event's {who} {what} {about} {detail}
+ *  {when} filled in, and for a condition's row each {column} with its value. */
+export function taskFromTemplate(template: string, o: { name: string; count?: number; row?: Readonly<Record<string, unknown>>; fields?: Readonly<Record<string, string>> }): { title: string; details: string } {
+  let text = template.replace(/\{name\}/g, o.name).replace(/\{count\}/g, String(o.count ?? 1));
+  for (const [k, v] of Object.entries(o.fields ?? {})) text = text.split(`{${k}}`).join(v);
+  if (o.row) {
+    for (const [k, v] of Object.entries(o.row)) {
+      const j = jsonSafe(v);
+      text = text.split(`{${k}}`).join(j === null ? "—" : String(typeof j === "object" ? JSON.stringify(j) : j));
+    }
+  }
+  const [first, ...rest] = text.split("\n");
+  return { title: first.replace(/\s+/g, " ").trim().slice(0, 120) || o.name.slice(0, 120), details: rest.join("\n").trim().slice(0, 4000) };
+}
+
+/** The due day of a task given on `todayISO`, so many days on — a Friday or
+ *  a holiday moves to the next working day. */
+export function taskDueISO(todayISO: string, days: number, offDay: OffDay): string {
+  let iso = todayISO;
+  let guard = 0;
+  // so many working days on — Fridays and holidays are not counted
+  for (let left = days; left > 0 && guard < 60; guard++) {
+    iso = addDays(iso, 1);
+    if (!offDay(iso)) left--;
+  }
+  // and never due on a day off (given on one, with 0 days: the next working day)
+  for (; offDay(iso) && guard < 60; guard++) iso = addDays(iso, 1);
+  return iso;
+}
+
+// ---- escalation ----
+
+/** One check's escalation bookkeeping: when each matching key was first seen
+ *  (keys gone are forgotten, so one that comes back starts again), and the
+ *  keys due to go up now — still matching `afterMin` after they first did,
+ *  and not sent up before. */
+export function escalationStep(
+  seenBefore: Readonly<Record<string, string>>,
+  escalatedBefore: readonly string[],
+  keys: readonly string[],
+  now: Date,
+  afterMin: number,
+): { seen: Record<string, string>; escalated: string[]; due: string[] } {
+  const seen: Record<string, string> = {};
+  for (const k of keys) seen[k] = seenBefore[k] ?? now.toISOString();
+  const was = new Set(escalatedBefore);
+  const due = keys.filter((k) => !was.has(k) && now.getTime() - Date.parse(seen[k]) >= afterMin * 60_000);
+  const sent = new Set([...was, ...due]);
+  const escalated = keys.filter((k) => sent.has(k));
+  return { seen, escalated, due };
+}
+
+// ---- ready-made automations ----
+
+export interface AutomationRecipe {
+  id: string;
+  title: string;
+  desc: string;
+  /** Who it suits — a heading in the gallery. */
+  group: "Quality" | "Production" | "Orders" | "Reports" | "Tasks";
+  config: AutomationInput;
+}
+
+/** Automations the plant often wants, ready to fill in the builder — the
+ *  person picks who they go to, and may change anything before saving. */
+export const AUTOMATION_RECIPES: readonly AutomationRecipe[] = [
+  {
+    id: "leak-failed-task",
+    title: "A leak test fails → a repair task",
+    desc: "The moment tanks fail their leak test, the people you pick get a task to repair them, due the same day.",
+    group: "Quality",
+    config: { name: "Leak test failed → repair task", trigger: "event", eventTypes: ["tank.leak_failed"], action: "task", message: "Repair: {about}\n{detail}\nRecorded by {who} at {when}.", taskDueDays: 0, taskUrgent: true },
+  },
+  {
+    id: "qa-failed-message",
+    title: "A tank fails quality → a message",
+    desc: "Tells you the moment a tank is found not OK at the quality check.",
+    group: "Quality",
+    config: { name: "Quality check failed", trigger: "event", eventTypes: ["tank.qa_failed", "tank.rewelding"], action: "notify", message: "{what}: {about} — {detail} ({who}, {when})" },
+  },
+  {
+    id: "machine-stop-message",
+    title: "A machine stop → a message",
+    desc: "Tells you the moment a machine stop is recorded on the shift log, with the hours and why.",
+    group: "Production",
+    config: { name: "Machine stop recorded", trigger: "event", eventTypes: ["machine.stopped"], action: "notify", message: "Machine stop: {detail} — recorded by {who} at {when}." },
+  },
+  {
+    id: "open-stops-escalate",
+    title: "A machine still stopped → a message, then up to the owner",
+    desc: "Every 30 minutes on working hours, tells you of each machine stop still open — and sends it up to the plant's owner when it is still open after 2 hours.",
+    group: "Production",
+    config: {
+      name: "Machines still stopped",
+      trigger: "condition",
+      conditionSql: `SELECT d."id" AS key, COALESCE(m."code", d."customName", '?') AS machine, to_char(d."date", 'YYYY-MM-DD') AS day, d."startTime" AS started, COALESCE(d."reason", d."reasonCode", '') AS reason
+FROM "MachineDowntime" d LEFT JOIN "Machine" m ON m."id" = d."machineId"
+WHERE d."isOpen" = true`,
+      checkEveryMin: 30,
+      activeFrom: "07:00",
+      activeTo: "19:00",
+      action: "notify",
+      message: "Still stopped:\n\n{rows}",
+      escalateAfterMin: 120,
+    },
+  },
+  {
+    id: "order-held-message",
+    title: "An order put on hold → a message",
+    desc: "Tells you the moment an order is put on hold, and why.",
+    group: "Orders",
+    config: { name: "Order on hold", trigger: "event", eventTypes: ["order.held"], action: "notify", message: "{who} put {about} on hold: {detail}" },
+  },
+  {
+    id: "task-returned-message",
+    title: "A task returned for rework → a message",
+    desc: "Tells you when a task you are on is returned for rework.",
+    group: "Tasks",
+    config: { name: "Task returned", trigger: "event", eventTypes: ["task.returned"], action: "notify", message: "{who} returned “{about}” for rework: {detail}" },
+  },
+  {
+    id: "morning-late-report",
+    title: "Every morning: the orders heading late",
+    desc: "At 07:30 on working days the assistant lists the orders forecast to finish after their delivery day, worst first, with what holds each.",
+    group: "Reports",
+    config: {
+      name: "Orders heading late — morning",
+      trigger: "schedule",
+      times: ["07:30"],
+      days: "working",
+      action: "report",
+      prompt: "List the open transformer orders forecast to finish after their delivery day, or at risk, worst first: each with its due day, its forecast, the stage holding it and what to push first. End with up to three priorities for today. Use a chart where it helps.",
+    },
+  },
+  {
+    id: "day-end-report",
+    title: "Every afternoon: the day's output",
+    desc: "At 16:30 on working days the assistant sums up the day's output by department in standard hours against the usual, and what stood out.",
+    group: "Reports",
+    config: {
+      name: "The day's output",
+      trigger: "schedule",
+      times: ["16:30"],
+      days: "working",
+      action: "report",
+      prompt: "Sum up today's output by department in standard hours against each department's usual (get_kpis), say what stood out — a stage far under, a stop, absence — and what tomorrow should start with. A chart of the departments against their usual.",
+    },
+  },
+  {
+    id: "week-plan-report",
+    title: "Thursday: the week's plan",
+    desc: "At 14:00 on Thursdays the assistant reviews the week's plan: the lines behind, by how much, and what must happen on Saturday.",
+    group: "Reports",
+    config: {
+      name: "The week's plan — Thursday review",
+      trigger: "schedule",
+      times: ["14:00"],
+      days: "weekdays",
+      weekdays: [4],
+      action: "report",
+      prompt: "Review this week's plan adherence (get_kpis and the tracker): the lines behind, by how much in pieces and standard hours, the stage holding each, and what must happen on Saturday to catch up. A chart of plan against done by line.",
+    },
+  },
+  {
+    id: "plan-imported-report",
+    title: "A plan imported → its summary",
+    desc: "When a monthly or weekly plan is imported, the assistant sums it up: totals by item, the orders due first, and anything that looks wrong.",
+    group: "Reports",
+    config: {
+      name: "New plan — summary",
+      trigger: "event",
+      eventTypes: ["plan.imported"],
+      action: "report",
+      prompt: "A plan was just imported. Sum it up: the orders and pieces by item, the orders due first, and anything that looks wrong (a quantity far from the usual, a missing BOM or due day).",
+    },
+  },
+];

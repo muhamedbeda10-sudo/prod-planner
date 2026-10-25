@@ -1498,6 +1498,11 @@ main .composer textarea:focus, .composer textarea:focus { outline: none; box-sha
 .segmented > button { padding: 6px 8px; border-radius: 5px; font-size: var(--fs-sm); font-weight: 650; color: var(--muted); white-space: nowrap; transition: background-color 0.12s ease, color 0.12s ease; }
 .segmented > button:hover { color: var(--foreground); }
 .segmented > button[aria-pressed="true"] { background: var(--surface); color: var(--brand-ink); box-shadow: var(--shadow-sm); }
+/* long choices: one under the other on a phone, rather than past the screen's edge */
+@media (max-width: 639px) {
+  .segmented-stack { grid-auto-flow: row; }
+  .segmented-stack > button { white-space: normal; text-align: start; }
+}
 .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: var(--fs-sm); font-weight: 600; line-height: 1.2; color: var(--muted); cursor: pointer; user-select: none; white-space: nowrap; transition: border-color 0.12s ease, color 0.12s ease, background-color 0.12s ease; }
 .chip:hover { border-color: var(--border-strong); color: var(--foreground); }
 .chip-on, .chip-on:hover { background: var(--brand-light); border-color: var(--brand); color: var(--brand-ink); }

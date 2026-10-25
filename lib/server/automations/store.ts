@@ -3,7 +3,9 @@ import type { AiSettings, Automation, User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hasPerm, hiddenTabsOf } from "@/lib/server/auth";
 import { runAiRows } from "@/lib/server/ai/reader";
+import { ASSIGN_KEY } from "@/lib/server/tasks";
 import { blockedTableIn, blockedTablesFor } from "@/lib/domain/ai";
+import { EVENT_TAB, isTaskEvent, type AppEventType } from "@/lib/domain/appEvents";
 import { toISODate } from "@/lib/domain/dates";
 import {
   ALL_WEEKDAYS, AUTOMATION_LIMITS, checkAutomation, freshRows, nextConditionCheck, nextScheduleRun, type AutomationConfig, type AutomationInput, type AutomationWindow, type OffDay,
@@ -45,6 +47,7 @@ export function configOf(a: Automation): AutomationConfig {
     conditionSql: a.conditionSql, checkEveryMin: a.checkEveryMin, activeFrom: a.activeFrom, activeTo: a.activeTo,
     eventTypes: a.eventTypes, eventActorIds: a.eventActorIds, eventMatch: a.eventMatch,
     action: a.action as AutomationConfig["action"], message: a.message, prompt: a.prompt, recipientIds: a.recipientIds,
+    taskDueDays: a.taskDueDays, taskUrgent: a.taskUrgent, escalateAfterMin: a.escalateAfterMin,
   };
 }
 
@@ -53,6 +56,7 @@ export function ownerDenied(owner: User, c: Pick<AutomationConfig, "action">): s
   if (!owner.active) return "The account is no longer active.";
   if (!hasPerm(owner, AUTOMATIONS_KEY)) return "Automations need the AI — automations permission (Users & Permissions).";
   if (c.action === "act" && !hasPerm(owner, AUTOMATIONS_ACT_KEY)) return "An automation that changes data needs the AI — automations may change data permission.";
+  if (c.action === "task" && !hasPerm(owner, ASSIGN_KEY)) return "An automation that gives tasks needs the right to give tasks (Users & Permissions).";
   return null;
 }
 
@@ -119,4 +123,13 @@ export async function automationFor(user: User, id: number, o: { deleted?: boole
   const a = await prisma.automation.findUnique({ where: { id } });
   if (!a || (o.deleted ? !a.deletedAt : !!a.deletedAt)) return null;
   return a.ownerId === user.id || user.isOwner ? a : null;
+}
+
+/** Whether an event may reach this person's automations: a task's only the
+ *  people on the task, a screen's only someone who sees it. The one rule for
+ *  what fires and for what a preview counts. */
+export function eventReaches(type: AppEventType, participants: readonly number[] | undefined, who: Pick<User, "id" | "isOwner" | "hiddenTabs">): boolean {
+  if (isTaskEvent(type) && !(participants ?? []).includes(who.id)) return false;
+  const tab = EVENT_TAB[type];
+  return !tab || who.isOwner || !hiddenTabsOf(who as User).has(tab);
 }

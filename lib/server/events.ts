@@ -3,6 +3,7 @@ import { after } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/server/auth";
+import { currentActor } from "@/lib/server/actor";
 import type { AppEventType, AppEventView } from "@/lib/domain/appEvents";
 
 // What happened in the app, recorded by the action that did it — once it is
@@ -47,6 +48,7 @@ export async function emitEvent(e: EmitInput): Promise<void> {
     const view: AppEventView = {
       id: row.id, type: e.type, at: row.at.toISOString(), actorId: row.actorId, actorName: row.actorName,
       subject: row.subject, summary: row.summary, participants: e.participants,
+      byAutomation: currentActor()?.via === "automation",
     };
     const fire = async () => {
       try {

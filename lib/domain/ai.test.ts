@@ -215,6 +215,9 @@ describe("hidden screens close their tables to the assistant", () => {
     expect(blocked).toEqual(["OdooEntry", "OdooNote"]);
     expect(blockedTableIn(`SELECT count(*) FROM "OdooEntry"`, blocked)).toBe("OdooEntry");
     expect(blockedTableIn(`SELECT count(*) FROM "MasterOrder"`, blocked)).toBeNull();
+    // a query given as text, its name built with chr(34), is refused outright
+    expect(blockedTableIn(`SELECT word AS key FROM ts_stat('SELECT to_tsvector(t::text) FROM ' || chr(34) || 'Odoo' || 'Entry' || chr(34) || ' t')`, blocked)).toBe(blocked[0]);
+    expect(blockedTableIn(`SELECT TS_REWRITE (q, 'SELECT 1')`, blocked)).toBe(blocked[0]);
   });
   it("closes the shift log's tables with Shifts — the machine stops and the cockpit's stored trend among them", () => {
     const blocked = blockedTablesFor(new Set(["shifts"]));

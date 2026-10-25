@@ -10,14 +10,20 @@ import { pruneAiFiles } from "@/lib/server/ai/files";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { deliverToInbox } from "@/lib/server/inbox";
 import { remindOverdueTasks } from "@/lib/server/tasks";
+import { runAsActor } from "@/lib/server/actor";
+import { createTask } from "@/app/tasks/actions";
+import { TASK_LIMITS } from "@/lib/domain/tasks";
 import { getCockpit, recordKpiSnapshot } from "@/lib/server/kpis";
 import { withLine } from "@/lib/server/line";
-import { automationWindowOf, configOf, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
+import { automationWindowOf, configOf, eventReaches, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
 import { runDailyReviews } from "./review";
 import { runWatch } from "@/lib/server/watchdog";
 import { AI_DENY_TEXT, automationContext, costUsd } from "@/lib/domain/ai";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
-import { AUTOMATION_LIMITS, describeWindow, freshRows, inAutomationWindow, recipientsOf, renderMessage, rowsTable, type AutomationConfig } from "@/lib/domain/automations";
+import {
+  AUTOMATION_LIMITS, describeWindow, escalationStep, freshRows, inAutomationWindow, minutesText, recipientsOf, renderMessage, rowKey, rowsTable, taskDueISO, taskFromTemplate,
+  type AutomationConfig, type OffDay,
+} from "@/lib/domain/automations";
 import { factoryDayISO } from "@/lib/domain/dates";
 import { formatDateTime } from "@/lib/domain/format";
 import { EVENT_TAB, eventMatches, eventRow, isTaskEvent, type AppEventView } from "@/lib/domain/appEvents";
@@ -138,7 +144,8 @@ async function runAll(due: Automation[], deadline: number, result: TickResult): 
  *  inside the automations' hours and at most every so many minutes, each
  *  claimed so two events never run it at once. Paused, nothing fires. A
  *  task's event reaches only the automations of people on the task, and an
- *  event from a screen hidden from the owner none of theirs. */
+ *  event from a screen hidden from the owner none of theirs. A task goes like
+ *  a message. */
 export async function runEventAutomations(e: AppEventView, now = new Date()): Promise<number> {
   const settings = await getAiSettings();
   if (settings.automationsPaused) return 0;
@@ -147,13 +154,15 @@ export async function runEventAutomations(e: AppEventView, now = new Date()): Pr
   let fired = 0;
   for (const a of rules) {
     if (!eventMatches(a, e)) continue;
+    // a task an automation gave never sets off another — no task begets tasks in a loop
+    if (a.action === "task" && e.byAutomation) continue;
     if (isTaskEvent(e.type) && !(e.participants ?? []).includes(a.ownerId)) continue;
-    const tab = EVENT_TAB[e.type];
-    if (tab) {
-      const owner = await prisma.user.findUnique({ where: { id: a.ownerId }, select: { hiddenTabs: true, isOwner: true } });
-      if (!owner || (!owner.isOwner && hiddenTabsOf(owner as User).has(tab))) continue;
+    if (EVENT_TAB[e.type]) {
+      const owner = await prisma.user.findUnique({ where: { id: a.ownerId }, select: { id: true, hiddenTabs: true, isOwner: true } });
+      if (!owner || !eventReaches(e.type, e.participants, owner)) continue;
     }
-    const ai = a.action !== "notify";
+    // a message or a task costs nothing; a report or a change uses the assistant
+    const ai = a.action === "report" || a.action === "act";
     if (ai) {
       if (!inHours) continue;
       if (a.lastRunAt && now.getTime() - a.lastRunAt.getTime() < AUTOMATION_LIMITS.eventAiEveryMin * 60_000) continue;
@@ -197,6 +206,11 @@ interface RunOptions {
   event?: AppEventView;
   /** A condition's keys as this check found them — kept once the run is through. */
   keys?: string[];
+  /** A condition's escalation bookkeeping after this check. */
+  escalation?: { keySeenAt: Record<string, string>; escalatedKeys: string[] };
+  /** A run that failed part-way: the keys to keep all the same — the rows it
+   *  did see to — so only the rest are tried again. */
+  retryKeys?: string[];
   /** A test run: everything goes to this person alone, marked as a test, and
    *  the schedule and the condition's keys are left as they are. */
   testTo?: User;
@@ -245,8 +259,18 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
     if (test) rows = r.rows;
     else {
       const { keys, fresh } = freshRows(a.lastKeys, r.rows);
+      // what is still there after a while goes up to the plant's owner — on
+      // a check with nothing new as well
+      if (config.escalateAfterMin) {
+        const step = escalationStep((a.keySeenAt ?? {}) as Record<string, string>, a.escalatedKeys ?? [], keys, o.now, config.escalateAfterMin);
+        if (step.due.length > 0) {
+          const due = new Set(step.due);
+          await escalate(a, owner, r.rows.filter((row) => due.has(rowKey(row))), config.escalateAfterMin);
+        }
+        o = { ...o, escalation: { keySeenAt: step.seen, escalatedKeys: step.escalated } };
+      }
       if (fresh.length === 0) {
-        await endRun(a, { lastKeys: keys, lastCheckAt: o.now }, { nextRunAt: next });
+        await endRun(a, { lastKeys: keys, lastCheckAt: o.now, ...escalationOf(o) }, { nextRunAt: next });
         return false;
       }
       o = { ...o, keys };
@@ -274,6 +298,18 @@ export async function runAutomation(a: Automation, o: RunOptions): Promise<boole
       const inboxIds = await deliverToInbox(recipients.map((userId) => ({ userId, kind: "message" as const, title, body, fromName: from, automationId: a.id, runId: run.id })));
       return finishRun(a, run.id, o, { summary: `Sent to ${inboxIds.length} person(s).`, inboxIds }, next);
     }
+    if (config.action === "task") {
+      // a test run gives the task to the tester alone
+      const given = await giveTasks(owner, config, { name: a.name, rows, fields, people: test ? [o.testTo!.id] : recipients, todayISO: factoryDayISO(o.now), offDay, test });
+      if (!given.ok) {
+        // the rows already given a task are done; the rest are tried again at the next check
+        const left = new Set(rows.slice(given.given).map(rowKey));
+        const keep = given.given > 0 && o.keys ? { ...o, retryKeys: o.keys.filter((k) => !left.has(k)) } : o;
+        return failRun(a, run.id, keep, given.ids.length ? `Gave ${given.ids.length} task(s): #${given.ids.join(", #")}; then: ${given.error}` : given.error, next);
+      }
+      return finishRun(a, run.id, o, { summary: `Gave ${given.ids.length} task(s): #${given.ids.join(", #")}.`, inboxIds: [] }, next);
+    }
+    if (config.action !== "report" && config.action !== "act") return failRun(a, run.id, o, `Unknown action "${config.action}".`, next);
 
     // the assistant: open to the owner, within the month's caps
     const status = await aiStatusFor(owner);
@@ -346,7 +382,58 @@ async function finishRun(a: Automation, runId: number, o: RunOptions, r: { summa
   return true;
 }
 
-const keysOf = (o: RunOptions) => (o.keys ? { lastKeys: o.keys, lastCheckAt: o.now } : {});
+const escalationOf = (o: RunOptions) => o.escalation ?? {};
+const keysOf = (o: RunOptions) => ({ ...(o.keys ? { lastKeys: o.keys, lastCheckAt: o.now } : {}), ...escalationOf(o) });
+
+/** The tasks a "task" automation gives, as its owner (their right to give
+ *  tasks applies, and the task names them as its giver): one for each new
+ *  row of a condition — past the limit, one that lists them — else one. */
+async function giveTasks(
+  owner: User,
+  c: AutomationConfig,
+  o: { name: string; rows: Record<string, unknown>[]; fields?: Record<string, string>; people: number[]; todayISO: string; offDay: OffDay; test: boolean },
+): Promise<{ ok: true; ids: number[] } | { ok: false; error: string; ids: number[]; given: number }> {
+  const due = taskDueISO(o.todayISO, c.taskDueDays, o.offDay);
+  const each = c.trigger === "condition" && o.rows.length > 0 && o.rows.length <= AUTOMATION_LIMITS.tasksPerRun;
+  let drafts: { title: string; details: string }[];
+  if (each) drafts = o.rows.map((row) => taskFromTemplate(c.message!, { name: o.name, count: o.rows.length, row, fields: o.fields }));
+  else {
+    const one = taskFromTemplate(c.message!, { name: o.name, count: o.rows.length, fields: o.fields });
+    // the rows listed under it, cut to what a task's details may hold
+    if (c.trigger === "condition" && o.rows.length > 0) one.details = `${one.details}\n\n${rowsTable(o.rows)}`.trim().slice(0, TASK_LIMITS.details);
+    drafts = [one];
+  }
+  const ids: number[] = [];
+  for (const [given, d] of drafts.entries()) {
+    const fd = new FormData();
+    fd.set("title", `${o.test ? "[Test] " : ""}${d.title}`.slice(0, 120));
+    fd.set("details", d.details);
+    fd.set("people", o.people.join(","));
+    fd.set("priority", c.taskUrgent ? "urgent" : "normal");
+    fd.set("due", due);
+    const r = await runAsActor(owner, "automation", () => createTask(fd));
+    if (!r.ok || !r.ids) return { ok: false, error: r.error ?? "The task was not given.", ids, given };
+    ids.push(...r.ids);
+  }
+  return { ok: true, ids };
+}
+
+/** Rows still matching after the automation's escalation time: to the
+ *  plant's owner(s), the automation's owner told it went up. */
+async function escalate(a: Automation, owner: User, rows: Record<string, unknown>[], afterMin: number): Promise<void> {
+  if (rows.length === 0) return;
+  const after = minutesText(afterMin);
+  const owners = await prisma.user.findMany({ where: { isOwner: true, active: true }, select: { id: true } });
+  const to = [...new Set([...owners.map((u) => u.id), owner.id])];
+  await deliverToInbox(to.map((userId) => ({
+    userId,
+    kind: "message" as const,
+    title: `Escalation: ${isolate(a.name)} — ${rows.length} still there after ${after}`,
+    body: `**${a.name}** (${owner.name}'s automation) still finds ${rows.length === 1 ? "this" : `these ${rows.length}`} after ${after}:\n\n${rowsTable(rows)}`,
+    fromName: fromName(owner, a),
+    automationId: a.id,
+  })));
+}
 
 /** The end-of-run write. The run's own record (when, how it went, which rows
  *  a condition has now reported) is always written; the SCHEDULE (the next
@@ -377,7 +464,12 @@ async function failRun(a: Automation, runId: number | null, o: RunOptions, error
   }
   const failures = a.failures + 1;
   const stop = failures >= AUTOMATION_LIMITS.failures;
-  await endRun(a, { lastRunAt: o.now, lastStatus: "failed", lastNote: err.slice(0, 1000), failures, ...(stop ? { enabled: false } : {}) }, { nextRunAt: next });
+  // what was sent up stays sent up, failed or not; the keys stay as they were
+  // (tried again next time) but for rows a partial run did see to
+  await endRun(a, {
+    lastRunAt: o.now, lastStatus: "failed", lastNote: err.slice(0, 1000), failures, ...(stop ? { enabled: false } : {}),
+    ...escalationOf(o), ...(o.retryKeys ? { lastKeys: o.retryKeys, lastCheckAt: o.now } : {}),
+  }, { nextRunAt: next });
   if (stop) {
     await deliverToInbox([{
       userId: a.ownerId, kind: "message", title: `Automation stopped: ${isolate(a.name)}`, automationId: a.id,

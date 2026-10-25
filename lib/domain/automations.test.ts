@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAutomation, checkWindow, describeTrigger, describeWindow, inAutomationWindow, retimeAutomation, freshRows, nextConditionCheck, nextScheduleRun, recipientsOf, renderMessage, rowKey, rowsForPeople, type AutomationConfig } from "./automations";
+import { AUTOMATION_RECIPES, describeAction, minutesText, checkAutomation, checkWindow, escalationStep, taskDueISO, taskFromTemplate, describeTrigger, describeWindow, inAutomationWindow, retimeAutomation, freshRows, nextConditionCheck, nextScheduleRun, recipientsOf, renderMessage, rowKey, rowsForPeople, type AutomationConfig } from "./automations";
 
 const base = { name: "Morning welding report", trigger: "schedule", times: ["07:30"], days: "working", action: "report", prompt: "Welding output vs plan" } as const;
 const fridayOrHoliday = (holidays: string[] = []) => (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay() === 5 || holidays.includes(iso);
@@ -193,5 +193,65 @@ describe("rows as a person reads them", () => {
   it("says how many more there were", () => {
     const rows = Array.from({ length: 5 }, (_, n) => ({ mo: `MO/${n}` }));
     expect(rowsForPeople(rows, { max: 4, now })).toContain("…and 1 more.");
+  });
+});
+
+describe("automations 2.0 — tasks, escalation, ready-made ones", () => {
+  it("gives a task: a title and what to do, due in days, urgent or not", () => {
+    const r = checkAutomation({ name: "Leak", trigger: "event", eventTypes: ["tank.leak_failed"], action: "task", message: "Repair {about}\nSee {detail}", taskDueDays: 0, taskUrgent: true, recipientIds: [4] });
+    expect(r).toMatchObject({ ok: true, config: { action: "task", message: "Repair {about}\nSee {detail}", prompt: null, taskDueDays: 0, taskUrgent: true, recipientIds: [4] } });
+    expect(checkAutomation({ name: "x", trigger: "event", eventTypes: ["tank.leak_failed"], action: "task", message: "" })).toMatchObject({ ok: false });
+    expect(checkAutomation({ name: "x", trigger: "event", eventTypes: ["tank.leak_failed"], action: "task", message: "t", taskDueDays: 31 })).toMatchObject({ ok: false });
+  });
+  it("sends a condition's lasting rows up only at the times offered, and only for a condition", () => {
+    const base = { name: "x", trigger: "condition", conditionSql: 'SELECT 1 AS key', action: "notify", message: "m" } as const;
+    expect(checkAutomation({ ...base, escalateAfterMin: 120 })).toMatchObject({ ok: true, config: { escalateAfterMin: 120 } });
+    expect(checkAutomation({ ...base, escalateAfterMin: 7 })).toMatchObject({ ok: false });
+    expect(checkAutomation({ name: "x", trigger: "schedule", times: ["07:00"], action: "notify", message: "m", escalateAfterMin: 120 })).toMatchObject({ ok: true, config: { escalateAfterMin: null } });
+  });
+  it("fills a task from its template — an event's blanks and a row's columns", () => {
+    expect(taskFromTemplate("Repair {about} ({machine})\nBy {who}: {detail}", { name: "A", row: { machine: "L2", key: 3 }, fields: { about: "T-55", who: "Omar", detail: "leak at seam" } }))
+      .toEqual({ title: "Repair T-55 (L2)", details: "By Omar: leak at seam" });
+    expect(taskFromTemplate("   \nonly details", { name: "Fallback" }).title).toBe("Fallback");
+  });
+  it("puts a due day off a Friday or holiday", () => {
+    const off = (iso: string) => iso === "2026-10-30" || iso === "2026-10-31";
+    expect(taskDueISO("2026-10-29", 1, off)).toBe("2026-11-01");
+    expect(taskDueISO("2026-10-29", 0, off)).toBe("2026-10-29");
+  });
+  it("counts working days, not calendar days", () => {
+    const off = fridayOrHoliday(["2026-11-01"]);
+    // Wednesday + 3 working days: Thu, Sat, (Sun a holiday) Mon
+    expect(taskDueISO("2026-10-28", 3, off)).toBe("2026-11-02");
+    // given on a Friday with 0 days: the next working day
+    expect(taskDueISO("2026-10-30", 0, off)).toBe("2026-10-31");
+  });
+  it("fills a task's blanks — an empty cell as a dash", () => {
+    expect(taskFromTemplate("{name}: {mo}\n{count} found; note {note}", { name: "Late", count: 3, row: { key: "A", mo: "A1", note: null } }))
+      .toEqual({ title: "Late: A1", details: "3 found; note —" });
+  });
+  it("says what a task or an escalation does", () => {
+    expect(describeAction({ action: "task", taskDueDays: 2, taskUrgent: true, escalateAfterMin: 90 }, ["Ahmed"]))
+      .toBe("gives an urgent task to Ahmed, due in 2 working days; still there after 1 h 30 min, it goes up to the plant's owner");
+    expect(describeAction({ action: "task", taskDueDays: 0 }, [])).toBe("gives a task to its owner, due the same day");
+    expect(describeAction({ action: "report", escalateAfterMin: 120 }, [])).toBe("the assistant writes a report to its owner; still there after 2 h, it goes up to the plant's owner");
+    expect([45, 60, 1440].map(minutesText)).toEqual(["45 min", "1 h", "24 h"]);
+  });
+  it("escalates a key once, after the time, and forgets one that went away", () => {
+    const t0 = new Date("2026-10-26T08:00:00Z");
+    const a = escalationStep({}, [], ["k1", "k2"], t0, 60);
+    expect(a.due).toEqual([]);
+    const t1 = new Date("2026-10-26T09:05:00Z");
+    const b = escalationStep(a.seen, a.escalated, ["k1"], t1, 60);
+    expect(b.due).toEqual(["k1"]);
+    expect(Object.keys(b.seen)).toEqual(["k1"]);
+    const c = escalationStep(b.seen, b.escalated, ["k1", "k2"], new Date("2026-10-26T10:30:00Z"), 60);
+    // k1 already sent up; k2 came back and starts again
+    expect(c.due).toEqual([]);
+    expect(c.seen.k2).toBe("2026-10-26T10:30:00.000Z");
+  });
+  it("offers ready-made automations that are all valid as they stand", () => {
+    for (const r of AUTOMATION_RECIPES) expect(checkAutomation(r.config), r.id).toMatchObject({ ok: true });
+    expect(new Set(AUTOMATION_RECIPES.map((r) => r.id)).size).toBe(AUTOMATION_RECIPES.length);
   });
 });

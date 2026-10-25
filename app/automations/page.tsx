@@ -26,6 +26,7 @@ export default async function AutomationsPage() {
         automations={d.automations}
         canTime={d.allowed}
         status={{ paused: d.paused, inHours: d.inHours, hours: d.hours, stale: d.stale, allowed: d.allowed }}
+        builder={{ meId: d.meId, people: d.people }}
       />
     </ReadingColumn>
   );

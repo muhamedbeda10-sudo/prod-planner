@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-automations-2",
+    dateISO: "2026-10-26",
+    title: "Automations 2.0: build them on a form, start from ready-made ones, hand out tasks and escalate",
+    where: "Automations · AI assistant → Automations · AI settings → Automations",
+    href: "/automations",
+    body: "Automations no longer need the assistant to be made: New automation opens a form — when (times and days, a condition, or something that happens in the app), what (a message, a report, a change, or a task), and who gets it — and before saving, Preview shows the next runs, the rows a condition finds right now, or what an event would have caught in the last 7 days. Ready-made opens ten recipes to start from (a failed leak test → a repair task, a machine still stopped → up to the owner, every morning the orders heading late, and more). The new task action gives a task per new row to the people you pick, due in so many working days. And a condition can escalate: a row still found after the time you set (say two hours) is sent once to the owner. Your own automations now have Edit.",
+  },
+  {
     id: "2026-10-26-plant-watchdog",
     dateISO: "2026-10-26",
     title: "The plant's watchdog: a morning report of orders heading late, output drops and absence",
