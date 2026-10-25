@@ -33,3 +33,21 @@ it("can delete and faithfully undo an overnight unlisted stop without a Machine 
   h.perm.mockReturnValue(false);
   expect(await deleteMachineStopTool.describe({ id: 9 }, ctx)).toHaveProperty("error");
 });
+
+it("records and can undo an unresolved stop without inventing an end or treating its zero stored hours as resolved", async () => {
+  const raw = { date: "2026-10-24", machine: "Water treatment line", unlisted: true, department: "Painting", startTime: "10:15", isOpen: true, reason: "OTHER" };
+  const parsed = recordMachineStopTool.parse!(raw);
+  expect(parsed).toMatchObject({ isOpen: true, hours: 0 });
+  expect(validateInput(recordMachineStopTool.schema, parsed).ok).toBe(true);
+  if (typeof parsed === "string") throw Error(parsed);
+  const proposal = await recordMachineStopTool.describe(parsed, ctx);
+  expect(proposal).toMatchObject({ summary: expect.stringContaining("end unknown") });
+  expect(JSON.stringify(proposal)).not.toContain("undefined");
+  h.add.mockResolvedValue({ ok: true, id: 9, hours: 0, isOpen: true });
+  expect(await recordMachineStopTool.execute(parsed, ctx)).toMatchObject({ ok: true, message: expect.stringContaining("open stop") });
+  h.row.mockResolvedValue({ id: 9, date: new Date("2026-10-24T00:00:00Z"), machineId: null, machine: null, customName: "Water treatment line", customDept: "Painting", customCentre: "Painting", startTime: "10:15", endTime: null, endDate: null, hours: 0, isOpen: true, reasonCode: "OTHER", reason: null });
+  const removed = await deleteMachineStopTool.execute({ id: 9 }, ctx);
+  expect(removed.undo?.input).toMatchObject({ isOpen: true, startTime: "10:15" });
+  expect(removed.undo?.input).not.toHaveProperty("endTime");
+  expect(validateInput(recordMachineStopTool.schema, removed.undo?.input).ok).toBe(true);
+});

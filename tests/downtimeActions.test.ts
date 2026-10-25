@@ -150,3 +150,49 @@ describe("clock times and unlisted equipment", () => {
     expect(h.requirePerm).toHaveBeenCalledWith("shifts.lv");
   });
 });
+
+describe("unresolved incident lifecycle", () => {
+  const openRow = { id: 9, date: new Date("2026-10-12T00:00:00Z"), machineId: null, customName: "Water treatment line", customDept: "Painting", customCentre: "Painting", startTime: "10:15", endTime: null, endDate: null, endsNextDay: false, isOpen: true, hours: 0, reasonCode: "OTHER", reason: "need mechanic" };
+  const before = (row = openRow) => JSON.stringify({ hours: row.hours, startTime: row.startTime, endTime: row.endTime, endsNextDay: row.endsNextDay, isOpen: row.isOpen, endDate: row.endDate, reasonCode: row.reasonCode, reason: row.reason });
+  const openForm = () => form({ date: "2026-10-12", machineId: "custom", customName: "Water treatment line", customDept: "Painting", startTime: "10:15", endTime: "", reasonCode: "OTHER", reason: "need mechanic", isOpen: "true" });
+  it("saves a start with a genuinely unknown end and never invents midnight", async () => {
+    expect(await addDowntime(openForm())).toMatchObject({ ok: true, isOpen: true, hours: 0 });
+    expect(h.prisma.machineDowntime.create.mock.calls[0][0].data).toMatchObject({ startTime: "10:15", endTime: null, endDate: null, isOpen: true, hours: 0, endsNextDay: false });
+    expect(h.requirePerm).toHaveBeenCalledWith("shifts.painting");
+  });
+  it("updates open notes without requiring an end or a changing live elapsed total", async () => {
+    h.prisma.machineDowntime.findUnique.mockResolvedValue(openRow); h.prisma.machineDowntime.updateMany.mockResolvedValue({ count: 1 });
+    const fd = openForm(); fd.set("id", "9"); fd.set("before", before()); fd.set("reason", "Waiting for parts");
+    expect(await updateDowntime(fd)).toMatchObject({ ok: true, isOpen: true });
+    expect(h.prisma.machineDowntime.updateMany.mock.calls[0][0].data).toMatchObject({ endTime: null, hours: 0, isOpen: true, reason: "Waiting for parts" });
+  });
+  it("closes an incident on its actual later date, beyond 24 hours", async () => {
+    h.prisma.machineDowntime.findUnique.mockResolvedValue(openRow); h.prisma.machineDowntime.updateMany.mockResolvedValue({ count: 1 });
+    const fd = openForm(); fd.set("id", "9"); fd.set("before", before()); fd.set("endTime", "11:05"); fd.set("endDate", "2026-10-14"); fd.set("isOpen", "false");
+    const result = await updateDowntime(fd);
+    expect(result).toMatchObject({ ok: true, hours: 48 + 50 / 60 });
+    expect(h.prisma.machineDowntime.updateMany.mock.calls[0][0].data).toMatchObject({ isOpen: false, endDate: new Date("2026-10-14T00:00:00Z"), endTime: "11:05" });
+  });
+  it("refuses a future, missing or reversed resolution and prevents stale double resolution", async () => {
+    h.prisma.machineDowntime.findUnique.mockResolvedValue(openRow);
+    const fd = openForm(); fd.set("id", "9"); fd.set("before", before()); fd.set("isOpen", "false");
+    expect((await updateDowntime(fd)).ok).toBe(false);
+    fd.set("endTime", "09:00"); fd.set("endDate", "2026-10-12"); expect((await updateDowntime(fd)).ok).toBe(false);
+    fd.set("endTime", "11:05"); fd.set("endDate", "2999-01-01"); expect((await updateDowntime(fd)).ok).toBe(false);
+    h.prisma.machineDowntime.findUnique.mockResolvedValue({ ...openRow, isOpen: false, endTime: "11:05", hours: 50 / 60 });
+    fd.set("endDate", "2026-10-12"); expect((await updateDowntime(fd)).ok).toBe(false);
+    expect(h.prisma.machineDowntime.updateMany).not.toHaveBeenCalled();
+  });
+  it("detects an old unresolved incident, preventing a second overlapping stop days later", async () => {
+    h.prisma.machineDowntime.findMany.mockResolvedValue([openRow]);
+    expect((await addDowntime(timed({ date: "2026-10-14", startTime: "12:00", endTime: "13:00" }))).ok).toBe(false);
+    expect(h.prisma.machineDowntime.create).not.toHaveBeenCalled();
+  });
+  it("can correct a previously forced end by clearing To and reopening the same record", async () => {
+    const closed = { ...openRow, isOpen: false, endTime: "00:00", hours: 13.75, endsNextDay: true };
+    h.prisma.machineDowntime.findUnique.mockResolvedValue(closed); h.prisma.machineDowntime.updateMany.mockResolvedValue({ count: 1 });
+    const fd = openForm(); fd.set("id", "9"); fd.set("before", JSON.stringify({ ...closed, endDate: null }));
+    expect(await updateDowntime(fd)).toMatchObject({ ok: true, isOpen: true });
+    expect(h.prisma.machineDowntime.updateMany.mock.calls[0][0].data).toMatchObject({ isOpen: true, endTime: null, endDate: null, hours: 0 });
+  });
+});

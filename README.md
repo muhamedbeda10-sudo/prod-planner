@@ -185,7 +185,14 @@ mobile drawer still lists every view flat, since it has the vertical room.
    folding — his section's by default (Channels book to bending), changed on the row when he moved that
    day, so each centre's man-hours can be set against what it produced.
    **Machine stops** (a tab of the shift log): choose start/end clock times and the app computes duration
-   to the minute. An overnight end is marked **End next day** and booked to the starting factory date.
+   to the minute. **To is optional while unresolved**: save only From, then use **Resolve** later to enter
+   the actual end time and date. Open incidents remain visible on subsequent days with elapsed duration.
+   **Still open** clears a previously guessed end. Notes can be updated while it stays open. A dated
+   repair can span multiple days; daily losses and available machine hours count only its actual overlap
+   with each factory day (up to now while open). Previously recorded rows without an explicit end date
+   keep their original start-day booking. Open rows store `isOpen=true`, no end and `hours=0` as a marker;
+   loaders calculate live elapsed hours, so that marker must never be reported as zero downtime.
+   A clock end earlier than the start automatically suggests the next date; adjust **End date** when needed.
    Choose **Other equipment** to type an unlisted asset's name and department (and work centre for
    Fabrication); it is logged without creating a schedulable machine. The table, editor and Excel export
    keep the range. Timed stops cannot overlap on the same asset, including across midnight; older
