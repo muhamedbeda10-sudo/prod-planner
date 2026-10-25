@@ -506,8 +506,9 @@ model Settings {
   // man-hour the app counts — the shift log, a machine's crew, the day's
   // capacity — is measured with these.
   shiftShortH Float @default(8)
-  shiftLongH  Float @default(11)
+  shiftLongH  Float @default(8)
   overtimeH   Float @default(3)
+  nightOvertimeH Float @default(3)
 
   // The nightly backup's own read-only login (backup_reader): when its
   // password was last made, or the login turned off, and by whom. The
@@ -677,7 +678,7 @@ model MachineItemTime {
 // or not, which shift (day or night), overtime on the day shift, and the machine they
 // were on. A worker with no row for a day is NOT SET yet — neither present nor
 // absent; the Shifts tab saves a department's day only once every worker on it
-// has a row (S9 day 07:00–16:00, S11 night 19:00–07:00, or absent). The
+// has a row (S9 day 07:00–16:00, S11 night 19:00–04:00, optional OT 04:00–07:00, or absent). The
 // day's man-hours per department are summed into DeptDayHours from here.
 model ShiftEntry {
   id         Int      @id @default(autoincrement())
