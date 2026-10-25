@@ -18,23 +18,24 @@ const RATE_WINDOW_WD = 14;
 const DAY = 86400000;
 const isWorkday = (d: Date, off: Set<string>) => d.getUTCDay() !== 5 && !off.has(toISODate(d));
 
-/** The plant's ACTUAL std-hours per working day per ETA stage, over the last
- *  RATE_WINDOW_WD working days (ending yesterday). */
-export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, number>; sigma: Record<EtaStage, number>; windowDays: number }> => withLine("TR", async () => {
+/** The last `n` working days up to yesterday, oldest first, and the holidays. */
+async function pastWorkingDays(n: number): Promise<{ days: Date[]; holidays: Set<string> }> {
   const holidays = new Set((await loadHolidays()).map((h) => toISODate(h.date)));
-  // walk back from yesterday until the window holds RATE_WINDOW_WD working days
-  const end = factoryToday();
-  end.setUTCDate(end.getUTCDate() - 1);
-  let start = new Date(end);
-  let wd = isWorkday(end, holidays) ? 1 : 0;
-  while (wd < RATE_WINDOW_WD) {
-    start = new Date(start.getTime() - DAY);
-    if (isWorkday(start, holidays)) wd++;
+  const days: Date[] = [];
+  let d = factoryToday();
+  // a guard against a calendar of holidays only
+  for (let guard = 0; days.length < n && guard < n * 4 + 30; guard++) {
+    d = new Date(d.getTime() - DAY);
+    if (isWorkday(d, holidays)) days.unshift(d);
   }
+  return { days, holidays };
+}
 
+/** Std-hours EARNED per ETA stage on each day from `start` to before `endExclusive`. */
+async function earnedByDay(start: Date, endExclusive: Date): Promise<Map<string, Record<EtaStage, number>>> {
   const [entries, orders, std] = await Promise.all([
     prisma.handoverEntry.findMany({
-      where: { date: { gte: start, lt: new Date(end.getTime() + DAY) } },
+      where: { date: { gte: start, lt: endExclusive } },
       select: { mo: true, bom: true, dept: true, item: true, qty: true, date: true },
     }),
     loadMasterOrders(),
@@ -65,6 +66,17 @@ export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, n
     else if (e.dept === "Painting") day.finish += (per.shb + per.paint) * e.qty;
     else if (e.dept === "ShotBlast") day.finish += per.shb * e.qty;
   }
+  return daily;
+}
+
+/** The plant's ACTUAL std-hours per working day per ETA stage, over the last
+ *  RATE_WINDOW_WD working days (ending yesterday). */
+export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, number>; sigma: Record<EtaStage, number>; windowDays: number }> => withLine("TR", async () => {
+  const { days } = await pastWorkingDays(RATE_WINDOW_WD);
+  const wd = days.length;
+  if (wd === 0) return { rates: { cut: 0, weld: 0, finish: 0 }, sigma: { cut: 0, weld: 0, finish: 0 }, windowDays: 0 };
+  // up to today, not counting it: output booked on yesterday's off day counts too
+  const daily = await earnedByDay(days[0], factoryToday());
 
   const rates: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
   const sigma: Record<EtaStage, number> = { cut: 0, weld: 0, finish: 0 };
@@ -79,6 +91,20 @@ export const getStageRates = cache(async (): Promise<{ rates: Record<EtaStage, n
   }
   return { rates, sigma, windowDays: wd };
 }));
+
+/** Std-hours earned per ETA stage on each of the last `n` working days (up
+ *  to yesterday), oldest first — a working day with no output is a zero. */
+export async function getStageDays(n: number): Promise<{ dateISO: string; hours: Record<EtaStage, number> }[]> {
+  return withLine("TR", async () => {
+    const { days } = await pastWorkingDays(n);
+    if (days.length === 0) return [];
+    const daily = await earnedByDay(days[0], new Date(days[days.length - 1].getTime() + DAY));
+    return days.map((d) => {
+      const iso = toISODate(d);
+      return { dateISO: iso, hours: daily.get(iso) ?? { cut: 0, weld: 0, finish: 0 } };
+    });
+  });
+}
 
 /** One order-component as the forecast schedules it: its own remaining
  *  pieces per station. Pieces flow — the TC of an order can be welding while

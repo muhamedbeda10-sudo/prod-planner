@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-plant-watchdog",
+    dateISO: "2026-10-26",
+    title: "The plant's watchdog: a morning report of orders heading late, output drops and absence",
+    where: "Inbox → Reports · AI settings → Automations",
+    href: "/admin/ai#automations",
+    body: "Every working morning (07:15 by default) the watchdog checks the plant by itself: orders whose forecast finish lands after their delivery day (and orders due soon that cannot be forecast because a stage made nothing), a stage whose earned standard hours yesterday fell well under its usual, and departments or workers with high absence. When it finds something it sends one report to the inbox — with a chart of the stage's days, a few lines by the assistant on what matters first, and a task ready to give yourself for each finding (one click). The owner sets the time, the thresholds and who gets it on AI settings → Automations, and can run it now. The assistant can read its findings too: ask it what the watchdog flagged.",
+  },
+  {
     id: "2026-10-26-ai-learns-memory-feedback-checks",
     dateISO: "2026-10-26",
     title: "The assistant learns: it remembers you, takes 👍 / 👎, and picks its model per question",

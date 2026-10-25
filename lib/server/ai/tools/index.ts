@@ -33,6 +33,7 @@ import { SETUP_TOOLS } from "./setup";
 import { USER_TOOLS } from "./users";
 import { IMPORT_TOOLS } from "./imports";
 import { MEMORY_TOOLS } from "./memory";
+import { WATCHDOG_TOOLS } from "./watchdog";
 import type { AiTool, AnyReadTool, AnyWriteTool } from "./types";
 
 // Every tool the assistant has, in the one fixed order the API sees them in
@@ -72,6 +73,7 @@ export const AI_TOOLS: readonly AiTool[] = [
   ...IMPORT_TOOLS,
   ...USER_TOOLS,
   ...MEMORY_TOOLS,
+  ...WATCHDOG_TOOLS,
 ];
 
 const BY_NAME = new Map<string, AiTool>(AI_TOOLS.map((t) => [t.name, t]));
