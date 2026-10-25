@@ -6,7 +6,7 @@ import { formatDate } from "@/lib/domain/format";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import {
-  ATTENDANCES, ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, DEPT_CENTRES, OVERTIME_TIME, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, centreOf, lineHours, round1, shiftSplit,
+  ATTENDANCES, ATTENDANCE_LABEL, ATTENDANCE_TIME, DEFAULT_SHIFT_HOURS, DEPT_CENTRES, OVERTIME_TIME, NIGHT_OVERTIME_TIME, overtimeHoursFor, overtimeTime, UNSET_LINE, WORK_CENTRE_LABEL, attendanceLine, attendanceOf, centreOf, lineHours, round1, shiftSplit,
   type Attendance, type RosterDept, type WorkCentre,
 } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL, WORKER_GROUPS } from "@/lib/domain/tanks";
@@ -22,7 +22,7 @@ import { PrintHeader, PrintScope } from "@/components/PrintHeader";
 
 // The shift roster — one day, every worker of every section. Each worker gets
 // ONE choice that says both whether he came and on which shift: ☀ Day
-// (07:00–16:00), 🌙 Night (19:00–07:00) or ✕ Absent; none picked is "not set",
+// (07:00–16:00), 🌙 Night (19:00–04:00) or ✕ Absent; none picked is "not set",
 // and a day is saved only when nobody is. The figures on top are the filters:
 // who came on the day shift, who on the night shift, overtime, absent, not set.
 // The board view puts the two shifts' people side by side — the printout.
@@ -59,7 +59,7 @@ const keyOf = (l: { workerId: number; dept: string }) => `${l.dept}|${l.workerId
 
 const ATT_ICON = { day: Sun, night: Moon, absent: UserX } as const;
 /** The clock times as the cards on top fit them. */
-const SHORT_TIME = { day: "07–16", night: "19–07", overtime: "16–19" } as const;
+const SHORT_TIME = { day: "07–16", night: "19–04", overtime: "16–19" } as const;
 
 /** Day · Night · Absent for one worker. Clicking the one already picked
  *  clears it back to not set. */
@@ -115,7 +115,6 @@ export function ShiftRoster({ data, editableDepts, filter }: {
   const [draft, setDraft] = useState<Draft[]>(() => data.lines.map(toDraft));
   const byKey = useMemo(() => new Map(data.lines.map((l) => [keyOf(l), l])), [data.lines]);
   const hrs = data.shiftHours ?? DEFAULT_SHIFT_HOURS;
-  const OT = hrs.overtime;
 
   const setFilter = (v: string) => {
     const p = new URLSearchParams(params.toString());
@@ -139,7 +138,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
   const matchesPick = (d: Draft) => {
     if (pick === "all") return true;
     const a = attendanceOf(d);
-    if (pick === "overtime") return a === "day" && d.overtimeH > 0;
+    if (pick === "overtime") return (a === "day" || a === "night") && d.overtimeH > 0;
     return a === pick;
   };
   const shown = searched.filter(matchesPick);
@@ -177,8 +176,8 @@ export function ShiftRoster({ data, editableDepts, filter }: {
     // a worker on vacation stays absent when the rest are put on a shift
     patch(new Set(bulkTarget.map(keyOf)), (l) => ({ ...attendanceLine(a, l, !l.recorded && !!byKey.get(keyOf(l))?.onVacation), recorded: true }));
   };
-  const dayInView = editableIn(shown).filter((d) => attendanceOf(d) === "day");
-  const allDayOnOt = dayInView.length > 0 && dayInView.every((d) => d.overtimeH === OT);
+  const presentInView = editableIn(shown).filter((d) => d.recorded && d.present);
+  const allShownOnOt = presentInView.length > 0 && presentInView.every((d) => d.overtimeH === overtimeHoursFor(d.shift, hrs));
   // what Save sends: every line of the departments this person records, on the day
   const mine = draft.filter((d) => canEdit(d.dept) && byKey.has(keyOf(d)));
   const unsetEditable = mine.filter((d) => !d.recorded).length;
@@ -221,7 +220,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
     const a = attendanceOf(d);
     return {
       key: keyOf(d), dept: d.dept, empId: w.empId, name: w.name, jobTitle: w.jobTitle, sectionLabels: w.sectionLabels, onVacation: w.onVacation,
-      attendance: a, overtimeH: a === "day" ? d.overtimeH : 0, hours: a === "unset" ? 0 : lineHours(d, hrs), note: d.note,
+      attendance: a, overtimeH: a === "day" || a === "night" ? d.overtimeH : 0, hours: a === "unset" ? 0 : lineHours(d, hrs), note: d.note,
       centre: d.dept === "Cut" && d.center ? WORK_CENTRE_LABEL[d.center] : null,
     };
   });
@@ -263,8 +262,8 @@ export function ShiftRoster({ data, editableDepts, filter }: {
       <div className="kpi-grid no-print" role="group" aria-label="Show only">
         <PickCard on={pick === "all"} onClick={() => togglePick("all")} label="All workers" icon={Users} value={split.workers} sub={split.unset ? `${split.workers - split.unset} set · ${split.unset} not set` : split.workers ? "everyone set" : "nobody in this view"} />
         <PickCard on={pick === "day"} onClick={() => togglePick("day")} label="Day" time={SHORT_TIME.day} icon={Sun} accent="kpi-accent-day" value={split.day.people} sub={`${split.day.hours} mh${split.day.overtimePeople ? ` · ${split.day.overtimePeople} on OT` : ""}`} />
-        <PickCard on={pick === "night"} onClick={() => togglePick("night")} label="Night" time={SHORT_TIME.night} icon={Moon} accent="kpi-accent-night" value={split.night.people} sub={`${split.night.hours} mh`} />
-        <PickCard on={pick === "overtime"} onClick={() => togglePick("overtime")} label="Overtime" time={SHORT_TIME.overtime} timeOnPhone={false} icon={Clock3} accent="kpi-accent-day" value={split.day.overtimePeople} sub={`${split.day.overtimeH} h · day shift only`} />
+        <PickCard on={pick === "night"} onClick={() => togglePick("night")} label="Night" time={SHORT_TIME.night} icon={Moon} accent="kpi-accent-night" value={split.night.people} sub={`${split.night.hours} mh${split.night.overtimePeople ? ` · ${split.night.overtimePeople} on OT` : ""}`} />
+        <PickCard on={pick === "overtime"} onClick={() => togglePick("overtime")} label="Overtime" icon={Clock3} accent="kpi-accent-day" value={split.day.overtimePeople + split.night.overtimePeople} sub={`${split.day.overtimeH + split.night.overtimeH} h · ${split.day.overtimePeople} day / ${split.night.overtimePeople} night`} />
         <PickCard on={pick === "absent"} onClick={() => togglePick("absent")} label="Absent" icon={UserX} accent="kpi-accent-bad" value={split.absent} sub={onVacationAbsent ? `${onVacationAbsent} on vacation` : "did not come"} />
         <PickCard on={pick === "unset"} onClick={() => togglePick("unset")} label="Not set" icon={CircleHelp} accent={split.unset ? "kpi-accent-warn" : undefined} tone={split.unset ? "text-warn-fg" : ""} value={split.unset} sub={split.unset ? "set them to save the day" : "nothing left"} />
         <div className="kpi">
@@ -333,7 +332,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
                     <Th label="Section" className="max-md:hidden" />
                     <Th label="Attendance" full="Attendance — the shift he came on" hint={`Day ${ATTENDANCE_TIME.day} · Night ${ATTENDANCE_TIME.night}. Click the picked one again to clear it.`} />
                     {showCentre && <Th label="Work centre" hint="Fabrication: laser / punch, bending or fin folding — his section's unless he moved that day. Each centre's hours are measured against what it produced." />}
-                    <Th label="Overtime" full={`Overtime ${OVERTIME_TIME}`} hint="Day shift only." />
+                    <Th label="Overtime" full="Optional overtime" hint={`Day ${OVERTIME_TIME} · Night ${NIGHT_OVERTIME_TIME} (next day).`} />
                     <Th label="Hours" num className="text-right" hint="Shift plus overtime; nothing when absent." />
                     <Th label="Note" />
                   </tr>
@@ -390,14 +389,14 @@ export function ShiftRoster({ data, editableDepts, filter }: {
                               </td>
                             )}
                             <td className="px-2 whitespace-nowrap">
-                              {a === "day" ? (
+                              {a === "day" || a === "night" ? (
                                 <button
-                                  type="button" disabled={ro} aria-pressed={l.overtimeH === OT}
-                                  aria-label={`${w.name}: overtime ${OVERTIME_TIME}`}
-                                  className={`btn btn-sm ${l.overtimeH === OT ? "btn-primary" : "btn-ghost"}`}
-                                  onClick={() => patch(new Set([k]), () => ({ overtimeH: l.overtimeH === OT ? 0 : OT }))}
+                                  type="button" disabled={ro} aria-pressed={l.overtimeH > 0 && l.overtimeH === overtimeHoursFor(l.shift, hrs)}
+                                  aria-label={`${w.name}: overtime ${overtimeTime(l.shift)}`}
+                                  className={`btn btn-sm ${l.overtimeH > 0 && l.overtimeH === overtimeHoursFor(l.shift, hrs) ? "btn-primary" : "btn-ghost"}`}
+                                  onClick={() => patch(new Set([k]), () => ({ overtimeH: l.overtimeH > 0 ? 0 : overtimeHoursFor(l.shift, hrs) }))}
                                 >
-                                  <Clock3 size={14} aria-hidden />{l.overtimeH === OT ? `+${OT} h` : "No OT"}
+                                  <Clock3 size={14} aria-hidden />{l.overtimeH > 0 ? `+${l.overtimeH} h` : "No OT"}
                                 </button>
                               ) : (
                                 <span className="text-xs text-muted">—</span>
@@ -441,9 +440,9 @@ export function ShiftRoster({ data, editableDepts, filter }: {
                 </span>
               </span>
             )}
-            {pick === "day" && dayInView.length > 0 && (
-              <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => patch(new Set(dayInView.map(keyOf)), () => ({ overtimeH: allDayOnOt ? 0 : OT }))}>
-                <Clock3 size={14} aria-hidden />{allDayOnOt ? "Remove OT from the shown" : `+${OT} h OT for the ${dayInView.length} shown`}
+            {presentInView.length > 0 && (
+              <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => patch(new Set(presentInView.map(keyOf)), (l) => ({ overtimeH: allShownOnOt ? 0 : overtimeHoursFor(l.shift, hrs) }))}>
+                <Clock3 size={14} aria-hidden />{allShownOnOt ? "Remove OT from the shown" : `Add OT for the ${presentInView.length} shown`}
               </button>
             )}
             {unsetEditable > unsetInView.length && <span className="pill pill-warn pill-wrap">{unsetEditable - unsetInView.length} more not set outside this view</span>}

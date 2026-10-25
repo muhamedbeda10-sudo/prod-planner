@@ -23,6 +23,22 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "Every chart the assistant draws now writes its numbers on the marks: each bar's value at its tip (a stack's parts inside it and its total at the end), the points of a line, each slice's share, a Pareto's count and share, a waterfall's moves — wherever they fit without colliding; the tooltip and the Table view still hold every figure. The assistant can now also draw a gauge (one reading on a dial against its target), a box plot (how times or quantities spread, machine beside machine), a Sankey (where pieces flowed, stage to stage), a calendar (a value per day laid out as the month, weeks from Saturday) and a control chart (a measure inside its 3-sigma limits, the points outside marked) — and step lines. Expanding the inbox now fills the whole screen, and reports spread across it instead of a narrow column.",
   },
   {
+    id: "2026-10-25-shift-history-table-actions",
+    dateISO: "2026-10-25",
+    title: "Recorded shift days in a table — edit or delete a day's shift data",
+    where: "Shifts → Recorded days · Machine stops",
+    href: "/shifts?view=history",
+    body: "Recorded days now appear in a compact table with day/night attendance, absences, man-hours, machine-stop counts and clear actions. Open attendance or stops for any recorded date, including older dates chosen from the date field. Delete day removes attendance, notes, stops and daily man-hour totals together for the confirmed departments, under their shift-log permissions. Production output and worker profiles are retained. Days with only stops are included; machine-stop hours, causes and notes can also be edited in place. Live productivity and planning figures refresh after changes.",
+  },
+  {
+    id: "2026-10-25-night-shift-overtime",
+    dateISO: "2026-10-25",
+    title: "Night shift: 8 base hours, with optional 3-hour overtime",
+    where: "Shifts → Daily attendance · Shift hours · Day / Night board",
+    href: "/shifts",
+    body: "Night attendance now counts 8 net base hours (19:00–04:00), with optional overtime from 04:00–07:00 booked to the shift's starting day. Day and night overtime have separate settings. Both contribute to filters, man-hours, productivity, exports, the board and AI shift tools. Existing standard 11-hour night records convert to 8 + 3 OT so their total hours stay the same; deliberately customised base hours remain unchanged.",
+  },
+  {
     id: "2026-10-24-planning-cockpit-home",
     dateISO: "2026-10-24",
     title: "The home page is now the Planning cockpit: the plan, the centres, the crunch, welding's parts and the losses",

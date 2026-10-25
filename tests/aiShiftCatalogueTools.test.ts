@@ -148,9 +148,11 @@ describe("the shift roster", () => {
     expect(Array.isArray(plan) && plan[0].after).toMatchObject({ present: true, shift: "S11" });
   });
 
-  it("refuses overtime that would not land on the day shift, rather than dropping it", () => {
+  it("allows explicit overtime on the night shift and refuses it on absence", () => {
     const lines = roster().lines.filter((l) => l.dept === "Welding") as Parameters<typeof planShiftDay>[0];
-    expect(planShiftDay(lines, { rest: "night", workers: [{ worker: "100", overtimeH: 3 }] })).toEqual({ error: expect.stringContaining("100 Ahmed would not be on the day shift") });
+    const plan = planShiftDay(lines, { rest: "night", workers: [{ worker: "100", overtimeH: 3 }] });
+    expect(Array.isArray(plan) && plan[0].after).toMatchObject({ present: true, shift: "S11", overtimeH: 3 });
+    expect(planShiftDay(lines, { rest: "absent", workers: [{ worker: "100", overtimeH: 3 }] })).toEqual({ error: expect.stringContaining("would be absent") });
   });
 
   it("reads the day as the tab shows it: day, night, absent and not set", async () => {
@@ -175,9 +177,10 @@ describe("the shift roster", () => {
     expect(planShiftDay(weld, { workers: [{ worker: "100", center: "Bending" }] })).toEqual({ error: expect.stringContaining("is not a work centre of Welding") });
   });
 
-  it("rejects overtime on the night shift", () => {
-    const lines = roster().lines.filter((l) => l.dept === "Welding") as Parameters<typeof planShiftDay>[0];
-    expect(planShiftDay(lines, { everyone: { shift: "S11", overtimeH: 3 } })).toEqual({ error: "Overtime is available to the day shift only (16:00–19:00)." });
+  it("applies night overtime to present workers", () => {
+    const lines = [line(1, "100", "Ahmed", { recorded: true, present: true })] as Parameters<typeof planShiftDay>[0];
+    const plan = planShiftDay(lines, { everyone: { shift: "S11", overtimeH: 3 } });
+    expect(Array.isArray(plan) && plan[0].after).toMatchObject({ present: true, shift: "S11", overtimeH: 3 });
   });
 
   it("finds a worker by badge or exact name, and says when it cannot", () => {

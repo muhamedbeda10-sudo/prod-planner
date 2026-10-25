@@ -127,35 +127,49 @@ export interface ShiftHistoryDay {
   /** Present on the day shift and on the night shift — from the roster's rows. */
   day: number;
   night: number;
+  entries?: number;
+  stops?: number;
+  legacyHours?: number;
 }
 
-/** The last days recorded, newest first, with the man-hours of the given
- *  departments summed per day and who came on which shift — the strip under
- *  the roster. */
-export async function getShiftHistory(depts: readonly RosterDept[], days = 14): Promise<ShiftHistoryDay[]> {
-  const rows = await prisma.deptDayHours.findMany({ where: { dept: { in: [...depts] } }, orderBy: { date: "desc" }, take: days * depts.length });
-  const byDay = new Map<string, { hours: number; people: number; day: number; night: number; date: Date }>();
-  for (const r of rows) {
-    const iso = toISODate(r.date);
-    const cur = byDay.get(iso) ?? { hours: 0, people: 0, day: 0, night: 0, date: r.date };
-    byDay.set(iso, { ...cur, hours: Math.round((cur.hours + r.hours) * 10) / 10, people: cur.people + (r.people ?? 0) });
+/** Recent department days, including days with only machine stops. An explicitly selected older day is included when it has data. */
+export async function getShiftHistory(depts: readonly RosterDept[], days = 14, selectedDateISO?: string): Promise<ShiftHistoryDay[]> {
+  const [recent, stopDays] = await Promise.all([
+    prisma.deptDayHours.findMany({ where: { dept: { in: [...depts] } }, orderBy: { date: "desc" }, take: days * depts.length, select: { date: true } }),
+    prisma.machineDowntime.groupBy({ by: ["date"], where: { machine: { dept: { in: [...depts] } } }, orderBy: { date: "desc" }, take: days, _count: { _all: true } }),
+  ]);
+  const dates = [...new Set([...recent, ...stopDays].map((r) => toISODate(r.date)))].sort().reverse().slice(0, days);
+  if (selectedDateISO && !dates.includes(selectedDateISO)) dates.push(selectedDateISO);
+  if (!dates.length) return [];
+  const where = { date: { in: dates.map(dayOf) }, dept: { in: [...depts] } };
+  const [totals, entries, stops, hours] = await Promise.all([
+    prisma.deptDayHours.findMany({ where, select: { date: true, dept: true, hours: true, people: true } }),
+    prisma.shiftEntry.findMany({ where, select: { date: true, dept: true, present: true, shift: true, overtimeH: true } }),
+    prisma.machineDowntime.groupBy({ by: ["date"], where: { date: where.date, machine: { dept: where.dept } }, _count: { _all: true } }),
+    getShiftHours(),
+  ]);
+  const byDay = new Map<string, ShiftHistoryDay>();
+  const get = (date: Date) => {
+    const dateISO = toISODate(date);
+    if (!byDay.has(dateISO)) byDay.set(dateISO, { dateISO, hours: 0, people: 0, day: 0, night: 0, entries: 0, stops: 0 });
+    return byDay.get(dateISO)!;
+  };
+  const recorded = new Set<string>();
+  for (const row of entries) {
+    const day = get(row.date);
+    recorded.add(`${day.dateISO}|${row.dept}`);
+    day.entries! += 1;
+    day.hours = Math.round((day.hours + lineHours({ ...row, shift: isShiftCode(row.shift) ? row.shift : DEFAULT_SHIFT }, hours)) * 10) / 10;
+    if (row.present) { day.people += 1; if (row.shift === "S11") day.night += 1; else day.day += 1; }
   }
-  const picked = [...byDay.entries()].slice(0, days);
-  if (picked.length > 0) {
-    const split = await prisma.shiftEntry.groupBy({
-      by: ["date", "shift"],
-      where: { dept: { in: [...depts] }, present: true, date: { in: picked.map(([, v]) => v.date) } },
-      _count: { _all: true },
-    });
-    for (const s of split) {
-      const cur = byDay.get(toISODate(s.date));
-      if (!cur) continue;
-      if (s.shift === "S11") cur.night += s._count._all;
-      else cur.day += s._count._all;
-    }
+  // Legacy department totals without individual attendance remain part of the day's hours.
+  for (const row of totals) {
+    const day = get(row.date);
+    if (recorded.has(`${day.dateISO}|${row.dept}`)) continue;
+    day.hours = Math.round((day.hours + row.hours) * 10) / 10;
+    day.people += row.people ?? 0;
+    day.legacyHours = Math.round(((day.legacyHours ?? 0) + row.hours) * 10) / 10;
   }
-  return picked.map(([dateISO]) => {
-    const { hours, people, day, night } = byDay.get(dateISO)!;
-    return { dateISO, hours, people, day, night };
-  });
+  for (const row of stops) get(row.date).stops = row._count._all;
+  return [...byDay.values()].sort((a, b) => b.dateISO.localeCompare(a.dateISO));
 }
