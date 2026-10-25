@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-all-shift-days-bulk-delete",
+    dateISO: "2026-10-25",
+    title: "All recorded shift days — date filters and bulk deletion",
+    where: "Shifts → Recorded days",
+    href: "/shifts?view=history",
+    body: "The history table now includes every recorded date, including older attendance-only and machine-stop-only days. See the total, page through dates or choose All days, and narrow the list with From/To filters. Select individual days, the current page, or all matching dates across pages, then delete them together after reviewing the exact dates and departments. Attendance, notes, machine stops and daily hour totals are deleted in one permission-checked transaction; production output and worker profiles stay in place.",
+  },
+  {
     id: "2026-10-25-ai-charts-values-new-forms",
     dateISO: "2026-10-25",
     title: "The assistant's charts show their values, five new kinds of chart, and the inbox opens full screen",

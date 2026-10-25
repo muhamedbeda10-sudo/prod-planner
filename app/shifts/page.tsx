@@ -36,7 +36,7 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
   const filter = parseRosterFilter(sp.sec);
 
   const depts = rosterDepts(filter);
-  const [data, history, productivity, downtime] = await Promise.all([getShiftRoster(day), getShiftHistory(depts, 14, day), getShiftProductivity(day, depts), getDowntimeDay(day)]);
+  const [data, history, productivity, downtime] = await Promise.all([getShiftRoster(day), getShiftHistory(depts), getShiftProductivity(day, depts), getDowntimeDay(day)]);
   const scopedDowntime = { ...downtime, rows: downtime.rows.filter((r) => depts.some((d) => d === r.dept)), machines: downtime.machines.filter((m) => depts.some((d) => d === m.dept)) };
   const editableDepts = ROSTER_DEPTS.filter((d) => hasPerm(me, shiftPermKey(d)));
 

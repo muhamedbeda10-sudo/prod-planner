@@ -169,8 +169,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
    "Save day" (pinned to the bottom of the screen) writes every row and re-sums each department's
    man-hours into the figure the calibration and the plan's capacity check read (Admin → Standard Times
    shows it read-only). **Recorded days** is a table of day/night attendance, absences, man-hours and
-   machine-stop counts. Each row opens attendance or stops for editing; the date field also opens older
-   dates. Delete day removes attendance, notes, stops and daily hour totals together for the confirmed
+   machine-stop counts for every recorded date. Use From/To filters, pagination or **All days**; check
+   individual rows, a page or all matching dates across pages for bulk deletion. Each row opens attendance
+   or stops for editing; the date field also opens older dates. Delete day (or Delete selected) removes
+   attendance, notes, stops and daily hour totals in one transaction for the confirmed dates and
    departments, requiring recording permission for all of them. Production output and worker profiles
    are retained. Recording needs
    `shifts.<dept>`; viewing is free, and the save action itself refuses a worker still not set, and a row under a
