@@ -13,6 +13,7 @@ import {
 import { sectionDept } from "@/lib/domain/tanks";
 import { parseWorkerSections } from "@/lib/domain/workers";
 import { downtimeByCause, type DowntimeCause } from "@/lib/domain/downtime";
+import { downtimeHoursInRange, downtimeWindowWhere, splitDowntimeDays } from "@/lib/domain/downtimePeriods";
 import { FACTOR_MAX, FACTOR_MIN, MIN_CALIBRATION_DAYS } from "@/lib/domain/calibration";
 import {
   centreStat, cockpitActions, combinedStat, earnedOfRecord, inMonthPlan, isFloorAction, lateLines, loadAhead, manpowerPlan, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
@@ -115,13 +116,14 @@ const dayStart = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
  *  stops — with what the cockpit's other figures need from the same reads. */
 async function readCentreDays(fromISO: string) {
   const from = dayStart(fromISO);
+  const stopNow = new Date(), stopToday = factoryDayISO(stopNow);
   const [std, hrs, orders, shiftRows, ledger, stops, machines, lvShotBlast] = await Promise.all([
     getStdData(),
     getShiftHours(),
     loadMasterOrdersOf("TR"),
     prisma.shiftEntry.findMany({ where: { date: { gte: from } }, select: { date: true, dept: true, present: true, shift: true, overtimeH: true, center: true, worker: { select: { depts: true } } } }),
     prisma.handoverEntry.findMany({ where: { date: { gte: from }, item: { not: LV_ITEM } }, select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true } }),
-    prisma.machineDowntime.findMany({ where: { date: { gte: from } }, select: { date: true, hours: true, reasonCode: true, reason: true, customDept: true, customCentre: true, machine: { select: { dept: true, center: true } } } }),
+    prisma.machineDowntime.findMany({ where: downtimeWindowWhere(fromISO, stopToday), select: { date: true, hours: true, startTime: true, endTime: true, endsNextDay: true, isOpen: true, endDate: true, reasonCode: true, reason: true, customDept: true, customCentre: true, machine: { select: { dept: true, center: true } } } }),
     prisma.machine.findMany({ where: { active: true }, select: { dept: true, center: true, hoursPerDay: true } }),
     // the one shot-blast crew blasts the LV panels as well — its booked hours
     // cover both, so the panels' shot-blast hours count on its side (as the calibration does)
@@ -195,7 +197,7 @@ async function readCentreDays(fromISO: string) {
   }
   for (const s of stops) {
     const c = s.machine ? machineWorkCentre(s.machine.dept, s.machine.center) : s.customCentre && isWorkCentre(s.customCentre) ? s.customCentre : null;
-    if (c) cell(toISODate(s.date), c).downtimeH += s.hours;
+    if (c) for (const day of splitDowntimeDays(s, fromISO, stopToday, stopNow)) cell(toISODate(day.date), c).downtimeH += day.hours;
   }
   const all: CentreDay[] = [];
   for (const [, m] of days) for (const [, d] of m) {
@@ -358,7 +360,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   // ---- what was lost lately ----
   // the stops since the first of the recent recorded days (the last week when nothing is recorded)
   const lossFrom = workedDates.at(-Math.min(RECENT_DAYS, workedDates.length)) ?? addDaysISO(todayISO, -7);
-  const loss = downtimeByCause(stops.filter((s) => toISODate(s.date) >= lossFrom));
+  const loss = downtimeByCause(stops.map((s) => ({ ...s, hours: downtimeHoursInRange(s, lossFrom, todayISO, new Date()) })));
   const losses = {
     ...loss,
     absentRate: rowsRecent > 0 ? absent / rowsRecent : null,

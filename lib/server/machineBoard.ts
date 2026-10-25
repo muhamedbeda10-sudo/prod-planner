@@ -12,6 +12,7 @@ import { getMachineItemTimes } from "./machineTimes";
 import { getPaintingQueue, getWeldingQueue } from "./execution";
 import { getWorklistExtras } from "./worklistExtras";
 import { parseISODate, toISODate } from "@/lib/domain/dates";
+import { downtimeHoursInRange, downtimeWindowWhere } from "@/lib/domain/downtimePeriods";
 import { loadHolidays, loadMasterOrdersOf } from "./loads";
 import { getSettings, getShiftHours } from "./data";
 import { withLine } from "./line";
@@ -95,7 +96,7 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
     prisma.worklistMachine.findMany({ where: { dept }, orderBy: [{ machineId: "asc" }, { rank: "asc" }] }),
     getStdData(),
     Promise.all([loadMasterOrdersOf("TR"), loadMasterOrdersOf("LV")]).then(([a, b]) => [...a, ...b]),
-    prisma.machineDowntime.findMany({ where: { date, machine: { dept } }, select: { machineId: true, hours: true } }),
+    prisma.machineDowntime.findMany({ where: { ...downtimeWindowWhere(dayISO, dayISO), machine: { dept } }, select: { machineId: true, date: true, hours: true, startTime: true, endTime: true, endsNextDay: true, isOpen: true, endDate: true } }),
     prisma.shiftEntry.findMany({ where: { date, dept, present: true, machineId: { not: null } }, select: { machineId: true, shift: true, overtimeH: true, worker: { select: { name: true } } } }),
     getMachineItemTimes(),
   ]);
@@ -147,7 +148,7 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
 
   const assignments: Assignment[] = rows.map((r) => ({ key: lineKey(r.bom, r.mo, r.item), machineId: r.machineId, rank: r.rank, running: r.running, qty: r.qty, sheet: r.sheet, sheetDone: r.sheetDone }));
   const downtimeH: Record<number, number> = {};
-  for (const d of downtime) if (d.machineId !== null) downtimeH[d.machineId] = (downtimeH[d.machineId] ?? 0) + d.hours;
+  for (const d of downtime) if (d.machineId !== null) downtimeH[d.machineId] = (downtimeH[d.machineId] ?? 0) + downtimeHoursInRange(d, dayISO, dayISO, new Date());
   const crewH: Record<number, number> = {};
   const crew: Record<number, string[]> = {};
   for (const s of shifts) {

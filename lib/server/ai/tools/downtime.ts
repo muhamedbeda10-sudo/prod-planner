@@ -5,6 +5,8 @@ import { addDowntime, deleteDowntime } from "@/app/shifts/downtimeActions";
 import { DOWNTIME_REASONS, MAX_STOP_HOURS, downtimeLabel, isDowntimeCode, stopHours, stopTiming, type DowntimeCode } from "@/lib/domain/downtime";
 import { shiftPermKey } from "@/lib/domain/permissions";
 import { ROSTER_DEPTS, WORK_CENTRES, workerCentres, isRosterDept } from "@/lib/domain/shifts";
+import { clockMinutes } from "@/lib/domain/downtime";
+import { elapsedStopHours, stopPeriodBounds } from "@/lib/domain/downtimePeriods";
 import { formOf, type WriteTool } from "./types";
 
 // MACHINE STOPS for the assistant: a machine that stood, how long and why —
@@ -42,6 +44,8 @@ interface StopInput {
   startTime?: string;
   endTime?: string;
   endsNextDay?: boolean;
+  isOpen?: boolean;
+  endDate?: string;
   unlisted?: boolean;
   department?: string;
   centre?: string;
@@ -54,7 +58,7 @@ export const recordMachineStopTool: WriteTool<StopInput> = {
   name: "record_machine_stop",
   title: "Record a machine stop",
   description:
-    "Record that a machine stood still on a day: which machine (its code or exact name), from startTime to endTime (minute precision, endsNextDay for overnight), or legacy hours, and why — one of the plant's reason codes. What the Shifts tab's Machine stops records, where the lost hours are counted by cause. Ask for the reason when the person did not give one — never guess it. No future days. For equipment outside the machine list, use unlisted=true and its name in machine, with its explicit department (and work centre for Cut). Never guess the department or silently treat an unmatched machine as unlisted.",
+    "Record that a machine stood still on a day: which machine (its code or exact name), from startTime to endTime (minute precision, endsNextDay for overnight), or legacy hours, and why — one of the plant's reason codes. What the Shifts tab's Machine stops records, where the lost hours are counted by cause. Ask for the reason when the person did not give one — never guess it. Leave endTime absent and set isOpen=true for an unresolved problem; never invent a resolution. Supply the actual endDate for multi-day closed repairs. No future days. For equipment outside the machine list, use unlisted=true and its name in machine, with its explicit department (and work centre for Cut). Never guess the department or silently treat an unmatched machine as unlisted.",
   area: "data",
   risk: "low",
   tabs: TABS,
@@ -63,10 +67,12 @@ export const recordMachineStopTool: WriteTool<StopInput> = {
     properties: {
       date: DAY,
       machine: { type: "string", minLength: 1, maxLength: 120, description: "The machine's code (e.g. LSR-1) or exact name." },
-      hours: { type: "number", minimum: 1 / 60, maximum: MAX_STOP_HOURS, description: "Duration; prefer clock times. Legacy hours-only calls round to a quarter hour." },
+      hours: { type: "number", minimum: 0, description: "Duration; prefer clock times. Legacy hours-only calls round to a quarter hour." },
       startTime: { type: "string", format: "time" },
       endTime: { type: "string", format: "time" },
       endsNextDay: { type: "boolean" },
+      isOpen: { type: "boolean" },
+      endDate: { type: "string", format: "date" },
       unlisted: { type: "boolean", description: "Only when the user explicitly records equipment outside the registry." },
       department: { type: "string", enum: ROSTER_DEPTS },
       centre: { type: "string", enum: WORK_CENTRES },
@@ -79,6 +85,14 @@ export const recordMachineStopTool: WriteTool<StopInput> = {
   parse: (r) => {
     if (!isDowntimeCode(String(r.reason))) return "Give one of the plant's reason codes.";
     if (r.unlisted && (!isRosterDept(String(r.department)) || (workerCentres(String(r.department)) && !workerCentres(String(r.department))!.some((c) => c === r.centre)))) return "Give the unlisted equipment's department and work centre.";
+    if (r.isOpen === true) {
+      if (clockMinutes(String(r.startTime ?? "")) === null || r.endTime || r.endDate) return "An open stop needs a start time and no end.";
+      return { ...(r as unknown as StopInput), hours: 0 };
+    }
+    if (r.startTime && r.endTime && r.endDate) {
+      const bounds = stopPeriodBounds({ date: String(r.date), hours: 0, startTime: String(r.startTime), endTime: String(r.endTime), endDate: String(r.endDate) });
+      return bounds ? { ...(r as unknown as StopInput), hours: (bounds.end - bounds.start) / 3600000 } : "Give an actual closing date/time after the start.";
+    }
     if (r.startTime || r.endTime) {
       const timing = stopTiming(String(r.startTime ?? ""), String(r.endTime ?? ""), r.endsNextDay as boolean | undefined);
       return timing ? { ...(r as unknown as StopInput), hours: timing.hours, endsNextDay: timing.endsNextDay } : "Give valid start/end times within 24 hours.";
@@ -94,21 +108,21 @@ export const recordMachineStopTool: WriteTool<StopInput> = {
     if (!isRosterDept(dept) || !hasPerm(ctx.user, shiftPermKey(dept))) return { error: `Recording ${label}'s stops needs its department's shift-log permission.` };
     if (m && !m.active) return { error: `${label} is retired.` };
     const scope = m ? { machineId: m.id } : { machineId: null, customDept: dept, customName: { equals: label, mode: "insensitive" as const } };
-    const before = await prisma.machineDowntime.findMany({ where: { date: new Date(`${i.date}T00:00:00.000Z`), ...scope }, select: { id: true, hours: true, startTime: true, endTime: true, endsNextDay: true } });
+    const before = await prisma.machineDowntime.findMany({ where: { date: new Date(`${i.date}T00:00:00.000Z`), ...scope }, select: { id: true, hours: true, startTime: true, endTime: true, endsNextDay: true, isOpen: true, endDate: true } });
     const had = before.reduce((s, r) => s + r.hours, 0);
     return {
       title: `Machine stop: ${label} ${i.date}`,
-      summary: `Record ${label} stopped on ${i.date}${i.startTime ? ` from ${i.startTime} to ${i.endTime}${i.endsNextDay ? " (+1 day)" : ""}` : ""}, ${i.hours} h — ${downtimeLabel(i.reason)}${i.note ? ` (${i.note})` : ""}.`,
-      changes: [{ label: `${label} stops ${i.date}`, before: had > 0 ? `${had} h` : "none", after: `${had + (i.hours ?? 0)} h` }],
+      summary: `Record ${label} stopped on ${i.date}${i.startTime ? ` from ${i.startTime}${i.endTime ? ` to ${i.endDate ?? ""} ${i.endTime}${i.endsNextDay ? " (+1 day)" : ""}` : ""}` : ""}${i.isOpen ? ", still open — end unknown" : `, ${i.hours} h`} — ${downtimeLabel(i.reason)}${i.note ? ` (${i.note})` : ""}.`,
+      changes: [{ label: `${label} stops ${i.date}`, before: had > 0 ? `${had} h` : "none", after: i.isOpen ? "Open — elapsed duration is calculated live" : `${had + (i.hours ?? 0)} h` }],
       snapshot: { ...scope, stops: before },
     };
   },
   async execute(i) {
     const m = i.unlisted ? null : await machineOf(i.machine);
     if (!i.unlisted && !m) return { ok: false, error: `There is no machine "${i.machine}".` };
-    const r = await addDowntime(formOf({ date: i.date, ...(m ? { machineId: m.id } : { machineId: "custom", customName: i.machine, customDept: i.department ?? "", customCentre: i.centre ?? "" }), ...(i.startTime ? { startTime: i.startTime, endTime: i.endTime, endsNextDay: i.endsNextDay ?? false } : { hours: i.hours }), reasonCode: i.reason, reason: i.note ?? null }));
+    const r = await addDowntime(formOf({ date: i.date, ...(m ? { machineId: m.id } : { machineId: "custom", customName: i.machine, customDept: i.department ?? "", customCentre: i.centre ?? "" }), ...(i.startTime ? { startTime: i.startTime, endTime: i.endTime, endsNextDay: i.endsNextDay ?? false, ...(i.isOpen ? { isOpen: true } : {}), ...(i.endDate ? { endDate: i.endDate } : {}) } : { hours: i.hours }), reasonCode: i.reason, reason: i.note ?? null }));
     if (!r.ok || !r.id) return { ok: false, error: r.error ?? "The stop was not recorded." };
-    return { ok: true, message: `${m?.code ?? i.machine}'s stop of ${r.hours ?? i.hours} h on ${i.date} is recorded — ${downtimeLabel(i.reason)}.`, undo: { tool: "delete_machine_stop", input: { id: r.id } } };
+    return { ok: true, message: `${m?.code ?? i.machine}'s ${r.isOpen ? "open stop" : `stop of ${r.hours ?? i.hours} h`} on ${i.date} is recorded — ${downtimeLabel(i.reason)}.`, undo: { tool: "delete_machine_stop", input: { id: r.id } } };
   },
 };
 
@@ -133,9 +147,9 @@ export const deleteMachineStopTool: WriteTool<DeleteInput> = {
     const day = row.date.toISOString().slice(0, 10);
     return {
       title: `Delete a stop of ${(row.machine?.code ?? row.customName ?? "Unlisted equipment")}`,
-      summary: `Delete ${(row.machine?.code ?? row.customName ?? "Unlisted equipment")}'s stop of ${row.hours} h on ${day} — ${downtimeLabel(row.reasonCode, row.reason)}.`,
+      summary: `Delete ${(row.machine?.code ?? row.customName ?? "Unlisted equipment")}'s stop ${row.isOpen ? `still open (${elapsedStopHours(row, ctx.now)} h elapsed)` : `of ${row.hours} h`} on ${day} — ${downtimeLabel(row.reasonCode, row.reason)}.`,
       changes: [{ label: `${(row.machine?.code ?? row.customName ?? "Unlisted equipment")} ${day}`, before: `${row.hours} h · ${downtimeLabel(row.reasonCode, row.reason)}`, after: "deleted" }],
-      snapshot: { id: row.id, hours: row.hours, reasonCode: row.reasonCode, reason: row.reason, startTime: row.startTime, endTime: row.endTime, endsNextDay: row.endsNextDay, machineId: row.machineId, customName: row.customName, customDept: row.customDept, customCentre: row.customCentre },
+      snapshot: { id: row.id, hours: row.hours, isOpen: row.isOpen, endDate: row.endDate, reasonCode: row.reasonCode, reason: row.reason, startTime: row.startTime, endTime: row.endTime, endsNextDay: row.endsNextDay, machineId: row.machineId, customName: row.customName, customDept: row.customDept, customCentre: row.customCentre },
     };
   },
   async execute(i) {
@@ -145,7 +159,7 @@ export const deleteMachineStopTool: WriteTool<DeleteInput> = {
     if (!r.ok) return { ok: false, error: r.error };
     const day = row.date.toISOString().slice(0, 10);
     const reason = row.reasonCode && isDowntimeCode(row.reasonCode) ? row.reasonCode : "OTHER";
-    const undo = { tool: "record_machine_stop", input: { date: day, machine: (row.machine?.code ?? row.customName ?? "Unlisted equipment"), ...(row.startTime && row.endTime ? { startTime: row.startTime, endTime: row.endTime, endsNextDay: row.endsNextDay } : { hours: row.hours }), ...(row.machineId === null ? { unlisted: true, department: row.customDept, ...(row.customCentre ? { centre: row.customCentre } : {}) } : {}), reason, ...(row.reason ? { note: row.reason.slice(0, 200) } : {}) } };
+    const undo = { tool: "record_machine_stop", input: { date: day, machine: (row.machine?.code ?? row.customName ?? "Unlisted equipment"), ...(row.isOpen ? { isOpen: true, startTime: row.startTime } : row.startTime && row.endTime ? { startTime: row.startTime, endTime: row.endTime, endsNextDay: row.endsNextDay, ...(row.endDate ? { endDate: row.endDate.toISOString().slice(0, 10) } : {}) } : { hours: row.hours }), ...(row.machineId === null ? { unlisted: true, department: row.customDept, ...(row.customCentre ? { centre: row.customCentre } : {}) } : {}), reason, ...(row.reason ? { note: row.reason.slice(0, 200) } : {}) } };
     return { ok: true, message: `${(row.machine?.code ?? row.customName ?? "Unlisted equipment")}'s stop on ${day} is deleted.`, undo };
   },
 };

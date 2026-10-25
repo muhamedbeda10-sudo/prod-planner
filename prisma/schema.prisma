@@ -722,6 +722,10 @@ model MachineDowntime {
   startTime    String? @db.VarChar(5)
   endTime      String? @db.VarChar(5)
   endsNextDay  Boolean @default(false)
+  // Open incidents have no end and hours=0 in storage. Readers calculate elapsed time as of now.
+  // An explicit closing date supports repairs spanning multiple days; old records keep their booking.
+  isOpen       Boolean @default(false)
+  endDate      DateTime? @db.Date
   hours      Float
   // Why, as one of the plant's codes (lib/domain/downtime.ts) so the stops can
   // be counted by cause; `reason` keeps the supervisor's own words.
@@ -733,6 +737,7 @@ model MachineDowntime {
   @@index([date])
   @@index([machineId])
   @@index([customDept, customName, date])
+  @@index([isOpen, date])
 }
 
 // The planner's own hours for ONE piece of an item at one work centre, for one

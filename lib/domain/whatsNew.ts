@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-open-machine-stops-resolution",
+    dateISO: "2026-10-25",
+    title: "Unresolved machine stops: save the start now, record the repair later",
+    where: "Shifts → Machine stops",
+    href: "/shifts?view=downtime",
+    body: "Leave To blank to save an open problem without guessing its end. Open incidents show their elapsed duration and remain visible on later days. Use Resolve to enter the actual repair time and date, including repairs lasting several days. Still open clears a previously guessed end before saving. Open notes can be updated without closing the incident. Daily losses and machine availability use the elapsed time affecting that day; a repair spanning several days does not charge its full duration to one day. Older recorded bookings remain intact. The table, exports and assistant distinguish open incidents from resolved records.",
+  },
+  {
     id: "2026-10-25-attendance-save-department",
     dateISO: "2026-10-25",
     title: "Daily attendance: record and save one department at a time",
