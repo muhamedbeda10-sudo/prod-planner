@@ -19,11 +19,12 @@ import { TableFrame, Th, useConfirm } from "@/components/DataTable";
 import { ExportButton } from "@/components/ExportButton";
 import { PrintButton } from "@/components/PrintButton";
 import { PrintHeader, PrintScope } from "@/components/PrintHeader";
+import { reconcileShiftDrafts, replaceShiftDepartment, shiftDepartmentDirty, type ShiftDraft } from "@/lib/domain/shiftDraft";
 
 // The shift roster — one day, every worker of every section. Each worker gets
 // ONE choice that says both whether he came and on which shift: ☀ Day
 // (07:00–16:00), 🌙 Night (19:00–04:00) or ✕ Absent; none picked is "not set",
-// and a day is saved only when nobody is. The figures on top are the filters:
+// and a department is saved only when nobody in that department is. The figures on top are the filters:
 // who came on the day shift, who on the night shift, overtime, absent, not set.
 // The board view puts the two shifts' people side by side — the printout.
 
@@ -32,13 +33,13 @@ function useAction() {
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const run = (fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData, okText: string, after?: () => void) => {
+    setMsg(null);
     startTransition(async () => {
-      const res = await fn(fd);
-      setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
-      if (res.ok) {
-        after?.();
-        router.refresh();
-      }
+      try {
+        const res = await fn(fd);
+        setMsg(res.ok ? { ok: true, text: okText } : { ok: false, text: res.error ?? "Failed." });
+        if (res.ok) { after?.(); router.refresh(); }
+      } catch { setMsg({ ok: false, text: "Could not confirm the save. Refresh and check the department's records before trying again." }); }
     });
   };
   return { pending, msg, run };
@@ -49,7 +50,7 @@ function Msg({ msg }: { msg: { ok: boolean; text: string } | null }) {
   return <p role="status" className={`text-sm font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</p>;
 }
 
-type Draft = Pick<ShiftLineDTO, "workerId" | "dept" | "present" | "shift" | "overtimeH" | "center" | "note" | "recorded">;
+type Draft = ShiftDraft;
 const toDraft = (l: ShiftLineDTO): Draft => ({ workerId: l.workerId, dept: l.dept, present: l.present, shift: l.shift, overtimeH: l.overtimeH, center: l.center, note: l.note, recorded: l.recorded });
 const UNSET = { ...UNSET_LINE, recorded: false } as const;
 /** What the list is narrowed to by the figures on top. */
@@ -112,11 +113,30 @@ export function ShiftRoster({ data, editableDepts, filter }: {
   const [q, setQ] = useState("");
   const [pick, setPick] = useState<RosterPick>("all");
   const [view, setView] = useState<View>("record");
-  const [draft, setDraft] = useState<Draft[]>(() => data.lines.map(toDraft));
+  const [editorState, setEditorState] = useState(() => {
+    const rows = data.lines.map(toDraft);
+    return { draft: rows, baseline: rows, source: data.lines };
+  });
+  const { draft, baseline } = editorState;
+  if (editorState.source !== data.lines) {
+    const fresh = data.lines.map(toDraft);
+    setEditorState({ draft: reconcileShiftDrafts(draft, baseline, fresh), baseline: fresh, source: data.lines });
+  }
+  const setDraft = (value: Draft[] | ((rows: Draft[]) => Draft[])) => setEditorState((old) => ({ ...old, draft: typeof value === "function" ? value(old.draft) : value }));
+  const busy = save.pending || clear.pending;
+  const canEdit = (d: RosterDept) => editableDepts.includes(d);
+  const availableDepts = rosterDepts(filter).filter((d) => data.lines.some((l) => l.dept === d));
+  const [chosenDept, setChosenDept] = useState<RosterDept | null>(() => availableDepts.find(canEdit) ?? availableDepts[0] ?? null);
+  const department = chosenDept && availableDepts.includes(chosenDept) ? chosenDept : availableDepts.find(canEdit) ?? availableDepts[0] ?? null;
+  const departmentName = department ? WORKER_DEPT_LABEL[department] : "department";
+  const selectDepartment = (dept: RosterDept) => { if (busy) return; setChosenDept(dept); setQ(""); setPick("all"); setView("record"); };
+  const nextDepartment = department ? availableDepts.slice(availableDepts.indexOf(department) + 1).find(canEdit) : undefined;
   const byKey = useMemo(() => new Map(data.lines.map((l) => [keyOf(l), l])), [data.lines]);
   const hrs = data.shiftHours ?? DEFAULT_SHIFT_HOURS;
 
   const setFilter = (v: string) => {
+    if (busy) return;
+    setQ(""); setPick("all");
     const p = new URLSearchParams(params.toString());
     if (v) p.set("sec", v); else p.delete("sec");
     router.push(`${pathname}?${p}`);
@@ -129,7 +149,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
   // first (so they hold still while typing), the list shows both
   const needle = q.trim().toLowerCase();
   // a line whose worker is no longer on the day (cleared, then off the list) is left out
-  const inFilter = useMemo(() => draft.filter((d) => { const w = byKey.get(keyOf(d)); return !!w && rosterLineMatches(w, filter); }), [draft, byKey, filter]);
+  const inFilter = useMemo(() => draft.filter((d) => { const w = byKey.get(keyOf(d)); return !!w && rosterLineMatches(w, filter) && (view === "board" || d.dept === department); }), [draft, byKey, filter, view, department]);
   const searched = useMemo(() => inFilter.filter((d) => {
     if (!needle) return true;
     const l = byKey.get(keyOf(d))!;
@@ -145,25 +165,25 @@ export function ShiftRoster({ data, editableDepts, filter }: {
   const split = useMemo(() => shiftSplit(inFilter, hrs), [inFilter, hrs]);
   const onVacationAbsent = inFilter.filter((d) => attendanceOf(d) === "absent" && byKey.get(keyOf(d))?.onVacation).length;
 
-  const depts = rosterDepts(filter);
+  const depts = view === "record" ? department ? [department] : [] : rosterDepts(filter);
   const capacity = depts.reduce<number | null>((s, d) => (data.capacityMh[d] == null ? s : (s ?? 0) + data.capacityMh[d]!), null);
-  const initial = useMemo(() => JSON.stringify(data.lines.map(toDraft)), [data.lines]);
-  const dirty = useMemo(() => JSON.stringify(draft) !== initial, [draft, initial]);
+  const dirty = shiftDepartmentDirty(draft, baseline);
+  const departmentDirty = department ? shiftDepartmentDirty(draft, baseline, department) : false;
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
-  const canEdit = (d: RosterDept) => editableDepts.includes(d);
-  const anyEditable = inFilter.some((d) => canEdit(d.dept));
+  const anyEditable = !!department && canEdit(department);
   // a department nobody is registered in has nothing to record
-  const staffed = depts.filter((d) => inFilter.some((l) => l.dept === d));
-  const recordedHere = staffed.filter((d) => data.savedDepts.includes(d));
-  const allRecorded = staffed.length > 0 && recordedHere.length === staffed.length;
+  const staffed = view === "record" && department ? [department] : depts.filter((d) => inFilter.some((l) => l.dept === d));
+  const recordedHere = staffed.filter((d) => baseline.some((l) => l.dept === d && l.recorded));
+  const isRecorded = (dept: RosterDept) => { const rows = baseline.filter((r) => r.dept === dept); return rows.length > 0 && rows.every((r) => r.recorded); };
+  const allRecorded = staffed.length > 0 && staffed.every(isRecorded);
   // what this person saves: the departments they may record
   const editableStaffed = staffed.filter(canEdit);
-  const allMineRecorded = editableStaffed.length > 0 && editableStaffed.every((d) => data.savedDepts.includes(d));
+  const allMineRecorded = editableStaffed.length > 0 && editableStaffed.every(isRecorded);
 
   const patch = (keys: Set<string>, fn: (l: Draft) => Partial<Draft>) => setDraft((all) => all.map((l) => (keys.has(keyOf(l)) ? { ...l, ...fn(l) } : l)));
   const setAttendance = (k: string, a: Attendance | "unset") =>
@@ -178,39 +198,47 @@ export function ShiftRoster({ data, editableDepts, filter }: {
   };
   const presentInView = editableIn(shown).filter((d) => d.recorded && d.present);
   const allShownOnOt = presentInView.length > 0 && presentInView.every((d) => d.overtimeH === overtimeHoursFor(d.shift, hrs));
-  // what Save sends: every line of the departments this person records, on the day
-  const mine = draft.filter((d) => canEdit(d.dept) && byKey.has(keyOf(d)));
+  // Save the whole selected department, including workers hidden by search/section/KPI filters.
+  // Other departments never enter the payload or block this department's save.
+  const mine = draft.filter((d) => d.dept === department && canEdit(d.dept) && byKey.has(keyOf(d)));
   const unsetEditable = mine.filter((d) => !d.recorded).length;
 
-  function submit() {
+  function submit(advance = false) {
+    if (busy || !department || !mine.length || unsetEditable > 0) return;
+    if (!departmentDirty && allMineRecorded) { if (advance && nextDepartment) selectDepartment(nextDepartment); return; }
     const fd = new FormData();
     fd.set("date", data.dateISO);
-    // every department this user may record goes whole — the filter only
-    // decides what is on screen, not what is saved
-    fd.set("lines", JSON.stringify(mine));
-    const s = shiftSplit(mine, hrs);
-    save.run(saveShiftRoster, fd, `Saved — ${s.day.people} day shift, ${s.night.people} night shift, ${s.absent} absent · ${s.hours} man-hours.`);
+    const submitted = mine.map((r) => ({ ...r, note: r.note.trim() }));
+    fd.set("lines", JSON.stringify(submitted));
+    const s = shiftSplit(submitted, hrs);
+    save.run(saveShiftRoster, fd, `${departmentName} saved — ${s.day.people} day shift, ${s.night.people} night shift, ${s.absent} absent · ${s.hours} man-hours.`, () => {
+      setEditorState((old) => ({ ...old, draft: replaceShiftDepartment(old.draft, department, submitted), baseline: replaceShiftDepartment(old.baseline, department, submitted) }));
+      if (advance && nextDepartment) selectDepartment(nextDepartment);
+    });
   }
 
   async function clearDay() {
-    const target = recordedHere.filter(canEdit);
+    const target = department && canEdit(department) && recordedHere.includes(department) ? [department] : [];
     if (target.length === 0) return;
     const ok = await confirm({
-      title: `Clear ${formatDate(data.dateISO)}?`,
-      body: "Every worker of these departments goes back to not set, and the day's man-hours leave the calibration and the capacity check.",
+      title: `Clear ${departmentName} on ${formatDate(data.dateISO)}?`,
+      body: `Return every worker in ${departmentName} to not set and remove this department's daily man-hours from calibration and capacity calculations.`,
       items: target.map((d) => WORKER_DEPT_LABEL[d]),
-      confirmLabel: "Clear the day",
+      confirmLabel: "Clear department",
       danger: true,
     });
     if (!ok) return;
     const fd = new FormData();
     fd.set("date", data.dateISO);
     fd.set("depts", target.join(","));
-    clear.run(clearShiftDay, fd, "Day cleared.", () => setDraft((d) => d.map((l) => (target.includes(l.dept) ? { ...l, ...UNSET, center: centreOf(l.dept, byKey.get(keyOf(l))?.sections ?? []), note: "" } : l))));
+    clear.run(clearShiftDay, fd, `${departmentName} attendance cleared.`, () => setEditorState((old) => {
+      const cleared = old.draft.filter((l) => target.includes(l.dept)).map((l) => ({ ...l, ...UNSET, center: centreOf(l.dept, byKey.get(keyOf(l))?.sections ?? []), note: "" }));
+      return { ...old, draft: replaceShiftDepartment(old.draft, department!, cleared), baseline: replaceShiftDepartment(old.baseline, department!, cleared) };
+    }));
   }
 
   const capacityTone = capacity === null ? "" : split.hours >= capacity ? "text-ok-fg" : split.hours >= capacity * 0.8 ? "text-warn-fg" : "text-bad-fg";
-  const filterLabel = rosterFilterLabel(filter);
+  const filterLabel = view === "record" && department ? `${departmentName}${sectionValue ? ` · ${rosterFilterLabel(filter)}` : ""}` : rosterFilterLabel(filter);
   const togglePick = (p: RosterPick) => { setPick((cur) => (cur === p ? "all" : p)); setView("record"); };
 
   // the rows the board, the printout and the export carry: the view's line,
@@ -241,9 +269,11 @@ export function ShiftRoster({ data, editableDepts, filter }: {
 
   const printed = needle ? shiftSplit(searched, hrs) : split;
   const statusPill = allRecorded
-    ? <span className="pill pill-ok">recorded{data.recordedBy ? ` · ${data.recordedBy}` : ""}</span>
+    ? <span className="pill pill-ok">recorded</span>
+    : view === "record" && recordedHere.length > 0
+      ? <span className="pill pill-warn">partially recorded</span>
     : recordedHere.length > 0
-      ? <span className="pill pill-warn pill-wrap" title={`Recorded: ${recordedHere.map((d) => WORKER_DEPT_LABEL[d]).join(", ")}`}>{recordedHere.length} of {staffed.length} departments recorded</span>
+      ? <span className="pill pill-warn pill-wrap" title={`Recorded: ${staffed.filter(isRecorded).map((d) => WORKER_DEPT_LABEL[d]).join(", ")}`}>{staffed.filter(isRecorded).length} of {staffed.length} departments recorded</span>
       : <span className="pill pill-warn">not recorded yet</span>;
 
   // the record view's rows, by department
@@ -256,7 +286,27 @@ export function ShiftRoster({ data, editableDepts, filter }: {
     <div className="space-y-3">
       {confirmDialog}
       <PrintHeader title="Shift attendance" subtitle={filterLabel} date={formatDate(data.dateISO)} />
-      <PrintScope parts={[needle && `Search: “${q.trim()}”`, `☀ Day ${printed.day.people} · 🌙 Night ${printed.night.people} · ✕ Absent ${printed.absent}${printed.unset ? ` · not set ${printed.unset}` : ""} · ${printed.hours} man-hours`, dirty && "UNSAVED — not recorded yet"]} />
+      <PrintScope parts={[needle && `Search: “${q.trim()}”`, `☀ Day ${printed.day.people} · 🌙 Night ${printed.night.people} · ✕ Absent ${printed.absent}${printed.unset ? ` · not set ${printed.unset}` : ""} · ${printed.hours} man-hours`, (view === "record" ? departmentDirty : dirty) && "UNSAVED — not recorded yet"]} />
+
+      <section className="rounded-xl border bg-surface p-3 no-print" aria-label="Record attendance by department">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+          <h2 className="!mb-0">Choose a department</h2>
+          <p className="text-xs text-muted">{availableDepts.filter(isRecorded).length} of {availableDepts.length} recorded · each department saves separately</p>
+        </div>
+        <nav className="flex flex-wrap gap-2" aria-label="Attendance departments">
+          {availableDepts.map((dept) => {
+            const rows = draft.filter((r) => r.dept === dept);
+            const unset = rows.filter((r) => !r.recorded).length;
+            const changed = shiftDepartmentDirty(draft, baseline, dept);
+            const status = unset ? `${unset} not set` : changed || !isRecorded(dept) ? "Ready to save" : "Recorded";
+            return <button key={dept} type="button" disabled={busy} aria-pressed={view === "record" && department === dept} aria-label={`Record ${WORKER_DEPT_LABEL[dept]}`} onClick={() => selectDepartment(dept)} className={`rounded-lg border px-3 py-2 text-left ${view === "record" && department === dept ? "border-brand bg-brand-light/40 ring-1 ring-brand" : "bg-surface"}`}>
+              <span className="block text-sm font-semibold">{WORKER_DEPT_LABEL[dept]} <span className="text-muted font-normal tabnum">· {rows.length}</span></span>
+              <span className={`block text-xs ${unset || changed ? "text-warn-fg" : "text-ok-fg"}`}>{status}{!canEdit(dept) ? " · view only" : ""}</span>
+            </button>;
+          })}
+        </nav>
+        {view === "record" && department && <p className="text-xs text-muted mt-2">Showing {departmentName}. Other departments can stay not set.{(needle || sectionValue || pick !== "all") && " Save includes every worker in this department, including those hidden by filters."}</p>}
+      </section>
 
       {/* the day at a glance — every figure is also the list's filter */}
       <div className="kpi-grid no-print" role="group" aria-label="Show only">
@@ -265,7 +315,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
         <PickCard on={pick === "night"} onClick={() => togglePick("night")} label="Night" time={SHORT_TIME.night} icon={Moon} accent="kpi-accent-night" value={split.night.people} sub={`${split.night.hours} mh${split.night.overtimePeople ? ` · ${split.night.overtimePeople} on OT` : ""}`} />
         <PickCard on={pick === "overtime"} onClick={() => togglePick("overtime")} label="Overtime" icon={Clock3} accent="kpi-accent-day" value={split.day.overtimePeople + split.night.overtimePeople} sub={`${split.day.overtimeH + split.night.overtimeH} h · ${split.day.overtimePeople} day / ${split.night.overtimePeople} night`} />
         <PickCard on={pick === "absent"} onClick={() => togglePick("absent")} label="Absent" icon={UserX} accent="kpi-accent-bad" value={split.absent} sub={onVacationAbsent ? `${onVacationAbsent} on vacation` : "did not come"} />
-        <PickCard on={pick === "unset"} onClick={() => togglePick("unset")} label="Not set" icon={CircleHelp} accent={split.unset ? "kpi-accent-warn" : undefined} tone={split.unset ? "text-warn-fg" : ""} value={split.unset} sub={split.unset ? "set them to save the day" : "nothing left"} />
+        <PickCard on={pick === "unset"} onClick={() => togglePick("unset")} label="Not set" icon={CircleHelp} accent={split.unset ? "kpi-accent-warn" : undefined} tone={split.unset ? "text-warn-fg" : ""} value={split.unset} sub={split.unset ? "set them to save this department" : "nothing left"} />
         <div className="kpi">
           <span className="kpi-label"><Gauge size={13} aria-hidden />Man-hours</span>
           <span className={`kpi-value block tabnum ${capacityTone}`}>{split.hours}</span>
@@ -277,26 +327,26 @@ export function ShiftRoster({ data, editableDepts, filter }: {
       <div className="toolbar !mb-0 no-print">
         <div className="toolbar-row">
           <div className="segmented" role="group" aria-label="View">
-            <button type="button" aria-pressed={view === "record"} onClick={() => setView("record")}><ClipboardList size={14} aria-hidden className="inline -mt-0.5 me-1" />Record</button>
-            <button type="button" aria-pressed={view === "board"} onClick={() => setView("board")}><LayoutGrid size={14} aria-hidden className="inline -mt-0.5 me-1" />Day / Night board</button>
+            <button type="button" disabled={busy} aria-pressed={view === "record"} onClick={() => setView("record")}><ClipboardList size={14} aria-hidden className="inline -mt-0.5 me-1" />Record</button>
+            <button type="button" disabled={busy} aria-pressed={view === "board"} onClick={() => setView("board")}><LayoutGrid size={14} aria-hidden className="inline -mt-0.5 me-1" />Day / Night board</button>
           </div>
           <span className="toolbar-sep max-sm:hidden" aria-hidden />
           <nav className="seg" aria-label="Line">
-            <button type="button" className={filter === "" ? "on" : ""} aria-pressed={filter === ""} onClick={() => setFilter("")}>Everyone</button>
+            <button type="button" disabled={busy} className={filter === "" ? "on" : ""} aria-pressed={filter === ""} onClick={() => setFilter("")}>Everyone</button>
             {WORKER_GROUPS.map((g) => (
-              <button key={g.key} type="button" className={lineOfFilter === g.key ? "on" : ""} aria-pressed={lineOfFilter === g.key} onClick={() => setFilter(`line:${g.key}`)}>{g.label}</button>
+              <button key={g.key} type="button" disabled={busy} className={lineOfFilter === g.key ? "on" : ""} aria-pressed={lineOfFilter === g.key} onClick={() => setFilter(`line:${g.key}`)}>{g.label}</button>
             ))}
           </nav>
           <FilterSelect label="Section" value={sectionValue} options={sectionOptions} allLabel="All" onChange={(v) => setFilter(v || (lineOfFilter ? `line:${lineOfFilter}` : ""))} />
           <SearchBox value={q} onChange={setQ} placeholder="Search name or badge…" />
           <div className="ms-auto flex flex-wrap items-center gap-2">
             {statusPill}
-            {dirty && <span className="pill pill-warn">unsaved changes</span>}
+            {(view === "record" ? departmentDirty : dirty) && <span className="pill pill-warn">unsaved changes</span>}
             <PrintButton />
             <ExportButton rows={exportRows} filename={`shift-attendance-${data.dateISO}.xlsx`} sheetName="Attendance" />
-            {recordedHere.some(canEdit) && (
-              <button type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={clear.pending} onClick={clearDay}>
-                Clear {filter === "" ? "the day" : filterLabel}
+            {view === "record" && recordedHere.some(canEdit) && (
+              <button type="button" className="btn btn-sm btn-ghost text-bad-fg" disabled={busy} onClick={clearDay}>
+                Clear {departmentName}
               </button>
             )}
           </div>
@@ -357,7 +407,7 @@ export function ShiftRoster({ data, editableDepts, filter }: {
                         const w = byKey.get(keyOf(l))!;
                         const k = keyOf(l);
                         const a = attendanceOf(l);
-                        const ro = !canEdit(l.dept) || save.pending;
+                        const ro = !canEdit(l.dept) || busy;
                         return (
                           <tr key={k} className={a === "unset" ? "bg-warn-bg/25" : a === "absent" ? "bg-surface-2/50" : ""}>
                             <td className="px-2 whitespace-nowrap">
@@ -421,32 +471,33 @@ export function ShiftRoster({ data, editableDepts, filter }: {
 
       {/* saving stays in reach however long the list is — while there is
           something to save: a day not recorded yet, or changes */}
-      {anyEditable && (dirty || unsetEditable > 0 || !allMineRecorded) && (
+      {view === "record" && anyEditable && (
         <div className="sticky bottom-0 z-10 -mx-3 md:-mx-4 border-t bg-surface/95 backdrop-blur ps-3 md:ps-4 pe-20 py-2 no-print">
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className="btn btn-primary" disabled={save.pending || unsetEditable > 0 || (!dirty && allMineRecorded)} onClick={submit} title={unsetEditable > 0 ? "Set every worker first" : undefined}>
-              {save.pending ? "Saving…" : allMineRecorded ? "Save changes" : "Save day"}
+            <button type="button" className="btn btn-primary" disabled={busy || !mine.length || unsetEditable > 0 || (!departmentDirty && allMineRecorded)} onClick={() => submit()} title={unsetEditable > 0 ? `Set every worker in ${departmentName} first` : undefined}>
+              {save.pending ? "Saving…" : !departmentDirty && allMineRecorded ? `${departmentName} saved` : `Save ${departmentName}`}
             </button>
+            {nextDepartment && <button type="button" className="btn btn-secondary" aria-label={!departmentDirty && allMineRecorded ? "Next department" : "Save & next department"} disabled={busy || unsetEditable > 0} onClick={() => submit(true)}>{!departmentDirty && allMineRecorded ? "Next department" : "Save & next"}</button>}
             {bulkTarget.length > 0 && (
               <span className="inline-flex flex-wrap items-center gap-1.5">
                 <span className={`text-sm font-semibold ${unsetInView.length > 0 ? "text-warn-fg" : "text-muted"}`}>
-                  {unsetInView.length > 0 ? `Set ${unsetInView.length} not set to` : `Set ${bulkTarget.length} shown to`}
+                  <span className="sm:hidden">Set {bulkTarget.length}:</span><span className="hidden sm:inline">{unsetInView.length > 0 ? `Set ${unsetInView.length} not set to` : `Set ${bulkTarget.length} shown to`}</span>
                 </span>
                 <span className="att" role="group" aria-label="Set them all">
                   {ATTENDANCES.map((a) => {
                     const Icon = ATT_ICON[a];
-                    return <button key={a} type="button" data-att={a} disabled={save.pending} onClick={() => setBulk(a)}><Icon size={14} aria-hidden />{ATTENDANCE_LABEL[a]}</button>;
+                    return <button key={a} type="button" data-att={a} disabled={busy} onClick={() => setBulk(a)}><Icon size={14} aria-hidden />{ATTENDANCE_LABEL[a]}</button>;
                   })}
                 </span>
               </span>
             )}
             {presentInView.length > 0 && (
-              <button type="button" className="btn btn-sm" disabled={save.pending} onClick={() => patch(new Set(presentInView.map(keyOf)), (l) => ({ overtimeH: allShownOnOt ? 0 : overtimeHoursFor(l.shift, hrs) }))}>
+              <button type="button" className="btn btn-sm" disabled={busy} onClick={() => patch(new Set(presentInView.map(keyOf)), (l) => ({ overtimeH: allShownOnOt ? 0 : overtimeHoursFor(l.shift, hrs) }))}>
                 <Clock3 size={14} aria-hidden />{allShownOnOt ? "Remove OT from the shown" : `Add OT for the ${presentInView.length} shown`}
               </button>
             )}
-            {unsetEditable > unsetInView.length && <span className="pill pill-warn pill-wrap">{unsetEditable - unsetInView.length} more not set outside this view</span>}
-            {dirty && <button type="button" className="btn btn-sm btn-ghost" disabled={save.pending} onClick={() => setDraft(data.lines.map(toDraft))}>Undo changes</button>}
+            {unsetEditable > unsetInView.length && <span className="pill pill-warn pill-wrap">{unsetEditable - unsetInView.length} more not set in {departmentName} outside this view</span>}
+            {departmentDirty && <button type="button" className="btn btn-sm btn-ghost" aria-label={`Undo ${departmentName} changes`} disabled={busy} onClick={() => setDraft((rows) => replaceShiftDepartment(rows, department!, baseline.filter((r) => r.dept === department)))}>Undo changes</button>}
           </div>
         </div>
       )}
