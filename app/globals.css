@@ -111,7 +111,6 @@
   --weld-tint: #dfeaf3;
   --paint-tint: #f3ecdf;
   --dlvd-tint: #ece3f7;
-  --shp-tint: #f3ecdf; /* the core's finishing — same orange as Painting */
   /* the tracker's Fins column: it stands between the specs and the components
      and belongs to neither, so it gets a rose of its own — the one hue none of
      the stage tints, the status pills or the brand green already speak */
@@ -255,7 +254,6 @@ html.dark {
   --weld-tint: #1e2d40;
   --paint-tint: #352e1e;
   --dlvd-tint: #2e263b;
-  --shp-tint: #352e1e; /* the core's finishing — same as Painting */
   --fins-tint: #33232d;
   --fins-fg: #e9a6c6;
   --shift-day-bg: #3b2a1c;
@@ -319,7 +317,6 @@ html.dark {
   --color-weld-tint: var(--weld-tint);
   --color-paint-tint: var(--paint-tint);
   --color-dlvd-tint: var(--dlvd-tint);
-  --color-shp-tint: var(--shp-tint);
   --color-fins-tint: var(--fins-tint);
   --color-fins-fg: var(--fins-fg);
   --color-shift-day-bg: var(--shift-day-bg);
@@ -678,7 +675,6 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
     --weld-tint: #dfeaf3;
     --paint-tint: #f3ecdf;
     --dlvd-tint: #ece3f7;
-    --shp-tint: #f3ecdf;
     --fins-tint: #fae4ee;
     --fins-fg: #9c2f68;
     --shift-day-bg: #ffe8d4;
@@ -810,8 +806,6 @@ html.dark .recharts-legend-item-text { color: #aab5ae !important; }
 
   /* the department-output summary has only a few rows and the whole landscape
      page to breathe — print it big and clear */
-  .print-lg table { font-size: 15px !important; }
-  .print-lg th, .print-lg td { padding: 9px 12px !important; }
 
   /* section headings read as report subtitles on paper */
   main h2 { font-size: 15px !important; color: var(--foreground) !important; margin-bottom: 8px !important; }

@@ -44,7 +44,7 @@ class TankSyncError extends Error {}
 // per-piece layer feeds: the leak-test stage and the barcode sheet.
 // /odoo is on the list because a painting (or shot-blast) record writes its
 // own row on the ODOO tab.
-const RECORD_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report", "/odoo"];
+const RECORD_PATHS = ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/odoo"];
 const TANK_PATHS = [...RECORD_PATHS, "/worklist/leak-test", "/barcode"];
 
 /** Painting a tank now means naming WHICH tank and WHO painted it, and only a
@@ -655,7 +655,7 @@ export async function returnToUpstream(formData: FormData): Promise<RecordResult
       });
       return { id: ret.id, ledgerId: ledger.id };
     });
-    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
+    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace"]) {
       revalidatePath(p);
     }
     await emitEvent({
@@ -699,7 +699,7 @@ export async function redeliverReturn(formData: FormData): Promise<RecordResult>
       return ledger.id;
     });
     if (ledgerId === null) return { ok: false, error: "Already re-delivered." };
-    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace", "/report"]) {
+    for (const p of ["/worklist/cut", "/worklist/welding", "/worklist/painting", "/handover", "/", "/tracker", "/trace"]) {
       revalidatePath(p);
     }
     return { ok: true, ledgerId };

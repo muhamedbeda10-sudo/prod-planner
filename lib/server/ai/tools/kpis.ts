@@ -3,7 +3,7 @@ import { getCockpit, type CockpitData } from "@/lib/server/kpis";
 import { isFloorAction } from "@/lib/domain/kpis";
 import type { ReadTool } from "./types";
 
-// The planner's KPIs for the assistant — exactly what the Planning cockpit
+// The planner's KPIs for the assistant — exactly what the Cockpit
 // shows, from the same loader, so an answer never disagrees with the page.
 
 const r2 = (n: number | null | undefined) => (n === null || n === undefined ? null : Math.round(n * 100) / 100);
@@ -13,11 +13,11 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
   name: "get_kpis",
   title: "Reading the planning cockpit",
   description:
-    "The planner's KPIs as the Planning cockpit (the home page, /) shows them, all in STANDARD HOURS (what the work is worth, never pieces) — the transformers only: " +
+    "The planner's KPIs as the Cockpit (the home page, /, a view of Plan Tracker) shows them, all in STANDARD HOURS (what the work is worth, never pieces) — the transformers only: " +
     "the decisions it flags today; the newest weekly plan — each stage's pieces due by today against done (adherence), and the lines behind with the stage they are stuck at; " +
     "each work centre (laser / punch, bending, fin folding, welding, shot blast, painting) — earned std-hours against the man-hours the shift log booked there (efficiency, 100% = the standard pace) on the last recorded day and over the recent recorded days, people a day, machine availability, the daily trend, and Fabrication's three centres together; " +
     "the load ahead — each centre's remaining plan hours over the next 10 working days against what it can work (falling behind and when it catches up, or short at the end; not measured without booked hours); " +
-    "welding coverage — days of cut parts waiting in front of the welders; the losses — machine stops by cause, absence and overtime; and the daily trend of these. " +
+    "welding coverage — days of cut parts waiting in front of the welders; the month's manpower — the people each centre needs for the month's plan (its standard hours over the working days × the net hours a person works) and from today for what is left, against the people who come; the losses — machine stops by cause, absence and overtime; and the daily trend of these. " +
     "Read it first for any question about how the plant is doing, its KPIs, efficiency, capacity or the morning's priorities. " +
     "For a person the Shifts screen is closed to, the shift log's figures (the centres, the losses) are left out.",
   schema: { type: "object", properties: {}, additionalProperties: false },
@@ -64,13 +64,20 @@ export const getKpisTool: ReadTool<Record<string, never>> = {
           centre: l.centre, measured: l.measured, loadRate: r2(l.loadRate), behindH: l.behindH, shortFrom: l.shortFromISO, clears: l.clearsISO, shortAtEndH: l.shortH,
           days: l.days.map((d) => ({ day: d.dayISO, dueH: d.dueH, capacityH: l.measured ? d.capacityH : null })),
         })),
+        manpower: {
+          month: c.manpower.monthLabel, workingDays: c.manpower.monthWd, workingDaysLeft: c.manpower.leftWd, hoursPerPersonDay: c.manpower.hoursPerPersonDay, transformersPlanned: c.manpower.pieces,
+          centres: c.manpower.rows.map((m) => ({
+            centre: m.centre, requiredH: m.requiredH, doneH: m.doneH, leftH: m.leftH, peopleNeeded: m.needed, peopleNeededFromToday: m.neededNow,
+            ...(floor ? { peoplePresent: m.present, gap: m.gap } : {}),
+          })),
+        },
         weldingCoverage: {
           days: c.coverage.days, band: c.coverage.band, waitingWeldH: c.coverage.wipH, weldEarnedADay: c.coverage.ratePerDay,
           byItem: c.coverage.byItem.map((b) => ({ item: b.item, pcs: b.pcs, weldH: b.weldH })),
         },
         trend: c.trend.map(pt),
       }),
-      links: [{ label: "Planning cockpit", href: "/" }],
+      links: [{ label: "Cockpit", href: "/" }],
     };
   },
 };

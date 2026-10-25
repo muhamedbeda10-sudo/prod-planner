@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  byStage, centreStat, cockpitActions, combinedStat, workingDaysFrom, earnedOfRecord, efficiencyBand, isFloorAction, lateLines, loadAhead, loadTone, parseKpiSnapshot,
+  byStage, centreStat, cockpitActions, combinedStat, workingDaysFrom, earnedOfRecord, efficiencyBand, inMonthPlan, isFloorAction, lateLines, loadAhead, loadTone, manpowerPlan, parseKpiSnapshot,
   planAdherence, stageDueISO, weldingCoverage, zeroCentres, type CentreDay, type PlanCell,
 } from "./kpis";
 
@@ -145,6 +145,46 @@ describe("what to do today", () => {
     expect(a).toHaveLength(6);
     // the shift log's own — a slow centre, the top loss — are marked for the people who see Shifts
     expect(a.map(isFloorAction)).toEqual([false, false, false, false, true, true]);
+  });
+});
+
+describe("the month's manpower", () => {
+  const cal = { hoursPerPersonDay: 8, monthWd: 25, leftWd: 10 };
+  it("turns the plan's hours into people over the month's working days, and what is left into people from today", () => {
+    const [w] = manpowerPlan([{ centre: "Welding", requiredH: 4000, doneH: 2000, present: 20 }], cal);
+    // 4000 h over 25 days × 8 h = 20 people; 2000 h left over 10 days × 8 h = 25 people → 5 short
+    expect(w).toMatchObject({ requiredH: 4000, doneH: 2000, leftH: 2000, needed: 20, neededNow: 25, present: 20, gap: -5, tone: "bad" });
+  });
+  it("reads a spare crew as ok, a fraction short as a warning, and judges nothing without people or days", () => {
+    const rows = manpowerPlan([
+      { centre: "Bending", requiredH: 800, doneH: 800, present: 4 },
+      { centre: "Fins", requiredH: 1000, doneH: 736, present: 3 },
+      { centre: "Painting", requiredH: 500, doneH: 0, present: null },
+    ], cal);
+    expect(rows[0]).toMatchObject({ leftH: 0, neededNow: 0, gap: 4, tone: "ok" });
+    expect(rows[1]).toMatchObject({ neededNow: 3.3, gap: -0.3, tone: "warn" });
+    expect(rows[2]).toMatchObject({ needed: 2.5, neededNow: 6.3, gap: null, tone: null });
+    // the month's working days over: nothing is needed "from today"
+    expect(manpowerPlan([{ centre: "Welding", requiredH: 100, doneH: 0, present: 2 }], { ...cal, leftWd: 0 })[0]).toMatchObject({ neededNow: null, gap: null });
+    // done past the plan never reads as negative hours left
+    expect(manpowerPlan([{ centre: "Welding", requiredH: 100, doneH: 150, present: 2 }], cal)[0].leftH).toBe(0);
+  });
+  it("puts an order on the month's plan when tagged with the month and open, or closed within it", () => {
+    const month = "October 2026", start = "2026-10-01";
+    expect(inMonthPlan({ months: "September 2026,October 2026", source: null, status: "open", closedDayISO: null }, month, start)).toBe(true);
+    expect(inMonthPlan({ months: "", source: "October 2026", status: "open", closedDayISO: null }, month, start)).toBe(true);
+    expect(inMonthPlan({ months: "September 2026", source: null, status: "open", closedDayISO: null }, month, start)).toBe(false);
+    expect(inMonthPlan({ months: "October 2026", source: null, status: "closed", closedDayISO: "2026-10-03" }, month, start)).toBe(true);
+    expect(inMonthPlan({ months: "October 2026", source: null, status: "closed", closedDayISO: "2026-09-30" }, month, start)).toBe(false);
+  });
+  it("names the centres short of people among the decisions, the shortest first", () => {
+    const a = cockpitActions({
+      late: [], coverage: { wipH: 0, ratePerDay: 0, days: null, band: null, byItem: [] }, load: [], centres: [], topLoss: null, todayRecorded: true, ddmm: (iso) => iso,
+      manpower: manpowerPlan([{ centre: "Welding", requiredH: 4000, doneH: 2000, present: 20 }, { centre: "Fins", requiredH: 1000, doneH: 0, present: 2 }, { centre: "Cutting", requiredH: 100, doneH: 0, present: 5 }], cal),
+    });
+    expect(a).toHaveLength(1);
+    expect(a[0]).toMatchObject({ tone: "bad", floor: true });
+    expect(a[0].text).toBe("Fin folding, Welding are short of people for the month's plan — Fin folding needs 11 more from today to finish it.");
   });
 });
 

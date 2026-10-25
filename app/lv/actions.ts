@@ -19,7 +19,7 @@ import { LV_ITEM, LV_STAGES, isLvChainStage, lvChainError, lvDeptPermKey, lvGrou
 // lower total is a negative correction, and the chain guard refuses what
 // the stages before or after would contradict.
 
-const PATHS = ["/tracker", "/handover", "/", "/report", "/worklist/punching", "/worklist/bending", "/worklist/welding", "/worklist/painting", "/simulate", "/odoo"];
+const PATHS = ["/tracker", "/handover", "/", "/worklist/punching", "/worklist/bending", "/worklist/welding", "/worklist/painting", "/simulate", "/odoo"];
 
 interface Result { ok: boolean; error?: string }
 

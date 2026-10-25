@@ -18,6 +18,7 @@ describe("withoutFloor", () => {
       fabrication: { workedH: 300, earnedH: 240, efficiency: 0.8 },
       load: [{ centre: "Welding", measured: true, days: [], loadRate: 0.7, behindH: 0, shortFromISO: null, clearsISO: null, shortH: 0 }],
       coverage: { wipH: 30, ratePerDay: 10, days: 3, band: "ok", byItem: [] },
+      manpower: { monthLabel: "October 2026", monthWd: 25, leftWd: 5, hoursPerPersonDay: 8, pieces: 120, rows: [{ centre: "Welding", requiredH: 4000, doneH: 3000, leftH: 1000, needed: 20, neededNow: 25, present: 22, gap: -3, tone: "bad" }] },
       losses: { causes: [{ code: "MECH", label: "Breakdown", planned: false, hours: 3, stops: 1, share: 1 }], unplannedH: 3, plannedH: 0, absentRate: 0.1, overtimeH: 12, fromISO: "2026-10-18" },
       pricedShare: 0.9,
       actions: [{ tone: "bad", text: "plan", href: "/tracker" }, { tone: "warn", text: "slow", href: "/shifts", floor: true }],
@@ -32,6 +33,7 @@ describe("withoutFloor", () => {
     expect(out.actions.map((a) => a.text)).toEqual(["plan"]);
     expect(out.trend[0]).toMatchObject({ efficiency: {}, unplannedH: null, coverageDays: 3, adherence: { cut: 1 } });
     expect(out.snapshot.efficiency).toEqual({});
+    expect(out.manpower.rows[0]).toMatchObject({ requiredH: 4000, needed: 20, neededNow: 25, present: null, gap: null, tone: null });
     expect(out.load).toBe(c.load);
     expect(out.coverage).toBe(c.coverage);
     expect(JSON.stringify(out)).not.toContain("Breakdown");

@@ -45,7 +45,6 @@ export async function setTankTracking(formData: FormData): Promise<SettingsActio
     "/handover",
     "/tracker",
     "/trace",
-    "/report",
     "/",
   ]) {
     revalidatePath(p);

@@ -1,10 +1,11 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { factoryDayISO, toISODate } from "@/lib/domain/dates";
+import { factoryDayISO, monthLabelFromInput, toISODate } from "@/lib/domain/dates";
 import { addDaysISO } from "@/lib/domain/dateSlicer";
 import { formatDate } from "@/lib/domain/format";
 import { LV_ITEM } from "@/lib/domain/lv";
-import { isPaintExempt, type Item } from "@/lib/domain/constants";
+import { applicableItems, isPaintExempt, ospOf, type Item } from "@/lib/domain/constants";
+import { workingDaysInclusive } from "@/lib/domain/insights";
 import { itemCentreHoursFor, tierForOrder } from "@/lib/domain/stdEngine";
 import {
   DEFAULT_SHIFT, DEPT_CENTRES, WORK_CENTRES, centreOf, deptCentre, isShiftCode, lineHours, machineWorkCentre, round1, type WorkCentre,
@@ -14,9 +15,9 @@ import { parseWorkerSections } from "@/lib/domain/workers";
 import { downtimeByCause, type DowntimeCause } from "@/lib/domain/downtime";
 import { FACTOR_MAX, FACTOR_MIN, MIN_CALIBRATION_DAYS } from "@/lib/domain/calibration";
 import {
-  centreStat, cockpitActions, combinedStat, earnedOfRecord, isFloorAction, lateLines, loadAhead, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
+  centreStat, cockpitActions, combinedStat, earnedOfRecord, inMonthPlan, isFloorAction, lateLines, loadAhead, manpowerPlan, parseKpiSnapshot, planAdherence, stageDueISO, weldingCoverage, workingDaysFrom, zeroCentres,
   type CentreDay, type CentreHours, type CentreStat, type CockpitAction, type Coverage, type CoverageInput, type KpiSnapshotData, type KpiSnapshotPoint,
-  type LateLine, type LoadAhead, type PlanCell, type Stage, type StageAdherence,
+  type LateLine, type LoadAhead, type ManpowerRow, type PlanCell, type Stage, type StageAdherence,
 } from "@/lib/domain/kpis";
 import { getStdData } from "./standardTimes";
 import { getSettings, getShiftHours } from "./data";
@@ -77,6 +78,18 @@ export interface CockpitData {
   fabrication: { workedH: number; earnedH: number; efficiency: number | null };
   load: LoadAhead[];
   coverage: Coverage;
+  /** The month's plan in people: what it needs at each centre against who comes. */
+  manpower: {
+    monthLabel: string;
+    /** Working days in the month, and those left from today. */
+    monthWd: number;
+    leftWd: number;
+    /** Net hours one person works a day — the day shift less its break (Settings). */
+    hoursPerPersonDay: number;
+    /** Transformers the month's plan asks for. */
+    pieces: number;
+    rows: ManpowerRow[];
+  };
   losses: {
     causes: DowntimeCause[];
     unplannedH: number;
@@ -354,9 +367,66 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   };
 
   const recentStats = centres.map((c) => c.recent);
+
+  // ---- the month's plan in people ----
+  // the orders of this month's plan: each one's components × its pieces, the
+  // outsourced ones left out, priced at the order's class; what the ledger
+  // earned on them since the month began is done
+  const monthStartISO = `${todayISO.slice(0, 7)}-01`;
+  const [y, m] = todayISO.split("-").map(Number);
+  const monthEndISO = toISODate(new Date(Date.UTC(y, m, 0)));
+  const monthLabel = monthLabelFromInput(todayISO.slice(0, 7)) ?? todayISO.slice(0, 7);
+  const monthOrders = orders.filter((o) => inMonthPlan({ months: o.months, source: o.source, status: o.status, closedDayISO: o.closedAt ? factoryDayISO(o.closedAt) : null }, monthLabel, monthStartISO));
+  const requiredH = zeroCentres();
+  let monthPieces = 0;
+  for (const o of monthOrders) {
+    monthPieces += o.planQty;
+    for (const item of applicableItems(o)) {
+      const qty = Math.max(0, o.planQty - ospOf(o, item));
+      const per = perPiece(tierOf(o.mo, o.bom), item);
+      if (!per || !(qty > 0)) continue;
+      for (const c of WORK_CENTRES) requiredH[c] += per[c] * qty;
+    }
+  }
+  // done = everything ever earned on the month's orders (an order carried over
+  // from last month brings its work along, as its pieces are counted whole);
+  // a row the Daily log's form recorded without an order number counts when
+  // its project has no other open order it could belong to, this month on
+  const monthMos = monthOrders.map((o) => o.mo);
+  const monthMoSet = new Set(monthMos);
+  const soleBoms = [...new Set(monthOrders.map((o) => o.bom))].filter((bom) => orders.every((o) => o.bom !== bom || o.status !== "open" || monthMoSet.has(o.mo)));
+  const monthLedger = monthMos.length
+    ? await prisma.handoverEntry.findMany({
+      where: {
+        item: { not: LV_ITEM },
+        OR: [
+          { mo: { in: monthMos } },
+          { date: { gte: dayStart(monthStartISO) }, bom: { in: soleBoms }, OR: [{ mo: null }, { mo: "" }] },
+        ],
+      },
+      select: { dept: true, mo: true, bom: true, item: true, qty: true },
+    })
+    : [];
+  const doneH = zeroCentres();
+  for (const e of monthLedger) {
+    const got = earnedOfRecord(e.dept, e.qty, perPiece(tierOf(e.mo, e.bom), e.item));
+    for (const c of WORK_CENTRES) doneH[c] += got[c];
+  }
+  const cal = { hoursPerPersonDay: settings.shiftShortH, monthWd: workingDaysInclusive(monthStartISO, monthEndISO, holidaySet), leftWd: workingDaysInclusive(todayISO, monthEndISO, holidaySet) };
+  const manpower = {
+    monthLabel, ...cal, pieces: monthPieces,
+    rows: manpowerPlan(
+      WORK_CENTRES.map((c) => {
+        const k = centres.find((x) => x.centre === c)!;
+        return { centre: c, requiredH: requiredH[c], doneH: doneH[c], present: k.recent.days > 0 ? k.recent.people : null };
+      }),
+      cal,
+    ),
+  };
+
   const topLoss = loss.causes.find((c) => !c.planned) ?? null;
   const actions = cockpitActions({
-    late, lateCount: late.length, coverage, load, centres: recentStats,
+    late, lateCount: late.length, coverage, load, centres: recentStats, manpower: manpower.rows,
     topLoss: topLoss ? { label: topLoss.label, hours: topLoss.hours } : null,
     todayRecorded: recordedDates.includes(todayISO),
     ddmm: (iso) => formatDate(iso),
@@ -389,6 +459,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
     fabrication: combinedStat(recentStats.filter((s) => (DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(s.centre))),
     load,
     coverage,
+    manpower,
     losses,
     pricedShare: recentQty > 0 ? pricedQty / recentQty : null,
     actions,
@@ -420,6 +491,7 @@ export function withoutFloor(c: CockpitData): CockpitData {
     fabrication: { workedH: 0, earnedH: 0, efficiency: null },
     losses: { causes: [], unplannedH: 0, plannedH: 0, absentRate: null, overtimeH: 0, fromISO: null },
     pricedShare: null,
+    manpower: { ...c.manpower, rows: c.manpower.rows.map((r) => ({ ...r, present: null, gap: null, tone: null })) },
     actions: c.actions.filter((a) => !isFloorAction(a)),
     snapshot: { ...c.snapshot, efficiency: {}, unplannedH: null },
     trend: c.trend.map((t) => ({ ...t, efficiency: {}, unplannedH: null })),

@@ -34,10 +34,9 @@ export const TABS: TabDef[] = [
   { id: "chat", label: "Chat", group: "Production", paths: ["/chat"] },
 
   // the id stays "dashboard": an account the home page was switched off for keeps it off
-  { id: "dashboard", label: "Planning cockpit (home)", group: "Plan Tracker", paths: ["/"] },
+  { id: "dashboard", label: "Cockpit (home)", group: "Plan Tracker", paths: ["/"] },
   { id: "tracker", label: "Plan Tracker", group: "Plan Tracker", paths: ["/tracker"] },
   { id: "handover", label: "Daily log", group: "Plan Tracker", paths: ["/handover"] },
-  { id: "report", label: "Report", group: "Plan Tracker", paths: ["/report"] },
   // the id stays "simulate": an account the Floor / Simulator tab was switched off for keeps the simulator off
   { id: "simulate", label: "What-if Simulator", group: "Plan Tracker", paths: ["/simulate"] },
 
@@ -84,7 +83,7 @@ export function canSeePath(hidden: ReadonlySet<string>, pathname: string): boole
 /** Where to send someone whose screen is off: the first one they see, in
  *  the order the menu reads; null when every one is off. */
 export function firstVisiblePath(hidden: ReadonlySet<string>): string | null {
-  const order = ["tracker", "dashboard", "material", "odoo", "consumables", "handover", "report", "analytics", "simulate", "shifts", "barcode", "chat"];
+  const order = ["tracker", "dashboard", "material", "odoo", "consumables", "handover", "analytics", "simulate", "shifts", "barcode", "chat"];
   const pick = [...order.map((id) => TABS.find((t) => t.id === id)!), ...TABS].find((t) => !hidden.has(t.id));
   return pick ? pick.paths[0] : null;
 }

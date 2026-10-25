@@ -21,7 +21,7 @@ export interface ShiftActionResult {
   error?: string;
 }
 
-const PATHS = ["/shifts", "/admin/standard-times", "/report", "/tracker", "/"];
+const PATHS = ["/shifts", "/admin/standard-times", "/tracker", "/"];
 
 function revalidate() {
   for (const p of PATHS) revalidatePath(p);

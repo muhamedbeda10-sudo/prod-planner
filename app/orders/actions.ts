@@ -32,7 +32,7 @@ export async function setOrderStatus(formData: FormData): Promise<{ ok: boolean;
     where: { mo: { in: orders.map((o) => o.mo) } },
     data: { status, closedAt: status === "closed" ? new Date() : null },
   });
-  for (const p of ["/tracker", "/orders", "/worklist/cut", "/report", "/trace"]) revalidatePath(p);
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/trace"]) revalidatePath(p);
   const done = orders.map((o) => o.mo);
   await emitEvent({
     type: status === "closed" ? "order.closed" : "order.reopened",
@@ -56,7 +56,7 @@ export async function setOrderQty(formData: FormData): Promise<{ ok: boolean; er
   const order = await prisma.masterOrder.findUnique({ where: { mo } });
   if (!order) return { ok: false, error: `MO ${mo} not found.` };
   await prisma.masterOrder.update({ where: { mo }, data: { planQty: qty } });
-  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/trace", "/"]) revalidatePath(p);
   return { ok: true };
 }
 
@@ -95,7 +95,7 @@ export async function decidePlanQty(formData: FormData): Promise<{ ok: boolean; 
       })
     )
   );
-  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/trace", "/"]) revalidatePath(p);
   return { ok: true, done: orders.length };
 }
 
@@ -236,7 +236,7 @@ export async function setOrderPriority(formData: FormData): Promise<{ ok: boolea
   return { ok: true };
 }
 
-const HOLD_PATHS = ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/report", "/trace", "/simulate"];
+const HOLD_PATHS = ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/trace", "/simulate"];
 
 /** tracker.status — put an order ON HOLD, or release it. A held order stays
  *  open on the tracker (tinted, with the reason) and leaves every worklist
@@ -377,7 +377,7 @@ export async function setExcludedItems(formData: FormData): Promise<{ ok: boolea
   const order = await prisma.masterOrder.findUnique({ where: { mo } });
   if (!order) return { ok: false, error: `MO ${mo} not found.` };
   await prisma.masterOrder.update({ where: { mo }, data: itemOverrides(order, needed) });
-  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/trace", "/"]) revalidatePath(p);
   return { ok: true };
 }
 
@@ -477,7 +477,7 @@ export async function deleteOrders(formData: FormData): Promise<{ ok: boolean; e
     prisma.masterOrder.deleteMany({ where: { mo: { in: keys } } }),
   ]);
 
-  for (const p of ["/orders", "/tracker", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
+  for (const p of ["/orders", "/tracker", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/trace", "/"]) revalidatePath(p);
   return { ok: true, deleted: keys.length, keptLedgerRows: loggedRows };
 }
 
@@ -512,7 +512,7 @@ export async function closeDeliveredOrders(): Promise<{ ok: boolean; error?: str
     where: { mo: { in: done.map((o) => o.mo) } },
     data: { status: "closed", closedAt: at },
   });
-  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/report", "/trace", "/"]) revalidatePath(p);
+  for (const p of ["/tracker", "/orders", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/trace", "/"]) revalidatePath(p);
   return { ok: true, closed: done.length, mos: done.map((o) => o.mo) };
 }
 
@@ -564,6 +564,6 @@ export async function updateOrder(formData: FormData): Promise<{ ok: boolean; er
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
-  for (const p of ["/orders", "/tracker", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/report", "/trace", "/"]) revalidatePath(p);
+  for (const p of ["/orders", "/tracker", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/punching", "/worklist/bending", "/trace", "/"]) revalidatePath(p);
   return { ok: true };
 }

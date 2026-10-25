@@ -26,14 +26,13 @@ oven−2, Welding = oven−1 (Lists!J2:J3). Daily capacity 27 per item per dept 
 "Done" everywhere = Welding output; Cut gates Welding.
 
 ## Navigation
-Tabs, one per QUESTION rather than per screen — Worklist · Cockpit · Material · ODOO · Consumables · Shifts ·
-Plan Tracker. The home page (`/`) is the **Cockpit**, the planner's one page across departments
-(feature 13; on the LV line it is the panels' own dashboard); otherwise each dashboard lives with what it
-reads. Two tabs
+Tabs, one per QUESTION rather than per screen — Worklist · Material · ODOO · Consumables · Shifts ·
+Plan Tracker. There is no Dashboard tab: each dashboard lives with what it reads. Two tabs
 hold several views behind their own switcher (`components/ViewTabs.tsx`): **Plan Tracker** carries the
-tracker, the **Daily log** it adds up, the printed **Report** of that log and the **What-if Simulator** the plan is
-tried out on (`/simulate`, transformers only); **Material** the nesting sheets and the sheet **Analytics** built on them.
-Two things left the strip entirely: **chat** is the icon in the nav's
+**Cockpit** (`/`, the home page — the planner's one page across departments, feature 13; on the LV line
+it is the panels' own dashboard), the tracker, the **Daily log** it adds up and the **What-if Simulator** the
+plan is tried out on (`/simulate`, transformers only); **Material** the nesting sheets and the sheet
+**Analytics** built on them. Two things left the strip entirely: **chat** is the icon in the nav's
 right cluster, opening a panel over whatever page you are on (a glance, not a destination — its
 bundle is fetched only on first open), and the **barcode sheet** is a button on the painting
 worklist, where the tanks it prints for finish. In Admin the two plan imports share one page. The
@@ -82,12 +81,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    job, cut and left, which machines hold the rest, every project's part on the sheets, the note and every ✓
    (when, which machine, how many, by whom), with ✓, ✎ Edit and ⧉ Duplicate beside them. Closing sheets records no
    pieces in the plan — those are recorded on the weekly plan below. A machine's load there reads in sheets.
-5. **Daily report** (`/report`, a view of the Plan Tracker tab; it covers
-   ONE day or any period through its From→To picker, with the capacity its efficiency is measured
-   against scaled to the working days the range really spans) — dept output, complete sets, efficiency/balance %,
-   projects worked today, tracker snapshot, charts. How the plan is doing overall is the home page's — the
-   Planning cockpit (feature 13).
-5b. **Fabrication analytics** (`/analytics`, a view of the Material tab) — the floor read in SHEETS instead of pieces, because a piece is
+5. **Fabrication analytics** (`/analytics`, a view of the Material tab) — the floor read in SHEETS instead of pieces, because a piece is
    not a unit of work: a tank cut from four sheets and one cut from half a sheet are both "1". Every daily-log
    cut record is converted through its BOM's bill of sheets off the Material tab, over a 30/60/90-day or
    all-time window. Sheets and tonnes cut, per day and in total; the thickness mix (which decides what a job
@@ -196,7 +190,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
    through); a typed figure replaces it in the standard-hours engine itself (`lib/domain/stdEngine.ts`), so
    every earned hour, efficiency, calibration, load and capacity figure in the app is priced with it — and
    an item the timings sheet never priced (AR, MB) gets hours at last. The assistant sets them with
-   `set_centre_hours`.
+   `set_centre_hours`. The three Fabrication centres come pre-typed for every class from the plant's manpower
+   sheet (laser 1.99 h, bending 2.45 h, fin folding 4.1 h a 500 kVA transformer, spread over the components
+   and the classes in the estimate's proportions; migration `20261025180000`), set by "Manpower plan sheet" —
+   clear a cell to fall back to the estimate.
    **Times per machine** (Tools → Times per Machine, `machines.manage`): what ONE piece of each item really
    takes on each machine, in hours. A figure here **outranks the standard time** for that machine — its queue
    on the board is priced with it and the machine plan schedules with it, so a 6 kW laser and a punch stop being planned
@@ -415,7 +412,7 @@ mobile drawer still lists every view flat, since it has the vertical room.
    - **Playbook** (`/ai/playbook`): how this plant works, told to the assistant with every question; admins keep it there or
      through the assistant.
 
-13. **Planning cockpit** (`/`, the home page, in place of the old plan dashboard; the transformers only — on the
+13. **Planning cockpit** (`/`, the home page, a view of the Plan Tracker tab; the transformers only — on the
    LV line the home page is the panels' own dashboard) — the planner's one page, every figure in **standard hours**
    (what the work is worth, from the hours a piece per work centre — typed, else the estimate), so Fabrication's
    ten projects a day add up and departments compare. On top, what needs a decision today (lines behind, a centre
@@ -426,9 +423,13 @@ mobile drawer still lists every view flat, since it has the vertical room.
    there — efficiency on the last recorded day and over the recent ones, people a day, machine availability, the
    trend; **3** the load ahead — each centre's remaining plan hours over the next 10 working days against what it
    can work (its usual man-hours × its measured pace — "not measured" while no hours are booked there); **4** welding coverage — days of cut parts waiting in front of
-   the welders; **5** what stopped the floor — machine stops by cause, absence and overtime. Each card has its
+   the welders; **5** what stopped the floor — machine stops by cause, absence and overtime; and **the month in
+   people** — each centre's standard hours for the month's plan (its orders' components × pieces, outsourced ones
+   left out) over the month's working days × the net hours a person works (Settings) give the people it needs, what
+   is left over the days still to come the people needed from today, against who comes on an average recorded day
+   (the plant's manpower sheet, read live). Each card has its
    table and Excel export; the page prints. An account the Shifts screen is closed to sees neither the centres'
-   efficiency nor the losses (questions 2 and 5) — on the page or through the assistant. The day's figures are kept for their trend
+   efficiency, nor the losses, nor who is present (questions 2 and 5, and the people card's Present and Gap) — on the page or through the assistant. The day's figures are kept for their trend
    (`KpiSnapshot`): after the page is served, and each hour by the automations' housekeeping. The
    pure arithmetic is `lib/domain/kpis.ts` (tested); the loader `lib/server/kpis.ts` is the one both the page and
    the assistant's `get_kpis` read — the morning review starts from it. The calibration reads the ledger through
@@ -438,24 +439,20 @@ mobile drawer still lists every view flat, since it has the vertical room.
 
 ## Validation against the workbook
 The pure logic is checked cell-for-cell against the workbook's own computed sheets:
-- **Daily Report** dept output: **exact match** (Cut & Welding — complete sets, efficiency, balance).
 - **Plan Tracker**: **35/39 rows match exactly**. The remaining 4 are **stale cached values in the
   workbook** — e.g. `14002E13M13` shows nonzero on the Plan Tracker sheet but has **zero** handover
   rows in the log (the sheet is a snapshot from an earlier handover state). Our compute produces the
-  correct fresh values. See `scripts/validate-tracker.mjs` and `scripts/validate-report.mjs`.
+  correct fresh values. See `scripts/validate-tracker.mjs`.
 
 ## Key nuances faithfully replicated
 - **`BomGroup` merges** same base + same M-number (`12011E13M12`/`E14`/`E16` → `12011|M12`) and is
-  used by the **worklists, report, and reallocation** — but **NOT by the Plan Tracker**, which groups
+  used by the **worklists and reallocation** — but **NOT by the Plan Tracker**, which groups
   by RAW BOM. So those three codes are ONE row in a worklist and THREE rows in the tracker, exactly
   like the VBA. (`lib/domain/bom.ts`, `tracker.ts`)
 - **Excel serial dates** convert correctly (46211 = 08/07/2026).
 - **`ParseBalance`** splits digit↔letter in **both** directions (the spec's fix over the VBA).
 
 ## Notes / deviations
-- **PDF**: the daily report is print-optimized (3 page-break sections) with a “طباعة / حفظ PDF”
-  button (browser print-to-PDF). A dedicated server-side PDF route (`@react-pdf/renderer`) is a
-  documented follow-up.
 - **Reallocation** is an explicit approve/reject transaction layer rather than silent log mutation.
 
 ## Layout

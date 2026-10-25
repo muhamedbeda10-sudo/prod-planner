@@ -11,7 +11,7 @@ export interface ActionResult {
 }
 
 function revalidate() {
-  for (const p of ["/calendar", "/", "/report"]) revalidatePath(p);
+  for (const p of ["/calendar", "/"]) revalidatePath(p);
 }
 
 export async function addHoliday(formData: FormData): Promise<ActionResult> {

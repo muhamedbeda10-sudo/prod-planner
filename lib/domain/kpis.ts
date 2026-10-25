@@ -316,6 +316,80 @@ export function loadAhead(centre: WorkCentre, days: readonly string[], due: read
   };
 }
 
+// ------------------------------------------------------------------ manpower
+
+export interface ManpowerInput {
+  centre: WorkCentre;
+  /** Std-hours the month's plan asks of the centre, outsourced pieces left out. */
+  requiredH: number;
+  /** Std-hours of that plan the centre has earned since the month began. */
+  doneH: number;
+  /** People present on an average recorded day lately; null while none is recorded. */
+  present: number | null;
+}
+
+export interface ManpowerRow {
+  centre: WorkCentre;
+  requiredH: number;
+  doneH: number;
+  leftH: number;
+  /** People the month's plan needs on an average working day of the month. */
+  needed: number | null;
+  /** People what is left needs on each remaining working day — null once the month's working days are over. */
+  neededNow: number | null;
+  present: number | null;
+  /** present − neededNow: people to spare (+) or short (−); null while either side is unknown. */
+  gap: number | null;
+  tone: "ok" | "warn" | "bad" | null;
+}
+
+export interface ManpowerCalendar {
+  /** Net hours one person works on a day (the day shift less its break). */
+  hoursPerPersonDay: number;
+  /** Working days in the month, and those left from today (today included). */
+  monthWd: number;
+  leftWd: number;
+}
+
+/** Whether an order is on a month's plan: tagged with the month (the plans it
+ *  appeared in, else the one that first brought it) and still open, or closed
+ *  within the month — its work was the month's. */
+export function inMonthPlan(o: { months: string; source: string | null; status: string; closedDayISO: string | null }, monthLabel: string, monthStartISO: string): boolean {
+  const months = (o.months || o.source || "").split(",").map((s) => s.trim());
+  if (!months.includes(monthLabel)) return false;
+  return o.status === "open" || (o.closedDayISO !== null && o.closedDayISO >= monthStartISO);
+}
+
+/** Short by half a person or more is a deficit to act on; a fraction is the rounding of a crew. */
+const MANPOWER_SHORT = 0.5;
+
+/** The manpower plan: the month's required standard hours turned into people,
+ *  against who comes — the plant's "required vs available manpower" sheet,
+ *  read live. The plan's hours are divided over the working days a person
+ *  works, so a month with a holiday needs more people a day, not fewer. */
+export function manpowerPlan(rows: readonly ManpowerInput[], cal: ManpowerCalendar): ManpowerRow[] {
+  const perPersonMonth = cal.hoursPerPersonDay * cal.monthWd;
+  const perPersonLeft = cal.hoursPerPersonDay * cal.leftWd;
+  return rows.map((r) => {
+    const leftH = Math.max(0, r.requiredH - r.doneH);
+    const needed = perPersonMonth > 0 ? r.requiredH / perPersonMonth : null;
+    const neededNow = perPersonLeft > 0 ? leftH / perPersonLeft : null;
+    // judged on the figure shown, so "−0.5" never reads in two colours
+    const gap = r.present !== null && neededNow !== null ? round1(r.present - neededNow) : null;
+    return {
+      centre: r.centre,
+      requiredH: round1(r.requiredH),
+      doneH: round1(r.doneH),
+      leftH: round1(leftH),
+      needed: needed === null ? null : round1(needed),
+      neededNow: neededNow === null ? null : round1(neededNow),
+      present: r.present,
+      gap,
+      tone: gap === null ? null : gap <= -MANPOWER_SHORT ? "bad" : gap < 0 ? "warn" : "ok",
+    };
+  });
+}
+
 // ------------------------------------------------------------------ what to do
 
 export type ActionTone = "bad" | "warn" | "info";
@@ -342,6 +416,8 @@ export interface ActionInputs {
   topLoss: { label: string; hours: number } | null;
   todayRecorded: boolean;
   ddmm: (iso: string) => string;
+  /** The month's manpower plan, when the cockpit has one. */
+  manpower?: readonly ManpowerRow[];
 }
 
 /** The few things that need a decision today, worst first — each from a
@@ -367,6 +443,12 @@ export function cockpitActions(i: ActionInputs): CockpitAction[] {
     out.push({ tone: "bad", href: "/worklist/cut", text: `Welding has only ${i.coverage.days} day(s) of cut parts in front of it${top ? ` — cut ${top.item} next` : ""}.` });
   } else if (i.coverage.band === "heavy") {
     out.push({ tone: "warn", href: "/worklist/welding", text: `${i.coverage.days} days of cut parts are waiting for welding — Fabrication is far ahead; welding is the constraint.` });
+  }
+  // people short of the month's plan: one line for all of them, the shortest named
+  const short = (i.manpower ?? []).filter((m) => m.tone === "bad").sort((a, b) => (a.gap ?? 0) - (b.gap ?? 0));
+  if (short.length > 0) {
+    const top = short[0];
+    out.push({ tone: "bad", href: "/shifts", floor: true, text: `${short.map((m) => WORK_CENTRE_LABEL[m.centre]).join(", ")} ${short.length > 1 ? "are" : "is"} short of people for the month's plan — ${WORK_CENTRE_LABEL[top.centre]} needs ${Math.ceil(-(top.gap ?? 0))} more from today to finish it.` });
   }
   for (const c of i.centres) {
     if (c.days >= 3 && efficiencyBand(c.efficiency) === "bad") {

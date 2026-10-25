@@ -43,6 +43,10 @@ const nextConfig: NextConfig = {
       static: 300,
     },
   },
+  // the printed daily report is gone; a bookmark to it opens the cockpit
+  async redirects() {
+    return [{ source: "/report", destination: "/", permanent: true }];
+  },
   async headers() {
     return [
       {

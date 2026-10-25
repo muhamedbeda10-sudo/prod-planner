@@ -13,8 +13,6 @@ function Placeholder({ h }: { h: number }) {
   return <div className="rounded-xl bg-surface-2/60 animate-pulse" style={{ height: h }} aria-hidden />;
 }
 
-export const OutputByComponentChart = dynamic(() => import("./ReportCharts").then((m) => m.OutputByComponentChart), { ssr: false, loading: () => <Placeholder h={300} /> });
-export const PlannedVsWeldedChart = dynamic(() => import("./ReportCharts").then((m) => m.PlannedVsWeldedChart), { ssr: false, loading: () => <Placeholder h={300} /> });
 export const SheetsPerDayChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.SheetsPerDayChart), { ssr: false, loading: () => <Placeholder h={260} /> });
 export const ThicknessChart = dynamic(() => import("./FabAnalyticsCharts").then((m) => m.ThicknessChart), { ssr: false, loading: () => <Placeholder h={220} /> });
 export const OdooDashboard = dynamic(() => import("./OdooDashboard").then((m) => m.OdooDashboard), { ssr: false, loading: () => <Placeholder h={520} /> });
