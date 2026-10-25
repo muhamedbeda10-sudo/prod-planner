@@ -1,10 +1,10 @@
 import "server-only";
 import { holdView, type HoldView } from "@/lib/domain/hold";
 import { prisma } from "@/lib/db";
-import { loadMasterOrders } from "./loads";
-import { ITEMS, isPaintExempt, itemEligible, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
+import { loadMasterOrders, loadSettingsRow } from "./loads";
+import { ITEMS, applicableItems, isPaintExempt, itemEligible, ospOf, parseExcludedItems, type Item } from "@/lib/domain/constants";
 import { shownStageTotal } from "@/lib/domain/trackerEdit";
-import { trackerOdooQuantities, type OdooSharedQuantity } from "@/lib/domain/trackerOdoo";
+import { odooPlanMonth, trackerOdooQuantities, type OdooUnallocatedQuantity } from "@/lib/domain/trackerOdoo";
 
 // Plan Tracker on the MONTHLY registry: one row per MO. Progress is GLOBAL —
 // setup balances plus every logged output, regardless of week — capped at the
@@ -32,8 +32,10 @@ export interface MasterTrackerRow {
   // eligible = the order needs this component by rule (base four always; AR/MB
   // only when KVA/rating match). excluded = admin marked it N/A. A component
   // gates completion only when eligible && !excluded.
-  items: Record<Item, { cut: number; weld: number; paint: number; shp: number; delivered: number; osp: number; excluded: boolean; eligible: boolean; odooClosed?: number }>;
-  odooShared?: OdooSharedQuantity[];
+  items: Record<Item, { cut: number; weld: number; paint: number; shp: number; delivered: number; osp: number; excluded: boolean; eligible: boolean; odooClosed?: number; odooTracked?: boolean }>;
+  odooUnallocated?: OdooUnallocatedQuantity[];
+  /** The original monthly plan owns a carried MO's allocated Odoo quantity. */
+  odooPlanMonth?: string | null;
   welded: number; // MIN (weld + osp) over the REQUIRED items
   complete: number; // MIN (paint + osp) over the REQUIRED items — drives Left + Achievement
   remaining: number;
@@ -49,7 +51,7 @@ export interface MasterTrackerRow {
 }
 
 export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
-  const [orders, sums, odoo] = await Promise.all([
+  const [orders, sums, odoo, settings] = await Promise.all([
     loadMasterOrders(),
     prisma.handoverEntry.groupBy({
       by: ["mo", "dept", "item"],
@@ -57,10 +59,11 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       _sum: { qty: true },
     }),
     prisma.odooEntry.findMany({ where: { line: "TR" }, select: { id: true, line: true, ledgerId: true, soi: true, fgCode: true, product: true, qty: true, status: true } }),
+    loadSettingsRow(),
   ]);
   const ledgerIds = odoo.flatMap((row) => row.ledgerId === null ? [] : [row.ledgerId]);
   const ledgers = ledgerIds.length ? await prisma.handoverEntry.findMany({ where: { id: { in: ledgerIds } }, select: { id: true, mo: true, bom: true, item: true } }) : [];
-  const odooProgress = trackerOdooQuantities(orders, odoo, ledgers);
+  const odooProgress = trackerOdooQuantities(orders.map((o) => ({ ...o, eligibleItems: applicableItems(o) })), odoo, ledgers, settings?.odooTrackingFrom);
 
   const done = new Map<string, number>(); // mo|dept|item -> qty
   for (const s of sums) {
@@ -84,7 +87,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       const delivered = cap(g(o.mo, "Delivered", it)); // what the customer received
       const eligible = itemEligible(it, o); // AR/MB when the KVA/rating rule matches, or the planner forced them on
       const isExcluded = excluded.has(it);
-      items[it] = { cut, weld, paint, shp, delivered, osp, excluded: isExcluded, eligible, odooClosed: odooProgress.counts.get(o.mo)?.[it] ?? 0 };
+      items[it] = { cut, weld, paint, shp, delivered, osp, excluded: isExcluded, eligible, odooClosed: odooProgress.counts.get(o.mo)?.[it] ?? 0, odooTracked: odooProgress.tracked.has(JSON.stringify([o.mo, it])) };
       // a component gates completion only when the order needs it and it isn't N/A
       if (!eligible || isExcluded) continue;
       welded = Math.min(welded, cap(weld + osp));
@@ -107,7 +110,8 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       rating: o.rating,
       required: o.planQty,
       items,
-      odooShared: odooProgress.pools.filter((pool) => pool.mos.includes(o.mo)),
+      odooPlanMonth: odooPlanMonth(o),
+      odooUnallocated: odooProgress.unallocated.filter((pool) => pool.mos.includes(o.mo)),
       welded,
       complete,
       remaining: Math.max(0, o.planQty - complete),
