@@ -8,10 +8,10 @@ import type { ReadTool } from "./types";
 
 const r2 = (n: number | null | undefined) => (n === null || n === undefined ? null : Math.round(n * 100) / 100);
 
-type Pick = (p: KpiSnapshotData) => number | null | undefined;
+type Picker = (p: KpiSnapshotData) => number | null | undefined;
 /** The headline figures read against a week ago — the shift log's two only for the people who see Shifts. */
-const WEEK_FIGURES: [string, Pick][] = [["planDeliveredOnItsDay", (p) => p.adherence.finish], ["linesBehind", (p) => p.late], ["weldingCoverageDays", (p) => p.coverageDays]];
-const FLOOR_WEEK_FIGURES: [string, Pick][] = [["fabricationEfficiency", (p) => p.fabEfficiency], ["machineHoursLost", (p) => p.unplannedH]];
+const WEEK_FIGURES: [string, Picker][] = [["planDeliveredOnItsDay", (p) => p.adherence.finish], ["linesBehind", (p) => p.late], ["weldingCoverageDays", (p) => p.coverageDays]];
+const FLOOR_WEEK_FIGURES: [string, Picker][] = [["fabricationEfficiency", (p) => p.fabEfficiency], ["machineHoursLost", (p) => p.unplannedH]];
 
 export const getKpisTool: ReadTool<Record<string, never>> = {
   kind: "read",

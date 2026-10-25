@@ -16,8 +16,8 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
-    id: "2026-10-26-cockpit-charts",
-    dateISO: "2026-10-26",
+    id: "2026-10-25-cockpit-charts",
+    dateISO: "2026-10-25",
     title: "The cockpit in charts: the week's burn-up, the month's pace, each day's output and more",
     where: "Plan Tracker → Cockpit",
     href: "/",

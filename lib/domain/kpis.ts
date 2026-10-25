@@ -250,6 +250,9 @@ export interface LoadAhead {
     capacityH: number;
     /** Running owed against running capacity at the end of the day: past it, or within 10% of it. */
     tone: LoadTone;
+    /** What it owes so far, and could have worked so far (null unmeasured) — the totals the tone is judged on. */
+    owedCum: number;
+    canCum: number | null;
   }[];
   /** Σ owed ÷ Σ capacity over the horizon (work can be done early). */
   loadRate: number | null;
@@ -304,7 +307,7 @@ export function loadAhead(centre: WorkCentre, days: readonly string[], due: read
       if (short) clearsISO = null;
       else if (shortFromISO !== null && clearsISO === null) clearsISO = iso;
     }
-    return { dayISO: iso, dueH: round1(dueH), capacityH: round1(perDay), tone };
+    return { dayISO: iso, dueH: round1(dueH), capacityH: round1(perDay), tone, owedCum: round1(owed), canCum: measured ? round1(can) : null };
   });
   // what is owed after the horizon is not this horizon's to clear
   return {
@@ -322,8 +325,10 @@ export interface ManpowerInput {
   centre: WorkCentre;
   /** Std-hours the month's plan asks of the centre, outsourced pieces left out. */
   requiredH: number;
-  /** Std-hours of that plan the centre has earned since the month began. */
+  /** Std-hours of that plan the centre has earned — all of it, an order carried over bringing its earlier work. */
   doneH: number;
+  /** Of them, earned before the month began. */
+  doneBeforeH?: number;
   /** People present on an average recorded day lately; null while none is recorded. */
   present: number | null;
 }
@@ -332,6 +337,8 @@ export interface ManpowerRow {
   centre: WorkCentre;
   requiredH: number;
   doneH: number;
+  /** Of it, earned before the month began (carried-over orders). */
+  doneBeforeH: number;
   leftH: number;
   /** People the month's plan needs on an average working day of the month. */
   needed: number | null;
@@ -380,6 +387,7 @@ export function manpowerPlan(rows: readonly ManpowerInput[], cal: ManpowerCalend
       centre: r.centre,
       requiredH: round1(r.requiredH),
       doneH: round1(r.doneH),
+      doneBeforeH: round1(r.doneBeforeH ?? 0),
       leftH: round1(leftH),
       needed: needed === null ? null : round1(needed),
       neededNow: neededNow === null ? null : round1(neededNow),
@@ -529,14 +537,9 @@ export function burnUp(days: readonly { iso: string; label: string; req: number;
 
 /** A centre's load ahead as running totals — what it owes so far against what
  *  it could have worked so far, the comparison its "short" is judged on. */
-export function loadSeries(l: Pick<LoadAhead, "days" | "measured">): { dayISO: string; dueH: number; owedCum: number; canCum: number | null; tone: LoadTone }[] {
-  let owed = 0;
-  let can = 0;
-  return l.days.map((d) => {
-    owed += d.dueH;
-    can += d.capacityH;
-    return { dayISO: d.dayISO, dueH: d.dueH, owedCum: round1(owed), canCum: l.measured ? round1(can) : null, tone: d.tone };
-  });
+export function loadSeries(l: Pick<LoadAhead, "days">): { dayISO: string; dueH: number; owedCum: number; canCum: number | null; tone: LoadTone }[] {
+  // the running totals loadAhead judged the tone on, unrounded until shown
+  return l.days.map((d) => ({ dayISO: d.dayISO, dueH: d.dueH, owedCum: d.owedCum, canCum: d.canCum, tone: d.tone }));
 }
 
 /** The departments a day's output is told in: Fabrication's three centres as one. */
@@ -594,11 +597,15 @@ export interface MonthPaceRow {
 const PACE_BEHIND = 0.1;
 
 /** Each centre's month so far against an even pace through its working days:
- *  what it has done of the plan, and where it should stand by today. */
-export function monthPace(rows: readonly Pick<ManpowerRow, "centre" | "requiredH" | "doneH">[], cal: Pick<ManpowerCalendar, "monthWd" | "leftWd">): MonthPaceRow[] {
-  const expectedShare = cal.monthWd > 0 ? Math.min(1, Math.max(0, (cal.monthWd - cal.leftWd) / cal.monthWd)) : 0;
+ *  what it has done of the plan, and where it should stand by today. Work a
+ *  carried-over order brought from before the month starts the pace there —
+ *  the month owes only the rest, evenly over its working days. */
+export function monthPace(rows: readonly (Pick<ManpowerRow, "centre" | "requiredH" | "doneH"> & { doneBeforeH?: number })[], cal: Pick<ManpowerCalendar, "monthWd" | "leftWd">): MonthPaceRow[] {
+  const elapsed = cal.monthWd > 0 ? Math.min(1, Math.max(0, (cal.monthWd - cal.leftWd) / cal.monthWd)) : 0;
   return rows.map((r) => {
-    if (!(r.requiredH > 0)) return { centre: r.centre, requiredH: 0, doneH: round1(r.doneH), doneShare: null, expectedShare, aheadH: 0, tone: null };
+    if (!(r.requiredH > 0)) return { centre: r.centre, requiredH: 0, doneH: round1(r.doneH), doneShare: null, expectedShare: elapsed, aheadH: 0, tone: null };
+    const startShare = Math.min(1, Math.max(0, (r.doneBeforeH ?? 0) / r.requiredH));
+    const expectedShare = startShare + (1 - startShare) * elapsed;
     const doneShare = r.doneH / r.requiredH;
     const gap = doneShare - expectedShare;
     return {

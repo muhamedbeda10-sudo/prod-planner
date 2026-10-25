@@ -3,7 +3,7 @@
 import {
   Area, Bar, CartesianGrid, ComposedChart, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { CAT, Legend, TipBox, fmt, pct } from "@/components/charts/kit";
+import { CAT, Legend, TONE_TEXT, TipBox, fmt, pct } from "@/components/charts/kit";
 import { formatDate } from "@/lib/domain/format";
 import { OUTPUT_GROUPS, OUTPUT_GROUP_LABEL, efficiencyBand, type OutputDay } from "@/lib/domain/kpis";
 
@@ -24,7 +24,7 @@ const rowOf = <T,>(p: TipProps): T | null => (p.active && p.payload?.length ? (p
 
 // ---------------------------------------------------------------- the week's plan
 
-export interface BurnPoint { iso: string; label: string; req: number; covered: number; planCum: number; doneCum: number; isToday: boolean }
+export interface BurnPoint { iso: string; label: string; req: number; covered: number; planCum: number; doneCum: number; isToday: boolean; isPast: boolean }
 
 /** The weekly plan delivery day by delivery day: what it asks, summed, against what is finished, summed. */
 export function BurnUpChart({ points }: { points: BurnPoint[] }) {
@@ -52,7 +52,8 @@ export function BurnUpChart({ points }: { points: BurnPoint[] }) {
                       { label: "Finished of them", value: `${r.covered} pcs` },
                       { label: "Asked, summed", value: `${r.planCum} pcs`, color: PLAN, line: true },
                       { label: "Finished, summed", value: `${r.doneCum} pcs`, color: ACCENT, line: true },
-                      { label: "Behind", value: `${Math.max(0, r.planCum - r.doneCum)} pcs` },
+                      // a day still to come is not late — what it lacks is still to make
+                      { label: r.isPast || r.isToday ? "Behind" : "Still to make", value: `${Math.max(0, r.planCum - r.doneCum)} pcs` },
                     ]}
                   />
                 );
@@ -76,16 +77,16 @@ export interface LoadPoint { dayISO: string; dueH: number; owedCum: number; canC
  *  against what it can work so far. The days it is short are shaded. */
 export function LoadChart({ points, centre }: { points: LoadPoint[]; centre: string }) {
   if (points.length === 0) return null;
-  const data = points.map((p) => ({ ...p, label: ddmm(p.dayISO) }));
+  // the days by their place in the horizon, so a day is a slot a band can cover
+  const data = points.map((p, i) => ({ ...p, i, label: ddmm(p.dayISO) }));
   const measured = points.some((p) => p.canCum !== null);
-  // the runs of short days, shaded as one band each
-  const bands: { from: string; to: string }[] = [];
+  // the runs of short days, each shaded across its days' whole slots
+  const bands: { from: number; to: number }[] = [];
   for (const d of data) {
     if (d.tone !== "bad") continue;
     const last = bands.at(-1);
-    const prev = data[data.indexOf(d) - 1];
-    if (last && prev && last.to === prev.label) last.to = d.label;
-    else bands.push({ from: d.label, to: d.label });
+    if (last && last.to === d.i - 1) last.to = d.i;
+    else bands.push({ from: d.i, to: d.i });
   }
   return (
     <div className="space-y-2">
@@ -98,9 +99,10 @@ export function LoadChart({ points, centre }: { points: LoadPoint[]; centre: str
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
             <CartesianGrid vertical={false} />
-            <XAxis dataKey="label" tick={TICK} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={12} />
+            <XAxis type="number" dataKey="i" domain={[-0.5, data.length - 0.5]} ticks={data.map((d) => d.i)} tickFormatter={(i: number) => data[i]?.label ?? ""}
+              tick={TICK} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={12} />
             <YAxis tick={TICK} axisLine={false} tickLine={false} width={44} tickFormatter={(v: number) => fmt(v, 0)} />
-            {bands.map((b) => <ReferenceArea key={b.from} x1={b.from} x2={b.to} fill="var(--bad-bg)" fillOpacity={0.7} ifOverflow="extendDomain" />)}
+            {bands.map((b) => <ReferenceArea key={b.from} x1={b.from - 0.5} x2={b.to + 0.5} fill="var(--bad-bg)" fillOpacity={0.7} />)}
             <Tooltip
               cursor={{ stroke: "var(--border-strong)" }}
               content={(p: TipProps) => {
@@ -185,7 +187,6 @@ export function OutputChart({ days }: { days: OutputDay[] }) {
 
 export interface PacePanel { centre: string; recent: number | null; points: { dateISO: string; efficiency: number | null }[] }
 
-const TONE_TEXT = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" } as const;
 const TONE_WORD = { ok: "at the standard", warn: "short of it", bad: "well short" } as const;
 
 /** One small chart a centre — its efficiency each recorded day against the
@@ -215,8 +216,8 @@ export function PaceMultiples({ panels }: { panels: PacePanel[] }) {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={data} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
                     <CartesianGrid vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={18} />
-                    <YAxis domain={[0, max]} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={34} ticks={[0, 0.5, 1]} tickFormatter={(v: number) => pct(v)} />
+                    <XAxis dataKey="label" tick={TICK} axisLine={AXIS} tickLine={false} interval="preserveStartEnd" minTickGap={18} />
+                    <YAxis domain={[0, max]} tick={TICK} axisLine={false} tickLine={false} width={34} ticks={[0, 0.5, 1]} tickFormatter={(v: number) => pct(v)} />
                     <ReferenceLine y={1} stroke="var(--border-strong)" />
                     <Tooltip
                       cursor={{ stroke: "var(--border-strong)" }}

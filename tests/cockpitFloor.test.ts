@@ -22,8 +22,8 @@ describe("withoutFloor", () => {
       losses: { causes: [{ code: "MECH", label: "Breakdown", planned: false, hours: 3, stops: 1, share: 1 }], unplannedH: 3, plannedH: 0, absentRate: 0.1, overtimeH: 12, fromISO: "2026-10-18" },
       pricedShare: 0.9,
       actions: [{ tone: "bad", text: "plan", href: "/tracker" }, { tone: "warn", text: "slow", href: "/shifts", floor: true }],
-      snapshot: { late: 0, adherence: { cut: 1 }, coverageDays: 3, efficiency: { Welding: 0.9 }, unplannedH: 3 },
-      trend: [{ dateISO: "2026-10-25", late: 0, adherence: { cut: 1 }, coverageDays: 3, efficiency: { Welding: 0.9 }, unplannedH: 3 }],
+      snapshot: { late: 0, adherence: { cut: 1 }, coverageDays: 3, efficiency: { Welding: 0.9 }, fabEfficiency: 0.7, unplannedH: 3 },
+      trend: [{ dateISO: "2026-10-25", late: 0, adherence: { cut: 1 }, coverageDays: 3, efficiency: { Welding: 0.9 }, fabEfficiency: 0.7, unplannedH: 3 }],
     } as unknown as CockpitData;
     const out = withoutFloor(c);
     expect(out.centres).toEqual([]);
@@ -31,8 +31,8 @@ describe("withoutFloor", () => {
     expect(out.losses).toMatchObject({ causes: [], unplannedH: 0, absentRate: null, overtimeH: 0 });
     expect(out.pricedShare).toBeNull();
     expect(out.actions.map((a) => a.text)).toEqual(["plan"]);
-    expect(out.trend[0]).toMatchObject({ efficiency: {}, unplannedH: null, coverageDays: 3, adherence: { cut: 1 } });
-    expect(out.snapshot.efficiency).toEqual({});
+    expect(out.trend[0]).toMatchObject({ efficiency: {}, fabEfficiency: null, unplannedH: null, coverageDays: 3, adherence: { cut: 1 } });
+    expect(out.snapshot).toMatchObject({ efficiency: {}, fabEfficiency: null });
     expect(out.manpower.rows[0]).toMatchObject({ requiredH: 4000, needed: 20, neededNow: 25, present: null, gap: null, tone: null });
     expect(out.load).toBe(c.load);
     expect(out.coverage).toBe(c.coverage);

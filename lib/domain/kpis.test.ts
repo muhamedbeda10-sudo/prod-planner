@@ -199,6 +199,10 @@ describe("the charts' series", () => {
     expect(b.map((d) => [d.planCum, d.doneCum])).toEqual([[10, 8], [15, 13], [21, 14]]);
     expect(b[1].isToday).toBe(true);
   });
+  it("keeps the running totals unrounded until shown, so a day that is not short never reads as short", () => {
+    const l = loadAhead("Welding", ["2026-10-20", "2026-10-21", "2026-10-22"], [{ dayISO: "2026-10-22", dueH: 100 }], 100 / 3);
+    expect(loadSeries(l).at(-1)).toMatchObject({ owedCum: 100, canCum: 100, tone: "warn" });
+  });
   it("runs a centre's load as what it owes so far against what it could have worked so far", () => {
     const l = loadAhead("Welding", ["2026-10-20", "2026-10-21", "2026-10-22"], [{ dayISO: "2026-10-20", dueH: 80 }, { dayISO: "2026-10-22", dueH: 40 }], 50);
     expect(loadSeries(l).map((d) => [d.owedCum, d.canCum, d.tone])).toEqual([[80, 50, "bad"], [80, 100, null], [120, 150, null]]);
@@ -228,6 +232,10 @@ describe("the charts' series", () => {
     expect(rows[1]).toMatchObject({ aheadH: -20, tone: "warn" });
     expect(rows[2].tone).toBe("bad");
     expect(rows[3]).toMatchObject({ doneShare: null, tone: null });
+    // an order carried over at 60% done starts the month's pace there: half the days gone, 80% is even
+    const carried = monthPace([{ centre: "Welding", requiredH: 100, doneH: 60, doneBeforeH: 60 }], { monthWd: 26, leftWd: 13 })[0];
+    expect(carried).toMatchObject({ doneShare: 0.6, expectedShare: 0.8, aheadH: -20, tone: "bad" });
+    expect(monthPace([{ centre: "Welding", requiredH: 100, doneH: 60, doneBeforeH: 60 }], { monthWd: 26, leftWd: 26 })[0]).toMatchObject({ expectedShare: 0.6, tone: "ok" });
     expect(monthPace([{ centre: "Welding", requiredH: 100, doneH: 100 }], { monthWd: 26, leftWd: 0 })[0]).toMatchObject({ expectedShare: 1, tone: "ok" });
   });
   it("ranks the unplanned stops with the share of the loss the causes above account for", () => {

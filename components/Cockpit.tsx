@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, Bot, CircleAlert, Info } from "lucide-react";
-import { ChartCard, Meter, StatTile, TRACK, fmt, pct } from "@/components/charts/kit";
+import { ChartCard, Meter, StatTile, TONE_TEXT, TRACK, fmt, pct } from "@/components/charts/kit";
 import { BurnUpChart, LoadChart, OutputChart, PaceMultiples } from "@/components/LazyCharts";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/primitives";
@@ -29,7 +29,6 @@ import type { CockpitData } from "@/lib/server/kpis";
 // The page is a 12-column grid: a short card sits beside a long one, so no
 // card leaves a hole under it, and every row fills the width.
 
-const TONE_TEXT = { ok: "text-ok-fg", warn: "text-warn-fg", bad: "text-bad-fg" } as const;
 const ACTION_ICON = { bad: CircleAlert, warn: AlertTriangle, info: Info } as const;
 const ACTION_TONE = { bad: "text-bad-fg", warn: "text-warn-fg", info: "text-info-fg" } as const;
 
@@ -43,6 +42,9 @@ const signed = (v: number, digits = 1) => (v > 0 ? `+${fmt(v, digits)}` : fmt(v,
 function WeekChange({ trend, todayISO, pick, rate, unit = "", up }: {
   trend: CockpitData["trend"]; todayISO: string; pick: (p: KpiSnapshotData) => number | null | undefined; rate?: boolean; unit?: string; up?: "good" | "bad";
 }) {
+  const today = trend.find((p) => p.dateISO === todayISO);
+  // no figure today (the tile reads "—"): nothing to compare
+  if (!today || pick(today) === null || pick(today) === undefined) return null;
   const c = weekChange(trend, todayISO, pick);
   if (!c) return <span className="text-xs text-muted">no reading a week ago yet</span>;
   const diff = rate ? Math.round((c.now - c.before) * 100) : Math.round((c.now - c.before) * 10) / 10;
@@ -83,7 +85,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
   const mp = data.manpower;
   // the centres short by half a person or more — the ones the card colours red
   const peopleShort = mp.rows.reduce((s, r) => s + (r.tone === "bad" ? -(r.gap ?? 0) : 0), 0);
-  const burn = useMemo(() => burnUp(data.week.days), [data.week.days]);
+  const burn = useMemo(() => burnUp(data.week.days).map((d, i) => ({ ...d, isPast: data.week.days[i].isPast })), [data.week.days]);
   const pace = useMemo(() => monthPace(mp.rows, mp), [mp]);
   const output = useMemo(() => dailyOutput(data.centres), [data.centres]);
   const pareto = useMemo(() => paretoOf(data.losses.causes), [data.losses.causes]);
@@ -92,7 +94,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
   // the load card opens on the centre worst off: short at the end, then furthest behind
   const worst = useMemo(() => [...data.load].sort((a, b) => b.shortH - a.shortH || b.behindH - a.behindH)[0]?.centre ?? null, [data.load]);
   const [picked, setPicked] = useState<WorkCentre | null>(null);
-  const loadCentre = data.load.find((l) => l.centre === (picked ?? worst)) ?? data.load[0];
+  const loadCentre = data.load.find((l) => l.centre === picked) ?? data.load.find((l) => l.centre === worst) ?? data.load[0];
   const peopleMax = Math.max(1, ...mp.rows.map((r) => Math.max(r.neededNow ?? 0, floor ? r.present ?? 0 : 0)));
   const tile = { trend: data.trend, todayISO: data.todayISO };
 
@@ -157,7 +159,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           <ChartCard
             className="xl:col-span-6"
             title="Are we on this week's plan?"
-            sub={`Weekly plan ${data.week.planNo}: ${data.week.covered} of ${data.week.req} pcs finished. The gap between the two lines is what is behind.`}
+            sub={`Weekly plan ${data.week.planNo}: ${data.week.covered} of ${data.week.req} pcs finished. Up to today the gap between the two lines is what is behind; after it, what is still to make.`}
             table={{ filename: `weekly-plan-${data.todayISO}.xlsx`, rows: [
               ...burn.map((d) => ({ Row: "Delivery day", Day: d.iso, Name: d.label, "Asked pcs": d.req, "Finished pcs": d.covered, "Asked summed": d.planCum, "Finished summed": d.doneCum })),
               ...data.week.adherence.map((a) => ({ Row: "Stage due by today", Day: data.todayISO, Name: STAGE_LABEL[a.stage], "Asked pcs": a.due, "Finished pcs": a.done, "Asked summed": "", "Finished summed": "" })),
@@ -226,10 +228,10 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
                 return (
                   <li key={l.centre}>
                     <button type="button" onClick={() => setPicked(l.centre)} aria-pressed={on}
-                      className={`w-full text-left rounded-lg border px-3 py-1.5 text-sm flex items-baseline gap-2 ${on ? "border-brand bg-surface-2" : "hover:bg-surface-2"}`}>
+                      className={`option w-full !py-1.5 text-left text-sm flex-wrap !gap-x-2 !gap-y-0 ${on ? "option-on" : ""}`}>
                       <span className="font-semibold flex-1">{centreName(l.centre)}</span>
                       <span className="tabnum text-muted" title="All the hours owed over the horizon, over all the hours it can work">{pctOrDash(l.loadRate)}</span>
-                      <span className={`tabnum whitespace-nowrap ${tone ? TONE_TEXT[tone] : "text-muted"} ${tone === "bad" ? "font-bold" : ""}`}>{status}</span>
+                      <span className={`tabnum ${tone ? TONE_TEXT[tone] : "text-muted"} ${tone === "bad" ? "font-bold" : ""}`}>{status}</span>
                     </button>
                   </li>
                 );

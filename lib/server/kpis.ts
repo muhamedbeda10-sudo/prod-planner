@@ -406,13 +406,19 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
           { date: { gte: dayStart(monthStartISO) }, bom: { in: soleBoms }, OR: [{ mo: null }, { mo: "" }] },
         ],
       },
-      select: { dept: true, mo: true, bom: true, item: true, qty: true },
+      select: { date: true, dept: true, mo: true, bom: true, item: true, qty: true },
     })
     : [];
   const doneH = zeroCentres();
+  const doneBeforeH = zeroCentres();
+  const monthStart = dayStart(monthStartISO);
   for (const e of monthLedger) {
     const got = earnedOfRecord(e.dept, e.qty, perPiece(tierOf(e.mo, e.bom), e.item));
-    for (const c of WORK_CENTRES) doneH[c] += got[c];
+    const before = e.date < monthStart;
+    for (const c of WORK_CENTRES) {
+      doneH[c] += got[c];
+      if (before) doneBeforeH[c] += got[c];
+    }
   }
   const cal = { hoursPerPersonDay: settings.shiftShortH, monthWd: workingDaysInclusive(monthStartISO, monthEndISO, holidaySet), leftWd: workingDaysInclusive(todayISO, monthEndISO, holidaySet) };
   const manpower = {
@@ -420,7 +426,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
     rows: manpowerPlan(
       WORK_CENTRES.map((c) => {
         const k = centres.find((x) => x.centre === c)!;
-        return { centre: c, requiredH: requiredH[c], doneH: doneH[c], present: k.recent.days > 0 ? k.recent.people : null };
+        return { centre: c, requiredH: requiredH[c], doneH: doneH[c], doneBeforeH: doneBeforeH[c], present: k.recent.days > 0 ? k.recent.people : null };
       }),
       cal,
     ),
