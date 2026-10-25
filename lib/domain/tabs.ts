@@ -34,8 +34,9 @@ export const TABS: TabDef[] = [
   { id: "simulate", label: "Floor / Simulator", group: "Production", paths: ["/simulate"] },
   { id: "chat", label: "Chat", group: "Production", paths: ["/chat"] },
 
+  // the id stays "dashboard": an account the home page was switched off for keeps it off
+  { id: "dashboard", label: "Planning cockpit (home)", group: "Plan Tracker", paths: ["/"] },
   { id: "tracker", label: "Plan Tracker", group: "Plan Tracker", paths: ["/tracker"] },
-  { id: "dashboard", label: "Plan dashboard (home)", group: "Plan Tracker", paths: ["/"] },
   { id: "handover", label: "Daily log", group: "Plan Tracker", paths: ["/handover"] },
   { id: "report", label: "Report", group: "Plan Tracker", paths: ["/report"] },
 

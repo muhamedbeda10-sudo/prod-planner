@@ -10,6 +10,8 @@ import { pruneAiFiles } from "@/lib/server/ai/files";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { deliverToInbox } from "@/lib/server/inbox";
 import { remindOverdueTasks } from "@/lib/server/tasks";
+import { getCockpit, recordKpiSnapshot } from "@/lib/server/kpis";
+import { withLine } from "@/lib/server/line";
 import { automationWindowOf, configOf, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
 import { runDailyReviews } from "./review";
 import { AI_DENY_TEXT, automationContext, costUsd } from "@/lib/domain/ai";
@@ -50,7 +52,11 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
   const deadline = o.deadline ?? now.getTime() + 240_000;
   const settings = await getAiSettings();
   // housekeeping once an hour, paused or not
-  if (now.getUTCMinutes() === 7) await pruneOld(now).catch((e) => console.error("automations: housekeeping failed", e));
+  if (now.getUTCMinutes() === 7) {
+    await pruneOld(now).catch((e) => console.error("automations: housekeeping failed", e));
+    // the cockpit's trend gets its point for the day, opened or not
+    await withLine("TR", () => getCockpit(now)).then(recordKpiSnapshot).catch((e) => console.error("kpis: snapshot failed", e));
+  }
   const window = automationWindowOf(settings);
   const inHours = inAutomationWindow(now, window);
   // the tasks past their due day tell their people — inside the plant's

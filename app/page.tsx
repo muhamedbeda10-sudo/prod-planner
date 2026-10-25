@@ -1,34 +1,27 @@
-import { getTargetDashboard } from "@/lib/server/dashboard";
-import { getControlDashboard } from "@/lib/server/controlDashboard";
-import { getSmartInsights } from "@/lib/server/insights";
+import { after } from "next/server";
+import { getCurrentUser, guardTab, hiddenTabsOf } from "@/lib/server/auth";
+import { getCockpit, recordKpiSnapshot, withoutFloor } from "@/lib/server/kpis";
 import { getActiveLine } from "@/lib/server/line";
 import { getLvDashboard } from "@/lib/server/lvDashboard";
-import { isMachinePlanningOn } from "@/lib/server/data";
 import { LvDashboard } from "@/components/LvDashboard";
-import { ControlDashboard } from "@/components/ControlDashboard";
-import { SmartInsights } from "@/components/SmartInsights";
 import { RememberLastVisit } from "@/components/RememberLastVisit";
-import { PlanMonthPicker } from "@/components/PlanMonthPicker";
-import { UrlDateSlicer } from "@/components/UrlDateSlicer";
-import { addDaysISO, presetRange } from "@/lib/domain/dateSlicer";
-import { factoryDayISO } from "@/lib/domain/dates";
-import { ViewTabs, TRACKER_VIEWS } from "@/components/ViewTabs";
 import { PageHead } from "@/components/ui";
-import { parseISODate } from "@/lib/domain/dates";
-import { guardTab } from "@/lib/server/auth";
+import { PrintButton } from "@/components/PrintButton";
+import { PrintHeader } from "@/components/PrintHeader";
+import { Cockpit } from "@/components/Cockpit";
+import { formatDate } from "@/lib/domain/format";
+import { factoryDayISO, parseISODate } from "@/lib/domain/dates";
 
 export const dynamic = "force-dynamic";
 
-// The Dashboard is the production-control screen (components/ControlDashboard):
-// this page fetches, and hands it the week / period controls that scope the
-// two throughput charts.
-
-export default async function Home({ searchParams }: { searchParams: Promise<{ w?: string; from?: string; to?: string; plan?: string }> }) {
+// The home page is the planner's cockpit: is the plan on its day, did each
+// centre work at the standard, where the crunch is, whether welding has
+// parts, and what stopped the floor — with what needs a decision on top.
+// The figures are the transformers'; the LV panels keep their own dashboard.
+export default async function Home({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
   await guardTab("/");
-  // the panels have their own dashboard — one thing through four stages,
-  // not six components against a target
-  const sp = await searchParams;
   if ((await getActiveLine()) === "LV") {
+    const sp = await searchParams;
     return (
       <>
         <RememberLastVisit storageKey="dashboard:last" />
@@ -37,39 +30,21 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
     );
   }
 
-  const [c, d, ai, machinePlanning] = await Promise.all([
-    getControlDashboard({ planMonth: sp.plan ?? null }),
-    getTargetDashboard({ weekOf: sp.w ? parseISODate(sp.w) : null, from: sp.from ? parseISODate(sp.from) : null, to: sp.to ? parseISODate(sp.to) : null }),
-    getSmartInsights(),
-    isMachinePlanningOn(),
-  ]);
-  // the week the dashboard opens on: Saturday to Thursday, the current one
-  const today = factoryDayISO(new Date());
-  const weekFrom = presetRange("thisWeek", today).from;
-  const thisWeek = { label: "This week", from: weekFrom, to: addDaysISO(weekFrom, 5) };
-
-  const controls = (
-    <div className="no-print space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-2">
-          <PlanMonthPicker plan={c.planMonth} months={c.planMonths} />
-          {d.clamped && <span className="pill pill-warn">cut to 31 days</span>}
-          <SmartInsights data={ai} />
-        </div>
-      </div>
-      <UrlDateSlicer
-        encoding="fromTo" from={d.fromISO} to={d.toISO} min={addDaysISO(today, -90)} max={[today, thisWeek.to].sort().reverse()[0]} today={today}
-        presets={["last7", "last14", "thisMonth", "lastMonth", "last30"]} defaultRange={thisWeek}
-      />
-    </div>
-  );
-
+  const me = await getCurrentUser();
+  const data = await getCockpit();
+  // today's point of the trend, kept once the page is on its way
+  after(() => recordKpiSnapshot(data));
+  const floor = !hiddenTabsOf(me).has("shifts");
   return (
-    <>
-      {/* the period and the plan stay as they were left, across pages and visits */}
-      <RememberLastVisit storageKey="dashboard:last" />
-      <PageHead title="Dashboard" sub="Transformers · how the plan is doing" views={<ViewTabs views={TRACKER_VIEWS} current="/" label="Tracker view" />} />
-      <ControlDashboard c={c} d={d} controls={controls} machinePlanning={machinePlanning} />
-    </>
+    <div className="space-y-3">
+      <PrintHeader title="Planning cockpit" subtitle={data.week.planNo ? `Weekly plan ${data.week.planNo}` : undefined} date={formatDate(data.todayISO)} />
+      <PageHead
+        title="Planning cockpit"
+        sub={`Transformers · today ${formatDate(data.todayISO)}${data.lastDayISO ? ` · last recorded day ${formatDate(data.lastDayISO)}` : ""} · everything in standard hours`}
+        actions={<PrintButton />}
+      />
+      {/* the shift log's figures stay with the accounts that see Shifts */}
+      {floor ? <Cockpit data={data} /> : <Cockpit data={withoutFloor(data)} floor={false} />}
+    </div>
   );
 }

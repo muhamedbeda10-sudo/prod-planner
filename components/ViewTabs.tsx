@@ -21,21 +21,22 @@ export function ViewTabs(props: { views: View[]; current: string; label: string 
   return <ViewTabsNav {...props} />;
 }
 
-/** The Plan Tracker tab's screens: the tracker, the plan's dashboard (how
- *  the plant is doing this week), the raw ledger the tracker adds up, and the
- *  report printed from that ledger. There is no Dashboard tab any more — the
- *  dashboard is the plan's, so it lives with the plan. */
+/** The Plan Tracker tab's screens: the tracker, the raw ledger the tracker
+ *  adds up, and the report printed from that ledger. How the plant is doing
+ *  is the home page's — the planner's cockpit. */
 export const TRACKER_VIEWS: View[] = [
   { href: "/tracker", label: "Plan Tracker", title: "One row per order, every stage" },
-  { href: "/", label: "Dashboard", title: "How the plan is doing this week — targets, throughput, the control loops" },
   { href: "/handover", label: "Daily log", title: "The raw entries the tracker adds up — edit and correct them here" },
   { href: "/report", label: "Report", title: "The daily log as one day or a period, ready to print" },
 ];
 
-/** The same, for the product line on screen: the printed report is the
- *  transformers' — the panels' dashboard carries its own period table. */
+/** The same, for the product line on screen. The panels keep their own
+ *  dashboard on the home page (the cockpit is the transformers') with its
+ *  own period table, so they have it here and no printed report. */
 export function trackerViews(line: string): View[] {
-  return line === "LV" ? TRACKER_VIEWS.filter((v) => v.href !== "/report") : TRACKER_VIEWS;
+  if (line !== "LV") return TRACKER_VIEWS;
+  const [tracker, handover] = TRACKER_VIEWS;
+  return [tracker, { href: "/", label: "Dashboard", title: "The panels' plan through its four stages" }, handover];
 }
 
 /** The Material tab's screens: the nesting sheets, and the fabrication read
