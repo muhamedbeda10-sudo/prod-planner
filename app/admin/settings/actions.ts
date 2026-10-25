@@ -91,9 +91,10 @@ export async function saveShiftHours(formData: FormData): Promise<SettingsAction
   };
   const short = read("shiftShortH", "The day shift");
   const long = read("shiftLongH", "The night shift");
-  const overtime = read("overtimeH", "Overtime");
-  for (const v of [short, long, overtime]) if (typeof v === "object") return { ok: false, error: v.error };
-  const hours = { shiftShortH: short as number, shiftLongH: long as number, overtimeH: overtime as number };
+  const overtime = read("overtimeH", "Day overtime");
+  const nightOvertime = formData.has("nightOvertimeH") ? read("nightOvertimeH", "Night overtime") : undefined;
+  for (const v of [short, long, overtime, nightOvertime]) if (typeof v === "object") return { ok: false, error: v.error };
+  const hours = { shiftShortH: short as number, shiftLongH: long as number, overtimeH: overtime as number, ...(typeof nightOvertime === "number" ? { nightOvertimeH: nightOvertime } : {}) };
   if (hours.shiftShortH <= 0 || hours.shiftLongH <= 0) return { ok: false, error: "A shift has to be longer than nothing." };
 
   await prisma.settings.upsert({

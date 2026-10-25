@@ -58,7 +58,7 @@ export default async function ShiftsPage({ searchParams }: { searchParams: Promi
         history={history}
         dayISO={day}
         filter={filter}
-        hours={me.isAdmin ? <ShiftHoursForm short={data.shiftHours.short} long={data.shiftHours.long} overtime={data.shiftHours.overtime} /> : undefined}
+        hours={me.isAdmin ? <ShiftHoursForm short={data.shiftHours.short} long={data.shiftHours.long} overtime={data.shiftHours.overtime} nightOvertime={data.shiftHours.nightOvertime} /> : undefined}
         productivity={<ShiftProductivity data={productivity} dayISO={day} filterLabel={rosterFilterLabel(filter)} isAdmin={me.isAdmin} />}
       />
     </div>

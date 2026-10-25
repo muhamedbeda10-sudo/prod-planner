@@ -24,6 +24,14 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     body: "The Cockpit tab has left the strip: the home page is now the first view of Plan Tracker, beside the tracker and the Daily log, and its cards are laid out on one grid — the plan beside the lines behind, the load beside welding's parts, each centre's pace beside the losses — so every row fills the width. The printed daily Report is removed; what it showed is on the cockpit, the tracker and the Daily log.",
   },
   {
+    id: "2026-10-25-night-shift-overtime",
+    dateISO: "2026-10-25",
+    title: "Night shift: 8 base hours, with optional 3-hour overtime",
+    where: "Shifts → Daily attendance · Shift hours · Day / Night board",
+    href: "/shifts",
+    body: "Night attendance now counts 8 net base hours (19:00–04:00), with optional overtime from 04:00–07:00 booked to the shift's starting day. Day and night overtime have separate settings. Both contribute to filters, man-hours, productivity, exports, the board and AI shift tools. Existing standard 11-hour night records convert to 8 + 3 OT so their total hours stay the same; deliberately customised base hours remain unchanged.",
+  },
+  {
     id: "2026-10-24-planning-cockpit-home",
     dateISO: "2026-10-24",
     title: "The home page is now the Planning cockpit: the plan, the centres, the crunch, welding's parts and the losses",

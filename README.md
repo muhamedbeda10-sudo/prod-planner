@@ -153,8 +153,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
 
 8. **Shift log** (`/shifts`) — the supervisors' page, one day at a time: every worker registered in a
    section (Tools → Production Workers), narrowed to a line, a section or a search. Each worker gets ONE
-   choice that says whether he came and on which shift — ☀ **Day** (07:00–16:00), 🌙 **Night** (19:00–07:00)
-   or ✕ **Absent** — plus the day shift's 16:00–19:00 overtime and a note. A worker with no record for the
+   choice that says whether he came and on which shift — ☀ **Day** (07:00–16:00), 🌙 **Night** (19:00–04:00)
+   or ✕ **Absent** — plus optional overtime (day 16:00–19:00, night 04:00–07:00 the next morning) and a note. Both shifts default to 8 net base hours plus 3 optional OT hours. A worker with no record for the
    day is **not set** (never silently present or absent), and a day is saved only when nobody is: "Set …
    not set to Day / Night / Absent" fills the rest in one click, keeping anyone on vacation absent. The
    figures on top — day shift, night shift, overtime, absent, not set — are also the list's filters,
@@ -163,7 +163,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
    "Save day" (pinned to the bottom of the screen) writes every row and re-sums each department's
    man-hours into the figure the calibration and the plan's capacity check read (Admin → Standard Times
    shows it read-only). The last days recorded show their day and night counts. Recording needs
-   `shifts.<dept>`; viewing is free, and the save action itself refuses a worker still not set. The
+   `shifts.<dept>`; viewing is free, and the save action itself refuses a worker still not set, and a row under a
+   department the worker is not registered in (a worker moved or retired since keeps the rows already recorded). The
    assistant's `record_shift_day` follows the same rule: workers it is not told about are refused, not
    guessed, unless the person says what the `rest` of them get (day, night or absent) — an automation
    that records shifts has to say it in its instruction. The vacation rule applies to today only: the

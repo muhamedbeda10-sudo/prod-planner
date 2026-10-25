@@ -3,7 +3,7 @@
 import { Moon, Sun, UserX, Users, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { EmptyState } from "@/components/primitives";
-import { ATTENDANCE_TIME, OVERTIME_TIME, ROSTER_DEPTS, round1, type Attendance, type RosterDept } from "@/lib/domain/shifts";
+import { ATTENDANCE_TIME, overtimeTime, ROSTER_DEPTS, round1, type Attendance, type RosterDept } from "@/lib/domain/shifts";
 import { WORKER_DEPT_LABEL } from "@/lib/domain/tanks";
 
 // Who came on which shift, side by side: the day shift's people in one
@@ -42,7 +42,7 @@ function Person({ l, showOt }: { l: BoardLine; showOt: boolean }) {
         </span>
         {l.note && <span className="block truncate text-muted" title={l.note}>{l.note}</span>}
       </span>
-      {showOt && l.overtimeH > 0 && <span className="pill pill-muted shrink-0 tabnum" title={`Overtime ${OVERTIME_TIME}`}>+{round1(l.overtimeH)} h OT</span>}
+      {showOt && l.overtimeH > 0 && <span className="pill pill-muted shrink-0 tabnum" title={`Overtime ${overtimeTime(l.attendance === "night" ? "S11" : "S9")}`}>+{round1(l.overtimeH)} h OT</span>}
       {l.onVacation && l.attendance === "absent" && <span className="pill pill-warn shrink-0">vacation</span>}
     </li>
   );
@@ -97,11 +97,11 @@ function ShiftColumn({ kind, lines }: { kind: "day" | "night"; lines: readonly B
   return (
     <BoardPanel
       tone={kind} icon={Icon} title={kind === "day" ? "Day shift" : "Night shift"} time={ATTENDANCE_TIME[kind]}
-      end={<>{lines.length} {lines.length === 1 ? "person" : "people"} · {hours} mh{kind === "day" && ot > 0 ? ` · ${ot} on OT` : ""}</>}
+      end={<>{lines.length} {lines.length === 1 ? "person" : "people"} · {hours} mh{ot > 0 ? ` · ${ot} on OT` : ""}</>}
     >
       {lines.length === 0
         ? <EmptyState compact icon={Icon} title={`Nobody on the ${kind} shift`} hint="Pick Day or Night for a worker in the Record view." />
-        : <Groups lines={lines} showOt={kind === "day"} />}
+        : <Groups lines={lines} showOt={true} />}
     </BoardPanel>
   );
 }
