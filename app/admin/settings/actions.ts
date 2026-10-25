@@ -72,7 +72,7 @@ export async function setMachinePlanning(formData: FormData): Promise<SettingsAc
     update: { machinePlanning: on },
   });
   for (const p of ["/admin/settings", "/worklist/cut", "/worklist/welding", "/worklist/painting", "/worklist/machines", "/simulate"]) revalidatePath(p);
-  // the Floor tab is renamed with it
+  // the bar's Worklist tab and the machine pages come and go with it
   revalidatePath("/", "layout");
   return { ok: true };
 }

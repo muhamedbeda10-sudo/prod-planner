@@ -183,6 +183,7 @@ export const AI_TAB_TABLES: Record<string, readonly string[]> = {
   // the machine stops are recorded there, and the cockpit's stored trend is read off them and the shift log
   shifts: ["ShiftEntry", "DeptDayHours", "MachineDowntime", "KpiSnapshot"],
   barcode: ["TankUnit", "TankEvent", "TankSerialCounter"],
+  // FloorLayout: the drawn floors are gone from the app; the table stays until it is dropped
   simulate: ["SimScenario", "FloorLayout"],
 };
 

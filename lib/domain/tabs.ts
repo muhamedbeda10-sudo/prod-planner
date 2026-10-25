@@ -31,13 +31,14 @@ export const TABS: TabDef[] = [
   { id: "consumables", label: "Consumables", group: "Production", paths: ["/consumables"] },
   { id: "shifts", label: "Shifts", group: "Production", paths: ["/shifts"] },
   { id: "barcode", label: "Tank barcodes", group: "Production", paths: ["/barcode", "/tank"] },
-  { id: "simulate", label: "Floor / Simulator", group: "Production", paths: ["/simulate"] },
   { id: "chat", label: "Chat", group: "Production", paths: ["/chat"] },
 
   // the id stays "dashboard": an account the home page was switched off for keeps it off
   { id: "dashboard", label: "Cockpit (home)", group: "Plan Tracker", paths: ["/"] },
   { id: "tracker", label: "Plan Tracker", group: "Plan Tracker", paths: ["/tracker"] },
   { id: "handover", label: "Daily log", group: "Plan Tracker", paths: ["/handover"] },
+  // the id stays "simulate": an account the Floor / Simulator tab was switched off for keeps the simulator off
+  { id: "simulate", label: "What-if Simulator", group: "Plan Tracker", paths: ["/simulate"] },
 
   { id: "orders", label: "Orders & plan imports", group: "Admin tools", paths: ["/orders", "/import"] },
   { id: "calendar", label: "Factory calendar", group: "Admin tools", paths: ["/calendar"] },

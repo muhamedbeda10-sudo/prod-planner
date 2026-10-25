@@ -22,16 +22,18 @@ export function ViewTabs(props: { views: View[]; current: string; label: string 
 }
 
 /** The Plan Tracker tab's screens: the planner's cockpit (the home page —
- *  how the plant is doing, in standard hours), the tracker, and the raw
- *  ledger the tracker adds up. */
+ *  how the plant is doing, in standard hours), the tracker, the raw ledger
+ *  the tracker adds up, and the what-if simulator the plan is tried out on. */
 export const TRACKER_VIEWS: View[] = [
   { href: "/", label: "Cockpit", title: "The plan, each centre's pace, the load ahead, welding's parts and the losses — what needs a decision today" },
   { href: "/tracker", label: "Plan Tracker", title: "One row per order, every stage" },
   { href: "/handover", label: "Daily log", title: "The raw entries the tracker adds up — edit and correct them here" },
+  { href: "/simulate", label: "Simulator", title: "What-if: move the dates and the capacity and see what lands" },
 ];
 
 /** The same, for the product line on screen: the cockpit is the
- *  transformers'; on the panels the home page is their own dashboard. */
+ *  transformers'; on the panels the home page is their own dashboard — and
+ *  there is no simulator, which models the transformers' plan only. */
 export function trackerViews(line: string): View[] {
   if (line !== "LV") return TRACKER_VIEWS;
   const [, tracker, handover] = TRACKER_VIEWS;

@@ -57,8 +57,7 @@ const LV_WORKLIST_DEPTS = [
 // view behind their own switcher (see components/ViewTabs.tsx), which is what
 // keeps the strip short enough to read:
 //   Material     → the nesting sheets, and the sheet analytics built on them
-//   Plan Tracker → the planner's cockpit (the home page), the tracker and the daily log
-//   Floor        → the bay as it is, and the what-if simulator
+//   Plan Tracker → the planner's cockpit (the home page), the tracker, the daily log and the what-if simulator
 // Chat is not here at all — it is the icon in the right cluster.
 const REST: Item[] = [
   // Material comes next: nesting is decided before a single sheet is cut.
@@ -70,12 +69,11 @@ const REST: Item[] = [
   { href: "/consumables", label: "Consumables", icon: PackageMinus },
   // who worked today, how long, on what — the supervisors' page
   { href: "/shifts", label: "Shifts", icon: Clock },
-  // the home page (/) is the planner's cockpit — a view of this tab
-  { href: "/tracker", label: "Plan Tracker", icon: Table2, also: ["/", "/handover"] },
+  // the home page (/) is the planner's cockpit — a view of this tab, as the simulator is
+  { href: "/tracker", label: "Plan Tracker", icon: Table2, also: ["/", "/handover", "/simulate"] },
   // the tanks' sticker sheet — its own tab while per-piece tracking is on
   // (TANK_ONLY drops it otherwise), and still a button on the painting worklist
   { href: "/barcode", label: "Tank Barcodes", icon: QrCode, match: "/barcode" },
-  { href: "/simulate", label: "Floor", icon: FlaskConical },
 ];
 
 // The mobile drawer has vertical room — it lists the three worklists directly.
@@ -92,6 +90,7 @@ const DRAWER: Item[] = [
 const DRAWER_VIEWS: Item[] = [
   { href: "/", label: "Cockpit", icon: Gauge },
   { href: "/handover", label: "Daily log", icon: BookOpenCheck },
+  { href: "/simulate", label: "Simulator", icon: FlaskConical },
   { href: "/analytics", label: "Material analytics", icon: ChartColumnBig },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
 ];
@@ -127,6 +126,10 @@ const MACHINE_ONLY = new Set(["/admin/machines", "/admin/machine-times"]);
 
 // The two tabs that only exist while per-piece tank tracking is on.
 const TANK_ONLY = new Set(["/worklist/leak-test", "/barcode"]);
+
+// The Plan Tracker's views that are the transformers' alone: the printed
+// report, and the what-if simulator (it models the transformers' plan).
+const TR_VIEWS = new Set(["/simulate"]);
 
 /** One entry of the tools menu: its name, with what it holds as the tooltip. */
 function ToolLink({ href, label, title, icon: Icon, active }: { href: string; label: string; title?: string; icon: Item["icon"]; active: boolean }) {
@@ -175,9 +178,8 @@ export function AppNav({
   unreadChat?: number;
   /** With tracking off, the Leak Test and Barcode tabs are not part of the app. */
   tankTracking?: boolean;
-  /** One switch for the worklists, the shift log, the machines and machine planning: off, the
-   *  Worklist and Shifts tabs and the two machine pages are gone, and the Floor tab is the
-   *  what-if simulator alone — it is named so. */
+  /** One switch for the worklists, the machines and machine planning: off, the
+   *  Worklist tab and the two machine pages are gone. */
   machinePlanning?: boolean;
   /** The subscribed person's "ready to close in Odoo" alert: its count on the ODOO tab, and the popup. */
   odooAlerts?: { enabled: boolean; count: number };
@@ -220,11 +222,11 @@ export function AppNav({
   // the leak test and the barcodes are the tanks' — with tracking off, or the
   // panels on screen, they are not part of the app
   const tankTabs = tankTracking && line !== "LV";
-  const named = (l: Item): Item =>
-    l.href === "/simulate" && !machinePlanning ? { ...l, label: "Simulator" }
-    // the cockpit is the transformers'; on the panels the home page is their own dashboard
-    : l.label === "Cockpit" && line === "LV" ? { ...l, label: "Dashboard", icon: LayoutDashboard }
-    : l;
+  // the cockpit is the transformers'; on the panels the home page is their own dashboard
+  const named = (l: Item): Item => (l.label === "Cockpit" && line === "LV" ? { ...l, label: "Dashboard", icon: LayoutDashboard } : l);
+  // the simulator models the transformers' plan only: on the panels it is not a view of Plan Tracker
+  const ofLine = (items: Item[]): Item[] =>
+    line !== "LV" ? items : items.map((l) => (l.href === "/tracker" ? { ...l, also: (l.also ?? []).filter((h) => !TR_VIEWS.has(h)) } : l));
   // the screens the owner switched off for this account leave the menus too
   const canSee = useCanSee();
   const worklistDepts = (line === "LV" ? LV_WORKLIST_DEPTS : WORKLIST_DEPTS).filter((d) => (tankTabs || !TANK_ONLY.has(d.href)) && canSee(d.href));
@@ -234,15 +236,16 @@ export function AppNav({
     const to = [l.href, ...(l.also ?? [])].find(canSee);
     return to ? (to === l.href ? l : { ...l, href: to, match: l.match ?? l.href }) : null;
   };
-  const restTabs = REST.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
+  const restTabs = ofLine(REST).filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && (machinePlanning || !MACHINE_ONLY.has(l.href)))
     .map(reachable).filter((l): l is Item => l !== null).map(named);
-  const drawerTabs = (!machinePlanning
+  const drawerTabs = ofLine(!machinePlanning
     ? DRAWER.filter((l) => !l.href.startsWith("/worklist/"))
     : line === "LV"
     ? [...LV_WORKLIST_DEPTS.map((d): Item => ({ href: d.href, label: `${d.label} Worklist`, icon: d.icon })), ...DRAWER.filter((l) => !l.href.startsWith("/worklist/"))]
     : DRAWER
   ).filter(shown).map(named);
-  const drawerViews = DRAWER_VIEWS.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && canSee(l.href)).map(named);
+  // the simulator is the transformers' — the panels' home page is their own dashboard
+  const drawerViews = DRAWER_VIEWS.filter((l) => (tankTabs || !TANK_ONLY.has(l.href)) && !(line === "LV" && TR_VIEWS.has(l.href)) && canSee(l.href)).map(named);
   const deptEdits = worklistDepts.filter((d) => user.perms.includes(d.perm));
   const singleDeptHref = worklistDepts.length === 1 ? worklistDepts[0].href : !user.isAdmin && deptEdits.length === 1 ? deptEdits[0].href : null;
 

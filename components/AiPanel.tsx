@@ -171,7 +171,7 @@ export function AiPanel({ isOwner }: { isOwner: boolean }) {
       {made && (
         <div hidden={!p.shown} className="no-print">
           {layout === "large" && p.shown && <div className="ai-overlay" onClick={p.close} aria-hidden />}
-          <section role="dialog" aria-modal={layout !== "compact"} aria-label="AI assistant" className={`ai-pop ai-pop-${layout}${layout === "large" ? " ai-pop-fullscreen" : ""}`}>
+          <section role="dialog" aria-modal={layout !== "compact"} aria-label="AI assistant" className={`ai-pop ai-pop-${layout}`}>
             <AiWorkspace
               tabs={p.tabs}
               view={state.view}
