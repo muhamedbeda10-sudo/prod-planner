@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-people-needed",
+    dateISO: "2026-10-25",
+    title: "Do we have the people? The month's plan in people, centre by centre",
+    where: "Cockpit · Admin → Standard Times",
+    href: "/",
+    body: "A new cockpit card reads the month's plan the way the manpower sheet does, live: each work centre's standard hours for the month's orders (outsourced pieces left out), over the month's working days × the net hours a person works, give the people the plan needs; what is left over the days still to come gives the people needed from today; against them, the people who come on an average recorded day — and the gap, to spare or short. A centre short of people is flagged among the day's decisions, and the assistant reads the same figures. The sheet's split of Fabrication between laser cutting, bending and fin folding is now typed into the hours a piece per work centre, for every class.",
+  },
+  {
     id: "2026-10-25-cockpit-in-plan-tracker",
     dateISO: "2026-10-25",
     title: "The cockpit sits inside Plan Tracker; the printed Report is gone",

@@ -13,7 +13,7 @@ import { WORK_CENTRE_LABEL, type WorkCentre } from "@/lib/domain/shifts";
 import { STAGE_LABEL, efficiencyBand, isFloorAction } from "@/lib/domain/kpis";
 import type { CockpitData } from "@/lib/server/kpis";
 
-// 🧭 The planner's cockpit — five questions, each a card with the figure and
+// 🧭 The planner's cockpit — six questions, each a card with the figure and
 // the list to act on, worst news first. Every number is standard hours (what
 // the work is worth), never pieces, so Fabrication's ten projects a day add
 // up. The figures come from lib/server/kpis.ts; the assistant reads the same
@@ -54,6 +54,9 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
   // a day the trend does not know is left out, never drawn as 0
   const spark = (k: "late" | "coverageDays") => data.trend.flatMap((t) => (t[k] === null || t[k] === undefined ? [] : [t[k]]));
   const recentDays = Math.max(...data.centres.map((c) => c.recent.days), 0);
+  const mp = data.manpower;
+  // the centres short by half a person or more — the ones the card colours red
+  const peopleShort = mp.rows.reduce((s, r) => s + (r.tone === "bad" ? -(r.gap ?? 0) : 0), 0);
 
   return (
     <div className="space-y-3">
@@ -94,6 +97,7 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
           <>
             <StatTile label="Fabrication efficiency" value={pctOrDash(data.fabrication.efficiency)} sub={`${data.fabrication.earnedH} std-h earned of ${data.fabrication.workedH} worked`} />
             <StatTile label="Machine hours lost" value={`${data.losses.unplannedH} h`} sub={data.losses.fromISO ? `since ${formatDate(data.losses.fromISO)}` : "recent days"} />
+            <StatTile label="People short" value={mp.leftWd > 0 && mp.rows.some((r) => r.gap !== null) ? String(Math.ceil(peopleShort)) : "—"} sub={mp.leftWd > 0 ? `to finish ${mp.monthLabel}'s plan from today` : "the month's working days are over"} />
           </>
         )}
       </div>
@@ -162,10 +166,8 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
         </div>
       )}
 
-      {/* 2 — the load ahead, with welding's parts beside it */}
-      <div className="grid gap-3 2xl:grid-cols-12">
-        <ChartCard
-          className="2xl:col-span-8"
+      {/* 2 — the load ahead */}
+      <ChartCard
           title="Where is the crunch?"
           sub="The plan's remaining hours against what each centre can work over the next 10 working days. Capacity a day = the man-hours the centre usually has × the pace it has measured; a centre is short once what it owes so far passes what it could have worked so far."
           table={{ filename: `load-${data.todayISO}.xlsx`, rows: data.load.flatMap((l) => l.days.map((d) => ({ Centre: centreName(l.centre), Day: d.dayISO, "Due h": d.dueH, "Capacity h": l.measured ? d.capacityH : "not measured" }))) }}
@@ -205,9 +207,53 @@ export function Cockpit({ data, floor = true }: { data: CockpitData; floor?: boo
               </table>
             </TableFrame>
           )}
+      </ChartCard>
+
+      {/* 3 — the month in people, with welding's parts beside it */}
+      <div className="grid gap-3 xl:grid-cols-12">
+        <ChartCard
+          className="xl:col-span-7"
+          title="Do we have the people?"
+          sub={`${mp.monthLabel}: the plan's ${mp.pieces} transformers in standard hours over ${mp.monthWd} working days × ${mp.hoursPerPersonDay} h a person; "from today" is what is left over the ${mp.leftWd} working days left.${floor ? " Present = people on an average recorded day lately." : ""}`}
+          table={{ filename: `people-${data.todayISO}.xlsx`, rows: mp.rows.map((r) => ({ Centre: centreName(r.centre), "Plan h": r.requiredH, "Done h": r.doneH, "Left h": r.leftH, "Needed (month)": r.needed ?? "", "Needed from today": r.neededNow ?? "", ...(floor ? { Present: r.present ?? "", Gap: r.gap ?? "" } : {}) })) }}
+        >
+          {mp.pieces === 0 ? (
+            <EmptyState compact icon={Info} title={`No orders on ${mp.monthLabel}'s plan`} hint="Import the monthly plan under Orders & plan imports — the people it needs are read from it." />
+          ) : (
+            <TableFrame>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <Th label="Centre" />
+                    <Th label="Plan" num className="text-right" unit="h" hint="Standard hours the month's plan asks of the centre, outsourced pieces left out" />
+                    <Th label="Done" num className="text-right" unit="h" hint="Earned on the month's orders — all of it, for an order carried over from an earlier month" />
+                    <Th label="Left" num className="text-right" unit="h" />
+                    <Th label="Needed" num className="text-right" hint="People on an average working day of the month" />
+                    <Th label="From today" num className="text-right" hint="People each remaining working day needs for what is left" />
+                    {floor && <Th label="Present" num className="text-right" hint="People on an average recorded day lately" />}
+                    {floor && <Th label="Gap" num className="text-right" hint="Present less needed from today: to spare (+) or short (−)" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {mp.rows.map((r) => (
+                    <tr key={r.centre}>
+                      <td className="px-2 font-semibold whitespace-nowrap">{centreName(r.centre)}</td>
+                      <td className="px-2 text-right tabnum">{r.requiredH}</td>
+                      <td className="px-2 text-right tabnum">{r.doneH}</td>
+                      <td className="px-2 text-right tabnum">{r.leftH}</td>
+                      <td className="px-2 text-right tabnum">{r.needed ?? "—"}</td>
+                      <td className="px-2 text-right tabnum font-bold">{r.neededNow ?? "—"}</td>
+                      {floor && <td className="px-2 text-right tabnum">{r.present ?? "—"}</td>}
+                      {floor && <td className={`px-2 text-right tabnum font-bold ${r.tone ? TONE_TEXT[r.tone] : "text-muted"}`}>{r.gap === null ? "—" : r.gap > 0 ? `+${r.gap}` : r.gap}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableFrame>
+          )}
         </ChartCard>
         <ChartCard
-          className="2xl:col-span-4"
+          className="xl:col-span-5"
           title="Is welding covered?"
           sub={data.coverage.days === null
             ? "No recent welding to measure against."

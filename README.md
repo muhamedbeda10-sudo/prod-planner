@@ -190,7 +190,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
    through); a typed figure replaces it in the standard-hours engine itself (`lib/domain/stdEngine.ts`), so
    every earned hour, efficiency, calibration, load and capacity figure in the app is priced with it — and
    an item the timings sheet never priced (AR, MB) gets hours at last. The assistant sets them with
-   `set_centre_hours`.
+   `set_centre_hours`. The three Fabrication centres come pre-typed for every class from the plant's manpower
+   sheet (laser 1.99 h, bending 2.45 h, fin folding 4.1 h a 500 kVA transformer, spread over the components
+   and the classes in the estimate's proportions; migration `20261025180000`), set by "Manpower plan sheet" —
+   clear a cell to fall back to the estimate.
    **Times per machine** (Tools → Times per Machine, `machines.manage`): what ONE piece of each item really
    takes on each machine, in hours. A figure here **outranks the standard time** for that machine — its queue
    on the board is priced with it and the machine plan schedules with it, so a 6 kW laser and a punch stop being planned
@@ -420,9 +423,13 @@ mobile drawer still lists every view flat, since it has the vertical room.
    there — efficiency on the last recorded day and over the recent ones, people a day, machine availability, the
    trend; **3** the load ahead — each centre's remaining plan hours over the next 10 working days against what it
    can work (its usual man-hours × its measured pace — "not measured" while no hours are booked there); **4** welding coverage — days of cut parts waiting in front of
-   the welders; **5** what stopped the floor — machine stops by cause, absence and overtime. Each card has its
+   the welders; **5** what stopped the floor — machine stops by cause, absence and overtime; and **the month in
+   people** — each centre's standard hours for the month's plan (its orders' components × pieces, outsourced ones
+   left out) over the month's working days × the net hours a person works (Settings) give the people it needs, what
+   is left over the days still to come the people needed from today, against who comes on an average recorded day
+   (the plant's manpower sheet, read live). Each card has its
    table and Excel export; the page prints. An account the Shifts screen is closed to sees neither the centres'
-   efficiency nor the losses (questions 2 and 5) — on the page or through the assistant. The day's figures are kept for their trend
+   efficiency, nor the losses, nor who is present (questions 2 and 5, and the people card's Present and Gap) — on the page or through the assistant. The day's figures are kept for their trend
    (`KpiSnapshot`): after the page is served, and each hour by the automations' housekeeping. The
    pure arithmetic is `lib/domain/kpis.ts` (tested); the loader `lib/server/kpis.ts` is the one both the page and
    the assistant's `get_kpis` read — the morning review starts from it. The calibration reads the ledger through

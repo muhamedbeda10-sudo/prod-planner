@@ -19,6 +19,7 @@ describe("get_kpis", () => {
       fabrication: { workedH: 300, earnedH: 240, efficiency: 0.8 },
       load: [{ centre: "Welding", measured: true, days: [{ dayISO: "2026-10-25", dueH: 40, capacityH: 30, tone: "bad" }], loadRate: 0.734, behindH: 256.1, shortFromISO: "2026-10-25", clearsISO: "2026-11-02", shortH: 0 }],
       coverage: { wipH: 306.2, ratePerDay: 137.9, days: 2.2, band: "ok", byItem: [] },
+      manpower: { monthLabel: "October 2026", monthWd: 25, leftWd: 5, hoursPerPersonDay: 8, pieces: 120, rows: [{ centre: "Welding", requiredH: 4000, doneH: 3000, leftH: 1000, needed: 20, neededNow: 25, present: 22, gap: -3, tone: "bad" }] },
       losses: { causes: [], unplannedH: 6.5, plannedH: 4, absentRate: 0.1111, overtimeH: 126, fromISO: "2026-10-18" },
       pricedShare: 1,
       actions: [{ tone: "bad", text: "29 plan line(s) are behind", href: "/tracker?view=weekly" }, { tone: "warn", text: "No material cost 6 machine hours", href: "/shifts", floor: true }],
@@ -34,6 +35,7 @@ describe("get_kpis", () => {
     expect(j.centres[0].lastDay.efficiency).toBe(0.53);
     expect(j.loadAhead[0]).toMatchObject({ centre: "Welding", measured: true, loadRate: 0.73, behindH: 256.1, clears: "2026-11-02", shortAtEndH: 0, days: [{ day: "2026-10-25", dueH: 40, capacityH: 30 }] });
     expect(j.fabrication).toEqual({ earnedH: 240, workedH: 300, efficiency: 0.8 });
+    expect(j.manpower).toMatchObject({ month: "October 2026", workingDaysLeft: 5, centres: [{ centre: "Welding", peopleNeeded: 20, peopleNeededFromToday: 25, peoplePresent: 22, gap: -3 }] });
     expect(j.losses).toMatchObject({ unplannedH: 6.5, absentRate: 0.11, overtimeH: 126 });
     expect(j.trend[0]).toMatchObject({ day: "2026-10-25", behind: 29, efficiency: { Welding: 0.9 } });
     expect(out.links).toEqual([{ label: "Cockpit", href: "/" }]);
@@ -46,6 +48,7 @@ describe("get_kpis", () => {
     expect(j.losses).toBeUndefined();
     expect(j.fabrication).toBeUndefined();
     expect(j.trend[0].efficiency).toBeUndefined();
+    expect(j.manpower.centres[0]).toEqual({ centre: "Welding", requiredH: 4000, doneH: 3000, leftH: 1000, peopleNeeded: 20, peopleNeededFromToday: 25 });
     expect(j.decisions).toEqual(["bad: 29 plan line(s) are behind"]);
     expect(j.weeklyPlan.behindCount).toBe(29);
   });
