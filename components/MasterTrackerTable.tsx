@@ -27,7 +27,6 @@ import { itemFinishShare, rowBottleneck } from "@/lib/domain/trackerView";
 
 import { filterMasterTracker, trackerItemStats } from "@/lib/domain/trackerSummary";
 import { trackerOdooTotal } from "@/lib/domain/trackerOdoo";
-import { OdooTrackingStart } from "@/components/OdooTrackingStart";
 
 /** The order's spec columns. Every one of them is the planner's own — the
  *  monthly import writes none of them, so a re-import can never blank what he
@@ -888,22 +887,12 @@ export function MasterTrackerTable({
         <ColumnChooser cols={cols} hiddenItems={hiddenItems} onHideItem={toggleHiddenItem} collapsed={collapsed} onCollapse={toggleCollapsed} />
       </FilterBar>
 
-      <p className="text-xs text-muted mb-2" role="note">
-        <b>Odoo: {month ? month === "—" ? "No plan month" : month : "All plan months"}.</b>{" "}
-        {odooTrackingFrom ? `Automatic allocation starts with plan ${odooTrackingFrom}, oldest first.` : "Set the first tracked plan month before automatically distributing project quantities."}{" "}
-        Older quantities without linked evidence are untracked (—). Click an Odoo figure for its month allocation.
-      </p>
-      {can("admin") && <details className="border rounded-lg bg-surface px-3 py-2 mb-2" open={!odooTrackingFrom}>
-        <summary className="text-xs font-semibold cursor-pointer">Odoo tracking start: {odooTrackingFrom ?? "not set"} · Change</summary>
-        <div className="mt-2"><OdooTrackingStart initialMonth={odooTrackingFrom} /></div>
-      </details>}
-
       {odooDetail && (() => {
         const members = rows.filter((r) => r.bom === odooDetail.bom && r.items[odooDetail.item].eligible && !r.items[odooDetail.item].excluded);
         const total = trackerOdooTotal(members, odooDetail.item);
         return <Modal title={`${ITEM_NAME[odooDetail.item]} · Odoo plan allocation`} sub={odooDetail.bom} onClose={() => setOdooDetail(null)} width="max-w-3xl">
           <p className="text-sm text-muted mb-3">The BOM&apos;s On Odoo production closings are the primary source. Separate imported project rows are used only when that component has no linked closing rows. Done / Closed quantities fill the oldest matching plan first, up to each order&apos;s requirement; linked records keep their own MO. A carried MO does not create another quantity.</p>
-          <p className="text-sm text-muted mb-3">{odooTrackingFrom ? `Automatic allocation begins with plan ${odooTrackingFrom}. Earlier plans do not consume these quantities.` : "No starting plan month has been set: project-only quantities remain unallocated."} A linked production closing still confirms its own MO, including an older order. “Not tracked” means the historical closing is unknown.</p>
+          <p className="text-sm text-muted mb-3">{odooTrackingFrom ? `Tracking begins on ${odooTrackingFrom}. Project entries from this day fill the oldest plans starting with its month; earlier plans do not consume them.` : "No recording start date has been set: project-only quantities remain unallocated."} A linked production closing still confirms its own MO, including an older order. “Not tracked” means the historical closing is unknown.</p>
           <Link href={`/trace?bom=${encodeURIComponent(odooDetail.bom)}#on-odoo`} className="inline-flex text-sm text-brand-ink font-semibold hover:underline mb-3">Open this BOM&apos;s On Odoo records →</Link>
           <div className="overflow-x-auto"><table className="w-full text-sm grid-lines" aria-label="Odoo allocation by plan month">
             <thead><tr><th className="p-2 text-left">Original plan month</th><th className="p-2 text-left">MO</th><th className="p-2 text-right">Required</th><th className="p-2 text-right">Odoo allocated</th></tr></thead>

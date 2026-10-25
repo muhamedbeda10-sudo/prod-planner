@@ -23,7 +23,6 @@ vi.mock("@/app/orders/actions", () => ({
 }));
 vi.mock("@/app/worklist/actions", () => ({ recordTrackerTotal: vi.fn(), recordGroupOutput: vi.fn() }));
 vi.mock("@/app/prefs/actions", () => ({ saveUserPref: vi.fn() }));
-vi.mock("@/app/admin/settings/actions", () => ({ saveOdooTrackingStart: vi.fn() }));
 vi.mock("@/components/FilterControls", async (original) => ({
   ...await original<typeof import("@/components/FilterControls")>(),
   useSavedFilter: (key: string) => [filters[key] ?? "", vi.fn()],

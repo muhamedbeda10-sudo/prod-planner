@@ -50,9 +50,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
    The BOM trace's **On Odoo** closing rows are the primary source per component; separate imports
    are used only where that component has no linked closing records. The ledger identifies the part
    and planner MO, even if a freely typed product or FG code differs. Project-only quantities fill the
-   oldest matching tracked plan first, up to each MO/component requirement. An admin chooses the first
-   tracked plan month once (Tracker or Admin → Settings); old imported backlog stays untracked (—),
-   while an explicit linked closing still confirms its own older MO. Until the start is set, quantities
+   oldest matching tracked plan first, up to each MO/component requirement. The plant’s confirmed recording
+   start is **6 September 2026**, editable as a full date on Admin → Settings. Automatic
+   allocation uses project rows recorded on/after that day and plans from September onward; old backlog stays untracked (—),
+   while an explicit linked closing still confirms its own older MO. When the start is unset, quantities
    without an MO remain unallocated. Allocation uses the whole registry before filters: a carried MO
    keeps its original plan month, so it cannot be counted again in a newer month. Excess quantities are
    flagged separately. Click a figure for the month/MO breakdown and a link to the BOM's On Odoo records.

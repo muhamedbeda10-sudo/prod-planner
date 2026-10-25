@@ -35,7 +35,7 @@ export default async function SettingsPage() {
       <MachinePlanningToggle initialOn={settings.machinePlanning} />
       <section className="bg-surface border rounded-xl p-4 space-y-3">
         <h2 className="font-bold">Odoo monthly plan tracking</h2>
-        <OdooTrackingStart initialMonth={settings.odooTrackingFrom} />
+        <OdooTrackingStart initialDate={settings.odooTrackingFrom} />
       </section>
       {backup && (
         <BackupLogin

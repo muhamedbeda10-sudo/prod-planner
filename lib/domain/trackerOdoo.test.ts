@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ITEMS } from "./constants";
-import { odooPlanMonth, trackerOdooQuantities as allocateOdoo, trackerOdooTotal } from "./trackerOdoo";
+import { normalizeOdooTrackingStart, odooPlanMonth, trackerOdooQuantities as allocateOdoo, trackerOdooTotal } from "./trackerOdoo";
 const order = (mo = "MO-1", bom = "BOM-A", soi: string | null = "SO-1", month = "October 2026", planQty = 100) => ({ mo, bom, soi, line: "TR", source: month, months: month, planQty });
 const trackerOdooQuantities = (...args: Parameters<typeof allocateOdoo>) => allocateOdoo(args[0], args[1], args[2], args[3] === undefined ? "2000-01" : args[3]);
-const entry = (extra = {}) => ({ id: 1, line: "TR", ledgerId: null as number | null, soi: "SO-1", fgCode: "FB-022-BOM-A", product: "Tank", qty: 5, status: "Done", ...extra });
+const entry = (extra = {}) => ({ id: 1, date: "2026-09-06", line: "TR", ledgerId: null as number | null, soi: "SO-1", fgCode: "FB-022-BOM-A", product: "Tank", qty: 5, status: "Done", ...extra });
 describe("Odoo closed quantities on the plan tracker", () => {
   it("reads quantities only from Done/Closed TR log rows, not pending attempts or LV", () => {
     const result = trackerOdooQuantities([order()], [entry(), entry({ status: " Closed ", qty: 3 }), ...["Pending", "Blocked", "Cancelled", "MO to be close"].map((status) => entry({ status, qty: 100 })), entry({ line: "LV", qty: 100 }), entry({ qty: 0 })], []);
@@ -120,6 +120,25 @@ describe("Odoo closed quantities on the plan tracker", () => {
     const progress = trackerOdooQuantities([order("MO-1", "BOM-A", "SO-1", "September 2026", 16)], entries, ledgers);
     expect(progress.counts.get("MO-1")).toEqual({ CF: 14, TC: 14, CB: 14, TN: 7, MB: 7 });
     expect(Object.values(progress.counts.get("MO-1")!).reduce((sum, qty) => sum + qty, 0)).toBe(56);
+  });
+  it("starts inclusively on 6 September, excluding the first five days from automatic allocation", () => {
+    const orders = [order("AUG", "BOM-A", "SO-1", "August 2026", 100), order("SEP", "BOM-A", "SO-1", "September 2026", 10), order("OCT", "BOM-A", "SO-1", "October 2026", 10)];
+    const entries = [entry({ date: "2026-09-01", qty: 100 }), entry({ date: "2026-09-05", qty: 100 }), entry({ date: new Date("2026-09-06T00:00:00Z"), qty: 7 }), entry({ date: "2026-09-07", qty: 7 })];
+    const progress = trackerOdooQuantities(orders, entries, [], "2026-09-06");
+    expect(progress.counts.get("SEP")?.TN).toBe(10);
+    expect(progress.counts.get("OCT")?.TN).toBe(4);
+    expect(progress.counts.has("AUG")).toBe(false);
+    expect(progress.unallocated).toEqual([]);
+  });
+  it("keeps an explicitly linked historical closing on its own order before the recording start", () => {
+    const progress = trackerOdooQuantities([order("OLD", "BOM-A", "SO-1", "August 2026", 10)], [entry({ date: "2026-09-05", ledgerId: 7, qty: 7 })], [{ id: 7, mo: "OLD", bom: "BOM-A", item: "TN" }], "2026-09-06");
+    expect(progress.counts.get("OLD")?.TN).toBe(7);
+    expect(progress.tracked.has(JSON.stringify(["OLD", "TN"]))).toBe(true);
+  });
+  it("supports saved month-only starts and rejects impossible dates", () => {
+    expect(normalizeOdooTrackingStart("2026-09")).toBe("2026-09-01");
+    expect(normalizeOdooTrackingStart("2026-09-06")).toBe("2026-09-06");
+    expect(normalizeOdooTrackingStart("2026-09-31")).toBe(null);
   });
 });
 

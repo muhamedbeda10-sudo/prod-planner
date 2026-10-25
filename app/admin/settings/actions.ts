@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/server/auth";
 import { DEFAULTS } from "@/lib/domain/constants";
+import { normalizeOdooTrackingStart } from "@/lib/domain/trackerOdoo";
 
 // Plant-wide settings. Right now that is the master switch for per-piece tank
 // tracking; the row it lives on (Settings, id 1) also carries the lead times
@@ -18,9 +19,10 @@ export interface SettingsActionResult {
 export async function saveOdooTrackingStart(formData: FormData): Promise<SettingsActionResult> {
   const guard = await requireAdmin();
   if (guard.error) return { ok: false, error: guard.error };
-  const month = String(formData.get("month") ?? "").trim();
-  if (month && !/^(20\d{2})-(0[1-9]|1[0-2])$/.test(month)) return { ok: false, error: "Choose a valid starting month." };
-  await prisma.settings.upsert({ where: { id: 1 }, create: { id: 1, odooTrackingFrom: month || null }, update: { odooTrackingFrom: month || null } });
+  const value = String(formData.get("date") ?? formData.get("month") ?? "").trim();
+  const date = normalizeOdooTrackingStart(value);
+  if (value && !date) return { ok: false, error: "Choose a valid starting date." };
+  await prisma.settings.upsert({ where: { id: 1 }, create: { id: 1, odooTrackingFrom: date }, update: { odooTrackingFrom: date } });
   for (const path of ["/admin/settings", "/tracker", "/trace"]) revalidatePath(path);
   return { ok: true };
 }
