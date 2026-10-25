@@ -3,18 +3,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle, ArrowLeft, Ban, CalendarClock, Check, CheckCircle2, ClipboardCheck, FileText, Flag, Loader2, Paperclip, Play, Plus, RotateCcw, Search, Send, Undo2, Users, X,
+  AlertTriangle, ArrowLeft, Ban, CalendarClock, Check, CheckCircle2, ClipboardCheck, FileText, Flag, ListChecks, Loader2, Paperclip, Pause, Pencil, Play, Plus, Repeat, RotateCcw, Search, Send, Trash2, Undo2, Users, X,
 } from "lucide-react";
 import { AiMarkdown } from "@/components/AiMarkdown";
-import { EmptyState } from "@/components/primitives";
+import { EmptyState, Switch } from "@/components/primitives";
 import { INBOX_CHANGED } from "@/components/InboxBell";
-import { createTask, loadAssignable, loadTask, markTaskSeen, postTaskUpdate } from "@/app/tasks/actions";
+import { useConfirm } from "@/components/DataTable";
+import { ChecklistEditor, StepsBar, TASK_VIEWS, TaskBoard, TaskCalendar, TaskFilterBar, TaskTeam, peopleOf, type TaskViewId } from "@/components/TasksViews";
+import {
+  createTask, deleteTaskRepeat, deleteTaskTemplate, loadAssignable, loadTask, markTaskSeen, postTaskUpdate, setTaskChecklist, setTaskRepeatEnabled, tickTaskStep,
+} from "@/app/tasks/actions";
 import { compressImage } from "@/lib/imageCompress";
 import { traceHref } from "@/lib/domain/links";
 import { formatDate, formatDateTime } from "@/lib/domain/format";
 import { factoryDayISO } from "@/lib/domain/dates";
-import { MOVE_NEEDS_TEXT, TASK_LIMITS, TASK_MOVE_LABEL, TASK_STATUS_LABEL, TASK_STATUS_TONE, isClosed, type TaskMove } from "@/lib/domain/tasks";
-import type { TaskDetail, TaskSummary, TasksData, TaskUpdateView } from "@/lib/server/tasks";
+import {
+  MOVE_NEEDS_TEXT, NO_FILTER, isFiltered, REPEAT_LIMITS, TASK_LIMITS, TASK_MOVE_LABEL, TASK_STATUS_LABEL, TASK_STATUS_TONE, describeRepeat, filterTasks, isClosed,
+  type RepeatEvery, type RepeatRule, type TaskFilter, type TaskMove,
+} from "@/lib/domain/tasks";
+import type { TaskDetail, TaskRepeatView, TaskSummary, TasksData, TaskTemplateView, TaskUpdateView } from "@/lib/server/tasks";
 import type { StoredFile } from "@/lib/server/uploads";
 
 // The inbox's Tasks tab: the tasks given to the person and those they gave,
@@ -146,10 +153,12 @@ function TaskRow({ t, which, on, onPick }: { t: TaskSummary; which: Which; on: b
           <span className="flex items-center gap-1.5 min-w-0">
             {t.priority === "urgent" && <Flag size={13} className="text-bad-fg shrink-0" aria-label="Urgent" />}
             <span className={`truncate text-[13px] ${t.unread > 0 ? "font-bold" : "font-semibold"}`} dir="auto">{t.title}</span>
+            {t.repeatId && <Repeat size={12} className="text-muted shrink-0" aria-label="Repeats" />}
           </span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] text-muted">
             <span className="truncate max-w-full" dir="auto">{who}</span>
             <DueLine due={t.dueDate} overdue={t.overdue} />
+            <StepsBar steps={t.steps} />
           </span>
           {t.last && (
             <span className="block mt-1 text-[12px] text-muted truncate" dir="auto">
@@ -208,6 +217,97 @@ function Entry({ u, mine }: { u: TaskUpdateView; mine: boolean }) {
         <FilesView files={u.attachments} />
       </div>
     </li>
+  );
+}
+
+/** A task's checklist: its giver and its people tick the steps while it is
+ *  open; its giver can change the steps (those ticked stay ticked). */
+function TaskChecklist({ task, onChanged }: { task: TaskDetail; onChanged: () => void }) {
+  const [editing, setEditing] = useState<string[] | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const open = !isClosed(task.status);
+  const canTick = open && (task.role.giver || task.role.doer);
+  const canEdit = open && task.role.giver;
+  if (task.checklist.length === 0 && !canEdit) return null;
+
+  const tick = (itemId: string, done: boolean) => {
+    const fd = new FormData();
+    fd.set("id", String(task.id));
+    fd.set("item", itemId);
+    fd.set("done", String(done));
+    setMsg(null);
+    start(async () => {
+      const r = await tickTaskStep(fd).catch(() => ({ ok: false, error: "Not saved — check the connection and try again." }));
+      if (!r.ok) setMsg(r.error ?? "Not saved.");
+      onChanged();
+    });
+  };
+  const save = () => {
+    if (!editing) return;
+    // a step kept as it was keeps its id — and so its tick
+    const free = [...task.checklist];
+    const items = editing.map((text) => {
+      const n = free.findIndex((x) => x.text === text);
+      return n >= 0 ? { id: free.splice(n, 1)[0].id, text } : { text };
+    });
+    const fd = new FormData();
+    fd.set("id", String(task.id));
+    fd.set("checklist", JSON.stringify(items));
+    setMsg(null);
+    start(async () => {
+      const r = await setTaskChecklist(fd).catch(() => ({ ok: false, error: "Not saved — check the connection and try again." }));
+      if (!r.ok) {
+        setMsg(r.error ?? "Not saved.");
+        return;
+      }
+      setEditing(null);
+      onChanged();
+    });
+  };
+
+  const done = task.checklist.filter((x) => x.done).length;
+  return (
+    <section className="rounded-xl border px-3 py-2.5 space-y-2" aria-label="Checklist">
+      <div className="flex items-center gap-2">
+        <h4 className="text-sm font-bold inline-flex items-center gap-1.5"><ListChecks size={15} aria-hidden /> Checklist</h4>
+        {task.checklist.length > 0 && <span className="text-xs text-muted tabnum">{done} of {task.checklist.length} ticked</span>}
+        {canEdit && !editing && (
+          <button type="button" className="btn btn-ghost btn-sm ms-auto" onClick={() => setEditing(task.checklist.map((x) => x.text))}>
+            <Pencil size={13} aria-hidden /> {task.checklist.length ? "Edit steps" : "Add steps"}
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <>
+          <ChecklistEditor value={editing} onChange={setEditing} disabled={pending} />
+          <div className="flex items-center justify-end gap-2">
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(null)} disabled={pending}>Cancel</button>
+            <button type="button" className="btn btn-sm btn-primary" onClick={save} disabled={pending}>{pending && <Loader2 size={13} className="animate-spin" aria-hidden />} Save steps</button>
+          </div>
+        </>
+      ) : task.checklist.length > 0 ? (
+        <>
+          <StepsBar steps={{ done, total: task.checklist.length }} wide />
+          <ul className="space-y-0.5">
+            {task.checklist.map((x) => (
+              <li key={x.id}>
+                <label className={`task-step ${x.done ? "task-step-done" : ""} ${canTick ? "cursor-pointer" : ""}`}>
+                  <input type="checkbox" checked={x.done} disabled={!canTick || pending} onChange={(e) => tick(x.id, e.target.checked)} className="mt-0.5" />
+                  <span className="min-w-0 flex-1">
+                    <span className="task-step-text text-sm" dir="auto">{x.text}</span>
+                    {x.done && x.by && <span className="block text-[11px] text-muted">{x.by}{x.at ? ` · ${formatDateTime(x.at)}` : ""}</span>}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="text-xs text-muted">No steps yet — add the steps to tick, and they see how far it is.</p>
+      )}
+      {msg && <p className="text-xs font-semibold text-bad-fg">{msg}</p>}
+    </section>
   );
 }
 
@@ -319,6 +419,7 @@ function TaskPane({ id, onBack, onChanged, onOpen }: { id: number; onBack?: () =
               <DueLine due={task.dueDate} overdue={task.overdue} />
               {task.mo && <Link href={traceHref({ mo: task.mo })} className="code-chip hover:underline">{task.mo}</Link>}
               {task.via === "ai" && <span title="Given through the assistant">via AI</span>}
+              {task.repeat && <span className="inline-flex items-center gap-1" title="Given by a repeating task"><Repeat size={12} aria-hidden /> {task.repeat.text}{task.repeat.enabled ? "" : " (paused)"}</span>}
               <span>{formatDateTime(task.createdAt)}</span>
             </div>
           </div>
@@ -328,6 +429,7 @@ function TaskPane({ id, onBack, onChanged, onOpen }: { id: number; onBack?: () =
             </div>
           )}
           <FilesView files={task.attachments} />
+          <TaskChecklist task={task} onChanged={() => { read(); onChanged(); }} />
           {task.batch.length > 0 && (
             <div className="text-xs">
               <span className="text-muted">Also given, one each: </span>
@@ -402,13 +504,24 @@ function TaskPane({ id, onBack, onChanged, onOpen }: { id: number; onBack?: () =
 
 // ------------------------------------------------------------------ giving one
 
-function TaskForm({ onDone, onCancel }: { onDone: (ids: number[]) => void; onCancel: () => void }) {
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const EVERY_LABEL: Record<RepeatEvery, string> = { day: "Each working day", week: "On weekdays", month: "Monthly" };
+
+function TaskForm({ onDone, onCancel, templates, onTemplatesChanged }: { onDone: (ids: number[]) => void; onCancel: () => void; templates: TaskTemplateView[]; onTemplatesChanged: () => void }) {
   const [people, setPeople] = useState<{ id: number; name: string }[] | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [chosen, setChosen] = useState<number[]>([]);
   const [q, setQ] = useState("");
   const [shared, setShared] = useState(false);
   const [urgent, setUrgent] = useState(false);
+  const [title, setTitle] = useState("");
+  const [details, setDetails] = useState("");
+  const [steps, setSteps] = useState<string[]>([]);
+  const [repeatOn, setRepeatOn] = useState(false);
+  const [repeat, setRepeat] = useState<RepeatRule>({ every: "day", weekdays: [], monthDay: 1, dueDays: 0 });
+  const [keep, setKeep] = useState(false);
+  const [keepName, setKeepName] = useState("");
+  const [askDelete, confirmDialog] = useConfirm();
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const picked = usePicked();
@@ -430,16 +543,47 @@ function TaskForm({ onDone, onCancel }: { onDone: (ids: number[]) => void; onCan
   }, [people, q]);
   const toggle = (id: number) => setChosen((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : xs.length >= TASK_LIMITS.people ? xs : [...xs, id]));
 
+  const applyTemplate = (t: TaskTemplateView) => {
+    setTitle(t.title);
+    setDetails(t.details);
+    setSteps(t.checklist);
+    setUrgent(t.priority === "urgent");
+    setShared(t.shared);
+    const active = new Set((people ?? []).map((p) => p.id));
+    setChosen(t.people.filter((id) => active.has(id)));
+  };
+  const dropTemplate = async (t: TaskTemplateView) => {
+    if (!(await askDelete({ title: `Delete the template “${t.name}”?`, body: "The tasks given from it stay as they are.", confirmLabel: "Delete template", danger: true }))) return;
+    const fd = new FormData();
+    fd.set("id", String(t.id));
+    const r = await deleteTaskTemplate(fd).catch(() => ({ ok: false, error: "Not deleted — check the connection." }));
+    if (!r.ok) setMsg(r.error ?? "Not deleted.");
+    onTemplatesChanged();
+  };
+
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (chosen.length === 0) {
       setMsg("Choose who it is for.");
       return;
     }
+    if (repeatOn && repeat.every === "week" && repeat.weekdays.length === 0) {
+      setMsg("Choose the days of the week it comes on.");
+      return;
+    }
+    if (keep && !keepName.trim()) {
+      setMsg("Name the template — or untick “Keep as a template”.");
+      return;
+    }
     const fd = new FormData(e.currentTarget);
+    fd.set("title", title);
+    fd.set("details", details);
     fd.set("people", chosen.join(","));
     fd.set("shared", shared && chosen.length > 1 ? "1" : "0");
     fd.set("priority", urgent ? "urgent" : "normal");
+    fd.set("checklist", JSON.stringify(steps));
+    if (repeatOn) fd.set("repeat", JSON.stringify(repeat));
+    if (keep) fd.set("templateName", keepName.trim());
     for (const f of picked.files) fd.append("files", f);
     setMsg(null);
     start(async () => {
@@ -448,6 +592,7 @@ function TaskForm({ onDone, onCancel }: { onDone: (ids: number[]) => void; onCan
         setMsg(r.error ?? "Not given.");
         return;
       }
+      if (keep) onTemplatesChanged();
       onDone(r.ids);
     });
   };
@@ -461,14 +606,31 @@ function TaskForm({ onDone, onCancel }: { onDone: (ids: number[]) => void; onCan
         <span className="text-sm font-semibold">New task</span>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4 space-y-3">
+        {templates.length > 0 && (
+          <div>
+            <span className="field-label">Start from a template</span>
+            <div className="flex flex-wrap gap-1.5">
+              {templates.map((t) => (
+                <span key={t.id} className="chip !pe-1">
+                  <button type="button" className="font-semibold" onClick={() => applyTemplate(t)} disabled={!people} title={`Fill in “${t.title}”`} dir="auto">{t.name}</button>
+                  <button type="button" className="p-0.5 rounded-full hover:bg-surface-3" onClick={() => void dropTemplate(t)} aria-label={`Delete the template ${t.name}`} title="Delete template"><X size={11} /></button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         <label className="block">
           <span className="field-label">What is to be done</span>
-          <input name="title" required maxLength={TASK_LIMITS.title} placeholder="Clean bay 2 before the audit" className="w-full px-2.5 py-1.5 text-sm" dir="auto" />
+          <input name="title" required maxLength={TASK_LIMITS.title} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Clean bay 2 before the audit" className="w-full px-2.5 py-1.5 text-sm" dir="auto" />
         </label>
         <label className="block">
           <span className="field-label">Details <span className="font-normal text-muted">— optional</span></span>
-          <textarea name="details" rows={3} maxLength={TASK_LIMITS.details} placeholder="The steps, what counts as done, what to send back (a photo of the result…)" className="w-full px-2.5 py-1.5 text-sm resize-y" dir="auto" />
+          <textarea name="details" rows={3} maxLength={TASK_LIMITS.details} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What counts as done, what to send back (a photo of the result…)" className="w-full px-2.5 py-1.5 text-sm resize-y" dir="auto" />
         </label>
+        <div>
+          <span className="field-label">Checklist <span className="font-normal text-muted">— optional; they tick each step</span></span>
+          <ChecklistEditor value={steps} onChange={setSteps} disabled={pending} />
+        </div>
         <div>
           <span className="field-label">For</span>
           {names.length > 0 && (
@@ -526,11 +688,53 @@ function TaskForm({ onDone, onCancel }: { onDone: (ids: number[]) => void; onCan
             </div>
           </div>
         </div>
+        <div className="rounded-xl border px-3 py-2.5 space-y-2">
+          <div className="flex items-center gap-2">
+            <Switch on={repeatOn} onChange={setRepeatOn} label="Repeat it" size="sm" />
+            <span className="text-sm font-semibold inline-flex items-center gap-1.5"><Repeat size={14} aria-hidden /> Repeat it by itself</span>
+          </div>
+          {repeatOn && (
+            <>
+              <div className="segmented segmented-stack w-full">
+                {(Object.keys(EVERY_LABEL) as RepeatEvery[]).map((e) => (
+                  <button key={e} type="button" aria-pressed={repeat.every === e} onClick={() => setRepeat((r) => ({ ...r, every: e }))}>{EVERY_LABEL[e]}</button>
+                ))}
+              </div>
+              {repeat.every === "week" && (
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Days of the week">
+                  {WEEKDAY_SHORT.map((d, n) => (
+                    <button key={d} type="button" className={`chip ${repeat.weekdays.includes(n) ? "chip-on" : ""}`} aria-pressed={repeat.weekdays.includes(n)}
+                      onClick={() => setRepeat((r) => ({ ...r, weekdays: r.weekdays.includes(n) ? r.weekdays.filter((x) => x !== n) : [...r.weekdays, n].sort() }))}>{d}</button>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                {repeat.every === "month" && (
+                  <label className="inline-flex items-center gap-1.5">On day
+                    <input type="number" min={1} max={31} value={repeat.monthDay ?? 1} onChange={(e) => e.target.value !== "" && setRepeat((r) => ({ ...r, monthDay: Math.min(31, Math.max(1, Math.round(Number(e.target.value)))) }))} className="w-16 text-end tabnum px-2 py-1" />
+                  </label>
+                )}
+                <label className="inline-flex items-center gap-1.5">Each one due
+                  <input type="number" min={0} max={REPEAT_LIMITS.dueDays} value={repeat.dueDays} onChange={(e) => e.target.value !== "" && setRepeat((r) => ({ ...r, dueDays: Math.min(REPEAT_LIMITS.dueDays, Math.max(0, Math.round(Number(e.target.value)))) }))} className="w-16 text-end tabnum px-2 py-1" />
+                  working days after it is given
+                </label>
+              </div>
+              <p className="text-xs text-muted">{repeat.every !== "week" || repeat.weekdays.length ? `${describeRepeat(repeat)}. ` : ""}This first one is given now (due as they will be, unless you set a due day); the next ones come by themselves on the morning of their day — a Friday or holiday moves to the next working day. Pause or stop it under I gave → Repeating.</p>
+            </>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> Keep as a template
+          </label>
+          {keep && <input value={keepName} onChange={(e) => setKeepName(e.target.value)} maxLength={60} placeholder="Template name, e.g. Weekly bay clean" aria-label="Template name" className="flex-1 min-w-[12rem] px-2.5 py-1 text-sm" dir="auto" />}
+        </div>
         <div className="flex items-center gap-2">
           <AttachButton picked={picked} disabled={pending} />
           <span className="text-xs text-muted">Photos or files to go with it</span>
         </div>
         <PickedFiles picked={picked} />
+        {confirmDialog}
       </div>
       <div className="border-t p-2.5 flex items-center justify-end gap-2 shrink-0">
         {msg && <span className="text-xs font-semibold text-bad-fg me-auto">{msg}</span>}
@@ -543,7 +747,59 @@ function TaskForm({ onDone, onCancel }: { onDone: (ids: number[]) => void; onCan
   );
 }
 
+// ------------------------------------------------------------------ repeating ones
+
+/** The giver's repeating tasks: how each comes, when next, pause or stop it. */
+function RepeatList({ repeats, onChanged }: { repeats: TaskRepeatView[]; onChanged: () => void }) {
+  const [askStop, confirmDialog] = useConfirm();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const act = (fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData) =>
+    start(async () => {
+      const r = await fn(fd).catch(() => ({ ok: false, error: "Not saved — check the connection and try again." }));
+      setMsg(r.ok ? null : r.error ?? "Not saved.");
+      onChanged();
+    });
+  if (repeats.length === 0) {
+    return <EmptyState compact icon={Repeat} title="No repeating tasks" hint="Give a task with “Repeat it by itself” on, and it comes back each day, week or month." />;
+  }
+  return (
+    <div className="space-y-1.5">
+      {repeats.map((r) => (
+        <div key={r.id} className={`rounded-lg border px-3 py-2 ${r.enabled ? "" : "bg-surface-2"}`}>
+          <div className="flex items-start gap-2">
+            <Repeat size={14} className={`mt-0.5 shrink-0 ${r.enabled ? "text-brand-ink" : "text-muted"}`} aria-hidden />
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-semibold truncate" dir="auto">{r.title}</div>
+              <div className="text-[11px] text-muted">{r.text} · to {r.people.map((p) => p.name).join(", ")}</div>
+              <div className="text-[11px] text-muted tabnum">{r.enabled ? (r.nextOn ? `Next: ${formatDate(r.nextOn)}` : "No next day within a year") : "Paused"}{r.lastGivenOn ? ` · last given ${formatDate(r.lastGivenOn)}` : ""}</div>
+              {r.lastError && <div className="text-[11px] text-bad-fg font-semibold">{r.lastError}</div>}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button type="button" className="icon-btn icon-btn-md" disabled={pending} title={r.enabled ? "Pause" : "Turn back on"} aria-label={r.enabled ? `Pause ${r.title}` : `Turn ${r.title} back on`}
+                onClick={() => { const fd = new FormData(); fd.set("id", String(r.id)); fd.set("enabled", String(!r.enabled)); act(setTaskRepeatEnabled, fd); }}>
+                {r.enabled ? <Pause size={15} /> : <Play size={15} />}
+              </button>
+              <button type="button" className="icon-btn icon-btn-md icon-btn-danger" disabled={pending} title="Stop for good" aria-label={`Stop ${r.title} for good`}
+                onClick={async () => {
+                  if (!(await askStop({ title: `Stop “${r.title}” for good?`, body: "It is given no more. The tasks it already gave stay.", confirmLabel: "Stop repeating", danger: true }))) return;
+                  const fd = new FormData(); fd.set("id", String(r.id)); act(deleteTaskRepeat, fd);
+                }}>
+                <Trash2 size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+      {msg && <p className="text-xs font-semibold text-bad-fg">{msg}</p>}
+      {confirmDialog}
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ the tab
+
+const VIEW_KEY = "tasks.view";
 
 export function TasksView({
   data,
@@ -561,47 +817,85 @@ export function TasksView({
 }) {
   const giver = data.canAssign || data.sent.length > 0;
   const [which, setWhich] = useState<Which>(() => (!giver || data.mine.some((t) => !isClosed(t.status)) || data.sent.length === 0 ? "mine" : "sent"));
-  const [show, setShow] = useState<Show>("open");
+  const [show, setShow] = useState<Show | "repeating">("open");
   const [creating, setCreating] = useState(false);
+  const [filter, setFilter] = useState<TaskFilter>(NO_FILTER);
+  const [view, setViewState] = useState<TaskViewId>(() => {
+    try {
+      const v = window.localStorage.getItem(VIEW_KEY);
+      return v === "board" || v === "calendar" || v === "team" ? v : "list";
+    } catch {
+      return "list";
+    }
+  });
+  const setView = (v: TaskViewId) => {
+    setViewState(v);
+    try {
+      window.localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* a private window keeps no choice — the list stays the default */
+    }
+  };
+  const views = TASK_VIEWS.filter((v) => v.id !== "team" || data.team);
+  const current: TaskViewId = views.some((v) => v.id === view) ? view : "list";
+  const today = factoryDayISO(new Date());
 
   const list = which === "mine" ? data.mine : data.sent;
+  const people = useMemo(() => peopleOf(list), [list]);
+  const filtered = useMemo(() => filterTasks(list, filter, today), [list, filter, today]);
   const openCount = (xs: TaskSummary[]) => xs.filter((t) => !isClosed(t.status)).length;
-  const shown = list.filter((t) => (show === "open" ? !isClosed(t.status) : isClosed(t.status)));
+  const shown = filtered.filter((t) => (show === "closed" ? isClosed(t.status) : !isClosed(t.status)));
   const waiting = data.sent.filter((t) => t.status === "submitted").length;
+  const filtering = isFiltered(filter);
+
+  const whichSwitch = giver ? (
+    <div className="segmented flex-1 min-w-[12rem] max-w-md">
+      <button type="button" aria-pressed={which === "mine"} onClick={() => setWhich("mine")}>For me{openCount(data.mine) > 0 ? ` · ${openCount(data.mine)}` : ""}</button>
+      <button type="button" aria-pressed={which === "sent"} onClick={() => { setWhich("sent"); }}>
+        I gave{openCount(data.sent) > 0 ? ` · ${openCount(data.sent)}` : ""}
+        {waiting > 0 && <span className="ms-1.5 pill pill-warn !py-0">{waiting} to review</span>}
+      </button>
+    </div>
+  ) : (
+    <span className="text-sm font-semibold flex-1">Tasks for me</span>
+  );
+  const newButton = data.canAssign && (
+    <button type="button" className="btn btn-sm btn-primary shrink-0" onClick={() => setCreating(true)}>
+      <Plus size={14} aria-hidden /> New
+    </button>
+  );
+  const viewSwitch = (
+    <div className="segmented" role="group" aria-label="View">
+      {views.map((v) => <button key={v.id} type="button" aria-pressed={current === v.id} onClick={() => setView(v.id)}>{v.label}</button>)}
+    </div>
+  );
 
   const listPane = (
     <div className="flex flex-col h-full min-h-0">
       <div className="p-2.5 space-y-2 border-b shrink-0">
-        <div className="flex items-center gap-2">
-          {giver ? (
-            <div className="segmented flex-1">
-              <button type="button" aria-pressed={which === "mine"} onClick={() => setWhich("mine")}>For me{openCount(data.mine) > 0 ? ` · ${openCount(data.mine)}` : ""}</button>
-              <button type="button" aria-pressed={which === "sent"} onClick={() => setWhich("sent")}>
-                I gave{openCount(data.sent) > 0 ? ` · ${openCount(data.sent)}` : ""}
-                {waiting > 0 && <span className="ms-1.5 pill pill-warn !py-0">{waiting} to review</span>}
-              </button>
-            </div>
-          ) : (
-            <span className="text-sm font-semibold flex-1">Tasks for me</span>
-          )}
-          {data.canAssign && (
-            <button type="button" className="btn btn-sm btn-primary shrink-0" onClick={() => setCreating(true)}>
-              <Plus size={14} aria-hidden /> New
+        <div className="flex items-center gap-2">{whichSwitch}{newButton}</div>
+        {!split && views.length > 1 && <div className="overflow-x-auto">{viewSwitch}</div>}
+        <TaskFilterBar f={filter} onChange={setFilter} people={people} count={filtered.length} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button type="button" className={`chip ${show === "open" ? "chip-on" : ""}`} aria-pressed={show === "open"} onClick={() => setShow("open")}>Open<span className="chip-count">{openCount(filtered)}</span></button>
+          <button type="button" className={`chip ${show === "closed" ? "chip-on" : ""}`} aria-pressed={show === "closed"} onClick={() => setShow("closed")}>Done & cancelled</button>
+          {which === "sent" && (data.repeats.length > 0 || data.canAssign) && (
+            <button type="button" className={`chip ${show === "repeating" ? "chip-on" : ""}`} aria-pressed={show === "repeating"} onClick={() => setShow("repeating")}>
+              <Repeat size={12} aria-hidden /> Repeating{data.repeats.length > 0 && <span className="chip-count">{data.repeats.filter((r) => r.enabled).length}</span>}
             </button>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <button type="button" className={`chip ${show === "open" ? "chip-on" : ""}`} aria-pressed={show === "open"} onClick={() => setShow("open")}>Open<span className="chip-count">{openCount(list)}</span></button>
-          <button type="button" className={`chip ${show === "closed" ? "chip-on" : ""}`} aria-pressed={show === "closed"} onClick={() => setShow("closed")}>Done & cancelled</button>
-        </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-1.5">
-        {shown.length === 0 ? (
+        {show === "repeating" && which === "sent" ? (
+          <RepeatList repeats={data.repeats} onChanged={onChanged} />
+        ) : shown.length === 0 ? (
           <EmptyState
             compact
-            icon={ClipboardCheck}
-            title={show === "closed" ? "Nothing closed yet" : which === "mine" ? "No tasks for you" : "No open tasks you gave"}
-            hint={show === "open" && which === "sent" && data.canAssign ? "Give one here, or ask the assistant: “give Ahmed a task to …”." : show === "open" && which === "mine" ? "Tasks given to you land here, and on this device when notifications are on." : undefined}
+            icon={filtering ? Search : ClipboardCheck}
+            title={filtering ? "No task matches" : show === "closed" ? "Nothing closed yet" : which === "mine" ? "No tasks for you" : "No open tasks you gave"}
+            hint={filtering ? "Change the search or the filters, or clear them." : show === "open" && which === "sent" && data.canAssign ? "Give one here, or ask the assistant: “give Ahmed a task to …”." : show === "open" && which === "mine" ? "Tasks given to you land here, and on this device when notifications are on." : undefined}
+            action={filtering ? <button type="button" className="btn btn-sm" onClick={() => setFilter(NO_FILTER)}>Clear filters</button> : undefined}
           />
         ) : (
           <div className="space-y-1">
@@ -614,6 +908,8 @@ export function TasksView({
 
   const detail: ReactNode = creating ? (
     <TaskForm
+      templates={data.templates}
+      onTemplatesChanged={onChanged}
       onCancel={() => setCreating(false)}
       onDone={(ids) => {
         setCreating(false);
@@ -624,15 +920,48 @@ export function TasksView({
       }}
     />
   ) : openId ? (
-    <TaskPane key={openId} id={openId} onBack={split ? undefined : () => onOpen(null)} onChanged={onChanged} onOpen={onOpen} />
+    <TaskPane key={openId} id={openId} onBack={split && current === "list" ? undefined : () => onOpen(null)} onChanged={onChanged} onOpen={onOpen} />
   ) : null;
+
+  // the board, the month and the team: the whole width, the open task beside them
+  if (current !== "list") {
+    const mineOf = (t: TaskSummary) => which === "mine" || t.assignees.some((a) => a.id === t.createdById);
+    const body = filtering && filtered.length === 0 && current !== "team" ? (
+      <EmptyState icon={Search} title="No task matches" hint="Change the search or the filters, or clear them." action={<button type="button" className="btn btn-sm" onClick={() => setFilter(NO_FILTER)}>Clear filters</button>} />
+    ) : current === "board" ? (
+      <TaskBoard list={filtered.filter((t) => t.status !== "cancelled")} openId={openId} onOpen={onOpen} mineOf={mineOf} />
+    ) : current === "calendar" ? (
+      <TaskCalendar list={filtered.filter((t) => !isClosed(t.status))} todayISO={today} openId={openId} onOpen={onOpen} />
+    ) : (
+      <TaskTeam team={data.team ?? []} owner={data.teamAll} onPick={(id) => { setWhich("sent"); setFilter({ ...NO_FILTER, person: id }); setView("list"); }} />
+    );
+    const main = (
+      <div className="flex flex-col h-full min-h-0">
+        <div className="p-2.5 space-y-2 border-b shrink-0">
+          <div className="flex flex-wrap items-center gap-2">{viewSwitch}{current !== "team" && whichSwitch}{newButton}</div>
+          {current !== "team" && <TaskFilterBar f={filter} onChange={setFilter} people={people} count={filtered.length} />}
+        </div>
+        <div className="flex-1 min-h-0 overflow-auto p-2.5">{body}</div>
+      </div>
+    );
+    if (!split) return detail ?? main;
+    return (
+      <div className="flex h-full min-h-0">
+        <div className="flex-1 min-w-0 min-h-0">{main}</div>
+        {detail && <div className="w-[420px] max-w-[45%] shrink-0 border-s min-h-0">{detail}</div>}
+      </div>
+    );
+  }
 
   if (!split) return detail ?? listPane;
   return (
     <div className="flex h-full min-h-0">
-      <div className="w-[340px] shrink-0 border-e min-h-0">{listPane}</div>
+      <div className="w-[360px] shrink-0 border-e min-h-0 flex flex-col">
+        {views.length > 1 && <div className="px-2.5 pt-2.5 overflow-x-auto">{viewSwitch}</div>}
+        <div className="flex-1 min-h-0">{listPane}</div>
+      </div>
       <div className="flex-1 min-w-0 min-h-0">
-        {detail ?? <div className="h-full grid place-items-center"><EmptyState icon={ClipboardCheck} title="Choose a task" hint="Its details, its updates and photos, and what you can do on it open here." /></div>}
+        {detail ?? <div className="h-full grid place-items-center"><EmptyState icon={ClipboardCheck} title="Choose a task" hint="Its details, its checklist, its updates and photos, and what you can do on it open here." /></div>}
       </div>
     </div>
   );

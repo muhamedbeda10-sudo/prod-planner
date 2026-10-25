@@ -9,7 +9,7 @@ import { toolsFor } from "@/lib/server/ai/tools";
 import { pruneAiFiles } from "@/lib/server/ai/files";
 import { getPlaybookText } from "@/lib/server/ai/playbook";
 import { deliverToInbox } from "@/lib/server/inbox";
-import { remindOverdueTasks } from "@/lib/server/tasks";
+import { escalateLateTasks, giveRepeatingTasks, remindDueToday, remindOverdueTasks } from "@/lib/server/tasks";
 import { runAsActor } from "@/lib/server/actor";
 import { createTask } from "@/app/tasks/actions";
 import { TASK_LIMITS } from "@/lib/domain/tasks";
@@ -68,7 +68,14 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
   const inHours = inAutomationWindow(now, window);
   // the tasks past their due day tell their people — inside the plant's
   // hours (no phone buzzes at night), whether the automations are paused or not
-  if (inHours) await remindOverdueTasks(now).catch((e) => console.error("tasks: overdue reminders failed", e));
+  // — and the repeating tasks are given, the day's due ones remind their
+  // people, and those late for days go up to the owner
+  if (inHours) {
+    await giveRepeatingTasks(now).catch((e) => console.error("tasks: repeating tasks failed", e));
+    await remindDueToday(now).catch((e) => console.error("tasks: due-today reminders failed", e));
+    await remindOverdueTasks(now).catch((e) => console.error("tasks: overdue reminders failed", e));
+    await escalateLateTasks(now).catch((e) => console.error("tasks: late escalation failed", e));
+  }
   // the watchdog keeps its own switch and time — it is plain arithmetic, so
   // the automations' pause does not hold it
   await runWatch({ now }).catch((e) => console.error("watchdog: failed", e));

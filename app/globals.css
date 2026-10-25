@@ -1325,6 +1325,39 @@ html.ai-modal { overflow: hidden; }
 .task-bubble-mine { background: var(--brand-light); border-color: color-mix(in srgb, var(--brand) 25%, var(--border)); border-top-left-radius: 12px; border-top-right-radius: 4px; }
 .task-event { display: flex; gap: 10px; align-items: flex-start; padding: 7px 10px; border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
 .task-event-icon { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border); flex-shrink: 0; }
+/* ---- Tasks 2.0: a checklist's progress, the board, the month ---- */
+.task-progress { display: inline-block; height: 5px; border-radius: 999px; background: var(--surface-3); overflow: hidden; vertical-align: middle; }
+.task-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--brand); transition: width 0.2s ease; }
+.task-progress > span.task-progress-full { background: var(--ok-fg); }
+.task-progress > span.task-progress-late { background: var(--bad-fg); }
+.task-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(15rem, 1fr); gap: var(--sp-2); overflow-x: auto; padding-bottom: var(--sp-1); min-height: 0; }
+.task-col { display: flex; flex-direction: column; min-height: 0; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border); border-top: 3px solid var(--col-tone, var(--border-strong)); }
+.task-col-todo { --col-tone: var(--border-strong); }
+.task-col-doing { --col-tone: var(--info-fg); }
+.task-col-review { --col-tone: var(--warn-fg); }
+.task-col-done { --col-tone: var(--ok-fg); }
+.task-col-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-1); font-size: var(--fs-body); font-weight: 700; }
+.task-col-body { display: flex; flex-direction: column; gap: var(--sp-2); padding: 0 var(--sp-2) var(--sp-2); overflow-y: auto; min-height: 0; }
+.task-card { display: block; width: 100%; text-align: start; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); transition: border-color 0.12s ease; }
+.task-card:hover { border-color: var(--border-strong); }
+.task-card-on, .task-card-on:hover { border-color: var(--brand); background: var(--brand-light); }
+.task-card:focus-visible, .task-cal-item:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.task-cal-scroll { overflow-x: auto; }
+.task-cal { display: grid; grid-template-columns: repeat(7, minmax(6.5rem, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; min-width: 46rem; }
+.task-cal-wd { background: var(--surface-2); padding: 4px 8px; font-size: var(--fs-sm); font-weight: 700; color: var(--muted); }
+.task-cal-day { background: var(--surface); min-height: 6.5rem; padding: 4px 4px 6px; display: flex; flex-direction: column; gap: 2px; }
+.task-cal-off { background: var(--surface-2); }
+.task-cal-out { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+.task-cal-today { box-shadow: inset 0 0 0 2px var(--brand); }
+.task-cal-num { font-size: var(--fs-sm); font-weight: 700; color: var(--muted); padding: 0 4px; }
+.task-cal-today .task-cal-num { color: var(--brand-ink); }
+.task-cal-item { display: flex; align-items: center; gap: var(--sp-1); width: 100%; text-align: start; padding: 2px var(--sp-1); border-radius: var(--r-sm); font-size: var(--fs-body); line-height: 1.35; background: var(--surface-2); border: 1px solid transparent; }
+.task-cal-item:hover { border-color: var(--border-strong); }
+.task-cal-late { background: var(--bad-bg); color: var(--bad-fg); font-weight: 600; }
+.task-dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; border: 1px solid currentColor; padding: 0; }
+.task-step { display: flex; align-items: flex-start; gap: 8px; padding: 5px 8px; border-radius: var(--r-md); }
+.task-step:hover { background: var(--surface-2); }
+.task-step-done .task-step-text { color: var(--muted); text-decoration: line-through; }
 
 /* a row of tabs: scrolls sideways on a narrow screen without showing a
    scrollbar, and its bottom line is a shadow the open tab's underline paints

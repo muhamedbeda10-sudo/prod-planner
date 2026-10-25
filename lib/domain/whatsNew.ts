@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-26-tasks-2",
+    dateISO: "2026-10-26",
+    title: "Tasks 2.0: a board, a calendar and the team's load — with checklists, templates and repeating tasks",
+    where: "Inbox → Tasks",
+    href: "/inbox?tab=tasks",
+    body: "The Tasks tab now has four views: List as before; Board, the tasks in columns by where they stand (to do, in progress, waiting for review, done); Calendar, the month by due day; and Team, who has how much — open, late, due this week, waiting for review — and over the last 30 days what was approved, how much was done on time and how many days it took. One filter bar searches words, orders and people, and narrows by due day, person and urgent. A task can now carry a checklist: its people tick each step and you see how far it is. Keep a task as a template to give it again in two clicks, or switch on “Repeat it by itself”: each working day, on chosen weekdays or once a month, it is given again on its own (I gave → Repeating to pause or stop it). Tasks remind their people on the morning they are due, and one late for two days goes to the app's owner. The assistant can give tasks with steps or repeating, tick steps and tell you who is overloaded.",
+  },
+  {
     id: "2026-10-26-automations-2",
     dateISO: "2026-10-26",
     title: "Automations 2.0: build them on a form, start from ready-made ones, hand out tasks and escalate",
