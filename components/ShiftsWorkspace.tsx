@@ -65,7 +65,7 @@ export function ShiftsWorkspace({ attendance, downtime, downtimeCount, productiv
       <div id={`${id}-attendance`} role="tabpanel" aria-labelledby={`${id}-attendance-tab`} hidden={tab !== "attendance"} className="p-3 md:p-4 print:p-0"><div key={revision}>{attendance}</div></div>
       <div id={`${id}-downtime`} role="tabpanel" aria-labelledby={`${id}-downtime-tab`} hidden={tab !== "downtime"} className="p-3 md:p-4 no-print"><div key={revision}>{downtime}</div></div>
       <div id={`${id}-productivity`} role="tabpanel" aria-labelledby={`${id}-productivity-tab`} hidden={tab !== "productivity"} className="p-3 md:p-4 print:p-0">{productivity}</div>
-      <div id={`${id}-history`} role="tabpanel" aria-labelledby={`${id}-history-tab`} hidden={tab !== "history"} className="p-3 md:p-4 print:p-0"><ShiftHistory history={history} dayISO={dayISO} filter={filter} editableDepts={editableDepts} today={today} onOpenDay={(view = "attendance") => setTab(view)} onDeleted={(date) => { if (date === dayISO) setReset((r) => ({ before: attendance, revision: (r?.revision ?? 0) + 1 })); }} /></div>
+      <div id={`${id}-history`} role="tabpanel" aria-labelledby={`${id}-history-tab`} hidden={tab !== "history"} className="p-3 md:p-4 print:p-0"><ShiftHistory key={filter} history={history} dayISO={dayISO} filter={filter} editableDepts={editableDepts} today={today} onOpenDay={(view = "attendance") => setTab(view)} onDeleted={(date) => { if (date === dayISO) setReset((r) => ({ before: attendance, revision: (r?.revision ?? 0) + 1 })); }} /></div>
       {hours && <div id={`${id}-hours`} role="tabpanel" aria-labelledby={`${id}-hours-tab`} hidden={tab !== "hours"} className="p-3 md:p-4 no-print">{hours}</div>}
     </section>
   );
