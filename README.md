@@ -159,8 +159,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
 
 8. **Shift log** (`/shifts`) — the supervisors' page, one day at a time: every worker registered in a
    section (Tools → Production Workers), narrowed to a line, a section or a search. Each worker gets ONE
-   choice that says whether he came and on which shift — ☀ **Day** (07:00–16:00), 🌙 **Night** (19:00–07:00)
-   or ✕ **Absent** — plus the day shift's 16:00–19:00 overtime and a note. A worker with no record for the
+   choice that says whether he came and on which shift — ☀ **Day** (07:00–16:00), 🌙 **Night** (19:00–04:00)
+   or ✕ **Absent** — plus optional overtime (day 16:00–19:00, night 04:00–07:00 the next morning) and a note. Both shifts default to 8 net base hours plus 3 optional OT hours. A worker with no record for the
    day is **not set** (never silently present or absent), and a day is saved only when nobody is: "Set …
    not set to Day / Night / Absent" fills the rest in one click, keeping anyone on vacation absent. The
    figures on top — day shift, night shift, overtime, absent, not set — are also the list's filters,

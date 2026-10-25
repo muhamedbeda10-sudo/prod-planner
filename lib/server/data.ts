@@ -18,6 +18,7 @@ export async function getSettings() {
     shiftShortH: s?.shiftShortH ?? DEFAULT_SHIFT_HOURS.short,
     shiftLongH: s?.shiftLongH ?? DEFAULT_SHIFT_HOURS.long,
     overtimeH: s?.overtimeH ?? DEFAULT_SHIFT_HOURS.overtime,
+    nightOvertimeH: s?.nightOvertimeH ?? DEFAULT_SHIFT_HOURS.nightOvertime!,
   };
 }
 
@@ -25,7 +26,7 @@ export async function getSettings() {
  *  counts is measured with these. */
 export async function getShiftHours(): Promise<ShiftHours> {
   const s = await getSettings();
-  return { short: s.shiftShortH, long: s.shiftLongH, overtime: s.overtimeH };
+  return { short: s.shiftShortH, long: s.shiftLongH, overtime: s.overtimeH, nightOvertime: s.nightOvertimeH };
 }
 
 /** The master switch on its own — the many places that only need to know

@@ -10,16 +10,16 @@ import { saveShiftHours } from "@/app/admin/settings/actions";
 // The CODE a day was recorded under never changes; only what it is worth
 // does, and it applies from now on wherever hours are read.
 
-export function ShiftHoursForm({ short, long, overtime, compact = false }: {
-  short: number; long: number; overtime: number;
+export function ShiftHoursForm({ short, long, overtime, nightOvertime = 3, compact = false }: {
+  short: number; long: number; overtime: number; nightOvertime?: number;
   /** Embed the fields where a caller supplies its own heading and explanation. */
   compact?: boolean;
 }) {
   const router = useRouter();
-  const [v, setV] = useState({ shiftShortH: String(short), shiftLongH: String(long), overtimeH: String(overtime) });
+  const [v, setV] = useState({ shiftShortH: String(short), shiftLongH: String(long), overtimeH: String(overtime), nightOvertimeH: String(nightOvertime) });
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const dirty = v.shiftShortH !== String(short) || v.shiftLongH !== String(long) || v.overtimeH !== String(overtime);
+  const dirty = v.shiftShortH !== String(short) || v.shiftLongH !== String(long) || v.overtimeH !== String(overtime) || v.nightOvertimeH !== String(nightOvertime);
 
   const field = (k: keyof typeof v, label: string, hint: string) => (
     <label className="flex flex-col gap-1">
@@ -42,8 +42,9 @@ export function ShiftHoursForm({ short, long, overtime, compact = false }: {
     <>
       <div className="flex flex-wrap gap-4">
         {field("shiftShortH", "Day working hours", "07:00–16:00 less the 1 h break")}
-        {field("shiftLongH", "Night working hours", "19:00–07:00 less the 1 h break")}
-        {field("overtimeH", "Day overtime", "the fixed 16:00–19:00 period")}
+        {field("shiftLongH", "Night working hours", "19:00–04:00 less the 1 h break")}
+        {field("overtimeH", "Day overtime", "16:00–19:00")}
+        {field("nightOvertimeH", "Night overtime", "04:00–07:00 next day; booked to the shift start date")}
       </div>
       <div className="flex items-center gap-2 mt-3">
         <button
@@ -74,7 +75,7 @@ export function ShiftHoursForm({ short, long, overtime, compact = false }: {
     <section className="bg-surface border rounded-xl p-4">
       <h2 className="text-base font-bold">🕘 Shift hours</h2>
       <p className="text-xs text-muted mt-0.5 mb-3">
-        Net working hours after the one-hour break, plus the day team’s 16:00–19:00 overtime. Every man-hour the app counts uses
+        Net working hours after the one-hour break, plus optional overtime: day 16:00–19:00, night 04:00–07:00. Every man-hour the app counts uses
         these: the day’s total per department, the crew on a machine, and what the standard times are calibrated against.
         Days already recorded keep the shift they were recorded under and are re-counted with the new hours.
       </p>

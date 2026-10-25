@@ -4,7 +4,7 @@ import type { SheetItem } from "@/lib/domain/constants";
 // without a database and recomputed in the browser as the supervisor types.
 //
 // A department's day is its workers: each present or not, on the day or
-// night shift, with overtime on top of the day shift only, and on
+// night shift, with optional overtime on either shift, and on
 // a machine where the department has machines. A worker with no record for
 // a day remains unassigned until the supervisor records it. The master
 // roster and the daily attendance are deliberately separate.
@@ -12,7 +12,7 @@ import type { SheetItem } from "@/lib/domain/constants";
 /** The shifts the plant runs. The CODE is what a day is recorded under and
  *  never changes; the HOURS behind it are the planner's to set (Settings), so
  *  a new roster does not rewrite history. */
-export const SHIFTS = { S9: 8, S11: 11 } as const;
+export const SHIFTS = { S9: 8, S11: 8 } as const;
 export type ShiftCode = keyof typeof SHIFTS;
 export const SHIFT_CODES = Object.keys(SHIFTS) as ShiftCode[];
 export const DEFAULT_SHIFT: ShiftCode = "S9";
@@ -24,8 +24,9 @@ export interface ShiftHours {
   short: number;
   long: number;
   overtime: number;
+  nightOvertime?: number;
 }
-export const DEFAULT_SHIFT_HOURS: ShiftHours = { short: SHIFTS.S9, long: SHIFTS.S11, overtime: DEFAULT_OVERTIME };
+export const DEFAULT_SHIFT_HOURS: ShiftHours = { short: SHIFTS.S9, long: SHIFTS.S11, overtime: DEFAULT_OVERTIME, nightOvertime: DEFAULT_OVERTIME };
 
 /** Hours one shift is worth. */
 export function hoursOfShift(code: ShiftCode, h: ShiftHours = DEFAULT_SHIFT_HOURS): number {
@@ -214,7 +215,7 @@ export interface ShiftLine {
  *  plus overtime. */
 export function lineHours(l: ShiftLine, h: ShiftHours = DEFAULT_SHIFT_HOURS): number {
   if (!l.present) return 0;
-  const ot = l.shift === DEFAULT_SHIFT && Number.isFinite(l.overtimeH) && l.overtimeH > 0 ? l.overtimeH : 0;
+  const ot = Number.isFinite(l.overtimeH) && l.overtimeH > 0 ? l.overtimeH : 0;
   return hoursOfShift(l.shift, h) + ot;
 }
 
@@ -234,7 +235,7 @@ export function dayTotals(lines: readonly ShiftLine[], hrs: ShiftHours = DEFAULT
     const h = lineHours(l, hrs);
     if (l.present) present += 1;
     hours += h;
-    if (l.present && l.shift === DEFAULT_SHIFT && l.overtimeH > 0) overtimeH += l.overtimeH;
+    if (l.present && Number.isFinite(l.overtimeH) && l.overtimeH > 0) overtimeH += l.overtimeH;
     if (l.present && l.machineId) byMachine[l.machineId] = round1((byMachine[l.machineId] ?? 0) + h);
   }
   return { workers: lines.length, present, hours: round1(hours), overtimeH: round1(overtimeH), byMachine };
@@ -254,8 +255,11 @@ export function isAttendance(x: string): x is Attendance {
 
 export const ATTENDANCE_LABEL: Record<Attendance, string> = { day: "Day", night: "Night", absent: "Absent" };
 /** The clock times each shift stands for, as the floor names them. */
-export const ATTENDANCE_TIME: Record<Exclude<Attendance, "absent">, string> = { day: "07:00–16:00", night: "19:00–07:00" };
+export const ATTENDANCE_TIME: Record<Exclude<Attendance, "absent">, string> = { day: "07:00–16:00", night: "19:00–04:00" };
 export const OVERTIME_TIME = "16:00–19:00";
+export const NIGHT_OVERTIME_TIME = "04:00–07:00";
+export const overtimeTime = (shift: ShiftCode) => shift === "S11" ? NIGHT_OVERTIME_TIME : OVERTIME_TIME;
+export const overtimeHoursFor = (shift: ShiftCode, hours: ShiftHours = DEFAULT_SHIFT_HOURS) => shift === "S11" ? hours.nightOvertime ?? DEFAULT_OVERTIME : hours.overtime;
 /** A worker the day has no record for yet: not set, worth nothing. */
 export const UNSET_LINE = { present: false, shift: DEFAULT_SHIFT, overtimeH: 0 } as const;
 
@@ -265,20 +269,20 @@ export function attendanceOf(l: { recorded?: boolean; present: boolean; shift: S
   return l.shift === "S11" ? "night" : "day";
 }
 
-/** A worker's line for an attendance choice. Overtime belongs to the day
- *  shift only, so it is kept on Day and dropped otherwise. A worker away on
+/** A worker's line for an attendance choice. Overtime is kept on the same
+ *  shift and cleared when changing shifts. A worker away on
  *  vacation is absent whatever the choice for "the rest" was. */
-export function attendanceLine(a: Attendance, current: { overtimeH: number } = { overtimeH: 0 }, onVacation = false): { present: boolean; shift: ShiftCode; overtimeH: number } {
+export function attendanceLine(a: Attendance, current: { overtimeH: number; shift?: ShiftCode } = { overtimeH: 0 }, onVacation = false): { present: boolean; shift: ShiftCode; overtimeH: number } {
   if (a === "absent" || onVacation) return { present: false, shift: DEFAULT_SHIFT, overtimeH: 0 };
   const shift = ATTENDANCE_SHIFT[a];
-  return { present: true, shift, overtimeH: shift === DEFAULT_SHIFT ? current.overtimeH : 0 };
+  return { present: true, shift, overtimeH: current.shift && current.shift !== shift ? 0 : current.overtimeH };
 }
 
 export interface ShiftSplit {
   /** Everyone counted. */
   workers: number;
   day: { people: number; hours: number; overtimePeople: number; overtimeH: number };
-  night: { people: number; hours: number };
+  night: { people: number; hours: number; overtimePeople: number; overtimeH: number };
   absent: number;
   unset: number;
   /** Man-hours of the day, both shifts and the overtime. */
@@ -288,24 +292,23 @@ export interface ShiftSplit {
 /** Who came on which shift: the day's figures split by the day and the
  *  night shift, with the absences and the workers not set yet. */
 export function shiftSplit(lines: readonly { recorded?: boolean; present: boolean; shift: ShiftCode; overtimeH: number }[], h: ShiftHours = DEFAULT_SHIFT_HOURS): ShiftSplit {
-  const s: ShiftSplit = { workers: lines.length, day: { people: 0, hours: 0, overtimePeople: 0, overtimeH: 0 }, night: { people: 0, hours: 0 }, absent: 0, unset: 0, hours: 0 };
+  const s: ShiftSplit = { workers: lines.length, day: { people: 0, hours: 0, overtimePeople: 0, overtimeH: 0 }, night: { people: 0, hours: 0, overtimePeople: 0, overtimeH: 0 }, absent: 0, unset: 0, hours: 0 };
   for (const l of lines) {
     const a = attendanceOf(l);
     if (a === "unset") s.unset += 1;
     else if (a === "absent") s.absent += 1;
     else {
       const hours = lineHours(l, h);
-      if (a === "night") { s.night.people += 1; s.night.hours += hours; }
-      else {
-        s.day.people += 1;
-        s.day.hours += hours;
-        if (l.overtimeH > 0) { s.day.overtimePeople += 1; s.day.overtimeH += l.overtimeH; }
-      }
+      const part = s[a];
+      part.people += 1;
+      part.hours += hours;
+      if (Number.isFinite(l.overtimeH) && l.overtimeH > 0) { part.overtimePeople += 1; part.overtimeH += l.overtimeH; }
     }
   }
   s.day.hours = round1(s.day.hours);
   s.day.overtimeH = round1(s.day.overtimeH);
   s.night.hours = round1(s.night.hours);
+  s.night.overtimeH = round1(s.night.overtimeH);
   s.hours = round1(s.day.hours + s.night.hours);
   return s;
 }
