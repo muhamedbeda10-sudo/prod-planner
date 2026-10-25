@@ -15,6 +15,7 @@ import {
 } from "@/app/admin/ai/actions";
 import { AutomationsView } from "@/components/AutomationsView";
 import { AiQuality, type AiQualityData } from "@/components/AiQuality";
+import { WatchdogCard, type WatchdogData } from "@/components/WatchdogCard";
 import { AI_AUTO_MODEL, modelChoiceLabel } from "@/lib/domain/aiLearn";
 import { EmptyState, Note, SectionCard, SettingRow, Switch, Tabs } from "@/components/primitives";
 import type { AutomationView } from "@/lib/server/automations/views";
@@ -72,6 +73,7 @@ export interface AiAdminData {
   changes: { id: number; at: string; who: string; title: string; summary: string; status: string; risk: string; auto: boolean; automationId: number | null; error: string | null }[];
   recent: { id: number; at: string; who: string; question: string; model: string; queries: number; tokens: number; costUsd: number; error: string | null; running: boolean }[];
   quality: AiQualityData;
+  watchdog: WatchdogData;
 }
 
 type Msg = { ok: boolean; text: string } | null;
@@ -510,7 +512,10 @@ function AutomationsSection({ data, clock, automations }: { data: AiAdminData; c
           </SectionCard>
           <SchedulerCard clock={clock} />
         </div>
-        <HoursCard data={data} />
+        <div className="space-y-4">
+          <HoursCard data={data} />
+          <WatchdogCard data={data.watchdog} />
+        </div>
       </div>
       <SectionCard
         icon={ListChecks}

@@ -439,6 +439,14 @@ mobile drawer still lists every view flat, since it has the vertical room.
      numbers as a table and their export. A chart's JSON draws however its fence was labelled, and other names for a
      form (column, donut, bullet, slope, step …) draw as the form that does that job. The same blocks draw in the chat and in the
      inbox's reports (expanded, the inbox fills the screen); **Print / PDF** on an answer or a report prints it alone under the company header, charts and all.
+   - **The plant's watchdog** (`lib/domain/watchdog.ts`, `lib/server/watchdog.ts`, `components/WatchdogCard.tsx`): each
+     working morning from its time (`WatchSettings`, 07:15 by default), once (the day is claimed), from the automations'
+     tick and whatever their pause: orders heading late (the ETA forecast against the delivery day, and those due within a
+     fortnight that cannot be forecast), a stage's earned standard hours on the last working day far under the median of
+     its 10 before, and a department's high absence or a worker absent on most of their recent days. Plain arithmetic —
+     what is new today is kept (`WatchFinding`) and sent once to the people listed (else the owner) as one inbox report
+     with a chart, an optional few lines by Haiku, and a task to themselves ready to approve for each of the first six
+     findings. `get_watch_findings` lets the assistant read them.
    - **It learns and is measured** (`lib/domain/aiLearn.ts`, `lib/server/ai/memory.ts`, `lib/server/ai/checks.ts`,
      `components/AiFeedback.tsx`, `components/AiQuality.tsx`): it keeps a few lines about each person between chats
      (`AiMemory` — what they told it about their work and how they like answers; the brain button lists them to correct

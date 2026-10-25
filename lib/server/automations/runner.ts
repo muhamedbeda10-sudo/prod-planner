@@ -14,6 +14,7 @@ import { getCockpit, recordKpiSnapshot } from "@/lib/server/kpis";
 import { withLine } from "@/lib/server/line";
 import { automationWindowOf, configOf, nextRunOf, offDays, ownerDenied, runCondition } from "./store";
 import { runDailyReviews } from "./review";
+import { runWatch } from "@/lib/server/watchdog";
 import { AI_DENY_TEXT, automationContext, costUsd } from "@/lib/domain/ai";
 import { AI_DELETE_KEY, AI_NOCONFIRM_KEY, type AiArea } from "@/lib/domain/aiActions";
 import { AUTOMATION_LIMITS, describeWindow, freshRows, inAutomationWindow, recipientsOf, renderMessage, rowsTable, type AutomationConfig } from "@/lib/domain/automations";
@@ -62,6 +63,9 @@ export async function runDueAutomations(o: { now?: Date; deadline?: number } = {
   // the tasks past their due day tell their people — inside the plant's
   // hours (no phone buzzes at night), whether the automations are paused or not
   if (inHours) await remindOverdueTasks(now).catch((e) => console.error("tasks: overdue reminders failed", e));
+  // the watchdog keeps its own switch and time — it is plain arithmetic, so
+  // the automations' pause does not hold it
+  await runWatch({ now }).catch((e) => console.error("watchdog: failed", e));
   if (settings.automationsPaused) return { ran: 0, checked: 0, skipped: "The owner has paused the automations." };
   // outside the owner's hours: a schedule that falls due now is skipped to
   // its next time; a condition waits, and its next check inside the hours
