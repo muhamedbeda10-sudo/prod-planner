@@ -201,6 +201,8 @@ export function blockedTablesFor(hidden: ReadonlySet<string>): string[] {
 export function blockedTableIn(sql: string, blocked: readonly string[]): string | null {
   if (blocked.length === 0) return null;
   if (/\b(query|table|cursor|schema|database)_to_xml/i.test(sql)) return blocked[0];
+  // the text-search statistics run a query given as text too (ts_stat('SELECT …'))
+  if (/\b(ts_stat|ts_rewrite)\s*\(/i.test(sql)) return blocked[0];
   // a Unicode-escaped identifier (U&"\004FdooEntry") names a table without
   // spelling it, so it is refused the same way
   if (/\bU&"/i.test(sql)) return blocked[0];

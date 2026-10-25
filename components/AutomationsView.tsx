@@ -1,29 +1,31 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Bell, BellRing, CalendarClock, ChevronDown, Clock, FileText, FlaskConical, Pause, Play, Plus, RotateCcw, Trash2, Wand2, X, Zap } from "lucide-react";
+import { Bell, BellRing, CalendarClock, ChevronDown, ClipboardList, Clock, FileText, FlaskConical, Pause, Pencil, Play, Plus, RotateCcw, Sparkles, Trash2, Wand2, X, Zap } from "lucide-react";
+import { AutomationBuilder, RecipeGallery, type BuilderPeople } from "@/components/AutomationBuilder";
+import type { AutomationConfig, AutomationInput } from "@/lib/domain/automations";
 import { deleteAutomation, restoreAutomation, runAutomationNow, setAutomationEnabled, setAutomationTiming } from "@/app/automations/actions";
 import { EmptyState } from "@/components/primitives";
-import { CHECK_EVERY, WEEKDAY_NAMES, AUTOMATION_LIMITS } from "@/lib/domain/automations";
+import { CHECK_EVERY, WEEKDAY_NAMES, AUTOMATION_LIMITS, minutesText } from "@/lib/domain/automations";
 import { formatDateTime } from "@/lib/domain/format";
 import type { AutomationView } from "@/lib/server/automations/views";
 
 // The automations, each a card: what sets it off, what it does, when it
-// runs next and how its last runs went — and Pause / Turn on, Timing, Test
-// (to me), Delete. What one does is changed by asking the assistant; when it
-// runs is changed here. Above them, whether automations run at all right now.
+// runs next and how its last runs went — and Pause / Turn on, Edit, Timing,
+// Test (to me), Delete. New ones are made here (the builder, or a ready-made
+// one) or by asking the assistant. Above them, whether automations run at all.
 
 const STATUS_TONE: Record<string, string> = { ok: "pill-ok", failed: "pill-bad", skipped: "pill-warn", running: "pill-info" };
 const KIND: Record<string, { label: string; icon: typeof Bell; tile: string }> = {
   notify: { label: "Message", icon: Bell, tile: "bg-warn-bg text-warn-fg" },
   report: { label: "Report", icon: FileText, tile: "bg-info-bg text-info-fg" },
   act: { label: "Changes", icon: Wand2, tile: "bg-ok-bg text-ok-fg" },
+  task: { label: "Task", icon: ClipboardList, tile: "bg-brand-light text-brand-ink" },
 };
 const DAYS_LABEL: Record<string, string> = { working: "Working days", every: "Every day", weekdays: "Chosen days" };
 
 type Result = { ok: boolean; error?: string };
 
-const everyText = (min: number) => (min >= 60 ? `${min / 60} h` : `${min} min`);
 
 /** When an automation runs — its times and days, or how often its condition
  *  is checked and in which hours. */
@@ -113,7 +115,7 @@ function TimingForm({ a, onDone, onCancel }: { a: AutomationView; onDone: () => 
             <p className="filter-label mb-1.5">Check every</p>
             <div className="flex flex-wrap gap-1.5">
               {CHECK_EVERY.map((m) => (
-                <button key={m} type="button" onClick={() => setEvery(m)} className={`btn btn-sm tabnum ${every === m ? "btn-primary" : "btn-secondary"}`}>{everyText(m)}</button>
+                <button key={m} type="button" onClick={() => setEvery(m)} className={`btn btn-sm tabnum ${every === m ? "btn-primary" : "btn-secondary"}`}>{minutesText(m)}</button>
               ))}
             </div>
           </div>
@@ -137,7 +139,7 @@ function TimingForm({ a, onDone, onCancel }: { a: AutomationView; onDone: () => 
   );
 }
 
-function Row({ a, showOwner, canTime, onChanged }: { a: AutomationView; showOwner: boolean; canTime: boolean; onChanged?: () => void }) {
+function Row({ a, showOwner, canTime, onChanged, onEdit }: { a: AutomationView; showOwner: boolean; canTime: boolean; onChanged?: () => void; onEdit?: () => void }) {
   const [open, setOpen] = useState(false);
   const [timing, setTiming] = useState(false);
   const [pending, start] = useTransition();
@@ -187,7 +189,7 @@ function Row({ a, showOwner, canTime, onChanged }: { a: AutomationView; showOwne
           {a.lastNote && a.lastStatus !== "ok" && <p className="text-xs text-bad-fg" dir="auto">{a.lastNote}</p>}
           {a.text && (
             <div>
-              <p className="filter-label mb-1">{a.kind === "notify" ? "The message" : "The assistant's instruction"}</p>
+              <p className="filter-label mb-1">{a.kind === "notify" ? "The message" : a.kind === "task" ? "The task" : "The assistant's instruction"}</p>
               <p className="whitespace-pre-wrap" dir="auto">{a.text}</p>
             </div>
           )}
@@ -233,12 +235,13 @@ function Row({ a, showOwner, canTime, onChanged }: { a: AutomationView; showOwne
                 ) : (
                   <button type="button" className="btn btn-sm btn-primary" disabled={pending} onClick={() => act(setAutomationEnabled, { enabled: "true" }, "On.")}><Play size={14} aria-hidden /> Turn on</button>
                 )}
+                {onEdit && <button type="button" className="btn btn-sm btn-secondary" disabled={pending} onClick={onEdit}><Pencil size={14} aria-hidden /> Edit</button>}
                 {canTime && !timing && a.timing.trigger !== "event" && (
                   <button type="button" className="btn btn-sm btn-secondary" disabled={pending} onClick={() => setTiming(true)}><CalendarClock size={14} aria-hidden /> Timing</button>
                 )}
                 <button
                   type="button" className="btn btn-sm btn-secondary" disabled={pending}
-                  onClick={() => act(runAutomationNow, {}, "Sent to your inbox as a test.", a.kind === "notify" ? undefined : "Run it now as a test? It costs like a question; the result comes to you alone.")}
+                  onClick={() => act(runAutomationNow, {}, a.kind === "task" ? "A test task was given to you." : "Sent to your inbox as a test.", a.kind === "notify" || a.kind === "task" ? undefined : "Run it now as a test? It costs like a question; the result comes to you alone.")}
                 >
                   <FlaskConical size={14} aria-hidden /> {pending ? "Running…" : "Test"}
                 </button>
@@ -247,7 +250,7 @@ function Row({ a, showOwner, canTime, onChanged }: { a: AutomationView; showOwne
             )}
             {msg && <span className={`basis-full text-xs font-semibold ${msg.ok ? "text-ok-fg" : "text-bad-fg"}`}>{msg.text}</span>}
           </div>
-          <p className="text-[11px] text-muted">{a.createdBy ? `Made by ${a.createdBy}. ` : ""}To change what it does, ask the assistant.</p>
+          <p className="text-[11px] text-muted">{a.createdBy ? `Made by ${a.createdBy}. ` : ""}{onEdit ? "Edit it here, or ask the assistant." : "Only its owner changes what it does."}</p>
         </div>
       )}
     </article>
@@ -268,6 +271,7 @@ export function AutomationsView({
   canTime = true,
   onChanged,
   status,
+  builder,
 }: {
   automations: AutomationView[];
   showOwner?: boolean;
@@ -277,8 +281,13 @@ export function AutomationsView({
   onChanged?: () => void;
   /** Whether automations run at all right now — shown above the list. */
   status?: AutomationsStatus;
+  /** The builder: who is looking and the people one may go to. */
+  builder?: BuilderPeople;
 }) {
   const [showDeleted, setShowDeleted] = useState(false);
+  const [building, setBuilding] = useState<{ id?: number; initial: Partial<AutomationConfig> | AutomationInput } | null>(null);
+  const [gallery, setGallery] = useState(false);
+  const canBuild = !!builder && canTime;
   const live = automations.filter((a) => !a.deleted);
   const deleted = automations.filter((a) => a.deleted);
   return (
@@ -294,17 +303,30 @@ export function AutomationsView({
           {!status.allowed && <span className="pill pill-warn">Stopped — no permission</span>}
         </div>
       )}
+      {canBuild && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setBuilding({ initial: {} })}><Plus size={14} aria-hidden /> New automation</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setGallery(true)}><Sparkles size={14} aria-hidden /> Ready-made</button>
+        </div>
+      )}
+      {gallery && <RecipeGallery onClose={() => setGallery(false)} onPick={(r) => { setGallery(false); setBuilding({ initial: r.config }); }} />}
+      {building && builder && (
+        <AutomationBuilder id={building.id} initial={building.initial} people={builder.people} onClose={() => setBuilding(null)} onSaved={() => onChanged?.()} />
+      )}
       {live.length === 0 ? (
         <div className="rounded-xl border border-dashed">
           <EmptyState
             icon={Clock}
             title="No automations yet"
-            hint={<>Ask the assistant for one — “every working day at 7:30 send me the orders late at welding”, or “when an order is put on hold, tell Ahmed”.</>}
+            hint={<>Make one with New automation, start from a ready-made one, or ask the assistant — “every working day at 7:30 send me the orders late at welding”, or “when an order is put on hold, tell Ahmed”.</>}
           />
         </div>
       ) : (
         <div className="space-y-2">
-          {live.map((a) => <Row key={a.id} a={a} showOwner={showOwner} canTime={canTime} onChanged={onChanged} />)}
+          {live.map((a) => (
+            <Row key={a.id} a={a} showOwner={showOwner} canTime={canTime} onChanged={onChanged}
+              onEdit={canBuild && a.ownerId === builder!.meId ? () => setBuilding({ id: a.id, initial: a.config }) : undefined} />
+          ))}
         </div>
       )}
       {deleted.length > 0 && (

@@ -73,6 +73,8 @@ export interface AiAdminData {
   changes: { id: number; at: string; who: string; title: string; summary: string; status: string; risk: string; auto: boolean; automationId: number | null; error: string | null }[];
   recent: { id: number; at: string; who: string; question: string; model: string; queries: number; tokens: number; costUsd: number; error: string | null; running: boolean }[];
   quality: AiQualityData;
+  /** The owner looking — the automations theirs to edit. */
+  meId: number;
   watchdog: WatchdogData;
 }
 
@@ -523,7 +525,7 @@ function AutomationsSection({ data, clock, automations }: { data: AiAdminData; c
         description="Every automation in the plant, whose it is, and when it last ran. Each is timed, paused, tested and deleted here."
         end={<span className="pill pill-muted tabnum">{live}</span>}
       >
-        <AutomationsView automations={automations} showOwner canTime />
+        <AutomationsView automations={automations} showOwner canTime builder={{ meId: data.meId, people: data.users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name })) }} />
       </SectionCard>
     </>
   );

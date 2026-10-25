@@ -5,7 +5,7 @@ import { automationViews } from "@/lib/server/automations/views";
 import { deleteAutomation, restoreAutomation, runAutomationNow, saveAutomation, setAutomationEnabled, setAutomationTiming } from "@/app/automations/actions";
 import { retractInboxMessages, sendInboxMessage } from "@/app/inbox/actions";
 import {
-  AUTOMATION_ACTIONS, AUTOMATION_LIMITS, CHECK_EVERY, describeAction, describeTrigger, retimeAutomation, SCHEDULE_DAYS, type AutomationConfig, type AutomationInput, type AutomationTiming,
+  AUTOMATION_ACTIONS, AUTOMATION_LIMITS, ESCALATE_AFTER, CHECK_EVERY, describeAction, describeTrigger, retimeAutomation, SCHEDULE_DAYS, type AutomationConfig, type AutomationInput, type AutomationTiming,
 } from "@/lib/domain/automations";
 import { formatDateTime } from "@/lib/domain/format";
 import { APP_EVENTS, APP_EVENT_TYPES } from "@/lib/domain/appEvents";
@@ -45,8 +45,11 @@ const CONFIG_PROPS: ObjectSchema["properties"] = {
   checkEveryMin: { type: "integer", minimum: CHECK_EVERY[0], maximum: CHECK_EVERY[CHECK_EVERY.length - 1], description: `condition: how often to check, in minutes — one of ${CHECK_EVERY.join(", ")}.` },
   activeFrom: { ...HHMM, description: "condition: check only from this time (Cairo) on working days — with activeTo." },
   activeTo: { ...HHMM, description: "condition: until this time." },
-  action: { type: "string", enum: AUTOMATION_ACTIONS, description: "notify = send the message as written (no AI, no cost); report = you write a report from the live data each time; act = you prepare changes, which wait in the person's inbox for approval." },
-  message: { type: "string", minLength: 1, maxLength: AUTOMATION_LIMITS.text, description: "notify: the message, Markdown. {count} = how many rows fired, {rows} = them as a table (listed under it when not placed), {name} = the automation's name. For an event: {who} did it, {what} happened, {about} what it was about (an MO, a tank, a task), {detail} the app's sentence, {when}." },
+  action: { type: "string", enum: AUTOMATION_ACTIONS, description: "notify = send the message as written (no AI, no cost); report = you write a report from the live data each time; act = you prepare changes, which wait in the person's inbox for approval; task = give a task to the recipients (none: the person) — for a condition one per new row — no AI, no cost (needs the person's right to give tasks)." },
+  taskDueDays: { type: "integer", minimum: 0, maximum: AUTOMATION_LIMITS.taskDueDays, description: "task: days until it is due (0 = the same day; a Friday or holiday moves to the next working day). Default 1." },
+  taskUrgent: { type: "boolean", description: "task: urgent." },
+  escalateAfterMin: { type: "integer", minimum: 0, maximum: ESCALATE_AFTER[ESCALATE_AFTER.length - 1], description: `condition: a row still matching this many minutes after it first did goes up to the plant's owner (and the person is told) — one of ${ESCALATE_AFTER.join(", ")}; 0 for never.` },
+  message: { type: "string", minLength: 1, maxLength: AUTOMATION_LIMITS.text, description: "task: its title on the first line, what to do after it — the same blanks, and for a condition each row's own {column}. notify: the message, Markdown. {count} = how many rows fired, {rows} = them as a table (listed under it when not placed), {name} = the automation's name. For an event: {who} did it, {what} happened, {about} what it was about (an MO, a tank, a task), {detail} the app's sentence, {when}." },
   prompt: { type: "string", minLength: 1, maxLength: AUTOMATION_LIMITS.text, description: "report / act: your instruction for each run, complete on its own — you will not have this conversation then. For a condition, the rows that fired are added to it." },
   recipients: PEOPLE,
   recipientIds: { type: "array", maxItems: AUTOMATION_LIMITS.recipients, items: { type: "integer", minimum: 1 }, description: "Instead of recipients: the same people by their user ids." },
@@ -72,6 +75,9 @@ interface ConfigInput {
   recipients?: string[];
   recipientIds?: number[];
   includeCurrent?: boolean;
+  taskDueDays?: number;
+  taskUrgent?: boolean;
+  escalateAfterMin?: number | null;
 }
 
 /** People by their names on the users list — each one active and unmistakable. */
@@ -126,6 +132,8 @@ async function configFrom(i: ConfigInput, base: AutomationConfig | null): Promis
       activeTo: i.activeFrom !== undefined || i.activeTo !== undefined ? i.activeTo ?? null : base?.activeTo ?? null,
       eventTypes: pick("eventTypes", i.eventTypes), eventActorIds, eventMatch: i.eventMatch !== undefined ? i.eventMatch : base?.eventMatch ?? null,
       message: pick("message", i.message), prompt: pick("prompt", i.prompt), recipientIds,
+      taskDueDays: pick("taskDueDays", i.taskDueDays), taskUrgent: pick("taskUrgent", i.taskUrgent),
+      escalateAfterMin: i.escalateAfterMin !== undefined ? i.escalateAfterMin || null : base?.escalateAfterMin ?? null,
     },
   };
 }
@@ -140,7 +148,7 @@ function configChanges(
     ["Name", o.was?.c.name ?? "—", c.name],
     ["When", o.was ? describeTrigger(o.was.c, o.was.actors ?? []) : "—", describeTrigger(c, o.actors ?? [])],
     ["What", o.was ? describeAction(o.was.c, o.was.recipients) : "—", describeAction(c, recipients)],
-    [c.action === "notify" ? "Message" : "Instruction", o.was ? (o.was.c.message ?? o.was.c.prompt ?? "—") : "—", c.message ?? c.prompt ?? "—"],
+    [c.action === "notify" ? "Message" : c.action === "task" ? "Task" : "Instruction", o.was ? (o.was.c.message ?? o.was.c.prompt ?? "—") : "—", c.message ?? c.prompt ?? "—"],
   ];
   if (c.conditionSql) rows.push(["Query", o.was?.c.conditionSql ?? "—", c.conditionSql]);
   const out = rows.filter(([, a, b]) => !o.was || a !== b).map(([label, before, after]) => ({ label, before: before.slice(0, 300), after: after.slice(0, 300) }));
@@ -166,6 +174,8 @@ export const listAutomationsTool: ReadTool<{ everyone?: boolean }> = {
       ok: true,
       text: JSON.stringify(views.map((a) => ({
         id: a.id, name: a.name, ...(i.everyone ? { owner: a.owner } : {}), on: a.enabled, when: a.trigger, what: a.action, ...(a.conditionSql ? { query: a.conditionSql } : {}), text: a.text,
+        ...(a.action === "task" ? { taskDueDays: a.config.taskDueDays, taskUrgent: a.config.taskUrgent } : {}),
+        ...(a.config.escalateAfterMin ? { escalateAfterMin: a.config.escalateAfterMin } : {}),
         next: a.nextRunAt, last: a.lastStatus ? { status: a.lastStatus, note: a.lastNote, at: a.lastRunAt } : null,
         runs: a.runs.slice(0, 3).map((r) => ({ at: r.startedAt, status: r.status, note: r.error ?? r.summary })),
       }))),
@@ -193,7 +203,7 @@ export const createAutomationTool: WriteTool<ConfigInput> = {
   name: "create_automation",
   title: "Make an automation",
   description:
-    "Make an automation for the person: WHEN — a schedule (times of day, Cairo, on working days / every day / weekdays), a condition (a read-only query: it fires for rows that start matching, checked every so many minutes), or an event (the moment something happens in the app — an order closed or held, output recorded, a leak test or quality check failed, a task marked done … — optionally only by certain people or mentioning certain words; an instant alert); WHAT — notify (their message, as written), report (you write a report from the live data), or act (you prepare changes that wait for their approval). It runs as the person, with their permissions. Settle every detail with them first — the time, the days, who receives it, the exact message or instruction — and test a condition's query with query_database.",
+    "Make an automation for the person: WHEN — a schedule (times of day, Cairo, on working days / every day / weekdays), a condition (a read-only query: it fires for rows that start matching, checked every so many minutes), or an event (the moment something happens in the app — an order closed or held, output recorded, a leak test or quality check failed, a task marked done … — optionally only by certain people or mentioning certain words; an instant alert); WHAT — notify (their message, as written), report (you write a report from the live data), act (you prepare changes that wait for their approval), or task (a task given to the recipients — for a condition one per new row — due in so many working days). A condition may escalate: a row still there after escalateAfterMin goes up to the plant's owner. It runs as the person, with their permissions. Settle every detail with them first — the time, the days, who receives it, the exact message or instruction — and test a condition's query with query_database.",
   area: "automations",
   risk: "high",
   schema: CREATE_SCHEMA,
@@ -260,7 +270,9 @@ export const updateAutomationTool: WriteTool<UpdateInput> = {
         : was.trigger === "event"
           ? { eventTypes: was.eventTypes, eventActorIds: was.eventActorIds, eventMatch: was.eventMatch ?? "" }
           : { conditionSql: was.conditionSql!, checkEveryMin: was.checkEveryMin, ...(was.activeFrom ? { activeFrom: was.activeFrom, activeTo: was.activeTo! } : {}) }),
-      ...(was.action === "notify" ? { message: was.message! } : { prompt: was.prompt! }),
+      ...(was.action === "notify" || was.action === "task" ? { message: was.message! } : { prompt: was.prompt! }),
+      ...(was.action === "task" ? { taskDueDays: was.taskDueDays, taskUrgent: was.taskUrgent } : {}),
+      ...(was.trigger === "condition" ? { escalateAfterMin: was.escalateAfterMin ?? 0 } : {}),
     };
     return { ok: true, message: `Automation #${a.id} changed.`, undo: { tool: "update_automation", input: back as unknown as Record<string, unknown> } };
   },

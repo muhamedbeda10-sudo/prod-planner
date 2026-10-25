@@ -26,6 +26,7 @@ const h = vi.hoisted(() => {
     ask: fn(),
     toolsFor: fn(),
     deliverToInbox: fn(),
+    createTask: fn(),
   };
 });
 
@@ -47,6 +48,7 @@ vi.mock("@/lib/server/ai/tools", () => ({ toolsFor: h.toolsFor }));
 vi.mock("@/lib/server/ai/playbook", () => ({ getPlaybookText: async () => "" }));
 vi.mock("@/lib/server/ai/reader", () => ({ runAiRows: h.runAiRows }));
 vi.mock("@/lib/server/inbox", () => ({ deliverToInbox: h.deliverToInbox }));
+vi.mock("@/app/tasks/actions", () => ({ createTask: h.createTask }));
 
 import type { Automation } from "@prisma/client";
 import { runAutomation, runDueAutomations, runEventAutomations } from "@/lib/server/automations/runner";
@@ -58,7 +60,8 @@ const auto = (o: Partial<Automation> = {}): Automation => ({
   id: 3, ownerId: 7, name: "Late welding", enabled: true, trigger: "schedule", times: ["07:30"], days: "working", weekdays: [],
   conditionSql: null, checkEveryMin: 30, activeFrom: null, activeTo: null, eventTypes: [], eventActorIds: [], eventMatch: null, action: "notify", message: "Good morning — {name}", prompt: null,
   recipientIds: [9], lastKeys: [], nextRunAt: now, lastRunAt: null, lastCheckAt: null, lastStatus: null, lastNote: null, failures: 0,
-  lockedUntil: null, deletedAt: null, createdBy: "Sara (AI)", updatedBy: null, createdAt: now, updatedAt: now, ...o,
+  lockedUntil: null, deletedAt: null, createdBy: "Sara (AI)", updatedBy: null, createdAt: now, updatedAt: now,
+  taskDueDays: 1, taskUrgent: false, escalateAfterMin: null, keySeenAt: {}, escalatedKeys: [], ...o,
 });
 /** The data of the last write to the automation's row — the schedule goes
  *  through updateMany (kept only while the row is as it was), the rest through update. */
@@ -87,6 +90,8 @@ beforeEach(() => {
   h.prisma.automation.updateMany.mockResolvedValue({ count: 1 });
   h.deliverToInbox.mockImplementation(async (items: unknown[]) => items.map((_, i) => 100 + i));
   h.toolsFor.mockReturnValue([{ kind: "read", name: "query_database" }]);
+  let task = 200;
+  h.createTask.mockImplementation(async () => ({ ok: true, ids: [task++] }));
 });
 
 describe("a scheduled message", () => {
@@ -335,5 +340,100 @@ describe("an event", () => {
     h.settings.autoTo = null;
     expect(await fire(rule({ action: "report", message: null, prompt: "Say what this means.", lastRunAt: new Date(now.getTime() - 5 * 60_000) }))).toBe(0);
     expect(h.ask).not.toHaveBeenCalled();
+  });
+});
+
+describe("a task automation", () => {
+  const cond = (o: Partial<Automation> = {}) =>
+    auto({ trigger: "condition", conditionSql: "SELECT mo AS key, mo FROM x", action: "task", message: "Chase {mo}\nCall the line about {mo} ({count} new)", ...o });
+  const form = (n: number) => Object.fromEntries((h.createTask.mock.calls[n][0] as FormData).entries());
+  beforeEach(() => h.perms.add("tasks.assign"));
+
+  it("gives one task per new row, as the owner, due in working days", async () => {
+    h.runAiRows.mockResolvedValue({ ok: true, truncated: false, rows: [{ key: "A", mo: "A" }, { key: "B", mo: "B" }, { key: "C", mo: "C" }] });
+    await runAutomation(cond({ lastKeys: ["A"], taskDueDays: 1, taskUrgent: true }), { cause: "condition", now });
+    expect(h.createTask).toHaveBeenCalledTimes(2);
+    expect(form(0)).toEqual({ title: "Chase B", details: "Call the line about B (2 new)", people: "9", priority: "urgent", due: "2026-10-13" });
+    expect(form(1)).toMatchObject({ title: "Chase C" });
+    expect(lastUpdate()).toMatchObject({ lastStatus: "ok", lastKeys: ["A", "B", "C"], lastNote: "Gave 2 task(s): #200, #201." });
+  });
+
+  it("given part-way, keeps the rows it saw to and tries the rest again", async () => {
+    h.runAiRows.mockResolvedValue({ ok: true, truncated: false, rows: [{ key: "A", mo: "A" }, { key: "B", mo: "B" }, { key: "C", mo: "C" }] });
+    h.createTask.mockResolvedValueOnce({ ok: true, ids: [300] }).mockResolvedValueOnce({ ok: false, error: "Too many tasks this hour." });
+    await runAutomation(cond(), { cause: "condition", now });
+    expect(lastUpdate()).toMatchObject({ lastStatus: "failed", failures: 1, lastKeys: ["A"], lastNote: expect.stringContaining("Gave 1 task(s): #300; then: Too many tasks this hour.") });
+  });
+
+  it("stops when its owner may no longer give tasks", async () => {
+    h.perms.delete("tasks.assign");
+    h.runAiRows.mockResolvedValue({ ok: true, truncated: false, rows: [{ key: "A", mo: "A" }] });
+    await runAutomation(cond(), { cause: "condition", now });
+    expect(h.createTask).not.toHaveBeenCalled();
+    expect(lastUpdate()).toMatchObject({ enabled: false, lastStatus: "skipped" });
+  });
+
+  it("past the rows a run may task, gives one task that lists them, within the details' limit", async () => {
+    const rows = Array.from({ length: 30 }, (_, i) => ({ key: `K${i}`, mo: `MO-${i}`, note: "x".repeat(110) }));
+    h.runAiRows.mockResolvedValue({ ok: true, truncated: false, rows });
+    await runAutomation(cond({ message: "Chase the late ones\nThere are {count}." }), { cause: "condition", now });
+    expect(h.createTask).toHaveBeenCalledTimes(1);
+    expect(form(0).title).toBe("Chase the late ones");
+    expect(String(form(0).details).length).toBeLessThanOrEqual(4000);
+    expect(String(form(0).details)).toContain("There are 30.");
+  });
+});
+
+describe("escalation", () => {
+  const twoHoursAgo = new Date(now.getTime() - 2 * 3_600_000).toISOString();
+  const cond = (o: Partial<Automation> = {}) => auto({ trigger: "condition", conditionSql: "SELECT mo AS key, mo FROM x", message: "{count} stopped", escalateAfterMin: 60, ...o });
+
+  it("sends a row still there after the time up to the plant's owner, once — on a check with nothing new too", async () => {
+    h.prisma.user.findMany.mockResolvedValue([{ id: 1 }]);
+    h.runAiRows.mockResolvedValue({ ok: true, truncated: false, rows: [{ key: "A", mo: "A" }] });
+    expect(await runAutomation(cond({ lastKeys: ["A"], keySeenAt: { A: twoHoursAgo } }), { cause: "condition", now })).toBe(false);
+    expect(h.deliverToInbox).toHaveBeenCalledTimes(1);
+    expect(h.deliverToInbox.mock.calls[0][0].map((m: { userId: number }) => m.userId)).toEqual([1, 7]);
+    expect(h.deliverToInbox.mock.calls[0][0][0].title).toContain("still there after 1 h");
+    expect(lastUpdate()).toMatchObject({ escalatedKeys: ["A"], keySeenAt: { A: twoHoursAgo } });
+
+    h.deliverToInbox.mockClear();
+    await runAutomation(cond({ lastKeys: ["A"], keySeenAt: { A: twoHoursAgo }, escalatedKeys: ["A"] }), { cause: "condition", now });
+    expect(h.deliverToInbox).not.toHaveBeenCalled();
+  });
+
+  it("what went up stays up when the run then fails — it is not sent up again", async () => {
+    h.prisma.user.findMany.mockResolvedValue([{ id: 1 }]);
+    h.runAiRows.mockResolvedValue({ ok: true, truncated: false, rows: [{ key: "A", mo: "A" }, { key: "B", mo: "B" }] });
+    h.deliverToInbox.mockImplementationOnce(async (items: unknown[]) => items.map((_, i) => 100 + i)).mockRejectedValueOnce(new Error("database gone"));
+    await runAutomation(cond({ lastKeys: ["A"], keySeenAt: { A: twoHoursAgo } }), { cause: "condition", now });
+    expect(lastUpdate()).toMatchObject({ lastStatus: "failed", escalatedKeys: ["A"] });
+    expect(lastUpdate()).not.toHaveProperty("lastKeys");
+  });
+});
+
+describe("an event's task", () => {
+  const rule = (o: Partial<Automation> = {}) =>
+    auto({ trigger: "event", times: [], nextRunAt: null, eventTypes: ["order.closed"], action: "task", message: "Check {about}", ...o });
+  const event = (o: Partial<AppEventView> = {}): AppEventView => ({
+    id: 1, type: "order.closed", at: now.toISOString(), actorId: 10, actorName: "Ahmed", subject: "SF01/MO/1", summary: "Closed SF01/MO/1", ...o,
+  });
+  beforeEach(() => {
+    h.perms.add("tasks.assign");
+    h.prisma.automationRun.count.mockResolvedValue(0);
+  });
+
+  it("goes like a message — at any hour and minutes after the last — not like a report", async () => {
+    h.settings.autoFrom = "08:00";
+    h.settings.autoTo = "16:00"; // now is 07:30 Cairo
+    h.prisma.automation.findMany.mockResolvedValue([rule({ lastRunAt: new Date(now.getTime() - 5 * 60_000) })]);
+    expect(await runEventAutomations(event(), now)).toBe(1);
+    expect(Object.fromEntries((h.createTask.mock.calls[0][0] as FormData).entries())).toMatchObject({ title: "Check SF01/MO/1" });
+  });
+
+  it("is never set off by what an automation did itself", async () => {
+    h.prisma.automation.findMany.mockResolvedValue([rule({ eventTypes: ["task.given"] })]);
+    expect(await runEventAutomations(event({ type: "task.given", participants: [7], byAutomation: true }), now)).toBe(0);
+    expect(h.createTask).not.toHaveBeenCalled();
   });
 });

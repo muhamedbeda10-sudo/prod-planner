@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { configOf } from "./store";
-import { describeAction, describeTrigger, type AutomationTrigger } from "@/lib/domain/automations";
+import { describeAction, describeTrigger, type AutomationConfig, type AutomationTrigger } from "@/lib/domain/automations";
 
 // Automations as the pages show them — the person's own, or (for the app's
 // owner) everyone's — with their last runs.
@@ -45,6 +45,8 @@ export interface AutomationView {
     activeTo: string | null;
   };
   runs: AutomationRunView[];
+  /** The whole configuration, as the builder edits it. */
+  config: AutomationConfig;
 }
 
 const RUNS = 8;
@@ -68,6 +70,7 @@ export async function automationViews(where: { ownerId?: number }): Promise<Auto
       lastStatus: a.lastStatus, lastNote: a.lastNote, failures: a.failures, createdBy: a.createdBy,
       timing: { trigger: c.trigger, times: c.times, days: c.days, weekdays: c.weekdays, checkEveryMin: c.checkEveryMin, activeFrom: c.activeFrom, activeTo: c.activeTo },
       runs: a.runs.map((r) => ({ id: r.id, cause: r.cause, status: r.status, startedAt: r.startedAt.toISOString(), summary: r.summary, error: r.error, costUsd: r.costUsd })),
+      config: c,
     };
   });
 }

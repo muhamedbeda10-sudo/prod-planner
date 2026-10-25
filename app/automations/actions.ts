@@ -4,9 +4,12 @@ import { revalidatePath } from "next/cache";
 import type { Automation, User } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { effectiveUser, getCurrentUser, hasPerm, requirePerm } from "@/lib/server/auth";
-import { AUTOMATIONS_KEY, automationFor, configOf, nextRunOf, offDays, ownerDenied, prepareAutomation, runCondition } from "@/lib/server/automations/store";
+import { AUTOMATIONS_KEY, automationFor, configOf, eventReaches, nextRunOf, offDays, ownerDenied, prepareAutomation, runCondition } from "@/lib/server/automations/store";
 import { testAutomation } from "@/lib/server/automations/runner";
-import { freshRows, retimeAutomation, type AutomationInput, type AutomationTiming } from "@/lib/domain/automations";
+import { AUTOMATION_LIMITS, checkAutomation, freshRows, retimeAutomation, type AutomationInput, type AutomationTiming } from "@/lib/domain/automations";
+import { eventMatches, isAppEventType } from "@/lib/domain/appEvents";
+import { humanizeKey, readableValue } from "@/lib/domain/fieldNames";
+import { formatDateTime } from "@/lib/domain/format";
 
 // The automations' writes — from the Automations page and from the
 // assistant's tools alike. A person keeps their own (AI — automations); the
@@ -57,10 +60,15 @@ export async function saveAutomation(fd: FormData): Promise<AutomationActionResu
   const p = await prepareAutomation(user, input, { id, includeCurrent: input.includeCurrent === true });
   if (!p.ok) return { ok: false, error: p.error };
   const c = p.prepared.config;
+  // the same query watched: what was first seen and what went up stand (a
+  // rename never sends the same rows up again); a new one starts afresh
+  const sameWatch = existing?.trigger === "condition" && c.trigger === "condition" && existing.conditionSql === c.conditionSql;
+  const escalation = sameWatch ? { keySeenAt: existing!.keySeenAt ?? {}, escalatedKeys: existing!.escalatedKeys } : { keySeenAt: {}, escalatedKeys: [] };
   const data = {
     name: c.name, trigger: c.trigger, times: c.times, days: c.days, weekdays: c.weekdays, conditionSql: c.conditionSql, checkEveryMin: c.checkEveryMin,
     activeFrom: c.activeFrom, activeTo: c.activeTo, eventTypes: c.eventTypes, eventActorIds: c.eventActorIds, eventMatch: c.eventMatch,
     action: c.action, message: c.message, prompt: c.prompt, recipientIds: c.recipientIds,
+    taskDueDays: c.taskDueDays, taskUrgent: c.taskUrgent, escalateAfterMin: c.escalateAfterMin, ...escalation,
     lastKeys: p.prepared.baselineKeys, nextRunAt: p.prepared.nextRunAt, failures: 0, updatedBy: user.name,
   };
   const saved = existing
@@ -78,7 +86,7 @@ async function ownerOf(a: Automation): Promise<User | null> {
 
 /** Turn an automation on again: its owner must still be allowed it, and a
  *  condition starts its watch afresh from what matches now. */
-async function onAgain(a: Automation): Promise<{ ok: true; data: { nextRunAt: Date | null; lastKeys?: string[] } } | { ok: false; error: string }> {
+async function onAgain(a: Automation): Promise<{ ok: true; data: { nextRunAt: Date | null; lastKeys?: string[]; keySeenAt?: Record<string, string>; escalatedKeys?: string[] } } | { ok: false; error: string }> {
   const owner = await ownerOf(a);
   const config = configOf(a);
   const denied = owner ? ownerDenied(owner, config) : "Its owner is not on the users list any more.";
@@ -88,7 +96,8 @@ async function onAgain(a: Automation): Promise<{ ok: true; data: { nextRunAt: Da
   if (config.trigger !== "condition") return { ok: true, data: { nextRunAt } };
   const r = await runCondition(owner!, config.conditionSql!);
   if (!r.ok) return { ok: false, error: r.error };
-  return { ok: true, data: { nextRunAt, lastKeys: freshRows([], r.rows).keys } };
+  // the time a row has been there counts from now, not from before the pause
+  return { ok: true, data: { nextRunAt, lastKeys: freshRows([], r.rows).keys, keySeenAt: {}, escalatedKeys: [] } };
 }
 
 /** Pause an automation, or turn it back on. */
@@ -186,4 +195,68 @@ export async function setAutomationTiming(fd: FormData): Promise<AutomationActio
   });
   revalidate();
   return { ok: true, id: a.id };
+}
+
+/** What an automation being built would do — before it is saved: a
+ *  schedule's next runs, how many rows a condition finds now, and how many
+ *  times an event one would have fired over the last week. Nothing is sent. */
+export async function previewAutomation(fd: FormData): Promise<{ ok: boolean; error?: string; text?: string; sample?: string[] }> {
+  const guard = await requirePerm(AUTOMATIONS_KEY);
+  if (guard.error) return { ok: false, error: guard.error };
+  const user = guard.user!;
+  let input: AutomationInput & { includeCurrent?: unknown };
+  try {
+    input = JSON.parse(String(fd.get("config") ?? ""));
+    if (!input || typeof input !== "object") throw new Error();
+  } catch {
+    return { ok: false, error: "The automation could not be read." };
+  }
+  const checked = checkAutomation(input);
+  if (!checked.ok) return { ok: false, error: checked.error };
+  const c = checked.config;
+  // what saving would refuse, the preview says first (a task without the right to give tasks)
+  const denied = ownerDenied(user, c);
+  if (denied) return { ok: false, error: denied };
+  const now = new Date();
+  if (c.trigger === "schedule") {
+    const offDay = await offDays(now);
+    const runs: string[] = [];
+    let at: Date | null = now;
+    for (let k = 0; k < 3 && at; k++) {
+      at = nextRunOf(c, at, offDay);
+      if (at) {
+        runs.push(formatDateTime(at.toISOString()));
+        at = new Date(at.getTime() + 60_000);
+      }
+    }
+    return { ok: true, text: runs.length ? `It runs next on ${runs.join(", ")}.` : "That schedule never comes round — check its days.", sample: [] };
+  }
+  if (c.trigger === "condition") {
+    const r = await runCondition(user, c.conditionSql!);
+    if (!r.ok) return { ok: false, error: r.error };
+    const keys = freshRows([], r.rows).keys.length;
+    return {
+      ok: true,
+      text: `${keys} row${keys === 1 ? "" : "s"} match now. Saved, it tells only of the rows that start matching after${input.includeCurrent === true ? " — and of these at once" : ""}.`,
+      sample: r.rows.slice(0, 5).map((row) => Object.entries(row).filter(([k]) => k !== "key").map(([k, v]) => `${humanizeKey(k)}: ${readableValue(v, now) ?? "—"}`).join(" · ")),
+    };
+  }
+  const since = new Date(now.getTime() - 7 * 86_400_000);
+  const events = await prisma.appEvent.findMany({
+    where: { type: { in: c.eventTypes }, at: { gte: since }, ...(c.eventActorIds.length ? { actorId: { in: c.eventActorIds } } : {}) },
+    select: { type: true, at: true, actorId: true, actorName: true, subject: true, summary: true, data: true },
+    orderBy: { at: "desc" },
+    take: 500,
+  });
+  // only what the person may hear of — as the automation itself would be told
+  const hits = events.filter((e) => isAppEventType(e.type)
+    && eventReaches(e.type, (e.data as { participants?: number[] } | null)?.participants, user)
+    && eventMatches(c, { type: e.type, actorId: e.actorId, subject: e.subject, summary: e.summary }));
+  return {
+    ok: true,
+    text: `It would have fired ${hits.length} time${hits.length === 1 ? "" : "s"} in the last 7 days${events.length === 500 ? " (at least — the busiest kinds were counted to 500)" : ""}.${
+      c.action === "report" || c.action === "act" ? ` A report or a change runs at most once every ${AUTOMATION_LIMITS.eventAiEveryMin} minutes, inside the automations' hours, so fewer of them would have run.` : ""
+    }`,
+    sample: hits.slice(0, 4).map((e) => `${formatDateTime(e.at.toISOString())} — ${e.actorName}: ${e.summary}`),
+  };
 }

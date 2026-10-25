@@ -126,6 +126,7 @@ export default async function AiAdminPage() {
           lateMinDays: watch.lateMinDays, recipientIds: watch.recipientIds, aiSummary: watch.aiSummary, lastRunAt: watch.lastRunAt?.toISOString() ?? null,
           lastFindings: watch.lastFindings, people: users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name, isOwner: u.isOwner })),
         },
+        meId: me.id,
         quality: {
           feedback: feedback.map((f) => ({
             id: f.id, at: f.createdAt.toISOString(), who: f.user?.name ?? "(deleted account)", rating: f.rating === "up" ? "up" : "down",

@@ -1989,10 +1989,19 @@ model Automation {
   eventTypes    String[]        @default([])
   eventActorIds Int[]           @default([])
   eventMatch    String?
-  action        String // notify | report | act
-  message       String? // notify
+  action        String // notify | report | act | task
+  message       String? // notify; task: its title, then what to do
   prompt        String? // report | act
-  recipientIds  Int[]           @default([]) // none = the owner
+  recipientIds  Int[]           @default([]) // none = the owner; task: who it is given to
+  // task: days until it is due, and urgent or not
+  taskDueDays   Int             @default(1)
+  taskUrgent    Boolean         @default(false)
+  // condition: a row still matching this many minutes after it first did
+  // goes up to the plant's owner (null = never); when each key matching now
+  // was first seen ({key: ISO}), and the keys already sent up
+  escalateAfterMin Int?
+  keySeenAt     Json            @default("{}")
+  escalatedKeys String[]        @default([])
   // the keys the condition matched at its last check: what fires is what was not there
   lastKeys      String[]        @default([])
   nextRunAt     DateTime?
