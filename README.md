@@ -46,6 +46,10 @@ mobile drawer still lists every view flat, since it has the vertical room.
    normalization** (green auto-correct badge, red block for unknown/ambiguous), editable audited log.
 3. **Plan Tracker** (`/tracker`) — one row per BOM (MOs merged), per-item Cut/Weld, Complete = MIN,
    Remaining, Achievement %. Every number is click-through-traceable (`/trace`) to handover rows.
+   Each component ends with a read-only **Odoo** column sourced from Done/Closed quantities in the Odoo tab.
+   Linked production rows identify the planner MO; project-only imports count once on the full merged BOM,
+   with unallocated quantities flagged in individual or partial MO views. Odoo updates refresh the tracker;
+   the columns remain visible when stages are folded or filtered and are included in exports.
    Recording on a MERGED BOM row fills its MOs **one at a time**: the first order is closed to its own chain
    limit before the second is touched, then the third — never spread evenly — and a correction comes back off
    the LAST MOs first. The cell says which MOs the number will land on, in fill order, **before** it is saved;
