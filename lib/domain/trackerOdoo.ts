@@ -1,6 +1,7 @@
 import { ITEMS, isItem, type Item } from "./constants";
 import { isDoneStatus, odooRowBom } from "./odoo";
 import { ITEM_PRODUCT, sameProduct } from "./odooMirror";
+import { parseISODate, toISODate } from "./dates";
 
 /** Closed quantities exceeding the matching plans stay visible as unallocated. */
 export interface OdooUnallocatedQuantity { key: string; item: Item; qty: number; mos: string[] }
@@ -8,10 +9,17 @@ interface Order {
   mo: string; bom: string; soi: string | null; line?: string; planQty: number;
   source?: string | null; months?: string | readonly string[]; eligibleItems?: readonly Item[];
 }
-interface Entry { id: number; line: string; ledgerId: number | null; soi: string | null; fgCode: string; product: string; qty: number; status: string }
+interface Entry { id: number; date: Date | string; line: string; ledgerId: number | null; soi: string | null; fgCode: string; product: string; qty: number; status: string }
 interface Ledger { id: number; mo: string | null; bom: string; item: string }
 const norm = (s: string | null | undefined) => (s ?? "").trim().toUpperCase();
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** Older saved month settings still mean the first day of that month. */
+export function normalizeOdooTrackingStart(value: string | null | undefined): string | null {
+  const text = value?.trim() ?? "";
+  const date = /^\d{4}-\d{2}$/.test(text) ? `${text}-01` : text;
+  return parseISODate(date) ? date : null;
+}
 function monthRank(month: string) {
   const iso = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
   if (iso) return Number(iso[1]) * 12 + Number(iso[2]) - 1;
@@ -30,7 +38,8 @@ export function odooPlanMonth(order: Pick<Order, "source" | "months">): string |
 
 function inTrackingWindow(order: Order, trackingFrom: string | null): boolean {
   const month = odooPlanMonth(order);
-  return !!trackingFrom && !!month && Number.isFinite(monthRank(month)) && Number.isFinite(monthRank(trackingFrom)) && monthRank(month) >= monthRank(trackingFrom);
+  const start = normalizeOdooTrackingStart(trackingFrom)?.slice(0, 7);
+  return !!start && !!month && Number.isFinite(monthRank(month)) && monthRank(month) >= monthRank(start);
 }
 
 /** Each Odoo log quantity is read once. The planner's MO comes from its linked ledger,
@@ -38,6 +47,7 @@ function inTrackingWindow(order: Order, trackingFrom: string | null): boolean {
  * first, once per MO/component, up to that MO's requirement. Allocation happens
  * against the whole registry BEFORE any month, search or status filter. */
 export function trackerOdooQuantities(orders: readonly Order[], entries: readonly Entry[], ledgers: readonly Ledger[], trackingFrom: string | null = null) {
+  const startDate = normalizeOdooTrackingStart(trackingFrom);
   const byMo = new Map(orders.filter((o) => !o.line || o.line === "TR").map((o) => [norm(o.mo), o]));
   const byBom = new Map<string, Order[]>(), bySoi = new Map<string, Order[]>();
   for (const order of byMo.values()) {
@@ -82,6 +92,11 @@ export function trackerOdooQuantities(orders: readonly Order[], entries: readonl
       if (order && norm(order.bom) === norm(ledger.bom)) pending.push({ item, qty: entry.qty, candidates: [order], id: entry.id, exact: true });
       continue;
     }
+    // A recording start within a month must not pull in earlier project
+    // imports from that same month. Explicitly linked historical MOs above
+    // remain evidence for their own orders.
+    const recordDate = entry.date instanceof Date ? toISODate(entry.date) : entry.date.slice(0, 10);
+    if (startDate && (!parseISODate(recordDate) || recordDate < startDate)) continue;
     const soi = norm(entry.soi), sameSoi = bySoi.get(soi) ?? [];
     const bom = odooRowBom(entry.fgCode, ledger?.bom, sameSoi.map((o) => o.bom));
     if (bom.boms.length !== 1) continue;

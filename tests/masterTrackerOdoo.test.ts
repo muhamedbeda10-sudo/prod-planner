@@ -5,8 +5,8 @@ vi.mock("@/lib/db", () => ({ prisma: { handoverEntry: { groupBy: h.totals, findM
 vi.mock("@/lib/server/loads", () => ({ loadMasterOrders: h.orders, loadSettingsRow: h.settings }));
 import { getMasterTracker } from "@/lib/server/masterTracker";
 beforeEach(() => {
-  vi.resetAllMocks(); h.settings.mockResolvedValue({ odooTrackingFrom: "2026-09" }); h.orders.mockResolvedValue([{ mo: "PLAN-MO", bom: "BOM-A", soi: "SO-1", line: "TR", planQty: 3, kva: "1000", rating: "", excludedItems: "", months: "October 2026", status: "open", pendingPlanQty: null }]); h.totals.mockResolvedValue([]);
-  h.odoo.mockResolvedValue([{ id: 1, line: "TR", ledgerId: 9, soi: "SO-1", fgCode: "FB-022-BOM-A", product: "Tank", qty: 7, status: "Done" }]); h.ledgers.mockResolvedValue([{ id: 9, mo: "PLAN-MO", bom: "BOM-A", item: "TN" }]);
+  vi.resetAllMocks(); h.settings.mockResolvedValue({ odooTrackingFrom: "2026-09-06" }); h.orders.mockResolvedValue([{ mo: "PLAN-MO", bom: "BOM-A", soi: "SO-1", line: "TR", planQty: 3, kva: "1000", rating: "", excludedItems: "", months: "October 2026", status: "open", pendingPlanQty: null }]); h.totals.mockResolvedValue([]);
+  h.odoo.mockResolvedValue([{ id: 1, date: new Date("2026-09-06T00:00:00Z"), line: "TR", ledgerId: 9, soi: "SO-1", fgCode: "FB-022-BOM-A", product: "Tank", qty: 7, status: "Done" }]); h.ledgers.mockResolvedValue([{ id: 9, mo: "PLAN-MO", bom: "BOM-A", item: "TN" }]);
 });
 it("allocates Odoo quantities to the original plan requirement, keeping excess and stage production separate", async () => {
   const rows = await getMasterTracker();

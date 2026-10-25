@@ -58,7 +58,7 @@ export async function getMasterTracker(): Promise<MasterTrackerRow[]> {
       where: { mo: { not: null } },
       _sum: { qty: true },
     }),
-    prisma.odooEntry.findMany({ where: { line: "TR" }, select: { id: true, line: true, ledgerId: true, soi: true, fgCode: true, product: true, qty: true, status: true } }),
+    prisma.odooEntry.findMany({ where: { line: "TR" }, select: { id: true, date: true, line: true, ledgerId: true, soi: true, fgCode: true, product: true, qty: true, status: true } }),
     loadSettingsRow(),
   ]);
   const ledgerIds = odoo.flatMap((row) => row.ledgerId === null ? [] : [row.ledgerId]);

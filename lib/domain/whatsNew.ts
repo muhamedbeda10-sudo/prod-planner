@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-odoo-recording-start-six-september",
+    dateISO: "2026-10-25",
+    title: "Odoo recording starts on 6 September 2026",
+    where: "Plan Tracker · Settings",
+    href: "/tracker",
+    body: "The plant’s confirmed Odoo recording start is now saved as 6 September 2026. Tracking starts on a full date, including that day, so project entries from 1–5 September do not enter automatic allocation. Those quantities fill September’s oldest matching plan first, then later months. Confirmed production-linked closings keep their own MO, including older orders. The Tracker’s start-date explanation and setup strip have been removed. The shared start date remains editable in Admin → Settings.",
+  },
+  {
     id: "2026-10-25-odoo-oldest-monthly-plan-allocation",
     dateISO: "2026-10-25",
     title: "Odoo quantities belong to a monthly plan: oldest first",

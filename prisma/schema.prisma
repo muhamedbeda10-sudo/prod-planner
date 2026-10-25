@@ -486,7 +486,7 @@ model Settings {
   leadWeld        Int @default(1)
   capacityPerItem Int @default(27)
   dailyTarget     Int @default(27)
-  // First monthly plan included in automatic Odoo allocation (YYYY-MM).
+  // First recording day for automatic Odoo allocation (YYYY-MM-DD).
   // Null until chosen: older imported orders must not silently consume new closings.
   odooTrackingFrom String?
 
