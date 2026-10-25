@@ -169,7 +169,8 @@ mobile drawer still lists every view flat, since it has the vertical room.
    "Save day" (pinned to the bottom of the screen) writes every row and re-sums each department's
    man-hours into the figure the calibration and the plan's capacity check read (Admin → Standard Times
    shows it read-only). The last days recorded show their day and night counts. Recording needs
-   `shifts.<dept>`; viewing is free, and the save action itself refuses a worker still not set. The
+   `shifts.<dept>`; viewing is free, and the save action itself refuses a worker still not set, and a row under a
+   department the worker is not registered in (a worker moved or retired since keeps the rows already recorded). The
    assistant's `record_shift_day` follows the same rule: workers it is not told about are refused, not
    guessed, unless the person says what the `rest` of them get (day, night or absent) — an automation
    that records shifts has to say it in its instruction. The vacation rule applies to today only: the
