@@ -435,11 +435,13 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
   });
 
   // ---- today's figures, as the trend keeps them ----
+  const fabrication = combinedStat(recentStats.filter((s) => (DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(s.centre)));
   const snapshot: KpiSnapshotData = {
     late: late.length,
     adherence: Object.fromEntries(adherence.map((a) => [a.stage, a.rate])),
     coverageDays: coverage.days,
     efficiency: Object.fromEntries(recentStats.map((s) => [s.centre, s.efficiency])),
+    fabEfficiency: fabrication.efficiency,
     unplannedH: loss.unplannedH,
   };
   const stored = await prisma.kpiSnapshot.findMany({ where: { date: { gte: dayStart(addDaysISO(todayISO, -TREND_DAYS)), lt: dayStart(todayISO) } }, orderBy: { date: "asc" } });
@@ -458,7 +460,7 @@ export async function getCockpit(now = new Date()): Promise<CockpitData> {
       lateCount: late.length,
     },
     centres,
-    fabrication: combinedStat(recentStats.filter((s) => (DEPT_CENTRES.Cut as readonly WorkCentre[]).includes(s.centre))),
+    fabrication,
     load,
     coverage,
     manpower,
@@ -495,7 +497,7 @@ export function withoutFloor(c: CockpitData): CockpitData {
     pricedShare: null,
     manpower: { ...c.manpower, rows: c.manpower.rows.map((r) => ({ ...r, present: null, gap: null, tone: null })) },
     actions: c.actions.filter((a) => !isFloorAction(a)),
-    snapshot: { ...c.snapshot, efficiency: {}, unplannedH: null },
-    trend: c.trend.map((t) => ({ ...t, efficiency: {}, unplannedH: null })),
+    snapshot: { ...c.snapshot, efficiency: {}, fabEfficiency: null, unplannedH: null },
+    trend: c.trend.map((t) => ({ ...t, efficiency: {}, fabEfficiency: null, unplannedH: null })),
   };
 }

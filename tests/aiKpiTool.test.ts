@@ -35,6 +35,9 @@ describe("get_kpis", () => {
     expect(j.centres[0].lastDay.efficiency).toBe(0.53);
     expect(j.loadAhead[0]).toMatchObject({ centre: "Welding", measured: true, loadRate: 0.73, behindH: 256.1, clears: "2026-11-02", shortAtEndH: 0, days: [{ day: "2026-10-25", dueH: 40, capacityH: 30 }] });
     expect(j.fabrication).toEqual({ earnedH: 240, workedH: 300, efficiency: 0.8 });
+    expect(j.monthPace[0]).toMatchObject({ centre: "Welding", planH: 4000, doneH: 3000, doneShare: 0.75, evenPaceShare: 0.8 });
+    expect(j.dailyOutput[0]).toMatchObject({ day: "2026-10-24", weldingH: 90, earnedH: 90, bookedH: 100, efficiency: 0.9 });
+    expect(j.weekChange.linesBehind).toBeNull();
     expect(j.manpower).toMatchObject({ month: "October 2026", workingDaysLeft: 5, centres: [{ centre: "Welding", peopleNeeded: 20, peopleNeededFromToday: 25, peoplePresent: 22, gap: -3 }] });
     expect(j.losses).toMatchObject({ unplannedH: 6.5, absentRate: 0.11, overtimeH: 126 });
     expect(j.trend[0]).toMatchObject({ day: "2026-10-25", behind: 29, efficiency: { Welding: 0.9 } });
@@ -48,6 +51,8 @@ describe("get_kpis", () => {
     expect(j.losses).toBeUndefined();
     expect(j.fabrication).toBeUndefined();
     expect(j.trend[0].efficiency).toBeUndefined();
+    expect(j.dailyOutput).toBeUndefined();
+    expect(Object.keys(j.weekChange)).toEqual(["planDeliveredOnItsDay", "linesBehind", "weldingCoverageDays"]);
     expect(j.manpower.centres[0]).toEqual({ centre: "Welding", requiredH: 4000, doneH: 3000, leftH: 1000, peopleNeeded: 20, peopleNeededFromToday: 25 });
     expect(j.decisions).toEqual(["bad: 29 plan line(s) are behind"]);
     expect(j.weeklyPlan.behindCount).toBe(29);

@@ -456,8 +456,15 @@ mobile drawer still lists every view flat, since it has the vertical room.
    people** — each centre's standard hours for the month's plan (its orders' components × pieces, outsourced ones
    left out) over the month's working days × the net hours a person works (Settings) give the people it needs, what
    is left over the days still to come the people needed from today, against who comes on an average recorded day
-   (the plant's manpower sheet, read live). Each card has its
-   table and Excel export; the page prints. An account the Shifts screen is closed to sees neither the centres'
+   (the plant's manpower sheet, read live). Every card answers with a chart and keeps its numbers under its
+   Table switch, with the Excel export: the week's plan as a burn-up (pieces asked and finished, summed day by day);
+   the load as one centre's running totals (owed so far against what it could have worked, the short days shaded)
+   beside every centre's status; **the month's pace** — each centre's share of the month's plan done against where an
+   even pace through its working days stands today; the people as bullets (who comes against who is needed from
+   today); **each day's output** in standard hours by department against the man-hours booked; each centre's
+   efficiency day by day, one small chart a centre against the standard; and the stops as a Pareto, biggest cause
+   first with the share it and the causes above make up. The headline figures each read against a week ago. The page
+   prints. An account the Shifts screen is closed to sees neither the centres'
    efficiency, nor the losses, nor who is present (questions 2 and 5, and the people card's Present and Gap) — on the page or through the assistant. The day's figures are kept for their trend
    (`KpiSnapshot`): after the page is served, and each hour by the automations' housekeeping. The
    pure arithmetic is `lib/domain/kpis.ts` (tested); the loader `lib/server/kpis.ts` is the one both the page and
