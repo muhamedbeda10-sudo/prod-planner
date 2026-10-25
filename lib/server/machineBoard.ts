@@ -147,7 +147,7 @@ async function loadBoardContext(dept: BoardDept, dayISO: string) {
 
   const assignments: Assignment[] = rows.map((r) => ({ key: lineKey(r.bom, r.mo, r.item), machineId: r.machineId, rank: r.rank, running: r.running, qty: r.qty, sheet: r.sheet, sheetDone: r.sheetDone }));
   const downtimeH: Record<number, number> = {};
-  for (const d of downtime) downtimeH[d.machineId] = (downtimeH[d.machineId] ?? 0) + d.hours;
+  for (const d of downtime) if (d.machineId !== null) downtimeH[d.machineId] = (downtimeH[d.machineId] ?? 0) + d.hours;
   const crewH: Record<number, number> = {};
   const crew: Record<number, string[]> = {};
   for (const s of shifts) {

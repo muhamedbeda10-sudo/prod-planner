@@ -26,7 +26,7 @@ describe("delete multiple recorded shift days", () => {
     expect(await deleteRecordedShiftDays(bulk(["2026-10-05", " 2020-01-02 ", "2026-10-05"], "Punching,Punching"))).toEqual({ ok: true, attendance: 8, stops: 2, totals: 4 });
     const date = { in: [new Date("2026-10-05T00:00:00Z"), new Date("2020-01-02T00:00:00Z")] }, dept = { in: ["Punching"] };
     expect(h.prisma.shiftEntry.deleteMany).toHaveBeenCalledWith({ where: { date, dept } });
-    expect(h.prisma.machineDowntime.deleteMany).toHaveBeenCalledWith({ where: { date, machine: { dept } } });
+    expect(h.prisma.machineDowntime.deleteMany).toHaveBeenCalledWith({ where: { date, OR: [{ machine: { dept } }, { machineId: null, customDept: dept }] } });
     expect(h.prisma.deptDayHours.deleteMany).toHaveBeenCalledWith({ where: { date, dept } });
     expect(h.prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(h.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
@@ -61,7 +61,7 @@ describe("delete a recorded shift day", () => {
     expect(result).toEqual({ ok: true, attendance: 8, stops: 2, totals: 4 });
     const date = new Date("2020-01-02T00:00:00Z"), dept = { in: ["Punching", "Bending", "WeldingLV", "PaintingLV"] };
     expect(h.prisma.shiftEntry.deleteMany).toHaveBeenCalledWith({ where: { date, dept } });
-    expect(h.prisma.machineDowntime.deleteMany).toHaveBeenCalledWith({ where: { date, machine: { dept } } });
+    expect(h.prisma.machineDowntime.deleteMany).toHaveBeenCalledWith({ where: { date, OR: [{ machine: { dept } }, { machineId: null, customDept: dept }] } });
     expect(h.prisma.deptDayHours.deleteMany).toHaveBeenCalledWith({ where: { date, dept } });
     expect(h.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
     expect(h.revalidate).toHaveBeenCalledWith("/shifts");

@@ -19,7 +19,7 @@ it("includes stop-only days, old dates and attendance priced with current shift 
     { dateISO: "2020-01-02", hours: 20, people: 2, day: 0, night: 0, entries: 0, stops: 0, legacyHours: 20 },
   ]);
   expect(h.entries.mock.calls[0][0].where).toEqual({ dept: { in: ["Punching"] } });
-  expect(h.stops.mock.calls[0][0].where).toEqual({ machine: { dept: { in: ["Punching"] } } });
+  expect(h.stops.mock.calls[0][0].where).toEqual({ OR: [{ machine: { dept: { in: ["Punching"] } } }, { machineId: null, customDept: { in: ["Punching"] } }] });
 });
 it("keeps empty/deleted history empty", async () => {
   expect(await getShiftHistory(["Punching"])).toEqual([]);

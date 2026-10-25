@@ -179,7 +179,12 @@ mobile drawer still lists every view flat, since it has the vertical room.
    **Work centres**: a Fabrication worker is booked to the centre he was on — laser / punch, bending or fin
    folding — his section's by default (Channels book to bending), changed on the row when he moved that
    day, so each centre's man-hours can be set against what it produced.
-   **Machine stops** (a tab of the shift log): which machine stood, the hours, and why — one of the plant's
+   **Machine stops** (a tab of the shift log): choose start/end clock times and the app computes duration
+   to the minute. An overnight end is marked **End next day** and booked to the starting factory date.
+   Choose **Other equipment** to type an unlisted asset's name and department (and work centre for
+   Fabrication); it is logged without creating a schedulable machine. The table, editor and Excel export
+   keep the range. Timed stops cannot overlap on the same asset, including across midnight; older
+   duration-only rows retain their hours and can be corrected without inventing times. Why — one of the plant's
    codes (`lib/domain/downtime.ts`: breakdown mechanical / electrical, no material, no operator, no drawing
    or program, setup, quality, power or air, planned maintenance, other) with an optional note; each stop
    can be corrected in place (hours, cause and note) or deleted on its own. Recording needs the machine's department's `shifts.<dept>`. The assistant records

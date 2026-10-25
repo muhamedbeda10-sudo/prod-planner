@@ -16,6 +16,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    id: "2026-10-25-stop-clock-times-unlisted-equipment",
+    dateISO: "2026-10-25",
+    title: "Machine stops: from/to times, automatic duration and unlisted equipment",
+    where: "Shifts → Machine stops",
+    href: "/shifts?view=downtime",
+    body: "Record when a stop started and ended instead of typing hours. Duration is calculated to the minute; overnight stops automatically end on the next day and stay booked to their starting date. The table, edit form and Excel export retain both times. Choose Other equipment to type a name and its department (plus a work centre for Fabrication), even when it is absent from the machine registry. Named assets count in losses and recorded-day history and follow department permissions and day deletion. Overlapping timed stops on the same equipment are refused, including across midnight. Older duration-only records keep their hours without invented clock times.",
+  },
+  {
     id: "2026-10-25-people-needed",
     dateISO: "2026-10-25",
     title: "Do we have the people? The month's plan in people, centre by centre",

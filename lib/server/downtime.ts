@@ -1,13 +1,13 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { machineWorkCentre, type WorkCentre } from "@/lib/domain/shifts";
+import { isWorkCentre, machineWorkCentre, type WorkCentre } from "@/lib/domain/shifts";
 
 // The machine stops of a day, as the shift log records them: which machine,
 // how long, and why — one of the plant's codes (lib/domain/downtime.ts).
 
 export interface DowntimeRowDTO {
   id: number;
-  machineId: number;
+  machineId: number | null;
   machineCode: string;
   machineName: string;
   dept: string;
@@ -16,6 +16,9 @@ export interface DowntimeRowDTO {
   reasonCode: string | null;
   reason: string | null;
   recordedBy: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  endsNextDay?: boolean;
 }
 
 export interface DowntimeMachine {
@@ -44,8 +47,10 @@ export async function getDowntimeDay(dateISO: string): Promise<DowntimeDay> {
   return {
     dateISO,
     rows: rows.map((r) => ({
-      id: r.id, machineId: r.machineId, machineCode: r.machine.code, machineName: r.machine.name, dept: r.machine.dept,
-      centre: machineWorkCentre(r.machine.dept, r.machine.center), hours: r.hours, reasonCode: r.reasonCode, reason: r.reason, recordedBy: r.recordedBy,
+      id: r.id, machineId: r.machineId, machineCode: r.machine?.code ?? r.customName ?? "Unlisted equipment", machineName: r.machine?.name ?? "Unlisted equipment", dept: r.machine?.dept ?? r.customDept ?? "",
+      centre: r.machine ? machineWorkCentre(r.machine.dept, r.machine.center) : r.customCentre && isWorkCentre(r.customCentre) ? r.customCentre : null,
+      hours: r.hours, reasonCode: r.reasonCode, reason: r.reason, recordedBy: r.recordedBy,
+      startTime: r.startTime, endTime: r.endTime, endsNextDay: r.endsNextDay,
     })),
     machines: machines.map((m) => ({ id: m.id, code: m.code, name: m.name, dept: m.dept, centre: machineWorkCentre(m.dept, m.center), hoursPerDay: m.hoursPerDay })),
   };

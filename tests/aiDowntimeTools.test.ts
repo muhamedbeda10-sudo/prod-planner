@@ -1,0 +1,35 @@
+import { beforeEach, expect, it, vi } from "vitest";
+const h = vi.hoisted(() => ({ rows: vi.fn(), row: vi.fn(), machines: vi.fn(), add: vi.fn(), remove: vi.fn(), perm: vi.fn() }));
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/db", () => ({ prisma: { machine: { findMany: h.machines }, machineDowntime: { findMany: h.rows, findUnique: h.row } } }));
+vi.mock("@/lib/server/auth", () => ({ hasPerm: h.perm }));
+vi.mock("@/app/shifts/downtimeActions", () => ({ addDowntime: h.add, deleteDowntime: h.remove }));
+import { recordMachineStopTool, deleteMachineStopTool } from "@/lib/server/ai/tools/downtime";
+import { validateInput } from "@/lib/domain/aiInput";
+import type { ToolCtx } from "@/lib/server/ai/tools/types";
+const ctx = { user: {}, todayISO: "2026-10-25" } as ToolCtx;
+beforeEach(() => { vi.resetAllMocks(); h.perm.mockReturnValue(true); h.rows.mockResolvedValue([]); h.remove.mockResolvedValue({ ok: true }); h.add.mockResolvedValue({ ok: true, id: 9, hours: 1 / 60 }); });
+it("accepts start/end times, keeps minute durations schema-valid after parsing, and requires explicit custom scope", async () => {
+  const raw = { date: "2026-10-24", machine: "Compressor", unlisted: true, department: "Punching", startTime: "08:10", endTime: "08:11", reason: "MECH" };
+  expect(validateInput(recordMachineStopTool.schema, raw).ok).toBe(true);
+  const parsed = recordMachineStopTool.parse!(raw);
+  expect(parsed).toMatchObject({ hours: 1 / 60, endsNextDay: false });
+  expect(validateInput(recordMachineStopTool.schema, parsed).ok).toBe(true);
+  expect(typeof recordMachineStopTool.parse!({ ...raw, department: undefined })).toBe("string");
+  expect(typeof recordMachineStopTool.parse!({ ...raw, unlisted: false, startTime: undefined, endTime: undefined })).toBe("string");
+  if (typeof parsed === "string") throw Error(parsed);
+  expect(await recordMachineStopTool.describe(parsed, ctx)).toMatchObject({ title: "Machine stop: Compressor 2026-10-24" });
+  expect((await recordMachineStopTool.execute(parsed, ctx)).ok).toBe(true);
+  expect(h.machines).not.toHaveBeenCalled();
+  const fd = h.add.mock.calls[0][0] as FormData;
+  expect(Object.fromEntries(fd)).toMatchObject({ machineId: "custom", customName: "Compressor", customDept: "Punching", startTime: "08:10", endTime: "08:11" });
+});
+it("can delete and faithfully undo an overnight unlisted stop without a Machine relation", async () => {
+  h.row.mockResolvedValue({ id: 9, date: new Date("2026-10-24T00:00:00Z"), machineId: null, machine: null, customName: "Compressor", customDept: "Cut", customCentre: "Cutting", startTime: "23:30", endTime: "01:00", endsNextDay: true, hours: 1.5, reasonCode: "MECH", reason: null });
+  expect(await deleteMachineStopTool.describe({ id: 9 }, ctx)).toMatchObject({ title: "Delete a stop of Compressor" });
+  const result = await deleteMachineStopTool.execute({ id: 9 }, ctx);
+  expect(result.undo?.input).toMatchObject({ machine: "Compressor", unlisted: true, department: "Cut", centre: "Cutting", startTime: "23:30", endTime: "01:00", endsNextDay: true });
+  expect(validateInput(recordMachineStopTool.schema, result.undo?.input).ok).toBe(true);
+  h.perm.mockReturnValue(false);
+  expect(await deleteMachineStopTool.describe({ id: 9 }, ctx)).toHaveProperty("error");
+});

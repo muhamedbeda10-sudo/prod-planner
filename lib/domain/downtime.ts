@@ -16,11 +16,36 @@ export const DOWNTIME_REASONS = [
 ] as const;
 export type DowntimeCode = (typeof DOWNTIME_REASONS)[number]["code"];
 
-/** The most a machine can stand in a day, and the step a stop is kept in. */
+/** The most a machine can stand in a day; quarter-hour step for legacy hours-only inputs. */
 export const MAX_STOP_HOURS = 24;
 export const STOP_STEP = 0.25;
-/** Hours as a stop keeps them: to the quarter hour. */
+/** Legacy duration-only input; clock ranges use stopTiming and keep minute precision. */
 export const stopHours = (h: number) => Math.round(h / STOP_STEP) * STOP_STEP;
+
+export function clockMinutes(time: string): number | null {
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/** Minute-accurate factory clock duration, up to one day. Equal times need an explicit next-day end. */
+export function stopTiming(startTime: string, endTime: string, endsNextDay = endTime < startTime) {
+  const start = clockMinutes(startTime), end = clockMinutes(endTime);
+  if (start === null || end === null) return null;
+  const minutes = end + (endsNextDay ? 1440 : 0) - start;
+  if (minutes <= 0 || minutes > 1440) return null;
+  return { startTime, endTime, endsNextDay, minutes, hours: minutes / 60 };
+}
+
+export function stopDurationLabel(hours: number): string {
+  const minutes = Math.round(hours * 60), h = Math.floor(minutes / 60), m = minutes % 60;
+  return [h ? `${h} h` : "", m ? `${m} min` : ""].filter(Boolean).join(" ") || "0 min";
+}
+
+/** A named custom asset's department is deliberately separate from the machine registry. */
+export function downtimeScope(depts: readonly string[]) {
+  return { OR: [{ machine: { dept: { in: [...depts] } } }, { machineId: null, customDept: { in: [...depts] } }] };
+}
 
 const BY_CODE = new Map<string, (typeof DOWNTIME_REASONS)[number]>(DOWNTIME_REASONS.map((r) => [r.code, r]));
 
@@ -63,9 +88,10 @@ export function downtimeByCause(rows: readonly DowntimeRow[]): { causes: Downtim
     cur.stops += 1;
     acc.set(code, cur);
   }
-  const all = [...acc.entries()].map(([code, v]) => ({ code, ...v, hours: Math.round(v.hours * 10) / 10 }));
-  const unplannedH = Math.round(all.filter((c) => !c.planned).reduce((s, c) => s + c.hours, 0) * 10) / 10;
-  const plannedH = Math.round(all.filter((c) => c.planned).reduce((s, c) => s + c.hours, 0) * 10) / 10;
+  const minuteHours = (hours: number) => Math.round(hours * 60) / 60;
+  const all = [...acc.entries()].map(([code, v]) => ({ code, ...v, hours: minuteHours(v.hours) }));
+  const unplannedH = minuteHours(all.filter((c) => !c.planned).reduce((s, c) => s + c.hours, 0));
+  const plannedH = minuteHours(all.filter((c) => c.planned).reduce((s, c) => s + c.hours, 0));
   const causes = all
     .map((c) => ({ ...c, share: c.planned ? null : unplannedH > 0 ? c.hours / unplannedH : 0 }))
     .sort((a, b) => Number(a.planned) - Number(b.planned) || b.hours - a.hours);
